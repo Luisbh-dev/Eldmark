@@ -9,7 +9,23 @@ fuertes y castillos.
 
 ## Los tres reinos
 
-Tres reinos jugables (nombres, culturas y razas por definir). Cada uno tiene:
+Mundo elegido: **La Corona Rota**. Los tres pueblos fueron un solo reino, Eld,
+gobernado desde la ciudadela de Aldcor, donde ardía la Llama de Eld. Al morir el
+último rey sin heredero, los tres linajes se disputaron el trono; la Llama
+estalló y la tierra se agrietó (la Quiebra). Las Brasas de Eld, esquirlas de la
+Llama, siguen ardiendo en las ruinas y dan poder a quien las controla.
+
+| Reino | Inspiración y paisaje | Arquitectura | Colores y emblema | Capital |
+|---|---|---|---|---|
+| **Vardheim** (norte) | Clanes nórdicos y anglosajones; fiordos, pinares, tundra y glaciares | Casas largas de madera oscura, empalizadas, torres de piedra tosca | Gris acero y azul hielo; lobo blanco | Isenholm |
+| **Solmarch** (suroeste) | Teocracia gótica; valles fértiles, viñedos, ríos lentos | Caliza clara, catedrales, torres cónicas de pizarra azul | Blanco y oro; sol radiante partido | Valcorin |
+| **Askarra** (sureste) | Señores forjadores y mercaderes; cañones rojos, mesetas y campos volcánicos | Arenisca roja y terracota, cúpulas bajas, ciudades talladas en la roca | Carmesí y bronce; yunque sobre una grieta en llamas | Kassar |
+
+La zona de guerra es **Eldrun**: el cadáver del antiguo reino, con la ciudadela
+en ruinas de Aldcor en el centro. Los detalles de zonas, fortalezas y la primera
+zona de frontera están en [mundo.md](mundo.md).
+
+Cada reino tiene:
 
 - Una ciudad capital, más ciudades y aldeas
 - Varias zonas PvE con niveles progresivos
@@ -86,7 +102,7 @@ es divertido, el resto se construye alrededor.
 
 ## Por definir
 
-- Nombres, culturas y razas de cada reino
+- Razas jugables de cada reino
 - Clases
 - Tamaño de los mapas
 - Recompensas por dominar la zona de guerra
