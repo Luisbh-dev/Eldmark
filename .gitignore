@@ -1,0 +1,16 @@
+# Godot 4
+.godot/
+/android/
+
+# Builds y exportaciones
+/build/
+/exports/
+
+# Configuración local
+.env
+CLAUDE.local.md
+
+# Sistema operativo
+Thumbs.db
+desktop.ini
+.DS_Store

@@ -1,0 +1,78 @@
+[gd_scene format=3]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
+sky_horizon_color = Color(0.66, 0.7, 0.75, 1)
+ground_horizon_color = Color(0.66, 0.7, 0.75, 1)
+
+[sub_resource type="Sky" id="Sky_main"]
+sky_material = SubResource("ProceduralSkyMaterial_sky")
+
+[sub_resource type="Environment" id="Environment_main"]
+background_mode = 2
+sky = SubResource("Sky_main")
+tonemap_mode = 2
+ssao_enabled = true
+glow_enabled = true
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_grass"]
+albedo_color = Color(0.29, 0.42, 0.2, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_stone"]
+albedo_color = Color(0.52, 0.5, 0.47, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_player"]
+albedo_color = Color(0.25, 0.4, 0.75, 1)
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_player"]
+material = SubResource("StandardMaterial3D_player")
+radius = 0.4
+height = 1.8
+
+[node name="TestWorld" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_main")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-50, -30, 0)
+shadow_enabled = true
+
+[node name="Ground" type="CSGBox3D" parent="."]
+position = Vector3(0, -0.5, 0)
+use_collision = true
+size = Vector3(200, 1, 200)
+material = SubResource("StandardMaterial3D_grass")
+
+[node name="Pillars" type="Node3D" parent="."]
+
+[node name="Pillar1" type="CSGBox3D" parent="Pillars"]
+position = Vector3(-6, 3, -8)
+use_collision = true
+size = Vector3(1.5, 6, 1.5)
+material = SubResource("StandardMaterial3D_stone")
+
+[node name="Pillar2" type="CSGBox3D" parent="Pillars"]
+position = Vector3(6, 3, -8)
+use_collision = true
+size = Vector3(1.5, 6, 1.5)
+material = SubResource("StandardMaterial3D_stone")
+
+[node name="Pillar3" type="CSGBox3D" parent="Pillars"]
+position = Vector3(-6, 3, -20)
+use_collision = true
+size = Vector3(1.5, 6, 1.5)
+material = SubResource("StandardMaterial3D_stone")
+
+[node name="Pillar4" type="CSGBox3D" parent="Pillars"]
+position = Vector3(6, 3, -20)
+use_collision = true
+size = Vector3(1.5, 6, 1.5)
+material = SubResource("StandardMaterial3D_stone")
+
+[node name="PlayerPlaceholder" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.9, 0)
+mesh = SubResource("CapsuleMesh_player")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+position = Vector3(0, 3.2, 6)
+rotation_degrees = Vector3(-18, 0, 0)
