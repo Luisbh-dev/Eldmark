@@ -31,3 +31,12 @@
 # Vídeo
 *.ogv filter=lfs diff=lfs merge=lfs -text
 *.mp4 filter=lfs diff=lfs merge=lfs -text
+
+# Datos de región de Terrain3D (única excepción al formato texto, ver CLAUDE.md)
+*.res filter=lfs diff=lfs merge=lfs -text
+
+# Binarios nativos de GDExtension (Terrain3D)
+*.dll filter=lfs diff=lfs merge=lfs -text
+*.so filter=lfs diff=lfs merge=lfs -text
+*.dylib filter=lfs diff=lfs merge=lfs -text
+*.framework/** filter=lfs diff=lfs merge=lfs -text

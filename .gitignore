@@ -6,6 +6,14 @@
 /build/
 /exports/
 
+# Paquetes originales de assets (se guardan fuera del repo, en ../Eldmark-raw)
+*.zip
+*.7z
+*.blend1
+
+# Demos de los addons
+addons/*/demo/
+
 # Configuración local
 .env
 CLAUDE.local.md

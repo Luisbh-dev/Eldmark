@@ -17,8 +17,15 @@ Tres reinos, cada uno con sus zonas, ciudades y una muralla que lo rodea, más u
 - Sigue la guía de estilo oficial de GDScript: archivos y variables en `snake_case`, `class_name` en `PascalCase`, tabs.
 - Tipado estático siempre (`var speed: float = 5.0`, `func move(dir: Vector3) -> void`).
 - Identificadores en inglés; comentarios, documentación y textos de la interfaz en español.
-- Escenas y recursos en formato texto (`.tscn`, `.tres`). Nada de `.scn`/`.res` binarios.
-- Los binarios grandes (modelos, texturas, audio) van por Git LFS; ver `.gitattributes`.
+- Escenas y recursos en formato texto (`.tscn`, `.tres`). Nada de `.scn`/`.res` binarios. Única excepción: los `.res` de regiones de Terrain3D, que van por Git LFS.
+- Los binarios grandes (modelos, texturas, audio, DLL de GDExtension) van por Git LFS; ver `.gitattributes`.
+
+## Assets
+
+- Dirección artística: familia Quaternius "Universal + MegaKit" (estilizado con texturas, proporciones heroicas), un único kit recoloreado por reino. Detalle en `docs/arte.md`.
+- Los zips originales se guardan fuera del repo, en `../Eldmark-raw/<pack>/`. Al repo solo pasan los glTF y texturas que se usan.
+- Cada pack que entra en el repo se anota en `assets/LICENCIAS.md` (autor, versión, fecha, URL, licencia).
+- Animaciones: variantes sin root motion. El movimiento lo decide la simulación compartida, no la animación. El servidor no reproduce animaciones.
 
 ## Ejecutar Godot desde la terminal
 
