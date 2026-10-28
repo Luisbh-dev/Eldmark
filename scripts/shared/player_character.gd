@@ -64,14 +64,22 @@ const _MIN_WISH_DIRECTION: float = 0.001
 ## Orientación del personaje en radianes (misma convención que [member Node3D.rotation].y; 0 mira
 ## hacia -Z). Asignarla también gira el nodo.
 ## [br][br]
+## Se redondea a float de 32 bits ([method PlayerState.to_f32]), la precisión con la que viaja en
+## [method PlayerState.encode]. Sin el redondeo, el resultado de [code]atan2[/code] no sobreviviría
+## a la ida y vuelta por la red y ninguna comparación exacta del estado pasaría.
+## [br][br]
 ## La base del nodo se escribe directamente a partir del yaw. No se usa [member Node3D.rotation]
 ## porque Godot recalcula entonces la escala a partir de la base anterior y el redondeo la va
 ## alejando de 1 con cada giro; esa escala oculta cambia la cápsula de colisión y rompe la
 ## repetición determinista (reconciliación de la fase 2).
 var yaw: float = 0.0:
 	set(value):
-		yaw = value
-		basis = Basis(Vector3.UP, value)
+		yaw = PlayerState.to_f32(value)
+		basis = Basis(Vector3.UP, yaw)
+## Si es false, [method simulate] no emite [signal jumped] ni [signal landed]. Se desactiva durante
+## las repeticiones de la reconciliación y el avance neutro de la predicción del cliente, para no
+## duplicar sonidos ni animaciones. No altera la simulación.
+var events_enabled: bool = true
 ## Si el personaje estaba en el suelo al terminar el último tick. [method simulate] usa este valor
 ## (y no is_on_floor()) al empezar cada tick, para que un estado restaurado se comporte igual.
 var grounded: bool = false
@@ -171,7 +179,8 @@ func simulate(input: PlayerInput, delta: float) -> void:
 		velocity.y = jump_velocity
 		jump_buffer_ticks = 0
 		jumped_now = true
-		jumped.emit()
+		if events_enabled:
+			jumped.emit()
 
 	# Orientación: al moverse, el personaje gira hacia donde mira la cámara. El yaw se asigna
 	# siempre (también parado) para que su setter reescriba la base del nodo por si algo externo
@@ -184,7 +193,7 @@ func simulate(input: PlayerInput, delta: float) -> void:
 	move_and_slide()
 
 	grounded = is_on_floor()
-	if grounded and not was_grounded:
+	if grounded and not was_grounded and events_enabled:
 		landed.emit()
 	# El coyote time se recarga mientras se pisa suelo (también en el tick en el que se deja) y
 	# se consume en el aire. Saltar lo agota para que no haya un segundo salto en el aire.

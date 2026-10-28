@@ -27,6 +27,9 @@ const _FLAG_GROUNDED: int = 1 << 0
 const _COYOTE_SHIFT: int = 1
 const _JUMP_BUFFER_SHIFT: int = 4
 
+# Búfer de 4 bytes que usa to_f32() para no reservar memoria en cada llamada.
+static var _f32_scratch: PackedByteArray = PackedByteArray([0, 0, 0, 0])
+
 ## Posición global de los pies del personaje.
 var position: Vector3 = Vector3.ZERO
 ## Velocidad en m/s.
@@ -45,6 +48,15 @@ var coyote_ticks: int = 0
 ## Ticks que le quedan a una pulsación de salto guardada en el búfer (0 = ninguna pendiente).
 ## Entre 0 y [constant MAX_JUMP_BUFFER_TICKS].
 var jump_buffer_ticks: int = 0
+
+
+## Redondea [param value] a float de 32 bits, la precisión con la que [method encode] guarda el
+## yaw y el resto de campos reales. [member PlayerCharacter.yaw] lo usa en su setter para que el
+## estado sobreviva exactamente a la ida y vuelta por la red (reconciliación de la fase 2).
+## Un NaN sigue siendo NaN y un valor que no cabe en f32 pasa a infinito.
+static func to_f32(value: float) -> float:
+	_f32_scratch.encode_float(0, value)
+	return _f32_scratch.decode_float(0)
 
 
 ## Serializa el estado en [constant ENCODED_SIZE] bytes little-endian.
@@ -97,6 +109,16 @@ func duplicate_state() -> PlayerState:
 	copy.coyote_ticks = coyote_ticks
 	copy.jump_buffer_ticks = jump_buffer_ticks
 	return copy
+
+
+## Devuelve true si [method encode] es idéntico byte a byte en ambos estados. Es la comparación de
+## la reconciliación: detecta también las diferencias de [member prev_buttons],
+## [member last_input_tick] y los contadores de salto, que [method is_close_to] no tolera. Un
+## [param other] null nunca es igual.
+func equals_exact(other: PlayerState) -> bool:
+	if other == null:
+		return false
+	return encode() == other.encode()
 
 
 ## Devuelve true si ambos estados coinciden dentro de la tolerancia: posición y velocidad

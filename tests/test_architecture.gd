@@ -24,7 +24,9 @@ const ZONE_FORBIDDEN_DEPENDENCIES: Array[String] = [
 const REALM_MATERIALS_DIR: String = "res://assets/materials/realms"
 ## Scripts compartidos que deben existir (si no, el análisis no estaría comprobando nada).
 const REQUIRED_SHARED_SCRIPTS: Array[String] = [
-	"player_input.gd", "player_state.gd", "player_character.gd",
+	"player_input.gd", "player_state.gd", "player_character.gd", "bot_brain.gd",
+	"net/net_protocol.gd", "net/net_zones.gd", "net/net_math.gd", "net/entity_record.gd",
+	"net/net_messages.gd",
 ]
 
 ## Referencias prohibidas en scripts/shared: [descripción, expresión regular].
