@@ -1,0 +1,27 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/client/camera_rig.gd" id="1_camrig"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_arm"]
+radius = 0.2
+
+[node name="CameraRig" type="Node3D"]
+top_level = true
+script = ExtResource("1_camrig")
+
+[node name="Yaw" type="Node3D" parent="."]
+
+[node name="Pitch" type="Node3D" parent="Yaw"]
+
+[node name="Arm" type="SpringArm3D" parent="Yaw/Pitch"]
+collision_mask = 1
+shape = SubResource("SphereShape3D_arm")
+spring_length = 3.5
+margin = 0.15
+
+[node name="Camera" type="Camera3D" parent="Yaw/Pitch/Arm"]
+position = Vector3(0, 0, 3.5)
+current = true
+fov = 72.0
+h_offset = 0.6
+v_offset = 0.1

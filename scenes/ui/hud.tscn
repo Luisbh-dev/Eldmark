@@ -1,0 +1,63 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/client/hud.gd" id="1_hud"]
+[ext_resource type="Script" path="res://scripts/client/crosshair.gd" id="2_crsh"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_dbgpnl"]
+content_margin_left = 10.0
+content_margin_top = 8.0
+content_margin_right = 10.0
+content_margin_bottom = 8.0
+bg_color = Color(0.05, 0.06, 0.08, 0.62)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="SystemFont" id="SystemFont_mono"]
+font_names = PackedStringArray("Consolas", "Cascadia Mono", "DejaVu Sans Mono", "Menlo", "Monospace")
+
+[node name="HUD" type="CanvasLayer"]
+script = ExtResource("1_hud")
+
+[node name="Crosshair" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("2_crsh")
+
+[node name="DebugPanel" type="PanelContainer" parent="."]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 56.0
+offset_bottom = 40.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_dbgpnl")
+
+[node name="DebugLabel" type="Label" parent="DebugPanel"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.92, 0.94, 0.96, 1)
+theme_override_fonts/font = SubResource("SystemFont_mono")
+theme_override_font_sizes/font_size = 16
+text = "FPS: 0"
+
+[node name="HintLabel" type="Label" parent="."]
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -46.0
+offset_bottom = -16.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_colors/font_color = Color(1, 1, 1, 0.75)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.6)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 16
+text = "Alt: liberar cursor · Esc: soltar ratón · V: cambiar hombro · Rueda: zoom · F3: depuración"
+horizontal_alignment = 1
+vertical_alignment = 1
