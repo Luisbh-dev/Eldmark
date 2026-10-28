@@ -26,3 +26,6 @@ desktop.ini
 # Ajustes locales de Godot de cada máquina
 override.cfg
 .claude/worktrees/
+
+# Copias temporales de las librerías de GDExtension que crea el editor en Windows
+addons/*/bin/~*
