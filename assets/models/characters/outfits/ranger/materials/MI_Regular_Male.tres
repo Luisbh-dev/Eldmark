@@ -1,0 +1,14 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+[ext_resource type="Texture2D" path="res://assets/models/characters/outfits/ranger/T_Regular_Male_Dark_BaseColor.png" id="1_albedo"]
+[ext_resource type="Texture2D" path="res://assets/models/characters/outfits/ranger/T_Regular_Male_Roughness.png" id="2_roughness"]
+[ext_resource type="Texture2D" path="res://assets/models/characters/outfits/ranger/T_Regular_Male_Normal.png" id="3_normal"]
+
+[resource]
+resource_name = "MI_Regular_Male"
+albedo_texture = ExtResource("1_albedo")
+metallic_specular = 0.4
+roughness_texture = ExtResource("2_roughness")
+roughness_texture_channel = 1
+normal_enabled = true
+normal_texture = ExtResource("3_normal")

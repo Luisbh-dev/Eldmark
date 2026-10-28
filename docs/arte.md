@@ -310,6 +310,7 @@ ProtonScatter y el servidor: con la opción `keep_static_colliders` las colision
   - Activar "Generate LODs" y "Create Shadow Meshes" (vienen activados por defecto).
   - Colisiones en *Advanced Import Settings* > malla > Physics: Static Body con Box o Convex para la mayoría de piezas, y Trimesh solo para muros complejos. Si se compra la Source del Village, usar sus colisiones.
 - **Materiales:** extraerlos como **.tres** para poder sustituirlos por reino, nunca como .res. Las texturas, en VRAM Compressed con mipmaps.
+  - La detección 3D de Godot (`detect_3d`) solo actúa dentro del editor: en una importación headless las texturas de los glTF se quedan sin comprimir y sin mipmaps (más VRAM y brillos en la piedra lejana). `tools/assets/apply_texture_import_presets.gd` fija sus `.import` (VRAM comprimida, mipmaps, compresión de normales en `*_normal.png`, `detect_3d/compress_to=0`) y `tests/test_character_visual.gd` comprueba que no falte ninguna.
 - **Muchas piezas:** un script `EditorScenePostImport` en `tools/import/` asigna colisión y material de reino de forma uniforme.
 - **Montaje:** una escena `.tscn` por pieza más snapping. Si se usa GridMap para los muros, guardar la MeshLibrary como .tres y vigilar su tamaño.
 - **Escala:** comprobar cada pack contra la cápsula de 1,8 m. El Kenney Castle Kit casi seguro necesita reescalarse.
@@ -380,7 +381,8 @@ tools/import/                           # scripts EditorScenePostImport
 ```
 
 ### 4.7 Servidor dedicado
-- Al exportar, usar *Export as dedicated server* y marcar `assets/models`, `textures`, `vfx` y `audio` como *Strip Visuals* o *Remove*. El servidor necesita colisiones y escenas, no texturas.
+- Al exportar, usar *Export as dedicated server* y marcar `assets/models`, `textures`, `vfx` y `audio` como *Strip Visuals*. **Nunca *Remove*** para nada que referencie una escena de zona (mallas de kit, `vado_gris_terrain_assets.tres`, materiales): las escenas de zona son compartidas y el servidor no podría cargarlas. El servidor necesita colisiones y escenas, no texturas.
+- Tras cargar la zona, el servidor llama a `ZoneRoot.strip_for_server()` (`scripts/world/zone_root.gd`): libera mallas, MultiMesh, luces y entorno y vacía el instanciador de Terrain3D, y conserva colisiones, terreno y marcadores. No se hace al detectar headless, porque las pruebas y el cliente sin ventana también corren headless.
 - Sky3D, los VFX, el audio y la hierba se instancian solo desde `scenes/client/`.
 
 ### 4.8 Riesgos y huecos

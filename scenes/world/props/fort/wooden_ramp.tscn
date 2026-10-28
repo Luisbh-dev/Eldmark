@@ -1,0 +1,65 @@
+[gd_scene format=3]
+
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/village/meshes/floor_wood_dark.tres" id="1_tnyh2"]
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/wood.tres" id="2_0qjr3"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_mfip3"]
+size = Vector3(0.18, 0.25, 7.6702347)
+
+[sub_resource type="BoxMesh" id="BoxMesh_pwda6"]
+size = Vector3(0.2, 1, 0.2)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_c4xqf"]
+size = Vector3(2, 0.2, 7.6702347)
+
+[node name="WoodenRamp" type="StaticBody3D" unique_id=571257686]
+collision_mask = 0
+
+[node name="Tablas0" type="MeshInstance3D" parent="." unique_id=657018926]
+transform = Transform3D(1, 0, 0, 0, 0.8995813, -0.43675327, 0, 0.55833334, 1.15, 0, 0.5783333, -1.15)
+mesh = ExtResource("1_tnyh2")
+surface_material_override/0 = ExtResource("2_0qjr3")
+
+[node name="Tablas1" type="MeshInstance3D" parent="." unique_id=756354368]
+transform = Transform3D(1, 0, 0, 0, 0.8995813, -0.43675327, 0, 0.55833334, 1.15, 0, 1.695, -3.4499998)
+mesh = ExtResource("1_tnyh2")
+surface_material_override/0 = ExtResource("2_0qjr3")
+
+[node name="Tablas2" type="MeshInstance3D" parent="." unique_id=690831149]
+transform = Transform3D(1, 0, 0, 0, 0.8995813, -0.43675327, 0, 0.55833334, 1.15, 0, 2.8116667, -5.75)
+mesh = ExtResource("1_tnyh2")
+surface_material_override/0 = ExtResource("2_0qjr3")
+
+[node name="LargueroI" type="MeshInstance3D" parent="." unique_id=773340462]
+transform = Transform3D(1, 0, 0, 0, 0.8995813, -0.43675327, 0, 0.43675327, 0.8995813, -1, 1.5670503, -3.5024102)
+material_override = ExtResource("2_0qjr3")
+mesh = SubResource("BoxMesh_mfip3")
+
+[node name="LargueroD" type="MeshInstance3D" parent="." unique_id=493318747]
+transform = Transform3D(1, 0, 0, 0, 0.8995813, -0.43675327, 0, 0.43675327, 0.8995813, 1, 1.5670503, -3.5024102)
+material_override = ExtResource("2_0qjr3")
+mesh = SubResource("BoxMesh_mfip3")
+
+[node name="Pie37748737519" type="MeshInstance3D" parent="." unique_id=35615645]
+transform = Transform3D(1, 0, 0, 0, 1.5075, 0, 0, 0, 1, -0.9, 0.65375, -3.105)
+material_override = ExtResource("2_0qjr3")
+mesh = SubResource("BoxMesh_pwda6")
+
+[node name="Pie37765514753" type="MeshInstance3D" parent="." unique_id=1868250829]
+transform = Transform3D(1, 0, 0, 0, 2.8475, 0, 0, 0, 1, -0.9, 1.32375, -5.865)
+material_override = ExtResource("2_0qjr3")
+mesh = SubResource("BoxMesh_pwda6")
+
+[node name="Pie37782291970" type="MeshInstance3D" parent="." unique_id=1266478050]
+transform = Transform3D(1, 0, 0, 0, 1.5075, 0, 0, 0, 1, 0.9, 0.65375, -3.105)
+material_override = ExtResource("2_0qjr3")
+mesh = SubResource("BoxMesh_pwda6")
+
+[node name="Pie37799069187" type="MeshInstance3D" parent="." unique_id=2101132318]
+transform = Transform3D(1, 0, 0, 0, 2.8475, 0, 0, 0, 1, 0.9, 1.32375, -5.865)
+material_override = ExtResource("2_0qjr3")
+mesh = SubResource("BoxMesh_pwda6")
+
+[node name="Colision" type="CollisionShape3D" parent="." unique_id=1074884089]
+transform = Transform3D(1, 0, 0, 0, 0.8995813, -0.43675327, 0, 0.43675327, 0.8995813, 0, 1.585042, -3.4936752)
+shape = SubResource("BoxShape3D_c4xqf")

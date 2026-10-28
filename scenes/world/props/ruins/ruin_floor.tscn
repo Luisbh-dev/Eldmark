@@ -1,0 +1,12 @@
+[gd_scene format=3]
+
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/village/meshes/floor_uneven_brick.tres" id="1_niy73"]
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/ruin_stone.tres" id="2_45dbf"]
+
+[node name="RuinFloor" type="Node3D" unique_id=922990213]
+
+[node name="Suelo" type="MeshInstance3D" parent="." unique_id=298049934]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 0)
+visibility_range_end = 140.0
+mesh = ExtResource("1_niy73")
+surface_material_override/0 = ExtResource("2_45dbf")

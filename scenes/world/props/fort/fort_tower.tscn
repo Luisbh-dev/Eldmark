@@ -1,0 +1,97 @@
+[gd_scene format=3]
+
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/castle_wall/meshes/wall_wall.tres" id="1_jb5nk"]
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/stone_wall.tres" id="2_0bcbh"]
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/castle_wall/meshes/wall_slits.tres" id="3_2svhc"]
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/castle_wall/meshes/wall_window_arch.tres" id="4_8nbnq"]
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/castle_wall/meshes/wall_floor.tres" id="5_10brg"]
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/stone_floor.tres" id="6_cjhp1"]
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/castle_wall/meshes/wall_battlements.tres" id="7_w5hev"]
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/stone_trim.tres" id="8_42gmu"]
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/castle_wall/meshes/door_sticker_door.tres" id="9_i5et8"]
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/door.tres" id="10_dbm14"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_0amtv"]
+size = Vector3(6, 13, 6)
+
+[node name="FortTower" type="StaticBody3D" unique_id=1127831068]
+collision_mask = 0
+
+[node name="Planta1_0" type="MeshInstance3D" parent="." unique_id=2143308298]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, -0.4, 3)
+mesh = ExtResource("1_jb5nk")
+surface_material_override/0 = ExtResource("2_0bcbh")
+
+[node name="Planta1_1" type="MeshInstance3D" parent="." unique_id=1001385422]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 3.0000002, -0.4, 2.9999998)
+mesh = ExtResource("1_jb5nk")
+surface_material_override/0 = ExtResource("2_0bcbh")
+
+[node name="Planta1_2" type="MeshInstance3D" parent="." unique_id=1088993166]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 2.9999998, -0.4, -3.0000002)
+mesh = ExtResource("1_jb5nk")
+surface_material_override/0 = ExtResource("2_0bcbh")
+
+[node name="Planta1_3" type="MeshInstance3D" parent="." unique_id=648065515]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -2.9999998, -0.4, -3.0000002)
+mesh = ExtResource("1_jb5nk")
+surface_material_override/0 = ExtResource("2_0bcbh")
+
+[node name="Planta2_0" type="MeshInstance3D" parent="." unique_id=1340298256]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 5.6, 3)
+mesh = ExtResource("3_2svhc")
+surface_material_override/0 = ExtResource("2_0bcbh")
+
+[node name="Planta2_1" type="MeshInstance3D" parent="." unique_id=1871629729]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 3.0000002, 5.6, 2.9999998)
+mesh = ExtResource("4_8nbnq")
+surface_material_override/0 = ExtResource("2_0bcbh")
+
+[node name="Planta2_2" type="MeshInstance3D" parent="." unique_id=64180636]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 2.9999998, 5.6, -3.0000002)
+mesh = ExtResource("3_2svhc")
+surface_material_override/0 = ExtResource("2_0bcbh")
+
+[node name="Planta2_3" type="MeshInstance3D" parent="." unique_id=1171588402]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -2.9999998, 5.6, -3.0000002)
+mesh = ExtResource("4_8nbnq")
+surface_material_override/0 = ExtResource("2_0bcbh")
+
+[node name="Terraza" type="MeshInstance3D" parent="." unique_id=1560482227]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 11.6, 0)
+mesh = ExtResource("5_10brg")
+surface_material_override/0 = ExtResource("6_cjhp1")
+
+[node name="Forjado" type="MeshInstance3D" parent="." unique_id=717444654]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5.6, 0)
+mesh = ExtResource("5_10brg")
+surface_material_override/0 = ExtResource("6_cjhp1")
+
+[node name="Almenas0" type="MeshInstance3D" parent="." unique_id=688926395]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 11.6, 3)
+mesh = ExtResource("7_w5hev")
+surface_material_override/0 = ExtResource("8_42gmu")
+
+[node name="Almenas1" type="MeshInstance3D" parent="." unique_id=479018074]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 3, 11.6, -1.3113416e-07)
+mesh = ExtResource("7_w5hev")
+surface_material_override/0 = ExtResource("8_42gmu")
+
+[node name="Almenas2" type="MeshInstance3D" parent="." unique_id=426980410]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -2.6226832e-07, 11.6, -3)
+mesh = ExtResource("7_w5hev")
+surface_material_override/0 = ExtResource("8_42gmu")
+
+[node name="Almenas3" type="MeshInstance3D" parent="." unique_id=617623879]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -3, 11.6, -1.3113416e-07)
+mesh = ExtResource("7_w5hev")
+surface_material_override/0 = ExtResource("8_42gmu")
+
+[node name="Puerta" type="MeshInstance3D" parent="." unique_id=19827458]
+transform = Transform3D(-4.8082526e-08, 0, -1.1, 0, 1.1, 0, 1.1, 0, -4.8082526e-08, -3.03, 0, -1.324455e-07)
+mesh = ExtResource("9_i5et8")
+surface_material_override/0 = ExtResource("10_dbm14")
+
+[node name="Colision" type="CollisionShape3D" parent="." unique_id=1106465764]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.1, 0)
+shape = SubResource("BoxShape3D_0amtv")

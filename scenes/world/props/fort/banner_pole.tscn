@@ -1,0 +1,24 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/wood.tres" id="1_167oj"]
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/banner.tres" id="2_cwobb"]
+[ext_resource type="ArrayMesh" path="res://assets/models/blockout/kenney_castle/meshes/flag_banner_long.tres" id="3_4f7qo"]
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_ebiwm"]
+top_radius = 0.07
+bottom_radius = 0.09
+height = 6.0
+radial_segments = 8
+
+[node name="BannerPole" type="Node3D" unique_id=616156585]
+
+[node name="Mastil" type="MeshInstance3D" parent="." unique_id=1909643002]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 0)
+material_override = ExtResource("1_167oj")
+mesh = SubResource("CylinderMesh_ebiwm")
+
+[node name="Estandarte" type="MeshInstance3D" parent="." unique_id=164462249]
+transform = Transform3D(1.6, 0, 0, 0, 1.6, 0, 0, 0, 2.4, 0.08, 1.9, 0)
+material_override = ExtResource("2_cwobb")
+instance_shader_parameters/faction_color = Color(0.7411765, 0.7137255, 0.6509804, 1)
+mesh = ExtResource("3_4f7qo")

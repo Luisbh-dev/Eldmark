@@ -1,0 +1,38 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://assets/materials/shaders/realm_surface.gdshader" id="1_i7ppn"]
+[ext_resource type="Texture2D" path="res://assets/models/environment/nature/grass.png" id="2_6wva2"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_i7ppn")
+shader_parameter/albedo_texture = ExtResource("2_6wva2")
+shader_parameter/use_normal_map = null
+shader_parameter/normal_strength = null
+shader_parameter/uv_scale = null
+shader_parameter/use_triplanar = null
+shader_parameter/triplanar_scale = null
+shader_parameter/triplanar_sharpness = null
+shader_parameter/alpha_scissor = 0.5
+shader_parameter/hue_shift = null
+shader_parameter/saturation = 0.6
+shader_parameter/brightness = null
+shader_parameter/contrast = null
+shader_parameter/target_color = Color(0.5294118, 0.4862745, 0.36862746, 1)
+shader_parameter/colorize = 0.7
+shader_parameter/reference_luminance = 0.8346075042350279
+shader_parameter/detail_strength = 0.7
+shader_parameter/detail_min = null
+shader_parameter/detail_max = null
+shader_parameter/albedo_gain = null
+shader_parameter/layer_color = null
+shader_parameter/layer_amount = null
+shader_parameter/layer_threshold = null
+shader_parameter/layer_softness = null
+shader_parameter/layer_roughness = null
+shader_parameter/faction_mix = null
+shader_parameter/roughness = 1.0
+shader_parameter/metallic = null
+shader_parameter/specular = 0.15
+shader_parameter/emission_color = null
+shader_parameter/emission_energy = null

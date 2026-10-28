@@ -1,0 +1,36 @@
+[gd_scene format=3]
+
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/village/meshes/wall_uneven_brick_door_round.tres" id="1_c5jml"]
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/ruin_trim.tres" id="2_mkhck"]
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/ruin_plaster.tres" id="3_wuua8"]
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/ruin_stone.tres" id="4_0w6hu"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_bujl1"]
+size = Vector3(0.45, 3.1, 0.4)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_8i8x0"]
+size = Vector3(0.45, 3.1, 0.4)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_sas0v"]
+size = Vector3(2, 0.6, 0.4)
+
+[node name="RuinWall" type="StaticBody3D" unique_id=1798689629]
+collision_mask = 0
+
+[node name="Muro" type="MeshInstance3D" parent="." unique_id=1010791388]
+mesh = ExtResource("1_c5jml")
+surface_material_override/0 = ExtResource("2_mkhck")
+surface_material_override/1 = ExtResource("3_wuua8")
+surface_material_override/2 = ExtResource("4_0w6hu")
+
+[node name="ColisionI" type="CollisionShape3D" parent="." unique_id=1290799853]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.78, 1.55, -0.1)
+shape = SubResource("BoxShape3D_bujl1")
+
+[node name="ColisionD" type="CollisionShape3D" parent="." unique_id=1199296004]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.78, 1.55, -0.1)
+shape = SubResource("BoxShape3D_8i8x0")
+
+[node name="ColisionDintel" type="CollisionShape3D" parent="." unique_id=389067778]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.8, -0.1)
+shape = SubResource("BoxShape3D_sas0v")

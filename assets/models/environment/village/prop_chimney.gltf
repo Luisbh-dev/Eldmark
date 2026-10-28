@@ -1,0 +1,269 @@
+{
+  "asset": {
+    "generator": "Khronos glTF Blender I/O v4.0.44",
+    "version": "2.0"
+  },
+  "scene": 0.0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0.0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0.0,
+      "name": "Prop_Chimney"
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "MI_RockTrim",
+      "normalTexture": {
+        "index": 0.0
+      },
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1.0
+        },
+        "metallicRoughnessTexture": {
+          "index": 2.0
+        }
+      }
+    },
+    {
+      "doubleSided": true,
+      "name": "MI_Brick",
+      "normalTexture": {
+        "index": 3.0
+      },
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 4.0
+        },
+        "metallicFactor": 0.0,
+        "metallicRoughnessTexture": {
+          "index": 5.0
+        }
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Cube.017_Retopology.006",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0.0,
+            "NORMAL": 1.0,
+            "TEXCOORD_0": 2.0
+          },
+          "indices": 3.0,
+          "material": 0.0
+        },
+        {
+          "attributes": {
+            "POSITION": 4.0,
+            "NORMAL": 5.0,
+            "TEXCOORD_0": 6.0
+          },
+          "indices": 7.0,
+          "material": 1.0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0.0,
+      "source": 0.0
+    },
+    {
+      "sampler": 0.0,
+      "source": 1.0
+    },
+    {
+      "sampler": 0.0,
+      "source": 2.0
+    },
+    {
+      "sampler": 0.0,
+      "source": 3.0
+    },
+    {
+      "sampler": 0.0,
+      "source": 4.0
+    },
+    {
+      "sampler": 0.0,
+      "source": 5.0
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/png",
+      "name": "T_RockTrim_Normal",
+      "uri": "t_rock_trim_normal.png"
+    },
+    {
+      "mimeType": "image/png",
+      "name": "T_RockTrim_BaseColor",
+      "uri": "t_rock_trim_base_color.png"
+    },
+    {
+      "mimeType": "image/png",
+      "name": "T_RockTrim_ORM",
+      "uri": "t_rock_trim_orm.png"
+    },
+    {
+      "mimeType": "image/png",
+      "name": "T_Brick_Normal",
+      "uri": "t_brick_normal.png"
+    },
+    {
+      "mimeType": "image/png",
+      "name": "T_Brick_BaseColor",
+      "uri": "t_brick_base_color.png"
+    },
+    {
+      "mimeType": "image/png",
+      "name": "T_Brick_Roughness",
+      "uri": "t_brick_roughness.png"
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0.0,
+      "componentType": 5126.0,
+      "count": 508.0,
+      "max": [
+        0.438301473855972,
+        3.17787528038025,
+        0.473395764827728
+      ],
+      "min": [
+        -0.451601773500443,
+        2.83985137939453,
+        -0.431348353624344
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1.0,
+      "componentType": 5126.0,
+      "count": 508.0,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2.0,
+      "componentType": 5126.0,
+      "count": 508.0,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3.0,
+      "componentType": 5123.0,
+      "count": 1830.0,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 4.0,
+      "componentType": 5126.0,
+      "count": 16.0,
+      "max": [
+        0.445778459310532,
+        3.0,
+        0.500000059604645
+      ],
+      "min": [
+        -0.500000059604645,
+        0.0000000596046447753906,
+        -0.500000059604645
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 5.0,
+      "componentType": 5126.0,
+      "count": 16.0,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 6.0,
+      "componentType": 5126.0,
+      "count": 16.0,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 7.0,
+      "componentType": 5123.0,
+      "count": 24.0,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0.0,
+      "byteLength": 6096.0,
+      "byteOffset": 0.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 6096.0,
+      "byteOffset": 6096.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 4064.0,
+      "byteOffset": 12192.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 3660.0,
+      "byteOffset": 16256.0,
+      "target": 34963.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 192.0,
+      "byteOffset": 19916.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 192.0,
+      "byteOffset": 20108.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 128.0,
+      "byteOffset": 20300.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 48.0,
+      "byteOffset": 20428.0,
+      "target": 34963.0
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729.0,
+      "minFilter": 9987.0
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 20476.0,
+      "uri": "prop_chimney.bin"
+    }
+  ]
+}

@@ -1,0 +1,410 @@
+class_name CharacterAnimator
+extends Node
+## Conduce el [AnimationTree] de un [HumanoidVisual] a partir del estado de un [PlayerCharacter].
+##
+## Solo cliente y solo lectura: cada fotograma lee la velocidad, la orientación interpolada y
+## [member PlayerCharacter.grounded] del personaje que decora, y escucha
+## [signal PlayerCharacter.jumped]. Nunca escribe en la simulación y el servidor no necesita nada
+## de esto. El aterrizaje se deduce del cambio de [member PlayerCharacter.grounded] (y no de
+## [signal PlayerCharacter.landed]) para que una reconciliación que repita ticks pasados no
+## dispare aterrizajes falsos; por lo mismo, el salto se valida contra el estado actual (en el
+## aire y subiendo) y también se detecta sin la señal si se deja el suelo subiendo rápido.
+## [br][br]
+## [b]Locomoción.[/b] El nodo [code]locomotion[/code] del árbol es un BlendSpace1D por velocidad
+## (m/s) con caminar, trotar y esprintar. Cada clip tiene una línea de tiempo propia estirada a
+## 1 s, así que todos van en fase (pie izquierdo apoyado al principio del ciclo) y un único
+## TimeScale fija los ciclos por segundo. Para que los pies no patinen, ese ritmo es la
+## velocidad real dividida entre la zancada mezclada (metros por ciclo de cada clip, a partir de
+## [member clip_ground_speeds]).
+## [br][br]
+## [b]Orientación.[/b] UAL no trae clips de desplazamiento lateral ni hacia atrás. Para que el
+## strafe no parezca patinaje, las caderas (el nodo [code]Pivot[/code], no la simulación) giran
+## hacia la dirección del movimiento y la columna ([SpineTwistModifier]) gira en sentido contrario
+## para que el pecho y la cabeza sigan mirando hacia el punto de mira. Al retroceder (movimiento a
+## más de [member backpedal_enter_angle] del yaw de la simulación) el modelo mira hacia delante y
+## la locomoción se reproduce al revés: el personaje camina hacia atrás de cara al enemigo en vez de
+## darse la vuelta y correr hacia la cámara. Parado, vuelve suavemente al yaw de la simulación. El
+## Pivot no usa interpolación física: su giro se aplica cada fotograma sobre la transformación
+## interpolada del personaje.
+## [br][br]
+## [b]Aire.[/b] Saltar reproduce Jump_Start desde el despegue (sin la anticipación agachada, porque
+## la simulación ya ha despegado) y pasa a Jump_Loop al empezar a caer; caer por un borde va
+## directo a Jump_Loop. Al aterrizar se mezcla Jump_Land con una intensidad que depende de la
+## velocidad de impacto y de si se sigue corriendo.
+
+## Ruta de los parámetros del árbol (ver humanoid_visual.tscn).
+const PARAM_LOCOMOTION_BLEND: StringName = &"parameters/locomotion/blend_position"
+const PARAM_LOCOMOTION_SCALE: StringName = &"parameters/locomotion_speed/scale"
+const PARAM_MOVE: StringName = &"parameters/move/blend_amount"
+const PARAM_LAND: StringName = &"parameters/land/blend_amount"
+const PARAM_LAND_SEEK: StringName = &"parameters/land_seek/seek_request"
+const PARAM_LAND_SCALE: StringName = &"parameters/land_speed/scale"
+const PARAM_JUMP_SEEK: StringName = &"parameters/jump_seek/seek_request"
+const PARAM_AIR_PHASE: StringName = &"parameters/air_phase/blend_amount"
+const PARAM_AIR: StringName = &"parameters/air/blend_amount"
+## Nodo BlendSpace1D de locomoción dentro del árbol.
+const LOCOMOTION_NODE: StringName = &"locomotion"
+
+## Fases del aire.
+enum AirState { GROUNDED, JUMPING, FALLING }
+
+## Árbol de animación que se conduce.
+@export var animation_tree: AnimationTree
+## Nodo que se gira para orientar el modelo; su padre debe ser un Node3D que siga al personaje.
+@export var pivot: Node3D
+
+@export_group("Locomoción")
+## Velocidad sobre el suelo (m/s) de cada clip a velocidad de reproducción 1, medida sobre el
+## modelo instalado (Ranger de 1,84 m) con tools/animation/measure_locomotion_strides.gd: avance
+## de las puntas de los pies mientras están apoyadas / duración del ciclo. (Las de la variante con
+## root motion del maniquí UAL son un 15 % más cortas y hacían patinar los pies hacia atrás.)
+@export var clip_ground_speeds: Dictionary[StringName, float] = {
+	&"ual1/Walk_Loop": 1.028,
+	&"ual1/Jog_Fwd_Loop": 6.093,
+	&"ual1/Sprint_Loop": 9.387,
+}
+## Rapidez con la que la velocidad usada para mezclar sigue a la real (1/s, suavizado exponencial).
+@export var speed_smoothing: float = 14.0
+## Por debajo de esta velocidad (m/s) se mezcla con la pose de reposo.
+@export var idle_blend_speed: float = 0.7
+## Ritmo máximo de la locomoción (ciclos de 1 s por segundo).
+@export var max_locomotion_scale: float = 2.5
+
+@export_group("Orientación")
+## Velocidad horizontal (m/s) a partir de la cual el modelo mira hacia donde se mueve.
+@export var turn_min_speed: float = 0.6
+## Rapidez del giro del modelo (1/s, suavizado exponencial del ángulo).
+@export var turn_sharpness: float = 12.0
+## Velocidad angular máxima del modelo (rad/s).
+@export var max_turn_speed: float = 14.0
+## Ángulo (grados) entre el movimiento y el yaw de la simulación a partir del cual se retrocede
+## de cara (locomoción al revés) en vez de girarse.
+@export var backpedal_enter_angle: float = 110.0
+## Ángulo (grados) por debajo del cual se deja de retroceder (histéresis).
+@export var backpedal_exit_angle: float = 95.0
+## Giro máximo (grados) con el que la columna compensa el de las caderas.
+@export var max_spine_twist: float = 75.0
+
+@export_group("Aire")
+## Segundo de Jump_Start en el que los pies dejan el suelo (antes hay una anticipación agachada).
+@export var jump_takeoff_time: float = 0.07
+## Tiempo en el aire sin saltar antes de considerar que se está cayendo (escalones, rampas).
+@export var fall_grace_time: float = 0.15
+## Velocidad vertical (m/s) por debajo de la cual el salto pasa a la pose de caída.
+@export var fall_blend_velocity: float = -1.0
+## Velocidad vertical (m/s) al dejar el suelo a partir de la cual se considera un salto aunque no
+## haya llegado la señal (por ejemplo, tras una reconciliación).
+@export var jump_detect_velocity: float = 4.0
+## Duración de la mezcla suelo -> aire (s).
+@export var air_blend_in_time: float = 0.08
+## Duración de la mezcla aire -> suelo al aterrizar (s).
+@export var air_blend_out_time: float = 0.1
+## Duración de la mezcla salto -> caída (s).
+@export var fall_blend_time: float = 0.25
+
+@export_group("Aterrizaje")
+## Intensidad de Jump_Land al aterrizar parado tras un salto normal (0..1).
+@export var land_strength_idle: float = 0.8
+## Intensidad de Jump_Land al aterrizar corriendo.
+@export var land_strength_moving: float = 0.3
+## Velocidad de impacto (m/s) por debajo de la cual no se reproduce el aterrizaje.
+@export var land_min_impact: float = 2.0
+## Velocidad de impacto (m/s) a partir de la cual el aterrizaje tiene la intensidad completa.
+@export var land_full_impact: float = 7.0
+## Multiplicador de velocidad de Jump_Land (el clip original es una recepción pesada de 1,3 s).
+@export var land_playback_speed: float = 1.6
+## Tiempo (s) que el aterrizaje se mantiene a su intensidad antes de desvanecerse.
+@export var land_hold_time: float = 0.12
+## Duración total (s) del aterrizaje.
+@export var land_duration: float = 0.5
+
+var _character: PlayerCharacter = null
+var _spine: SpineTwistModifier = null
+var _blend_space: AnimationNodeBlendSpace1D = null
+## Puntos del BlendSpace ordenados: [posición (m/s), metros por unidad de TimeScale].
+var _stride_points: Array[Vector2] = []
+
+var _speed: float = 0.0
+var _visual_yaw: float = 0.0
+var _yaw_initialized: bool = false
+var _air_state: AirState = AirState.GROUNDED
+var _air_time: float = 0.0
+var _min_vertical_velocity: float = 0.0
+var _jump_pending: bool = false
+var _air_weight: float = 0.0
+var _fall_weight: float = 0.0
+var _land_weight: float = 0.0
+var _land_time: float = -1.0
+var _land_strength: float = 0.0
+var _locomotion_scale: float = 0.0
+var _move_weight: float = 0.0
+var _backpedal: bool = false
+
+
+func _ready() -> void:
+	# Antes que el AnimationTree (prioridad 0), para que los parámetros de este fotograma se
+	# apliquen en este mismo fotograma y no en el siguiente.
+	process_priority = -1
+	if animation_tree == null:
+		animation_tree = get_node_or_null(^"../AnimationTree") as AnimationTree
+	if pivot == null:
+		pivot = get_node_or_null(^"../Pivot") as Node3D
+	_cache_locomotion_strides()
+	if _character == null:
+		set_character(_find_character())
+
+
+## Personaje que se decora. Puede cambiarse en cualquier momento (o pasar null para soltarlo).
+func set_character(character: PlayerCharacter) -> void:
+	if _character == character:
+		return
+	if is_instance_valid(_character):
+		if _character.jumped.is_connected(_on_jumped):
+			_character.jumped.disconnect(_on_jumped)
+	_character = character
+	_yaw_initialized = false
+	_air_state = AirState.GROUNDED
+	_air_weight = 0.0
+	_fall_weight = 0.0
+	_land_weight = 0.0
+	_land_time = -1.0
+	if is_instance_valid(_character):
+		_character.jumped.connect(_on_jumped)
+
+
+## Personaje decorado (o null).
+func get_character() -> PlayerCharacter:
+	return _character
+
+
+## Coloca el modelo al instante mirando como la simulación, sin giro suave. Para después de un
+## teletransporte o una reaparición (junto con [method Node.reset_physics_interpolation]).
+func reset_facing() -> void:
+	_yaw_initialized = false
+	_backpedal = false
+	if pivot != null:
+		pivot.rotation = Vector3.ZERO
+	if _spine != null:
+		_spine.twist = 0.0
+
+
+## Modificador que gira la columna (lo crea [HumanoidVisual] bajo su esqueleto).
+func set_spine_modifier(modifier: SpineTwistModifier) -> void:
+	_spine = modifier
+
+
+## Estado interno para depuración y pruebas visuales.
+func get_debug_state() -> Dictionary:
+	return {
+		"speed": _speed,
+		"locomotion_scale": _locomotion_scale,
+		"move": _move_weight,
+		"air_state": AirState.keys()[_air_state],
+		"air": _air_weight,
+		"fall": _fall_weight,
+		"land": _land_weight,
+		"facing_offset_deg": rad_to_deg(pivot.rotation.y) if pivot != null else 0.0,
+		"backpedal": _backpedal,
+		"spine_twist_deg": rad_to_deg(_spine.twist) if _spine != null else 0.0,
+	}
+
+
+func _process(delta: float) -> void:
+	if not is_instance_valid(_character) or animation_tree == null or pivot == null:
+		return
+	var velocity: Vector3 = _character.velocity
+	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
+	var real_speed: float = horizontal.length()
+	_speed = lerpf(_speed, real_speed, 1.0 - exp(-speed_smoothing * delta))
+
+	_update_air(delta, velocity.y)
+	_update_facing(delta, horizontal, real_speed)
+	_update_locomotion()
+
+	animation_tree.set(PARAM_AIR, _air_weight)
+	animation_tree.set(PARAM_AIR_PHASE, _fall_weight)
+	animation_tree.set(PARAM_LAND, _land_weight)
+
+
+# --- Locomoción --------------------------------------------------------------------------------
+
+## Lee los puntos del BlendSpace de locomoción y calcula, para cada uno, cuántos metros avanza el
+## clip por cada unidad de TimeScale (zancada / duración de su ciclo en el árbol).
+func _cache_locomotion_strides() -> void:
+	_stride_points.clear()
+	if animation_tree == null:
+		return
+	var root: AnimationNodeBlendTree = animation_tree.tree_root as AnimationNodeBlendTree
+	if root == null or not root.has_node(LOCOMOTION_NODE):
+		push_error("[CharacterAnimator] El árbol no tiene el nodo '%s'" % LOCOMOTION_NODE)
+		return
+	_blend_space = root.get_node(LOCOMOTION_NODE) as AnimationNodeBlendSpace1D
+	if _blend_space == null:
+		push_error("[CharacterAnimator] '%s' no es un BlendSpace1D" % LOCOMOTION_NODE)
+		return
+	for i: int in _blend_space.get_blend_point_count():
+		var node: AnimationNodeAnimation = _blend_space.get_blend_point_node(i) as AnimationNodeAnimation
+		if node == null:
+			continue
+		var animation: Animation = animation_tree.get_animation(node.animation)
+		if animation == null or not clip_ground_speeds.has(node.animation):
+			push_warning("[CharacterAnimator] Sin velocidad sobre el suelo para '%s'" % node.animation)
+			continue
+		var stride: float = clip_ground_speeds[node.animation] * animation.length
+		var cycle: float = animation.length
+		if node.use_custom_timeline and node.stretch_time_scale:
+			cycle = node.timeline_length
+		_stride_points.append(Vector2(_blend_space.get_blend_point_position(i), stride / cycle))
+	_stride_points.sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
+
+
+func _update_locomotion() -> void:
+	var blend: float = _speed
+	if _blend_space != null:
+		blend = clampf(_speed, _blend_space.min_space, _blend_space.max_space)
+	var meters_per_unit: float = _stride_at(blend)
+	_locomotion_scale = 0.0
+	if meters_per_unit > 0.0:
+		_locomotion_scale = clampf(_speed / meters_per_unit, 0.0, max_locomotion_scale)
+	# Retroceso: el mismo ciclo al revés (la zancada vale igual en los dos sentidos).
+	if _backpedal:
+		_locomotion_scale = -_locomotion_scale
+	_move_weight = clampf(_speed / maxf(idle_blend_speed, 0.001), 0.0, 1.0)
+	_move_weight = _move_weight * _move_weight * (3.0 - 2.0 * _move_weight)
+	animation_tree.set(PARAM_LOCOMOTION_BLEND, blend)
+	animation_tree.set(PARAM_LOCOMOTION_SCALE, _locomotion_scale)
+	animation_tree.set(PARAM_MOVE, _move_weight)
+
+
+## Metros por unidad de TimeScale en la posición [param blend], interpolando linealmente entre los
+## puntos del BlendSpace igual que lo hace el propio BlendSpace1D.
+func _stride_at(blend: float) -> float:
+	if _stride_points.is_empty():
+		return 0.0
+	if blend <= _stride_points[0].x:
+		return _stride_points[0].y
+	for i: int in range(1, _stride_points.size()):
+		var a: Vector2 = _stride_points[i - 1]
+		var b: Vector2 = _stride_points[i]
+		if blend <= b.x:
+			var t: float = (blend - a.x) / maxf(b.x - a.x, 0.0001)
+			return lerpf(a.y, b.y, t)
+	return _stride_points[_stride_points.size() - 1].y
+
+
+# --- Orientación -------------------------------------------------------------------------------
+
+func _update_facing(delta: float, horizontal: Vector3, real_speed: float) -> void:
+	var parent: Node3D = pivot.get_parent() as Node3D
+	if parent == null:
+		return
+	var base_yaw: float = _yaw_of(parent.get_global_transform_interpolated().basis)
+	if not _yaw_initialized:
+		_visual_yaw = base_yaw
+		_yaw_initialized = true
+	var target_yaw: float = base_yaw
+	if real_speed > turn_min_speed:
+		var move_yaw: float = atan2(-horizontal.x, -horizontal.z)
+		var relative: float = absf(rad_to_deg(angle_difference(base_yaw, move_yaw)))
+		if _backpedal and relative < backpedal_exit_angle:
+			_backpedal = false
+		elif not _backpedal and relative > backpedal_enter_angle:
+			_backpedal = true
+		target_yaw = wrapf(move_yaw + PI, -PI, PI) if _backpedal else move_yaw
+	elif real_speed < turn_min_speed * 0.5:
+		_backpedal = false
+	var diff: float = angle_difference(_visual_yaw, target_yaw)
+	var step: float = diff * (1.0 - exp(-turn_sharpness * delta))
+	var max_step: float = max_turn_speed * delta
+	_visual_yaw = wrapf(_visual_yaw + clampf(step, -max_step, max_step), -PI, PI)
+	var offset: float = angle_difference(base_yaw, _visual_yaw)
+	pivot.rotation = Vector3(0.0, offset, 0.0)
+	# La columna devuelve el pecho y la cabeza hacia el punto de mira.
+	if _spine != null:
+		var limit: float = deg_to_rad(max_spine_twist)
+		_spine.twist = -clampf(offset, -limit, limit)
+
+
+## Yaw (convención de [member Node3D.rotation].y: 0 mira hacia -Z) de una base.
+static func _yaw_of(basis: Basis) -> float:
+	return atan2(basis.z.x, basis.z.z)
+
+
+# --- Aire --------------------------------------------------------------------------------------
+
+func _on_jumped() -> void:
+	_jump_pending = true
+
+
+func _update_air(delta: float, vertical_velocity: float) -> void:
+	var airborne: bool = not _character.grounded
+	if airborne:
+		_air_time += delta
+		_min_vertical_velocity = minf(_min_vertical_velocity, vertical_velocity)
+		var jump_started: bool = _jump_pending and vertical_velocity > 0.0
+		if not jump_started and _air_state == AirState.GROUNDED and _air_time <= delta * 1.5:
+			jump_started = vertical_velocity > jump_detect_velocity
+		if jump_started:
+			_start_jump()
+		elif _air_state == AirState.GROUNDED and _air_time >= fall_grace_time:
+			_start_fall()
+		if _air_state == AirState.JUMPING and vertical_velocity < fall_blend_velocity:
+			_air_state = AirState.FALLING
+	elif _air_state != AirState.GROUNDED:
+		_land()
+	if not airborne:
+		_air_time = 0.0
+		_min_vertical_velocity = 0.0
+	_jump_pending = false
+
+	var air_target: float = 0.0 if _air_state == AirState.GROUNDED else 1.0
+	var air_rate: float = 1.0 / maxf(air_blend_in_time if air_target > _air_weight else air_blend_out_time, 0.001)
+	_air_weight = move_toward(_air_weight, air_target, air_rate * delta)
+	if _air_state == AirState.FALLING:
+		_fall_weight = move_toward(_fall_weight, 1.0, delta / maxf(fall_blend_time, 0.001))
+
+	if _land_time >= 0.0:
+		_land_time += delta
+		var fade_in: float = clampf(_land_time / 0.04, 0.0, 1.0)
+		var fade_out: float = 1.0 - smoothstep(land_hold_time, land_duration, _land_time)
+		_land_weight = _land_strength * fade_in * fade_out
+		if _land_time >= land_duration:
+			_land_time = -1.0
+			_land_weight = 0.0
+
+
+func _start_jump() -> void:
+	_air_state = AirState.JUMPING
+	_air_time = 0.0
+	_min_vertical_velocity = 0.0
+	_fall_weight = 0.0
+	_land_time = -1.0
+	_land_weight = 0.0
+	animation_tree.set(PARAM_JUMP_SEEK, jump_takeoff_time)
+
+
+func _start_fall() -> void:
+	_air_state = AirState.FALLING
+	if _air_weight <= 0.0:
+		_fall_weight = 1.0
+
+
+func _land() -> void:
+	var impact: float = -_min_vertical_velocity
+	_air_state = AirState.GROUNDED
+	var impact_factor: float = clampf(inverse_lerp(land_min_impact, land_full_impact, impact), 0.0, 1.0)
+	var run_factor: float = clampf(_speed / maxf(_character.run_speed, 0.001), 0.0, 1.0)
+	_land_strength = lerpf(land_strength_idle, land_strength_moving, run_factor) * impact_factor
+	if _land_strength > 0.01:
+		_land_time = 0.0
+		animation_tree.set(PARAM_LAND_SEEK, 0.0)
+		animation_tree.set(PARAM_LAND_SCALE, land_playback_speed)
+
+
+func _find_character() -> PlayerCharacter:
+	var node: Node = get_parent()
+	while node != null:
+		if node is PlayerCharacter:
+			return node as PlayerCharacter
+		node = node.get_parent()
+	return null

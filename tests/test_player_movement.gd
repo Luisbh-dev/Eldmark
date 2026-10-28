@@ -111,7 +111,8 @@ func test_character_configuration() -> void:
 	if not await _begin():
 		return
 	assert_eq(_character.collision_layer, 2, "collision_layer (capa 2 = personajes)")
-	assert_eq(_character.collision_mask, 1, "collision_mask (solo la capa 1, mundo estático)")
+	assert_eq(_character.collision_mask, 1 | 4,
+			"collision_mask (capa 1, mundo estático, y capa 3, bloqueos invisibles del jugador)")
 	assert_near(_character.floor_max_angle, deg_to_rad(46.0), 1e-4, "floor_max_angle")
 	assert_near(_character.floor_snap_length, 0.35, 1e-4, "floor_snap_length")
 	assert_true(_character.floor_constant_speed, "floor_constant_speed")

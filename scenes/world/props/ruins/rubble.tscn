@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/ruin_trim.tres" id="1_8u4ll"]
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/custom/rubble.tres" id="2_v3thh"]
+
+[node name="Rubble" type="Node3D" unique_id=1530383826]
+
+[node name="Piedras" type="MeshInstance3D" parent="." unique_id=603366700]
+material_override = ExtResource("1_8u4ll")
+visibility_range_end = 140.0
+mesh = ExtResource("2_v3thh")

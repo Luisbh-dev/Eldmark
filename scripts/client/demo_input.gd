@@ -2,7 +2,9 @@ class_name DemoInput
 extends RefCounted
 ## Entrada guionizada y determinista para pruebas visuales automáticas.
 ##
-## Unos 10 s a 60 ticks/s. Cada tick devuelve siempre la misma entrada y la
+## Es la demo del circuito de la fase 1 ([code]--zone=test_world[/code]); las zonas reales usan
+## [RouteDemoInput], que sigue una ruta de puntos de paso.
+## [br][br]Unos 10 s a 60 ticks/s. Cada tick devuelve siempre la misma entrada y la
 ## misma vista, sin leer dispositivos ni el reloj, así dos ejecuciones de la
 ## demo producen el mismo recorrido. Supone que el punto de aparición mira hacia
 ## -Z (yaw 0) con unos 15 m libres por delante y la zona de rampas después,
@@ -99,6 +101,12 @@ func look_for(tick: int) -> Vector2:
 		pitch_degrees = lerpf(BASE_PITCH_DEGREES, ORBIT_PITCH_DEGREES, pitch_k)
 
 	return Vector2(wrapf(deg_to_rad(yaw_degrees), -PI, PI), deg_to_rad(pitch_degrees))
+
+
+## Personaje que recorre la demo. Este guion es fijo y no lo necesita; las demos que siguen
+## una ruta ([RouteDemoInput]) lo leen para orientarse hacia el siguiente punto de paso.
+func bind(_character: PlayerCharacter) -> void:
+	pass
 
 
 ## Número total de ticks del guion.

@@ -1,0 +1,33 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://assets/materials/realms/solmarch/wood.tres" id="1_f6x1k"]
+[ext_resource type="Material" path="res://assets/materials/realms/solmarch/banner.tres" id="2_de38y"]
+[ext_resource type="ArrayMesh" path="res://assets/models/blockout/kenney_castle/meshes/flag_banner_long.tres" id="3_hjbm1"]
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_tm6dv"]
+top_radius = 0.07
+bottom_radius = 0.09
+height = 5.5
+radial_segments = 8
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_aumf7"]
+height = 5.5
+radius = 0.12
+
+[node name="CampBanner" type="StaticBody3D" unique_id=657467702]
+collision_mask = 0
+
+[node name="Mastil" type="MeshInstance3D" parent="." unique_id=2128630247]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.75, 0)
+material_override = ExtResource("1_f6x1k")
+mesh = SubResource("CylinderMesh_tm6dv")
+
+[node name="Estandarte" type="MeshInstance3D" parent="." unique_id=992208610]
+transform = Transform3D(1.5, 0, 0, 0, 1.5, 0, 0, 0, 2.2, 0.08, 1.9, 0)
+material_override = ExtResource("2_de38y")
+instance_shader_parameters/faction_color = Color(0.9137255, 0.7647059, 0.25490198, 1)
+mesh = ExtResource("3_hjbm1")
+
+[node name="Colision" type="CollisionShape3D" parent="." unique_id=1615428439]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.75, 0)
+shape = SubResource("CylinderShape3D_aumf7")

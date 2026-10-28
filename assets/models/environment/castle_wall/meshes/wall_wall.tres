@@ -1,0 +1,35 @@
+[gd_resource type="ArrayMesh" format=4]
+
+[ext_resource type="Material" path="res://assets/materials/kit_placeholder.tres" id="1_pxtek"]
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_4jxtw"]
+_surfaces = [{
+"aabb": AABB(0, 0, -1.9550482e-06, 6, 6, 1e-05),
+"format": 34359742465,
+"index_count": 6,
+"index_data": PackedByteArray("AAABAAIAAAADAAEA"),
+"name": "BrickWall",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 4,
+"vertex_data": PackedByteArray("AADAQAAAwEB5MwO2AAAAAAAAAAAAAACAAAAAAAAAwEAAAACAAADAQAAAAAB5MwO2")
+}]
+blend_shape_mode = 0
+
+[resource]
+resource_name = "wall_wall"
+_surfaces = [{
+"aabb": AABB(0, 0, -1.9550482e-06, 6, 6, 1e-05),
+"attribute_data": PackedByteArray("AACAPwAAgDMAAAAAAACAPwAAgDMAAAAAAACAPwAAgD8="),
+"format": 34359742487,
+"index_count": 6,
+"index_data": PackedByteArray("AAABAAIAAAADAAEA"),
+"material": ExtResource("1_pxtek"),
+"name": "BrickWall",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 4,
+"vertex_data": PackedByteArray("AADAQAAAwEB5MwO2AAAAAAAAAAAAAACAAAAAAAAAwEAAAACAAADAQAAAAAB5MwO2/3//f////7//f/9/////v/9//3////+//3//f////78=")
+}]
+blend_shape_mode = 0
+shadow_mesh = SubResource("ArrayMesh_4jxtw")

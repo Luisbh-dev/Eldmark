@@ -1,0 +1,115 @@
+[gd_scene format=3]
+
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/castle_wall/meshes/courtine_wall.tres" id="1_u8742"]
+[ext_resource type="Material" path="res://assets/materials/realms/solmarch/stone_wall.tres" id="2_uowg6"]
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/castle_wall/meshes/courtine_slits.tres" id="3_hsrj7"]
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/castle_wall/meshes/wall_floor.tres" id="4_ibq2i"]
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/stone_floor.tres" id="5_nyg1t"]
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/village/meshes/roof_tower_round_tiles.tres" id="6_8mgdl"]
+[ext_resource type="Material" path="res://assets/materials/realms/solmarch/wood.tres" id="7_2fepn"]
+[ext_resource type="Material" path="res://assets/materials/realms/solmarch/stone_trim.tres" id="8_3o3cc"]
+[ext_resource type="Material" path="res://assets/materials/realms/solmarch/roof_slate.tres" id="9_lk6vn"]
+[ext_resource type="Material" path="res://assets/materials/realms/solmarch/metal.tres" id="10_v57oe"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_coygd"]
+size = Vector3(6, 24, 6)
+
+[node name="WallTower" type="StaticBody3D" unique_id=1065169253]
+collision_mask = 0
+
+[node name="Hilada0_0" type="MeshInstance3D" parent="." unique_id=1431506710]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, -6, 3)
+mesh = ExtResource("1_u8742")
+surface_material_override/0 = ExtResource("2_uowg6")
+
+[node name="Hilada0_1" type="MeshInstance3D" parent="." unique_id=1139022158]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 3.0000002, -6, 2.9999998)
+mesh = ExtResource("1_u8742")
+surface_material_override/0 = ExtResource("2_uowg6")
+
+[node name="Hilada0_2" type="MeshInstance3D" parent="." unique_id=801335440]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 2.9999998, -6, -3.0000002)
+mesh = ExtResource("1_u8742")
+surface_material_override/0 = ExtResource("2_uowg6")
+
+[node name="Hilada0_3" type="MeshInstance3D" parent="." unique_id=323873927]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -2.9999998, -6, -3.0000002)
+mesh = ExtResource("1_u8742")
+surface_material_override/0 = ExtResource("2_uowg6")
+
+[node name="Hilada1_0" type="MeshInstance3D" parent="." unique_id=316268590]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0, 3)
+mesh = ExtResource("1_u8742")
+surface_material_override/0 = ExtResource("2_uowg6")
+
+[node name="Hilada1_1" type="MeshInstance3D" parent="." unique_id=1712652091]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 3.0000002, 0, 2.9999998)
+mesh = ExtResource("1_u8742")
+surface_material_override/0 = ExtResource("2_uowg6")
+
+[node name="Hilada1_2" type="MeshInstance3D" parent="." unique_id=746470517]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 2.9999998, 0, -3.0000002)
+mesh = ExtResource("1_u8742")
+surface_material_override/0 = ExtResource("2_uowg6")
+
+[node name="Hilada1_3" type="MeshInstance3D" parent="." unique_id=1814640060]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -2.9999998, 0, -3.0000002)
+mesh = ExtResource("1_u8742")
+surface_material_override/0 = ExtResource("2_uowg6")
+
+[node name="Hilada2_0" type="MeshInstance3D" parent="." unique_id=1530679783]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 6, 3)
+mesh = ExtResource("1_u8742")
+surface_material_override/0 = ExtResource("2_uowg6")
+
+[node name="Hilada2_1" type="MeshInstance3D" parent="." unique_id=1410544272]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 3.0000002, 6, 2.9999998)
+mesh = ExtResource("1_u8742")
+surface_material_override/0 = ExtResource("2_uowg6")
+
+[node name="Hilada2_2" type="MeshInstance3D" parent="." unique_id=1332754710]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 2.9999998, 6, -3.0000002)
+mesh = ExtResource("1_u8742")
+surface_material_override/0 = ExtResource("2_uowg6")
+
+[node name="Hilada2_3" type="MeshInstance3D" parent="." unique_id=1147991063]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -2.9999998, 6, -3.0000002)
+mesh = ExtResource("1_u8742")
+surface_material_override/0 = ExtResource("2_uowg6")
+
+[node name="Hilada3_0" type="MeshInstance3D" parent="." unique_id=1252516654]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 12, 3)
+mesh = ExtResource("3_hsrj7")
+surface_material_override/0 = ExtResource("2_uowg6")
+
+[node name="Hilada3_1" type="MeshInstance3D" parent="." unique_id=614223935]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 3.0000002, 12, 2.9999998)
+mesh = ExtResource("1_u8742")
+surface_material_override/0 = ExtResource("2_uowg6")
+
+[node name="Hilada3_2" type="MeshInstance3D" parent="." unique_id=554939597]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 2.9999998, 12, -3.0000002)
+mesh = ExtResource("1_u8742")
+surface_material_override/0 = ExtResource("2_uowg6")
+
+[node name="Hilada3_3" type="MeshInstance3D" parent="." unique_id=1074739065]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -2.9999998, 12, -3.0000002)
+mesh = ExtResource("1_u8742")
+surface_material_override/0 = ExtResource("2_uowg6")
+
+[node name="Terraza" type="MeshInstance3D" parent="." unique_id=542875869]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 17.95, 0)
+mesh = ExtResource("4_ibq2i")
+surface_material_override/0 = ExtResource("5_nyg1t")
+
+[node name="Tejado" type="MeshInstance3D" parent="." unique_id=1772103521]
+transform = Transform3D(1.12, 0, 0, 0, 1.15, 0, 0, 0, 1.12, 0, 18.6, 0)
+mesh = ExtResource("6_8mgdl")
+surface_material_override/0 = ExtResource("7_2fepn")
+surface_material_override/1 = ExtResource("8_3o3cc")
+surface_material_override/2 = ExtResource("9_lk6vn")
+surface_material_override/3 = ExtResource("10_v57oe")
+
+[node name="Colision" type="CollisionShape3D" parent="." unique_id=1182117009]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6, 0)
+shape = SubResource("BoxShape3D_coygd")

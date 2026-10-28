@@ -1,0 +1,33 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://assets/materials/realms/vardheim/wood.tres" id="1_tl8nb"]
+[ext_resource type="Material" path="res://assets/materials/realms/vardheim/banner.tres" id="2_7ubea"]
+[ext_resource type="ArrayMesh" path="res://assets/models/blockout/kenney_castle/meshes/flag_banner_long.tres" id="3_ab05e"]
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_sqews"]
+top_radius = 0.07
+bottom_radius = 0.09
+height = 5.5
+radial_segments = 8
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_7gg7p"]
+height = 5.5
+radius = 0.12
+
+[node name="CampBanner" type="StaticBody3D" unique_id=193277151]
+collision_mask = 0
+
+[node name="Mastil" type="MeshInstance3D" parent="." unique_id=1658820946]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.75, 0)
+material_override = ExtResource("1_tl8nb")
+mesh = SubResource("CylinderMesh_sqews")
+
+[node name="Estandarte" type="MeshInstance3D" parent="." unique_id=1422437593]
+transform = Transform3D(1.5, 0, 0, 0, 1.5, 0, 0, 0, 2.2, 0.08, 1.9, 0)
+material_override = ExtResource("2_7ubea")
+instance_shader_parameters/faction_color = Color(0.49411765, 0.78431374, 0.9098039, 1)
+mesh = ExtResource("3_ab05e")
+
+[node name="Colision" type="CollisionShape3D" parent="." unique_id=1145970860]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.75, 0)
+shape = SubResource("CylinderShape3D_7gg7p")

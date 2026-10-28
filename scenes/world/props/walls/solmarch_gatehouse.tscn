@@ -1,0 +1,70 @@
+[gd_scene format=3]
+
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/castle_wall/meshes/courtine_wall.tres" id="1_1fnrs"]
+[ext_resource type="Material" path="res://assets/materials/realms/solmarch/stone_wall.tres" id="2_4nyj8"]
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/castle_wall/meshes/courtine_door_arch.tres" id="3_f2phq"]
+[ext_resource type="Material" path="res://assets/materials/realms/solmarch/stone_trim.tres" id="4_asjcd"]
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/castle_wall/meshes/wall_battlements.tres" id="5_0jms1"]
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/castle_wall/meshes/door_sticker_gate_arch.tres" id="6_2mq34"]
+[ext_resource type="Material" path="res://assets/materials/realms/solmarch/door.tres" id="7_scgfv"]
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/castle_wall/meshes/door_sticker_portcullis.tres" id="8_3qllo"]
+[ext_resource type="Material" path="res://assets/materials/realms/solmarch/metal.tres" id="9_t44kr"]
+[ext_resource type="PackedScene" path="res://scenes/world/props/walls/solmarch_wall_tower.tscn" id="10_odr4q"]
+[ext_resource type="PackedScene" path="res://scenes/world/props/camp/solmarch_banner.tscn" id="11_8txqe"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_77inw"]
+size = Vector3(6, 19, 1.2)
+
+[node name="Gatehouse" type="StaticBody3D" unique_id=814071324]
+collision_mask = 0
+
+[node name="Cimiento" type="MeshInstance3D" parent="." unique_id=1095016201]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, -6, 0)
+mesh = ExtResource("1_1fnrs")
+surface_material_override/0 = ExtResource("2_4nyj8")
+
+[node name="Arco" type="MeshInstance3D" parent="." unique_id=551707579]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0, 0)
+mesh = ExtResource("3_f2phq")
+surface_material_override/0 = ExtResource("2_4nyj8")
+surface_material_override/1 = ExtResource("4_asjcd")
+
+[node name="SobreArco" type="MeshInstance3D" parent="." unique_id=1232638767]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 6, 0)
+mesh = ExtResource("1_1fnrs")
+surface_material_override/0 = ExtResource("2_4nyj8")
+
+[node name="Almenas" type="MeshInstance3D" parent="." unique_id=1032951843]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 12, 0)
+mesh = ExtResource("5_0jms1")
+surface_material_override/0 = ExtResource("4_asjcd")
+
+[node name="Porton" type="MeshInstance3D" parent="." unique_id=468092552]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.45)
+mesh = ExtResource("6_2mq34")
+surface_material_override/0 = ExtResource("7_scgfv")
+
+[node name="Rastrillo" type="MeshInstance3D" parent="." unique_id=1368144417]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.05)
+mesh = ExtResource("8_3qllo")
+surface_material_override/0 = ExtResource("9_t44kr")
+
+[node name="ColisionArco" type="CollisionShape3D" parent="." unique_id=1702001558]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.5, -0.4)
+shape = SubResource("BoxShape3D_77inw")
+
+[node name="TorreO" type="StaticBody3D" parent="." unique_id=1065169253 instance=ExtResource("10_odr4q")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 0, 3)
+collision_mask = 0
+
+[node name="TorreE" type="StaticBody3D" parent="." unique_id=502265680 instance=ExtResource("10_odr4q")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, 3)
+collision_mask = 0
+
+[node name="EstandarteO" type="StaticBody3D" parent="." unique_id=657467702 instance=ExtResource("11_8txqe")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.2, 0, 6.6)
+collision_mask = 0
+
+[node name="EstandarteE" type="StaticBody3D" parent="." unique_id=126661158 instance=ExtResource("11_8txqe")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.2, 0, 6.6)
+collision_mask = 0

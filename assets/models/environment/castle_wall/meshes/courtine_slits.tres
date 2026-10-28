@@ -1,0 +1,35 @@
+[gd_resource type="ArrayMesh" format=4]
+
+[ext_resource type="Material" path="res://assets/materials/kit_placeholder.tres" id="1_6rwr7"]
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_cq8gs"]
+_surfaces = [{
+"aabb": AABB(-2.5089787e-07, 0, -0.770002, 6.0000005, 6, 0.770002),
+"format": 34896613377,
+"index_count": 132,
+"index_data": PackedByteArray("AAABAAIAAAADAAEABAABAAMAAgAFAAAABgAFAAIAAgABAAcACAAHAAEABAAIAAEAAgAHAAkABgACAAkACgAEAAUABQAGAAsABQALAAoACAALAAYABgAMAAgACAAMAAcABgAJAA0ABgANAAwADgAJAAcADgAHAA8AEAAJAA4AEAANAAkABwARAA8ADAARAAcADQAQABIADAANABIAEwAQABEAEgAQABMAEQAMABQADAASABQACwAUABIACgASABMACgALABIAEwARABUACgATABUAEQAUABUACgAVABYAFgAVABQACgAWAAQACwAXABQAFgAUABcAFwAEABYACAAXAAsACAAEABcA"),
+"name": "BrickWall",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 24,
+"vertex_data": PackedByteArray("AAAAAP//AAAlO8Hb/v8AACU7FHH+/wAAAAD/////AAD//////v8AAP//AAD+/wAA2kQUcf7/AAAlO8HbAAAAANpEwdv+/wAAJTsUcQAAAADZxBRx/v8AACS7FHH+/wAA2kTB2wAAAADaRBRxAAAAAAAAAAAAAAAAAAD//wAAAAD+/wAAAAAAAP7///8AAAAAJLsUcQAAAADZxBRxAAAAACS7wdsAAAAA2cTB2wAAAADZxMHb/v8AACS7wdv+/wAA")
+}]
+blend_shape_mode = 0
+
+[resource]
+resource_name = "courtine_slits"
+_surfaces = [{
+"aabb": AABB(-2.5089787e-07, 0, -0.770002, 6.0000005, 6, 0.770002),
+"attribute_data": PackedByteArray("/38d4pKd442Snca2/3//f///HeL///9/bKLGtmyi442R3ca2bOLGtpHd441s4uON/38d4pKd443/f/9/kp3Gtv///3///x3ibKLGtmyi442R3ca2bOLGtpHd441s4uON/+1+upHd////7f//kd1+uv/tfrqR3ca2kd1+uv/txrb/7ca2kd3jjZHdxrb/7eON/+0qipHd443/7eONkd0qiv+RxrZsouON/5HjjWyixrb/kca2bKJ+umyixrb/kX66/5GqRGyiKopsoqpE/5Eqiv+R441soiqK/5Eqimyi440="),
+"format": 34896613399,
+"index_count": 132,
+"index_data": PackedByteArray("AAABAAIAAAADAAEAAgAEAAAABQABAAMABgAEAAIABQAHAAEABAAGAAgABwAIAAYABAAIAAkACQAFAAQABwAKAAgABwAFAAoACQALAAUACgAFAAsADAANAA4ADAAPAA0ADQAQAA4AEQAPAAwAEQASAA8AEwAQAA0AEgARABQAEwASABQAFAARABUAFQARABAAEwAUABYAEAATABYAFQAQABcAEAAWABcAGAAZABoAGAAbABkAHAAdAB4AHAAfAB0AIAAhACIAIAAjACEAJAAlACYAJAAnACUAKAApACoAKAArACkALAAtAC4ALAAvAC0AMAAxADIAMAAzADEANAA1ADYANAA3ADUA"),
+"material": ExtResource("1_6rwr7"),
+"name": "BrickWall",
+"primitive": 3,
+"uv_scale": Vector4(2, 2.609085, 0, 0),
+"vertex_count": 56,
+"vertex_data": PackedByteArray("AAAAAP//AIAlO8Hb/v8AgCU7FHH+/wCAAAD/////AID//wAA/v8AgP/////+/wCA2kQUcf7/AIDaRMHb/v8AgCS7FHH+/wCA2cQUcf7/AIAku8Hb/v8AgNnEwdv+/wCAAAAAAAAAAAAlO8HbAAAAAAAA//8AAAAAJTsUcQAAAAD+////AAAAAP7/AAAAAAAA2kQUcQAAAADaRMHbAAAAACS7FHEAAAAA2cQUcQAAAAAku8HbAAAAANnEwdsAAAAA2cQUcf7//z/ZxMHbAAD/P9nEwdv+//8/2cQUcQAA/z/ZxBRx/v+qKiS7FHEAAKoq2cQUcQAAqiokuxRx/v+qKiS7FHH+/wAAJLvB2wAAAAAkuxRxAAAAACS7wdv+/wAA2cTB2/7/qioku8HbAACqKiS7wdv+/6oq2cTB2wAAqiraRBRx/v8AANpEwdsAAAAA2kTB2/7/AADaRBRxAAAAANpEFHH+/6oqJTsUcQAAqiraRBRxAACqKiU7FHH+/6oqJTsUcf7//z8lO8HbAAD/PyU7FHEAAP8/JTvB2/7//z/aRMHb/v+qKiU7wdsAAKoqJTvB2/7/qiraRMHbAACqKv9/////f////3////9/////f////3////9/////f////3////9/////f////3///////3////9/////f////3////9/////f////3/+//9/////f////3////9/////f/9/////f////3////9///+qqqmqqqqpqqqqqaqqqqmq/7//f/+//3//v/9//7//f6oqVNWqKlTVqipU1aoqVNX/P/9//z//f/8//3//P/9/VNWqKlTVqipU1aoqVNWqKv9/AAD/fwAA/38AAP9/AABVVVRVVVVUVVVVVFVVVVRV")
+}]
+blend_shape_mode = 0
+shadow_mesh = SubResource("ArrayMesh_cq8gs")

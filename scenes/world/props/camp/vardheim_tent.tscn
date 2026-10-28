@@ -1,0 +1,40 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://assets/materials/realms/vardheim/hide.tres" id="1_ns1iv"]
+[ext_resource type="Material" path="res://assets/materials/realms/vardheim/wood.tres" id="2_eik4p"]
+
+[sub_resource type="PrismMesh" id="PrismMesh_cpoba"]
+size = Vector3(3.4, 2.5, 4.2)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_enybc"]
+top_radius = 0.05
+bottom_radius = 0.05
+height = 3.0
+radial_segments = 6
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_1w2p8"]
+points = PackedVector3Array(-1.7, 0, -2.1, 1.7, 0, -2.1, 0, 2.5, -2.1, -1.7, 0, 2.1, 1.7, 0, 2.1, 0, 2.5, 2.1)
+
+[node name="Tent" type="StaticBody3D" unique_id=1226682891]
+collision_mask = 0
+
+[node name="Lona" type="MeshInstance3D" parent="." unique_id=672957908]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.25, 0)
+material_override = ExtResource("1_ns1iv")
+visibility_range_end = 220.0
+mesh = SubResource("PrismMesh_cpoba")
+
+[node name="PaloA" type="MeshInstance3D" parent="." unique_id=1450774012]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, -2.1499999)
+material_override = ExtResource("2_eik4p")
+visibility_range_end = 140.0
+mesh = SubResource("CylinderMesh_enybc")
+
+[node name="PaloB" type="MeshInstance3D" parent="." unique_id=1737049405]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 2.1499999)
+material_override = ExtResource("2_eik4p")
+visibility_range_end = 140.0
+mesh = SubResource("CylinderMesh_enybc")
+
+[node name="Colision" type="CollisionShape3D" parent="." unique_id=1824119756]
+shape = SubResource("ConvexPolygonShape3D_1w2p8")

@@ -1,0 +1,70 @@
+[gd_scene format=3]
+
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/castle_wall/meshes/courtine_wall.tres" id="1_kjjex"]
+[ext_resource type="Material" path="res://assets/materials/realms/vardheim/stone_wall.tres" id="2_upkhd"]
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/castle_wall/meshes/courtine_door_arch.tres" id="3_tvi2w"]
+[ext_resource type="Material" path="res://assets/materials/realms/vardheim/stone_trim.tres" id="4_xt62e"]
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/castle_wall/meshes/wall_battlements.tres" id="5_sybsh"]
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/castle_wall/meshes/door_sticker_gate_arch.tres" id="6_y7vg4"]
+[ext_resource type="Material" path="res://assets/materials/realms/vardheim/door.tres" id="7_2hl1y"]
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/castle_wall/meshes/door_sticker_portcullis.tres" id="8_kgbhv"]
+[ext_resource type="Material" path="res://assets/materials/realms/vardheim/metal.tres" id="9_tr35i"]
+[ext_resource type="PackedScene" path="res://scenes/world/props/walls/vardheim_wall_tower.tscn" id="10_c80ul"]
+[ext_resource type="PackedScene" path="res://scenes/world/props/camp/vardheim_banner.tscn" id="11_8ftuh"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_35xxi"]
+size = Vector3(6, 19, 1.2)
+
+[node name="Gatehouse" type="StaticBody3D" unique_id=1208644800]
+collision_mask = 0
+
+[node name="Cimiento" type="MeshInstance3D" parent="." unique_id=1866787423]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, -6, 0)
+mesh = ExtResource("1_kjjex")
+surface_material_override/0 = ExtResource("2_upkhd")
+
+[node name="Arco" type="MeshInstance3D" parent="." unique_id=1968108525]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0, 0)
+mesh = ExtResource("3_tvi2w")
+surface_material_override/0 = ExtResource("2_upkhd")
+surface_material_override/1 = ExtResource("4_xt62e")
+
+[node name="SobreArco" type="MeshInstance3D" parent="." unique_id=602673857]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 6, 0)
+mesh = ExtResource("1_kjjex")
+surface_material_override/0 = ExtResource("2_upkhd")
+
+[node name="Almenas" type="MeshInstance3D" parent="." unique_id=559574585]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 12, 0)
+mesh = ExtResource("5_sybsh")
+surface_material_override/0 = ExtResource("4_xt62e")
+
+[node name="Porton" type="MeshInstance3D" parent="." unique_id=454115507]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.45)
+mesh = ExtResource("6_y7vg4")
+surface_material_override/0 = ExtResource("7_2hl1y")
+
+[node name="Rastrillo" type="MeshInstance3D" parent="." unique_id=274783624]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.05)
+mesh = ExtResource("8_kgbhv")
+surface_material_override/0 = ExtResource("9_tr35i")
+
+[node name="ColisionArco" type="CollisionShape3D" parent="." unique_id=1296305591]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.5, -0.4)
+shape = SubResource("BoxShape3D_35xxi")
+
+[node name="TorreO" type="StaticBody3D" parent="." unique_id=487787169 instance=ExtResource("10_c80ul")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 0, 3)
+collision_mask = 0
+
+[node name="TorreE" type="StaticBody3D" parent="." unique_id=476213946 instance=ExtResource("10_c80ul")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 0, 3)
+collision_mask = 0
+
+[node name="EstandarteO" type="StaticBody3D" parent="." unique_id=193277151 instance=ExtResource("11_8ftuh")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.2, 0, 6.6)
+collision_mask = 0
+
+[node name="EstandarteE" type="StaticBody3D" parent="." unique_id=1075277627 instance=ExtResource("11_8ftuh")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.2, 0, 6.6)
+collision_mask = 0

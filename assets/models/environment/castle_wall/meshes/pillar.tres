@@ -1,0 +1,35 @@
+[gd_resource type="ArrayMesh" format=4]
+
+[ext_resource type="Material" path="res://assets/materials/kit_placeholder.tres" id="1_c2fcw"]
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_phseq"]
+_surfaces = [{
+"aabb": AABB(-1.000009, 4.7683716e-07, -1.3000042, 1.8000009, 6, 1.8000007),
+"format": 34896613377,
+"index_count": 24,
+"index_data": PackedByteArray("AAABAAIAAAADAAEABAAAAAIAAwAFAAEABAACAAYAAwAHAAUABwAEAAYABwAGAAUA"),
+"name": "BrickTrims",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 8,
+"vertex_data": PackedByteArray("AAAAAAAAAAD+////AAAAAAAA//8AAAAA/v8AAAAAAAAAAAAA//8AAP/////+/wAAAAD/////AAD//wAA/v8AAA==")
+}]
+blend_shape_mode = 0
+
+[resource]
+resource_name = "pillar"
+_surfaces = [{
+"aabb": AABB(-1.000009, 4.7683716e-07, -1.3000042, 1.8000009, 6, 1.8000007),
+"attribute_data": PackedByteArray("axsJf+Hm9UDh5gl/axv1QGsb9UDh5gl/4eb1QGsbCX9rGwl/4eb1QOHmCX9rG/VAaxv1QOHmCX/h5vVAaxsJfw=="),
+"format": 34896613399,
+"index_count": 24,
+"index_data": PackedByteArray("AAABAAIAAAADAAEABAAFAAYABAAHAAUACAAJAAoACAALAAkADAANAA4ADAAPAA0A"),
+"material": ExtResource("1_c2fcw"),
+"name": "BrickTrims",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 16,
+"vertex_data": PackedByteArray("AAAAAAAA///+////AAD//wAA//8AAP///v8AAAAA///+/wAAAACqKv/////+/6oq/v///wAAqir//wAA/v+qKv//AAD+//+/AAD//////7///////v//vwAAAAD///+/AAAAAP//qioAAP//AACqKgAA/////6oqAAAAAAAAqir/v/+//7//v/+//7//v/+/qiqqKqoqqiqqKqoqqiqqKv////////////////////9U1VTVVNVU1VTVVNVU1VTV")
+}]
+blend_shape_mode = 0
+shadow_mesh = SubResource("ArrayMesh_phseq")

@@ -1,0 +1,136 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/client/humanoid_visual.gd" id="1_visual"]
+[ext_resource type="Script" path="res://scripts/client/character_animator.gd" id="2_animator"]
+[ext_resource type="PackedScene" path="res://assets/models/characters/outfits/ranger/Male_Ranger.gltf" id="3_ranger"]
+[ext_resource type="PackedScene" path="res://assets/models/characters/base/Superhero_Male_Head.gltf" id="4_head"]
+[ext_resource type="PackedScene" path="res://assets/models/characters/base/Hair_SimpleParted.gltf" id="5_hair"]
+[ext_resource type="PackedScene" path="res://assets/models/characters/base/Hair_Beard.gltf" id="6_beard"]
+[ext_resource type="AnimationLibrary" path="res://assets/animations/ual1/UAL1_Standard.glb" id="7_ual1"]
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_idle"]
+animation = &"ual1/Idle_Loop"
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_walk"]
+animation = &"ual1/Walk_Loop"
+use_custom_timeline = true
+timeline_length = 1.0
+stretch_time_scale = true
+start_offset = 0.0
+loop_mode = 1
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_jog"]
+animation = &"ual1/Jog_Fwd_Loop"
+use_custom_timeline = true
+timeline_length = 1.0
+stretch_time_scale = true
+start_offset = 0.0
+loop_mode = 1
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_sprint"]
+animation = &"ual1/Sprint_Loop"
+use_custom_timeline = true
+timeline_length = 1.0
+stretch_time_scale = true
+start_offset = 0.0
+loop_mode = 1
+
+[sub_resource type="AnimationNodeBlendSpace1D" id="AnimationNodeBlendSpace1D_locomotion"]
+max_space = 8.0
+value_label = "m/s"
+sync_mode = 1
+blend_point_0/node = SubResource("AnimationNodeAnimation_walk")
+blend_point_0/pos = 0.975
+blend_point_0/name = &"walk"
+blend_point_1/node = SubResource("AnimationNodeAnimation_jog")
+blend_point_1/pos = 5.0
+blend_point_1/name = &"jog"
+blend_point_2/node = SubResource("AnimationNodeAnimation_sprint")
+blend_point_2/pos = 7.5
+blend_point_2/name = &"sprint"
+
+[sub_resource type="AnimationNodeTimeScale" id="AnimationNodeTimeScale_locomotion"]
+
+[sub_resource type="AnimationNodeBlend2" id="AnimationNodeBlend2_move"]
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_land"]
+animation = &"ual1/Jump_Land"
+
+[sub_resource type="AnimationNodeTimeSeek" id="AnimationNodeTimeSeek_land"]
+
+[sub_resource type="AnimationNodeTimeScale" id="AnimationNodeTimeScale_land"]
+
+[sub_resource type="AnimationNodeBlend2" id="AnimationNodeBlend2_land"]
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_jump"]
+animation = &"ual1/Jump_Start"
+
+[sub_resource type="AnimationNodeTimeSeek" id="AnimationNodeTimeSeek_jump"]
+
+[sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_fall"]
+animation = &"ual1/Jump_Loop"
+
+[sub_resource type="AnimationNodeBlend2" id="AnimationNodeBlend2_air_phase"]
+
+[sub_resource type="AnimationNodeBlend2" id="AnimationNodeBlend2_air"]
+
+[sub_resource type="AnimationNodeBlendTree" id="AnimationNodeBlendTree_humanoid"]
+nodes/idle/node = SubResource("AnimationNodeAnimation_idle")
+nodes/idle/position = Vector2(-200, -160)
+nodes/locomotion/node = SubResource("AnimationNodeBlendSpace1D_locomotion")
+nodes/locomotion/position = Vector2(-400, 20)
+nodes/locomotion_speed/node = SubResource("AnimationNodeTimeScale_locomotion")
+nodes/locomotion_speed/position = Vector2(-200, 20)
+nodes/move/node = SubResource("AnimationNodeBlend2_move")
+nodes/move/position = Vector2(20, -80)
+nodes/land_clip/node = SubResource("AnimationNodeAnimation_land")
+nodes/land_clip/position = Vector2(-400, 220)
+nodes/land_seek/node = SubResource("AnimationNodeTimeSeek_land")
+nodes/land_seek/position = Vector2(-200, 220)
+nodes/land_speed/node = SubResource("AnimationNodeTimeScale_land")
+nodes/land_speed/position = Vector2(20, 220)
+nodes/land/node = SubResource("AnimationNodeBlend2_land")
+nodes/land/position = Vector2(240, -20)
+nodes/jump_clip/node = SubResource("AnimationNodeAnimation_jump")
+nodes/jump_clip/position = Vector2(-200, 420)
+nodes/jump_seek/node = SubResource("AnimationNodeTimeSeek_jump")
+nodes/jump_seek/position = Vector2(20, 420)
+nodes/fall_clip/node = SubResource("AnimationNodeAnimation_fall")
+nodes/fall_clip/position = Vector2(20, 580)
+nodes/air_phase/node = SubResource("AnimationNodeBlend2_air_phase")
+nodes/air_phase/position = Vector2(240, 460)
+nodes/air/node = SubResource("AnimationNodeBlend2_air")
+nodes/air/position = Vector2(460, 120)
+nodes/output/position = Vector2(680, 120)
+node_connections = [&"output", 0, &"air", &"air", 0, &"land", &"air", 1, &"air_phase", &"land", 0, &"move", &"land", 1, &"land_speed", &"move", 0, &"idle", &"move", 1, &"locomotion_speed", &"locomotion_speed", 0, &"locomotion", &"land_speed", 0, &"land_seek", &"land_seek", 0, &"land_clip", &"air_phase", 0, &"jump_seek", &"air_phase", 1, &"fall_clip", &"jump_seek", 0, &"jump_clip"]
+
+[node name="HumanoidVisual" type="Node3D"]
+script = ExtResource("1_visual")
+part_scenes = Array[PackedScene]([ExtResource("4_head"), ExtResource("5_hair"), ExtResource("6_beard")])
+
+[node name="Pivot" type="Node3D" parent="."]
+physics_interpolation_mode = 2
+
+[node name="Model" parent="Pivot" instance=ExtResource("3_ranger")]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 0)
+
+[node name="AnimationTree" type="AnimationTree" parent="."]
+root_node = NodePath("../Pivot/Model")
+libraries = {
+&"ual1": ExtResource("7_ual1")
+}
+tree_root = SubResource("AnimationNodeBlendTree_humanoid")
+parameters/locomotion/blend_position = 0.0
+parameters/locomotion_speed/scale = 1.0
+parameters/move/blend_amount = 0.0
+parameters/land_seek/seek_request = -1.0
+parameters/land_speed/scale = 1.6
+parameters/land/blend_amount = 0.0
+parameters/jump_seek/seek_request = -1.0
+parameters/air_phase/blend_amount = 0.0
+parameters/air/blend_amount = 0.0
+
+[node name="CharacterAnimator" type="Node" parent="."]
+script = ExtResource("2_animator")
+animation_tree = NodePath("../AnimationTree")
+pivot = NodePath("../Pivot")

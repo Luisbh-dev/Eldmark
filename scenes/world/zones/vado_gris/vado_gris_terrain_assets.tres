@@ -1,0 +1,238 @@
+[gd_resource type="Terrain3DAssets" format=3]
+
+[ext_resource type="Material" path="res://assets/materials/vegetation/grass_green.tres" id="1_6m1t6"]
+[ext_resource type="PackedScene" path="res://assets/models/environment/nature/grass_common_short.gltf" id="2_w0euq"]
+[ext_resource type="Material" path="res://assets/materials/vegetation/grass_dry.tres" id="3_feyir"]
+[ext_resource type="PackedScene" path="res://assets/models/environment/nature/grass_wispy_short.gltf" id="4_f7wvk"]
+[ext_resource type="PackedScene" path="res://assets/models/environment/nature/pine_1.gltf" id="5_fd0lb"]
+[ext_resource type="PackedScene" path="res://assets/models/environment/nature/pine_2.gltf" id="6_v4chg"]
+[ext_resource type="PackedScene" path="res://assets/models/environment/nature/pine_3.gltf" id="7_h1s1u"]
+[ext_resource type="PackedScene" path="res://assets/models/environment/nature/common_tree_1.gltf" id="8_cfkrg"]
+[ext_resource type="PackedScene" path="res://assets/models/environment/nature/common_tree_2.gltf" id="9_8usld"]
+[ext_resource type="PackedScene" path="res://assets/models/environment/nature/common_tree_3.gltf" id="10_4gb85"]
+[ext_resource type="PackedScene" path="res://assets/models/environment/nature/dead_tree_1.gltf" id="11_jvqjo"]
+[ext_resource type="PackedScene" path="res://assets/models/environment/nature/dead_tree_2.gltf" id="12_1l8lp"]
+[ext_resource type="PackedScene" path="res://assets/models/environment/nature/rock_medium_1.gltf" id="13_kyxq4"]
+[ext_resource type="PackedScene" path="res://assets/models/environment/nature/rock_medium_2.gltf" id="14_p4jhf"]
+[ext_resource type="PackedScene" path="res://assets/models/environment/nature/rock_medium_3.gltf" id="15_hquvk"]
+[ext_resource type="PackedScene" path="res://assets/models/environment/nature/bush_common_flowers.gltf" id="16_s6cow"]
+[ext_resource type="Material" path="res://assets/materials/vegetation/path_stones.tres" id="17_1icsl"]
+[ext_resource type="PackedScene" path="res://assets/models/environment/nature/rock_path_square_wide.gltf" id="18_l3pcr"]
+[ext_resource type="PackedScene" path="res://assets/models/environment/nature/rock_path_round_wide.gltf" id="19_s1765"]
+[ext_resource type="Texture2D" path="res://assets/textures/terrain/watercolor/grass_03_alb_ht.png" id="20_54kgi"]
+[ext_resource type="Texture2D" path="res://assets/textures/terrain/watercolor/flat_normal_rough_256.png" id="21_8rq2g"]
+[ext_resource type="Texture2D" path="res://assets/textures/terrain/watercolor/grass_04_alb_ht.png" id="22_54cu3"]
+[ext_resource type="Texture2D" path="res://assets/textures/terrain/watercolor/dirt_03_alb_ht.png" id="23_0ngxm"]
+[ext_resource type="Texture2D" path="res://assets/textures/terrain/watercolor/stone_01_alb_ht.png" id="24_leyu1"]
+[ext_resource type="Texture2D" path="res://assets/textures/terrain/watercolor/stone_04_alb_ht.png" id="25_5moxw"]
+[ext_resource type="Texture2D" path="res://assets/textures/terrain/watercolor/grass_02_alb_ht.png" id="26_6lgp4"]
+[ext_resource type="Texture2D" path="res://assets/textures/terrain/watercolor/stone_03_alb_ht.png" id="27_qe4gn"]
+
+[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_8u7ch"]
+name = "Hierba corta"
+scene_file = ExtResource("2_w0euq")
+cast_shadows = 0
+material_override = ExtResource("1_6m1t6")
+last_lod = 0
+last_shadow_lod = 0
+lod0_range = 60.0
+fade_margin = 4.0
+
+[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_shkfh"]
+name = "Hierba seca"
+id = 1
+scene_file = ExtResource("4_f7wvk")
+density = 5.8328543
+cast_shadows = 0
+material_override = ExtResource("3_feyir")
+last_lod = 0
+last_shadow_lod = 0
+lod0_range = 60.0
+fade_margin = 4.0
+
+[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_vtuwo"]
+name = "Pino 1"
+id = 2
+scene_file = ExtResource("5_fd0lb")
+density = 0.06090163
+last_lod = 0
+last_shadow_lod = 0
+lod0_range = 340.0
+
+[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_r862y"]
+name = "Pino 2"
+id = 3
+scene_file = ExtResource("6_v4chg")
+density = 0.0453299
+last_lod = 0
+last_shadow_lod = 0
+lod0_range = 340.0
+
+[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_kwvxa"]
+name = "Pino 3"
+id = 4
+scene_file = ExtResource("7_h1s1u")
+density = 0.09374482
+last_lod = 0
+last_shadow_lod = 0
+lod0_range = 340.0
+
+[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_jm4iv"]
+name = "Caducifolio 1"
+id = 5
+scene_file = ExtResource("8_cfkrg")
+density = 0.06974417
+last_lod = 0
+last_shadow_lod = 0
+lod0_range = 340.0
+
+[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_q72l0"]
+name = "Caducifolio 2"
+id = 6
+scene_file = ExtResource("9_8usld")
+density = 0.06854253
+last_lod = 0
+last_shadow_lod = 0
+lod0_range = 340.0
+
+[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_0qnfl"]
+name = "Caducifolio 3"
+id = 7
+scene_file = ExtResource("10_4gb85")
+density = 0.061574847
+last_lod = 0
+last_shadow_lod = 0
+lod0_range = 340.0
+
+[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_nnawd"]
+name = "Árbol muerto 1"
+id = 8
+scene_file = ExtResource("11_jvqjo")
+density = 0.029793119
+last_lod = 0
+last_shadow_lod = 0
+lod0_range = 340.0
+
+[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_bnus2"]
+name = "Árbol muerto 2"
+id = 9
+scene_file = ExtResource("12_1l8lp")
+density = 0.020278478
+last_lod = 0
+last_shadow_lod = 0
+lod0_range = 340.0
+
+[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_gf62o"]
+name = "Roca 1"
+id = 10
+scene_file = ExtResource("13_kyxq4")
+density = 0.4590238
+last_lod = 0
+last_shadow_lod = 0
+lod0_range = 240.0
+
+[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_5aiva"]
+name = "Roca 2"
+id = 11
+scene_file = ExtResource("14_p4jhf")
+density = 0.6967363
+last_lod = 0
+last_shadow_lod = 0
+lod0_range = 240.0
+
+[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_8w3qj"]
+name = "Roca 3"
+id = 12
+scene_file = ExtResource("15_hquvk")
+density = 0.36314332
+last_lod = 0
+last_shadow_lod = 0
+lod0_range = 240.0
+
+[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_haol3"]
+name = "Arbusto"
+id = 13
+scene_file = ExtResource("16_s6cow")
+density = 1.6800613
+cast_shadows = 0
+last_lod = 0
+last_shadow_lod = 0
+lod0_range = 120.0
+
+[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_mjbiv"]
+name = "Losa de calzada"
+id = 14
+scene_file = ExtResource("18_l3pcr")
+cast_shadows = 0
+material_override = ExtResource("17_1icsl")
+last_lod = 0
+last_shadow_lod = 0
+lod0_range = 120.0
+
+[sub_resource type="Terrain3DMeshAsset" id="Terrain3DMeshAsset_kjjrk"]
+name = "Losa redonda"
+id = 15
+scene_file = ExtResource("19_s1765")
+cast_shadows = 0
+material_override = ExtResource("17_1icsl")
+last_lod = 0
+last_shadow_lod = 0
+lod0_range = 120.0
+
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_tba1o"]
+name = "Hierba"
+albedo_texture = ExtResource("20_54kgi")
+normal_texture = ExtResource("21_8rq2g")
+uv_scale = 0.07
+detiling_rotation = 0.15
+
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_i7qm0"]
+name = "Hierba seca"
+id = 1
+albedo_texture = ExtResource("22_54cu3")
+normal_texture = ExtResource("21_8rq2g")
+uv_scale = 0.06
+detiling_rotation = 0.15
+
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_rbx7b"]
+name = "Tierra"
+id = 2
+albedo_texture = ExtResource("23_0ngxm")
+normal_texture = ExtResource("21_8rq2g")
+detiling_rotation = 0.15
+
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_jhuqt"]
+name = "Grava"
+id = 3
+albedo_color = Color(0.94, 0.92, 0.88, 1)
+albedo_texture = ExtResource("24_leyu1")
+normal_texture = ExtResource("21_8rq2g")
+uv_scale = 0.12
+detiling_rotation = 0.15
+
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_ecyql"]
+name = "Roca"
+id = 4
+albedo_texture = ExtResource("25_5moxw")
+normal_texture = ExtResource("21_8rq2g")
+uv_scale = 0.07
+detiling_rotation = 0.15
+
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_wjiol"]
+name = "Hierba verde"
+id = 5
+albedo_texture = ExtResource("26_6lgp4")
+normal_texture = ExtResource("21_8rq2g")
+uv_scale = 0.07
+detiling_rotation = 0.15
+
+[sub_resource type="Terrain3DTextureAsset" id="Terrain3DTextureAsset_rsauw"]
+name = "Lecho"
+id = 6
+albedo_texture = ExtResource("27_qe4gn")
+normal_texture = ExtResource("21_8rq2g")
+detiling_rotation = 0.15
+
+[resource]
+mesh_list = Array[Terrain3DMeshAsset]([SubResource("Terrain3DMeshAsset_8u7ch"), SubResource("Terrain3DMeshAsset_shkfh"), SubResource("Terrain3DMeshAsset_vtuwo"), SubResource("Terrain3DMeshAsset_r862y"), SubResource("Terrain3DMeshAsset_kwvxa"), SubResource("Terrain3DMeshAsset_jm4iv"), SubResource("Terrain3DMeshAsset_q72l0"), SubResource("Terrain3DMeshAsset_0qnfl"), SubResource("Terrain3DMeshAsset_nnawd"), SubResource("Terrain3DMeshAsset_bnus2"), SubResource("Terrain3DMeshAsset_gf62o"), SubResource("Terrain3DMeshAsset_5aiva"), SubResource("Terrain3DMeshAsset_8w3qj"), SubResource("Terrain3DMeshAsset_haol3"), SubResource("Terrain3DMeshAsset_mjbiv"), SubResource("Terrain3DMeshAsset_kjjrk")])
+texture_list = Array[Terrain3DTextureAsset]([SubResource("Terrain3DTextureAsset_tba1o"), SubResource("Terrain3DTextureAsset_i7qm0"), SubResource("Terrain3DTextureAsset_rbx7b"), SubResource("Terrain3DTextureAsset_jhuqt"), SubResource("Terrain3DTextureAsset_ecyql"), SubResource("Terrain3DTextureAsset_wjiol"), SubResource("Terrain3DTextureAsset_rsauw")])

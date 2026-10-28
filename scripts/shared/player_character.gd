@@ -19,6 +19,9 @@ signal landed
 const WORLD_COLLISION_LAYER: int = 1 << 0
 ## Capa de física de los personajes (capa 2).
 const CHARACTER_COLLISION_LAYER: int = 1 << 1
+## Capa de los bloqueos invisibles que solo paran a los personajes (capa 3): límites del área
+## jugable, orillas profundas, pretiles de los puentes. La cámara y los disparos no la miran.
+const PLAYER_BLOCKER_LAYER: int = 1 << 2
 ## Longitud mínima del deseo de movimiento para girar el personaje hacia la cámara.
 const FACING_MIN_WISH: float = 0.1
 ## Velocidad del sondeo hacia arriba con el que se reinicia el estado de suelo tras set_state().
@@ -93,7 +96,7 @@ func _ready() -> void:
 	floor_constant_speed = true
 	floor_stop_on_slope = true
 	collision_layer = CHARACTER_COLLISION_LAYER
-	collision_mask = WORLD_COLLISION_LAYER
+	collision_mask = WORLD_COLLISION_LAYER | PLAYER_BLOCKER_LAYER
 	# Respeta una rotación asignada antes de entrar en el árbol (por ejemplo, la del punto de
 	# aparición) y deja la base del nodo limpia (solo yaw, escala 1).
 	yaw = rotation.y

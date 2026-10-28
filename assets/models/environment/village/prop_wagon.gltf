@@ -1,0 +1,173 @@
+{
+  "asset": {
+    "generator": "Khronos glTF Blender I/O v4.0.44",
+    "version": "2.0"
+  },
+  "scene": 0.0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0.0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0.0,
+      "name": "Prop_Wagon"
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "MI_WoodTrim_Wear",
+      "normalTexture": {
+        "index": 0.0
+      },
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1.0
+        },
+        "metallicFactor": 0.0,
+        "metallicRoughnessTexture": {
+          "index": 2.0
+        }
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Cube.043",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0.0,
+            "NORMAL": 1.0,
+            "TEXCOORD_0": 2.0,
+            "TEXCOORD_1": 3.0
+          },
+          "indices": 4.0,
+          "material": 0.0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0.0,
+      "source": 0.0
+    },
+    {
+      "sampler": 0.0,
+      "source": 1.0
+    },
+    {
+      "sampler": 0.0,
+      "source": 2.0
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/png",
+      "name": "T_WoodTrim_Normal",
+      "uri": "t_wood_trim_normal.png"
+    },
+    {
+      "mimeType": "image/png",
+      "name": "T_WoodTrim_BaseColor",
+      "uri": "t_wood_trim_base_color.png"
+    },
+    {
+      "mimeType": "image/png",
+      "name": "T_WoodTrim_Roughness",
+      "uri": "t_wood_trim_roughness.png"
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0.0,
+      "componentType": 5126.0,
+      "count": 2331.0,
+      "max": [
+        0.972049236297607,
+        1.5323269367218,
+        0.873584389686584
+      ],
+      "min": [
+        -0.979359149932861,
+        0.00312984362244606,
+        -3.15043210983276
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1.0,
+      "componentType": 5126.0,
+      "count": 2331.0,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2.0,
+      "componentType": 5126.0,
+      "count": 2331.0,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3.0,
+      "componentType": 5126.0,
+      "count": 2331.0,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 4.0,
+      "componentType": 5123.0,
+      "count": 5016.0,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0.0,
+      "byteLength": 27972.0,
+      "byteOffset": 0.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 27972.0,
+      "byteOffset": 27972.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 18648.0,
+      "byteOffset": 55944.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 18648.0,
+      "byteOffset": 74592.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 10032.0,
+      "byteOffset": 93240.0,
+      "target": 34963.0
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729.0,
+      "minFilter": 9987.0
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 103272.0,
+      "uri": "prop_wagon.bin"
+    }
+  ]
+}

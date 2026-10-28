@@ -1,0 +1,35 @@
+[gd_resource type="ArrayMesh" format=4]
+
+[ext_resource type="Material" path="res://assets/materials/kit_placeholder.tres" id="1_7cdpx"]
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_fip84"]
+_surfaces = [{
+"aabb": AABB(-1.7835557, 0, 3.650947e-06, 3.5671387, 5.097135, 1e-05),
+"format": 34359742465,
+"index_count": 6,
+"index_data": PackedByteArray("AAABAAIAAAADAAEA"),
+"name": "WallStickers",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 4,
+"vertex_data": PackedByteArray("jkvkvwAAAAA/8so2ckzkP7sbo0DK8YA2ckzkPwAAAADLAnU2jkvkv7sbo0CkYtE2")
+}]
+blend_shape_mode = 0
+
+[resource]
+resource_name = "door_sticker_gate_arch"
+_surfaces = [{
+"aabb": AABB(-1.7835557, 0, 3.650947e-06, 3.5671387, 5.097135, 1e-05),
+"attribute_data": PackedByteArray("AAAAABpJED+qqqo+AGT+Pauqqj4aSRA/AACArwhk/j0="),
+"format": 34359742487,
+"index_count": 6,
+"index_data": PackedByteArray("AAABAAIAAAADAAEA"),
+"material": ExtResource("1_7cdpx"),
+"name": "WallStickers",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 4,
+"vertex_data": PackedByteArray("jkvkvwAAAAA/8so2ckzkP7sbo0DK8YA2ckzkPwAAAADLAnU2jkvkv7sbo0CkYtE2/3//f/7//7//f/9//v//v/9//3////+//3//f/7//78=")
+}]
+blend_shape_mode = 0
+shadow_mesh = SubResource("ArrayMesh_fip84")

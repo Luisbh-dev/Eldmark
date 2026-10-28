@@ -1,0 +1,22 @@
+[gd_scene format=3]
+
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/village/meshes/wall_uneven_brick_straight.tres" id="1_ax4tk"]
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/ruin_trim.tres" id="2_ifrla"]
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/ruin_plaster.tres" id="3_afo0r"]
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/ruin_stone.tres" id="4_k6vlm"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_bwf7x"]
+size = Vector3(2, 3.1, 0.4)
+
+[node name="RuinWall" type="StaticBody3D" unique_id=279373485]
+collision_mask = 0
+
+[node name="Muro" type="MeshInstance3D" parent="." unique_id=397561329]
+mesh = ExtResource("1_ax4tk")
+surface_material_override/0 = ExtResource("2_ifrla")
+surface_material_override/1 = ExtResource("3_afo0r")
+surface_material_override/2 = ExtResource("4_k6vlm")
+
+[node name="Colision" type="CollisionShape3D" parent="." unique_id=23235280]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.55, -0.1)
+shape = SubResource("BoxShape3D_bwf7x")

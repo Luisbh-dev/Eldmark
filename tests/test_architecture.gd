@@ -1,16 +1,27 @@
 extends TestCase
-## Pruebas de arquitectura: [code]scripts/shared/[/code] no puede depender del cliente.
+## Pruebas de arquitectura: lo que carga el servidor no puede depender del cliente.
 ##
-## El servidor dedicado (headless) carga [code]scripts/shared/[/code]; si algo de ahí usa Input,
-## cámaras, UI, DisplayServer, el reloj o clases de [code]scripts/client/[/code], el servidor deja
-## de funcionar o la simulación deja de ser determinista.
+## El servidor dedicado (headless) carga [code]scripts/shared/[/code] y, a través de las escenas
+## de zona, [code]scripts/world/[/code]; si algo de ahí usa Input, cámaras, UI, DisplayServer, el
+## reloj o clases de [code]scripts/client/[/code], el servidor deja de funcionar o la simulación
+## deja de ser determinista. También se recorre el árbol de dependencias de cada escena de zona:
+## no puede arrastrar scripts del cliente, animaciones ni visuales de personaje.
 ## [br][br]
 ## Se analiza el texto de los scripts sin los comentarios (la documentación puede mencionar
 ## Input o Camera3D); las cadenas sí cuentan, porque un
 ## [code]preload("res://scripts/client/...")[/code] es una dependencia real.
 
 const SHARED_DIR: String = "res://scripts/shared"
+## Carpetas que carga el servidor (la simulación compartida y los scripts de las zonas).
+const SERVER_DIRS: Array[String] = ["res://scripts/shared", "res://scripts/world"]
 const CLIENT_DIR: String = "res://scripts/client"
+## Rutas que ninguna escena de zona puede arrastrar (las carga el servidor dedicado).
+const ZONE_FORBIDDEN_DEPENDENCIES: Array[String] = [
+	"res://scripts/client/", "res://assets/animations/", "res://scenes/characters/visuals/",
+	"res://scenes/client/", "res://scenes/ui/",
+]
+## Materiales de reino: todos deben usarse en alguna zona (los que sobran se borran).
+const REALM_MATERIALS_DIR: String = "res://assets/materials/realms"
 ## Scripts compartidos que deben existir (si no, el análisis no estaría comprobando nada).
 const REQUIRED_SHARED_SCRIPTS: Array[String] = [
 	"player_input.gd", "player_state.gd", "player_character.gd",
@@ -88,8 +99,9 @@ func test_scanner_detects_forbidden_references() -> void:
 
 
 func test_shared_does_not_reference_client_only_apis() -> void:
-	var files: PackedStringArray = _list_scripts(SHARED_DIR)
-	assert_false(files.is_empty(), "no se encontró ningún script en %s" % SHARED_DIR)
+	var files: PackedStringArray = _list_server_scripts()
+	assert_false(files.is_empty(), "no se encontró ningún script en %s" % [SERVER_DIRS])
+	assert_true(files.has("res://scripts/world/zone_root.gd"), "también se analiza scripts/world")
 	for path: String in files:
 		for found: String in _find_matches(_read_text(path), FORBIDDEN_REFERENCES):
 			fail("%s usa %s, que solo existe o tiene sentido en el cliente" % [path, found])
@@ -104,9 +116,32 @@ func test_shared_does_not_reference_client_classes() -> void:
 	if not client_scripts.is_empty():
 		assert_false(patterns.is_empty(),
 				"hay scripts en %s pero ninguno declara class_name" % CLIENT_DIR)
-	for path: String in _list_scripts(SHARED_DIR):
+	for path: String in _list_server_scripts():
 		for found: String in _find_matches(_read_text(path), patterns):
 			fail("%s usa la clase de cliente %s" % [path, found])
+
+
+## Árbol de dependencias de cada escena de zona (recursivo, con ResourceLoader): nada del
+## cliente, ni animaciones ni visuales de personaje. Y todos los materiales de reino se usan.
+func test_zone_scenes_do_not_depend_on_client() -> void:
+	var used_materials: Dictionary = {}
+	for zone_id: StringName in Zones.get_zone_ids():
+		var scene_path: String = Zones.get_scene_path(zone_id)
+		var visited: Dictionary = {}
+		_collect_dependencies(scene_path, visited)
+		assert_true(visited.has(scene_path), "%s: se recorre su escena" % zone_id)
+		for path: String in visited:
+			for forbidden: String in ZONE_FORBIDDEN_DEPENDENCIES:
+				if path.begins_with(forbidden):
+					fail("%s depende de %s (prohibido: %s)" % [zone_id, path, forbidden])
+			if path.begins_with(REALM_MATERIALS_DIR):
+				used_materials[path] = true
+	for realm_dir: String in DirAccess.get_directories_at(REALM_MATERIALS_DIR):
+		for file_name: String in DirAccess.get_files_at(REALM_MATERIALS_DIR.path_join(realm_dir)):
+			if file_name.get_extension() != "tres":
+				continue
+			var path: String = REALM_MATERIALS_DIR.path_join(realm_dir).path_join(file_name)
+			assert_true(used_materials.has(path), "%s no lo usa ninguna zona" % path)
 
 
 func test_shared_does_not_use_global_randomness() -> void:
@@ -118,6 +153,28 @@ func test_shared_does_not_use_global_randomness() -> void:
 
 
 # --- Utilidades -------------------------------------------------------------------------------
+
+## Scripts de todas las carpetas de [constant SERVER_DIRS].
+func _list_server_scripts() -> PackedStringArray:
+	var files: PackedStringArray = PackedStringArray()
+	for dir: String in SERVER_DIRS:
+		files.append_array(_list_scripts(dir))
+	return files
+
+
+## Rutas res:// de las que depende [param path], recursivamente (en [param visited]).
+func _collect_dependencies(path: String, visited: Dictionary) -> void:
+	if visited.has(path):
+		return
+	visited[path] = true
+	for dependency: String in ResourceLoader.get_dependencies(path):
+		# Formato "uid://...::Tipo::res://ruta" (o solo la ruta).
+		var dep_path: String = dependency.get_slice("::", 2) if dependency.contains("::") else dependency
+		if dep_path.begins_with("uid://"):
+			dep_path = ResourceUID.get_id_path(ResourceUID.text_to_id(dep_path))
+		if dep_path.begins_with("res://"):
+			_collect_dependencies(dep_path, visited)
+
 
 ## Scripts .gd bajo [param dir], recursivamente, ordenados.
 func _list_scripts(dir: String) -> PackedStringArray:

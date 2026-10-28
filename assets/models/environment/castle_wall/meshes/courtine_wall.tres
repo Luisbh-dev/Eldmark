@@ -1,0 +1,35 @@
+[gd_resource type="ArrayMesh" format=4]
+
+[ext_resource type="Material" path="res://assets/materials/kit_placeholder.tres" id="1_61hfd"]
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_cpjo6"]
+_surfaces = [{
+"aabb": AABB(-2.5089784e-07, 0, -0.77000195, 6.0000005, 6, 0.77000195),
+"format": 34896613377,
+"index_count": 12,
+"index_data": PackedByteArray("AAABAAIAAAADAAEABAAFAAYABAAHAAUA"),
+"name": "BrickWall",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 8,
+"vertex_data": PackedByteArray("//////7/AAAAAAAA//8AAAAA/////wAA//8AAP7/AAD+////AAAAAAAAAAAAAAAA/v8AAAAAAAAAAP//AAAAAA==")
+}]
+blend_shape_mode = 0
+
+[resource]
+resource_name = "courtine_wall"
+_surfaces = [{
+"aabb": AABB(-2.5089784e-07, 0, -0.77000195, 6.0000005, 6, 0.77000195),
+"attribute_data": PackedByteArray("//8AAAAA//8AAAAA////////AAAAAP///////wAAAAA="),
+"format": 34896613399,
+"index_count": 12,
+"index_data": PackedByteArray("AAABAAIAAAADAAEABAAFAAYABAAHAAUA"),
+"material": ExtResource("1_61hfd"),
+"name": "BrickWall",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 8,
+"vertex_data": PackedByteArray("//////7/AIAAAAAA//8AgAAA/////wCA//8AAP7/AID+////AAAAAAAAAAAAAAAA/v8AAAAAAAAAAP//AAAAAP9/////f////3////9///////9/////f////3////9/")
+}]
+blend_shape_mode = 0
+shadow_mesh = SubResource("ArrayMesh_cpjo6")

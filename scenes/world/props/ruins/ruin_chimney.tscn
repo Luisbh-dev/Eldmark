@@ -1,0 +1,20 @@
+[gd_scene format=3]
+
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/village/meshes/prop_chimney.tres" id="1_1b4oh"]
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/ruin_trim.tres" id="2_qgt4k"]
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/ruin_brick.tres" id="3_iktqh"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_sy5rn"]
+size = Vector3(0.95, 3.2, 1)
+
+[node name="RuinChimney" type="StaticBody3D" unique_id=978473561]
+collision_mask = 0
+
+[node name="Chimenea" type="MeshInstance3D" parent="." unique_id=1507506268]
+mesh = ExtResource("1_1b4oh")
+surface_material_override/0 = ExtResource("2_qgt4k")
+surface_material_override/1 = ExtResource("3_iktqh")
+
+[node name="Colision" type="CollisionShape3D" parent="." unique_id=1596762042]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)
+shape = SubResource("BoxShape3D_sy5rn")

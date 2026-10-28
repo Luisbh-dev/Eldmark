@@ -1,0 +1,51 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://assets/materials/shaders/realm_surface_closed.gdshader" id="1_fybos"]
+
+[sub_resource type="Gradient" id="Gradient_2agh4"]
+colors = PackedColorArray(0.42, 0.42, 0.42, 1, 0.58, 0.58, 0.58, 1)
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_ie74d"]
+seed = 7
+frequency = 0.05
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_i0io3"]
+width = 128
+height = 128
+noise = SubResource("FastNoiseLite_ie74d")
+color_ramp = SubResource("Gradient_2agh4")
+seamless = true
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_fybos")
+shader_parameter/albedo_texture = SubResource("NoiseTexture2D_i0io3")
+shader_parameter/use_normal_map = null
+shader_parameter/normal_strength = null
+shader_parameter/uv_scale = null
+shader_parameter/use_triplanar = true
+shader_parameter/triplanar_scale = 0.35
+shader_parameter/triplanar_sharpness = null
+shader_parameter/alpha_scissor = null
+shader_parameter/hue_shift = null
+shader_parameter/saturation = null
+shader_parameter/brightness = null
+shader_parameter/contrast = null
+shader_parameter/target_color = Color(0.22745098, 0.16470589, 0.1254902, 1)
+shader_parameter/colorize = 1.0
+shader_parameter/reference_luminance = 0.5
+shader_parameter/detail_strength = null
+shader_parameter/detail_min = null
+shader_parameter/detail_max = null
+shader_parameter/albedo_gain = null
+shader_parameter/layer_color = Color(0.56078434, 0.5411765, 0.50980395, 1)
+shader_parameter/layer_amount = 0.0
+shader_parameter/layer_threshold = 0.6
+shader_parameter/layer_softness = null
+shader_parameter/layer_roughness = null
+shader_parameter/faction_mix = null
+shader_parameter/roughness = null
+shader_parameter/metallic = null
+shader_parameter/specular = null
+shader_parameter/emission_color = Color(1, 0.5411765, 0.16470589, 1)
+shader_parameter/emission_energy = 3.0

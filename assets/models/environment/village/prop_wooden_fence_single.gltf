@@ -1,0 +1,160 @@
+{
+  "asset": {
+    "generator": "Khronos glTF Blender I/O v4.0.44",
+    "version": "2.0"
+  },
+  "scene": 0.0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0.0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0.0,
+      "name": "Prop_WoodenFence_Single"
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "MI_WoodTrim",
+      "normalTexture": {
+        "index": 0.0
+      },
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1.0
+        },
+        "metallicFactor": 0.0,
+        "metallicRoughnessTexture": {
+          "index": 2.0
+        }
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Cube.097",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0.0,
+            "NORMAL": 1.0,
+            "TEXCOORD_0": 2.0
+          },
+          "indices": 3.0,
+          "material": 0.0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0.0,
+      "source": 0.0
+    },
+    {
+      "sampler": 0.0,
+      "source": 1.0
+    },
+    {
+      "sampler": 0.0,
+      "source": 2.0
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/png",
+      "name": "T_WoodTrim_Normal",
+      "uri": "t_wood_trim_normal.png"
+    },
+    {
+      "mimeType": "image/png",
+      "name": "T_WoodTrim_BaseColor",
+      "uri": "t_wood_trim_base_color.png"
+    },
+    {
+      "mimeType": "image/png",
+      "name": "T_WoodTrim_Roughness",
+      "uri": "t_wood_trim_roughness.png"
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0.0,
+      "componentType": 5126.0,
+      "count": 80.0,
+      "max": [
+        1.03264892101288,
+        0.809856534004211,
+        0.0599100366234779
+      ],
+      "min": [
+        -1.0314507484436,
+        -0.0282525196671486,
+        -0.0599099695682526
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1.0,
+      "componentType": 5126.0,
+      "count": 80.0,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2.0,
+      "componentType": 5126.0,
+      "count": 80.0,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3.0,
+      "componentType": 5123.0,
+      "count": 120.0,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0.0,
+      "byteLength": 960.0,
+      "byteOffset": 0.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 960.0,
+      "byteOffset": 960.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 640.0,
+      "byteOffset": 1920.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 240.0,
+      "byteOffset": 2560.0,
+      "target": 34963.0
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729.0,
+      "minFilter": 9987.0
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 2800.0,
+      "uri": "prop_wooden_fence_single.bin"
+    }
+  ]
+}

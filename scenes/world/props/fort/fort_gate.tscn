@@ -1,0 +1,41 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world/fort_gate.gd" id="1_u4jrj"]
+[ext_resource type="ArrayMesh" path="res://assets/models/environment/custom/fort_gate_leaf.tres" id="2_mj4dk"]
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/planks.tres" id="3_btima"]
+[ext_resource type="Material" path="res://assets/materials/realms/eldrun/metal.tres" id="4_wmk3l"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_m3onq"]
+size = Vector3(0.5, 4.3, 4)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_5ch6p"]
+size = Vector3(0.18, 4.3, 2)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_5ko73"]
+size = Vector3(0.18, 4.3, 2)
+
+[node name="FortGate" type="StaticBody3D" unique_id=1135077895 groups=["fort_gate"]]
+collision_mask = 0
+script = ExtResource("1_u4jrj")
+
+[node name="Hoja1" type="MeshInstance3D" parent="." unique_id=1240413210]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -2)
+mesh = ExtResource("2_mj4dk")
+surface_material_override/0 = ExtResource("3_btima")
+surface_material_override/1 = ExtResource("4_wmk3l")
+
+[node name="Hoja2" type="MeshInstance3D" parent="." unique_id=1581126107]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 2)
+mesh = ExtResource("2_mj4dk")
+surface_material_override/0 = ExtResource("3_btima")
+surface_material_override/1 = ExtResource("4_wmk3l")
+
+[node name="ColisionCerrada" type="CollisionShape3D" parent="." unique_id=83842574]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.15, 0)
+shape = SubResource("BoxShape3D_m3onq")
+
+[node name="ColisionHoja1" type="CollisionShape3D" parent="." unique_id=1823095336]
+shape = SubResource("BoxShape3D_5ch6p")
+
+[node name="ColisionHoja2" type="CollisionShape3D" parent="." unique_id=1480978059]
+shape = SubResource("BoxShape3D_5ko73")
