@@ -22,3 +22,7 @@ CLAUDE.local.md
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# Ajustes locales de Godot de cada máquina
+override.cfg
+.claude/worktrees/

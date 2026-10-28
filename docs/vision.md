@@ -92,7 +92,7 @@ es divertido, el resto se construye alrededor.
 ## Hoja de ruta
 
 1. Personaje y cámara: movimiento con WASD y cámara de acción por encima del hombro
-2. Red: servidor dedicado, varios jugadores, predicción e interpolación, elección de reino
+2. Red: servidor dedicado, varios jugadores, predicción e interpolación, elección de reino ([diseño](red.md))
 3. Combate de acción: ataques, bloqueo, esquiva, resistencia, compensación de latencia, muerte y reaparición
 4. Primer fuerte capturable en un mapa de frontera pequeño
 5. Cuentas, personajes y guardado en base de datos
