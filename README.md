@@ -128,6 +128,8 @@ con Godot en modo headless.
 
 ## Hoja de ruta
 
+Tareas, dependencias y decisiones pendientes: [docs/backlog.md](docs/backlog.md).
+
 1. Personaje y cámara: movimiento con WASD y cámara de acción por encima del hombro
 2. Red: servidor dedicado, varios jugadores, predicción e interpolación, elección de reino
 3. Combate de acción: ataques, bloqueo, esquiva, resistencia, compensación de latencia, muerte y reaparición
