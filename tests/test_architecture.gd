@@ -20,6 +20,11 @@ const SHARED_DIR: String = "res://scripts/shared"
 ## Carpetas que carga el servidor (la simulación compartida y los scripts de las zonas).
 const SERVER_DIRS: Array[String] = ["res://scripts/shared", "res://scripts/world"]
 const CLIENT_DIR: String = "res://scripts/client"
+## El audio es solo del cliente (ART-10): carpeta de sus scripts y script de servicios del cliente.
+const AUDIO_DIR: String = "res://scripts/client/audio"
+const CLIENT_SERVICES_SCRIPT: String = "res://scripts/client/client_services.gd"
+## Scripts de arranque que cargan cliente y servidor (nombran a ClientMain, pero no al audio).
+const BOOT_SCRIPTS: Array[String] = ["res://scripts/boot.gd"]
 const SERVER_DIR: String = "res://scripts/server"
 ## Escenas, además de las de zona, que carga el servidor dedicado: el personaje (lo precarga
 ## [code]ZoneServer[/code]) y la escena raíz del servidor. Tampoco pueden depender del cliente.
@@ -29,7 +34,7 @@ const SERVER_SCENES: Array[String] = [
 ## Rutas que ninguna escena de zona puede arrastrar (las carga el servidor dedicado).
 const ZONE_FORBIDDEN_DEPENDENCIES: Array[String] = [
 	"res://scripts/client/", "res://assets/animations/", "res://scenes/characters/visuals/",
-	"res://scenes/client/", "res://scenes/ui/",
+	"res://scenes/client/", "res://scenes/ui/", "res://assets/audio/",
 ]
 ## Materiales de reino: todos deben usarse en alguna zona (los que sobran se borran).
 const REALM_MATERIALS_DIR: String = "res://assets/materials/realms"
@@ -295,6 +300,53 @@ func test_shared_does_not_depend_on_server() -> void:
 	for path: String in files:
 		for found: String in _find_matches(_read_text(path), patterns):
 			fail("%s depende del servidor: %s" % [path, found])
+
+
+## El servidor dedicado no carga el audio (ART-10): ni los scripts de [code]scripts/client/audio/[/code]
+## ni [ClientServices] (que los monta) aparecen en lo que carga el servidor (compartido, mundo,
+## servidor y los scripts de arranque), ninguna escena de zona ni del servidor depende de ellos o de
+## [code]assets/audio/[/code], y el proyecto no declara autoloads del cliente (los cargaría el servidor).
+## Los monta la escena del cliente ([code]client_main.tscn[/code], [code]online_main.tscn[/code]).
+func test_server_does_not_load_audio() -> void:
+	var audio_scripts: PackedStringArray = _list_scripts(AUDIO_DIR)
+	assert_true(audio_scripts.size() >= 2, "hay scripts de audio que comprobar")
+	assert_true(audio_scripts.has(AUDIO_DIR.path_join("audio_director.gd")), "existe AudioDirector")
+	assert_true(FileAccess.file_exists(CLIENT_SERVICES_SCRIPT), "existe ClientServices")
+	var patterns: Array[Array] = [
+		["scripts/client/audio", "scripts/client/audio"],
+		["client_services", "client_services"],
+		["ClientServices", "\\bClientServices\\b"],
+	]
+	patterns.append_array(_class_patterns(AUDIO_DIR))
+	assert_true(patterns.size() >= 5, "se conocen las clases de audio")
+	var checked: PackedStringArray = _list_server_scripts()
+	checked.append_array(_list_scripts(SERVER_DIR))
+	checked.append_array(PackedStringArray(BOOT_SCRIPTS))
+	for path: String in checked:
+		for found: String in _find_matches(_read_text(path), patterns):
+			fail("%s nombra el audio del cliente: %s" % [path, found])
+	# El analizador detecta un uso real.
+	assert_false(_find_matches("var director: AudioDirector = null", patterns).is_empty(),
+			"detecta una clase de audio")
+	# Las escenas que carga el servidor no dependen del audio (las zonas y las del servidor ya
+	# prohíben todo scripts/client/ y assets/audio/ en ZONE_FORBIDDEN_DEPENDENCIES).
+	var synthetic: Dictionary = {"res://scripts/client/audio/audio_director.gd": true,
+			"res://assets/audio/sfx/golpe.ogg": true}
+	assert_eq(_forbidden_dependencies(synthetic).size(), 2, "el filtro detecta el audio")
+	for scene_path: String in SERVER_SCENES:
+		var visited: Dictionary = {}
+		_collect_dependencies(scene_path, visited)
+		assert_false(visited.has(CLIENT_SERVICES_SCRIPT), "%s no monta los servicios" % scene_path)
+	# Sin autoloads de cliente en el proyecto.
+	var project: String = _read_text("res://project.godot")
+	assert_false(project.contains("scripts/client"), "project.godot no nombra scripts del cliente")
+	assert_false(project.contains("[autoload]"), "y no declara autoloads (los cargaría el servidor)")
+	# Y sí los monta la escena del cliente.
+	for scene_path: String in ["res://scenes/client/client_main.tscn",
+			"res://scenes/client/online_main.tscn"]:
+		var deps: Dictionary = {}
+		_collect_dependencies(scene_path, deps)
+		assert_true(deps.has(CLIENT_SERVICES_SCRIPT), "%s monta ClientServices" % scene_path)
 
 
 ## Si zones.gd cambia (el grupo o el metadato de los puntos de aparición, una firma...), solo se
