@@ -269,6 +269,8 @@ supuestos técnicos comprobados ejecutando Godot y Terrain3D).
 | F6a | Bots de asedio (`SIEGE`, `SwarmBot` con rutas), `--max-realm-diff`, escenario de carga del asedio, números de batalla | En marcha |
 | F6b | Prueba de extremo a extremo neutral → Vardheim → Solmarch con los PNJ de verdad | Pendiente (tras F4) |
 | Habilidades | Diseño corto `docs/habilidades.md` (CMB-19 a 24, CMB-28, PRG-04/07/08, UI-11, UI-45) | Diseño en marcha |
+| Social | Chat (SOC-03 a SOC-05) y grupos (SOC-06 a SOC-08): implementación, revisión adversarial por tres lentes con refutación y arreglos | En marcha |
+| Fase 5 (diseño) | `docs/plataforma.md` (servicio en Go + PostgreSQL, cuentas, billetes, guardado, RGPD, GM) y `docs/progresion.md` (objetos, inventario, monedas, niveles, razas): borrador, revisión escéptica y corrección | En marcha (solo documentos) |
 
 ## Pendiente de probar mañana con ventana
 
