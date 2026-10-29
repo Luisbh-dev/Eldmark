@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+<title>Sol partido de Solmarch (emblema provisional)</title>
+<g transform="translate(-3.5 0)">
+<polygon points="48.9885,120.024 59.9537,94.7348 52.1368,92.6403" fill="#E9C341"/>
+<polygon points="30.766,97.234 45.1284,88.594 39.406,82.8716" fill="#A3882E"/>
+<polygon points="7.9763,79.0115 35.3597,75.8632 33.2652,68.0463" fill="#E9C341"/>
+<polygon points="18.6015,51.8355 33.2652,59.9537 35.3597,52.1368" fill="#A3882E"/>
+<polygon points="22.9878,22.9878 39.406,45.1284 45.1284,39.406" fill="#E9C341"/>
+<polygon points="51.8355,18.6015 52.1368,35.3597 59.9537,33.2652" fill="#A3882E"/>
+<path d="M64 38 A26 26 0 0 0 64 90 Z" fill="#E9C341"/>
+</g>
+<g transform="translate(3.5 0)">
+<polygon points="79.0115,7.9763 68.0463,33.2652 75.8632,35.3597" fill="#E9C341"/>
+<polygon points="97.234,30.766 82.8716,39.406 88.594,45.1284" fill="#A3882E"/>
+<polygon points="120.024,48.9885 92.6403,52.1368 94.7348,59.9537" fill="#E9C341"/>
+<polygon points="109.399,76.1645 94.7348,68.0463 92.6403,75.8632" fill="#A3882E"/>
+<polygon points="105.012,105.012 88.594,82.8716 82.8716,88.594" fill="#E9C341"/>
+<polygon points="76.1645,109.399 75.8632,92.6403 68.0463,94.7348" fill="#A3882E"/>
+<path d="M64 38 A26 26 0 0 1 64 90 Z" fill="#E9C341"/>
+</g>
+</svg>
