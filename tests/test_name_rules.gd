@@ -58,6 +58,18 @@ func test_only_latin_letters() -> void:
 				"'%s'" % String(case["name"]).c_escape())
 
 
+func test_invisible_and_combining_code_points_never_fit_in_a_name() -> void:
+	# Los nombres son una lista cerrada de letras: nada de lo que el saneado del chat quita (invisibles,
+	# marcas de dirección, rellenos, marcas combinantes; ver test_chat_text) puede colarse en uno, ni para
+	# hacerse pasar por otro («Ana» con un carácter de anchura cero) ni para escribir la tilde por separado.
+	var codes: Array[int] = [0x00A0, 0x00AD, 0x0301, 0x0303, 0x0308, 0x034F, 0x0378, 0x061C, 0x115F, 0x200B,
+			0x200D, 0x200E, 0x202E, 0x2066, 0x2800, 0x3164, 0xE000, 0xE0041, 0xFE0F, 0xFEFF, 0xFFA0]
+	for code: int in codes:
+		var display_name: String = "An" + String.chr(code) + "a"
+		assert_eq(NameRules.validate(display_name), NameRules.Reason.INVALID_CHARACTER,
+				"«Ana» con U+%04X no es un nombre" % code)
+
+
 func test_initial_capital() -> void:
 	for display_name: String in ["ana", "bruno", "álvaro", "ñandú", "úrsula", "aNA", "zOE"]:
 		assert_eq(NameRules.validate(display_name), NameRules.Reason.NOT_CAPITALIZED,

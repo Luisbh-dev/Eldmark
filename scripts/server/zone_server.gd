@@ -10,9 +10,12 @@ extends Node
 ## [b]Orden del tick[/b] ([method _physics_process], prioridad -100; es normativo):
 ## [codeblock]
 ## poll             recibir: autenticación, READY, LEAVE, INPUT_BATCH -> InputQueue.push(),
-##                  RESPAWN_REQUEST, DEBUG_COMMAND; y las líneas de la consola
+##                  RESPAWN_REQUEST, DEBUG_COMMAND, el chat y los grupos (SocialService); y las
+##                  líneas de la consola
 ## tick += 1        s es el tick que se simula
-## bajas            desconexión, LEAVE o expulsión -> DESPAWN (motivo 1) y el id en cuarentena
+## bajas            desconexión, LEAVE o expulsión -> SocialService.on_peer_left (sale de su grupo, el
+##                  mando pasa al más antiguo, se cancelan sus invitaciones), DESPAWN (motivo 1) y el id
+##                  en cuarentena
 ## cerebros (paso 0) los PNJ piensan con el estado tras s - 1 y empujan su entrada de s a su InputQueue
 ##                  (cada 6 ticks; entre medias repiten su plan)
 ## simular          todas las entidades con cuerpo (jugadores, falsos y PNJ) por net_id ascendente,
@@ -27,6 +30,9 @@ extends Node
 ## PNJ              NpcSpawnerSystem.step(): altas y retiradas de PNJ según los generadores y las
 ##                  fortalezas, cadáveres, avisos TELEGRAPH de los ataques fuertes
 ## altas            los READY pendientes: el jugador aparece con el estado «tras s»
+## social           SocialService.step(): caducan las invitaciones de grupo (PARTY_INVITATION caducada y
+##                  aviso a quien invitó) y cada grupo manda su PARTY_STATUS (2 Hz, escalonado por el id
+##                  del grupo) con el estado ya tras las altas
 ## historial        StateHistory.record() de todas las entidades, ya con lo impuesto
 ## snapshots        SnapshotBuilder.begin(); interés cada 6 ticks, escalonado; un SNAPSHOT a cada
 ##                  cliente cada 2 ticks, escalonado por la paridad de su net_id; el SCOREBOARD de la
@@ -109,12 +115,15 @@ const HELLO_CHECK_TICKS: int = 10
 const STOP_DRAIN_TICKS: int = 30
 ## Secciones del tick que aparecen en la línea de métricas (las mismas que mide el bucle).
 const LOGGED_SECTIONS: Array[StringName] = [&"net", &"npc_brains", &"sim", &"combat", &"combat_resolve",
-		&"combat_events", &"war", &"npc", &"history", &"snapshot", &"flush"]
+		&"combat_events", &"war", &"npc", &"social", &"history", &"snapshot", &"flush"]
 ## Secciones de [ServerMetrics] de los PNJ: los cerebros (paso 0) y el sistema de generadores.
 const SECTION_NPC_BRAINS: StringName = &"npc_brains"
 const SECTION_NPC: StringName = &"npc"
 ## Sección de [ServerMetrics] del paso de las fortalezas (4b del tick).
 const SECTION_WAR: StringName = &"war"
+## Sección de [ServerMetrics] del paso social (caducidad de invitaciones y PARTY_STATUS). El chat y los
+## mensajes de grupo que llegan se atienden en el poll y cuentan en la sección «net».
+const SECTION_SOCIAL: StringName = &"social"
 ## Cada cuántos ticks se manda el SCOREBOARD a toda la zona (2 s).
 const SCOREBOARD_INTERVAL_TICKS: int = 120
 ## Ticks que el cuerpo de quien sale o se desconecta «en combate» sigue en el mundo, quieto y atacable
@@ -140,6 +149,11 @@ const MAX_DUMMIES: int = 16
 const DUMMY_SPAWN_DISTANCE: float = 3.0
 ## Nombre del maniquí de entrenamiento.
 const DUMMY_NAME: String = "Maniquí"
+## Nombre de los jugadores falsos ([method add_fake_player]) con su número: «Bot-01». El guion y las cifras lo dejan
+## fuera de [NameRules] a propósito: el cliente no ofrece acciones sociales a un nombre que no las cumple
+## ([code]SocialTarget.is_social_target[/code]), porque un falso no tiene conexión y el servidor contestaría «no está
+## conectado» a la invitación o al susurro (docs/social.md, sección 12.6).
+const FAKE_NAME_FORMAT: String = "Bot-%02d"
 ## Cabecera del registro de combate (--combat-log).
 const COMBAT_LOG_HEADER: String = "tick,atacante,objetivo,ataque,view_tick,rebobinado,resultado,daño"
 ## Segundos restantes en los que una cuenta atrás de cierre avisa a los jugadores.
@@ -216,6 +230,8 @@ var _npc_system: NpcSpawnerSystem = null
 var _scores: ScoreKeeper = ScoreKeeper.new()
 var _battle_log: BattleLog = null
 var _unstuck: UnstuckTracker = UnstuckTracker.new()
+# Chat y grupos (SOC-04, SOC-06); se crea en start().
+var _social: SocialService = null
 var _unstuck_log: Array[Dictionary] = []
 var _unstuck_uses: int = 0
 # net_id -> tick en el que se retira el cuerpo de quien salió en combate (GUE-41).
@@ -483,6 +499,8 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_setup_npcs(world)
 	_commands.audit_sink = Callable(self, "_log")
 	_register_commands()
+	_social = SocialService.new(Callable(self, "_social_peers"), Callable(self, "_social_send"),
+			Callable(self, "_add_strike"))
 	if _transport != null:
 		_connect_transport()
 		if not _transport.is_server():
@@ -695,6 +713,10 @@ func get_scores() -> ScoreKeeper:
 
 
 ## El control del comando /atascado (canalizaciones y reutilizaciones).
+func get_social() -> SocialService:
+	return _social
+
+
 func get_unstuck() -> UnstuckTracker:
 	return _unstuck
 
@@ -727,7 +749,7 @@ func add_fake_player(brain: BotBrain, realm: int) -> int:
 	if get_player_count() >= _config.max_players:
 		return -1
 	_fake_counter += 1
-	var entity: NetEntity = _create_player("Bot-%02d" % _fake_counter, realm, 0, _tick)
+	var entity: NetEntity = _create_player(FAKE_NAME_FORMAT % _fake_counter, realm, 0, _tick)
 	if entity == null:
 		return -1
 	_fakes[entity.net_id] = brain
@@ -1011,6 +1033,9 @@ func _physics_process(delta: float) -> void:
 	_check_shutdown_countdown(s)
 
 	_process_arrivals(s)
+	_metrics.begin_section(SECTION_SOCIAL)
+	_social.step(s)
+	_metrics.end_section(SECTION_SOCIAL)
 
 	_metrics.begin_section(&"history")
 	_record_history(s)
@@ -1339,6 +1364,7 @@ func _process_departures(s: int) -> void:
 			continue
 		_peers.erase(peer_id)
 		_rtt.erase(peer_id)
+		_social.on_peer_left(peer, s)
 		if peer.entity == null:
 			continue
 		var entity: NetEntity = peer.entity
@@ -1567,6 +1593,16 @@ func _is_relevant(observer: NetEntity, entity: NetEntity, was_relevant: bool) ->
 func _send(peer: ServerPeer, channel: int, bytes: PackedByteArray) -> void:
 	if _transport != null:
 		_transport.send(peer.peer_id, channel, bytes)
+
+
+# Lo que el servicio social necesita del servidor: los peers en el mundo y enviar por el canal fiable.
+func _social_peers() -> Array[ServerPeer]:
+	return _world_peers
+
+
+func _social_send(peer_id: int, bytes: PackedByteArray) -> void:
+	if _transport != null:
+		_transport.send(peer_id, NetProtocol.CH_RELIABLE, bytes)
 
 
 # --- Combate: eventos, enemigos, suelo ----------------------------------------------------------
@@ -2534,7 +2570,9 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 		NetProtocol.MSG_UNSTUCK_REQUEST:
 			_handle_unstuck_request(peer, bytes)
 		_:
-			_add_strike(peer, "tipo de mensaje inesperado (0x%02X)" % msg_type)
+			# El chat y los grupos (0x40 a 0x4F) los atiende el servicio social.
+			if not _social.handle_packet(peer, msg_type, bytes, _tick):
+				_add_strike(peer, "tipo de mensaje inesperado (0x%02X)" % msg_type)
 
 
 func _handle_input_batch(peer: ServerPeer, bytes: PackedByteArray) -> void:
@@ -2940,6 +2978,7 @@ func _build_report() -> Dictionary:
 		"combat": _combat_report(),
 		"war": _war_report(),
 		"npcs": _npc_report(),
+		"social": _social.get_stats() if _social != null else {},
 		"simulate": {
 			"calls": _simulate_calls,
 			"total_us": _simulate_usec_total,

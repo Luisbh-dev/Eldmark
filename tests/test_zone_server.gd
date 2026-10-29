@@ -129,6 +129,23 @@ func test_fake_players_run_for_300_ticks() -> void:
 			"el contador de jugadores de las métricas")
 
 
+func test_the_social_step_has_its_own_metrics_section() -> void:
+	# El paso social (caducidad de invitaciones y PARTY_STATUS a 2 Hz) va tras las altas y antes del
+	# historial, y se mide en su propia sección (docs/social.md 12.2; cabecera de ZoneServer).
+	assert_eq(ZoneServer.SECTION_SOCIAL, &"social", "la sección se llama «social»")
+	var social_index: int = ZoneServer.LOGGED_SECTIONS.find(&"social")
+	assert_true(social_index >= 0, "la línea de métricas la incluye")
+	assert_true(social_index > ZoneServer.LOGGED_SECTIONS.find(&"npc")
+			and social_index < ZoneServer.LOGGED_SECTIONS.find(&"history"), "entre «npc» y «history»")
+	await _start_server()
+	_server.add_fake_player(BotBrain.new(1, BotBrain.Pattern.IDLE), VARDHEIM)
+	await wait_physics_frames(40)
+	var sections: Dictionary = _server.get_metrics().summary()["sections"]
+	assert_true(sections.has("social"), "el servidor mide el paso social")
+	if sections.has("social"):
+		assert_true(int(sections["social"]["samples"]) > 0, "una muestra por tick")
+
+
 func test_history_records_every_tick_of_every_player() -> void:
 	await _start_server()
 	var ids: Array[int] = []
@@ -277,6 +294,22 @@ func test_player_limit_counts_fake_players() -> void:
 	assert_eq(_server.add_fake_player(BotBrain.new(3), VARDHEIM), -1, "con el cupo lleno no entra otro")
 	assert_eq(_server.add_fake_player(null, VARDHEIM), -1, "sin cerebro tampoco")
 	assert_eq(_server.get_player_count(), 2)
+
+
+func test_fake_player_names_never_pass_the_name_rules() -> void:
+	# El menú social del cliente (SocialTarget.is_social_target) no ofrece invitar ni susurrar a un nombre que no
+	# cumple NameRules: es como sabe que un cuerpo es un jugador falso, sin conexión que pueda contestar.
+	var config: ServerConfig = _make_config()
+	config.max_players = 120
+	await _start_server(config)
+	for i: int in 110:
+		assert_true(_server.add_fake_player(BotBrain.new(i + 1, BotBrain.Pattern.IDLE), VARDHEIM) > 0,
+				"entra el falso %d" % (i + 1))
+	var names: PackedStringArray = _server.get_connected_names()
+	assert_eq(names.size(), 110, "110 falsos")
+	assert_true(names.has("Bot-01") and names.has("Bot-110"), "«Bot-01» a «Bot-110»")
+	for fake_name: String in names:
+		assert_false(NameRules.is_valid(fake_name), "«%s» no es un nombre de persona" % fake_name)
 
 
 func test_players_spawn_at_their_realm_and_on_the_ground() -> void:

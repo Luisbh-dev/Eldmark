@@ -82,6 +82,9 @@ signal war_event(event: NetMessages.EntityEvent)
 signal telegraph_received(event: NetMessages.EntityEvent)
 ## Se ha publicado un marcador completo (todas sus páginas): ver [method get_scoreboard].
 signal scoreboard_updated(scoreboard: ScoreboardState)
+## Ha llegado un mensaje de chat (CHAT_MESSAGE, protocolo 5) ya saneado por el servidor. Se entrega al
+## llegar: el chat no se temporiza con el tick de dibujo.
+signal chat_received(message: NetMessages.ChatMessage)
 
 enum State {
 	## Sin [method start].
@@ -214,6 +217,13 @@ var _object_states_received: int = 0
 var _scoreboards_received: int = 0
 var _war_events_received: int = 0
 var _telegraphs_received: int = 0
+var _chat_sent: int = 0
+var _chat_received: int = 0
+var _party: PartyState = PartyState.new()
+var _party_messages_sent: int = 0
+var _party_rosters: int = 0
+var _party_statuses: int = 0
+var _party_invitations: int = 0
 
 # Envío de entradas.
 var _view_offsets_q: PackedInt32Array = PackedInt32Array()
@@ -378,6 +388,70 @@ func send_respawn_request(point_index: int) -> bool:
 	return true
 
 
+## Envía un mensaje de chat (CHAT_SEND, protocolo 5) por [param channel] ([enum ChatChannel.Id]). En un
+## susurro [param recipient] es el nombre del destinatario; en los demás canales se ignora. El texto se
+## sanea con [ChatText] antes de enviarlo (lo mismo que hará el servidor) y se recorta a sus límites.
+## Devuelve false, sin enviar nada, si no hay sesión en el mundo, el canal no se puede enviar, el texto
+## queda vacío o falta el destinatario de un susurro.
+func send_chat(channel: int, recipient: String, text: String) -> bool:
+	if _state != State.IN_WORLD or not ChatChannel.is_client_sendable(channel):
+		return false
+	var cleaned: String = ChatText.sanitize(text)
+	var target: String = ChatText.clean(recipient) if channel == ChatChannel.Id.WHISPER else ""
+	if cleaned.is_empty() or (channel == ChatChannel.Id.WHISPER and target.is_empty()):
+		return false
+	var message := NetMessages.ChatSend.new()
+	message.channel = channel
+	message.recipient = target
+	message.text = cleaned
+	if _transport.send(SERVER_PEER_ID, NetProtocol.CH_RELIABLE, message.encode()) != OK:
+		return false
+	_chat_sent += 1
+	return true
+
+
+## Invita a [param target_name], un jugador de tu reino, a tu grupo (PARTY_INVITE). El servidor decide y
+## contesta por el canal del sistema del chat. Devuelve false si no hay sesión en el mundo o el nombre no vale.
+func send_party_invite(target_name: String) -> bool:
+	return _send_party_target(NetProtocol.MSG_PARTY_INVITE, target_name)
+
+
+## Expulsa a [param target_name] del grupo (PARTY_KICK; solo vale si eres el líder).
+func send_party_kick(target_name: String) -> bool:
+	return _send_party_target(NetProtocol.MSG_PARTY_KICK, target_name)
+
+
+## Cede el mando del grupo a [param target_name] (PARTY_LEADER; solo vale si eres el líder).
+func send_party_leader(target_name: String) -> bool:
+	return _send_party_target(NetProtocol.MSG_PARTY_LEADER, target_name)
+
+
+## Acepta o rechaza la invitación de [param inviter] (PARTY_RESPONSE) y la quita de las pendientes. Devuelve
+## false si no hay sesión en el mundo o el nombre no vale.
+func send_party_response(inviter: String, accept: bool) -> bool:
+	var response := NetMessages.PartyResponse.new()
+	response.accept = accept
+	response.inviter = ChatText.clean(inviter)
+	var bytes: PackedByteArray = response.encode()
+	if _state != State.IN_WORLD or NetMessages.PartyResponse.decode(bytes) == null:
+		return false
+	if _transport.send(SERVER_PEER_ID, NetProtocol.CH_RELIABLE, bytes) != OK:
+		return false
+	_party_messages_sent += 1
+	_party.remove_invitation(inviter)
+	return true
+
+
+## Sale del grupo (PARTY_LEAVE). Devuelve false si no hay sesión en el mundo.
+func send_party_leave() -> bool:
+	if _state != State.IN_WORLD:
+		return false
+	if _transport.send(SERVER_PEER_ID, NetProtocol.CH_RELIABLE, NetMessages.PartyLeave.new().encode()) != OK:
+		return false
+	_party_messages_sent += 1
+	return true
+
+
 ## Vida del jugador local según el último snapshot reconciliado (vida máxima por defecto hasta que
 ## llega el primer bloque extra). La vida la decide el servidor: no se predice.
 func get_health() -> int:
@@ -479,6 +553,11 @@ func get_scoreboard() -> ScoreboardState:
 
 
 ## Nombre y reino de cada entidad vista (el marcador y los KILL solo llevan ids).
+## Lo que se sabe del grupo del jugador local: miembros, líder, estado a 2 Hz e invitaciones (SOC-06).
+func get_party() -> PartyState:
+	return _party
+
+
 func get_directory() -> PlayerDirectory:
 	return _directory
 
@@ -576,6 +655,9 @@ func get_last_notice_text() -> String:
 ## [code]war_events[/code] y [code]telegraphs[/code]: mensajes del protocolo 4 recibidos;
 ## [code]war_events_pending[/code] (avisos de guerra esperando a su tick de dibujo) y
 ## [code]fortress_hook_calls[/code] (veces que la predicción preguntó por la puerta).
+## [br]- [code]chat_sent[/code] y [code]chat_received[/code]: mensajes de chat enviados y recibidos.
+## [br]- [code]party_sent[/code] (peticiones de grupo enviadas) y [code]party_rosters[/code],
+## [code]party_statuses[/code] y [code]party_invitations[/code]: mensajes de grupo recibidos.
 func get_stats() -> Dictionary:
 	var prediction_stats: Dictionary = _prediction.get_stats()
 	# Las diferencias que aún esperan su evento cuentan ya, según lo que se sepa ahora.
@@ -641,6 +723,12 @@ func get_stats() -> Dictionary:
 		"scoreboards": _scoreboards_received,
 		"war_events": _war_events_received,
 		"telegraphs": _telegraphs_received,
+		"chat_sent": _chat_sent,
+		"chat_received": _chat_received,
+		"party_sent": _party_messages_sent,
+		"party_rosters": _party_rosters,
+		"party_statuses": _party_statuses,
+		"party_invitations": _party_invitations,
 		"war_events_pending": _war_queue.size(),
 		"fortress_hook_calls": int(_fortress_view.get_stats()["hook_calls"]),
 		"health": _health,
@@ -1021,10 +1109,23 @@ func _close_session(text: String) -> void:
 	_last_disconnect_text = text
 	_event_queue.clear()
 	_war_queue.clear()
+	_party.clear()
 	if is_instance_valid(_transport):
 		_transport.close()
 	set_physics_process(false)
 	disconnected.emit(text)
+
+
+# PARTY_INVITE, PARTY_KICK o PARTY_LEADER para [param target_name] (sin controles ni BBCode).
+func _send_party_target(msg_type: int, target_name: String) -> bool:
+	var request := NetMessages.PartyTargetRequest.make(msg_type, ChatText.clean(target_name))
+	var bytes: PackedByteArray = request.encode()
+	if _state != State.IN_WORLD or NetMessages.PartyTargetRequest.decode(bytes) == null:
+		return false
+	if _transport.send(SERVER_PEER_ID, NetProtocol.CH_RELIABLE, bytes) != OK:
+		return false
+	_party_messages_sent += 1
+	return true
 
 
 # --- Paquetes ---------------------------------------------------------------------------------
@@ -1056,6 +1157,34 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 			_on_object_state(bytes)
 		NetProtocol.MSG_SCOREBOARD:
 			_on_scoreboard(bytes)
+		NetProtocol.MSG_PARTY_ROSTER:
+			var roster: NetMessages.PartyRoster = NetMessages.PartyRoster.decode(bytes)
+			if roster == null:
+				_malformed_packets += 1
+			else:
+				_party_rosters += 1
+				_party.apply_roster(roster)
+		NetProtocol.MSG_PARTY_STATUS:
+			var party_status: NetMessages.PartyStatus = NetMessages.PartyStatus.decode(bytes)
+			if party_status == null:
+				_malformed_packets += 1
+			else:
+				_party_statuses += 1
+				_party.apply_status(party_status)
+		NetProtocol.MSG_PARTY_INVITATION:
+			var invitation: NetMessages.PartyInvitation = NetMessages.PartyInvitation.decode(bytes)
+			if invitation == null:
+				_malformed_packets += 1
+			else:
+				_party_invitations += 1
+				_party.apply_invitation(invitation)
+		NetProtocol.MSG_CHAT_MESSAGE:
+			var chat: NetMessages.ChatMessage = NetMessages.ChatMessage.decode(bytes)
+			if chat == null:
+				_malformed_packets += 1
+			else:
+				_chat_received += 1
+				chat_received.emit(chat)
 		_:
 			_malformed_packets += 1
 

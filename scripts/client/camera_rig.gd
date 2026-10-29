@@ -330,6 +330,21 @@ func set_ui_cursor_release(enabled: bool, holder: Object) -> void:
 	_refresh_mouse_mode()
 
 
+## true si algún elemento de la interfaz (una ventana, un diálogo, la pantalla de muerte, el mapa o la línea
+## del chat) tiene el cursor libre en este momento ([method set_ui_cursor_release]). No cuenta el cursor
+## que suelta el jugador a mano (Alt o Esc), ni el que pide [param ignored_holder] si se da.
+func is_ui_holding_cursor(ignored_holder: Object = null) -> bool:
+	if not _has_ui_cursor_holders():
+		return false
+	if ignored_holder == null:
+		return true
+	var ignored_key: int = ignored_holder.get_instance_id()
+	for key: int in _ui_cursor_holders.keys():
+		if key != ignored_key:
+			return true
+	return false
+
+
 # true si algún solicitante vivo sigue pidiendo el cursor libre. Descarta a los que se han liberado
 # sin avisar (su id de instancia ya no apunta a nada).
 func _has_ui_cursor_holders() -> bool:

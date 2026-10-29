@@ -316,7 +316,7 @@ cubre ±5,24 km, así que caben los 5 × 5 km de terreno de Eldrun.
 | sistema | interno de `SceneMultiplayer`, fiable | ambos | Autenticación: HELLO, WELCOME, REJECT |
 | 1 `CH_INPUT` | `TRANSFER_MODE_UNRELIABLE` (sin secuencia) | C→S | INPUT_BATCH. Sin secuencia a propósito: un paquete atrasado puede traer la única copia de una entrada |
 | 2 `CH_SNAPSHOT` | `TRANSFER_MODE_UNRELIABLE_ORDERED` (secuenciado) | S→C | SNAPSHOT. ENet descarta los atrasados |
-| 3 `CH_RELIABLE` | `TRANSFER_MODE_RELIABLE` | ambos | CLIENT_READY, CLIENT_LEAVE, DEBUG_COMMAND, RESPAWN_REQUEST, ENTITY_SPAWN, ENTITY_DESPAWN, ENTITY_EVENT y NOTICE; desde la fase 4, también UNSTUCK_REQUEST, OBJECT_STATE y SCOREBOARD |
+| 3 `CH_RELIABLE` | `TRANSFER_MODE_RELIABLE` | ambos | CLIENT_READY, CLIENT_LEAVE, DEBUG_COMMAND, RESPAWN_REQUEST, ENTITY_SPAWN, ENTITY_DESPAWN, ENTITY_EVENT y NOTICE; desde la fase 4, también UNSTUCK_REQUEST, OBJECT_STATE y SCOREBOARD, y desde el protocolo 5, CHAT_SEND, CHAT_MESSAGE y los PARTY_* |
 
 Reglas:
 
@@ -616,8 +616,19 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 | `0x30` | NOTICE | S→C | 3 | 3 B + texto |
 | `0x31` | HANDOFF (reservado, fase 6) | S→C | 3 | — |
 | `0x32` | SCOREBOARD (v3) | S→C | 3 | 4 B + 18 B por fila (hasta 66 filas por mensaje: ≤ 1192 B) |
+| `0x40` | CHAT_SEND (v5) | C→S | 3 | 5 B + destinatario + texto (≤ 821 B) |
+| `0x41` | CHAT_MESSAGE (v5) | S→C | 3 | 11 B + emisor + destinatario + texto (≤ 875 B) |
+| `0x48` | PARTY_INVITE (v5) | C→S | 3 | 2 B + nombre |
+| `0x49` | PARTY_RESPONSE (v5) | C→S | 3 | 3 B + nombre |
+| `0x4A` | PARTY_LEAVE (v5) | C→S | 3 | 1 B |
+| `0x4B` | PARTY_KICK (v5) | C→S | 3 | 2 B + nombre |
+| `0x4C` | PARTY_LEADER (v5) | C→S | 3 | 2 B + nombre |
+| `0x4D` | PARTY_INVITATION (v5) | S→C | 3 | 7 B + nombre |
+| `0x4E` | PARTY_ROSTER (v5) | S→C | 3 | 3 B + 3 B y nombre por miembro (≤ 258 B) |
+| `0x4F` | PARTY_STATUS (v5) | S→C | 3 | 2 B + 17 B por miembro (≤ 87 B), a 2 Hz |
 
 «v3» marca lo que añade el protocolo 3 (fase 4, [fuerte.md](fuerte.md#2-replicación-con-estado-object_state-gue-09)).
+«v5» marca lo que añade el protocolo 5 (chat y grupos, [social.md](social.md#12-implementación-fase-4)).
 El tamaño de un ENTITY_SPAWN depende de `kind` (ver 5.5).
 
 ### 5.3 Autenticación
@@ -627,7 +638,7 @@ El tamaño de un ENTITY_SPAWN depende de `kind` (ver 5.5).
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
 | 0 | u32 | magic | `0x4D444C45` |
-| 4 | u16 | protocol_version | `NetProtocol.PROTOCOL_VERSION` (= 4: 2 combate, 3 su revisión, 4 el fuerte) |
+| 4 | u16 | protocol_version | `NetProtocol.PROTOCOL_VERSION` (= 5: 2 combate, 3 su revisión, 4 el fuerte, 5 el chat y los grupos) |
 | 6 | u32 | sim_hash | ver [3](#3-conexión) |
 | 10 | u8 | realm | 0 ninguno (se rechaza), 1 Vardheim, 2 Solmarch, 3 Askarra |
 | 11 | u8 | flags | bit0 = bot; resto, 0 |
@@ -1179,6 +1190,7 @@ func _physics_process(delta: float) -> void:
 		_check_motion(entity, before)                        # |Δpos| > 1,5 m o y < -100
 	# Fase 3: acciones validadas contra StateHistory. Fase 4: PNJ, estructuras y captura.
 	_process_arrivals(s)            # READY pendientes: alta con el estado «tras s» (ver 3)
+	_social.step(s)                 # invitaciones caducadas y PARTY_STATUS (social.md 12.2 y 12.4)
 	_record_history(s)              # StateHistory.record() de todas las entidades
 	_snapshot_builder.begin(s, _registry.get_sorted())       # codifica cada registro una vez
 	_update_interest(s)             # cada peer, cada 6 ticks, escalonado por net_id
@@ -1190,8 +1202,13 @@ func _physics_process(delta: float) -> void:
 	tick_finished.emit(s)
 ```
 
+Es un esbozo de la fase 2: el orden normativo, con todos los pasos que se han ido sumando (cerebros de
+PNJ, combate, fuertes, PNJ, el paso social y las métricas por sección), es el de la cabecera de
+`scripts/server/zone_server.gd`.
+
 - **Envíos escalonados.** Cada cliente recibe su snapshot en los ticks de la paridad de su
-  `net_id`, así que el coste se reparte entre los dos ticks del intervalo.
+  `net_id`, así que el coste se reparte entre los dos ticks del intervalo. El PARTY_STATUS de cada grupo
+  sale igual, en su tick de los 30 del intervalo (`(tick + id del grupo) % 30 == 0`).
 - **Altas y bajas.**
   - Las altas van después de simular, así que la primera simulación de un jugador nuevo es la
     del tick `s + 1`, sin desfase de un tick.
@@ -1471,6 +1488,7 @@ El servidor nunca acepta estado del cliente, y todo valor decodificado está aco
 | Reino | Validado contra la zona. En la fase 2 lo declara el cliente (`DevAuthProvider`); desde la fase 5 sale del personaje (la reclamación de plataforma.md §5) y el campo de HELLO se ignora |
 | Rebobinado | Acotado por lo medido ([10](#10-historial-para-la-compensación-de-latencia)); el RTT que declara el cliente con sus acks se acota con el de ENet más el simulador del servidor + 3 ticks |
 | Comandos de depuración | Solo con `--debug-commands` |
+| Chat (protocolo 5) | Cada CHAT_SEND cuenta como un mensaje fiable más y además tiene sus cubos por peer, que gasta antes de sanear: decir, zona y grupo, 1 mensaje/s con ráfaga de 5; susurro, 1/s con ráfaga de 3 y 5 destinatarios nuevos por minuto; un texto igual al anterior en 10 s y al mismo sitio se descarta. Los diez primeros descartes de cada 600 ticks son gratis y cada uno de los siguientes suma un aviso: desde unos 6 mensajes por segundo sostenidos (el transporte deja pasar 10 sin avisos) se llega a la expulsión. Las invitaciones de grupo, igual. El servidor sanea el texto (también invisibles y marcas combinantes) y nunca manda a un cliente el de otro reino ([social.md](social.md#12-implementación-fase-4)) |
 
 **Crédito por parón.** Los limitadores cuentan en ticks del servidor, y el tick no avanza mientras
 el proceso está parado. Si el servidor pierde `k` ticks (un parón, una pausa de la máquina virtual;
@@ -1502,7 +1520,15 @@ REJECT). Ahora `ZoneServer._kick` apunta una entrada `_kick_until` de 30 s:
   crece más que las expulsiones de los últimos 30 s (`get_cooldown_count()`).
 - **Límite.** Es un freno, no un veto: el atacante con varias IP o con otro nombre desde loopback
   sigue entrando, y quien comparte IP con el expulsado (una red con NAT) espera los mismos 30 s. El
-  veto por cuenta llega con las fases 5 y 6.
+  veto por cuenta llega con las fases 5 y 6. Lo mismo vale para los cubos sociales (`ChatPeerState`):
+  son por conexión hasta la fase 5 ([social.md](social.md#127-decisiones-y-pendiente-de-la-fase-4)).
+
+**Nombres en el HELLO (fase 4).** Como el cliente elige el nombre, el `REJECT NAME` por un nombre que ya
+lleva alguien en la zona dice si ese nombre está conectado, sea del reino que sea; junto con el «no está
+conectado» del susurro delata a un enemigo. No se tapa en la fase 4 porque el cliente también elige su
+reino (`DevAuthProvider`) y puede entrar directamente en el del enemigo; desde la fase 5 el nombre y el
+reino salen del personaje del billete y ese rechazo desaparece (detalle en
+[social.md](social.md#127-decisiones-y-pendiente-de-la-fase-4)).
 
 **Fases 5 y 6:**
 
@@ -1787,6 +1813,11 @@ es de 0,1 ms de mediana: el cuello es `simulate()` (palanca 6).
   [8.1](#81-orden-del-tick) e interpoladas en el cliente.
 - **Avisos** («¡Vado Gris capturado!»): por NOTICE o ENTITY_EVENT, aplicados en el tick de
   dibujo.
+- **Chat y grupos** (protocolo 5, [social.md](social.md#12-implementación-fase-4)): CHAT_SEND y
+  CHAT_MESSAGE (`0x40` y `0x41`) por el canal fiable 3. Los reparte el `ChatRouter` del servicio social
+  (`scripts/server/social/`), que `ZoneServer` solo alimenta con los tipos `0x40` a `0x4F`. `NetClient`
+  decodifica los S→C (CHAT_MESSAGE y PARTY_*) y emite señales; `SwarmBot` los decodifica y los descarta sin
+  contarlos como mal formados ([social.md](social.md#12-implementación-fase-4), 12.7).
 
 ### Fases 5 y 6: cuentas y traspasos
 

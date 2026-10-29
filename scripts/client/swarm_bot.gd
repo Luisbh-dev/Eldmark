@@ -151,6 +151,9 @@ var _hit_events_seen: int = 0
 var _respawn_requests: int = 0
 var _last_respawn_request_tick: int = -1000
 var _dead: bool = false
+# CHAT_MESSAGE y PARTY_* bien formados que han llegado (se descartan).
+var _chat_messages_seen: int = 0
+var _party_messages_seen: int = 0
 var _malformed_packets: int = 0
 var _bytes_at_join: Dictionary = {}
 var _bytes_final: Dictionary = {}
@@ -282,6 +285,8 @@ func get_last_notice_text() -> String:
 ## [code]tick_sync_adjustments[/code], [code]resyncs[/code], [code]substitution_rises[/code],
 ## [code]substitutions[/code] (contador del servidor), [code]spawns_seen[/code], [code]despawns_seen[/code],
 ## [code]delay_ticks[/code], [code]jitter_ticks[/code], [code]malformed_packets[/code].
+## [br]- Del chat y los grupos (protocolo 5), que el bot decodifica y descarta: [code]chat_messages_seen[/code]
+## (CHAT_MESSAGE) y [code]party_messages_seen[/code] (PARTY_INVITATION, PARTY_ROSTER y PARTY_STATUS).
 ## [br]- Del combate: [code]combat[/code] (si pelea), [code]events_seen[/code] y [code]event_bytes[/code]
 ## (ENTITY_EVENT recibidos y su tamaño), [code]hit_events_seen[/code], [code]enemies_known[/code] (y su máximo, [code]enemies_known_max[/code]),
 ## [code]dead[/code] y [code]respawn_requests[/code].
@@ -344,6 +349,8 @@ func get_stats() -> Dictionary:
 		"delay_ticks": _interp_clock.get_delay_ticks(),
 		"jitter_ticks": _interp_clock.get_jitter_ticks(),
 		"malformed_packets": _malformed_packets,
+		"chat_messages_seen": _chat_messages_seen,
+		"party_messages_seen": _party_messages_seen,
 		"siege": _siege_mode,
 	}
 	if _siege_mode:
@@ -553,6 +560,29 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 		NetProtocol.MSG_SCOREBOARD:
 			if NetMessages.Scoreboard.decode(bytes) == null:
 				_malformed_packets += 1
+		# Chat y grupos (protocolo 5, docs/social.md 12.7): el servidor trata al bot como a un jugador, así
+		# que le llega la «zona» y el «decir» de su reino, los susurros y las invitaciones (con su aviso del
+		# sistema). No contesta a nada (una invitación caduca sola); solo los decodifica y los descarta.
+		NetProtocol.MSG_CHAT_MESSAGE:
+			if NetMessages.ChatMessage.decode(bytes) == null:
+				_malformed_packets += 1
+			else:
+				_chat_messages_seen += 1
+		NetProtocol.MSG_PARTY_INVITATION:
+			if NetMessages.PartyInvitation.decode(bytes) == null:
+				_malformed_packets += 1
+			else:
+				_party_messages_seen += 1
+		NetProtocol.MSG_PARTY_ROSTER:
+			if NetMessages.PartyRoster.decode(bytes) == null:
+				_malformed_packets += 1
+			else:
+				_party_messages_seen += 1
+		NetProtocol.MSG_PARTY_STATUS:
+			if NetMessages.PartyStatus.decode(bytes) == null:
+				_malformed_packets += 1
+			else:
+				_party_messages_seen += 1
 		_:
 			_malformed_packets += 1
 
