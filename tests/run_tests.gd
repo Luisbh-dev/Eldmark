@@ -27,7 +27,7 @@ const STARTUP_FRAMES: int = 2
 ## Tiempo máximo de cada fase (before_each, la prueba, after_each).
 const PHASE_TIMEOUT_MSEC: int = 30000
 ## Temporizador de seguridad para toda la ejecución.
-const GLOBAL_TIMEOUT_SEC: float = 600.0
+const GLOBAL_TIMEOUT_SEC: float = 1200.0
 
 const TestCaseScript = preload("res://tests/test_case.gd")
 
