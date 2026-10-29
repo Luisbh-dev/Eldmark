@@ -650,6 +650,95 @@ func test_kick_list_in_the_report_is_bounded_but_counts_every_kick() -> void:
 	assert_eq(int((kicks[0] as Dictionary).get("peer_id", 0)), 9015, "y la primera, la décima desde el final")
 
 
+## Expulsado un cliente (50 avisos), no puede volver en un RTT con los avisos a 0 y los cubos llenos
+## (hallazgo S6): durante el enfriamiento, su IP recibe un REJECT nada más conectar. Pasado el
+## enfriamiento, vuelve a entrar.
+func test_a_kicked_address_is_rejected_during_the_cooldown() -> void:
+	await _start_server()
+	_server.kick_cooldown_ticks = 240
+	var address: Array[String] = ["203.0.113.7"]
+	_server.remote_address_override = func(_peer_id: int, _address: String) -> String:
+		return address[0]
+	var abuser: RawClient = await _join("Ana")
+	if abuser == null:
+		return
+	for i: int in 120:
+		abuser.send_raw(NetProtocol.CH_RELIABLE, PackedByteArray([0x7F, i]))
+	var kicked: bool = await _run_until(func() -> bool:
+		return abuser.notice_with_code(NetProtocol.NoticeCode.KICK) != null)
+	if not assert_true(kicked, "el abusón es expulsado"):
+		return
+	await _run_until(func() -> bool: return _server.get_player_count() == 0)
+	assert_eq(_server.get_cooldown_count(), 1, "y su IP queda en enfriamiento")
+	# Vuelve al momento, con otro nombre: rechazado antes de autenticarse.
+	var again: RawClient = _connect_client(_hello(VARDHEIM, "Bruno"))
+	var rejected: bool = await _run_until(func() -> bool: return again.reject != null)
+	if assert_true(rejected, "la reconexión inmediata recibe un REJECT"):
+		assert_eq(again.reject.result, NetProtocol.Result.TOO_MANY_CONNECTIONS, "por exceso de conexiones")
+	assert_null(again.welcome, "sin WELCOME")
+	assert_eq(_server.get_player_count(), 0, "y no ocupa sitio")
+	# Otra IP no está afectada.
+	address[0] = "198.51.100.9"
+	var other: RawClient = await _join("Carla")
+	assert_not_null(other, "otra IP entra con normalidad")
+	# Pasado el enfriamiento, la IP del abusón vuelve a entrar.
+	address[0] = "203.0.113.7"
+	await _run_frames(260)
+	var back: RawClient = await _join("Diana")
+	assert_not_null(back, "pasado el enfriamiento, vuelve a entrar")
+	var rejects: Dictionary = _read_report().get("rejects", {})
+	assert_eq(int(rejects.get(NetProtocol.result_text(NetProtocol.Result.TOO_MANY_CONNECTIONS), 0)), 1,
+			"el informe cuenta el rechazo")
+
+
+## Desde loopback no hay tope por IP, así que el enfriamiento va por el nombre (sin mayúsculas ni
+## tildes, como el resto de la comprobación de nombres).
+func test_a_kicked_name_from_loopback_is_rejected_during_the_cooldown() -> void:
+	await _start_server()
+	_server.kick_cooldown_ticks = 240
+	var abuser: RawClient = await _join("Álvaro")
+	if abuser == null:
+		return
+	for i: int in 120:
+		abuser.send_raw(NetProtocol.CH_RELIABLE, PackedByteArray([0x7F, i]))
+	var kicked: bool = await _run_until(func() -> bool:
+		return abuser.notice_with_code(NetProtocol.NoticeCode.KICK) != null)
+	if not assert_true(kicked, "el abusón es expulsado"):
+		return
+	await _run_until(func() -> bool: return _server.get_player_count() == 0)
+	var again: RawClient = _connect_client(_hello(VARDHEIM, "ALVARO"))
+	var rejected: bool = await _run_until(func() -> bool: return again.reject != null)
+	if assert_true(rejected, "volver con el mismo nombre recibe un REJECT"):
+		assert_eq(again.reject.result, NetProtocol.Result.TOO_MANY_CONNECTIONS)
+	var other: RawClient = await _join("Bruno")
+	assert_not_null(other, "con otro nombre, desde loopback, se entra")
+	await _run_frames(260)
+	var back: RawClient = await _join("Alvaro")
+	assert_not_null(back, "pasado el enfriamiento, el nombre vuelve a estar libre")
+
+
+## Las entradas vencidas se purgan al siguiente alta de enfriamiento: el diccionario no crece sin
+## límite.
+func test_expired_cooldowns_are_purged() -> void:
+	await _start_server()
+	_server.kick_cooldown_ticks = 30
+	var address: Array[String] = ["203.0.113.1"]
+	_server.remote_address_override = func(_peer_id: int, _address: String) -> String:
+		return address[0]
+	for i: int in 4:
+		address[0] = "203.0.113.%d" % (1 + i)
+		_server_transport.peer_authenticating.emit(9100 + i)
+		for _j: int in 50:
+			_server_transport.packet_received.emit(9100 + i, NetMessages.ClientReady.new().encode())
+	assert_eq(_server.get_cooldown_count(), 4, "cuatro IP expulsadas")
+	await _run_frames(40)
+	address[0] = "203.0.113.50"
+	_server_transport.peer_authenticating.emit(9200)
+	for _j: int in 50:
+		_server_transport.packet_received.emit(9200, NetMessages.ClientReady.new().encode())
+	assert_eq(_server.get_cooldown_count(), 1, "las vencidas se purgan; solo queda la nueva")
+
+
 func test_debug_commands_need_the_flag() -> void:
 	await _start_server()
 	var client: RawClient = await _join("Ana")

@@ -1202,6 +1202,7 @@ El servidor nunca acepta estado del cliente, y todo valor decodificado está aco
 | Lotes | Ticks consecutivos por formato; `count` de 1 a 8 |
 | Limitador por peer (`RateLimiter`, en ticks) | No fiables: 2 por tick (120/s), ráfaga de 30. Fiables: 10/s, ráfaga de 20. Bytes: 16 KB/s, ráfaga de 4 KB. Lo que sobra se descarta y suma un aviso. Con crédito por parón (ver abajo) |
 | Avisos | Paquete malformado, tipo inesperado para el estado de la sesión o exceso de ritmo. 50 avisos en 600 ticks → NOTICE de expulsión y desconexión |
+| Enfriamiento tras una expulsión | 1800 ticks (30 s): su IP (las IPv6, por /64) o, desde loopback, su nombre normalizado reciben `REJECT TOO_MANY_CONNECTIONS` nada más conectar (o al llegar el HELLO, para el nombre) |
 | Conexiones por IP | 4 como mucho (`--max-per-ip`), salvo loopback, para que funcionen los bots locales. Se comprueba al conectar, no solo con el HELLO; las IPv6 cuentan por /64 ([3](#3-conexión)) |
 | HELLO a tiempo | 90 ticks desde que conecta; si no, se corta la conexión ([3](#3-conexión)) |
 | Reino | Validado contra la zona. En la fase 2 lo declara el cliente (`DevAuthProvider`); desde la fase 5 sale del personaje o del billete, y el campo de HELLO se ignora |
@@ -1222,6 +1223,22 @@ Límites: el crédito cubre lo que cabe en un poll (ENet entrega todo lo pendien
 un parón de varios segundos desborda de todos modos el búfer del sistema), y una ráfaga de red sin
 parón del servidor (un corte de Wi-Fi que entrega de golpe más de 30 lotes) sigue contando como
 exceso de ritmo.
+
+**Enfriamiento tras una expulsión (hallazgo S6).** Los avisos y los cubos viven en el `ServerPeer`,
+que se crea nuevo y lleno en cada conexión: un cliente expulsado volvía en un RTT con 0 avisos y las
+ráfagas llenas (medido: 10 expulsiones por segundo con el mismo nombre y la misma IP, sin ningún
+REJECT). Ahora `ZoneServer._kick` apunta una entrada `_kick_until` de 30 s:
+
+- **Clave.** `ip:<grupo>` (`ServerAuth.address_group`) si la IP no es loopback; si lo es (no hay tope
+  por IP), `name:<nombre normalizado>` con el nombre que ya había dado. Los kicks que no son culpa
+  del cliente («no queda sitio en la zona») no la apuntan.
+- **Dónde se comprueba.** La IP, en `peer_authenticating` (antes que el tope por IP); el nombre, al
+  llegar el HELLO. En los dos casos se contesta `REJECT TOO_MANY_CONNECTIONS` (un código que ya
+  existía: no sube `PROTOCOL_VERSION`).
+- **Purga.** Al apuntar una expulsión se borran las entradas vencidas, así que el diccionario no
+  crece más que las expulsiones de los últimos 30 s (`get_cooldown_count()`).
+- **Límite.** Es un freno, no un veto: el atacante con varias IP o con otro nombre desde loopback
+  sigue entrando. El veto por cuenta llega con las fases 5 y 6.
 
 **Fases 5 y 6:**
 

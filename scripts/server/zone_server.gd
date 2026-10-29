@@ -58,6 +58,9 @@ const LOADING_TIMEOUT_TICKS: int = 3600
 const STATE_LOG_FLUSH_TICKS: int = 60
 ## Cada cuántos ticks se escribe la línea de métricas en el registro (10 s).
 const METRICS_LOG_TICKS: int = 600
+## Ticks durante los que no puede volver a entrar quien ha sido expulsado (30 s): su IP o, desde
+## loopback, su nombre reciben un REJECT nada más conectar.
+const KICK_COOLDOWN_TICKS: int = 1800
 ## Ticks que un peer puede estar conectado sin enviar el HELLO (1,5 s). Mucho menos que los 5 s de
 ## la autenticación de [SceneMultiplayer]: una conexión ociosa ocupa una de las plazas de ENet.
 const HELLO_TIMEOUT_TICKS: int = 90
@@ -103,6 +106,9 @@ var loading_timeout_ticks: int = LOADING_TIMEOUT_TICKS
 ## Ticks que un peer puede estar conectado sin enviar el HELLO antes de que se le corte
 ## ([constant HELLO_TIMEOUT_TICKS] por defecto; las pruebas lo cambian).
 var hello_timeout_ticks: int = HELLO_TIMEOUT_TICKS
+## Ticks de enfriamiento tras una expulsión ([constant KICK_COOLDOWN_TICKS] por defecto; las pruebas
+## lo cambian).
+var kick_cooldown_ticks: int = KICK_COOLDOWN_TICKS
 ## Solo pruebas: si es válido, se le pasa [code](peer_id: int, address: String) -> String[/code] y
 ## devuelve la dirección con la que se trata al peer. Sirve para fingir que unos clientes de
 ## loopback vienen de una IP externa y así probar el tope de conexiones por IP, del que el loopback
@@ -160,6 +166,8 @@ var _strikes_total: int = 0
 var _strike_reasons: Dictionary[String, int] = {}
 var _kicks: Array[Dictionary] = []
 var _kicks_total: int = 0
+# Clave («ip:<grupo>» o «name:<nombre normalizado>») -> tick hasta el que no puede volver a entrar.
+var _kick_until: Dictionary[String, int] = {}
 var _rejects: Dictionary[String, int] = {}
 var _physics_errors: int = 0
 var _teleports: int = 0
@@ -421,6 +429,13 @@ func get_player_count() -> int:
 		if peer.state == ServerPeer.State.LOADING or peer.state == ServerPeer.State.IN_WORLD:
 			count += 1
 	return count
+
+
+## Entradas del enfriamiento tras expulsiones (vigentes o aún sin purgar). Se purgan al apuntar la
+## siguiente expulsión, así que el diccionario no crece más que las expulsiones de los últimos
+## [constant KICK_COOLDOWN_TICKS] ticks.
+func get_cooldown_count() -> int:
+	return _kick_until.size()
 
 
 ## Nombres de los jugadores presentes en la zona: los peers aceptados (cargando o ya dentro) y los
@@ -691,7 +706,7 @@ func _process_arrivals(s: int) -> void:
 			continue
 		var entity: NetEntity = _create_player(peer.display_name, peer.realm, peer_id, s)
 		if entity == null:
-			_kick(peer, "no queda sitio en la zona")
+			_kick(peer, "no queda sitio en la zona", false)
 			continue
 		peer.entity = entity
 		peer.input_queue = _queues[entity.net_id]
@@ -1044,6 +1059,12 @@ func _on_peer_authenticating(peer_id: int) -> void:
 		peer.remote_address = str(remote_address_override.call(peer_id, peer.remote_address))
 	peer.connected_tick = _tick
 	_peers[peer_id] = peer
+	# Quien ha sido expulsado hace poco no vuelve a entrar en un RTT con los avisos a 0 y los cubos
+	# llenos: su IP recibe un REJECT nada más conectar (se reutiliza TOO_MANY_CONNECTIONS para no
+	# subir PROTOCOL_VERSION).
+	if _is_cooling_down(_cooldown_key_for_address(peer.remote_address)):
+		_reject(peer, NetProtocol.Result.TOO_MANY_CONNECTIONS)
+		return
 	# El tope por IP se aplica ya al conectar, no solo al llegar el HELLO: una IP que abre conexiones
 	# sin mandar nada ocuparía todas las plazas de ENet y los clientes legítimos quedarían sin
 	# respuesta. Las que pasan del tope reciben un REJECT y se cortan.
@@ -1063,6 +1084,9 @@ func _on_auth_received(peer_id: int, bytes: PackedByteArray) -> void:
 	var hello: NetMessages.Hello = NetMessages.Hello.decode(bytes)
 	var result: int = NetProtocol.Result.MALFORMED
 	if hello != null:
+		if _is_cooling_down(_cooldown_key_for_name(peer.remote_address, hello.display_name)):
+			_reject(peer, NetProtocol.Result.TOO_MANY_CONNECTIONS)
+			return
 		result = _auth.validate(hello, peer.remote_address, get_player_count(),
 				_connections_from(peer))
 	if result != NetProtocol.Result.OK:
@@ -1206,10 +1230,13 @@ func _add_strike(peer: ServerPeer, reason: String) -> void:
 		_kick(peer, reason)
 
 
-# NOTICE de expulsión y corte ordenado. El motivo queda en el informe.
-func _kick(peer: ServerPeer, reason: String) -> void:
+# NOTICE de expulsión y corte ordenado. El motivo queda en el informe. Con [param cooldown], su IP (o,
+# desde loopback, su nombre) no puede volver a entrar durante kick_cooldown_ticks.
+func _kick(peer: ServerPeer, reason: String, cooldown: bool = true) -> void:
 	if peer.state == ServerPeer.State.LEAVING:
 		return
+	if cooldown:
+		_start_cooldown(peer)
 	var notice := NetMessages.Notice.new()
 	notice.code = NetProtocol.NoticeCode.KICK
 	notice.text = "Expulsado del servidor: %s" % reason
@@ -1229,6 +1256,38 @@ func _kick(peer: ServerPeer, reason: String) -> void:
 		record.kick_reason = reason
 	_log("Expulsión de %s (peer %d): %s" % [peer.display_name, peer.peer_id, reason])
 	_mark_leaving(peer)
+
+
+# Apunta el enfriamiento de un peer expulsado y purga los vencidos. Por IP (las IPv6, por /64) salvo
+# desde loopback, donde no hay tope por IP y se usa el nombre normalizado, si ya lo había dado.
+func _start_cooldown(peer: ServerPeer) -> void:
+	var key: String = _cooldown_key_for_address(peer.remote_address)
+	if key.is_empty():
+		key = _cooldown_key_for_name(peer.remote_address, peer.display_name)
+	if key.is_empty():
+		return
+	for old_key: String in _kick_until.keys():
+		if _kick_until[old_key] <= _tick:
+			_kick_until.erase(old_key)
+	_kick_until[key] = _tick + kick_cooldown_ticks
+
+
+# Clave de enfriamiento por dirección, o vacía si es loopback o no se conoce.
+func _cooldown_key_for_address(address: String) -> String:
+	if address.is_empty() or ServerAuth.is_loopback(address):
+		return ""
+	return "ip:" + ServerAuth.address_group(address)
+
+
+# Clave de enfriamiento por nombre: solo desde loopback, que no tiene tope por IP.
+func _cooldown_key_for_name(address: String, display_name: String) -> String:
+	if display_name.is_empty() or not ServerAuth.is_loopback(address):
+		return ""
+	return "name:" + NameRules.normalize_key(display_name)
+
+
+func _is_cooling_down(key: String) -> bool:
+	return not key.is_empty() and _kick_until.get(key, 0) > _tick
 
 
 func _mark_leaving(peer: ServerPeer) -> void:
