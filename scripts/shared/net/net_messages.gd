@@ -1328,6 +1328,362 @@ class ChatMessage:
 		return message
 
 
+## PARTY_INVITE, PARTY_KICK y PARTY_LEADER (C→S, canal 3, protocolo 5): 2 B + nombre. Piden al servidor
+## invitar a un jugador de tu reino, expulsar a un miembro del grupo o cederle el liderazgo
+## (docs/social.md, sección 12.4).
+## [br][br]
+## [code]u8 type, u8 name_len[/code] y el nombre del jugador (UTF-8, de 1 a [constant NetProtocol.MAX_NAME_BYTES]
+## B y [constant NetProtocol.MAX_NAME_CHARS] caracteres), tal como lo escribió quien manda: el servidor lo
+## busca sin distinguir mayúsculas ni tildes. [member type] es el tipo de mensaje.
+## [br][br]
+## [method decode] devuelve null si el tipo no es uno de los tres, el tamaño no cuadra, el nombre está vacío
+## o es demasiado largo, o no es UTF-8 válido.
+class PartyTargetRequest:
+	const HEADER_SIZE: int = 2
+
+	## [constant NetProtocol.MSG_PARTY_INVITE], [constant NetProtocol.MSG_PARTY_KICK] o
+	## [constant NetProtocol.MSG_PARTY_LEADER].
+	var type: int = NetProtocol.MSG_PARTY_INVITE
+	var target: String = ""
+
+
+	static func make(message_type: int, target_name: String) -> PartyTargetRequest:
+		var request := PartyTargetRequest.new()
+		request.type = message_type
+		request.target = target_name
+		return request
+
+
+	static func is_request_type(message_type: int) -> bool:
+		return message_type == NetProtocol.MSG_PARTY_INVITE or message_type == NetProtocol.MSG_PARTY_KICK \
+				or message_type == NetProtocol.MSG_PARTY_LEADER
+
+
+	func encode() -> PackedByteArray:
+		var name_bytes: PackedByteArray = NetMessages.utf8_limited(
+				target.substr(0, NetProtocol.MAX_NAME_CHARS), NetProtocol.MAX_NAME_BYTES)
+		var bytes := PackedByteArray()
+		bytes.resize(HEADER_SIZE + name_bytes.size())
+		bytes.encode_u8(0, type & 0xFF)
+		bytes.encode_u8(1, name_bytes.size())
+		for i: int in name_bytes.size():
+			bytes[HEADER_SIZE + i] = name_bytes[i]
+		return bytes
+
+
+	static func decode(bytes: PackedByteArray) -> PartyTargetRequest:
+		var size: int = bytes.size()
+		if size < HEADER_SIZE or not is_request_type(bytes[0]):
+			return null
+		var name_len: int = bytes[1]
+		if name_len < 1 or name_len > NetProtocol.MAX_NAME_BYTES or size != HEADER_SIZE + name_len:
+			return null
+		if not NetMessages.is_valid_utf8(bytes, HEADER_SIZE, name_len):
+			return null
+		var request := PartyTargetRequest.new()
+		request.type = bytes[0]
+		request.target = NetMessages.read_text(bytes, HEADER_SIZE, name_len)
+		if request.target.length() > NetProtocol.MAX_NAME_CHARS:
+			return null
+		return request
+
+
+## PARTY_RESPONSE (C→S, canal 3, protocolo 5): 3 B + nombre. Acepta o rechaza la invitación de [member
+## inviter] (docs/social.md, sección 12.4).
+## [br][br]
+## [code]u8 type, u8 accept, u8 name_len[/code] y el nombre de quien invitó. [member accept] es 1 (aceptar) o 0
+## (rechazar). [method decode] devuelve null si el tamaño no cuadra, [code]accept[/code] no es 0 ni 1, el nombre
+## está vacío o es demasiado largo, o no es UTF-8 válido.
+class PartyResponse:
+	const HEADER_SIZE: int = 3
+
+	var accept: bool = false
+	var inviter: String = ""
+
+
+	func encode() -> PackedByteArray:
+		var name_bytes: PackedByteArray = NetMessages.utf8_limited(
+				inviter.substr(0, NetProtocol.MAX_NAME_CHARS), NetProtocol.MAX_NAME_BYTES)
+		var bytes := PackedByteArray()
+		bytes.resize(HEADER_SIZE + name_bytes.size())
+		bytes.encode_u8(0, NetProtocol.MSG_PARTY_RESPONSE)
+		bytes.encode_u8(1, 1 if accept else 0)
+		bytes.encode_u8(2, name_bytes.size())
+		for i: int in name_bytes.size():
+			bytes[HEADER_SIZE + i] = name_bytes[i]
+		return bytes
+
+
+	static func decode(bytes: PackedByteArray) -> PartyResponse:
+		var size: int = bytes.size()
+		if size < HEADER_SIZE or bytes[0] != NetProtocol.MSG_PARTY_RESPONSE or bytes[1] > 1:
+			return null
+		var name_len: int = bytes[2]
+		if name_len < 1 or name_len > NetProtocol.MAX_NAME_BYTES or size != HEADER_SIZE + name_len:
+			return null
+		if not NetMessages.is_valid_utf8(bytes, HEADER_SIZE, name_len):
+			return null
+		var response := PartyResponse.new()
+		response.accept = bytes[1] == 1
+		response.inviter = NetMessages.read_text(bytes, HEADER_SIZE, name_len)
+		if response.inviter.length() > NetProtocol.MAX_NAME_CHARS:
+			return null
+		return response
+
+
+## PARTY_LEAVE (C→S, canal 3, protocolo 5): 1 B. El jugador sale de su grupo.
+class PartyLeave:
+	const SIZE: int = 1
+
+
+	func encode() -> PackedByteArray:
+		return PackedByteArray([NetProtocol.MSG_PARTY_LEAVE])
+
+
+	static func decode(bytes: PackedByteArray) -> PartyLeave:
+		if bytes.size() != SIZE or bytes[0] != NetProtocol.MSG_PARTY_LEAVE:
+			return null
+		return PartyLeave.new()
+
+
+## PARTY_INVITATION (S→C, canal 3, protocolo 5): 7 B + nombre. Una invitación al grupo de [member inviter]:
+## recién recibida, caducada o cancelada (docs/social.md, sección 12.4).
+## [br][br]
+## [code]u8 type, u8 state, u32 tick, u8 name_len[/code] y el nombre canónico de quien invitó. Con
+## [constant State.OFFERED], [member tick] es el tick del servidor en el que caduca; con los demás estados,
+## en el que dejó de valer. El cliente enseña el aviso con aceptar y rechazar mientras vale y lo quita con
+## [constant State.EXPIRED] o [constant State.CANCELLED].
+## [br][br]
+## [method decode] devuelve null si el tamaño no cuadra, el estado no existe o el nombre está vacío, es demasiado
+## largo o no es UTF-8 válido.
+class PartyInvitation:
+	const HEADER_SIZE: int = 7
+
+	enum State {
+		## Invitación nueva: el aviso se enseña hasta [member tick].
+		OFFERED = 0,
+		## Ha caducado (60 s sin responder).
+		EXPIRED = 1,
+		## Ya no vale: se ha respondido, o quien invitó ha salido o se ha ido.
+		CANCELLED = 2,
+	}
+
+	var state: int = State.OFFERED
+	var tick: int = 0
+	var inviter: String = ""
+
+
+	func encode() -> PackedByteArray:
+		var name_bytes: PackedByteArray = NetMessages.utf8_limited(inviter, NetProtocol.MAX_NAME_BYTES)
+		var bytes := PackedByteArray()
+		bytes.resize(HEADER_SIZE + name_bytes.size())
+		bytes.encode_u8(0, NetProtocol.MSG_PARTY_INVITATION)
+		bytes.encode_u8(1, state & 0xFF)
+		bytes.encode_u32(2, tick & 0xFFFFFFFF)
+		bytes.encode_u8(6, name_bytes.size())
+		for i: int in name_bytes.size():
+			bytes[HEADER_SIZE + i] = name_bytes[i]
+		return bytes
+
+
+	static func decode(bytes: PackedByteArray) -> PartyInvitation:
+		var size: int = bytes.size()
+		if size < HEADER_SIZE or bytes[0] != NetProtocol.MSG_PARTY_INVITATION or bytes[1] > State.CANCELLED:
+			return null
+		var name_len: int = bytes[6]
+		if name_len < 1 or name_len > NetProtocol.MAX_NAME_BYTES or size != HEADER_SIZE + name_len:
+			return null
+		if not NetMessages.is_valid_utf8(bytes, HEADER_SIZE, name_len):
+			return null
+		var invitation := PartyInvitation.new()
+		invitation.state = bytes[1]
+		invitation.tick = bytes.decode_u32(2)
+		invitation.inviter = NetMessages.read_text(bytes, HEADER_SIZE, name_len)
+		return invitation
+
+
+## PARTY_ROSTER (S→C, canal 3, protocolo 5): 3 B + 3 B y nombre por miembro (≤ 258 B). La lista de miembros del
+## grupo del jugador, en el orden en que se unieron, con quién lleva el mando; el servidor la manda cada vez
+## que cambia (entra o sale alguien, cambia el líder) y, con [member members] vacío, cuando el jugador deja de
+## estar en un grupo (docs/social.md, sección 12.4).
+## [br][br]
+## [code]u8 type, u8 count, u8 leader_index[/code] (de 0 a [constant NetProtocol.PARTY_MAX_SIZE]) y, por
+## miembro, [code]u16 net_id, u8 name_len[/code] y el nombre (UTF-8). [member leader_index] es la posición del
+## líder en la lista (0 si no hay grupo).
+## [br][br]
+## [method decode] devuelve null si el tamaño no cuadra, hay más de [constant NetProtocol.PARTY_MAX_SIZE]
+## miembros, el líder no es uno de ellos, un nombre está vacío o es demasiado largo o no es UTF-8 válido, o un
+## net_id se repite.
+class PartyRoster:
+	const HEADER_SIZE: int = 3
+	const MEMBER_HEADER_SIZE: int = 3
+
+	## Un miembro: su id de red y su nombre.
+	class Member:
+		var net_id: int = 0
+		var display_name: String = ""
+
+		static func make(player_id: int, player_name: String) -> Member:
+			var member := Member.new()
+			member.net_id = player_id
+			member.display_name = player_name
+			return member
+
+	var leader_index: int = 0
+	var members: Array[Member] = []
+
+
+	func is_empty() -> bool:
+		return members.is_empty()
+
+
+	## net_id del líder (0 si no hay grupo).
+	func get_leader_id() -> int:
+		if leader_index < 0 or leader_index >= members.size():
+			return 0
+		return members[leader_index].net_id
+
+
+	func encode() -> PackedByteArray:
+		var count: int = mini(members.size(), NetProtocol.PARTY_MAX_SIZE)
+		var bytes := PackedByteArray()
+		bytes.resize(HEADER_SIZE)
+		bytes.encode_u8(0, NetProtocol.MSG_PARTY_ROSTER)
+		bytes.encode_u8(1, count)
+		bytes.encode_u8(2, leader_index & 0xFF)
+		for i: int in count:
+			var member: Member = members[i]
+			var name_bytes: PackedByteArray = NetMessages.utf8_limited(member.display_name,
+					NetProtocol.MAX_NAME_BYTES)
+			var offset: int = bytes.size()
+			bytes.resize(offset + MEMBER_HEADER_SIZE + name_bytes.size())
+			bytes.encode_u16(offset, member.net_id & 0xFFFF)
+			bytes.encode_u8(offset + 2, name_bytes.size())
+			for k: int in name_bytes.size():
+				bytes[offset + MEMBER_HEADER_SIZE + k] = name_bytes[k]
+		return bytes
+
+
+	static func decode(bytes: PackedByteArray) -> PartyRoster:
+		var size: int = bytes.size()
+		if size < HEADER_SIZE or bytes[0] != NetProtocol.MSG_PARTY_ROSTER:
+			return null
+		var count: int = bytes[1]
+		var leader: int = bytes[2]
+		if count > NetProtocol.PARTY_MAX_SIZE or (count == 0 and leader != 0) \
+				or (count > 0 and leader >= count):
+			return null
+		var roster := PartyRoster.new()
+		roster.leader_index = leader
+		var offset: int = HEADER_SIZE
+		var seen: Dictionary = {}
+		for _i: int in count:
+			if offset + MEMBER_HEADER_SIZE > size:
+				return null
+			var net_id: int = bytes.decode_u16(offset)
+			var name_len: int = bytes[offset + 2]
+			if name_len < 1 or name_len > NetProtocol.MAX_NAME_BYTES \
+					or offset + MEMBER_HEADER_SIZE + name_len > size or seen.has(net_id):
+				return null
+			if not NetMessages.is_valid_utf8(bytes, offset + MEMBER_HEADER_SIZE, name_len):
+				return null
+			seen[net_id] = true
+			roster.members.append(Member.make(net_id,
+					NetMessages.read_text(bytes, offset + MEMBER_HEADER_SIZE, name_len)))
+			offset += MEMBER_HEADER_SIZE + name_len
+		if offset != size:
+			return null
+		return roster
+
+
+## PARTY_STATUS (S→C, canal 3, protocolo 5): 2 B + 17 B por miembro (≤ 87 B). El estado compacto de los
+## miembros del grupo, que el servidor manda a 2 Hz a todos los miembros aunque estén fuera del radio de
+## interés de los demás (docs/social.md, sección 12.4; docs/red.md, sección 9).
+## [br][br]
+## [code]u8 type, u8 count[/code] y, por miembro, [code]u16 net_id, u8 health_q, u8 stamina_q, u8 status, f32 x,
+## f32 y, f32 z[/code]. [member MemberStatus.health_q] es la vida cuantizada del registro del snapshot
+## ([method EntityRecord.quantize_health]: 0 muerto, de 1 a 255 vivo), [member MemberStatus.stamina_q] la
+## resistencia en 255 pasos y [member MemberStatus.status] los bits [constant STATUS_IN_COMBAT],
+## [constant STATUS_PROTECTED] y [constant STATUS_DEAD].
+## [br][br]
+## [method decode] devuelve null si el tamaño no cuadra, hay más de [constant NetProtocol.PARTY_MAX_SIZE]
+## miembros, un bit de estado es desconocido, una posición no es finita o un net_id se repite.
+class PartyStatus:
+	const HEADER_SIZE: int = 2
+	const MEMBER_SIZE: int = 17
+	## Bits de estado válidos.
+	const VALID_STATUS: int = STATUS_IN_COMBAT | STATUS_PROTECTED | STATUS_DEAD
+
+	## El estado de un miembro.
+	class MemberStatus:
+		var net_id: int = 0
+		var health_q: int = 0
+		var stamina_q: int = 0
+		var status: int = 0
+		var position: Vector3 = Vector3.ZERO
+
+		static func make(player_id: int, quantized_health: int, quantized_stamina: int,
+				status_bits: int, world_position: Vector3) -> MemberStatus:
+			var member := MemberStatus.new()
+			member.net_id = player_id
+			member.health_q = quantized_health
+			member.stamina_q = quantized_stamina
+			member.status = status_bits
+			member.position = world_position
+			return member
+
+		func is_dead() -> bool:
+			return (status & STATUS_DEAD) != 0
+
+	var members: Array[MemberStatus] = []
+
+
+	func encoded_size() -> int:
+		return HEADER_SIZE + MEMBER_SIZE * mini(members.size(), NetProtocol.PARTY_MAX_SIZE)
+
+
+	func encode() -> PackedByteArray:
+		var count: int = mini(members.size(), NetProtocol.PARTY_MAX_SIZE)
+		var bytes := PackedByteArray()
+		bytes.resize(encoded_size())
+		bytes.encode_u8(0, NetProtocol.MSG_PARTY_STATUS)
+		bytes.encode_u8(1, count)
+		for i: int in count:
+			var member: MemberStatus = members[i]
+			var offset: int = HEADER_SIZE + MEMBER_SIZE * i
+			bytes.encode_u16(offset, member.net_id & 0xFFFF)
+			bytes.encode_u8(offset + 2, clampi(member.health_q, 0, 255))
+			bytes.encode_u8(offset + 3, clampi(member.stamina_q, 0, 255))
+			bytes.encode_u8(offset + 4, member.status & VALID_STATUS)
+			bytes.encode_float(offset + 5, member.position.x)
+			bytes.encode_float(offset + 9, member.position.y)
+			bytes.encode_float(offset + 13, member.position.z)
+		return bytes
+
+
+	static func decode(bytes: PackedByteArray) -> PartyStatus:
+		var size: int = bytes.size()
+		if size < HEADER_SIZE or bytes[0] != NetProtocol.MSG_PARTY_STATUS:
+			return null
+		var count: int = bytes[1]
+		if count > NetProtocol.PARTY_MAX_SIZE or size != HEADER_SIZE + MEMBER_SIZE * count:
+			return null
+		var status := PartyStatus.new()
+		var seen: Dictionary = {}
+		for i: int in count:
+			var offset: int = HEADER_SIZE + MEMBER_SIZE * i
+			var net_id: int = bytes.decode_u16(offset)
+			var status_bits: int = bytes[offset + 4]
+			var position := Vector3(bytes.decode_float(offset + 5), bytes.decode_float(offset + 9),
+					bytes.decode_float(offset + 13))
+			if (status_bits & ~VALID_STATUS) != 0 or not position.is_finite() or seen.has(net_id):
+				return null
+			seen[net_id] = true
+			status.members.append(MemberStatus.make(net_id, bytes[offset + 2], bytes[offset + 3],
+					status_bits, position))
+		return status
+
+
 ## OBJECT_STATE (S→C, canal 3): 8 B + campos (docs/fuerte.md, sección 2). El estado replicado de un
 ## objeto que no es un jugador ni un PNJ, hoy el de una fortaleza.
 ## [br][br]

@@ -417,3 +417,54 @@ enviarlo (el servidor lo vuelve a sanear) y un texto vacío tras sanear no se en
 **Pendiente del usuario.** Colores de los canales, medidas de la caja (560 x 236, abajo a la izquierda),
 tiempos de desvanecimiento y los textos de los avisos son provisionales (ART-12); también si la caja debe
 atenuarse con la pantalla de muerte (hoy no) y qué tecla debe abrir el chat en el menú de controles.
+
+### 12.4 Grupos: protocolo y servidor (SOC-06)
+
+Ocho tipos nuevos, del `0x48` al `0x4F`, por el canal fiable 3 (los atiende el `SocialService`, que ya tenía el
+rango `0x40`–`0x4F`). `NetProtocol.PARTY_MAX_SIZE` (5) es la constante compartida del tope de miembros; el
+resto de reglas están en `PartyRules` (shared).
+
+| Tipo | Mensaje | Sentido | Formato |
+|---|---|---|---|
+| `0x48` | PARTY_INVITE | C→S | `u8 type, u8 name_len` + nombre (UTF-8, 1 a 48 B y 24 caracteres) |
+| `0x49` | PARTY_RESPONSE | C→S | `u8 type, u8 accept (0 o 1), u8 name_len` + nombre de quien invitó |
+| `0x4A` | PARTY_LEAVE | C→S | `u8 type` (1 B) |
+| `0x4B` | PARTY_KICK | C→S | como PARTY_INVITE |
+| `0x4C` | PARTY_LEADER | C→S | como PARTY_INVITE |
+| `0x4D` | PARTY_INVITATION | S→C | `u8 type, u8 state (0 nueva, 1 caducada, 2 cancelada), u32 tick, u8 name_len` + nombre canónico; con `state` 0, `tick` es cuándo caduca |
+| `0x4E` | PARTY_ROSTER | S→C | `u8 type, u8 count (0 a 5), u8 leader_index` y, por miembro, `u16 net_id, u8 name_len` + nombre (≤ 258 B); `count` 0 = «ya no estás en un grupo» |
+| `0x4F` | PARTY_STATUS | S→C | `u8 type, u8 count` y, por miembro, `u16 net_id, u8 health_q, u8 stamina_q, u8 status, f32 x, f32 y, f32 z` (17 B por miembro, ≤ 87 B) |
+
+`health_q` es la vida cuantizada de los snapshots (0 muerto, de 1 a 255 vivo), `stamina_q` la resistencia en 255
+pasos y `status` los bits `STATUS_IN_COMBAT`, `STATUS_PROTECTED` y `STATUS_DEAD`. `decode` devuelve `null` si el
+tamaño no cuadra, hay más de 5 miembros, un id de red se repite, el líder no está en la lista, un nombre está
+vacío o no es UTF-8 válido, un bit de estado es desconocido o una posición no es finita.
+
+**Reglas** (`PartyManager`, en `scripts/server/social/`):
+
+- Un grupo es de 5 como mucho y **solo del mismo reino**. Invitar a un enemigo, o a quien no existe, contesta
+  lo mismo que un susurro («no está conectado»), no avisa al invitado y no deja ninguna invitación.
+- Cualquier miembro puede invitar; solo el líder expulsa (`/expulsar`) y cede el mando (`/lider`). El primero
+  en invitar crea el grupo cuando el invitado acepta, y es su líder.
+- Una invitación caduca a los 3600 ticks (60 s); cada jugador puede tener como mucho 5 enviadas a la vez, y
+  aceptar una cancela las demás que tuviera el aceptante. Invitar tiene su cubo (1 cada 2 s, ráfaga de 3): lo
+  descartado avisa («Invitas demasiado rápido.») y uno de cada cinco suma un aviso del peer.
+- Si el líder sale o se desconecta, hereda el mando el siguiente más antiguo; un grupo que se queda en uno se
+  disuelve. Aceptar una invitación a un grupo que se llenó entretanto contesta «El grupo está completo.».
+- Cada resultado llega al jugador como un mensaje del canal del sistema del chat; la interfaz recibe además
+  PARTY_INVITATION y PARTY_ROSTER cuando cambian.
+- **Estado a 2 Hz.** Cada 30 ticks (`PartyRules.STATUS_INTERVAL_TICKS`) el servidor manda un PARTY_STATUS a cada
+  miembro con la vida, la resistencia, los bits de estado y la posición de todos, estén donde estén: no pasa
+  por la política de interés de los snapshots, así que un miembro a 250 m y fuera del radio de interés sigue
+  apareciendo (la prueba usa una política de 100 m y un miembro a 210 m).
+- Canal de grupo del chat (`/g`): los miembros, esté donde esté cada uno; el enrutador vuelve a filtrar por
+  reino a quien le da el `PartyManager`.
+
+**Fuera de alcance de la fase 4** (SOC-22): el grupo no sobrevive a una desconexión ni cruza zonas; el servidor
+no guarda nada. Cuando alguien se desconecta, sale del grupo.
+
+**Pruebas.** `test_party_messages` (formatos a mano, corruptos, truncados en cada longitud y fuzz),
+`test_party_manager` (sin red: todos los flujos, topes, enemigo, líder heredado, estado a 2 Hz, canal de
+grupo) y `test_party_loopback` (con ENet y bots: invitar, aceptar, rechazar, caducar, expulsar, ceder el mando,
+salir y desconectarse, la invitación a un enemigo rechazada sin que se entere, y el estado de un miembro fuera
+del radio de interés).

@@ -80,6 +80,21 @@ const MSG_SCOREBOARD: int = 0x32
 const MSG_CHAT_SEND: int = 0x40
 ## Mensaje de chat repartido por el servidor (S→C, protocolo 5): canal, emisor, destinatario y texto.
 const MSG_CHAT_MESSAGE: int = 0x41
+## Grupos (protocolo 5, SOC-06). C→S: invitar a un jugador de tu reino, responder a una invitación, salir,
+## expulsar a un miembro y ceder el liderazgo.
+const MSG_PARTY_INVITE: int = 0x48
+const MSG_PARTY_RESPONSE: int = 0x49
+const MSG_PARTY_LEAVE: int = 0x4A
+const MSG_PARTY_KICK: int = 0x4B
+const MSG_PARTY_LEADER: int = 0x4C
+## Grupos (S→C): una invitación recibida o que deja de valer, la lista de miembros (cuando cambia) y el
+## estado compacto de los miembros (vida, resistencia y posición, a 2 Hz).
+const MSG_PARTY_INVITATION: int = 0x4D
+const MSG_PARTY_ROSTER: int = 0x4E
+const MSG_PARTY_STATUS: int = 0x4F
+## Miembros como mucho de un grupo (docs/social.md, sección 3). El grupo es del mismo reino y la lista de
+## miembros y el estado compacto caben siempre en un paquete.
+const PARTY_MAX_SIZE: int = 5
 
 # Comandos de depuración (byte 1 de un DEBUG_COMMAND, solo con --debug-commands). Los ids son
 # fijos: no se reutilizan ni se reordenan (docs/combate.md, sección 6).
@@ -149,7 +164,9 @@ static func channel_for_type(msg_type: int) -> int:
 		MSG_SNAPSHOT:
 			return CH_SNAPSHOT
 		MSG_ENTITY_EVENT, MSG_RESPAWN_REQUEST, MSG_UNSTUCK_REQUEST, MSG_OBJECT_STATE, \
-				MSG_SCOREBOARD, MSG_CHAT_SEND, MSG_CHAT_MESSAGE:
+				MSG_SCOREBOARD, MSG_CHAT_SEND, MSG_CHAT_MESSAGE, MSG_PARTY_INVITE, MSG_PARTY_RESPONSE, \
+				MSG_PARTY_LEAVE, MSG_PARTY_KICK, MSG_PARTY_LEADER, MSG_PARTY_INVITATION, \
+				MSG_PARTY_ROSTER, MSG_PARTY_STATUS:
 			return CH_RELIABLE
 	return CH_RELIABLE
 

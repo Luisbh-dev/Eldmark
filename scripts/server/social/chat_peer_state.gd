@@ -1,8 +1,8 @@
 class_name ChatPeerState
 extends RefCounted
-## Estado de chat de una conexión (docs/social.md, secciones 5 y 12): los cubos de fichas de los ritmos de
-## [ChatRouter], el último mensaje (para descartar repeticiones), cuántos se han descartado y a quién ha
-## susurrado hace poco.
+## Estado social de una conexión (docs/social.md, secciones 5 y 12): los cubos de fichas de los ritmos de
+## [ChatRouter] y [PartyManager], el último mensaje (para descartar repeticiones), cuántos se han descartado
+## y a quién ha susurrado hace poco.
 ## [br][br]
 ## Vive en el [ServerPeer], así que nace lleno con cada conexión y se va con ella. No lee ningún reloj:
 ## todo se mide en ticks del servidor.
@@ -17,11 +17,18 @@ const WHISPER_BURST: float = 3.0
 ## Destinatarios nuevos de susurro por tick: 5 por minuto.
 const NEW_RECIPIENT_RATE_PER_TICK: float = 5.0 / 3600.0
 const NEW_RECIPIENT_BURST: float = 5.0
+## Invitaciones de grupo por tick (1 cada 2 s) y ráfaga (docs/social.md, sección 5).
+const INVITE_RATE_PER_TICK: float = 1.0 / 120.0
+const INVITE_BURST: float = 3.0
 
 var limiter_public: RateLimiter = RateLimiter.new(PUBLIC_RATE_PER_TICK, PUBLIC_BURST)
 var limiter_whisper: RateLimiter = RateLimiter.new(WHISPER_RATE_PER_TICK, WHISPER_BURST)
 var limiter_new_recipients: RateLimiter = RateLimiter.new(NEW_RECIPIENT_RATE_PER_TICK,
 		NEW_RECIPIENT_BURST)
+## Cubo de las invitaciones de grupo que envía ([PartyManager]) y las que se le han descartado por ritmo
+## (cada quinta suma un aviso del peer).
+var limiter_invites: RateLimiter = RateLimiter.new(INVITE_RATE_PER_TICK, INVITE_BURST)
+var invite_discards: int = 0
 ## Último texto aceptado y tick en el que se aceptó (para el descarte de repeticiones).
 var last_text: String = ""
 var last_text_tick: int = -1

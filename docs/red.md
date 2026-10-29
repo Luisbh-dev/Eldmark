@@ -617,6 +617,14 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 | `0x32` | SCOREBOARD (v3) | S→C | 3 | 4 B + 18 B por fila (hasta 66 filas por mensaje: ≤ 1192 B) |
 | `0x40` | CHAT_SEND (v5) | C→S | 3 | 5 B + destinatario + texto (≤ 821 B) |
 | `0x41` | CHAT_MESSAGE (v5) | S→C | 3 | 11 B + emisor + destinatario + texto (≤ 875 B) |
+| `0x48` | PARTY_INVITE (v5) | C→S | 3 | 2 B + nombre |
+| `0x49` | PARTY_RESPONSE (v5) | C→S | 3 | 3 B + nombre |
+| `0x4A` | PARTY_LEAVE (v5) | C→S | 3 | 1 B |
+| `0x4B` | PARTY_KICK (v5) | C→S | 3 | 2 B + nombre |
+| `0x4C` | PARTY_LEADER (v5) | C→S | 3 | 2 B + nombre |
+| `0x4D` | PARTY_INVITATION (v5) | S→C | 3 | 7 B + nombre |
+| `0x4E` | PARTY_ROSTER (v5) | S→C | 3 | 3 B + 3 B y nombre por miembro (≤ 258 B) |
+| `0x4F` | PARTY_STATUS (v5) | S→C | 3 | 2 B + 17 B por miembro (≤ 87 B), a 2 Hz |
 
 «v3» marca lo que añade el protocolo 3 (fase 4, [fuerte.md](fuerte.md#2-replicación-con-estado-object_state-gue-09)).
 «v5» marca lo que añade el protocolo 5 (chat y grupos, [social.md](social.md#12-implementación-fase-4)).

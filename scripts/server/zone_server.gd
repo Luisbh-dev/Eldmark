@@ -901,6 +901,7 @@ func _physics_process(delta: float) -> void:
 	_check_shutdown_countdown(s)
 
 	_process_arrivals(s)
+	_social.step(s)
 
 	_metrics.begin_section(&"history")
 	_record_history(s)
@@ -1175,6 +1176,7 @@ func _process_departures(s: int) -> void:
 			continue
 		_peers.erase(peer_id)
 		_rtt.erase(peer_id)
+		_social.on_peer_left(peer, s)
 		if peer.entity == null:
 			continue
 		var entity: NetEntity = peer.entity
