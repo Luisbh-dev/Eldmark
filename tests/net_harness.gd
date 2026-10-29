@@ -217,6 +217,18 @@ static func launch_script(script_path: String, user_args: PackedStringArray, log
 	return OS.create_process(OS.get_executable_path(), args)
 
 
+## Líneas del registro de Godot [param log_path] de otro proceso que contienen un error del motor o de
+## un script. El ejecutor solo captura los errores de su propio proceso: una prueba que lanza
+## procesos tiene que mirar el registro de [b]cada uno[/b] (servidor, bots, el servidor que lanza
+## [code]--local[/code]...) para que un error en ellos haga fallar la prueba.
+static func error_lines(log_path: String) -> PackedStringArray:
+	var found := PackedStringArray()
+	for line: String in FileAccess.get_file_as_string(log_path).split("\n"):
+		if line.contains("ERROR") or line.contains("SCRIPT ERROR"):
+			found.append(line)
+	return found
+
+
 ## Informe JSON escrito por un proceso (o [method NetClient.write_report]). Un diccionario vacío
 ## si el archivo no existe o no es JSON.
 static func read_report(path: String) -> Dictionary:

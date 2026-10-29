@@ -107,6 +107,19 @@ func test_make_world_viewport_has_its_own_physics_world_and_zone() -> void:
 	assert_eq(Zones.get_spawn_points(NetHarness.get_world(first), &"solmarch").size(), 1)
 
 
+func test_error_lines_finds_engine_and_script_errors_in_a_log() -> void:
+	var path: String = NetHarness.build_path("test_harness_errors.log")
+	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
+	file.store_string("Godot Engine\nWARNING: solo un aviso\nERROR: algo falló\n   at: f (x.cpp:1)\n"
+			+ "SCRIPT ERROR: Parse Error: otro\nfin\n")
+	file.close()
+	var found: PackedStringArray = NetHarness.error_lines(path)
+	assert_eq(found, PackedStringArray(["ERROR: algo falló", "SCRIPT ERROR: Parse Error: otro"]))
+	assert_eq(NetHarness.error_lines(NetHarness.build_path("test_harness_no_existe.log")), PackedStringArray(),
+			"un registro que no existe no tiene errores")
+	DirAccess.remove_absolute(path)
+
+
 func test_read_report_survives_missing_and_broken_files() -> void:
 	var dir: String = NetHarness.get_build_dir()
 	assert_eq(NetHarness.read_report(dir.path_join("no_existe.json")), {})
@@ -179,5 +192,9 @@ func test_server_and_bot_processes_play_together_and_write_their_reports() -> vo
 	assert_true(int(bot.get("matches", 0)) > 50, "predicción exacta entre procesos")
 	assert_eq(int(bot.get("unexplained_diffs", -1)), 0, "sin diferencias sin explicar")
 	assert_true(bool(bot.get("final", {}).get("exact", false)))
+	assert_eq(NetHarness.error_lines(NetHarness.build_path("test_harness_server.log")), PackedStringArray(),
+			"sin errores en el registro del servidor")
+	assert_eq(NetHarness.error_lines(NetHarness.build_path("test_harness_bot.log")), PackedStringArray(),
+			"ni en el del bot")
 	for path: String in [server_report, bot_report]:
 		DirAccess.remove_absolute(path)

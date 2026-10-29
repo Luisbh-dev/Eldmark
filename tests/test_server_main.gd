@@ -79,11 +79,7 @@ func _read_report(path: String) -> Dictionary:
 
 ## Líneas del registro del proceso que contienen errores del motor o de scripts.
 func _error_lines(log_path: String) -> PackedStringArray:
-	var found := PackedStringArray()
-	for line: String in FileAccess.get_file_as_string(log_path).split("\n"):
-		if line.contains("ERROR") or line.contains("SCRIPT ERROR"):
-			found.append(line)
-	return found
+	return NetHarness.error_lines(log_path)
 
 
 # --- Pruebas ----------------------------------------------------------------------------------

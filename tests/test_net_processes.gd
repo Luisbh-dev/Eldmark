@@ -152,11 +152,7 @@ func _wait_for(condition: Callable, started_msec: int) -> bool:
 
 ## Líneas del registro del proceso que contienen errores del motor o de scripts.
 func _error_lines(log_path: String) -> PackedStringArray:
-	var found := PackedStringArray()
-	for line: String in FileAccess.get_file_as_string(log_path).split("\n"):
-		if line.contains("ERROR") or line.contains("SCRIPT ERROR"):
-			found.append(line)
-	return found
+	return NetHarness.error_lines(log_path)
 
 
 ## Ficha del servidor del jugador con ese net_id (vacía si no existe).
@@ -179,6 +175,7 @@ func _compare(scenario: Dictionary, bot: Dictionary) -> StateLogComparer.Result:
 func _assert_honest_bot(scenario: Dictionary, bot: Dictionary, label: String) -> void:
 	var report: Dictionary = bot["data"]
 	assert_eq(bot["exit"], 0, "%s: código de salida 0" % label)
+	assert_eq(_error_lines(bot["log"]), PackedStringArray(), "%s: sin errores en su registro" % label)
 	assert_eq(report.get("state"), "IN_WORLD", "%s: estaba jugando al terminar" % label)
 	assert_eq(int(report.get("unexplained_diffs", -1)), 0, "%s: sin diferencias sin explicar" % label)
 	assert_eq(int(report.get("malformed_packets", -1)), 0, "%s: sin paquetes mal formados" % label)
@@ -221,7 +218,6 @@ func test_two_bots_predict_exactly_across_processes_on_the_real_zone() -> void:
 		assert_eq(int(report.get("corrections", -1)), 0, "bot %d: ni una corrección" % (i + 1))
 		assert_true(bool((report.get("final", {}) as Dictionary).get("exact", false)),
 				"bot %d: su estado final es el del servidor" % (i + 1))
-		assert_eq(_error_lines(bot["log"]), PackedStringArray(), "bot %d: sin errores en su registro" % (i + 1))
 
 
 func test_bots_with_a_network_simulator_converge_exactly_without_hard_resyncs() -> void:
@@ -238,6 +234,7 @@ func test_bots_with_a_network_simulator_converge_exactly_without_hard_resyncs() 
 		var report: Dictionary = bot["data"]
 		var label: String = "bot %d" % (i + 1)
 		assert_eq(bot["exit"], 0, "%s: código de salida 0" % label)
+		assert_eq(_error_lines(bot["log"]), PackedStringArray(), "%s: sin errores en su registro" % label)
 		assert_eq(report.get("net_sim"), "rtt=120,jitter=20,loss=5", "%s: lleva el simulador" % label)
 		assert_true(bool((report.get("final", {}) as Dictionary).get("exact", false)),
 				"%s: convergencia final exacta (quieto los últimos ticks)" % label)
@@ -270,6 +267,8 @@ func _assert_honest_side_untouched(scenario: Dictionary) -> void:
 	var server: Dictionary = scenario["server"]
 	assert_eq(server["exit"], 0, "el servidor sale con 0")
 	assert_eq(_error_lines(server["log"]), PackedStringArray(), "sin errores en el registro del servidor")
+	assert_eq(_error_lines(scenario["bots"][1]["log"]), PackedStringArray(),
+			"el tramposo tampoco registra errores (el rechazo y la expulsión no son errores del motor)")
 	assert_eq(int((server["data"] as Dictionary).get("physics_errors", -1)), 0, "ni errores de física")
 	_assert_honest_bot(scenario, scenario["bots"][0], "bot honrado")
 	var honest_id: int = int((scenario["bots"][0]["data"] as Dictionary).get("net_id", 0))

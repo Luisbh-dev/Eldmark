@@ -374,6 +374,10 @@ func test_local_client_process_launches_the_server_and_connects() -> void:
 	assert_eq(int(lock.get("port", 0)), port, "el bloqueo propio apunta al servidor lanzado")
 	assert_true(LocalServerLauncher.find_running(port, lock_path), "y el cliente no lo cerró al irse")
 	assert_true(FileAccess.file_exists(server_log), "con su registro junto al bloqueo")
+	# El ejecutor solo ve los errores de su proceso: se miran los registros del cliente y del servidor.
+	assert_eq(NetHarness.error_lines(NetHarness.build_path("test_local_mode_client.log")),
+			PackedStringArray(), "sin errores en el registro del cliente")
+	assert_eq(NetHarness.error_lines(server_log), PackedStringArray(), "ni en el del servidor lanzado")
 	if int(lock.get("port", 0)) == port:
 		OS.kill(int(lock["pid"]))
 		for _i: int in 40:
