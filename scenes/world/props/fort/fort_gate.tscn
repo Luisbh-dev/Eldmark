@@ -9,12 +9,10 @@
 size = Vector3(0.5, 4.3, 4)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_5ch6p"]
-size = Vector3(0.18, 4.3, 2)
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_5ko73"]
-size = Vector3(0.18, 4.3, 2)
+size = Vector3(0.5, 4.3, 4)
 
 [node name="FortGate" type="StaticBody3D" unique_id=1135077895 groups=["fort_gate"]]
+collision_layer = 112
 collision_mask = 0
 script = ExtResource("1_u4jrj")
 
@@ -34,8 +32,10 @@ surface_material_override/1 = ExtResource("4_wmk3l")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.15, 0)
 shape = SubResource("BoxShape3D_m3onq")
 
-[node name="ColisionHoja1" type="CollisionShape3D" parent="." unique_id=1823095336]
-shape = SubResource("BoxShape3D_5ch6p")
+[node name="Vista" type="StaticBody3D" parent="." unique_id=1156680900]
+collision_layer = 8
+collision_mask = 0
 
-[node name="ColisionHoja2" type="CollisionShape3D" parent="." unique_id=1480978059]
-shape = SubResource("BoxShape3D_5ko73")
+[node name="ColisionVista" type="CollisionShape3D" parent="Vista" unique_id=551198130]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.15, 0)
+shape = SubResource("BoxShape3D_5ch6p")

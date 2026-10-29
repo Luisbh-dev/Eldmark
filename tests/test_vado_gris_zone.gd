@@ -5,7 +5,7 @@ extends TestCase
 ## Comprueban que la escena carga sin errores, que los dos reinos tienen puntos de aparición
 ## mirando al fuerte, que un PlayerCharacter soltado en cada uno aterriza sobre el terreno y
 ## puede correr 5 m, que los tableros de los puentes están libres de colisiones ajenas y se
-## cruzan por cualquier carril, que la puerta del fuerte deja pasar, que cada árbol o roca de
+## cruzan por cualquier carril, que la puerta del fuerte se guarda cerrada, que cada árbol o roca de
 ## juego del instanciador tiene su colisión y que el servidor puede quitar la capa visual. Las
 ## rutas completas (puente, vado e interior del fuerte) y la equidad entre reinos las comprueba
 ## tools/terrain/verify_vado_gris_routes.gd, que tarda más.
@@ -250,8 +250,11 @@ func test_bridge_lanes_are_walkable() -> void:
 				% [runner["name"], character.global_position.snapped(Vector3.ONE * 0.01)])
 
 
-## La puerta del fuerte está abierta hasta la fase 4: un personaje entra desde la explanada.
-func test_fort_gate_is_open() -> void:
+## La puerta del fuerte se guarda cerrada (docs/fuerte.md, sección 3.1) y con dos cuerpos: el de
+## movimiento (capas de reino 5 a 7) y el de vista (capa 4). Un personaje sin capa de reino en su
+## máscara (el modo sin red, que no la pone) no la nota y entra por el vano desde la explanada; con
+## capa de reino la puerta neutral lo para (test_fort_gate_collision.gd).
+func test_fort_gate_is_closed_by_default() -> void:
 	if not assert_not_null(_zone, "la zona debe instanciarse"):
 		return
 	var gates: Array[Node] = []
@@ -260,13 +263,21 @@ func test_fort_gate_is_open() -> void:
 			gates.append(node)
 	if not assert_eq(gates.size(), 1, "una puerta del fuerte"):
 		return
-	var gate: Node = gates[0]
-	assert_true(bool(gate.get(&"open")), "la puerta se guarda abierta")
+	var gate: FortGate = gates[0] as FortGate
+	if not assert_not_null(gate, "es un FortGate"):
+		return
+	assert_false(gate.is_broken(), "la puerta está entera")
+	assert_eq(gate.get_owner_realm(), 0, "y es neutral")
+	assert_eq(gate.collision_layer, FortGate.layers_for(0, false), "su cuerpo de movimiento para a los tres reinos")
+	assert_eq(gate.get_view_body().collision_layer, PlayerCharacter.STRUCTURE_LAYER, "y su cuerpo de vista está en la capa 4")
+	assert_eq(gate.collision_layer & PlayerCharacter.WORLD_COLLISION_LAYER, 0, "ya no está en la capa del mundo")
 	var closed_shape: CollisionShape3D = gate.get_node(^"ColisionCerrada") as CollisionShape3D
-	assert_true(closed_shape.disabled, "abierta, su colisión de cierre está desactivada")
+	assert_false(closed_shape.disabled, "la forma que cierra el vano está activa")
 	var character: PlayerCharacter = (load(CHARACTER_SCENE_PATH) as PackedScene).instantiate() as PlayerCharacter
 	_zone.add_child(character)
 	await wait_physics_frames()
+	assert_eq(character.collision_mask, PlayerCharacter.WORLD_COLLISION_LAYER | PlayerCharacter.PLAYER_BLOCKER_LAYER,
+			"sin set_realm_collision() no mira las capas de reino")
 	var ground: Dictionary = _raycast_down(Vector3(-26.0, 0.0, 0.0))
 	var state := PlayerState.new()
 	state.position = (ground["position"] as Vector3) + Vector3(0.0, 0.05, 0.0)
@@ -279,10 +290,6 @@ func test_fort_gate_is_open() -> void:
 			break
 		await wait_physics_frames()
 	assert_true(character.global_position.x > -14.0, "cruza el vano de la puerta (llega a x = %.1f)" % character.global_position.x)
-	# Cerrada, vuelve a bloquear.
-	gate.set(&"open", false)
-	assert_false(closed_shape.disabled, "cerrada, la colisión de cierre se activa")
-	gate.set(&"open", true)
 
 
 ## Cada árbol o roca de juego del instanciador de Terrain3D (solo visual) dentro del área jugable

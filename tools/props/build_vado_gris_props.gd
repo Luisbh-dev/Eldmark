@@ -148,12 +148,15 @@ static func _side_yaw(side: int) -> float:
 
 ## Puerta de madera del fuerte: dos hojas de tablones verticales (textura de tablas del Castle
 ## Wall Kit) con tres flejes de hierro, cuadradas hasta el dintel. Es un nodo aparte (grupo
-## "fort_gate", script FortGate) porque en la fase 4 tendrá vida y se romperá a golpes; ahora se
-## guarda abierta (ver scripts/world/fort_gate.gd). Origen: centro del vano a ras de suelo.
+## "fort_gate", script FortGate) porque tiene vida y se rompe a golpes. Se guarda cerrada y con dos
+## cuerpos (docs/fuerte.md, sección 3.1; ver scripts/world/fort_gate.gd): el propio nodo es el de
+## movimiento (capas de reino 5 a 7, las tres porque el fuerte nace neutral) y "Vista" es el de
+## vista (capa 4 de estructuras), que ven la cámara y la línea de visión de los golpes. Origen:
+## centro del vano a ras de suelo.
 func _build_fort_gate() -> void:
 	var root := StaticBody3D.new()
 	root.name = "FortGate"
-	root.collision_layer = WORLD_LAYER
+	root.collision_layer = FortGate.layers_for(0, false)
 	root.collision_mask = 0
 	root.set_script(FORT_GATE_SCRIPT)
 	root.add_to_group(&"fort_gate", true)
@@ -167,10 +170,15 @@ func _build_fort_gate() -> void:
 		# La malla va de la bisagra hacia +Z: la hoja sur es la misma girada 180°.
 		leaf.transform = Transform3D(Basis(Vector3.UP, 0.0 if i == 0 else PI), Vector3(0, 0, -GATE_HALF_WIDTH if i == 0 else GATE_HALF_WIDTH))
 		root.add_child(leaf)
-	_box(root, "ColisionCerrada", Vector3(0.5, GATE_LEAF_HEIGHT, GATE_HALF_WIDTH * 2.0), Vector3(0, GATE_LEAF_HEIGHT * 0.5, 0))
-	for i: int in 2:
-		_box(root, "ColisionHoja%d" % (i + 1), Vector3(0.18, GATE_LEAF_HEIGHT, GATE_HALF_WIDTH), Vector3.ZERO)
-	root.set(&"open", true)
+	var gate_size: Vector3 = Vector3(0.5, GATE_LEAF_HEIGHT, GATE_HALF_WIDTH * 2.0)
+	var gate_center: Vector3 = Vector3(0, GATE_LEAF_HEIGHT * 0.5, 0)
+	_box(root, "ColisionCerrada", gate_size, gate_center)
+	var view := StaticBody3D.new()
+	view.name = "Vista"
+	view.collision_layer = PlayerCharacter.STRUCTURE_LAYER
+	view.collision_mask = 0
+	root.add_child(view)
+	_box(view, "ColisionVista", gate_size, gate_center)
 	_save(root, PROPS_DIR.path_join("fort/fort_gate.tscn"))
 
 
@@ -468,13 +476,64 @@ func _build_fort() -> void:
 	captain.name = "CaptainSpawn"
 	captain.position = Vector3(-6.0, 0.05, 4.0)
 	root.add_child(captain)
+	var guard_corners: Array[Vector2] = [Vector2(-14, -14), Vector2(-14, 14), Vector2(12, -12), Vector2(12, 12)]
 	for i: int in 4:
 		var guard := Marker3D.new()
 		guard.name = "GuardSpawn%d" % (i + 1)
-		var corner: Vector2 = [Vector2(-14, -14), Vector2(-14, 14), Vector2(12, -12), Vector2(12, 12)][i]
-		guard.position = Vector3(corner.x, 0.05, corner.y)
+		guard.position = Vector3(guard_corners[i].x, 0.05, guard_corners[i].y)
 		root.add_child(guard)
+	_add_fort_npc_markers(root, guard_corners, captain.position)
 	_save(root, PROPS_DIR.path_join("fort/vado_gris_fort.tscn"))
+
+
+## Marcadores de los PNJ del fuerte (docs/fuerte.md, sección 4.3), solo datos para el servidor:
+## [br]- Rutas de patrulla de los Huecos (grupo patrol_points, metadato route): del patio por la
+## rampa a la pasarela y por ella hacia la puerta, una por el norte y otra por el sur (reflejo).
+## [br]- Un generador (NpcSpawner) por Hueco en cada GuardSpawn, activo con el fuerte neutral; los
+## dos del este (junto a las rampas) patrullan, los dos de la puerta se quedan.
+## [br]- El generador del Capitán del Vado en el CaptainSpawn (dentro del círculo de captura).
+## Todos miran a la puerta (oeste, -X).
+func _add_fort_npc_markers(root: Node3D, guard_corners: Array[Vector2], captain_position: Vector3) -> void:
+	var walkway_y: float = WALKWAY_HEIGHT + 0.05
+	var walkway_z: float = FORT_HALF - LOG_RADIUS - WALKWAY_WIDTH * 0.5
+	for side: String in ["North", "South"]:
+		var z_side: float = -1.0 if side == "North" else 1.0
+		var points: Array[Vector3] = [
+			Vector3(7.0, 0.05, z_side * 7.0),
+			Vector3(7.0, walkway_y, z_side * walkway_z),
+			Vector3(-12.0, walkway_y, z_side * walkway_z),
+		]
+		for i: int in points.size():
+			var marker := Marker3D.new()
+			marker.name = "Patrol%s%d" % [side, i + 1]
+			marker.position = points[i]
+			marker.set_meta(&"route", StringName("hollow_" + side.to_lower()))
+			marker.add_to_group(&"patrol_points", true)
+			root.add_child(marker)
+	var facing: Basis = Basis(Vector3.UP, PI * 0.5)
+	for i: int in guard_corners.size():
+		var spawner := NpcSpawner.new()
+		spawner.name = "HollowSpawner%d" % (i + 1)
+		spawner.transform = Transform3D(facing, Vector3(guard_corners[i].x, 0.05, guard_corners[i].y))
+		spawner.npc_id = &"hollow"
+		spawner.max_alive = 1
+		spawner.respawn_s = 0.0
+		spawner.alert_group = &"vado_gris_hollows"
+		spawner.condition = NpcSpawner.Condition.FORT_NEUTRAL
+		if i >= 2:
+			spawner.patrol_route = &"hollow_north" if guard_corners[i].y < 0.0 else &"hollow_south"
+		spawner.add_to_group(&"npc_spawners", true)
+		root.add_child(spawner)
+	var captain_spawner := NpcSpawner.new()
+	captain_spawner.name = "FordCaptainSpawner"
+	captain_spawner.transform = Transform3D(facing, captain_position)
+	captain_spawner.npc_id = &"ford_captain"
+	captain_spawner.max_alive = 1
+	captain_spawner.respawn_s = 0.0
+	captain_spawner.alert_group = &"vado_gris_hollows"
+	captain_spawner.condition = NpcSpawner.Condition.FORT_NEUTRAL
+	captain_spawner.add_to_group(&"npc_spawners", true)
+	root.add_child(captain_spawner)
 
 
 # =============================================================================================

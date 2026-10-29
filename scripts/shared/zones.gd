@@ -54,6 +54,22 @@ const SAFE_AREA_DEFAULT_RADIUS: float = 24.0
 const LETHAL_GROUP: StringName = &"lethal_volumes"
 ## Grupo de los puntos donde el servidor coloca un maniquí de entrenamiento al arrancar la zona.
 const DUMMY_GROUP: StringName = &"dummy_points"
+## Grupo de las fortalezas de una zona (docs/fuerte.md, sección 1.6): el nodo de cada fuerte, con el
+## metadato [constant FORTRESS_DEFINITION_META] y como hijos sus marcadores ([code]CaptureCircle[/code],
+## [code]CaptainSpawn[/code], [code]GuardSpawn1[/code]..4, [code]FortGate[/code], los estandartes...).
+const FORTRESS_GROUP: StringName = &"fortresses"
+## Metadato de una fortaleza con la ruta de su [code]FortressDefinition[/code] (.tres).
+const FORTRESS_DEFINITION_META: StringName = &"definition"
+## Metadato de un punto de reaparición del interior de un fuerte con el id de su fortaleza (el
+## [code]id[/code] de su definición). Los puntos de los campamentos llevan [constant REALM_META].
+const FORTRESS_META: StringName = &"fortress"
+## Grupo de los generadores de PNJ ([NpcSpawner]).
+const NPC_SPAWNER_GROUP: StringName = &"npc_spawners"
+## Grupo de los marcadores de las rutas de patrulla de los PNJ: [Marker3D] con el metadato
+## [constant PATROL_ROUTE_META], en el orden de la escena dentro de cada ruta.
+const PATROL_GROUP: StringName = &"patrol_points"
+## Metadato con el id de la ruta de un marcador de patrulla.
+const PATROL_ROUTE_META: StringName = &"route"
 
 
 ## true si [param zone_id] es una zona registrada.

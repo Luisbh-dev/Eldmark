@@ -4,8 +4,9 @@ extends SceneTree
 ## esprintar), por el puente y por el vado hasta la puerta del fuerte. Imprime metros y segundos
 ## de cada ruta y falla si el personaje se atasca o si las dos facciones difieren más de un 3 %.
 ## Además cruza cada puente por los carriles x = -1,5, 0 y 1,5 en los dos sentidos, recorre el
-## interior del fuerte (puerta abierta, rampa norte y sur, pasarela hasta encima de la puerta) y
-## comprueba que el cauce profundo no se puede recorrer desde el vado.
+## interior del fuerte (rampa norte y sur, pasarela hasta encima de la puerta; la puerta cerrada no
+## lo para porque el personaje no lleva capa de reino en la máscara) y comprueba que el cauce
+## profundo no se puede recorrer desde el vado.
 ##
 ## Uso (sin ventana; --fixed-fps hace que la física vaya tan rápido como pueda):
 ## [codeblock]
@@ -35,10 +36,11 @@ const BLOCKED_CROSSINGS: Array[Array] = [
 ]
 ## Carriles de los puentes que deben cruzarse en los dos sentidos.
 const BRIDGE_LANES: Array[float] = [-1.5, 0.0, 1.5]
-## Interior del fuerte (la puerta se guarda abierta): explanada, puerta, patio, rampa norte,
-## pasarela norte y oeste hasta encima de la puerta. La del sur es el reflejo. Los puntos van
-## por el eje de la rampa y de la pasarela (que no tiene barandilla por dentro): se recorre con
-## un alcance de [constant FORT_REACH] m para no recortar las esquinas y caerse al patio.
+## Interior del fuerte (el personaje de la prueba no lleva capa de reino y cruza la puerta cerrada):
+## explanada, puerta, patio, rampa norte, pasarela norte y oeste hasta encima de la puerta. La del
+## sur es el reflejo. Los puntos van por el eje de la rampa y de la pasarela (que no tiene
+## barandilla por dentro): se recorre con un alcance de [constant FORT_REACH] m para no recortar
+## las esquinas y caerse al patio.
 const FORT_ROUTE: Array[Vector2] = [
 	Vector2(-26, 0), Vector2(-15, 0), Vector2(-6, -6), Vector2(7, -5), Vector2(7, -18.77),
 	Vector2(-18.77, -18.77), Vector2(-18.77, -1.0),

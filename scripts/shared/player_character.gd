@@ -22,6 +22,15 @@ const CHARACTER_COLLISION_LAYER: int = 1 << 1
 ## Capa de los bloqueos invisibles que solo paran a los personajes (capa 3): límites del área
 ## jugable, orillas profundas, pretiles de los puentes. La cámara y los disparos no la miran.
 const PLAYER_BLOCKER_LAYER: int = 1 << 2
+## Capa de las estructuras (capa 4): el cuerpo de vista de la puerta del fuerte. Entra en la línea
+## de visión de los golpes ([constant HitShapes.LINE_OF_SIGHT_MASK]), en la máscara del brazo de la
+## cámara y en el horneado de la navegación, pero no en la máscara del personaje: parar el
+## movimiento es cosa de las capas de reino (docs/fuerte.md, sección 3.1).
+const STRUCTURE_LAYER: int = 1 << 3
+## Posición del bit de la capa del primer reino (docs/fuerte.md, sección 3.1): la capa 5 es la de
+## Vardheim (código de reino 1), la 6 la de Solmarch y la 7 la de Askarra.
+## Véase [method realm_layer].
+const REALM_LAYER_BASE: int = 4
 ## Longitud mínima del deseo de movimiento para girar el personaje hacia la cámara.
 const FACING_MIN_WISH: float = 0.1
 ## Velocidad del sondeo hacia arriba con el que se reinicia el estado de suelo tras set_state().
@@ -117,6 +126,15 @@ func _ready() -> void:
 	# Respeta una rotación asignada antes de entrar en el árbol (por ejemplo, la del punto de
 	# aparición) y deja la base del nodo limpia (solo yaw, escala 1).
 	yaw = rotation.y
+
+
+## Máscara de la capa de movimiento del reino [param realm_code] (código de red de
+## [RealmCatalog]: 1 Vardheim, 2 Solmarch, 3 Askarra): [code]1 << (REALM_LAYER_BASE + código - 1)[/code].
+## 0 para el bando neutral (código 0, los Huecos) y para cualquier código que no sea un reino.
+static func realm_layer(realm_code: int) -> int:
+	if realm_code < 1 or realm_code > 3:
+		return 0
+	return 1 << (REALM_LAYER_BASE + realm_code - 1)
 
 
 ## Avanza la simulación un tick con la entrada dada. Determinista: no lee Input, tiempo,
