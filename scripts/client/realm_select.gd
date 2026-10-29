@@ -15,6 +15,13 @@ extends Control
 ## [br][br]
 ## En modo [code]--local[/code] la dirección es siempre la de esta máquina: [method set_address_editable]
 ## desactiva ese campo.
+## [br][br]
+## [b]Recuento por reino (GUE-42, docs/fuerte.md sección 7).[/b] [method set_realm_counts] enseña bajo cada botón
+## cuántos jugadores tiene su reino en la zona (el recuento que el servidor manda en el WELCOME) y marca el
+## reino con menos jugadores como recomendado ([method get_recommended_realm]) para repartir la batalla. El
+## WELCOME solo llega al conectar, así que el recuento es el de la última conexión (y no hay ninguno antes de
+## la primera). Si el servidor rechaza el reino elegido por desequilibrio (REJECT 9, [constant
+## NetProtocol.Result.IMBALANCE]) [method set_rejected_realm] lo quita de la elección y lo deja marcado.
 
 ## Se emite al pulsar «Entrar» con todo válido: [param realm] es un código de
 ## [enum NetProtocol.Realm], [param address] el texto del campo de dirección
@@ -30,6 +37,17 @@ const REALMS: Array[int] = [
 ]
 const TEXT_PICK_REALM: String = "Elige un reino para entrar"
 const TEXT_NOT_ALLOWED: String = "Este reino no puede entrar en la zona"
+const TEXT_PLAYERS: String = "%d jugadores"
+const TEXT_ONE_PLAYER: String = "1 jugador"
+const TEXT_NO_PLAYERS: String = "Sin jugadores"
+const TEXT_RECOMMENDED: String = "%s · recomendado"
+const TEXT_REJECTED: String = "%s · completo"
+const TEXT_FULL: String = "Completo"
+const TEXT_COUNTS_NOTE: String = "Recuento de tu última conexión. Si un reino tiene muchos más jugadores, el servidor puede rechazarlo."
+const TEXT_REJECTED_TOOLTIP: String = "El servidor ha rechazado este reino: tiene demasiados jugadores"
+const RECOMMENDED_COLOR: Color = Color(0.55, 0.9, 0.55, 1.0)
+const REJECTED_COLOR: Color = Color(1.0, 0.72, 0.4, 1.0)
+const COUNT_COLOR: Color = Color(0.75, 0.78, 0.84, 1.0)
 
 var _allowed: PackedInt32Array = PackedInt32Array()
 var _default_address: String = "127.0.0.1"
@@ -39,11 +57,17 @@ var _address_editable: bool = true
 var _notice: String = ""
 var _configured: bool = false
 var _group: ButtonGroup = ButtonGroup.new()
+var _counts: PackedInt32Array = PackedInt32Array()
+var _rejected_realm: int = NetProtocol.Realm.NONE
 
 @onready var _notice_label: Label = %NoticeLabel
 @onready var _vardheim_button: Button = %VardheimButton
 @onready var _solmarch_button: Button = %SolmarchButton
 @onready var _askarra_button: Button = %AskarraButton
+@onready var _vardheim_count: Label = %VardheimCount
+@onready var _solmarch_count: Label = %SolmarchCount
+@onready var _askarra_count: Label = %AskarraCount
+@onready var _counts_note: Label = %CountsNote
 @onready var _address_edit: LineEdit = %AddressEdit
 @onready var _name_edit: LineEdit = %NameEdit
 @onready var _name_reason: Label = %NameReasonLabel
@@ -137,6 +161,70 @@ func get_realm_button(realm: int) -> Button:
 	return null
 
 
+## Enseña el recuento por reino ([param counts]: jugadores de Vardheim, Solmarch y Askarra, como el
+## [member NetMessages.Welcome.realm_counts]). Vacío (o de otro tamaño) quita el recuento.
+func set_realm_counts(counts: PackedInt32Array) -> void:
+	_counts = counts.duplicate() if counts.size() == REALMS.size() else PackedInt32Array()
+	if is_node_ready():
+		_refresh_counts()
+
+
+## true si hay un recuento que enseñar.
+func has_realm_counts() -> bool:
+	return not _counts.is_empty()
+
+
+## Jugadores del reino [param realm] según el recuento (-1 si no hay recuento o no es un reino jugable).
+func get_realm_count(realm: int) -> int:
+	var index: int = REALMS.find(realm)
+	return _counts[index] if index >= 0 and not _counts.is_empty() else -1
+
+
+## El reino admitido con menos jugadores: el que conviene elegir. [constant NetProtocol.Realm.NONE] si no hay
+## recuento, si hay menos de dos reinos admitidos o si todos los admitidos van igualados. Con un empate en el
+## mínimo, el primero en el orden de los botones.
+func get_recommended_realm() -> int:
+	if _counts.is_empty():
+		return NetProtocol.Realm.NONE
+	var best: int = NetProtocol.Realm.NONE
+	var lowest: int = 0
+	var highest: int = 0
+	var allowed_count: int = 0
+	for realm: int in REALMS:
+		if not is_realm_allowed(realm):
+			continue
+		var count: int = get_realm_count(realm)
+		if allowed_count == 0 or count < lowest:
+			lowest = count
+			best = realm
+		highest = maxi(highest, count)
+		allowed_count += 1
+	return best if allowed_count >= 2 and highest > lowest else NetProtocol.Realm.NONE
+
+
+## Texto del recuento bajo el botón de [param realm] (vacío si no hay recuento).
+func get_count_text(realm: int) -> String:
+	var label: Label = _count_label(realm)
+	return label.text if label != null else ""
+
+
+## El servidor ha rechazado [param realm] por desequilibrio (REJECT 9): se quita de la elección y se marca.
+## Con [constant NetProtocol.Realm.NONE] se quita la marca.
+func set_rejected_realm(realm: int) -> void:
+	_rejected_realm = realm if REALMS.has(realm) else NetProtocol.Realm.NONE
+	if _selected_realm == _rejected_realm and _rejected_realm != NetProtocol.Realm.NONE:
+		_selected_realm = NetProtocol.Realm.NONE
+	if is_node_ready():
+		_sync_buttons()
+		_refresh_counts()
+		_refresh()
+
+
+## Reino marcado como rechazado por desequilibrio ([constant NetProtocol.Realm.NONE] si ninguno).
+func get_rejected_realm() -> int:
+	return _rejected_realm
+
+
 func get_enter_button() -> Button:
 	return _enter_button
 
@@ -190,6 +278,7 @@ func _apply() -> void:
 		button.disabled = not allowed
 		button.tooltip_text = "" if allowed else TEXT_NOT_ALLOWED
 	_sync_buttons()
+	_refresh_counts()
 	_refresh()
 	_focus_first_control()
 
@@ -197,6 +286,50 @@ func _apply() -> void:
 func _sync_buttons() -> void:
 	for realm: int in REALMS:
 		get_realm_button(realm).set_pressed_no_signal(realm == _selected_realm)
+
+
+func _count_label(realm: int) -> Label:
+	match realm:
+		NetProtocol.Realm.VARDHEIM:
+			return _vardheim_count
+		NetProtocol.Realm.SOLMARCH:
+			return _solmarch_count
+		NetProtocol.Realm.ASKARRA:
+			return _askarra_count
+	return null
+
+
+# Rellena los textos de recuento bajo los botones: jugadores, recomendado y rechazado.
+func _refresh_counts() -> void:
+	var recommended: int = get_recommended_realm()
+	_counts_note.visible = has_realm_counts()
+	_counts_note.text = TEXT_COUNTS_NOTE if has_realm_counts() else ""
+	for realm: int in REALMS:
+		var label: Label = _count_label(realm)
+		var button: Button = get_realm_button(realm)
+		button.tooltip_text = "" if is_realm_allowed(realm) else TEXT_NOT_ALLOWED
+		if not has_realm_counts():
+			# Sin recuento solo se marca el reino que el servidor ha rechazado.
+			label.visible = realm == _rejected_realm
+			label.text = TEXT_FULL if realm == _rejected_realm else ""
+			label.add_theme_color_override(&"font_color", REJECTED_COLOR)
+			if realm == _rejected_realm:
+				button.tooltip_text = TEXT_REJECTED_TOOLTIP
+			continue
+		label.visible = true
+		var count: int = get_realm_count(realm)
+		var text: String = TEXT_NO_PLAYERS if count == 0 else (TEXT_ONE_PLAYER if count == 1 else TEXT_PLAYERS % count)
+		var color: Color = COUNT_COLOR
+		if realm == _rejected_realm:
+			text = TEXT_REJECTED % text
+			color = REJECTED_COLOR
+		elif realm == recommended:
+			text = TEXT_RECOMMENDED % text
+			color = RECOMMENDED_COLOR
+		label.text = text
+		label.add_theme_color_override(&"font_color", color)
+		if realm == _rejected_realm:
+			button.tooltip_text = TEXT_REJECTED_TOOLTIP
 
 
 # Textos y estado de «Entrar» según lo que hay escrito y elegido.

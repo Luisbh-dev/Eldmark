@@ -21,6 +21,9 @@ class FakeServer extends Node:
 	var zone_id: String = "test_world"
 	var tick_rate: int = 60
 	var welcome_version: int = NetProtocol.PROTOCOL_VERSION
+	## Recuento por reino que va en el WELCOME y motivo con el que se rechaza el HELLO (0 = se acepta).
+	var realm_counts: PackedInt32Array = PackedInt32Array([0, 0, 0])
+	var reject_result: int = 0
 	var spawn_state: PlayerState
 	var spawn_net_id: int = 5
 	## Ticks entre el CLIENT_READY y el SPAWN propio (muy grande = nunca).
@@ -106,12 +109,20 @@ class FakeServer extends Node:
 	func _on_auth_received(from_peer: int, bytes: PackedByteArray) -> void:
 		peer_id = from_peer
 		hello = NetMessages.Hello.decode(bytes)
+		if reject_result > 0:
+			var reject := NetMessages.Reject.new()
+			reject.result = reject_result
+			reject.text = NetProtocol.result_text(reject_result)
+			transport.send_auth(from_peer, reject.encode())
+			transport.disconnect_after_flush(from_peer)
+			return
 		var welcome := NetMessages.Welcome.new()
 		welcome.protocol_version = welcome_version
 		welcome.server_tick = tick
 		welcome.tick_rate = tick_rate
 		welcome.realm = hello.realm if hello != null else NetProtocol.Realm.VARDHEIM
 		welcome.zone_id = zone_id
+		welcome.realm_counts = realm_counts
 		transport.send_auth(from_peer, welcome.encode())
 		transport.complete_auth(from_peer)
 
@@ -224,6 +235,27 @@ func test_hello_carries_the_clients_identity() -> void:
 	assert_eq(hello.sim_hash, NetProtocol.compute_sim_hash(probe),
 			"la huella es la de la simulación del personaje")
 	probe.free()
+
+
+func test_the_welcome_carries_the_realm_counts_for_the_realm_select() -> void:
+	await _start(func(fake: FakeServer) -> void: fake.realm_counts = PackedInt32Array([12, 3, 40]))
+	assert_true(await _wait_until(_in_world))
+	var welcome: NetMessages.Welcome = _client.get_welcome()
+	assert_eq(welcome.realm_counts, PackedInt32Array([12, 3, 40]), "el recuento por reino del WELCOME")
+	assert_eq(welcome.get_realm_count(NetProtocol.Realm.SOLMARCH), 3)
+
+
+func test_an_imbalance_rejection_reaches_the_client_with_its_spanish_text() -> void:
+	await _start(func(fake: FakeServer) -> void: fake.reject_result = NetProtocol.Result.IMBALANCE)
+	var rejections: Array[Dictionary] = []
+	_client.rejected.connect(func(result: int, text: String) -> void:
+		rejections.append({"result": result, "text": text}))
+	assert_true(await _wait_until(func() -> bool: return not rejections.is_empty()), "llega el REJECT")
+	assert_eq(rejections[0]["result"], NetProtocol.Result.IMBALANCE, "REJECT 9")
+	assert_eq(rejections[0]["text"], NetProtocol.result_text(NetProtocol.Result.IMBALANCE))
+	assert_true(String(rejections[0]["text"]).contains("demasiados jugadores"), "dice por qué (%s)" % rejections[0]["text"])
+	assert_true(String(rejections[0]["text"]).contains("elige otro"), "y qué hacer")
+	assert_eq(_client.get_state(), NetClient.State.CLOSED, "y la sesión se cierra")
 
 
 func test_ready_is_sent_once_after_the_zone_is_ready() -> void:

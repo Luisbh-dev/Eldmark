@@ -258,6 +258,63 @@ func test_quit_button_emits_quit_requested() -> void:
 	assert_eq(quits.size(), 1)
 
 
+# --- Recuento por reino (GUE-42) --------------------------------------------------------------
+
+func test_the_counts_show_under_each_realm_and_the_shortest_is_recommended() -> void:
+	_make_screen(PackedInt32Array())
+	assert_false(_screen.has_realm_counts(), "sin WELCOME no hay recuento")
+	assert_eq(_screen.get_count_text(VARDHEIM), "", "y no se enseña nada")
+	assert_eq(_screen.get_recommended_realm(), NetProtocol.Realm.NONE)
+	_screen.set_realm_counts(PackedInt32Array([12, 3, 7]))
+	assert_true(_screen.has_realm_counts())
+	assert_eq(_screen.get_realm_count(SOLMARCH), 3)
+	assert_eq(_screen.get_count_text(VARDHEIM), "12 jugadores")
+	assert_eq(_screen.get_count_text(SOLMARCH), "3 jugadores · recomendado", "el que tiene menos, recomendado")
+	assert_eq(_screen.get_count_text(ASKARRA), "7 jugadores")
+	assert_eq(_screen.get_recommended_realm(), SOLMARCH)
+	_screen.set_realm_counts(PackedInt32Array([1, 0, 0]))
+	assert_eq(_screen.get_count_text(VARDHEIM), "1 jugador", "en singular")
+	assert_eq(_screen.get_count_text(SOLMARCH), "Sin jugadores · recomendado", "y sin nadie")
+	assert_eq(_screen.get_recommended_realm(), SOLMARCH, "con empate en el mínimo, el primero de los botones")
+	_screen.set_realm_counts(PackedInt32Array([5, 5, 5]))
+	assert_eq(_screen.get_recommended_realm(), NetProtocol.Realm.NONE, "igualados, ninguno destaca")
+	assert_eq(_screen.get_count_text(SOLMARCH), "5 jugadores")
+	_screen.set_realm_counts(PackedInt32Array([1, 2]))
+	assert_false(_screen.has_realm_counts(), "un recuento de otro tamaño se descarta")
+	assert_eq(_screen.get_count_text(VARDHEIM), "")
+
+
+func test_the_recommendation_only_counts_the_realms_the_zone_admits() -> void:
+	_make_screen(PackedInt32Array([VARDHEIM, SOLMARCH]))
+	_screen.set_realm_counts(PackedInt32Array([12, 9, 0]))
+	assert_eq(_screen.get_recommended_realm(), SOLMARCH, "Askarra, vacío, no cuenta: la zona no lo admite")
+	assert_eq(_screen.get_count_text(ASKARRA), "Sin jugadores", "aunque su recuento se enseñe")
+	_make_screen(PackedInt32Array([SOLMARCH]))
+	_screen.set_realm_counts(PackedInt32Array([12, 9, 0]))
+	assert_eq(_screen.get_recommended_realm(), NetProtocol.Realm.NONE, "con un solo reino admitido no hay qué recomendar")
+
+
+func test_a_realm_rejected_for_imbalance_is_dropped_and_marked() -> void:
+	_make_screen(PackedInt32Array())
+	_type_name(_screen, "Ana")
+	_screen.select_realm(VARDHEIM)
+	assert_false(_screen.get_enter_button().disabled)
+	_screen.set_rejected_realm(VARDHEIM)
+	assert_eq(_screen.get_rejected_realm(), VARDHEIM)
+	assert_eq(_screen.get_selected_realm(), NetProtocol.Realm.NONE, "el reino rechazado deja de estar elegido")
+	assert_true(_screen.get_enter_button().disabled, "y hay que elegir otro para entrar")
+	assert_eq(_screen.get_count_text(VARDHEIM), "Completo", "sin recuento, solo se marca")
+	assert_eq(_screen.get_count_text(SOLMARCH), "")
+	assert_true(_screen.get_realm_button(VARDHEIM).tooltip_text.contains("demasiados jugadores"))
+	_screen.set_realm_counts(PackedInt32Array([30, 4, 6]))
+	assert_eq(_screen.get_count_text(VARDHEIM), "30 jugadores · completo", "con recuento, lo dice junto a la cifra")
+	assert_eq(_screen.get_count_text(SOLMARCH), "4 jugadores · recomendado")
+	_screen.select_realm(SOLMARCH)
+	assert_false(_screen.get_enter_button().disabled, "con otro reino se puede entrar")
+	_screen.set_rejected_realm(NetProtocol.Realm.NONE)
+	assert_eq(_screen.get_count_text(VARDHEIM), "30 jugadores", "quitada la marca, vuelve a lo normal")
+
+
 # --- En OnlineMain ----------------------------------------------------------------------------
 
 func _start_server() -> void:
@@ -353,6 +410,42 @@ func test_online_main_returns_to_realm_select_after_a_rejection_and_can_retry() 
 	assert_true(_online.get_client() != first_client, "en una sesión nueva")
 	assert_eq(_server.get_player_count(), 2)
 	assert_false(screen.is_visible_in_tree())
+
+
+func test_a_rejection_for_imbalance_returns_with_the_text_the_counts_and_the_short_realm_chosen() -> void:
+	await _start_server()
+	_start_online_without_realm()
+	var screen: RealmSelect = _online.get_realm_select()
+	assert_false(screen.has_realm_counts(), "antes de la primera conexión no hay recuento")
+	screen.select_realm(VARDHEIM)
+	assert_true(screen.try_enter())
+	var client: NetClient = _online.get_client()
+	assert_not_null(client)
+	# Lo que ya se supo de un WELCOME anterior y el REJECT 9 de este intento (sin texto del servidor).
+	_online._last_realm_counts = PackedInt32Array([30, 4, 6])
+	client.rejected.emit(NetProtocol.Result.IMBALANCE, "")
+	assert_true(await _wait_until(func() -> bool:
+		return _online.get_client() == null and screen.is_visible_in_tree()), "vuelve a la elección de reino")
+	assert_eq(screen.get_notice_text(), "Conexión rechazada: " + NetProtocol.result_text(NetProtocol.Result.IMBALANCE),
+			"con el texto del REJECT 9 (el del cliente si el servidor no lo manda)")
+	assert_eq(screen.get_rejected_realm(), VARDHEIM, "el reino rechazado queda marcado")
+	assert_eq(screen.get_count_text(VARDHEIM), "30 jugadores · completo")
+	assert_eq(screen.get_selected_realm(), SOLMARCH, "y se ofrece el reino con menos jugadores")
+	assert_eq(screen.get_count_text(SOLMARCH), "4 jugadores · recomendado")
+
+
+func test_a_rejection_for_another_reason_keeps_the_realm_and_shows_no_mark() -> void:
+	await _start_server()
+	_start_online_without_realm()
+	var screen: RealmSelect = _online.get_realm_select()
+	screen.select_realm(SOLMARCH)
+	assert_true(screen.try_enter())
+	_online.get_client().rejected.emit(NetProtocol.Result.FULL, "Servidor lleno")
+	assert_true(await _wait_until(func() -> bool:
+		return _online.get_client() == null and screen.is_visible_in_tree()))
+	assert_eq(screen.get_notice_text(), "Conexión rechazada: Servidor lleno")
+	assert_eq(screen.get_rejected_realm(), NetProtocol.Realm.NONE)
+	assert_eq(screen.get_selected_realm(), SOLMARCH, "se recuerda el reino elegido")
 
 
 func test_online_main_returns_to_realm_select_after_a_disconnection() -> void:

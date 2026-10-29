@@ -106,6 +106,40 @@ theme_override_font_sizes/font_size = 22
 toggle_mode = true
 text = "Askarra"
 
+[node name="Counts" type="HBoxContainer" parent="Center/Panel/Column"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="VardheimCount" type="Label" parent="Center/Panel/Column/Counts"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+
+[node name="SolmarchCount" type="Label" parent="Center/Panel/Column/Counts"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+
+[node name="AskarraCount" type="Label" parent="Center/Panel/Column/Counts"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 16
+horizontal_alignment = 1
+
+[node name="CountsNote" type="Label" parent="Center/Panel/Column"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.63, 0.7, 1)
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 1
+autowrap_mode = 3
+
 [node name="AddressRow" type="HBoxContainer" parent="Center/Panel/Column"]
 layout_mode = 2
 theme_override_constants/separation = 12

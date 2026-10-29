@@ -102,6 +102,10 @@ var _overlay_button: Button = null
 var _realm_layer: CanvasLayer = null
 var _realm_select: RealmSelect = null
 var _returning_to_menu: bool = false
+# Recuento por reino del último WELCOME (vacío antes de la primera conexión) y reino que el servidor rechazó
+# por desequilibrio en el último intento (REJECT 9): lo enseña RealmSelect al volver (GUE-42).
+var _last_realm_counts: PackedInt32Array = PackedInt32Array()
+var _imbalanced_realm: int = NetProtocol.Realm.NONE
 var _idle_set: bool = false
 var _finishing: bool = false
 var _leave_wait_ticks: int = 0
@@ -349,6 +353,8 @@ func _retry_local_connection() -> void:
 
 func _on_welcomed(welcome: NetMessages.Welcome) -> void:
 	_was_welcomed = true
+	_last_realm_counts = welcome.realm_counts.duplicate()
+	_imbalanced_realm = NetProtocol.Realm.NONE
 	_zone_id = welcome.zone_id
 	var path: String = NetZones.scene_path(welcome.zone_id)
 	if path.is_empty():
@@ -408,6 +414,11 @@ func _force_full_terrain_collision(root: Node) -> void:
 
 func _on_rejected(result: int, text: String) -> void:
 	_was_welcomed = true
+	# Sin texto del servidor, el que este cliente conoce para el motivo (también el de REJECT 9).
+	if text.is_empty():
+		text = NetProtocol.result_text(result)
+	# Un reino rechazado por desequilibrio se recuerda para ofrecer otro al volver a la elección.
+	_imbalanced_realm = config.realm if result == NetProtocol.Result.IMBALANCE else NetProtocol.Realm.NONE
 	push_warning("[Eldmark] Conexión rechazada (%d): %s" % [result, text])
 	_fail("Conexión rechazada: %s" % text)
 
@@ -511,7 +522,13 @@ func _show_realm_select(notice: String) -> void:
 		zone_id = NetZones.default_zone_id()
 	_realm_select.setup(_address_text(), config.display_name, NetZones.allowed_realms(zone_id))
 	_realm_select.set_address_editable(not _is_local())
-	_realm_select.select_realm(config.realm)
+	_realm_select.set_realm_counts(_last_realm_counts)
+	_realm_select.set_rejected_realm(_imbalanced_realm)
+	if _imbalanced_realm == NetProtocol.Realm.NONE:
+		_realm_select.select_realm(config.realm)
+	else:
+		# Rechazado por desequilibrio: se ofrece el reino con menos jugadores (si se conoce).
+		_realm_select.select_realm(_realm_select.get_recommended_realm())
 	_realm_select.set_notice(notice)
 	_realm_layer.visible = true
 	_returning_to_menu = false
