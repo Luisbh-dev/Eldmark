@@ -251,6 +251,10 @@ bloqueando hasta el timeout de ENet (3–8 s): se acepta.
      `input_buffer_ticks`; se ejecuta en el primer tick en que se pueda, con prioridad sobre las
      entradas nuevas de ese tick. `primary_held` sigue contando mientras tanto.
    - Tras el ligero 3, `combo_step` vuelve a 0. Si se acaba una recuperación sin enlace, también.
+     Y también si el enlace no llegó a ejecutarse: un ligero que acaba en el aire con una pulsación
+     de enlace pendiente la deja como pulsación guardada normal, y al caducar (sin ligero en curso)
+     el combo vuelve a empezar; si se aterriza dentro de los `input_buffer_ticks`, el enlace se
+     ejecuta como siempre.
 4. **Movimiento permitido** (lo usa `simulate()`):
 
 | Acción | Velocidad horizontal objetivo | Giro | Salto | Esprint |

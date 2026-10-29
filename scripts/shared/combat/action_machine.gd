@@ -376,6 +376,11 @@ static func _run_buffer(c: CombatState, input: PlayerInput, data: CombatTables,
 	remaining -= 1
 	if remaining <= 0:
 		c.buffered = 0
+		# Una pulsación que caduca sin haber empezado nada, con el ligero anterior ya terminado (el
+		# enlace no pudo ejecutarse, p. ej. en el aire), no deja el combo a medias: el siguiente
+		# ligero vuelve a ser el primero. Con un ligero en curso, su propio final lo decide.
+		if kind == CombatState.BUFFER_PRIMARY and c.action != _LIGHT:
+			c.combo_step = 0
 	else:
 		c.buffered = kind | (remaining << 2)
 

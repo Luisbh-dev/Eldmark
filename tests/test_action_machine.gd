@@ -239,6 +239,73 @@ func test_link_press_boundaries() -> void:
 			assert_eq(d.c.combo_step, 0, "(rel %d) y el combo vuelve a empezar" % rel)
 
 
+func test_a_link_that_cannot_run_in_the_air_restarts_the_combo_when_the_buffer_expires() -> void:
+	# C5: el ligero acaba en el aire con un enlace pendiente. El enlace no puede ejecutarse (no se
+	# ataca en el aire) y, al caducar la pulsación guardada, el combo vuelve a empezar.
+	var d := Driver.new()
+	var p: int = d.tick + 1
+	d.step(PRIMARY)
+	d.hold(0, 29)
+	d.step(PRIMARY)
+	assert_eq(d.tick, p + 30, "pulsación de enlace en la ventana")
+	assert_eq(d.c.buffered_type(), CombatState.BUFFER_LINK, "queda como enlace")
+	d.hold(0, 3)
+	d.grounded = false
+	d.hold(0, 2)
+	assert_eq(d.tick, p + 35, "último tick del ligero")
+	d.step()
+	assert_eq(d.tick, p + 36, "el ligero acaba")
+	assert_eq(d.c.action, Action.NONE, "sin acción")
+	assert_eq(d.c.buffered_type(), CombatState.BUFFER_PRIMARY, "el enlace pasa a pulsación guardada")
+	assert_eq(d.c.combo_step, 1, "mientras la pulsación espera, el combo sigue")
+	d.hold(0, 7)
+	assert_eq(d.tick, p + 43, "último tick con la pulsación guardada")
+	assert_eq(d.c.buffered_type(), CombatState.BUFFER_PRIMARY, "aún espera")
+	assert_eq(d.c.combo_step, 1, "(sigue)")
+	d.step()
+	assert_eq(d.c.buffered, 0, "la pulsación caduca a los 8 ticks")
+	assert_eq(d.c.combo_step, 0, "y el combo vuelve a empezar")
+	d.hold(0, 200)
+	d.grounded = true
+	d.step(PRIMARY)
+	assert_eq(d.c.action_id, _light_id(0), "una pulsación posterior empieza por el ligero 1")
+	assert_eq(d.c.combo_step, 1, "con el segundo como siguiente")
+
+
+func test_a_link_that_lands_within_the_buffer_still_chains() -> void:
+	# Control de C5: si se aterriza dentro de los 8 ticks, el enlace se ejecuta.
+	var d := Driver.new()
+	var p: int = d.tick + 1
+	d.step(PRIMARY)
+	d.hold(0, 29)
+	d.step(PRIMARY)
+	d.hold(0, 3)
+	d.grounded = false
+	d.hold(0, 4)
+	assert_eq(d.tick, p + 37, "un tick después de acabar el ligero")
+	assert_eq(d.c.action, Action.NONE, "en el aire no se ataca")
+	d.hold(0, 2)
+	d.grounded = true
+	d.step()
+	assert_eq(d.tick, p + 40, "aterriza")
+	assert_eq(d.c.action, Action.LIGHT, "el enlace se ejecuta")
+	assert_eq(d.c.action_id, _light_id(1), "con el ligero 2")
+
+
+func test_an_early_buffered_press_during_a_light_keeps_the_combo() -> void:
+	# Control de C5: una pulsación guardada que caduca con el ligero aún en curso no reinicia el combo.
+	var d := Driver.new()
+	d.step(PRIMARY)
+	d.hold(0, 4)
+	d.step(PRIMARY)
+	d.hold(0, 4)
+	assert_eq(d.c.buffered_type(), CombatState.BUFFER_PRIMARY, "pulsación guardada normal")
+	d.hold(0, 5)
+	assert_eq(d.c.buffered, 0, "caducó")
+	assert_eq(d.c.action, Action.LIGHT, "con el ligero 1 todavía en curso")
+	assert_eq(d.c.combo_step, 1, "y el combo sigue donde estaba")
+
+
 func test_press_after_the_recovery_starts_a_new_combo() -> void:
 	var d := Driver.new()
 	d.step(PRIMARY)
