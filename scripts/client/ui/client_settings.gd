@@ -23,7 +23,8 @@ extends RefCounted
 ## (el último nivel de LOD de los [code]Terrain3DMeshAsset[/code] de hierba) y suavizado. Audio:
 ## [AudioBuses]. Cámara: sensibilidad, invertir Y, campo de visión y hombro por defecto en cada
 ## [CameraRig] (grupo [constant CameraRig.GROUP]). Interfaz: los controles enlazados con
-## [method bind_visibility] ([DamageNumbers], [Nameplates]) se muestran u ocultan solos.
+## [method bind_visibility] ([DamageNumbers], [Nameplates]) se muestran u ocultan solos y las pistas
+## ([HintToasts]) leen [constant HINTS] al mostrarse.
 ## [br][br]
 ## El modo de ventana, la resolución y el vsync no se tocan en modo headless (no hay ventana):
 ## sus tablas de conversión ([method window_mode_for], [method vsync_mode_for],
@@ -65,9 +66,11 @@ const FOV: StringName = &"fov"
 const DEFAULT_SHOULDER: StringName = &"default_shoulder"
 const DAMAGE_NUMBERS: StringName = &"damage_numbers"
 const NAMEPLATES: StringName = &"nameplates"
+## Pistas del juego (UI-42): consejos que salen una sola vez por jugador ([HintToasts]).
+const HINTS: StringName = &"hints"
 ## Ajustes de cámara, de gráficos que recorren la escena y de interfaz.
 const CAMERA_IDS: Array[StringName] = [MOUSE_SENSITIVITY, INVERT_Y, FOV, DEFAULT_SHOULDER]
-const INTERFACE_IDS: Array[StringName] = [DAMAGE_NUMBERS, NAMEPLATES]
+const INTERFACE_IDS: Array[StringName] = [DAMAGE_NUMBERS, NAMEPLATES, HINTS]
 
 ## Resoluciones de ventana que se ofrecen (texto «ancho x alto» sin espacios).
 const RESOLUTIONS: Array[String] = ["1280x720", "1600x900", "1920x1080", "2560x1440"]
@@ -208,6 +211,7 @@ static func _build_schema() -> Array[Dictionary]:
 			["Derecho", "Izquierdo"]))
 	schema.append(_bool(TAB_INTERFACE, DAMAGE_NUMBERS, "Números de daño", true))
 	schema.append(_bool(TAB_INTERFACE, NAMEPLATES, "Placas de nombre", true))
+	schema.append(_bool(TAB_INTERFACE, HINTS, "Pistas del juego", true))
 	return schema
 
 

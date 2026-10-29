@@ -102,6 +102,8 @@ func _run() -> void:
 	for _i: int in STARTUP_FRAMES:
 		await process_frame
 	OS.add_logger(_catcher)
+	# Las pistas del juego (UI-42) no escriben en user:// mientras se prueba.
+	HintLog.set_current(HintLog.in_memory())
 	var started_msec: int = Time.get_ticks_msec()
 	print("Eldmark · pruebas (Godot %s, %d ticks/s)" % [
 		Engine.get_version_info().string, Engine.physics_ticks_per_second,

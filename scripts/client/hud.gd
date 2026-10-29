@@ -82,6 +82,7 @@ func _ready() -> void:
 	_vitals.set_health_visible(_client != null)
 	_death.respawn_requested.connect(_on_respawn_requested)
 	_death.map_requested.connect(_on_map_requested)
+	_death.opened.connect(_hint_respawn_map)
 	_death.opened.connect(_on_death_opened)
 	_death.closed.connect(_on_death_closed)
 	_update_crosshair()
@@ -379,6 +380,7 @@ func _refresh_respawn_options() -> void:
 		return
 	_death_signature = signature
 	_death.update_points(RespawnPointList.option_labels(options), RespawnPointList.option_indices(options, own_id))
+	_hint_respawn_map()
 
 
 static func _options_signature(options: Array[RespawnPointList.Option], spread_seed: int) -> String:
@@ -386,6 +388,12 @@ static func _options_signature(options: Array[RespawnPointList.Option], spread_s
 	for option: RespawnPointList.Option in options:
 		parts.append("%s=%d" % [option.label, option.index_for(spread_seed)])
 	return "|".join(parts)
+
+
+# Con la pantalla de muerte abierta y más de un sitio donde reaparecer, la pista del mapa (una sola vez).
+func _hint_respawn_map() -> void:
+	if is_instance_valid(_war_hud) and is_instance_valid(_war_hud.get_hints()) and _death.get_point_count() > 1:
+		_war_hud.get_hints().request(HintCatalog.RESPAWN_MAP)
 
 
 func _on_map_requested() -> void:

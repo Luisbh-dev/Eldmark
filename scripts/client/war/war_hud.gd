@@ -13,6 +13,7 @@ extends Control
 ## y así vive y muere con esta interfaz sin colgar nada de la zona.
 ## [br]- [Compass] y [WorldMarkers] (UI-19): la brújula y los iconos del fuerte, los campamentos y los
 ## pasos, con el mapa horneado de la zona ([ZoneMapDefinition]) para los lugares fijos.
+## [br]- [HintToasts] (UI-42): las pistas del juego, una sola vez por jugador (desactivables en los ajustes).
 ## [br]- [KillFeed] (UI-41): el registro de bajas de la zona, arriba a la derecha. La tabla del marcador
 ## ([ScoreboardPanel], Tab) la monta el [HUD] por encima de la pantalla de muerte.
 ## [br]- [Minimap] (UI-20): el minimapa circular, abajo a la derecha. El mapa a pantalla completa
@@ -29,6 +30,7 @@ var _telegraph_marks: TelegraphMarks = null
 var _compass: Compass = null
 var _minimap: Minimap = null
 var _kill_feed: KillFeed = null
+var _hints: HintToasts = null
 var _world_markers: WorldMarkers = null
 var _camera_rig: CameraRig = null
 var _map: ZoneMapDefinition = null
@@ -75,6 +77,10 @@ func bind(client: NetClient, camera_rig: CameraRig = null) -> void:
 	_kill_feed.name = "KillFeed"
 	add_child(_kill_feed)
 	_kill_feed.bind(client)
+	_hints = HintToasts.new()
+	_hints.name = "HintToasts"
+	add_child(_hints)
+	_hints.bind(client, view, _capture_panel)
 	_minimap = Minimap.new()
 	_minimap.name = "Minimap"
 	add_child(_minimap)
@@ -114,6 +120,10 @@ func get_minimap() -> Minimap:
 
 func get_kill_feed() -> KillFeed:
 	return _kill_feed
+
+
+func get_hints() -> HintToasts:
+	return _hints
 
 
 ## Mapa horneado de la zona (null si no tiene).

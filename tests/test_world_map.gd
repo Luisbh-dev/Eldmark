@@ -71,6 +71,7 @@ var _def: FortressDefinition = null
 
 
 func before_each() -> void:
+	HintLog.set_current(HintLog.in_memory())
 	_map = ZoneMapDefinition.load_for_zone(ZONE_ID)
 	_def = load(DEFINITION_PATH) as FortressDefinition
 	_root = Node3D.new()
@@ -565,11 +566,14 @@ func test_the_death_screen_lists_the_valid_sites_and_sends_the_index_of_the_one_
 	assert_eq(screen.get_point_count(), 1, "con el fuerte neutral, solo el campamento propio")
 	assert_eq(screen.get_point_label(0), "Campamento de Vardheim")
 	assert_false(screen.get_map_button().visible, "con una sola opción no hace falta el mapa")
+	assert_eq(h.hud.get_war_hud().get_hints().get_current_id(), &"", "ni sale la pista del mapa")
 	h.view.on_spawn(_fortress_spawn(100, {FortressFields.OWNER: VARDHEIM}))
 	h.hud._process(0.016)
 	assert_eq(screen.get_point_count(), 2, "al entrar el fuerte en su poder, la lista se actualiza sin cerrarse")
 	assert_eq(screen.get_point_label(1), "Fuerte del Vado Gris")
 	assert_true(screen.get_map_button().visible, "y con dos opciones sale «Elegir en el mapa»")
+	assert_eq(h.hud.get_war_hud().get_hints().get_current_id(), HintCatalog.RESPAWN_MAP,
+			"y la pista del mapa, al aparecer la segunda con la pantalla ya abierta")
 	assert_eq(screen.get_selected_point_index(), RespawnPointList.option_indices(
 			RespawnPointList.valid_options(h.world, VARDHEIM, h.view.get_states_by_definition(1000), 1000), OWN_ID)[0],
 			"y conserva la elección")
@@ -588,6 +592,8 @@ func test_choosing_on_the_map_selects_the_site_and_returns_to_the_death_screen()
 	var world_map: WorldMap = h.hud.get_world_map()
 	_die(h)
 	assert_eq(screen.get_point_count(), 2)
+	assert_eq(h.hud.get_war_hud().get_hints().get_current_id(), HintCatalog.RESPAWN_MAP,
+			"con dos sitios donde elegir, sale la pista del mapa")
 	assert_eq(screen.get_selected_point(), 0, "empieza en el primero")
 	screen.get_map_button().pressed.emit()
 	assert_true(world_map.is_open(), "el botón abre el mapa")
