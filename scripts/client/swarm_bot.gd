@@ -114,6 +114,8 @@ var _last_notice_text: String = ""
 # Cerebro de combate: los enemigos que conoce por los ENTITY_SPAWN (net_id -> última posición conocida)
 # y cuáles siguen vivos, y el desfase de la rotación con la que se decodifican los registros.
 var _enemy_positions: Dictionary[int, Vector3] = {}
+# Máximo de enemigos conocidos a la vez durante la sesión (para el informe).
+var _enemies_known_max: int = 0
 var _enemy_alive: Dictionary[int, bool] = {}
 var _scan_phase: int = 0
 
@@ -253,7 +255,7 @@ func get_last_notice_text() -> String:
 ## [code]substitutions[/code] (contador del servidor), [code]spawns_seen[/code], [code]despawns_seen[/code],
 ## [code]delay_ticks[/code], [code]jitter_ticks[/code], [code]malformed_packets[/code].
 ## [br]- Del combate: [code]combat[/code] (si pelea), [code]events_seen[/code] y [code]event_bytes[/code]
-## (ENTITY_EVENT recibidos y su tamaño), [code]hit_events_seen[/code], [code]enemies_known[/code],
+## (ENTITY_EVENT recibidos y su tamaño), [code]hit_events_seen[/code], [code]enemies_known[/code] (y su máximo, [code]enemies_known_max[/code]),
 ## [code]dead[/code] y [code]respawn_requests[/code].
 func get_stats() -> Dictionary:
 	var counters: Dictionary = _byte_counters()
@@ -308,6 +310,7 @@ func get_stats() -> Dictionary:
 		"hit_events_seen": _hit_events_seen,
 		"combat": _combat,
 		"enemies_known": _enemy_positions.size(),
+		"enemies_known_max": _enemies_known_max,
 		"dead": _dead,
 		"respawn_requests": _respawn_requests,
 		"delay_ticks": _interp_clock.get_delay_ticks(),
@@ -657,6 +660,7 @@ func _on_spawn(bytes: PackedByteArray) -> void:
 		if _combat and spawn.kind == NetProtocol.EntityKind.PLAYER and spawn.state != null \
 				and FactionRules.can_damage(_realm, spawn.realm, StringName(_welcome.zone_id)):
 			_enemy_positions[spawn.net_id] = spawn.state.position
+			_enemies_known_max = maxi(_enemies_known_max, _enemy_positions.size())
 			_enemy_alive[spawn.net_id] = true
 		return
 	if _state != State.READY_SENT:

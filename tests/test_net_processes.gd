@@ -488,7 +488,9 @@ func test_combat_swarms_fight_each_other_with_the_rewind_of_a_real_client() -> v
 		assert_eq(clients.size(), 3)
 		var known: int = 0
 		for entry: Dictionary in clients:
-			known += int(entry.get("enemies_known", 0))
+			# El máximo de la sesión, no el valor al irse: bajo carga el otro enjambre puede haberse ido
+			# antes y el recuento final depende del orden de salida.
+			known += int(entry.get("enemies_known_max", 0))
 			assert_true(bool(entry.get("combat", false)), "%s pelea" % entry.get("name"))
 			assert_true(int(entry.get("spawns_seen", 0)) >= 5, "%s ve a los demás (%s)" % [
 					entry.get("name"), entry.get("spawns_seen")])
@@ -496,4 +498,4 @@ func test_combat_swarms_fight_each_other_with_the_rewind_of_a_real_client() -> v
 			assert_true(int(entry.get("event_bytes", 0)) > 0)
 			assert_eq(int(entry.get("malformed_packets", -1)), 0, "ni paquetes mal formados")
 		if index == 0:
-			assert_eq(known, 9, "el primer enjambre aún tenía a los 3 enemigos de cada bot al irse")
+			assert_eq(known, 9, "cada bot del primer enjambre llegó a conocer a los 3 enemigos")
