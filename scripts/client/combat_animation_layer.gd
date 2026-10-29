@@ -12,10 +12,11 @@ extends RefCounted
 ## la clave [code](action, action_id, action_tick)[/code] sea la misma; si el servidor impone otra
 ## acción (un tambaleo), la clave cambia y hay fundido al clip nuevo.
 ## [br]- [method update_remote]: un remoto solo trae el byte [code]action[/code] de su registro (bits
-## 0-3 la acción, 4-5 la fase, 6-7 el paso del combo). El instante se cuenta en tiempo real desde el
-## momento en que se ve entrar en cada fase, y cada cambio de fase reajusta el clip al principio de
-## su tramo, de modo que el contacto sigue cayendo en la ventana activa con la precisión de los
-## snapshots.
+## 0-3 la acción, 4-5 la fase, 6-7 el paso del combo o, en la esquiva y los controles, el contador de
+## reinicio; ver [ActionWire]). El instante se cuenta en tiempo real desde el momento en que se ve
+## entrar en cada fase, y cada cambio de fase (o de contador: una segunda esquiva o un segundo
+## tambaleo seguidos) reajusta el clip al principio de su tramo, de modo que el contacto sigue
+## cayendo en la ventana activa con la precisión de los snapshots.
 ## [br][br]
 ## Sin acción, el clip actual se desvanece ([member CombatActionAnim.blend_out_s]) y la capa queda
 ## inactiva.
@@ -42,7 +43,7 @@ var _previous: Slot = null
 var _plan: CombatClipPlanner.Plan = null
 # Seguimiento del byte action de un remoto.
 var _remote_action: int = -1
-var _remote_combo: int = -1
+var _remote_step: int = -1
 var _remote_phase: int = -1
 var _remote_elapsed: float = 0.0
 
@@ -80,25 +81,27 @@ func update_local(state: CombatState, tick: int, fraction: float, delta: float) 
 
 
 ## Actualiza la capa con el byte [code]action[/code] del registro dibujado de un remoto
-## (ver [method ActionMachine.action_byte]) y avanza [param delta] segundos reales.
+## (ver [ActionWire]) y avanza [param delta] segundos reales.
 func update_remote(action_byte: int, delta: float) -> void:
 	var action: int = action_byte & 15
 	var phase: int = (action_byte >> 4) & 3
-	var combo: int = (action_byte >> 6) & 3
+	var step: int = ActionWire.step_of(action_byte)
+	var combo: int = step if action == CombatState.Action.LIGHT else 0
 	if action == CombatState.Action.NONE or action > CombatState.Action.DEAD:
 		_remote_action = -1
-		_remote_combo = -1
+		_remote_step = -1
 		_remote_phase = -1
 		_remote_elapsed = 0.0
 		apply_plan(null, delta)
 		return
-	# Cada cambio de acción, de paso del combo o de fase empieza su tramo desde el principio.
-	if action != _remote_action or combo != _remote_combo or phase != _remote_phase:
+	# Cada cambio de acción, de paso del combo (o de contador de reinicio) o de fase empieza su tramo
+	# desde el principio.
+	if action != _remote_action or step != _remote_step or phase != _remote_phase:
 		_remote_elapsed = 0.0
 	else:
 		_remote_elapsed += delta
 	_remote_action = action
-	_remote_combo = combo
+	_remote_step = step
 	_remote_phase = phase
 	var used_phase: int = phase if (action == CombatState.Action.LIGHT
 			or action == CombatState.Action.HEAVY) else ActionMachine.PHASE_NONE
@@ -168,7 +171,7 @@ func reset() -> void:
 	_previous = null
 	_plan = null
 	_remote_action = -1
-	_remote_combo = -1
+	_remote_step = -1
 	_remote_phase = -1
 	_remote_elapsed = 0.0
 

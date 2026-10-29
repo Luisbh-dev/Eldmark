@@ -142,7 +142,7 @@ dueño (con un fuerte neutral, `D` es falso).
 
 ## 2. Replicación con estado: OBJECT_STATE (GUE-09)
 
-Ocupa el tipo `0x22` reservado en red.md §5.6 y sube **`PROTOCOL_VERSION` a 3**.
+Ocupa el tipo `0x22` reservado en red.md §5.6 y sube **`PROTOCOL_VERSION`** (a 4: la 3 fue la revisión de la fase 3).
 
 - **Formato**: `u8 type`, `u16 net_id`, `u32 tick` (el tick del servidor tras el que vale el
   estado), `u8 field_count` (1–32) y, por campo, `u8 field_id`, `u8 value_type` (1 u8, 2 u16, 3 u32,
@@ -477,7 +477,7 @@ F0 (escena, capas, malla y rutas), F1 (fortaleza pura) y F2 (protocolo 3) están
   OBJECT_STATE) y responde `is_gate_closed_for`, `can_damage_gate`, `should_defend`,
   `should_attack`, `is_circle_active`, `is_capturing` e `is_in_circle`.
 
-**F2** (protocolo 3, `PROTOCOL_VERSION = 3`; formatos en [red.md 5](red.md#5-formatos-de-los-mensajes))
+**F2** (protocolo 4 tras fusionar la revisión de la fase 3, que ocupó la 3: `PROTOCOL_VERSION = 4`; formatos en [red.md 5](red.md#5-formatos-de-los-mensajes))
 
 - Todo está en `scripts/shared/net/`. `NetMessages` gana `ObjectField` (campo suelto: `field_id`,
   `value_type`, `value`; satura al codificar), `ObjectState` (OBJECT_STATE), `UnstuckRequest`,

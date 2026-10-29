@@ -69,7 +69,7 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	# Que el cursor no se quede suelto si el HUD desaparece con la pantalla de muerte abierta.
 	if is_instance_valid(_camera_rig):
-		_camera_rig.set_ui_cursor_release(false)
+		_camera_rig.set_ui_cursor_release(false, self)
 
 
 ## Conecta el HUD con el personaje local y la cámara. Se puede llamar antes o
@@ -217,8 +217,11 @@ func _update_vitals() -> void:
 
 
 func _on_damage_taken(amount: int, attacker_id: int, _event: NetMessages.EntityEvent) -> void:
+	# La viñeta roja avisa de daño: una parada o un bloqueo completo (amount 0) no la enciende.
+	if amount <= 0:
+		return
 	_vignette.flash()
-	if amount <= 0 or not is_instance_valid(_character) or _feedback == null:
+	if not is_instance_valid(_character) or _feedback == null:
 		return
 	if attacker_id == 0 or not _feedback.knows_entity(attacker_id):
 		return
@@ -281,13 +284,13 @@ func _death_cause_text() -> String:
 func _on_death_opened() -> void:
 	_set_dimmed(true)
 	if is_instance_valid(_camera_rig):
-		_camera_rig.set_ui_cursor_release(true)
+		_camera_rig.set_ui_cursor_release(true, self)
 
 
 func _on_death_closed() -> void:
 	_set_dimmed(false)
 	if is_instance_valid(_camera_rig):
-		_camera_rig.set_ui_cursor_release(false)
+		_camera_rig.set_ui_cursor_release(false, self)
 	_death_killer_id = -1
 	_numbers.clear()
 	_indicator.clear()

@@ -9,6 +9,15 @@ extends Node
 ## [br]- [b]Daño recibido[/b]: sacudida de cámara ([method CameraRig.add_shake]), número rojo y la
 ## señal [signal damage_taken] (de la que cuelgan los arcos de dirección del HUD).
 ## [br]- [b]Destello[/b] de la víctima: un [code]material_overlay[/code] breve sobre sus mallas.
+## [br][br]
+## [b]Temporización de la reacción de un remoto.[/b] Un evento propio llega nada más producirse en el
+## servidor, pero los remotos se dibujan unos ticks por detrás (el retardo del [InterpolationClock]).
+## Lo que es del jugador local (marcador, número, DPS, sacudida, HUD) se aplica al llegar; lo que se
+## ve en el remoto (destello, placa de vida con [signal entity_damaged], sonido de su muerte o de la
+## baja) espera en una [CombatEventQueue] propia a que su tick de dibujo alcance el [code]tick[/code]
+## del evento, igual que los eventos ajenos. Sin cliente (el sandbox) no hay retardo y todo es
+## inmediato.
+## [br]
 ## [br]- [b]Ganchos de sonido[/b]: la señal [signal sound_requested] con el nombre del sonido y su
 ## posición. No hay audio todavía (ART-11): quien lo tenga, se conecta ahí.
 ## [br]- Muerte y reaparición propias: [signal local_died] y [signal local_respawned].
@@ -18,7 +27,11 @@ extends Node
 ## compara [code](action, action_id, action_tick)[/code] del estado mostrado con el último visto:
 ## si cambia, empieza otra acción ([signal action_changed]); y se sigue el barrido del arma, activo
 ## mientras dura el golpe ([signal swing_active_changed], gancho para la estela). Una corrección que
-## repite ticks no cambia la clave, así que no duplica nada.
+## repite ticks no cambia la clave, así que no duplica nada; y una que solo desplaza unos ticks el
+## inicio de la misma acción (la entrada del flanco llegó tarde al servidor, que la sustituyó y empezó
+## la esquiva un tick después) tampoco es una acción nueva. El desplazamiento admitido es el tamaño del
+## búfer de entradas ([member CombatRules.input_buffer_ticks]), menos que la duración de la acción más
+## corta (la esquiva dura 27 ticks), así que una segunda acción encadenada sí se distingue.
 ## [br][br]
 ## Las opciones del jugador son [member hit_markers_enabled], [member damage_numbers_enabled],
 ## [member camera_shake_enabled] y [member flash_enabled].
@@ -27,7 +40,8 @@ extends Node
 signal hit_confirmed(kind: int, amount: int, event: NetMessages.EntityEvent)
 ## El jugador local recibió [param amount] de daño del atacante [param attacker_id] (0 si no hay).
 signal damage_taken(amount: int, attacker_id: int, event: NetMessages.EntityEvent)
-## Un HIT con daño sobre [param net_id], sea quien sea (las placas enseñan su vida unos segundos).
+## Un HIT con daño sobre [param net_id], sea quien sea (las placas enseñan su vida unos segundos). Si
+## el evento es propio y la víctima un remoto, sale cuando se le dibuja en el tick del golpe.
 signal entity_damaged(net_id: int)
 ## El jugador local mató a [param victim_id].
 signal kill_confirmed(victim_id: int, event: NetMessages.EntityEvent)
@@ -100,6 +114,8 @@ var _flash_material: StandardMaterial3D = null
 var _flash_meshes: Array[MeshInstance3D] = []
 var _flash_left: Array[float] = []
 var _events_handled: int = 0
+# Reacciones visuales de eventos propios sobre un remoto que esperan a su tick de dibujo.
+var _deferred: CombatEventQueue = CombatEventQueue.new()
 
 
 func _init() -> void:
@@ -114,6 +130,7 @@ func _process(delta: float) -> void:
 
 func _physics_process(_delta: float) -> void:
 	observe_action()
+	deliver_due_reactions()
 
 
 ## Conecta el reparto con lo que hay en pantalla. Todo es opcional: sin [param client] (el sandbox)
@@ -138,6 +155,7 @@ func setup(client: NetClient, camera_rig: CameraRig, character: PlayerCharacter,
 		_client.combat_event.connect(handle_event)
 	_last_action_key = Vector3i(-1, -1, -1)
 	_swing_active = false
+	_deferred.clear()
 
 
 ## Solo para pruebas y sandbox: el id de red del jugador local si no hay [NetClient].
@@ -171,6 +189,11 @@ func get_events_handled() -> int:
 	return _events_handled
 
 
+## Reacciones visuales de eventos propios sobre un remoto que todavía esperan a su tick de dibujo.
+func get_pending_reactions() -> int:
+	return _deferred.size()
+
+
 # --- Eventos ----------------------------------------------------------------------------------
 
 ## Reparte un evento ya temporizado ([signal NetClient.combat_event]). [param is_own] dice si el
@@ -182,11 +205,11 @@ func handle_event(event: NetMessages.EntityEvent, is_own: bool = false) -> void:
 	_last_event_tick = maxi(_last_event_tick, event.tick)
 	match event.event:
 		NetMessages.EntityEvent.Kind.HIT:
-			_on_hit(event)
+			_on_hit(event, is_own)
 		NetMessages.EntityEvent.Kind.DEATH:
-			_on_death(event)
+			_on_death(event, is_own)
 		NetMessages.EntityEvent.Kind.KILL:
-			_on_kill(event)
+			_on_kill(event, is_own)
 		NetMessages.EntityEvent.Kind.RESPAWN:
 			_on_respawn(event, is_own)
 
@@ -229,7 +252,7 @@ func knows_entity(net_id: int) -> bool:
 	return get_entity_position(net_id) != Vector3.INF
 
 
-func _on_hit(event: NetMessages.EntityEvent) -> void:
+func _on_hit(event: NetMessages.EntityEvent, is_own: bool) -> void:
 	var own_id: int = get_own_net_id()
 	var attacker_is_me: bool = own_id != 0 and event.attacker == own_id
 	var victim_is_me: bool = own_id != 0 and event.net_id == own_id
@@ -237,9 +260,8 @@ func _on_hit(event: NetMessages.EntityEvent) -> void:
 	var blocked: bool = event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_BLOCKED)
 	var kind: int = kind_of(event)
 	var position: Vector3 = get_entity_position(event.net_id)
-	if event.amount > 0:
-		entity_damaged.emit(event.net_id)
-		flash(event.net_id)
+	if event.amount > 0 and not _defer_remote_reaction(event, is_own):
+		_react_to_hit(event)
 	if attacker_is_me:
 		_dps.add_hit(event.tick, event.amount)
 		if is_instance_valid(_marker):
@@ -263,19 +285,72 @@ func _on_hit(event: NetMessages.EntityEvent) -> void:
 				position)
 
 
-func _on_death(event: NetMessages.EntityEvent) -> void:
+func _on_death(event: NetMessages.EntityEvent, is_own: bool) -> void:
 	var own_id: int = get_own_net_id()
-	var position: Vector3 = get_entity_position(event.net_id)
-	_request_sound(SOUND_DEATH, position)
+	if not _defer_remote_reaction(event, is_own):
+		_react_to_death(event)
 	if own_id != 0 and event.net_id == own_id:
 		local_died.emit(event.killer, event.attack_id)
 
 
-func _on_kill(event: NetMessages.EntityEvent) -> void:
+func _on_kill(event: NetMessages.EntityEvent, is_own: bool) -> void:
 	var own_id: int = get_own_net_id()
 	if own_id != 0 and event.killer == own_id:
 		kill_confirmed.emit(event.net_id, event)
-		_request_sound(SOUND_KILL, get_entity_position(event.net_id))
+		if not _defer_remote_reaction(event, is_own):
+			_react_to_kill(event)
+
+
+# Lo que se ve en la víctima de un HIT con daño: su placa enseña la vida y destella.
+func _react_to_hit(event: NetMessages.EntityEvent) -> void:
+	entity_damaged.emit(event.net_id)
+	flash(event.net_id)
+
+
+func _react_to_death(event: NetMessages.EntityEvent) -> void:
+	_request_sound(SOUND_DEATH, get_entity_position(event.net_id))
+
+
+func _react_to_kill(event: NetMessages.EntityEvent) -> void:
+	_request_sound(SOUND_KILL, get_entity_position(event.net_id))
+
+
+# Guarda la reacción visual de [param event] si es propio y le ocurre a un remoto al que todavía se
+# dibuja antes del tick del evento (el servidor lo produjo hace [code]retardo[/code] ticks respecto a lo
+# que se ve de él). Devuelve true si la ha guardado; entonces [method deliver_due_reactions] la aplica
+# cuando el tick de dibujo alcance el del evento. Sin cliente (sandbox) o con la víctima propia no hay
+# nada que esperar. Con el reloj sin arrancar (tick de dibujo 0) también espera: aún no se dibuja a nadie.
+func _defer_remote_reaction(event: NetMessages.EntityEvent, is_own: bool) -> bool:
+	if not is_own or not is_instance_valid(_client):
+		return false
+	var own_id: int = get_own_net_id()
+	if own_id != 0 and event.net_id == own_id:
+		return false
+	var render_tick: float = _client.get_interpolation_clock().get_render_tick()
+	if render_tick > 0.0 and render_tick >= float(event.tick):
+		return false
+	_deferred.push(event)
+	return true
+
+
+## Aplica las reacciones visuales de eventos propios sobre remotos cuyo tick ya ha alcanzado el tick
+## de dibujo ([method _defer_remote_reaction]). Lo llama [method _physics_process] después de cada
+## tick; las pruebas lo llaman a mano.
+func deliver_due_reactions() -> void:
+	if _deferred.size() == 0:
+		return
+	if not is_instance_valid(_client):
+		_deferred.clear()
+		return
+	for event: NetMessages.EntityEvent in _deferred.pop_due(
+			_client.get_interpolation_clock().get_render_tick()):
+		match event.event:
+			NetMessages.EntityEvent.Kind.HIT:
+				_react_to_hit(event)
+			NetMessages.EntityEvent.Kind.DEATH:
+				_react_to_death(event)
+			NetMessages.EntityEvent.Kind.KILL:
+				_react_to_kill(event)
 
 
 func _on_respawn(event: NetMessages.EntityEvent, is_own: bool) -> void:
@@ -372,6 +447,7 @@ func _exit_tree() -> void:
 			mesh.material_overlay = null
 	_flash_meshes.clear()
 	_flash_left.clear()
+	_deferred.clear()
 
 
 # --- Acciones propias -------------------------------------------------------------------------
@@ -388,9 +464,10 @@ func observe_action() -> void:
 	if key != _last_action_key:
 		var first: bool = _last_action_key == Vector3i(-1, -1, -1)
 		var previous: int = _last_action
+		var shifted: bool = not first and _is_shifted_start(key, _last_action_key)
 		_last_action_key = key
 		_last_action = state.action
-		if not first:
+		if not first and not shifted:
 			action_changed.emit(state.action, state.action_id, state.action_tick, previous)
 			if state.action == CombatState.Action.DODGE:
 				_request_sound(SOUND_DODGE, character.global_position)
@@ -400,6 +477,13 @@ func observe_action() -> void:
 		swing_active_changed.emit(active, state.action_id if active else 0)
 		if active:
 			_request_sound(SOUND_SWING, character.global_position)
+
+
+# true si [param key] es la misma acción que [param previous] con el inicio movido unos ticks (una
+# corrección de la reconciliación), no otra acción: mismo tipo y mismo ataque, distinto de NONE.
+func _is_shifted_start(key: Vector3i, previous: Vector3i) -> bool:
+	return key.x != CombatState.Action.NONE and key.x == previous.x and key.y == previous.y \
+			and absi(key.z - previous.z) <= CombatCatalog.rules().input_buffer_ticks
 
 
 ## true mientras el golpe del arma propia está activo.

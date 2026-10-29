@@ -188,14 +188,17 @@ esquiva reactivas se diseñan contra los fuertes, cuya anticipación tras soltar
 | 45 | u8 | `buffered` | bits 0–1 tipo (0 nada, 1 PRIMARY, 2 DODGE), bits 2–5 ticks que le quedan |
 | 46 | u16 | `stamina` | 0–`stamina_max` |
 | 48 | u32 | `stamina_regen_tick` | primer tick en que vuelve a regenerar |
-| 52 | u8 | `combat_flags` | bit0 agotado, bit1 último intento sin resistencia (para la interfaz), bit2 resistencia infinita (comando) |
+| 52 | u8 | `combat_flags` | bit0 agotado, bit1 último intento sin resistencia (para la interfaz), bit2 resistencia infinita (comando), bits 3–5 botones DODGE/BLOCK/PRIMARY pulsados en el tick anterior, bit6 ligero de la pulsación viva (§11) |
 | 53 | u16 | `action_dir` | yaw cuantizado (como `look_yaw`) de la esquiva |
 | 55 | u32 | `cc_until_tick` | fin del control actual (exclusivo) |
 | 59 | s16 × 2 | `knockback` | empuje horizontal (x, z) en cm/s |
 | 63 | u32 | `parry_ready_tick` | primer tick en que puede abrirse otra ventana de parada |
 | 67 | u16 | `weapon_id` | arma equipada |
 
-`PROTOCOL_VERSION` pasa a 2. Los ticks absolutos hacen que el estado se restaure sin ambigüedad.
+`PROTOCOL_VERSION` pasa a 2 (y a 3 con la revisión de la fase 3, que cambia la simulación predicha:
+bit 6 de `combat_flags`, carga cancelada tras el silencio del cliente, combo reiniciado al caducar
+el enlace y movimiento aéreo de los controles). Los ticks absolutos hacen que el estado se restaure
+sin ambigüedad.
 
 ### 3.2 Entradas sustituidas (cierra la nota de red.md §8.2)
 
@@ -205,12 +208,20 @@ servidor aplica la máscara al decodificar). Lo ponen `InputQueue.take()` y
 botones. Con ese bit, la máquina de acciones:
 
 - no suma a `primary_held`, no convierte un ligero en carga ni lanza el fuerte al llegar a la
-  carga máxima (la carga se congela hasta la siguiente entrada real);
+  carga máxima (la carga se congela hasta la siguiente entrada real; una sustituida solo
+  *retrasa* la conversión, no la pierde: el bit `FLAG_LIGHT_OF_PRESS` recuerda de qué pulsación
+  es el ligero, §11). La carga congelada dura como mucho `input_buffer_ticks` tras la carga
+  máxima: pasado ese margen con el cliente aún callado, **se cancela** (a NONE, sin lanzar ni
+  gastar resistencia), de modo que un cliente que deja de enviar con la conexión viva no puede
+  guardar un fuerte al máximo para soltarlo al instante con la primera entrada real;
 - no abre ventanas de parada;
 - calcula los flancos sin el bit (`prev_buttons` nunca lo guarda).
 
-Así ninguna pérdida inventa un fuerte ni una parada. Quien se desconecta con BLOCK pulsado sigue
-bloqueando hasta el timeout de ENet (3–8 s): se acepta.
+Así ninguna pérdida inventa un fuerte ni una parada. Quien deja de enviar entradas con BLOCK
+pulsado sigue bloqueando mientras no se le expulse: con la conexión viva no hay límite de
+inactividad (el timeout de ENet solo salta si el par deja de responder a nivel de ENet, no si
+deja de mandar `INPUT_BATCH`). No da ventaja sobre un jugador honrado, que también puede
+bloquear sin límite (gasta resistencia al recibir), y se acepta.
 
 ### 3.3 Reglas por tick
 
@@ -249,6 +260,10 @@ bloqueando hasta el timeout de ENet (3–8 s): se acepta.
      `input_buffer_ticks`; se ejecuta en el primer tick en que se pueda, con prioridad sobre las
      entradas nuevas de ese tick. `primary_held` sigue contando mientras tanto.
    - Tras el ligero 3, `combo_step` vuelve a 0. Si se acaba una recuperación sin enlace, también.
+     Y también si el enlace no llegó a ejecutarse: un ligero que acaba en el aire con una pulsación
+     de enlace pendiente la deja como pulsación guardada normal, y al caducar (sin ligero en curso)
+     el combo vuelve a empezar; si se aterriza dentro de los `input_buffer_ticks`, el enlace se
+     ejecuta como siempre.
 4. **Movimiento permitido** (lo usa `simulate()`):
 
 | Acción | Velocidad horizontal objetivo | Giro | Salto | Esprint |
@@ -264,7 +279,10 @@ bloqueando hasta el timeout de ENet (3–8 s): se acepta.
 | DEAD | frena; la gravedad sigue | ninguno | no | no |
 
 La gravedad y `move_and_slide` se aplican siempre, así que la esquiva y el empuje respetan muros
-y bloqueos del puente. Ni ataques, ni esquiva, ni bloqueo en el aire: un PRIMARY o DODGE en el
+y bloqueos del puente. Las acciones con movimiento escalado a 0 (STUN, DEAD y STAGGER sin empuje)
+frenan también en el aire: la regla de `simulate()` que conserva el impulso aéreo mientras se
+empuja hacia delante no se aplica con ellas, así que el stick no dirige a un cadáver, un aturdido
+ni un tambaleado en pleno salto. Ni ataques, ni esquiva, ni bloqueo en el aire: un PRIMARY o DODGE en el
 aire va al búfer.
 
 ### 3.4 Lo que impone el servidor
@@ -283,7 +301,12 @@ Consultas (las usan el servidor y el animador): `phase(c, t)` (0 anticipación o
 2 recuperación, 3 sin fases), `is_attack_active(c, t)`, `is_blocking(c, t)`,
 `is_parry_window(c, t)`, `is_invulnerable(c, t)`, `defense_flags(c, t) -> int` (bits de
 `StateHistory`) y `action_byte(c, t) -> int`: bits 0–3 la acción, 4–5 la fase, 6–7 el paso del
-combo del ligero en curso.
+combo del ligero en curso. El byte que viaja en el registro lo arma `ActionWire`
+(`scripts/shared/net/action_wire.gd`, uno por entidad en el `Combatant`): es el de `action_byte`
+y, en la esquiva, el tambaleo y el aturdimiento (que no tienen combo), los bits 6–7 llevan un
+contador de reinicio que sube en 1 (módulo 4) con cada acción nueva. Sin él, dos esquivas
+encadenadas por el búfer (la segunda sale en el tick en que acaba la primera, sin ningún tick en
+NONE) o dos controles seguidos dan el mismo byte y el remoto no reinicia el clip.
 
 ---
 
@@ -324,10 +347,31 @@ Para cada atacante en golpe activo en `s`:
 
 1. **Parámetros.** `InputQueue.get_rewind_params(s) -> Vector2i(view_offset_q, lead)`: los de la
    entrada real de `s` o, si se sustituyó, los de la última real. Los jugadores falsos y los PNJ
-   usan `view_tick = s`.
-2. **Tope.** `allowed` de red.md §10. Si `view_offset_q / 16 > allowed + 1`, el golpe **no se
-   prueba**: suma a la puntuación de sospecha y va al `--combat-log`. Si no,
-   `view_tick = clamp(s − view_offset_q / 16, s − allowed, s)`.
+   usan `view_tick = s`. **Se leen una sola vez por golpe**, en su primer tick activo: el
+   rebobinado (`rewind = s₀ − view_tick₀`) queda fijado en el `Combatant` junto a `track_swing`, y
+   en los demás ticks activos `view_tick = s − rewind` (avanza con el tick). Antes cada tick activo
+   leía su propio `view_offset_q` y un cliente modificado barría la ventana (0, 5, 10... 24) o se
+   quitaba las defensas retroactivas con un 0 en los ticks que le convenían.
+2. **Tope.** `allowed` de red.md §10, con una `lead` que el cliente no escoge a su antojo: la de la
+   entrada del golpe, pero como mucho la **habitual** del cliente más 3
+   (`InputQueue.get_typical_lead(s)`, la mediana de las antelaciones de primera copia de las
+   entradas reales de los últimos 60 ticks; 3 es la dispersión de un honrado con jitter) y nunca más
+   de 8 (`_MAX_LEAD_CREDIT`: lo que mantiene un cliente honrado con `TickSync`, margen objetivo ≤ 4
+   más la holgura de su ventana). Un honrado no pierde nada (su vista es `rtt + antelación de la
+   entrada + interpolación`, así que con la antelación de esa entrada nunca queda por encima del
+   tope), pero un cliente que adelanta solo las entradas de su golpe 14 ticks ya no sube el tope de
+   12 a 24 con RTT de LAN. Si `view_offset_q / 16 > allowed + 1`, el golpe **no se prueba**: suma a
+   la puntuación de sospecha y va al `--combat-log`. Si no, `view_tick = clamp(s − view_offset_q /
+   16, s − allowed, s)`. **Mínimo para la defensa:** las defensas retroactivas (invulnerable,
+   parada, bloqueo; paso 6) miran al menos `max(0, rtt_floor + 4 − 2)` ticks atrás
+   (`ServerPeer.rtt_floor_ticks` es el RTT de ENet, que el cliente no controla, y 4 el retardo de
+   interpolación mínimo), aunque el golpe pida menos: un honrado nunca ve el mundo con menos
+   retraso, y pedir 0 ya no libra de ellas. La geometría (paso 3) sigue en el `view_tick` pedido.
+   *Límites conocidos:* un tramposo todavía escoge el rebobinado, una vez por golpe, entre ese
+   mínimo y el tope; y con todas sus entradas adelantadas (hasta el máximo de 8) y `interp_delay_q`
+   al máximo llega al tope global de 24 (un honrado con el mismo RTT, a unos 10-16): el servidor no
+   puede comprobar la interpolación declarada, así que el tope de 24 ticks (400 ms) es la cota
+   del daño posible.
 3. **Muestras.** El atacante, siempre en su estado congelado de `s`. Cada candidato: si
    `view_tick ≤ s − 1`, `StateHistory.sample(id, view_tick)`; si está entre `s − 1` y `s`,
    interpolación entre la pista de `s − 1` y lo congelado de `s`; si es `s`, lo congelado. Una
@@ -339,16 +383,22 @@ Para cada atacante en golpe activo en `s`:
    acción no se vuelve a probar.
 5. **Forma** con la muestra de la víctima y **línea de visión** contra el mundo actual.
 6. **Defensa**, por este orden de precedencia:
-   - **Invulnerable** en algún tick de `[floor(view_tick), s]`: sin efecto y **no** consume el
-     golpe (puede entrar en un tick activo posterior).
+   - **Invulnerable** en algún tick de `[floor(defensa), s]` (`defensa` = el `view_tick` o, si es
+     posterior, el mínimo para la defensa del paso 2): sin efecto y **no** consume el golpe (puede
+     entrar en un tick activo posterior).
    - **Parada**: ventana de parada en la muestra de `view_tick` o en la de `s`, con el atacante
      dentro del cono frontal del defensor en esa muestra (yaw del cuerpo), solo cuerpo a cuerpo:
      sin daño, tambaleo de `parry_stagger_s` al atacante. Consume el golpe.
    - **Bloqueo**: bloqueando en la muestra de `view_tick` o en la de `s`, con el cono: mitigación y
      gasto de resistencia. Consume el golpe.
-   - La muestra de `view_tick` solo cuenta para parada y bloqueo si el defensor **no** ha empezado
-     después una acción ofensiva o una esquiva (`action_tick > view_tick` con LIGHT, HEAVY,
-     CHARGE o DODGE en `s`): quien suelta el escudo para atacar deja de estar protegido.
+   - La muestra de `view_tick` solo cuenta para parada y bloqueo si el defensor **no** ha bajado el
+     escudo después: su acción en `s` es distinta de BLOCK y NONE y tiene `action_tick > view_tick`
+     (LIGHT, HEAVY, CHARGE y DODGE propios, pero también STAGGER, STUN o DEAD impuestos). Quien
+     suelta el escudo para atacar, o a quien se lo quitan con un control, deja de estar protegido;
+     quien lo suelta sin más (NONE conserva el `action_tick` del bloqueo) conserva lo que el
+     atacante veía. Sin esto, un aturdido que bloqueaba hace 20 ticks «bloqueaba» el ligero de un
+     segundo atacante con rebobinado: con 0 de resistencia eso es una rotura de guardia que le
+     alargaba el aturdimiento.
    - Si nada aplica: **impacto**.
 
 `StateHistory` añade a sus banderas por tick: bit 3 bloqueando, bit 4 ventana de parada, bit 5
@@ -379,8 +429,10 @@ final   = roundi((bruto − mitig.) × 1000 / (1000 + armadura)),  mínimo 1 si 
 ### 4.5 Antitrampas (TEC-14)
 
 El cliente solo manda botones; el servidor comprueba fases, resistencia y ritmo con su propia
-simulación, así que un cliente modificado no ataca más rápido ni sin resistencia. Se vigila el
-rebobinado (§4.3, paso 2) con una **puntuación de sospecha** por peer (golpes fuera de tope,
+simulación, así que un cliente modificado no ataca más rápido ni sin resistencia. Las entradas
+sustituidas no inventan nada (§3.2): ni un fuerte cargado que se guarda en silencio, ni una parada.
+Se vigila el rebobinado (§4.3, paso 2: fijado por golpe, con antelación estable y un mínimo para la
+defensa) con una **puntuación de sospecha** por peer (golpes fuera de tope,
 ratio de acierto anómalo) que en la fase 3 solo se registra. Modos nuevos del bot tramposo:
 `rewind` (view_offset_q de 40 ticks), `reach` (ataca desde 5 m) y `rate` (PRIMARY cada tick):
 ninguno debe hacer daño de más.
@@ -425,6 +477,11 @@ ninguno debe hacer daño de más.
 ## 6. Protocolo (TEC-13): `PROTOCOL_VERSION = 2`
 
 - **`PlayerState`** de 69 B (§3.1).
+- **ENTITY_SPAWN ajeno**: su `PlayerState` va con el `CombatState` neutro del arma (resistencia llena,
+  sin banderas, búfer, controles ni parada), salvo la acción en curso (`action`, y `action_id` y
+  `action_tick` si no es NONE) y el arma, y con `prev_buttons` y los contadores de salto a 0: lo demás es
+  estado privado del enemigo (§1: la resistencia viaja en el «estado propio») y no debe volcarse a quien
+  entra en la zona. El SPAWN propio lo lleva entero. El formato (69 B) no cambia.
 - **Bloque extra propio**, en **todo** snapshot con estado propio (bit 3 de `flags` ⇔ bit 0;
   `decode` rechaza bit 3 sin bit 0), tras el estado propio: `u16 health`, `u16 max_health`, `u8
   status` (bit0 en combate, bit1 protegido, bit2 muerto), `u32 respawn_tick` (0 si vivo). 9 B.
@@ -444,7 +501,11 @@ ninguno debe hacer daño de más.
     KILL) y quien tenga relevante a cualquiera de ellos.
   - **Temporización**: un evento es **propio** si el jugador local es atacante, víctima, asesino
     o asistente; su marcador, número y HUD se aplican al llegar. La reacción visual de un remoto
-    (destello, sacudida, animación) se aplica cuando su `render_tick` alcanza `tick`.
+    (destello, sacudida, animación) se aplica cuando su `render_tick` alcanza `tick`. Eso vale
+    también cuando el remoto es la víctima (o el muerto) de un evento propio: `CombatFeedback`
+    aplica al llegar lo que es del jugador local y guarda el destello, la placa de vida
+    (`entity_damaged`) y el sonido de muerte o de baja del remoto en su propia cola hasta ese
+    `render_tick`.
 - **RESPAWN_REQUEST** (`0x05`, C→S, canal 3): `u8 type`, `u8 point_index`. Fuera de plazo o con un
   índice inválido cuenta un aviso.
 - **DEBUG_COMMAND** (TEC-19) con ids fijos en `NetProtocol`: 1 `teleport` (sin cambios), 2 `heal`,
@@ -479,7 +540,10 @@ ninguno debe hacer daño de más.
 - **Detección de acciones sin señales**: `CombatFeedback` y `CharacterAnimator` comparan, tras
   cada tick de física, `(action, action_id, action_tick)` del estado mostrado con el último que
   vieron, y lanzan o cortan barrido, estela y clip desde ahí. Ninguna señal de combate dentro de
-  `simulate()`: las repeticiones no duplican ni pierden efectos.
+  `simulate()`: las repeticiones no duplican ni pierden efectos. Una corrección que solo mueve el
+  inicio de la misma acción hasta `input_buffer_ticks` ticks (el servidor sustituyó la entrada del
+  flanco y esquivó un tick después) no es una acción nueva para `CombatFeedback`: no repite el
+  aviso ni el sonido. Dos esquivas encadenadas (27 ticks de diferencia) sí son dos.
 - **`CombatFeedback`**: recibe los ENTITY_EVENT ya temporizados y reparte marcador de impacto y
   número de daño (UI-12), destello y sacudida (ART-09), ganchos de sonido (ART-11) y el medidor de
   DPS.
@@ -605,13 +669,22 @@ Huecos del documento que se cerraron al implementar (K1a, K1b, K2):
 
 - **`combat_flags`**: además de los bits 0–2, bit 3 DODGE, bit 4 BLOCK y bit 5 PRIMARY guardan
   si el botón estaba pulsado en el tick anterior; así los flancos no dependen de `prev_buttons` y
-  un control impuesto con el botón mantenido no crea un ataque fantasma. El bit 1 dura un tick.
+  un control impuesto con el botón mantenido no crea un ataque fantasma. El bit 1 dura un tick. El
+  bit 6 (`FLAG_LIGHT_OF_PRESS`) marca que el ligero en curso es de la pulsación viva (siguiente
+  punto).
 - **Búfer**: tipo 3 = enlace de combo (la pulsación en la ventana de enlace espera al fin de la
   recuperación; 4 bits no bastaban para 9 + 8 ticks). Una sola ranura; la pulsación del tick `p`
   vale en `p+1 … p+8`; la esquiva guardada usa `move`/`look_yaw` del tick en que se ejecuta; una
   esquiva rechazada por resistencia se descarta.
-- **Conversión a carga**: «ligero empezado por esta pulsación» = `action_tick ≥ t − primary_held
-  + 1`. Mantener PRIMARY desde la ventana de enlace convierte el siguiente ligero en carga.
+- **Conversión a carga**: «ligero empezado por esta pulsación» lo dice el bit 6 de `combat_flags`
+  (`FLAG_LIGHT_OF_PRESS`): lo pone `_try_start_light` cuando el ligero empieza con la pulsación viva
+  abajo (flanco de ese tick, o búfer o enlace que ella dejó) y lo borra soltar PRIMARY, empezar otra
+  acción o un control. Antes se deducía de `action_tick ≥ t − primary_held + 1`, que solo vale sin
+  entradas sustituidas: `primary_held` no cuenta las sustituidas, y con un hueco el servidor nunca
+  convertía el ligero (el cliente sí había predicho la carga). Ahora una entrada sustituida entre
+  `p+1` y `p+7` retrasa la carga un tick por cada una (sigue contando ticks reales y exige
+  anticipación), no la anula. Mantener PRIMARY desde la ventana de enlace convierte el siguiente
+  ligero en carga. El tamaño codificado no cambia.
 - **Movimiento en acciones**: velocidad objetivo literal `wish · run_speed · move_scale (+ avance)`
   sin los multiplicadores de retroceso, lateral ni esprint (campo extra `scaled_movement` en
   `Output`). BLOCK se deja al dejar de pulsar o en el aire. La ventana de parada exige además que
@@ -671,6 +744,16 @@ Cerrado durante K3 (servidor) y K4 (cliente):
 
 Cerrado durante K5 (integración):
 
+- **Rebobinado fijado por golpe y antelación acotada** (revisión de la fase 3, R1): el rebobinado se
+  lee una vez, en el primer tick activo; la antelación que abona el tope es la de la entrada del golpe,
+  acotada por la habitual del cliente más 3 y por 8 (con la de cada entrada a secas, un cliente que
+  adelantara las entradas de su golpe subía el tope a 24 con RTT de LAN). Para un honrado no cambia
+  nada: su vista es `rtt + antelación de esa entrada + interpolación`, de modo que la antelación de su
+  entrada es justo la que el tope necesita (con el mínimo de la ventana, en cambio, un honrado con
+  jitter se quedaba por encima del tope y el golpe, ya sin segunda oportunidad en los ticks activos
+  siguientes, se rechazaba: lo mostró `test_combat_reconciliation`, de 47 golpes a 0). Las pruebas de K5
+  con rtt=150 y jitter=30 (`test_combat_loopback`) siguen confirmando todos sus golpes sin sospecha. El
+  mínimo para la defensa y sus límites están en §4.3, paso 2.
 - **Tope del rebobinado con jitter**: el mínimo del RTT de la ventana (red.md 10) se queda por debajo
   del viaje de un tick cualquiera, y con `rtt=150,jitter=30` el tope rechazaba un 20 % de los ticks
   activos de un bot honrado (y le sumaba sospecha). El tope usa `max(mínimo, máximo)` de la ventana
@@ -762,7 +845,12 @@ Vida 1000 y resistencia 1000 para todos; 1 tick = 1/60 s. Estos datos están en 
 
 - **El DPS medido es igual al calculado con los datos** (156,3, 150,0, 127,1 y 135,0, con 45, 50, 21 y 13
   golpes en 30 s, ciclos completos): la máquina de acciones, la ventana de enlace y la carga hacen
-  exactamente lo que dicen los `.tres`; no hay pérdidas de ticks al enlazar.
+  exactamente lo que dicen los `.tres`; no hay pérdidas de ticks al enlazar. Lo que lo demuestra no
+  es la división (daño de ciclos enteros entre sus segundos da siempre el DPS calculado, y el búfer de
+  8 ticks absorbe un tick de retraso por enlace sin cambiar el recuento de golpes) sino el **tick de
+  cada golpe**: la herramienta lo exporta (`hit_ticks` frente a `expected_hit_ticks`) y
+  `test_combat_server` y `test_combat_balance` exigen que coincidan, con un control que alarga un
+  tick el ligero 1 y comprueba que se detecta.
 - **TTK ideal calculado:** 1000 de vida entre 156,3 de DPS son 6,4 s de combo continuo, o 7,4 s con
   fuertes cargados al máximo. Medido con un atacante perfecto (combo encadenado, del primer golpe a la
   muerte): **5,95 s y 10 golpes contra alguien quieto** (el primer golpe va 12 ticks después de empezar).

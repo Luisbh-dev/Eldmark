@@ -6,8 +6,8 @@ extends Node
 ## [br][br]
 ## Es un nodo hijo de las escenas raíz del cliente ([code]client_main.tscn[/code] y
 ## [code]online_main.tscn[/code]), no un autoload ni algo que nombren sus scripts: el servidor
-## dedicado carga los autoloads del proyecto y los scripts que [code]boot.gd[/code] nombra, y no debe
-## cargar nada de esto. [method install] es la alternativa para montarlo a mano (pruebas,
+## dedicado carga los autoloads del proyecto y los scripts que [code]boot.gd[/code] nombra (que no
+## nombra ninguno del cliente), y no debe cargar nada de esto. [method install] es la alternativa para montarlo a mano (pruebas,
 ## herramientas).
 ## [br][br]
 ## [b]Ajustes.[/b] Al entrar en el árbol carga los ajustes ([method ClientSettings.current]) y aplica

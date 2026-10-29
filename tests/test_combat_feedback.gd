@@ -408,6 +408,121 @@ func test_dps_through_the_feedback_matches_the_expected_combo_figure() -> void:
 			"el DPS medido coincide con el calculado a partir de los datos")
 
 
+# --- Los eventos propios sobre un remoto esperan a su tick de dibujo ---------------------------
+
+## Reloj de dibujo que dice el tick que quiere la prueba.
+class FakeClock extends InterpolationClock:
+	var fake_render_tick: float = 0.0
+
+	func get_render_tick() -> float:
+		return fake_render_tick
+
+
+## Cliente de red que no conecta con nada: da el id propio y el reloj falso.
+class FakeClient extends NetClient:
+	var fake_clock: FakeClock = FakeClock.new()
+
+	func get_net_id() -> int:
+		return OWN_ID
+
+	func get_interpolation_clock() -> InterpolationClock:
+		return fake_clock
+
+
+func _remote_spawn(net_id: int) -> NetMessages.EntitySpawn:
+	var spawn := NetMessages.EntitySpawn.new()
+	spawn.net_id = net_id
+	spawn.kind = NetProtocol.EntityKind.PLAYER
+	spawn.spawn_tick = 10
+	spawn.realm = NetProtocol.Realm.SOLMARCH
+	spawn.display_name = "Remoto%d" % net_id
+	var state := PlayerState.new()
+	state.position = Vector3(0.0, 0.0, -6.0)
+	state.grounded = true
+	spawn.state = state
+	return spawn
+
+
+## Reparto con un cliente falso y un remoto ([constant OTHER_ID]) con su cuerpo, para que su
+## destello y su posición existan. El reloj de dibujo empieza en [param render_tick].
+func _make_feedback_with_remote(render_tick: float) -> FakeClient:
+	_make_feedback()
+	var client := FakeClient.new()
+	client.fake_clock.fake_render_tick = render_tick
+	_root.add_child(client)
+	client.get_remote_world().on_spawn(_remote_spawn(OTHER_ID))
+	_feedback.position_resolver = Callable()
+	_feedback.setup(client, _rig, _character, _marker, _numbers)
+	return client
+
+
+## Un paso de física del reparto con el reloj de dibujo en [param render_tick].
+func _step_feedback(client: FakeClient, render_tick: float) -> void:
+	client.fake_clock.fake_render_tick = render_tick
+	_feedback._physics_process(_dt)
+
+
+func test_an_own_hit_on_a_remote_shows_the_flash_when_the_draw_tick_reaches_it() -> void:
+	# C3/T6: el HIT propio llega nada más producirse, pero el remoto se dibuja unos ticks por detrás:
+	# marcador y número salen ya, el destello y la placa esperan a que se le vea recibir el golpe.
+	var client: FakeClient = _make_feedback_with_remote(92.0)
+	var damaged: Array[int] = []
+	_feedback.entity_damaged.connect(func(net_id: int) -> void: damaged.append(net_id))
+	_feedback.handle_event(_hit(OTHER_ID, OWN_ID, 90, 0, 0, 100), true)
+	assert_true(_marker.is_active(), "el marcador sale al llegar")
+	assert_eq(_numbers.get_active_count(), 1, "y el número")
+	assert_eq(_feedback.get_damage_in_window(), 90, "y el DPS")
+	assert_eq(_feedback.get_flashing_count(), 0, "pero el remoto todavía no ha recibido el golpe")
+	assert_true(damaged.is_empty(), "ni su placa de vida se ha enterado")
+	_step_feedback(client, 99.0)
+	assert_eq(_feedback.get_flashing_count(), 0, "un tick antes, nada")
+	_step_feedback(client, 100.0)
+	assert_true(_feedback.get_flashing_count() >= 1, "al llegar el tick de dibujo al del golpe, destella")
+	assert_eq(damaged, [OTHER_ID] as Array[int], "y su placa enseña la vida")
+	_step_feedback(client, 101.0)
+	assert_eq(damaged.size(), 1, "una sola vez")
+
+
+func test_own_death_and_kill_sounds_of_a_remote_wait_for_the_draw_tick() -> void:
+	var client: FakeClient = _make_feedback_with_remote(80.0)
+	_feedback.handle_event(NetMessages.EntityEvent.death(OTHER_ID, 100, OWN_ID, 2), true)
+	_feedback.handle_event(NetMessages.EntityEvent.kill(OTHER_ID, 100, OWN_ID, 2, PackedInt32Array()),
+			true)
+	assert_false(_sounds.has(CombatFeedback.SOUND_DEATH), "no suena la muerte de quien aún se ve vivo")
+	assert_false(_sounds.has(CombatFeedback.SOUND_KILL))
+	_step_feedback(client, 100.0)
+	assert_true(_sounds.has(CombatFeedback.SOUND_DEATH), "suena cuando se le ve caer")
+	assert_true(_sounds.has(CombatFeedback.SOUND_KILL))
+
+
+func test_what_is_about_the_local_player_or_already_due_is_not_delayed() -> void:
+	var client: FakeClient = _make_feedback_with_remote(80.0)
+	var damaged: Array[int] = []
+	_feedback.entity_damaged.connect(func(net_id: int) -> void: damaged.append(net_id))
+	# El local es la víctima: no hay un remoto que esperar.
+	_feedback.handle_event(_hit(OWN_ID, OTHER_ID, 90, 0, 0, 100), true)
+	assert_true(_feedback.get_flashing_count() >= 1, "el golpe recibido destella al llegar")
+	assert_eq(damaged, [OWN_ID] as Array[int])
+	_feedback.advance_flashes(CombatFeedback.FLASH_SECONDS * 2.0)
+	assert_eq(_feedback.get_flashing_count(), 0)
+	# Un evento ajeno ya viene temporizado por NetClient: se aplica tal cual.
+	_feedback.handle_event(_hit(OTHER_ID, 33, 40, 0, 0, 100), false)
+	assert_true(_feedback.get_flashing_count() >= 1, "un evento ajeno no espera otra vez")
+	_feedback.advance_flashes(CombatFeedback.FLASH_SECONDS * 2.0)
+	# Un golpe propio cuyo tick ya se ha dibujado destella enseguida.
+	client.fake_clock.fake_render_tick = 120.0
+	_feedback.handle_event(_hit(OTHER_ID, OWN_ID, 90, 0, 0, 100), true)
+	assert_true(_feedback.get_flashing_count() >= 1, "si el remoto ya está en ese tick, no hay espera")
+
+
+func test_rebinding_the_feedback_drops_the_pending_reactions() -> void:
+	var client: FakeClient = _make_feedback_with_remote(50.0)
+	_feedback.handle_event(_hit(OTHER_ID, OWN_ID, 90, 0, 0, 100), true)
+	_feedback.setup(client, _rig, _character, _marker, _numbers)
+	_step_feedback(client, 200.0)
+	assert_eq(_feedback.get_flashing_count(), 0, "lo pendiente de la conexión anterior se descarta")
+
+
 # --- CombatFeedback: acciones propias sin señales ---------------------------------------------
 
 func _floor() -> void:
@@ -506,6 +621,63 @@ func test_replaying_ticks_does_not_duplicate_action_effects() -> void:
 		_character.simulate(input, _dt)
 	_feedback.observe_action()
 	assert_eq(changes.size(), 1, "repetir los ticks no repite el efecto: la clave es la misma")
+
+
+func test_a_correction_that_shifts_the_start_of_a_dodge_does_not_repeat_the_effects() -> void:
+	# T5: la entrada del flanco de la esquiva se pierde y el servidor la sustituye (repite los botones
+	# anteriores): esquiva un tick después. Al adoptar su estado el tick de inicio cambia de 1 tick, pero
+	# es la misma esquiva: un solo aviso y un solo sonido.
+	_floor()
+	_make_feedback(false)
+	await wait_physics_frames(3)
+	_feedback.observe_action()
+	var dodges: Array[int] = []
+	_feedback.action_changed.connect(func(action: int, _id: int, tick: int, _prev: int) -> void:
+		if action == CombatState.Action.DODGE:
+			dodges.append(tick))
+	# Unos ticks quietos para que el personaje aterrice antes de esquivar.
+	for i: int in 12:
+		await wait_physics_frames(1)
+		_character.simulate(_input(4980 + i, 0), _dt)
+	var saved: PlayerState = _character.get_state()
+	var first_tick: int = 5001
+	# El cliente predice: pulsa esquivar en el tick 5001 y la mantiene 4 ticks.
+	for i: int in 6:
+		await wait_physics_frames(1)
+		_character.simulate(_input(first_tick + i, PlayerInput.DODGE if i < 4 else 0), _dt)
+		_feedback.observe_action()
+	assert_eq(dodges, [first_tick] as Array[int], "la predicción empieza la esquiva en su tick")
+	assert_eq(_sounds.count(CombatFeedback.SOUND_DODGE), 1)
+	# El servidor no recibió la entrada del 5001 (la sustituta repite los botones previos: ninguno) y
+	# ve el flanco un tick después, con el botón aún pulsado. La reconciliación adopta ese estado.
+	await wait_physics_frames(1)
+	_character.set_state(saved)
+	for i: int in 6:
+		_character.simulate(_input(first_tick + i, PlayerInput.DODGE if i >= 1 and i < 5 else 0), _dt)
+	assert_eq(_character.combat.action_tick, first_tick + 1, "el servidor esquivó un tick más tarde")
+	_feedback.observe_action()
+	assert_eq(dodges, [first_tick] as Array[int], "no hay un segundo aviso de la misma esquiva")
+	assert_eq(_sounds.count(CombatFeedback.SOUND_DODGE), 1, "ni un segundo sonido")
+
+
+func test_two_dodges_chained_by_the_buffer_are_two_actions() -> void:
+	_floor()
+	_make_feedback(false)
+	await wait_physics_frames(3)
+	_feedback.observe_action()
+	var dodges: Array[int] = []
+	_feedback.action_changed.connect(func(action: int, _id: int, tick: int, _prev: int) -> void:
+		if action == CombatState.Action.DODGE:
+			dodges.append(tick))
+	var first_tick: int = 6001
+	# Esquivar y, durante ella, otra pulsación: la segunda sale del búfer al acabar la primera.
+	for i: int in 60:
+		await wait_physics_frames(1)
+		var pressed: bool = i < 2 or (i >= 21 and i < 23)
+		_character.simulate(_input(first_tick + i, PlayerInput.DODGE if pressed else 0), _dt)
+		_feedback.observe_action()
+	assert_eq(dodges.size(), 2, "dos esquivas, dos avisos")
+	assert_eq(_sounds.count(CombatFeedback.SOUND_DODGE), 2, "y dos sonidos")
 
 
 func test_a_new_attack_in_the_combo_is_a_new_action() -> void:

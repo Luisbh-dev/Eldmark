@@ -115,8 +115,10 @@ var _free_toggled: bool = false
 var _free_held: bool = false
 ## La vista la controla un guion (demo): no se captura ni se lee el ratón.
 var _scripted_look: bool = false
-## Una ventana de la interfaz (la pantalla de muerte) pide el cursor libre mientras está abierta.
-var _ui_cursor_release: bool = false
+## Quién de la interfaz (la pantalla de muerte, una ventana, un diálogo) pide el cursor libre
+## mientras está abierto: id de instancia del solicitante -> true. Varios pueden pedirlo a la vez y
+## el ratón solo se recaptura cuando ya no queda ninguno.
+var _ui_cursor_holders: Dictionary = {}
 
 var _zoom_target: float = 3.5
 var _zoom_distance: float = 3.5
@@ -311,15 +313,30 @@ func set_look(yaw: float, pitch: float) -> void:
 func is_cursor_free() -> bool:
 	if _scripted_look:
 		return false
-	return _free_toggled or _free_held or _ui_cursor_release
+	return _free_toggled or _free_held or _has_ui_cursor_holders()
 
 
-## Una ventana de la interfaz (por ejemplo la pantalla de muerte) libera el cursor mientras esté
-## abierta: la cámara no gira, los clics son para ella y el punto de mira se oculta. Al cerrarla
-## ([param enabled] a false) el ratón se recaptura salvo que el jugador lo haya soltado a mano.
-func set_ui_cursor_release(enabled: bool) -> void:
-	_ui_cursor_release = enabled
+## Un elemento de la interfaz ([param holder]: la pantalla de muerte, una ventana, un diálogo) libera
+## el cursor mientras esté abierto: la cámara no gira, los clics son para él y el punto de mira se
+## oculta. Al cerrarlo ([param enabled] a false) deja de pedirlo, y el ratón se recaptura solo si no
+## queda ningún otro solicitante ni lo ha soltado el jugador a mano. Cada solicitante cuenta una
+## sola vez, pida cuantas veces pida.
+func set_ui_cursor_release(enabled: bool, holder: Object) -> void:
+	var key: int = holder.get_instance_id()
+	if enabled:
+		_ui_cursor_holders[key] = true
+	else:
+		_ui_cursor_holders.erase(key)
 	_refresh_mouse_mode()
+
+
+# true si algún solicitante vivo sigue pidiendo el cursor libre. Descarta a los que se han liberado
+# sin avisar (su id de instancia ya no apunta a nada).
+func _has_ui_cursor_holders() -> bool:
+	for key: int in _ui_cursor_holders.keys():
+		if not is_instance_id_valid(key):
+			_ui_cursor_holders.erase(key)
+	return not _ui_cursor_holders.is_empty()
 
 
 func get_camera() -> Camera3D:

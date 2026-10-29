@@ -71,11 +71,21 @@ var swing_action_tick: int = -1
 var swing_hits: Dictionary[int, bool] = {}
 ## El ataque en curso ya ha dado en algo (impacto, bloqueo o parada): cuenta como acierto una vez.
 var swing_landed: bool = false
+## Rebobinado del ataque en curso, fijado por el [CombatResolver] en su primer tick activo (el cliente
+## no lo cambia en los siguientes): [member swing_rewind_fixed] dice si ya se fijó, [member swing_rewind]
+## son los ticks que ve atrás (NAN = el golpe pidió más de lo permitido y no se prueba) y
+## [member swing_defense_rewind] los que se miran atrás para la parada, el bloqueo y la invulnerabilidad
+## (al menos el mínimo coherente con el RTT medido).
+var swing_rewind_fixed: bool = false
+var swing_rewind: float = 0.0
+var swing_defense_rewind: float = 0.0
 ## Tick de inicio del ataque cuyo rebobinado se rechazó (para contar la sospecha una sola vez).
 var rejected_swing_tick: int = -1
 
 # Resto de la regeneración de vida (en puntos por segundo, se canjea cada 60).
 var _regen_carry: int = 0
+# Arma el byte de acción del registro de red, con el contador de reinicio de las esquivas y los controles.
+var _action_wire: ActionWire = ActionWire.new()
 
 
 ## [param entity] debe tener un [PlayerCharacter] como nodo. [param max_health] es la vida máxima
@@ -269,8 +279,7 @@ func mark_respawned(tick: int) -> void:
 	last_damage_tick = -1
 	ledger.clear()
 	swing_action_tick = -1
-	swing_hits.clear()
-	swing_landed = false
+	forget_swing()
 
 
 ## Empieza a seguir el ataque que empezó en [param action_tick]; si es otro que el anterior, olvida a
@@ -278,8 +287,15 @@ func mark_respawned(tick: int) -> void:
 func track_swing(action_tick: int) -> void:
 	if action_tick != swing_action_tick:
 		swing_action_tick = action_tick
-		swing_hits.clear()
-		swing_landed = false
+		forget_swing()
+
+
+## Olvida lo que sabe del ataque en curso: a quién ha golpeado ya, si ha acertado y el rebobinado que se
+## fijó en su primer tick activo.
+func forget_swing() -> void:
+	swing_hits.clear()
+	swing_landed = false
+	swing_rewind_fixed = false
 
 
 ## true si este ataque ya ha golpeado (o ha sido bloqueado o parado por) a [param victim_id].
@@ -298,4 +314,4 @@ func publish(tick: int) -> void:
 			respawn_tick if health <= 0 else 0)
 	var character: PlayerCharacter = entity.get_character()
 	if character != null:
-		entity.action = ActionMachine.action_byte(character.combat, tick)
+		entity.action = _action_wire.encode(character.combat, tick)

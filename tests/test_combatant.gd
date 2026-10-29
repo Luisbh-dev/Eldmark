@@ -204,6 +204,26 @@ func test_swing_tracking_one_hit_per_action() -> void:
 	assert_false(fighter.has_hit(2), "un ataque nuevo olvida")
 
 
+func test_the_rewind_of_a_swing_is_kept_until_a_new_swing_or_forget_swing() -> void:
+	var fighter: Combatant = _fighter()
+	fighter.track_swing(50)
+	assert_false(fighter.swing_rewind_fixed, "un ataque nuevo no tiene rebobinado fijado")
+	fighter.swing_rewind_fixed = true
+	fighter.swing_rewind = 7.0
+	fighter.swing_defense_rewind = 9.0
+	fighter.track_swing(50)
+	assert_true(fighter.swing_rewind_fixed, "el mismo ataque conserva el rebobinado fijado")
+	assert_eq(fighter.swing_rewind, 7.0)
+	fighter.forget_swing()
+	assert_false(fighter.swing_rewind_fixed, "forget_swing lo olvida (y a quién golpeó)")
+	fighter.swing_rewind_fixed = true
+	fighter.track_swing(80)
+	assert_false(fighter.swing_rewind_fixed, "un ataque nuevo lo olvida")
+	fighter.swing_rewind_fixed = true
+	fighter.mark_respawned(100)
+	assert_false(fighter.swing_rewind_fixed, "y reaparecer también")
+
+
 func test_freeze_captures_the_state_after_simulating() -> void:
 	var fighter: Combatant = _fighter(Vector3(3.0, 0.0, -4.0))
 	var state: CombatState = fighter.get_character().combat

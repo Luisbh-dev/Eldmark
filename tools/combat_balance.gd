@@ -170,24 +170,31 @@ func _data_table() -> Dictionary:
 func _measure_dps() -> Dictionary:
 	var weapon: WeaponTicks = CombatCatalog.weapon(CombatCatalog.weapon_id(CombatCatalog.DEFAULT_WEAPON))
 	var combo_presses: Array[Vector2i] = []    # (tick relativo, ticks pulsado)
+	# Tick (relativo al inicio del ciclo) en que cae cada golpe según los datos: lo que duran los ataques
+	# anteriores más la anticipación del suyo.
+	var combo_hits: Array[int] = []
 	var cycle: int = 0
 	for index: int in weapon.light_ids.size():
 		var attack: AttackTicks = CombatCatalog.attack(weapon.light_ids[index])
 		combo_presses.append(Vector2i(maxi(cycle - LINK_LEAD_TICKS, 0) if index > 0 else 0, TAP_TICKS))
+		combo_hits.append(cycle + attack.windup_ticks)
 		cycle += attack.total_ticks
 	var combo_cycle: int = cycle
 	var light: AttackTicks = CombatCatalog.attack(weapon.light_ids[0])
 	var heavy: AttackTicks = CombatCatalog.attack(weapon.heavy_id)
 	var scripts: Array[Dictionary] = [
-		{"name": "combo de 3 ligeros", "key": "combo", "cycle": combo_cycle, "presses": combo_presses},
+		{"name": "combo de 3 ligeros", "key": "combo", "cycle": combo_cycle, "presses": combo_presses,
+				"hits": combo_hits},
 		{"name": "ligero 1 repetido", "key": "light_spam", "cycle": light.total_ticks,
-				"presses": [Vector2i(0, TAP_TICKS)]},
+				"presses": [Vector2i(0, TAP_TICKS)], "hits": [light.windup_ticks]},
 		{"name": "fuerte, carga mínima", "key": "heavy_min", "heavy": true,
 				"cycle": heavy.charge_min_ticks + heavy.windup_ticks + heavy.active_ticks + heavy.recovery_ticks,
-				"presses": [Vector2i(0, heavy.charge_min_ticks)]},
+				"presses": [Vector2i(0, heavy.charge_min_ticks)],
+				"hits": [heavy.charge_min_ticks + heavy.windup_ticks]},
 		{"name": "fuerte, carga máxima", "key": "heavy_max", "heavy": true,
 				"cycle": heavy.charge_max_ticks + heavy.windup_ticks + heavy.active_ticks + heavy.recovery_ticks,
-				"presses": [Vector2i(0, heavy.charge_max_ticks)]},
+				"presses": [Vector2i(0, heavy.charge_max_ticks)],
+				"hits": [heavy.charge_max_ticks + heavy.windup_ticks]},
 	]
 	var results: Dictionary = {}
 	print("\nDPS contra el maniquí (%d s, ciclos completos; medido / calculado con los datos):" % _seconds)
@@ -197,6 +204,9 @@ func _measure_dps() -> Dictionary:
 		print("  %-22s %6.1f DPS medido, %6.1f calculado  (%d golpes, %d de daño en %d ciclos de %d ticks)" % [
 			entry["name"], measured["dps"], measured["expected_dps"], measured["hits"], measured["damage"],
 			measured["cycles"], entry["cycle"]])
+		if measured["hit_ticks"] != measured["expected_hit_ticks"]:
+			print("    ATENCION: los golpes caen en los ticks %s y los datos dicen %s" % [
+				measured["hit_ticks"], measured["expected_hit_ticks"]])
 	return results
 
 
@@ -235,11 +245,20 @@ func _dps_of(entry: Dictionary) -> Dictionary:
 		_step(1)
 	var damage: int = 0
 	var hits: int = 0
+	# Tick de cada golpe (relativo al inicio del guion) y el que le tocaba según los datos: con ellos se
+	# comprueba que el enlace no pierde ticks. Dividir el daño entre los segundos de ciclos enteros da
+	# siempre el DPS calculado, aunque cada ataque durase un tick más de lo que dicen los datos.
+	var hit_ticks: Array[int] = []
 	for event: NetMessages.EntityEvent in _events:
 		if event.event == NetMessages.EntityEvent.Kind.HIT and event.attacker == attacker \
 				and event.net_id == dummy and event.tick >= start and event.tick < end + 1:
 			damage += event.amount
 			hits += 1
+			hit_ticks.append(event.tick - start)
+	var expected_hit_ticks: Array[int] = []
+	for cycle_index: int in cycles:
+		for offset: int in entry["hits"]:
+			expected_hit_ticks.append(cycle_index * cycle + offset)
 
 	var seconds: float = float(cycles * cycle) / 60.0
 	var expected_damage: int = 0
@@ -260,6 +279,7 @@ func _dps_of(entry: Dictionary) -> Dictionary:
 	await _stop_server()
 	return {
 		"cycles": cycles, "cycle_ticks": cycle, "hits": hits, "damage": damage, "seconds": seconds,
+		"hit_ticks": hit_ticks, "expected_hit_ticks": expected_hit_ticks,
 		"dps": float(damage) / seconds,
 		"expected_dps": float(expected_damage) / (float(cycle) / 60.0),
 	}

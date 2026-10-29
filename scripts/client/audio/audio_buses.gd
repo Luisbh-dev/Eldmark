@@ -14,7 +14,9 @@ extends RefCounted
 ## [code]volume_<bus>[/code] por bus. [method save_volumes] conserva el resto de secciones del
 ## archivo.
 ## [br][br]
-## Solo cliente: el servidor dedicado no carga nada de [code]scripts/client/audio/[/code].
+## Solo cliente: el servidor dedicado no carga nada de [code]scripts/client/[/code] (ni, por tanto,
+## de [code]scripts/client/audio/[/code]); lo comprueba [code]tests/test_architecture.gd[/code] con un
+## proceso arrancado con [code]--server[/code].
 
 const MASTER: StringName = &"Master"
 const MUSIC: StringName = &"Music"

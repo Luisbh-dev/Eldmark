@@ -56,7 +56,7 @@ var _last_teleport: int = 0
 var _extrapolating: bool = false
 var _jumped_count: int = 0
 var _landed_count: int = 0
-# Byte action (acción, fase y paso del combo) y vida cuantizada del último registro dibujado.
+# Byte action (acción, fase y paso del combo o contador de reinicio) y vida cuantizada del último registro dibujado.
 var _drawn_action: int = 0
 var _drawn_health_q: int = EntityRecord.HEALTH_Q_FULL
 
@@ -216,7 +216,7 @@ func is_drawn() -> bool:
 
 
 ## Byte [code]action[/code] del registro dibujado (docs/combate.md, sección 3.4: bits 0-3 la
-## acción, 4-5 la fase y 6-7 el paso del combo; [method ActionMachine.action_byte]). Lo lee el
+## acción, 4-5 la fase y 6-7 el paso del combo o el contador de reinicio; [ActionWire]). Lo lee el
 ## animador de combate del remoto.
 func get_drawn_action() -> int:
 	return _drawn_action

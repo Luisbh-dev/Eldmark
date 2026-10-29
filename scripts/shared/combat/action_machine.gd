@@ -19,7 +19,9 @@ extends RefCounted
 ## firma de [method step] no necesita [member PlayerCharacter.prev_buttons]. Una entrada
 ## sustituida ([constant PlayerInput.SUBSTITUTED]) repite los botones y por tanto no crea
 ## flancos; además no suma a [member CombatState.primary_held], no convierte un ligero en carga,
-## no lanza el fuerte al llegar a la carga máxima y no abre ventanas de parada.
+## no lanza el fuerte al llegar a la carga máxima (la carga se congela hasta
+## [member CombatRules.input_buffer_ticks] ticks más; si el silencio sigue, se cancela) y no abre
+## ventanas de parada.
 
 ## Cómo debe moverse el personaje este tick (lo aplica [method PlayerCharacter.simulate]).
 class Output:
@@ -376,6 +378,11 @@ static func _run_buffer(c: CombatState, input: PlayerInput, data: CombatTables,
 	remaining -= 1
 	if remaining <= 0:
 		c.buffered = 0
+		# Una pulsación que caduca sin haber empezado nada, con el ligero anterior ya terminado (el
+		# enlace no pudo ejecutarse, p. ej. en el aire), no deja el combo a medias: el siguiente
+		# ligero vuelve a ser el primero. Con un ligero en curso, su propio final lo decide.
+		if kind == CombatState.BUFFER_PRIMARY and c.action != _LIGHT:
+			c.combo_step = 0
 	else:
 		c.buffered = kind | (remaining << 2)
 
@@ -406,6 +413,7 @@ static func _try_dodge(c: CombatState, input: PlayerInput, data: CombatTables,
 		return _DODGE_DROPPED
 	_spend(c, dodge.stamina_cost, t, data)
 	_clear_link(c)
+	c.combat_flags &= ~CombatState.FLAG_LIGHT_OF_PRESS
 	c.action = _DODGE
 	c.action_id = 0
 	c.action_tick = t
@@ -457,6 +465,12 @@ static func _try_start_light(c: CombatState, t: int, data: CombatTables,
 	c.action_tick = t
 	c.combo_step = (index + 1) % count
 	c.charge_ticks = 0
+	# Es de la pulsación viva si el botón sigue abajo (flanco de este tick, o búfer o enlace que ella
+	# dejó): mantenerla lo convierte en carga.
+	if c.primary_held > 0 and (c.combat_flags & CombatState.FLAG_PRIMARY_HELD) != 0:
+		c.combat_flags |= CombatState.FLAG_LIGHT_OF_PRESS
+	else:
+		c.combat_flags &= ~CombatState.FLAG_LIGHT_OF_PRESS
 	return true
 
 
@@ -466,6 +480,7 @@ static func _run_primary(c: CombatState, out: Output, t: int, data: CombatTables
 		edges: int) -> void:
 	if (down & PlayerInput.PRIMARY) == 0:
 		c.primary_held = 0
+		c.combat_flags &= ~CombatState.FLAG_LIGHT_OF_PRESS
 		return
 	if (edges & PlayerInput.PRIMARY) != 0:
 		# Mientras se carga, una pulsación nueva (tras soltar y esperar a la carga mínima) no hace
@@ -505,9 +520,10 @@ static func _try_charge(c: CombatState, out: Output, t: int, data: CombatTables,
 	var attack: AttackTicks = data.attack(c.action_id)
 	if attack == null or t - c.action_tick >= attack.windup_ticks:
 		return
-	# primary_held cuenta los ticks reales de la pulsación: si el ligero empezó antes de ella, no
-	# es el suyo.
-	if c.action_tick < t - c.primary_held + 1:
+	# Si el ligero empezó antes de la pulsación viva, no es suyo. (No se deduce de primary_held: solo
+	# cuenta ticks reales, y con una entrada sustituida de por medio t - primary_held + 1 deja de ser
+	# el tick de la pulsación.)
+	if (c.combat_flags & CombatState.FLAG_LIGHT_OF_PRESS) == 0:
 		return
 	var heavy: AttackTicks = data.attack(weapon.heavy_id)
 	if heavy == null:
@@ -516,6 +532,7 @@ static func _try_charge(c: CombatState, out: Output, t: int, data: CombatTables,
 		c.combat_flags |= CombatState.FLAG_NO_STAMINA
 		return
 	_clear_link(c)
+	c.combat_flags &= ~CombatState.FLAG_LIGHT_OF_PRESS
 	c.action = _CHARGE
 	c.action_id = heavy.id
 	c.charge_ticks = 0
@@ -536,6 +553,11 @@ static func _run_charge(c: CombatState, t: int, data: CombatTables, real: bool,
 	if live:
 		if real and charge >= heavy.charge_max_ticks:
 			_launch_heavy(c, t, heavy, data)
+		elif not real and charge >= heavy.charge_max_ticks + data.rules.input_buffer_ticks:
+			# El cliente lleva más del búfer de entradas callado con la carga al máximo: se cancela
+			# sin lanzar ni gastar. Si no, un cliente que deja de enviar (con la conexión viva)
+			# guardaría el fuerte cargado todo el tiempo que quisiera y lo soltaría al instante.
+			_to_none(c)
 	elif charge >= heavy.charge_min_ticks:
 		_launch_heavy(c, t, heavy, data)
 
@@ -649,6 +671,7 @@ static func _to_none(c: CombatState) -> void:
 	c.action = _NONE
 	c.action_id = 0
 	c.charge_ticks = 0
+	c.combat_flags &= ~CombatState.FLAG_LIGHT_OF_PRESS
 
 
 # Borra un enlace de combo pendiente: ya no tiene sentido cuando empieza otra acción.
@@ -662,3 +685,4 @@ static func _clear_transient(c: CombatState) -> void:
 	c.primary_held = 0
 	c.combo_step = 0
 	c.charge_ticks = 0
+	c.combat_flags &= ~CombatState.FLAG_LIGHT_OF_PRESS

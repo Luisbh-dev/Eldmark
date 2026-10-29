@@ -217,10 +217,13 @@ func simulate(input: PlayerInput, delta: float) -> void:
 		if grounded:
 			var slowing_down: bool = horizontal.dot(target_velocity) < horizontal.length_squared()
 			rate = ground_deceleration if slowing_down else ground_acceleration
-		elif wish_length > _MIN_WISH_DIRECTION:
+		elif wish_length > _MIN_WISH_DIRECTION and not (action.scaled_movement \
+				and action.move_scale <= 0.0):
 			# En el aire no se frena en la dirección deseada: un salto o una caída esprintando
 			# mantienen su velocidad mientras se siga empujando hacia delante. El control aéreo
-			# solo gira el movimiento o añade velocidad hasta el objetivo.
+			# solo gira el movimiento o añade velocidad hasta el objetivo. No vale para una
+			# acción que no deja moverse (muerto, aturdido o tambaleado sin empuje, con
+			# move_scale 0): esas frenan, y el stick no las dirige.
 			var wish_direction: Vector3 = wish / wish_length
 			var carried_speed: float = horizontal.dot(wish_direction)
 			if carried_speed > target_velocity.length():

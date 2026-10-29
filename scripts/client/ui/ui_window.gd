@@ -77,7 +77,7 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	# Que el cursor no se quede suelto si la ventana desaparece abierta.
 	if _open and is_instance_valid(_camera_rig):
-		_camera_rig.set_ui_cursor_release(false)
+		_camera_rig.set_ui_cursor_release(false, self)
 
 
 func _input(event: InputEvent) -> void:
@@ -99,10 +99,10 @@ func get_close_button() -> Button:
 ## Enlaza la ventana con la cámara: abrirla libera el cursor y cerrarla lo devuelve.
 func bind_camera(rig: CameraRig) -> void:
 	if _open and is_instance_valid(_camera_rig) and _camera_rig != rig:
-		_camera_rig.set_ui_cursor_release(false)
+		_camera_rig.set_ui_cursor_release(false, self)
 	_camera_rig = rig
 	if _open and is_instance_valid(_camera_rig):
-		_camera_rig.set_ui_cursor_release(true)
+		_camera_rig.set_ui_cursor_release(true, self)
 
 
 func is_open() -> bool:
@@ -116,7 +116,7 @@ func open() -> void:
 	_open = true
 	visible = true
 	if is_instance_valid(_camera_rig):
-		_camera_rig.set_ui_cursor_release(true)
+		_camera_rig.set_ui_cursor_release(true, self)
 	UISounds.play(UISounds.OPEN)
 	UIFocus.focus_first(_content)
 	opened.emit()
@@ -129,7 +129,7 @@ func close() -> void:
 	_open = false
 	visible = false
 	if is_instance_valid(_camera_rig):
-		_camera_rig.set_ui_cursor_release(false)
+		_camera_rig.set_ui_cursor_release(false, self)
 	UISounds.play(UISounds.CLOSE)
 	closed.emit()
 

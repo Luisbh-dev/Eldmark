@@ -452,6 +452,38 @@ func test_rewind_params_lead_comes_from_the_first_copy() -> void:
 	assert_eq(queue.get_rewind_params(5), Vector2i(100, 2), "gana la primera copia, con su antelación")
 
 
+func test_typical_lead_is_the_median_of_the_recent_real_inputs() -> void:
+	# R1: un cliente que adelanta solo las entradas de un golpe no mueve la antelación habitual.
+	var queue: InputQueue = _make_queue()
+	assert_eq(queue.get_typical_lead(10), 0, "sin entradas, la de la última real (0)")
+	for t: int in range(1, 31):
+		queue.push(_input(t), 0, t - 2)
+		queue.take(t)
+	assert_eq(queue.get_typical_lead(30), 2, "antelación habitual: 2")
+	for t: int in range(31, 37):
+		queue.push(_input(t), 0, t - 14)
+		queue.take(t)
+	assert_eq(queue.get_rewind_params(36).y, 14, "las entradas adelantadas llevan su antelación de 14")
+	assert_eq(queue.get_typical_lead(36), 2, "pero la habitual sigue en 2 (6 de 36 no mueven la mediana)")
+	queue.take(37)
+	assert_eq(queue.get_typical_lead(37), 2, "una sustituida no tiene antelación y no cuenta")
+	# Un cliente adelantado en todas sus entradas sí mueve la habitual (lo acota el resolutor).
+	var early: InputQueue = _make_queue()
+	for t: int in range(1, 80):
+		early.push(_input(t), 0, t - 14)
+		early.take(t)
+	assert_eq(early.get_typical_lead(79), 14, "adelantado siempre: 14")
+	# Las entradas más viejas que la ventana no cuentan.
+	var window: InputQueue = _make_queue()
+	for t: int in range(1, 40):
+		window.push(_input(t), 0, t)
+		window.take(t)
+	for t: int in range(40, 100):
+		window.push(_input(t), 0, t - 5)
+		window.take(t)
+	assert_eq(window.get_typical_lead(99), 5, "la antelación 0 de los primeros ticks queda fuera")
+
+
 func test_take_always_returns_the_requested_tick() -> void:
 	var queue: InputQueue = _make_queue()
 	for t: int in range(1, 200):

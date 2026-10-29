@@ -70,7 +70,7 @@ func _duel(distance: float = 1.5) -> Array[Combatant]:
 func _resolve(s: int = S, fresh: bool = true) -> Array[CombatResolver.Hit]:
 	for fighter: Combatant in _fighters:
 		if fresh:
-			fighter.swing_hits.clear()
+			fighter.forget_swing()
 		fighter.freeze(s)
 	var space: PhysicsDirectSpaceState3D = _world.get_world_3d().direct_space_state
 	return _resolver.resolve(s, _fighters, space)
@@ -98,6 +98,50 @@ func _set_view_offset(attacker: Combatant, view_offset_q: int, tick: int = S) ->
 	attacker.queue.reset(tick - 1, NetProtocol.neutral_input(tick - 1, 0.0))
 	attacker.queue.push(NetProtocol.neutral_input(tick, 0.0), view_offset_q, tick)
 	attacker.queue.take(tick)
+
+
+## Graba a la víctima (net_id 2) bloqueando de frente en los ticks S - 30 a [param last_block] y sin
+## bloquear en los siguientes hasta S - 1, y al atacante quieto.
+func _record_block_until(last_block: int) -> void:
+	for tick: int in range(S - 30, S):
+		_history.record(tick, 1, Vector3.ZERO, 0.0, EntityRecord.FLAG_GROUNDED)
+		var flags: int = EntityRecord.FLAG_GROUNDED
+		if tick <= last_block:
+			flags |= ActionMachine.DEFENSE_BLOCKING
+		_history.record(tick, 2, Vector3(0.0, 0.0, -1.5), PI_YAW, flags)
+
+
+## Cola del atacante con entradas reales de los ticks [param from_tick] a S - 1 llegadas con
+## [param normal_lead] ticks de antelación y la del tick S con [param s_lead] y ese
+## [param view_offset_q]; todas consumidas, como haría el servidor.
+func _fill_queue(attacker: Combatant, from_tick: int, normal_lead: int, s_lead: int,
+		view_offset_q: int) -> void:
+	attacker.queue.reset(from_tick - 1, NetProtocol.neutral_input(from_tick - 1, 0.0))
+	for tick: int in range(from_tick, S):
+		attacker.queue.push(NetProtocol.neutral_input(tick, 0.0), 0, tick - normal_lead)
+		attacker.queue.take(tick)
+	attacker.queue.push(NetProtocol.neutral_input(S, 0.0), view_offset_q, S - s_lead)
+	attacker.queue.take(S)
+
+
+## Un atacante de LAN (RTT de 2 ticks) que declara el retardo de interpolación máximo.
+func _lan_cheater() -> ServerPeer:
+	var peer := ServerPeer.new(9)
+	peer.rtt_ticks = 2
+	peer.rtt_peak_ticks = 2
+	peer.interp_delay_q = NetProtocol.MAX_INTERP_DELAY_Q
+	return peer
+
+
+## Víctima que se aleja de frente a 5 m/s: a 2,23 m del atacante en S - 24 y a 4,23 m en S (el alcance,
+## con el radio de la cápsula, es 3,0 m).
+func _retreating_victim() -> Combatant:
+	var victim: Combatant = _fighter(2, SOLMARCH, Vector3(0.0, 0.0, -4.23), PI_YAW)
+	for tick: int in range(S - 30, S):
+		var distance: float = 2.23 + float(tick - (S - 24)) * 5.0 / 60.0
+		_history.record(tick, 1, Vector3.ZERO, 0.0, EntityRecord.FLAG_GROUNDED)
+		_history.record(tick, 2, Vector3(0.0, 0.0, -distance), PI_YAW, EntityRecord.FLAG_GROUNDED)
+	return victim
 
 
 func _outcomes(hits: Array[CombatResolver.Hit]) -> Array[int]:
@@ -309,6 +353,65 @@ func test_a_dodge_started_after_view_tick_also_drops_the_old_block() -> void:
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT)
 
 
+## C2/R3: un control impuesto después de view_tick (aturdimiento, tambaleo) también baja el escudo: la
+## muestra rebobinada de bloqueo ya no protege (ni castiga) a quien está aturdido o tambaleándose.
+func test_a_defender_stunned_after_view_tick_loses_the_old_block() -> void:
+	var peer: ServerPeer = _lagged_peer()
+	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
+	var victim: Combatant = _fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
+	CombatFixture.start_light_active(attacker, S)
+	_set_view_offset(attacker, 10 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	# Bloqueaba hasta S - 8; en S - 7 le rompieron la guardia (aturdido hasta S + 53, sin resistencia).
+	_record_block_until(S - 8)
+	var state: CombatState = victim.get_character().combat
+	state.stamina = 0
+	ActionMachine.impose_stun(state, S - 7, S + 53)
+	var hits: Array[CombatResolver.Hit] = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT,
+				"aturdido en s: la muestra de hace 10 ticks no cuenta")
+
+
+func test_a_defender_staggered_after_view_tick_loses_the_old_block() -> void:
+	var peer: ServerPeer = _lagged_peer()
+	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
+	var victim: Combatant = _fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
+	CombatFixture.start_light_active(attacker, S)
+	_set_view_offset(attacker, 10 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	# Bloqueaba hasta S - 9, empezó un ligero en S - 8 y un golpe lo dejó tambaleándose en S - 5.
+	_record_block_until(S - 9)
+	var state: CombatState = victim.get_character().combat
+	state.action = CombatState.Action.LIGHT
+	state.action_id = CombatCatalog.attack_id(&"sword_light_1")
+	state.action_tick = S - 8
+	ActionMachine.impose_stagger(state, S - 5, S + 13, Vector2.ZERO)
+	var hits: Array[CombatResolver.Hit] = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT,
+				"tambaleándose en s: no está protegido por su bloqueo de hace 10 ticks")
+
+
+func test_a_defender_that_only_released_the_shield_keeps_the_old_block() -> void:
+	# Control de C2: soltar el escudo sin hacer nada más (NONE en s) conserva la muestra de view_tick.
+	var peer: ServerPeer = _lagged_peer()
+	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
+	var victim: Combatant = _fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
+	CombatFixture.start_light_active(attacker, S)
+	_set_view_offset(attacker, 10 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	_record_block_until(S - 8)
+	CombatFixture.start_block(victim, S - 30)
+	victim.get_character().combat.action = CombatState.Action.NONE
+	var hits: Array[CombatResolver.Hit] = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.BLOCKED,
+				"soltó el escudo hace 7 ticks: lo que veía el atacante sigue valiendo")
+	# Y si sigue bloqueando de verdad, también (el aturdimiento se cura al acabar).
+	CombatFixture.start_block(victim, S - 30)
+	hits = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.BLOCKED)
+
+
 # --- Un impacto por acción ---------------------------------------------------------------------
 
 func test_one_impact_per_action_and_target() -> void:
@@ -459,6 +562,162 @@ func test_the_cap_covers_the_worst_round_trips_of_the_window_not_only_the_best()
 	assert_eq(peer.suspicion_score, 1)
 
 
+## R1: el cliente no escoge el tope. Un tramposo con RTT de LAN manda solo las entradas de su golpe unos
+## 14 ticks antes que las demás y declara el retardo de interpolación máximo: antes el tope le subía a 24
+## (un honrado con el mismo ping tiene 12-16) y alcanzaba a quien se aleja. Ahora la antelación de esa
+## entrada no pasa de la habitual más 3, y el tope es 2 + 3 + 12 + 2 = 19.
+func test_an_isolated_early_input_does_not_raise_the_rewind_cap() -> void:
+	var peer: ServerPeer = _lan_cheater()
+	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
+	_retreating_victim()
+	CombatFixture.start_light_active(attacker, S)
+	_fill_queue(attacker, S - 20, 0, 14, 24 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	assert_eq(attacker.queue.get_rewind_params(S).y, 14, "la entrada de S llegó con 14 de antelación")
+	assert_eq(attacker.queue.get_typical_lead(S), 0, "y la habitual es 0")
+	var hits: Array[CombatResolver.Hit] = _resolve()
+	if assert_eq(hits.size(), 1, "un resultado"):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.REWIND_REJECTED,
+				"24 ticks de rebobinado con RTT de 2: el tope es 19, no 24")
+	assert_eq(peer.suspicion_score, 1, "y suma sospecha")
+	# Lo que sí cubre el tope entra, recortado.
+	_fill_queue(attacker, S - 20, 0, 14, 19 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	hits = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "19 ticks entran")
+		assert_near(hits[0].view_tick, float(S - 19), 1e-4)
+	# Un honrado con 3 de antelación en todas sus entradas no pierde nada: el tope sigue siendo
+	# rtt + antelación + interpolación + 2 (2 + 3 + 12 + 2 = 19), y un tick más se recorta.
+	_fill_queue(attacker, S - 20, 3, 3, 20 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	hits = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "(honrado) 20 = tope + 1 entra")
+		assert_near(hits[0].view_tick, float(S - 19), 1e-4, "(honrado) recortado al tope de 19")
+
+
+func test_a_client_that_is_always_ahead_gets_at_most_the_lead_credit() -> void:
+	# Un cliente con todas sus entradas 14 ticks por delante no sube el tope más allá de la antelación
+	# máxima que abona el servidor (8): 2 + 8 + 6 + 2 = 18.
+	var peer := ServerPeer.new(9)
+	peer.rtt_ticks = 2
+	peer.rtt_peak_ticks = 2
+	peer.interp_delay_q = 48
+	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
+	_retreating_victim()
+	CombatFixture.start_light_active(attacker, S)
+	_fill_queue(attacker, S - 20, 14, 14, 24 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	var hits: Array[CombatResolver.Hit] = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.REWIND_REJECTED,
+				"24 ticks con un tope de 18")
+	_fill_queue(attacker, S - 20, 14, 14, 18 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	hits = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "18 ticks entran")
+		assert_near(hits[0].view_tick, float(S - 18), 1e-4)
+
+
+## R1: el rebobinado se fija en el primer tick activo del golpe y avanza con él. Antes cada tick activo
+## leía su propio view_offset_q y el tramposo barría la ventana (0, 24, 0...).
+func test_a_swing_keeps_the_rewind_of_its_first_active_tick() -> void:
+	var peer: ServerPeer = _lagged_peer()
+	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
+	_fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
+	# El tercero solo está al alcance en S - 5 (un destello en su pista) y ahora está lejos.
+	_fighter(3, SOLMARCH, Vector3(0.0, 0.0, -5.0), PI_YAW)
+	for tick: int in range(S - 30, S):
+		var z: float = -2.0 if tick == S - 5 else -5.0
+		_history.record(tick, 1, Vector3.ZERO, 0.0, EntityRecord.FLAG_GROUNDED)
+		_history.record(tick, 2, Vector3(0.0, 0.0, -1.5), PI_YAW, EntityRecord.FLAG_GROUNDED)
+		_history.record(tick, 3, Vector3(0.0, 0.0, z), PI_YAW, EntityRecord.FLAG_GROUNDED)
+	CombatFixture.start_light_active(attacker, S)
+	_set_view_offset(attacker, 6 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	var hits: Array[CombatResolver.Hit] = _resolve()
+	if assert_eq(hits.size(), 1, "en S solo acierta el segundo"):
+		assert_eq(hits[0].victim.get_id(), 2)
+		assert_near(hits[0].view_tick, float(S - 6), 1e-4, "con 6 ticks de rebobinado")
+	# En el tick activo siguiente el cliente pide 0 (o 24): el golpe sigue con sus 6 ticks, es decir,
+	# mirando S + 1 - 6 = S - 5, donde el tercero estaba al alcance.
+	for claimed: int in [0, 24, 3]:
+		attacker.swing_hits.erase(3)
+		_set_view_offset(attacker, claimed * CombatResolver.VIEW_OFFSET_Q_SCALE, S + 1)
+		hits = _resolve(S + 1, false)
+		if assert_eq(hits.size(), 1, "(pide %d) en S + 1 acierta al tercero" % claimed):
+			assert_eq(hits[0].victim.get_id(), 3)
+			assert_near(hits[0].view_tick, float(S + 1 - 6), 1e-4,
+					"(pide %d) con el rebobinado fijado en S: 6 ticks" % claimed)
+	assert_eq(peer.suspicion_score, 0, "sin sospecha")
+
+
+func test_a_rejected_swing_stays_rejected_whatever_the_next_ticks_ask() -> void:
+	var peer: ServerPeer = _lagged_peer()
+	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
+	_fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
+	CombatFixture.start_light_active(attacker, S)
+	_set_view_offset(attacker, 40 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	assert_eq(_outcomes(_resolve()), [CombatResolver.Outcome.REWIND_REJECTED])
+	# El tick siguiente pide un rebobinado razonable: el golpe sigue rechazado (un solo aviso).
+	_set_view_offset(attacker, 0, S + 1)
+	var hits: Array[CombatResolver.Hit] = _resolve(S + 1, false)
+	assert_eq(hits.size(), 0, "el golpe no se prueba aunque ahora pida 0")
+	assert_eq(peer.suspicion_score, 1)
+
+
+## R1: sin rebobinado (view_offset_q = 0) no se escapa de las paradas, bloqueos e invulnerabilidades
+## retroactivos: el servidor impone al menos el rebobinado coherente con el RTT medido por ENet
+## (rtt_floor_ticks + 4 - 2), para la defensa.
+func test_offset_zero_does_not_escape_the_retroactive_parry() -> void:
+	var peer: ServerPeer = _lagged_peer()
+	peer.rtt_floor_ticks = 4
+	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
+	_fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
+	CombatFixture.start_light_active(attacker, S)
+	# La víctima paró entre S - 8 y S - 3 (ventana de 6 ticks) y ya bajó el escudo en S.
+	for tick: int in range(S - 12, S):
+		var flags: int = EntityRecord.FLAG_GROUNDED
+		if tick >= S - 8 and tick <= S - 3:
+			flags |= ActionMachine.DEFENSE_BLOCKING | ActionMachine.DEFENSE_PARRY
+		_history.record(tick, 1, Vector3.ZERO, 0.0, EntityRecord.FLAG_GROUNDED)
+		_history.record(tick, 2, Vector3(0.0, 0.0, -1.5), PI_YAW, flags)
+	_set_view_offset(attacker, 0)
+	var hits: Array[CombatResolver.Hit] = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.PARRIED,
+				"con RTT de 4 ticks el atacante no puede ver el mundo sin retraso: S - 6 está parando")
+		assert_near(hits[0].view_tick, float(S), 1e-6, "la geometría sigue en lo que pidió")
+	# Un honrado que pide 6 ticks (su vista real) obtiene lo mismo.
+	_set_view_offset(attacker, 6 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	hits = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.PARRIED, "(6 ticks pedidos)")
+	# Sin RTT medido (floor 0) el mínimo son 2 ticks y la parada de hace 6 no cuenta.
+	peer.rtt_floor_ticks = 0
+	_set_view_offset(attacker, 0)
+	hits = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "(sin RTT medido)")
+
+
+func test_offset_zero_does_not_escape_the_retroactive_invulnerability() -> void:
+	var peer: ServerPeer = _lagged_peer()
+	peer.rtt_floor_ticks = 4
+	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
+	_fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
+	CombatFixture.start_light_active(attacker, S)
+	# La víctima fue invulnerable en S - 5 y S - 4 (una esquiva) y en S ya no lo es.
+	for tick: int in range(S - 12, S):
+		var flags: int = EntityRecord.FLAG_GROUNDED
+		if tick == S - 5 or tick == S - 4:
+			flags |= ActionMachine.DEFENSE_INVULNERABLE
+		_history.record(tick, 1, Vector3.ZERO, 0.0, EntityRecord.FLAG_GROUNDED)
+		_history.record(tick, 2, Vector3(0.0, 0.0, -1.5), PI_YAW, flags)
+	_set_view_offset(attacker, 0)
+	var hits: Array[CombatResolver.Hit] = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.INVULNERABLE,
+				"la invulnerabilidad de hace 5 ticks cuenta aunque pida 0")
+	assert_false(attacker.has_hit(2), "y no consume el golpe")
+
+
 func test_substituted_input_uses_the_last_real_rewind() -> void:
 	var peer: ServerPeer = _lagged_peer()
 	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
@@ -513,7 +772,7 @@ func test_allies_are_never_hit_and_realms_need_an_rvr_zone() -> void:
 	var space: PhysicsDirectSpaceState3D = _world.get_world_3d().direct_space_state
 	assert_eq(safe_zone.resolve(S, _fighters, space).size(), 0, "zona SAFE: no hay daño entre reinos")
 	# Un Hueco (bando neutral) es hostil a todos.
-	attacker.swing_hits.clear()
+	attacker.forget_swing()
 	ally.entity.realm = RealmCatalog.NEUTRAL_CODE
 	assert_eq(safe_zone.resolve(S, _fighters, space).size(), 1, "los Huecos son hostiles")
 

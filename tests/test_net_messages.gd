@@ -433,7 +433,7 @@ func test_entity_record_interpolate() -> void:
 # --- NetProtocol ------------------------------------------------------------------------------
 
 func test_protocol_constants_and_helpers() -> void:
-	assert_eq(NetProtocol.PROTOCOL_VERSION, 3, "versión")
+	assert_eq(NetProtocol.PROTOCOL_VERSION, 4, "versión")
 	assert_eq(NetProtocol.MAGIC, 0x4D444C45, "magic")
 	assert_eq(PackedByteArray([0x45, 0x4C, 0x44, 0x4D]).decode_u32(0), NetProtocol.MAGIC,
 			"los bytes del magic leen «ELDM»")

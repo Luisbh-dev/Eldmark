@@ -250,6 +250,39 @@ func _place(client: RawClient, position: Vector3, yaw: float) -> void:
 	_entity_of(client).get_character().yaw = yaw
 
 
+# --- Lo que no viaja ---------------------------------------------------------------------------
+
+## R4: quien entra en la zona recibe un ENTITY_SPAWN por cada entidad que ya estaba, y el de las ajenas no
+## lleva su resistencia, agotamiento, enfriamiento de parada ni controles; el propio sí lo lleva todo.
+func test_the_spawn_of_other_players_does_not_leak_their_private_combat_state() -> void:
+	await _start_server()
+	var ana: RawClient = await _join("Ana", VARDHEIM)
+	if ana == null:
+		return
+	var combat: CombatState = _entity_of(ana).get_character().combat
+	combat.stamina = 137
+	combat.stamina_regen_tick = _server.get_tick() + 100000
+	combat.combat_flags = CombatState.FLAG_EXHAUSTED
+	combat.parry_ready_tick = _server.get_tick() + 5000
+	var bea: RawClient = await _join("Bea", SOLMARCH)
+	if bea == null:
+		return
+	var seen: NetMessages.EntitySpawn = null
+	for spawn: NetMessages.EntitySpawn in bea.spawns:
+		if spawn.net_id == ana.own_spawn.net_id:
+			seen = spawn
+	if not assert_not_null(seen, "Bea recibe el SPAWN de Ana"):
+		return
+	assert_false(seen.is_yours, "ajeno")
+	var neutral: CombatState = CombatState.initial(CombatCatalog.rules(), combat.weapon_id)
+	assert_eq(seen.state.combat.stamina, neutral.stamina, "sin la resistencia exacta")
+	assert_eq(seen.state.combat.combat_flags, 0, "ni el agotamiento")
+	assert_eq(seen.state.combat.parry_ready_tick, 0, "ni el enfriamiento de la parada")
+	assert_eq(seen.state.combat.stamina_regen_tick, 0)
+	assert_eq(seen.state.combat.weapon_id, combat.weapon_id, "el arma sí")
+	assert_true(ana.own_spawn.is_yours, "el SPAWN propio sigue marcado como tuyo")
+
+
 # --- Eventos ----------------------------------------------------------------------------------
 
 func test_a_hit_reaches_attacker_victim_and_a_third_player_with_the_same_content() -> void:

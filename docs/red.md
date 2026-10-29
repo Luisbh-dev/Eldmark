@@ -78,7 +78,13 @@ que añade otro flujo de trabajo. Aquí se usan, no se redefinen (ver [1.5](#15-
 ### 1.2 Modos de arranque
 
 `boot.gd` lee los argumentos de usuario (los que van tras `--`). Prioridad: `--server` >
-`--bots` > `--connect`/`--local`/`--bot` > sandbox.
+`--bots` > `--connect`/`--local`/`--bot` > sandbox. `boot.gd` solo decide entre servidor y cliente y
+**no nombra ninguna clase de `scripts/client/`** (la escena principal la ejecuta también el
+servidor dedicado, y cada referencia de clase arrastraría el script y, en cadena, la interfaz, los
+ajustes y el audio): para el cliente instancia por su ruta `scenes/client/client_launcher.tscn`
+(`ClientLauncher`), que aplica el resto de la prioridad y cambia a la escena del modo. Lo comprueba
+`test_architecture` arrancando un proceso con `--server` y mirando qué scripts del cliente ha cargado
+(ninguno).
 
 | Argumentos | Modo | Escena |
 |---|---|---|
@@ -620,7 +626,7 @@ El tamaño de un ENTITY_SPAWN depende de `kind` (ver 5.5).
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
 | 0 | u32 | magic | `0x4D444C45` |
-| 4 | u16 | protocol_version | `NetProtocol.PROTOCOL_VERSION` (= 3) |
+| 4 | u16 | protocol_version | `NetProtocol.PROTOCOL_VERSION` (= 4: 2 combate, 3 su revisión, 4 el fuerte) |
 | 6 | u32 | sim_hash | ver [3](#3-conexión) |
 | 10 | u8 | realm | 0 ninguno (se rechaza), 1 Vardheim, 2 Solmarch, 3 Askarra |
 | 11 | u8 | flags | bit0 = bot; resto, 0 |
@@ -704,7 +710,7 @@ inmediata sin esperar al timeout.
 
 - `command` 1 = TELEPORT, con `f32 × 3` de posición (14 B en total).
 - **Ids fijos** (`NetProtocol.DEBUG_*`), que no se reutilizan ni se reordenan: 1 `teleport`,
-  2 `heal`, 3 `kill`, 4 `stamina_inf`, 5 `set_weapon`, 6 `spawn_dummy` y, desde la versión 3
+  2 `heal`, 3 `kill`, 4 `stamina_inf`, 5 `set_weapon`, 6 `spawn_dummy` y, desde la versión 4
   ([fuerte.md 1.6](fuerte.md#16-controlador-gue-08-gue-12)), 7 `unstuck`, 8 `fort_reset`, 9
   `fort_owner`, 10 `fort_kill_captain`, 11 `fort_capture_speed` y 12 `npc_debug`. Los datos de 2 a 6
   los define el servidor ([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)); el
@@ -804,6 +810,13 @@ Payload según `kind`:
 `decode` devuelve `null` si el tamaño no cuadra con las longitudes, un texto no es válido, el `kind`
 no tiene formato o, en una estructura, el id de definición no es ASCII imprimible de 1 a 32 B, el
 contador no está entre 1 y 32, un campo trae un `value_type` desconocido o se repite un `field_id`.
+
+El `PlayerState` del SPAWN **propio** (bit0 = 1) va entero. El de una entidad **ajena** es público: lleva
+posición, velocidad, giro y suelo, y del combate solo la acción en curso (con su ataque y su tick de inicio)
+y el arma; el resto del `CombatState` (resistencia exacta, agotamiento, enfriamiento de la parada, búfer,
+paso del combo, controles, empuje), los botones del último tick y los contadores de salto vuelven a sus
+valores iniciales. Lo contrario volcaba a cualquiera que entrara en la zona el estado privado de cada
+enemigo (combate.md 6).
 
 **ENTITY_DESPAWN** (`0x21`, canal 3)
 
@@ -1382,11 +1395,23 @@ O(entidades); por cliente solo hay copias de memoria.
     ventana, **con la misma cota independiente** (`ServerPeer.rtt_peak_ticks`): atrasar los acks no da
     más que `PEER_ROUND_TRIP_TIME + retardo del NetSim + 3`, con mínimo o con máximo.
   - **`lead(T)`** es la antelación medida de esa entrada (se cancela con la del cliente: la entrada que
-    llega tarde por la red cuenta con menos antelación y con más viaje).
+    llega tarde por la red cuenta con menos antelación y con más viaje), **acotada** por la habitual del
+    cliente más 3 (`InputQueue.get_typical_lead`: la mediana de las antelaciones de primera copia de las
+    entradas reales de los últimos 60 ticks) y por 8. Sin cota, la antelación de cada entrada la escoge
+    el cliente: mandar solo las entradas de su golpe 14 ticks antes subía el tope de 12 a 24 con RTT de
+    LAN (revisión de la fase 3, R1).
+  - **El rebobinado se fija una vez por golpe** (primer tick activo) y avanza con el tick. Para la
+    defensa retroactiva (invulnerabilidad, parada, bloqueo) el servidor mira atrás al menos
+    `rtt_floor + 4 − 2` ticks (`rtt_floor` = el RTT de ENet, `ServerPeer.rtt_floor_ticks`), aunque el
+    cliente pida menos.
   - **`interp_delay_q`** no pasa de 96 (12 ticks × 8, el máximo del `InterpolationClock`): el
     servidor lo limita y suma un aviso a quien envíe más (`NetProtocol.MAX_INTERP_DELAY_Q`). La
     fórmula ya lo acota con `clamp(…, 4, 12)`.
-  - **Fingir lag no da más rebobinado.**
+  - **Fingir lag no da más rebobinado** más allá de lo que da lag de verdad: con acks atrasados (cota
+    del RTT), antelación (acotada por la habitual y por 8) o rebobinado por tick (fijado por golpe). Queda
+    la interpolación declarada (`interp_delay_q`, hasta 96 sin aviso), que el servidor no puede
+    comprobar: un tramposo con todas sus entradas adelantadas y esa declaración llega al tope de 24
+    ticks aunque su RTT sea de LAN. El tope es la cota del daño posible.
   - **Por qué 24 ticks.** El rebobinado real es RTT + margen + retardo de interpolación, unos 20
     ticks con 200 ms de RTT. El tope de 24 ticks (400 ms) cubre hasta ~250 ms de RTT con el
     retardo normal. **Medido en K5:** con 150 ms de RTT y 30 ms de jitter los bots piden de 20 a
@@ -2687,7 +2712,10 @@ Los remotos reutilizan `scenes/characters/player_character.tscn`.
   func set_bot(brain: BotBrain) -> void
   ```
 - **`scripts/boot.gd`:** los modos de [1.2](#12-modos-de-arranque). Rellena `ServerMain.config`
-  u `OnlineMain.config` con `from_args()` y cambia a la escena correspondiente.
+  con `from_args()` y cambia a la escena del servidor; para el cliente instancia
+  `scenes/client/client_launcher.tscn`, cuyo `ClientLauncher` (`scripts/client/client_launcher.gd`)
+  rellena `OnlineMain.config`, `BotSwarm.config` o las variables estáticas de `ClientMain` y cambia
+  a la escena correspondiente.
 - **`project.godot`:** `physics/common/physics_ticks_per_second=60` explícito. Lo toca también el
   flujo de arte: hay que fusionar, no sobrescribir.
 - **`tests/test_architecture.gd`:** las reglas de [16](#arquitectura-test_architecture-ampliado)

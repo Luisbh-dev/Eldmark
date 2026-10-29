@@ -239,6 +239,73 @@ func test_link_press_boundaries() -> void:
 			assert_eq(d.c.combo_step, 0, "(rel %d) y el combo vuelve a empezar" % rel)
 
 
+func test_a_link_that_cannot_run_in_the_air_restarts_the_combo_when_the_buffer_expires() -> void:
+	# C5: el ligero acaba en el aire con un enlace pendiente. El enlace no puede ejecutarse (no se
+	# ataca en el aire) y, al caducar la pulsación guardada, el combo vuelve a empezar.
+	var d := Driver.new()
+	var p: int = d.tick + 1
+	d.step(PRIMARY)
+	d.hold(0, 29)
+	d.step(PRIMARY)
+	assert_eq(d.tick, p + 30, "pulsación de enlace en la ventana")
+	assert_eq(d.c.buffered_type(), CombatState.BUFFER_LINK, "queda como enlace")
+	d.hold(0, 3)
+	d.grounded = false
+	d.hold(0, 2)
+	assert_eq(d.tick, p + 35, "último tick del ligero")
+	d.step()
+	assert_eq(d.tick, p + 36, "el ligero acaba")
+	assert_eq(d.c.action, Action.NONE, "sin acción")
+	assert_eq(d.c.buffered_type(), CombatState.BUFFER_PRIMARY, "el enlace pasa a pulsación guardada")
+	assert_eq(d.c.combo_step, 1, "mientras la pulsación espera, el combo sigue")
+	d.hold(0, 7)
+	assert_eq(d.tick, p + 43, "último tick con la pulsación guardada")
+	assert_eq(d.c.buffered_type(), CombatState.BUFFER_PRIMARY, "aún espera")
+	assert_eq(d.c.combo_step, 1, "(sigue)")
+	d.step()
+	assert_eq(d.c.buffered, 0, "la pulsación caduca a los 8 ticks")
+	assert_eq(d.c.combo_step, 0, "y el combo vuelve a empezar")
+	d.hold(0, 200)
+	d.grounded = true
+	d.step(PRIMARY)
+	assert_eq(d.c.action_id, _light_id(0), "una pulsación posterior empieza por el ligero 1")
+	assert_eq(d.c.combo_step, 1, "con el segundo como siguiente")
+
+
+func test_a_link_that_lands_within_the_buffer_still_chains() -> void:
+	# Control de C5: si se aterriza dentro de los 8 ticks, el enlace se ejecuta.
+	var d := Driver.new()
+	var p: int = d.tick + 1
+	d.step(PRIMARY)
+	d.hold(0, 29)
+	d.step(PRIMARY)
+	d.hold(0, 3)
+	d.grounded = false
+	d.hold(0, 4)
+	assert_eq(d.tick, p + 37, "un tick después de acabar el ligero")
+	assert_eq(d.c.action, Action.NONE, "en el aire no se ataca")
+	d.hold(0, 2)
+	d.grounded = true
+	d.step()
+	assert_eq(d.tick, p + 40, "aterriza")
+	assert_eq(d.c.action, Action.LIGHT, "el enlace se ejecuta")
+	assert_eq(d.c.action_id, _light_id(1), "con el ligero 2")
+
+
+func test_an_early_buffered_press_during_a_light_keeps_the_combo() -> void:
+	# Control de C5: una pulsación guardada que caduca con el ligero aún en curso no reinicia el combo.
+	var d := Driver.new()
+	d.step(PRIMARY)
+	d.hold(0, 4)
+	d.step(PRIMARY)
+	d.hold(0, 4)
+	assert_eq(d.c.buffered_type(), CombatState.BUFFER_PRIMARY, "pulsación guardada normal")
+	d.hold(0, 5)
+	assert_eq(d.c.buffered, 0, "caducó")
+	assert_eq(d.c.action, Action.LIGHT, "con el ligero 1 todavía en curso")
+	assert_eq(d.c.combo_step, 1, "y el combo sigue donde estaba")
+
+
 func test_press_after_the_recovery_starts_a_new_combo() -> void:
 	var d := Driver.new()
 	d.step(PRIMARY)
@@ -421,15 +488,52 @@ func test_substituted_inputs_freeze_the_charge() -> void:
 	d.hold(PRIMARY, 8)
 	assert_eq(d.c.action, Action.CHARGE, "cargando")
 	assert_eq(d.c.primary_held, 8, "ocho ticks reales")
-	d.hold(PRIMARY, 120, true)
-	assert_eq(d.c.action, Action.CHARGE, "120 ticks de entradas repetidas: no lanza al llegar a la máxima")
+	# Hasta la carga máxima más el búfer de entradas (72 + 8 = 80 ticks desde la pulsación: 72 ticks
+	# sustituidos tras los 8 reales) la carga se congela: las repetidas no lanzan al llegar a la máxima.
+	d.hold(PRIMARY, 72, true)
+	assert_eq(d.c.action, Action.CHARGE, "72 ticks de entradas repetidas: no lanza al llegar a la máxima")
 	assert_eq(d.c.primary_held, 8, "primary_held congelado")
 	assert_eq(d.c.charge_ticks, 0, "y no se ha lanzado nada")
 	assert_eq(d.c.stamina, 1000, "ni se ha gastado resistencia")
 	# La primera entrada real lanza con la carga máxima (no más).
 	d.step(PRIMARY)
 	assert_eq(d.c.action, Action.HEAVY, "con una entrada real, lanza")
-	assert_eq(d.c.charge_ticks, 72, "con la carga máxima, no con los 130 ticks transcurridos")
+	assert_eq(d.c.charge_ticks, 72, "con la carga máxima")
+
+
+func test_a_silent_client_cannot_keep_a_charged_heavy_attack_ready() -> void:
+	# R2: pasada la carga máxima más el búfer de entradas, las entradas sustituidas cancelan la carga
+	# (sin lanzar ni gastar resistencia); la primera entrada real tras el silencio no encuentra nada.
+	var margin: int = CombatCatalog.rules().input_buffer_ticks
+	var max_charge: int = _data.attack(_heavy_id()).charge_max_ticks
+	for release: bool in [false, true]:
+		var d := Driver.new()
+		var p: int = d.tick + 1
+		d.hold(PRIMARY, 10)
+		assert_eq(d.c.action, Action.CHARGE, "cargando")
+		while d.tick < p + max_charge + margin - 1:
+			d.step(PRIMARY, true)
+			assert_eq(d.c.action, Action.CHARGE, "tick p+%d: la carga se congela" % (d.tick - p))
+		assert_eq(d.tick, p + max_charge + margin - 1, "último tick congelado")
+		d.step(PRIMARY, true)
+		assert_eq(d.c.action, Action.NONE, "(suelta %s) pasado el margen, la carga se cancela" % release)
+		assert_eq(d.c.stamina, 1000, "sin gastar resistencia")
+		assert_eq(d.c.charge_ticks, 0, "ni dejar carga")
+		d.hold(PRIMARY, 600, true)
+		assert_eq(d.c.action, Action.NONE, "el silencio no vuelve a cargar")
+		d.step(0 if release else PRIMARY)
+		assert_eq(d.c.action, Action.NONE, "(suelta %s) la primera entrada real no lanza nada" % release)
+		assert_eq(d.c.stamina, 1000, "y la resistencia sigue llena")
+		d.hold(0 if release else PRIMARY, 100)
+		assert_eq(d.c.action, Action.NONE, "tampoco después")
+	# Con un hueco más corto que el margen, la primera real sí lanza el fuerte con la carga máxima.
+	var e := Driver.new()
+	e.hold(PRIMARY, 10)
+	e.hold(PRIMARY, max_charge + margin - 11, true)
+	assert_eq(e.c.action, Action.CHARGE, "(hueco corto) aún congelada")
+	e.step(PRIMARY)
+	assert_eq(e.c.action, Action.HEAVY, "(hueco corto) la entrada real lanza")
+	assert_eq(e.c.charge_ticks, max_charge, "con la carga máxima")
 
 
 func test_substituted_inputs_still_launch_after_a_real_release() -> void:
@@ -454,6 +558,79 @@ func test_substituted_inputs_do_not_open_parry_windows() -> void:
 	e.step(0)
 	e.step(BLOCK)
 	assert_true(ActionMachine.is_parry_window(e.c, e.tick), "con una entrada real, ventana de parada")
+
+
+func test_a_substituted_input_during_the_press_only_delays_the_charge() -> void:
+	# C1: una sola entrada sustituida entre los ticks p+1 y p+7 de la pulsación retrasa la carga un
+	# tick (primary_held cuenta solo los ticks reales), pero no la anula para siempre.
+	for lost: int in range(1, 8):
+		var d := Driver.new()
+		d.hold(0, 4)
+		var p: int = d.tick + 1
+		d.step(PRIMARY)
+		for rel: int in range(1, 8):
+			d.step(PRIMARY, rel == lost)
+		assert_eq(d.tick, p + 7, "(perdida en p+%d) tick p+7" % lost)
+		assert_eq(d.c.action, Action.LIGHT, "(perdida en p+%d) aún no hay 8 ticks reales" % lost)
+		assert_eq(d.c.primary_held, 7, "(perdida en p+%d) siete ticks reales" % lost)
+		var out: ActionMachine.Output = d.step(PRIMARY)
+		assert_eq(d.tick, p + 8, "(perdida en p+%d) tick p+8" % lost)
+		assert_eq(d.c.action, Action.CHARGE, "(perdida en p+%d) un tick más tarde, carga" % lost)
+		assert_eq(d.c.primary_held, 8, "(perdida en p+%d) ocho ticks reales" % lost)
+		assert_eq(d.c.action_tick, p, "(perdida en p+%d) conserva el action_tick" % lost)
+		assert_true(out.snap_yaw, "(perdida en p+%d) el yaw salta al empezar la carga" % lost)
+		d.hold(PRIMARY, 22)
+		d.step()
+		assert_eq(d.c.action, Action.HEAVY, "(perdida en p+%d) al soltar sale el fuerte" % lost)
+		assert_eq(d.c.charge_ticks, 31, "(perdida en p+%d) con la carga desde la pulsación" % lost)
+		assert_eq(d.c.stamina, 850, "(perdida en p+%d) y gasta 150" % lost)
+
+
+func test_substituted_inputs_after_the_charge_started_change_nothing() -> void:
+	# Perder una entrada con la carga ya empezada no la deshace (control de C1).
+	var d := Driver.new()
+	d.hold(PRIMARY, 8)
+	assert_eq(d.c.action, Action.CHARGE, "cargando")
+	d.step(PRIMARY, true)
+	d.step(PRIMARY)
+	assert_eq(d.c.action, Action.CHARGE, "sigue la carga")
+	assert_eq(d.c.primary_held, 9, "y solo cuentan los ticks reales")
+
+
+func test_a_new_press_during_another_lights_windup_still_does_not_charge_it() -> void:
+	# C1 no debe romper la regla de §3.3: la pulsación que llega con otro ligero ya en marcha no lo
+	# convierte, aunque haya entradas sustituidas de por medio.
+	for lost: int in [-1, 4, 6]:
+		var d := Driver.new()
+		var p: int = d.tick + 1
+		d.step(PRIMARY)
+		d.hold(0, 3)
+		var second: int = d.tick + 1
+		d.step(PRIMARY)
+		assert_eq(second, p + 4, "segunda pulsación en p+4, con el ligero en la anticipación")
+		for rel: int in range(1, 10):
+			d.step(PRIMARY, rel == lost)
+		assert_ne_int(d.c.action, Action.CHARGE,
+				"(perdida %d) la pulsación nueva no convierte el ligero de otra" % lost)
+
+
+func test_a_press_held_across_a_buffer_still_converts_the_light_it_starts() -> void:
+	# Pulsación en el aire (al búfer) mantenida hasta aterrizar: el ligero que empieza al aterrizar
+	# es de esa pulsación y se convierte en carga (control de C1).
+	var d := Driver.new()
+	d.grounded = false
+	var p: int = d.tick + 1
+	d.step(PRIMARY)
+	assert_eq(d.c.action, Action.NONE, "en el aire no se ataca")
+	assert_eq(d.c.buffered_type(), CombatState.BUFFER_PRIMARY, "queda en el búfer")
+	d.hold(PRIMARY, 2)
+	d.grounded = true
+	d.step(PRIMARY)
+	assert_eq(d.c.action, Action.LIGHT, "al aterrizar empieza el ligero")
+	assert_eq(d.c.action_tick, p + 3, "en el tick de aterrizaje")
+	d.hold(PRIMARY, 4)
+	assert_eq(d.c.primary_held, 8, "ocho ticks reales de pulsación")
+	assert_eq(d.c.action, Action.CHARGE, "y el ligero de la pulsación se convierte")
 
 
 func test_substituted_bit_is_not_a_button() -> void:
@@ -1358,6 +1535,68 @@ func test_cannot_jump_while_attacking_or_dodging_but_can_while_blocking() -> voi
 	tick += 1
 	character.simulate(_input(tick, Vector2.ZERO, 0.0, BLOCK), _dt)
 	assert_eq(character.combat.action, Action.NONE, "y al estar en el aire se deja el bloqueo")
+
+
+## Velocidad horizontal tras [param ticks] ticks en el aire (30 m de altura, 7,5 m/s hacia -Z) con una
+## acción impuesta ([param kind]: "none", "death", "stun" o "stagger") y el movimiento [param move].
+## Devuelve la velocidad y el estado codificado del final.
+func _air_run(character: PlayerCharacter, kind: String, move: Vector2, ticks: int) -> Dictionary:
+	await wait_physics_frames(1)
+	var start := PlayerState.new()
+	start.position = Vector3(0.0, 30.0, 40.0)
+	start.velocity = Vector3(0.0, 0.0, -7.5)
+	start.grounded = false
+	character.set_state(PlayerState.decode(start.encode()))
+	character.reset_physics_interpolation()
+	var tick: int = START_TICK
+	match kind:
+		"death":
+			ActionMachine.impose_death(character.combat, tick)
+		"stun":
+			ActionMachine.impose_stun(character.combat, tick, tick + 600)
+		"stagger":
+			ActionMachine.impose_stagger(character.combat, tick, tick + 600, Vector2.ZERO)
+	character.set_state(PlayerState.decode(character.get_state().encode()))
+	for _i: int in ticks:
+		tick += 1
+		character.simulate(_input(tick, move, 0.0, 0), _dt)
+	return {
+		"velocity": Vector2(character.velocity.x, character.velocity.z),
+		"bytes": character.get_state().encode(),
+		"grounded": character.grounded,
+	}
+
+
+func test_a_dead_stunned_or_staggered_body_in_the_air_brakes_and_cannot_be_steered() -> void:
+	# C4: con move_scale 0 la velocidad objetivo es 0, pero la rama del aire conservaba el impulso
+	# empujando hacia delante (o lo giraba en diagonal). Frenar es lo que dice §3.3 (DEAD, STUN y
+	# STAGGER sin empuje «frenan»).
+	var rig: Dictionary = await _make_rig("AireControlado")
+	var character: PlayerCharacter = rig["character"]
+	await _settle(character, Vector3(0.0, 0.0, 40.0), 0.0)
+	for kind: String in ["death", "stun", "stagger"]:
+		var rest: Dictionary = await _air_run(character, kind, Vector2.ZERO, 30)
+		assert_false(rest["grounded"], "(%s) sigue en el aire" % kind)
+		var rest_velocity: Vector2 = rest["velocity"]
+		assert_true(rest_velocity.length() < 7.5 - 2.0, "(%s) sin entrada frena (%s)" % [kind,
+				rest_velocity])
+		for move: Vector2 in [Vector2(0.0, 1.0), Vector2(0.7, 0.7), Vector2(-1.0, 0.0)]:
+			var steered: Dictionary = await _air_run(character, kind, move, 30)
+			var velocity: Vector2 = steered["velocity"]
+			assert_vec_near(velocity, rest_velocity, 1e-5,
+					"(%s) con move=%s la velocidad es la misma que sin entrada" % [kind, move])
+			assert_eq(steered["bytes"], rest["bytes"],
+					"(%s) con move=%s el estado codificado es el mismo" % [kind, move])
+		# Determinista: repetir la misma entrada da los mismos bytes.
+		var again: Dictionary = await _air_run(character, kind, Vector2.ZERO, 30)
+		assert_eq(again["bytes"], rest["bytes"], "(%s) repetible byte a byte" % kind)
+	# Control: sin ninguna acción, empujar hacia delante conserva el impulso en el aire.
+	var free_rest: Dictionary = await _air_run(character, "none", Vector2.ZERO, 30)
+	var free_forward: Dictionary = await _air_run(character, "none", Vector2(0.0, 1.0), 30)
+	var free_velocity: Vector2 = free_forward["velocity"]
+	assert_near(free_velocity.length(), 7.5, 0.01, "sin acción, W conserva los 7,5 m/s")
+	var brake_velocity: Vector2 = free_rest["velocity"]
+	assert_true(brake_velocity.length() < 5.0, "y sin entrada frena (%s)" % brake_velocity)
 
 
 func test_last_landing_speed_is_measured_before_move_and_slide() -> void:

@@ -5,28 +5,41 @@ extends Node
 ## de [code]--[/code]) y decide en qué modo arranca el juego:
 ## [br]- [code]--server[/code]: servidor dedicado de una zona ([ServerMain], siempre con
 ## [code]--headless[/code]; opciones en [ServerConfig]). Tiene prioridad sobre el resto.
-## [br]- [code]--bots=N[/code]: enjambre de N clientes ligeros para pruebas de carga ([BotSwarm]).
+## [br]- Cualquier otro caso es un modo de cliente y lo resuelve [code]ClientLauncher[/code]
+## (escena [constant CLIENT_LAUNCHER_SCENE]), que este script instancia por su ruta:
+## [br]    - [code]--bots=N[/code]: enjambre de N clientes ligeros para pruebas de carga.
 ## Tiene prioridad sobre el resto de modos de cliente.
-## [br]- [code]--connect=<host>[:<puerto>][/code] o [code]--bot[/code]: cliente en red
-## ([OnlineMain], ver [ClientConfig]). Tiene prioridad sobre el sandbox.
-## [br]- [code]--local[/code]: cliente en red contra un servidor local que se lanza solo si no hay
-## ninguno ([LocalServerLauncher]); ver [method _start_local].
-## [br]- [code]--zone=<id>[/code]: zona que se carga ([code]vado_gris[/code] por defecto,
+## [br]    - [code]--connect=<host>[:<puerto>][/code] o [code]--bot[/code]: cliente en red (ver
+## [code]ClientConfig[/code]). Tiene prioridad sobre el sandbox.
+## [br]    - [code]--local[/code]: cliente en red contra un servidor local que se lanza solo si no
+## hay ninguno ([code]LocalServerLauncher[/code]).
+## [br]    - Sin nada de lo anterior, el sandbox sin red ([code]ClientMain[/code]; también en modo
+## headless), con las opciones de [method parse_client_options]:
+## [br]        - [code]--zone=<id>[/code]: zona que se carga ([code]vado_gris[/code] por defecto,
 ## [code]test_world[/code] para el circuito de la fase 1). Ver [Zones].
-## [br]- [code]--realm=<reino>[/code]: reino del jugador ([code]vardheim[/code] por defecto o
+## [br]        - [code]--realm=<reino>[/code]: reino del jugador ([code]vardheim[/code] por defecto o
 ## [code]solmarch[/code]); decide en qué punto de aparición de la zona se empieza.
-## [br]- [code]--demo[/code]: sandbox del cliente con entrada guionizada ([DemoInput]).
-## [br]- [code]--shots=<carpeta absoluta>[/code]: durante la demo, guarda una captura
+## [br]        - [code]--demo[/code]: entrada guionizada.
+## [br]        - [code]--shots=<carpeta absoluta>[/code]: durante la demo, guarda una captura
 ## PNG cada 90 ticks en esa carpeta ([code]shot_000.png[/code], ...) y, al terminar, una desde
 ## cada cámara de revisión de la zona ([code]zona_<nombre>.png[/code]).
-## [br]- [code]--quit-after-demo[/code]: cierra el juego cuando termina la demo.
+## [br]        - [code]--quit-after-demo[/code]: cierra el juego cuando termina la demo.
 ## [br]Sin argumentos (también en modo headless) arranca el cliente en el Vado Gris.
+## [br][br]
+## [b]Este script no nombra ninguna clase de [code]scripts/client/[/code][/b]: el servidor dedicado
+## ejecuta también la escena principal, y cada referencia de clase que contenga arrastra el script de
+## esa clase y, en cadena, la interfaz, los ajustes y el audio. Lo comprueba
+## [code]tests/test_architecture.gd[/code] con un proceso de verdad arrancado con [code]--server[/code].
 ## [br][br]Ejemplo:
 ## [code]godot --path . -- --zone=vado_gris --realm=solmarch --demo --shots=C:/ruta/capturas --quit-after-demo[/code]
 
-const CLIENT_MAIN_SCENE: String = "res://scenes/client/client_main.tscn"
 const SERVER_MAIN_SCENE: String = "res://scenes/server/server_main.tscn"
-const ONLINE_MAIN_SCENE: String = "res://scenes/client/online_main.tscn"
+## Escena del nodo que elige el modo de cliente (ver [code]ClientLauncher[/code]). Solo se carga si no es
+## el servidor.
+const CLIENT_LAUNCHER_SCENE: String = "res://scenes/client/client_launcher.tscn"
+## Metadato del nodo del cliente con la función que interpreta los argumentos del sandbox. Es el mismo
+## nombre que [code]ClientLauncher.PARSER_META[/code]; lo comprueba [code]tests/test_client_launcher.gd[/code].
+const CLIENT_PARSER_META: StringName = &"client_options_parser"
 const SERVER_ARG: String = "--server"
 const DEMO_ARG: String = "--demo"
 const SHOTS_ARG_PREFIX: String = "--shots="
@@ -47,17 +60,7 @@ func _ready() -> void:
 	if args.has(SERVER_ARG):
 		_start_server(args)
 		return
-	# Prioridad de la sección 1.2: --server > --bots > --connect/--local/--bot > sandbox.
-	var config: ClientConfig = ClientConfig.from_args(args)
-	match config.mode:
-		ClientConfig.Mode.SWARM:
-			_start_swarm(config)
-		ClientConfig.Mode.ONLINE, ClientConfig.Mode.BOT:
-			_start_online(config)
-		ClientConfig.Mode.LOCAL:
-			_start_local(config)
-		_:
-			_start_client(args)
+	_start_client()
 
 
 ## Interpreta los argumentos de usuario del cliente. Devuelve un diccionario con
@@ -129,34 +132,18 @@ func _start_server(args: PackedStringArray) -> void:
 	get_tree().change_scene_to_file.call_deferred(SERVER_MAIN_SCENE)
 
 
-## Rellena [member OnlineMain.config] y cambia a la escena del cliente en red.
-func _start_online(config: ClientConfig) -> void:
-	OnlineMain.config = config
-	get_tree().change_scene_to_file.call_deferred(ONLINE_MAIN_SCENE)
-
-
-## [code]--local[/code]: igual que un cliente en red, pero [OnlineMain] primero reutiliza o lanza el
-## servidor local ([LocalServerLauncher], docs/red.md 1.4) y apunta el cliente a su puerto.
-func _start_local(config: ClientConfig) -> void:
-	_start_online(config)
-
-
-## Pasa las opciones a [ClientMain] mediante sus variables estáticas y cambia
-## a la escena del cliente.
-func _start_client(args: PackedStringArray) -> void:
-	var options: Dictionary = parse_client_options(args)
-	for warning: String in options["warnings"]:
-		push_warning("[Eldmark] %s" % warning)
-
-	if DisplayServer.get_name() == "headless":
-		print("[Eldmark] Sin pantalla (headless): arrancando el cliente")
-
-	ClientMain.zone_id = options["zone"]
-	ClientMain.realm = options["realm"]
-	ClientMain.demo_mode = options["demo"]
-	ClientMain.shots_dir = options["shots_dir"]
-	ClientMain.quit_after_demo = options["quit_after_demo"]
-	get_tree().change_scene_to_file.call_deferred(CLIENT_MAIN_SCENE)
+## Monta el nodo que elige el modo de cliente (enjambre, red o sandbox) a partir de los argumentos de
+## usuario, por la ruta de su escena: el servidor dedicado no llega aquí y nunca la carga. Le deja en
+## un metadato [constant CLIENT_PARSER_META] la función [method parse_client_options].
+func _start_client() -> void:
+	var packed: PackedScene = load(CLIENT_LAUNCHER_SCENE) as PackedScene
+	if packed == null:
+		push_error("[Eldmark] No se pudo cargar la escena del cliente (%s)" % CLIENT_LAUNCHER_SCENE)
+		get_tree().quit(1)
+		return
+	var launcher: Node = packed.instantiate()
+	launcher.set_meta(CLIENT_PARSER_META, parse_client_options)
+	add_child(launcher)
 
 
 ## Valor de una opción sin espacios ni comillas alrededor, en minúsculas.
@@ -167,15 +154,3 @@ static func _clean_value(value: String) -> String:
 ## Ruta de una opción sin espacios ni comillas alrededor y con barras normales.
 static func _clean_path(value: String) -> String:
 	return value.strip_edges().trim_prefix("\"").trim_suffix("\"").replace("\\", "/")
-
-
-# --- Enjambre de bots (TEC-11) ----------------------------------------------------------------
-
-## Escena del enjambre de clientes ligeros ([code]--bots=N[/code]).
-const SWARM_SCENE: String = "res://scenes/client/bot_swarm.tscn"
-
-
-## Rellena [member BotSwarm.config] y cambia a la escena del enjambre de bots ([BotSwarm]).
-func _start_swarm(config: ClientConfig) -> void:
-	BotSwarm.config = config
-	get_tree().change_scene_to_file.call_deferred(SWARM_SCENE)

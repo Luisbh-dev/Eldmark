@@ -31,6 +31,10 @@ enum PushResult {
 	TOO_EARLY,
 }
 
+## Ticks que mira [method get_typical_lead] hacia atrás (menos que [constant CAPACITY]: los huecos más
+## viejos ya pueden estar sobrescritos).
+const LEAD_WINDOW_TICKS: int = 60
+
 ## Huecos del anillo. Mayor que la ventana de aceptación
 ## ([constant NetProtocol.MAX_INPUT_LEAD_TICKS] + 1), así que dos ticks aceptados nunca comparten
 ## hueco.
@@ -208,6 +212,26 @@ func get_rewind_params(tick: int) -> Vector2i:
 			or slot.state == SlotState.CONSUMED_REAL):
 		return Vector2i(slot.view_offset_q, slot.lead)
 	return Vector2i(_last_real_view_offset_q, _last_real_lead)
+
+
+## Antelación [i]habitual[/i] del cliente: la mediana de las antelaciones de primera copia de las entradas
+## reales (recibidas o ya consumidas) de los [constant LEAD_WINDOW_TICKS] ticks hasta [param tick], este
+## incluido; la de la última entrada real si no hay ninguna. Las sustituidas no cuentan (no tienen
+## antelación). El rebobinado (docs/combate.md, 4.3) la usa para acotar la antelación de la entrada de un
+## golpe, que escoge el cliente: mandar solo las entradas de su golpe adelantadas no mueve la mediana.
+func get_typical_lead(tick: int) -> int:
+	var leads := PackedInt32Array()
+	for age: int in LEAD_WINDOW_TICKS:
+		var t: int = tick - age
+		var slot: Slot = _slot(t)
+		if slot.tick == t and (slot.state == SlotState.RECEIVED \
+				or slot.state == SlotState.CONSUMED_REAL):
+			leads.append(slot.lead)
+	if leads.is_empty():
+		return _last_real_lead
+	leads.sort()
+	@warning_ignore("integer_division")
+	return leads[leads.size() / 2]
 
 
 ## Último tick consumido con [method take] (o el del alta).

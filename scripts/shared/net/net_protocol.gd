@@ -6,10 +6,13 @@ extends RefCounted
 ## el reloj ni depende de [code]scripts/client/[/code].
 
 ## Versión del protocolo. Cualquier cambio en los formatos o en la simulación la sube.
-## La 3 (fase 4, docs/fuerte.md sección 2) añade OBJECT_STATE, el ENTITY_SPAWN de estructuras y de
-## PNJ con definición, los ENTITY_EVENT WAR y TELEGRAPH, UNSTUCK_REQUEST, SCOREBOARD, el REJECT
-## IMBALANCE, el recuento por reino del WELCOME y los comandos de depuración 7 a 12.
-const PROTOCOL_VERSION: int = 3
+## [br]- 2: el combate de la fase 3 (docs/combate.md).
+## [br]- 3: revisión de la fase 3 (la máquina de acciones y el movimiento aéreo cambian la simulación
+## predicha: bit 6 de [code]combat_flags[/code], carga cancelada tras el silencio, combo reiniciado).
+## [br]- 4: el fuerte de la fase 4 (docs/fuerte.md, sección 2): OBJECT_STATE, ENTITY_SPAWN de
+## estructuras y de PNJ con definición, ENTITY_EVENT WAR y TELEGRAPH, UNSTUCK_REQUEST, SCOREBOARD, el
+## REJECT IMBALANCE, el recuento por reino del WELCOME y los comandos de depuración 7 a 12.
+const PROTOCOL_VERSION: int = 4
 ## Primeros 4 bytes de los mensajes de autenticación (los bytes «ELDM»).
 const MAGIC: int = 0x4D444C45
 const DEFAULT_PORT: int = 24600

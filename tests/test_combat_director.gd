@@ -64,6 +64,22 @@ func _body(net_id: int, realm: int, position: Vector3, yaw: float) -> Combatant:
 	return _director.add(entity, CombatFixture.make_queue(yaw), null)
 
 
+## Como [method _body], pero con el [param peer] del jugador (puede rebobinar).
+func _body_with_peer(net_id: int, realm: int, position: Vector3, yaw: float,
+		peer: ServerPeer) -> Combatant:
+	var entity: NetEntity = CombatFixture.make_entity(_world, net_id, realm, position, yaw)
+	_history.add_entity(net_id)
+	return _director.add(entity, CombatFixture.make_queue(yaw), peer)
+
+
+## Hace que la entrada real del tick [param tick] (S por defecto) de [param attacker] lleve ese
+## [param view_offset_q] y la consume, como haría el servidor.
+func _set_view_offset(attacker: Combatant, view_offset_q: int, tick: int = S) -> void:
+	attacker.queue.reset(tick - 1, NetProtocol.neutral_input(tick - 1, 0.0))
+	attacker.queue.push(NetProtocol.neutral_input(tick, 0.0), view_offset_q, tick)
+	attacker.queue.take(tick)
+
+
 ## Atacante de Vardheim en el origen mirando a -Z y víctima de Solmarch a 1,5 m delante, de cara.
 func _duel() -> Array[Combatant]:
 	var attacker: Combatant = _body(1, VARDHEIM, Vector3.ZERO, 0.0)
@@ -214,6 +230,69 @@ func test_parry_staggers_the_attacker_and_costs_nothing() -> void:
 		assert_eq(hits[0].hit_flags, HIT_PARRIED)
 		assert_eq(hits[0].amount, 0)
 		assert_eq(hits[0].attacker, 1)
+
+
+## R3 (el mismo fallo que C2): dos contra uno. B rompió la guardia de D en S - 10 (aturdido hasta S + 50,
+## sin resistencia); A, con 20 ticks de rebobinado, le da un ligero sin control. El bloqueo de hace 20
+## ticks no puede volver a romperle la guardia ni alargarle el aturdimiento.
+func test_a_rewound_light_on_a_stunned_defender_is_a_plain_hit_and_does_not_extend_the_stun() -> void:
+	var peer := ServerPeer.new(7)
+	peer.rtt_ticks = 12
+	peer.interp_delay_q = 48
+	var attacker: Combatant = _body_with_peer(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
+	var defender: Combatant = _body(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI)
+	var allowed: int = CombatResolver.allowed_rewind(peer.rtt_ticks, 0, peer.interp_delay_q)
+	assert_true(allowed >= 20, "el tope cubre 20 ticks (%d)" % allowed)
+	_set_view_offset(attacker, 20 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	for tick: int in range(S - 30, S):
+		_history.record(tick, 1, Vector3.ZERO, 0.0, EntityRecord.FLAG_GROUNDED)
+		var flags: int = EntityRecord.FLAG_GROUNDED
+		if tick < S - 10:
+			flags |= ActionMachine.DEFENSE_BLOCKING
+		_history.record(tick, 2, Vector3(0.0, 0.0, -1.5), PI, flags)
+	var state: CombatState = _combat_of(defender)
+	state.stamina = 0
+	assert_true(defender.try_control(S - 10))
+	ActionMachine.impose_stun(state, S - 10, S + 50)
+	CombatFixture.start_light_active(attacker, S)
+	_tick()
+	var hits: Array[NetMessages.EntityEvent] = _events_of(NetMessages.EntityEvent.Kind.HIT)
+	if assert_eq(hits.size(), 1, "un HIT"):
+		assert_eq(hits[0].hit_flags, 0, "ni bloqueado ni rotura de guardia")
+		assert_eq(hits[0].amount, 90, "daño completo")
+	assert_eq(state.action, CombatState.Action.STUN, "sigue aturdido")
+	assert_eq(state.cc_until_tick, S + 50, "sin alargar el aturdimiento")
+	assert_eq(defender.cc_chain.size(), 1, "y sin gastar otro eslabón de la cadena de controles")
+	assert_eq(defender.health, 1000 - 90)
+
+
+## R3, variante del tambaleo: tambaleado por un golpe por la espalda, el golpe frontal de un atacante con
+## lag no "bloquea" ni le ahorra el tambaleo del ligero 3.
+func test_a_rewound_third_light_on_a_staggered_defender_staggers_him_again() -> void:
+	var peer := ServerPeer.new(7)
+	peer.rtt_ticks = 12
+	peer.interp_delay_q = 48
+	var attacker: Combatant = _body_with_peer(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
+	var defender: Combatant = _body(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI)
+	_set_view_offset(attacker, 20 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	for tick: int in range(S - 30, S):
+		_history.record(tick, 1, Vector3.ZERO, 0.0, EntityRecord.FLAG_GROUNDED)
+		var flags: int = EntityRecord.FLAG_GROUNDED
+		if tick < S - 10:
+			flags |= ActionMachine.DEFENSE_BLOCKING
+		_history.record(tick, 2, Vector3(0.0, 0.0, -1.5), PI, flags)
+	var state: CombatState = _combat_of(defender)
+	assert_true(defender.try_control(S - 10))
+	ActionMachine.impose_stagger(state, S - 10, S + 30, Vector2.ZERO)
+	CombatFixture.start_light_active(attacker, S, 2)
+	var stamina_before: int = state.stamina
+	_tick()
+	var hits: Array[NetMessages.EntityEvent] = _events_of(NetMessages.EntityEvent.Kind.HIT)
+	if assert_eq(hits.size(), 1, "un HIT"):
+		assert_eq(hits[0].hit_flags, 0, "no es un bloqueo")
+		assert_eq(hits[0].amount, 130, "daño completo del ligero 3")
+	assert_eq(state.stamina, stamina_before, "y no le gasta resistencia")
+	assert_eq(state.cc_until_tick, S + 18, "el tambaleo del ligero 3 vuelve a entrar")
 
 
 # --- Controles --------------------------------------------------------------------------------

@@ -544,6 +544,32 @@ func test_damage_indicator_points_at_the_attacker_relative_to_the_camera() -> vo
 	assert_eq(indicator.get_arc_count(), 1, "sin posición del atacante no hay arco")
 
 
+func test_a_parry_or_a_full_block_without_damage_does_not_flash_the_red_vignette() -> void:
+	# T8: la viñeta roja avisa de daño; una parada o un bloqueo completo (amount 0) no lo es.
+	var h: HudRig = _make_hud()
+	var feedback: CombatFeedback = h.hud.get_feedback()
+	feedback.position_resolver = func(_net_id: int) -> Vector3:
+		return Vector3.ZERO
+	_step(h)
+	var vignette: LowHealthVignette = h.hud.get_vignette()
+	var flags: Array[int] = [
+		NetMessages.EntityEvent.HIT_FLAG_PARRIED,
+		NetMessages.EntityEvent.HIT_FLAG_BLOCKED,
+	]
+	for flag: int in flags:
+		feedback.handle_event(NetMessages.EntityEvent.hit(OWN_ID, 10, OTHER_ID, 0, 0, flag, 2), true)
+		vignette.advance(0.0)
+		assert_eq(vignette.get_alpha(), 0.0, "sin daño (flags %d) no hay viñeta" % flag)
+		assert_false(vignette.visible, "y sigue oculta (flags %d)" % flag)
+	# Control: un golpe con daño sí la enciende, conozca o no al atacante.
+	feedback.handle_event(NetMessages.EntityEvent.hit(OWN_ID, 11, OTHER_ID, 90, 0, 0, 2), true)
+	assert_true(vignette.get_alpha() > 0.3, "con 90 de daño destella")
+	vignette.advance(LowHealthVignette.FLASH_SECONDS + 0.1)
+	assert_eq(vignette.get_alpha(), 0.0)
+	feedback.handle_event(NetMessages.EntityEvent.hit(OWN_ID, 12, 0, 90, 0, 0, 2), true)
+	assert_true(vignette.get_alpha() > 0.3, "y también si el atacante no se conoce")
+
+
 func test_death_flow_opens_the_screen_frees_the_cursor_and_closes_on_respawn() -> void:
 	var h: HudRig = _make_hud()
 	var screen: DeathScreen = h.hud.get_death_screen()
@@ -590,6 +616,63 @@ func test_death_flow_opens_the_screen_frees_the_cursor_and_closes_on_respawn() -
 	assert_false(h.hud.is_dimmed(), "la interfaz vuelve a la normalidad")
 	assert_false(h.rig.is_cursor_free(), "el cursor se recaptura")
 	assert_near(h.hud.get_vitals().get_ghost_fraction(), 1.0, 0.001, "sin restos de la vida anterior")
+
+
+## Mata al jugador local en el cliente falso y deja que el HUD abra la pantalla de muerte.
+func _die(h: HudRig, tick: int) -> void:
+	h.hud.get_feedback().handle_event(NetMessages.EntityEvent.death(OWN_ID, tick, OTHER_ID, 1), true)
+	h.client.fake_dead = true
+	h.client.fake_health = 0
+	h.client.fake_respawn_tick = tick + 600
+	h.client.fake_snapshot_tick = tick + 1
+	h.client.fake_estimated_tick = tick + 2
+	_step(h)
+
+
+## El jugador reaparece: llega el evento RESPAWN y luego un snapshot con vida.
+func _respawn(h: HudRig, tick: int) -> void:
+	h.hud.get_feedback().handle_event(NetMessages.EntityEvent.respawn(OWN_ID, tick, 0), true)
+	h.client.fake_dead = false
+	h.client.fake_health = 1000
+	h.client.fake_respawn_tick = 0
+	h.client.fake_snapshot_tick = tick + 1
+	_step(h)
+
+
+func test_closing_a_window_over_the_death_screen_keeps_the_cursor_free() -> void:
+	# T1: la ventana de ajustes (F10) y la pantalla de muerte piden el cursor a la vez; cerrar una
+	# no puede recapturar el ratón mientras la otra sigue abierta.
+	var h: HudRig = _make_hud()
+	var window: UIWindow = _track(UIWindow.new()) as UIWindow
+	window.bind_camera(h.rig)
+	_die(h, 1000)
+	assert_true(h.hud.get_death_screen().is_open())
+	assert_true(h.rig.is_cursor_free())
+	window.open()
+	window.close()
+	_step(h)
+	assert_true(h.rig.is_cursor_free(), "con la pantalla de muerte abierta el cursor sigue libre")
+	assert_false(h.hud.get_node(^"Crosshair").visible, "y el punto de mira sigue oculto")
+	_respawn(h, 1610)
+	assert_false(h.hud.get_death_screen().is_open())
+	assert_false(h.rig.is_cursor_free(), "al reaparecer, ahora sí se recaptura")
+	assert_true(h.hud.get_node(^"Crosshair").visible)
+
+
+func test_respawning_with_a_window_open_keeps_the_cursor_free() -> void:
+	var h: HudRig = _make_hud()
+	var window: UIWindow = _track(UIWindow.new()) as UIWindow
+	window.bind_camera(h.rig)
+	window.open()
+	_die(h, 1000)
+	_respawn(h, 1610)
+	assert_false(h.hud.get_death_screen().is_open())
+	assert_true(window.is_open())
+	assert_true(h.rig.is_cursor_free(), "la ventana sigue abierta: el ratón sigue siendo suyo")
+	_step(h)
+	assert_false(h.hud.get_node(^"Crosshair").visible)
+	window.close()
+	assert_false(h.rig.is_cursor_free(), "al cerrarla, ya no queda nadie que lo pida")
 
 
 func test_a_stale_dead_snapshot_after_the_respawn_does_not_reopen_the_screen() -> void:
