@@ -566,7 +566,12 @@ func _respawn(combatant: Combatant, point_index: int, s: int) -> void:
 		position = transform.origin
 		yaw = _yaw_of(transform)
 	var character: PlayerCharacter = combatant.get_character()
-	ActionMachine.reset_for_respawn(character.combat, s)
+	var combat: CombatState = character.combat
+	# Hasta las plantillas (H3c, docs/habilidades.md, sección 4.6) reaparece con las armas y las cargas que
+	# llevaba, con la de la ranura 1 activa.
+	var first: int = combat.alt_weapon_id if combat.is_second_slot() else combat.weapon_id
+	var second: int = combat.weapon_id if combat.is_second_slot() else combat.alt_weapon_id
+	ActionMachine.reset_for_respawn(combat, s, first, second, combat.consumable_charges)
 	combatant.mark_respawned(s)
 	# _place pasa el estado (con el combate ya reiniciado) por encode/decode.
 	_place.call(combatant.entity, position, yaw)

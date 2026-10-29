@@ -238,23 +238,25 @@ func test_equals_detects_every_new_field() -> void:
 				"PlayerState.is_close_to() debe notar un cambio en %s" % field)
 
 
-func test_reset_for_respawn_keeps_the_loadout_and_clears_the_timers() -> void:
+func test_reset_for_respawn_takes_the_loadout_and_clears_the_timers() -> void:
 	var c: CombatState = _full_state()
 	c.action = Action.DEAD
 	c.combat_flags = CombatState.FLAG_EXHAUSTED | CombatState.FLAG_BLOCK_HELD
-	ActionMachine.reset_for_respawn(c, 5000)
+	ActionMachine.reset_for_respawn(c, 5000, 0x0A0B, 0x0102, CombatState.pack_charges(2, 3))
 	assert_eq(c.action, Action.NONE, "sin acción")
-	assert_eq([c.weapon_id, c.alt_weapon_id], [0x0102, 0x0A0B], "las dos armas")
-	assert_true(c.is_second_slot(), "y cuál está activa")
+	assert_eq(c.action_tick, 5000, "desde el tick de la reaparición")
+	assert_eq([c.weapon_id, c.alt_weapon_id], [0x0A0B, 0x0102], "las dos armas en orden de ranura")
+	assert_false(c.is_second_slot(), "con la de la ranura 1 activa")
 	assert_eq(c.combat_flags2 & CombatState.FLAG2_HELD_MASK, CombatState.FLAG2_SWAP_HELD,
 			"conserva los botones mantenidos")
 	assert_eq(c.combat_flags2 & CombatState.FLAG2_NO_COOLDOWNS, 0, "pero no el comando")
 	assert_eq(c.combat_flags, CombatState.FLAG_BLOCK_HELD, "ni el agotamiento")
-	assert_eq(c.consumable_charges, CombatState.pack_charges(3, 12), "las cargas no cambian")
+	assert_eq(c.consumable_charges, CombatState.pack_charges(2, 3), "las cargas de la plantilla")
 	assert_eq(c.ability_ready, PackedInt64Array([0, 0, 0, 0, 0, 0]), "reutilizaciones a 0")
 	assert_eq(c.consumable_ready_tick, 0, "también la compartida")
 	assert_eq(c.move_effect_ids, PackedInt32Array([0, 0]), "ranuras de movimiento libres")
 	assert_eq(c.buffered, 0, "búfer vacío")
+	assert_eq(c.stamina, CombatCatalog.rules().stamina_max, "resistencia llena")
 
 
 func _with_combat(combat: CombatState) -> PlayerState:

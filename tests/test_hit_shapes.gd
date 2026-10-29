@@ -310,6 +310,75 @@ func test_line_of_sight_only_looks_at_world_layer() -> void:
 # --- Utilidades -------------------------------------------------------------------------------
 
 ## Sector contra una cápsula de personaje con sus pies en [param target_feet], desde el origen.
+func test_segment_capsule_fraction_finds_the_first_entry() -> void:
+	var feet := Vector3(0.0, 0.0, -10.0)
+	var radius: float = 0.45
+	# De frente, a media altura: entra en la cara del cilindro.
+	var a := Vector3(0.0, 0.9, 0.0)
+	var b := Vector3(0.0, 0.9, -20.0)
+	assert_near(HitShapes.segment_capsule_fraction(a, b, feet, radius, 1.8), (10.0 - radius) / 20.0, 1e-5,
+			"entra en el cilindro")
+	# Por encima de la cabeza: no toca.
+	assert_eq(HitShapes.segment_capsule_fraction(Vector3(0.0, 2.3, 0.0), Vector3(0.0, 2.3, -20.0), feet,
+			radius, 1.8), -1.0, "por encima, -1")
+	# Rozando la semiesfera de arriba: la entrada cae en la esfera.
+	var top_y: float = 1.8 - radius
+	var graze_y: float = top_y + 0.3
+	var expected_z: float = -10.0 + sqrt(radius * radius - 0.3 * 0.3)
+	var graze: float = HitShapes.segment_capsule_fraction(Vector3(0.0, graze_y, 0.0),
+			Vector3(0.0, graze_y, -20.0), feet, radius, 1.8)
+	assert_near(graze, -expected_z / 20.0, 1e-5, "entra por la semiesfera superior")
+	# Vertical, cayendo sobre la cabeza.
+	var fall: float = HitShapes.segment_capsule_fraction(Vector3(0.0, 5.0, -10.0), Vector3(0.0, 0.0, -10.0),
+			feet, radius, 1.8)
+	assert_near(fall, (5.0 - 1.8) / 5.0, 1e-5, "desde arriba, en lo alto de la cápsula")
+	# El segmento empieza dentro: 0.
+	assert_eq(HitShapes.segment_capsule_fraction(Vector3(0.1, 1.0, -10.0), Vector3(5.0, 1.0, -10.0),
+			feet, radius, 1.8), 0.0, "empieza dentro: 0")
+	# No llega.
+	assert_eq(HitShapes.segment_capsule_fraction(a, Vector3(0.0, 0.9, -9.0), feet, radius, 1.8), -1.0,
+			"se queda corto: -1")
+	# Coherente con segment_hits_capsule en una nube de segmentos.
+	for i: int in 200:
+		var from := Vector3(sin(i * 0.37) * 3.0, 0.9 + sin(i * 0.91) * 1.5, -10.0 + cos(i * 0.53) * 3.0)
+		var to := Vector3(cos(i * 0.71) * 3.0, 0.9 + cos(i * 0.29) * 1.5, -10.0 + sin(i * 0.17) * 3.0)
+		var fraction: float = HitShapes.segment_capsule_fraction(from, to, feet, radius, 1.8)
+		var hits: bool = HitShapes.segment_hits_capsule(from, to, feet, radius, 1.8)
+		if (fraction >= 0.0) != hits:
+			fail("segmento %d: fracción %s y segment_hits_capsule %s" % [i, fraction, hits])
+			return
+		if fraction > 0.0:
+			var entry: Vector3 = from.lerp(to, fraction)
+			var before: Vector3 = from.lerp(to, maxf(fraction - 0.001, 0.0))
+			assert_true(HitShapes.segment_hits_capsule(entry, entry, feet, radius + 1e-4, 1.8),
+					"segmento %d: el punto de entrada está en la superficie" % i)
+			assert_false(HitShapes.segment_hits_capsule(from, before, feet, radius - 1e-4, 1.8),
+					"segmento %d: y antes no tocaba" % i)
+
+
+func test_segment_box_fraction_with_a_turned_box() -> void:
+	var box := Transform3D(Basis(Vector3.UP, 0.4), Vector3(2.0, 1.0, -6.0))
+	var half := Vector3(1.3, 1.0, 0.15)
+	var normal: Vector3 = box.basis * Vector3(0.0, 0.0, 1.0)
+	var start: Vector3 = box.origin + normal * 5.0
+	var end: Vector3 = box.origin - normal * 5.0
+	assert_near(HitShapes.segment_box_fraction(start, end, box, half), (5.0 - 0.15) / 10.0, 1e-5,
+			"de frente, la cara")
+	assert_eq(HitShapes.segment_box_fraction(box.origin, end, box, half), 0.0, "desde dentro: 0")
+	var aside: Vector3 = box.basis * Vector3(2.0, 0.0, 0.0)
+	assert_eq(HitShapes.segment_box_fraction(start + aside, end + aside, box, half), -1.0,
+			"por el lado: -1")
+	assert_eq(HitShapes.segment_box_fraction(start, box.origin + normal * 0.5, box, half), -1.0,
+			"se queda corto: -1")
+	var over := Vector3(0.0, 1.2, 0.0)
+	assert_eq(HitShapes.segment_box_fraction(start + over, end + over, box, half), -1.0, "por encima: -1")
+	assert_eq(HitShapes.segment_box_fraction(start, start, box, half), -1.0, "un punto fuera: -1")
+	# Paralelo a una cara, dentro de su franja.
+	var along: Vector3 = box.basis * Vector3(1.0, 0.0, 0.0)
+	assert_near(HitShapes.segment_box_fraction(box.origin - along * 4.0, box.origin + along * 4.0, box, half),
+			(4.0 - 1.3) / 8.0, 1e-5, "a lo largo, entra por el canto")
+
+
 func _sector(shape: HitShape, yaw: float, target_feet: Vector3) -> bool:
 	return HitShapes.sector_hits_capsule(Vector3.ZERO, yaw, shape, target_feet,
 			HitShapes.CAPSULE_RADIUS, HitShapes.CAPSULE_HEIGHT)

@@ -289,6 +289,11 @@ empuja hacia delante no se aplica con ellas, así que el stick no dirige a un ca
 ni un tambaleado en pleno salto. Ni ataques, ni esquiva, ni bloqueo en el aire: un PRIMARY o DODGE en el
 aire va al búfer.
 
+**Fase 4.** La máquina gana habilidades, consumibles, cambio de arma, canalizaciones, derribado,
+levantar y rematar y los efectos de movimiento, con el orden 0–6 de
+[habilidades.md 3.3](habilidades.md#33-reglas-por-tick) y la tabla de movimiento de su §3.4; esa
+parte vive en `scripts/shared/combat/ability_rules.gd` (`ActionMachine` sigue siendo la entrada).
+
 ### 3.4 Lo que impone el servidor
 
 API de `ActionMachine` (estática, sobre `CombatState`), siempre seguida de redondeo por
@@ -298,7 +303,8 @@ API de `ActionMachine` (estática, sobre `CombatState`), siempre seguida de redo
   con `action_tick = t`, `cc_until_tick = until`.
 - `impose_death(c, t)`: DEAD.
 - `reset_for_respawn(c, t, rules)`: todo a los valores iniciales (resistencia llena) salvo el
-  arma.
+  arma. En la fase 4 pasa a `reset_for_respawn(c, t, weapon_1, weapon_2, charges)`, con el equipo
+  de la plantilla, y se suman las imposiciones de [habilidades.md 3.5](habilidades.md#35-lo-que-impone-el-servidor).
 - `drain_stamina(c, amount, t)`: resta, pone el retardo y, si llega a 0, el agotamiento.
 
 Consultas (las usan el servidor y el animador): `phase(c, t)` (0 anticipación o carga, 1 activo,

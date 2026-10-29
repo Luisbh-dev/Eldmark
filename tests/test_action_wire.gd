@@ -1,7 +1,9 @@
 extends TestCase
 ## Pruebas del byte de acción del registro de red ([ActionWire]): es el de
-## [method ActionMachine.action_byte] salvo en la esquiva, el tambaleo y el aturdimiento, que llevan
-## en los bits 6-7 un contador de reinicio para que un remoto distinga dos acciones iguales y seguidas.
+## [method ActionMachine.action_byte] salvo en la esquiva, el tambaleo, el aturdimiento y el cambio de
+## arma, que llevan en los bits 6-7 un contador de reinicio para que un remoto distinga dos acciones
+## iguales y seguidas. Una habilidad lleva ahí su ranura (3 = un consumible) y su fase en los bits 4-5
+## (docs/habilidades.md, sección 5.5).
 
 const START_TICK: int = 1000
 
@@ -85,3 +87,59 @@ func test_the_counter_wraps_and_fits_in_two_bits() -> void:
 		var byte: int = wire.encode(state, state.action_tick)
 		assert_true(byte >= 0 and byte <= 255, "cabe en un byte")
 		assert_eq(ActionWire.step_of(byte), (i + 1) & 3, "sube de uno en uno módulo 4")
+
+
+func test_an_ability_carries_its_slot_and_phase() -> void:
+	var wire := ActionWire.new()
+	var sword: int = CombatCatalog.weapon_id(&"sword_shield")
+	for slot: int in 3:
+		var d := MachineDriver.new(sword)
+		d.step(PlayerInput.ABILITY_1 << slot)
+		var ability: AbilityTicks = CombatCatalog.ability(d.c.action_id)
+		assert_eq(ability.slot, slot, "la habilidad de la ranura %d" % (slot + 1))
+		var start: int = d.tick
+		var phases: Dictionary[int, bool] = {}
+		for rel: int in ability.total_ticks if not ability.channel else ability.cast_ticks + 20:
+			var tick: int = start + rel
+			var byte: int = wire.encode(d.c, tick)
+			assert_eq(byte & 15, CombatState.Action.ABILITY, "ranura %d: ABILITY" % slot)
+			assert_eq(ActionWire.step_of(byte), slot, "ranura %d en los bits 6-7" % slot)
+			var phase: int = (byte >> 4) & 3
+			assert_eq(phase, AbilityRules.phase_of(ability, rel), "ranura %d, rel %d: fase" % [slot, rel])
+			phases[phase] = true
+			d.step(PlayerInput.ABILITY_1 << slot)
+		assert_true(phases.has(0) and phases.has(1), "ranura %d: lanzamiento y activo" % slot)
+		assert_eq(phases.has(2), not ability.channel, "ranura %d: recuperación si no es canalizada" % slot)
+	# Un consumible: ranura 3.
+	var potion := MachineDriver.new(sword, 0, CombatState.pack_charges(1, 1))
+	potion.step(PlayerInput.CONSUMABLE_2)
+	var drink: int = wire.encode(potion.c, potion.tick)
+	assert_eq(drink & 15, CombatState.Action.ABILITY, "beber es ABILITY")
+	assert_eq(ActionWire.step_of(drink), 3, "con la ranura 3")
+	assert_eq((drink >> 4) & 3, 0, "en su fase 0")
+	assert_false(ActionWire.has_counter(CombatState.Action.ABILITY), "sin contador")
+
+
+func test_swap_carries_a_counter_and_downed_revive_execute_do_not() -> void:
+	assert_true(ActionWire.has_counter(CombatState.Action.SWAP), "el cambio de arma lleva contador")
+	var wire := ActionWire.new()
+	var state: CombatState = _state()
+	state.action = CombatState.Action.SWAP
+	state.action_tick = START_TICK
+	var first: int = wire.encode(state, START_TICK)
+	assert_eq(first & 0x3F, CombatState.Action.SWAP | (3 << 4), "SWAP sin fases")
+	assert_eq(wire.encode(state, START_TICK + 10), first, "igual mientras dura")
+	state.action_tick = START_TICK + 24
+	var second: int = wire.encode(state, START_TICK + 24)
+	assert_true(ActionWire.step_of(second) != ActionWire.step_of(first),
+			"otro cambio encadenado desde el búfer: otro contador")
+	for action: int in [CombatState.Action.DOWNED, CombatState.Action.REVIVE, CombatState.Action.EXECUTE]:
+		assert_false(ActionWire.has_counter(action), "%d sin contador" % action)
+		state.action = action
+		state.action_tick = START_TICK + 100 + action
+		assert_eq(wire.encode(state, START_TICK + 200), action | (3 << 4), "%d: fase 3 y bits 6-7 a 0" % action)
+	# CHARGE con el arco: fase 0 y nada más.
+	var bow := MachineDriver.new(CombatCatalog.weapon_id(&"bow"))
+	bow.hold(PlayerInput.PRIMARY, 10)
+	assert_eq(bow.c.action, CombatState.Action.CHARGE, "tensando")
+	assert_eq(wire.encode(bow.c, bow.tick), CombatState.Action.CHARGE, "CHARGE, fase 0, bits 6-7 a 0")

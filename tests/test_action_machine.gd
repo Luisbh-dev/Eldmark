@@ -1213,7 +1213,7 @@ func test_impose_death_and_respawn() -> void:
 	assert_eq(d.c.buffered, 0, "ni guardan pulsaciones")
 	assert_eq(out.move_scale, 0.0, "frena")
 	assert_false(out.allow_jump, "no salta")
-	ActionMachine.reset_for_respawn(d.c, d.tick)
+	ActionMachine.reset_for_respawn(d.c, d.tick, CombatCatalog.default_weapon_id(), 0, 0)
 	assert_eq(d.c.action, Action.NONE, "reaparece sin acción")
 	assert_eq(d.c.stamina, 1000, "con la resistencia llena")
 	assert_eq(d.c.weapon_id, CombatCatalog.default_weapon_id(), "conserva el arma")

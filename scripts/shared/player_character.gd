@@ -147,7 +147,10 @@ static func realm_layer(realm_code: int) -> int:
 ## [br][br]
 ## Al principio de cada tick avanza la máquina de acciones ([method ActionMachine.step]), que
 ## decide cuánto puede moverse, girar, saltar y esprintar el personaje durante un ataque, un
-## bloqueo, una esquiva o un control; sin acción, el movimiento es el de siempre.
+## bloqueo, una esquiva, una habilidad, un cambio de arma o un control; sin acción, el movimiento es
+## el de siempre. Los efectos de movimiento (ralentizar, enraizar) escalan la velocidad objetivo no
+## impuesta con [member ActionMachine.Output.speed_factor] en todas las acciones; enraizado no se
+## salta ni se conserva el impulso en el aire ([member ActionMachine.Output.rooted]).
 ## [br][br]
 ## [b]Importante:[/b] move_and_slide() usa internamente el delta del tick de física, así que
 ## [param delta] debe ser exactamente [code]1.0 / Engine.physics_ticks_per_second[/code] y la
@@ -209,6 +212,10 @@ func simulate(input: PlayerInput, delta: float) -> void:
 			if absf(input.move.x) > absf(input.move.y):
 				speed *= strafe_multiplier
 			target_velocity = wish * speed
+		# Efectos de movimiento (ralentizar, enraizar; docs/habilidades.md, sección 3.4): escalan la
+		# velocidad objetivo, también el avance de los ataques y el esprint. La esquiva, el avance de
+		# una habilidad y el empuje (velocidad impuesta) no.
+		target_velocity *= action.speed_factor
 
 		# Aceleración horizontal. En el suelo se usa la deceleración cuando el objetivo reduce la
 		# velocidad en la dirección actual (frenar, soltar el esprint, girar o invertir el
@@ -217,13 +224,13 @@ func simulate(input: PlayerInput, delta: float) -> void:
 		if grounded:
 			var slowing_down: bool = horizontal.dot(target_velocity) < horizontal.length_squared()
 			rate = ground_deceleration if slowing_down else ground_acceleration
-		elif wish_length > _MIN_WISH_DIRECTION and not (action.scaled_movement \
-				and action.move_scale <= 0.0):
+		elif wish_length > _MIN_WISH_DIRECTION and not action.rooted \
+				and not (action.scaled_movement and action.move_scale <= 0.0):
 			# En el aire no se frena en la dirección deseada: un salto o una caída esprintando
 			# mantienen su velocidad mientras se siga empujando hacia delante. El control aéreo
 			# solo gira el movimiento o añade velocidad hasta el objetivo. No vale para una
 			# acción que no deja moverse (muerto, aturdido o tambaleado sin empuje, con
-			# move_scale 0): esas frenan, y el stick no las dirige.
+			# move_scale 0) ni con un efecto que enraíza: esos frenan, y el stick no los dirige.
 			var wish_direction: Vector3 = wish / wish_length
 			var carried_speed: float = horizontal.dot(wish_direction)
 			if carried_speed > target_velocity.length():

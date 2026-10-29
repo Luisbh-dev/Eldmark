@@ -1198,3 +1198,131 @@ de `DamageFormula`) y la firma nueva de `reset_for_respawn`/`set_loadout`; el ca
 sin tocar los contadores de `CombatTables`. H2: `PROTOCOL_VERSION` 6, `VALID_BUTTONS` hasta el bit
 12 y red.md. H3a: `_hide_private_state` con los campos nuevos (hoy el SPAWN ajeno los lleva a su
 valor inicial porque nadie los rellena todavía).
+
+### 11.2 H1b · máquina
+
+**Hecho.**
+
+- `ActionMachine` (§3.3 a §3.6) partida en dos: la entrada y lo de la fase 3 siguen en
+  `action_machine.gd`; habilidades, consumibles, canalizaciones, cambio de arma, levantar y rematar,
+  derribado y efectos de movimiento, en `ability_rules.gd` (`AbilityRules`, que solo llama la
+  máquina). El orden fijo de §3.3: 0 camino rápido (además sin ABILITY, SWAP ni CONSUMABLE pulsados
+  ni en `combat_flags2`, y con las dos ranuras de movimiento libres; sigue sin buscar arma ni
+  habilidades), 1 fin de acciones (ABILITY, canalización al tope con su reutilización, SWAP, REVIVE,
+  EXECUTE; DOWNED y DEAD no acaban), 2 caducidad de las ranuras, 3 resistencia (no en la canalización
+  que bloquea), 4a fines por entrada, 4b el búfer despachado por tipo, 4c los flancos por prioridad,
+  5 compromiso y 6 movimiento (tabla de §3.4 y `Output.speed_factor`/`rooted`).
+- Lo que impone el servidor (§3.5): `impose_downed`, `impose_revived`, `impose_interact`,
+  `impose_interrupt`, `impose_move_effect`, `clear_move_effects`, `reset_cooldowns`, `set_charges`,
+  `set_loadout` y `reset_for_respawn(c, tick, weapon_1, weapon_2, charges)`; `impose_stagger` e
+  `impose_stun` no hacen nada sobre DOWNED ni DEAD, y todas las que cambian la acción fijan la
+  reutilización de la canalización comprometida que cortan.
+- Consultas (§3.6): `phase` con las fases de ABILITY, `active_hit`, `is_commit_tick`,
+  `ability_status` (con `AbilityStatus` y las casillas `STATUS_SLOT_CONSUMABLE_1`/`_2`),
+  `defense_flags` con `DEFENSE_WIDE_BLOCK` (bit 7) en la canalización que bloquea, `is_blocking` y
+  `action_byte` con la ranura (3 = consumible) en los bits 6-7. Los comentarios de `ActionMachine`
+  dicen que el byte del historial es `(flags & 0b111) | defense_flags` (el enmascarado es de H3a).
+- `ActionWire.has_counter` cuenta SWAP (§5.5).
+- `PlayerCharacter.simulate`: la velocidad objetivo no impuesta se multiplica por `speed_factor`
+  (también el esprint y el avance de los ataques) y enraizado no salta ni conserva el impulso en el
+  aire.
+- `AimRay` (`canonical`, `aim_point` con la convergencia de §4.4, `muzzle`, `look_for`),
+  `Ballistics.solve_lead`, `HitShapes.segment_capsule_fraction` y `segment_box_fraction` (0 si el
+  segmento empieza dentro, -1 si no toca) y `DamageFormula.compute(..., damage_scale,
+  mitigation_penalty)`.
+- `CombatDirector`: la reaparición usa la firma nueva; hasta las plantillas (H3c) reaparece con las
+  armas que llevaba, en su orden de ranura (activa la 1), y sus cargas.
+- Notas de la fase 4 en combate.md §3.3 (la máquina ampliada y partida) y §3.4 (la firma nueva de
+  `reset_for_respawn`); notas «Hecho (H1b)» en backlog.md.
+
+**Pruebas.** Nuevas: `test_ability_machine` (24: flanco, compromiso y reutilización también con
+`cast = 0`, vuelve a valer en `ability_ready` y no antes, tambaleo en el lanzamiento sin
+reutilización, el tambaleo, el aturdimiento y la muerte cortan una canalización y fijan su
+reutilización, soltar, moverse con el dato, el tope y las sustitutas, los ejemplos de §3.3, el muro
+del búfer con el botón arriba, prioridades con flancos simultáneos, búfer en la recuperación de un
+ligero y la caducidad que reinicia el combo, sustitutas que no inventan nada, cancelación a esquiva,
+suelo y acciones que lo permiten, ranura vacía, agotamiento y muro, comando 13, consultas,
+regeneración en el muro, el avance de la embestida y del salto atrás, derribado, levantar y
+rematar), `test_ability_reconciliation` (2: la reutilización sobrevive a una reconciliación por un
+empujón del servidor tras el compromiso, con el estado igual byte a byte, y un rechazo la devuelve a
+0), `test_weapon_swap` (7, con el cambio predicho y reconciliado con una entrada sustituida alrededor
+del flanco), `test_move_effects` (6, con la ralentización igual en cliente y servidor a
+`run_speed · 0,6` y su caducidad en el tick exacto), `test_consumables_machine` (6),
+`test_bow_machine` (5) y `test_aim_ray` (5: el rayo canónico es el de `CameraRig.get_aim_ray()` a
+menos de 1 mm con cinco combinaciones de yaw, pitch, hombro, brazo y FOV; las reglas son las de
+`camera_rig.tscn` y `player_character.tscn`; tiro adelantado con el fondo a 150 m: 0 mm frente a
+0,5 m sin convergencia; `look_for` a menos de 1 mm). Ampliadas: `test_action_wire` (+2: ranura y
+fase de ABILITY, consumible, contador de SWAP), `test_hit_shapes` (+2: fracciones, coherentes con
+`segment_hits_capsule` en 200 segmentos), `test_damage_formula` (+1) y `test_ballistics` (+1:
+`solve_lead` a menos de 2 cm de un blanco que se mueve). Adaptadas a `reset_for_respawn` con
+equipo: `test_action_machine` y `test_combat_state_v5`. Ayudantes: `tests/machine_driver.gd`
+(`MachineDriver`, la máquina sin física con dos armas y cargas) y `tests/prediction_pair.gd`
+(`PredictionPair`, cliente con la `ClientPrediction` de verdad y servidor con la regla de
+sustitución en dos mundos, con lo que imponga el servidor en un gancho).
+
+**Desvíos y decisiones.**
+
+- **Flancos simultáneos.** Se procesan en el orden de prioridad: el primero que puede, empieza, y los
+  que no pueden van al búfer; como hoy con DODGE + PRIMARY, uno de menos prioridad del mismo tick
+  sustituye en la ranura a otro de más (la última pulsación gana). DODGE + ABILITY_1 desde NONE
+  esquiva y deja la habilidad en el búfer.
+- **Sustitutas.** No se ignoran flancos con `SUBSTITUTED`: como en combate.md §3.2, la sustituta
+  repite los botones y no los crea. Lo que sí mira el bit es 4a (una sustituta ni suelta una
+  canalización, levantar o rematar ni la rompe por moverse).
+- **Compromiso de una canalización.** «Comprometida» es `t > action_tick + cast` cuando la acaba la
+  propia máquina dentro del tick (4a, 4c, tope: soltar o esquivar en el tick del compromiso la
+  cancela) y `t ≥ action_tick + cast` cuando la corta el servidor (impone tras simular el tick, y el
+  compromiso de ese tick ya ha ocurrido).
+- **ROOT.** La esquiva enraizada se descarta (no va al búfer y no avisa de resistencia), como una
+  habilidad con avance; un avance o una esquiva ya en curso siguen (la velocidad impuesta no se
+  escala, §3.4).
+- **Canalización del búfer.** Con `channel_hold`, se descarta en cuanto el búfer la ve con el botón
+  suelto, no solo al ir a empezar (el resultado es el mismo y no ocupa la ranura).
+- **El muro agotado** se descarta con el aviso de resistencia (bit 1), como la carga.
+- **Poción de resistencia.** Además de los +400, saca del agotamiento en el compromiso si supera el
+  umbral (si no, esperaba al retardo de la regeneración).
+- **Resistencia en el muro.** No regenera en la misma ventana en que bloquea (desde el fin del
+  lanzamiento); como la regeneración va antes de las entradas, el tick en que se suelta aún no
+  regenera.
+- **Giro.** El primer tick de una habilidad salta a `look_yaw` también si el avance empieza en él
+  (el salto atrás: mira a la cámara y salta hacia atrás); en la ventana del avance no gira, y el
+  `lunge_speed` vale en el lanzamiento y el activo, no en la canalización.
+- **PRIMARY desde ABILITY** desde `min(recuperación, cancel_to_attack_from)` (la misma regla que
+  ABILITY_n); SWAP desde ABILITY, solo en la recuperación. Un SWAP que sale (del búfer o del flanco)
+  cambia el arma con la que se miran el resto de entradas de ese tick.
+- **`set_loadout`** sobre un muerto solo cambia el equipo; sobre un vivo fuerza NONE y borra búfer,
+  pulsación y combo; conserva el bit 7 (comando 13). `reset_for_respawn` no lo conserva, como la
+  resistencia infinita. `impose_revived` e `impose_interact` también borran búfer, pulsación y
+  combo; `impose_interact` con otra acción no hace nada.
+- **`ability_status`**: casillas 0-2 (habilidades del arma activa) y 3-4 (consumibles); orden EMPTY,
+  NO_CHARGES, COOLDOWN, BLOCKED, READY; no mira el suelo (no está en `CombatState`).
+- **`active_hit`** devuelve el golpe sintetizado también en la canalización (sin forma, no prueba a
+  nadie).
+- **`AimRay.look_for`** es una solución cerrada en vez de 3 iteraciones de punto fijo: en la base de
+  la cámara el punto está en `(±s, v, −t)` desde el pivote, el pitch sale de la altura y el yaw del
+  ángulo en planta. Es exacta sin depender del número de pasos (las 3 iteraciones también bastaban:
+  0,03 mm a 2 m, comprobado aparte); si el punto está a menos de `√(s² + v²)` del pivote, apunta
+  desde el pivote. `aim_point` con `space` nulo = sin
+  mundo; el centro de un hostil es pies + 0,9 (`HitShapes.LINE_OF_SIGHT_TO_HEIGHT`).
+- **`Ballistics.solve_lead`**: 16 pasos de punto fijo sobre el tiempo de vuelo (determinista).
+- **`DamageFormula`**: `mitigation_penalty` resta (`max(block_mitigation − p, 0)`); un `damage_scale`
+  negativo cuenta como 0. Sin efectos (1 y 0) el resultado no cambia.
+- `HitShapes.is_ray_clear` con `hit_from_inside` se queda para H3a, como dice §7.1.
+- Con H1b las habilidades 1–3 ya se usan con sus teclas (ABILITY_1–3 ya iban en `VALID_BUTTONS`):
+  el servidor las simula (movimiento, reutilización, bloqueo del muro como un bloqueo de la fase 3)
+  sin golpes, efectos ni proyectiles hasta H3. Cambio de arma y pociones esperan a `VALID_BUTTONS`
+  de H2 y a sus teclas (H4).
+
+**Medido** (orientativo: máquina compartida, 4 núcleos con otros trabajos; `ActionMachine.step`,
+20 000 ticks): camino rápido 3,8 µs; un ligero 14 µs; el golpe de escudo 17 µs; el muro mantenido
+23 µs; quieto y ralentizado 17 µs (sale del camino rápido, como manda la regla 0).
+
+**Para los paquetes siguientes.** H2: `VALID_BUTTONS` hasta el bit 12 y `PROTOCOL_VERSION` 6.
+H3a: `active_hit` en `Combatant.freeze` y el resolutor, `impose_move_effect` desde `StatusSystem`,
+`impose_interrupt` (§4.2), el byte del historial enmascarado, los modificadores de `DamageFormula`,
+`is_ray_clear` desde dentro y la protección que pierde una ABILITY. H3b: `ProjectileSystem` con
+`is_commit_tick`, `AimRay` y las fracciones. H3c: `DownedSystem` con `impose_downed`,
+`impose_revived`, `impose_interact` e `impose_interrupt`; plantillas con `set_loadout` y
+`reset_for_respawn` (sustituyen a las armas que llevaba en `CombatDirector`) y la recarga con
+`set_charges`. H4: `ClientPrediction.stepped` con `is_commit_tick` y la barra con `ability_status`.
+H5: bots con `solve_lead` y `look_for`.

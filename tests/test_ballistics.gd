@@ -93,3 +93,37 @@ func test_server_and_client_get_the_same_trajectory_from_the_spawn() -> void:
 		if server != client:
 			fail("tick %d: servidor %s, cliente %s" % [n, server, client])
 			return
+
+
+func test_solve_lead_hits_a_moving_target() -> void:
+	var origin := Vector3(0.0, 1.4, 0.0)
+	var cases: Array = [
+		[Vector3(0.0, 0.9, -30.0), Vector3(5.0, 0.0, 0.0), 45.0],
+		[Vector3(10.0, 0.9, -50.0), Vector3(-6.0, 0.0, 2.0), 70.0],
+		[Vector3(-20.0, 3.0, 10.0), Vector3(0.0, 0.0, -4.0), 40.0],
+		[Vector3(0.0, 0.9, -15.0), Vector3.ZERO, 55.0],
+	]
+	for case: Array in cases:
+		var target: Vector3 = case[0]
+		var velocity: Vector3 = case[1]
+		var speed: float = case[2]
+		var direction: Vector3 = Ballistics.solve_lead(origin, target, velocity, speed, GRAVITY)
+		assert_near(direction.length(), 1.0, 1e-5, "dirección unitaria")
+		# Recorre la parábola y busca el paso más cercano al blanco que se mueve.
+		var best: float = INF
+		var steps: int = 0
+		for n: int in 6000:
+			var ticks: float = n * 0.05
+			var arrow: Vector3 = Ballistics.position(origin, direction * speed, GRAVITY, ticks)
+			var moved: Vector3 = target + velocity * (ticks / 60.0)
+			var gap: float = arrow.distance_to(moved)
+			if gap < best:
+				best = gap
+				steps = n
+		assert_true(best < 0.02, "%s a %s m/s: la flecha pasa a %s m del blanco (n = %s)"
+				% [target, speed, best, steps * 0.05])
+	# Sin gravedad ni movimiento, la recta.
+	var straight: Vector3 = Ballistics.solve_lead(Vector3.ZERO, Vector3(0.0, 0.0, -10.0), Vector3.ZERO, 30.0, 0.0)
+	assert_vec_near(straight, Vector3(0.0, 0.0, -1.0), 1e-6, "recto")
+	assert_eq(Ballistics.solve_lead(Vector3.ONE, Vector3.ONE, Vector3.ZERO, 30.0, 6.0), Vector3.FORWARD,
+			"sin distancia, hacia delante")

@@ -7,8 +7,9 @@ extends RefCounted
 ## [constant CAPSULE_RADIUS] y altura [constant CAPSULE_HEIGHT] medidos desde los pies). La
 ## orientación sigue la convención de [member PlayerCharacter.yaw]: yaw 0 mira hacia -Z.
 ## [br][br]
-## Compartido: lo usan el servidor (compensación de latencia) y las pruebas; no depende de nada
-## del cliente.
+## Compartido: lo usan el servidor (compensación de latencia), la puntería y los proyectiles
+## (docs/habilidades.md, sección 4.4: [method segment_capsule_fraction] y
+## [method segment_box_fraction]) y las pruebas; no depende de nada del cliente.
 
 ## Radio de la cápsula de un personaje (m), igual que el nodo [code]Collision[/code].
 const CAPSULE_RADIUS: float = 0.4
@@ -81,6 +82,77 @@ static func segment_hits_capsule(a: Vector3, b: Vector3, capsule_feet: Vector3, 
 	var axis_b := Vector3(capsule_feet.x, top_y, capsule_feet.z)
 	var squared: float = _segment_segment_distance_squared(a, b, axis_a, axis_b)
 	return squared <= radius * radius + _EPSILON
+
+
+## Fracción (0 a 1) del segmento de [param a] a [param b] en la que entra por primera vez en la
+## cápsula vertical de [param radius] y [param height] que apoya en [param capsule_feet] (el mismo
+## volumen que [method segment_hits_capsule]), o -1 si no la toca. Si [param a] ya está dentro,
+## 0 (docs/habilidades.md, sección 4.4: un proyectil que empieza su tick dentro de una cápsula).
+## La cápsula es la unión de un cilindro y dos esferas: la entrada es la primera de las tres.
+static func segment_capsule_fraction(a: Vector3, b: Vector3, capsule_feet: Vector3, radius: float,
+		height: float) -> float:
+	var bottom_y: float = capsule_feet.y + minf(radius, height * 0.5)
+	var top_y: float = capsule_feet.y + maxf(height - radius, height * 0.5)
+	var axis_a := Vector3(capsule_feet.x, bottom_y, capsule_feet.z)
+	var axis_b := Vector3(capsule_feet.x, top_y, capsule_feet.z)
+	var radius_squared: float = radius * radius
+	if _segment_segment_distance_squared(a, a, axis_a, axis_b) <= radius_squared + _EPSILON:
+		return 0.0
+	var direction: Vector3 = b - a
+	var best: float = INF
+	# Lateral del cilindro (eje vertical): solo cuenta si la entrada cae entre los dos centros.
+	var flat_direction := Vector2(direction.x, direction.z)
+	var flat_offset := Vector2(a.x - capsule_feet.x, a.z - capsule_feet.z)
+	var quad_a: float = flat_direction.dot(flat_direction)
+	if quad_a > _EPSILON * _EPSILON:
+		var quad_b: float = 2.0 * flat_offset.dot(flat_direction)
+		var quad_c: float = flat_offset.dot(flat_offset) - radius_squared
+		var discriminant: float = quad_b * quad_b - 4.0 * quad_a * quad_c
+		if discriminant >= 0.0:
+			var entry: float = (-quad_b - sqrt(discriminant)) / (2.0 * quad_a)
+			var entry_y: float = a.y + direction.y * entry
+			if entry >= 0.0 and entry <= 1.0 and entry_y >= bottom_y and entry_y <= top_y:
+				best = entry
+	# Las dos semiesferas.
+	for center: Vector3 in [axis_a, axis_b]:
+		var entry_sphere: float = _segment_sphere_entry(a, direction, center, radius_squared)
+		if entry_sphere >= 0.0:
+			best = minf(best, entry_sphere)
+	return best if best <= 1.0 else -1.0
+
+
+## Fracción (0 a 1) del segmento de [param a] a [param b] en la que entra en la caja [param box]
+## (transformación de su centro; puede girar en cualquier eje) de medias dimensiones
+## [param half_extents], o -1 si no la toca; 0 si [param a] ya está dentro o en el borde (método de
+## las franjas en el espacio de la caja). Sirve para el muro de escudos que para proyectiles
+## (docs/habilidades.md, sección 4.4).
+static func segment_box_fraction(a: Vector3, b: Vector3, box: Transform3D,
+		half_extents: Vector3) -> float:
+	var inverse: Transform3D = box.affine_inverse()
+	var local_a: Vector3 = inverse * a
+	var local_b: Vector3 = inverse * b
+	var direction: Vector3 = local_b - local_a
+	var enter: float = 0.0
+	var leave: float = 1.0
+	for axis: int in 3:
+		var start: float = local_a[axis]
+		var delta: float = direction[axis]
+		var extent: float = half_extents[axis]
+		if absf(delta) <= _EPSILON * _EPSILON:
+			if start < -extent - _EPSILON or start > extent + _EPSILON:
+				return -1.0
+			continue
+		var first: float = (-extent - start) / delta
+		var second: float = (extent - start) / delta
+		if first > second:
+			var swap: float = first
+			first = second
+			second = swap
+		enter = maxf(enter, first)
+		leave = minf(leave, second)
+		if enter > leave:
+			return -1.0
+	return enter
 
 
 ## true si el sector anular con altura de [param shape], con su origen en [param origin] (los pies
@@ -227,6 +299,26 @@ static func _segment_segment_distance_squared(p1: Vector3, q1: Vector3, p2: Vect
 	var closest2: Vector3 = p2 + d2 * t
 	var gap: Vector3 = closest1 - closest2
 	return gap.dot(gap)
+
+
+# Fracción de [code]a + direction · f[/code] (f en [0, 1]) en la que el segmento entra en la esfera de
+# centro [param center] y radio² [param radius_squared], o -1 si no entra (o si [param a] está dentro:
+# eso lo mira quien llama).
+static func _segment_sphere_entry(a: Vector3, direction: Vector3, center: Vector3,
+		radius_squared: float) -> float:
+	var quad_a: float = direction.dot(direction)
+	if quad_a <= _EPSILON * _EPSILON:
+		return -1.0
+	var offset: Vector3 = a - center
+	var quad_b: float = 2.0 * offset.dot(direction)
+	var quad_c: float = offset.dot(offset) - radius_squared
+	var discriminant: float = quad_b * quad_b - 4.0 * quad_a * quad_c
+	if discriminant < 0.0:
+		return -1.0
+	var entry: float = (-quad_b - sqrt(discriminant)) / (2.0 * quad_a)
+	if entry < 0.0 or entry > 1.0:
+		return -1.0
+	return entry
 
 
 # Recorta el polígono convexo [param polygon] a los puntos p con dot(p - apex, normal) >= 0
