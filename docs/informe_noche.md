@@ -110,6 +110,17 @@ remotos.
   directamente: §1.5 y §17.3); los `decode` rechazan UTF-8 inválido sin registrar errores del motor.
   `ServerMain` sí llama a `Zones` (lista de zonas y reinos con campamento, §19) y
   `test_architecture` lo admite como excepción, igual que el sandbox `ClientMain`.
+- **Criterio de antelación de la prueba d de `test_net_loopback` (red.md §16)**: el contrato decía
+  «`input_margin` en [0, 6] en régimen». La prueba mide el **mínimo de la ventana de `TickSync`**
+  (`get_window_min()`) en [0, 6] (`MAX_TARGET` 4 + `SLOW_DOWN_THRESHOLD` 2, la banda que regula el
+  bucle de control), con la media de cada bot dentro y al menos un 80 % de las muestras. Razón: el
+  `input_margin` de un snapshot suelto es el mínimo de las llegadas de dos ticks y, con
+  rtt=150, jitter=30 y loss=10, queda por diseño 2–4 ticks por encima del mínimo de la ventana: con
+  las mismas semillas, entre el 28 % y el 35 % de los snapshots de cada bot pasa de 6 (media 6,06–6,11,
+  histograma de Botaaab {3:1, 4:4, 5:29, 6:66, 7:46, 8:5}), mientras que el mínimo de la ventana sale
+  fuera de [0, 6] solo un 2,3 %, 0 % y 0 % de las veces. Pedir el 98 % de los snapshots dentro de
+  [0, 6] obligaría a bajar el objetivo y a aceptar más entradas tardías. Revisión adversarial,
+  hallazgo A2: la aserción no cambia; se corrige el texto de red.md §16 d.
 - **Reloj de interpolación (red.md §4.3)**: el pseudocódigo normativo corregía contra el tick de
   dibujo anterior y convergía 1 tick por delante del objetivo (retardo efectivo de 3 ticks en vez
   de 4). Corregido en el código y en red.md: primero se avanza y luego se corrige.

@@ -1613,7 +1613,13 @@ todas las copias del proyecto.
     - cada bot dibuja a los otros dos a menos de 0,5 m de `StateHistory.sample()` en su
       `render_tick`.
   - **d)** Con `rtt=150, jitter=30, loss=10`:
-    - `input_margin` en [0, 6] en régimen;
+    - antelación en régimen: el **mínimo de la ventana de `TickSync`** (`get_window_min()`, lo que
+      regula el bucle de control) en [0, 6], que es `MAX_TARGET` (4) + `SLOW_DOWN_THRESHOLD` (2): la
+      media de cada bot en ese rango y al menos un 80 % de las muestras dentro. No se exige al
+      `input_margin` de cada snapshot suelto: es el mínimo de dos ticks de llegada y, con ±30 ms de
+      jitter, queda por diseño entre 2 y 4 ticks por encima del mínimo de la ventana (en las
+      mediciones, un 28–35 % de los snapshots de cada bot pasa de 6 y su media es ~6,1). Exigirlo
+      obligaría a bajar el objetivo de antelación y a aceptar más entradas tardías;
     - menos de un 2 % de entradas tardías;
     - cada corrección coincide con una subida de `substitutions`;
     - convergencia exacta tras 60 ticks quietos;
