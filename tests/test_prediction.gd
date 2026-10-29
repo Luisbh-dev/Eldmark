@@ -305,6 +305,57 @@ func test_a_lost_jump_is_reconciled_without_repeating_the_sound() -> void:
 	assert_false(_prediction.is_replaying(), "no se queda en modo repetición")
 
 
+func test_a_late_first_real_input_is_reconciled() -> void:
+	if not await _begin_session(_walk_route):
+		return
+	# Las entradas de los ticks 14 y 15 (las dos primeras reales) llegan tarde: el servidor las
+	# sustituye con la entrada neutra del alta y el cliente lo corrige.
+	var lost: Array[int] = [FIRST_REAL_TICK, FIRST_REAL_TICK + 1]
+	var results: Array[Vector2i] = []
+	for _frame: int in 120:
+		await tree.physics_frame
+		_client_tick(results, lost)
+		_server_tick()
+	assert_eq(_model.substitutions, FIRST_REAL_TICK - SPAWN_TICK - 1 + 2,
+			"el servidor sustituyó el avance neutro y los dos ticks perdidos")
+	var last_bad: int = _last_result_tick_not(results, ClientPrediction.Result.MATCH)
+	assert_true(last_bad > 0, "hubo reconciliaciones")
+	assert_true(_results_with(results, ClientPrediction.Result.HARD_RESET).is_empty(),
+			"sin hard reset")
+	assert_true(last_bad <= FIRST_REAL_TICK + 3, "y solo en los primeros ticks (%d)" % last_bad)
+	_assert_converged_since(last_bad)
+
+
+func test_a_long_loss_burst_is_reconciled_repeatedly_and_converges() -> void:
+	if not await _begin_session(_walk_route):
+		return
+	# Doce ticks seguidos perdidos: el servidor repite el movimiento 6 ticks y después se queda
+	# quieto (8.2); con cada estado que llega, el cliente vuelve a reconciliar.
+	var lost: Array[int] = []
+	for tick: int in range(40, 52):
+		lost.append(tick)
+	var results: Array[Vector2i] = []
+	for _frame: int in 150:
+		await tree.physics_frame
+		_client_tick(results, lost)
+		_server_tick()
+	assert_eq(_model.substitutions, FIRST_REAL_TICK - SPAWN_TICK - 1 + 12, "doce sustituciones")
+	var corrected: Array[Vector2i] = _results_with(results, ClientPrediction.Result.CORRECTED)
+	assert_true(corrected.size() >= 4, "varias reconciliaciones seguidas (%d)" % corrected.size())
+	assert_true(_results_with(results, ClientPrediction.Result.HARD_RESET).is_empty(),
+			"sin hard reset")
+	var last_bad: int = _last_result_tick_not(results, ClientPrediction.Result.MATCH)
+	assert_true(last_bad >= 50 and last_bad <= 53, "la última diferencia es de cuando acaba la "
+			+ "pérdida (%d)" % last_bad)
+	_assert_converged_since(last_bad)
+	var stats: Dictionary = _prediction.get_stats()
+	assert_true(stats["max_correction"] > 0.2, "el servidor se paró y el error fue grande (%s m)"
+			% stats["max_correction"])
+	assert_true(stats["max_correction"] < ClientPrediction.SNAP_DISTANCE,
+			"pero se suavizó, sin saltar")
+	assert_eq(_smoother.get_offset(), Vector3.ZERO, "y el desfase acabó anulándose")
+
+
 func test_replays_do_not_emit_jump_or_landing_events() -> void:
 	if not await _begin_session(_route_input):
 		return
@@ -983,6 +1034,36 @@ func _server_tick() -> PlayerState:
 			"due": _frame_counter + STATE_DELAY_FRAMES,
 		})
 	return state
+
+
+## Marcha recta hacia delante desde la primera entrada real.
+func _walk_route(tick: int) -> PlayerInput:
+	var input := PlayerInput.new()
+	input.tick = tick
+	if tick >= FIRST_REAL_TICK:
+		input.move = Vector2(0.0, 1.0)
+	return input
+
+
+## Tick más alto cuyo resultado no fue [param expected], o 0 si todos lo fueron.
+func _last_result_tick_not(results: Array[Vector2i], expected: int) -> int:
+	var last: int = 0
+	for entry: Vector2i in results:
+		if entry.y != expected:
+			last = maxi(last, entry.x)
+	return last
+
+
+## Desde [param tick], el cliente quedó bit a bit igual al servidor, y todos los estados que
+## llegaron después coincidieron.
+func _assert_converged_since(tick: int) -> void:
+	for t: int in range(tick, _model.tick + 1):
+		var predicted: PlayerState = _prediction.get_predicted_state(t)
+		var server_state: PlayerState = _model.states[t]
+		if predicted == null or predicted.encode() != server_state.encode():
+			fail("el tick %d no quedó igual al servidor tras la última reconciliación" % t)
+			return
+	assert_true(_model.tick > tick + 10, "quedaron ticks por comprobar (hasta el %d)" % _model.tick)
 
 
 func _results_with(results: Array[Vector2i], wanted: int) -> Array[Vector2i]:

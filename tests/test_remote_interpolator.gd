@@ -223,6 +223,81 @@ func test_clear_forgets_every_sample() -> void:
 	assert_eq(interpolator.get_newest_tick(), 0, "sin tick más nuevo")
 
 
+# --- Con el reloj de interpolación -----------------------------------------------------------------
+
+func test_clock_and_interpolator_draw_a_stream_without_loss_always_between_two_samples() -> void:
+	var result: Dictionary = _draw_stream(3, 3, 0.0)
+	assert_true(result["frames"] > 1000, "hay fotogramas que medir (%d)" % result["frames"])
+	assert_eq(result["extrapolated"], 0, "sin pérdidas siempre se dibuja entre dos muestras")
+	assert_eq(result["held"], 0, "y nunca por detrás de la más antigua")
+	assert_true(result["worst_error"] < 1e-4, "la posición dibujada sigue a la real (%s m)"
+			% result["worst_error"])
+	assert_near(result["average_delay"], InterpolationClock.MIN_DELAY_TICKS, 1e-6,
+			"sin jitter, el retardo es el mínimo (4 ticks)")
+
+
+func test_clock_and_interpolator_draw_a_lossy_jittery_stream_mostly_between_samples() -> void:
+	# Snapshots a 30 Hz que tardan entre 3 y 6 ticks y se pierden el 10 %.
+	var result: Dictionary = _draw_stream(3, 6, 0.1)
+	assert_true(result["worst_error"] < 1e-3, "y el movimiento dibujado sigue siendo el real (%s m)"
+			% result["worst_error"])
+	assert_true(result["average_delay"] > InterpolationClock.MIN_DELAY_TICKS + 1.0,
+			"el jitter sube el retardo (%s ticks)" % result["average_delay"])
+	var extrapolated_share: float = float(result["extrapolated"]) / float(result["frames"])
+	assert_true(extrapolated_share < 0.08,
+			"se extrapola en menos del 8 %% de los fotogramas (%s)" % extrapolated_share)
+	assert_eq(result["held"], 0, "y nunca se queda por detrás de la más antigua")
+
+
+## Un remoto que corre a 5 m/s en X. Sus snapshots (uno cada 2 ticks del servidor) llegan al cliente
+## con un retardo de entre [param min_delay] y [param max_delay] ticks y se pierde la fracción
+## [param loss]. Cada tick local el reloj avanza y se muestrea el interpolador en
+## [code]render_tick + 0.5[/code]. Devuelve cuántos fotogramas (a partir del 300) cayeron por
+## delante de la última muestra (extrapolación) o por detrás de la primera, el peor error de
+## posición y el retardo medio del reloj.
+func _draw_stream(min_delay: int, max_delay: int, loss: float) -> Dictionary:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var clock := InterpolationClock.new()
+	var interpolator := RemoteInterpolator.new()
+	var arrivals: Dictionary = {}
+	var speed: float = 5.0
+	var per_tick: float = speed / float(Engine.physics_ticks_per_second)
+	var frames: int = 0
+	var extrapolated: int = 0
+	var held: int = 0
+	var worst_error: float = 0.0
+	var delay_sum: float = 0.0
+	for frame: int in range(1, 1500):
+		var server_tick: int = frame + 100
+		if server_tick % 2 == 0 and rng.randf() >= loss:
+			var arrival: int = frame + rng.randi_range(min_delay, max_delay)
+			if not arrivals.has(arrival):
+				arrivals[arrival] = []
+			(arrivals[arrival] as Array).append(server_tick)
+		for tick: int in arrivals.get(frame, []):
+			var sample := EntityRecord.new()
+			sample.position = Vector3(float(tick) * per_tick, 0.0, 0.0)
+			sample.velocity = Vector3(speed, 0.0, 0.0)
+			interpolator.push(tick, sample)
+			clock.on_snapshot(tick, frame)
+		var render_time: float = clock.advance(frame) + 0.5
+		if frame < 300 or interpolator.get_sample_count() == 0:
+			continue
+		frames += 1
+		delay_sum += clock.get_delay_ticks()
+		if render_time > float(interpolator.get_newest_tick()):
+			extrapolated += 1
+		if render_time < float(interpolator.get_oldest_tick()):
+			held += 1
+		var drawn: EntityRecord = interpolator.sample(render_time)
+		worst_error = maxf(worst_error, absf(drawn.position.x - render_time * per_tick))
+	return {
+		"frames": frames, "extrapolated": extrapolated, "held": held, "worst_error": worst_error,
+		"average_delay": delay_sum / float(maxi(frames, 1)),
+	}
+
+
 func _record(position: Vector3, yaw: float = 0.0, velocity: Vector3 = Vector3.ZERO,
 		flags: int = 0, teleport_counter: int = 0) -> EntityRecord:
 	var record := EntityRecord.new()

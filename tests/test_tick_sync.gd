@@ -202,6 +202,139 @@ func test_never_steps_backwards() -> void:
 			total_steps)
 
 
+# --- Bucle cerrado con un servidor mínimo ---------------------------------------------------------
+
+func test_closed_loop_recovers_when_the_start_estimate_is_too_late() -> void:
+	# RTT supuesto 0 con 3 + 3 ticks reales: las primeras entradas llegan 4 ticks tarde.
+	var loop: Dictionary = _run_loop(3, 3, 0, 0, 0.0, 400)
+	var leads: Array[Vector2i] = loop["leads"]
+	assert_true(_min_lead_after(leads, 0) < 0, "al principio las entradas llegan tarde")
+	assert_true(_min_lead_after(leads, 100) >= 0,
+			"a los 100 ticks ya no llega ninguna tarde (antelación mínima %d)"
+			% _min_lead_after(leads, 100))
+	assert_true(_max_lead_after(leads, 100) <= TickSync.MIN_TARGET + 2,
+			"y la antelación queda a menos de objetivo + 2 (%d)" % _max_lead_after(leads, 100))
+	assert_true(loop["adjustments"] >= 1 and loop["adjustments"] <= 3,
+			"con pocos ajustes (%d)" % loop["adjustments"])
+
+
+func test_closed_loop_hard_resync_when_the_estimate_is_very_wrong() -> void:
+	# Seis ticks de ida y otros seis de vuelta, y se supone un RTT de 0: -9 de margen.
+	var loop: Dictionary = _run_loop(6, 6, 0, 0, 0.0, 400)
+	var leads: Array[Vector2i] = loop["leads"]
+	assert_true(_min_lead_after(leads, 0) <= TickSync.RESYNC_BEHIND,
+			"las primeras entradas llegan muy tarde (%d)" % _min_lead_after(leads, 0))
+	assert_true(_min_lead_after(leads, 100) >= 0, "y a los 100 ticks ya no hay tardías")
+	assert_true(_max_lead_after(leads, 100) <= TickSync.MIN_TARGET + 2, "con la antelación acotada")
+	assert_true(loop["adjustments"] <= 4, "sin oscilar (%d ajustes)" % loop["adjustments"])
+
+
+func test_closed_loop_slows_down_when_the_estimate_is_too_early() -> void:
+	# RTT supuesto 20 con 3 + 3 reales: las entradas llegan 15 ticks antes de lo necesario.
+	var loop: Dictionary = _run_loop(3, 3, 0, 20, 0.0, 900)
+	var leads: Array[Vector2i] = loop["leads"]
+	assert_true(_max_lead_after(leads, 0) >= 10, "al principio sobra antelación (%d)"
+			% _max_lead_after(leads, 0))
+	assert_true(_min_lead_after(leads, 500) >= 0, "nunca tarde, ni retrasándose")
+	assert_true(_max_lead_after(leads, 500) <= TickSync.MIN_TARGET + 2,
+			"y acaba con la antelación en el objetivo (%d)" % _max_lead_after(leads, 500))
+	assert_true(loop["adjustments"] <= 4, "sin oscilar (%d ajustes)" % loop["adjustments"])
+
+
+func test_closed_loop_with_jitter_keeps_inputs_on_time() -> void:
+	# Ida con entre 3 y 6 ticks de retardo (jitter 3 en la ida) y jitter de snapshots medido de 1,5.
+	var loop: Dictionary = _run_loop(3, 3, 3, 6, 1.5, 1800)
+	var leads: Array[Vector2i] = loop["leads"]
+	var late: int = 0
+	var total: int = 0
+	for entry: Vector2i in leads:
+		if entry.x < 300:
+			continue
+		total += 1
+		if entry.y < 0:
+			late += 1
+	assert_true(total > 1000, "hay entradas que medir (%d)" % total)
+	assert_true(float(late) / float(total) < 0.02,
+			"menos de un 2 %% de entradas tardías en régimen (%d de %d)" % [late, total])
+	assert_true(loop["adjustments"] <= 12, "pocos ajustes (%d)" % loop["adjustments"])
+
+
+## Bucle cerrado sin física: un cliente con [TickSync] y un servidor mínimo que mide la antelación
+## de la primera copia de cada entrada (sección 4.1) y devuelve el mínimo y el ack en snapshots
+## cada 2 ticks. Las entradas tardan [param up] ticks en llegar (más entre 0 y [param up_jitter]
+## de jitter) y los snapshots [param down]. [param assumed_rtt] es el RTT con el que se calcula P0.
+## Devuelve {"leads": Array[Vector2i] (fotograma, antelación), "adjustments": int}.
+func _run_loop(up: int, down: int, up_jitter: int, assumed_rtt: int, jitter_ticks: float,
+		frames: int) -> Dictionary:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = RANDOM_SEED
+	var sync := TickSync.new()
+	sync.set_jitter(jitter_ticks)
+	var spawn_tick: int = 100
+	var predicted: int = sync.start(spawn_tick, assumed_rtt) - 1
+	# Cuando el cliente recibe el alta, el servidor ya va por spawn_tick + down.
+	var server_tick: int = spawn_tick + down - 1
+	var uplink: Dictionary = {}
+	var downlink: Dictionary = {}
+	var received: Dictionary = {}
+	var leads: Array[Vector2i] = []
+	var min_lead: int = 0
+	var has_lead: bool = false
+	for frame: int in frames:
+		# Servidor: recibir, simular el tick siguiente y, cada 2 ticks, enviar el snapshot.
+		for tick: int in uplink.get(frame, []):
+			var lead: int = tick - (server_tick + 1)
+			if tick <= server_tick or received.has(tick):
+				if tick <= server_tick:
+					leads.append(Vector2i(frame, lead))
+					min_lead = lead if not has_lead else mini(min_lead, lead)
+					has_lead = true
+				continue
+			received[tick] = true
+			leads.append(Vector2i(frame, lead))
+			min_lead = lead if not has_lead else mini(min_lead, lead)
+			has_lead = true
+		server_tick += 1
+		received.erase(server_tick)
+		if frame % NetProtocol.SNAPSHOT_INTERVAL_TICKS == 0:
+			var ack: int = server_tick
+			while received.has(ack + 1) and ack < server_tick + NetProtocol.MAX_INPUT_LEAD_TICKS:
+				ack += 1
+			var margin: int = clampi(min_lead, -127, 127) if has_lead else NO_MARGIN
+			has_lead = false
+			var arrival: int = frame + down
+			if not downlink.has(arrival):
+				downlink[arrival] = []
+			(downlink[arrival] as Array).append(Vector2i(ack, margin))
+		# Cliente: llegan los snapshots, se decide cuántos pasos dar y se envían las entradas.
+		for snapshot: Vector2i in downlink.get(frame, []):
+			sync.on_snapshot(snapshot.x, snapshot.y)
+		var steps: int = sync.next_steps(predicted)
+		for _step: int in steps:
+			predicted += 1
+			var arrival: int = frame + up + rng.randi_range(0, up_jitter)
+			if not uplink.has(arrival):
+				uplink[arrival] = []
+			(uplink[arrival] as Array).append(predicted)
+	return {"leads": leads, "adjustments": sync.adjustments}
+
+
+func _min_lead_after(leads: Array[Vector2i], from_frame: int) -> int:
+	var low: int = 1000000
+	for entry: Vector2i in leads:
+		if entry.x >= from_frame:
+			low = mini(low, entry.y)
+	return low
+
+
+func _max_lead_after(leads: Array[Vector2i], from_frame: int) -> int:
+	var high: int = -1000000
+	for entry: Vector2i in leads:
+		if entry.x >= from_frame:
+			high = maxi(high, entry.y)
+	return high
+
+
 func _feed(sync: TickSync, ack_tick: int, margin: int, count: int) -> void:
 	for _i: int in count:
 		sync.on_snapshot(ack_tick, margin)
