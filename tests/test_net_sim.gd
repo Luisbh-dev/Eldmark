@@ -629,6 +629,25 @@ func test_connect_to_closed_port_fails() -> void:
 	client.transport.close()
 
 
+## connect_to promete avisar de que no hay servidor «como mucho al doble» de connect_timeout_ms.
+## ENet solo mira el plazo cuando vence una retransmisión del CONNECT (a 0,5, 1,5, 3,5 y 7,5 s) y
+## con un máximo del doble tardaba 3,5 s para 1000 ms y 7,5 s para 3000 ms (hallazgo S7).
+func test_connect_timeout_is_at_most_double_the_requested_one() -> void:
+	var port: int = _find_free_port()
+	if not assert_true(port > 0, "hay un puerto libre"):
+		return
+	for timeout_ms: int in [1000, 3000]:
+		var client: Endpoint = Endpoint.new(_make_transport("NetTransportTimeout%d" % timeout_ms))
+		assert_eq(client.transport.connect_to("127.0.0.1", port, timeout_ms), OK)
+		var one: Array[Endpoint] = [client]
+		var limit_ticks: int = 2 * timeout_ms * 60 / 1000 + 10
+		var failed: bool = await _run_until(one, func() -> bool:
+			return client.failed_count > 0, limit_ticks)
+		assert_true(failed, "con %d ms, connection_failed llega en menos de %d ticks (%d ms)"
+				% [timeout_ms, limit_ticks, limit_ticks * 1000 / 60])
+		client.transport.close()
+
+
 func test_net_sim_delays_packets_by_the_expected_ticks() -> void:
 	# Referencia sin simulador: lo que tarda un paquete por el propio bucle de la prueba.
 	var base: Dictionary = await _measure_latencies("", 60)

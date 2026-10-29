@@ -177,7 +177,8 @@ func host(port: int, max_peers: int) -> Error:
 
 ## Empieza a conectar con el servidor en [param address]:[param port]. El resultado llega por
 ## [signal peer_authenticating] (peer 1) y [signal peer_connected], o por [signal connection_failed]
-## pasado como mucho el doble de [param connect_timeout_ms]. El transporte debe estar en el árbol.
+## pasado como mucho el doble de [param connect_timeout_ms] (en la práctica, entre 1 y 1,5 veces: ENet
+## solo comprueba el plazo al retransmitir el CONNECT). El transporte debe estar en el árbol.
 func connect_to(address: String, port: int, connect_timeout_ms: int = 3000) -> Error:
 	if _mp == null:
 		return ERR_UNCONFIGURED
@@ -188,9 +189,11 @@ func connect_to(address: String, port: int, connect_timeout_ms: int = 3000) -> E
 	if err != OK:
 		return err
 	# Mientras conecta se usa un tiempo corto; al conectar pasa al normal (ver
-	# _on_peer_authenticating).
+	# _on_peer_authenticating). El mínimo y el máximo son el mismo: ENet solo mira el plazo cuando
+	# vence una retransmisión del CONNECT (a los 0,5, 1,5, 3,5 y 7,5 s), y con un máximo del doble
+	# tardaba 3,5 s en rendirse con 1000 ms y 7,5 s con 3000 ms.
 	for packet_peer: ENetPacketPeer in peer.host.get_peers():
-		packet_peer.set_timeout(TIMEOUT_LIMIT, connect_timeout_ms, 2 * connect_timeout_ms)
+		packet_peer.set_timeout(TIMEOUT_LIMIT, connect_timeout_ms, connect_timeout_ms)
 	_attach(peer, false)
 	return OK
 

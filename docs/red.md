@@ -231,8 +231,11 @@ cubre ±5,24 km, así que caben los 5 × 5 km de terreno de Eldrun.
 
 - Tras conectar: `get_peer(id).set_timeout(32, 3000, 8000)`, de modo que una desconexión se
   detecta en 3–8 s.
-- Mientras el cliente conecta: `set_timeout(32, connect_timeout_ms, 2 × connect_timeout_ms)`,
-  para que `--local` detecte en ~1 s que no hay servidor.
+- Mientras el cliente conecta: `set_timeout(32, connect_timeout_ms, connect_timeout_ms)`, para que
+  `--local` detecte en ~1,5 s que no hay servidor. El mínimo y el máximo son iguales a propósito:
+  ENet solo comprueba el plazo cuando vence una retransmisión del CONNECT (a los 0,5, 1,5, 3,5 y
+  7,5 s), y con el máximo al doble `connection_failed` llegaba a los 3,5 s con 1000 ms y a los
+  7,5 s con 3000 ms (hallazgo S7). Ahora llega a los 1,5 s y a los 3,5 s.
 
 **Compresión:** sin compresión de ENet al principio, por CPU. Más adelante se prueba
 `COMPRESS_RANGE_CODER`, midiendo.
