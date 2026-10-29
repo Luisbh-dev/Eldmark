@@ -265,12 +265,28 @@ supuestos técnicos comprobados ejecutando Godot y Terrain3D).
 | F2 | Protocolo 4: OBJECT_STATE, SPAWN de estructuras y PNJ, WAR, TELEGRAPH, /atascado, SCOREBOARD, REJECT de desequilibrio | Hecho |
 | F3 | Servidor del fuerte: `FortressController` (presencia, `advance`, efectos, OBJECT_STATE y WAR), la puerta como blanco (multiplicadores, capas por reino, reparación), comandos 8–11, reaparición en el fuerte, GUE-41 (salida en combate), /atascado, SCOREBOARD, KILL a toda la zona, `--battle-log` y `tools/war/summarize_battle.gd` | Hecho |
 | F5 | Cliente del fuerte: `FortressView` con el gancho `before_simulate` (la puerta igual en cliente y servidor en cada tick), HUD de captura, banners, barra de jefe, marcas de TELEGRAPH, brújula, mapa horneado (`assets/maps/vado_gris.png`), minimapa, mapa completo con la reaparición, marcador (Tab) y registro de bajas, pistas, recuento por reino en la selección | Hecho |
-| F4 | PNJ (navegación, IA, Huecos, Capitán, guarnición, Guardianes) | En marcha |
+| F4 | PNJ: `NpcNavigation` (mapa propio, enlace de la puerta por reino), `NpcDefinition`/`NpcCatalog` (`data/npcs/`), armas de PNJ y golpe imbloqueable del Capitán con TELEGRAPH, `HfsmBrain` (reposo, patrulla, alerta, combate, regreso; fichas: nunca más de 2 atacan a la vez), `NpcSpawnerSystem` (Huecos, Capitán del Vado, guarnición del reino dueño, 2 Guardianes por campamento), `--no-npcs`, comando 12 `npc_debug` | Hecho (MUN-10 y MUN-11 siguen «en curso»: falta jugarlos con personas) |
 | F6a | Bots de asedio (`SIEGE`, `SwarmBot` con rutas), `--max-realm-diff`, escenario de carga del asedio, números de batalla | En marcha |
 | F6b | Prueba de extremo a extremo neutral → Vardheim → Solmarch con los PNJ de verdad | Pendiente (tras F4) |
 | Habilidades | Diseño corto `docs/habilidades.md` (CMB-19 a 24, CMB-28, PRG-04/07/08, UI-11, UI-45), revisado por tres lentes escépticas (41 hallazgos, 3 bloqueantes; 34 aplicados, 4 rechazados en parte con motivo en su sección «Revisión») | Diseño hecho; implementación tras fusionar F4 (paquetes H1 a H5) |
 | Social | Chat (SOC-03 a SOC-05) y grupos (SOC-06 a SOC-08): implementación, revisión adversarial por tres lentes con refutación y arreglos | En marcha |
 | Fase 5 (diseño) | `docs/plataforma.md` (servicio en Go + PostgreSQL, cuentas, billetes, guardado, RGPD, GM) y `docs/progresion.md` (objetos, inventario, monedas, niveles, razas): borrador, revisión escéptica y corrección | En marcha (solo documentos) |
+
+### Medidas de F4 (máquina compartida con otras suites: cotas altas)
+
+| Medida | Valor |
+|---|---|
+| Cerebro `HfsmBrain` por PNJ y tick (p50, piensa cada 6 ticks escalonado) | 15–30 µs |
+| `simulate()` de un PNJ | 32–56 µs (hasta ~100 µs con cerebro en pleno combate) |
+| Sección `npc` (`NpcSpawnerSystem`, 14 puestos del Vado Gris) | ~60 µs/tick |
+| Tick con los 9 PNJ del Vado Gris y 3 bots peleando | p50 1,0–1,3 ms, p99 2–2,4 ms |
+| 3 bots de combate limpian los 4 Huecos | ~46,5 s |
+| 4 bots (curados cada tick) derrotan al Capitán del Vado (30 000 PV) | ~77,5 s; sin curarlos mueren antes |
+| Un intruso en la zona segura ante los 2 Guardianes | muere en 4,2–5,2 s (criterio < 10 s) |
+
+Los criterios finos de MUN-10 (60–90 s con 2–3 personas) y MUN-11 (60–120 s con 3–5) necesitan
+personas: los bots no son buena medida. Vida y daño de los PNJ ajustados para que los criterios se
+puedan medir (provisionales; ver `docs/fuerte.md` §8.3).
 
 ## Pendiente de probar mañana con ventana
 
