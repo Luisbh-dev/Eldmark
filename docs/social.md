@@ -25,7 +25,7 @@ Tomadas de noche, con la recomendación del backlog (provisionales; revisar). La
 Las dos que quedaban pendientes se tomaron en la fase 5 ([plataforma.md](plataforma.md) §0,
 provisionales, de noche): «ignorar» afecta a **la cuenta**, en silencio, y el servidor filtra también los
 canales públicos (sección 10); el registro de chat se guarda **30 días**, susurros incluidos, y **un año** lo
-ligado a reportes o sanciones (sección 8), con revisión legal (RGPD) antes de las pruebas públicas.
+copiado a un reporte (sección 8), con revisión legal (RGPD) antes de las pruebas públicas.
 
 ## 1. Qué cruza entre reinos
 
@@ -178,11 +178,14 @@ vea el enemigo.
 
 | Qué | Qué se guarda | Cuánto |
 |---|---|---|
-| Chat | Canal, `character_id` del emisor, destinatario o alcance, zona, texto y hora UTC (SOC-15), **incluidos los susurros** | 30 días |
-| Fragmentos ligados a un reporte o una sanción | El contexto que se adjunta al reporte (SOC-17) | 1 año |
-| Auditoría de comandos de GM | Quién, cuándo, zona, objetivo y argumentos (SOC-14) | 1 año como mínimo |
-| Sanciones | Tipo, motivo, autor, caducidad y reportes enlazados | Mientras exista la cuenta |
-| Nombres de personajes borrados | Reservados para que nadie los herede | 30 días (SOC-13) |
+| Chat | Canal, `character_id` del emisor, destinatario (susurros), zona y copia, texto y hora UTC (SOC-15), **incluidos los susurros**; de un mensaje de grupo no se guarda qué grupo (plataforma.md §9.2) | 30 días |
+| Fragmentos ligados a un reporte | El contexto que se adjunta al reporte (SOC-17, `report_evidence`) | 1 año desde que se cierra el reporte; uno sin cerrar se da por cerrado al año |
+| Auditoría de comandos de GM | Quién, cuándo, zona, objetivo y argumentos (SOC-14) | 1 año en `audit_log`; la copia que queda en el libro del personaje (actor, nota y argumentos de las operaciones de GM) sigue la retención del libro (plataforma.md §11.1) |
+| Sanciones | Tipo, motivo, autor, caducidad y reportes enlazados | Mientras exista la cuenta; al purgarla, sin motivo y 1 año más |
+| Nombres de personajes borrados | Reservados para que nadie los herede | Los 7 días en que se pueden restaurar y 30 más; los de prueba, solo los 7 (SOC-13, plataforma.md §4.4) |
+
+Las cifras y cómo se aplican son las de plataforma.md §11.1, que manda. Una sanción no guarda chat propio:
+solo se conserva lo copiado a un reporte.
 
 Los susurros se guardan porque sin ellos no se puede atender un reporte de acoso. Acceso solo a
 moderadores con rol, con registro de cada consulta (plataforma.md §9.1: la CLI exige `--actor` y cada

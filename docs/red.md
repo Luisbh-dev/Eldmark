@@ -1821,8 +1821,9 @@ es de 0,1 ms de mediana: el cuello es `simulate()` (palanca 6).
 
 ### Fases 5 y 6: cuentas y traspasos
 
-- **`character_id` y `ticket`** ya viajan en HELLO. `AuthProvider` se sustituye sin tocar
-  `ZoneServer`.
+- **`character_id` y `ticket`** ya viajan en HELLO. `AuthProvider` se sustituye por
+  `TicketAuthProvider`, y `ZoneServer` cambia: el estado `VERIFYING` (la reclamación), el cupo que cuenta a
+  los que verifican y `start(…, platform)` ([plataforma.md](plataforma.md) §5.2 y §14.3).
 - **El traspaso** repite la conexión: HANDOFF → nueva conexión con billete → WELCOME → carga →
   CLIENT_READY. El reino pasa a salir del personaje.
 

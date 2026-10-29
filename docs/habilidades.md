@@ -408,7 +408,7 @@ registro & 0b111) | defense_flags`**: el bit 3 del registro (ranura 2, §5.2) no
 | 5 | **Aplicar** por `net_id` del atacante (primero sus golpes, después sus proyectiles por id) y del objetivo: daño, bloqueo, controles, `target_status`, interrupciones, derribos y muertes; DESPAWN de las flechas que impactan | 4 |
 | 6 | **Efectos de estado**: pulsos y caducidades; primero se reúnen los pulsos de todos y después se aplican, por `net_id` del afectado e id de efecto, saltándose a quien ya esté derribado o muerto en este tick | 4 |
 | 7 | **Derribado**: desangrado, INTERACT nuevos, progreso y final de levantar y rematar | 4 |
-| 8 | Entorno, reapariciones (con plantilla) y recarga de consumibles en el campamento (cada 60 ticks, `set_charges`) | 4 |
+| 8 | Entorno, reapariciones (con plantilla) y recarga de consumibles en el campamento (cada 60 ticks, `set_charges`); desde la fase 5, con inventario, armas del equipo y CAMP_REFILL (§4.6) | 4 |
 | 9 | Publicar: vida, estado, byte de acción y ranura activa | 4 |
 | 10 | `FortressController.step(s)` | 4b |
 | 11 | Altas, historial, snapshots, OBJECT_STATE, eventos y SPAWN/DESPAWN de proyectiles | 5 |
@@ -597,7 +597,11 @@ segmento que **empieza dentro** de una caja o una cápsula da fracción 0.
   ninguna; vale en LOADING e IN_WORLD): LOADOUT_SELECT (§5.1) la anota, y se copia al `Combatant` al
   darlo de alta (`_process_arrivals`) y en cada reaparición. Sin elegir, `default_template`; los falsos,
   `--fake-loadout`. Al aparecer, `set_loadout` o `reset_for_respawn` con sus armas y cargas, y LOADOUT
-  al dueño y a quien lo tenga relevante.
+  al dueño y a quien lo tenga relevante. **Desde la fase 5**, todo jugador con peer tiene inventario (con o
+  sin plataforma): la plantilla solo elige el kit de la primera entrada, la reaparición toma las armas del
+  equipo y CAMP_REFILL sustituye la recarga, con un total fijo por poción: 3 de vida y 2 de resistencia,
+  también para el `marksman`, cuyas cargas aquí son [2, 3] (progresion.md §2.5 y §4.4). Solo los falsos
+  siguen con plantilla y recarga.
 - **Recarga** (cada 60 ticks): vivo, fuera de combate, en la zona segura de su reino y con menos cargas
   que su plantilla → `set_charges` con las cargas llenas y LOADOUT al dueño. Arma, reutilizaciones,
   ranuras y acción en curso no cambian.
@@ -618,8 +622,8 @@ segmento que **empieza dentro** de una caja o una cápsula da fracción 0.
 ## 5. Protocolo: `PROTOCOL_VERSION = 6`
 
 «6: habilidades, efectos, cambio de arma, proyectiles, derribado y plantillas (docs/habilidades.md)». La
-5 es del chat y los grupos (SOC-03, `0x40`–`0x4F`), que se fusionan antes; F4 no la cambia. Si cambia el
-orden de fusión, la siguiente libre. `0x07` y los eventos 7–11 no chocan con SOC.
+5 es del chat y los grupos (SOC-03, `0x40`–`0x4F`), ya fusionados; F4 no la cambia. El reparto es fijo: la 7 es
+de la fase 5 (plataforma.md §5.4), que espera a este documento. `0x07` y los eventos 7–11 no chocan con SOC.
 
 ### 5.1 Entradas y mensajes C→S
 
@@ -768,7 +772,9 @@ derribado.
   levantando» con la barra de INTERACT 1, «¡Te rematan!» con INTERACT 4. Quien está cerca de un aliado
   derribado (posiciones dibujadas y acción DOWNED) ve «Mantén E para levantar a …».
 - **Plantillas**: selector (armas y cargas de cada `EquipmentTemplate`) en la pantalla de muerte y en la
-  selección de reino; manda LOADOUT_SELECT al elegir.
+  selección de reino; manda LOADOUT_SELECT al elegir. Desde la fase 5 solo cuenta para la primera entrada: el
+  cliente no lo muestra a quien entra con billete y, sin plataforma, lo oculta tras la primera aparición
+  (§4.6, progresion.md §2.5).
 - **Arco**: tensando, la cámara cierra el campo de visión al 75 % del configurado (72° por defecto,
   `client_settings` lo cambia; no toca el brazo, así que el rayo canónico no cambia) y la retícula se
   cierra. `get_effective_shoulder()` (hombro tras el cambio automático) pone `AIM_LEFT`.
