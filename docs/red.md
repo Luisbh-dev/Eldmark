@@ -315,7 +315,7 @@ cubre ±5,24 km, así que caben los 5 × 5 km de terreno de Eldrun.
 | sistema | interno de `SceneMultiplayer`, fiable | ambos | Autenticación: HELLO, WELCOME, REJECT |
 | 1 `CH_INPUT` | `TRANSFER_MODE_UNRELIABLE` (sin secuencia) | C→S | INPUT_BATCH. Sin secuencia a propósito: un paquete atrasado puede traer la única copia de una entrada |
 | 2 `CH_SNAPSHOT` | `TRANSFER_MODE_UNRELIABLE_ORDERED` (secuenciado) | S→C | SNAPSHOT. ENet descarta los atrasados |
-| 3 `CH_RELIABLE` | `TRANSFER_MODE_RELIABLE` | ambos | CLIENT_READY, CLIENT_LEAVE, DEBUG_COMMAND, RESPAWN_REQUEST, ENTITY_SPAWN, ENTITY_DESPAWN, ENTITY_EVENT y NOTICE; desde la fase 4, también UNSTUCK_REQUEST, OBJECT_STATE y SCOREBOARD |
+| 3 `CH_RELIABLE` | `TRANSFER_MODE_RELIABLE` | ambos | CLIENT_READY, CLIENT_LEAVE, DEBUG_COMMAND, RESPAWN_REQUEST, ENTITY_SPAWN, ENTITY_DESPAWN, ENTITY_EVENT y NOTICE; desde la fase 4, también UNSTUCK_REQUEST, OBJECT_STATE y SCOREBOARD, y desde el protocolo 5, CHAT_SEND, CHAT_MESSAGE y los PARTY_* |
 
 Reglas:
 
@@ -615,8 +615,11 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 | `0x30` | NOTICE | S→C | 3 | 3 B + texto |
 | `0x31` | HANDOFF (reservado, fase 6) | S→C | 3 | — |
 | `0x32` | SCOREBOARD (v3) | S→C | 3 | 4 B + 18 B por fila (hasta 66 filas por mensaje: ≤ 1192 B) |
+| `0x40` | CHAT_SEND (v5) | C→S | 3 | 5 B + destinatario + texto (≤ 821 B) |
+| `0x41` | CHAT_MESSAGE (v5) | S→C | 3 | 11 B + emisor + destinatario + texto (≤ 875 B) |
 
 «v3» marca lo que añade el protocolo 3 (fase 4, [fuerte.md](fuerte.md#2-replicación-con-estado-object_state-gue-09)).
+«v5» marca lo que añade el protocolo 5 (chat y grupos, [social.md](social.md#12-implementación-fase-4)).
 El tamaño de un ENTITY_SPAWN depende de `kind` (ver 5.5).
 
 ### 5.3 Autenticación
@@ -626,7 +629,7 @@ El tamaño de un ENTITY_SPAWN depende de `kind` (ver 5.5).
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
 | 0 | u32 | magic | `0x4D444C45` |
-| 4 | u16 | protocol_version | `NetProtocol.PROTOCOL_VERSION` (= 4: 2 combate, 3 su revisión, 4 el fuerte) |
+| 4 | u16 | protocol_version | `NetProtocol.PROTOCOL_VERSION` (= 5: 2 combate, 3 su revisión, 4 el fuerte, 5 el chat y los grupos) |
 | 6 | u32 | sim_hash | ver [3](#3-conexión) |
 | 10 | u8 | realm | 0 ninguno (se rechaza), 1 Vardheim, 2 Solmarch, 3 Askarra |
 | 11 | u8 | flags | bit0 = bot; resto, 0 |

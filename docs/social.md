@@ -236,3 +236,54 @@ humana (SOC-38).
 Quien implemente una pieza debe respetar el filtro por reino de la sección 1 en el servidor, aunque el
 cliente «ya no muestre» lo que no debe: la prueba de aceptación de SOC-04 es que un cliente de otro
 reino no recibe ningún paquete con el texto, no que no lo pinte.
+
+## 12. Implementación (fase 4)
+
+Lo que se ha hecho de SOC-03 a SOC-08 en la fase 4, con los formatos de bytes, las decisiones que se
+tomaron al implementarlo y lo que queda. Las cifras siguen siendo provisionales (sección 0).
+
+### 12.1 Mensajes de chat (SOC-03)
+
+El protocolo sube a la **versión 5** (`NetProtocol.PROTOCOL_VERSION`). Los tipos van del `0x40` en adelante,
+por el canal fiable 3 ([red.md](red.md), sección 2); ningún paquete pasa de 1200 B. Todo en
+little-endian y con las cadenas en UTF-8 (sin byte nulo) con su longitud delante, como el resto del
+protocolo.
+
+**CHAT_SEND** (`0x40`, C→S): lo que el jugador quiere decir.
+
+| Offset | Tipo | Campo | Notas |
+|---|---|---|---|
+| 0 | u8 | type | `0x40` |
+| 1 | u8 | channel | `ChatChannel.Id`; el 7 (sistema) no lo envía un cliente |
+| 2 | u8 | recipient_len | bytes del destinatario (≤ 48; ≤ 24 caracteres); solo en un susurro, y obligatorio en él |
+| 3 | u16 | text_len | bytes del texto (≤ 768) |
+| 5 | n B | recipient | el nombre tal como lo escribió el jugador |
+| 5 + n | m B | text | ≤ 255 caracteres |
+
+**CHAT_MESSAGE** (`0x41`, S→C): un mensaje ya saneado y repartido solo a quien debe verlo.
+
+| Offset | Tipo | Campo | Notas |
+|---|---|---|---|
+| 0 | u8 | type | `0x41` |
+| 1 | u8 | channel | `ChatChannel.Id` |
+| 2 | u8 | sender_realm | reino del emisor (0 en el sistema) |
+| 3 | u32 | tick | tick del servidor al repartirlo |
+| 7 | u8 | sender_len | 0 si y solo si el canal es el del sistema |
+| 8 | u8 | recipient_len | solo en un susurro (y obligatorio en él) |
+| 9 | u16 | text_len | ≤ 768 |
+| 11 | n B | sender | nombre canónico del emisor |
+| 11 + n | m B | recipient | nombre canónico del destinatario |
+| 11 + n + m | k B | text | ≤ 255 caracteres |
+
+Tamaños máximos: 821 B el CHAT_SEND y 875 B el CHAT_MESSAGE.
+
+Canales (`ChatChannel.Id`, no se reordenan): `0` decir, `1` zona, `2` susurro, `3` grupo, `4` banda, `5`
+gremio, `6` reino, `7` sistema, `8` GM. En la fase 4 el servidor reparte decir, zona, susurro, grupo y
+sistema; los otros contestan «Ese canal aún no está disponible».
+
+`decode` devuelve `null` (y no registra ningún error del motor) si el tamaño no cuadra con las longitudes,
+si el canal no existe, si un cliente manda el del sistema, si un susurro no lleva destinatario o cualquier
+otro canal lo lleva, si algún texto no es UTF-8 válido o lleva un byte nulo, si el destinatario pasa de
+24 caracteres o el texto de 255 caracteres o 768 B. Un CHAT_MESSAGE además exige emisor en todos los
+canales menos el del sistema y destinatario solo en el susurro. Un texto vacío sí se decodifica: es el
+servidor quien lo descarta al sanear. `encode` recorta a los límites sin partir ningún carácter.

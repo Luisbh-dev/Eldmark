@@ -1169,6 +1169,165 @@ class Notice:
 		return notice
 
 
+## CHAT_SEND (C→S, canal 3, protocolo 5): 5 B + destinatario + texto (docs/social.md, sección 12).
+## El jugador quiere decir algo por un canal.
+## [br][br]
+## [code]u8 type, u8 channel, u8 recipient_len, u16 text_len[/code], el destinatario (UTF-8, solo en un
+## susurro: el nombre del personaje tal como lo escribió el jugador) y el texto (UTF-8). El texto lleva
+## como mucho [constant ChatText.MAX_CHARS] caracteres y [constant ChatText.MAX_BYTES] B; el servidor lo
+## sanea ([ChatText]) antes de repartirlo. Un mensaje, con todo, ocupa 821 B como mucho.
+## [br][br]
+## [method decode] devuelve null si el tamaño no cuadra, el canal no existe o es el del sistema (que solo
+## envía el servidor), un susurro no lleva destinatario o cualquier otro canal lo lleva, algún texto no es
+## UTF-8 válido, el destinatario pasa de [constant NetProtocol.MAX_NAME_CHARS] caracteres o el texto de
+## [constant ChatText.MAX_CHARS]. Un texto vacío sí se decodifica: es el servidor quien decide qué hacer.
+class ChatSend:
+	## Bytes de la cabecera, antes del destinatario y el texto.
+	const HEADER_SIZE: int = 5
+
+	## [enum ChatChannel.Id].
+	var channel: int = ChatChannel.Id.SAY
+	## Nombre del destinatario (solo en un susurro; vacío en los demás canales).
+	var recipient: String = ""
+	var text: String = ""
+
+
+	## Los textos se recortan a sus límites sin partir ningún carácter.
+	func encode() -> PackedByteArray:
+		var recipient_bytes: PackedByteArray = NetMessages.utf8_limited(
+				recipient.substr(0, NetProtocol.MAX_NAME_CHARS), NetProtocol.MAX_NAME_BYTES)
+		var text_bytes: PackedByteArray = NetMessages.utf8_limited(
+				text.substr(0, ChatText.MAX_CHARS), ChatText.MAX_BYTES)
+		var bytes := PackedByteArray()
+		bytes.resize(HEADER_SIZE + recipient_bytes.size() + text_bytes.size())
+		bytes.encode_u8(0, NetProtocol.MSG_CHAT_SEND)
+		bytes.encode_u8(1, channel & 0xFF)
+		bytes.encode_u8(2, recipient_bytes.size())
+		bytes.encode_u16(3, text_bytes.size())
+		for i: int in recipient_bytes.size():
+			bytes[HEADER_SIZE + i] = recipient_bytes[i]
+		var text_offset: int = HEADER_SIZE + recipient_bytes.size()
+		for i: int in text_bytes.size():
+			bytes[text_offset + i] = text_bytes[i]
+		return bytes
+
+
+	static func decode(bytes: PackedByteArray) -> ChatSend:
+		var size: int = bytes.size()
+		if size < HEADER_SIZE or bytes[0] != NetProtocol.MSG_CHAT_SEND:
+			return null
+		var channel_id: int = bytes[1]
+		var recipient_len: int = bytes[2]
+		var text_len: int = bytes.decode_u16(3)
+		if not ChatChannel.is_client_sendable(channel_id):
+			return null
+		if recipient_len > NetProtocol.MAX_NAME_BYTES or text_len > ChatText.MAX_BYTES \
+				or size != HEADER_SIZE + recipient_len + text_len:
+			return null
+		if (channel_id == ChatChannel.Id.WHISPER) != (recipient_len > 0):
+			return null
+		if not NetMessages.is_valid_utf8(bytes, HEADER_SIZE, recipient_len) \
+				or not NetMessages.is_valid_utf8(bytes, HEADER_SIZE + recipient_len, text_len):
+			return null
+		var message := ChatSend.new()
+		message.channel = channel_id
+		message.recipient = NetMessages.read_text(bytes, HEADER_SIZE, recipient_len)
+		message.text = NetMessages.read_text(bytes, HEADER_SIZE + recipient_len, text_len)
+		if message.recipient.length() > NetProtocol.MAX_NAME_CHARS \
+				or message.text.length() > ChatText.MAX_CHARS:
+			return null
+		return message
+
+
+## CHAT_MESSAGE (S→C, canal 3, protocolo 5): 11 B + emisor + destinatario + texto (docs/social.md,
+## sección 12). Un mensaje de chat ya saneado y repartido por el servidor, solo a quien debe verlo.
+## [br][br]
+## [code]u8 type, u8 channel, u8 sender_realm, u32 tick, u8 sender_len, u8 recipient_len, u16
+## text_len[/code], el emisor (UTF-8), el destinatario (UTF-8, solo en un susurro) y el texto (UTF-8).
+## [member tick] es el tick del servidor al repartirlo. En un susurro lo reciben los dos: el destinatario
+## lo lee como un susurro de [member sender] y el emisor como la copia del que ha enviado. El del canal del
+## sistema no lleva emisor. Con todo, ocupa 875 B como mucho.
+## [br][br]
+## [method decode] devuelve null si el tamaño no cuadra, el canal o el reino no existen, un mensaje del
+## sistema lleva emisor o destinatario, otro canal no lleva emisor, solo un susurro lleva destinatario, el
+## texto no es UTF-8 válido o pasa de [constant ChatText.MAX_CHARS] caracteres.
+class ChatMessage:
+	## Bytes de la cabecera, antes de los nombres y el texto.
+	const HEADER_SIZE: int = 11
+
+	## [enum ChatChannel.Id].
+	var channel: int = ChatChannel.Id.SAY
+	## Reino del emisor ([enum NetProtocol.Realm]); 0 en los mensajes del sistema.
+	var sender_realm: int = NetProtocol.Realm.NONE
+	## Tick del servidor al repartirlo.
+	var tick: int = 0
+	## Nombre del emisor (vacío en el canal del sistema).
+	var sender: String = ""
+	## Nombre del destinatario (solo en un susurro).
+	var recipient: String = ""
+	var text: String = ""
+
+
+	func encode() -> PackedByteArray:
+		var sender_bytes: PackedByteArray = NetMessages.utf8_limited(sender, NetProtocol.MAX_NAME_BYTES)
+		var recipient_bytes: PackedByteArray = NetMessages.utf8_limited(recipient,
+				NetProtocol.MAX_NAME_BYTES)
+		var text_bytes: PackedByteArray = NetMessages.utf8_limited(
+				text.substr(0, ChatText.MAX_CHARS), ChatText.MAX_BYTES)
+		var bytes := PackedByteArray()
+		bytes.resize(HEADER_SIZE + sender_bytes.size() + recipient_bytes.size() + text_bytes.size())
+		bytes.encode_u8(0, NetProtocol.MSG_CHAT_MESSAGE)
+		bytes.encode_u8(1, channel & 0xFF)
+		bytes.encode_u8(2, sender_realm & 0xFF)
+		bytes.encode_u32(3, tick & 0xFFFFFFFF)
+		bytes.encode_u8(7, sender_bytes.size())
+		bytes.encode_u8(8, recipient_bytes.size())
+		bytes.encode_u16(9, text_bytes.size())
+		var offset: int = HEADER_SIZE
+		for part: PackedByteArray in [sender_bytes, recipient_bytes, text_bytes]:
+			for i: int in part.size():
+				bytes[offset + i] = part[i]
+			offset += part.size()
+		return bytes
+
+
+	static func decode(bytes: PackedByteArray) -> ChatMessage:
+		var size: int = bytes.size()
+		if size < HEADER_SIZE or bytes[0] != NetProtocol.MSG_CHAT_MESSAGE:
+			return null
+		var channel_id: int = bytes[1]
+		var realm: int = bytes[2]
+		var sender_len: int = bytes[7]
+		var recipient_len: int = bytes[8]
+		var text_len: int = bytes.decode_u16(9)
+		if not ChatChannel.is_valid(channel_id) or realm > NetProtocol.Realm.ASKARRA:
+			return null
+		if sender_len > NetProtocol.MAX_NAME_BYTES or recipient_len > NetProtocol.MAX_NAME_BYTES \
+				or text_len > ChatText.MAX_BYTES \
+				or size != HEADER_SIZE + sender_len + recipient_len + text_len:
+			return null
+		if (channel_id == ChatChannel.Id.SYSTEM) != (sender_len == 0):
+			return null
+		if (channel_id == ChatChannel.Id.WHISPER) != (recipient_len > 0):
+			return null
+		var recipient_offset: int = HEADER_SIZE + sender_len
+		var text_offset: int = recipient_offset + recipient_len
+		if not NetMessages.is_valid_utf8(bytes, HEADER_SIZE, sender_len) \
+				or not NetMessages.is_valid_utf8(bytes, recipient_offset, recipient_len) \
+				or not NetMessages.is_valid_utf8(bytes, text_offset, text_len):
+			return null
+		var message := ChatMessage.new()
+		message.channel = channel_id
+		message.sender_realm = realm
+		message.tick = bytes.decode_u32(3)
+		message.sender = NetMessages.read_text(bytes, HEADER_SIZE, sender_len)
+		message.recipient = NetMessages.read_text(bytes, recipient_offset, recipient_len)
+		message.text = NetMessages.read_text(bytes, text_offset, text_len)
+		if message.text.length() > ChatText.MAX_CHARS:
+			return null
+		return message
+
+
 ## OBJECT_STATE (S→C, canal 3): 8 B + campos (docs/fuerte.md, sección 2). El estado replicado de un
 ## objeto que no es un jugador ni un PNJ, hoy el de una fortaleza.
 ## [br][br]
