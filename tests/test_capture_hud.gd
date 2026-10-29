@@ -344,7 +344,13 @@ func test_boss_ids_follow_the_alphabetical_order_of_the_npc_files() -> void:
 	assert_eq(ids, PackedStringArray(["ford_captain", "gate_guardian", "hollow"]),
 			"ford_captain = 1, gate_guardian = 2, hollow = 3")
 	assert_false(BossInfo.is_boss(0), "el id 0 es «sin definición»")
-	assert_false(BossInfo.is_boss(1), "y sin carpeta de PNJ no hay jefes")
+	assert_true(BossInfo.is_boss(NpcCatalog.number_of(&"ford_captain")),
+			"con el catálogo de F4 en data/npcs/, el Capitán del Vado es un jefe")
+	assert_true(BossInfo.is_boss(NpcCatalog.number_of(&"realm_captain")), "y el capitán del reino también")
+	assert_false(BossInfo.is_boss(NpcCatalog.number_of(&"hollow")), "un Hueco no lo es")
+	assert_false(BossInfo.is_boss(NpcCatalog.number_of(&"gate_guardian")), "ni un Guardián de la Puerta")
+	assert_false(BossInfo.is_boss(NpcCatalog.number_of(&"realm_guard")), "ni un guardia del reino")
+	assert_false(BossInfo.is_boss(99), "un número que no existe no es jefe")
 	BossInfo.resolver = func(npc_def_id: int) -> Dictionary:
 		return {"is_boss": npc_def_id == 1, "name": "x"}
 	assert_true(BossInfo.is_boss(1), "con un resolutor manda él")
