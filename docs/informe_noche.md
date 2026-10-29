@@ -147,6 +147,27 @@ sella los paquetes entrantes con el tick del poll).
 Ninguno afecta al juego normal en una red sana (la prueba de aceptación salió limpia), pero N1, N2,
 S1, S2, S3 y A1 son fallos de verdad en producción o en el uso diario con `--local` en Windows.
 
+**Los 19 están corregidos en `fase2-red`**, cada uno con una prueba que fallaba antes del arreglo
+(656 pruebas en verde). Lo más relevante:
+
+- N1: `InputQueue` anota la antelación también de las entradas demasiado adelantadas.
+- N2: el servidor concede a los limitadores el crédito de los ticks que perdió en un parón.
+- N3: el reloj de interpolación adopta en ~0,5 s un escalón sostenido de los offsets.
+- S1: `GuardedEnetPeer` (un `MultiplayerPeerExtension` sobre ENet en el servidor) filtra los
+  paquetes ajenos antes de `SceneMultiplayer`: sin errores del motor, con avisos y expulsión
+  (+6 % de coste por paquete medido). Depende del formato interno de `SceneMultiplayer`
+  (documentado; `test_net_sim` lo detectaría si cambia).
+- S2: tope por IP al conectar (IPv6 por /64) y 90 ticks de plazo para el HELLO.
+- S3: el registro de jugadores es un anillo y las fichas sueltan sus objetos al irse.
+- S4: el RTT se acota con el de ENet; `interp_delay_q` se limita.
+- S5: `--stop-file` para parar en orden e informe reescrito cada 10 s; en Linux, `--local`
+  comprueba en `/proc/<pid>/cmdline` que el pid del bloqueo es un servidor.
+- S6: 30 s de enfriamiento tras una expulsión. S7: plazo de conexión real.
+- A1: en Windows, `tasklist` para pids ajenos (**sin probar: no hay Windows aquí**).
+- A3, A5, A6, A7, A8: pruebas de arquitectura más estrictas, registros de los bots revisados,
+  aserciones más fuertes, puertos y carpetas por pid y la frontera de `NetZones`.
+- A4: la batería de carga mide el criterio con 100 ms (tabla de arriba).
+
 ## Pendiente de probar mañana con ventana
 
 Nada de lo que sigue se ha podido ver: aquí no hay GPU ni ventana. Todo lo de red está probado sin
