@@ -30,6 +30,12 @@ extends TestCase
 const MAX_WAIT_SECONDS: float = 25.0
 ## Zona de las pruebas de tramposos: el circuito plano, que carga en un instante.
 const LIGHT_ZONE: String = "test_world"
+## El servidor lo cierra el archivo de parada en cuanto se han ido todos los bots; sus
+## [code]--quit-after-ticks[/code] (los pedidos por este factor) solo son el tope por si eso no llega.
+## Antes los ticks pedidos lo cerraban, y un bot que tardaba en arrancar o en cargar la zona (sus ticks
+## se cuentan desde que arranca su proceso y se retrasan con la máquina cargada) se encontraba el
+## servidor cerrado: salía con 1 y «CLOSED».
+const SERVER_TICKS_CAP_FACTOR: int = 3
 
 var _pids: Array[int] = []
 
@@ -73,11 +79,14 @@ func _run_scenario(tag: String, zone: String, server_ticks: int, bot_ticks: int,
 		"report": _build_path("np_%s_server.json" % tag),
 		"states": _build_path("np_%s_server.txt" % tag),
 		"log": _build_path("np_%s_server.log" % tag),
+		"stop": _build_path("np_%s_server.stop" % tag),
 	}
-	for key: String in ["report", "states", "log"]:
+	for key: String in ["report", "states", "log", "stop"]:
 		DirAccess.remove_absolute(server[key])
 	var server_args := PackedStringArray([
-		"--server", "--port=%d" % port, "--quit-after-ticks=%d" % server_ticks,
+		"--server", "--port=%d" % port,
+		"--quit-after-ticks=%d" % (server_ticks * SERVER_TICKS_CAP_FACTOR),
+		"--stop-file=%s" % server["stop"],
 		"--report=%s" % server["report"], "--state-log=%s" % server["states"],
 	])
 	if not zone.is_empty():
@@ -124,14 +133,20 @@ func _run_scenario(tag: String, zone: String, server_ticks: int, bot_ticks: int,
 		bot_infos.append(info)
 	result["bots"] = bot_infos
 
-	var all_pids: Array[int] = [server_pid]
-	for info: Dictionary in bot_infos:
-		all_pids.append(info["pid"])
-	var finished: bool = await _wait_for(func() -> bool:
-		for pid: int in all_pids:
-			if OS.is_process_running(pid):
+	# Primero se van los bots (por sus ticks, expulsados o rechazados); después se cierra el servidor con
+	# el archivo de parada, que mira cada segundo.
+	var bots_done: bool = await _wait_for(func() -> bool:
+		for info: Dictionary in bot_infos:
+			if OS.is_process_running(info["pid"]):
 				return false
 		return true, started_msec)
+	if bots_done:
+		var stop := FileAccess.open(server["stop"], FileAccess.WRITE)
+		if stop != null:
+			stop.store_string("fin de la prueba\n")
+			stop.close()
+	var finished: bool = bots_done and await _wait_for(func() -> bool:
+		return not OS.is_process_running(server_pid), started_msec)
 	result["elapsed"] = float(Time.get_ticks_msec() - started_msec) / 1000.0
 	if not assert_true(finished, "los procesos terminan solos en menos de %d s" % int(MAX_WAIT_SECONDS)):
 		return result
@@ -205,7 +220,8 @@ func test_two_bots_predict_exactly_across_processes_on_the_real_zone() -> void:
 	assert_eq(server["exit"], 0, "el servidor sale con 0")
 	var data: Dictionary = server["data"]
 	assert_eq(data.get("zone"), String(Zones.DEFAULT_ZONE), "sirve el Vado Gris")
-	assert_eq(int(data.get("ticks", 0)), 900, "900 ticks")
+	assert_true(int(data.get("ticks", 0)) >= 700 and int(data.get("ticks", 0)) < 900 * SERVER_TICKS_CAP_FACTOR,
+			"vive lo que los bots y lo cierra el archivo de parada (%s ticks)" % data.get("ticks"))
 	assert_eq(int((data.get("players", {}) as Dictionary).get("joined_total", 0)), 8,
 			"dos bots y seis jugadores falsos")
 	assert_eq(int(data.get("physics_errors", -1)), 0, "sin errores de física en el servidor")
