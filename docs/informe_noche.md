@@ -8,7 +8,7 @@ y está siempre en la rama más reciente.
 | Trabajo | Rama | Estado |
 |---|---|---|
 | Backlog (`docs/backlog.md`) | `main` | Hecho y subido |
-| Fase 2: red | `fase2-red` | En curso |
+| Fase 2: red | `fase2-red` | En curso: paquetes A, B y C1 integrados (310 pruebas en verde); D y C2 en marcha |
 
 ## Entorno (Linux)
 
@@ -28,10 +28,27 @@ y está siempre en la rama más reciente.
   (nombres de enemigos, longitud de nombres, reaparición, primer reino, monturas, Brasas, poder en
   Eldrun) tienen una recomendación única.
 
+## Fase 2: progreso
+
+| Paquete de red.md §17 | Contenido | Estado | Pruebas |
+|---|---|---|---|
+| A | `PlayerState.to_f32`/`equals_exact`, yaw en f32, `events_enabled`, `NetProtocol`, `NetMath`, `NetZones`, `EntityRecord`, `NetMessages`, `BotBrain` | Hecho | `test_net_messages` (42) |
+| B | `NetSim`, `NetTransport` (ENet + `SceneMultiplayer` propio, autenticación, canales, simulador) | Hecho | `test_net_sim` (22, con ENet real en 127.0.0.1) |
+| C1 | Piezas del servidor: `InputQueue`, `SnapshotBuilder`, `StateHistory`, `NetEntity(Registry)`, `ServerAuth`, `RateLimiter`, `SpawnPicker`, `ServerConfig`, `ServerMetrics`... | Hecho | 12 archivos de prueba; `test_architecture` con las reglas server/client |
+| D | `TickSync`, `InterpolationClock`, `ClientPrediction`, `CorrectionSmoother`, `RemoteInterpolator`, cambios en `LocalPlayerController` | En curso | |
+| C2 | `ZoneServer`, `ServerMain`, `--server` | En curso | |
+| E, F | Cliente en red, integración, procesos, bots y carga | Pendiente | |
+
+Incidencia: el contenedor se reinició a mitad del paquete D; su trabajo a medias se recuperó de su
+worktree y se está terminando.
+
 ## Pendiente de probar mañana con ventana
 
 (Se completa al terminar la fase 2.)
 
 ## Decisiones tomadas fuera del contrato
 
-(Ninguna todavía.)
+- Paquete A: `BotBrain._init(rng_seed, …)` en vez de `seed` (para no tapar la función global);
+  `NetZones.allowed_realms` devuelve vacío (todos los reinos) porque `Zones` no registra reinos por
+  zona; `NetZones` añade `realm_name()` y `find_spawn_point()`; los `decode` rechazan UTF-8
+  inválido sin registrar errores del motor.
