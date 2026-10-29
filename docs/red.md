@@ -1591,7 +1591,10 @@ todas las copias del proyecto.
 - **`test_prediction`** (sin red). Mundos de servidor y de cliente en dos `SubViewport` con
   `own_world_3d = true` (espacios de física separados), con un `PlayerCharacter` en cada uno.
   - Mismas entradas → `predicted[t].encode() == servidor[t].encode()` en cada tick, girando,
-    saltando y por la rampa.
+    saltando y por la rampa (los pies pisan el suelo a más de 2 m: un salto en llano llega a 1,5 m).
+  - La copia de la regla de sustitución del cliente (`_input_or_substitute`, al repetir con huecos
+    en el anillo tras un `hard_reset` hacia delante) deja, tick a tick, los mismos estados que la
+    `InputQueue` real con las mismas entradas y el mismo hueco (de más de 6 ticks).
   - El servidor sustituye la entrada del tick X y los estados llegan con 6 ticks de retraso → el
     cliente reconcilia y queda exactamente igual a partir de ahí.
   - Suavizado:
