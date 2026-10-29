@@ -15,6 +15,12 @@ extends SceneTree
 ## # 128 y 256 jugadores: los clientes reales se reparten entre varios procesos de enjambre
 ## godot --headless --path . -s res://tools/load_test.gd -- --fakes=128 --bots=100 --swarms=2
 ## godot --headless --path . -s res://tools/load_test.gd -- --fakes=156 --bots=100 --swarms=2 --seconds=20
+##
+## # La batería de la fase 3 (ver BRAWL_MATRIX): refriegas agrupadas de 32, 64 y 128 combatientes con el
+## # cerebro de combate (falsos del servidor y bots reales que pelean); 60 s de medida cada una
+## godot --headless --path . -s res://tools/load_test.gd -- --brawl
+## # Una refriega suelta: 54 falsos de combate y 10 clientes reales de combate (64 en total)
+## godot --headless --path . -s res://tools/load_test.gd -- --scenario=brawl --fakes=54 --bots=10
 ## [/codeblock]
 ## [b]Opciones[/b] (después de [code]--[/code]):
 ## [br]- [code]--scenario=cluster|spread|churn[/code] (por defecto [code]cluster[/code]):
@@ -25,6 +31,12 @@ extends SceneTree
 ## los bots en los dos campamentos.
 ## [br]  · [code]churn[/code], altas y bajas: como [code]cluster[/code], pero cada segundo sale el jugador falso
 ## más antiguo y entra uno nuevo ([code]--fake-churn=60[/code]).
+## [br]  · [code]brawl[/code], refriega agrupada (TEC-15): los falsos pelean con el cerebro de combate
+## ([code]--fake-brain=combat[/code]) en un corro alrededor de [constant BRAWL_CENTER], en campo abierto
+## junto al campamento de Vardheim (la zona segura de los campamentos les impediría pelear), y los
+## bots reales ([code]--bots[/code], todos de Vardheim) salen del campamento y pelean también
+## ([code]--bot-brain=combat[/code]): reciben snapshots y ENTITY_EVENT y mandan su desfase de vista, así que
+## el servidor hace el rebobinado de verdad. Los falsos son la mitad de cada reino.
 ## [br]- [code]--fakes=N[/code] jugadores falsos (entradas inyectadas en la cola, sin red; por defecto 64).
 ## [br]- [code]--bots=N[/code] clientes reales: procesos [code]--bots=N[/code] ([BotSwarm]) que entran uno cada 5 ticks
 ## (por defecto 0).
@@ -37,13 +49,17 @@ extends SceneTree
 ## llevan uno.
 ## [br]- [code]--zone=<id>[/code] zona del servidor (por defecto la de siempre, el Vado Gris).
 ## [br]- [code]--out=<carpeta>[/code] dónde van los informes y los registros (por defecto [code]build/load_test[/code]).
+## [br]- [code]--brawl[/code] lanza la batería de refriegas de [constant BRAWL_MATRIX] (60 s de medida cada una).
 ## [br]- [code]--check[/code] sale con código 1 si algún escenario incumple el criterio de la fase 2.
 ## [br][br]
 ## [b]Qué mide[/b] (del [code]--report[/code] del servidor, de [method ZoneServer.write_report], y del de cada
 ## enjambre): el p50, el p99 y el máximo del tick y de cada una de sus secciones (red, simulación, historial,
 ## snapshots, vaciado) en µs; los µs de [code]PlayerCharacter.simulate()[/code] por personaje; el tamaño de los
 ## snapshots y los µs de construir cada uno; los KB/s de subida y de bajada por cliente; el porcentaje de
-## entradas sustituidas, los avisos y las expulsiones. Los percentiles del servidor son de los últimos 2048
+## entradas sustituidas, los avisos y las expulsiones. En las refriegas, además, las secciones de combate
+## ([code]combat[/code], con [code]combat_resolve[/code] —golpes con rebobinado— y [code]combat_events[/code]
+## —envío de los ENTITY_EVENT— dentro), los µs por comprobación de golpe, los golpes, las muertes y los eventos
+## por segundo, y la bajada de cada cliente separada en snapshots y eventos (KB/s). Los percentiles del servidor son de los últimos 2048
 ## ticks (34 s) de su ejecución, así que el servidor sigue unos segundos de más después de que los bots
 ## entren, para que la ventana sea solo de régimen.
 ## [br][br]
@@ -78,8 +94,9 @@ const SWARM_START_MARGIN_TICKS: int = 90
 const MAX_P99_TICK_US: int = 8000
 const MAX_KB_PER_CLIENT: float = 37.0
 const MAX_SUBSTITUTED_PERCENT: float = 1.0
-## Secciones del tick que se muestran.
-const SECTIONS: Array[String] = ["tick", "net", "sim", "history", "snapshot", "flush"]
+## Secciones del tick que se muestran (las de combate van dentro de [code]combat[/code]).
+const SECTIONS: Array[String] = ["tick", "net", "sim", "combat", "combat_resolve", "combat_events",
+		"history", "snapshot", "flush"]
 ## Batería de [code]--matrix[/code]: [escenario, jugadores falsos, bots, simulador de red de los bots].
 ## Los tres primeros son los de siempre (sin retardo); el cuarto es el criterio de la fase 2 medido como
 ## pide docs/red.md, 16 (64 agrupados y 100 ms de RTT); después disperso, altas y bajas y los tamaños
@@ -97,6 +114,22 @@ const MATRIX: Array[Array] = [
 ]
 ## Segundos de medida de cada escenario de [constant MATRIX] (docs/red.md, 16: 120 s cada uno).
 const MATRIX_SECONDS: int = 120
+## Batería de [code]--brawl[/code] (TEC-15): [escenario, jugadores falsos, bots reales, simulador de red de los
+## bots]. Los combatientes son los falsos más los diez bots reales: 32, 64 y 128 en total.
+const BRAWL_MATRIX: Array[Array] = [
+	["brawl", 22, 10, ""],
+	["brawl", 54, 10, ""],
+	["brawl", 118, 10, ""],
+]
+## Segundos de medida de cada refriega de [constant BRAWL_MATRIX].
+const BRAWL_SECONDS: int = 60
+## Punto (x, z) del Vado Gris en el que se juntan los falsos de una refriega: campo abierto a 18 m del
+## borde de la zona segura del campamento de Vardheim (z = -138, radio 24) y a unos 34 m del brazo
+## norte del río, sin obstáculos de aquí al campamento.
+const BRAWL_CENTER: String = "0,-96"
+## Segundos de más que se dejan, en una refriega, antes de la ventana de medida: los bots reales salen
+## del campamento y tardan unos segundos en llegar al corro.
+const BRAWL_EXTRA_SETTLE_SECONDS: float = 12.0
 ## Segundos de medida de un escenario suelto.
 const DEFAULT_SECONDS: int = 30
 
@@ -115,6 +148,9 @@ func _run() -> void:
 	if args.has("--matrix"):
 		for entry: Array in MATRIX:
 			runs.append(_make_run(args, entry[0], entry[1], entry[2], entry[3], MATRIX_SECONDS))
+	elif args.has("--brawl"):
+		for entry: Array in BRAWL_MATRIX:
+			runs.append(_make_run(args, entry[0], entry[1], entry[2], entry[3], BRAWL_SECONDS))
 	else:
 		runs.append(_make_run(args, _option(args, "--scenario=", "cluster"),
 				_int_option(args, "--fakes=", 64), _int_option(args, "--bots=", 0), "", DEFAULT_SECONDS))
@@ -183,7 +219,8 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 
 	# Tiempos: el servidor escucha, arrancan los enjambres, entran todos y se mide `seconds` segundos.
 	var bots_per_swarm: int = ceili(float(bots) / float(swarms)) if bots > 0 else 0
-	var settle_ticks: int = ceili(SETTLE_SECONDS * _tick_rate) + 5 * bots_per_swarm
+	var settle_seconds: float = SETTLE_SECONDS + (BRAWL_EXTRA_SETTLE_SECONDS if scenario == "brawl" else 0.0)
+	var settle_ticks: int = ceili(settle_seconds * _tick_rate) + 5 * bots_per_swarm
 	var measure_ticks: int = int(run["seconds"]) * _tick_rate
 	var server_ticks: int = settle_ticks + measure_ticks + ceili(TAIL_SECONDS * _tick_rate)
 	var swarm_ticks: int = server_ticks - ceili(TAIL_SECONDS * _tick_rate) - SWARM_START_MARGIN_TICKS
@@ -203,6 +240,9 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 				server_args.append("--fake-layout=cluster")
 			"spread":
 				server_args.append("--fake-layout=spread")
+			"brawl":
+				server_args.append_array(PackedStringArray(["--fake-layout=cluster",
+						"--fake-brain=combat", "--fake-center=%s" % BRAWL_CENTER]))
 		if scenario == "churn":
 			server_args.append("--fake-churn=%d" % _tick_rate)
 	DirAccess.remove_absolute(server_report)
@@ -236,6 +276,8 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 		])
 		if scenario != "spread":
 			swarm_args.append("--realm=vardheim")
+		if scenario == "brawl":
+			swarm_args.append("--bot-brain=combat")
 		if not str(run["net_sim"]).is_empty():
 			swarm_args.append("--net-sim=%s" % run["net_sim"])
 		var pid: int = _launch(swarm_args, _out_dir.path_join("%s_swarm%d.log" % [tag, k]))
@@ -261,6 +303,8 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 		swarm_data.append(_read_json(path))
 	_summarise(summary, server_data, swarm_data, bots)
 	_summarise_window(summary, server_data, server_log, settle_ticks, swarm_ticks)
+	if scenario == "brawl":
+		_summarise_combat(summary, server_data, swarm_data)
 	summary["ok"] = not summary.has("error")
 	return summary
 
@@ -340,6 +384,41 @@ func _summarise(summary: Dictionary, server: Dictionary, swarms: Array[Dictionar
 	_apply_criterion(summary)
 
 
+# Cifras del combate de una refriega: lo que cuesta cada parte y lo que baja cada cliente en snapshots y en
+# eventos (de los bots reales, que miden sus bytes de aplicación).
+func _summarise_combat(summary: Dictionary, server: Dictionary, swarms: Array[Dictionary]) -> void:
+	var seconds: float = float(server.get("ticks", 0)) / float(_tick_rate)
+	var figures: Dictionary = LoadTestSummary.combat_figures(server, seconds)
+	var snapshot_kb: float = 0.0
+	var event_kb: float = 0.0
+	var wire_kb: float = 0.0
+	var measured: int = 0
+	var hit_events: int = 0
+	var respawns: int = 0
+	for data: Dictionary in swarms:
+		for client: Dictionary in data.get("clients", []):
+			var world_ticks: int = int(client.get("world_ticks", 0))
+			if world_ticks < 300:
+				continue
+			var client_seconds: float = float(world_ticks) / float(_tick_rate)
+			measured += 1
+			snapshot_kb += float(client.get("snapshot_bytes", 0)) / 1024.0 / client_seconds
+			event_kb += float(client.get("event_bytes", 0)) / 1024.0 / client_seconds
+			wire_kb += float(client.get("kb_down_per_s", 0.0))
+			hit_events += int(client.get("hit_events_seen", 0))
+			respawns += int(client.get("respawn_requests", 0))
+	figures["clients_measured"] = measured
+	figures["client_snapshot_kb_per_s"] = snapshot_kb / float(measured) if measured > 0 else 0.0
+	figures["client_event_kb_per_s"] = event_kb / float(measured) if measured > 0 else 0.0
+	figures["client_wire_kb_per_s"] = wire_kb / float(measured) if measured > 0 else 0.0
+	figures["client_hit_events"] = hit_events
+	figures["client_respawn_requests"] = respawns
+	figures["rewind_rejected"] = int((server.get("combat", {}) as Dictionary).get("rewind_rejected", 0))
+	figures["suspicious"] = ((server.get("combat", {}) as Dictionary).get("suspicious", []) as Array).size()
+	figures["seconds"] = seconds
+	summary["combat"] = figures
+
+
 # Porcentaje de entradas sustituidas dentro de la ventana de medida (restando el arranque): de la
 # primera línea de métricas del servidor desde [param first_tick] a la última hasta [param last_tick].
 # Sin dos líneas en ese rango se queda la cifra de toda la sesión.
@@ -407,6 +486,8 @@ func _summary_lines(summary: Dictionary) -> PackedStringArray:
 	else:
 		lines.append("   ... en la ventana de medida: %.2f %% (%d de %d entradas, ticks %d a %d)" % [
 			window["percent"], window["substituted"], window["inputs"], window["from_tick"], window["to_tick"]])
+	if summary.has("combat"):
+		lines.append_array(_combat_lines(summary["combat"]))
 	var run: Dictionary = summary["run"]
 	if not str(run["net_sim"]).is_empty():
 		lines.append("   Simulador de red de los bots: %s" % run["net_sim"])
@@ -420,6 +501,24 @@ func _summary_lines(summary: Dictionary) -> PackedStringArray:
 	lines.append("   Criterio de la fase 2 (p99 < 8 ms, <= 37 KB/s por cliente, < 1 %% sustituidas en la ventana): %s%s" % [
 		"CUMPLIDO" if bool(summary["criterion_met"]) else "NO CUMPLIDO",
 		"" if _is_reference_run(run) else " (solo como referencia: se define con 64 agrupados y 100 ms de RTT)"])
+	return lines
+
+
+# Líneas del resumen de una refriega.
+func _combat_lines(figures: Dictionary) -> PackedStringArray:
+	var lines := PackedStringArray()
+	lines.append("   Combate:                    %d golpes (%d bloqueados), %d muertes, %d eventos (%.1f/s), %d paquetes de evento" % [
+		figures["hits"], figures["blocked"], figures["deaths"], figures["events"],
+		float(figures["events"]) / maxf(float(figures["seconds"]), 1.0), figures["events_sent"]])
+	lines.append("   Golpes y rebobinado:        %d comprobaciones en %d ticks, %.1f µs cada una (la sección combat_resolve es el %.0f %% de combat); %d rebobinados rechazados, %d sospechosos" % [
+		figures["hit_tests"], figures["resolve_busy_ticks"], figures["resolve_us_per_test"],
+		100.0 * float(figures["resolve_share"]), figures["rewind_rejected"], figures["suspicious"]])
+	lines.append("   Eventos:                    %.1f µs de envío por evento; servidor, %.1f KB/s de eventos" % [
+		figures["events_us_per_event"], figures["event_kb_per_s"]])
+	if int(figures["clients_measured"]) > 0:
+		lines.append("   Bajada en detalle (%d bots): snapshots %.1f KB/s + eventos %.1f KB/s (de aplicación); bajada de ENet %.1f KB/s" % [
+			figures["clients_measured"], figures["client_snapshot_kb_per_s"],
+			figures["client_event_kb_per_s"], figures["client_wire_kb_per_s"]])
 	return lines
 
 

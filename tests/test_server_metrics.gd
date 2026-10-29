@@ -251,3 +251,18 @@ func test_freeing_an_old_instance_keeps_the_new_ones_monitors() -> void:
 	assert_near(float(Performance.get_custom_monitor(&"eldmark/players")), 9.0, 1e-6,
 			"liberar la instancia vieja no afecta a los monitores de la nueva")
 	new_metrics.unregister_monitors()
+
+
+func test_summary_keeps_the_total_and_count_of_the_whole_run_not_only_the_window() -> void:
+	var metrics: ServerMetrics = _make_metrics()
+	var ticks: int = ServerMetrics.WINDOW_TICKS + 100
+	for k: int in range(1, ticks + 1):
+		metrics.begin_tick()
+		metrics.begin_section(&"combat_resolve")
+		_now[0] += 5
+		metrics.end_section(&"combat_resolve")
+		metrics.end_tick(k)
+	var section: Dictionary = metrics.summary()["sections"]["combat_resolve"]
+	assert_eq(section["samples"], ServerMetrics.WINDOW_TICKS, "la ventana sigue acotada")
+	assert_eq(section["pushed"], ticks, "pero se cuentan todas las medidas")
+	assert_eq(section["total_us"], 5 * ticks, "y se suman todas (la media sale de ahí)")

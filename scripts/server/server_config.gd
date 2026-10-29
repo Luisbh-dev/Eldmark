@@ -7,6 +7,7 @@ extends RefCounted
 ## [codeblock]
 ## --server --port=24600 --zone=<id> --max-players=64 --max-per-ip=4 --idle-quit=<s>
 ## --fake-players=N --fake-layout=<cluster|spread> --fake-churn=<ticks> --fake-brain=combat
+## --fake-center=<x>,<z>
 ## --debug-commands --dev-lock --dev-lock-path=<ruta>
 ## --quit-after-ticks=N --report=<ruta.json> --state-log=<ruta.csv> --net-sim=rtt=120,jitter=20
 ## --stop-file=<ruta> --combat-log=<ruta.csv> --console --no-dummies
@@ -65,6 +66,10 @@ var combat_log_path: String = ""
 ## Cerebro de los jugadores falsos: vacío = el de paseo y [constant FAKE_BRAIN_COMBAT] = el de combate
 ## (buscan al enemigo más cercano, atacan, bloquean y esquivan).
 var fake_brain: String = ""
+## Con el cerebro de combate y [constant LAYOUT_CLUSTER]: punto (x, z) de la zona, a nivel del suelo,
+## en torno al que se juntan los falsos en lugar del campamento del primer reino (donde la zona segura
+## les impide pelear). [constant NO_FAKE_CENTER] = ninguno ([method has_fake_center]).
+var fake_center: Vector2 = NO_FAKE_CENTER
 ## Lee los comandos de la consola de la entrada estándar (en un hilo, sin bloquear el tick).
 var console: bool = false
 ## No coloca los maniquíes de entrenamiento de los marcadores [code]dummy_points[/code] de la zona.
@@ -81,6 +86,10 @@ const LAYOUT_CLUSTER: String = "cluster"
 const LAYOUT_SPREAD: String = "spread"
 ## Valor de [member fake_brain] para el cerebro de combate.
 const FAKE_BRAIN_COMBAT: String = "combat"
+## Valor de [member fake_center] cuando no se indica.
+const NO_FAKE_CENTER: Vector2 = Vector2(INF, INF)
+## Coordenada máxima (en valor absoluto, m) que admite [member fake_center].
+const MAX_FAKE_CENTER: float = 5000.0
 const _MAX_PORT: int = 65535
 ## Tope razonable de jugadores y de jugadores falsos (los ids de red son de 16 bits).
 const _MAX_PLAYERS_LIMIT: int = 4096
@@ -113,6 +122,13 @@ static func from_args(args: PackedStringArray) -> ServerConfig:
 	var brain: String = _string_option(args, "--fake-brain=").to_lower()
 	if brain == FAKE_BRAIN_COMBAT:
 		config.fake_brain = brain
+	var center_parts: PackedStringArray = _string_option(args, "--fake-center=").split(",")
+	if center_parts.size() == 2 and center_parts[0].strip_edges().is_valid_float() \
+			and center_parts[1].strip_edges().is_valid_float():
+		var center := Vector2(center_parts[0].strip_edges().to_float(),
+				center_parts[1].strip_edges().to_float())
+		if center.is_finite() and absf(center.x) <= MAX_FAKE_CENTER and absf(center.y) <= MAX_FAKE_CENTER:
+			config.fake_center = center
 	config.combat_log_path = _string_option(args, "--combat-log=").replace("\\", "/")
 	config.console = args.has("--console")
 	config.no_dummies = args.has("--no-dummies")
@@ -124,6 +140,11 @@ static func from_args(args: PackedStringArray) -> ServerConfig:
 	config.dev_lock = args.has("--dev-lock")
 	config.dev_lock_path = _string_option(args, "--dev-lock-path=").replace("\\", "/")
 	return config
+
+
+## true si se indicó [member fake_center].
+func has_fake_center() -> bool:
+	return fake_center.is_finite()
 
 
 ## Valor entero de la primera opción [param prefix] (por ejemplo [code]"--port="[/code]) de
@@ -148,3 +169,4 @@ static func _string_option(args: PackedStringArray, prefix: String) -> String:
 			return arg.trim_prefix(prefix).strip_edges().trim_prefix("\"").trim_suffix("\"") \
 					.strip_edges()
 	return ""
+

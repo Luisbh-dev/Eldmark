@@ -703,3 +703,13 @@ Cerrado durante K5 (integración):
   pérdida (`test_combat_reconciliation`): 40 golpes, 4 muertes, 2-4 correcciones por bot, todas
   explicadas (sustitución o combate), ningún reinicio duro ni resincronización y convergencia exacta
   al quedarse quietos.
+- **Carga de combate** (TEC-15; cifras y límite en red.md 14): `load_test.gd --brawl` mide refriegas de 32, 64
+  y 128 combatientes (falsos con `--fake-brain=combat` en un corro, `--fake-center`, y 10 bots reales con
+  `--bot-brain=combat`). El servidor cuenta aparte las secciones `combat_resolve` (golpes con
+  rebobinado: 76–97 µs por comprobación de forma y línea de visión) y `combat_events` (armar y mandar los
+  ENTITY_EVENT: 67–97 µs por evento), y el informe lleva `hit_tests`, `resolve_us`, `resolve_busy_ticks` y
+  `event_bytes_sent` (0,5–1,6 KB/s de eventos en todo el servidor). **Primer límite de jugadores por
+  batalla con combate: 64** (p99 del tick 15,9 ms, sin sustituciones ni rebobinados rechazados); con
+  128 el servidor ya no sostiene el tiempo real y rechaza el rebobinado a los honrados. El coste de
+  combate es lineal (unos 0,14 golpes por segundo y combatiente) y no es el cuello: lo es
+  `simulate()`.

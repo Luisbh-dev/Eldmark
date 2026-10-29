@@ -37,6 +37,8 @@ enum RespawnRequestResult {
 
 ## Por debajo de esta altura el personaje muere (cae fuera del mundo).
 const VOID_LIMIT_Y: float = -100.0
+## Sección de [ServerMetrics] de la resolución de los golpes (forma, línea de visión y rebobinado).
+const SECTION_RESOLVE: StringName = &"combat_resolve"
 ## Bits de [member NetMessages.EntityEvent.hit_flags] que da el director.
 const _HIT_CRITICAL: int = NetMessages.EntityEvent.HIT_FLAG_CRITICAL
 const _HIT_BLOCKED: int = NetMessages.EntityEvent.HIT_FLAG_BLOCKED
@@ -49,11 +51,15 @@ var timing: CombatTiming = CombatTiming.from_rules(CombatCatalog.rules())
 var resolver: CombatResolver
 ## Archivo del registro de combate ([code]--combat-log[/code]); null = ninguno.
 var combat_log: FileAccess = null
+## Medidas del servidor (null = sin medir): el paso de combate mide aparte la resolución de los golpes
+## con el rebobinado ([code]combat_resolve[/code]).
+var metrics: ServerMetrics = null
 ## Contadores de la ejecución (para el informe).
 var stats: Dictionary[StringName, int] = {
 	&"hits": 0, &"blocked": 0, &"parried": 0, &"guard_breaks": 0, &"invulnerable": 0,
 	&"criticals": 0, &"rewind_rejected": 0, &"damage": 0, &"deaths": 0, &"kills": 0,
 	&"respawns": 0, &"falls": 0, &"lethal_volumes": 0, &"voids": 0, &"events": 0,
+	&"hit_tests": 0, &"resolve_us": 0, &"resolve_busy_ticks": 0,
 }
 
 var _history: StateHistory
@@ -155,7 +161,18 @@ func process_tick(s: int, space: PhysicsDirectSpaceState3D) -> void:
 	for combatant: Combatant in list:
 		combatant.freeze(s)
 		_count_swing(combatant)
+	if metrics != null:
+		metrics.begin_section(SECTION_RESOLVE)
+	var tests_before: int = resolver.tests
+	var resolve_started: int = Time.get_ticks_usec()
 	var hits: Array[CombatResolver.Hit] = resolver.resolve(s, list, space)
+	if resolver.tests > tests_before:
+		# Solo cuentan los ticks en los que hubo algún golpe que probar: es lo que cuesta cada comprobación.
+		stats[&"resolve_us"] += Time.get_ticks_usec() - resolve_started
+		stats[&"resolve_busy_ticks"] += 1
+	if metrics != null:
+		metrics.end_section(SECTION_RESOLVE)
+	stats[&"hit_tests"] = resolver.tests
 	for hit: CombatResolver.Hit in hits:
 		_apply_hit(hit, s)
 	_process_environment(s, list)

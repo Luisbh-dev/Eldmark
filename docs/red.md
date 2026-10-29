@@ -1549,6 +1549,62 @@ de la ventana de medida (sin el arranque, ver más abajo):
   (palanca 6, ~44 µs por personaje frente a los 25 µs de umbral) y, con muchos clientes reales, el
   `SnapshotBuilder`.
 
+**Medidas de la fase 3: refriegas de combate** (`tools/load_test.gd --brawl`, TEC-15, K5). Vado Gris con
+su Terrain3D, el servidor y un enjambre de 10 bots reales (`--bots=10 --bot-brain=combat`: reciben
+snapshots y ENTITY_EVENT y mandan su `view_offset_q`, así que el servidor rebobina de verdad) en la misma
+máquina de 4 núcleos, **en reposo** (carga media de 0,2 al empezar y ningún otro Godot en marcha). El resto
+de los combatientes son `--fake-players` con `--fake-brain=combat` en un corro en campo abierto a 18 m del
+campamento de Vardheim (`--fake-center=0,-96`; la zona segura del campamento les impediría pelear), la
+mitad de cada reino. **60 s de medida** tras 12 s de aproximación. Tick en ms, p50 / p99 / máximo; el resto
+de columnas, p50 de cada sección:
+
+| Combatientes | Tick | `sim` | `combat` | `combat_resolve` | `combat_events` | `snapshot` | Bajada por cliente | Sustituidas (ventana) | Rebobinados rechazados |
+|---|---|---|---|---|---|---|---|---|---|
+| 32 (22 falsos y 10 bots) | 4,9 / 8,9 / 17,2 | 3,1 | 0,35 | 0,016 | 0,18 | 0,84 | 23,6 KB/s | 0,00 % | 0 |
+| **64** (54 y 10) | 9,4 / 15,9 / 24,9 | 6,5 | 0,77 | 0,094 | 0,17 | 1,41 | 35,3 KB/s | 0,00 % | 0 |
+| 128 (118 y 10) | 17,5 / 30,0 / 36,3 | 13,3 | 1,41 | 0,067 | 0,19 | 2,16 | 31,4 KB/s | 0,10 % | **153 (los 10 bots)** |
+
+`combat_resolve` (golpes con rebobinado) y `combat_events` (armar y mandar los ENTITY_EVENT) cuelgan de
+`combat` y se miden aparte desde K5; `snapshot` sube a medida que hay más clientes reales que servir,
+pero aquí son siempre 10.
+
+- **Primer límite de jugadores por batalla con combate: 64.** Con 64 combatientes el tick de mediana ocupa
+  9,4 ms de los 16,7, el p99 (15,9 ms) todavía cabe en un tick, no se sustituye ni una entrada en régimen y
+  no se rechaza ningún rebobinado; cada cliente baja 35 KB/s (criterio: 37). Con 128 el servidor deja de
+  sostener el tiempo real: la mediana (17,5 ms) ya rebasa el tick, el p99 llega a 30 ms y los 10 bots
+  honrados reciben entre 12 y 18 rechazos de rebobinado cada uno (153 de 10 239 comprobaciones, con su
+  sospecha). Es un síntoma de la saturación (con 32 y 64 no hay ni uno): un servidor que no cumple sus
+  ticks estira el viaje de ida y vuelta que miden los clientes y su desfase de vista sale del tope. No se
+  ha investigado la causa exacta; la consecuencia práctica es que **no hay que dejar entrar a más de 64 en
+  una batalla**, porque pasado el límite el rebobinado empieza a fallar a los honrados. Interpolando entre
+  las tres medidas, la mediana del tick llega a los 16,7 ms hacia los 120 combatientes y el p99 a 16,7 ms
+  hacia los 66.
+- **El criterio de CPU de la fase 2 (p99 < 8 ms) no se cumple con combate más que hasta unos 28
+  combatientes** (32 ya sale a 8,9 ms): el objetivo de `vision.md` de 64 por bando sigue pendiente de las
+  palancas de abajo, igual que sin combate (la medida de la fase 2 con 66 jugadores daba un p99 de 8,2 ms
+  con una mediana de 4,9; con combate, 64 dan 15,9 y 9,4).
+- **El combate no es el cuello: lo es `simulate()`.** A 64 combatientes, `sim` ocupa 6,5 ms de los 9,4 de la
+  mediana (el 69 %) y `combat` más `combat_events` 0,9 (el 10 %). `simulate()` cuesta 69–72 µs por
+  personaje, frente a los 42–50 µs de la fase 2, y la sección `sim` entera 97–104 µs por jugador, frente a
+  57–66 µs: la máquina de acciones y el cerebro de combate de los falsos suman unos 25–40 µs por
+  personaje (el riesgo «Coste de `simulate()`» de combate.md §10; cifras de otra sesión y de otra
+  máquina, así que no son comparables al detalle). Todo el trabajo de combate crece de forma lineal con
+  los combatientes: unos 0,14 golpes por segundo y combatiente en las tres refriegas (260, 551 y 1044
+  golpes en 60 s), con 18, 50 y 96 muertes.
+- **Golpes con rebobinado: 76, 80 y 97 µs por comprobación** (797, 3756 y 10 239 comprobaciones de forma
+  y línea de visión; solo hay trabajo en 275, 945 y 1822 ticks de los 4970). La sección `combat_resolve`
+  es del 8 al 17 % de `combat` y su p99 no pasa de 0,69 ms: el rebobinado de 128 combatientes cabe en el
+  presupuesto con holgura.
+- **Eventos.** 319, 705 y 1329 eventos en 60 s (3,9, 8,5 y 16 por segundo), que llegan como 2602, 5181 y
+  8194 paquetes (un evento va a todos los que tienen relevante al atacante o a la víctima) y cuestan de
+  97 a 67 µs de envío por evento. En ancho de banda son **0,5, 1,0 y 1,6 KB/s en todo el servidor**, es
+  decir, 0,1–0,2 KB/s por cliente frente a los 31–35 KB/s de los snapshots: el canal de eventos no
+  cambia el presupuesto (el límite de 37 KB/s por cliente lo marca el snapshot, igual que en la fase 2).
+- **Palancas.** La primera sigue siendo la 6 (portar `simulate()`, ahora a ~70 µs por personaje, casi el
+  triple del umbral de 25 µs) y después la 4 (`build_for` en paralelo); el interés por rejilla (1) no
+  ayuda en una refriega, porque todos ven a todos. El p99 de 8 ms con 64 pide dejar `sim` por debajo de
+  unos 3 ms: la mitad del coste actual por personaje.
+
 **Palancas para Eldrun, por orden,** decididas con las medidas del final de la fase 2:
 
 1. Interés por rejilla.
@@ -1782,6 +1838,10 @@ todas las copias del proyecto.
   - ≤ 37 KB/s por cliente;
   - menos de un 1 % de entradas sustituidas con 100 ms de RTT, medido dentro de la ventana de medida
     (sin el arranque); la herramienta muestra también el porcentaje de toda la sesión.
+- Refriegas de combate (TEC-15): `--brawl` (o `--scenario=brawl`) con 32, 64 y 128 combatientes, falsos con
+  `--fake-brain=combat` en un corro (`--fake-center`) más 10 bots reales de combate, 60 s de medida
+  cada una. Mide por sección (golpes con rebobinado, eventos, snapshots) y los KB/s con los ENTITY_EVENT;
+  resultados y primer límite de jugadores por batalla en 14.
 
 ### Arquitectura (`test_architecture`, ampliado)
 

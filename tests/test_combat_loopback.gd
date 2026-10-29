@@ -310,6 +310,15 @@ func test_a_bot_hits_another_and_attacker_victim_and_a_third_get_the_same_event(
 	if assert_not_null(seen, "el tercero ve a la víctima"):
 		assert_eq(seen.health_q, EntityRecord.quantize_health(910, 1000), "con su vida en el registro")
 	assert_eq(_listeners[0].last_snapshot().health, 1000, "el atacante no pierde vida")
+	# El envío de los eventos tiene su sección de medida y sus bytes en el informe (pruebas de carga).
+	var sections: Dictionary = _server.get_metrics().summary()["sections"]
+	assert_true(sections.has("combat_events"), "la sección del envío de eventos (%s)" % [sections.keys()])
+	assert_true(sections.has("combat_resolve"))
+	var report_path: String = NetHarness.build_path("test_combat_loopback_report.json")
+	assert_eq(_server.write_report(report_path), OK)
+	var combat_report: Dictionary = NetHarness.read_report(report_path).get("combat", {})
+	assert_true(int(combat_report.get("event_bytes_sent", 0)) >= 3 * first.encode().size(),
+			"tres paquetes de ese evento al menos")
 
 
 func test_both_players_hit_the_dummy_and_every_snapshot_shows_its_health_drop() -> void:

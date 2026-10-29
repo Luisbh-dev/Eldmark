@@ -90,8 +90,10 @@ const HELLO_CHECK_TICKS: int = 10
 ## Ticks que se espera, tras [method stop], a que los peers se vayan antes de cerrar el transporte.
 const STOP_DRAIN_TICKS: int = 30
 ## Secciones del tick que aparecen en la línea de métricas (las mismas que mide el bucle).
-const LOGGED_SECTIONS: Array[StringName] = [&"net", &"sim", &"combat", &"history", &"snapshot",
-		&"flush"]
+const LOGGED_SECTIONS: Array[StringName] = [&"net", &"sim", &"combat", &"combat_resolve",
+		&"combat_events", &"history", &"snapshot", &"flush"]
+## Sección de [ServerMetrics] del envío de los ENTITY_EVENT (dentro de la de combate).
+const SECTION_COMBAT_EVENTS: StringName = &"combat_events"
 ## Fichas de jugador y expulsiones que el informe conserva (las más recientes); lo anterior se resume
 ## en totales. Sin tope, un cliente que entra y sale en bucle haría crecer la memoria sin límite.
 const MAX_LOGGED_PLAYERS: int = 1000
@@ -184,6 +186,7 @@ var _combat_log: FileAccess = null
 var _shutdown_tick: int = -1
 var _shutdown_announced: Dictionary[int, bool] = {}
 var _events_sent: int = 0
+var _event_bytes_sent: int = 0
 var _dummies_created: int = 0
 # Caché de objetivos de los bots de combate: tick de la última vez, posiciones e ids por reino, y qué
 # reinos son hostiles entre sí.
@@ -418,6 +421,7 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_combat = CombatDirector.new(_history, StringName(config.zone_id), world, _safe_areas,
 			Callable(self, "_place"), Callable(self, "_pick_spawn_point"))
 	_combat.event_emitted.connect(_on_combat_event)
+	_combat.metrics = _metrics
 	_commands.audit_sink = Callable(self, "_log")
 	_register_commands()
 	if _transport != null:
@@ -1268,6 +1272,7 @@ func _send(peer: ServerPeer, channel: int, bytes: PackedByteArray) -> void:
 func _on_combat_event(event: NetMessages.EntityEvent, involved: PackedInt32Array) -> void:
 	if _transport == null or _world_peers.is_empty():
 		return
+	_metrics.begin_section(SECTION_COMBAT_EVENTS)
 	var bytes: PackedByteArray = event.encode()
 	for peer: ServerPeer in _world_peers:
 		var receives: bool = involved.has(peer.entity.net_id)
@@ -1279,6 +1284,8 @@ func _on_combat_event(event: NetMessages.EntityEvent, involved: PackedInt32Array
 		if receives:
 			_transport.send(peer.peer_id, NetProtocol.CH_RELIABLE, bytes)
 			_events_sent += 1
+			_event_bytes_sent += bytes.size()
+	_metrics.end_section(SECTION_COMBAT_EVENTS)
 
 
 # Un punto de aparición del reino (para colocar a quien cae fuera del mundo mientras está muerto).
@@ -2286,6 +2293,7 @@ func _combat_report() -> Dictionary:
 		for stat: StringName in _combat.stats:
 			report[String(stat)] = _combat.stats[stat]
 	report["events_sent"] = _events_sent
+	report["event_bytes_sent"] = _event_bytes_sent
 	report["dummies"] = get_dummy_count() if _combat != null else 0
 	report["dummies_created"] = _dummies_created
 	report["suspicious"] = suspicious

@@ -64,6 +64,10 @@ class Series:
 	var count: int = 0
 	var head: int = 0
 	var max_all: int = 0
+	## Suma (µs) y número de todas las medidas desde el principio (no solo las de la ventana): la media de
+	## una sección sale de ellas.
+	var total: int = 0
+	var pushed: int = 0
 
 
 	func _init() -> void:
@@ -75,6 +79,8 @@ class Series:
 		head = (head + 1) % WINDOW_TICKS
 		count = mini(count + 1, WINDOW_TICKS)
 		max_all = maxi(max_all, value)
+		total += value
+		pushed += 1
 
 
 	# Muestras de la ventana, ordenadas.
@@ -169,7 +175,8 @@ func get_max_us(section: StringName) -> int:
 ##   "ticks": int,                  # ticks medidos
 ##   "last_tick": int,
 ##   "seconds": float,              # tiempo real entre el primer begin_tick y el último end_tick
-##   "sections": { nombre: {"p50": µs, "p99": µs, "max": µs, "max_all": µs, "samples": int} },
+##   "sections": { nombre: {"p50": µs, "p99": µs, "max": µs, "max_all": µs, "samples": int,
+##                          "total_us": µs de toda la ejecución, "pushed": medidas de toda la ejecución} },
 ##   "counters": { nombre: int },   # totales
 ##   "players": int,
 ##   "kb_in_per_s": float, "kb_out_per_s": float,
@@ -186,6 +193,8 @@ func summary() -> Dictionary:
 			"max": get_max_us(section),
 			"max_all": series.max_all,
 			"samples": series.count,
+			"total_us": series.total,
+			"pushed": series.pushed,
 		}
 	var counters: Dictionary = {}
 	for counter: StringName in _counters:

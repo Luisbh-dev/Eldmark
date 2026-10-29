@@ -61,6 +61,9 @@ const _MIN_INTERP_TICKS: int = 4
 
 ## Golpes rechazados por rebobinado excesivo desde que existe el resolutor.
 var rewind_rejects: int = 0
+## Comprobaciones de forma y línea de visión de un ataque contra un candidato (con muestra del historial
+## incluida) desde que existe el resolutor: la unidad de coste de las pruebas de carga.
+var tests: int = 0
 
 var _history: StateHistory
 var _zone_id: StringName
@@ -200,6 +203,7 @@ func _is_hostile(attacker_realm: int, victim_realm: int) -> bool:
 func _test(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_tick: float, s: int,
 		space: PhysicsDirectSpaceState3D, rules: CombatRules) -> Hit:
 	var attacker_frame: Combatant.Frozen = attacker.frozen
+	tests += 1
 	var sample: StateHistory.Sample = _sample(victim, view_tick, s)
 	if sample == null or (sample.flags & ActionMachine.DEFENSE_DEAD) != 0:
 		return null

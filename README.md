@@ -239,6 +239,17 @@ godot --headless --path . -s res://tools/load_test.gd -- --matrix
 
 Los informes quedan en `build/load_test/` (`summary.txt` y `summary.json`).
 
+Con combate (TEC-15), `--scenario=brawl` junta a los falsos con el cerebro de combate
+(`--fake-brain=combat`, en un corro alrededor de `--fake-center=x,z`) y a bots reales que pelean
+(`--bot-brain=combat`) y mide además las secciones de combate (golpes con rebobinado, eventos), los
+µs por comprobación de golpe y los KB/s de eventos; `--brawl` lanza la batería de 32, 64 y 128
+combatientes (60 s cada una, unos 6 minutos, informes en `build/load_test/`; cambia la carpeta con
+`--out`). Resultados y límite de jugadores por batalla en `docs/red.md` §14.
+
+```bash
+godot --headless --path . -s res://tools/load_test.gd -- --brawl
+godot --headless --path . -s res://tools/load_test.gd -- --scenario=brawl --fakes=54 --bots=10
+```
 
 ### Todo en uno: `--local`
 

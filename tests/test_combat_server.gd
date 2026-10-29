@@ -513,6 +513,11 @@ func test_combat_log_and_report() -> void:
 	assert_eq(int(combat.get("hits", -1)), 1, "el informe cuenta el golpe")
 	assert_eq(int(combat.get("damage", -1)), 90)
 	assert_true(combat.has("events_sent") and combat.has("suspicious") and combat.has("rewind_rejected"))
+	assert_true(int(combat.get("hit_tests", 0)) >= 1, "el informe cuenta las comprobaciones de golpe")
+	assert_true(combat.has("event_bytes_sent"))
+	var sections: Dictionary = (report.get("metrics", {}) as Dictionary).get("sections", {})
+	assert_true(sections.has("combat_resolve"), "y mide aparte la resolución de los golpes (%s)" % [sections.keys()])
+	assert_true(sections.has("combat"))
 
 
 func test_console_commands() -> void:

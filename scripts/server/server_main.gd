@@ -55,6 +55,8 @@ const FAKE_SEED_BASE: int = 7000
 const FAKE_RADIUS: float = 25.0
 ## Con [code]--fake-brain=combat --fake-layout=cluster[/code]: radio (m) del corro en el que aparecen.
 const FAKE_COMBAT_RING_RADIUS: float = 3.0
+## Cuánto crece (m por raíz del índice) el radio del corro de los falsos de combate: 128 caben en unos 9 m.
+const FAKE_COMBAT_RING_GROWTH: float = 0.5
 ## Con [code]--fake-layout=spread[/code]: mitad del lado (m) del cuadrado, centrado en el origen, por
 ## el que se reparten los jugadores falsos; altura desde la que se busca el suelo; y semilla.
 const FAKE_SPREAD_HALF_EXTENT: float = 900.0
@@ -270,10 +272,14 @@ func _add_fake_player() -> int:
 		ServerConfig.LAYOUT_CLUSTER:
 			if combat:
 				# Los de combate se reparten entre los reinos y se juntan en un corro alrededor del
-				# punto del primero, para que se encuentren enseguida.
+				# punto del primero (o de --fake-center, fuera de las zonas seguras), para que se
+				# encuentren enseguida. El corro crece con el número de falsos para que no se apilen.
 				home = _home_of(_fake_realms[0])
+				if config.has_fake_center():
+					home = _ground_point(config.fake_center.x, config.fake_center.y, home)
+				var ring: float = FAKE_COMBAT_RING_RADIUS + FAKE_COMBAT_RING_GROWTH * sqrt(float(index))
 				placed_at = home + Vector3(cos(float(index) * 2.4), 0.0,
-						sin(float(index) * 2.4)) * FAKE_COMBAT_RING_RADIUS
+						sin(float(index) * 2.4)) * ring
 			else:
 				realm = _fake_realms[0]
 				home = _home_of(realm)
@@ -301,6 +307,12 @@ func _add_fake_player() -> int:
 func _spread_point(fallback: Vector3) -> Vector3:
 	var x: float = _spread_rng.randf_range(-FAKE_SPREAD_HALF_EXTENT, FAKE_SPREAD_HALF_EXTENT)
 	var z: float = _spread_rng.randf_range(-FAKE_SPREAD_HALF_EXTENT, FAKE_SPREAD_HALF_EXTENT)
+	return _ground_point(x, z, fallback)
+
+
+# Punto del suelo bajo (x, z), un poco por encima. Si el rayo no encuentra suelo, devuelve
+# [param fallback].
+func _ground_point(x: float, z: float, fallback: Vector3) -> Vector3:
 	var space: PhysicsDirectSpaceState3D = _world.get_world_3d().direct_space_state
 	# Rayo ligeramente inclinado: los verticales pueden fallar contra HeightMapShape3D.
 	var from := Vector3(x, FAKE_SPREAD_PROBE_HEIGHT, z)

@@ -77,3 +77,41 @@ static func window_substituted(cumulative: Dictionary, players: Array, first_tic
 		"substituted": substituted,
 		"percent": 100.0 * float(substituted) / float(inputs),
 	}
+
+
+## Cifras del combate de una refriega a partir del informe del servidor ([param server], de
+## [method ZoneServer.write_report]) y de los [param seconds] que duró la ejecución:
+## [code]{hits, blocked, deaths, events, events_sent, event_kb_per_s, hit_tests, resolve_us_per_test,
+## resolve_share, events_us_per_event}[/code].
+## [br]- [code]events_sent[/code] cuenta paquetes (un evento llega a todos los que tienen relevante al
+## atacante o a la víctima) y [code]event_kb_per_s[/code] sale de [code]event_bytes_sent[/code] (sin
+## cabeceras de ENet) entre los segundos de la ejecución.
+## [br]- [code]resolve_us_per_test[/code]: µs de resolver los golpes con rebobinado en los ticks en que
+## había algo que probar ([code]resolve_us[/code]) por comprobación de forma y línea de visión
+## ([code]hit_tests[/code]); 0 si no hubo. [code]resolve_busy_ticks[/code] son esos ticks.
+## [br]- [code]resolve_share[/code]: fracción de la sección [code]combat[/code] que ocupa la sección
+## [code]combat_resolve[/code] (todos los ticks).
+## [br]- [code]events_us_per_event[/code]: µs medios de [code]combat_events[/code] por evento emitido.
+static func combat_figures(server: Dictionary, seconds: float) -> Dictionary:
+	var combat: Dictionary = server.get("combat", {})
+	var sections: Dictionary = (server.get("metrics", {}) as Dictionary).get("sections", {})
+	var resolve_total: float = float((sections.get("combat_resolve", {}) as Dictionary).get("total_us", 0))
+	var combat_total: float = float((sections.get("combat", {}) as Dictionary).get("total_us", 0))
+	var events_total: float = float((sections.get("combat_events", {}) as Dictionary).get("total_us", 0))
+	var hit_tests: int = int(combat.get("hit_tests", 0))
+	var events: int = int(combat.get("events", 0))
+	return {
+		"hits": int(combat.get("hits", 0)),
+		"blocked": int(combat.get("blocked", 0)),
+		"deaths": int(combat.get("deaths", 0)),
+		"events": events,
+		"events_sent": int(combat.get("events_sent", 0)),
+		"event_kb_per_s": float(combat.get("event_bytes_sent", 0)) / 1024.0 / seconds \
+				if seconds > 0.0 else 0.0,
+		"hit_tests": hit_tests,
+		"resolve_busy_ticks": int(combat.get("resolve_busy_ticks", 0)),
+		"resolve_us_per_test": float(combat.get("resolve_us", 0)) / float(hit_tests) \
+				if hit_tests > 0 else 0.0,
+		"resolve_share": resolve_total / combat_total if combat_total > 0.0 else 0.0,
+		"events_us_per_event": events_total / float(events) if events > 0 else 0.0,
+	}

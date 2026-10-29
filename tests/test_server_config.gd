@@ -158,3 +158,16 @@ func test_combat_options() -> void:
 	assert_true(config.no_dummies)
 	var wrong: ServerConfig = ServerConfig.from_args(PackedStringArray(["--fake-brain=volar"]))
 	assert_eq(wrong.fake_brain, "", "un cerebro desconocido se ignora")
+
+
+func test_fake_center_option() -> void:
+	var defaults: ServerConfig = ServerConfig.from_args(PackedStringArray())
+	assert_false(defaults.has_fake_center(), "sin centro: los de combate se juntan en el campamento")
+	var centered: ServerConfig = ServerConfig.from_args(PackedStringArray([
+		"--fake-players=54", "--fake-brain=combat", "--fake-layout=cluster", "--fake-center=0, -96.5"]))
+	assert_true(centered.has_fake_center())
+	assert_eq(centered.fake_center, Vector2(0.0, -96.5), "x y z, con espacios tolerados")
+	for text: String in ["--fake-center=", "--fake-center=5", "--fake-center=1,2,3", "--fake-center=a,b",
+			"--fake-center=1e9,0", "--fake-center=inf,0"]:
+		var invalid: ServerConfig = ServerConfig.from_args(PackedStringArray([text]))
+		assert_false(invalid.has_fake_center(), "%s se ignora" % text)

@@ -107,3 +107,52 @@ func test_window_percent_is_unavailable_without_two_metric_lines_in_range() -> v
 			"o si el rango no contiene dos")
 	assert_true(LoadTestSummary.window_substituted(cumulative, [], 500, 1900, 2000).is_empty(),
 			"o si no hay jugadores de red")
+
+
+# --- Refriegas (TEC-15) -----------------------------------------------------------------------
+
+func test_brawl_matrix_has_fights_of_32_64_and_128_combatants() -> void:
+	var script: GDScript = load(LOAD_TEST_PATH) as GDScript
+	if not assert_not_null(script):
+		return
+	var constants: Dictionary = script.get_script_constant_map()
+	var totals: Array[int] = []
+	for entry: Array in constants.get("BRAWL_MATRIX", []):
+		assert_eq(entry[0], "brawl", "todos son refriegas")
+		assert_true(int(entry[2]) > 0, "con clientes reales que reciben snapshots y eventos")
+		totals.append(int(entry[1]) + int(entry[2]))
+	assert_eq(totals, [32, 64, 128] as Array[int], "falsos más bots reales")
+	assert_true(int(constants.get("BRAWL_SECONDS", 0)) >= 60, "al menos un minuto de medida")
+	assert_true(String(constants.get("BRAWL_CENTER", "")).contains(","), "el corro tiene su punto (x,z)")
+
+
+func test_combat_figures_come_from_the_server_report() -> void:
+	var report: Dictionary = {
+		"combat": {"hits": 120, "blocked": 10, "deaths": 4, "events": 200, "events_sent": 6000,
+				"event_bytes_sent": 2048 * 60, "hit_tests": 4000, "resolve_us": 120000, "resolve_busy_ticks": 500},
+		"metrics": {"sections": {
+			"combat": {"total_us": 400000},
+			"combat_resolve": {"total_us": 120000},
+			"combat_events": {"total_us": 20000},
+		}},
+	}
+	var figures: Dictionary = LoadTestSummary.combat_figures(report, 60.0)
+	assert_eq(figures["hits"], 120)
+	assert_eq(figures["blocked"], 10)
+	assert_eq(figures["deaths"], 4)
+	assert_eq(figures["events"], 200)
+	assert_eq(figures["events_sent"], 6000)
+	assert_near(float(figures["event_kb_per_s"]), 2048.0 * 60.0 / 1024.0 / 60.0, 1e-9, "KB/s de eventos")
+	assert_eq(figures["hit_tests"], 4000)
+	assert_eq(figures["resolve_busy_ticks"], 500)
+	assert_near(float(figures["resolve_us_per_test"]), 30.0, 1e-9, "120000 µs entre 4000 comprobaciones")
+	assert_near(float(figures["resolve_share"]), 0.3, 1e-9, "una parte de la sección de combate")
+	assert_near(float(figures["events_us_per_event"]), 100.0, 1e-9, "20000 µs entre 200 eventos")
+
+
+func test_combat_figures_of_a_quiet_server_do_not_divide_by_zero() -> void:
+	var figures: Dictionary = LoadTestSummary.combat_figures({}, 0.0)
+	for key: String in ["hits", "events", "hit_tests"]:
+		assert_eq(figures[key], 0)
+	for key: String in ["event_kb_per_s", "resolve_us_per_test", "resolve_share", "events_us_per_event"]:
+		assert_eq(float(figures[key]), 0.0, key)
