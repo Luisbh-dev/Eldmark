@@ -13,6 +13,9 @@ extends RefCounted
 ## [member status] y [member respawn_tick]). Quien lleva la vida (el [code]Combatant[/code] del
 ## combate) los actualiza cada tick con [method set_health_view]; mientras nadie lo haga, la
 ## entidad está sana.
+## [br][br]
+## [member action] es el byte de acción del registro ([method ActionMachine.action_byte]); lo
+## actualiza cada tick el mismo código que lleva la vida.
 
 ## La ven todos los jugadores de la zona, sin pasar por la [InterestPolicy] (fortalezas, puertas).
 const FLAG_ALWAYS_RELEVANT: int = 1 << 0
@@ -45,6 +48,8 @@ var health: int = DEFAULT_HEALTH
 var max_health: int = DEFAULT_HEALTH
 var status: int = 0
 var respawn_tick: int = 0
+## Byte de acción del registro de red ([method ActionMachine.action_byte]); 0 = sin datos.
+var action: int = 0
 
 
 ## Posición global de la entidad (los pies, si es un jugador).
@@ -76,7 +81,7 @@ func set_health_view(new_health: int, new_max_health: int, new_status: int,
 func encode_record(bytes: PackedByteArray, offset: int) -> void:
 	var character: PlayerCharacter = get_character()
 	if character != null:
-		EntityRecord.encode_character(bytes, offset, net_id, character, teleport_counter, 0,
+		EntityRecord.encode_character(bytes, offset, net_id, character, teleport_counter, action,
 				health_q)
 		return
 	# Entidades sin personaje (PNJ simples): posición y giro del nodo, sin velocidad.
@@ -88,6 +93,7 @@ func encode_record(bytes: PackedByteArray, offset: int) -> void:
 	var teleport_bits: int = teleport_counter & EntityRecord.TELEPORT_MASK
 	record.flags = (teleport_bits << EntityRecord.TELEPORT_SHIFT) | EntityRecord.FLAG_GROUNDED
 	record.health_q = health_q
+	record.action = action
 	record.encode_into(bytes, offset)
 
 

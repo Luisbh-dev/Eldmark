@@ -421,6 +421,37 @@ func test_view_offset_q() -> void:
 	assert_eq(queue.get_view_offset_q(1), -1, "ya sobrescrito")
 
 
+func test_rewind_params_of_real_and_substituted_inputs() -> void:
+	var queue: InputQueue = _make_queue()
+	assert_eq(queue.get_rewind_params(1), Vector2i(0, 0), "sin entradas reales: nada que rebobinar")
+	# La entrada del tick 1 llega justa (antelación 0) y la del 3 con 2 de antelación.
+	queue.push(_input(1), 37, 1)
+	queue.push(_input(3), 1234, 1)
+	assert_eq(queue.get_rewind_params(1), Vector2i(37, 0), "recibida y sin consumir")
+	assert_eq(queue.get_rewind_params(3), Vector2i(1234, 2), "con su antelación")
+	queue.take(1)
+	assert_eq(queue.get_rewind_params(1), Vector2i(37, 0), "real y consumida")
+	queue.take(2)
+	assert_eq(queue.get_rewind_params(2), Vector2i(37, 0), "la sustituida usa los de la última real")
+	queue.take(3)
+	assert_eq(queue.get_rewind_params(3), Vector2i(1234, 2))
+	queue.take(4)
+	queue.take(5)
+	assert_eq(queue.get_rewind_params(5), Vector2i(1234, 2), "y sigue usando los de la última real")
+	# Una entrada tardía no cambia nada: ese tick ya se sustituyó.
+	queue.push(_input(4), 5, 6)
+	assert_eq(queue.get_rewind_params(4), Vector2i(1234, 2))
+	queue.reset(10, NetProtocol.neutral_input(10, 0.0))
+	assert_eq(queue.get_rewind_params(11), Vector2i(0, 0), "reset borra los últimos reales")
+
+
+func test_rewind_params_lead_comes_from_the_first_copy() -> void:
+	var queue: InputQueue = _make_queue()
+	queue.push(_input(5), 100, 3)
+	queue.push(_input(5), 999, 5)
+	assert_eq(queue.get_rewind_params(5), Vector2i(100, 2), "gana la primera copia, con su antelación")
+
+
 func test_take_always_returns_the_requested_tick() -> void:
 	var queue: InputQueue = _make_queue()
 	for t: int in range(1, 200):

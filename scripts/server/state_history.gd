@@ -11,6 +11,11 @@ extends RefCounted
 ## [method sample] reconstruye cualquier instante (también entre dos ticks) para que la fase 3
 ## compruebe los golpes contra donde el atacante veía a su objetivo. Nunca se mueven cuerpos hacia
 ## atrás: se calcula con las muestras.
+## [br][br]
+## [b]Banderas.[/b] Los flags de cada hueco son los del registro de red (bit 0 suelo, bits 1-2
+## contador de teletransporte) más las banderas defensivas de [method ActionMachine.defense_flags]
+## (bit 3 bloqueando, bit 4 ventana de parada, bit 5 invulnerable, bit 6 muerto), que usa el
+## [CombatResolver] para decidir si un golpe rebobinado se bloquea, se para o se esquiva.
 
 ## Ticks que recuerda cada pista. Potencia de 2 para indexar con una máscara.
 const LENGTH_TICKS: int = 64
@@ -81,6 +86,18 @@ func record(tick: int, net_id: int, position: Vector3, yaw: float, flags: int) -
 func has_tick(net_id: int, tick: int) -> bool:
 	var track: Track = _tracks.get(net_id)
 	return track != null and tick >= 0 and track.ticks[tick & (LENGTH_TICKS - 1)] == tick
+
+
+## Flags de [param net_id] en el tick exacto [param tick], o -1 si ese tick no está grabado (la
+## entidad no tiene pista, el tick es más viejo que el anillo o más nuevo que el último grabado).
+func get_flags(net_id: int, tick: int) -> int:
+	var track: Track = _tracks.get(net_id)
+	if track == null or tick < 0:
+		return -1
+	var slot: int = tick & (LENGTH_TICKS - 1)
+	if track.ticks[slot] != tick:
+		return -1
+	return track.flags[slot]
 
 
 ## Estado de [param net_id] en el instante [param tick] (puede ser fraccionario): interpola

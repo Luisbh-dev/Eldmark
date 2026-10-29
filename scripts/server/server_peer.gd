@@ -54,6 +54,15 @@ var limiter_bytes: RateLimiter
 ## Avisos sumados en total y motivo del último.
 var strikes_total: int = 0
 var last_strike_reason: String = ""
+## Puntuación de sospecha del combate (docs/combate.md, 4.5): suma 1 por cada golpe cuyo rebobinado
+## supera el tope y no se prueba. En la fase 3 solo se registra (informe y [code]--combat-log[/code]).
+var suspicion_score: int = 0
+## Golpes rechazados por rebobinado excesivo.
+var rewind_rejects: int = 0
+## Ataques que ha lanzado y de ellos cuántos han acertado (el ratio de acierto anómalo es una de las
+## señales de sospecha futuras).
+var swings: int = 0
+var swings_landed: int = 0
 
 # Anillo con los ticks de los últimos STRIKE_LIMIT avisos. El más antiguo de ellos está en
 # _strike_head, que es también el hueco que se sobrescribe con el siguiente. De 64 bits: los ticks

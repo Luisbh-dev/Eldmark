@@ -259,3 +259,21 @@ func test_ticks_beyond_two_to_the_thirty_one_are_kept() -> void:
 	var max_tick: int = 4294967295
 	history.record(max_tick, 1, Vector3(9.0, 0.0, 0.0), 0.0, 1)
 	assert_true(history.has_tick(1, max_tick), "ni en el último tick del u32")
+
+
+func test_get_flags_returns_exact_flags_or_minus_one() -> void:
+	var history := StateHistory.new()
+	history.add_entity(3)
+	var blocking: int = _flags(1) | ActionMachine.DEFENSE_BLOCKING
+	var invulnerable: int = _flags(0) | ActionMachine.DEFENSE_INVULNERABLE
+	history.record(10, 3, Vector3.ZERO, 0.0, blocking)
+	history.record(11, 3, Vector3.ZERO, 0.0, invulnerable)
+	assert_eq(history.get_flags(3, 10), blocking, "las banderas defensivas se guardan con el resto")
+	assert_eq(history.get_flags(3, 11), invulnerable)
+	assert_eq(history.get_flags(3, 12), -1, "un tick sin grabar")
+	assert_eq(history.get_flags(3, -4), -1, "un tick negativo")
+	assert_eq(history.get_flags(99, 10), -1, "una entidad sin pista")
+	history.record(10 + StateHistory.LENGTH_TICKS, 3, Vector3.ZERO, 0.0, 0)
+	assert_eq(history.get_flags(3, 10), -1, "sobrescrito por el anillo")
+	var sample: StateHistory.Sample = history.sample(3, 11.0)
+	assert_true((sample.flags & ActionMachine.DEFENSE_INVULNERABLE) != 0, "sample también las devuelve")

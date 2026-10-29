@@ -50,6 +50,10 @@ var _slots: Array[Slot] = []
 var _last_consumed: int = 0
 var _last_real_tick: int = 0
 var _last_applied: PlayerInput = PlayerInput.new()
+# view_offset_q y antelación de la última entrada real consumida (para el rebobinado de un tick cuya
+# entrada se sustituyó).
+var _last_real_view_offset_q: int = 0
+var _last_real_lead: int = 0
 # Antelación mínima desde la última llamada a pop_min_lead(); _has_lead dice si hay datos.
 var _min_lead: int = 0
 var _has_lead: bool = false
@@ -61,14 +65,18 @@ class Slot:
 	var state: int = SlotState.EMPTY
 	var input: PlayerInput = null
 	var view_offset_q: int = -1
+	## Antelación con la que llegó la primera copia (tick de la entrada menos el que el servidor
+	## simulaba a continuación); 0 en las sustituidas.
+	var lead: int = 0
 
 
 	func set_input(new_tick: int, new_state: int, new_input: PlayerInput,
-			new_view_offset_q: int) -> void:
+			new_view_offset_q: int, new_lead: int = 0) -> void:
 		tick = new_tick
 		state = new_state
 		input = new_input
 		view_offset_q = new_view_offset_q
+		lead = new_lead
 
 
 func _init() -> void:
@@ -85,6 +93,8 @@ func reset(spawn_tick: int, neutral: PlayerInput) -> void:
 		slot.set_input(-1, SlotState.EMPTY, null, -1)
 	_last_consumed = spawn_tick
 	_last_real_tick = spawn_tick
+	_last_real_view_offset_q = 0
+	_last_real_lead = 0
 	_last_applied = neutral.duplicate_input()
 	late_count = 0
 	too_early_count = 0
@@ -121,7 +131,7 @@ func push(input: PlayerInput, view_offset_q: int, next_tick: int) -> PushResult:
 	if slot.tick == t and slot.state == SlotState.RECEIVED:
 		return PushResult.DUPLICATE
 	input.buttons &= NetProtocol.VALID_BUTTONS
-	slot.set_input(t, SlotState.RECEIVED, input, view_offset_q)
+	slot.set_input(t, SlotState.RECEIVED, input, view_offset_q, t - next_tick)
 	_note_lead(t - next_tick)
 	return PushResult.ACCEPTED
 
@@ -137,6 +147,8 @@ func take(tick: int) -> PlayerInput:
 		input = slot.input
 		slot.state = SlotState.CONSUMED_REAL
 		_last_real_tick = tick
+		_last_real_view_offset_q = slot.view_offset_q
+		_last_real_lead = slot.lead
 	else:
 		input = _last_applied.duplicate_input()
 		input.tick = tick
@@ -183,6 +195,19 @@ func get_view_offset_q(tick: int) -> int:
 	if slot.state == SlotState.RECEIVED or slot.state == SlotState.CONSUMED_REAL:
 		return slot.view_offset_q
 	return -1
+
+
+## Parámetros del rebobinado de un golpe cuya entrada es del tick [param tick] (docs/combate.md,
+## sección 4.3): un [Vector2i] con [code]x = view_offset_q[/code] y [code]y = lead[/code] (la
+## antelación con la que llegó esa entrada). Si la entrada del tick era real son los suyos; si se
+## sustituyó (o ya no está en el anillo), los de la última entrada real consumida; y
+## [code](0, 0)[/code] si el jugador aún no ha enviado ninguna.
+func get_rewind_params(tick: int) -> Vector2i:
+	var slot: Slot = _slot(tick)
+	if slot.tick == tick and (slot.state == SlotState.RECEIVED \
+			or slot.state == SlotState.CONSUMED_REAL):
+		return Vector2i(slot.view_offset_q, slot.lead)
+	return Vector2i(_last_real_view_offset_q, _last_real_lead)
 
 
 ## Último tick consumido con [method take] (o el del alta).

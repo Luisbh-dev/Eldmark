@@ -1,0 +1,293 @@
+class_name CombatResolver
+extends RefCounted
+## Resolución autoritativa de los golpes con rebobinado de hitboxes (docs/combate.md, sección 4.3;
+## CMB-09 y TEC-14).
+## [br][br]
+## [method resolve] se llama una vez por tick, después de simular a todas las entidades y de
+## congelarlas ([method Combatant.freeze]). Para cada atacante en golpe activo calcula contra quién
+## acierta, [b]sin tocar ningún estado de combate[/b] (solo apunta, en el propio atacante, a quién
+## ha golpeado ya): todos los golpes de un tick son simultáneos y los aplica después quien llama
+## (en orden de net_id del atacante y del objetivo).
+## [br][br]
+## Para cada atacante:
+## [br]1. [b]Rebobinado.[/b] [method InputQueue.get_rewind_params] da [code]view_offset_q[/code] y
+## la antelación de su entrada; el tope [method allowed_rewind] sale de red.md, sección 10. Con más
+## de [code]allowed + 1[/code] ticks el golpe no se prueba (puntuación de sospecha del peer y
+## línea en el registro). Si no, [code]view_tick = clamp(s − view_offset_q / 16, s − allowed, s)[/code].
+## Los jugadores falsos y los PNJ no rebobinan ([code]view_tick = s[/code]).
+## [br]2. [b]Muestras.[/b] El atacante, siempre en su estado congelado de [code]s[/code]. Cada
+## candidato en [code]view_tick[/code]: del [StateHistory] si [code]view_tick ≤ s − 1[/code],
+## interpolado entre la pista de [code]s − 1[/code] y lo congelado si está entre [code]s − 1[/code] y
+## [code]s[/code], o lo congelado si es [code]s[/code]. Sin muestra, el candidato se descarta.
+## [br]3. [b]Candidatos.[/b] Hostiles según [FactionRules], vivos ahora y sin el bit «muerto» en
+## [code]view_tick[/code], sin protección de reaparición y sin zona segura de por medio (la víctima
+## en la de su reino, o el atacante en la de su reino), en [code]s[/code]. Un objetivo ya golpeado
+## por este ataque no se vuelve a probar.
+## [br]4. [b]Forma y línea de visión.[/b] [method HitShapes.sector_hits_capsule] con la muestra de
+## la víctima y un rayo contra el mundo actual.
+## [br]5. [b]Defensa[/b], por este orden: invulnerable en algún tick de
+## [code][floor(view_tick), s][/code] (sin efecto, [b]no consume[/b] el golpe), parada, bloqueo e
+## impacto. La parada y el bloqueo se miran en la muestra de [code]view_tick[/code] y en la de
+## [code]s[/code], con el atacante dentro del cono frontal del defensor; la de [code]view_tick[/code]
+## no cuenta si el defensor ha empezado después un ataque o una esquiva: quien suelta el escudo para
+## atacar deja de estar protegido.
+## [br][br]
+## Un impacto, un bloqueo o una parada consumen el ataque para ese objetivo.
+
+## Resultado de un golpe sobre un objetivo.
+enum Outcome {
+	## Acierta: daño completo y controles del ataque.
+	IMPACT,
+	## Acierta contra un escudo en alto: el daño se mitiga y cuesta resistencia.
+	BLOCKED,
+	## Parada: sin daño y el atacante queda tambaleándose.
+	PARRIED,
+	## El objetivo era invulnerable: sin efecto y el ataque sigue vivo.
+	INVULNERABLE,
+	## El rebobinado pedido supera el tope: el ataque no se prueba (no hay objetivo).
+	REWIND_REJECTED,
+}
+
+## Escala de [code]view_offset_q[/code] (ticks × 16).
+const VIEW_OFFSET_Q_SCALE: int = 16
+## Velocidad (m/s) con la que se ensancha la búsqueda de candidatos por el rebobinado: la mayor que
+## puede tener un personaje (esquiva o empuje) con margen.
+const _SEARCH_SPEED: float = 24.0
+const _SEARCH_MARGIN: float = 0.25
+## Retardo de interpolación mínimo (ticks) que se supone al calcular el tope de rebobinado.
+const _MIN_INTERP_TICKS: int = 4
+
+## Golpes rechazados por rebobinado excesivo desde que existe el resolutor.
+var rewind_rejects: int = 0
+
+var _history: StateHistory
+var _zone_id: StringName
+var _safe_areas: SafeAreas
+
+
+## Un resultado de [method resolve].
+class Hit:
+	var attacker: Combatant
+	## null en [constant Outcome.REWIND_REJECTED].
+	var victim: Combatant
+	var attack: AttackTicks
+	var outcome: int = Outcome.IMPACT
+	## Instante (en ticks, fraccionario) en el que el atacante veía al objetivo.
+	var view_tick: float = 0.0
+	## Ticks rebobinados ([code]s − view_tick[/code]).
+	var rewind: float = 0.0
+	## Golpe por la espalda (solo en impactos y bloqueos).
+	var critical: bool = false
+
+
+## [param history] es el historial de posiciones del servidor, [param zone_id] la zona (para las
+## reglas de hostilidad) y [param safe_areas] sus zonas seguras (null = ninguna).
+func _init(history: StateHistory, zone_id: StringName, safe_areas: SafeAreas = null) -> void:
+	_history = history
+	_zone_id = zone_id
+	_safe_areas = safe_areas if safe_areas != null else SafeAreas.new()
+
+
+## Tope de rebobinado en ticks (red.md, sección 10): [code]min(24, rtt + lead + clamp(interp / 8,
+## 4, 12) + 2)[/code], con el retardo de interpolación [param interp_delay_q] en octavos de tick.
+@warning_ignore("integer_division")
+static func allowed_rewind(rtt_ticks: int, lead: int, interp_delay_q: int) -> int:
+	var interpolation: int = clampi(interp_delay_q / NetProtocol.INTERP_DELAY_Q_SCALE,
+			_MIN_INTERP_TICKS, NetProtocol.MAX_INTERP_DELAY_TICKS)
+	return mini(NetProtocol.MAX_REWIND_TICKS, rtt_ticks + maxi(lead, 0) + interpolation + 2)
+
+
+## Resuelve los ataques activos del tick [param s] de [param combatants] (ordenados por net_id, ya
+## congelados en [param s]) contra el espacio de física [param space] (para la línea de visión).
+## Devuelve los golpes en orden de net_id del atacante y del objetivo.
+func resolve(s: int, combatants: Array[Combatant],
+		space: PhysicsDirectSpaceState3D) -> Array[Hit]:
+	var hits: Array[Hit] = []
+	var rules: CombatRules = CombatCatalog.rules()
+	for attacker: Combatant in combatants:
+		var attacker_frame: Combatant.Frozen = attacker.frozen
+		if not attacker_frame.attack_active or attacker.is_dead():
+			continue
+		var attack: AttackTicks = CombatCatalog.attack(attacker_frame.action_id)
+		if attack == null or attack.shape == null:
+			continue
+		attacker.track_swing(attacker_frame.action_tick)
+		var view_tick: float = _view_tick_of(attacker, s)
+		if is_nan(view_tick):
+			_reject(attacker, attack, s, hits)
+			continue
+		var margin: float = _SEARCH_MARGIN + _SEARCH_SPEED * (float(s) - view_tick) \
+				/ float(Engine.physics_ticks_per_second)
+		var reach: float = attack.shape.range_m + HitShapes.CAPSULE_RADIUS + margin
+		for victim: Combatant in combatants:
+			if victim == attacker or attacker.has_hit(victim.get_id()):
+				continue
+			if not _is_candidate(attacker, victim, s):
+				continue
+			var victim_frame: Combatant.Frozen = victim.frozen
+			if Vector2(victim_frame.position.x - attacker_frame.position.x,
+					victim_frame.position.z - attacker_frame.position.z).length() > reach:
+				continue
+			var hit: Hit = _test(attacker, victim, attack, view_tick, s, space, rules)
+			if hit != null:
+				hits.append(hit)
+	return hits
+
+
+# Rebobinado de un golpe: el view_tick, o NAN si pide más de lo que se permite. Un atacante sin peer
+# (jugador falso, PNJ) no rebobina.
+func _view_tick_of(attacker: Combatant, s: int) -> float:
+	if attacker.peer == null or attacker.queue == null:
+		return float(s)
+	var params: Vector2i = attacker.queue.get_rewind_params(s)
+	var allowed: int = allowed_rewind(attacker.peer.rtt_ticks, params.y,
+			attacker.peer.interp_delay_q)
+	if params.x > (allowed + 1) * VIEW_OFFSET_Q_SCALE:
+		return NAN
+	return clampf(float(s) - float(params.x) / float(VIEW_OFFSET_Q_SCALE),
+			float(s - allowed), float(s))
+
+
+# Anota un golpe rechazado por rebobinado excesivo: una vez por ataque.
+func _reject(attacker: Combatant, attack: AttackTicks, s: int, hits: Array[Hit]) -> void:
+	if attacker.rejected_swing_tick == attacker.frozen.action_tick:
+		return
+	attacker.rejected_swing_tick = attacker.frozen.action_tick
+	rewind_rejects += 1
+	if attacker.peer != null:
+		attacker.peer.suspicion_score += 1
+		attacker.peer.rewind_rejects += 1
+	var hit := Hit.new()
+	hit.attacker = attacker
+	hit.attack = attack
+	hit.outcome = Outcome.REWIND_REJECTED
+	if attacker.peer != null and attacker.queue != null:
+		var params: Vector2i = attacker.queue.get_rewind_params(s)
+		hit.rewind = float(params.x) / float(VIEW_OFFSET_Q_SCALE)
+		hit.view_tick = float(s) - hit.rewind
+	hits.append(hit)
+
+
+# Candidato por reglas: hostil, vivo, sin protección y sin zona segura de por medio.
+func _is_candidate(attacker: Combatant, victim: Combatant, s: int) -> bool:
+	if victim.is_dead() or victim.is_protected(s):
+		return false
+	if not FactionRules.can_damage(attacker.get_realm(), victim.get_realm(), _zone_id):
+		return false
+	if _safe_areas.contains_own(victim.get_realm(), victim.frozen.position):
+		return false
+	if _safe_areas.contains_own(attacker.get_realm(), attacker.frozen.position):
+		return false
+	return true
+
+
+# Prueba un ataque contra un candidato. null si no lo alcanza.
+func _test(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_tick: float, s: int,
+		space: PhysicsDirectSpaceState3D, rules: CombatRules) -> Hit:
+	var attacker_frame: Combatant.Frozen = attacker.frozen
+	var sample: StateHistory.Sample = _sample(victim, view_tick, s)
+	if sample == null or (sample.flags & ActionMachine.DEFENSE_DEAD) != 0:
+		return null
+	if not HitShapes.sector_hits_capsule(attacker_frame.position, attacker_frame.yaw,
+			attack.shape, sample.position, HitShapes.CAPSULE_RADIUS, HitShapes.CAPSULE_HEIGHT):
+		return null
+	if not HitShapes.has_line_of_sight(space, attacker_frame.position, sample.position):
+		return null
+
+	var hit := Hit.new()
+	hit.attacker = attacker
+	hit.victim = victim
+	hit.attack = attack
+	hit.view_tick = view_tick
+	hit.rewind = float(s) - view_tick
+	hit.outcome = _defense(attacker, victim, attack, view_tick, s, sample)
+	if hit.outcome == Outcome.IMPACT or hit.outcome == Outcome.BLOCKED:
+		hit.critical = DamageFormula.is_backstab(attacker_frame.position, sample.position,
+				sample.yaw, rules.backstab_angle_deg)
+	if hit.outcome != Outcome.INVULNERABLE:
+		attacker.mark_hit(victim.get_id())
+	return hit
+
+
+# Precedencia de la defensa (docs/combate.md, 4.3, paso 6).
+func _defense(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_tick: float,
+		s: int, sample: StateHistory.Sample) -> int:
+	if _was_invulnerable(victim, view_tick, s):
+		return Outcome.INVULNERABLE
+	var victim_frame: Combatant.Frozen = victim.frozen
+	var weapon: WeaponTicks = CombatCatalog.weapon(victim_frame.weapon_id)
+	if weapon == null:
+		return Outcome.IMPACT
+	var attacker_position: Vector3 = attacker.frozen.position
+	var cone: float = weapon.block_angle_deg
+	# La muestra de view_tick solo cuenta si el defensor no ha empezado después un ataque o una
+	# esquiva.
+	var old_counts: bool = view_tick < float(s) and not _started_offense_after(victim_frame,
+			view_tick)
+	# Parada (solo contra golpes cuerpo a cuerpo: todos los de la fase 3).
+	if _defends(victim_frame, sample, old_counts, ActionMachine.DEFENSE_PARRY, cone,
+			attacker_position):
+		return Outcome.PARRIED
+	# Bloqueo: el escudo solo frena el daño físico.
+	if DamageFormula.is_physical(attack.damage_type) and _defends(victim_frame, sample,
+			old_counts, ActionMachine.DEFENSE_BLOCKING, cone, attacker_position):
+		return Outcome.BLOCKED
+	return Outcome.IMPACT
+
+
+# true si el defensor tiene la bandera [param flag] en s (muestra congelada) o en view_tick
+# (muestra rebobinada, si cuenta), con el atacante dentro del cono frontal en esa muestra.
+func _defends(victim_frame: Combatant.Frozen, sample: StateHistory.Sample, old_counts: bool,
+		flag: int, cone: float, attacker_position: Vector3) -> bool:
+	if (victim_frame.defense & flag) != 0 and HitShapes.is_in_front(victim_frame.position,
+			victim_frame.yaw, attacker_position, cone):
+		return true
+	return old_counts and (sample.flags & flag) != 0 and HitShapes.is_in_front(sample.position,
+			sample.yaw, attacker_position, cone)
+
+
+# true si el defensor empezó (después de view_tick) un ataque, una carga o una esquiva.
+static func _started_offense_after(victim_frame: Combatant.Frozen, view_tick: float) -> bool:
+	if float(victim_frame.action_tick) <= view_tick:
+		return false
+	match victim_frame.action:
+		CombatState.Action.LIGHT, CombatState.Action.HEAVY, CombatState.Action.CHARGE, \
+				CombatState.Action.DODGE:
+			return true
+	return false
+
+
+# true si el objetivo fue invulnerable en algún tick de [floor(view_tick), s].
+func _was_invulnerable(victim: Combatant, view_tick: float, s: int) -> bool:
+	if (victim.frozen.defense & ActionMachine.DEFENSE_INVULNERABLE) != 0:
+		return true
+	for tick: int in range(floori(view_tick), s):
+		var flags: int = _history.get_flags(victim.get_id(), tick)
+		if flags >= 0 and (flags & ActionMachine.DEFENSE_INVULNERABLE) != 0:
+			return true
+	return false
+
+
+# Estado del objetivo en el instante view_tick, o null si no se conoce.
+func _sample(victim: Combatant, view_tick: float, s: int) -> StateHistory.Sample:
+	var frame: Combatant.Frozen = victim.frozen
+	if view_tick >= float(s):
+		return frame
+	if view_tick <= float(s - 1):
+		return _history.sample(victim.get_id(), view_tick)
+	# Entre s − 1 y s: interpolación entre la pista de s − 1 y lo congelado.
+	var previous: StateHistory.Sample = _history.sample(victim.get_id(), float(s - 1))
+	if previous == null:
+		return null
+	if _teleport_counter(previous.flags) != _teleport_counter(frame.flags):
+		return previous
+	var fraction: float = view_tick - float(s - 1)
+	var result := StateHistory.Sample.new()
+	result.position = previous.position.lerp(frame.position, fraction)
+	result.yaw = lerp_angle(previous.yaw, frame.yaw, fraction)
+	result.flags = previous.flags if fraction < 0.5 else frame.flags
+	return result
+
+
+static func _teleport_counter(flags: int) -> int:
+	return (flags >> EntityRecord.TELEPORT_SHIFT) & EntityRecord.TELEPORT_MASK

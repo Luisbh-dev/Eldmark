@@ -791,6 +791,8 @@ func _assemble_scene() -> void:
 	_add_vegetation_colliders()
 	_add_boundaries()
 	_add_spawn_points()
+	_add_safe_areas()
+	_add_dummy_points()
 	_add_screenshot_points()
 
 
@@ -1472,6 +1474,41 @@ func _add_spawn_points() -> void:
 			marker.set_meta(&"realm", realm)
 			marker.add_to_group(&"spawn_points", true)
 			group.add_child(marker)
+
+
+## Zonas seguras (docs/combate.md, sección 5): una por campamento, centrada en el centro de sus
+## puntos de aparición (x = 0, z = ±138) y con el radio del campamento (24 m). Solo protegen a su
+## reino (metadato [code]realm[/code]); las lee el servidor del grupo [code]safe_areas[/code].
+func _add_safe_areas() -> void:
+	var group := _group("SafeAreas")
+	for realm: String in ["vardheim", "solmarch"]:
+		var side: float = -1.0 if realm == "vardheim" else 1.0
+		var z: float = side * 138.0
+		var marker := Marker3D.new()
+		marker.name = "Campamento" + realm.capitalize()
+		marker.transform = Transform3D(Basis.IDENTITY, Vector3(0.0, _ground(0.0, z) + 0.05, z))
+		marker.set_meta(&"realm", realm)
+		marker.set_meta(&"radius", Layout.CAMP_RADIUS)
+		marker.add_to_group(&"safe_areas", true)
+		group.add_child(marker)
+
+
+## Maniquíes de entrenamiento: uno junto a cada campamento, fuera de su zona segura (a 30 m del
+## centro de los puntos de aparición, hacia el fuerte) y mirando al campamento, para que se pueda
+## golpear desde fuera. El servidor coloca un maniquí en cada marcador del grupo
+## [code]dummy_points[/code].
+func _add_dummy_points() -> void:
+	var group := _group("DummyPoints")
+	for realm: String in ["vardheim", "solmarch"]:
+		var side: float = -1.0 if realm == "vardheim" else 1.0
+		var z: float = side * 108.0
+		var marker := Marker3D.new()
+		marker.name = "Muneco" + realm.capitalize()
+		# Mira hacia el campamento: el norte mira a -Z (giro 0), el sur a +Z (giro PI).
+		marker.transform = Transform3D(Basis(Vector3.UP, 0.0 if side < 0.0 else PI),
+				Vector3(0.0, _ground(0.0, z) + 0.05, z))
+		marker.add_to_group(&"dummy_points", true)
+		group.add_child(marker)
 
 
 ## Cámaras de revisión: [nombre, posición (y = metros sobre el suelo), punto al que mira (y =

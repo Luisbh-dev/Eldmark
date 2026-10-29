@@ -261,3 +261,8 @@ mesh = SubResource("BoxMesh_marker")
 
 [node name="Spawn1" type="Marker3D" parent="SpawnPoints" groups=["spawn_points"]]
 position = Vector3(0, 0.1, 0)
+
+[node name="DummyPoints" type="Node3D" parent="."]
+
+[node name="Dummy1" type="Marker3D" parent="DummyPoints" groups=["dummy_points"]]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0.1, -4)

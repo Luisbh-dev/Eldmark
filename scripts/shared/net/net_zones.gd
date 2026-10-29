@@ -82,6 +82,47 @@ static func get_spawn_points(zone: Node, realm: int = NetProtocol.Realm.NONE) ->
 	return Zones.get_spawn_points(zone, realm_id)
 
 
+## Puntos de reaparición del reino [param realm] en la zona [param zone] (que debe estar en el
+## árbol), en el orden de la escena ([method Zones.get_respawn_points]). Con un código que no es un
+## reino jugable, la lista está vacía.
+static func get_respawn_points(zone: Node, realm: int) -> Array[Node3D]:
+	var realm_id: StringName = realm_name(realm)
+	var empty: Array[Node3D] = []
+	if realm_id.is_empty():
+		return empty
+	return Zones.get_respawn_points(zone, realm_id)
+
+
+## Zonas seguras de la zona [param zone] (grupo [constant Zones.SAFE_AREA_GROUP]).
+static func get_safe_areas(zone: Node) -> Array[Node3D]:
+	return Zones.get_group_nodes(zone, Zones.SAFE_AREA_GROUP)
+
+
+## Volúmenes letales de la zona [param zone] (grupo [constant Zones.LETHAL_GROUP]).
+static func get_lethal_volumes(zone: Node) -> Array[Node3D]:
+	return Zones.get_group_nodes(zone, Zones.LETHAL_GROUP)
+
+
+## Puntos de los maniquíes de entrenamiento de la zona [param zone] (grupo
+## [constant Zones.DUMMY_GROUP]).
+static func get_dummy_points(zone: Node) -> Array[Node3D]:
+	return Zones.get_group_nodes(zone, Zones.DUMMY_GROUP)
+
+
+## Código de red del reino del metadato [code]realm[/code] de [param node] (un punto de aparición o
+## una zona segura), o -1 si no tiene el metadato o no es un reino jugable.
+static func node_realm_code(node: Node) -> int:
+	var id: StringName = Zones.get_spawn_realm(node)
+	if not RealmCatalog.is_realm(id):
+		return -1
+	return RealmCatalog.code_of(id)
+
+
+## Radio (m) de una zona segura ([method Zones.get_safe_area_radius]).
+static func safe_area_radius(area: Node) -> float:
+	return Zones.get_safe_area_radius(area)
+
+
 ## Grupo de nodos que marca los puntos de aparición de una zona (para avisos y registros).
 static func spawn_group() -> StringName:
 	return Zones.SPAWN_GROUP

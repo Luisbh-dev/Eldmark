@@ -38,6 +38,22 @@ const SPAWN_GROUP: StringName = &"spawn_points"
 const REALM_META: StringName = &"realm"
 ## Grupo de las cámaras de revisión de una zona (Marker3D con el metadato [code]fov[/code]).
 const SCREENSHOT_GROUP: StringName = &"screenshot_points"
+## Grupo de los puntos de reaparición tras morir (docs/combate.md, sección 5): marcadores con el
+## metadato [constant REALM_META], en el orden de la escena. El cliente y el servidor cargan la misma
+## zona, así que el índice de un punto es el mismo en los dos lados. Una zona sin ninguno usa sus
+## puntos de aparición ([constant SPAWN_GROUP]).
+const RESPAWN_GROUP: StringName = &"respawn_points"
+## Grupo de las zonas seguras (campamentos): [Marker3D] con los metadatos [constant REALM_META] y
+## [constant SAFE_AREA_RADIUS_META]. Solo protegen a los jugadores de su reino.
+const SAFE_AREA_GROUP: StringName = &"safe_areas"
+## Metadato con el radio (m) de una zona segura.
+const SAFE_AREA_RADIUS_META: StringName = &"radius"
+## Radio (m) de una zona segura sin el metadato [constant SAFE_AREA_RADIUS_META].
+const SAFE_AREA_DEFAULT_RADIUS: float = 24.0
+## Grupo de los volúmenes letales: [Area3D] (máscara de la capa 2) que matan a quien entra.
+const LETHAL_GROUP: StringName = &"lethal_volumes"
+## Grupo de los puntos donde el servidor coloca un maniquí de entrenamiento al arrancar la zona.
+const DUMMY_GROUP: StringName = &"dummy_points"
 
 
 ## true si [param zone_id] es una zona registrada.
@@ -98,6 +114,44 @@ static func find_spawn_point(zone: Node, realm: StringName) -> Node3D:
 		return for_realm[0]
 	var any: Array[Node3D] = get_spawn_points(zone)
 	return any[0] if not any.is_empty() else null
+
+
+## Nodos de [param zone] (descendientes) del grupo [param group], en el orden de la escena. La zona
+## debe estar en el árbol; los nodos que no son [Node3D] se ignoran.
+static func get_group_nodes(zone: Node, group: StringName) -> Array[Node3D]:
+	var result: Array[Node3D] = []
+	if zone == null or not zone.is_inside_tree():
+		return result
+	for node: Node in zone.get_tree().get_nodes_in_group(group):
+		var found: Node3D = node as Node3D
+		if found != null and (zone == found or zone.is_ancestor_of(found)):
+			result.append(found)
+	return result
+
+
+## Puntos de reaparición de [param realm] en [param zone], en el orden de la escena: los nodos del
+## grupo [constant RESPAWN_GROUP] con ese reino o, si la zona no tiene ningún nodo en ese grupo, sus
+## puntos de aparición ([method get_spawn_points]) de ese reino. El índice de la lista es el que viaja
+## en RESPAWN_REQUEST y RESPAWN.
+static func get_respawn_points(zone: Node, realm: StringName) -> Array[Node3D]:
+	var all_points: Array[Node3D] = get_group_nodes(zone, RESPAWN_GROUP)
+	if all_points.is_empty():
+		return get_spawn_points(zone, realm)
+	var result: Array[Node3D] = []
+	for point: Node3D in all_points:
+		if realm.is_empty() or get_spawn_realm(point) == realm:
+			result.append(point)
+	return result
+
+
+## Radio (m) de una zona segura: su metadato [constant SAFE_AREA_RADIUS_META] o
+## [constant SAFE_AREA_DEFAULT_RADIUS] si falta o no es un número positivo.
+static func get_safe_area_radius(area: Node) -> float:
+	var value: Variant = area.get_meta(SAFE_AREA_RADIUS_META, SAFE_AREA_DEFAULT_RADIUS)
+	if typeof(value) != TYPE_FLOAT and typeof(value) != TYPE_INT:
+		return SAFE_AREA_DEFAULT_RADIUS
+	var radius: float = float(value)
+	return radius if radius > 0.0 and is_finite(radius) else SAFE_AREA_DEFAULT_RADIUS
 
 
 ## Cámaras de revisión de [param zone] (grupo [constant SCREENSHOT_GROUP]) en el orden de la

@@ -3849,6 +3849,26 @@ metadata/realm = "solmarch"
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.5, 6.25, 138)
 metadata/realm = "solmarch"
 
+[node name="SafeAreas" type="Node3D" parent="." unique_id=1706012101]
+
+[node name="CampamentoVardheim" type="Marker3D" parent="SafeAreas" unique_id=1706012102 groups=["safe_areas"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.25, -138)
+metadata/radius = 24.0
+metadata/realm = "vardheim"
+
+[node name="CampamentoSolmarch" type="Marker3D" parent="SafeAreas" unique_id=1706012103 groups=["safe_areas"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.25, 138)
+metadata/radius = 24.0
+metadata/realm = "solmarch"
+
+[node name="DummyPoints" type="Node3D" parent="." unique_id=1706012104]
+
+[node name="MunecoVardheim" type="Marker3D" parent="DummyPoints" unique_id=1706012105 groups=["dummy_points"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.25, -108)
+
+[node name="MunecoSolmarch" type="Marker3D" parent="DummyPoints" unique_id=1706012106 groups=["dummy_points"]]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 6.25, 108)
+
 [node name="ScreenshotPoints" type="Node3D" parent="." unique_id=1194357539]
 
 [node name="vista_desde_puerta_vardheim" type="Marker3D" parent="ScreenshotPoints" unique_id=797801654 groups=["screenshot_points"]]
