@@ -7,12 +7,15 @@ con rebobinado (CMB-22), arco (CMB-23), cambio de arma (CMB-24), derribado (CMB-
 (UI-45). Continúa [combate.md](combate.md) (sus §1, §3, §4 y §6 se dan por leídos), [red.md](red.md) (§6,
 §8, §10, §14) y el orden del tick de [fuerte.md 1.7](fuerte.md#17-orden-del-tick-completa-combatemd-42).
 
-Versión 1, escrita de noche. Lo marcado «comprobado» sale de sondas en Godot 4.7.2 headless (no se suben).
+Versión 2: la 1 tras la revisión de tres revisores (§10). Lo marcado «comprobado» sale de sondas en
+Godot 4.7.2 headless (no se suben).
 
-Convivencia con F4 (PNJ, en curso a la vez), que añade armas `data/combat/npc_*.tres` y
-`AttackDefinition.unblockable` (solo servidor): **ningún id del catálogo es fijo**, todo se pide por
-nombre (`CombatCatalog.ability_id(&"shield_bash")`), y los PNJ usan habilidades y efectos como un
-jugador (`NpcBrain` pulsa `ABILITY_n`; su arma puede llevar `abilities`).
+Convivencia: F4 (PNJ) y el chat y los grupos (SOC-03 a SOC-08, protocolo 5) se fusionan **antes** que
+cualquier paquete H (§7.1). F4 añade armas `data/combat/npc_*.tres`, `AttackDefinition.unblockable`
+(solo servidor) y el comando 12: **ningún id del catálogo es fijo**, todo se pide por nombre
+(`CombatCatalog.ability_id(&"shield_bash")`). Los PNJ del fuerte (`HfsmBrain` y `NpcWorld` de F4;
+`NpcBrain` sigue siendo el maniquí) usan habilidades y efectos como un jugador (su arma puede llevar
+`abilities`); rematar derribados se lo enseña H3c (§4.5).
 
 ---
 
@@ -24,7 +27,7 @@ Las cuatro primeras eran pendientes del backlog que bloqueaban; se toman con su 
 | Pregunta | Decisión |
 |---|---|
 | Recurso de las habilidades | Solo reutilización en las armas físicas; maná solo en los bastones (fase 6). La resistencia sigue siendo el recurso defensivo. *Provisional, tomada de noche.* |
-| Origen y dirección de los proyectiles | Rayo de cámara canónico desde `look_yaw`, `look_pitch` y un bit de hombro; la flecha sale del pecho hacia el punto apuntado. *Provisional, tomada de noche.* |
+| Origen y dirección de los proyectiles | Rayo de cámara canónico desde `look_yaw`, `look_pitch` y un bit de hombro; la flecha sale del pecho hacia el punto apuntado, que converge a la profundidad del enemigo más cercano a la mira (§4.4). *Provisional, tomada de noche.* |
 | Derribado | Solo en PvP: si el golpe mortal es de un jugador de otro reino, se queda derribado 20 s. Contra PNJ, el entorno o en PvE, muerte directa. *Provisional, tomada de noche.* |
 | HUD y recurso secundario | Disposición de acción: vida, resistencia y barra abajo al centro; la resistencia se oculta llena; el hueco del recurso secundario queda reservado para los bastones. *Provisional, tomada de noche.* |
 | Cuándo empieza la reutilización | En el **compromiso**: el primer tick activo de la habilidad. Las canalizaciones la fijan al acabar. Un control o una esquiva antes del compromiso no la gastan. |
@@ -38,9 +41,10 @@ Las cuatro primeras eran pendientes del backlog que bloqueaban; se toman con su 
 | Efectos que mueven | Dos ranuras en `CombatState` (ralentizar, enraizar); el resto vive en el servidor. |
 | Golpe de escudo | Imbloqueable (`AttackDefinition.unblockable`, de F4) y aturde 0,8 s. Se esquiva. |
 | Muro de escudos | Bloqueo de 180° y una caja que para los proyectiles enemigos: protege de flechas a los de detrás, no de golpes. |
-| Interrupción | Solo un impacto con daño (no bloqueado) corta beber, levantar, rematar y los lanzamientos marcados. Los controles cortan cualquier acción, como hoy. |
+| Interrupción | Solo un HIT de golpe o de flecha con resultado IMPACT, daño > 0 y autor hostil (ni pulsos ni entorno) corta beber y los lanzamientos marcados (fase 0, `[0, cast)`), levantar y rematar. Los controles cortan cualquier acción, como hoy. |
 | Fuego amigo | Sigue sin haber: flechas y áreas atraviesan a los aliados. |
 | Teclas nuevas | Q cambiar de arma, R poción de vida, T poción de resistencia. Se reasignan con UI-17. |
+| Desvíos del backlog | CMB-21: el muro protege a los de detrás solo de flechas. CMB-23: sin dispersión; la carga da daño y velocidad (trayectoria más tensa). CMB-24: el arma activa va en el bit 3 de `flags` del registro, no en el byte de acción. PRG-04: solo las dos armas, sin hoja derivada (§9). Anotados en backlog.md. |
 
 ---
 
@@ -49,7 +53,7 @@ Las cuatro primeras eran pendientes del backlog que bloqueaban; se toman con su 
 | Dato | Dónde vive | Predicho | Viaja en |
 |---|---|---|---|
 | Habilidad en curso: acción ABILITY, id, tick, dirección del avance | `CombatState` | Sí | estado propio; byte de acción de los remotos (§5.5) |
-| Reutilizaciones (6 ticks absolutos), la de los consumibles y las cargas | `CombatState` | Sí; el servidor solo las impone al aparecer o recargar | estado propio |
+| Reutilizaciones (6 ticks absolutos), la de los consumibles y las cargas | `CombatState` | Sí; el servidor impone todo al aparecer y, en el campamento, solo las cargas (§3.5) | estado propio |
 | Arma activa y la de la otra ranura | `CombatState` | El cambio, sí; la pareja la impone el servidor (plantilla) | estado propio; SPAWN público; bit 3 de `flags` del registro; LOADOUT |
 | Ralentizar y enraizar (2 ranuras) | `CombatState`, **impuestos por el servidor** | No: se adoptan al reconciliar; su efecto en la velocidad sí se predice | estado propio; STATUS |
 | Sangrado, curación en el tiempo, más daño, menos mitigación | `Combatant` (`StatusSystem`) | No | STATUS, HIT (pulso), HEAL |
@@ -121,7 +125,7 @@ class_name ProjectileDefinition extends Resource     # P entera: balística de l
 @export var radius_m: float = 0.05; @export var lifetime_s: float = 2.0
 
 class_name EquipmentTemplate extends Resource        # ni P ni S: la impone el servidor
-@export var id: StringName
+@export var id: StringName; @export var selectable: bool = true   # false: solo pruebas y PNJ
 @export var weapons: Array[WeaponDefinition]        # 1 o 2, en orden de ranura
 @export var consumable_charges: PackedInt32Array = PackedInt32Array([3, 2])   # 0–15 cada una
 ```
@@ -135,11 +139,13 @@ Cambios en los recursos existentes:
   `can_block: bool = true` (P). `light_combo` admite de 1 a 3 golpes.
 - `CombatRules`. P: `swap_s` 0,4, `swap_move_scale` 0,8, `downed_move_scale` 0,15, `downed_turn_rate` 3,
   `revive_s` 3, `execute_s` 1, `consumables: Array[AbilityDefinition]` (exactamente 2),
-  `consumable_cooldown_s` 20, `aim_pivot_height` 1,6, `aim_shoulder_offset` 0,6, `aim_range_m` 150,
-  `muzzle_height` 1,4. S: `downed_health` 400, `downed_s` 20, `revived_health` 300,
-  `interact_range_m` 2,0, `interact_keep_range_m` 2,5, `ability_block_angle_deg` 180,
-  `ability_block_stamina_per_damage` 0,6, `max_projectiles_per_shooter` 8, `max_projectiles_per_zone`
-  256, `default_template` (escudero).
+  `consumable_cooldown_s` 20, `aim_pivot_height` 1,6, `aim_shoulder_offset` 0,6,
+  `aim_camera_v_offset` 0,1, `aim_range_m` 150, `aim_converge_deg` 12, `muzzle_height` 1,4. S:
+  `downed_health` 400, `downed_s` 20, `revived_health` 300, `interact_range_m` 2,0,
+  `interact_keep_range_m` 2,5, `ability_block_angle_deg` 180, `ability_block_stamina_per_damage` 0,6,
+  `max_projectiles_per_shooter` 8, `max_projectiles_per_zone` 64 (§4.4, §8), `default_template`
+  (escudero). `aim_shoulder_offset` y `aim_camera_v_offset` son el `h_offset` y el `v_offset` de
+  `camera_rig.tscn` (lo comprueba `test_aim_ray`).
 
 ### 2.2 Catálogo
 
@@ -158,10 +164,12 @@ Cambios en los recursos existentes:
   necesita el byte de acción); canalización sin recuperación; consumible con `cooldown_s` 0 y
   `consumable_cooldown_ticks > total` de cada consumible; duración de un efecto con pulsos múltiplo de
   `pulse_ticks`; ROOT con escala 0, SLOW con escala > 0; ventana del avance dentro de la habilidad;
-  `lifetime_ticks ≥ 1`; `projectile_count` 1–5.
-- **`prediction_hash`** (`_HASH_FORMAT` pasa a 2) añade: los campos P de reglas, ataques, armas y
-  habilidades (con el avance horneado), id, tipo y `move_speed_scale` de cada efecto, y los proyectiles.
-  No entran: daños, formas, controles, pulsos, derribado, interacción, muros ni plantillas.
+  `lifetime_ticks ≥ 1`; `projectile_count` 1–5; una plantilla `selectable` no lleva armas `npc_*`.
+- **`prediction_hash`** (`_HASH_FORMAT` pasa a 2): entra **todo campo marcado P en §2.1, sin
+  excepciones** (reglas, ataques, armas y habilidades con el avance horneado; id, tipo y
+  `move_speed_scale` de cada efecto; los proyectiles), también `downed_move_scale`, `downed_turn_rate`,
+  `revive_s`, `execute_s` y `blocks`. No entran los S (`downed_health`, `downed_s`, `revived_health`,
+  `interact_*`, `wall_*`, `ability_block_*`, daños, formas, controles, pulsos) ni las plantillas.
 
 ### 2.3 Valores de partida
 
@@ -216,6 +224,13 @@ Vuelo del tensado máximo: 0,14 s a 10 m, 0,43 s a 30 m, 0,71 s a 50 m (caída d
 s y 3,7 m de caída a 50 m. El TTK objetivo de 12.5 (mediana 10–15 s) se vuelve a medir en 2 contra 2 con
 bots y las dos plantillas.
 
+**Resistencia** (la columna de 12.1): ninguna acción nueva cuesta resistencia; la esquiva del arco es la
+de la espada. El muro gasta 0,6 por punto bloqueado y no regenera: un atacante solo (156,3 DPS) le quita
+563 en 6 s y **no lo rompe**; dos, 1000 en 5,3 s. Es a propósito (contrajuego: golpe de escudo
+imbloqueable, flanco y superioridad numérica); H5 mide la rotura 1 contra 1 y 2 contra 1 y, si dos
+tampoco la rompen, sube el coste a 0,8–1,0. El agotamiento impide el muro (como BLOCK) y el tensado
+(como la carga, `_try_charge`); no impide el disparo rápido, las demás habilidades ni las pociones.
+
 ---
 
 ## 3. Estado y máquina de acciones
@@ -241,8 +256,11 @@ Cambios en campos existentes:
 - `action`: 9 ABILITY (habilidad o consumible), 10 SWAP, 11 DOWNED, 12 REVIVE, 13 EXECUTE (14 y 15
   libres). `action_id` es un ataque en LIGHT/HEAVY/CHARGE y una habilidad en ABILITY.
 - `buffered` cambia de forma: **bits 0–3 tipo, bits 4–7 ticks que le quedan**. Tipos: 0 nada, 1
-  PRIMARY, 2 DODGE, 3 enlace, 4–6 ABILITY_1–3, 7 SWAP, 8–9 CONSUMABLE_1–2. Toda lectura de `buffered &
-  3` pasa a `buffered_type()`.
+  PRIMARY, 2 DODGE, 3 enlace, 4–6 ABILITY_1–3, 7 SWAP, 8–9 CONSUMABLE_1–2. Las lecturas de `buffered &
+  3` no se sustituyen sin más: `_run_buffer` despacha por tipo (1 y 3 → ligero, 2 → esquiva, 4–6 →
+  `_try_ability`, 7 → `_try_swap`, 8–9 → `_try_consumable`); en `_finish_expired`, `linked` = tipo ∈
+  {PRIMARY, enlace}; y la caducidad de cualquier tipo distinto de PRIMARY con el ligero ya acabado
+  también pone `combo_step = 0`.
 - `action_dir` guarda también la dirección del avance de una habilidad.
 
 Reutilizaciones y efectos son ticks absolutos, como `cc_until_tick`: restaurar un estado no tiene
@@ -278,10 +296,14 @@ una habilidad, un cambio de arma ni una poción.
 2. **Efectos de movimiento**: se vacía la ranura con `move_effect_until ≤ t`.
 3. **Resistencia**, como hoy; tampoco regenera en una canalización que bloquea.
 4. **Entradas** (flancos con los bits de `combat_flags` y `combat_flags2`, sin `SUBSTITUTED`). En
-   DOWNED y DEAD solo se borran búfer y pulsación. Primero el búfer; después, **DODGE > ABILITY_1 >
-   ABILITY_2 > ABILITY_3 > CONSUMABLE_1 > CONSUMABLE_2 > PRIMARY > SWAP > BLOCK**. Un flanco que no se
-   puede ejecutar ahora va al búfer (una ranura, la última gana); se descarta si no tiene sentido
-   (ranura vacía, sin cargas, sin arma alternativa, `can_block` falso, avance con ROOT).
+   DOWNED y DEAD solo se borran búfer y pulsación. Orden fijo: **4a** fines por entrada (canalización y
+   REVIVE/EXECUTE, abajo); **4b** el búfer (vale en `p+1 … p+8` para la pulsación del tick `p`, por tipo,
+   §3.1); **4c** los flancos nuevos por prioridad, **DODGE > ABILITY_1 > ABILITY_2 > ABILITY_3 >
+   CONSUMABLE_1 > CONSUMABLE_2 > PRIMARY > SWAP > BLOCK**. Un flanco que no se puede ejecutar ahora va
+   al búfer (una ranura, la última gana); se descarta si no tiene sentido (ranura vacía, sin cargas, sin
+   arma alternativa, `can_block` falso, avance con ROOT). Una canalización con `channel_hold` que sale
+   del búfer exige su botón abajo; si no, se descarta. Ejemplo: soltar 3 y pulsar PRIMARY en el mismo
+   tick acaba el muro en 4a y el ligero sale en 4c, en ese tick.
    - **DODGE**: como hoy y además desde ABILITY a partir de su `cancel_to_dodge_from` y desde REVIVE y
      EXECUTE (los corta). No con ROOT. Desde una canalización, la acaba (regla 5).
    - **ABILITY_n**: hay habilidad en la ranura; `t ≥ ability_ready[n]` (o bit7); acción que lo permite:
@@ -300,18 +322,21 @@ una habilidad, un cambio de arma ni una poción.
      `combat_flags2`, `combo_step = 0`. Nunca a mitad de anticipación, golpe activo, carga, lanzamiento
      o canalización: va al búfer.
    - **BLOCK**: como hoy, solo si `can_block`.
-   - **Canalización en curso** (ABILITY con `channel` y `t ≥ action_tick + cast`): con `channel_hold`,
-     una entrada real sin el botón de su ranura la acaba; con `channel_breaks_on_move`, una entrada real
-     con `|move| ≥ 0,1` también.
-   - **INTERACT** no empieza nada aquí (levantar y rematar los empieza el servidor, §4.5); en REVIVE o
-     EXECUTE, una entrada real sin INTERACT los acaba (a NONE).
-   - **Búfer**: la pulsación del tick `p` vale en `p+1 … p+8` y se ejecuta con prioridad sobre las nuevas.
+   - **Canalización en curso** (4a; ABILITY con `channel` y `t ≥ action_tick + cast`): con
+     `channel_hold`, una entrada real sin el botón de su ranura la acaba; con `channel_breaks_on_move`,
+     una entrada real con `|move| ≥ 0,1` también.
+   - **INTERACT** (4a) no empieza nada aquí (levantar y rematar los empieza el servidor, §4.5); en REVIVE
+     o EXECUTE, una entrada real sin INTERACT los acaba (a NONE).
 5. **Compromiso** (tras las entradas): si `action == ABILITY` y `t == action_tick + cast_ticks`:
    consumible → su carga − 1 y `consumable_ready_tick = t + consumable_cooldown_ticks`; habilidad sin
    canalización → `ability_ready[slot] = t + cooldown_ticks`; en los dos, resistencia +
    `stamina_restore` (sin pasar del máximo). Con `cast = 0` se compromete en el tick en que empieza. Una
    canalización fija `ability_ready[slot] = t_fin + cooldown_ticks` en el tick en que acaba, por la causa
-   que sea (también si la corta el servidor, §3.5). Con el bit7 no se fija nada ni se gastan cargas.
+   que sea (también si la corta el servidor, §3.5), **si ha llegado comprometida**: la que acaba en
+   `t ≤ action_tick + cast` (soltar o DODGE en el tick del compromiso, que 4a y 4c miran antes) se
+   cancela sin reutilización. Un toque de 3 más corto que el lanzamiento da 12 ticks de lanzamiento, NONE
+   y ninguna reutilización; soltar en `action_tick + cast + 1`, un tick de muro y 18 s. Con el bit7 no se
+   fija nada ni se gastan cargas.
 6. **Salida de movimiento** (§3.4).
 
 ### 3.4 Movimiento permitido
@@ -342,14 +367,18 @@ acción, si cortan una canalización comprometida, fijan su reutilización en es
 - `impose_downed(c, t)`: DOWNED, borra búfer, pulsación, combo y ranuras de movimiento.
 - `impose_revived(c, t)`: NONE con `action_tick = t`.
 - `impose_interact(c, t, action)`: REVIVE o EXECUTE con `action_tick = t`.
-- `impose_interrupt(c, t)`: NONE (corta beber, un lanzamiento marcado, REVIVE o EXECUTE); antes del
-  compromiso no hay reutilización ni gasto.
+- `impose_interrupt(c, t)`: NONE (corta beber, un lanzamiento marcado, REVIVE o EXECUTE) **conservando
+  el `action_tick` de lo que corta**, como `_to_none` (§4.2, muestra antigua); antes del compromiso no
+  hay reutilización ni gasto.
 - `impose_move_effect(c, effect_id, until_tick)`: mismo id → `until = max`; si no, ranura libre; si no,
   sustituye a la que acaba antes.
 - `clear_move_effects(c)`, `reset_cooldowns(c)`.
+- `set_charges(c, charges)`: **solo** `consumable_charges`. La usan la recarga del campamento y el
+  comando 16: no tocan arma, reutilizaciones, ranuras ni la acción en curso.
 - `set_loadout(c, weapon_1, weapon_2, charges)` y `reset_for_respawn(c, t, weapon_1, weapon_2,
   charges)`: armas en orden de ranura (activa la 1), reutilizaciones a 0, cargas, ranuras vacías; se
-  conservan los bits de botones pulsados.
+  conservan los bits de botones pulsados. **Solo al aparecer** (personaje recién creado o DEAD); sobre un
+  vivo fuerzan antes NONE. El comando 5 `set_weapon` pasa a ser `set_loadout` con el arma en la ranura 1.
 
 ### 3.6 Consultas
 
@@ -358,7 +387,10 @@ REVIVE y EXECUTE, 3. `active_hit(c, t) -> AttackTicks` (el ataque en golpe activ
 sintetizado de la habilidad en su activo; null si no hay). `is_commit_tick(c, t)` (primer tick activo de
 LIGHT, HEAVY o ABILITY). `ability_status(c, slot, t)` (READY, COOLDOWN, BLOCKED, EMPTY, NO_CHARGES; para
 la barra). `defense_flags`: la canalización que bloquea da `DEFENSE_BLOCKING | DEFENSE_WIDE_BLOCK` (bit 7
-de `StateHistory`, libre hasta hoy); DOWNED no da ninguna defensa.
+de `StateHistory`, libre hasta hoy); DOWNED no da ninguna defensa. El byte del historial es **`(flags del
+registro & 0b111) | defense_flags`**: el bit 3 del registro (ranura 2, §5.2) no entra nunca, porque en
+`StateHistory` el bit 3 es `DEFENSE_BLOCKING`. `_record_history` enmascara y lo dicen los comentarios de
+`StateHistory` y de `ActionMachine`.
 
 ---
 
@@ -374,15 +406,18 @@ de `StateHistory`, libre hasta hoy); DOWNED no da ninguna defensa.
 | 3 | **Disparos y efectos propios** de quien está en su compromiso, por `net_id`: proyectiles nuevos (§4.4), `self_status` y `self_heal` (HEAL) | — |
 | 4 | **Resolver** sin tocar estado: golpes de ataques y habilidades contra lo congelado y el historial, puertas, y el vuelo de todos los proyectiles vivos (también los del paso 3) | 3 |
 | 5 | **Aplicar** por `net_id` del atacante (primero sus golpes, después sus proyectiles por id) y del objetivo: daño, bloqueo, controles, `target_status`, interrupciones, derribos y muertes; DESPAWN de las flechas que impactan | 4 |
-| 6 | **Efectos de estado**: pulsos y caducidades, por `net_id` del afectado y después por id de efecto | 4 |
+| 6 | **Efectos de estado**: pulsos y caducidades; primero se reúnen los pulsos de todos y después se aplican, por `net_id` del afectado e id de efecto, saltándose a quien ya esté derribado o muerto en este tick | 4 |
 | 7 | **Derribado**: desangrado, INTERACT nuevos, progreso y final de levantar y rematar | 4 |
-| 8 | Entorno, reapariciones (con plantilla) y recarga de consumibles en el campamento (cada 60 ticks) | 4 |
+| 8 | Entorno, reapariciones (con plantilla) y recarga de consumibles en el campamento (cada 60 ticks, `set_charges`) | 4 |
 | 9 | Publicar: vida, estado, byte de acción y ranura activa | 4 |
 | 10 | `FortressController.step(s)` | 4b |
 | 11 | Altas, historial, snapshots, OBJECT_STATE, eventos y SPAWN/DESPAWN de proyectiles | 5 |
 
-Un derribado o un muerto en el paso 5 no recibe más golpes de ese tick: todos se resolvieron contra el
-mismo estado, como las muertes de hoy.
+Un derribado o un muerto en el paso 5 no recibe más golpes de ese tick (`_apply_hit` descarta con
+`is_dead() or downed_tick == s`, §4.5): todos se resolvieron contra el mismo estado, como las muertes
+de hoy. Al dar de baja a una entidad (`CombatDirector.remove`: salida, `--fake-churn`, un PNJ retirado),
+sus flechas vivas salen con DESPAWN 5 en ese tick y sus efectos sobre otros se quitan (STATUS 2); la
+baja de un derribado es antes una muerte (§4.5).
 
 ### 4.2 Habilidades
 
@@ -395,12 +430,20 @@ mismo estado, como las muertes de hoy.
 - **Área**: frontal = sector; centrada = `angle_deg ≥ 360` (sin cono, ya lo trata `HitShapes`).
 - **Efecto propio**: en el paso 3, una vez (el compromiso cae en un solo tick).
 - **Muro de escudos**: melé con `DEFENSE_WIDE_BLOCK` → cono de `ability_block_angle_deg` y gasto de
-  `ability_block_stamina_per_damage`; para los proyectiles, además, la caja (§4.4). La muestra antigua
-  cuenta con la regla de combate.md §4.3.
+  `ability_block_stamina_per_damage`; para los proyectiles, además, la caja (§4.4).
+- **Muestra antigua del bloqueo** (cambia combate.md §4.3; H3a): **no cuenta si la acción congelada no es
+  BLOCK y su `action_tick > view_tick`, sea NONE o no** (hoy `_dropped_guard_after` da por buena
+  cualquier NONE). `_to_none` e `impose_interrupt` conservan el `action_tick` de lo que acaba: soltar el
+  escudo sin más sigue contando; bajarlo para beber o levantar y volver a NONE, no.
 - **Puertas**: los golpes de habilidad prueban las puertas igual que los ataques.
-- **Interrupción**: un IMPACTO con daño > 0 a quien está en el lanzamiento de una habilidad con
-  `interrupt_on_damage`, bebiendo, en REVIVE o en EXECUTE → `impose_interrupt` (si el golpe no impone
-  ya un control). HIT con el bit 5.
+- **Interrupción**: un HIT de golpe o de flecha con resultado IMPACT, daño > 0 y autor hostil (ni pulsos
+  de efectos ni entorno) a quien está en la fase 0 (`[0, cast)`) de un consumible o de una habilidad con
+  `interrupt_on_damage`, o en REVIVE o EXECUTE → `impose_interrupt` (si el golpe no impone ya un
+  control). Tras el compromiso ya no se interrumpe: la carga y la curación ya están puestas. HIT con el
+  bit 5.
+- **Protección de reaparición**: se pierde también en ABILITY que no sea consumible
+  (`CombatDirector._started_attack`, como LIGHT, HEAVY y CHARGE); beber, SWAP, REVIVE y EXECUTE no la
+  quitan.
 
 ### 4.3 Efectos de estado (`StatusSystem`, `scripts/server/status_system.gd`)
 
@@ -413,8 +456,9 @@ mismo estado, como las muertes de hoy.
 - **Pulsos exactos**: en `anchor + k · P` para `k = 1, 2, …` mientras `anchor + k · P ≤ until`. Sin
   renovar, N = D / P (6 en `bleed`). El último pulso y la caducidad caen en el mismo tick: primero el
   pulso. DOT: `pulse_amount × stacks` de su tipo, sin bloqueo ni crítico, con los modificadores →
-  HIT con la fuente del efecto y el atacante `source_id` (puede derribar y matar). HOT: cura sin pasar
-  del máximo → HEAL. Los PNJ inmortales siguen sin bajar de 1.
+  HIT con la fuente del efecto y el atacante `source_id` (puede derribar y matar; no interrumpe). HOT:
+  cura sin pasar del máximo → HEAL. Los PNJ inmortales siguen sin bajar de 1. `step` reúne los pulsos
+  antes de aplicarlos (§4.1, paso 6): un derribo a mitad no borra la lista que se recorre.
 - **Caducidad**: en `s ≥ until` se quita (STATUS 2); la ranura de movimiento ya la vacía la simulación
   en el mismo tick.
 - **Modificadores**: `DamageFormula.compute(..., damage_scale = 1 + Σ DAMAGE_UP del atacante,
@@ -427,84 +471,136 @@ mismo estado, como las muertes de hoy.
 
 **Disparo** (paso 3), por cada proyectil del ataque o la habilidad que compromete en `s`:
 
-1. **Rebobinado**: el de combate.md §4.3 paso 2, fijado ahora y para todo el vuelo (`rewind` y
-   `defense_rewind`; se factoriza de `CombatResolver._swing_rewind`). Rechazado → flecha **inofensiva**
-   (vuela y choca con el mundo, no prueba personajes), sospecha + 1 y registro. También es inofensiva
-   si el tirador está en la zona segura de su reino. Falsos y PNJ: sin rebobinado.
+1. **Rebobinado**: el de combate.md §4.3 paso 2, fijado ahora para todo el vuelo y **redondeado a ticks
+   enteros** (`rewind` y `defense_rewind`; se factoriza de `CombatResolver._swing_rewind`). Rechazado →
+   flecha **inofensiva** (vuela y choca con el mundo, no prueba personajes), sospecha + 1 y registro.
+   También es inofensiva si el tirador está en la zona segura de su reino. Falsos y PNJ: sin rebobinado.
 2. **Puntería** con la entrada de `s` (`InputQueue.get_applied(s)`): `AimRay.canonical(pies, look_yaw,
    look_pitch, AIM_LEFT)` da el rayo de la cámara canónica: base `B = Basis(UP, yaw) · Basis(RIGHT,
-   pitch)`, dirección `B · FORWARD` y origen `pies + (0, aim_pivot_height, 0) + B · (±aim_shoulder_offset,
-   0, 0)` (el punto del rayo a la altura del pivote: lo que hay detrás del personaje no cuenta). Punto
-   apuntado `P`: el más cercano entre el mundo (`LINE_OF_SIGHT_MASK`) y las cápsulas hostiles muestreadas
-   en `s − rewind`, hasta `aim_range_m`. La salida es el pecho, `O = pies + (0, muzzle_height, 0)`;
+   pitch)`, dirección `D = B · FORWARD` y origen `C = pies + (0, aim_pivot_height, 0) +
+   B · (±aim_shoulder_offset, aim_camera_v_offset, 0)` (lo que hay detrás del personaje no cuenta).
+   **Punto apuntado** (`AimRay.aim_point`) `P = C + D · t`, con `t_m` la distancia al primer choque con
+   el mundo (`LINE_OF_SIGHT_MASK`) o `aim_range_m` y los hostiles en `s − rewind`: si el rayo toca una
+   cápsula antes de `t_m`, `t` es ese choque; si no, el hostil cuyo centro `H` (pies + 0,9 m) queda a
+   menos de `aim_converge_deg` de `D` con `(H − C) · D` en `(0, t_m)`, el de menor ángulo (empate por
+   `net_id`), da `t = (H − C) · D`; sin ninguno, `t = t_m`. Así la flecha cruza la mira a la
+   profundidad del blanco aunque se adelante al aire (sin convergencia se desviaba `|O − C| · (1 − d/t)`,
+   0,51 m a 30 m con el fondo a 150 m). Salida en el pecho, `O = pies + (0, muzzle_height, 0)`;
    `dir = (P − O).normalized()`, girada en yaw por los desfases del abanico; `v0 = dir · velocidad ·
    lerp(1, charge_speed_scale, f)`, con la `f` de la carga del daño (combate.md §4.4; 0 sin carga).
-3. **Redondeo**: `O` y `v0` se cuantizan como viajan en el SPAWN (1 cm, 1 cm/s) y el servidor vuela con
-   eso, para que la trayectoria del cliente sea la misma.
-4. **Alta**: id del espacio de `NetEntityRegistry` (`allocate_transient_id`, misma cuarentena de 600
-   ticks) sin entrar en su lista de entidades; SPAWN a quien tiene relevante al tirador y a él. Tope de 8
-   vivos por tirador (sale el más viejo, DESPAWN 5) y 256 por zona (no se crea; registro).
+   Bots y PNJ: `AimRay.look_for(pies, punto, izquierdo)` da el `(yaw, pitch)` cuyo rayo pasa por un punto
+   (3 iteraciones de punto fijo); apuntan a `O + dir · |blanco − O|` con la `dir` de `solve_lead`.
+3. **Redondeo**: `O` y `v0` se cuantizan como viajan en el SPAWN (1 cm, 1 cm/s; `Ballistics.quantize`) y
+   el servidor vuela con eso, para que la trayectoria del cliente sea la misma.
+4. **Copia del autor**: el proyectil guarda `owner_id`, reino, si es jugador, `source`, `rewind`,
+   `defense_rewind`, la `f` de la carga y `damage_scale` (DAMAGE_UP en `s`), y no vuelve a buscar el
+   `Combatant` del tirador (`Hit` gana `projectile_id` y esta copia; `should_down` recibe el reino y si es
+   jugador). Si el tirador se da de baja, DESPAWN 5 (§4.1).
+5. **Alta**: id del espacio de `NetEntityRegistry` (`allocate_transient_id`, misma cuarentena de 600
+   ticks) sin entrar en su lista de entidades; SPAWN a quien tiene relevante al tirador y a él. **Un
+   disparo nunca se rechaza** (compromiso y reutilización ya están predichos): con 8 vivos del tirador
+   sale su más vieja, y con 64 en la zona, la más vieja de la zona (empate por id), con DESPAWN 5 en ese
+   tick: suelen ser las tiradas al cielo, que viven los 2 s.
 
-Comprobado: `Camera3D.h_offset` desplaza el origen del rayo del centro sin girarlo; zoom y colisión del
-brazo (a lo largo del rayo) no cambian la línea, solo el hombro y el tirón lateral contra una pared.
+Comprobado: `h_offset` y `v_offset` desplazan el origen sin girar el rayo (con `v_offset`, a 4·10⁻⁷ m
+del canónico); zoom y brazo (a lo largo del rayo) no cambian la línea; el hombro y el tirón lateral, sí.
 
-**Vuelo**, con `Ballistics.position(p0, v0, g, n) = p0 + v0 · n/60 + (0, −½ · g · (n/60)², 0)` en f64. En
-el tick `k`, con `n = k − spawn_tick`, se prueba el segmento `[pos(n), pos(n + 1)]` (en el propio tick
-del disparo, el primero):
+**Vuelo**: los dos lados llaman a la misma `Ballistics.position(p0, v0, g, n) = p0 + v0 · n/60 + (0, −½
+· g · (n/60)², 0)`, con `n` entero (servidor) o fraccionario (dibujo). En el tick `k`, con `n = k −
+spawn_tick`, se prueba el segmento `[pos(n), pos(n + 1)]` (en el tick del disparo, el primero). Un
+segmento que **empieza dentro** de una caja o una cápsula da fracción 0.
 
-- **Mundo**: `intersect_ray` contra `LINE_OF_SIGHT_MASK` (mundo y puerta; no los bloqueos invisibles).
-  Segmentos contiguos: no hay túnel. Si el cuerpo golpeado es de un `StructureTarget` que el tirador
-  puede dañar (`get_body_rids`), es un golpe a la puerta (perforante ×0,2).
-- **Muros**: las cajas de los muros de escudos de entidades hostiles al tirador, en su estado congelado
-  (`HitShapes.segment_box_fraction`).
+- **Mundo**: `intersect_ray` contra `LINE_OF_SIGHT_MASK` (mundo y puerta; no los bloqueos invisibles);
+  el primer segmento, con `hit_from_inside = true`. Segmentos contiguos: no hay túnel. Si el cuerpo es de
+  un `StructureTarget` que el tirador puede dañar (`get_body_rids`), es un golpe a la puerta (perforante
+  ×0,2).
+- **Muros**: las cajas de los muros de escudos de entidades hostiles al tirador, en `k` (presente, como
+  el mundo y la puerta; quien lo sostiene va a ×0,3), con `HitShapes.segment_box_fraction`.
 - **Personajes**: candidatos de combate.md §4.3 paso 4 (hostiles, vivos o derribados, sin protección ni
-  zona segura), muestreados en `k − rewind`; segmento contra cápsula de radio 0,4 + `radius_m`
-  (`HitShapes.segment_capsule_fraction`).
-- Gana la fracción menor. Personaje: invulnerable en `[floor(k − defense_rewind), k]` → sigue volando y
-  no vuelve a probarlo; bloqueo (normal o del muro) con el cono frente a `−velocidad` → BLOCKED; nunca parada;
-  si no, IMPACTO con daño de la fuente (con su carga), controles y `target_status`. Muro → BLOCKED al
-  que canaliza. Mundo → se clava.
+  zona segura) en `k − rewind`, leídos con `StateHistory.position_at(id, tick) -> Vector3` (sin crear
+  objetos; con `rewind = 0`, la congelada). Criba: una **caja barrida** por candidato (la unión de 4
+  bloques de 8 ticks que `StateHistory` mantiene al grabar, que cubre al menos `[k − 24, k − 1]`, más la
+  posición congelada), calculada una vez por tick si hay flechas vivas o disparos; solo si solapa la del
+  segmento, segmento contra cápsula de radio 0,4 + `radius_m` (`HitShapes.segment_capsule_fraction`).
+  `aim_point` criba con las mismas cajas, por ángulo.
+- Gana la fracción menor. Personaje: invulnerable en `[k − defense_rewind, k]` → sigue volando y no
+  vuelve a probarlo; bloqueo (normal o del muro) con el cono frente a `−velocidad` → BLOCKED; nunca
+  parada; si no, IMPACTO (a quemarropa si empieza dentro) con daño de la fuente (con su carga),
+  controles y `target_status`. **Muro** → BLOCKED de quien lo sostiene, como su bloqueo: sin daño
+  (`block_mitigation` 1), gasta `ability_block_stamina_per_damage × daño` y sin resistencia rompe la
+  guardia (aturde y corta la canalización con su reutilización). Mundo → se clava.
 - Sin impacto y `n + 1 ≥ lifetime_ticks`, o `y < −100` → DESPAWN 5 (caduca).
-- **Esquinas**: la flecha sale del pecho, dentro de la cápsula del tirador, que nunca solapa un muro.
-  Si la cámara ve más allá de una esquina que el pecho no ve, el segmento hacia `P` choca con la esquina:
-  no sale por el lado de la cámara. Comprobado: un rayo que empieza dentro de una caja la ignora
-  (`hit_from_inside` falso), así que el origen del rayo de puntería dentro de una pared no la detecta.
+- **Esquinas**: la flecha sale del pecho, y el segmento hacia `P` choca con la esquina que el pecho no
+  ve: no sale por el lado de la cámara. El pecho **sí** puede estar dentro de un cuerpo de vista: el
+  dueño cruza su puerta cerrada (fuerte.md §3.1) y, con los pies en el vano, el pecho queda en la caja
+  de 0,5 m. Por eso el primer segmento usa `hit_from_inside` y la flecha se clava en el origen
+  (comprobado: sin él, el rayo que empieza dentro ignora la caja). En el cuerpo a cuerpo,
+  `HitShapes.is_ray_clear` pasa a `hit_from_inside = true` (H3a): desde el vano ni se golpea ni se es
+  golpeado. Un arquero enemigo dentro de la caja del muro choca con ella; detrás de quien lo sostiene
+  (los personajes no chocan entre sí) dispara libre: el muro cubre de frente.
+- El cliente solo controla yaw, pitch y `AIM_LEFT`, como en el cuerpo a cuerpo; `P` solo elige la
+  dirección y nunca hace que la flecha atraviese nada. La puntería asistida por programa es de CMB-39.
 
 ### 4.5 Derribado, levantar y rematar (`DownedSystem`, `scripts/server/downed_system.gd`)
 
 - **Cuándo**: la vida de un **jugador** (también los falsos) llega a 0 por un golpe, flecha o pulso cuyo
   autor es un jugador hostil en una zona RVR. Si no, muerte directa (PNJ, entorno, maniquí).
 - **Caer**: `impose_downed`, `health = 0`, `downed_health = 400`, `downed_tick = s`, `downed_by`,
-  `downed_source`, efectos borrados; DOWNED (toda la zona) y HIT con el bit 6. `Combatant.is_dead()` pasa
-  a ser «vida 0 y no derribado»: el derribado sigue siendo candidato.
+  `downed_source`, efectos borrados; DOWNED (toda la zona) y HIT con el bit 6.
+- **Predicados** (`Combatant`): `is_alive()` = vida > 0, sin cambios; `is_downed()` = `downed_tick ≥ 0`;
+  `is_dead()` = vida 0 y no derribado. Un derribado no es ni vivo ni muerto, y cada uso de hoy queda así:
+
+| Dónde | Con un derribado |
+|---|---|
+| `CombatResolver._is_candidate`, `NpcWorld` (F4), `_rebuild_target_cache` (todos con `is_dead()`) | candidato, sin tocar el código |
+| `CombatDirector._apply_hit` | descarta con `is_dead() or downed_tick == s` |
+| `_apply_impact` → `take_damage` (devuelve 0 con vida 0) | `take_downed_damage`: sin bloqueo ni controles |
+| `_process_environment` (volúmenes letales) | muere; asesino `downed_by` |
+| `ZoneServer._gate_blockers` (`is_alive()`) | cuenta: la puerta no se repara con un derribado en el vano |
+| `request_respawn`, `heal` (comando y consola), `regenerate` | lo rechazan (`request_respawn`: NOT_DEAD) |
+| presencia en el círculo, `UnstuckTracker` (`is_alive()`) | sin cambios: no cuenta ni pide /atascado |
+| `status_bits` | bit 3 de derribado (§5.2), sin DEAD |
+| `_should_linger`, `_process_lingering`, `_remove_player` | ver «Salida» |
+
 - **Desangrarse**: −1 cada 3 ticks (400 en 1200 ticks = 20 s). El daño enemigo (sin bloqueo posible) le
   quita de ahí; los controles no entran. A 0: muerte. DEATH y KILL con asesino = quien dio el último
   daño, o `downed_by` con fuente «desangrado» (§5.4) si fue el tiempo.
 - **INTERACT** (paso 7): flanco en una entrada real (botones de `s` frente a los de `s − 1`, que guarda el
   `Combatant`) de alguien vivo, no derribado, en NONE o BLOCK y en el suelo; el derribado más cercano a ≤
-  `interact_range_m` (horizontal, `|Δy| ≤ 1,5`; empate por `net_id`):
+  `interact_range_m` (horizontal, `|Δy| ≤ 1,5`; empate por `net_id`) **con línea de visión**
+  (`HitShapes.is_ray_clear` del pecho, pies + 1,4, a pies + 0,5 del derribado; la puerta cerrada la
+  corta):
   - **aliado** sin nadie levantándolo → `impose_interact(REVIVE)`; INTERACT 1 con `end_tick = s +
     revive_ticks`;
   - **enemigo** (sin zonas seguras de por medio) → `impose_interact(EXECUTE)`; INTERACT 4.
 - **Seguir**: cada tick se corta (`impose_interrupt` si aún está en la acción; INTERACT 2 o 5) si quien
-  actúa ha dejado la acción (soltó, esquivó o le impusieron otra), el objetivo ya no está derribado o
-  pasa de `interact_keep_range_m`, o uno de los dos recibe un impacto con daño. Lo predicho termina solo
-  la acción: el servidor lo nota porque sale de REVIVE antes de tiempo.
+  actúa ha dejado la acción (soltó, esquivó o le impusieron otra), el objetivo ya no está derribado,
+  pasa de `interact_keep_range_m` o se pierde la línea de visión, o uno de los dos recibe un impacto
+  que interrumpe (§4.2). Lo predicho termina solo la acción: el servidor lo nota porque sale de REVIVE
+  antes de tiempo.
 - **Acabar** (se mira antes que seguir: en ese tick la simulación ya ha vuelto a NONE), en `s == inicio +
   duración`: levantar → `impose_revived`, vida 300, INTERACT 3; rematar → muerte con fuente «remate».
-- **PNJ**: no quedan derribados; un derribado es para ellos un objetivo más (F4 le da prioridad a menos de
-  6 m): lo rematan con daño.
-- **Fuerte y salida**: un derribado no cuenta en el círculo (fuerte.md 1.2); si sale en combate, el cuerpo
-  se queda (GUE-41) y se desangra.
+- **PNJ** (H3c, en el código de F4): no quedan derribados. En `NpcWorld` y `HfsmBrain`, un derribado
+  hostil a ≤ 6 m es el objetivo preferido (antes que el más cercano en pie) y se ataca con PRIMARY;
+  pide ficha de `AttackTokens` como cualquier objetivo. H3c lo anota en fuerte.md §4.2.
+- **Fuerte**: un derribado no cuenta en el círculo (fuerte.md 1.2).
+- **Salida**: toda baja de un derribado (CLIENT_LEAVE, caída de ENet, `--fake-churn` o el fin del plazo
+  de un cuerpo que se quedó por GUE-41) es antes una **muerte en ese tick**: DEATH y KILL con asesino =
+  quien dio el último daño, o `downed_by`, y fuente «desangrado»; después, DESPAWN. No hace falta
+  mantener el cuerpo ni renovar «en combate», y al volver aparece en el campamento como cualquiera.
+- **Comando 15** `down`: `downed_by = 0` (al desangrarse, DEATH sin KILL); rechazado fuera de las zonas
+  RVR y en la zona segura propia.
 
 ### 4.6 Equipo, plantillas y consumibles
 
-- `Combatant.template_id` (la vigente) y `pending_template_id`: LOADOUT_SELECT (§5.1) anota la pendiente,
-  que vale en la siguiente aparición (la primera si llega antes que CLIENT_READY, que va detrás por el
-  mismo canal fiable). Sin elegir, `default_template`. Al aparecer, `set_loadout` o `reset_for_respawn`
-  con sus armas y cargas, y LOADOUT al dueño y a quien lo tenga relevante.
+- `Combatant.template_id` es la vigente; la pendiente vive en `ServerPeer.pending_template_id` (−1 =
+  ninguna; vale en LOADING e IN_WORLD): LOADOUT_SELECT (§5.1) la anota, y se copia al `Combatant` al
+  darlo de alta (`_process_arrivals`) y en cada reaparición. Sin elegir, `default_template`; los falsos,
+  `--fake-loadout`. Al aparecer, `set_loadout` o `reset_for_respawn` con sus armas y cargas, y LOADOUT
+  al dueño y a quien lo tenga relevante.
 - **Recarga** (cada 60 ticks): vivo, fuera de combate, en la zona segura de su reino y con menos cargas
-  que su plantilla → `set_loadout` con las cargas llenas y LOADOUT al dueño.
+  que su plantilla → `set_charges` con las cargas llenas y LOADOUT al dueño. Arma, reutilizaciones,
+  ranuras y acción en curso no cambian.
 - **Pociones**: son habilidades (§2.3); la curación (HOT) la pone el paso 3; la resistencia, la simulación.
 
 ### 4.7 Validación y antitrampas
@@ -519,19 +615,23 @@ del disparo, el primero):
 
 ---
 
-## 5. Protocolo: `PROTOCOL_VERSION = 5`
+## 5. Protocolo: `PROTOCOL_VERSION = 6`
 
-«5: habilidades, efectos, cambio de arma, proyectiles, derribado y plantillas (docs/habilidades.md)».
-Si F4 sube antes la versión, esta pasa a la siguiente libre.
+«6: habilidades, efectos, cambio de arma, proyectiles, derribado y plantillas (docs/habilidades.md)». La
+5 es del chat y los grupos (SOC-03, `0x40`–`0x4F`), que se fusionan antes; F4 no la cambia. Si cambia el
+orden de fusión, la siguiente libre. `0x07` y los eventos 7–11 no chocan con SOC.
 
 ### 5.1 Entradas y mensajes C→S
 
 - INPUT_BATCH sin cambios de formato; `VALID_BUTTONS` = bits 0–12 (§3.2).
 - **LOADOUT_SELECT** (`0x07`, C→S, canal 3, 2 B): `u8 type`, `u8 template_id`. Vale desde el WELCOME,
-  también antes de CLIENT_READY. Un id que no existe cuenta un aviso; pasa por el limitador de fiables.
+  también antes de CLIENT_READY (LOADING e IN_WORLD; §4.6). `_on_packet_received` gana su caso, con el
+  limitador de fiables. 0 = la de por defecto, sin aviso; un id que no existe o no es `selectable`
+  cuenta un aviso.
 - **DEBUG_COMMAND**, ids nuevos (fijos): 13 `cooldowns_off` (`u8` 0 o 1: bit7 de `combat_flags2`), 14
   `apply_status` (`u8 status_id`, `u16` ticks, 0 = los del dato), 15 `down` (se derriba a sí mismo, como
-  si lo hubiera derribado un enemigo), 16 `refill` (repone las cargas). Sin datos en 15 y 16.
+  si lo hubiera derribado un enemigo, pero con `downed_by = 0`; §4.5), 16 `refill` (repone las cargas
+  con `set_charges`). Sin datos en 15 y 16.
 
 ### 5.2 Estado, snapshot y registro
 
@@ -540,15 +640,17 @@ Si F4 sube antes la versión, esta pasa a la siguiente libre.
   armas se ven); reutilizaciones, cargas, consumible, ranuras de movimiento y bits de botones, a sus
   valores iniciales.
 - **Registro** (21 B, sin cambios de tamaño): bit 3 de `flags` = ranura 2 activa. El remoto sabe qué
-  arma lleva con la pareja (SPAWN o LOADOUT) y este bit. El byte de acción no tiene bits libres.
+  arma lleva con la pareja (SPAWN o LOADOUT) y este bit. El byte de acción no tiene bits libres. El
+  historial no toma este bit (§3.6).
 - **Bloque extra propio** (9 B): bit 3 de `status` = derribado; derribado, `health` es la vida de
   derribado y `max_health` 400. El `health_q` de un derribado sale de esa vida (nunca 0: 0 es muerto).
 - Cabecera de 134 B, 50 registros (§3.1).
 
 ### 5.3 PROJECTILE (kind 3)
 
-**ENTITY_SPAWN**: cabecera de siempre (`net_id` = proyectil, `realm` = el del tirador, bit0 de `flags` =
-el tirador eres tú) y 22 B; total **32 B**:
+**ENTITY_SPAWN**: cabecera de siempre (`net_id` = proyectil, `realm` = el del tirador, **bit0 de `flags`
+(`is_yours`) siempre 0**: «tuya» es `owner` = tu `net_id`) y 22 B; total **32 B**. `NetClient._on_spawn`
+mira `kind` antes que `is_yours`; `RemoteWorld` y `SwarmBot` ignoran el kind 3.
 
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
@@ -563,7 +665,8 @@ el tirador eres tú) y 22 B; total **32 B**:
 `spawn_tick` es el tick del disparo. `decode` devuelve `null` si el tamaño no es 32.
 
 **ENTITY_DESPAWN** (8 B, sin cambios): motivos nuevos 4 IMPACTO y 5 CADUCADO; `despawn_tick` es el tick
-del impacto. El cliente busca el punto exacto con su propio rayo en el último segmento.
+del impacto, que el servidor encontró en el segmento `[pos(n), pos(n + 1)]`, `n = despawn_tick −
+spawn_tick` (§6.2).
 
 El snapshot **no** lleva registros de proyectiles (`Snapshot.decode` sigue rechazando otros `kind`).
 
@@ -580,7 +683,7 @@ HIT gana el bit 5 de `flags` (interrumpido) y el bit 6 (derriba). Eventos nuevos
 |---|---|---|---|---|---|
 | 7 STATUS | `u16 source_entity` (0 = sin autor), `u8 op` (1 aplicado o renovado, 2 quitado), `u8 status_id`, `u8 stacks`, `u32 until_tick` | 9 | 18 B | el afectado | dueño, autor y quien tenga relevante al afectado |
 | 8 HEAL | `u16 healer` (0 = sí mismo), `u16 amount`, `u16 source` | 6 | 15 B | el curado | ídem |
-| 9 LOADOUT | `u8 template_id`, `u16 weapon_1`, `u16 weapon_2`, `u8 charges` | 6 | 15 B | el jugador | dueño; y quien lo tenga relevante si cambian las armas |
+| 9 LOADOUT | `u8 template_id`, `u16 weapon_1`, `u16 weapon_2`, `u8 charges` | 6 | 15 B | el jugador | dueño; y quien lo tenga relevante si cambian las armas, con `charges` = 0 |
 | 10 DOWNED | `u16 attacker`, `u16 source` | 4 | 13 B | el derribado | toda la zona (registro de bajas) |
 | 11 INTERACT | `u16 actor`, `u8 op` (1 levantar, 2 levantar cortado, 3 levantado, 4 rematar, 5 rematar cortado), `u32 end_tick` | 7 | 16 B | el derribado | actor, derribado y quien lo tenga relevante |
 
@@ -626,17 +729,20 @@ action_tick)`; ninguna señal sale de `simulate()`.
 
 ### 6.2 Flechas (`ProjectileWorld`, `scripts/client/projectile_world.gd`)
 
-- **Predicha**: cuando el personaje local pasa por un compromiso con proyectil (tras el tick de física,
-  no en las repeticiones), se crea con la entrada de ese tick (`ClientPrediction.get_input(t)`),
-  `AimRay` contra el mundo local y las cápsulas de los remotos **tal como se dibujan**, y la misma
-  cuantización. Se dibuja en el tiempo predicho; se para en el mundo con su propio rayo y se oculta al
-  tocar la cápsula dibujada de un enemigo (impacto predicho: sin número).
+- **Predicha**: `ClientPrediction` emite `stepped(tick, input, state)` tras **cada** `step()` (un tick
+  de física puede dar 0, 1, 2 o más pasos; nunca en las repeticiones) y `ProjectileWorld` mira ahí
+  `ActionMachine.is_commit_tick(state.combat, tick)`. Se crea con esa entrada, `AimRay` contra el mundo
+  local y las cápsulas de los remotos **tal como se dibujan** (también la convergencia) y la misma
+  cuantización. Se dibuja en el tiempo predicho; se para en el mundo con su propio rayo (primer segmento
+  con `hit_from_inside`) y se oculta al tocar la cápsula dibujada de un enemigo (sin número).
 - **Sustitución**: el SPAWN con `owner` propio se empareja con la predicha de la misma fuente y
   `volley_index` cuyo tick difiera ≤ `input_buffer_ticks`; se adoptan `p0`, `v0` y `spawn_tick` del
   servidor con un desfase visual que decae en 6 ticks. Sin pareja: se dibuja la del servidor. Una predicha
   sin SPAWN en `rtt + 30` ticks se retira (rechazo).
 - **Remotas**: aparecen cuando `render_tick ≥ spawn_tick` y se dibujan en `pos(render_tick + fracción −
-  spawn_tick)`; el DESPAWN las retira en su `despawn_tick`.
+  spawn_tick)`. Con DESPAWN 4 se retiran cuando `render_tick + fracción ≥ despawn_tick + f`, con `f` la
+  fracción de su propio rayo (mundo y cápsulas dibujadas) en el último segmento, o 1 si no toca nada: así
+  llegan al muro o al blanco, como la propia. Con DESPAWN 5, en `despawn_tick`.
 
 ### 6.3 Barra de acciones (UI-11, `ActionBar`)
 
@@ -663,9 +769,9 @@ derribado.
   derribado (posiciones dibujadas y acción DOWNED) ve «Mantén E para levantar a …».
 - **Plantillas**: selector (armas y cargas de cada `EquipmentTemplate`) en la pantalla de muerte y en la
   selección de reino; manda LOADOUT_SELECT al elegir.
-- **Arco**: tensando, la cámara cierra el campo de visión (75° → 55°; no toca el brazo, así que el rayo
-  canónico no cambia) y la retícula se cierra. `get_effective_shoulder()` (hombro tras el cambio
-  automático) pone `AIM_LEFT`.
+- **Arco**: tensando, la cámara cierra el campo de visión al 75 % del configurado (72° por defecto,
+  `client_settings` lo cambia; no toca el brazo, así que el rayo canónico no cambia) y la retícula se
+  cierra. `get_effective_shoulder()` (hombro tras el cambio automático) pone `AIM_LEFT`.
 
 ### 6.6 Animación provisional (pendiente del ojo del usuario)
 
@@ -674,10 +780,13 @@ derribado.
 Provisionales, con clips que hay (nombres comprobados en los `.glb`): `ual2/Shield_OneShot` (golpe de
 escudo), `ual2/Shield_Dash` (embestida), `ual2/Idle_Shield_Loop` (muro), `ual2/Consume` (beber),
 `ual1/Fixing_Kneeling` (levantar), `ual2/Melee_Hook` (rematar), `ual2/LayToIdle` (levantarse),
-`ual2/NinjaJump_Start` (salto atrás), `ual1/Spell_Simple_Shoot` y `ual1/Pistol_Aim_Neutral` (arco).
-**Para el usuario**: tensar, mantener y soltar el arco (ART-41), arrastrarse, sacar y guardar el arma,
-modelos del arco y la flecha, VFX e iconos (ART-12). El remoto anima con el byte de acción, el bit de
-ranura y la pareja de armas.
+`ual2/NinjaJump_Start` (salto atrás), `ual1/Spell_Simple_Shoot` y `ual1/Pistol_Aim_Neutral` (arco),
+`ual1/Death01` parado en su último fotograma (derribado quieto) y `ual1/Crouch_Fwd_Loop` (arrastrarse);
+`swap` es un fundido de 0,4 s. `WeaponProps` gana un arco provisional (cilindro curvado) y cambia los
+accesorios con el bit de ranura, también en los remotos (PRG-07 se ve, no solo en los datos).
+**Pendiente del usuario**: tensar, mantener y soltar el arco y el ajuste de las poses y la sensación del
+zoom (ART-41), arrastrarse, sacar y guardar el arma, modelos del arco y la flecha, VFX e iconos (ART-12).
+El remoto anima con el byte de acción, el bit de ranura y la pareja de armas.
 
 ---
 
@@ -685,16 +794,24 @@ ranura y la pareja de armas.
 
 ### 7.1 Paquetes
 
+Todo H empieza con **F4 y SOC-03 a SOC-08 fusionados**: H1a toca `attack_definition.gd`, `attack_ticks.gd`,
+`combat_catalog.gd` y sus pruebas, que F4 y SOC-03 ya cambian, y H2 y H4, los mismos archivos de red,
+`zone_server.gd`, `input_bindings.gd` y `hud.gd` que SOC.
+
 | Paquete | Contenido | Depende de |
 |---|---|---|
-| **H1 · simulación** | `CombatState` v5, `PlayerState` 111 B, botones de `PlayerInput`, `AbilityDefinition`/`Ticks`, `StatusEffectDefinition`/`StatusTicks`, `ProjectileDefinition`/`Ticks`, `EquipmentTemplate`, `CombatRules` nuevas, `CombatCatalog` ampliado y su huella, `ActionMachine` (§3), `PlayerCharacter.simulate` con `speed_factor` y `rooted`, `AimRay`, `Ballistics`, `CombatSource`, `HitShapes` (fracciones), `DamageFormula` (modificadores), todos los `.tres` de §2.3 | fase 3 |
-| **H2 · protocolo v5** | `PROTOCOL_VERSION`, `VALID_BUTTONS`, LOADOUT_SELECT, ids 13–16, SPAWN y DESPAWN de proyectiles, eventos 7–11, bits de HIT, bit 3 de `flags`, bit 3 de `status`, `_hide_private_state`, red.md actualizado | fase 3 (usa `PlayerState.ENCODED_SIZE` sea cual sea) |
-| **H3 · servidor** | orden del tick (§4.1), golpe sintetizado en `Combatant.freeze` y el resolutor, `ProjectileSystem`, `StatusSystem`, `DownedSystem`, plantillas y recarga, interrupciones, muro, `InputQueue.get_applied`, `allocate_transient_id`, comandos 13–16, modos tramposos `reuse`, `potion`, `interact`, registro de combate | H1, H2 y **F4 fusionado** (los dos tocan `zone_server.gd`, `combat_director.gd` y `combat_resolver.gd`) |
-| **H4 · cliente** | `ProjectileWorld`, `ActionBar`, `StatusTracker`/`StatusIcons`, avisos de derribado, selector de plantilla, zoom y retícula del arco, teclas Q/R/T y bit `AIM_LEFT`, explicaciones nuevas de `NetClient`, textos (`CombatText`), clips provisionales | H1, H2 |
-| **H5 · integración** | `BotBrain` de combate con habilidades, cambio de arma, pociones y arco (apunta con `Ballistics.solve_lead`), pruebas de extremo a extremo de §7.3, hoja de equilibrio medida (§2.4 → combate.md §12), `load_test --brawl` con arqueros (`--fake-loadout=marksman:50`), límite de jugadores revisado en red.md §14 | H3, H4 |
+| **H1a · estado y datos** | `CombatState` v5 (campos, constantes, `copy_from`, sin conducta nueva), `PlayerState` 111 B, botones de `PlayerInput`, recursos y `*Ticks` de §2.1, `CombatRules` nuevas, `CombatCatalog` (ids, validación, huella), `CombatSource`, `Ballistics` (`position`, `quantize`), todos los `.tres` de §2.3, backlog.md (§0) | F4, SOC |
+| **H1b · máquina** | `ActionMachine` (§3, partida en `ability_rules.gd`), `ActionWire` (§5.5: ranura, consumible, contador de SWAP), `PlayerCharacter.simulate` con `speed_factor` y `rooted`, `AimRay` (`canonical`, `aim_point`, `look_for`), `Ballistics.solve_lead`, `HitShapes` (fracciones), `DamageFormula` (modificadores) | H1a |
+| **H2 · protocolo v6** | `PROTOCOL_VERSION`, `VALID_BUTTONS`, LOADOUT_SELECT, ids 13–16, SPAWN y DESPAWN de proyectiles, eventos 7–11, bits de HIT, bit 3 de `flags` y de `status` en los mensajes, red.md (filas nuevas de §5.2 con «v6», versiones de §5.3, §5.4, §5.5 y §14) | H1a |
+| **H3a · habilidades y efectos** | orden del tick (§4.1, con los pasos de H3b y H3c vacíos), golpe sintetizado en `Combatant.freeze` y el resolutor, `StatusSystem`, interrupciones, muro cuerpo a cuerpo, protección, muestra antigua (§4.2), `is_ray_clear` desde dentro, byte del historial (§3.6), `_hide_private_state`, publicación del bit 3, `InputQueue.get_applied`, comandos 13–14, registro de combate | H1b, H2 |
+| **H3b · proyectiles** | `ProjectileSystem`, `allocate_transient_id`, `StateHistory.position_at` y cajas barridas, caja del muro, topes, bajas del tirador | H3a |
+| **H3c · derribado y plantillas** | `DownedSystem`, predicados (§4.5), salida, `HfsmBrain`/`NpcWorld`, plantillas, `ServerPeer.pending_template_id`, LOADOUT_SELECT en `ZoneServer`, recarga, comandos 5, 15 y 16 | H3b |
+| **H4 · cliente** | `ProjectileWorld`, `ClientPrediction.stepped`, `ActionBar`, `StatusTracker`/`StatusIcons`, avisos de derribado, selector de plantilla, zoom y retícula del arco, teclas Q/R/T y bit `AIM_LEFT`, explicaciones nuevas de `NetClient`, textos (`CombatText`), clips y `WeaponProps` provisionales | H1b, H2 |
+| **H5 · integración** | `BotBrain` de combate con habilidades (mantiene el botón de una canalización), cambio de arma, pociones y arco (`solve_lead` + `look_for`); modos tramposos `reuse`, `potion`, `interact` (`bot_cheat_brain.gd`, `bot_cheater.gd`, `client_config.gd`); pruebas de extremo a extremo y carga de §7.3; hoja de equilibrio medida (§2.4 → combate.md §12); límite de jugadores en red.md §14 | H3c, H4 |
 
-H1 y H2 en paralelo; luego H3 y H4 en paralelo; H5 al final. Con dos agentes: uno H1 → H3, otro H2 →
-H4, y H5 el que acabe antes.
+H2 y H1b en paralelo tras H1a; H3a → H3b → H3c en serie (todos tocan `zone_server.gd` y
+`combat_director.gd`) y H4 a la vez; H5 al final. Con dos agentes: uno H1a → H1b → H3a → H3b → H3c, otro
+H2 → H4 → H5.
 
 ### 7.2 Contratos
 
@@ -729,8 +846,8 @@ static func impose_interact(c: CombatState, tick: int, action: int) -> void   # 
 static func impose_interrupt(c: CombatState, tick: int) -> void
 static func impose_move_effect(c: CombatState, effect_id: int, until_tick: int) -> void
 static func clear_move_effects(c: CombatState) -> void
-static func reset_cooldowns(c: CombatState) -> void
-static func set_loadout(c: CombatState, weapon_1: int, weapon_2: int, charges: int) -> void
+static func reset_cooldowns(c: CombatState) -> void; static func set_charges(c: CombatState, charges: int) -> void
+static func set_loadout(c: CombatState, weapon_1: int, weapon_2: int, charges: int) -> void  # al aparecer
 static func reset_for_respawn(c: CombatState, tick: int, weapon_1: int, weapon_2: int,
 		charges: int) -> void
 
@@ -749,8 +866,9 @@ static func kind_of(source: int) -> int; static func id_of(source: int) -> int
 static func canonical(feet: Vector3, look_yaw: float, look_pitch: float,
 		left_shoulder: bool) -> Array        # [origin: Vector3, direction: Vector3]
 static func aim_point(space: PhysicsDirectSpaceState3D, origin: Vector3, direction: Vector3,
-		capsule_feet: PackedVector3Array) -> Vector3
+		capsule_feet: PackedVector3Array) -> Vector3   # hostiles; con la convergencia de §4.4
 static func muzzle(feet: Vector3) -> Vector3
+static func look_for(feet: Vector3, point: Vector3, left_shoulder: bool) -> Vector2   # (yaw, pitch)
 
 # scripts/shared/combat/ballistics.gd · class_name Ballistics extends RefCounted
 static func position(p0: Vector3, v0: Vector3, gravity: float, ticks: float) -> Vector3
@@ -762,14 +880,15 @@ static func solve_lead(origin: Vector3, target: Vector3, target_velocity: Vector
 static func segment_capsule_fraction(a: Vector3, b: Vector3, capsule_feet: Vector3, radius: float,
 		height: float) -> float
 static func segment_box_fraction(a: Vector3, b: Vector3, box: Transform3D, half_extents: Vector3) -> float
+# (0 si a está dentro); is_ray_clear pasa a hit_from_inside = true
 # damage_formula.gd: compute(..., damage_scale: float = 1.0, mitigation_penalty: float = 0.0)
 
 # scripts/server/combatant.gd (amplía); Frozen gana hit: AttackTicks, commit: bool, wall: Transform3D
 var effects: Array[StatusSystem.ActiveEffect]
 var downed_health: int; var downed_tick: int = -1; var downed_by: int; var downed_source: int
 var interact_target: int; var interact_action: int; var interact_start: int; var last_buttons: int
-var template_id: int; var pending_template_id: int = -1
-func is_downed() -> bool          # is_dead() = vida 0 y no derribado
+var template_id: int              # la pendiente, en ServerPeer.pending_template_id (−1 = ninguna)
+func is_downed() -> bool; func take_downed_damage(amount: int, tick: int) -> int   # is_dead(): §4.5
 
 # scripts/server/projectile_system.gd · class_name ProjectileSystem extends RefCounted
 signal spawned(spawn: NetMessages.EntitySpawn, recipients: PackedInt32Array)
@@ -777,18 +896,20 @@ signal despawned(projectile_id: int, tick: int, reason: int, recipients: PackedI
 func fire(shooter: Combatant, source: int, s: int, space: PhysicsDirectSpaceState3D) -> void
 func resolve(s: int, combatants: Array[Combatant],
 		space: PhysicsDirectSpaceState3D) -> Array[CombatResolver.Hit]   # Hit gana projectile_id
-func live_count() -> int
+func live_count() -> int; func forget_owner(owner_id: int, s: int) -> void   # DESPAWN 5 de las suyas
 
 # scripts/server/status_system.gd · class_name StatusSystem extends RefCounted
 func apply(target: Combatant, status_id: int, source_id: int, s: int) -> void
 func step(s: int, list: Array[Combatant]) -> void; func clear(target: Combatant) -> void
 
 # scripts/server/downed_system.gd · class_name DownedSystem extends RefCounted
-func should_down(victim: Combatant, author: Combatant) -> bool
+func should_down(victim: Combatant, author_realm: int, author_is_player: bool) -> bool
 func down(victim: Combatant, author_id: int, source: int, s: int) -> void
 func step(s: int, list: Array[Combatant], space: PhysicsDirectSpaceState3D) -> void
 
 # input_queue.gd: get_applied(tick) -> PlayerInput (real o sustituida)
+# state_history.gd: position_at(id, tick) -> Vector3 (Vector3.INF si no está); swept_box(id) -> AABB
+# client_prediction.gd: signal stepped(tick: int, input: PlayerInput, state: PlayerState)
 # net_entity_registry.gd: allocate_transient_id(tick) -> int; release_transient_id(id, tick)
 # camera_rig.gd: get_effective_shoulder() -> int; set_aim_zoom(f: float)
 # net_client.gd: signal projectile_spawned(spawn); signal projectile_despawned(id, tick, reason)
@@ -796,83 +917,115 @@ func step(s: int, list: Array[Combatant], space: PhysicsDirectSpaceState3D) -> v
 
 ### 7.3 Pruebas (cada una < 30 s)
 
-**H1** (sin red, mundos en `SubViewport` como `test_prediction`):
+Ninguna lleva cotas de microsegundos (la máquina es compartida): el coste se mide con herramientas (§8).
+
+**H1a y H1b** (sin red, mundos en `SubViewport` como `test_prediction`):
 
 - `test_combat_state_v5`: ida y vuelta con cada campo en su offset; 76 y 111 B; `buffered` nuevo.
 - `test_ability_machine`: empieza con el flanco; reutilización fijada en el compromiso (con `cast = 0`,
   en el mismo tick); vuelve a valer en `t == ability_ready`, no antes; tambaleo en el lanzamiento → sin
   reutilización; **el tambaleo corta una canalización** y fija su reutilización en ese tick; soltar,
-  moverse (si lo dice el dato) y el tope acaban la canalización; prioridades con flancos simultáneos;
-  búfer de una habilidad pulsada en la recuperación de un ligero; una sustituida no empieza nada.
+  moverse (si lo dice el dato) y el tope acaban la canalización; los ejemplos de §3.3 (soltar y pulsar
+  en el mismo tick; toque más corto que el lanzamiento; soltar en el compromiso y uno después; muro del
+  búfer con el botón arriba); prioridades con flancos simultáneos; búfer de una habilidad pulsada en la
+  recuperación de un ligero, y una que caduca deja `combo_step = 0`; una sustituida no empieza nada.
 - `test_ability_reconciliation`: **la reutilización sobrevive a una reconciliación**: cliente y servidor
   con las mismas entradas, una diferencia de posición impuesta tras el compromiso; tras repetir,
   `ability_ready` es el mismo y el estado coincide byte a byte.
 - `test_weapon_swap`: intercambio de armas y de las dos mitades; **no se cambia a mitad de un golpe**
   (SWAP en anticipación o activo: el arma no cambia hasta la recuperación; caduca si no llega);
-  **predicho y reconciliado** con una entrada sustituida alrededor del flanco: estados iguales.
+  **predicho y reconciliado** con una entrada sustituida alrededor del flanco: estados iguales;
+  `set_charges` no toca nada más.
 - `test_move_effects`: **la ralentización da la misma velocidad en cliente y servidor** (el servidor la
   impone en `s`; tras reconciliar, estados iguales cada tick y velocidad = `run_speed · 0,6`); ROOT
   impide esquivar y avanzar; caducidad en el tick exacto; tercera ranura sustituye a la que acaba antes.
 - `test_consumables_machine` (cargas, reutilización compartida, compromiso al acabar de beber, +400
   exactos, sin cargas no empieza) y `test_bow_machine` (toque = disparo rápido, 8 ticks = tensado, cargas
-  mínima y máxima en sus ticks, BLOCK no hace nada).
-- `test_aim_ray`: el rayo canónico coincide con `CameraRig.get_aim_ray()` (sin colisión, cualquier zoom,
-  los dos hombros) a menos de 1 mm; `Ballistics` y la cuantización.
+  mínima y máxima en sus ticks, BLOCK no hace nada, agotado no tensa).
+- `test_aim_ray`: el rayo canónico coincide con `CameraRig.get_aim_ray()` (sin colisión, cualquier zoom
+  y FOV, los dos hombros) a menos de 1 mm, y `aim_shoulder_offset`/`aim_camera_v_offset` con la escena;
+  **tiro adelantado con el fondo a 150 m**: blanco a 30 m y mira 3 m por delante, la recta de la flecha
+  cruza la de la mira a menos de 2 cm a la profundidad del blanco; `look_for` pasa a < 1 mm del punto;
+  `Ballistics` y la cuantización.
 - `test_combat_catalog` (amplía): ids pedidos por nombre; cada error de §2.2; la huella cambia con un
-  tiempo de habilidad y no con su daño. Microbanco de `simulate()`: el camino rápido no sube más de 2 µs.
+  tiempo de habilidad, `downed_move_scale`, `revive_s` y `blocks`, y no con un daño; el camino rápido de
+  `simulate()` no llama a `CombatCatalog.weapon()` ni recorre ranuras (contador; el microbanco, a
+  `tools/combat_balance.gd`).
+- `test_action_wire` (amplía, H1b): ABILITY por ranura y fase, consumible (3), contador de SWAP.
 
-**H2**: `test_net_messages` (amplía): ida y vuelta y tamaños de los eventos 7–11, del SPAWN de 32 B y de
-LOADOUT_SELECT; truncados y `op` fuera de rango → `null`; `VALID_BUTTONS`; `CombatSource`; bit 3 de
-`flags`; *fuzz*. `test_snapshot_builder`: 50 registros y nunca más de 1200 B.
+**H2**: `test_net_messages` (amplía): ida y vuelta y tamaños de los eventos 7–11, del SPAWN de 32 B (con
+`is_yours` 0) y de LOADOUT_SELECT; truncados y `op` fuera de rango → `null`; `VALID_BUTTONS`; `CombatSource`;
+bit 3 de `flags`; *fuzz*. `test_snapshot_builder`: 50 registros y nunca más de 1200 B.
 
-**H3** (servidor en un proceso, `combat_fixture.gd`):
+**H3a, H3b y H3c** (servidor en un proceso, `combat_fixture.gd`; las largas avanzan a mano con
+`CombatDirector.process_tick`, como `test_combat_director`, o `ZoneServer._physics_process`, como
+`tools/combat_balance.gd`, sin esperar fotogramas):
 
-- `test_ability_server`: golpe de escudo aturde de frente y no por detrás, atraviesa un escudo en alto;
-  la embestida recorre 6 m (±0,3) y empuja; el muro bloquea un golpe a 85° del frente y no a 95°, y para
-  flechas a un aliado detrás; **el servidor rechaza una habilidad en reutilización** (bot que la pulsa un
-  tick de cada dos: compromisos separados exactamente `cooldown_ticks + cast_ticks`, ni uno antes).
-- `test_status_effects`: **un sangrado hace exactamente N pulsos** (6, en `anchor + 60k`); acumulación,
-  renovación y el más fuerte; limpieza al morir y al quedar derribado; STATUS con su `until_tick`.
-- `test_projectiles`: **ninguna flecha atraviesa muros** (200 disparos a un blanco tras un muro: 0
-  impactos, todas con DESPAWN 4 en el muro); **disparo pegado a una esquina** (cámara al lado abierto,
-  blanco que solo ve la cámara: la flecha da en la esquina); bloqueo frontal; esquiva que deja pasar;
-  topes por tirador y por zona; golpe a la puerta.
-- `test_downed`: **los tres desenlaces**: levantado (180 ticks, vida 300, NONE), rematado (60 ticks,
-  DEATH con fuente de remate y KILL) y desangrado (1200 ticks, asesino = quien derribó); levantar cortado
-  por daño; muerte directa contra un PNJ; un PNJ remata con daño.
-- `test_consumables_server`: curación de 6 pulsos; **un golpe que interrumpe** no gasta carga ni
-  reutilización; recarga en el campamento; `--bot-cheat=potion` no cura de más.
-- `test_bot_cheat` (amplía): `reuse` e `interact` sin efecto de más ni sospecha.
+- `test_ability_server` (H3a): golpe de escudo aturde de frente y no por detrás, atraviesa un escudo en
+  alto; la embestida recorre 6 m (±0,3) y empuja; el muro bloquea un golpe a 85° del frente y no a 95°;
+  **el servidor rechaza una habilidad en reutilización** (bot que la pulsa un tick de cada dos:
+  compromisos separados exactamente `cooldown_ticks + cast_ticks`); una habilidad quita la protección y
+  beber no; muestra antigua: REVIVE soltado y poción interrumpida dentro del rebobinado no bloquean;
+  ranura 2 activa sin bloquear → `flags & DEFENSE_BLOCKING == 0` en el historial; desde dentro del vano
+  cerrado no se golpea hacia fuera ni se recibe.
+- `test_status_effects` (H3a): **un sangrado hace exactamente N pulsos** (6, en `anchor + 60k`);
+  acumulación, renovación y el más fuerte; un pulso no interrumpe; un pulso que derriba a mitad de la
+  lista; limpieza al morir, al quedar derribado y al irse el autor; STATUS con su `until_tick`.
+- `test_projectiles` (H3b): **ninguna flecha atraviesa muros** (40 disparos con ángulos distintos a un
+  blanco tras un muro: 0 impactos, todas con DESPAWN 4 en el muro); **disparo pegado a una esquina**
+  (cámara al lado abierto, blanco que solo ve la cámara: la flecha da en la esquina); dueño en el vano
+  cerrado: se clava en el origen; bloqueo frontal; esquiva que deja pasar; el muro para flechas a un
+  aliado detrás, desde lejos y con el arquero dentro de su caja, y no si está detrás de quien lo sostiene;
+  segmento que empieza en una cápsula; topes: con 8 del tirador o 64 en la zona un disparo nuevo existe y
+  sale la más vieja; el tirador se va con flechas en el aire (DESPAWN 5); golpe a la puerta.
+- `test_downed` (H3c): **los tres desenlaces**: levantado (180 ticks, vida 300, NONE), rematado (60
+  ticks, DEATH con fuente de remate y KILL) y desangrado (1200 ticks, asesino = quien derribó); levantar
+  cortado por daño; no se remata a través de la puerta cerrada; la puerta no se repara con un derribado
+  en el vano; **un derribado que sale produce DEATH y KILL** y al volver aparece en el campamento; muerte
+  directa contra un PNJ; un PNJ no ignora a un derribado y lo remata con daño; comando 15 sin KILL.
+- `test_consumables_server` (H3c): curación de 6 pulsos; **un golpe que interrumpe** no gasta carga ni
+  reutilización; recarga en el campamento **con la ranura 2 activa y una canalización en curso**: arma,
+  `ability_ready` y acción no cambian; LOADOUT ajeno con `charges` 0.
 
 **H4**: `test_action_bar` (iconos del arma tras un cambio; **un rechazo revierte el contador**: una
-reconciliación que quita la habilidad deja la casilla lista), `test_status_icons` (en la placa y en la
-fila propia; se va al caducar), `test_projectile_world` (la predicha se sustituye por la del servidor; la
-remota, en su `render_tick`), `test_hud_combat` (amplía: avisos de derribado).
+reconciliación que quita la habilidad deja la casilla lista), `test_status_icons` (placa y fila propia; se
+va al caducar), `test_projectile_world` (la predicha se sustituye por la del servidor; dos pasos en un tick
+de física con el compromiso en el primero; SPAWN propio con el jugador ya en el mundo; la remota aparece en
+su `render_tick` y se retira en `despawn_tick + f`), `test_hud_combat` (amplía: avisos de derribado).
 
 **H5** (ENet en loopback, `net_harness.gd`):
 
 - `test_projectile_loopback`: **flecha a 30 m con rtt=150** (jitter 30) contra un objetivo que corre en
-  lateral: al menos 18 de 20 tensados confirmados; control con el rebobinado apagado: menos de 10.
-- `test_abilities_reconciliation`: **3 bots con NetSim** (`rtt=120, jitter=20, loss=5`, 1800 ticks) con
-  las dos plantillas usando habilidades, cambio de arma, pociones, flechas, ralentizaciones y derribos:
-  todas las correcciones explicadas (sustitución, teletransporte o combate), ningún reinicio duro tras el
-  arranque y convergencia exacta al quedarse quietos (la aceptación de la fase 2).
-- `test_loadout_net`: dos clientes eligen plantillas distintas y cada uno ve las armas del otro (PRG-07).
-- `test_combat_balance` (amplía): DPS del arco medido igual al calculado; maniquí a 10, 30 y 50 m.
+  lateral, apuntada con `solve_lead` y `look_for`: al menos 18 de 20 tensados confirmados; control en la
+  misma ejecución, como `test_combat_loopback`: contra la posición presente (sin rebobinar) habrían
+  acertado menos de 10.
+- `test_abilities_reconciliation`: **3 bots con NetSim** (`rtt=120, jitter=20, loss=5`, 900 + 180 ticks)
+  con las dos plantillas usando habilidades, cambio de arma, pociones, flechas, ralentizaciones y
+  derribos: todas las correcciones explicadas (sustitución, teletransporte o combate), ningún reinicio
+  duro tras el arranque y convergencia exacta al quedarse quietos (la aceptación de la fase 2).
+- `test_loadout_net`: dos clientes eligen plantillas distintas (uno antes de CLIENT_READY) y cada uno ve
+  las armas del otro (PRG-07); sin pérdida, **0 correcciones en ±rtt ticks alrededor de cada SWAP**
+  (PRG-04); un sangrado del comando 14 sale con su duración en la placa y el HUD y se va al caducar (UI-45).
+- `test_bot_cheat` (amplía): `reuse`, `potion` e `interact` sin efecto de más ni sospecha.
+  `test_combat_balance` (amplía): DPS del arco igual al calculado; maniquí a 10, 30 y 50 m; rotura del
+  muro 1 y 2 contra 1 (§2.4).
+- **Carga** (`load_test.gd --brawl`, manual como TEC-15): Vado Gris, 64 jugadores (`--fake-loadout=
+  marksman:50`), los PNJ del fuerte y el tope de zona lleno: p99 del tick ≤ 16,7 ms y la sección de
+  proyectiles ≤ 1 ms; si no, se baja el límite de red.md §14.
 
 ---
 
 ## 8. Riesgos
 
-- **CPU de los proyectiles.** Sonda (Godot 4.7.2 headless, Jolt, 400 cajas, máquina compartida con otros
-  dos procesos): `intersect_ray` de 1,17 m (un tick a 70 m/s) **0,6 µs** (1,0 creando la consulta en cada
-  rayo), de 150 m 1,6 µs; segmento contra cápsula en GDScript 0,8 µs; cribado de un par
-  proyectil-candidato 0,09 µs (**225 µs por tick con 40 flechas y 64 candidatos**). Con el sobrecoste
-  real del bucle (objetos, muestras del historial) se estiman **30–50 µs por flecha y tick**: 20 flechas
-  en el aire (un tercio de arqueros entre 64) son 0,6–1 ms, frente a los 0,77 ms del paso de combate y
-  los 9,4 / 15,9 ms (p50 / p99) del tick con 64 combatientes (combate.md §11): el p99 puede pasar de 16,7
-  ms. H5 lo mide con `--fake-loadout=marksman:50`; si pasa de 1 ms, rejilla de candidatos por tick
-  (celdas de 16 m) antes que bajar el límite de jugadores. El rayo contra el Terrain3D real no se ha medido.
+- **CPU de los proyectiles** (revisado con sondas, máquina compartida). Una muestra del historial cuesta
+  2,4–3,4 µs (objeto y diccionario); con la criba por distancia del resolutor, una flecha cuesta 16 µs
+  por tick con los candidatos dispersos y 105–115 µs en una refriega de 20 × 20 m, donde todos pasan la
+  criba: 20 flechas, 2,1 ms, y el margen del p99 (15,9 ms con 64, más el fuerte y los PNJ de F4) ya está
+  gastado. Con rebobinado entero, `position_at` y cajas barridas por bloques (§4.4): 50–90 µs fijos por
+  tick y 9–13 µs por flecha, densa o dispersa (0,4 pruebas exactas por flecha); `intersect_ray` de un
+  tick, 0,6 µs. De ahí la reserva de **1 ms con 64 jugadores** y el tope de **64 flechas por zona**
+  (0,7–0,9 ms). H5 lo mide en carga (§7.3); si el p99 del tick pasa de 16,7 ms, se baja el límite de
+  jugadores de red.md §14. Una rejilla sobre las cajas podría subir el tope. Terrain3D real, sin medir.
 - **Tamaño del estado.** +42 B: 50 registros en vez de 52. Si sigue creciendo (PRG-06), las
   reutilizaciones del arma guardada pueden pasar a u16 relativas al tick del cambio.
 - **`simulate()`** ya es el cuello (69–72 µs por personaje) y la máquina crece mucho: conviene partirla
@@ -884,7 +1037,7 @@ remota, en su `render_tick`), `test_hud_combat` (amplía: avisos de derribado).
 - **Animaciones**: faltan las del arco, arrastrarse y sacar el arma (§6.6); sin ART-41 el arco se ve mal.
 - **Derribado con latencia**: levantar y rematar los empieza el servidor: quien pulsa E ve una corrección
   de 1 RTT, explicada por INTERACT.
-- **F4 en paralelo**: H3 no empieza hasta fusionar F4.
+- **F4 y SOC**: ningún paquete H empieza hasta fusionarlos (§7.1).
 
 ---
 
@@ -898,3 +1051,46 @@ remota, en su `render_tick`), `test_hud_combat` (amplía: avisos de derribado).
   estadístico de puntería (CMB-39), INTERACT con objetos del mundo (MUN-16: los derribados tendrán
   prioridad).
 - Modelos, clips, VFX, sonidos e iconos definitivos: del usuario (ART-12, ART-41).
+
+---
+
+## 10. Revisión
+
+Tres revisores (predicción y red, servidor y trampas, implementabilidad): 42 hallazgos sobre la versión
+1, los repetidos en una fila. Comprobados en el código y los documentos, todos se sostienen; tres se
+resuelven de otra forma («en parte»). Los dos cambios fijos (versión 6; topes de proyectiles con su
+comportamiento y prueba de carga) van en PRE3 y SER2–SER3.
+
+| Id | Gravedad | Qué era | Qué se hizo |
+|---|---|---|---|
+| PRE1 · SER7 · IMP3 | bloqueante | La recarga y `refill` usaban `set_loadout`: cambiaban el arma activa, ponían a 0 las reutilizaciones y dejaban una ABILITY con el arma equivocada | `set_charges` solo toca las cargas; `set_loadout` y `reset_for_respawn`, solo al aparecer y, sobre un vivo, con NONE antes (§3.5, §4.6); prueba en `test_consumables_server` |
+| SER1 · SER9 · IMP2 | bloqueante | Un derribado que salía se libraba de morir y de dar la baja; `is_alive` e `is_dead` dejaban de ser complementarios y el código los usa como si lo fueran | Toda baja de un derribado es antes una muerte con DEATH y KILL; tabla de predicados por sitio de uso (§4.5); pruebas en `test_downed` |
+| IMP1 | bloqueante | El rayo canónico no contaba el `v_offset` de 0,1 de la cámara; FOV absoluto; sin inversa para bots | `aim_camera_v_offset` comprobado con la escena; zoom al 75 % del FOV configurado; `AimRay.look_for` (§2.1, §4.4, §6.5) |
+| PRE2 | importante | El bit 3 del registro (ranura 2) es `DEFENSE_BLOCKING` en el historial | El historial toma `flags & 0b111` y lo dicen los comentarios (§3.6, §5.2); prueba en H3a |
+| PRE3 · IMP5 | importante | La versión 5 ya es del chat y los grupos; H2 y H4 chocan con SOC | `PROTOCOL_VERSION = 6` (§5); todo H tras F4 y SOC (§7.1); H2 marca «v6» en red.md |
+| PRE4 | importante | Sin orden entre fines de canalización, búfer y flancos, ni regla para soltar en el tick del compromiso | 4a fines, 4b búfer, 4c flancos; la canalización que no pasa del compromiso no gasta; la del búfer exige el botón; ejemplos en §3.3 y `test_ability_machine`; los bots mantienen el botón (H5) |
+| PRE5 · IMP6 · IMP9 | importante | H1 ∥ H2 no era posible, H1 sin F4, §5.5 sin paquete, tramposos en el paquete de servidor, H1 y H3 demasiado grandes | Paquetes H1a, H1b, H2, H3a, H3b, H3c, H4 y H5 con sus dependencias (§7.1); §5.5 y `test_action_wire` en H1b; tramposos y `test_bot_cheat` en H5 |
+| PRE6 | importante | La flecha va del pecho a `P`; con el tiro adelantado `P` cae en el fondo y la flecha se desvía hasta 0,59 m | Convergencia a la profundidad del hostil más cercano a la mira (`aim_converge_deg` 12); `look_for` para bots; prueba con el fondo a 150 m (§4.4, §7.3) |
+| SER2 | importante | El coste de las flechas no cabía en una refriega densa; 256 por zona no caben en el tick; `AimRay` sin presupuestar | Rebobinado entero, `position_at` y cajas barridas por bloques (medido: 9–13 µs por flecha); reserva de 1 ms; **en parte**: tope de 64 por zona, no 96, con lo medido; carga en H5 con criterio de p99 (§4.4, §8) |
+| SER3 | importante | Con la zona llena el disparo no se creaba: negación de disparo y flecha fantasma | Un disparo nunca se rechaza: sale la más vieja del tirador o de la zona, con DESPAWN 5 (§4.4); prueba en `test_projectiles` |
+| SER4 | importante | El dueño en el vano de su puerta dispara y golpea desde dentro del cuerpo de vista | Primer segmento y `is_ray_clear` con `hit_from_inside`; frase de las esquinas corregida (§4.4); pruebas en H3a y H3b |
+| SER5 | importante | Segmentos que empiezan dentro del muro o de una cápsula; efectos del BLOCKED del muro; instante del muro | Fracción 0; BLOCKED como un bloqueo (sin daño, 0,6 por punto, rotura de guardia); el muro se prueba en `k` (§4.4) |
+| SER6 | importante | Las habilidades no quitaban la protección de reaparición | La quita toda ABILITY que no sea consumible (§4.2); prueba en `test_ability_server` |
+| SER8 | importante | Levantar y rematar sin línea de visión, también a través de la puerta | `is_ray_clear` al empezar y en cada tick (§4.5); prueba en `test_downed` |
+| PRE13 · SER10 · IMP11 | importante | Flechas y efectos huérfanos cuando el autor se va | El proyectil guarda una copia del autor; al darlo de baja, DESPAWN 5 de sus flechas y STATUS 2 de sus efectos (§4.1, §4.4) |
+| SER12 · IMP8 | importante | `NpcBrain` no es el cerebro del fuerte y F4 no prioriza derribados | `HfsmBrain` y `NpcWorld`; la prioridad la pone H3c y se anota en fuerte.md §4.2 (§4.5) |
+| IMP4 | importante | El SPAWN de proyectil usaba `is_yours` y `NetClient` lo descartaba como personaje propio | `is_yours` = 0 en kind 3; «tuya» por `owner`; despacho por `kind` (§5.3) |
+| IMP7 | importante | Pruebas de más de 30 s y un rebobinado apagado que no existe | 900 + 180 ticks; H3 avanza a mano y 40 disparos; **en parte**: control contrafactual en la misma ejecución, como `test_combat_loopback`, sin interruptor nuevo (§7.3) |
+| IMP10 | importante | Desvíos de CMB-21, CMB-23, CMB-24 y PRG-04 sin anotar; PRG-04 y UI-45 sin prueba que los demuestre | Fila en §0 y nota en backlog.md; 0 correcciones alrededor de SWAP y sangrado del comando 14 en `test_loadout_net` |
+| PRE7 | menor | La remota se retiraba en `despawn_tick`, hasta 1,2 m antes del impacto; «f64» frente a `Vector3` | Retirada en `despawn_tick + f` con el rayo local; la misma `Ballistics.position` con `n` entero o fraccionario (§4.4, §6.2) |
+| PRE8 | menor | Mirar el compromiso una vez por tick de física pierde pasos de predicción | `ClientPrediction.stepped` tras cada `step()`; prueba con dos pasos (§6.2) |
+| PRE9 | menor | `pending_template_id` en un `Combatant` que no existe antes de CLIENT_READY; `0x07` sin despacho | En `ServerPeer`, copiada al dar de alta; caso `0x07` con el limitador (§4.6, §5.1) |
+| PRE10 | menor | Cambiar `buffered & 3` por `buffered_type()` sin más rompía `linked` y `_run_buffer` | Despacho por tipo; `linked` = PRIMARY o enlace; la caducidad pone el combo a 0 (§3.1) |
+| PRE11 | menor | La huella dejaba fuera campos P (derribado, interacción, `blocks`) | Entra todo campo P; prueba en `test_combat_catalog` (§2.2) |
+| PRE12 | menor | La muestra antigua del bloqueo contaba tras volver a NONE desde REVIVE, una poción o una interrupción | No cuenta si la acción no es BLOCK y empezó después de `view_tick`; cambia combate.md §4.3 (§4.2); pruebas en H3a |
+| SER11 | menor | Sin definir qué impacto interrumpe ni qué es «bebiendo»; un derribo a mitad de los pulsos | Definidos (§0, §4.2); `StatusSystem.step` reúne los pulsos antes de aplicarlos (§4.1, §4.3) |
+| SER13 | menor | Cualquier plantilla elegible, id 0 sin definir, comando 15 con `downed_by` propio | `selectable` y validación sin `npc_*`; 0 = por defecto; comando 15 con `downed_by = 0`, solo en RVR (§2.1, §4.5, §5.1) |
+| IMP12 | menor | LOADOUT revelaba las cargas a los enemigos | `charges` = 0 para quien no es el dueño (§5.4) |
+| IMP13 | menor | Sin columna de resistencia; un atacante no rompe el muro; agotado no se tensa | **En parte**: párrafo de resistencia (§2.4); el muro que uno solo no rompe es a propósito y H5 lo mide; el agotamiento impide tensar y el muro, escrito |
+| IMP14 | menor | Faltaban `downed`, `swap` y un arco provisional | `Death01`, `Crouch_Fwd_Loop`, fundido de 0,4 s y arco en `WeaponProps`; pendientes del usuario marcados (§6.6) |
+| IMP15 | menor | Cota de 2 µs en una prueba | Contador de llamadas determinista; el microbanco, informativo en `tools/combat_balance.gd` (§7.3) |
