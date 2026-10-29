@@ -48,12 +48,13 @@ static func summarize(text: String, routes: ApproachRoutes = null) -> Dictionary
 	# Estado por fortaleza: tick de inicio del ciclo, de la caída del capitán, de «captura iniciada»
 	# y del primer golpe a la puerta.
 	var cycles: Dictionary = {}
+	var json := JSON.new()
 	for line: String in text.split("\n", false):
-		var parsed: Variant = JSON.parse_string(line)
-		if not (parsed is Dictionary):
+		# JSON.parse() devuelve el error sin registrarlo (parse_string lo escribe en el registro).
+		if json.parse(line) != OK or not (json.data is Dictionary):
 			result["bad_lines"] = int(result["bad_lines"]) + 1
 			continue
-		var entry: Dictionary = parsed
+		var entry: Dictionary = json.data
 		var tick: int = int(entry.get("tick", 0))
 		result["ticks"] = maxi(int(result["ticks"]), tick)
 		match String(entry.get("event", "")):
