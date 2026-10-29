@@ -155,15 +155,9 @@ func get_camera_rig() -> CameraRig:
 ## Cuelga el [HumanoidVisual] bajo el nodo Visual del personaje y quita las mallas provisionales
 ## (cápsula y visor). Si el visual no carga, la cápsula se queda para que se vea algo.
 func _install_visual() -> void:
-	_visual = HumanoidVisual.install(_character)
+	_visual = HumanoidVisual.install_replacing_placeholder(_character)
 	if _visual == null:
 		push_warning("[Eldmark] Sin visual del humanoide: se usa la cápsula provisional")
-		return
-	var visual_root: Node = _visual.get_parent()
-	for child: Node in visual_root.get_children():
-		if child is MeshInstance3D:
-			visual_root.remove_child(child)
-			child.queue_free()
 
 
 ## Carga e instancia una escena. Si [param expected] no es null, la raíz debe ser de

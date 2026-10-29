@@ -5,6 +5,9 @@ extends Node
 ## de [code]--[/code]) y decide en qué modo arranca el juego:
 ## [br]- [code]--server[/code]: servidor dedicado de una zona ([ServerMain], siempre con
 ## [code]--headless[/code]; opciones en [ServerConfig]). Tiene prioridad sobre el resto.
+## [br]- [code]--connect=<host>[:<puerto>][/code] o [code]--bot[/code]: cliente en red
+## ([OnlineMain], ver [ClientConfig]). Tiene prioridad sobre el sandbox. [code]--local[/code] y
+## [code]--bots=N[/code] todavía no existen: avisan y cierran con código 1.
 ## [br]- [code]--zone=<id>[/code]: zona que se carga ([code]vado_gris[/code] por defecto,
 ## [code]test_world[/code] para el circuito de la fase 1). Ver [Zones].
 ## [br]- [code]--realm=<reino>[/code]: reino del jugador ([code]vardheim[/code] por defecto o
@@ -20,6 +23,7 @@ extends Node
 
 const CLIENT_MAIN_SCENE: String = "res://scenes/client/client_main.tscn"
 const SERVER_MAIN_SCENE: String = "res://scenes/server/server_main.tscn"
+const ONLINE_MAIN_SCENE: String = "res://scenes/client/online_main.tscn"
 const SERVER_ARG: String = "--server"
 const DEMO_ARG: String = "--demo"
 const SHOTS_ARG_PREFIX: String = "--shots="
@@ -40,7 +44,15 @@ func _ready() -> void:
 	if args.has(SERVER_ARG):
 		_start_server(args)
 		return
-	_start_client(args)
+	# Prioridad de la sección 1.2: --server > --bots > --connect/--local/--bot > sandbox.
+	var config: ClientConfig = ClientConfig.from_args(args)
+	match config.mode:
+		ClientConfig.Mode.ONLINE, ClientConfig.Mode.BOT:
+			_start_online(config)
+		ClientConfig.Mode.LOCAL, ClientConfig.Mode.SWARM:
+			_reject_unavailable_mode(config)
+		_:
+			_start_client(args)
 
 
 ## Interpreta los argumentos de usuario del cliente. Devuelve un diccionario con
@@ -110,6 +122,22 @@ static func _is_network_arg(arg: String) -> bool:
 func _start_server(args: PackedStringArray) -> void:
 	ServerMain.config = ServerConfig.from_args(args)
 	get_tree().change_scene_to_file.call_deferred(SERVER_MAIN_SCENE)
+
+
+## Rellena [member OnlineMain.config] y cambia a la escena del cliente en red.
+func _start_online(config: ClientConfig) -> void:
+	OnlineMain.config = config
+	get_tree().change_scene_to_file.call_deferred(ONLINE_MAIN_SCENE)
+
+
+## [code]--local[/code] (servidor local que se lanza solo) y [code]--bots=N[/code] (enjambre de
+## clientes ligeros) todavía no están implementados (TEC-45 y TEC-11). En lugar de arrancar el
+## sandbox en silencio con unos argumentos que pedían otra cosa, avisa y cierra con código 1.
+func _reject_unavailable_mode(config: ClientConfig) -> void:
+	var option: String = "--local" if config.mode == ClientConfig.Mode.LOCAL else "--bots"
+	push_error("[Eldmark] %s todavía no está disponible. Usa --connect=<host>[:<puerto>] contra un "
+			% option + "servidor ya arrancado (--server), o --bot --connect=...")
+	get_tree().quit(1)
 
 
 ## Pasa las opciones a [ClientMain] mediante sus variables estáticas y cambia

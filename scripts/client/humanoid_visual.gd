@@ -71,6 +71,22 @@ static func install(character: PlayerCharacter) -> HumanoidVisual:
 	return visual
 
 
+## Igual que [method install], pero además quita del nodo Visual las mallas provisionales (la cápsula
+## y el visor de [code]player_character.tscn[/code]), que se quedan ligeras para el servidor. Si el
+## visual no carga, devuelve null y la cápsula se queda para que se vea algo. Lo usan el sandbox
+## ([ClientMain]), el personaje local de [OnlineMain] y los remotos de [RemoteWorld].
+static func install_replacing_placeholder(character: PlayerCharacter) -> HumanoidVisual:
+	var visual: HumanoidVisual = install(character)
+	if visual == null:
+		return null
+	var visual_root: Node = visual.get_parent()
+	for child: Node in visual_root.get_children():
+		if child is MeshInstance3D:
+			visual_root.remove_child(child)
+			child.queue_free()
+	return visual
+
+
 func _ready() -> void:
 	_skeleton = _find_skeleton(_model)
 	if _skeleton == null:
