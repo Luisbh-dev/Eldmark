@@ -306,9 +306,9 @@ func _launch_swarm(user_args: PackedStringArray, log_path: String) -> int:
 
 func test_max_realm_diff_rejects_people_and_makes_the_fake_fillers_leave() -> void:
 	var port: int = _find_free_port()
-	var log_path: String = _build_path("test_server_main_h.log")
-	var swarm_log: String = _build_path("test_server_main_h_swarm.log")
-	var report_path: String = _build_path("test_server_main_h.json")
+	var log_path: String = _build_path("test_server_main_l.log")
+	var swarm_log: String = _build_path("test_server_main_l_swarm.log")
+	var report_path: String = _build_path("test_server_main_l.json")
 	DirAccess.remove_absolute(report_path)
 	# Zona de pruebas (tres reinos): seis falsos de relleno, dos por reino; hasta 1 persona de ventaja.
 	var pid: int = _launch(PackedStringArray([

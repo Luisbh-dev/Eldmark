@@ -134,7 +134,7 @@ func test_bots_capture_the_neutral_fort_killing_the_captain_themselves() -> void
 	assert_true(holding >= 3, "al menos la mitad sigue en el círculo (%d)" % holding)
 
 
-func test_other_bots_recapture_the_fort_from_the_new_owner() -> void:
+func test_other_bots_recapture_a_fort_given_to_vardheim() -> void:
 	_runner.server.console_command("fort_owner vardheim")
 	await _runner.advance(10)
 	var state: FortressState = _runner.state()
@@ -154,6 +154,47 @@ func test_other_bots_recapture_the_fort_from_the_new_owner() -> void:
 	assert_eq(state.owner, SOLMARCH)
 	assert_eq(_runner.server.get_fortresses().get_gate(_runner.fortress_id()).get_owner_realm(), SOLMARCH,
 			"la puerta es ya de Solmarch")
+
+
+func test_vardheim_captures_the_neutral_fort_with_the_command_and_solmarch_recaptures_it() -> void:
+	var state: FortressState = _runner.state()
+	assert_eq(state.owner, 0, "neutral")
+	assert_eq(state.phase, FortressState.Phase.GARRISONED)
+	var vardheim: Array[int] = _runner.add_siege_bots(VARDHEIM, 6, 40)
+	_runner.set_capture_speed(30)
+	var broken: int = await _runner.advance_until(func() -> bool: return state.is_gate_broken(), 9000)
+	if not assert_true(broken >= 0, "Vardheim rompe la puerta"):
+		return
+	assert_true(_runner.kill_captain(), "fort_kill_captain: cae el capitán")
+	assert_eq(state.phase, FortressState.Phase.VULNERABLE, "el círculo se abre")
+	var captured: int = await _runner.advance_until(func() -> bool: return state.owner == VARDHEIM, 3000)
+	if not assert_true(captured >= 0, "Vardheim captura el fuerte (fase %d)" % state.phase):
+		return
+	assert_eq(state.phase, FortressState.Phase.CONSOLIDATING)
+	var first_capture_tick: int = _runner.tick()
+	# Los de Vardheim se van y salen los de Solmarch: rompen la puerta (repuesta al capturar) con la consolidación
+	# en marcha, y cuando el fuerte vuelve a estar guardado cae el capitán otra vez.
+	for net_id: int in vardheim:
+		_runner.server.remove_fake_player(net_id)
+	_runner.add_siege_bots(SOLMARCH, 6, 90)
+	var solmarch_broke: int = await _runner.advance_until(func() -> bool: return state.is_gate_broken(), 9000)
+	if not assert_true(solmarch_broke >= 0, "Solmarch rompe la puerta de Vardheim"):
+		return
+	var guarded: int = await _runner.advance_until(func() -> bool:
+		return state.phase == FortressState.Phase.GARRISONED, 9000)
+	if not assert_true(guarded >= 0, "acaba la consolidación de Vardheim (fase %d)" % state.phase):
+		return
+	assert_true(_runner.kill_captain(), "cae el capitán del nuevo dueño")
+	var recaptured: int = await _runner.advance_until(func() -> bool: return state.owner == SOLMARCH, 6000)
+	print("[siege] neutral -> Vardheim en %.1f s y -> Solmarch en %.1f s más" % [
+		SiegeRunner.seconds(first_capture_tick), SiegeRunner.seconds(_runner.tick() - first_capture_tick)])
+	assert_true(recaptured >= 0, "Solmarch recaptura el fuerte (fase %d, dueño %d)" % [state.phase, state.owner])
+	assert_eq(state.owner, SOLMARCH)
+	assert_eq(state.phase, FortressState.Phase.CONSOLIDATING)
+	var ids: Array[int] = _runner.war_ids()
+	assert_eq(ids.count(WarEvents.FORT_CAPTURED), 2, "dos capturas")
+	assert_eq(ids.count(WarEvents.CAPTAIN_DOWN), 2, "y dos capitanes caídos")
+	assert_eq(ids.count(WarEvents.GATE_BROKEN), 2, "y dos puertas rotas")
 
 
 func test_the_bots_of_the_owner_walk_into_their_own_fort_and_hold_the_circle() -> void:

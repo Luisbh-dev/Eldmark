@@ -108,9 +108,10 @@ func spawn_captain_double() -> int:
 	return server.spawn_captain_double(fortress_id())
 
 
-## Da por muerto al capitán ([code]fort_kill_captain[/code]). Devuelve true si el fuerte lo guardaba.
+## Da por muerto al capitán con la orden de la consola [code]fort_kill_captain[/code]. Devuelve true si el
+## fuerte lo guardaba (fase GARRISONED con el capitán vivo).
 func kill_captain() -> bool:
-	return server.get_fortresses().kill_captain(fortress_id(), server.get_tick() + 1, 0)
+	return server.console_command("fort_kill_captain").contains("ha muerto")
 
 
 ## Multiplica la velocidad de captura ([code]fort_capture_speed[/code]).
