@@ -195,7 +195,10 @@ el fuerte, de 40 × 40 m, sale ancho y bajo).
 ## Rutas, distancias y equidad
 
 Medido con `tools/terrain/verify_vado_gris_routes.gd`: un `PlayerCharacter` real corre (5 m/s,
-sin esprintar) desde un punto de aparición hasta la explanada de la puerta del fuerte.
+sin esprintar) desde un punto de aparición hasta la explanada de la puerta del fuerte. Los puntos de
+paso de cada ruta y reino son datos compartidos, `data/routes/vado_gris.tres` (`ApproachRoutes`,
+`scripts/shared/war/approach_routes.gd`), que escribe `tools/terrain/export_vado_gris_routes.gd` (las de
+Solmarch son el reflejo exacto de las de Vardheim) y que leen la verificación y los bots de asedio.
 
 | Ruta | Recorrido | Vardheim | Solmarch | Diferencia |
 |---|---|---|---|---|
