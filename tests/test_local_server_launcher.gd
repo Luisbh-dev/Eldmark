@@ -15,6 +15,10 @@ const REPORT_FILE: String = "test_local_mode_report.json"
 const NO_SUCH_PID: int = 2147483646
 ## Segundos como mucho que se espera a que el cliente de la prueba de procesos termine.
 const PROCESS_TIMEOUT_MSEC: int = 26000
+## Proceso auxiliar de las pruebas de [method LocalServerLauncher.is_process_alive].
+const PROBE_SCRIPT: String = "res://tests/process_probe.gd"
+## Tiempo (ms) como mucho que se espera a un proceso auxiliar.
+const PROBE_TIMEOUT_MSEC: int = 15000
 
 ## Bloqueo falso de esta ejecución (en build/<pid>/, no se comparte con otra suite).
 var _fake_lock: String = ""
@@ -26,6 +30,8 @@ var _saved_config: ClientConfig
 var _saved_hook: Callable
 var _saved_lock_path: String
 var _saved_max_fps: int = 0
+## Procesos auxiliares lanzados por la prueba en curso (se matan al terminar).
+var _probe_pids: Array[int] = []
 
 
 func before_each() -> void:
@@ -42,6 +48,10 @@ func before_each() -> void:
 
 func after_each() -> void:
 	DirAccess.remove_absolute(_fake_lock)
+	for probe_pid: int in _probe_pids:
+		if LocalServerLauncher.is_process_alive(probe_pid):
+			OS.kill(probe_pid)
+	_probe_pids.clear()
 	if is_instance_valid(_online):
 		_online.get_parent().remove_child(_online)
 		_online.free()
@@ -154,6 +164,78 @@ func test_is_process_alive() -> void:
 	assert_false(LocalServerLauncher.is_process_alive(NO_SUCH_PID), "uno que no existe")
 	assert_false(LocalServerLauncher.is_process_alive(0))
 	assert_false(LocalServerLauncher.is_process_alive(-5))
+
+
+## La rama de Windows de [method LocalServerLauncher.is_process_alive] consulta [code]tasklist[/code]
+## (OS.is_process_running solo conoce los procesos que lanzó este mismo proceso). Aquí se comprueba, en
+## cualquier plataforma, el comando y cómo se lee su salida, que sale en el idioma del sistema.
+func test_tasklist_is_asked_for_one_pid_and_its_output_is_read_by_column() -> void:
+	assert_eq(LocalServerLauncher.tasklist_args(12345), PackedStringArray(["/FI", "PID eq 12345",
+			"/FO", "CSV", "/NH"]), "una sola fila, en CSV y sin cabecera")
+	var listed: String = "\"Godot_v4.7.2-stable_win64_console.exe\",\"12345\",\"Console\",\"1\",\"85.304 K\"\r\n"
+	assert_true(LocalServerLauncher.tasklist_lists_pid(listed, 12345), "el pid es la segunda columna")
+	assert_false(LocalServerLauncher.tasklist_lists_pid(listed, 1), "el número de sesión no es el pid")
+	assert_false(LocalServerLauncher.tasklist_lists_pid(listed, 85), "ni la memoria")
+	assert_false(LocalServerLauncher.tasklist_lists_pid(listed, 123456), "ni un pid que empieza igual")
+	var two: String = "\"a.exe\",\"7\",\"Console\",\"1\",\"1 K\"\r\n\"12345.exe\",\"999\",\"Console\",\"1\",\"2 K\"\r\n"
+	assert_true(LocalServerLauncher.tasklist_lists_pid(two, 999), "con varias filas, en cualquiera")
+	assert_false(LocalServerLauncher.tasklist_lists_pid(two, 12345), "el nombre de imagen no cuenta")
+	# Sin coincidencias tasklist sale con 0 y un aviso en el idioma del sistema.
+	for message: String in [
+			"INFORMACIÓN: no hay tareas ejecutándose que coincidan con los criterios especificados.\r\n",
+			"INFO: No tasks are running which match the specified criteria.\r\n",
+			"INFORMATION : aucune tâche en service ne correspond aux critères spécifiés.\r\n", ""]:
+		assert_false(LocalServerLauncher.tasklist_lists_pid(message, 12345), message)
+
+
+## Lo que pasaba en Windows: [method OS.is_process_running] solo conoce los procesos que lanzó el
+## propio proceso, así que una segunda ventana [code]--local[/code] no veía vivo el servidor de la
+## primera. Un proceso hijo comprueba el pid de este (que no lanzó él).
+func test_a_child_process_sees_this_process_as_alive() -> void:
+	var out_path: String = NetHarness.build_path("probe_alive.json")
+	DirAccess.remove_absolute(out_path)
+	var pid: int = NetHarness.launch_script(PROBE_SCRIPT, PackedStringArray([
+			"--probe-alive=%d" % OS.get_process_id(), "--probe-out=%s" % out_path]), "probe_alive")
+	_probe_pids.append(pid)
+	assert_true(pid > 0, "se lanza el proceso auxiliar")
+	var result: Dictionary = await _wait_for_probe_result(out_path)
+	assert_eq(result.get("alive"), true, "el proceso auxiliar ve vivo a quien lo lanzó, aunque no lo lanzó él")
+
+
+## Un proceso que este no lanzó (un nieto: lo lanza el proceso auxiliar y este lo ve sin ser su
+## padre) cuenta como vivo mientras exista y deja de contar al morir.
+func test_a_grandchild_this_process_never_launched_is_seen_alive_until_it_dies() -> void:
+	var out_path: String = NetHarness.build_path("probe_spawn.json")
+	DirAccess.remove_absolute(out_path)
+	var pid: int = NetHarness.launch_script(PROBE_SCRIPT, PackedStringArray([
+			"--probe-spawn=20", "--probe-out=%s" % out_path, "--probe-dir=%s" % NetHarness.get_build_dir()]),
+			"probe_spawn")
+	_probe_pids.append(pid)
+	assert_true(pid > 0, "se lanza el proceso auxiliar")
+	var result: Dictionary = await _wait_for_probe_result(out_path)
+	var grandchild: int = int(result.get("grandchild", -1))
+	_probe_pids.append(grandchild)
+	if not assert_true(grandchild > 0, "que lanza otro proceso"):
+		return
+	assert_true(LocalServerLauncher.is_process_alive(grandchild), "el nieto está vivo para quien no es su padre")
+	OS.kill(grandchild)
+	var gone: bool = false
+	for _i: int in 50:
+		if not LocalServerLauncher.is_process_alive(grandchild):
+			gone = true
+			break
+		await tree.create_timer(0.1).timeout
+	assert_true(gone, "y deja de estarlo cuando muere")
+
+
+# Espera a que el proceso auxiliar escriba su resultado y lo devuelve (vacío si no llega a tiempo).
+func _wait_for_probe_result(out_path: String) -> Dictionary:
+	var started_msec: int = Time.get_ticks_msec()
+	while not FileAccess.file_exists(out_path) and Time.get_ticks_msec() - started_msec < PROBE_TIMEOUT_MSEC:
+		await tree.create_timer(0.1).timeout
+	# El proceso abre el archivo y lo escribe después: se espera a que haya contenido.
+	await tree.create_timer(0.2).timeout
+	return NetHarness.read_report(out_path)
 
 
 # --- OnlineMain en modo LOCAL, reutilizando un servidor -----------------------------------------

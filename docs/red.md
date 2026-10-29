@@ -159,7 +159,8 @@ $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Mi
 **`--local` (`LocalServerLauncher`):**
 
 1. Lee `user://dev_server.json` (`{pid, port}`), que escribe un servidor lanzado con
-   `--dev-lock`. Si `OS.is_process_running(pid)`, se conecta a ese servidor.
+   `--dev-lock` (o el archivo de `--dev-lock-path=<ruta>`). Si
+   `LocalServerLauncher.is_process_alive(pid)`, se conecta a ese servidor.
 2. Si no, lanza el servidor y se conecta con un timeout corto de ENet (1 s), reintentando
    durante 10 s. En una exportación (`OS.has_feature("template")`) se omite `--path`:
    ```
@@ -175,9 +176,13 @@ $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Mi
 No se detecta un servidor intentando `bind` en el puerto: en Windows, la reutilización de
 direcciones UDP lo hace poco fiable.
 
-`OS.is_process_running(pid)` solo conoce los procesos que lanzó el propio proceso: en Linux y macOS,
-con el pid de otra ventana registra un error del motor y devuelve `false`. `LocalServerLauncher`
-usa `/proc/<pid>/stat` (o `kill -0`) fuera de Windows. Cada intento de conexión fallido es una
+`OS.is_process_running(pid)` solo conoce los procesos que lanzó el propio proceso (en Windows mira
+su tabla de procesos hijos, `process_map`; en Linux y macOS, con el pid de otra ventana registra además
+un error del motor): una segunda ventana `--local` nunca lanzó el servidor de la primera y obtendría
+`false`. `LocalServerLauncher.is_process_alive` usa `/proc/<pid>/stat` (o `kill -0`) en Linux y macOS y,
+en Windows, `OS.is_process_running` para los hijos propios y `tasklist /FI "PID eq <pid>" /FO CSV /NH`
+para el resto (se lee la segunda columna de la fila, porque el aviso de «sin coincidencias» sale en el
+idioma del sistema). Cada intento de conexión fallido es una
 sesión nueva en `OnlineMain` (`NetClient.connect_timeout_ms` fija el tiempo de espera corto).
 
 **Desde el editor:** *Depurar ▸ Personalizar instancias de ejecución*.

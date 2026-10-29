@@ -114,3 +114,93 @@ jobs:
           path: build/
           if-no-files-found: ignore
           retention-days: 14
+
+  # Windows es la plataforma de desarrollo y allí OS.is_process_running solo conoce los procesos
+  # hijos propios: este trabajo ejecuta las pruebas de LocalServerLauncher (con sus procesos
+  # auxiliares), no la suite completa, que se ejecuta a mano en Windows (docs/informe_noche.md).
+  tests-windows:
+    name: Windows (LocalServerLauncher)
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      GODOT_WIN_FILE: Godot_v4.7.2-stable_win64
+      # Suma de comprobación SHA-512 del zip, de SHA512-SUMS.txt de la versión 4.7.2-stable.
+      GODOT_WIN_SHA512: 83decd58fdf67b9d657958a1ae6bf1929c20785315a81effe245874cdc57acb709bf868e00778a96984338c1b29dafdb453c6847747694621c6ecf5da2259993
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+
+      - name: Lista de objetos LFS
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
+
+      - name: Caché de objetos LFS
+        uses: actions/cache@v4
+        with:
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-assets-id') }}
+          restore-keys: |
+            lfs-
+
+      - name: Descargar objetos LFS
+        run: git lfs pull
+
+      - name: Caché de Godot
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/godot
+          key: godot-win-${{ env.GODOT_VERSION }}-${{ env.GODOT_WIN_SHA512 }}
+
+      - name: Descargar Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/godot"
+          curl -fsSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/godot.zip" \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/${GODOT_WIN_FILE}.exe.zip"
+          echo "${GODOT_WIN_SHA512}  $RUNNER_TEMP/godot.zip" | sha512sum --check -
+          7z x -y -o"$HOME/godot" "$RUNNER_TEMP/godot.zip"
+          # El ejecutable de consola (el que escribe en la salida estándar) pasa a llamarse godot.exe.
+          cp "$HOME/godot/${GODOT_WIN_FILE}_console.exe" "$HOME/godot/godot.exe"
+
+      - name: Godot en el PATH
+        run: cygpath -w "$HOME/godot" >> "$GITHUB_PATH"
+
+      - name: Versión de Godot
+        run: godot --headless --version
+
+      - name: Importar el proyecto
+        run: |
+          mkdir -p build
+          godot --headless --path . --import > build/import.log 2>&1 || {
+            cat build/import.log
+            exit 1
+          }
+
+      - name: Pruebas de LocalServerLauncher
+        timeout-minutes: 15
+        run: |
+          set -o pipefail
+          godot --headless --path . -s res://tests/run_tests.gd -- --filter=test_local_server_launcher 2>&1 | tee build/tests.log
+
+      - name: Resumen
+        if: always()
+        run: |
+          if [ -f build/tests.log ]; then
+            grep -E "^(FAIL|Resumen)" build/tests.log | tee -a "$GITHUB_STEP_SUMMARY" || true
+          fi
+
+      - name: Subir logs e informes
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-windows
+          path: build/
+          if-no-files-found: ignore
+          retention-days: 14

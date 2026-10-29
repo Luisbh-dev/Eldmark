@@ -15,9 +15,11 @@ extends RefCounted
 ## de direcciones UDP lo hace poco fiable.
 ## [br][br]
 ## [b]Procesos ajenos.[/b] [method OS.is_process_running] solo conoce los procesos que lanzó este
-## mismo proceso: en Linux y macOS, con el pid de otro registra un error del motor y devuelve false.
-## Por eso [method is_process_alive] usa [code]/proc[/code] (o [code]kill -0[/code]) fuera de
-## Windows.
+## mismo proceso (en Windows mira su tabla interna de procesos hijos; en Linux y macOS, con el pid de
+## otro registra además un error del motor): una segunda ventana [code]--local[/code] nunca lanzó el
+## servidor de la primera. Por eso [method is_process_alive] usa [code]/proc[/code] (o
+## [code]kill -0[/code]) en Linux y macOS, y [code]tasklist[/code] en Windows para lo que no son hijos
+## propios.
 
 ## Archivo de bloqueo que escribe el servidor con [code]--dev-lock[/code].
 const LOCK_PATH: String = "user://dev_server.json"
@@ -121,6 +123,7 @@ static func find_running(port: int, lock_path: String = LOCK_PATH) -> bool:
 
 ## true si el proceso [param pid] existe. A diferencia de [method OS.is_process_running] sirve con
 ## procesos que no lanzó este (el servidor lo lanzó otra ventana) y no registra errores del motor.
+## En Windows lo consulta a [code]tasklist[/code] ([method tasklist_args]).
 static func is_process_alive(pid: int) -> bool:
 	if pid <= 0:
 		return false
@@ -128,7 +131,9 @@ static func is_process_alive(pid: int) -> bool:
 		return true
 	match OS.get_name():
 		"Windows":
-			return OS.is_process_running(pid)
+			# OS.is_process_running sirve para los hijos propios; un servidor lanzado por otra
+			# ventana solo lo ve tasklist.
+			return OS.is_process_running(pid) or _is_alive_in_tasklist(pid)
 		"Linux", "FreeBSD", "NetBSD", "OpenBSD", "BSD":
 			return _is_alive_in_proc(pid)
 		_:
@@ -154,12 +159,36 @@ func is_server_alive() -> bool:
 	return is_process_alive(_pid)
 
 
+## Argumentos de [code]tasklist[/code] que listan solo el proceso [param pid], en CSV y sin cabecera.
+static func tasklist_args(pid: int) -> PackedStringArray:
+	return PackedStringArray(["/FI", "PID eq %d" % pid, "/FO", "CSV", "/NH"])
+
+
+## true si la salida de [code]tasklist[/code] ([method tasklist_args]) lista el proceso [param pid]:
+## una fila CSV [code]"nombre.exe","pid","sesión","n.º","memoria"[/code] cuya segunda columna es el pid.
+## Sin coincidencias, tasklist sale con 0 y escribe un aviso en el idioma del sistema, que por no
+## ser una fila CSV no cuenta; por eso se lee la columna y no se busca el texto.
+static func tasklist_lists_pid(output: String, pid: int) -> bool:
+	for line: String in output.split("\n"):
+		var columns: PackedStringArray = line.strip_edges().split("\",\"")
+		if columns.size() >= 2 and columns[1].trim_prefix("\"").trim_suffix("\"") == str(pid):
+			return true
+	return false
+
+
 # El valor de la primera opción --dev-lock-path= de [param args], o una cadena vacía.
 static func _lock_path_in(args: PackedStringArray) -> String:
 	for arg: String in args:
 		if arg.begins_with(DEV_LOCK_PATH_OPTION):
 			return arg.trim_prefix(DEV_LOCK_PATH_OPTION)
 	return ""
+
+
+# En Windows: pregunta a tasklist por el pid (un proceso ya terminado no sale en la lista).
+static func _is_alive_in_tasklist(pid: int) -> bool:
+	var output: Array = []
+	var exit_code: int = OS.execute("tasklist", tasklist_args(pid), output, false)
+	return exit_code == 0 and not output.is_empty() and tasklist_lists_pid(String(output[0]), pid)
 
 
 # En Linux, /proc/<pid>/stat existe mientras el proceso exista, también como zombi (ya terminado y

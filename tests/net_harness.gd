@@ -207,6 +207,16 @@ static func launch_process(user_args: PackedStringArray, log_name: String) -> in
 	return OS.create_process(OS.get_executable_path(), args)
 
 
+## Como [method launch_process], pero en lugar del juego corre el script [param script_path]
+## ([code]-s[/code]: un [SceneTree], como [code]tests/process_probe.gd[/code]). Para procesos
+## auxiliares de las pruebas que no son el servidor ni un cliente.
+static func launch_script(script_path: String, user_args: PackedStringArray, log_name: String) -> int:
+	var args := PackedStringArray(["--headless", "--path", ProjectSettings.globalize_path("res://"),
+			"--log-file", build_path("%s.log" % log_name), "-s", script_path, "--"])
+	args.append_array(user_args)
+	return OS.create_process(OS.get_executable_path(), args)
+
+
 ## Informe JSON escrito por un proceso (o [method NetClient.write_report]). Un diccionario vacío
 ## si el archivo no existe o no es JSON.
 static func read_report(path: String) -> Dictionary:
