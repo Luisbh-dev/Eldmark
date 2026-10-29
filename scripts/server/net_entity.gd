@@ -14,7 +14,7 @@ extends RefCounted
 ## combate) los actualiza cada tick con [method set_health_view]; mientras nadie lo haga, la
 ## entidad está sana.
 ## [br][br]
-## [member action] es el byte de acción del registro ([method ActionMachine.action_byte]); lo
+## [member action] es el byte de acción del registro ([method ActionWire.encode]); lo
 ## actualiza cada tick el mismo código que lleva la vida.
 
 ## La ven todos los jugadores de la zona, sin pasar por la [InterestPolicy] (fortalezas, puertas).
@@ -48,7 +48,7 @@ var health: int = DEFAULT_HEALTH
 var max_health: int = DEFAULT_HEALTH
 var status: int = 0
 var respawn_tick: int = 0
-## Byte de acción del registro de red ([method ActionMachine.action_byte]); 0 = sin datos.
+## Byte de acción del registro de red ([method ActionWire.encode]); 0 = sin datos.
 var action: int = 0
 
 

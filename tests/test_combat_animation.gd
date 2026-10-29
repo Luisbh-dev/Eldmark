@@ -18,6 +18,8 @@ var _clips: CombatClipSet
 var _weapon: WeaponTicks
 var _tick_rate: float = 60.0
 var _nodes: Array[Node] = []
+var _server_viewport: SubViewport = null
+var _server_world: Node3D = null
 
 
 func before_each() -> void:
@@ -33,6 +35,8 @@ func after_each() -> void:
 				node.get_parent().remove_child(node)
 			node.free()
 	_nodes.clear()
+	_server_viewport = null
+	_server_world = null
 	await wait_process_frames()
 
 
@@ -415,6 +419,108 @@ func test_remote_ignores_garbage_actions() -> void:
 			"y el byte de «sin acción» es 0x30")
 	layer.update_remote(0x30, 0.016)
 	assert_null(layer.get_current())
+
+
+## Un luchador del servidor en un mundo propio: es quien publica el byte de acción que ven los
+## demás clientes (el camino real, no la máquina de acciones suelta).
+func _make_server_fighter(net_id: int) -> Combatant:
+	if _server_world == null:
+		_server_viewport = CombatFixture.make_world(tree.root)
+		_nodes.append(_server_viewport)
+		_server_world = NetHarness.get_world(_server_viewport)
+	return CombatFixture.make_fighter(_server_world, net_id, NetProtocol.Realm.VARDHEIM, Vector3.ZERO,
+			0.0, CombatTiming.from_rules(CombatCatalog.rules()))
+
+
+## Recorre los ticks [code]START_TICK + 1[/code] a [code]START_TICK + last_rel[/code] del luchador:
+## en cada uno simula la máquina de acciones con los botones de [param buttons_at] (tick relativo
+## -> botones), llama a [param impose] (con el tick relativo, para imponer controles como hace el
+## servidor tras resolver los golpes) y publica. Un remoto recibe el byte [code]action[/code] de un
+## snapshot cada 2 ticks y avanza un tick de tiempo real por tick. Devuelve cuántas veces vuelve
+## atrás el instante del clip del remoto (un reinicio) y cuántas el de la capa local.
+func _count_restarts(fighter: Combatant, last_rel: int, buttons_at: Callable,
+		impose: Callable) -> Vector2i:
+	var clips: CombatClipSet = _clips
+	var remote := CombatAnimationLayer.new(clips)
+	var local := CombatAnimationLayer.new(clips)
+	var combat: CombatState = fighter.get_character().combat
+	var dt: float = 1.0 / _tick_rate
+	var snapshot_byte: int = ActionMachine.action_byte(combat, START_TICK)
+	var previous_remote: float = -1.0
+	var previous_local: float = -1.0
+	var remote_restarts: int = 0
+	var local_restarts: int = 0
+	for rel: int in range(1, last_rel + 1):
+		var input := PlayerInput.new()
+		input.tick = START_TICK + rel
+		input.move = Vector2(0.0, 1.0)
+		input.buttons = int(buttons_at.call(rel))
+		ActionMachine.step(combat, input, true)
+		impose.call(rel, combat)
+		fighter.publish(input.tick)
+		if rel % 2 == 0:
+			snapshot_byte = fighter.entity.action
+		remote.update_remote(snapshot_byte, dt)
+		local.update_local(combat, input.tick, 0.0, dt)
+		var remote_time: float = remote.get_current().time_s if remote.get_current() != null else -1.0
+		var local_time: float = local.get_current().time_s if local.get_current() != null else -1.0
+		if previous_remote >= 0.0 and remote_time >= 0.0 and remote_time + 0.0001 < previous_remote:
+			remote_restarts += 1
+		if previous_local >= 0.0 and local_time >= 0.0 and local_time + 0.0001 < previous_local:
+			local_restarts += 1
+		previous_remote = remote_time
+		previous_local = local_time
+	return Vector2i(remote_restarts, local_restarts)
+
+
+func test_a_remote_replays_a_second_dodge_chained_by_the_buffer() -> void:
+	# T2: la segunda esquiva sale del búfer en el tick en que acaba la primera, sin ningún tick en
+	# NONE: el byte de acción sería el mismo y el remoto se quedaría congelado en la última pose.
+	var fighter: Combatant = _make_server_fighter(1)
+	var restarts: Vector2i = _count_restarts(fighter, 70,
+			func(rel: int) -> int: return DODGE if rel == 1 or rel == 22 else 0,
+			func(_rel: int, _combat: CombatState) -> void: pass)
+	assert_eq(restarts.y, 1, "la capa local reinicia el clip al empezar la segunda esquiva")
+	assert_eq(restarts.x, 1, "y el remoto también, aunque no vea ningún tick sin esquiva")
+
+
+func test_a_remote_replays_a_second_control_whatever_the_gap_between_them() -> void:
+	# Dos tambaleos (o aturdimientos) seguidos comparten byte: el remoto debe reiniciar el clip en
+	# el segundo sea cual sea la separación entre ambos.
+	var first_tick: int = 10
+	for gap: int in range(2, 12):
+		var fighter: Combatant = _make_server_fighter(10 + gap)
+		var restarts: Vector2i = _count_restarts(fighter, first_tick + gap + 10,
+				func(_rel: int) -> int: return 0,
+				func(rel: int, combat: CombatState) -> void:
+					if rel == first_tick or rel == first_tick + gap:
+						ActionMachine.impose_stagger(combat, START_TICK + rel, START_TICK + rel + 40,
+								Vector2.ZERO))
+		assert_eq(restarts.x, 1, "separados %d ticks: el remoto reinicia el tambaleo" % gap)
+		assert_eq(restarts.y, 1, "(y el local también)")
+	var stun_fighter: Combatant = _make_server_fighter(99)
+	var stun_restarts: Vector2i = _count_restarts(stun_fighter, 40,
+			func(_rel: int) -> int: return 0,
+			func(rel: int, combat: CombatState) -> void:
+				if rel == 10 or rel == 17:
+					ActionMachine.impose_stun(combat, START_TICK + rel, START_TICK + rel + 40))
+	assert_eq(stun_restarts.x, 1, "dos aturdimientos seguidos también")
+
+
+func test_a_remote_does_not_restart_a_dodge_or_a_control_that_just_goes_on() -> void:
+	var fighter: Combatant = _make_server_fighter(3)
+	var restarts: Vector2i = _count_restarts(fighter, 40,
+			func(rel: int) -> int: return DODGE if rel == 1 else 0,
+			func(_rel: int, _combat: CombatState) -> void: pass)
+	assert_eq(restarts, Vector2i(0, 0), "una sola esquiva no se reinicia a mitad")
+	var staggered: Combatant = _make_server_fighter(4)
+	restarts = _count_restarts(staggered, 40,
+			func(_rel: int) -> int: return 0,
+			func(rel: int, combat: CombatState) -> void:
+				if rel == 5:
+					ActionMachine.impose_stagger(combat, START_TICK + rel, START_TICK + rel + 30,
+							Vector2.ZERO))
+	assert_eq(restarts, Vector2i(0, 0), "ni un solo tambaleo")
 
 
 # --- Pose en el esqueleto ---------------------------------------------------------------------

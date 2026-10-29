@@ -84,6 +84,8 @@ var rejected_swing_tick: int = -1
 
 # Resto de la regeneración de vida (en puntos por segundo, se canjea cada 60).
 var _regen_carry: int = 0
+# Arma el byte de acción del registro de red, con el contador de reinicio de las esquivas y los controles.
+var _action_wire: ActionWire = ActionWire.new()
 
 
 ## [param entity] debe tener un [PlayerCharacter] como nodo. [param max_health] es la vida máxima
@@ -312,4 +314,4 @@ func publish(tick: int) -> void:
 			respawn_tick if health <= 0 else 0)
 	var character: PlayerCharacter = entity.get_character()
 	if character != null:
-		entity.action = ActionMachine.action_byte(character.combat, tick)
+		entity.action = _action_wire.encode(character.combat, tick)

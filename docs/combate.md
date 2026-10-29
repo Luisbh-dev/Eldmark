@@ -301,7 +301,12 @@ Consultas (las usan el servidor y el animador): `phase(c, t)` (0 anticipación o
 2 recuperación, 3 sin fases), `is_attack_active(c, t)`, `is_blocking(c, t)`,
 `is_parry_window(c, t)`, `is_invulnerable(c, t)`, `defense_flags(c, t) -> int` (bits de
 `StateHistory`) y `action_byte(c, t) -> int`: bits 0–3 la acción, 4–5 la fase, 6–7 el paso del
-combo del ligero en curso.
+combo del ligero en curso. El byte que viaja en el registro lo arma `ActionWire`
+(`scripts/shared/net/action_wire.gd`, uno por entidad en el `Combatant`): es el de `action_byte`
+y, en la esquiva, el tambaleo y el aturdimiento (que no tienen combo), los bits 6–7 llevan un
+contador de reinicio que sube en 1 (módulo 4) con cada acción nueva. Sin él, dos esquivas
+encadenadas por el búfer (la segunda sale en el tick en que acaba la primera, sin ningún tick en
+NONE) o dos controles seguidos dan el mismo byte y el remoto no reinicia el clip.
 
 ---
 
