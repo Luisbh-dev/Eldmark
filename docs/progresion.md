@@ -1735,3 +1735,19 @@ implementarla:
 - **El falso** (`MemoryProgressStore`) imita una S2 mínima (un `op_id` ya aplicado falla) y `Op` con la
   consulta de los arrendamientos de los participantes: las pruebas de P7 con el almacén de verdad son las que
   dicen que S1–S8 y el `join` de `op_participants` hacen lo mismo.
+
+### 19.3 Lo que deja plataforma.md P7a
+
+plataforma.md P7a (su §19.5) escribe la fila de `set-role` que lee S2 (§13.3) y da la consulta hecha:
+
+- **`sanctions.RoleAt(ctx, q, accountID, at)`** (`platform/internal/sanctions/roles.go`) es la regla de S2 tal
+  cual: el `args.from` de la primera fila de `audit_log` con `source = 'cli'`, `command = 'set-role'` y
+  `target_account_id` la cuenta, con `at` posterior al instante (`order by at, id`), o, si no hay ninguna, el
+  rol de `accounts`; "" si la cuenta no existe. P7 la llama dentro de `Apply` con `time.Unix(detail.at_unix, 0)`
+  y la transacción del guardado. Su prueba (`TestRoleAtOnlyReadsCLI`) comprueba que una fila `set-role` con otro
+  `source` no cuenta y que el lote de auditoría de la zona rechaza las entradas con `source = 'cli'` o `command =
+  'set-role'`.
+- **El orden de los bloqueos:** `set-role` bloquea las filas de `accounts` del `--actor` y del objetivo (`for no
+  key update`, en orden de id) y escribe la fila con la hora de Go en la misma transacción que cambia el rol.
+- **Auditoría sin datos personales:** las filas de la CLI y de la plataforma nunca llevan correos ni nombres en
+  `args` (plataforma.md §9.1); las de S8 siguen la misma regla (el objetivo por id en `detail.args`, §10).

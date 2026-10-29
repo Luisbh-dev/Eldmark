@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -20,6 +21,12 @@ import (
 // ApplicationName es el application_name de las conexiones de la plataforma (pg_stat_activity).
 const ApplicationName = "eldmark-platform"
 
+// MinPoolConns es el tamaño mínimo del pool si la cadena no trae pool_max_conns. El de pgx
+// (max(4, núcleos)) no basta: cada trabajo periódico de app tiene una conexión con su
+// pg_try_advisory_lock y otra para su trabajo, y con cuatro trabajos y cuatro conexiones se
+// bloquean entre ellos (y a las API) hasta que vence el plazo del más corto.
+const MinPoolConns = 16
+
 // Open prepara el pool de conexiones. No conecta todavía: la primera petición abre la primera
 // conexión, así que una base caída al arrancar no impide levantar /health y /ready.
 func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
@@ -27,6 +34,9 @@ func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	if err != nil {
 		// El error de pgx no repite la contraseña, pero tampoco hace falta la cadena.
 		return nil, errors.New("db: la cadena de conexión no se entiende")
+	}
+	if !strings.Contains(url, "pool_max_conns") && cfg.MaxConns < MinPoolConns {
+		cfg.MaxConns = MinPoolConns
 	}
 	if _, ok := cfg.ConnConfig.RuntimeParams["application_name"]; !ok {
 		cfg.ConnConfig.RuntimeParams["application_name"] = ApplicationName

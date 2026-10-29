@@ -247,3 +247,41 @@ func (s *Service) batch(w http.ResponseWriter, r *http.Request, field string,
 	}
 	zones.BatchResponse(w, rejected)
 }
+
+// ChatRetention es lo que se conserva el chat (§11.1: 30 días, todos los canales); lo copiado a un
+// reporte sigue en report_evidence.
+const ChatRetention = 30 * 24 * time.Hour
+
+// chatPurgeBatch es el tamaño de cada borrado de la retención del chat (§11.1: lotes de 10 000).
+const chatPurgeBatch = 10000
+
+// PurgeChat es la retención del chat (§11.1), el trabajo horario chat_retention: borra los
+// mensajes con sent_at de hace más de [ChatRetention], en lotes de 10 000 (cada uno, su propia
+// sentencia) hasta que no quede ninguno. Devuelve cuántos borró.
+func (s *Service) PurgeChat(ctx context.Context) (int64, error) {
+	cutoff := s.clock.Now().Add(-ChatRetention)
+	var total int64
+	for {
+		tag, err := s.pool.Exec(ctx, `delete from chat_messages where id in (
+			select id from chat_messages where sent_at < $1 order by sent_at limit $2)`, cutoff, chatPurgeBatch)
+		if err != nil {
+			return total, err
+		}
+		total += tag.RowsAffected()
+		if tag.RowsAffected() < chatPurgeBatch {
+			return total, nil
+		}
+		if err := ctx.Err(); err != nil {
+			return total, err
+		}
+	}
+}
+
+// ChatRetentionJob es [Service.PurgeChat] como trabajo periódico de app (registra lo borrado).
+func (s *Service) ChatRetentionJob(ctx context.Context) error {
+	n, err := s.PurgeChat(ctx)
+	if n > 0 {
+		s.log.Info("chat caducado borrado", "messages", n)
+	}
+	return err
+}

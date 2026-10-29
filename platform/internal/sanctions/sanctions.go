@@ -1,7 +1,9 @@
-// Package sanctions reúne las reglas de las sanciones que comparten la API pública, la interna y,
-// más adelante, la CLI (plataforma.md §6.1, §9.1 y §9.5): la restricción vigente de una cuenta
-// (suspensión o expulsión), los silencios, los textos para el jugador que compone la plataforma,
-// el rango de los roles y qué rol puede crear cada sanción.
+// Package sanctions reúne las reglas de las sanciones y de los roles que comparten la API pública,
+// la interna y la CLI admin (plataforma.md §6.1, §9.1 y §9.5): la restricción vigente de una cuenta
+// (suspensión o expulsión), los silencios, los avisos pendientes, los textos para el jugador que
+// compone la plataforma, el rango de los roles, qué rol puede crear cada sanción, la creación de
+// una sanción con su autorización ([Create], la misma para la zona y para la CLI) y el rol que tenía
+// una cuenta en un instante ([RoleAt], para la comprobación S2 del guardado).
 //
 // Es una hoja: no importa ningún otro paquete de la plataforma salvo mail (la fecha de los
 // textos), así que la usan accounts, zones, persistence y social sin ciclos.
@@ -41,8 +43,8 @@ const ShortLimit = 7 * 24 * time.Hour
 const MaxTextBytes = 255
 
 // NoEndUnix es la fecha Unix que va en until_unix de un silencio sin fin (9999-12-31 23:59:59
-// UTC): la zona compara números y un null la obligaría a otro caso. Ninguna ruta de la fase 5 crea
-// silencios sin fin; podría hacerlo la CLI.
+// UTC): la zona compara números y un null la obligaría a otro caso. Ni la zona ni la CLI crean
+// silencios sin fin en la fase 5 (los dos exigen duración).
 const NoEndUnix int64 = 253402300799
 
 // Querier es una consulta dentro de la transacción o la conexión de quien llama.

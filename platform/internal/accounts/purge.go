@@ -32,11 +32,15 @@ type purgeReason int
 const (
 	purgeUnverified purgeReason = iota // sin verificar a los 7 días (staging y production)
 	purgeDeletion                      // borrado pedido, con purge_after vencido
+	purgeRequested                     // admin purge-now: cualquier cuenta sin purgar (§11.2)
 )
 
 func (r purgeReason) String() string {
-	if r == purgeUnverified {
+	switch r {
+	case purgeUnverified:
 		return "sin verificar"
+	case purgeRequested:
+		return "purge-now"
 	}
 	return "borrado pedido"
 }
@@ -132,6 +136,10 @@ func (s *Service) purgeAccount(ctx context.Context, accountID int64, reason purg
 			}
 		case purgeDeletion:
 			if status != "pending_deletion" || purgeAfter == nil || purgeAfter.After(now) {
+				return nil
+			}
+		case purgeRequested:
+			if status == "purged" {
 				return nil
 			}
 		}

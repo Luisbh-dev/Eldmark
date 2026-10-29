@@ -4,9 +4,10 @@
 //	eldmark-platform migrate up            aplica las migraciones pendientes
 //	eldmark-platform migrate down N        deshace las N mayores aplicadas (solo dev y test)
 //	eldmark-platform migrate status        estado de cada migración
+//	eldmark-platform admin --actor <correo> <orden>
+//	                                       moderación y cuentas, con identidad (plataforma.md §9.1)
 //
-// La configuración va en variables de entorno (plataforma.md §2.3). La orden admin llega con la
-// moderación (P7a).
+// La configuración va en variables de entorno (plataforma.md §2.3); admin usa la misma que serve.
 package main
 
 import (
@@ -42,6 +43,9 @@ const usage = `Uso: eldmark-platform <orden>
   migrate up         Aplica las migraciones pendientes.
   migrate down N     Deshace las N migraciones mayores aplicadas (solo en dev y test).
   migrate status     Muestra el estado de cada migración.
+  admin --actor <correo> <orden>
+                     Moderación y cuentas: set-role, reports, audit, chat, sanction,
+                     names, purge-now, create-account… («admin help» las lista).
 
 La configuración va en variables de entorno ELDMARK_* (docs/plataforma.md §2.3).
 `
@@ -67,6 +71,8 @@ func run(ctx context.Context, args []string, lookup config.Lookup, stdout, stder
 		return serve(ctx, lookup, stdout, stderr)
 	case "migrate":
 		return migrateCmd(ctx, args[1:], lookup, stdout, stderr)
+	case "admin":
+		return adminCmd(ctx, args[1:], lookup, stdout, stderr)
 	case "help", "-h", "--help", "ayuda":
 		fmt.Fprint(stdout, usage)
 		return exitOK

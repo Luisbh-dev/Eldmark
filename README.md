@@ -243,6 +243,21 @@ curl -s -H 'Authorization: Bearer secreto' -d '{"world_id": 1, "zone_id": "vado_
 
 Una instancia que deja de latir 3 × `ELDMARK_HEARTBEAT_S` se da por perdida y sus personajes quedan libres.
 
+La moderación y las cuentas del equipo van por la orden `admin`, con la misma configuración que `serve`. Toda
+orden lleva `--actor` con el correo de una cuenta `admin` (o `moderator` para las de lectura) y deja su fila en
+la auditoría (`audit_log`, sin correos ni nombres); la primera cuenta `admin` se crea con `bootstrap`. La
+contraseña de las cuentas nuevas se lee de un archivo, nunca de la línea de órdenes:
+
+```bash
+go run ./cmd/eldmark-platform admin bootstrap jefa@eldmark.test --password-file clave.txt
+go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test create-account prueba@eldmark.test --password-file clave.txt
+go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test set-role gm@eldmark.test gm     # revoca sus sesiones
+go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test reports list
+go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test chat --character Bran --from 2026-11-01 --to 2026-11-02
+go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test sanction add Bran mute --duration 24h --reason "insultos"
+go run ./cmd/eldmark-platform admin help                                                       # todas las órdenes
+```
+
 ## Exportación (cliente Windows y servidor Linux)
 
 `export_presets.cfg` (en texto, versionado) define dos destinos, y `tools/export.sh` (Linux y macOS) o

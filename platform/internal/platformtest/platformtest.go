@@ -1,7 +1,8 @@
 // Package platformtest monta la plataforma entera en el proceso de una prueba (solo para pruebas):
 // la base efímera de testdb, el reloj falso, el progreso en memoria
-// (persistence.MemoryProgressStore), la API pública (cuentas y personajes) y la interna (zonas,
-// reclamación y guardado, guerra y lo social), con ayudas para hacer de cliente y de zona.
+// (persistence.MemoryProgressStore), la API pública (cuentas y personajes), la interna (zonas,
+// reclamación y guardado, guerra y lo social) y la orden admin, con ayudas para hacer de cliente y
+// de zona.
 //
 // Lo usan las pruebas de zones, persistence, war y social: la API interna solo se entiende con
 // cuentas, personajes y billetes de verdad delante.
@@ -30,6 +31,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"eldmark/platform/internal/accounts"
+	"eldmark/platform/internal/admin"
 	"eldmark/platform/internal/characters"
 	"eldmark/platform/internal/clock"
 	"eldmark/platform/internal/config"
@@ -126,6 +128,7 @@ type Platform struct {
 	Store      *persistence.Store
 	War        *war.Service
 	Social     *social.Service
+	Admin      *admin.Service // la orden admin (P7a), con os_user «prueba»
 	Public     http.Handler
 	Internal   http.Handler
 	Logs       *SyncBuffer
@@ -184,6 +187,9 @@ func New(t testing.TB, opts ...func(*config.Config)) *Platform {
 	p.War, err = war.New(war.Options{Pool: pool, Guard: p.Zones.Guard(), Clock: p.Clock, Log: log})
 	must(err)
 	p.Social, err = social.New(social.Options{Pool: pool, Guard: p.Zones.Guard(), Clock: p.Clock, Log: log})
+	must(err)
+	p.Admin, err = admin.New(admin.Options{Pool: pool, Accounts: p.Accounts, Legal: set, Clock: p.Clock, Log: log,
+		OSUser: "prueba", PurgePoll: 10 * time.Millisecond})
 	must(err)
 
 	public := publicRouter{http.NewServeMux()}

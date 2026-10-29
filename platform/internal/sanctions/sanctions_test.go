@@ -57,3 +57,24 @@ func TestMessages(t *testing.T) {
 		t.Fatal("Truncate")
 	}
 }
+
+func TestWarningTextAndTimed(t *testing.T) {
+	if got := (Warning{Reason: "spam"}).Text(); got != "Has recibido un aviso de la moderación: spam" {
+		t.Fatal(got)
+	}
+	if got := (Warning{}).Text(); got != "Has recibido un aviso de la moderación" {
+		t.Fatal(got)
+	}
+	if msg := (Warning{Reason: strings.Repeat("é", 200)}).Text(); len(msg) > MaxTextBytes || !utf8.ValidString(msg) {
+		t.Fatalf("cortado a 255 B: %d", len(msg))
+	}
+	for kind, want := range map[string]bool{KindMute: true, KindSuspension: true, KindWarning: false, KindBan: false,
+		KindRename: false} {
+		if Timed(kind) != want {
+			t.Errorf("Timed(%s)", kind)
+		}
+	}
+	if len(Roles) != 4 || Roles[0] != RolePlayer || Roles[3] != RoleAdmin {
+		t.Fatal(Roles)
+	}
+}

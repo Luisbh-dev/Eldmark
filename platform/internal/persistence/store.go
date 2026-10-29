@@ -122,6 +122,7 @@ type ClaimResult struct {
 	Role            string
 	MutedUntilUnix  int64 // 0: sin silencio
 	IgnoredAccounts []int64
+	Warnings        []sanctions.Warning // avisos que la cuenta aún no ha visto en el mundo (§9.5)
 	CharacterID     int64
 	WorldID         int16
 	Realm           int16
@@ -142,7 +143,9 @@ type ClaimResult struct {
 //  5. ningún otro personaje de la cuenta en el mundo con un arrendamiento vivo (409 character_busy);
 //  6. toma el arrendamiento si está libre o caducado (expires_at ≤ ahora, lo contrario de «vivo»; si
 //     no, 409 character_busy), con un lease_id nuevo, seq a 0 y sin hash;
-//  7. lee progress con ProgressStore.Load y los totales pvp en la misma transacción.
+//  7. lee progress con ProgressStore.Load y los totales pvp en la misma transacción, y de la cuenta
+//     el silencio, los ignorados y los avisos que aún no ha visto (los de después de la última
+//     entrada al mundo de cualquiera de sus personajes, sanctions.PendingWarnings).
 //
 // Cualquier error deshace la transacción: el billete no queda consumido.
 func (s *Store) Claim(ctx context.Context, instance [16]byte, ticketID, characterID int64) (*ClaimResult, error) {
@@ -254,6 +257,14 @@ func (s *Store) Claim(ctx context.Context, instance [16]byte, ticketID, characte
 			return err
 		}
 		if r.IgnoredAccounts, err = pgx.CollectRows(rows, pgx.RowTo[int64]); err != nil {
+			return err
+		}
+		var lastEntered *time.Time
+		if err := tx.QueryRow(ctx, `select max(last_entered_at) from characters where account_id = $1 and world_id = $2`,
+			r.AccountID, r.WorldID).Scan(&lastEntered); err != nil {
+			return err
+		}
+		if r.Warnings, err = sanctions.PendingWarnings(ctx, tx, r.AccountID, r.WorldID, lastEntered, now); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `update characters set last_entered_at = $2 where character_id = $1`,

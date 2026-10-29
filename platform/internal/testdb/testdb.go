@@ -144,7 +144,7 @@ func newDatabase(t testing.TB, migrated bool) *pgxpool.Pool {
 	c.mu.Lock()
 	c.created = append(c.created, name)
 	c.mu.Unlock()
-	pool, err := c.pool(ctx, name, 4)
+	pool, err := c.pool(ctx, name, testPoolConns)
 	if err != nil {
 		t.Fatalf("testdb: %v", err)
 	}
@@ -156,6 +156,11 @@ func newDatabase(t testing.TB, migrated bool) *pgxpool.Pool {
 	})
 	return pool
 }
+
+// testPoolConns es el tamaño del pool de cada base de prueba: los cuatro trabajos periódicos de
+// serve tienen cada uno dos conexiones a la vez (la del bloqueo y la del trabajo) y aún quedan para
+// las peticiones.
+const testPoolConns = 10
 
 // ConnString devuelve la cadena de conexión de un pool de [New] (para pasarla a una orden).
 func ConnString(pool *pgxpool.Pool) string { return pool.Config().ConnString() }

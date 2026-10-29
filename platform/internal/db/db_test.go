@@ -139,3 +139,23 @@ func TestPing(t *testing.T) {
 		t.Fatalf("application_name: %q %v", app, err)
 	}
 }
+
+// El pool tiene al menos MinPoolConns conexiones salvo que la cadena diga otra cosa.
+func TestOpenPoolSize(t *testing.T) {
+	pool, err := db.Open(context.Background(), "host=127.0.0.1 port=1 user=x dbname=x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if n := pool.Config().MaxConns; n < db.MinPoolConns {
+		t.Fatalf("MaxConns %d", n)
+	}
+	small, err := db.Open(context.Background(), "postgres://x@127.0.0.1:1/x?pool_max_conns=3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer small.Close()
+	if n := small.Config().MaxConns; n != 3 {
+		t.Fatalf("pool_max_conns: %d", n)
+	}
+}

@@ -73,6 +73,16 @@ type ClaimAccount struct {
 	Role              string     `json:"role"`
 	MutedUntilUnix    int64      `json:"muted_until_unix"`
 	IgnoredAccountIDs []jsonx.ID `json:"ignored_account_ids"`
+	// Warnings son los avisos que la cuenta aún no ha visto (§9.5: al entrar, NOTICE con el motivo),
+	// con el texto compuesto por la plataforma; lista vacía si no hay.
+	Warnings []ClaimWarning `json:"warnings"`
+}
+
+// ClaimWarning es un aviso pendiente en la reclamación.
+type ClaimWarning struct {
+	SanctionID jsonx.ID `json:"sanction_id"`
+	Text       string   `json:"text"`
+	AtUnix     int64    `json:"at_unix"`
 }
 
 // ClaimCharacter es el personaje en la reclamación.
@@ -114,11 +124,15 @@ func (a *API) claim(w http.ResponseWriter, r *http.Request) {
 	for i, id := range res.IgnoredAccounts {
 		ignored[i] = jsonx.ID(id)
 	}
+	warnings := make([]ClaimWarning, len(res.Warnings))
+	for i, w := range res.Warnings {
+		warnings[i] = ClaimWarning{SanctionID: jsonx.ID(w.SanctionID), Text: w.Text(), AtUnix: w.At.Unix()}
+	}
 	httpx.WriteJSON(w, http.StatusOK, ClaimView{
 		LeaseID:        zones.FormatUUID(res.LeaseID),
 		InstanceStatus: res.InstanceStatus,
 		Account: ClaimAccount{AccountID: jsonx.ID(res.AccountID), Role: res.Role, MutedUntilUnix: res.MutedUntilUnix,
-			IgnoredAccountIDs: ignored},
+			IgnoredAccountIDs: ignored, Warnings: warnings},
 		Character: ClaimCharacter{CharacterID: jsonx.ID(res.CharacterID), WorldID: int(res.WorldID), Realm: int(res.Realm),
 			Name: res.Name},
 		Progress: res.Progress,

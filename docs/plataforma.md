@@ -2403,3 +2403,142 @@ latidos con cientos de personajes; el trabajo `zones_lost` dentro de `serve` (se
 
 **Queda para después:** el mantenimiento en el latido (TEC-28); la zona (P4–P6, P7b); la CLI de P7a; las
 retenciones de P9a; la prueba de extremo a extremo (P10).
+
+### 19.5 P7a · moderación en Go (SOC-14 a SOC-18)
+
+**Qué hay.** La orden `admin` con identidad (§9.1), las consultas auditadas, los avisos en la reclamación, la
+retención del chat y una sola autorización de las sanciones para la zona y la CLI:
+
+| Pieza | Contenido |
+|---|---|
+| `internal/admin` | Nuevo: el servicio de la orden. `Authorize` (el `--actor`: cuenta activa, sin sanción vigente y con el rol de la orden; si no, `ActorError`), `SetRole`, `CreateAccount`, `Bootstrap`, `PurgeNow`, `Reports`, `Report`, `CloseReport`, `Audit`, `Chat`, `Sanction`, `Sanctions`, `RevokeSanction`, `BlockName` y `UnblockName`. Cada orden deja su fila en `audit_log` (`source = 'cli'`, `actor_account_id` del `--actor`, `args.os_user`, el objetivo por id), en la misma transacción que lo que hace o lee; las que cambian algo vuelven a mirar el rol del `--actor` con su fila bloqueada |
+| `cmd/eldmark-platform` | `admin.go`: la orden `admin` (argumentos leídos y comprobados antes de conectar, tablas con `tabwriter`, códigos 0, 1 y 2) con la configuración de `serve`; `admin help`. `serve` añade el trabajo `chat_retention` (cada hora) |
+| `internal/sanctions` | `Create` (la autorización de §9.5 y la sanción, que estaban en `social`: ahora la usan la zona y la CLI), `RoleAt` (el rol de una cuenta en un instante: la consulta de S2, progresion.md §13.3), `PendingWarnings` y `Warning.Text`, `Timed`, `Roles` y las constantes de `source` y `command` |
+| `internal/social` | `Sanction` sobre `sanctions.Create` (mismo comportamiento y mismas pruebas de P3); `PurgeChat` y `ChatRetentionJob` |
+| `internal/persistence` | La reclamación trae `account.warnings` (abajo) |
+| `internal/accounts` | `RevokeSessions`, `PurgeNow` (la purga de §11.2 sin esperar), `CreateAccount` (cuentas verificadas del equipo y de prueba) y `LookupAccount` |
+| `internal/db` · `internal/testdb` | `MinPoolConns` (16) en `Open` · 10 conexiones por base de prueba (antes 4) |
+| `internal/platformtest` | `Admin` (con `os_user` «prueba») |
+
+Órdenes (`eldmark-platform admin --actor <correo> <orden>`; «L», lectura, basta `moderator`; el resto, `admin`):
+
+| Orden | Hace | Fila de `audit_log` (`command`; objetivo; `args` además de `os_user`) |
+|---|---|---|
+| `set-role <correo> <rol>` | Cambia el rol y revoca todas las sesiones de la cuenta (`role_changed`): el latido siguiente expulsa a su personaje con guardado final y vuelve a entrar con el rol nuevo | `set-role`; la cuenta; `{from, to}` (la fila fija de §9.1) |
+| `create-account <correo> --password-file <ruta> [--role player]` | Cuenta verificada, con la edad confirmada y los textos vigentes aceptados | `create-account`; la cuenta; `{role}` |
+| `bootstrap <correo> --password-file <ruta>` | Sin `--actor`: la primera cuenta `admin`, solo si no hay ninguna | `bootstrap`; la cuenta; sin actor |
+| `purge-now <correo> [--wait 30s]` | Revoca las sesiones (`deletion`), espera a que se liberen los arrendamientos y purga (§11.2); si alguno sigue vivo, `character_busy` y nada | `purge-now`; la cuenta |
+| `reports list [--status …] [--limit N]` (L) | La cola, del más viejo al más nuevo | `reports list`; —; `{status, limit}` |
+| `reports show <id>` (L) | El reporte con su prueba y sus sanciones | `reports show`; el objetivo del reporte; `{report_id}` |
+| `reports close <id> actioned\|dismissed [--resolution …]` | Cierra (`handled_by`, `resolution`, `closed_at`) | `reports close`; el objetivo; `{report_id, status}` |
+| `audit --since <fecha> [--until] [--actor-name] [--target] [--command] [--world] [--limit]` (L) | La auditoría con los nombres de ahora de los personajes | `audit`; el de `--target`; `{since, until, actor_account_id, command, limit}` |
+| `chat --character <nombre> --from <fecha> --to <fecha> [--world] [--limit]` (L) | Lo que mandó el personaje y los susurros que recibió, con zona y copia | `chat`; el personaje; `{from, to, limit}` |
+| `sanction add <nombre> <tipo> [--duration 1h\|7d] --reason … [--report id]… [--world]` | `sanctions.Create` con la cuenta del `--actor` | `sanction` o `sanction_denied` (como la zona, con `source = 'cli'`) |
+| `sanction revoke <id>` | La levanta (`revoked_at`, `revoked_by`) | `sanction revoke`; el sancionado; `{sanction_id, kind}` |
+| `sanction list <nombre> [--world]` (L) | Las sanciones de la cuenta con su estado (vigente, caducada, revocada, anotada, pendiente, cumplida) | `sanction list`; el personaje |
+| `names block <nombre> [--reason …]` · `names unblock <nombre>` | La clave de `NameRules` entra en (o sale de) `name_blacklist`; avisa de quien ya se llama así | `names block` · `names unblock`; —; `{term}` |
+
+Un personaje se nombra por su nombre en el mundo (`--world`, 1) o por `#<id>`; las fechas, en UTC
+(`2026-11-01`, `2026-11-01T18:00` o RFC 3339).
+
+**Para los paquetes siguientes.**
+
+- **P4 y P7b (la zona):** la reclamación trae `account.warnings: [{sanction_id, text, at_unix}]` (lista vacía si
+  no hay): los avisos que la cuenta no ha visto, con el texto para el jugador ya compuesto («Has recibido un aviso
+  de la moderación: motivo», 255 B como mucho). La zona manda un NOTICE con cada `text` al entrar (§9.5). Un
+  `set-role` llega como `session_revoked` en el latido («Tu cuenta ha cambiado: vuelve a entrar») y el rol nuevo,
+  en la reclamación siguiente. Las sanciones de `/gm` siguen siendo `POST /internal/v1/sanctions`.
+- **progresion.md P7 (S2):** `sanctions.RoleAt(ctx, tx, actorAccountID, time.Unix(at_unix, 0))` es la consulta
+  de su §13.3 (el `args.from` de la primera fila `set-role` con `source = 'cli'` posterior, o el rol de
+  `accounts`); devuelve "" si la cuenta no existe.
+- **P9a:** `purge-now` ya existe; `reapply-purges` entra en `parseAdmin` igual que las demás (`Authorize` con
+  `admin`, su fila `cli`). La retención del chat ya corre; quedan las de `audit_log`, reportes, sanciones,
+  `auth_events` y demás de §11.1.
+- **P9b:** `dev.sh` crea la primera cuenta con `admin bootstrap <correo> --password-file …` y las de prueba con
+  `admin --actor <ese correo> create-account prueba@eldmark.test --password-file …`.
+
+**Desviaciones y decisiones de la implementación:**
+
+- **La autorización de las sanciones pasa a `internal/sanctions`** (`Create`): la zona (`social.Sanction`) y la
+  CLI (`admin sanction add`) usan el mismo código y las mismas filas. La CLI pasa las tres comprobaciones de §9.5
+  salvo el arrendamiento, que no tiene (no hay instancia), y exige `admin` para cualquier tipo (§9.1: toda orden
+  que cambia algo es de `admin`). Sus filas usan los `command` de la plataforma (`sanction`,
+  `sanction_denied`) con `source = 'cli'` y `os_user`, sin `zone_id` ni `actor_character_id`.
+- **`sanction` son tres órdenes:** `add`, `revoke` (levantar una sanción: el esquema ya tenía `revoked_at` y
+  `revoked_by`) y `list` (una lectura más para `moderator`, auditada). Un renombrado revocado quita
+  `must_rename` salvo que haya otro sin revocar puesto después: no se guarda cuándo se renombró, así que no se
+  sabe si uno anterior ya está cumplido.
+- **Avisos en la reclamación** (§6 no tenía campo y §9.5 pide el NOTICE al entrar): `account.warnings`, los avisos
+  sin revocar de la cuenta (de ese mundo o de todos) puestos después de la última entrada al mundo de cualquiera
+  de sus personajes (`characters.last_entered_at`, leída antes de escribir la de esta reclamación), los 5 más
+  recientes. Así cada aviso sale una vez; si el jugador se va en `LOADING`, no lo ve.
+- **La caducidad de cada sanción,** tal como se prueba: el aviso sale una vez y queda anotado (cuenta para la
+  reincidencia y para `sanctioned_email_hashes`); el silencio y la suspensión acaban en `ends_at` (los mira cada
+  consulta con la hora de Go); la expulsión no caduca (solo `sanction revoke`); el renombrado se cumple al
+  renombrar.
+- **`bootstrap`** es nueva: §12 pide «una cuenta `admin` para `--actor`» sin decir cómo nace la primera. Solo
+  vale sin ninguna cuenta `admin` sin purgar (con `pg_advisory_xact_lock`) y siempre crea una cuenta nueva (un
+  correo con cuenta es un error: a una existente se le da el rol con `set-role`, que deja su fila para S2).
+- **`create-account`** crea la cuenta con los textos vigentes ya aceptados (cuentas del equipo y de prueba: el bot
+  de §13.3 no sabe aceptar textos) y publica antes los textos que falten en `legal_documents`, como `serve`, para
+  poder correr antes del primer arranque. La contraseña solo llega por `--password-file` (la línea de órdenes se
+  ve con `ps`). No mira `sanctioned_email_hashes`.
+- **`set-role`** sobre la propia cuenta es un error (nadie se queda sin `admin` por un descuido) y al mismo rol no
+  hace nada ni deja fila. Bloquea las filas del `--actor` y del objetivo en orden de id, como `sanctions.Create`:
+  dos `admin` que se quitan el rol a la vez no se quedan los dos sin él (gana uno; el otro sale con 2). La hora
+  de la fila es la del reloj de Go (en `serve` y en la CLI, la del sistema).
+- **`purge-now` llega aquí** (§14.1 no lo ponía en ningún paquete y §15 P7a lo prueba): revoca las sesiones y deja
+  su fila en una transacción, espera en tiempo real hasta `--wait` (30 s) mirando los arrendamientos vivos cada
+  500 ms y llama a la purga de cuentas de P1 (que vuelve a mirarlos con la fila bloqueada). Sobre la propia
+  cuenta, error. En `staging` y `production` se niega mientras no exista el almacén del progreso, como `serve`.
+- **`chat`** da también los susurros que recibió el personaje (el historial de un acoso). **`audit`**: `--target`
+  casa con el personaje o con su cuenta; `--actor-name`, con la cuenta del personaje como actor; `--until`,
+  `--command` y `--limit` (200 por defecto, 5000 como mucho) son nuevos. Los nombres que se escriben en un filtro
+  no se guardan: el objetivo va en `target_*` y el actor del filtro como id en `args`.
+- **`names block`** solo admite términos de letras (la clave de un nombre válido no tiene otra cosa) y no
+  renombra a nadie: lista a quien ya se llama así para ponerle un renombrado.
+- **La retención del chat llega aquí** (§14.1 la ponía en P9a), porque SOC-15 y §15 P7a piden que lo caducado
+  desaparezca: el trabajo `chat_retention`, cada hora, borra por `sent_at` (la hora de la zona) lo de más de 30
+  días en lotes de 10 000.
+- **Pool de conexiones.** Con un cuarto trabajo periódico, los cuatro tenían cada uno una conexión con su
+  `pg_try_advisory_lock` y esperaban otra para su trabajo: con el pool de pgx (`max(4, núcleos)`, 4 en un VPS de 4
+  núcleos) se bloqueaban entre ellos y a las API hasta el plazo del más corto (los 5 s de `zones_lost`). `db.Open`
+  pone ahora 16 conexiones si la cadena no trae `pool_max_conns`, y `testdb`, 10 por base. Medido:
+  `TestServeMountsTheInternalAPI` pasó de 5,2 s a 0,4 s con el cuarto trabajo.
+- **`admin` lee la configuración entera de `serve`** (`config.Load`: en el contenedor tiene las mismas variables)
+  y se niega con el esquema sin migrar. Códigos: 0 bien; 1 error de la orden (también `character_busy` y una
+  sanción no autorizada); 2 uso o `--actor` que no vale (si falta, antes de conectar).
+
+**Pruebas** (`internal/admin`, 17, con la plataforma entera de `platformtest`): todas las de §15 P7a —un
+moderador que pide `ban` y un GM contra un admin siguen en `social` (P3) y además un admin contra otro admin por la
+CLI (`sanction_denied` con `source = 'cli'`); sin arrendamiento, en `social`; la caducidad de cada tipo con el reloj
+(`TestWarningIsShownOnce`, `TestMuteExpires`, `TestSuspensionExpires`, `TestBanUntilRevoked`,
+`TestRenameUntilRenamed`); `set-role` que revoca, la fila fija y el latido que expulsa (`TestSetRole`); `reports
+show` sin `--actor` (en `cmd`, código 2) y con él, su fila; `chat` entre dos fechas con `zone_channel` y la
+retención (`TestChatHistoryAndRetention`); ninguna fila de la CLI ni `sanction_denied` con correos o nombres
+(`TestAuditHasNoPersonalData`, que corre todas las órdenes); un lote con `source = 'cli'` o `command = 'set-role'`
+rechazado y `RoleAt` que no lo ve (`TestRoleAtOnlyReadsCLI`)— y además `--actor` (TestAuthorize, también el rol
+perdido a mitad de una orden), dos `set-role` cruzados (8 rondas), lista negra, `reports list|close`, `audit` con
+filtros, `purge-now` con un personaje dentro y fuera, `create-account` y `bootstrap`. En `cmd`: `TestAdminUsage` (15
+errores de uso sin base), `TestAdminCommands` (las órdenes por la línea de órdenes, con `os_user` de `$USER`) y
+`TestServeRunsTheChatRetention`. En `sanctions` y `db`, una prueba cada uno.
+
+**Medido** (esta máquina, 4 núcleos, Go 1.24.7, PostgreSQL 16.15):
+
+| Qué | Resultado |
+|---|---|
+| `go test -p 2 -count=1 ./...` con la caché de pruebas vacía | 26–30 s (30 s en P3: el pool más grande quita la espera de 5 s a las pruebas de `serve`); `internal/admin` 3–4 s (17 pruebas) |
+| `go test -race` de `admin`, `sanctions`, `social`, `persistence`, `accounts`, `db`, `app` y `cmd` | 30 s, sin carreras |
+| `internal/admin` 10 veces seguidas (`-count=10`) | 34 s, sin fallos |
+| Binario | 20,6 MB (20,3 MB en P3) |
+
+Godot: `--import` da el mismo registro que antes (las fugas al salir de siempre); fuera de `platform/` solo cambia
+la documentación.
+
+**Sin comprobar:** `set-role` y `purge-now` con una zona de verdad que expulsa y manda su guardado final (aquí la
+zona de prueba libera a mano; es de P4 y P5); `audit` y `chat` con volúmenes grandes; la CLI dentro del contenedor
+(P9b).
+
+**Queda para después:** la zona de la moderación (P7b: `min_role`, `/gm`, invisible, NOTICE de los avisos,
+silencios en `ChatRouter`, filtro de ignorados, anillo de reportes, lotes de chat y auditoría); `reapply-purges` y
+el resto de retenciones (P9a); `admin maintenance` (TEC-28); `dev.sh` con `bootstrap` y `create-account` (P9b).

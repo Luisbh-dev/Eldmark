@@ -111,8 +111,8 @@ func mountServices(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog
 
 // mountInternal monta la API interna (P3, §6): las instancias de zona y los bloques de ids, la
 // reclamación, el guardado y la liberación, operación y libro, las fortalezas y los eventos de
-// guerra, y los lotes de chat y auditoría con ignorados, reportes y sanciones; y el trabajo de
-// instancias perdidas, cada min(5 s, HEARTBEAT_S).
+// guerra, y los lotes de chat y auditoría con ignorados, reportes y sanciones; el trabajo de
+// instancias perdidas, cada min(5 s, HEARTBEAT_S), y la retención del chat (30 días), cada hora.
 func mountInternal(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger,
 	progress persistence.ProgressStore, nameRules *names.Rules, minProtocol int) error {
 	zoneSvc, err := zones.New(zones.Options{Config: cfg, Pool: pool, Log: log, MinProtocol: minProtocol})
@@ -137,5 +137,6 @@ func mountInternal(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog
 	warSvc.Mount(a)
 	socialSvc.Mount(a)
 	a.AddJob("zones_lost", zoneSvc.LostEvery(), zoneSvc.MarkLost)
+	a.AddJob("chat_retention", purgeEvery, socialSvc.ChatRetentionJob)
 	return nil
 }
