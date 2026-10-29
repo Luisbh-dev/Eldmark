@@ -287,3 +287,64 @@ otro canal lo lleva, si algún texto no es UTF-8 válido o lleva un byte nulo, s
 24 caracteres o el texto de 255 caracteres o 768 B. Un CHAT_MESSAGE además exige emisor en todos los
 canales menos el del sistema y destinatario solo en el susurro. Un texto vacío sí se decodifica: es el
 servidor quien lo descarta al sanear. `encode` recorta a los límites sin partir ningún carácter.
+
+### 12.2 Enrutado en el servidor de zona (SOC-04)
+
+Todo lo social vive en `scripts/server/social/`; `ZoneServer` solo crea un `SocialService`, le pasa los
+mensajes de los tipos `0x40` a `0x4F` (`handle_packet`) y le presta tres funciones (la lista de peers en el
+mundo, el envío por el canal fiable y la suma de avisos). El resto es:
+
+| Pieza | Qué hace |
+|---|---|
+| `SocialService` | Reúne el enrutador del chat y, cuando existan, los grupos; es lo único que conoce `ZoneServer` |
+| `ChatRouter` | Sanea, aplica los ritmos y reparte; resultado de cada mensaje en `ChatRouter.Result` |
+| `ChatPeerState` | Cubos de fichas, último texto, descartes y contadores de cada peer; cuelga de `ServerPeer.chat` |
+| `SocialPeers` | Búsqueda de jugadores en el mundo por nombre (clave de `NameRules`) y por reino |
+
+**Destinatarios.** La lista se construye ya filtrada por reino; nunca se filtra al mostrar.
+
+| Canal | Quién lo recibe |
+|---|---|
+| Decir | Los del mismo reino a 30 m en 3D del emisor, él incluido |
+| Zona | Todos los del mismo reino en el proceso, él incluido |
+| Susurro | El destinatario y, como copia, el emisor |
+| Grupo | Los miembros de su grupo (que el enrutador vuelve a filtrar por reino) |
+
+**Susurro.** Se busca por la clave de comparación (minúsculas y sin tildes: `peña` encuentra a `Peña`).
+Si no hay nadie con ese nombre en el mundo *o* es del otro reino, la respuesta es idéntica: el mensaje del
+sistema ««X» no está conectado.», con lo que escribió el jugador y no el nombre canónico del otro lado.
+Susurrarse a uno mismo se rechaza («No puedes susurrarte a ti mismo.»).
+
+**Responder (`/r`).** Lo resuelve el cliente: guarda con quién habló la última vez (quien le susurró o a
+quien susurró) y manda un susurro a ese nombre. El servidor no guarda «el último interlocutor»: un susurro a
+un nombre que ya no está da la respuesta de siempre, y así el protocolo no necesita otro canal.
+
+**Ritmos** (`RateLimiter` por peer, en ticks; no cambian los cubos del transporte, que van antes):
+
+| Cubo | Ritmo | Ráfaga |
+|---|---|---|
+| Hablar (decir, zona, grupo; banda y gremio cuando existan) | 1/s | 5 |
+| Susurro | 1/s | 3 |
+| Destinatarios nuevos de susurro | 5/min | 5 |
+| Repetición | un texto igual al último aceptado en 600 ticks (10 s) se descarta | |
+
+Un interlocutor reciente (quien te ha susurrado, o a quien has susurrado, en los últimos 5 min) no cuenta
+como destinatario nuevo, así que responder a seis desconocidos seguidos no gasta del cubo. Lo descartado,
+por ritmo o por repetición:
+
+- avisa al jugador por el canal del sistema, «Hablas demasiado rápido.», como mucho una vez por segundo;
+- y uno de cada cinco suma un aviso del peer (`exceso de mensajes de chat`): 250 descartes seguidos en
+  10 s llegan a los 50 avisos y expulsan; pulsar Intro de más, no.
+
+**Otros resultados.** Un CHAT_SEND mal formado, con el canal del sistema, o de quien aún no está en el
+mundo, suma un aviso. Un texto vacío tras sanear se descarta sin más. Banda, gremio y reino contestan
+«Ese canal aún no está disponible.»; GM contesta «Comando desconocido. Escribe /ayuda.» para no revelar que
+existe. Un grupo inexistente contesta «No estás en un grupo.».
+
+**Informe.** `write_report` incluye `social.chat` con los mensajes procesados, las copias repartidas y
+cuántos acabaron en cada resultado.
+
+**Pruebas.** `test_chat_router` (24, sin red: alcance, filtro por reino, saneado, ritmos, susurros),
+`test_chat_loopback` (8, con ENet real: dos bots de un reino y uno del otro; el del otro reino no recibe
+ningún CHAT_MESSAGE ni ningún paquete cuyos bytes contengan el texto de los demás, en los cuatro canales y
+con el enemigo a 3 m del emisor).

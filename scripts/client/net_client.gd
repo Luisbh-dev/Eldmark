@@ -82,6 +82,9 @@ signal war_event(event: NetMessages.EntityEvent)
 signal telegraph_received(event: NetMessages.EntityEvent)
 ## Se ha publicado un marcador completo (todas sus páginas): ver [method get_scoreboard].
 signal scoreboard_updated(scoreboard: ScoreboardState)
+## Ha llegado un mensaje de chat (CHAT_MESSAGE, protocolo 5) ya saneado por el servidor. Se entrega al
+## llegar: el chat no se temporiza con el tick de dibujo.
+signal chat_received(message: NetMessages.ChatMessage)
 
 enum State {
 	## Sin [method start].
@@ -214,6 +217,8 @@ var _object_states_received: int = 0
 var _scoreboards_received: int = 0
 var _war_events_received: int = 0
 var _telegraphs_received: int = 0
+var _chat_sent: int = 0
+var _chat_received: int = 0
 
 # Envío de entradas.
 var _view_offsets_q: PackedInt32Array = PackedInt32Array()
@@ -375,6 +380,28 @@ func send_respawn_request(point_index: int) -> bool:
 	if _transport.send(SERVER_PEER_ID, NetProtocol.CH_RELIABLE, request.encode()) != OK:
 		return false
 	_respawn_requests += 1
+	return true
+
+
+## Envía un mensaje de chat (CHAT_SEND, protocolo 5) por [param channel] ([enum ChatChannel.Id]). En un
+## susurro [param recipient] es el nombre del destinatario; en los demás canales se ignora. El texto se
+## sanea con [ChatText] antes de enviarlo (lo mismo que hará el servidor) y se recorta a sus límites.
+## Devuelve false, sin enviar nada, si no hay sesión en el mundo, el canal no se puede enviar, el texto
+## queda vacío o falta el destinatario de un susurro.
+func send_chat(channel: int, recipient: String, text: String) -> bool:
+	if _state != State.IN_WORLD or not ChatChannel.is_client_sendable(channel):
+		return false
+	var cleaned: String = ChatText.sanitize(text)
+	var target: String = ChatText.clean(recipient) if channel == ChatChannel.Id.WHISPER else ""
+	if cleaned.is_empty() or (channel == ChatChannel.Id.WHISPER and target.is_empty()):
+		return false
+	var message := NetMessages.ChatSend.new()
+	message.channel = channel
+	message.recipient = target
+	message.text = cleaned
+	if _transport.send(SERVER_PEER_ID, NetProtocol.CH_RELIABLE, message.encode()) != OK:
+		return false
+	_chat_sent += 1
 	return true
 
 
@@ -576,6 +603,7 @@ func get_last_notice_text() -> String:
 ## [code]war_events[/code] y [code]telegraphs[/code]: mensajes del protocolo 4 recibidos;
 ## [code]war_events_pending[/code] (avisos de guerra esperando a su tick de dibujo) y
 ## [code]fortress_hook_calls[/code] (veces que la predicción preguntó por la puerta).
+## [br]- [code]chat_sent[/code] y [code]chat_received[/code]: mensajes de chat enviados y recibidos.
 func get_stats() -> Dictionary:
 	var prediction_stats: Dictionary = _prediction.get_stats()
 	# Las diferencias que aún esperan su evento cuentan ya, según lo que se sepa ahora.
@@ -641,6 +669,8 @@ func get_stats() -> Dictionary:
 		"scoreboards": _scoreboards_received,
 		"war_events": _war_events_received,
 		"telegraphs": _telegraphs_received,
+		"chat_sent": _chat_sent,
+		"chat_received": _chat_received,
 		"war_events_pending": _war_queue.size(),
 		"fortress_hook_calls": int(_fortress_view.get_stats()["hook_calls"]),
 		"health": _health,
@@ -1056,6 +1086,13 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 			_on_object_state(bytes)
 		NetProtocol.MSG_SCOREBOARD:
 			_on_scoreboard(bytes)
+		NetProtocol.MSG_CHAT_MESSAGE:
+			var chat: NetMessages.ChatMessage = NetMessages.ChatMessage.decode(bytes)
+			if chat == null:
+				_malformed_packets += 1
+			else:
+				_chat_received += 1
+				chat_received.emit(chat)
 		_:
 			_malformed_packets += 1
 

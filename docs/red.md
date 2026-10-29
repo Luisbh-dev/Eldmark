@@ -1473,6 +1473,7 @@ El servidor nunca acepta estado del cliente, y todo valor decodificado está aco
 | Reino | Validado contra la zona. En la fase 2 lo declara el cliente (`DevAuthProvider`); desde la fase 5 sale del personaje o del billete, y el campo de HELLO se ignora |
 | Rebobinado | Acotado por lo medido ([10](#10-historial-para-la-compensación-de-latencia)); el RTT que declara el cliente con sus acks se acota con el de ENet más el simulador del servidor + 3 ticks |
 | Comandos de depuración | Solo con `--debug-commands` |
+| Chat (protocolo 5) | Cada CHAT_SEND cuenta como un mensaje fiable más y además tiene sus cubos por peer: decir, zona y grupo, 1 mensaje/s con ráfaga de 5; susurro, 1/s con ráfaga de 3 y 5 destinatarios nuevos por minuto; un texto igual al anterior en 10 s se descarta. Uno de cada cinco descartados suma un aviso (el resto no expulsa). El servidor sanea el texto y nunca manda a un cliente el de otro reino ([social.md](social.md#12-implementación-fase-4)) |
 
 **Crédito por parón.** Los limitadores cuentan en ticks del servidor, y el tick no avanza mientras
 el proceso está parado. Si el servidor pierde `k` ticks (un parón, una pausa de la máquina virtual;
@@ -1768,6 +1769,9 @@ pero aquí son siempre 10.
   [8.1](#81-orden-del-tick) e interpoladas en el cliente.
 - **Avisos** («¡Vado Gris capturado!»): por NOTICE o ENTITY_EVENT, aplicados en el tick de
   dibujo.
+- **Chat y grupos** (protocolo 5, [social.md](social.md#12-implementación-fase-4)): CHAT_SEND y
+  CHAT_MESSAGE (`0x40` y `0x41`) por el canal fiable 3. Los reparte el `ChatRouter` del servicio social
+  (`scripts/server/social/`), que `ZoneServer` solo alimenta con los tipos `0x40` a `0x4F`.
 
 ### Fases 5 y 6: cuentas y traspasos
 

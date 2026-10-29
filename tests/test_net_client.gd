@@ -42,6 +42,7 @@ class FakeServer extends Node:
 	## {batch, tick, after_spawn}
 	var batches: Array[Dictionary] = []
 	var debug_commands: Array[NetMessages.DebugCommand] = []
+	var chat_sends: Array[NetMessages.ChatSend] = []
 	var leave_received: bool = false
 	var snapshots_sent: int = 0
 	var last_newest: int = 0
@@ -143,6 +144,10 @@ class FakeServer extends Node:
 				var command: NetMessages.DebugCommand = NetMessages.DebugCommand.decode(bytes)
 				if command != null:
 					debug_commands.append(command)
+			NetProtocol.MSG_CHAT_SEND:
+				var chat: NetMessages.ChatSend = NetMessages.ChatSend.decode(bytes)
+				if chat != null:
+					chat_sends.append(chat)
 
 
 var _root: Node
@@ -585,6 +590,46 @@ func test_garbage_from_the_server_is_counted_not_fatal() -> void:
 	await wait_physics_frames(10)
 	assert_eq(_client.get_stats()["malformed_packets"], 4)
 	assert_eq(_client.get_state(), NetClient.State.IN_WORLD, "el cliente sigue en el mundo")
+
+
+func test_chat_messages_reach_the_signal_and_chat_sends_reach_the_server() -> void:
+	await _start()
+	assert_true(await _wait_until(_in_world))
+	var received: Array[NetMessages.ChatMessage] = []
+	_client.chat_received.connect(func(message: NetMessages.ChatMessage) -> void:
+		received.append(message))
+	var line := NetMessages.ChatMessage.new()
+	line.channel = ChatChannel.Id.ZONE
+	line.sender_realm = VARDHEIM
+	line.tick = _fake.tick
+	line.sender = "Ana"
+	line.text = "Hola desde el servidor"
+	_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, line.encode())
+	var system := NetMessages.ChatMessage.new()
+	system.channel = ChatChannel.Id.SYSTEM
+	system.text = "Aviso del sistema"
+	_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, system.encode())
+	# Un CHAT_MESSAGE mal formado cuenta como paquete mal formado y no llega a la señal.
+	_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, PackedByteArray([0x41, 0, 0, 0]))
+	assert_true(await _wait_until(func() -> bool: return received.size() >= 2), "llegan los dos")
+	await wait_physics_frames(10)
+	assert_eq(received.size(), 2, "solo los válidos")
+	assert_eq(received[0].sender, "Ana", "emisor")
+	assert_eq(received[0].text, "Hola desde el servidor", "texto")
+	assert_eq(received[1].channel, ChatChannel.Id.SYSTEM, "el del sistema también")
+	var stats: Dictionary = _client.get_stats()
+	assert_eq(stats["chat_received"], 2, "dos recibidos")
+	assert_eq(stats["malformed_packets"], 1, "uno mal formado")
+	# Envío: el CHAT_SEND llega al servidor falso saneado y por el canal fiable.
+	assert_true(_client.send_chat(ChatChannel.Id.WHISPER, " Bruno ", "[b]Hola[/b]  Bruno"), "se envía")
+	assert_false(_client.send_chat(ChatChannel.Id.SAY, "", "  "), "un texto vacío no sale")
+	assert_true(await _wait_until(func() -> bool: return not _fake.chat_sends.is_empty()),
+			"el servidor falso recibe el CHAT_SEND")
+	assert_eq(_fake.chat_sends.size(), 1, "solo uno")
+	assert_eq(_fake.chat_sends[0].channel, ChatChannel.Id.WHISPER, "canal de susurro")
+	assert_eq(_fake.chat_sends[0].recipient, "Bruno", "destinatario sin espacios")
+	assert_eq(_fake.chat_sends[0].text, "Hola Bruno", "texto saneado en el cliente")
+	assert_eq(_client.get_stats()["chat_sent"], 1, "solo se envió uno")
 
 
 func test_protocol_3_messages_are_accepted_and_not_counted_as_malformed() -> void:
