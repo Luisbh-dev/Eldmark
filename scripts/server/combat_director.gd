@@ -296,16 +296,17 @@ func _apply_impact(hit: CombatResolver.Hit, s: int) -> void:
 	if blocked:
 		flags |= _HIT_BLOCKED
 		stats[&"blocked"] += 1
-		ActionMachine.drain_stamina(victim_character.combat, result.stamina_cost, s)
-		changed = true
+		if result.stamina_cost > 0:
+			ActionMachine.drain_stamina(victim_character.combat, result.stamina_cost, s)
+			changed = true
 		if result.guard_break:
 			flags |= _HIT_GUARD_BREAK
 			stats[&"guard_breaks"] += 1
 			if victim.is_alive() and victim.try_control(s):
 				ActionMachine.impose_stun(victim_character.combat, s, s + timing.guard_break_stun)
+				changed = true
 	else:
-		_apply_hit_controls(hit, s)
-		changed = true
+		changed = _apply_hit_controls(hit, s)
 	stats[&"hits"] += 1
 	stats[&"damage"] += applied
 	var lethal: bool = victim.is_dead()
@@ -323,14 +324,15 @@ func _apply_impact(hit: CombatResolver.Hit, s: int) -> void:
 		commit_state(victim_character)
 
 
-# Tambaleo y empuje del golpe, salvo con entereza en el golpe activo y respetando la cadena.
-func _apply_hit_controls(hit: CombatResolver.Hit, s: int) -> void:
+# Tambaleo y empuje del golpe, salvo con entereza en el golpe activo y respetando la cadena. Devuelve
+# true si ha impuesto el control (y hay que pasar el estado por encode/decode).
+func _apply_hit_controls(hit: CombatResolver.Hit, s: int) -> bool:
 	var victim: Combatant = hit.victim
 	var attack: AttackTicks = hit.attack
 	if attack.stagger_ticks <= 0 or victim.is_dead() or victim.frozen.hyper_armor:
-		return
+		return false
 	if not victim.try_control(s):
-		return
+		return false
 	var away := Vector2(victim.frozen.position.x - hit.attacker.frozen.position.x,
 			victim.frozen.position.z - hit.attacker.frozen.position.z)
 	var knockback := Vector2.ZERO
@@ -338,6 +340,7 @@ func _apply_hit_controls(hit: CombatResolver.Hit, s: int) -> void:
 		knockback = away.normalized() * attack.knockback_speed
 	ActionMachine.impose_stagger(victim.get_character().combat, s, s + attack.stagger_ticks,
 			knockback)
+	return true
 
 
 # --- Muerte -----------------------------------------------------------------------------------

@@ -63,6 +63,8 @@ var rewind_rejects: int = 0
 var _history: StateHistory
 var _zone_id: StringName
 var _safe_areas: SafeAreas
+# (bando atacante · 16 + bando víctima) -> si hay daño entre ellos en esta zona.
+var _hostile_cache: Dictionary = {}
 
 
 ## Un resultado de [method resolve].
@@ -119,14 +121,17 @@ func resolve(s: int, combatants: Array[Combatant],
 		var margin: float = _SEARCH_MARGIN + _SEARCH_SPEED * (float(s) - view_tick) \
 				/ float(Engine.physics_ticks_per_second)
 		var reach: float = attack.shape.range_m + HitShapes.CAPSULE_RADIUS + margin
+		var reach_squared: float = reach * reach
 		for victim: Combatant in combatants:
 			if victim == attacker or attacker.has_hit(victim.get_id()):
 				continue
-			if not _is_candidate(attacker, victim, s):
+			# Lo barato primero: casi todos los demás están fuera del alcance.
+			var victim_position: Vector3 = victim.frozen.position
+			var dx: float = victim_position.x - attacker_frame.position.x
+			var dz: float = victim_position.z - attacker_frame.position.z
+			if dx * dx + dz * dz > reach_squared:
 				continue
-			var victim_frame: Combatant.Frozen = victim.frozen
-			if Vector2(victim_frame.position.x - attacker_frame.position.x,
-					victim_frame.position.z - attacker_frame.position.z).length() > reach:
+			if not _is_candidate(attacker, victim, s):
 				continue
 			var hit: Hit = _test(attacker, victim, attack, view_tick, s, space, rules)
 			if hit != null:
@@ -172,13 +177,21 @@ func _reject(attacker: Combatant, attack: AttackTicks, s: int, hits: Array[Hit])
 func _is_candidate(attacker: Combatant, victim: Combatant, s: int) -> bool:
 	if victim.is_dead() or victim.is_protected(s):
 		return false
-	if not FactionRules.can_damage(attacker.get_realm(), victim.get_realm(), _zone_id):
+	if not _is_hostile(attacker.get_realm(), victim.get_realm()):
 		return false
 	if _safe_areas.contains_own(victim.get_realm(), victim.frozen.position):
 		return false
 	if _safe_areas.contains_own(attacker.get_realm(), attacker.frozen.position):
 		return false
 	return true
+
+
+# [method FactionRules.can_damage] de la zona, con caché por pareja de bandos (la zona no cambia).
+func _is_hostile(attacker_realm: int, victim_realm: int) -> bool:
+	var key: int = attacker_realm * 16 + victim_realm
+	if not _hostile_cache.has(key):
+		_hostile_cache[key] = FactionRules.can_damage(attacker_realm, victim_realm, _zone_id)
+	return _hostile_cache[key]
 
 
 # Prueba un ataque contra un candidato. null si no lo alcanza.

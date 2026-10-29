@@ -194,6 +194,52 @@ func test_a_twelve_meter_fall_hurts_and_a_three_meter_jump_does_not() -> void:
 		assert_eq(hits[0].net_id, faller)
 
 
+func test_running_and_jumping_down_a_ramp_does_no_fall_damage() -> void:
+	await _start_server(func(world: Node3D) -> void:
+		# Una rampa de 20 grados de 20 m de largo: sube hacia -Z.
+		var ramp := StaticBody3D.new()
+		ramp.name = "Rampa"
+		ramp.collision_layer = PlayerCharacter.WORLD_COLLISION_LAYER
+		ramp.collision_mask = 0
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(8.0, 1.0, 20.0)
+		shape.shape = box
+		ramp.add_child(shape)
+		world.add_child(ramp)
+		ramp.position = Vector3(40.0, 3.0, -40.0)
+		ramp.rotation_degrees = Vector3(20.0, 0.0, 0.0))
+	var runner: int = _server.add_fake_player(_brain(func(tick: int, _position: Vector3,
+			_yaw: float) -> PlayerInput:
+		var input := PlayerInput.new()
+		input.tick = tick
+		input.look_yaw = PI
+		input.move = Vector2(0.0, 1.0)
+		# Salta cada 25 ticks.
+		if tick % 25 < 3:
+			input.buttons = PlayerInput.JUMP
+		return input), VARDHEIM)
+	await wait_physics_frames(3)
+	# Se coloca en lo alto de la rampa (el extremo -Z, el más alto) sobre su superficie.
+	var space: PhysicsDirectSpaceState3D = _world.get_world_3d().direct_space_state
+	var from := Vector3(40.0, 20.0, -47.0)
+	var query := PhysicsRayQueryParameters3D.create(from, from + Vector3(0.001, -30.0, 0.0),
+			PlayerCharacter.WORLD_COLLISION_LAYER)
+	var hit: Dictionary = space.intersect_ray(query)
+	if not assert_false(hit.is_empty(), "hay rampa bajo el punto de salida"):
+		return
+	var top: Vector3 = hit["position"]
+	assert_true(top.y > 4.0, "y está en lo alto (%.1f m)" % top.y)
+	_server.teleport(runner, top + Vector3(0.0, 0.1, 0.0))
+	_character(runner).yaw = PI
+	var start_z: float = _character(runner).global_position.z
+	await wait_physics_frames(150)
+	assert_true(_character(runner).global_position.z > start_z + 8.0,
+			"baja corriendo y saltando por la rampa (%.1f m)" % (_character(runner).global_position.z - start_z))
+	assert_eq(_combatant(runner).health, 1000, "sin daño por caída")
+	assert_eq(_events_of(NetMessages.EntityEvent.Kind.HIT).size(), 0)
+
+
 func test_falling_below_the_world_kills_and_the_body_waits_dead_at_the_spawn_until_it_respawns() -> void:
 	await _start_server()
 	var id: int = _server.add_fake_player(_brain(), SOLMARCH)
@@ -385,6 +431,52 @@ func test_the_sword_combo_dps_against_the_dummy_matches_the_data() -> void:
 	assert_near(float(damage) / seconds, float(cycle_damage) / (float(cycle_ticks) / 60.0), 0.01,
 			"el DPS medido es el calculado con los datos")
 	assert_true(_combatant(dummy).is_alive(), "el maniquí sigue ahí")
+
+
+# --- Antitrampas: el servidor decide el ritmo y el alcance -------------------------------------
+
+func test_a_client_pressing_primary_every_other_tick_cannot_hit_faster_than_the_combo() -> void:
+	await _start_server()
+	var spammer: int = _server.add_fake_player(_brain(func(tick: int, _position: Vector3,
+			_yaw: float) -> PlayerInput:
+		var input := PlayerInput.new()
+		input.tick = tick
+		input.look_yaw = 0.0
+		if tick % 2 == 0:
+			input.buttons = PlayerInput.PRIMARY
+		return input), VARDHEIM)
+	var dummy: int = _server.spawn_dummy(Vector3(0.0, 0.0, -2.2), PI)
+	_put(spammer, Vector3(0.0, 0.05, 0.0), 0.0)
+	var ticks: int = 360
+	for step: int in ticks:
+		if step % 30 == 0:
+			# Los ligeros avanzan: se le devuelve a su sitio para que no pase de largo al maniquí.
+			_server.teleport(spammer, Vector3(0.0, 0.05, 0.0))
+		await tree.physics_frame
+	var hits: int = 0
+	for event: NetMessages.EntityEvent in _events_of(NetMessages.EntityEvent.Kind.HIT):
+		if event.net_id == dummy:
+			hits += 1
+	# El combo más rápido que permiten los datos: tres ligeros encadenados cada 119 ticks.
+	var weapon: WeaponTicks = CombatCatalog.weapon(CombatCatalog.weapon_id(CombatCatalog.DEFAULT_WEAPON))
+	var combo_ticks: int = 0
+	for light_id: int in weapon.light_ids:
+		combo_ticks += CombatCatalog.attack(light_id).total_ticks
+	var most_hits: int = ceili(float(ticks) * float(weapon.light_ids.size()) / float(combo_ticks)) + 1
+	assert_true(hits >= 3, "algo acierta (%d)" % hits)
+	assert_true(hits <= most_hits, "pero no más que el ritmo del combo: %d <= %d" % [hits, most_hits])
+
+
+func test_an_attack_from_five_meters_hits_nothing() -> void:
+	await _start_server()
+	var press: int = _server.get_tick() + 6
+	var duel: Array[int] = _duel([press])
+	_put(duel[1], Vector3(0.0, 0.05, -5.0), PI)
+	await wait_physics_frames(60)
+	assert_eq(_combatant(duel[1]).health, 1000, "fuera de alcance no hay daño")
+	assert_eq(_events_of(NetMessages.EntityEvent.Kind.HIT).size(), 0)
+	assert_true(_character(duel[0]).combat.action_tick == press or _character(duel[0]).combat.action_tick > 0,
+			"el atacante sí lanzó su golpe")
 
 
 # --- Registro, informe y consola ---------------------------------------------------------------

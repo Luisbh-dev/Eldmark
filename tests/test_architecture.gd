@@ -45,7 +45,8 @@ const REQUIRED_SERVER_SCRIPTS: Array[String] = [
 	"server_config.gd", "server_peer.gd", "server_auth.gd", "auth_provider.gd",
 	"dev_auth_provider.gd", "rate_limiter.gd", "input_queue.gd", "net_entity.gd",
 	"net_entity_registry.gd", "spawn_picker.gd", "snapshot_builder.gd", "interest_policy.gd",
-	"state_history.gd", "server_metrics.gd",
+	"state_history.gd", "server_metrics.gd", "combatant.gd", "damage_ledger.gd",
+	"combat_resolver.gd", "combat_director.gd", "command_registry.gd",
 ]
 
 ## Referencias prohibidas en scripts/shared: [descripción, expresión regular].

@@ -78,6 +78,16 @@ Sobre una colina baja (meseta a 10,2 m, 6 m por encima del valle, laderas de 12�
 - **Campamento** delante de cada puerta (radio 24 m, llano): tiendas, cajas, carro, vallas,
   hoguera y dos estandartes que marcan su borde. Los cuatro **puntos de aparición** de cada reino
   están en el campamento (x = ±2,5 y ±7,5, a 14 m de la muralla) y miran al fuerte.
+- **Zona segura** de cada campamento (`SafeAreas/CampamentoVardheim` y `CampamentoSolmarch`, un
+  `Marker3D` del grupo `safe_areas` con los metadatos `realm` y `radius = 24`): centrada en el centro
+  de los cuatro puntos de aparición de su reino (x = 0, z = ∓138) y con el radio del campamento.
+  **Solo protege a su reino** (docs/combate.md, sección 5): dentro de ella un jugador de ese reino ni
+  recibe ni hace daño, y un intruso enemigo sí es dañable (lo lee el `CombatResolver`).
+- **Maniquí de entrenamiento** junto a cada campamento (`DummyPoints/MunecoVardheim` y
+  `MunecoSolmarch`, un `Marker3D` del grupo `dummy_points` a 30 m del centro de la zona segura, es
+  decir, fuera de ella, mirando al campamento): el servidor coloca en cada marcador un PNJ inmortal
+  del bando neutral que se cura a los 5 s sin daño (`ZoneServer.spawn_zone_dummies()`; en
+  `ServerMain`, salvo con `--no-dummies`). El mundo de pruebas lleva uno en `DummyPoints/Dummy1`.
 
 ### Ruinas del viejo Eld
 
@@ -171,7 +181,8 @@ Por qué es justo:
 
 - **Simetría de espejo norte–sur** (z → -z) de todo lo que afecta al juego: alturas del área
   jugable (el ruido del relieve se suma con su reflejo, así que no hay costura en el eje), río,
-  puentes, calzadas, campamentos, puntos de aparición, ruinas y colisiones de árboles y rocas.
+  puentes, calzadas, campamentos, zonas seguras, maniquíes, puntos de aparición, ruinas y colisiones de
+  árboles y rocas.
   Solo cambian los modelos (pinos al norte, caducifolios al sur) y los materiales de cada reino.
 - Lo que no tiene pareja está **sobre el eje** y es común a los dos: el fuerte, su puerta, el
   vado, la calle de la aldea y la capilla.

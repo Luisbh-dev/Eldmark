@@ -185,6 +185,12 @@ var _shutdown_tick: int = -1
 var _shutdown_announced: Dictionary[int, bool] = {}
 var _events_sent: int = 0
 var _dummies_created: int = 0
+# Caché de objetivos de los bots de combate: tick de la última vez, posiciones e ids por reino, y qué
+# reinos son hostiles entre sí.
+var _targets_tick: int = -1
+var _targets_by_realm: Dictionary = {}
+var _targets_ids_by_realm: Dictionary = {}
+var _hostile_cache: Dictionary = {}
 # peer_id -> medida del RTT en ticks.
 var _rtt: Dictionary[int, _RttWindow] = {}
 # Peers con CLIENT_READY recibido, en orden de llegada.
@@ -862,6 +868,7 @@ func _check_motion(entity: NetEntity, before: Vector3) -> void:
 	if not after.is_finite():
 		var spawn: Transform3D = _spawn_picker.pick(entity.realm)
 		_place(entity, spawn.origin, _yaw_of(spawn))
+		_respawns += 1
 		_log("%s tiene una posición no válida y reaparece en %s" % [entity.display_name,
 				spawn.origin])
 
@@ -1267,27 +1274,56 @@ func _pick_spawn_point(realm: int) -> Transform3D:
 # Posición del enemigo vivo más cercano a [param position] para el jugador falso [param net_id] (el
 # cerebro de combate de BotBrain), o null si no hay ninguno que pueda atacar o ser atacado: los
 # maniquíes, los protegidos y los que están en la zona segura de su reino no cuentan, y quien está en
-# la zona segura de su reino no ataca.
+# la zona segura de su reino no ataca. Las posiciones objetivo se reúnen una vez por tick y por reino
+# (con muchos bots, cada uno recorre solo los candidatos de los reinos que le son hostiles).
 func _find_enemy_position(position: Vector3, net_id: int) -> Variant:
 	var me: Combatant = _combat.get_combatant(net_id)
 	if me == null or me.is_dead() or _safe_areas.contains_own(me.get_realm(), position):
 		return null
-	var zone_id := StringName(_config.zone_id)
+	if _targets_tick != _tick:
+		_rebuild_target_cache()
 	var best: Variant = null
 	var best_distance: float = INF
-	for other: Combatant in _combat.get_sorted():
-		if other == me or other.is_dead() or other.immortal or other.is_protected(_tick):
+	for realm: int in _targets_by_realm:
+		if not _is_hostile_realm(me.get_realm(), realm):
 			continue
-		if not FactionRules.can_damage(me.get_realm(), other.get_realm(), zone_id):
+		var positions: PackedVector3Array = _targets_by_realm[realm]
+		for index: int in positions.size():
+			if _targets_ids_by_realm[realm][index] == net_id:
+				continue
+			var distance: float = position.distance_squared_to(positions[index])
+			if distance < best_distance:
+				best_distance = distance
+				best = positions[index]
+	return best
+
+
+# Reúne, por reino, las posiciones de quien puede ser objetivo de un bot de combate en este tick.
+func _rebuild_target_cache() -> void:
+	_targets_tick = _tick
+	_targets_by_realm.clear()
+	_targets_ids_by_realm.clear()
+	for other: Combatant in _combat.get_sorted():
+		if other.is_dead() or other.immortal or other.is_protected(_tick):
 			continue
 		var other_position: Vector3 = other.entity.get_position()
 		if _safe_areas.contains_own(other.get_realm(), other_position):
 			continue
-		var distance: float = position.distance_squared_to(other_position)
-		if distance < best_distance:
-			best_distance = distance
-			best = other_position
-	return best
+		var realm: int = other.get_realm()
+		if not _targets_by_realm.has(realm):
+			_targets_by_realm[realm] = PackedVector3Array()
+			_targets_ids_by_realm[realm] = PackedInt32Array()
+		_targets_by_realm[realm].append(other_position)
+		_targets_ids_by_realm[realm].append(other.get_id())
+
+
+# true si un bot de [param my_realm] puede dañar a uno de [param other_realm] en esta zona.
+func _is_hostile_realm(my_realm: int, other_realm: int) -> bool:
+	var key: int = my_realm * 16 + other_realm
+	if not _hostile_cache.has(key):
+		_hostile_cache[key] = FactionRules.can_damage(my_realm, other_realm,
+				StringName(_config.zone_id))
+	return _hostile_cache[key]
 
 
 # El suelo bajo [param position]: el punto donde un rayo desde unos metros más arriba toca el mundo, o

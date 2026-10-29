@@ -336,6 +336,25 @@ func test_kill_lists_the_assistants_of_the_damage_ledger() -> void:
 			"los implicados incluyen a los asistentes")
 
 
+func test_a_kill_by_an_npc_is_credited_to_the_npc_and_allies_and_self_do_not_assist() -> void:
+	var npc: Combatant = _body(7, HUECOS, Vector3.ZERO, 0.0)
+	var victim: Combatant = _body(2, VARDHEIM, Vector3(0.0, 0.0, -1.5), PI)
+	victim.health = 90
+	# Un aliado de la víctima (id 3) y la propia víctima (id 2) no pueden figurar como asistentes.
+	victim.ledger.record(S - 10, 3, 400)
+	victim.ledger.record(S - 5, 2, 400)
+	victim.ledger.record(S - 5, 9, 400)
+	CombatFixture.start_light_active(npc, S)
+	_tick()
+	var kills: Array[NetMessages.EntityEvent] = _events_of(NetMessages.EntityEvent.Kind.KILL)
+	if not assert_eq(kills.size(), 1, "un PNJ puede matar"):
+		return
+	assert_eq(kills[0].killer, 7, "el KILL es del PNJ")
+	assert_false(kills[0].assistants.has(2), "la autolesión no cuenta")
+	assert_true(kills[0].assistants.has(9), "quien hizo daño asiste")
+	assert_eq(_events_of(NetMessages.EntityEvent.Kind.DEATH)[0].killer, 7)
+
+
 func test_simultaneous_exchange_can_kill_both() -> void:
 	var duel: Array[Combatant] = _duel()
 	duel[0].health = 50
