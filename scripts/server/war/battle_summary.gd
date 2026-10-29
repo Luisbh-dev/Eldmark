@@ -9,16 +9,22 @@ extends RefCounted
 ## propia captura (desde «captura iniciada»).
 ## [br]- [b]Puerta[/b]: los segundos entre el primer golpe a la puerta y su rotura.
 ## [br]- [b]Muertes por ruta[/b]: dónde han caído los jugadores, clasificados por posición como
-## [code]bridge[/code] (puente), [code]ford[/code] (vado) o [code]walkway[/code] (pasarela del fuerte,
-## alta y dentro de su recinto); [code]other[/code] si no están cerca de ninguna ruta de
+## [code]walkway[/code] (pasarela del fuerte, alta y dentro de su recinto), [code]gate[/code] (la explanada
+## delante de la puerta y el patio: a menos de [constant GATE_RADIUS] del círculo; ahí acaban las dos rutas,
+## así que sin esta clase todas las muertes del asalto saldrían como «vado»), [code]bridge[/code] (puente) o
+## [code]ford[/code] (vado) por el camino; [code]other[/code] si no están cerca de ninguna ruta de
 ## [ApproachRoutes].
 ## [br]- Los recuentos de avisos de guerra y de muertes por reino.
 
 ## Clave de las muertes en la pasarela del fuerte y en ningún sitio conocido.
 const WALKWAY: StringName = &"walkway"
+const GATE: StringName = &"gate"
 const OTHER: StringName = &"other"
 ## Hasta qué distancia (m) de una ruta cuenta una muerte como suya.
 const ROUTE_MAX_DISTANCE: float = 30.0
+## Radio (m) alrededor del círculo en el que una muerte cuenta como de la puerta y el patio (la explanada, la
+## puerta y el recinto), en lugar de la de una ruta.
+const GATE_RADIUS: float = 25.0
 ## Radio (m) alrededor del círculo en el que una muerte alta cuenta como de la pasarela y cuánto por
 ## encima del suelo del círculo (m) tiene que estar.
 const WALKWAY_RADIUS: float = 30.0
@@ -87,6 +93,8 @@ static func classify_route(position: Array, fortress: Dictionary, routes: Approa
 		var center := Vector2(float(circle[0]), float(circle[2]))
 		if point.distance_to(center) <= WALKWAY_RADIUS and height >= float(circle[1]) + WALKWAY_MIN_HEIGHT:
 			return WALKWAY
+		if point.distance_to(center) <= GATE_RADIUS:
+			return GATE
 	if routes == null:
 		return OTHER
 	var best: StringName = OTHER
@@ -122,9 +130,9 @@ static func format(summary: Dictionary) -> String:
 	var deaths: Dictionary = summary["deaths"]
 	lines.append("Muertes: %d de jugadores y %d de PNJ" % [deaths["players"], deaths["npcs"]])
 	var by_route: Dictionary = deaths["by_route"]
-	for route: String in ["bridge", "ford", "walkway", "other"]:
-		var label: String = {"bridge": "puente", "ford": "vado", "walkway": "pasarela",
-				"other": "otros sitios"}[route]
+	for route: String in ["bridge", "ford", "gate", "walkway", "other"]:
+		var label: String = {"bridge": "puente", "ford": "vado", "gate": "explanada y patio",
+				"walkway": "pasarela", "other": "otros sitios"}[route]
 		lines.append("  %s: %d" % [label, int(by_route.get(route, 0))])
 	var war_events: Dictionary = summary["war_events"]
 	var names := PackedStringArray()

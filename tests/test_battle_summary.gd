@@ -153,6 +153,14 @@ func test_classify_route_by_position() -> void:
 	assert_eq(BattleSummary.classify_route([-8.5, 13.8, 3.0], fortress, routes), &"walkway")
 	assert_eq(BattleSummary.classify_route([-8.5, 10.3, 3.0], fortress, routes) != &"walkway", true,
 			"el patio, a ras de suelo, no es la pasarela")
+	assert_eq(BattleSummary.classify_route([-8.5, 10.3, 3.0], fortress, routes), &"gate", "es el patio")
+	assert_eq(BattleSummary.classify_route([-25.0, 10.2, -2.0], fortress, routes), &"gate",
+			"y la explanada, donde acaban las dos rutas, no se cuenta ni como puente ni como vado")
+	assert_eq(BattleSummary.classify_route([-25.0, 10.2, 0.0], fortress, null), &"gate", "también sin rutas")
+	assert_eq(BattleSummary.classify_route([-44.0, 8.0, 0.0], fortress, routes), &"ford",
+			"a más de 25 m del círculo, el vado por el que se llega")
+	assert_eq(BattleSummary.classify_route([-12.0, 8.0, -47.0], fortress, routes), &"bridge",
+			"y la ladera que sube del puente")
 	assert_eq(BattleSummary.classify_route([200.0, 5.0, 200.0], fortress, routes), &"other")
 	assert_eq(BattleSummary.classify_route([1.0], fortress, routes), &"other", "una posición incompleta")
 

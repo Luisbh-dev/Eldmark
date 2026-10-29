@@ -590,10 +590,10 @@ func _siege_lines(figures: Dictionary) -> PackedStringArray:
 	if not battle.is_empty():
 		var deaths: Dictionary = battle["deaths"]
 		var by_route: Dictionary = deaths["by_route"]
-		lines.append("   Batalla: %d capturas, %d puertas rotas, %d muertes de jugadores (puente %d, vado %d, pasarela %d, otros %d); avisos %s" % [
+		lines.append("   Batalla: %d capturas, %d puertas rotas, %d muertes de jugadores (puente %d, vado %d, explanada y patio %d, pasarela %d, otros %d); avisos %s" % [
 			(battle["captures"] as Array).size(), (battle["gate_breaks"] as Array).size(), deaths["players"],
-			int(by_route.get("bridge", 0)), int(by_route.get("ford", 0)), int(by_route.get("walkway", 0)),
-			int(by_route.get("other", 0)), battle["war_events"]])
+			int(by_route.get("bridge", 0)), int(by_route.get("ford", 0)), int(by_route.get("gate", 0)),
+			int(by_route.get("walkway", 0)), int(by_route.get("other", 0)), battle["war_events"]])
 		for gate_break: Dictionary in battle["gate_breaks"]:
 			lines.append("     puerta rota %.1f s después del primer golpe" % gate_break["seconds"])
 		for capture: Dictionary in battle["captures"]:
