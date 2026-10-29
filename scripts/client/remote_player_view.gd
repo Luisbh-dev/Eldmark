@@ -40,6 +40,7 @@ var _interpolator: RemoteInterpolator = RemoteInterpolator.new()
 var _net_id: int = 0
 var _kind: int = NetProtocol.EntityKind.PLAYER
 var _display_name: String = ""
+var _npc_def_id: int = 0
 var _realm: int = NetProtocol.Realm.NONE
 var _spawn_tick: int = 0
 var _despawn_tick: int = -1
@@ -69,6 +70,7 @@ func setup(body: PlayerCharacter, spawn: NetMessages.EntitySpawn) -> void:
 	_net_id = spawn.net_id
 	_kind = spawn.kind
 	_display_name = spawn.display_name
+	_npc_def_id = spawn.npc_def_id
 	_realm = spawn.realm
 	_spawn_tick = spawn.spawn_tick
 	_despawn_tick = -1
@@ -195,6 +197,12 @@ func get_kind() -> int:
 
 func get_display_name() -> String:
 	return _display_name
+
+
+## Id de la definición de PNJ del SPAWN (0 en un jugador o un PNJ sin definición): con él se sabe si
+## es un jefe ([BossInfo]).
+func get_npc_def_id() -> int:
+	return _npc_def_id
 
 
 func get_realm() -> int:

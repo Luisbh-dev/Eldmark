@@ -37,6 +37,8 @@ var _death_attack_id: int = 0
 # Tick del servidor del último RESPAWN propio: un snapshot anterior no puede reabrir la pantalla.
 var _respawn_event_tick: int = 0
 var _dimmed: bool = false
+# Interfaz de guerra del cliente en red (fuerte, avisos, jefe...); null en el sandbox.
+var _war_hud: WarHud = null
 
 @onready var _nameplates: Nameplates = $Nameplates
 @onready var _crosshair: Crosshair = $Crosshair
@@ -96,6 +98,7 @@ func bind_net(client: NetClient, world: Node) -> void:
 		_vitals.set_health_visible(true)
 		_setup_feedback()
 		_nameplates.setup(_client.get_remote_world(), _camera_rig, _client.get_config().realm)
+		_setup_war_hud()
 
 
 func _process(delta: float) -> void:
@@ -170,6 +173,11 @@ func get_nameplates() -> Nameplates:
 	return _nameplates
 
 
+## Interfaz de guerra: panel de captura, avisos, barra de jefe... (null sin red).
+func get_war_hud() -> WarHud:
+	return _war_hud
+
+
 ## Reparto de la sensación de combate (null hasta [method bind]).
 func get_feedback() -> CombatFeedback:
 	return _feedback
@@ -193,6 +201,19 @@ func _setup_feedback() -> void:
 		_feedback.local_died.connect(_on_local_died)
 		_feedback.local_respawned.connect(_on_local_respawned)
 	_feedback.setup(_client, _camera_rig, _character, _marker, _numbers)
+
+
+# Crea (de nuevo, si ya había una) la interfaz de guerra y la conecta con el cliente. Va por debajo de la
+# pantalla de muerte, que es el último hijo.
+func _setup_war_hud() -> void:
+	if is_instance_valid(_war_hud):
+		remove_child(_war_hud)
+		_war_hud.free()
+	_war_hud = WarHud.new()
+	_war_hud.name = "WarHud"
+	add_child(_war_hud)
+	move_child(_war_hud, _death.get_index())
+	_war_hud.bind(_client, _world)
 
 
 # --- Vida y resistencia -----------------------------------------------------------------------
@@ -309,6 +330,8 @@ func _set_dimmed(dim: bool) -> void:
 	var alpha: float = DEAD_DIM_ALPHA if dim else 1.0
 	for item: CanvasItem in [_vitals, _crosshair, _hint, _numbers, _marker, _indicator, _nameplates]:
 		item.modulate.a = alpha
+	if is_instance_valid(_war_hud):
+		_war_hud.modulate.a = alpha
 
 
 ## El punto de mira solo tiene sentido mientras el ratón controla la cámara.
