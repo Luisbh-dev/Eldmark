@@ -82,7 +82,7 @@ func _init() -> void:
 
 func _exit_tree() -> void:
 	if _open and is_instance_valid(_camera_rig):
-		_camera_rig.set_ui_cursor_release(false)
+		_camera_rig.set_ui_cursor_release(false, self)
 
 
 func _input(event: InputEvent) -> void:
@@ -109,7 +109,7 @@ func open(title: String, message: String, confirm_text: String = DEFAULT_CONFIRM
 	visible = true
 	if not was_open:
 		if is_instance_valid(_camera_rig):
-			_camera_rig.set_ui_cursor_release(true)
+			_camera_rig.set_ui_cursor_release(true, self)
 		UISounds.play(UISounds.OPEN)
 	if is_inside_tree():
 		(_cancel_button if _focus_cancel else _confirm_button).grab_focus()
@@ -118,10 +118,10 @@ func open(title: String, message: String, confirm_text: String = DEFAULT_CONFIRM
 ## Enlaza el diálogo con la cámara: mientras está abierto el cursor queda libre.
 func bind_camera(rig: CameraRig) -> void:
 	if _open and is_instance_valid(_camera_rig) and _camera_rig != rig:
-		_camera_rig.set_ui_cursor_release(false)
+		_camera_rig.set_ui_cursor_release(false, self)
 	_camera_rig = rig
 	if _open and is_instance_valid(_camera_rig):
-		_camera_rig.set_ui_cursor_release(true)
+		_camera_rig.set_ui_cursor_release(true, self)
 
 
 func is_open() -> bool:
@@ -166,4 +166,4 @@ func _close() -> void:
 	_open = false
 	visible = false
 	if is_instance_valid(_camera_rig):
-		_camera_rig.set_ui_cursor_release(false)
+		_camera_rig.set_ui_cursor_release(false, self)

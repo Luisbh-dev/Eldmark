@@ -273,11 +273,11 @@ func test_a_damaged_enemy_under_the_crosshair_gets_both() -> void:
 func test_no_enemy_is_targeted_while_the_cursor_is_free() -> void:
 	_spawn(ENEMY_ID, SOLMARCH, "Hostil", _on_the_aim_ray(12.0))
 	_rig.set_scripted_look(false)
-	_rig.set_ui_cursor_release(true)
+	_rig.set_ui_cursor_release(true, self)
 	_frame()
 	assert_eq(_plates.get_targeted_id(), 0, "con el cursor libre no hay retícula")
 	assert_null(_plates.get_plate_for(ENEMY_ID))
-	_rig.set_ui_cursor_release(false)
+	_rig.set_ui_cursor_release(false, self)
 
 
 func test_the_local_player_never_has_a_plate() -> void:

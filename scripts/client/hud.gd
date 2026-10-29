@@ -69,7 +69,7 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	# Que el cursor no se quede suelto si el HUD desaparece con la pantalla de muerte abierta.
 	if is_instance_valid(_camera_rig):
-		_camera_rig.set_ui_cursor_release(false)
+		_camera_rig.set_ui_cursor_release(false, self)
 
 
 ## Conecta el HUD con el personaje local y la cámara. Se puede llamar antes o
@@ -284,13 +284,13 @@ func _death_cause_text() -> String:
 func _on_death_opened() -> void:
 	_set_dimmed(true)
 	if is_instance_valid(_camera_rig):
-		_camera_rig.set_ui_cursor_release(true)
+		_camera_rig.set_ui_cursor_release(true, self)
 
 
 func _on_death_closed() -> void:
 	_set_dimmed(false)
 	if is_instance_valid(_camera_rig):
-		_camera_rig.set_ui_cursor_release(false)
+		_camera_rig.set_ui_cursor_release(false, self)
 	_death_killer_id = -1
 	_numbers.clear()
 	_indicator.clear()

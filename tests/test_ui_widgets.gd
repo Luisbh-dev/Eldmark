@@ -510,6 +510,33 @@ func test_a_window_frees_and_recaptures_the_cursor_through_the_camera() -> void:
 	assert_false(rig.is_cursor_free())
 
 
+func test_the_cursor_stays_free_until_every_window_has_closed() -> void:
+	# T1: varios solicitantes a la vez; el ratón solo se recaptura cuando no queda ninguno.
+	var rig: CameraRig = (load(CAMERA_RIG_SCENE_PATH) as PackedScene).instantiate() as CameraRig
+	_add(rig)
+	var first: UIWindow = _add(UIWindow.new()) as UIWindow
+	var second: UIWindow = _add(UIWindow.new()) as UIWindow
+	first.bind_camera(rig)
+	second.bind_camera(rig)
+	first.open()
+	second.open()
+	first.close()
+	assert_true(rig.is_cursor_free(), "la segunda sigue abierta")
+	second.close()
+	assert_false(rig.is_cursor_free())
+	# Pedirlo dos veces cuenta como una; soltarlo una vez basta.
+	rig.set_ui_cursor_release(true, first)
+	rig.set_ui_cursor_release(true, first)
+	rig.set_ui_cursor_release(false, first)
+	assert_false(rig.is_cursor_free())
+	# Un solicitante que se libera sin avisar no deja el cursor suelto para siempre.
+	var gone := Node.new()
+	rig.set_ui_cursor_release(true, gone)
+	assert_true(rig.is_cursor_free())
+	gone.free()
+	assert_false(rig.is_cursor_free(), "se descarta al solicitante que ya no existe")
+
+
 # --- Diálogo de confirmación ------------------------------------------------------------------
 
 func test_confirm_dialog_confirms_and_cancels() -> void:

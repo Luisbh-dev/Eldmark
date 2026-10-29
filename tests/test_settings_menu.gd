@@ -292,6 +292,30 @@ func test_f10_opens_and_closes_the_settings_and_frees_the_cursor() -> void:
 	assert_eq(UIKeyGlyph.label_for_action(&"open_settings"), "F10")
 
 
+func test_cancelling_the_restore_dialog_keeps_the_cursor_free_for_the_open_settings() -> void:
+	# T1: el diálogo de «Restaurar todo» y la ventana de ajustes piden el cursor a la vez.
+	var rig: CameraRig = (load(CAMERA_RIG_SCENE_PATH) as PackedScene).instantiate() as CameraRig
+	_add(rig)
+	var services: ClientServices = _add(ClientServices.new()) as ClientServices
+	var menu: SettingsMenu = services.get_settings_menu()
+	var confirm: UIConfirmDialog = services.get_confirm_dialog()
+	_press(KEY_F10)
+	assert_true(menu.is_open())
+	assert_true(rig.is_cursor_free())
+	menu.restore_all()
+	assert_true(confirm.is_open(), "pregunta antes")
+	assert_true(rig.is_cursor_free())
+	confirm.cancel()
+	assert_true(menu.is_open(), "los ajustes siguen abiertos")
+	assert_true(rig.is_cursor_free(), "y con el ratón libre para poder usarlos")
+	menu.restore_all()
+	confirm.confirm()
+	assert_true(rig.is_cursor_free(), "también tras confirmar")
+	_press(KEY_ESCAPE)
+	assert_false(menu.is_open())
+	assert_false(rig.is_cursor_free(), "al cerrar los ajustes, el ratón vuelve a la cámara")
+
+
 func test_changes_are_applied_live_through_the_menu() -> void:
 	var rig: CameraRig = (load(CAMERA_RIG_SCENE_PATH) as PackedScene).instantiate() as CameraRig
 	_add(rig)
