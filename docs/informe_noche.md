@@ -11,8 +11,8 @@ backlog).
 |---|---|---|
 | Backlog (`docs/backlog.md`) | `main` | Hecho y subido |
 | Fase 2: red | `fase2-red` | Implementada (594 pruebas en verde, CI de GitHub en verde); revisión adversarial hecha y sus 19 hallazgos corregidos, cada uno con su prueba (656 pruebas en verde) |
-| Fase 3: combate | `fase3-combate` (desde `fase2-red`, que está fusionada dentro) | Diseño revisado (`docs/combate.md`); K1–K5 y el carril de audio, tema, ajustes, documento social y exportación integrados (1213 pruebas en verde); revisión adversarial hecha (18 de 19 hallazgos confirmados), arreglos en marcha |
-| Fase 4: fuerte | `fase4-fuerte` (desde `fase3-combate`) | Diseño v2 revisado (`docs/fuerte.md`); F0 (escena, capas, navmesh) y F1 (fortaleza pura) en marcha |
+| Fase 3: combate | `fase3-combate` (desde `fase2-red`, que está fusionada dentro) | Diseño revisado (`docs/combate.md`); K1–K5 y el carril de audio, tema, ajustes, documento social y exportación integrados revisión adversarial hecha y sus 18 hallazgos corregidos con prueba (1262 pruebas en verde) |
+| Fase 4: fuerte | `fase4-fuerte` (desde `fase3-combate`) | Diseño v2 revisado (`docs/fuerte.md`); F0 (escena, capas, navmesh, rutas), F1 (fortaleza pura) y F2 (protocolo 4) integrados; F3 (servidor) y F5 (cliente) en marcha |
 
 ## Entorno (Linux)
 
@@ -228,10 +228,45 @@ cliente), con verificadores que intentaron refutar cada hallazgo: 19 hallazgos, 
 | T7 | baja | Casillas del backlog F3 marcadas sin cumplir del todo |
 | T8 | baja | Una parada perfecta enciende la viñeta de daño |
 
+**Todos corregidos en `fase3-combate`**, con una prueba que fallaba antes (1262 en verde). Notas:
+
+- C1: un bit nuevo (`combat_flags` bit 6) marca el ligero de la pulsación; una sustitución solo
+  retrasa la carga un tick. Con C4, C5 y R2 cambia la simulación predicha: **protocolo 3**.
+- R1, **cerrado solo en parte**: el rebobinado se fija una vez por golpe (primer tick activo) y la
+  antelación que cuenta para el tope se acota con la mediana reciente + 3 (y 8 como máximo). Un
+  tramposo con todas las entradas adelantadas e `interp_delay_q` al máximo todavía llega al tope
+  de 24 ticks con ping de LAN, porque el servidor no puede comprobar la interpolación declarada.
+  Documentado en combate.md §4.3 y red.md §10.
+- R4: el SPAWN de un enemigo lleva un `CombatState` neutro (solo acción y arma).
+- T2: los remotos ven una segunda esquiva o tambaleo seguidos gracias a un contador de reinicio
+  en el byte de acción (`ActionWire`).
+- T3: `boot.gd` ya no nombra clases del cliente; el servidor dedicado no compila scripts del
+  cliente (lo comprueba `test_architecture` con un servidor real).
+- Quedan sin tratar dos rarezas menores que el verificador anotó: un tambaleo corto que empieza y
+  acaba dentro de la ventana de rebobinado deja contar la muestra vieja de bloqueo, y un ligero 3
+  sobre un aturdido cambia el aturdimiento por un tambaleo más corto.
+
 **Decisiones abiertas que dejo para el usuario** (no bloquean):
+- Cómo cerrar del todo R1 (el cliente declara su retardo de interpolación): por ejemplo, fijar el
+  retardo por zona y no aceptar el declarado.
 - El tope de rebobinado de 24 ticks no cubre a un honrado con 200 ms de RTT (11 de 20 golpes):
   subir `MAX_REWIND_TICKS` o recortar el margen de TickSync. Importa para Latinoamérica.
 - Bajar el coste de `simulate()` (palanca 6 de red.md §14: C++) si se quieren batallas de más de 64.
+
+## Fase 4: progreso
+
+Diseño en [fuerte.md](fuerte.md), revisado antes de implementar (22 hallazgos, 3 bloqueantes; varios
+supuestos técnicos comprobados ejecutando Godot y Terrain3D).
+
+| Paquete | Contenido | Estado |
+|---|---|---|
+| F0 | Escena y generador del Vado Gris (ejecutado aquí): nodo de fortaleza, puerta cerrada con dos cuerpos (movimiento por capas de reino, vista en la capa de estructuras), `respawn_points`, patrullas, `NpcSpawner`; navmesh horneada (0,3 MB, celda 0,25 m, verificada: sin salida con la puerta cerrada y sin cruzar el lecho del río); rutas en `data/routes/vado_gris.tres` | Hecho |
+| F1 | `FortressState` con toda la tabla de captura, presencia, progreso en enteros, `WarEvents`, `RespawnRules`, `SiegeView` (44 pruebas de estado) | Hecho |
+| F2 | Protocolo 4: OBJECT_STATE, SPAWN de estructuras y PNJ, WAR, TELEGRAPH, /atascado, SCOREBOARD, REJECT de desequilibrio | Hecho |
+| F3 | Servidor del fuerte | En marcha |
+| F5 | Cliente del fuerte | En marcha |
+| F4 | PNJ (navegación, IA, Huecos, Capitán, guarnición, Guardianes) | Pendiente |
+| F6 | Bots de asedio, carga y prueba de extremo a extremo | Pendiente |
 
 ## Pendiente de probar mañana con ventana
 
