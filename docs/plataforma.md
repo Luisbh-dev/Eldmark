@@ -1908,3 +1908,119 @@ La interfaz con progresion.md quedó conciliada después de las tres revisiones:
 documento está cada regla. Lo que las filas de arriba nombran y ya no existe (P3b, S3–S9, `progress_purge_character`,
 `ProgressRepository`, `PlatformProgressRepository`, el `world_id` de los cuerpos de reportes, ignorados y sanciones y
 `ZonePlatform.world_id()`) es anterior a la conciliación o a su última revisión.
+
+## 19. Implementación
+
+Lo que hizo cada paquete, en qué se aparta de este documento y lo que se midió. Cada paquete añade su
+apartado al terminar.
+
+### 19.1 P0 · esqueleto (TEC-22)
+
+**Qué hay.** El módulo `platform/` (`eldmark/platform`, `go 1.24.0`, `toolchain go1.24.7`) con `.gdignore`:
+
+| Pieza | Contenido |
+|---|---|
+| `cmd/eldmark-platform` | `serve`, `migrate up`, `migrate down N`, `migrate status` y `help`; salida 0 bien, 1 error, 2 uso. `status` sale con 1 si falta alguna migración del binario. `down` se niega en `staging` y `production` (§2.4, §12) |
+| `internal/config` | Toda la tabla de §2.3, con `<NOMBRE>_FILE` en los cinco secretos. `Load` (serve) y `LoadDatabase` (migrate: solo `ELDMARK_ENV` y la base). Los problemas salen todos a la vez, uno por línea, sin repetir ningún secreto; `Config` se registra con `LogValue`, también sin secretos. `Realm` (códigos de `NetProtocol.Realm` e ids de texto) y `ZoneToken` (alcance y SHA-256) |
+| `internal/logx` | `slog` con `JSONHandler`, `MaskEmail` (`a***@example.org`), id de petición y `SetAccount`/`SetCharacter` para los campos `account` y `character` |
+| `internal/db` | `Open` (sin conectar todavía; `application_name` y `timezone = UTC`), `Ping`, `Classify` con la regla de §7.3 (`KindIntegrity`: clase 23 y `P0001`; `KindRetryable`: `40001` y `40P01`; `KindUnavailable`: sin conexión, `57014`, `57P01`–`57P03`, clase 08, `53300`), `SQLState`, `Constraint` e `InTx`, que repite la transacción entera ante `40001`/`40P01` (también en el COMMIT) y, agotada, devuelve `ErrConflict` |
+| `internal/jsonx` | `Int`, `ID`, `ParseID`, `Decode` y `DecodeBytes` de §4.1. `Int` analiza el número sin pasar por `float64` y admite hasta ±(2^53 − 1); `ID` exige cadena de dígitos sin signo ni ceros a la izquierda, de 0 a 2^63 − 1 |
+| `internal/httpx` | El cuerpo de error de §4.1 (`Error`, con `Extra` para el `account_blocked` de §6.1), `Retry-After` en 429 y 503, `DecodeJSON` con los límites de 16 KB y 1 MB (413 y 400 `bad_request`), el registro de cada petición (`req`, `route` con el patrón y nunca la ruta real ni la consulta, `status`, `ms`; nunca el cuerpo), pánico → 500 `internal`, `Health` y `Ready` |
+| `internal/app` | El proceso de `serve`: las dos API, `/health` y `/ready` en las dos, `HandlePublic` y `HandleInternal` para los paquetes siguientes, la espera del esquema y la gracia de arranque de §2.5 |
+| `internal/migrate` | El ejecutor de §2.4 y `migrations/0001`–`0006` (el DDL de §3 tal cual); `testdata/seed_0001`–`seed_0006.sql` |
+| `internal/testdb` | El arnés de §2.6: `Main`, `New`, `NewEmpty`, `ConnString`, `DumpSchema`, `Exec` y `Tables` |
+
+Fuera de `platform/`: `.gitignore` con los patrones de §10.3 (comprobado con `git check-ignore --no-index`:
+ignora `platform/deploy/staging.env`, `secrets/ticket_keys`, `zone.key` y un `*.pem` fuera de `tests/`; deja
+`staging.env.example` y `tests/fixtures/**/*.pem`); `platform/*` en el `exclude_filter` de los dos destinos de
+`export_presets.cfg` y en `test_export_config.gd` (más una prueba de que `platform/` lleva `.gdignore`);
+`tools/check_secrets.sh` y el trabajo «Plataforma» de `.github/workflows/tests.yml` (abajo); y un apartado
+«Servicio de plataforma (Go)» en el README con las órdenes.
+
+**Para los paquetes siguientes.** Las rutas nuevas se añaden con `App.HandlePublic("POST /v1/sessions", h)` y
+`App.HandleInternal(…)`; un cuerpo se lee con `httpx.DecodeJSON(w, r, httpx.PublicBodyLimit, &body)` y un error
+se escribe con `httpx.WriteError`. Las pruebas con base llevan `func TestMain(m *testing.M) {
+os.Exit(testdb.Main(m)) }` y `pool := testdb.New(t)`. Una migración nueva va en `internal/migrate/migrations/`
+con su `.down.sql` y, si crea tablas, su `testdata/seed_NNNN.sql` (la de progresion.md P7 es `seed_0010.sql`): la
+prueba de conservación la recoge sola y falla si alguna tabla se queda sin filas.
+
+**Desviaciones y decisiones de la implementación:**
+
+- **`internal/app`**, que §2.1 no nombra: monta `serve` para que `httpx` quede genérico y para probarlo con
+  puertos `:0`.
+- **`serve` con migraciones pendientes** (§2.4: «no arranca y `/ready` dice por qué»): el proceso sigue vivo,
+  `/health` da 200, `/ready` da 503 con el motivo y el arranque espera, mirando el esquema cada 2 s; con el
+  esquema al día hace la gracia y pasa a listo sin reiniciar. `/ready` exige además el arranque hecho («La
+  plataforma está arrancando»). Cada motivo nuevo se registra una vez, no en cada vuelta.
+- **La gracia de §2.5 ya está en P0** (sus tablas existen desde 0003); los trabajos periódicos (perdidas,
+  retenciones, purgas) llegan con P3 y P9a.
+- **`/ready` es público** (Caddy pasa todo a :24680), así que su motivo no lleva detalles de la base («La base
+  de datos no responde»; el de las migraciones solo nombra archivos del repositorio). El detalle va al
+  registro. Los sondeos que van bien se registran en `DEBUG` y los que no, en `WARN`.
+- **Obligatorias en `serve`** en todos los entornos: `ELDMARK_DATABASE_URL`, `ELDMARK_ZONE_TOKENS` y
+  `ELDMARK_TICKET_KEYS` (las de «—» en §2.3); en `staging` y `production`, además, `ELDMARK_MIN_PROTOCOL`,
+  `ELDMARK_EMAIL_HMAC_KEY` y SMTP. Detalles que §2.3 no fijaba: las claves (billete y HMAC) en base64 estándar
+  de al menos 32 B; la clave HMAC fija de pruebas, como la del vector, no se admite fuera de `dev` y `test`;
+  `LEASE_TTL_S` mayor que `HEARTBEAT_S`; cada reino abierto con zona de entrada; un token con dos alcances es un
+  error; `ELDMARK_X` y `ELDMARK_X_FILE` a la vez, también; una variable vacía cuenta como ausente.
+- **`ELDMARK_MIN_PROTOCOL` en `dev` y `test`:** sin la variable queda `MinProtocol = 0` y
+  `Config.ResolveMinProtocol(protocol_version)` da el de las reglas, porque `progression_rules.json` aún no
+  existe (lo crea P2 o progresion.md P3). Quien monte el 426 lo resuelve al arrancar.
+- **migrate:** la suma SHA-256 es la del `.up.sql` (arreglar un `.down.sql` no rompe nada). `Down` mira todas
+  las que va a deshacer (que estén en el binario, con su suma y no irreversibles) antes de tocar nada.
+  `Load` exige pares completos, nombres `NNNN_[a-z0-9_]+` desde 0001 y el `raise exception 'irreversible'` en
+  el `.down.sql` de una irreversible.
+- **Conservación:** la prueba sube versión a versión sobre una base: en cada versión aplica su semilla (si la
+  hay), exige al menos una fila en cada tabla y comprueba que la migración siguiente no cambia ningún
+  `count(*)`. Cada semilla solo llena las tablas nuevas de su versión.
+- **testdb:** el clúster lo levanta la primera prueba que pide una base (un paquete sin pruebas de base no paga
+  nada); `NewEmpty` da una base sin migrar (para migrate). Si la ruta del socket pasa de los 107 B (un `TMPDIR`
+  largo), el servidor escucha en 127.0.0.1 con un puerto libre, y reintenta si otro proceso se lo quita
+  (comprobado con una ruta de 137 B). Un `owner.pid` en la carpeta deja borrar al arrancar los clústeres de
+  ejecuciones que murieron sin llegar al final de `Main`. Un `ELDMARK_PG_BIN` sin `initdb` no busca en otro
+  sitio. Las bases se llaman `eldt<pid>_tmpl` y `eldt<pid>_t<n>`, así que valen también contra un servidor
+  compartido (`ELDMARK_TEST_DATABASE_URL`, comprobado), donde `Main` las borra al acabar. `DumpSchema` usa
+  `pg_dump --schema-only --no-owner --no-privileges` y quita las líneas `\restrict`/`\unrestrict`, que
+  PostgreSQL 16.10 y siguientes ponen con una clave distinta en cada volcado. `max_connections = 200`.
+- **`TMPDIR` tiene que ser accesible para el usuario `postgres`** cuando las pruebas corren como root. En esta
+  máquina, bajo el scratchpad de la sesión el servidor cae a media prueba (`/tmp/claude-0` vuelve a 0700
+  mientras corre); con el `TMPDIR` por defecto (`/tmp`) va bien.
+- **`db.InTx`:** «tres veces» de §7.3 son tres reintentos, cuatro intentos en total (`MaxAttempts`).
+- **413:** código `too_large` («La petición es demasiado grande»), que §4.1 no nombraba.
+- **Secretos:** la comprobación de §10.3 está en `tools/check_secrets.sh [raíz]`, que se puede correr en local;
+  la CI la corre la primera. Probada en un repositorio desechable: limpio → 0; un `staging.env`, un
+  `secrets/ticket_keys` o un `zone.key` en el índice → 1 y los nombra; un `ELDMARK_TICKET_KEYS=…` en un
+  `*.example` → 1 sin repetir el valor. `ELDMARK_X_FILE=` no cuenta.
+- **CI:** el trabajo «Plataforma» corre aparte de los de Godot (sin tocarlos): checkout sin LFS, la comprobación
+  de secretos, `actions/setup-go@v5` con `go-version-file: platform/go.mod`, el PostgreSQL de `ubuntu-latest`
+  (o `apt-get install postgresql-16` si falta), `gofmt -l`, `go vet ./...` y `go test -p 2 ./...` con
+  `GOTOOLCHAIN=local` y `ELDMARK_REQUIRE_PG=1`. Para que bloquee el merge hay que marcarlo como obligatorio.
+- **`.gitignore`** ignora también el binario `platform/eldmark-platform`.
+- **Dependencias:** las de §2.2 que hacen falta ya (pgx v5.8.0 y x/text v0.31.0); pgx trae además, indirectas,
+  `jackc/puddle/v2` v2.2.2, `golang.org/x/sync` v0.18.0, `pgpassfile` y `pgservicefile` (todas con `go` ≤
+  1.24.0). x/crypto entra con P1 (argon2).
+
+**Medido** (esta máquina, 4 núcleos, Go 1.24.7, PostgreSQL 16.15):
+
+| Qué | Tiempo |
+|---|---|
+| `go test ./...` con la caché de compilación vacía | 44 s de reloj, casi todo compilación |
+| `go test -p 2 ./...` con la caché caliente (como la CI) | 11 s; ningún paquete pasa de 5 s |
+| `go test -race ./...` | 50 s, sin carreras |
+| Clúster (`initdb` y arranque) más la plantilla con 0001–0006 | 1,3 s, una vez por paquete |
+| Base de una prueba (`create database … template`) | 85–105 ms (§2.6 decía 60 ms) |
+| `eldmark-platform migrate up` de 0001–0006 en una base vacía · `migrate down 6` (la orden entera) | 125–145 ms · 45–60 ms |
+| Binario (`go build`) | 15,7 MB |
+
+Comprobado a mano con el binario contra un clúster efímero: `serve` sin migrar da `/health` 200 y `/ready` 503
+(«la base no tiene migraciones; ejecuta «eldmark-platform migrate up»»); tras `migrate up`, `/ready` 200 en las
+dos API en la siguiente vuelta; una ruta desconocida, 404 `not_found` con `X-Request-Id`; SIGTERM cierra con
+código 0. Godot: `--import` da el mismo registro con y sin `platform/`; `test_export_config` (10),
+`test_assets` (7) y `test_architecture` (16) pasan.
+
+**Sin comprobar:** el trabajo «Plataforma» en GitHub (el PostgreSQL de `ubuntu-latest` y que `setup-go` lea la
+línea `toolchain`); `serve` con HTTPS directo (`ELDMARK_TLS_*`: está el código, sin prueba).
+
+**Queda para después:** la orden `admin` (P1 y P7a), las rutas de `/v1` y de `/internal/v1` (P1–P3), los
+trabajos periódicos (P3, P9a), los textos legales en `legal_documents` al arrancar (P1) y `deploy/` (P9b),
+donde irá el compose de desarrollo que nombra TEC-22.

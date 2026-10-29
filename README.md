@@ -158,7 +158,9 @@ proyecto y lanza `tests/run_tests.gd` repartido en cuatro partes a la vez (`--sh
 con un plazo de 20 minutos. Si una falla, sube su `build/` (logs e informes) como artefacto
 `build-logs-K`. El trabajo «Suite completa» solo pasa si pasan las cuatro: para que una prueba rota
 bloquee el merge hay que marcarlo como comprobación obligatoria en la protección de la rama. Se puede
-lanzar a mano desde la pestaña Actions (`workflow_dispatch`).
+lanzar a mano desde la pestaña Actions (`workflow_dispatch`). El trabajo «Plataforma», aparte, comprueba
+que no haya secretos en el índice (`tools/check_secrets.sh`) y pasa `gofmt`, `go vet` y `go test` del
+servicio de plataforma (abajo).
 
 ## Servidor dedicado
 
@@ -191,6 +193,23 @@ por segundo y los bytes de cada peer, cuenta un aviso por cada paquete mal forma
 inesperado para el estado de la sesión o por encima del ritmo, y expulsa con un NOTICE al que
 suma 50 avisos en 600 ticks; además admite como mucho `--max-per-ip` conexiones por IP (salvo
 desde loopback).
+
+## Servicio de plataforma (Go)
+
+`platform/` es el servicio de cuentas, personajes y guardado de la fase 5, en Go 1.24 sobre PostgreSQL 16
+(diseño en `docs/plataforma.md`; lo hecho, en su §19). Godot no lo escanea (`platform/.gdignore`) ni lo
+exporta. Se configura con variables `ELDMARK_*` (§2.3):
+
+```bash
+cd platform
+go test ./...                                   # levanta un PostgreSQL efímero con initdb (sin Docker)
+go run ./cmd/eldmark-platform migrate status    # o migrate up, migrate down N (solo dev y test)
+go run ./cmd/eldmark-platform serve             # API pública en :24680 e interna en :24681
+```
+
+Las pruebas necesitan los binarios de PostgreSQL (`ELDMARK_PG_BIN`, `pg_config` o
+`/usr/lib/postgresql/*/bin`; si no hay, se saltan) o un servidor en `ELDMARK_TEST_DATABASE_URL`. Como root,
+`initdb` corre con `runuser -u postgres`, que tiene que poder entrar en `TMPDIR`.
 
 ## Exportación (cliente Windows y servidor Linux)
 
