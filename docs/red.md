@@ -1815,7 +1815,9 @@ es de 0,1 ms de mediana: el cuello es `simulate()` (palanca 6).
   dibujo.
 - **Chat y grupos** (protocolo 5, [social.md](social.md#12-implementación-fase-4)): CHAT_SEND y
   CHAT_MESSAGE (`0x40` y `0x41`) por el canal fiable 3. Los reparte el `ChatRouter` del servicio social
-  (`scripts/server/social/`), que `ZoneServer` solo alimenta con los tipos `0x40` a `0x4F`.
+  (`scripts/server/social/`), que `ZoneServer` solo alimenta con los tipos `0x40` a `0x4F`. `NetClient`
+  decodifica los S→C (CHAT_MESSAGE y PARTY_*) y emite señales; `SwarmBot` los decodifica y los descarta sin
+  contarlos como mal formados ([social.md](social.md#12-implementación-fase-4), 12.7).
 
 ### Fases 5 y 6: cuentas y traspasos
 

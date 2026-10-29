@@ -4,6 +4,8 @@ extends TestCase
 ## con [code]--bots=8[/code]. Se comprueba que entran todos (uno cada 5 ticks), que reciben snapshots,
 ## que sus entradas llegan a tiempo, que el informe trae los bytes por cliente y que el cierre por
 ## [code]--quit-after-ticks[/code] y el rechazo por servidor lleno dan el código de salida esperado.
+## También, que el chat y los grupos del protocolo 5 que le llegan a un bot (docs/social.md, 12.7) se
+## decodifican y se descartan sin contar como paquetes mal formados.
 ## El enjambre en un proceso aparte lo prueba [code]test_net_processes[/code].
 
 const SWARM_SCENE: String = "res://scenes/client/bot_swarm.tscn"
@@ -15,6 +17,8 @@ var _root: Node
 var _server_viewport: SubViewport
 var _server: ZoneServer
 var _swarm: BotSwarm
+# Viewport del cliente [NetClient] que habla con los bots (solo en la prueba del chat).
+var _client_viewport: SubViewport
 var _port: int = 0
 var _exit_codes: Array[int] = []
 var _saved_config: ClientConfig
@@ -35,6 +39,9 @@ func before_each() -> void:
 
 
 func after_each() -> void:
+	if is_instance_valid(_client_viewport):
+		_client_viewport.free()
+	_client_viewport = null
 	if is_instance_valid(_swarm):
 		_swarm.get_parent().remove_child(_swarm)
 		_swarm.free()
@@ -208,6 +215,81 @@ func test_bots_rejected_by_a_full_server_make_the_exit_code_one() -> void:
 	assert_eq(int(rejected_entry.get("reject_result", 0)), NetProtocol.Result.FULL, "por servidor lleno")
 	assert_eq(rejected_entry.get("reject_text"), NetProtocol.result_text(NetProtocol.Result.FULL))
 	assert_eq(rejected_entry.get("state"), "CLOSED")
+
+
+# El servidor trata a un bot del enjambre como a un jugador: le llega la «zona» de su reino, se le puede
+# susurrar y se le puede invitar (PARTY_INVITATION y el aviso del sistema). Todo eso está bien formado y no
+# puede contar en malformed_packets, que es lo que miran las pruebas y los informes de carga.
+func test_chat_and_party_messages_reach_a_bot_without_counting_as_malformed() -> void:
+	await _start_server()
+	_start_swarm(1, func(config: ClientConfig) -> void: config.realm = NetProtocol.Realm.VARDHEIM)
+	_client_viewport = NetHarness.make_world_viewport(_root, "")
+	var client: NetClient = NetHarness.start_bot(_client_viewport, _port, NetProtocol.Realm.VARDHEIM, 90)
+	var both_in: bool = await _wait_until(func() -> bool:
+		return _swarm.count_in_world() == 1 and client.get_state() == NetClient.State.IN_WORLD)
+	if not assert_true(both_in, "entran el bot del enjambre y un cliente, los dos de Vardheim"):
+		return
+	var bot: SwarmBot = _swarm.get_bots()[0]
+	assert_true(bot.get_display_name() != client.get_config().display_name, "nombres distintos")
+	# Los tipos de todo lo que le llega al bot (la prueba se conecta después que él, así que cada paquete
+	# ya lo ha atendido el bot cuando se apunta aquí).
+	var received: Dictionary[int, int] = {}
+	var transport: NetTransport = bot.get_node("NetTransport") as NetTransport
+	transport.packet_received.connect(func(_peer_id: int, bytes: PackedByteArray) -> void:
+		var msg_type: int = bytes[0] if not bytes.is_empty() else -1
+		received[msg_type] = received.get(msg_type, 0) + 1)
+
+	assert_true(client.send_chat(ChatChannel.Id.ZONE, "", "hola a todos"), "habla por la zona")
+	assert_true(client.send_chat(ChatChannel.Id.WHISPER, bot.get_display_name(), "psst"), "le susurra al bot")
+	assert_true(client.send_party_invite(bot.get_display_name()), "lo invita al grupo")
+	# Zona, susurro y el aviso del sistema de la invitación (tres CHAT_MESSAGE) y la invitación.
+	var arrived: bool = await _wait_until(func() -> bool:
+		return received.get(NetProtocol.MSG_CHAT_MESSAGE, 0) >= 3 \
+				and received.get(NetProtocol.MSG_PARTY_INVITATION, 0) >= 1)
+	assert_true(arrived, "le llegan el chat y la invitación (%s)" % received)
+	var stats: Dictionary = bot.get_stats()
+	assert_eq(int(stats["malformed_packets"]), 0, "el chat y los grupos no cuentan como mal formados")
+	assert_eq(int(stats.get("chat_messages_seen", -1)), received.get(NetProtocol.MSG_CHAT_MESSAGE, 0),
+			"cuenta cada CHAT_MESSAGE que le llega")
+	assert_eq(int(stats.get("party_messages_seen", -1)), received.get(NetProtocol.MSG_PARTY_INVITATION, 0),
+			"y cada PARTY_INVITATION")
+	assert_eq(bot.get_state(), SwarmBot.State.IN_WORLD, "y sigue jugando")
+
+
+# PARTY_ROSTER y PARTY_STATUS solo llegan a quien está en un grupo, y un bot del enjambre no acepta
+# invitaciones: se le dan a mano, igual que versiones rotas de los cuatro tipos, que sí cuentan.
+func test_party_roster_and_status_are_discarded_and_broken_ones_count_as_malformed() -> void:
+	var bot := SwarmBot.new()
+	var roster := NetMessages.PartyRoster.new()
+	roster.members.append(NetMessages.PartyRoster.Member.make(3, "Brand"))
+	roster.members.append(NetMessages.PartyRoster.Member.make(5, NameRules.bot_name(40)))
+	var status := NetMessages.PartyStatus.new()
+	status.members.append(NetMessages.PartyStatus.MemberStatus.make(3, 200, 255, 0, Vector3(1.0, 0.0, 2.0)))
+	var system := NetMessages.ChatMessage.new()
+	system.channel = ChatChannel.Id.SYSTEM
+	system.text = "Ya no estás en un grupo."
+	for bytes: PackedByteArray in [roster.encode(), NetMessages.PartyRoster.new().encode(), status.encode(),
+			system.encode()]:
+		bot._on_packet_received(SwarmBot.SERVER_PEER_ID, bytes)
+	var stats: Dictionary = bot.get_stats()
+	assert_eq(int(stats["malformed_packets"]), 0, "las listas, el estado y el aviso bien formados no cuentan")
+	assert_eq(int(stats.get("party_messages_seen", -1)), 3, "dos PARTY_ROSTER y un PARTY_STATUS")
+	assert_eq(int(stats.get("chat_messages_seen", -1)), 1, "y un CHAT_MESSAGE")
+
+	# Truncados: solo el tipo, o el mensaje bueno con un byte de menos.
+	var broken: Array[PackedByteArray] = []
+	for msg_type: int in [NetProtocol.MSG_CHAT_MESSAGE, NetProtocol.MSG_PARTY_INVITATION,
+			NetProtocol.MSG_PARTY_ROSTER, NetProtocol.MSG_PARTY_STATUS]:
+		broken.append(PackedByteArray([msg_type]))
+	for good: PackedByteArray in [roster.encode(), status.encode(), system.encode()]:
+		broken.append(good.slice(0, good.size() - 1))
+	for bytes: PackedByteArray in broken:
+		bot._on_packet_received(SwarmBot.SERVER_PEER_ID, bytes)
+	stats = bot.get_stats()
+	assert_eq(int(stats["malformed_packets"]), broken.size(), "cada uno roto cuenta como mal formado")
+	assert_eq(int(stats.get("party_messages_seen", -1)), 3, "y no como visto")
+	assert_eq(int(stats.get("chat_messages_seen", -1)), 1)
+	bot.free()
 
 
 ## Posición del servidor del jugador con ese net_id (infinita si no existe).

@@ -608,6 +608,15 @@ falso y nadie.
 - **Protocolo.** `PROTOCOL_VERSION` sube a 5 con una sola línea de historia («chat y grupos»). Si al fusionar otra
   rama también la sube, la renumera quien fusiona; las pruebas solo exigen `>= 4` y `>= 5` en los sitios que
   dependen de estos mensajes.
+- **Los mensajes nuevos se reciben en todos los clientes.** `NetClient` decodifica CHAT_MESSAGE y los PARTY_*
+  (S→C) y emite señales; los bots ligeros de `--bots` (`SwarmBot`), a los que el servidor trata como a jugadores
+  (les llega la «zona» y el «decir» de su reino, se les puede susurrar y se les puede invitar), los decodifican y
+  los descartan: no contestan, y una invitación caduca sola. Los cuentan en `chat_messages_seen` y
+  `party_messages_seen` del informe del enjambre, y solo los que no se decodifican suman `malformed_packets`, la
+  cifra que las pruebas de carga exigen a 0. Pruebas: `test_bot_swarm`
+  (`test_chat_and_party_messages_reach_a_bot_without_counting_as_malformed`, con ENet: un cliente del mismo
+  reino habla por la zona, le susurra al bot y lo invita; y
+  `test_party_roster_and_status_are_discarded_and_broken_ones_count_as_malformed`, sin red).
 - **Un servicio social, no un cambio en cada pieza.** `SocialService` es lo único que ve `ZoneServer` (tipos
   `0x40`–`0x4F`, un paso por tick y la baja de cada jugador); el estado de ritmos de cada peer cuelga de
   `ServerPeer.chat`. En el orden del tick (cabecera de `ZoneServer`, que es la normativa) la baja
