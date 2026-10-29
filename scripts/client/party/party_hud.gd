@@ -39,11 +39,13 @@ func _init() -> void:
 	add_child(_frames)
 
 
-## Conecta la interfaz con el cliente de red [param client] (su [PartyState], su posición y las peticiones).
-func bind(client: NetClient) -> void:
+## Conecta la interfaz con el cliente de red [param client] (su [PartyState], su posición y las peticiones). Con
+## [param camera_rig], las teclas del aviso de invitación no responden mientras otra pieza de la interfaz que no sea
+## [param allowed_holder] tiene el cursor ([method PartyInvitePrompt.bind]).
+func bind(client: NetClient, camera_rig: CameraRig = null, allowed_holder: Object = null) -> void:
 	_client = client
 	var party: PartyState = client.get_party() if is_instance_valid(client) else null
-	_prompt.bind(party, client)
+	_prompt.bind(party, client, camera_rig, allowed_holder)
 	_frames.bind(party, client)
 
 

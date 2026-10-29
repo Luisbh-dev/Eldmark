@@ -8,7 +8,10 @@ extends Control
 ## interfaz: [method CameraRig.set_ui_cursor_release]) y el personaje no se mueve ni usa botones
 ## ([method LocalPlayerController.set_input_blocked]); es lo que hacen las ventanas de la interfaz, y el chat
 ## además congela el movimiento porque se teclea. Esc la cierra sin enviar (se atiende en
-## [method Node._input], antes de que lo vea la cámara) e Intro envía y cierra. Solo se abre si ninguna otra
+## [method Node._input], antes de que lo vea la cámara), Intro envía y cierra, y un clic fuera de la caja (con
+## cualquiera de los tres botones del ratón) la cierra sin enviar, para volver al juego sin buscar el Esc. Ese clic
+## no ataca: [LocalPlayerController] suprime los botones del ratón pulsados con el cursor libre hasta soltarlos.
+## Cambiar de ventana del sistema no la cierra (al volver se sigue escribiendo). Solo se abre si ninguna otra
 ## ventana tiene el cursor ([method CameraRig.is_ui_holding_cursor]).
 ## [br][br]
 ## [b]Qué se escribe.[/b] [ChatCommandParser] decide si es texto para el canal activo (por defecto
@@ -51,8 +54,11 @@ const WIDTH: float = 560.0
 const HEIGHT: float = 236.0
 const MARGIN_LEFT: float = 16.0
 const MARGIN_BOTTOM: float = 56.0
-## Caracteres como mucho de la línea: el texto más una palabra de comando y un nombre.
-const MAX_INPUT_CHARS: int = ChatText.MAX_CHARS + 2 + NameRules.MAX_LENGTH + 4
+## Caracteres como mucho de la línea: el texto más largo que admite el servidor ([constant ChatText.MAX_CHARS])
+## detrás de la forma más larga de un comando con nombre y texto, [code]/susurrar [/code] (10 caracteres), con un
+## nombre de [constant NameRules.MAX_LENGTH] letras y su espacio, y 4 de holgura para espacios de más. Si se pasa,
+## no se recorta en silencio: se avisa ([method _on_line_text_rejected]).
+const MAX_INPUT_CHARS: int = ChatText.MAX_CHARS + 10 + NameRules.MAX_LENGTH + 1 + 4
 ## Segundos sin mensajes tras los que la caja cerrada empieza a desvanecerse, lo que dura el fundido y
 ## opacidad en reposo (0 = invisible).
 const FADE_DELAY_SECONDS: float = 8.0
@@ -91,6 +97,8 @@ var _prefix: Label = null
 var _line: LineEdit = null
 # Líneas que tiene ahora el RichTextLabel (para quitar las más viejas al pasar del tope).
 var _label_lines: int = 0
+# Ya se ha avisado de que la línea no admite más caracteres (una vez cada vez que se abre).
+var _rejected_warned: bool = false
 
 
 func _ready() -> void:
@@ -108,11 +116,31 @@ func _exit_tree() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if not _open:
+		return
 	# Esc cierra la línea antes de que lo vea la cámara (que lo usaría para soltar el cursor).
-	if _open and event.is_action_pressed(&"ui_cancel"):
+	if event.is_action_pressed(&"ui_cancel"):
 		close()
 		if is_inside_tree():
 			get_viewport().set_input_as_handled()
+		return
+	# Un clic fuera de la caja la cierra (el campo de texto no pierde el foco al pulsar donde no hay ningún control).
+	# El clic sigue su camino: si cae en otra ventana, es para ella; en el mundo no ataca (ver la cabecera).
+	var click: InputEventMouseButton = event as InputEventMouseButton
+	if click != null and click.pressed and is_outside_click(click):
+		close()
+
+
+## true si [param click], un clic recibido en [method Node._input] (en coordenadas de la vista), es del botón
+## izquierdo, derecho o central y cae fuera de la caja. La rueda no cuenta.
+func is_outside_click(click: InputEventMouseButton) -> bool:
+	if _panel == null or not _panel.is_inside_tree():
+		return false
+	if click.button_index != MOUSE_BUTTON_LEFT and click.button_index != MOUSE_BUTTON_RIGHT \
+			and click.button_index != MOUSE_BUTTON_MIDDLE:
+		return false
+	var local: Vector2 = _panel.get_global_transform_with_canvas().affine_inverse() * click.position
+	return not Rect2(Vector2.ZERO, _panel.size).has_point(local)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -164,6 +192,7 @@ func open(prefill: String = "") -> bool:
 		return false
 	_open = true
 	_idle_seconds = 0.0
+	_rejected_warned = false
 	_history.reset()
 	_hold_input()
 	_line.text = prefill
@@ -388,6 +417,7 @@ func _ensure_built() -> void:
 	_line.context_menu_enabled = false
 	_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_line.text_submitted.connect(_on_text_submitted)
+	_line.text_change_rejected.connect(_on_line_text_rejected)
 	_line.gui_input.connect(_on_line_gui_input)
 	_line.focus_exited.connect(_on_line_focus_exited)
 	_input_row.add_child(_line)
@@ -496,10 +526,20 @@ func _on_line_gui_input(event: InputEvent) -> void:
 	_line.accept_event()
 
 
-# Perder el foco (un clic fuera, cambiar de ventana) cierra la línea, igual que Esc.
+# Perder el foco (otro control se lo lleva) cierra la línea, igual que Esc. Un clic donde no hay ningún control no
+# quita el foco: ese caso lo atiende _input.
 func _on_line_focus_exited() -> void:
 	if _open:
 		close()
+
+
+# La línea ha llegado a MAX_INPUT_CHARS y se ha quedado sin parte de lo escrito o pegado: se avisa (una vez cada
+# vez que se abre, para no llenar el registro tecla a tecla) en lugar de enviar recortado sin decir nada.
+func _on_line_text_rejected(_rejected: String) -> void:
+	if _rejected_warned:
+		return
+	_rejected_warned = true
+	add_system_text(ChatText.problem_text(ChatText.Problem.TOO_LONG))
 
 
 # Envía [param text] por [param channel] (a [param target] si es un susurro) tras comprobarlo.

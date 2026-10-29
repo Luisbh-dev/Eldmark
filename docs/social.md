@@ -416,8 +416,19 @@ pestaña de susurros es [capturas/chat_demo.png](capturas/chat_demo.png).
 
 **Teclas.** Intro (acción `chat_open`, también el Intro del teclado numérico) abre la línea; escribir `/` la
 abre ya con la barra (se mira el carácter, no la tecla, así vale en cualquier distribución); Esc la cierra sin
-enviar; Intro envía y cierra; flecha arriba y abajo recorren el historial; perder el foco (un clic fuera)
-también la cierra. No se abre si otra ventana (ajustes, mapa, pantalla de muerte) tiene el cursor.
+enviar; Intro envía y cierra; flecha arriba y abajo recorren el historial. Un clic fuera de la caja (botón
+izquierdo, derecho o central; la rueda no) la cierra sin enviar: en Godot 4.7 un clic donde no hay ningún control
+no le quita el foco al campo de texto, así que lo atiende `ChatBox._input` comparando el punto con el panel. Ese
+clic sigue su camino (si cae en otra ventana, es para ella) y no ataca, porque `LocalPlayerController` suprime los
+botones del ratón pulsados con el cursor libre hasta soltarlos; el siguiente clic ya es del juego. Perder el foco
+porque otro control se lo lleva también la cierra; cambiar de ventana del sistema no (al volver se sigue
+escribiendo). No se abre si otra ventana (ajustes, mapa, pantalla de muerte) tiene el cursor.
+
+**Tope de la línea.** `ChatBox.MAX_INPUT_CHARS` (286) cabe el texto más largo que admite el servidor (255) detrás
+de la forma más larga de un comando con nombre y texto, `/susurrar ` con un nombre de 16 letras, más 4 de
+holgura; la prueba lo comprueba con todas las formas de `ChatCommandParser.COMMANDS`. Si aun así se pega o se
+escribe más de lo que cabe, la caja avisa una vez cada vez que se abre («El mensaje es demasiado largo...») en
+lugar de recortar sin decir nada.
 
 **Entrada suspendida.** Mientras la línea está abierta la caja pide el cursor libre a la cámara
 (`CameraRig.set_ui_cursor_release`, como las ventanas), con lo que la cámara no gira y los clics no atacan, y
@@ -527,12 +538,17 @@ muerte.
 |---|---|
 | `PartyState` | Lo que el cliente sabe del grupo: miembros por orden de llegada, líder, estado a 2 Hz e invitaciones (la más antigua a la vista). Lo alimenta `NetClient` y lo expone `NetClient.get_party()` |
 | `PartyFrames` y `PartyFrame` | Un marco por miembro: nombre con el color del reino, corona dibujada del líder, vida, resistencia y distancia a partir de 30 m; atenuado si está a más de 100 m, muerto o sin datos todavía |
-| `PartyInvitePrompt` | «Ana te invita a su grupo», los segundos que quedan y las teclas reales de aceptar (Y) y rechazar (N) con su glifo; quita lo caducado por tick |
+| `PartyInvitePrompt` | «Ana te invita a su grupo», los segundos que quedan y las teclas reales de aceptar (Y) y rechazar (N) con su glifo; quita lo caducado por tick. Si la respuesta no sale (la sesión se está cerrando), la invitación y el aviso se quedan |
 | `PartyHud` | Reúne los dos y traduce `/invitar`, `/salir`, `/expulsar` y `/lider` de la caja de chat en peticiones (`NetClient.send_party_*`) |
 | `Nameplates.set_party` | Los miembros del grupo llevan el nombre con el color de grupo (azul del canal) en lugar del de su reino |
 
 Teclas nuevas en `InputBindings`: `party_accept` (Y), `party_decline` (N) y `social_menu` (T); todas
-provisionales (pendiente del usuario, igual que las medidas y los colores de los marcos).
+provisionales (pendiente del usuario, igual que las medidas y los colores de los marcos). Y y N solo responden
+con el aviso a la vista y **sin ninguna otra pieza de la interfaz con el cursor** (`CameraRig.is_ui_holding_cursor`:
+el menú social, el mapa, los ajustes, la línea del chat), para que una letra pulsada en una ventana no acepte ni
+rechace sin querer. La excepción es la pantalla de muerte (el HUD pide el cursor por ella y se da como
+solicitante permitido): no usa letras, y esperar a reaparecer es buen momento para aceptar; con el mapa abierto
+encima, tampoco responden.
 
 La demo del backlog (cuatro bots agrupados con el jugador local) está en `test_party_hud`
 (`test_a_party_of_five_shows_the_right_frames`): comprueba nombres, orden, corona única, vida, resistencia,
@@ -542,16 +558,36 @@ distancia, atenuado por lejos, por muerte y por falta de datos, y que los marcos
 
 Solo el primer origen de las acciones: la tecla `social_menu` (T) lanza un rayo desde la cámara contra la
 cápsula de cada jugador remoto que se está dibujando (como el de las placas de nombre) y toma al más cercano a
-lo largo del rayo a **20 m o menos del jugador local** (no de la cámara, que va detrás). Con él se abre una
-ventana pequeña (`SocialMenu`, una `UIWindow`: libera el cursor, se maneja con teclado o ratón y Esc la cierra)
-con las acciones que aplican:
+lo largo del rayo a **20 m o menos del jugador local** (no de la cámara, que va detrás). **Solo cuentan los
+aliados que se ven** (`SocialTarget.is_social_target` y la oclusión de `SocialTarget.find`): un jugador del propio
+reino, vivo, con nombre de persona y sin una pared o estructura entre la cámara y su cabeza, con la misma prueba
+que oculta su placa (`Nameplates.is_head_hidden`: rayo contra `HitShapes.LINE_OF_SIGHT_MASK` cortado 0,4 m antes
+de la cabeza). Los demás se ignoran, también si están delante de un aliado. Con él se abre una ventana pequeña
+(`SocialMenu`, una `UIWindow`: libera el cursor, se maneja con teclado o ratón y Esc la cierra) con las acciones
+que aplican:
 
 | Objetivo | Opciones |
 |---|---|
 | Aliado | Invitar al grupo (si no es ya del grupo y el grupo no está completo) y Susurrar |
 | Miembro del grupo, o grupo completo | Solo Susurrar |
-| Enemigo | Ninguna: el menú no se abre y el chat avisa («No hay acciones sociales disponibles con ese jugador.») |
-| Nadie | No se abre y el chat avisa («Apunta a un jugador (a 20 m o menos) para ver sus acciones.») |
+| Enemigo, muerto, jugador falso, alguien tras una pared, nadie | El menú no se abre y el chat avisa siempre igual: «Apunta a un jugador de tu reino (a 20 m o menos) para ver sus acciones.» |
+
+**Por qué un solo aviso y la oclusión.** Antes el rayo no miraba las paredes y un enemigo daba un aviso distinto
+del de «nadie»: pulsar T contra un muro o la puerta del fuerte decía si había un enemigo justo detrás, a 20 m o
+menos, que su placa oculta a propósito. Ahora apuntar a un enemigo (visible o no), a un muro con alguien detrás o
+al vacío da exactamente lo mismo, y un aliado tapado tampoco abre el menú. El servidor sigue mandando la posición
+de los enemigos tras las paredes (el interés va por distancia, [red.md](red.md) sección 11), así que un cliente
+modificado ya la tiene; esto solo evita que el cliente honrado la enseñe.
+
+**Jugadores falsos.** Los cuerpos de jugador que el servidor crea sin conexión (`ZoneServer.add_fake_player`: las
+pruebas de carga y, con `--max-realm-diff`, el relleno del bando corto de GUE-42) no pueden recibir invitaciones ni
+susurros: el servidor contesta «no está conectado». El ENTITY_SPAWN no los distingue, pero su nombre
+(`ZoneServer.FAKE_NAME_FORMAT`, «Bot-01») no cumple `NameRules` (guion y cifras), y el de una persona siempre la
+cumple porque `ServerAuth` la exige en el HELLO; por eso el menú no se abre con un nombre que no la cumple
+(`test_zone_server` comprueba que ningún falso la cumple). Si `NameRules` se endureciera algún día y un nombre
+antiguo dejara de cumplirla, ese jugador se quedaría sin menú: entonces convendría un bit «sin acciones sociales»
+en el ENTITY_SPAWN. El cuerpo que se queda en el mundo tras salir en combate (GUE-41) lleva el nombre de una
+persona y sí ofrece acciones; el servidor contesta «no está conectado», que es verdad.
 
 **Invitar** manda PARTY_INVITE; **susurrar** cierra el menú y abre la línea del chat con `/s nombre ` ya escrito.
 Cuando existan inspeccionar, añadir amigo, ignorar y reportar, saldrán de `SocialTarget.options_for` (una función
@@ -560,8 +596,10 @@ pura) sin mostrar con un enemigo las que no apliquen.
 **Pendiente de SOC-07:** el segundo origen, un nombre pulsado en el chat con el cursor libre (los nombres de las
 líneas del chat no son todavía pulsables), y las opciones que dependen de fases posteriores.
 
-**Pruebas.** `test_social_menu`: el rayo (20 m desde el jugador y no desde la cámara, PNJ ignorados, el más
-cercano gana), las opciones, el menú con un aliado y con un enemigo, y la tecla del HUD.
+**Pruebas.** `test_social_menu`: el rayo (20 m desde el jugador y no desde la cámara, PNJ, enemigos, muertos y
+falsos ignorados, el más cercano gana, un muro tapa), las opciones, el menú con un aliado, con un enemigo y con un
+falso, y la tecla del HUD con el mismo aviso para un enemigo a la vista, un enemigo o un aliado tras un muro, un
+falso y nadie.
 
 ### 12.7 Decisiones y pendiente de la fase 4
 
@@ -587,7 +625,12 @@ cercano gana), las opciones, el menú con un aliado y con un enemigo, y la tecla
   primeros descartes de cada 10 s son gratis y los siguientes suman un aviso cada uno (chat e invitaciones).
 - **Estado de grupo fuera del interés.** Un mensaje propio a 2 Hz a cada miembro con vida, resistencia, estado y
   posición; no pasa por los snapshots. El marco se atenúa a más de 100 m.
-- **Intro cierra la línea al enviar**, con canal activo para seguir hablando por un canal.
+- **Intro cierra la línea al enviar**, con canal activo para seguir hablando por un canal. Un clic fuera de la caja
+  también la cierra, sin enviar y sin atacar (12.3).
+- **El menú social solo ve aliados a la vista** y da un único aviso cuando no hay a quién ofrecérselo, apunte a un
+  enemigo, a una pared o al vacío; los jugadores falsos se reconocen por su nombre, que no cumple `NameRules` (12.6).
+- **Y y N esperan a que se cierre cualquier otra ventana**, salvo la pantalla de muerte, desde la que se puede
+  responder a una invitación (12.5).
 - **Un grupo no sobrevive a una desconexión** (SOC-22 lo cambiará con los 5 min de gracia).
 
 **Limitaciones conocidas de la fase 4** (se aceptan hasta la fase 5; documentadas también en

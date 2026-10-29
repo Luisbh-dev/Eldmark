@@ -19,6 +19,9 @@ class FakeClient extends NetClient:
 	var fake_tick: int = 1000
 	var fake_net_id: int = 0
 	var sent: Array[Array] = []
+	## Si es true, la respuesta a una invitación no sale (como NetClient fuera del mundo o con la conexión
+	## perdida): devuelve false sin apuntar nada ni quitar la invitación.
+	var fail_responses: bool = false
 
 	func get_config() -> ClientConfig:
 		return fake_config
@@ -49,6 +52,8 @@ class FakeClient extends NetClient:
 		return true
 
 	func send_party_response(inviter: String, accept: bool) -> bool:
+		if fail_responses:
+			return false
 		sent.append(["response", inviter, accept])
 		get_party().remove_invitation(inviter)
 		return true
@@ -125,6 +130,28 @@ func _key(keycode: Key) -> InputEventKey:
 	event.keycode = keycode
 	event.pressed = true
 	return event
+
+
+## Pulsa y suelta [param keycode] (con su carácter [param unicode]) por la entrada real de la ventana, como el
+## teclado: la tecla pasa por las ventanas, la interfaz y el _unhandled_input de todos.
+func _press(keycode: Key, unicode: int) -> void:
+	var down: InputEventKey = _key(keycode)
+	down.unicode = unicode
+	tree.root.push_input(down)
+	var up: InputEventKey = _key(keycode)
+	up.pressed = false
+	tree.root.push_input(up)
+
+
+func _net_hud() -> Array:
+	var rig: CameraRig = _track((load(CAMERA_RIG_SCENE_PATH) as PackedScene).instantiate()) as CameraRig
+	var hud: HUD = _track((load(HUD_SCENE_PATH) as PackedScene).instantiate()) as HUD
+	var character: PlayerCharacter = (load(CHARACTER_SCENE_PATH) as PackedScene).instantiate() as PlayerCharacter
+	_track(character)
+	_client.fake_character = character
+	hud.bind(character, rig)
+	hud.bind_net(_client, null)
+	return [hud, rig]
 
 
 # --- PartyState -------------------------------------------------------------------------------
@@ -354,6 +381,81 @@ func test_the_prompt_shows_the_real_keys_and_responds_from_the_keyboard() -> voi
 	prompt._unhandled_input(_key(KEY_N))
 	assert_eq(_client.sent.size(), 2, "sin invitación no se envía nada")
 	assert_false(prompt.respond(true), "respond sin invitación devuelve false")
+
+
+func test_a_response_that_does_not_go_out_keeps_the_invitation() -> void:
+	var prompt: PartyInvitePrompt = _prompt()
+	_party.apply_invitation(_offer("Bruno", _client.fake_tick + 3600))
+	_client.fail_responses = true
+	assert_false(prompt.respond(true), "si la respuesta no sale, respond lo dice")
+	assert_eq(_client.sent.size(), 0, "no ha salido nada")
+	assert_not_null(_party.get_current_invitation(), "la invitación sigue")
+	prompt.refresh()
+	assert_true(prompt.visible, "y el aviso también")
+	_client.fail_responses = false
+	assert_true(prompt.respond(true), "cuando sale, sí")
+	assert_eq(_client.sent, [["response", "Bruno", true]] as Array[Array], "aceptada")
+	assert_null(_party.get_current_invitation(), "y se quita")
+
+
+func test_the_invite_keys_wait_while_another_window_holds_the_cursor() -> void:
+	var pair: Array = _net_hud()
+	var hud: HUD = pair[0]
+	var rig: CameraRig = pair[1]
+	var prompt: PartyInvitePrompt = hud.get_party_hud().get_prompt()
+	_party.apply_invitation(_offer("Cora", _client.fake_tick + 3600))
+	prompt.refresh()
+	assert_true(prompt.visible, "el aviso se ve")
+	# El menú social abierto (con su primer botón enfocado): Y no acepta.
+	var menu: SocialMenu = hud.get_social_menu()
+	menu.open()
+	assert_true(rig.is_ui_holding_cursor(), "el menú tiene el cursor")
+	_press(KEY_Y, 121)
+	_press(KEY_N, 110)
+	assert_eq(_client.sent.size(), 0, "con el menú social abierto, Y y N no responden")
+	menu.close()
+	# Cualquier otra ventana (los ajustes, el mapa...): tampoco.
+	hud.get_world_map().open()
+	_press(KEY_N, 110)
+	assert_eq(_client.sent.size(), 0, "con el mapa abierto, N no rechaza")
+	hud.get_world_map().close()
+	var window := UIWindow.new()
+	_track(window)
+	window.bind_camera(rig)
+	window.open()
+	_press(KEY_Y, 121)
+	assert_eq(_client.sent.size(), 0, "ni con otra ventana")
+	window.close()
+	# Con la línea del chat abierta, la letra es para el texto.
+	hud.get_chat().open()
+	_press(KEY_Y, 121)
+	assert_eq(_client.sent.size(), 0, "escribiendo en el chat, tampoco")
+	hud.get_chat().close()
+	# Sin ventanas, Y acepta.
+	assert_false(rig.is_ui_holding_cursor(), "nadie tiene el cursor")
+	_press(KEY_Y, 121)
+	assert_eq(_client.sent, [["response", "Cora", true]] as Array[Array], "sin ventanas, Y acepta")
+
+
+func test_the_invite_keys_answer_from_the_death_screen() -> void:
+	var pair: Array = _net_hud()
+	var hud: HUD = pair[0]
+	var rig: CameraRig = pair[1]
+	_party.apply_invitation(_offer("Dani", _client.fake_tick + 3600))
+	hud.get_party_hud().get_prompt().refresh()
+	hud.get_death_screen().open("Has caído.", _client.fake_tick + 600, PackedStringArray(["Campamento"]))
+	assert_true(rig.is_ui_holding_cursor(), "la pantalla de muerte tiene el cursor")
+	_press(KEY_N, 110)
+	assert_eq(_client.sent, [["response", "Dani", false]] as Array[Array],
+			"con la pantalla de muerte se puede responder: no usa letras")
+	# Pero el mapa abierto encima de ella sí las para.
+	_party.apply_invitation(_offer("Eva", _client.fake_tick + 3600))
+	hud.get_party_hud().get_prompt().refresh()
+	hud.get_world_map().open(true)
+	_press(KEY_Y, 121)
+	assert_eq(_client.sent.size(), 1, "con el mapa encima, Y no acepta")
+	hud.get_world_map().close()
+	hud.get_death_screen().close()
 
 
 # --- Montaje en el HUD ------------------------------------------------------------------------

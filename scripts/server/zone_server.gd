@@ -149,6 +149,11 @@ const MAX_DUMMIES: int = 16
 const DUMMY_SPAWN_DISTANCE: float = 3.0
 ## Nombre del maniquí de entrenamiento.
 const DUMMY_NAME: String = "Maniquí"
+## Nombre de los jugadores falsos ([method add_fake_player]) con su número: «Bot-01». El guion y las cifras lo dejan
+## fuera de [NameRules] a propósito: el cliente no ofrece acciones sociales a un nombre que no las cumple
+## ([code]SocialTarget.is_social_target[/code]), porque un falso no tiene conexión y el servidor contestaría «no está
+## conectado» a la invitación o al susurro (docs/social.md, sección 12.6).
+const FAKE_NAME_FORMAT: String = "Bot-%02d"
 ## Cabecera del registro de combate (--combat-log).
 const COMBAT_LOG_HEADER: String = "tick,atacante,objetivo,ataque,view_tick,rebobinado,resultado,daño"
 ## Segundos restantes en los que una cuenta atrás de cierre avisa a los jugadores.
@@ -744,7 +749,7 @@ func add_fake_player(brain: BotBrain, realm: int) -> int:
 	if get_player_count() >= _config.max_players:
 		return -1
 	_fake_counter += 1
-	var entity: NetEntity = _create_player("Bot-%02d" % _fake_counter, realm, 0, _tick)
+	var entity: NetEntity = _create_player(FAKE_NAME_FORMAT % _fake_counter, realm, 0, _tick)
 	if entity == null:
 		return -1
 	_fakes[entity.net_id] = brain

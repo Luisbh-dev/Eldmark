@@ -5,11 +5,16 @@ extends PanelContainer
 ## [code]party_decline[/code], con el glifo de la tecla real). Se ve mientras [PartyState] tenga alguna
 ## invitación vigente, la más antigua primero; con más de una dice cuántas más hay.
 ## [br][br]
-## Responder manda PARTY_RESPONSE ([method NetClient.send_party_response]) y quita el aviso al momento (el
-## servidor confirma con su propio mensaje). Las teclas solo se atienden con el aviso a la vista, en
-## [method Node._unhandled_input]: con la línea del chat abierta el campo de texto se queda con la tecla, y con
-## otra ventana abierta el cursor está libre. Los segundos salen del tick del servidor estimado por el cliente
-## ([method NetClient.get_estimated_server_tick]).
+## Responder manda PARTY_RESPONSE ([method NetClient.send_party_response]); si sale, el cliente quita la
+## invitación y el aviso desaparece al momento (el servidor confirma con su propio mensaje). Si no sale (la sesión
+## se está cerrando), el aviso se queda como estaba.
+## [br][br]
+## Las teclas solo se atienden con el aviso a la vista, en [method Node._unhandled_input], y nunca mientras otra
+## pieza de la interfaz tiene el cursor ([method CameraRig.is_ui_holding_cursor]: el menú social, el mapa, los
+## ajustes, la línea del chat...), para que una Y o una N pulsadas en ella no respondan sin querer. La excepción
+## es la pantalla de muerte (el [HUD] la da como [code]allowed_holder[/code] en [method bind]): no usa letras, y
+## esperar a reaparecer es buen momento para aceptar. Los segundos salen del tick del servidor estimado por el
+## cliente ([method NetClient.get_estimated_server_tick]).
 ## [br][br]
 ## Solo cliente.
 
@@ -22,6 +27,9 @@ const TEXT_DECLINE: String = "Rechazar"
 
 var _party: PartyState = null
 var _client: NetClient = null
+var _camera_rig: CameraRig = null
+# Quien puede tener el cursor sin que se dejen de atender las teclas (la pantalla de muerte, a través del HUD).
+var _allowed_holder: Object = null
 var _title: Label = null
 var _timer: Label = null
 var _accept_glyph: UIKeyGlyph = null
@@ -76,6 +84,8 @@ func _exit_tree() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible or _party == null:
 		return
+	if is_instance_valid(_camera_rig) and _camera_rig.is_ui_holding_cursor(_allowed_holder):
+		return
 	if event.is_action_pressed(&"party_accept"):
 		respond(true)
 		get_viewport().set_input_as_handled()
@@ -85,25 +95,27 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 ## Conecta el aviso con el estado de grupo [param party] y el cliente [param client] (el tick del servidor y
-## el envío de la respuesta).
-func bind(party: PartyState, client: NetClient) -> void:
+## el envío de la respuesta). Con [param camera_rig], las teclas no responden mientras alguna pieza de la interfaz
+## que no sea [param allowed_holder] tiene el cursor ([method CameraRig.is_ui_holding_cursor]).
+func bind(party: PartyState, client: NetClient, camera_rig: CameraRig = null, allowed_holder: Object = null) -> void:
 	_disconnect()
 	_party = party
 	_client = client
+	_camera_rig = camera_rig
+	_allowed_holder = allowed_holder
 	if _party != null:
 		_party.invitation_changed.connect(refresh)
 	refresh()
 
 
-## Responde a la invitación que se enseña: la acepta o la rechaza. Devuelve false si no hay ninguna.
+## Responde a la invitación que se enseña: la acepta o la rechaza. Devuelve false si no hay ninguna o si la
+## respuesta no ha salido, y entonces la invitación se queda; si sale, la quita
+## [method NetClient.send_party_response].
 func respond(accept: bool) -> bool:
 	var invitation: PartyState.Invitation = _party.get_current_invitation() if _party != null else null
-	if invitation == null:
+	if invitation == null or not is_instance_valid(_client):
 		return false
-	if is_instance_valid(_client):
-		_client.send_party_response(invitation.inviter, accept)
-	_party.remove_invitation(invitation.inviter)
-	return true
+	return _client.send_party_response(invitation.inviter, accept)
 
 
 ## Repinta el aviso (quita lo caducado, el texto y los segundos que quedan).

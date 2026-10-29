@@ -36,17 +36,17 @@ extends CanvasLayer
 ## [code]/salir[/code], [code]/expulsar[/code] y [code]/lider[/code] de la caja de chat y avisa a las placas de nombre de
 ## quién es del grupo.
 ## [br][br]
-## [b]Menú social (SOC-07).[/b] La tecla [code]social_menu[/code] abre el [SocialMenu] sobre el jugador al que apunta la
-## retícula a 20 m o menos ([method open_social_menu]): invitar al grupo y susurrar.
+## [b]Menú social (SOC-07).[/b] La tecla [code]social_menu[/code] abre el [SocialMenu] sobre el aliado al que apunta la
+## retícula a 20 m o menos y a la vista ([method open_social_menu]): invitar al grupo y susurrar.
 
 ## Cada cuánto se refresca el texto del panel de depuración, en segundos.
 ## Refrescarlo cada frame hace que las cifras parpadeen y sean ilegibles.
 const DEBUG_REFRESH_INTERVAL: float = 0.1
 ## Opacidad a la que se atenúa la interfaz de juego con la pantalla de muerte abierta.
 const DEAD_DIM_ALPHA: float = 0.3
-## Avisos del menú social (SOC-07) cuando no hay a quién ofrecérselo.
-const TEXT_NO_SOCIAL_TARGET: String = "Apunta a un jugador (a 20 m o menos) para ver sus acciones."
-const TEXT_NO_SOCIAL_ACTIONS: String = "No hay acciones sociales disponibles con ese jugador."
+## Aviso del menú social (SOC-07) cuando no hay a quién ofrecérselo. Es el único: un enemigo, un muerto, un jugador
+## falso o alguien tras una pared dan el mismo que no apuntar a nadie, para no delatar lo que no se ve.
+const TEXT_NO_SOCIAL_TARGET: String = "Apunta a un jugador de tu reino (a 20 m o menos) para ver sus acciones."
 ## Pistas de la línea de ayuda del cliente en red: las de siempre y, tras la depuración, el mapa y el marcador.
 const NET_HINTS_EXTRA: Array[Dictionary] = [
 	{"action": &"open_map", "text": "Mapa"},
@@ -258,9 +258,10 @@ func get_social_menu() -> SocialMenu:
 	return _social_menu
 
 
-## Abre el menú social sobre el jugador al que apunta la retícula, a 20 m o menos (SOC-07): invitar al grupo y
-## susurrar. Devuelve false, sin abrir nada, si hay otra ventana o la línea del chat abierta, no se apunta a
-## nadie (se avisa en el chat) o el jugador apuntado no admite acciones, como un enemigo (también se avisa).
+## Abre el menú social sobre el aliado al que apunta la retícula, a 20 m o menos y a la vista (SOC-07,
+## [method SocialTarget.find]): invitar al grupo y susurrar. Devuelve false, sin abrir nada, si hay otra ventana o
+## la línea del chat abierta, o si no hay ningún aliado así bajo la retícula; en este caso avisa en el chat con
+## [constant TEXT_NO_SOCIAL_TARGET], el mismo aviso apunte a un enemigo, a una pared o al vacío.
 func open_social_menu() -> bool:
 	if not is_instance_valid(_social_menu) or not is_instance_valid(_client) \
 			or not is_instance_valid(_camera_rig) or _death.is_open():
@@ -270,15 +271,14 @@ func open_social_menu() -> bool:
 	var character: PlayerCharacter = _client.get_character()
 	if character == null or not is_instance_valid(character) or not character.is_inside_tree():
 		return false
+	var own_realm: int = _client.get_config().realm if _client.get_config() != null else NetProtocol.Realm.NONE
+	# El mundo del personaje (ya en el árbol) es el de las paredes que tapan.
+	var space: PhysicsDirectSpaceState3D = character.get_world_3d().direct_space_state
 	var view: RemotePlayerView = SocialTarget.find(_client.get_remote_world(), _camera_rig.get_aim_ray(),
-			character.global_position)
-	if view == null:
+			character.global_position, own_realm, space)
+	if view == null or not _social_menu.open_for(view):
 		if is_instance_valid(_chat):
 			_chat.add_system_text(TEXT_NO_SOCIAL_TARGET)
-		return false
-	if not _social_menu.open_for(view):
-		if is_instance_valid(_chat):
-			_chat.add_system_text(TEXT_NO_SOCIAL_ACTIONS)
 		return false
 	return true
 
@@ -370,7 +370,9 @@ func _setup_party() -> void:
 	_party_hud.name = "Grupo"
 	add_child(_party_hud)
 	move_child(_party_hud, _death.get_index())
-	_party_hud.bind(_client)
+	# Y y N no responden a la invitación con otra ventana abierta; la pantalla de muerte (el HUD pide el cursor
+	# por ella) sí deja responder.
+	_party_hud.bind(_client, _camera_rig, self)
 	if is_instance_valid(_chat):
 		_chat.party_handler = Callable(_party_hud, "handle_command")
 	_nameplates.set_party(_client.get_party())

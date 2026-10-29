@@ -2,8 +2,8 @@ class_name SocialMenu
 extends UIWindow
 ## Menú social sobre un jugador (SOC-07, docs/social.md, sección 12.6): una ventana pequeña con el nombre del
 ## jugador al que apunta la retícula y un botón por cada acción que aplica ([method SocialTarget.options_for]):
-## invitar al grupo y susurrar. Con un enemigo no hay nada que ofrecer y el menú no se abre
-## ([method open_for] devuelve false).
+## invitar al grupo y susurrar. Con un enemigo, un muerto o un jugador falso no hay nada que ofrecer y el menú no
+## se abre ([method open_for] devuelve false).
 ## [br][br]
 ## Se abre con la tecla [code]social_menu[/code] (la recoge el [HUD]). Como toda [UIWindow], libera el cursor
 ## mientras está abierta, se maneja con teclado (el primer botón tiene el foco; Intro lo pulsa; flechas y Tab
@@ -46,13 +46,17 @@ func setup(client: NetClient, chat: ChatBox, camera_rig: CameraRig) -> void:
 	bind_camera(camera_rig)
 
 
-## Abre el menú sobre [param view], el jugador al que se apunta. Devuelve false, sin abrir nada, si no hay
-## ninguna acción que ofrecerle (un enemigo) o no hay sesión.
+## Abre el menú sobre [param view], el jugador al que se apunta. Devuelve false, sin abrir nada, si no admite
+## acciones sociales ([method SocialTarget.is_social_target]: un enemigo, un muerto o un jugador falso), no hay
+## ninguna acción que ofrecerle o no hay sesión.
 func open_for(view: RemotePlayerView) -> bool:
 	if view == null or not is_instance_valid(_client) or _client.get_config() == null:
 		return false
-	var options: Array[Dictionary] = SocialTarget.options_for(_client.get_config().realm,
-			view.get_realm(), view.get_net_id(), _client.get_party())
+	var own_realm: int = _client.get_config().realm
+	if not SocialTarget.is_social_target(view, own_realm):
+		return false
+	var options: Array[Dictionary] = SocialTarget.options_for(own_realm, view.get_realm(), view.get_net_id(),
+			_client.get_party())
 	if options.is_empty():
 		return false
 	_target_name = view.get_display_name()

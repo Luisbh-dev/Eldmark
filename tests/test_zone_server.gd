@@ -296,6 +296,22 @@ func test_player_limit_counts_fake_players() -> void:
 	assert_eq(_server.get_player_count(), 2)
 
 
+func test_fake_player_names_never_pass_the_name_rules() -> void:
+	# El menú social del cliente (SocialTarget.is_social_target) no ofrece invitar ni susurrar a un nombre que no
+	# cumple NameRules: es como sabe que un cuerpo es un jugador falso, sin conexión que pueda contestar.
+	var config: ServerConfig = _make_config()
+	config.max_players = 120
+	await _start_server(config)
+	for i: int in 110:
+		assert_true(_server.add_fake_player(BotBrain.new(i + 1, BotBrain.Pattern.IDLE), VARDHEIM) > 0,
+				"entra el falso %d" % (i + 1))
+	var names: PackedStringArray = _server.get_connected_names()
+	assert_eq(names.size(), 110, "110 falsos")
+	assert_true(names.has("Bot-01") and names.has("Bot-110"), "«Bot-01» a «Bot-110»")
+	for fake_name: String in names:
+		assert_false(NameRules.is_valid(fake_name), "«%s» no es un nombre de persona" % fake_name)
+
+
 func test_players_spawn_at_their_realm_and_on_the_ground() -> void:
 	await _start_server()
 	var first: int = _server.add_fake_player(BotBrain.new(1, BotBrain.Pattern.IDLE), VARDHEIM)

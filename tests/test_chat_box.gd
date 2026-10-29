@@ -2,8 +2,8 @@ extends TestCase
 ## Pruebas de la caja de chat del HUD ([ChatBox], SOC-05) con mensajes sintéticos y un cliente falso: lo que
 ## se pinta (colores por canal, pestañas, NOTICE en el sistema, el texto de otros jugadores sin interpretar
 ## BBCode), los comandos y el canal activo, responder, el historial con flecha arriba, abrir y cerrar con
-## Intro, la barra y Esc (el cursor y el movimiento se suspenden mientras se escribe), el desvanecimiento
-## en reposo y el montaje en el [HUD].
+## Intro, la barra, Esc y un clic fuera (el cursor y el movimiento se suspenden mientras se escribe), el tope de la
+## línea, el desvanecimiento en reposo y el montaje en el [HUD].
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
@@ -74,6 +74,21 @@ func _message(channel: int, sender: String, text: String, realm: int = VARDHEIM,
 	message.text = text
 	message.tick = 100
 	return message
+
+
+## Un clic de [param button] en [param at] (coordenadas de la vista) por la entrada real de la ventana: pulsar
+## ([param press]) y soltar ([param release]).
+func _click(at: Vector2, button: MouseButton = MOUSE_BUTTON_LEFT, press: bool = true, release: bool = true) -> void:
+	var window_position: Vector2 = tree.root.get_final_transform() * at
+	for pressed: bool in [true, false]:
+		if (pressed and not press) or (not pressed and not release):
+			continue
+		var event := InputEventMouseButton.new()
+		event.button_index = button
+		event.pressed = pressed
+		event.position = window_position
+		event.global_position = window_position
+		tree.root.push_input(event)
 
 
 func _key(keycode: Key, unicode: int = 0) -> InputEventKey:
@@ -357,6 +372,82 @@ func test_the_line_does_not_open_while_another_window_holds_the_cursor() -> void
 	_rig.set_ui_cursor_release(false, other)
 	_chat._unhandled_input(_key(KEY_ENTER))
 	assert_true(_chat.is_open(), "cerrada la ventana, sí")
+
+
+func test_a_click_outside_the_box_closes_the_line_without_attacking() -> void:
+	# Como en el HUD: la caja en una capa de lienzo, el controlador con la cámara y la entrada real de la ventana.
+	_controller.setup(null, _rig)
+	var layer := CanvasLayer.new()
+	_track(layer)
+	tree.root.remove_child(_chat)
+	layer.add_child(_chat)
+	await wait_process_frames()
+	tree.root.push_input(_key(KEY_ENTER))
+	if not assert_true(_chat.is_open(), "Intro abre la línea"):
+		return
+	_chat.get_input().text = "a medio escribir"
+	var blocked: PlayerInput = _controller.build_input(1)
+	assert_eq(blocked.buttons, 0, "escribiendo, sin botones")
+	# Un clic sobre el registro (dentro de la caja) no la cierra.
+	_click(_chat.get_global_transform_with_canvas() * (_chat.size * 0.5))
+	assert_true(_chat.is_open(), "un clic dentro de la caja no la cierra")
+	# La rueda fuera tampoco.
+	var outside: Vector2 = tree.root.get_visible_rect().size * Vector2(0.75, 0.2)
+	assert_false(_chat.get_global_rect().has_point(outside), "el punto está fuera de la caja")
+	_click(outside, MOUSE_BUTTON_WHEEL_UP)
+	assert_true(_chat.is_open(), "la rueda no la cierra")
+	# Un clic en el mundo, fuera de la caja: se cierra sin enviar y todo vuelve al juego.
+	_click(outside, MOUSE_BUTTON_LEFT, true, false)
+	assert_false(_chat.is_open(), "un clic fuera cierra la línea")
+	assert_true(_client.sent.is_empty(), "sin enviar lo escrito")
+	assert_eq(_chat.get_input().text, "", "la línea queda vacía")
+	assert_false(_rig.is_ui_holding_cursor(), "el cursor vuelve al juego")
+	assert_false(_controller.is_input_blocked(), "y la entrada también")
+	# El botón sigue pulsado, pero ese clic no ataca: se pulsó con el cursor libre.
+	Input.action_press(&"primary_attack")
+	var after_click: PlayerInput = _controller.build_input(2)
+	assert_eq(after_click.buttons & PlayerInput.PRIMARY, 0, "el clic que cierra el chat no ataca")
+	Input.action_release(&"primary_attack")
+	_click(outside, MOUSE_BUTTON_LEFT, false, true)
+	# Otro fotograma: «recién pulsado» dura el fotograma de la pulsación.
+	await wait_process_frames()
+	assert_eq(_controller.build_input(3).buttons & PlayerInput.PRIMARY, 0, "soltado, nada")
+	Input.action_press(&"primary_attack")
+	var next_click: PlayerInput = _controller.build_input(4)
+	Input.action_release(&"primary_attack")
+	assert_eq(next_click.buttons & PlayerInput.PRIMARY, PlayerInput.PRIMARY, "el siguiente clic, ya en el juego, sí")
+
+
+func test_the_line_fits_the_longest_whisper_and_warns_instead_of_cutting() -> void:
+	var longest_name: String = "A" + "b".repeat(NameRules.MAX_LENGTH - 1)
+	var longest_text: String = "x".repeat(ChatText.MAX_CHARS)
+	# Cualquier forma de cualquier comando, con el nombre y el texto más largos que admite, cabe en la línea.
+	for spec: Dictionary in ChatCommandParser.COMMANDS:
+		for alias: String in spec["names"]:
+			var line: String = "/%s %s%s" % [alias, longest_name + " " if spec["id"] == &"whisper" else "",
+					longest_text]
+			assert_true(line.length() <= ChatBox.MAX_INPUT_CHARS, "«/%s» con lo más largo cabe (%d de %d)"
+					% [alias, line.length(), ChatBox.MAX_INPUT_CHARS])
+	# Pegar «/susurrar» con un nombre de 16 letras y 255 caracteres: llega entero, sin avisos.
+	_chat.open()
+	var input: LineEdit = _chat.get_input()
+	input.insert_text_at_caret("/susurrar %s %s" % [longest_name, longest_text])
+	var command: ChatCommandParser.Command = ChatCommandParser.parse(input.text)
+	assert_eq(command.target, longest_name, "el nombre entero")
+	assert_eq(command.text.length(), ChatText.MAX_CHARS, "y los 255 caracteres, sin recortar")
+	assert_eq(_chat.get_log().get_count(), 0, "sin avisos")
+	# Lo que ya no cabe no se pierde en silencio: se avisa, una sola vez mientras sigue abierta.
+	input.insert_text_at_caret("y".repeat(10))
+	assert_eq(input.text.length(), ChatBox.MAX_INPUT_CHARS, "la línea se queda en el tope")
+	assert_eq(_chat.get_log().get_count(), 1, "un aviso")
+	assert_eq(_chat.get_log().get_lines().back().text, ChatText.problem_text(ChatText.Problem.TOO_LONG),
+			"de que es demasiado largo")
+	input.insert_text_at_caret("z")
+	assert_eq(_chat.get_log().get_count(), 1, "una tecla más no repite el aviso")
+	_chat.close()
+	_chat.open()
+	input.insert_text_at_caret("w".repeat(ChatBox.MAX_INPUT_CHARS + 1))
+	assert_eq(_chat.get_log().get_count(), 2, "al volver a abrirla, se avisa otra vez")
 
 
 func test_up_and_down_walk_the_history() -> void:
