@@ -14,12 +14,15 @@ extends Control
 
 ## El jugador pide reaparecer en el punto [param point_index] de la lista.
 signal respawn_requested(point_index: int)
+## El jugador pide ver el mapa para elegir el punto de reaparición.
+signal map_requested
 ## La pantalla se ha abierto o cerrado.
 signal opened
 signal closed
 
 const TITLE_TEXT: String = "Has caído"
 const BUTTON_TEXT: String = "Reaparecer"
+const MAP_BUTTON_TEXT: String = "Elegir en el mapa"
 const POINTS_TITLE: String = "Punto de reaparición"
 const TEXT_READY: String = "Ya puedes reaparecer"
 const TEXT_COUNTDOWN: String = "Podrás reaparecer en %d s"
@@ -32,6 +35,8 @@ const PANEL_WIDTH: float = 460.0
 const REQUEST_TIMEOUT_SECONDS: float = 2.0
 
 var _open: bool = false
+# Índice que se envía por cada fila de la lista (vacío = el de la fila).
+var _point_indices: PackedInt32Array = PackedInt32Array()
 var _respawn_tick: int = 0
 var _estimated_tick: int = 0
 var _requested: bool = false
@@ -43,6 +48,7 @@ var _countdown: Label = null
 var _points_title: Label = null
 var _points: ItemList = null
 var _button: Button = null
+var _map_button: Button = null
 
 
 func _ready() -> void:
@@ -62,6 +68,7 @@ func open(cause_text: String, respawn_tick: int, point_labels: PackedStringArray
 	_requested = false
 	_request_age = 0.0
 	_cause.text = cause_text
+	_point_indices = PackedInt32Array()
 	_set_points(point_labels)
 	update_countdown(_estimated_tick)
 	if not _open:
@@ -83,6 +90,42 @@ func advance(delta: float) -> void:
 	if _request_age >= REQUEST_TIMEOUT_SECONDS:
 		_requested = false
 		update_countdown(_estimated_tick)
+
+
+## Cambia la lista de puntos (la de [method open]) sin cerrar la pantalla: el estado de los fuertes
+## cambia mientras se espera. Conserva el punto elegido si sigue en la lista.
+func update_points(point_labels: PackedStringArray, indices: PackedInt32Array = PackedInt32Array()) -> void:
+	_ensure_built()
+	var previous: int = get_selected_point_index()
+	var had_previous: bool = not _point_indices.is_empty() or _points.item_count > 0
+	_set_points(point_labels)
+	set_point_indices(indices)
+	if had_previous:
+		select_point_index(previous)
+
+
+## Índice que se envía en la petición por cada fila de la lista (el de la lista de todos los marcadores
+## de reaparición de la zona, ver [RespawnPointList.Option.index_for]). Sin llamarla, el de la fila.
+func set_point_indices(indices: PackedInt32Array) -> void:
+	_point_indices = indices
+
+
+## Índice que se enviaría ahora: el de la fila elegida, pasado por [method set_point_indices] si lo hay.
+func get_selected_point_index() -> int:
+	var row: int = get_selected_point()
+	if row >= 0 and row < _point_indices.size():
+		return _point_indices[row]
+	return row
+
+
+## Elige la fila cuyo índice enviado es [param point_index] (si está en la lista). Devuelve false si no.
+func select_point_index(point_index: int) -> bool:
+	for row: int in get_point_count():
+		var sent: int = _point_indices[row] if row < _point_indices.size() else row
+		if sent == point_index:
+			select_point(row)
+			return true
+	return false
 
 
 ## Cambia la frase de quién te derrotó (el evento puede llegar con la pantalla ya abierta).
@@ -151,6 +194,11 @@ func select_point(index: int) -> void:
 		_points.select(index)
 
 
+## El botón «Elegir en el mapa» (visible mientras hay más de un punto donde elegir).
+func get_map_button() -> Button:
+	return _map_button
+
+
 func get_point_count() -> int:
 	return _points.item_count if _points != null else 0
 
@@ -184,7 +232,7 @@ func _on_button_pressed() -> void:
 	_request_age = 0.0
 	_button.disabled = true
 	_countdown.text = TEXT_REQUESTED
-	respawn_requested.emit(get_selected_point())
+	respawn_requested.emit(get_selected_point_index())
 
 
 func _set_points(labels: PackedStringArray) -> void:
@@ -197,6 +245,7 @@ func _set_points(labels: PackedStringArray) -> void:
 	_points.select(0)
 	_points_title.visible = names.size() > 1
 	_points.visible = names.size() > 1
+	_map_button.visible = names.size() > 1
 	# La lista crece con los puntos, sin pasar de cinco filas visibles.
 	_points.custom_minimum_size = Vector2(0.0, 28.0 * mini(names.size(), 5) + 6.0)
 
@@ -238,6 +287,12 @@ func _build() -> void:
 	_points.select_mode = ItemList.SELECT_SINGLE
 	_points.auto_height = false
 	column.add_child(_points)
+	_map_button = Button.new()
+	_map_button.name = "Mapa"
+	_map_button.text = MAP_BUTTON_TEXT
+	_map_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_map_button.pressed.connect(func() -> void: map_requested.emit())
+	column.add_child(_map_button)
 	_button = Button.new()
 	_button.name = "Reaparecer"
 	_button.text = BUTTON_TEXT
