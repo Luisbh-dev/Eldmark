@@ -57,6 +57,8 @@ const LOADING_TIMEOUT_TICKS: int = 3600
 const METRICS_LOG_TICKS: int = 600
 ## Ticks que se espera, tras [method stop], a que los peers se vayan antes de cerrar el transporte.
 const STOP_DRAIN_TICKS: int = 30
+## Secciones del tick que aparecen en la línea de métricas (las mismas que mide el bucle).
+const LOGGED_SECTIONS: Array[StringName] = [&"net", &"sim", &"history", &"snapshot", &"flush"]
 ## Avisos de error de física que se escriben en el registro (el resto solo se cuenta).
 const MAX_LOGGED_PHYSICS_ERRORS: int = 10
 ## Coordenada máxima (en valor absoluto) que admite un teletransporte de depuración.
@@ -114,6 +116,7 @@ var _player_by_net: Dictionary[int, _PlayerRecord] = {}
 var _player_log: Array[_PlayerRecord] = []
 var _fake_counter: int = 0
 var _peak_players: int = 0
+var _players_at_stop: int = 0
 var _joined_total: int = 0
 var _left_total: int = 0
 var _strikes_total: int = 0
@@ -151,9 +154,12 @@ class _PlayerRecord:
 	var kick_reason: String = ""
 	var queue: InputQueue = null
 	var peer: ServerPeer = null
+	var entity: NetEntity = null
+	## Última posición conocida (la de ahora mientras el jugador está; la de la baja, después).
+	var last_position: Vector3 = Vector3.ZERO
 
 
-	# Copia los contadores vivos de la cola y del peer.
+	# Copia los contadores vivos de la cola y del peer y la posición del personaje.
 	func refresh() -> void:
 		if queue != null:
 			substituted = queue.substitutions_total
@@ -161,6 +167,8 @@ class _PlayerRecord:
 			too_early = queue.too_early_count
 		if peer != null:
 			strikes = peer.strikes_total
+		if left_tick < 0 and entity != null and is_instance_valid(entity.node):
+			last_position = entity.get_position()
 
 
 	func to_dictionary() -> Dictionary:
@@ -180,6 +188,7 @@ class _PlayerRecord:
 			"strikes": strikes,
 			"kicked": kicked,
 			"kick_reason": kick_reason,
+			"position": [last_position.x, last_position.y, last_position.z],
 		}
 
 
@@ -286,6 +295,7 @@ func stop(notice_text: String = "") -> void:
 	if _run_state != _RunState.RUNNING:
 		return
 	_log("Cerrando el servidor de la zona '%s' (tick %d)" % [_config.zone_id, _tick])
+	_players_at_stop = get_player_count()
 	if _transport != null:
 		var notice := NetMessages.Notice.new()
 		notice.code = NetProtocol.NoticeCode.SHUTDOWN
@@ -613,6 +623,7 @@ func _create_player(display_name: String, realm: int, owner_peer: int, s: int) -
 	record.realm = realm
 	record.joined_tick = s
 	record.queue = queue
+	record.entity = entity
 	_player_by_net[entity.net_id] = record
 	_player_log.append(record)
 	_joined_total += 1
@@ -1169,13 +1180,17 @@ func _log_metrics(s: int) -> void:
 	var kb_in: float = float(_synced_wire_in - _log_last_wire_in) / 1024.0 / seconds
 	_log_last_wire_out = _synced_wire_out
 	_log_last_wire_in = _synced_wire_in
-	_log("Métricas (tick %d): %d jugadores, tick p50 %d µs / p99 %d µs / máx %d µs, "
+	var sections := PackedStringArray()
+	for section: StringName in LOGGED_SECTIONS:
+		sections.append("%s %d" % [section, _metrics.get_percentile_us(section, 0.99)])
+	_log("Métricas (tick %d): %d jugadores, tick p50 %d µs / p99 %d µs / máx %d µs "
 			% [s, _metrics.get_counter(ServerMetrics.COUNTER_PLAYERS),
 			_metrics.get_percentile_us(ServerMetrics.SECTION_TICK, 0.5),
 			_metrics.get_percentile_us(ServerMetrics.SECTION_TICK, 0.99),
 			_metrics.get_max_us(ServerMetrics.SECTION_TICK)]
-			+ "entradas sustituidas %.2f %%, subida %.1f KB/s, bajada %.1f KB/s"
-			% [_metrics.get_substituted_percent(), kb_out, kb_in])
+			+ "(p99 por sección: %s), entradas sustituidas %.2f %%, subida %.1f KB/s, "
+			% [", ".join(sections), _metrics.get_substituted_percent(), kb_out]
+			+ "bajada %.1f KB/s" % kb_in)
 
 
 func _build_report() -> Dictionary:
@@ -1207,6 +1222,7 @@ func _build_report() -> Dictionary:
 		"sim_hash": _sim_hash,
 		"players": {
 			"current": get_player_count(),
+			"at_stop": _players_at_stop,
 			"fake": _count_fakes_in_log(),
 			"peak": _peak_players,
 			"joined_total": _joined_total,

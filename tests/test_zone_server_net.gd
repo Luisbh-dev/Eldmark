@@ -1,0 +1,696 @@
+extends TestCase
+## Pruebas de [ZoneServer] con clientes de verdad sobre ENet en 127.0.0.1, en un solo proceso.
+## [br][br]
+## El servidor y cada cliente tienen su propio [NetTransport] (con su [SceneMultiplayer]); los
+## clientes son [RawClient]: hablan el protocolo a mano (HELLO, WELCOME, CLIENT_READY, INPUT_BATCH...)
+## sin predicción ni interpolación, que son del cliente real. Se comprueba el handshake y los
+## rechazos, el alta con el estado «tras S», los snapshots, las entradas, el interés, las bajas, la
+## seguridad (avisos, expulsión, tipos inesperados, comandos de depuración), el simulador de red
+## y el cierre con aviso. El ejecutor falla ante cualquier error del motor, así que cada prueba
+## también comprueba que no se envía nada antes de [signal NetTransport.peer_connected].
+
+const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
+const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
+const PLAYER_SCENE: PackedScene = preload("res://scenes/characters/player_character.tscn")
+const FIRST_PORT: int = 24900
+const MAX_FRAMES: int = 400
+
+var _viewport: SubViewport
+var _world: Node3D
+var _server: ZoneServer
+var _server_transport: NetTransport
+var _port: int = 0
+var _clients: Array[RawClient] = []
+var _hooks: Array[Callable] = []
+var _client_tick: int = 0
+var _next_client_index: int = 0
+
+
+## Un cliente que habla el protocolo a mano: envía su HELLO al conectar, completa la
+## autenticación con el WELCOME, envía CLIENT_READY al conectar (si [member auto_ready]) y guarda
+## todo lo que recibe del servidor.
+class RawClient:
+	extends RefCounted
+
+	var transport: NetTransport
+	var hello: PackedByteArray
+	var tick: int = 0
+	var auto_ready: bool = true
+	var welcome: NetMessages.Welcome = null
+	var reject: NetMessages.Reject = null
+	var connected: bool = false
+	var disconnected: bool = false
+	var failed: bool = false
+	var ready_sent: bool = false
+	var own_spawn: NetMessages.EntitySpawn = null
+	var spawns: Array[NetMessages.EntitySpawn] = []
+	var despawns: Array[NetMessages.EntityDespawn] = []
+	var snapshots: Array[NetMessages.Snapshot] = []
+	var notices: Array[NetMessages.Notice] = []
+
+	func _init(p_transport: NetTransport, p_hello: PackedByteArray) -> void:
+		transport = p_transport
+		hello = p_hello
+		transport.peer_authenticating.connect(_on_authenticating)
+		transport.auth_received.connect(_on_auth_received)
+		transport.peer_connected.connect(_on_connected)
+		transport.peer_disconnected.connect(_on_disconnected)
+		transport.packet_received.connect(_on_packet)
+		transport.connection_failed.connect(_on_failed)
+
+	func _on_authenticating(peer_id: int) -> void:
+		transport.send_auth(peer_id, hello)
+
+	func _on_auth_received(peer_id: int, bytes: PackedByteArray) -> void:
+		var result: int = NetMessages.peek_auth_result(bytes)
+		if result == NetProtocol.Result.OK:
+			welcome = NetMessages.Welcome.decode(bytes)
+			transport.complete_auth(peer_id)
+		elif result > 0:
+			reject = NetMessages.Reject.decode(bytes)
+
+	func _on_connected(_peer_id: int) -> void:
+		connected = true
+		if auto_ready:
+			send_ready()
+
+	func _on_disconnected(_peer_id: int) -> void:
+		disconnected = true
+
+	func _on_failed() -> void:
+		failed = true
+
+	func _on_packet(_peer_id: int, bytes: PackedByteArray) -> void:
+		match NetMessages.peek_type(bytes):
+			NetProtocol.MSG_ENTITY_SPAWN:
+				var spawn: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(bytes)
+				if spawn != null:
+					spawns.append(spawn)
+					if spawn.is_yours:
+						own_spawn = spawn
+			NetProtocol.MSG_ENTITY_DESPAWN:
+				var despawn: NetMessages.EntityDespawn = NetMessages.EntityDespawn.decode(bytes)
+				if despawn != null:
+					despawns.append(despawn)
+			NetProtocol.MSG_SNAPSHOT:
+				var snapshot: NetMessages.Snapshot = NetMessages.Snapshot.decode(bytes)
+				if snapshot != null:
+					snapshots.append(snapshot)
+			NetProtocol.MSG_NOTICE:
+				var notice: NetMessages.Notice = NetMessages.Notice.decode(bytes)
+				if notice != null:
+					notices.append(notice)
+
+	func send_ready() -> void:
+		ready_sent = true
+		transport.send(1, NetProtocol.CH_RELIABLE, NetMessages.ClientReady.new().encode())
+
+	func send_raw(channel: int, bytes: PackedByteArray) -> Error:
+		return transport.send(1, channel, bytes)
+
+	## INPUT_BATCH con [param count] entradas que acaban en [param newest_tick], todas con el
+	## mismo movimiento y la misma vista.
+	func send_inputs(newest_tick: int, count: int, move: Vector2, look_yaw: float) -> void:
+		var batch := NetMessages.InputBatch.new()
+		batch.ack_snapshot_tick = last_snapshot().server_tick if not snapshots.is_empty() else 0
+		batch.interp_delay_q = 32
+		batch.newest_tick = newest_tick
+		for i: int in count:
+			var input := PlayerInput.new()
+			input.tick = newest_tick - count + 1 + i
+			input.move = move
+			input.look_yaw = look_yaw
+			batch.inputs.append(input.quantized())
+			batch.view_offsets_q.append(0)
+		transport.send(1, NetProtocol.CH_INPUT, batch.encode())
+
+	func last_snapshot() -> NetMessages.Snapshot:
+		return snapshots[snapshots.size() - 1] if not snapshots.is_empty() else null
+
+	func spawns_of(net_id: int) -> Array[NetMessages.EntitySpawn]:
+		var found: Array[NetMessages.EntitySpawn] = []
+		for spawn: NetMessages.EntitySpawn in spawns:
+			if spawn.net_id == net_id:
+				found.append(spawn)
+		return found
+
+	func notice_with_code(code: int) -> NetMessages.Notice:
+		for notice: NetMessages.Notice in notices:
+			if notice.code == code:
+				return notice
+		return null
+
+	## net_id de los registros del último snapshot, ordenados.
+	func visible_ids() -> Array[int]:
+		var ids: Array[int] = []
+		if not snapshots.is_empty():
+			for record: EntityRecord in last_snapshot().records:
+				ids.append(record.net_id)
+		ids.sort()
+		return ids
+
+
+## Política de interés que puede esconder a los jugadores falsos (los de nombre «Bot…»).
+class HidingPolicy:
+	extends InterestPolicy
+
+	var hide_bots: bool = false
+
+	func is_relevant(_observer: NetEntity, entity: NetEntity, _was_relevant: bool) -> bool:
+		return not (hide_bots and entity.display_name.begins_with("Bot"))
+
+
+func after_each() -> void:
+	_hooks.clear()
+	for client: RawClient in _clients:
+		if is_instance_valid(client.transport):
+			client.transport.free()
+	_clients.clear()
+	if is_instance_valid(_server):
+		_server.free()
+	if is_instance_valid(_server_transport):
+		_server_transport.free()
+	if is_instance_valid(_viewport):
+		_viewport.get_parent().remove_child(_viewport)
+		_viewport.free()
+	_server = null
+	_server_transport = null
+	_world = null
+	_viewport = null
+	_client_tick = 0
+	await wait_process_frames()
+
+
+# --- Ayudantes --------------------------------------------------------------------------------
+
+## Zona de prueba y servidor escuchando en un puerto libre. [param configure] recibe el
+## [ServerConfig] antes de arrancar.
+func _start_server(configure: Callable = Callable()) -> void:
+	_viewport = SubViewport.new()
+	_viewport.own_world_3d = true
+	_viewport.size = Vector2i(64, 64)
+	tree.root.add_child(_viewport)
+	_world = ZoneFixture.build_flat_zone(_viewport)
+	_server_transport = NetTransport.new()
+	_server_transport.name = "ServerTransport"
+	_viewport.add_child(_server_transport)
+	_server = ZoneServer.new()
+	_server.name = "ZoneServer"
+	_server.log_enabled = false
+	_viewport.add_child(_server)
+	await wait_physics_frames(3)
+	var config := ServerConfig.new()
+	config.zone_id = "test_world"
+	_port = _find_free_port()
+	config.port = _port
+	if configure.is_valid():
+		configure.call(config)
+	assert_eq(_server.start(config, _world, _server_transport, DevAuthProvider.new()), OK,
+			"el servidor abre el puerto %d" % _port)
+
+
+func _hello(realm: int = VARDHEIM, player_name: String = "Ana",
+		protocol_version: int = NetProtocol.PROTOCOL_VERSION, sim_hash: int = -1) -> PackedByteArray:
+	var hello := NetMessages.Hello.new()
+	hello.protocol_version = protocol_version
+	hello.sim_hash = sim_hash if sim_hash >= 0 else _client_sim_hash()
+	hello.realm = realm
+	hello.display_name = player_name
+	return hello.encode()
+
+
+## Huella de la simulación calculada por el cliente sobre su propia instancia del personaje.
+func _client_sim_hash(run_speed: float = 5.0) -> int:
+	var character: PlayerCharacter = PLAYER_SCENE.instantiate() as PlayerCharacter
+	character.run_speed = run_speed
+	_world.add_child(character)
+	var hash_value: int = NetProtocol.compute_sim_hash(character)
+	_world.remove_child(character)
+	character.free()
+	return hash_value
+
+
+func _connect_client(hello: PackedByteArray, auto_ready: bool = true,
+		net_sim_spec: String = "") -> RawClient:
+	var transport := NetTransport.new()
+	transport.name = "ClientTransport%d" % _next_client_index
+	_next_client_index += 1
+	_viewport.add_child(transport)
+	transport.set_net_sim_spec(net_sim_spec)
+	var client := RawClient.new(transport, hello)
+	client.auto_ready = auto_ready
+	_clients.append(client)
+	assert_eq(transport.connect_to("127.0.0.1", _port, 2000), OK, "el cliente conecta")
+	return client
+
+
+## Un paso de física de los clientes: poll, ganchos (lo que envía cada prueba) y flush. El
+## servidor hace el suyo en su propio _physics_process.
+func _step() -> void:
+	await tree.physics_frame
+	_client_tick += 1
+	for client: RawClient in _clients:
+		client.tick = _client_tick
+		client.transport.poll(_client_tick)
+	for hook: Callable in _hooks:
+		hook.call(_client_tick)
+	for client: RawClient in _clients:
+		client.transport.flush()
+
+
+func _run_frames(count: int) -> void:
+	for _i: int in count:
+		await _step()
+
+
+## Avanza hasta que [param condition] sea verdadera. false si no ocurre en [param max_frames].
+func _run_until(condition: Callable, max_frames: int = MAX_FRAMES) -> bool:
+	for _i: int in max_frames:
+		if condition.call():
+			return true
+		await _step()
+	return condition.call()
+
+
+func _find_free_port() -> int:
+	var start: int = FIRST_PORT + OS.get_process_id() % 40
+	for port: int in range(start, start + 200):
+		var probe := PacketPeerUDP.new()
+		var error: Error = probe.bind(port, "*")
+		probe.close()
+		if error == OK:
+			return port
+	return -1
+
+
+## Entra un cliente y espera a tener su alta. null si no la tiene.
+func _join(player_name: String, realm: int = VARDHEIM) -> RawClient:
+	var client: RawClient = _connect_client(_hello(realm, player_name))
+	var joined: bool = await _run_until(func() -> bool: return client.own_spawn != null)
+	if not assert_true(joined, "%s entra en el mundo" % player_name):
+		return null
+	return client
+
+
+func _read_report() -> Dictionary:
+	var path: String = ProjectSettings.globalize_path("res://build/test_zone_server_net_report.json")
+	assert_eq(_server.write_report(path), OK, "se escribe el informe")
+	var json := JSON.new()
+	if json.parse(FileAccess.get_file_as_string(path)) != OK or not json.data is Dictionary:
+		fail("no se pudo leer el informe")
+		return {}
+	return json.data
+
+
+# --- Pruebas ----------------------------------------------------------------------------------
+
+func test_sim_hash_depends_on_the_character_settings() -> void:
+	await _start_server()
+	assert_eq(_server.get_sim_hash(), _client_sim_hash(),
+			"el servidor y una instancia del cliente calculan la misma huella")
+	assert_true(_server.get_sim_hash() != _client_sim_hash(6.5),
+			"otra velocidad de carrera cambia la huella")
+
+
+func test_handshake_spawns_the_player_and_streams_snapshots() -> void:
+	await _start_server()
+	var joined: Array[Vector2i] = []
+	_server.player_joined.connect(func(peer_id: int, net_id: int) -> void:
+		joined.append(Vector2i(peer_id, net_id)))
+	var client: RawClient = _connect_client(_hello(VARDHEIM, "Ana"))
+	var spawned: bool = await _run_until(func() -> bool: return client.own_spawn != null)
+	if not assert_true(spawned, "llega el ENTITY_SPAWN propio"):
+		return
+
+	var welcome: NetMessages.Welcome = client.welcome
+	if assert_not_null(welcome, "llegó el WELCOME"):
+		assert_eq(welcome.zone_id, "test_world", "zona")
+		assert_eq(welcome.tick_rate, 60, "60 ticks por segundo")
+		assert_eq(welcome.snapshot_interval, NetProtocol.SNAPSHOT_INTERVAL_TICKS)
+		assert_eq(welcome.max_input_batch, NetProtocol.MAX_INPUTS_PER_BATCH)
+		assert_eq(welcome.max_rewind_ticks, NetProtocol.MAX_REWIND_TICKS)
+		assert_eq(welcome.realm, VARDHEIM, "reino aceptado")
+		assert_eq(welcome.channel, 0, "canal 0")
+	var peer_ids: PackedInt32Array = _server.get_peer_ids()
+	assert_eq(peer_ids.size(), 1, "un peer")
+	var peer: ServerPeer = _server.get_peer(peer_ids[0])
+	assert_eq(peer.state, ServerPeer.State.IN_WORLD, "el peer está en el mundo")
+	assert_eq(peer.display_name, "Ana")
+	assert_eq(peer.realm, VARDHEIM)
+	assert_eq(joined, [Vector2i(peer.peer_id, peer.entity.net_id)], "player_joined")
+	assert_eq(_server.get_player_count(), 1)
+
+	var own: NetMessages.EntitySpawn = client.own_spawn
+	assert_true(own.is_yours, "el bit «tuyo»")
+	assert_eq(own.net_id, peer.entity.net_id, "net_id")
+	assert_eq(own.kind, NetProtocol.EntityKind.PLAYER)
+	assert_eq(own.realm, VARDHEIM)
+	assert_eq(own.display_name, "Ana")
+	assert_eq(own.spawn_tick, peer.entity.spawn_tick, "spawn_tick = tick S del alta")
+	assert_eq(own.state.last_input_tick, own.spawn_tick, "el estado es «tras S»")
+	assert_vec_near(own.state.position, ZoneFixture.VARDHEIM_SPAWNS[0], 1e-4,
+			"en el primer punto de aparición de Vardheim")
+	assert_true(own.state.grounded, "en el suelo")
+	assert_vec_near(own.state.velocity, Vector3.ZERO, 1e-6, "velocidad 0")
+	assert_true(own.state.equals_exact(PlayerState.decode(own.state.encode())),
+			"el estado impuesto pasa por encode/decode")
+
+	# Snapshots: sin entradas reales, el servidor sustituye por la entrada neutra del alta.
+	await _run_frames(40)
+	assert_true(client.snapshots.size() >= 10, "llegan snapshots (%d)" % client.snapshots.size())
+	var previous_tick: int = 0
+	for snapshot: NetMessages.Snapshot in client.snapshots:
+		assert_true(snapshot.server_tick > previous_tick, "los snapshots avanzan")
+		previous_tick = snapshot.server_tick
+		if assert_not_null(snapshot.own_state, "lleva el estado propio"):
+			assert_eq(snapshot.own_state.last_input_tick, snapshot.server_tick,
+					"el estado propio es el de «tras simular ese tick»")
+			assert_vec_near(snapshot.own_state.position, own.state.position, 0.01,
+					"sigue quieto en el punto de aparición")
+		assert_eq(snapshot.input_ack_tick, snapshot.server_tick, "ack = último tick consumido")
+		assert_true(snapshot.records.is_empty(), "solo está él")
+	var last: NetMessages.Snapshot = client.last_snapshot()
+	assert_true(last.substitutions > 0, "las entradas sustituidas se cuentan")
+	assert_eq(last.input_margin, NetProtocol.NO_MARGIN, "sin entradas no hay margen")
+	assert_eq(last.own_teleport, 0)
+
+
+func test_rejected_connections_get_a_reject_with_the_reason() -> void:
+	await _start_server()
+	var cases: Array[Dictionary] = [
+		{"hello": _hello(VARDHEIM, "Ana", NetProtocol.PROTOCOL_VERSION + 1),
+				"result": NetProtocol.Result.VERSION},
+		{"hello": _hello(VARDHEIM, "Ana", NetProtocol.PROTOCOL_VERSION, 12345),
+				"result": NetProtocol.Result.SIM_HASH},
+		{"hello": _hello(NetProtocol.Realm.NONE, "Ana"), "result": NetProtocol.Result.REALM},
+		{"hello": _hello(VARDHEIM, "ab"), "result": NetProtocol.Result.NAME},
+		{"hello": PackedByteArray([1, 2, 3]), "result": NetProtocol.Result.MALFORMED},
+	]
+	for case: Dictionary in cases:
+		var client: RawClient = _connect_client(case["hello"])
+		var rejected: bool = await _run_until(func() -> bool: return client.reject != null)
+		if not assert_true(rejected, "llega un REJECT (%s)" % NetProtocol.result_text(case["result"])):
+			continue
+		assert_eq(client.reject.result, case["result"], "motivo del rechazo")
+		assert_eq(client.reject.text, NetProtocol.result_text(case["result"]), "texto en español")
+		assert_null(client.welcome, "no hay WELCOME")
+		assert_false(client.ready_sent, "no se envía nada más")
+	await _run_frames(90)
+	assert_eq(_server.get_peer_ids().size(), 0, "los peers rechazados se han ido")
+	assert_eq(_server.get_player_count(), 0, "y no ocupan sitio")
+	var report: Dictionary = _read_report()
+	var rejects: Dictionary = report.get("rejects", {})
+	assert_eq(rejects.size(), 5, "el informe cuenta cada motivo de rechazo")
+
+
+func test_full_server_rejects_with_full() -> void:
+	await _start_server(func(config: ServerConfig) -> void: config.max_players = 2)
+	_server.add_fake_player(BotBrain.new(1, BotBrain.Pattern.IDLE), SOLMARCH)
+	var first: RawClient = await _join("Ana")
+	if first == null:
+		return
+	var second: RawClient = _connect_client(_hello(VARDHEIM, "Bruno"))
+	var rejected: bool = await _run_until(func() -> bool: return second.reject != null)
+	assert_true(rejected, "el segundo recibe un REJECT")
+	assert_eq(second.reject.result, NetProtocol.Result.FULL, "servidor lleno (el falso cuenta)")
+	assert_eq(_server.get_player_count(), 2, "siguen dos")
+
+
+func test_inputs_move_the_player_and_the_snapshot_feeds_back() -> void:
+	await _start_server()
+	var client: RawClient = await _join("Ana")
+	if client == null:
+		return
+	var spawn_tick: int = client.own_spawn.spawn_tick
+	var start: Vector3 = client.own_spawn.state.position
+	var first_tick: int = spawn_tick + 3
+	_hooks.append(func(_tick: int) -> void:
+		# Entradas con un tick de antelación: la del tick T llega justo antes de simularse T.
+		var newest: int = _server.get_tick() + 2
+		if newest >= first_tick:
+			client.send_inputs(newest, mini(4, newest - first_tick + 1), Vector2(0.0, 1.0),
+					client.own_spawn.state.yaw))
+	await _run_frames(90)
+
+	var last: NetMessages.Snapshot = client.last_snapshot()
+	assert_true(last.own_state.position.z < start.z - 3.0,
+			"corre hacia delante (-Z): de z=%.2f a z=%.2f" % [start.z, last.own_state.position.z])
+	assert_eq(last.own_state.last_input_tick, last.server_tick, "aplicó la entrada del tick")
+	assert_true(last.input_margin >= 0 and last.input_margin <= 3,
+			"margen de antelación %d" % last.input_margin)
+	var earlier: NetMessages.Snapshot = client.snapshots[client.snapshots.size() - 6]
+	assert_eq(last.substitutions, earlier.substitutions,
+			"en régimen ya no se sustituyen entradas")
+	assert_true(last.input_ack_tick >= last.server_tick and last.input_ack_tick <= last.server_tick + 3,
+			"el ack va por delante del tick si hay entradas recibidas (%d, %d)"
+			% [last.input_ack_tick, last.server_tick])
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	assert_true(peer.rtt_ticks >= 1 and peer.rtt_ticks <= 4,
+			"el servidor mide el RTT en ticks (%d)" % peer.rtt_ticks)
+	assert_eq(peer.interp_delay_q, 32, "guarda el retardo de interpolación declarado")
+	assert_true(peer.ack_snapshot_tick > 0, "y el último snapshot confirmado")
+	var queue_stats: Dictionary = _read_report().get("inputs", {})
+	assert_true(int(queue_stats.get("consumed", 0)) > 80, "el informe cuenta las entradas")
+
+
+func test_players_see_each_other_and_leave_cleanly() -> void:
+	await _start_server()
+	var bot_id: int = _server.add_fake_player(BotBrain.new(1, BotBrain.Pattern.IDLE), SOLMARCH)
+	var left: Array[Vector2i] = []
+	_server.player_left.connect(func(peer_id: int, net_id: int) -> void:
+		left.append(Vector2i(peer_id, net_id)))
+	var a: RawClient = await _join("Ana", VARDHEIM)
+	var b: RawClient = await _join("Bruno", SOLMARCH)
+	if a == null or b == null:
+		return
+	var a_id: int = a.own_spawn.net_id
+	var b_id: int = b.own_spawn.net_id
+	await _run_frames(30)
+
+	# Cada uno recibe el SPAWN de los demás (el falso, el otro) y sus registros en los snapshots.
+	assert_eq(a.spawns_of(a_id).size(), 1, "Ana recibe su propio SPAWN una vez")
+	assert_eq(a.spawns_of(bot_id).size(), 1, "Ana ve al jugador falso")
+	assert_eq(a.spawns_of(b_id).size(), 1, "y a Bruno")
+	assert_eq(a.spawns_of(b_id)[0].display_name, "Bruno")
+	assert_false(a.spawns_of(b_id)[0].is_yours, "el SPAWN ajeno no es «tuyo»")
+	assert_eq(b.spawns_of(a_id).size(), 1, "Bruno ve a Ana")
+	assert_eq(b.spawns_of(bot_id).size(), 1, "y al falso")
+	assert_eq(a.spawns_of(bot_id)[0].display_name, "Bot-01")
+	assert_eq(a.spawns_of(bot_id)[0].realm, SOLMARCH)
+	var expected_for_a: Array[int] = [bot_id, b_id]
+	expected_for_a.sort()
+	assert_eq(a.visible_ids(), expected_for_a, "Ana ve en sus snapshots a Bruno y al falso, no a sí misma")
+	var expected_for_b: Array[int] = [bot_id, a_id]
+	expected_for_b.sort()
+	assert_eq(b.visible_ids(), expected_for_b, "y Bruno a Ana y al falso")
+
+	# Bruno sale con CLIENT_LEAVE: Ana recibe el DESPAWN con motivo «desconexión».
+	var leave := NetMessages.ClientLeave.new()
+	b.send_raw(NetProtocol.CH_RELIABLE, leave.encode())
+	var despawned: bool = await _run_until(func() -> bool: return not a.despawns.is_empty())
+	if not assert_true(despawned, "Ana recibe el DESPAWN de Bruno"):
+		return
+	var despawn: NetMessages.EntityDespawn = a.despawns[0]
+	assert_eq(despawn.net_id, b_id, "es el de Bruno")
+	assert_eq(despawn.reason, NetProtocol.DespawnReason.DISCONNECTED, "motivo: desconexión")
+	assert_true(despawn.despawn_tick > a.own_spawn.spawn_tick and despawn.despawn_tick <= _server.get_tick(),
+			"despawn_tick es el tick de la baja (%d)" % despawn.despawn_tick)
+	await _run_frames(30)
+	assert_null(_server.get_registry().get_entity(b_id), "Bruno ya no está en el registro")
+	assert_true(_server.get_registry().is_quarantined(b_id, _server.get_tick()),
+			"su id queda en cuarentena")
+	assert_eq(_server.get_peer_ids().size(), 1, "solo queda Ana")
+	assert_eq(left.size(), 1, "player_left")
+	assert_eq(left[0].y, b_id)
+	assert_false(a.visible_ids().has(b_id), "Bruno desaparece de los snapshots de Ana")
+	assert_eq(_server.get_player_count(), 2, "Ana y el falso")
+
+	# Un tercero que se corta sin avisar también da de baja (el ENet detecta el corte).
+	var c: RawClient = await _join("Carla", VARDHEIM)
+	if c == null:
+		return
+	assert_true(c.own_spawn.net_id != b_id, "el id de Bruno no se reutiliza en 10 s")
+	var c_id: int = c.own_spawn.net_id
+	_clients.erase(c)
+	c.transport.close()
+	var c_gone: bool = await _run_until(func() -> bool:
+		for despawn_c: NetMessages.EntityDespawn in a.despawns:
+			if despawn_c.net_id == c_id:
+				return true
+		return false)
+	assert_true(c_gone, "Ana recibe el DESPAWN de Carla al cortarse su conexión")
+	c.transport.free()
+
+
+func test_unexpected_messages_count_strikes_by_session_state() -> void:
+	await _start_server()
+	var client: RawClient = _connect_client(_hello(VARDHEIM, "Ana"), false)
+	var connected: bool = await _run_until(func() -> bool: return client.connected)
+	if not assert_true(connected, "el cliente se conecta"):
+		return
+	var peer_id: int = _server.get_peer_ids()[0]
+	var peer: ServerPeer = _server.get_peer(peer_id)
+	assert_eq(peer.state, ServerPeer.State.LOADING, "cargando la zona")
+
+	# Cargando: las entradas no tienen sentido.
+	client.send_inputs(10, 1, Vector2.ZERO, 0.0)
+	await _run_frames(3)
+	assert_eq(peer.strikes_total, 1, "INPUT_BATCH antes de entrar en el mundo")
+	# Dos CLIENT_READY seguidos: el segundo sobra.
+	client.send_ready()
+	client.send_ready()
+	var entered: bool = await _run_until(func() -> bool: return client.own_spawn != null)
+	assert_true(entered, "entra en el mundo")
+	assert_eq(peer.strikes_total, 2, "el segundo CLIENT_READY es un aviso")
+	# Dentro del mundo: otro CLIENT_READY, un mensaje del servidor al cliente y un lote mal formado.
+	client.send_ready()
+	client.send_raw(NetProtocol.CH_RELIABLE, PackedByteArray([NetProtocol.MSG_SNAPSHOT, 1, 2, 3]))
+	client.send_raw(NetProtocol.CH_INPUT, PackedByteArray([NetProtocol.MSG_INPUT_BATCH, 0, 0, 0]))
+	await _run_frames(5)
+	assert_eq(peer.strikes_total, 5, "tres avisos más")
+	assert_eq(peer.state, ServerPeer.State.IN_WORLD, "sin expulsión")
+	assert_true(client.notices.is_empty(), "ni aviso al cliente")
+	var report: Dictionary = _read_report()
+	assert_eq(int((report.get("strikes", {}) as Dictionary).get("total", 0)), 5, "el informe cuenta los avisos")
+
+
+func test_flooding_gets_the_client_kicked_with_a_notice() -> void:
+	await _start_server()
+	var client: RawClient = await _join("Ana")
+	if client == null:
+		return
+	var net_id: int = client.own_spawn.net_id
+	var peer_id: int = _server.get_peer_ids()[0]
+	# Mensajes de un tipo que nadie envía al servidor, muy por encima del ritmo permitido.
+	for i: int in 120:
+		client.send_raw(NetProtocol.CH_RELIABLE, PackedByteArray([0x7F, i]))
+	var kicked: bool = await _run_until(func() -> bool:
+		return client.notice_with_code(NetProtocol.NoticeCode.KICK) != null)
+	if not assert_true(kicked, "el cliente recibe el NOTICE de expulsión"):
+		return
+	assert_true(client.notice_with_code(NetProtocol.NoticeCode.KICK).text.contains("Expulsado"),
+			"con un texto en español")
+	var gone: bool = await _run_until(func() -> bool: return _server.get_peer(peer_id) == null)
+	assert_true(gone, "el peer expulsado se da de baja")
+	assert_null(_server.get_registry().get_entity(net_id), "y su personaje desaparece")
+	var disconnected: bool = await _run_until(func() -> bool:
+		return client.disconnected or client.failed)
+	assert_true(disconnected, "el servidor corta la conexión después del aviso")
+	var report: Dictionary = _read_report()
+	var kicks: Array = report.get("kicks", [])
+	if assert_eq(kicks.size(), 1, "el informe registra la expulsión"):
+		assert_eq(int((kicks[0] as Dictionary).get("net_id", 0)), net_id)
+		assert_false(String((kicks[0] as Dictionary).get("reason", "")).is_empty(), "con su motivo")
+	var list: Array = report.get("player_list", [])
+	assert_true(list.size() == 1 and bool((list[0] as Dictionary).get("kicked", false)),
+			"y marca al jugador como expulsado")
+
+
+func test_debug_commands_need_the_flag() -> void:
+	await _start_server()
+	var client: RawClient = await _join("Ana")
+	if client == null:
+		return
+	var teleport: NetMessages.DebugCommand = NetMessages.DebugCommand.teleport(Vector3(7.0, 0.5, -9.0))
+	client.send_raw(NetProtocol.CH_RELIABLE, teleport.encode())
+	await _run_frames(10)
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	assert_eq(peer.strikes_total, 1, "sin --debug-commands es un aviso")
+	assert_eq(peer.entity.teleport_counter, 0, "y no hay teletransporte")
+	assert_vec_near(peer.entity.get_position(), ZoneFixture.VARDHEIM_SPAWNS[0], 0.05,
+			"el jugador sigue en su sitio")
+
+
+func test_debug_teleport_with_the_flag() -> void:
+	await _start_server(func(config: ServerConfig) -> void: config.debug_commands = true)
+	var client: RawClient = await _join("Ana")
+	if client == null:
+		return
+	var target := Vector3(7.0, 0.5, -9.0)
+	client.send_raw(NetProtocol.CH_RELIABLE,
+			NetMessages.DebugCommand.teleport(target).encode())
+	var teleported: bool = await _run_until(func() -> bool:
+		return client.last_snapshot() != null and client.last_snapshot().own_teleport == 1)
+	if not assert_true(teleported, "el snapshot lleva el contador de teletransporte propio"):
+		return
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	assert_eq(peer.strikes_total, 0, "sin avisos")
+	assert_eq(peer.entity.teleport_counter, 1)
+	var own: PlayerState = client.last_snapshot().own_state
+	assert_true(absf(own.position.x - 7.0) < 0.1 and absf(own.position.z + 9.0) < 0.1,
+			"el estado propio está en el destino (%s)" % own.position)
+	# Un destino fuera de rango o no finito es un aviso y no mueve a nadie.
+	client.send_raw(NetProtocol.CH_RELIABLE,
+			NetMessages.DebugCommand.teleport(Vector3(1.0e9, 0.0, 0.0)).encode())
+	client.send_raw(NetProtocol.CH_RELIABLE,
+			NetMessages.DebugCommand.teleport(Vector3(NAN, 0.0, 0.0)).encode())
+	await _run_frames(10)
+	assert_eq(peer.strikes_total, 2, "dos avisos")
+	assert_eq(peer.entity.teleport_counter, 1, "sin más teletransportes")
+
+
+func test_interest_policy_spawns_and_despawns_out_of_interest() -> void:
+	await _start_server()
+	var policy := HidingPolicy.new()
+	_server.interest_policy = policy
+	var bot_id: int = _server.add_fake_player(BotBrain.new(1, BotBrain.Pattern.IDLE), SOLMARCH)
+	var client: RawClient = await _join("Ana")
+	if client == null:
+		return
+	await _run_frames(20)
+	assert_eq(client.spawns_of(bot_id).size(), 1, "el falso es relevante")
+	assert_true(client.visible_ids().has(bot_id), "y está en los snapshots")
+
+	policy.hide_bots = true
+	var hidden: bool = await _run_until(func() -> bool: return not client.despawns.is_empty(), 60)
+	if not assert_true(hidden, "al dejar de ser relevante llega un DESPAWN (cada 6 ticks, como mucho)"):
+		return
+	assert_eq(client.despawns[0].net_id, bot_id)
+	assert_eq(client.despawns[0].reason, NetProtocol.DespawnReason.OUT_OF_INTEREST, "motivo 0")
+	await _run_frames(10)
+	assert_false(client.visible_ids().has(bot_id), "deja de estar en los snapshots")
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	assert_false(peer.relevant.has(bot_id), "y en el conjunto relevante del peer")
+
+	policy.hide_bots = false
+	var back: bool = await _run_until(func() -> bool: return client.spawns_of(bot_id).size() == 2, 60)
+	assert_true(back, "al volver a ser relevante llega otro SPAWN")
+	await _run_frames(10)
+	assert_true(client.visible_ids().has(bot_id), "y reaparece en los snapshots")
+
+
+func test_handshake_and_snapshots_with_a_network_simulator() -> void:
+	await _start_server(func(config: ServerConfig) -> void:
+		config.net_sim_spec = "rtt=100,jitter=10,loss=0,dup=0,seed=5")
+	var client: RawClient = _connect_client(_hello(VARDHEIM, "Ana"))
+	var joined: bool = await _run_until(func() -> bool: return client.own_spawn != null, 600)
+	if not assert_true(joined, "con 100 ms de RTT también entra en el mundo"):
+		return
+	_hooks.append(func(_tick: int) -> void:
+		var newest: int = _server.get_tick() + 12
+		if newest > client.own_spawn.spawn_tick + 3:
+			client.send_inputs(newest, 4, Vector2(0.0, 1.0), client.own_spawn.state.yaw))
+	await _run_frames(120)
+	assert_true(client.snapshots.size() > 20, "llegan snapshots (%d)" % client.snapshots.size())
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	assert_true(peer.rtt_ticks >= 3, "el RTT medido incluye el retardo simulado (%d ticks)"
+			% peer.rtt_ticks)
+	assert_true(client.last_snapshot().own_state.position.z < client.own_spawn.state.position.z - 2.0,
+			"y las entradas surten efecto")
+
+
+func test_stop_notifies_the_clients_and_closes_the_transport() -> void:
+	await _start_server()
+	var client: RawClient = await _join("Ana")
+	if client == null:
+		return
+	_server.stop("Mantenimiento")
+	assert_false(_server.is_stopped(), "con clientes conectados se espera a que se vayan")
+	var notified: bool = await _run_until(func() -> bool:
+		return client.notice_with_code(NetProtocol.NoticeCode.SHUTDOWN) != null)
+	if assert_true(notified, "el cliente recibe el NOTICE de cierre"):
+		assert_eq(client.notice_with_code(NetProtocol.NoticeCode.SHUTDOWN).text, "Mantenimiento")
+	var stopped: bool = await _run_until(func() -> bool: return _server.is_stopped(), 90)
+	assert_true(stopped, "el servidor termina de cerrarse")
+	assert_false(_server_transport.is_server(), "y cierra el transporte")
+	assert_eq(_server.get_player_count(), 0)

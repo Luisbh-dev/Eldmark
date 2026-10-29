@@ -14,9 +14,9 @@ const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
 ## Archivos de salida, en build/ (carpeta de temporales).
 const REPORT_FILE: String = "res://build/test_zone_server_report.json"
 const STATE_LOG_FILE: String = "res://build/test_zone_server_states.csv"
-## Puntos de aparición de la zona de prueba.
-const VARDHEIM_SPAWNS: Array[Vector3] = [Vector3(-20.0, 0.0, 0.0), Vector3(-18.0, 0.0, 4.0)]
-const SOLMARCH_SPAWN: Vector3 = Vector3(20.0, 0.0, 0.0)
+## Puntos de aparición de la zona de prueba ([ZoneFixture]).
+const VARDHEIM_SPAWNS: Array[Vector3] = ZoneFixture.VARDHEIM_SPAWNS
+const SOLMARCH_SPAWN: Vector3 = ZoneFixture.SOLMARCH_SPAWN
 
 var _viewport: SubViewport
 var _server: ZoneServer
@@ -43,23 +43,7 @@ func _start_server(config: ServerConfig = null) -> ZoneServer:
 	_viewport.own_world_3d = true
 	_viewport.size = Vector2i(64, 64)
 	tree.root.add_child(_viewport)
-	_world = Node3D.new()
-	_world.name = "ZonaDePrueba"
-	_viewport.add_child(_world)
-	var floor_body := StaticBody3D.new()
-	floor_body.name = "Suelo"
-	floor_body.collision_layer = PlayerCharacter.WORLD_COLLISION_LAYER
-	floor_body.collision_mask = 0
-	var floor_shape := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = Vector3(400.0, 1.0, 400.0)
-	floor_shape.shape = box
-	floor_shape.position = Vector3(0.0, -0.5, 0.0)
-	floor_body.add_child(floor_shape)
-	_world.add_child(floor_body)
-	for i: int in VARDHEIM_SPAWNS.size():
-		_add_spawn("Vardheim%d" % i, VARDHEIM_SPAWNS[i], &"vardheim")
-	_add_spawn("Solmarch0", SOLMARCH_SPAWN, &"solmarch")
+	_world = ZoneFixture.build_flat_zone(_viewport)
 
 	_server = ZoneServer.new()
 	_server.name = "ZoneServer"
@@ -77,15 +61,6 @@ func _make_config() -> ServerConfig:
 	var config := ServerConfig.new()
 	config.zone_id = "test_world"
 	return config
-
-
-func _add_spawn(marker_name: String, position: Vector3, realm: StringName) -> void:
-	var marker := Marker3D.new()
-	marker.name = marker_name
-	_world.add_child(marker)
-	marker.position = position
-	marker.add_to_group(Zones.SPAWN_GROUP)
-	marker.set_meta(Zones.REALM_META, realm)
 
 
 func _character_of(net_id: int) -> PlayerCharacter:
