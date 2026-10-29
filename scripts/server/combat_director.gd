@@ -231,10 +231,11 @@ func set_weapon(combatant: Combatant, weapon_id: int) -> bool:
 	return true
 
 
-## Anota una petición de reaparición de [param net_id] en el punto [param point_index] de su reino,
-## pedida cuando el servidor va a simular el tick [param tick]. Un índice que ya no vale no es un
-## error: se usa el primer punto del reino (el estado del cliente va atrasado). Devuelve si se
-## acepta o por qué está fuera de plazo.
+## Anota una petición de reaparición de [param net_id] en el punto [param point_index] de la lista
+## estática de la zona ([method get_all_respawn_points]), pedida cuando el servidor va a simular el tick
+## [param tick]. Un índice que ya no vale para su reino no es un error: al reaparecer se usa el primer
+## campamento válido (el estado del cliente va atrasado). Devuelve si se acepta o por qué está fuera de
+## plazo.
 func request_respawn(net_id: int, point_index: int, tick: int) -> int:
 	var combatant: Combatant = _combatants.get(net_id)
 	if combatant == null or combatant.is_alive():

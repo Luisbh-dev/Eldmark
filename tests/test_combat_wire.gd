@@ -442,7 +442,9 @@ func test_respawn_request_flow_and_its_warnings() -> void:
 	assert_eq(own.own_teleport, 1, "con teletransporte")
 	var respawns: Array[NetMessages.EntityEvent] = client.events_of(NetMessages.EntityEvent.Kind.RESPAWN)
 	if assert_eq(respawns.size(), 1, "recibe su RESPAWN"):
-		assert_eq(respawns[0].point, 0)
+		# Desde la fase 4 el índice es el de la lista estática de la zona (Vardheim0, Vardheim1,
+		# Solmarch0), no el de la lista del reino.
+		assert_eq(respawns[0].point, 2, "el índice del primer punto de Solmarch en la lista de la zona")
 		assert_eq(respawns[0].net_id, client.own_spawn.net_id)
 	# Ya viva, otra petición es un aviso más.
 	client.send_raw(NetProtocol.CH_RELIABLE, _respawn_request(0))
