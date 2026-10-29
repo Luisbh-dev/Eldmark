@@ -25,10 +25,16 @@ env:
   GODOT_SHA512: 9aa00f7a605200940bce3027a567b782f49bd8e940dd06ae9e987bd65aee1b1467edd56ed84fcdcbdd44354bf613bdbb4e5d2913e925850368e150c59ed54c65
 
 jobs:
+  # La suite se reparte en cuatro partes que corren a la vez (run_tests.gd --shard=K/4): entera
+  # dura unos 18 min en una máquina de 4 núcleos y crece con cada fase.
   tests:
-    name: Suite completa
+    name: Suite ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     defaults:
       run:
         shell: bash
@@ -97,7 +103,7 @@ jobs:
         timeout-minutes: 15
         run: |
           set -o pipefail
-          godot --headless --path . -s res://tests/run_tests.gd 2>&1 | tee build/tests.log
+          godot --headless --path . -s res://tests/run_tests.gd -- --shard=${{ matrix.shard }}/4 2>&1 | tee build/tests.log
 
       - name: Resumen
         if: always()
@@ -110,10 +116,21 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs
+          name: build-logs-${{ matrix.shard }}
           path: build/
           if-no-files-found: ignore
           retention-days: 14
+
+  # Una sola comprobación con el nombre de siempre, para la protección de la rama: pasa solo si
+  # pasan las cuatro partes.
+  suite:
+    name: Suite completa
+    needs: tests
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resultado de las cuatro partes
+        run: test "${{ needs.tests.result }}" = "success"
 
   # Windows es la plataforma de desarrollo y allí OS.is_process_running solo conoce los procesos
   # hijos propios: este trabajo ejecuta las pruebas de LocalServerLauncher (con sus procesos
