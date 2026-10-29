@@ -9,7 +9,8 @@ y está siempre en la rama más reciente.
 |---|---|---|
 | Backlog (`docs/backlog.md`) | `main` | Hecho y subido |
 | Fase 2: red | `fase2-red` | Implementada (594 pruebas en verde, CI de GitHub en verde); revisión adversarial hecha y sus 19 hallazgos corregidos, cada uno con su prueba (656 pruebas en verde) |
-| Fase 3: combate | `fase3-combate` (desde `fase2-red`) | Diseño revisado (`docs/combate.md`); K1a, K1b y K2 integrados (745 pruebas en verde) |
+| Fase 3: combate | `fase3-combate` (desde `fase2-red`, que está fusionada dentro) | Diseño revisado (`docs/combate.md`); K1–K4 integrados (1052 pruebas); K5 (integración y carga) y el carril de audio, tema y ajustes, pendientes |
+| Fase 4: fuerte | (aún sin rama) | Diseño v2 revisado (`docs/fuerte.md`) |
 
 ## Entorno (Linux)
 
@@ -168,6 +169,23 @@ S1, S2, S3 y A1 son fallos de verdad en producción o en el uso diario con `--lo
   aserciones más fuertes, puertos y carpetas por pid y la frontera de `NetZones`.
 - A4: la batería de carga mide el criterio con 100 ms (tabla de arriba).
 
+## Fase 3: progreso
+
+Diseño en [combate.md](combate.md): revisado con dos lentes antes de implementar (2 bloqueantes y
+~25 importantes corregidos en la versión 2) y con una §11 que recoge lo que se cerró al implementar.
+
+| Paquete | Contenido | Pruebas nuevas |
+|---|---|---|
+| K1a | `CombatState` (34 B; `PlayerState` de 69 B), catálogo en `data/combat/`, `ActionMachine` (combo, carga, búfer, cancelaciones, bloqueo, parada, esquiva, resistencia, controles), entradas sustituidas que no inventan acciones, `sim_hash` con el catálogo, `PROTOCOL_VERSION = 2` | `test_combat_catalog`, `test_combat_state`, `test_action_machine` |
+| K1b | `HitShapes`, `DamageFormula`, `FactionRules`, modo PvP por zona | `test_hit_shapes`, `test_damage_formula`, `test_faction_rules` |
+| K2 | Registro de 21 B con `health_q`, bloque extra de vida, ENTITY_EVENT (HIT, DEATH, KILL, RESPAWN), RESPAWN_REQUEST, ids de comandos | ampliaciones de `test_net_messages` y `test_snapshot_builder` |
+| K3 | `CombatDirector` (orden del tick), `CombatResolver` con rebobinado y precedencia de defensas, `Combatant`, `DamageLedger`, muerte, reaparición, caída, volúmenes letales, zonas seguras, maniquíes, `CommandRegistry` y consola (`--console`), `--combat-log`, bots de combate (`--fake-brain=combat`) | 134 (resolutor, director, loopback ENet, procesos...) |
+| K4 | Eventos temporizados, `CombatFeedback` (marcador, números, DPS), barras de vida y resistencia, placas con nombre y vida, pantalla de muerte con reaparición, capa de animación de combate con clips de UAL, armas provisionales, demo con el combo | 111 |
+
+Coste medido del paso de combate con refriegas de jugadores falsos: 64 → p99 del combate 6,1 ms
+(tick p99 16,2 ms); 128 → combate p99 4,3 ms, pero el tick lo domina `simulate()`. Lo mide en serio
+K5.
+
 ## Pendiente de probar mañana con ventana
 
 Nada de lo que sigue se ha podido ver: aquí no hay GPU ni ventana. Todo lo de red está probado sin
@@ -200,7 +218,14 @@ $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Mi
    `& $godot --headless --path . -- --bots=20 --connect=127.0.0.1` y mirar a 20 remotos a la vez.
 5. **Servidor Linux, clientes Windows** (si hay VPS): la reconciliación debería absorber las
    diferencias de último bit; el panel F3 cuenta las correcciones.
-6. Desde el editor: *Depurar ▸ Personalizar instancias de ejecución* (instancia 1:
+6. **Combate** (rama `fase3-combate`): con el servidor y dos clientes del punto 2, atacar (clic
+   izquierdo: toque = ligero, mantener = fuerte), bloquear (clic derecho), esquivar (Ctrl).
+   Mirar: que el golpe propio sale al instante y el marcador al confirmarse; que el otro ve la
+   animación; barras de vida y resistencia; placas; morir y reaparecer con el botón. Maniquí:
+   en `test_world` y junto a cada campamento del Vado Gris. Vista previa de los clips:
+   `& $godot --path . res://scenes/tests/combat_preview.tscn`. Las armas son una caja y un
+   cilindro (provisionales).
+7. Desde el editor: *Depurar ▸ Personalizar instancias de ejecución* (instancia 1:
    `--headless -- --server --debug-commands`; 2 y 3: `-- --connect=127.0.0.1 --realm=vardheim` y
    `--realm=solmarch`).
 

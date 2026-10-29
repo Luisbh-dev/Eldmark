@@ -46,8 +46,10 @@ func test_respawn_points_fall_back_to_spawn_points_without_the_group() -> void:
 	assert_eq(points[0].name, &"V1", "en el orden de la escena")
 	assert_eq(points[1].name, &"V2")
 	assert_eq(NetZones.get_respawn_points(_zone, SOLMARCH).size(), 1)
-	assert_eq(NetZones.get_respawn_points(_zone, ASKARRA).size(), 0, "un reino sin puntos")
-	assert_eq(NetZones.get_respawn_points(_zone, 0).size(), 0, "los Huecos no tienen puntos")
+	# Un reino sin puntos propios (o un código que no es un reino) recibe todos los de la zona, como
+	# SpawnPicker al aparecer: es la lista común de servidor y cliente para RESPAWN_REQUEST.
+	assert_eq(NetZones.get_respawn_points(_zone, ASKARRA).size(), 3, "un reino sin puntos ve todos")
+	assert_eq(NetZones.get_respawn_points(_zone, 0).size(), 3, "y los Huecos también")
 
 
 func test_respawn_points_group_wins_over_spawn_points() -> void:
