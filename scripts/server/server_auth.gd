@@ -96,6 +96,6 @@ static func is_valid_name(display_name: String) -> bool:
 
 
 func _is_realm_allowed(realm: int) -> bool:
-	if realm < NetProtocol.Realm.VARDHEIM or realm > NetProtocol.Realm.ASKARRA:
+	if not RealmCatalog.is_realm_code(realm):
 		return false
 	return _allowed_realms.is_empty() or _allowed_realms.has(realm)

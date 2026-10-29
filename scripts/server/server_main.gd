@@ -217,10 +217,8 @@ func _spawn_fake_players() -> void:
 # Vardheim (el SpawnPicker usa entonces cualquier punto).
 func _fake_player_realms() -> Array[int]:
 	var allowed: PackedInt32Array = NetZones.allowed_realms(config.zone_id)
-	var candidates: Array[int] = [NetProtocol.Realm.VARDHEIM, NetProtocol.Realm.SOLMARCH,
-			NetProtocol.Realm.ASKARRA]
 	var realms: Array[int] = []
-	for realm: int in candidates:
+	for realm: int in RealmCatalog.realm_codes():
 		if not allowed.is_empty() and not allowed.has(realm):
 			continue
 		if not Zones.get_spawn_points(_world, NetZones.realm_name(realm)).is_empty():

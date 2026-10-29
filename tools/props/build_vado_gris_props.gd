@@ -273,7 +273,7 @@ func _build_banner_pole() -> void:
 	banner.mesh = load(KEN_MESH + "flag_banner_long.tres") as Mesh
 	banner.material_override = _mat("eldrun/banner")
 	banner.transform = Transform3D(Basis().scaled(Vector3(1.6, 1.6, 2.4)), Vector3(0.08, 1.9, 0))
-	banner.set_instance_shader_parameter(&"faction_color", Color("#bdb6a6"))
+	banner.set_instance_shader_parameter(&"faction_color", RealmCatalog.color_of(RealmCatalog.HUECOS))
 	root.add_child(banner)
 	_save(root, PROPS_DIR.path_join("fort/banner_pole.tscn"))
 
@@ -714,8 +714,7 @@ func _build_camp_banner(realm: String) -> void:
 	banner.mesh = load(KEN_MESH + "flag_banner_long.tres") as Mesh
 	banner.material_override = _mat(realm + "/banner")
 	banner.transform = Transform3D(Basis().scaled(Vector3(1.5, 1.5, 2.2)), Vector3(0.08, 1.9, 0))
-	banner.set_instance_shader_parameter(&"faction_color",
-			Color("#7ec8e8") if realm == "vardheim" else Color("#e9c341"))
+	banner.set_instance_shader_parameter(&"faction_color", RealmCatalog.color_of(StringName(realm)))
 	root.add_child(banner)
 	var shape := CollisionShape3D.new()
 	shape.name = "Colision"

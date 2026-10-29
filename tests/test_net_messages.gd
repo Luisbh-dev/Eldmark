@@ -479,8 +479,11 @@ func test_net_zones_uses_the_zone_registry() -> void:
 	assert_eq(NetZones.scene_path(""), "", "sin id no hay escena")
 	assert_true(NetZones.default_zone_id().length() <= NetProtocol.MAX_ZONE_ID_BYTES,
 			"el id cabe en el WELCOME")
-	assert_true(NetZones.allowed_realms("vado_gris").is_empty(), "vacío = todos los reinos")
-	assert_true(NetZones.allowed_realms("atlantida").is_empty(), "también para zonas desconocidas")
+	assert_eq(NetZones.allowed_realms("vado_gris"),
+			PackedInt32Array([NetProtocol.Realm.VARDHEIM, NetProtocol.Realm.SOLMARCH]),
+			"el Vado Gris admite Vardheim y Solmarch (RealmCatalog)")
+	assert_true(NetZones.allowed_realms("atlantida").is_empty(),
+			"vacío = todos los reinos para zonas desconocidas")
 
 
 func test_net_zones_realm_codes() -> void:

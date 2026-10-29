@@ -17,10 +17,10 @@ const SCENES: Dictionary[StringName, String] = {
 	&"test_world": "res://scenes/world/test_world.tscn",
 }
 
-## Reinos jugables (ver docs/mundo.md).
-const REALMS: Array[StringName] = [&"vardheim", &"solmarch", &"askarra"]
+## Reinos jugables (ver docs/mundo.md): los de [RealmCatalog].
+const REALMS: Array[StringName] = RealmCatalog.REALM_IDS
 ## Reino que se usa si no se indica otro.
-const DEFAULT_REALM: StringName = &"vardheim"
+const DEFAULT_REALM: StringName = RealmCatalog.VARDHEIM
 
 ## Grupo de los puntos de aparición de una zona.
 const SPAWN_GROUP: StringName = &"spawn_points"
@@ -50,7 +50,7 @@ static func get_zone_ids() -> Array[StringName]:
 
 ## true si [param realm] es uno de los reinos de [constant REALMS].
 static func is_realm(realm: StringName) -> bool:
-	return REALMS.has(realm)
+	return RealmCatalog.is_realm(realm)
 
 
 ## Puntos de aparición de [param zone] (descendientes del grupo [constant SPAWN_GROUP]) en el

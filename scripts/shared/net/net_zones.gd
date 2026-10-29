@@ -9,12 +9,6 @@ extends RefCounted
 
 const _ZONE_ARG_PREFIX: String = "--zone="
 const _REALM_ARG_PREFIX: String = "--realm="
-## Código de red -> nombre del reino en [Zones].
-const _REALM_NAMES: Dictionary[int, StringName] = {
-	NetProtocol.Realm.VARDHEIM: &"vardheim",
-	NetProtocol.Realm.SOLMARCH: &"solmarch",
-	NetProtocol.Realm.ASKARRA: &"askarra",
-}
 
 
 ## Id de la zona que sirve o carga un proceso sin [code]--zone[/code].
@@ -27,10 +21,13 @@ static func scene_path(zone_id: String) -> String:
 	return Zones.get_scene_path(StringName(zone_id))
 
 
-## Códigos de [enum NetProtocol.Realm] admitidos en [param zone_id]. Vacío = todos: [Zones] aún
-## no registra qué reinos admite cada zona.
-static func allowed_realms(_zone_id: String) -> PackedInt32Array:
-	return PackedInt32Array()
+## Códigos de [enum NetProtocol.Realm] admitidos en [param zone_id], según [RealmCatalog]. Vacío
+## = todos: es lo que devuelve para una zona sin restricción registrada.
+static func allowed_realms(zone_id: String) -> PackedInt32Array:
+	var codes := PackedInt32Array()
+	for id: StringName in RealmCatalog.allowed_realm_ids(StringName(zone_id)):
+		codes.append(RealmCatalog.code_of(id))
+	return codes
 
 
 ## Valor de [code]--zone=<id>[/code] en [param args] (sin espacios ni comillas y en minúsculas),
@@ -55,19 +52,17 @@ static func parse_realm_arg(args: PackedStringArray) -> int:
 ## Código de reino a partir de su nombre («vardheim», «Solmarch»...; sin distinguir mayúsculas
 ## ni espacios). [constant NetProtocol.Realm.NONE] si no es un reino.
 static func realm_from_name(text: String) -> int:
-	var realm_name: StringName = StringName(_clean_value(text))
-	if not Zones.is_realm(realm_name):
+	var id: StringName = StringName(_clean_value(text))
+	if not RealmCatalog.is_realm(id):
 		return NetProtocol.Realm.NONE
-	for code: int in _REALM_NAMES:
-		if _REALM_NAMES[code] == realm_name:
-			return code
-	return NetProtocol.Realm.NONE
+	return RealmCatalog.code_of(id)
 
 
-## Nombre en [Zones] del reino con código [param realm] (vacío si no es un reino).
+## Id en [RealmCatalog] (y en [Zones]) del reino con código [param realm]; vacío si no es un
+## reino jugable (el neutral de los Huecos tampoco lo es).
 static func realm_name(realm: int) -> StringName:
-	var found: StringName = _REALM_NAMES.get(realm, &"")
-	return found if Zones.is_realm(found) else &""
+	var id: StringName = RealmCatalog.id_of_code(realm)
+	return id if RealmCatalog.is_realm(id) else &""
 
 
 ## Punto de aparición del reino [param realm] en la zona [param zone] (que debe estar en el

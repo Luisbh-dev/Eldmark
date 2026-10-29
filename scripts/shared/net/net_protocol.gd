@@ -153,15 +153,12 @@ static func neutral_input(tick: int, yaw: float) -> PlayerInput:
 	return input.quantized()
 
 
-## Nombre del reino para mostrarlo: «Vardheim», «Solmarch», «Askarra».
+## Nombre del reino para mostrarlo: «Vardheim», «Solmarch», «Askarra» (de [RealmCatalog]) o
+## «Ninguno» si [param realm] no es un reino jugable.
 static func realm_display_name(realm: int) -> String:
-	match realm:
-		Realm.VARDHEIM:
-			return "Vardheim"
-		Realm.SOLMARCH:
-			return "Solmarch"
-		Realm.ASKARRA:
-			return "Askarra"
+	var id: StringName = RealmCatalog.id_of_code(realm)
+	if RealmCatalog.is_realm(id):
+		return RealmCatalog.display_name(id)
 	return "Ninguno"
 
 

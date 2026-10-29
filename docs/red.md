@@ -178,8 +178,9 @@ direcciones UDP lo hace poco fiable.
 - los reinos admitidos en cada zona;
 - leer `--zone` y `--realm`.
 
-Si `zones.gd` no da alguno de esos datos (por ejemplo, los reinos admitidos), `NetZones` admite
-todos los reinos. Si al implementar todavía no existe, `NetZones` devuelve `test_world`. Ese
+Los reinos admitidos por zona y la correspondencia código de red <-> id de reino salen de
+`RealmCatalog` (`scripts/shared/war/realm_catalog.gd`, GUE-02); `NetZones` solo traduce. Si una zona
+no figura en el catálogo, `NetZones` admite todos los reinos. Si al implementar todavía no existe, `NetZones` devuelve `test_world`. Ese
 cambio se hace solo en este archivo.
 
 **Formato en la red:**
