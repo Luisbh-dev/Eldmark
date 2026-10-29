@@ -2024,3 +2024,113 @@ línea `toolchain`); `serve` con HTTPS directo (`ELDMARK_TLS_*`: está el códig
 **Queda para después:** la orden `admin` (P1 y P7a), las rutas de `/v1` y de `/internal/v1` (P1–P3), los
 trabajos periódicos (P3, P9a), los textos legales en `legal_documents` al arrancar (P1) y `deploy/` (P9b),
 donde irá el compose de desarrollo que nombra TEC-22.
+
+### 19.2 P1 · cuentas (TEC-23, TEC-41, aceptación de TEC-43)
+
+**Qué hay.** Las cuentas y las sesiones de §4.1 a §4.3, montadas en `serve`:
+
+| Pieza | Contenido |
+|---|---|
+| `internal/passwords` | `Params`, `Hash`, `Verify` (con `needsRehash`) y `Filler` (el hash de relleno) de §14.2: argon2id en cadena PHC, sal de 16 B y hash de 32 B. Como mucho `runtime.NumCPU()` cálculos a la vez en todo el proceso; una cadena que pide más de 1 GiB o 64 pasadas es `ErrFormat` |
+| `internal/accounts` | El servicio y sus rutas (abajo): `CheckPassword` con los fallos por cuenta y grupo de IP, registro sin delatar cuentas, inicio de sesión con la sesión de privacidad, refresco que rota en la fila, ciclo de vida con enlaces de un solo uso, exportación, purga de cuentas, páginas `/verify`, `/reset` y `/revert`, `/v1/status` y `/v1/legal` |
+| `internal/mail` | Las ocho plantillas en español (`verify_email`, `register_existing`, `register_blocked`, `reset_password`, `change_email`, `email_changed`, `email_reverted`, `login_failures`), `LogSender` (`outbound_mail` y el registro con el enlace entero), `SMTPSender` (cola en segundo plano, STARTTLS obligatorio salvo hacia loopback, `smtps://` con TLS directo, dos reintentos), `BuildMIME` (`mime.QEncoding`, quoted-printable) y `Recorder` para pruebas |
+| `internal/ratelimit` | Cubo de fichas por clave y LRU de 100 000 claves (§4.2) |
+| `internal/clock` | El reloj inyectable de §15 (`clock.Fake` en las pruebas): todo plazo de cuentas se compara con la hora de Go pasada como parámetro, no con `now()` |
+| `platform/legal` | `terms-1.md`, `privacy-1.md` (con la tabla de §11.1) y `rules-1.md` (la escala de social.md §9), borradores con la cabecera de §11.4, embebidos en el binario; `Load`, `Current` y `Sync` (inserta en `legal_documents` las versiones que faltan) |
+| `internal/httpx` | `ClientIP` (`X-Real-IP` solo desde `ELDMARK_TRUSTED_PROXIES`), `AddrGroup` (IPv4 entera, IPv6 por /64), `RequireProtocol` (426 `client_outdated` con `min_protocol`) y `Fail` (un error de la base no disponible → 503; cualquier otro → 500, registrado con el id de la petición) |
+| `internal/app` | `OnBoot` (lo que corre al arrancar con el esquema al día: la publicación de los textos), `AddJob` (trabajos periódicos con `pg_try_advisory_lock`) y 503 en las rutas de los paquetes hasta que el arranque termina |
+| `cmd/eldmark-platform` | `mountServices` (`services.go`): textos, correo según `ELDMARK_MAIL`, el servicio, sus rutas y el trabajo `accounts_purge` cada hora |
+
+Rutas: las de §4.2 y §4.3 tal cual, todas con la regla del 426. La sesión de privacidad admite solo `GET
+/v1/account`, `POST /v1/account/export`, `POST` y `DELETE /v1/account/deletion` y `DELETE /v1/sessions/current`
+(y el refresco, que no lleva token de acceso); el resto, con la sesión de privacidad o con una sanción vigente, da
+403 `account_suspended` o `account_banned` con `until` y `reason`.
+
+**Para los paquetes siguientes.** P2 monta sus rutas con `httpx.RequireProtocol(min, api.RequireSession(false,
+h))` y lee la sesión con `accounts.SessionFrom(ctx)` (cuenta, rol, estado y ámbito); así `enter` da ya el 403 de
+una sanción. Para el resto de comprobaciones de `enter` (§4.5) tiene `accounts.ActiveRestriction`,
+`Service.MissingAcceptances` (los textos por aceptar: `terms_required`) y `Service.Slots` (6 más los derechos
+`character_slots`). P3 compone el `message` de `account_blocked` con `Restriction.Message()` (cortado a 255 B).
+La purga de los personajes de una cuenta entra por `accounts.CharacterPurger` (P2 o P9a).
+
+**Desviaciones y decisiones de la implementación:**
+
+- **Textos legales en el binario.** `platform/legal` es un paquete de Go con `//go:embed *.md`, y
+  `ELDMARK_LEGAL_DIR` vacía (antes `platform/legal`) significa «los del binario»: la ruta relativa dependía de
+  dónde se arrancara (el README arranca `serve` desde `platform/` y la imagen solo lleva el binario). Con la
+  variable, se leen de esa carpeta. Una versión publicada cuyo texto cambia no arranca en `staging` ni en
+  `production` (la cuenta aceptó el anterior: un texto nuevo es un archivo nuevo); en `dev` y `test` se
+  actualiza su SHA-256 con un aviso.
+- **Los borradores llegan ya en P1** (§14.1 los ponía en P9a): el registro exige aceptarlos. P9a los revisa;
+  hasta que se publiquen en staging, cambiarlos no pide versión nueva.
+- **`ELDMARK_MAIL_FROM`**, nueva: el remitente (por defecto `no-reply@<máquina de ELDMARK_PUBLIC_URL>`, o
+  `no-reply@localhost` si es una IP).
+- **Protocolo mínimo.** Hasta que exista `progression_rules.json` (P2), en `dev` y `test` sin
+  `ELDMARK_MIN_PROTOCOL` el mínimo es 0: vale cualquier cabecera con un entero positivo, y `/v1/status` da
+  `min_protocol: 0`. Sin la cabecera, 426 siempre.
+- **`/verify` confirma también el cambio de correo:** el correo `change_email` enlaza a `/verify`, que mira el
+  propósito del enlace (§4.3 solo nombra tres páginas). Confirmar el cambio revoca **todas** las sesiones, no
+  «las demás»: el enlace llega sin sesión.
+- **Cuerpos que §4.2 no fijaba.** `GET /v1/account` da `realms` y `slots` como mapas por mundo (`{"1": 6}`),
+  `pending` con `terms_required`, `documents` (los tipos por aceptar) y `deletion_at`, y además `restriction`
+  (`null` o como en el inicio de sesión). El refresco devuelve el par con `scope`. Verificar, confirmar y
+  revertir dan 204; las fechas van en Unix.
+- **Códigos nuevos:** 409 `deletion_expired` al cancelar un borrado con el plazo vencido antes de que pase la
+  purga horaria (sin borrado pedido, cancelar da 204); 503 `unavailable` cuando la base no responde, una
+  transacción choca demasiadas veces o la plataforma está arrancando (§4.1 no tenía código para eso); 413
+  `too_large` (de P0). `auth_events.kind` añade `register_blocked`.
+- **Fallos de contraseña.** Tras 5 fallos seguidos desde un grupo, cada fallo más vuelve a bloquear 15 min, y
+  desde el 10.º, 1 h. El freno de la cuenta (un intento cada 30 s) cuenta desde el último fallo. Un intento
+  frenado no mira la contraseña ni cuenta como fallo. Con el correo sin cuenta (o la cuenta sin contraseña)
+  se hace la misma consulta (con el id 0) y la comprobación contra el relleno.
+- **Límite de correos.** «3 por cuenta y hora» va por destinatario (el SHA-256 del correo), así que pesa igual
+  exista o no la cuenta; el cambio de correo gasta además de la cuenta que lo pide. Cubo de fichas: ráfaga de 3
+  y una ficha cada 20 min (igual con el resto de límites por hora).
+- **Purga de cuentas ya en P1**, la de §11.2 en lo que es de la cuenta: la usan las cuentas sin verificar
+  (staging y production) y las de borrado vencido (en todos los entornos). Borra además `auth_events`,
+  `account_realms` y `outbound_mail` de la cuenta. Sin `CharacterPurger`, una cuenta con personajes sin
+  purgar no se purga y se registra («tiene personajes»), y la vuelta siguiente lo reintenta.
+- **Huella de los correos sancionados**, ya en P1 porque la purga la necesita: cada sanción sin revocar cuenta
+  hasta 90 días después de su fin (un aviso o un renombrado, sin duración, desde que se puso; una expulsión
+  permanente, el tope), con 1 año como mucho desde la purga. P9a la revisa con la tabla de §11.1.
+- **Exportación ya en P1** (§4.3 la pone en el ciclo de vida y §15 P1 la prueba): cuenta sin hash,
+  aceptaciones, consentimientos, sesiones y accesos de 30 días, derechos, reinos, personajes con sus
+  estadísticas PvP, ignorados por nombre, sanciones sin autor, reportes hechos y chat enviado. Falta el
+  progreso de cada personaje (`ProgressStore.Export`, P9a). Las fechas van en RFC 3339: es un archivo para
+  personas.
+- **Correo:** además de §4.2, las etiquetas del dominio solo admiten `[a-z0-9-]`, sin guion al principio ni al
+  final. Se quitan los espacios de alrededor, no otros blancos: un salto de línea al final no vale.
+- **Páginas:** `/reset` pide la contraseña dos veces; un enlace usado, caducado o con el correo ya en uso lo
+  dice la página (400) sin repetir el token. No hay protección CSRF aparte: el token de un solo uso lo es.
+
+**Pruebas** (`internal/accounts`, con la base efímera y el reloj falso): todas las de §15 P1, más el bloqueo
+de 1 h tras 10 fallos, el freno de 6 s del cubo por IP, los cuerpos que no valen (CR/LF, IDN, nombre visible,
+dos @, contraseña corta, larga o igual al correo, versiones viejas, campos desconocidos, 1.5 en una versión,
+413), el límite de registros y de correos (también con un correo sin cuenta, que no recibe nada), la
+recuperación (revoca todas las sesiones e invalida los enlaces), el cambio de correo hacia uno con cuenta
+(`register_existing`), una versión nueva de un texto (`terms_required` hasta aceptarla; el registro la exige),
+consentimientos, huecos con derechos, `/v1/status` con la carga y `/v1/legal`, la página `/verify` con un
+cambio de correo, `/reset` y `/revert`, la exportación (una al día) y la purga de una cuenta sancionada, cuyo
+correo ya no se registra. Además: `passwords`, `mail` (con un servidor SMTP falso), `ratelimit`, `legal`
+(`Sync` estricto y no), `httpx` (IP del cliente, 426, `Fail`), `app` (ganchos, trabajos y su bloqueo, 503
+hasta arrancar) y `serve` montado de verdad (textos publicados al arrancar y un registro con su correo).
+
+**Medido** (esta máquina, 4 núcleos, Go 1.24.7, PostgreSQL 16.15):
+
+| Qué | Tiempo |
+|---|---|
+| argon2id con los parámetros de producción (`m=19456,t=2,p=1`) | 32 ms por comprobación (§0 decía 59 ms en las sondas) |
+| `go test -p 2 -count=1 ./...` con la caché de compilación caliente | 18 s; `internal/accounts`, el más lento, 10 s (30 pruebas) |
+| `go test -race -p 2 ./...` | 34 s, sin carreras |
+| Binario | 19,6 MB (15,7 MB en P0) |
+
+Godot: `--import` da el mismo registro con y sin `platform/`.
+
+**Sin comprobar:** el envío por un servidor SMTP real (STARTTLS y autenticación: la prueba usa un servidor
+falso en loopback, sin TLS); la exportación y la purga con personajes (P2 y P9a).
+
+**Queda para después:** en `enter`, `terms_required`, `email_unverified` y `account_pending_deletion` (P2, con
+lo de arriba); los límites de comprobar nombres y de entrar (P2); la orden `admin` (P7a), con la que se
+crearán la primera cuenta `admin` y las de prueba (`dev.sh`, P9b); el mantenimiento programado y las noticias
+de `/v1/status` (TEC-28; hoy `status` solo mira `worlds.status`); las retenciones horarias (P9a); el progreso
+en la exportación (P9a); y el cliente (P8).

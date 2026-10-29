@@ -5,8 +5,8 @@
 //	eldmark-platform migrate down N        deshace las N mayores aplicadas (solo dev y test)
 //	eldmark-platform migrate status        estado de cada migración
 //
-// La configuración va en variables de entorno (plataforma.md §2.3). La orden admin llega con las
-// cuentas y la moderación (P1 y P7a).
+// La configuración va en variables de entorno (plataforma.md §2.3). La orden admin llega con la
+// moderación (P7a).
 package main
 
 import (
@@ -93,6 +93,12 @@ func serve(ctx context.Context, lookup config.Lookup, stdout, stderr io.Writer) 
 		log.Error("no arranca", "err", err)
 		return exitError
 	}
+	closeServices, err := mountServices(a, cfg, pool, log)
+	if err != nil {
+		log.Error("no arranca", "err", err)
+		return exitError
+	}
+	defer closeServices()
 	if err := a.Listen(); err != nil {
 		log.Error("no arranca", "err", err)
 		return exitError

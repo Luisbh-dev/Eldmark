@@ -6,7 +6,9 @@
 // el proceso sigue vivo: /health da 200, /ready da 503 con el motivo y el arranque espera,
 // mirando cada pocos segundos. Con el esquema al día hace la gracia de arranque (§2.5) y /ready
 // pasa a 200. Las rutas de /v1 y de /internal/v1 las añaden los paquetes siguientes con
-// [App.HandlePublic] y [App.HandleInternal].
+// [App.HandlePublic] y [App.HandleInternal]; hasta que el arranque termina responden 503. Lo que
+// hay que hacer al arrancar (los textos legales en legal_documents) va en [App.OnBoot], y los
+// trabajos periódicos (purgas, retenciones, zonas perdidas) en [App.AddJob].
 package app
 
 import (
@@ -14,6 +16,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io/fs"
 	"log/slog"
 	"net"
@@ -53,6 +56,9 @@ type App struct {
 	publicLn net.Listener
 	intLn    net.Listener
 
+	hooks []func(ctx context.Context) error
+	jobs  []job
+
 	// SchemaPoll es cada cuánto se vuelve a mirar el esquema mientras no está al día.
 	SchemaPoll time.Duration
 }
@@ -73,11 +79,45 @@ func New(cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger, migrations fs
 	return a, nil
 }
 
-// HandlePublic añade una ruta a la API pública («POST /v1/sessions»).
-func (a *App) HandlePublic(pattern string, h http.Handler) { a.public.Handle(pattern, h) }
+// HandlePublic añade una ruta a la API pública («POST /v1/sessions»). Hasta que el arranque
+// termina, responde 503.
+func (a *App) HandlePublic(pattern string, h http.Handler) { a.public.Handle(pattern, a.gate(h)) }
 
-// HandleInternal añade una ruta a la API interna («POST /internal/v1/claims»).
-func (a *App) HandleInternal(pattern string, h http.Handler) { a.internal.Handle(pattern, h) }
+// HandleInternal añade una ruta a la API interna («POST /internal/v1/claims»). Hasta que el
+// arranque termina, responde 503.
+func (a *App) HandleInternal(pattern string, h http.Handler) { a.internal.Handle(pattern, a.gate(h)) }
+
+// gate responde 503 mientras el arranque no ha terminado: el esquema puede no estar al día y los
+// textos legales, sin publicar.
+func (a *App) gate(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !a.started.Load() {
+			httpx.WriteError(w, &httpx.Error{Status: http.StatusServiceUnavailable, Code: "unavailable",
+				Message: "La plataforma está arrancando; inténtalo en unos segundos", RetryAfter: 5})
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+// OnBoot añade algo que hacer al arrancar, con el esquema al día y tras la gracia de §2.5 (y antes
+// de que /ready dé 200 y las rutas respondan). Si falla, el arranque se reintenta entero, así que
+// tiene que poder repetirse.
+func (a *App) OnBoot(fn func(ctx context.Context) error) { a.hooks = append(a.hooks, fn) }
+
+// job es un trabajo periódico.
+type job struct {
+	name  string
+	every time.Duration
+	fn    func(ctx context.Context) error
+}
+
+// AddJob añade un trabajo periódico (§2.5): corre al terminar el arranque y después cada every,
+// con pg_try_advisory_lock para que nunca corra en dos procesos a la vez (si otro lo tiene, esa
+// vuelta se salta). Un error se registra y el trabajo sigue en la vuelta siguiente.
+func (a *App) AddJob(name string, every time.Duration, fn func(ctx context.Context) error) {
+	a.jobs = append(a.jobs, job{name: name, every: every, fn: fn})
+}
 
 // PublicHandler es la API pública con el registro de peticiones.
 func (a *App) PublicHandler() http.Handler { return httpx.Middleware(a.log, a.public) }
@@ -175,7 +215,18 @@ func (a *App) Serve(ctx context.Context) error {
 	bootDone := make(chan struct{})
 	go func() {
 		defer close(bootDone)
-		a.boot(bootCtx)
+		if !a.boot(bootCtx) {
+			return
+		}
+		var wg sync.WaitGroup
+		for _, j := range a.jobs {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				a.runJob(bootCtx, j)
+			}()
+		}
+		wg.Wait()
 	}()
 
 	var serveErr error
@@ -198,19 +249,19 @@ func (a *App) Serve(ctx context.Context) error {
 	return nil
 }
 
-// boot espera a que el esquema esté al día y hace el arranque. Registra cada motivo nuevo por el
-// que no puede arrancar, sin repetirlo en cada vuelta.
-func (a *App) boot(ctx context.Context) {
+// boot espera a que el esquema esté al día y hace el arranque; devuelve false si ctx se cancela
+// antes. Registra cada motivo nuevo por el que no puede arrancar, sin repetirlo en cada vuelta.
+func (a *App) boot(ctx context.Context) bool {
 	lastReason := ""
 	for {
 		err := a.tryBoot(ctx)
 		if err == nil {
 			a.started.Store(true)
 			a.log.Info("plataforma lista")
-			return
+			return true
 		}
 		if ctx.Err() != nil {
-			return
+			return false
 		}
 		if reason := err.Error(); reason != lastReason {
 			a.log.Error("la plataforma no puede arrancar todavía", "reason", reason)
@@ -218,7 +269,7 @@ func (a *App) boot(ctx context.Context) {
 		}
 		select {
 		case <-ctx.Done():
-			return
+			return false
 		case <-time.After(a.SchemaPoll):
 		}
 	}
@@ -230,7 +281,65 @@ func (a *App) tryBoot(ctx context.Context) error {
 	if err := a.runner.Check(checkCtx); err != nil {
 		return err
 	}
-	return a.startupGrace(ctx)
+	if err := a.startupGrace(ctx); err != nil {
+		return err
+	}
+	for _, hook := range a.hooks {
+		if err := hook(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// JobLockKey es la clave de pg_try_advisory_lock de un trabajo (distinta de la de migrate).
+func JobLockKey(name string) int64 {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte("eldmark-job:" + name))
+	return int64(h.Sum64())
+}
+
+func (a *App) runJob(ctx context.Context, j job) {
+	ticker := time.NewTicker(j.every)
+	defer ticker.Stop()
+	for {
+		a.runJobOnce(ctx, j)
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (a *App) runJobOnce(ctx context.Context, j job) {
+	ctx, cancel := context.WithTimeout(ctx, j.every)
+	defer cancel()
+	start := time.Now()
+	conn, err := a.pool.Acquire(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			a.log.Error("trabajo periódico sin conexión", "job", j.name, "err", err.Error())
+		}
+		return
+	}
+	defer conn.Release()
+	key := JobLockKey(j.name)
+	var got bool
+	if err := conn.QueryRow(ctx, `select pg_try_advisory_lock($1)`, key).Scan(&got); err != nil || !got {
+		if err != nil && ctx.Err() == nil {
+			a.log.Error("trabajo periódico sin bloqueo", "job", j.name, "err", err.Error())
+		}
+		return
+	}
+	defer func() {
+		_, _ = conn.Exec(context.WithoutCancel(ctx), `select pg_advisory_unlock($1)`, key)
+	}()
+	if err := j.fn(ctx); err != nil && ctx.Err() == nil {
+		a.log.Error("trabajo periódico con error", "job", j.name, "err", err.Error())
+		return
+	}
+	a.log.Debug("trabajo periódico", "job", j.name, "ms", float64(time.Since(start).Microseconds())/1000)
 }
 
 // startupGrace da a las zonas el margen de §2.5: una plataforma que vuelve tras caerse no da por

@@ -134,13 +134,18 @@ type Config struct {
 
 	Mail    Mail
 	SMTPURL *url.URL // secreto
+	// MailFrom es el remitente de los correos (ELDMARK_MAIL_FROM; por defecto
+	// no-reply@<máquina de ELDMARK_PUBLIC_URL>).
+	MailFrom string
 
 	TLSCertFile string
 	TLSKeyFile  string
 
 	Heartbeat time.Duration
 	LeaseTTL  time.Duration
-	LegalDir  string
+	// LegalDir es la carpeta de los textos legales (ELDMARK_LEGAL_DIR); vacía, los que van dentro
+	// del binario (platform/legal).
+	LegalDir string
 }
 
 // ResolveMinProtocol devuelve el protocolo mínimo: el de ELDMARK_MIN_PROTOCOL o, si no se dio
@@ -327,6 +332,7 @@ func Load(lookup Lookup) (*Config, error) {
 	c.RequireVerifiedEmail = l.boolean("ELDMARK_REQUIRE_VERIFIED_EMAIL", c.Env.Deployed())
 
 	c.Mail, c.SMTPURL = l.mail(c.Env)
+	c.MailFrom = l.mailFrom(c.PublicURL)
 	c.TLSCertFile, c.TLSKeyFile = l.tls()
 
 	c.Heartbeat = l.seconds("ELDMARK_HEARTBEAT_S", 5)
@@ -334,8 +340,10 @@ func Load(lookup Lookup) (*Config, error) {
 	if c.Heartbeat > 0 && c.LeaseTTL > 0 && c.LeaseTTL <= c.Heartbeat {
 		l.fail("ELDMARK_LEASE_TTL_S", "tiene que ser mayor que ELDMARK_HEARTBEAT_S (el latido renueva los arrendamientos antes de que caduquen)")
 	}
-	c.LegalDir = "platform/legal"
 	if v, ok := l.get("ELDMARK_LEGAL_DIR"); ok {
+		if st, err := os.Stat(v); err != nil || !st.IsDir() {
+			l.fail("ELDMARK_LEGAL_DIR", "%q no es una carpeta", v)
+		}
 		c.LegalDir = v
 	}
 
@@ -692,6 +700,26 @@ func (l *loader) mail(env Env) (Mail, *url.URL) {
 		return mode, nil
 	}
 	return mode, u
+}
+
+var mailFromPattern = regexp.MustCompile(`^[\x21-\x3f\x41-\x7e]+@[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$`)
+
+func (l *loader) mailFrom(public *url.URL) string {
+	v, ok := l.get("ELDMARK_MAIL_FROM")
+	if !ok {
+		host := "localhost"
+		if public != nil && public.Hostname() != "" {
+			if _, err := netip.ParseAddr(public.Hostname()); err != nil {
+				host = public.Hostname()
+			}
+		}
+		return "no-reply@" + host
+	}
+	if !mailFromPattern.MatchString(v) {
+		l.fail("ELDMARK_MAIL_FROM", "%q no es una dirección de correo (solo la dirección, sin nombre)", v)
+		return ""
+	}
+	return v
 }
 
 func (l *loader) tls() (string, string) {

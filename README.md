@@ -211,6 +211,11 @@ Las pruebas necesitan los binarios de PostgreSQL (`ELDMARK_PG_BIN`, `pg_config` 
 `/usr/lib/postgresql/*/bin`; si no hay, se saltan) o un servidor en `ELDMARK_TEST_DATABASE_URL`. Como root,
 `initdb` corre con `runuser -u postgres`, que tiene que poder entrar en `TMPDIR`.
 
+En desarrollo (`ELDMARK_MAIL=log`, por defecto) los correos de las cuentas no salen: van a la tabla
+`outbound_mail` y al registro con el enlace entero (`/verify`, `/reset` o `/revert` sobre `ELDMARK_PUBLIC_URL`).
+Los textos legales que se aceptan al registrarse son los borradores de `platform/legal/`, que van dentro del
+binario (`ELDMARK_LEGAL_DIR` los cambia por los de otra carpeta).
+
 ## Exportación (cliente Windows y servidor Linux)
 
 `export_presets.cfg` (en texto, versionado) define dos destinos, y `tools/export.sh` (Linux y macOS) o

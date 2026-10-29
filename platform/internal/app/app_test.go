@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -274,5 +276,90 @@ func TestListenFailsOnABusyPort(t *testing.T) {
 	}
 	if err := a.Listen(); err == nil || !strings.Contains(err.Error(), "ELDMARK_INTERNAL_ADDR") {
 		t.Fatalf("puerto ocupado: %v", err)
+	}
+}
+
+// Las rutas de los paquetes responden 503 hasta que el arranque termina; los ganchos de arranque
+// corren con el esquema al día y los trabajos periódicos, al terminar y después cada vuelta.
+func TestBootHooksJobsAndGate(t *testing.T) {
+	pool := testdb.NewEmpty(t)
+	a, logs := newApp(t, pool, migrate.FS())
+	a.HandlePublic("GET /v1/prueba", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) }))
+	var hookCalls, jobCalls atomic.Int32
+	a.OnBoot(func(ctx context.Context) error {
+		if hookCalls.Add(1) == 1 {
+			return errors.New("el primer intento falla")
+		}
+		return nil
+	})
+	jobRan := make(chan struct{}, 10)
+	a.AddJob("prueba", 30*time.Millisecond, func(ctx context.Context) error {
+		jobCalls.Add(1)
+		jobRan <- struct{}{}
+		return nil
+	})
+	serve(t, a)
+	status, body, header := get(t, a.PublicAddr(), "/v1/prueba")
+	if status != 503 || body["error"].(map[string]any)["code"] != "unavailable" || header.Get("Retry-After") == "" {
+		t.Fatalf("antes del arranque: %d %v", status, body)
+	}
+	if hookCalls.Load() != 0 {
+		t.Fatal("los ganchos esperan al esquema")
+	}
+	r, _ := migrate.New(pool, migrate.FS())
+	if _, err := r.Up(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	waitReady(t, a.PublicAddr())
+	resp, err := http.Get("http://" + a.PublicAddr() + "/v1/prueba")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 204 || hookCalls.Load() != 2 {
+		t.Fatalf("tras el arranque: %d, ganchos %d", resp.StatusCode, hookCalls.Load())
+	}
+	for i := 0; i < 2; i++ {
+		select {
+		case <-jobRan:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("el trabajo corre al arrancar y cada vuelta (%d)", jobCalls.Load())
+		}
+	}
+	if !strings.Contains(logs.String(), "el primer intento falla") {
+		t.Fatal("el fallo del gancho se registra")
+	}
+}
+
+// Un trabajo periódico no corre en dos procesos a la vez: si otro tiene el bloqueo, se salta.
+func TestJobsTakeTheAdvisoryLock(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, `select pg_advisory_lock($1)`, app.JobLockKey("bloqueado")); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := newApp(t, pool, migrate.FS())
+	var ran atomic.Int32
+	a.AddJob("bloqueado", 20*time.Millisecond, func(context.Context) error { ran.Add(1); return nil })
+	serve(t, a)
+	waitReady(t, a.PublicAddr())
+	time.Sleep(150 * time.Millisecond)
+	if ran.Load() != 0 {
+		t.Fatal("con el bloqueo en otro proceso, no corre")
+	}
+	if _, err := conn.Exec(ctx, `select pg_advisory_unlock($1)`, app.JobLockKey("bloqueado")); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for ran.Load() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("libre el bloqueo, corre")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

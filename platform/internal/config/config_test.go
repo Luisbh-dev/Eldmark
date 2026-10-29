@@ -104,8 +104,8 @@ func TestDefaultsInDev(t *testing.T) {
 	if c.RequireVerifiedEmail || c.Mail != MailLog || c.SMTPURL != nil {
 		t.Errorf("correo en dev: verificado %v, modo %s", c.RequireVerifiedEmail, c.Mail)
 	}
-	if c.Heartbeat != 5*time.Second || c.LeaseTTL != 30*time.Second || c.LegalDir != "platform/legal" {
-		t.Errorf("latido, TTL y textos legales: %s %s %s", c.Heartbeat, c.LeaseTTL, c.LegalDir)
+	if c.Heartbeat != 5*time.Second || c.LeaseTTL != 30*time.Second || c.LegalDir != "" || c.MailFrom != "no-reply@localhost" {
+		t.Errorf("latido, TTL, textos legales y remitente: %s %s %q %q", c.Heartbeat, c.LeaseTTL, c.LegalDir, c.MailFrom)
 	}
 	z := c.ZoneTokens[0]
 	if z.WorldID != 1 || z.ZoneID != "vado_gris" || z.Channel != 0 || z.Hash != sha256.Sum256([]byte("token-de-la-zona")) {
@@ -337,4 +337,27 @@ func TestRealmNames(t *testing.T) {
 	if _, ok := ParseRealm("Vardheim"); ok {
 		t.Error("los ids de texto van en minúsculas")
 	}
+}
+
+func TestMailFromAndLegalDir(t *testing.T) {
+	env := minimal()
+	env["ELDMARK_PUBLIC_URL"] = "https://eldmark.example"
+	if c := mustLoad(t, env); c.MailFrom != "no-reply@eldmark.example" {
+		t.Errorf("remitente por defecto: %q", c.MailFrom)
+	}
+	env["ELDMARK_MAIL_FROM"] = "cuentas@eldmark.example"
+	if c := mustLoad(t, env); c.MailFrom != "cuentas@eldmark.example" {
+		t.Errorf("remitente: %q", c.MailFrom)
+	}
+	for _, bad := range []string{"Eldmark <a@b.example>", "a@b.example\r\nBcc: c@d.example", "sin-arroba"} {
+		env["ELDMARK_MAIL_FROM"] = bad
+		mustFail(t, env, "ELDMARK_MAIL_FROM")
+	}
+	env = minimal()
+	env["ELDMARK_LEGAL_DIR"] = t.TempDir()
+	if c := mustLoad(t, env); c.LegalDir != env["ELDMARK_LEGAL_DIR"] {
+		t.Errorf("carpeta legal: %q", c.LegalDir)
+	}
+	env["ELDMARK_LEGAL_DIR"] = filepath.Join(t.TempDir(), "no-existe")
+	mustFail(t, env, "ELDMARK_LEGAL_DIR")
 }
