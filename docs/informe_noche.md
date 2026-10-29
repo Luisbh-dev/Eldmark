@@ -1,7 +1,9 @@
 # Informe de la sesión nocturna
 
 Sesión sin supervisión del 28 al 29 de octubre de 2026. Este archivo se actualiza en cada hito
-y está siempre en la rama más reciente.
+y está siempre en la rama más reciente (ahora `fase4-fuerte`; las ramas van encadenadas:
+`main` → `fase2-red` → `fase3-combate` → `fase4-fuerte`, y nada está fusionado en `main` salvo el
+backlog).
 
 ## Estado
 
@@ -9,8 +11,8 @@ y está siempre en la rama más reciente.
 |---|---|---|
 | Backlog (`docs/backlog.md`) | `main` | Hecho y subido |
 | Fase 2: red | `fase2-red` | Implementada (594 pruebas en verde, CI de GitHub en verde); revisión adversarial hecha y sus 19 hallazgos corregidos, cada uno con su prueba (656 pruebas en verde) |
-| Fase 3: combate | `fase3-combate` (desde `fase2-red`, que está fusionada dentro) | Diseño revisado (`docs/combate.md`); K1–K5 y el carril de audio, tema, ajustes, documento social y exportación integrados; revisión adversarial pendiente |
-| Fase 4: fuerte | (aún sin rama) | Diseño v2 revisado (`docs/fuerte.md`) |
+| Fase 3: combate | `fase3-combate` (desde `fase2-red`, que está fusionada dentro) | Diseño revisado (`docs/combate.md`); K1–K5 y el carril de audio, tema, ajustes, documento social y exportación integrados (1213 pruebas en verde); revisión adversarial en marcha |
+| Fase 4: fuerte | `fase4-fuerte` (desde `fase3-combate`) | Diseño v2 revisado (`docs/fuerte.md`); F0 (escena, capas, navmesh) y F1 (fortaleza pura) en marcha |
 
 ## Entorno (Linux)
 
