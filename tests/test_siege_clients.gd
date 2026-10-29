@@ -79,6 +79,9 @@ func test_swarm_bots_read_the_fort_from_object_states_break_the_gate_and_capture
 	config.zone_id = "vado_gris"
 	config.max_players = 8
 	config.no_dummies = true
+	# Sin los PNJ de F4: aquí se prueba solo cómo leen el fuerte los SwarmBot (con los Huecos en el patio
+	# pelearían en el círculo en vez de quedarse); el asedio con PNJ es de F6b.
+	config.no_npcs = true
 	_server = NetHarness.start_server(_server_viewport, config)
 	await wait_physics_frames(3)
 	if not assert_not_null(_server, "el servidor arranca sobre el Vado Gris"):

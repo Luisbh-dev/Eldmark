@@ -155,22 +155,22 @@ var _hold_move: Vector2 = Vector2.ZERO
 var _next_decision_tick: int = 0
 # SIEGE: el fuerte, las rutas y el reino del bot; la ruta que sigue y por qué punto va.
 var _siege: SiegeView = null
-var _routes: ApproachRoutes = null
-var _realm: int = 0
-var _route_id: StringName = &""
-var _route_chosen: bool = false
-var _route_points: PackedVector2Array = PackedVector2Array()
-var _route_index: int = 0
+var _siege_routes: ApproachRoutes = null
+var _siege_realm: int = 0
+var _siege_route_id: StringName = &""
+var _siege_route_chosen: bool = false
+var _siege_route_points: PackedVector2Array = PackedVector2Array()
+var _siege_route_index: int = 0
 var _siege_task: SiegeTask = SiegeTask.NONE
 # SIEGE: la última posición (para detectar una reaparición) y el estado del desatasco.
 var _siege_last_position: Vector3 = Vector3.ZERO
 var _siege_has_position: bool = false
-var _stuck_ref_position: Vector3 = Vector3.ZERO
-var _stuck_ref_tick: int = -1
-var _stuck_count: int = 0
-var _unstick: _Unstick = _Unstick.NONE
-var _unstick_start: int = 0
-var _unstick_until: int = -1
+var _siege_stuck_ref_position: Vector3 = Vector3.ZERO
+var _siege_stuck_ref_tick: int = -1
+var _siege_stuck_count: int = 0
+var _siege_unstick: _Unstick = _Unstick.NONE
+var _siege_unstick_start: int = 0
+var _siege_unstick_until: int = -1
 var _detour_sign: float = 1.0
 # SIEGE: el botón mantenido apunta a la puerta (y no a un enemigo).
 var _hold_aims_gate: bool = false
@@ -268,8 +268,8 @@ func set_idle_from(tick: int) -> void:
 ## puerta) y el reino del bot ([param realm], código de red). Reinicia la ruta.
 func set_siege(view: SiegeView, routes: ApproachRoutes, realm: int) -> void:
 	_siege = view
-	_routes = routes
-	_realm = realm
+	_siege_routes = routes
+	_siege_realm = realm
 	_reset_route()
 
 
@@ -286,13 +286,13 @@ func get_siege_view() -> SiegeView:
 ## Ruta que sigue un bot de [constant SIEGE] ([constant ApproachRoutes.BRIDGE] o
 ## [constant ApproachRoutes.FORD]); vacía mientras no ha elegido ninguna o si no hay rutas.
 func get_siege_route() -> StringName:
-	return _route_id
+	return _siege_route_id
 
 
 ## Índice del punto de la ruta que persigue un bot de [constant SIEGE] (el tamaño de la ruta si ya la ha
 ## recorrido entera).
 func get_siege_route_index() -> int:
-	return _route_index
+	return _siege_route_index
 
 
 ## Lo que hizo un bot de [constant SIEGE] en el último tick.
@@ -412,11 +412,11 @@ func _siege_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 	# 2. El plan: marchar, asaltar la puerta o quedarse en el círculo.
 	_ensure_route(position)
 	if _siege_inside_fort(position):
-		_route_index = _route_points.size()
-	if _route_index < _route_points.size():
+		_siege_route_index = _siege_route_points.size()
+	if _siege_route_index < _siege_route_points.size():
 		_siege_task = SiegeTask.MARCH
 		return _march_input(tick, position, yaw)
-	if _siege.is_gate_closed_for(_realm) and _siege_has_places():
+	if _siege.is_gate_closed_for(_siege_realm) and _siege_has_places():
 		_siege_task = SiegeTask.ASSAULT
 		return _assault_input(tick, position, yaw)
 	_siege_task = SiegeTask.HOLD
@@ -436,50 +436,50 @@ func _note_siege_position(position: Vector3) -> void:
 
 
 func _reset_route() -> void:
-	_route_id = &""
-	_route_chosen = false
-	_route_points = PackedVector2Array()
-	_route_index = 0
-	_stuck_count = 0
-	_unstick = _Unstick.NONE
-	_unstick_until = -1
-	_stuck_ref_tick = -1
+	_siege_route_id = &""
+	_siege_route_chosen = false
+	_siege_route_points = PackedVector2Array()
+	_siege_route_index = 0
+	_siege_stuck_count = 0
+	_siege_unstick = _Unstick.NONE
+	_siege_unstick_until = -1
+	_siege_stuck_ref_tick = -1
 
 
 # Elige la ruta (con el generador del bot) si aún no tiene ninguna, y por qué punto empieza.
 func _ensure_route(position: Vector3) -> void:
-	if _route_chosen:
+	if _siege_route_chosen:
 		return
-	_route_chosen = true
-	if _routes == null:
+	_siege_route_chosen = true
+	if _siege_routes == null:
 		return
-	var realm_id: StringName = RealmCatalog.id_of_code(_realm)
+	var realm_id: StringName = RealmCatalog.id_of_code(_siege_realm)
 	var candidates: Array[StringName] = []
-	for route: StringName in _routes.get_route_ids():
-		if _routes.has_route(route, realm_id):
+	for route: StringName in _siege_routes.get_route_ids():
+		if _siege_routes.has_route(route, realm_id):
 			candidates.append(route)
 	if candidates.is_empty():
 		return
-	_route_id = candidates[_rng.randi() % candidates.size()]
-	_route_points = _routes.get_points(_route_id, realm_id)
-	_route_index = maxi(_routes.get_nearest_index(_route_id, realm_id,
+	_siege_route_id = candidates[_rng.randi() % candidates.size()]
+	_siege_route_points = _siege_routes.get_points(_siege_route_id, realm_id)
+	_siege_route_index = maxi(_siege_routes.get_nearest_index(_siege_route_id, realm_id,
 			Vector2(position.x, position.z)), 0)
 
 
 # Marcha: hacia el punto de la ruta que toca, esprintando si queda lejos y no hay enemigos cerca.
 func _march_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
-	var target: Vector2 = _route_points[_route_index]
+	var target: Vector2 = _siege_route_points[_siege_route_index]
 	var to_target := Vector3(target.x - position.x, 0.0, target.y - position.z)
 	var distance: float = to_target.length()
 	if distance > SIEGE_LOST_DISTANCE:
 		# Se ha ido muy lejos de la ruta (una pelea, una caída): retoma por el punto más cercano.
-		_route_index = maxi(_routes.get_nearest_index(_route_id,
-				RealmCatalog.id_of_code(_realm), Vector2(position.x, position.z)), 0)
-		target = _route_points[_route_index]
+		_siege_route_index = maxi(_siege_routes.get_nearest_index(_siege_route_id,
+				RealmCatalog.id_of_code(_siege_realm), Vector2(position.x, position.z)), 0)
+		target = _siege_route_points[_siege_route_index]
 		to_target = Vector3(target.x - position.x, 0.0, target.y - position.z)
 		distance = to_target.length()
 	if distance <= SIEGE_WAYPOINT_RADIUS:
-		_route_index += 1
+		_siege_route_index += 1
 	return _walk_input(tick, position, yaw, to_target, distance)
 
 
@@ -585,50 +585,50 @@ func _enemies_clear(position: Vector3) -> bool:
 # Si lleva SIEGE_STUCK_TICKS caminando sin avanzar, prueba un salto y, si sigue igual, un desvío lateral
 # (y vuelta a empezar); modifica [param input] mientras dura el intento.
 func _apply_unstick(tick: int, position: Vector3, input: PlayerInput) -> void:
-	if tick < _unstick_until:
-		match _unstick:
+	if tick < _siege_unstick_until:
+		match _siege_unstick:
 			_Unstick.JUMP:
-				if (tick - _unstick_start) % SIEGE_JUMP_PULSE_TICKS < JUMP_HOLD_TICKS.x:
+				if (tick - _siege_unstick_start) % SIEGE_JUMP_PULSE_TICKS < JUMP_HOLD_TICKS.x:
 					input.buttons |= PlayerInput.JUMP
 			_Unstick.DETOUR:
 				input.look_yaw = fposmod(input.look_yaw + _detour_sign * SIEGE_DETOUR_ANGLE, TAU)
 		return
-	if _stuck_ref_tick < 0 or _unstick != _Unstick.NONE:
+	if _siege_stuck_ref_tick < 0 or _siege_unstick != _Unstick.NONE:
 		# Un intento que acaba cuenta desde cero.
-		_unstick = _Unstick.NONE
-		_stuck_ref_position = position
-		_stuck_ref_tick = tick
+		_siege_unstick = _Unstick.NONE
+		_siege_stuck_ref_position = position
+		_siege_stuck_ref_tick = tick
 		return
-	if tick - _stuck_ref_tick < SIEGE_STUCK_TICKS:
+	if tick - _siege_stuck_ref_tick < SIEGE_STUCK_TICKS:
 		return
-	var moved: float = Vector2(position.x - _stuck_ref_position.x,
-			position.z - _stuck_ref_position.z).length()
-	_stuck_ref_position = position
-	_stuck_ref_tick = tick
+	var moved: float = Vector2(position.x - _siege_stuck_ref_position.x,
+			position.z - _siege_stuck_ref_position.z).length()
+	_siege_stuck_ref_position = position
+	_siege_stuck_ref_tick = tick
 	if moved >= SIEGE_STUCK_MIN_PROGRESS:
-		_stuck_count = 0
+		_siege_stuck_count = 0
 		return
-	_stuck_count += 1
-	_unstick_start = tick
-	if _stuck_count % 2 == 1:
-		_unstick = _Unstick.JUMP
-		_unstick_until = tick + SIEGE_JUMP_WINDOW_TICKS
-		if (tick - _unstick_start) % SIEGE_JUMP_PULSE_TICKS < JUMP_HOLD_TICKS.x:
+	_siege_stuck_count += 1
+	_siege_unstick_start = tick
+	if _siege_stuck_count % 2 == 1:
+		_siege_unstick = _Unstick.JUMP
+		_siege_unstick_until = tick + SIEGE_JUMP_WINDOW_TICKS
+		if (tick - _siege_unstick_start) % SIEGE_JUMP_PULSE_TICKS < JUMP_HOLD_TICKS.x:
 			input.buttons |= PlayerInput.JUMP
 	else:
-		_unstick = _Unstick.DETOUR
-		_unstick_until = tick + SIEGE_DETOUR_TICKS
+		_siege_unstick = _Unstick.DETOUR
+		_siege_unstick_until = tick + SIEGE_DETOUR_TICKS
 		_detour_sign = 1.0 if _rng.randi() % 2 == 0 else -1.0
 		input.look_yaw = fposmod(input.look_yaw + _detour_sign * SIEGE_DETOUR_ANGLE, TAU)
 
 
 # Lo que no es caminar (pelear, golpear la puerta, esperar en el círculo) no es estar atascado.
 func _reset_stuck(tick: int, position: Vector3) -> void:
-	_stuck_count = 0
-	_unstick = _Unstick.NONE
-	_unstick_until = -1
-	_stuck_ref_position = position
-	_stuck_ref_tick = tick
+	_siege_stuck_count = 0
+	_siege_unstick = _Unstick.NONE
+	_siege_unstick_until = -1
+	_siege_stuck_ref_position = position
+	_siege_stuck_ref_tick = tick
 
 
 # true si hay posiciones de la puerta y del círculo (sin ellas el bot solo sigue su ruta).
@@ -661,7 +661,7 @@ func _siege_inward() -> Vector3:
 
 # true si el bot puede llegar hasta [param target]: no está al otro lado de una puerta que le cierra el paso.
 func _can_reach(position: Vector3, target: Vector3) -> bool:
-	if not _siege.is_gate_closed_for(_realm) or not _siege_has_places():
+	if not _siege.is_gate_closed_for(_siege_realm) or not _siege_has_places():
 		return true
 	var inward: Vector3 = _siege_inward()
 	if inward == Vector3.ZERO:

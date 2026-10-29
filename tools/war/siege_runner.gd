@@ -42,8 +42,10 @@ var _running: bool = false
 
 
 ## Carga la zona, arranca el servidor y lo deja listo (sin avanzar). [param battle_log_path] activa el
-## [code]--battle-log[/code] del servidor. Devuelve false si no ha podido.
-func start(parent: Node, battle_log_path: String = "", max_players: int = 256) -> bool:
+## [code]--battle-log[/code] del servidor. Sin [param with_npcs] el servidor arranca con
+## [code]--no-npcs[/code] (sin Huecos, Capitán ni Guardianes: el asedio de F6a, medido así); con él, los PNJ
+## de la zona (F4) defienden el fuerte (F6b). Devuelve false si no ha podido.
+func start(parent: Node, battle_log_path: String = "", max_players: int = 256, with_npcs: bool = false) -> bool:
 	var packed: PackedScene = load(NetZones.scene_path(ZONE_ID)) as PackedScene
 	if packed == null:
 		return false
@@ -62,6 +64,7 @@ func start(parent: Node, battle_log_path: String = "", max_players: int = 256) -
 	config.zone_id = ZONE_ID
 	config.max_players = max_players
 	config.no_dummies = true
+	config.no_npcs = not with_npcs
 	config.battle_log_path = battle_log_path
 	if server.start(config, world, null, DevAuthProvider.new()) != OK:
 		return false
