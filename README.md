@@ -189,6 +189,57 @@ inesperado para el estado de la sesión o por encima del ritmo, y expulsa con un
 suma 50 avisos en 600 ticks; además admite como mucho `--max-per-ip` conexiones por IP (salvo
 desde loopback).
 
+## Exportación (cliente Windows y servidor Linux)
+
+`export_presets.cfg` (en texto, versionado) define dos destinos, y `tools/export.sh` (Linux y macOS) o
+`tools/export.ps1` (Windows) los exportan a `exports/` (que no se versiona):
+
+| Preset | Plataforma | Salida | Qué lleva |
+|---|---|---|---|
+| `Cliente Windows` | Windows x86_64 | `exports/windows/Eldmark.exe` (más `Eldmark.pck` y la DLL de Terrain3D) | Todos los recursos; el .pck va aparte del ejecutable |
+| `Servidor Linux` | Linux x86_64, servidor dedicado | `exports/server/eldmark-server.x86_64` (más su .pck y el `.so` de Terrain3D) y `run-server.sh` | Los modelos, materiales, audio y animaciones recortados («strip»: sin la capa visual, pero la escena sigue cargando); las texturas del terreno se conservan porque Terrain3D las valida |
+
+Los dos dejan fuera `build/`, `docs/`, `tests/`, `tools/`, `exports/`, `.github/` y `scenes/tests/`, y
+conservan las licencias de los addons y `assets/LICENCIAS.md` (la MIT las exige).
+
+**Pasos (una vez, en tu máquina):**
+
+1. Instala las **plantillas de exportación 4.7.2** (no vienen con el editor): abre Godot 4.7.2, menú
+   *Editor > Administrar plantillas de exportación > Descargar e instalar*, o descarga
+   `Godot_v4.7.2-stable_export_templates.tpz` de la página de la versión y usa *Instalar desde archivo*.
+   Quedan en `%APPDATA%\Godot\export_templates\4.7.2.stable` (Windows) o
+   `~/.local/share/godot/export_templates/4.7.2.stable` (Linux). Sin ellas el script se detiene y lo dice.
+2. Baja los objetos de Git LFS (`git lfs pull`): el terreno y las texturas van por LFS y el script se
+   niega a exportar si son punteros.
+3. Exporta:
+
+```bash
+tools/export.sh                  # los dos destinos
+tools/export.sh server --zip     # solo el servidor, y lo comprime
+tools/export.sh --pack-only      # solo los .pck: NO necesita las plantillas (para comprobar filtros y recorte)
+tools/export.sh --dry-run        # muestra lo que haría
+```
+
+```powershell
+tools\export.ps1                 # equivalente en Windows: -Target client|server|all, -DebugBuild, -PackOnly, -Zip, -DryRun
+```
+
+El servidor exportado se lanza con `./run-server.sh --zone=vado_gris --port=24600` (el lanzador pone
+`--headless`: un servidor exportado sin pantalla necesita esa opción; después van las del servidor de
+la sección anterior). El identificador de la compilación (`git describe`) se guarda en `BUILD_ID` junto
+a lo exportado.
+
+**Estado de TEC-12.** Hecho y comprobado aquí: los presets (`godot --export-pack` de los dos funciona y
+sus filtros están probados en `tests/test_export_config.gd`, que exporta el paquete del servidor en un
+proceso aparte) y un servidor emulado (el binario del editor con el .pck exportado y el `.so` de
+Terrain3D al lado) que carga el Vado Gris y simula 180 ticks sin errores. Sin hacer, porque necesita las
+plantillas o una máquina Windows: exportar el ejecutable de verdad, el `--bot` de Windows contra el
+servidor Linux y medir con `--state-log` las diferencias de último bit entre las dos plataformas; el
+identificador de compilación visible en el cliente y en el informe del servidor; y el trabajo de CI por
+etiqueta que publica los artefactos (descargaría las plantillas en el trabajo; falta fijar la
+distribución). La exportación a Windows desde Linux solo da el ejecutable sin icono ni
+metadatos (`application/modify_resources=false`: no se depende de `rcedit`).
+
 ## Cliente en red
 
 Con un servidor ya arrancado, `--connect` conecta con él; la zona la dicta el servidor. Un bot es el
