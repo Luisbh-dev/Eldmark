@@ -26,6 +26,10 @@ extends CanvasLayer
 ## [br][br]
 ## [b]Marcador (UI-41).[/b] Mientras se mantiene Tab, el [ScoreboardPanel] (el último hijo, por encima de todo)
 ## enseña la tabla de la zona; el registro de bajas ([KillFeed]) vive en la interfaz de guerra.
+## [br][br]
+## [b]Chat (SOC-05).[/b] En red, la [ChatBox] abajo a la izquierda enseña los mensajes de [signal
+## NetClient.chat_received] y los NOTICE; Intro abre su línea y suspende el movimiento y la cámara mientras se
+## escribe.
 
 ## Cada cuánto se refresca el texto del panel de depuración, en segundos.
 ## Refrescarlo cada frame hace que las cifras parpadeen y sean ilegibles.
@@ -36,6 +40,7 @@ const DEAD_DIM_ALPHA: float = 0.3
 const NET_HINTS_EXTRA: Array[Dictionary] = [
 	{"action": &"open_map", "text": "Mapa"},
 	{"action": &"scoreboard", "text": "Marcador"},
+	{"action": &"chat_open", "text": "Chat"},
 ]
 
 var _character: PlayerCharacter = null
@@ -56,6 +61,8 @@ var _war_hud: WarHud = null
 # Mapa a pantalla completa y marcador (por encima de la pantalla de muerte); null en el sandbox.
 var _world_map: WorldMap = null
 var _scoreboard: ScoreboardPanel = null
+# Caja de chat (SOC-05); null en el sandbox.
+var _chat: ChatBox = null
 # Lo que enseña ahora la lista de reaparición de la pantalla de muerte (para saber si cambió).
 var _death_signature: String = ""
 
@@ -122,6 +129,7 @@ func bind_net(client: NetClient, world: Node) -> void:
 		_setup_war_hud()
 		_setup_world_map()
 		_setup_scoreboard()
+		_setup_chat()
 		var hints: Array[Dictionary] = UIHintBar.DEFAULT_HINTS.duplicate()
 		hints.append_array(NET_HINTS_EXTRA)
 		_hint.set_hints(hints)
@@ -214,6 +222,11 @@ func get_scoreboard() -> ScoreboardPanel:
 	return _scoreboard
 
 
+## Caja de chat (null sin red).
+func get_chat() -> ChatBox:
+	return _chat
+
+
 ## Reparto de la sensación de combate (null hasta [method bind]).
 func get_feedback() -> CombatFeedback:
 	return _feedback
@@ -276,6 +289,19 @@ func _setup_scoreboard() -> void:
 	_scoreboard.name = "Scoreboard"
 	add_child(_scoreboard)
 	_scoreboard.bind(_client)
+
+
+# Crea (de nuevo, si ya había una) la caja de chat: por debajo de la pantalla de muerte, que es el último hijo
+# (y del marcador y el mapa, que van encima de todo).
+func _setup_chat() -> void:
+	if is_instance_valid(_chat):
+		remove_child(_chat)
+		_chat.free()
+	_chat = ChatBox.new()
+	_chat.name = "Chat"
+	add_child(_chat)
+	move_child(_chat, _death.get_index())
+	_chat.bind(_client, _camera_rig, _client.get_controller())
 
 
 # --- Vida y resistencia -----------------------------------------------------------------------

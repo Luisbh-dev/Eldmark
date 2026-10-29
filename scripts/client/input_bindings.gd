@@ -51,6 +51,7 @@ static func ensure_defaults() -> void:
 	_ensure_key(&"map_zoom_in", KEY_EQUAL)
 	_ensure_key(&"map_zoom_out", KEY_MINUS)
 	_ensure_key(&"scoreboard", KEY_TAB)
+	_ensure_keys(&"chat_open", [KEY_ENTER, KEY_KP_ENTER])
 
 
 static func _ensure_key(action: StringName, physical_keycode: Key) -> void:
@@ -61,6 +62,18 @@ static func _ensure_key(action: StringName, physical_keycode: Key) -> void:
 	event.physical_keycode = physical_keycode
 	InputMap.add_action(action)
 	InputMap.action_add_event(action, event)
+
+
+## Como [method _ensure_key], con varias teclas físicas para la misma acción.
+static func _ensure_keys(action: StringName, physical_keycodes: Array[Key]) -> void:
+	if InputMap.has_action(action):
+		return
+	InputMap.add_action(action)
+	for physical_keycode: Key in physical_keycodes:
+		var event: InputEventKey = InputEventKey.new()
+		event.device = ALL_DEVICES
+		event.physical_keycode = physical_keycode
+		InputMap.action_add_event(action, event)
 
 
 static func _ensure_mouse_button(action: StringName, button: MouseButton) -> void:

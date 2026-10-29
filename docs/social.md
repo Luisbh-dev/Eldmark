@@ -348,3 +348,72 @@ cuántos acabaron en cada resultado.
 `test_chat_loopback` (8, con ENet real: dos bots de un reino y uno del otro; el del otro reino no recibe
 ningún CHAT_MESSAGE ni ningún paquete cuyos bytes contengan el texto de los demás, en los cuatro canales y
 con el enemigo a 3 m del emisor).
+
+### 12.3 Caja de chat y comandos (SOC-05)
+
+`scripts/client/chat/` (solo cliente); la caja cuelga del `HUD` en red, abajo a la izquierda, por debajo de la
+pantalla de muerte. Una vista previa sin servidor para probarla a mano o sacar capturas está en
+`scenes/tests/chat_preview.tscn`:
+
+```
+godot --path . res://scenes/tests/chat_preview.tscn
+xvfb-run -a godot --path . res://scenes/tests/chat_preview.tscn --resolution 1600x900 -- --shots=/ruta/absoluta/build/chat
+```
+
+(`--headless` no sirve para las capturas: el renderizador falso no dibuja. Con `xvfb-run`, Mesa llvmpipe sí.)
+La captura de demo con mensajes de todos los canales, la línea abierta con un comando a medio escribir y la
+pestaña de susurros es [capturas/chat_demo.png](capturas/chat_demo.png).
+
+| Pieza | Qué hace |
+|---|---|
+| `ChatBox` | Pestañas, registro y línea; abrir, cerrar, enviar, desvanecer |
+| `ChatCommandParser` | Decide si la línea es texto o comando y cuál (puro, solo texto) |
+| `ChatLog` | Últimas 200 líneas con lo necesario para pintarlas y filtrarlas |
+| `ChatStyle` | Color de cada canal y composición de una línea («Ana te susurra: …») |
+| `ChatInputHistory` | Historial de lo enviado, 50 líneas, para flecha arriba y abajo |
+
+**Teclas.** Intro (acción `chat_open`, también el Intro del teclado numérico) abre la línea; escribir `/` la
+abre ya con la barra (se mira el carácter, no la tecla, así vale en cualquier distribución); Esc la cierra sin
+enviar; Intro envía y cierra; flecha arriba y abajo recorren el historial; perder el foco (un clic fuera)
+también la cierra. No se abre si otra ventana (ajustes, mapa, pantalla de muerte) tiene el cursor.
+
+**Entrada suspendida.** Mientras la línea está abierta la caja pide el cursor libre a la cámara
+(`CameraRig.set_ui_cursor_release`, como las ventanas), con lo que la cámara no gira y los clics no atacan, y
+suspende la entrada de juego en `LocalPlayerController.set_input_blocked`: la entrada del dispositivo sale
+neutra (sin movimiento ni botones) aunque se teclee W. **Hallazgo:** las ventanas de la interfaz (ajustes F10,
+mapa) solo liberaban el cursor, no el movimiento: seguir caminando con W al abrirlas era posible. Para escribir
+no vale, así que el bloqueo es un mecanismo nuevo por solicitante (id de instancia), igual que el del cursor;
+las ventanas pueden pedirlo cuando se quiera.
+
+**Comandos de la fase 4** (sin distinguir mayúsculas ni tildes; `/ayuda` los lista desde la tabla
+`ChatCommandParser.COMMANDS`):
+
+| Comando | Efecto |
+|---|---|
+| `/d` `/decir` `[texto]` | Decir. Con texto lo envía por ahí sin cambiar el canal activo; sin texto, lo deja activo |
+| `/z` `/zona` `[texto]` | Zona (igual) |
+| `/g` `/grupo` `[texto]` | Grupo (igual) |
+| `/s` `/susurrar` `nombre [texto]` | Susurro. Sin texto deja «susurro a nombre» como canal activo; sin nombre, «Uso: /s nombre [texto]» |
+| `/r` `/responder` `[texto]` | Susurro al último interlocutor (copia de un susurro propio o susurro recibido) |
+| `/ayuda` `[comando]` | La lista de comandos o el detalle de uno |
+| `/invitar` `/salir` `/expulsar` `/lider` | Grupos (se entregan a `ChatBox.party_handler`; ver 12.5) |
+
+Cualquier otro (`/b`, `/gr`, `/reino`, `/gm`, `/amigo`...) contesta «Comando desconocido. Escribe /ayuda.»,
+también los de fases futuras: no se avisa de que existen. Los nombres de más de 16 letras no pueden existir
+(`NameRules`) y se rechazan en local.
+
+**Qué se ve.** Pestañas Todo, Decir, Zona, Grupo, Susurros y Sistema. Cada canal tiene su color propio (el
+sistema, amarillo pálido; los GM, cian) y el nombre del emisor va con el color de su reino. Los NOTICE del
+servidor salen en el canal del sistema, igual que los avisos locales (ayuda, errores de un comando).
+**El texto de otros jugadores se pinta con `RichTextLabel.add_text`**: nunca se interpreta BBCode, aunque el
+servidor lo deje pasar (la prueba pasa `[b]`, `[color]`, `[url]`, `[img]` y `[font_size]` y comprueba que se ve
+literal). Cerrada, la caja se desvanece 8 s después del último mensaje (fundido de 2 s) y vuelve con el
+siguiente; abierta, no se desvanece.
+
+**Decisiones.** `/r` lo resuelve el cliente (12.2); Intro cierra la línea al enviar (como New World), y para
+seguir hablando por un canal está el canal activo; el texto se sanea en el cliente con `ChatText` antes de
+enviarlo (el servidor lo vuelve a sanear) y un texto vacío tras sanear no se envía.
+
+**Pendiente del usuario.** Colores de los canales, medidas de la caja (560 x 236, abajo a la izquierda),
+tiempos de desvanecimiento y los textos de los avisos son provisionales (ART-12); también si la caja debe
+atenuarse con la pantalla de muerte (hoy no) y qué tecla debe abrir el chat en el menú de controles.
