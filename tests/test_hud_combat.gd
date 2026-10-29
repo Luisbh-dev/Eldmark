@@ -667,3 +667,15 @@ func _remote_spawn(net_id: int, display_name: String) -> NetMessages.EntitySpawn
 	state.grounded = true
 	spawn.state = state
 	return spawn
+
+
+func test_hud_marks_damaged_entities_for_the_nameplates() -> void:
+	var h: HudRig = _make_hud()
+	var plates: Nameplates = h.hud.get_nameplates()
+	assert_not_null(plates)
+	assert_false(plates.was_damaged_recently(OTHER_ID))
+	# Un golpe de un tercero a otro jugador: sus placas enseñan la barra de vida unos segundos.
+	h.hud.get_feedback().handle_event(NetMessages.EntityEvent.hit(OTHER_ID, 10, 33, 80, 0, 0, 2),
+			false)
+	assert_true(plates.was_damaged_recently(OTHER_ID), "el daño a otro marca su placa")
+	assert_false(plates.was_damaged_recently(33), "y no la del atacante")

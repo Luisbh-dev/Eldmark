@@ -8,6 +8,7 @@
 [ext_resource type="Script" path="res://scripts/client/hit_marker.gd" id="6_hitm"]
 [ext_resource type="Script" path="res://scripts/client/vitals_hud.gd" id="7_vita"]
 [ext_resource type="Script" path="res://scripts/client/death_screen.gd" id="8_deth"]
+[ext_resource type="Script" path="res://scripts/client/nameplates.gd" id="9_plat"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_dbgpnl"]
 content_margin_left = 10.0
@@ -25,6 +26,16 @@ font_names = PackedStringArray("Consolas", "Cascadia Mono", "DejaVu Sans Mono", 
 
 [node name="HUD" type="CanvasLayer"]
 script = ExtResource("1_hud")
+
+[node name="Nameplates" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("9_plat")
 
 [node name="Vignette" type="TextureRect" parent="."]
 visible = false

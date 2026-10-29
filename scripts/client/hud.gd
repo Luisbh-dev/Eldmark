@@ -1,8 +1,8 @@
 class_name HUD
 extends CanvasLayer
 ## Interfaz del jugador: punto de mira, vida y resistencia, marcador de impacto y números de daño,
-## arcos de dirección del daño, viñeta de vida baja, pantalla de muerte, panel de depuración y
-## ayuda de controles.
+## arcos de dirección del daño, viñeta de vida baja, placas de nombre de los remotos, pantalla de
+## muerte, panel de depuración y ayuda de controles.
 ## [br][br]
 ## Solo cliente. Lee el estado del personaje, de la cámara y (en red) del [NetClient] cada
 ## fotograma, pero nunca modifica la simulación. Se conecta con [method bind] (sandbox y cliente en
@@ -38,6 +38,7 @@ var _death_attack_id: int = 0
 var _respawn_event_tick: int = 0
 var _dimmed: bool = false
 
+@onready var _nameplates: Nameplates = $Nameplates
 @onready var _crosshair: Crosshair = $Crosshair
 @onready var _vitals: VitalsHud = $Vitals
 @onready var _vignette: LowHealthVignette = $Vignette
@@ -91,6 +92,7 @@ func bind_net(client: NetClient, world: Node) -> void:
 	if is_node_ready():
 		_vitals.set_health_visible(true)
 		_setup_feedback()
+		_nameplates.setup(_client.get_remote_world(), _camera_rig, _client.get_config().realm)
 
 
 func _process(delta: float) -> void:
@@ -160,6 +162,11 @@ func get_damage_numbers() -> DamageNumbers:
 	return _numbers
 
 
+## Placas de nombre y vida de los remotos.
+func get_nameplates() -> Nameplates:
+	return _nameplates
+
+
 ## Reparto de la sensación de combate (null hasta [method bind]).
 func get_feedback() -> CombatFeedback:
 	return _feedback
@@ -179,6 +186,7 @@ func _setup_feedback() -> void:
 		_feedback = CombatFeedback.new()
 		add_child(_feedback)
 		_feedback.damage_taken.connect(_on_damage_taken)
+		_feedback.entity_damaged.connect(_nameplates.mark_damaged)
 		_feedback.local_died.connect(_on_local_died)
 		_feedback.local_respawned.connect(_on_local_respawned)
 	_feedback.setup(_client, _camera_rig, _character, _marker, _numbers)
@@ -293,7 +301,7 @@ func _on_respawn_requested(point_index: int) -> void:
 func _set_dimmed(dim: bool) -> void:
 	_dimmed = dim
 	var alpha: float = DEAD_DIM_ALPHA if dim else 1.0
-	for item: CanvasItem in [_vitals, _crosshair, _hint, _numbers, _marker, _indicator]:
+	for item: CanvasItem in [_vitals, _crosshair, _hint, _numbers, _marker, _indicator, _nameplates]:
 		item.modulate.a = alpha
 
 
