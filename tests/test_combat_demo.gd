@@ -5,6 +5,8 @@ extends TestCase
 ## Gris) lo incluyen sin cambiar el resto de su recorrido.
 
 const START_TICK: int = 1000
+## Tiempo máximo de espera a la demo como proceso (la del circuito de pruebas dura unos 14 s; la prueba, menos de 30).
+const PROCESS_MAX_WAIT_SECONDS: float = 25.0
 const Action = CombatState.Action
 
 
@@ -168,3 +170,33 @@ func test_route_demo_presses_the_scripted_buttons_during_the_combat_step() -> vo
 	assert_true(demo.is_finished(script.get_length() + 5), "y acaba")
 	tree.root.remove_child(character)
 	character.free()
+
+
+# --- Demo como proceso aparte -----------------------------------------------------------------
+
+## La demo del circuito de pruebas en un cliente sin ventana ([code]--demo --quit-after-demo[/code]) termina
+## sola con código 0 y sin errores, y el personaje recorre de verdad el combo, el fuerte cargado, el
+## bloqueo y la esquiva (la línea «acciones de combate» sale de las acciones que vio el cliente).
+func test_the_headless_demo_runs_the_combat_without_errors_and_quits_by_itself() -> void:
+	var log_name: String = "test_combat_demo_process"
+	var log_path: String = NetHarness.build_path("%s.log" % log_name)
+	DirAccess.remove_absolute(log_path)
+	var pid: int = NetHarness.launch_process(PackedStringArray([
+		"--zone=test_world", "--demo", "--quit-after-demo"]), log_name)
+	if not assert_true(pid > 0, "el proceso del cliente se lanza"):
+		return
+	var deadline: int = Time.get_ticks_msec() + int(PROCESS_MAX_WAIT_SECONDS * 1000.0)
+	while OS.is_process_running(pid) and Time.get_ticks_msec() < deadline:
+		await tree.create_timer(0.1).timeout
+	if OS.is_process_running(pid):
+		OS.kill(pid)
+		fail("la demo no terminó en %d s" % int(PROCESS_MAX_WAIT_SECONDS))
+		return
+	assert_eq(OS.get_process_exit_code(pid), 0, "código de salida 0")
+	assert_eq(NetHarness.error_lines(log_path), PackedStringArray(), "sin errores en el registro")
+	var log_text: String = FileAccess.get_file_as_string(log_path)
+	var length: int = DemoInput.new().get_length()
+	assert_true(log_text.contains("Demo terminada (tick %d)" % length),
+			"termina en el tick %d del guion" % length)
+	assert_true(log_text.contains("Demo, acciones de combate: LIGHT x4, CHARGE x1, HEAVY x1, BLOCK x1, DODGE x1"),
+			"y recorre el combo, la carga, el fuerte, el bloqueo y la esquiva")

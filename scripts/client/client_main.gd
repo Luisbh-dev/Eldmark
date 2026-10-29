@@ -48,6 +48,11 @@ var _shots_enabled: bool = false
 var _shot_index: int = 0
 var _pending_shots: int = 0
 var _demo_finished: bool = false
+## Veces que el personaje entró en cada acción de combate durante la demo
+## ([code]CombatState.Action[/code] -> veces; un ligero con otro ataque del combo cuenta como entrada nueva).
+var _demo_actions: Dictionary = {}
+## Última pareja (acción, ataque) vista durante la demo.
+var _demo_last_action: Vector2i = Vector2i(CombatState.Action.NONE, 0)
 
 
 ## Yaw (misma convención que [member Node3D.rotation].y) hacia el que mira una
@@ -200,6 +205,7 @@ func _start_demo() -> void:
 
 
 func _on_demo_input_generated(input: PlayerInput) -> void:
+	_note_demo_action()
 	# Tras la demo ya no se hacen capturas periódicas (las de revisión usan su propia cámara).
 	if _shots_enabled and not _demo_finished and input.tick % SHOT_INTERVAL_TICKS == 0:
 		_save_screenshot(_shot_index)
@@ -207,6 +213,25 @@ func _on_demo_input_generated(input: PlayerInput) -> void:
 	if not _demo_finished and _demo.is_finished(input.tick):
 		_demo_finished = true
 		_finish_demo()
+
+
+## Anota la acción de combate en la que está el personaje (la del tick anterior) si es una entrada nueva.
+func _note_demo_action() -> void:
+	var current := Vector2i(_character.combat.action, _character.combat.action_id)
+	if current == _demo_last_action:
+		return
+	_demo_last_action = current
+	if current.x != CombatState.Action.NONE:
+		_demo_actions[current.x] = int(_demo_actions.get(current.x, 0)) + 1
+
+
+## Resumen de las acciones de combate de la demo, en el orden en que entró en cada una:
+## «LIGHT x4, CHARGE x1, HEAVY x1, BLOCK x1, DODGE x1». Vacío si no hubo combate.
+func _demo_actions_summary() -> String:
+	var parts := PackedStringArray()
+	for action: int in _demo_actions:
+		parts.append("%s x%d" % [CombatState.Action.keys()[action], _demo_actions[action]])
+	return ", ".join(parts)
 
 
 ## Espera a que se dibuje el fotograma y guarda el contenido del viewport. Con la
@@ -236,6 +261,9 @@ func _save_viewport_png(path: String) -> void:
 
 
 func _finish_demo() -> void:
+	var actions: String = _demo_actions_summary()
+	if not actions.is_empty():
+		print("[Eldmark] Demo, acciones de combate: %s" % actions)
 	print("[Eldmark] Demo terminada (tick %d)" % _controller.get_tick())
 	if _shots_enabled:
 		await _capture_review_points()

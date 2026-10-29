@@ -91,7 +91,10 @@ Opciones de arranque (van después de `--`):
   Vado Gris recorre la ruta del puente de su reino: sale del campamento, esprinta con un salto
   por la calzada, cruza el puente, salta dos veces al pie del fuerte, da un paso lateral, rodea
   la empalizada hasta la puerta (frente al vado) y la cámara da una vuelta completa. En
-  `test_world` es el guion fijo de la fase 1.
+  `test_world` es el guion fijo de la fase 1. Los dos acaban con un combate de unos 5 s (combo de tres
+  ligeros, fuerte cargado, bloqueo y esquiva) y la demo escribe al terminar las acciones que recorrió
+  el personaje («Demo, acciones de combate: LIGHT x4, CHARGE x1, HEAVY x1, BLOCK x1, DODGE x1»; el
+  cuarto ligero es la pulsación que se convierte en la carga).
 - `--shots=<carpeta absoluta>`: durante la demo guarda `shot_000.png`, `shot_001.png`...
   y, al terminar, una captura sin HUD desde cada cámara de revisión de la zona
   (`zona_<nombre>.png`, marcadores del grupo `screenshot_points`). Necesita ventana; en modo

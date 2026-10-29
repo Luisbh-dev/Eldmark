@@ -713,3 +713,12 @@ Cerrado durante K5 (integración):
   128 el servidor ya no sostiene el tiempo real y rechaza el rebobinado a los honrados. El coste de
   combate es lineal (unos 0,14 golpes por segundo y combatiente) y no es el cuello: lo es
   `simulate()`.
+- **Demo del sandbox (CMB-06)**: `--demo --quit-after-demo` en un cliente sin ventana termina solo con
+  código 0 y sin errores en test_world (803 ticks) y en el Vado Gris (2049 ticks). `ClientMain` anota las
+  acciones de combate en las que entra el personaje durante la demo y las escribe al final
+  («Demo, acciones de combate: LIGHT x4, CHARGE x1, HEAVY x1, BLOCK x1, DODGE x1»: los tres ligeros del combo
+  más la pulsación que se convierte en la carga), de modo que `test_combat_demo` comprueba con un proceso
+  real que la máquina de acciones recorre lo que dice el guion, no solo que el guion lo pida. En el Vado Gris
+  sale una sola advertencia, «instance_reset_physics_interpolation() is deprecated», al añadir la zona al
+  árbol (`client_main.gd`, `add_child`): la lanza código nativo (probablemente Terrain3D), ningún script del
+  proyecto llama a esa función, y no afecta a la demo.
