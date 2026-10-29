@@ -774,6 +774,12 @@ func test_a_client_cannot_fake_lag_with_late_acks() -> void:
 			"el máximo del RTT (%d ticks) tampoco pasa de lo que permite ENet (%d)"
 			% [peer.rtt_peak_ticks, bound])
 	assert_eq(peer.strikes_total, 0, "sin avisos: fingir lag no es un paquete ilegal")
+	# R1: la cota inferior (el mínimo del rebobinado para la defensa) sale del RTT de ENet, no de los
+	# acks que el cliente atrasa.
+	var enet_ticks: int = floori(_server_transport.get_rtt_ms(peer.peer_id) * 60.0 / 1000.0)
+	assert_true(absi(peer.rtt_floor_ticks - enet_ticks) <= 1,
+			"rtt_floor_ticks (%d) es el RTT de ENet (%d ticks)" % [peer.rtt_floor_ticks, enet_ticks])
+	assert_true(peer.rtt_floor_ticks < 20, "y no los 20 ticks de ack atrasado")
 
 
 ## El simulador de red del propio servidor sí cuenta: es retardo real para el servidor.

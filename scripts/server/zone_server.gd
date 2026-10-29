@@ -1900,6 +1900,10 @@ func _handle_input_batch(peer: ServerPeer, bytes: PackedByteArray) -> void:
 		var plausible: int = _max_plausible_rtt_ticks(peer)
 		peer.rtt_ticks = mini(maxi(window.get_min(next_tick), 0), plausible)
 		peer.rtt_peak_ticks = mini(maxi(window.get_max(next_tick), peer.rtt_ticks), plausible)
+	# Cota inferior del RTT: el de ENet, que el cliente no controla (lo usa el rebobinado como mínimo).
+	if _transport != null:
+		peer.rtt_floor_ticks = floori(_transport.get_rtt_ms(peer.peer_id)
+				* float(Engine.physics_ticks_per_second) / 1000.0)
 	for i: int in batch.inputs.size():
 		peer.input_queue.push(batch.inputs[i], batch.view_offsets_q[i], _tick + 1)
 

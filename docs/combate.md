@@ -339,10 +339,31 @@ Para cada atacante en golpe activo en `s`:
 
 1. **Parámetros.** `InputQueue.get_rewind_params(s) -> Vector2i(view_offset_q, lead)`: los de la
    entrada real de `s` o, si se sustituyó, los de la última real. Los jugadores falsos y los PNJ
-   usan `view_tick = s`.
-2. **Tope.** `allowed` de red.md §10. Si `view_offset_q / 16 > allowed + 1`, el golpe **no se
-   prueba**: suma a la puntuación de sospecha y va al `--combat-log`. Si no,
-   `view_tick = clamp(s − view_offset_q / 16, s − allowed, s)`.
+   usan `view_tick = s`. **Se leen una sola vez por golpe**, en su primer tick activo: el
+   rebobinado (`rewind = s₀ − view_tick₀`) queda fijado en el `Combatant` junto a `track_swing`, y
+   en los demás ticks activos `view_tick = s − rewind` (avanza con el tick). Antes cada tick activo
+   leía su propio `view_offset_q` y un cliente modificado barría la ventana (0, 5, 10... 24) o se
+   quitaba las defensas retroactivas con un 0 en los ticks que le convenían.
+2. **Tope.** `allowed` de red.md §10, con una `lead` que el cliente no escoge a su antojo: la de la
+   entrada del golpe, pero como mucho la **habitual** del cliente más 3
+   (`InputQueue.get_typical_lead(s)`, la mediana de las antelaciones de primera copia de las
+   entradas reales de los últimos 60 ticks; 3 es la dispersión de un honrado con jitter) y nunca más
+   de 8 (`_MAX_LEAD_CREDIT`: lo que mantiene un cliente honrado con `TickSync`, margen objetivo ≤ 4
+   más la holgura de su ventana). Un honrado no pierde nada (su vista es `rtt + antelación de la
+   entrada + interpolación`, así que con la antelación de esa entrada nunca queda por encima del
+   tope), pero un cliente que adelanta solo las entradas de su golpe 14 ticks ya no sube el tope de
+   12 a 24 con RTT de LAN. Si `view_offset_q / 16 > allowed + 1`, el golpe **no se prueba**: suma a
+   la puntuación de sospecha y va al `--combat-log`. Si no, `view_tick = clamp(s − view_offset_q /
+   16, s − allowed, s)`. **Mínimo para la defensa:** las defensas retroactivas (invulnerable,
+   parada, bloqueo; paso 6) miran al menos `max(0, rtt_floor + 4 − 2)` ticks atrás
+   (`ServerPeer.rtt_floor_ticks` es el RTT de ENet, que el cliente no controla, y 4 el retardo de
+   interpolación mínimo), aunque el golpe pida menos: un honrado nunca ve el mundo con menos
+   retraso, y pedir 0 ya no libra de ellas. La geometría (paso 3) sigue en el `view_tick` pedido.
+   *Límites conocidos:* un tramposo todavía escoge el rebobinado, una vez por golpe, entre ese
+   mínimo y el tope; y con todas sus entradas adelantadas (hasta el máximo de 8) y `interp_delay_q`
+   al máximo llega al tope global de 24 (un honrado con el mismo RTT, a unos 10-16): el servidor no
+   puede comprobar la interpolación declarada, así que el tope de 24 ticks (400 ms) es la cota
+   del daño posible.
 3. **Muestras.** El atacante, siempre en su estado congelado de `s`. Cada candidato: si
    `view_tick ≤ s − 1`, `StateHistory.sample(id, view_tick)`; si está entre `s − 1` y `s`,
    interpolación entre la pista de `s − 1` y lo congelado de `s`; si es `s`, lo congelado. Una
@@ -354,8 +375,9 @@ Para cada atacante en golpe activo en `s`:
    acción no se vuelve a probar.
 5. **Forma** con la muestra de la víctima y **línea de visión** contra el mundo actual.
 6. **Defensa**, por este orden de precedencia:
-   - **Invulnerable** en algún tick de `[floor(view_tick), s]`: sin efecto y **no** consume el
-     golpe (puede entrar en un tick activo posterior).
+   - **Invulnerable** en algún tick de `[floor(defensa), s]` (`defensa` = el `view_tick` o, si es
+     posterior, el mínimo para la defensa del paso 2): sin efecto y **no** consume el golpe (puede
+     entrar en un tick activo posterior).
    - **Parada**: ventana de parada en la muestra de `view_tick` o en la de `s`, con el atacante
      dentro del cono frontal del defensor en esa muestra (yaw del cuerpo), solo cuerpo a cuerpo:
      sin daño, tambaleo de `parry_stagger_s` al atacante. Consume el golpe.
@@ -399,8 +421,10 @@ final   = roundi((bruto − mitig.) × 1000 / (1000 + armadura)),  mínimo 1 si 
 ### 4.5 Antitrampas (TEC-14)
 
 El cliente solo manda botones; el servidor comprueba fases, resistencia y ritmo con su propia
-simulación, así que un cliente modificado no ataca más rápido ni sin resistencia. Se vigila el
-rebobinado (§4.3, paso 2) con una **puntuación de sospecha** por peer (golpes fuera de tope,
+simulación, así que un cliente modificado no ataca más rápido ni sin resistencia. Las entradas
+sustituidas no inventan nada (§3.2): ni un fuerte cargado que se guarda en silencio, ni una parada.
+Se vigila el rebobinado (§4.3, paso 2: fijado por golpe, con antelación estable y un mínimo para la
+defensa) con una **puntuación de sospecha** por peer (golpes fuera de tope,
 ratio de acierto anómalo) que en la fase 3 solo se registra. Modos nuevos del bot tramposo:
 `rewind` (view_offset_q de 40 ticks), `reach` (ataca desde 5 m) y `rate` (PRIMARY cada tick):
 ninguno debe hacer daño de más.
@@ -705,6 +729,16 @@ Cerrado durante K3 (servidor) y K4 (cliente):
 
 Cerrado durante K5 (integración):
 
+- **Rebobinado fijado por golpe y antelación acotada** (revisión de la fase 3, R1): el rebobinado se
+  lee una vez, en el primer tick activo; la antelación que abona el tope es la de la entrada del golpe,
+  acotada por la habitual del cliente más 3 y por 8 (con la de cada entrada a secas, un cliente que
+  adelantara las entradas de su golpe subía el tope a 24 con RTT de LAN). Para un honrado no cambia
+  nada: su vista es `rtt + antelación de esa entrada + interpolación`, de modo que la antelación de su
+  entrada es justo la que el tope necesita (con el mínimo de la ventana, en cambio, un honrado con
+  jitter se quedaba por encima del tope y el golpe, ya sin segunda oportunidad en los ticks activos
+  siguientes, se rechazaba: lo mostró `test_combat_reconciliation`, de 47 golpes a 0). Las pruebas de K5
+  con rtt=150 y jitter=30 (`test_combat_loopback`) siguen confirmando todos sus golpes sin sospecha. El
+  mínimo para la defensa y sus límites están en §4.3, paso 2.
 - **Tope del rebobinado con jitter**: el mínimo del RTT de la ventana (red.md 10) se queda por debajo
   del viaje de un tick cualquiera, y con `rtt=150,jitter=30` el tope rechazaba un 20 % de los ticks
   activos de un bot honrado (y le sumaba sospecha). El tope usa `max(mínimo, máximo)` de la ventana

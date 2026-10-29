@@ -49,6 +49,9 @@ var rtt_ticks: int = 0
 ## vuelta de un tick cualquiera, y el tope del rebobinado (docs/red.md, sección 10) tiene que cubrir
 ## también los viajes malos de un jugador honrado: el [CombatResolver] usa el mayor de los dos.
 var rtt_peak_ticks: int = 0
+## Cota inferior del RTT en ticks que sale de fuentes que el cliente no controla (el RTT de ENet): un
+## honrado nunca ve el mundo con menos retraso que esto, aunque atrase o adelante sus acks.
+var rtt_floor_ticks: int = 0
 ## Tick en el que conectó y empezó a autenticarse (para el plazo del HELLO).
 var connected_tick: int = 0
 ## Tick en el que empezó la carga de la zona (para el límite de CLIENT_READY).

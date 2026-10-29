@@ -58,6 +58,14 @@ const _SEARCH_SPEED: float = 24.0
 const _SEARCH_MARGIN: float = 0.25
 ## Retardo de interpolación mínimo (ticks) que se supone al calcular el tope de rebobinado.
 const _MIN_INTERP_TICKS: int = 4
+## Antelación (ticks) que como mucho abona el tope del rebobinado: la que mantiene un cliente honrado
+## con [code]TickSync[/code] (margen objetivo de hasta 4 más 2 de holgura de la ventana, más 2). Un cliente
+## que se adelante más no sube el tope.
+const _MAX_LEAD_CREDIT: int = 8
+## Cuánto puede pasar la antelación de la entrada de un golpe de la habitual del cliente
+## ([method InputQueue.get_typical_lead]): la dispersión de un honrado con jitter. Más es una entrada
+## adelantada a propósito.
+const _LEAD_SPREAD: int = 3
 
 ## Golpes rechazados por rebobinado excesivo desde que existe el resolutor.
 var rewind_rejects: int = 0
@@ -119,10 +127,12 @@ func resolve(s: int, combatants: Array[Combatant],
 		if attack == null or attack.shape == null:
 			continue
 		attacker.track_swing(attacker_frame.action_tick)
-		var view_tick: float = _view_tick_of(attacker, s)
-		if is_nan(view_tick):
+		var rewind: float = _swing_rewind(attacker, s)
+		if is_nan(rewind):
 			_reject(attacker, attack, s, hits)
 			continue
+		var view_tick: float = float(s) - rewind
+		var defense_tick: float = float(s) - attacker.swing_defense_rewind
 		var margin: float = _SEARCH_MARGIN + _SEARCH_SPEED * (float(s) - view_tick) \
 				/ float(Engine.physics_ticks_per_second)
 		var reach: float = attack.shape.range_m + HitShapes.CAPSULE_RADIUS + margin
@@ -138,24 +148,42 @@ func resolve(s: int, combatants: Array[Combatant],
 				continue
 			if not _is_candidate(attacker, victim, s):
 				continue
-			var hit: Hit = _test(attacker, victim, attack, view_tick, s, space, rules)
+			var hit: Hit = _test(attacker, victim, attack, view_tick, defense_tick, s, space,
+					rules)
 			if hit != null:
 				hits.append(hit)
 	return hits
 
 
-# Rebobinado de un golpe: el view_tick, o NAN si pide más de lo que se permite. Un atacante sin peer
-# (jugador falso, PNJ) no rebobina.
-func _view_tick_of(attacker: Combatant, s: int) -> float:
+# Ticks que el golpe ve atrás, o NAN si pide más de lo permitido. Se fija una vez, en el primer tick
+# activo del golpe, y los demás ticks activos lo reutilizan (el view_tick avanza con ellos): el cliente
+# ya no puede cambiar el rebobinado de un tick a otro para barrer la ventana ni quitarse las defensas
+# retroactivas con un 0. El tope abona la antelación de la entrada del golpe (con ella un honrado nunca
+# queda por encima: su vista es rtt + antelación + interpolación), pero acotada por la habitual del
+# cliente más su dispersión y por un máximo: la de cada entrada la escoge el cliente. Un atacante sin
+# peer (jugador falso, PNJ) no rebobina.
+func _swing_rewind(attacker: Combatant, s: int) -> float:
 	if attacker.peer == null or attacker.queue == null:
-		return float(s)
+		return 0.0
+	if attacker.swing_rewind_fixed:
+		return attacker.swing_rewind
 	var params: Vector2i = attacker.queue.get_rewind_params(s)
+	var lead: int = mini(params.y, mini(attacker.queue.get_typical_lead(s) + _LEAD_SPREAD,
+			_MAX_LEAD_CREDIT))
 	var allowed: int = allowed_rewind(maxi(attacker.peer.rtt_ticks, attacker.peer.rtt_peak_ticks),
-			params.y, attacker.peer.interp_delay_q)
-	if params.x > (allowed + 1) * VIEW_OFFSET_Q_SCALE:
-		return NAN
-	return clampf(float(s) - float(params.x) / float(VIEW_OFFSET_Q_SCALE),
-			float(s - allowed), float(s))
+			lead, attacker.peer.interp_delay_q)
+	var rewind: float = NAN
+	if params.x <= (allowed + 1) * VIEW_OFFSET_Q_SCALE:
+		rewind = clampf(float(params.x) / float(VIEW_OFFSET_Q_SCALE), 0.0, float(allowed))
+	attacker.swing_rewind_fixed = true
+	attacker.swing_rewind = rewind
+	# Para la defensa se mira atrás como mínimo lo que un honrado con ese RTT no puede evitar ver
+	# (el RTT de ENet más el retardo de interpolación mínimo, menos 2 de holgura), pero nunca más allá
+	# del tope.
+	var minimum: float = minf(float(maxi(attacker.peer.rtt_floor_ticks + _MIN_INTERP_TICKS - 2, 0)),
+			float(allowed))
+	attacker.swing_defense_rewind = maxf(rewind, minimum) if not is_nan(rewind) else 0.0
+	return rewind
 
 
 # Anota un golpe rechazado por rebobinado excesivo: una vez por ataque.
@@ -200,8 +228,8 @@ func _is_hostile(attacker_realm: int, victim_realm: int) -> bool:
 
 
 # Prueba un ataque contra un candidato. null si no lo alcanza.
-func _test(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_tick: float, s: int,
-		space: PhysicsDirectSpaceState3D, rules: CombatRules) -> Hit:
+func _test(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_tick: float,
+		defense_tick: float, s: int, space: PhysicsDirectSpaceState3D, rules: CombatRules) -> Hit:
 	var attacker_frame: Combatant.Frozen = attacker.frozen
 	tests += 1
 	var sample: StateHistory.Sample = _sample(victim, view_tick, s)
@@ -219,7 +247,7 @@ func _test(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_tic
 	hit.attack = attack
 	hit.view_tick = view_tick
 	hit.rewind = float(s) - view_tick
-	hit.outcome = _defense(attacker, victim, attack, view_tick, s, sample)
+	hit.outcome = _defense(attacker, victim, attack, view_tick, defense_tick, s, sample)
 	if hit.outcome == Outcome.IMPACT or hit.outcome == Outcome.BLOCKED:
 		hit.critical = DamageFormula.is_backstab(attacker_frame.position, sample.position,
 				sample.yaw, rules.backstab_angle_deg)
@@ -228,10 +256,13 @@ func _test(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_tic
 	return hit
 
 
-# Precedencia de la defensa (docs/combate.md, 4.3, paso 6).
+# Precedencia de la defensa (docs/combate.md, 4.3, paso 6). [param defense_tick] es el instante más
+# antiguo que se mira para las defensas retroactivas: view_tick, o antes si el servidor impone un
+# rebobinado mínimo (el cliente no se libra de ellas pidiendo 0).
 func _defense(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_tick: float,
-		s: int, sample: StateHistory.Sample) -> int:
-	if _was_invulnerable(victim, view_tick, s):
+		defense_tick: float, s: int, sample: StateHistory.Sample) -> int:
+	var old_tick: float = minf(view_tick, defense_tick)
+	if _was_invulnerable(victim, old_tick, s):
 		return Outcome.INVULNERABLE
 	var victim_frame: Combatant.Frozen = victim.frozen
 	var weapon: WeaponTicks = CombatCatalog.weapon(victim_frame.weapon_id)
@@ -239,16 +270,19 @@ func _defense(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_
 		return Outcome.IMPACT
 	var attacker_position: Vector3 = attacker.frozen.position
 	var cone: float = weapon.block_angle_deg
-	# La muestra de view_tick solo cuenta si el defensor no ha bajado el escudo después: ni por un
-	# ataque o una esquiva propios ni porque le hayan impuesto un control.
-	var old_counts: bool = view_tick < float(s) and not _dropped_guard_after(victim_frame,
-			view_tick)
+	# La muestra antigua solo cuenta si el defensor no ha bajado el escudo después: ni por un ataque
+	# o una esquiva propios ni porque le hayan impuesto un control.
+	var old_sample: StateHistory.Sample = sample
+	if old_tick < view_tick:
+		old_sample = _sample(victim, old_tick, s)
+	var old_counts: bool = old_sample != null and old_tick < float(s) \
+			and not _dropped_guard_after(victim_frame, old_tick)
 	# Parada (solo contra golpes cuerpo a cuerpo: todos los de la fase 3).
-	if _defends(victim_frame, sample, old_counts, ActionMachine.DEFENSE_PARRY, cone,
+	if _defends(victim_frame, old_sample, old_counts, ActionMachine.DEFENSE_PARRY, cone,
 			attacker_position):
 		return Outcome.PARRIED
 	# Bloqueo: el escudo solo frena el daño físico.
-	if DamageFormula.is_physical(attack.damage_type) and _defends(victim_frame, sample,
+	if DamageFormula.is_physical(attack.damage_type) and _defends(victim_frame, old_sample,
 			old_counts, ActionMachine.DEFENSE_BLOCKING, cone, attacker_position):
 		return Outcome.BLOCKED
 	return Outcome.IMPACT

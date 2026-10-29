@@ -1307,11 +1307,23 @@ O(entidades); por cliente solo hay copias de memoria.
     ventana, **con la misma cota independiente** (`ServerPeer.rtt_peak_ticks`): atrasar los acks no da
     más que `PEER_ROUND_TRIP_TIME + retardo del NetSim + 3`, con mínimo o con máximo.
   - **`lead(T)`** es la antelación medida de esa entrada (se cancela con la del cliente: la entrada que
-    llega tarde por la red cuenta con menos antelación y con más viaje).
+    llega tarde por la red cuenta con menos antelación y con más viaje), **acotada** por la habitual del
+    cliente más 3 (`InputQueue.get_typical_lead`: la mediana de las antelaciones de primera copia de las
+    entradas reales de los últimos 60 ticks) y por 8. Sin cota, la antelación de cada entrada la escoge
+    el cliente: mandar solo las entradas de su golpe 14 ticks antes subía el tope de 12 a 24 con RTT de
+    LAN (revisión de la fase 3, R1).
+  - **El rebobinado se fija una vez por golpe** (primer tick activo) y avanza con el tick. Para la
+    defensa retroactiva (invulnerabilidad, parada, bloqueo) el servidor mira atrás al menos
+    `rtt_floor + 4 − 2` ticks (`rtt_floor` = el RTT de ENet, `ServerPeer.rtt_floor_ticks`), aunque el
+    cliente pida menos.
   - **`interp_delay_q`** no pasa de 96 (12 ticks × 8, el máximo del `InterpolationClock`): el
     servidor lo limita y suma un aviso a quien envíe más (`NetProtocol.MAX_INTERP_DELAY_Q`). La
     fórmula ya lo acota con `clamp(…, 4, 12)`.
-  - **Fingir lag no da más rebobinado.**
+  - **Fingir lag no da más rebobinado** más allá de lo que da lag de verdad: con acks atrasados (cota
+    del RTT), antelación (acotada por la habitual y por 8) o rebobinado por tick (fijado por golpe). Queda
+    la interpolación declarada (`interp_delay_q`, hasta 96 sin aviso), que el servidor no puede
+    comprobar: un tramposo con todas sus entradas adelantadas y esa declaración llega al tope de 24
+    ticks aunque su RTT sea de LAN. El tope es la cota del daño posible.
   - **Por qué 24 ticks.** El rebobinado real es RTT + margen + retardo de interpolación, unos 20
     ticks con 200 ms de RTT. El tope de 24 ticks (400 ms) cubre hasta ~250 ms de RTT con el
     retardo normal. **Medido en K5:** con 150 ms de RTT y 30 ms de jitter los bots piden de 20 a
