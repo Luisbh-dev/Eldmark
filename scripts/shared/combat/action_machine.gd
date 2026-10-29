@@ -68,6 +68,7 @@ const _DEAD: int = CombatState.Action.DEAD
 
 ## Por debajo de esta longitud el movimiento no da dirección a la esquiva (se esquiva hacia atrás).
 const _DODGE_MIN_MOVE: float = 0.1
+const _COMBAT_BUTTONS: int = PlayerInput.DODGE | PlayerInput.PRIMARY | PlayerInput.BLOCK
 const _HELD_FLAGS: int = (
 	CombatState.FLAG_DODGE_HELD | CombatState.FLAG_BLOCK_HELD | CombatState.FLAG_PRIMARY_HELD
 )
@@ -85,12 +86,22 @@ static func step(c: CombatState, input: PlayerInput, grounded: bool) -> ActionMa
 	var out := Output.new()
 	var data: CombatTables = CombatCatalog.tables()
 	var rules: CombatRules = data.rules
-	var weapon: WeaponTicks = data.weapon(c.weapon_id)
 	var t: int = input.tick
 
 	# Niveles y flancos de los botones (el bit SUBSTITUTED no es un botón).
 	var down: int = input.buttons & ~PlayerInput.SUBSTITUTED
 	var previous: int = c.combat_flags
+
+	# Camino rápido, el de casi todos los ticks: sin acción, sin botones de combate (ni pulsados
+	# ni recién soltados), nada pendiente. Solo puede cambiar la resistencia al regenerar.
+	if c.action == _NONE and c.buffered == 0 and c.primary_held == 0 \
+			and (down & _COMBAT_BUTTONS) == 0 \
+			and (previous & (_HELD_FLAGS | CombatState.FLAG_NO_STAMINA)) == 0:
+		if c.stamina < rules.stamina_max or (previous & CombatState.FLAG_EXHAUSTED) != 0:
+			_regenerate(c, rules, t)
+		return out
+
+	var weapon: WeaponTicks = data.weapon(c.weapon_id)
 	var edges: int = 0
 	var held_flags: int = 0
 	if (down & PlayerInput.DODGE) != 0:
