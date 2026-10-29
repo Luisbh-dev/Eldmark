@@ -513,3 +513,40 @@ líneas del chat no son todavía pulsables), y las opciones que dependen de fase
 
 **Pruebas.** `test_social_menu`: el rayo (20 m desde el jugador y no desde la cámara, PNJ ignorados, el más
 cercano gana), las opciones, el menú con un aliado y con un enemigo, y la tecla del HUD.
+
+### 12.7 Decisiones y pendiente de la fase 4
+
+**Decisiones tomadas al implementar** (todas provisionales, revisables con las pruebas reales):
+
+- **Protocolo.** `PROTOCOL_VERSION` sube a 5 con una sola línea de historia («chat y grupos»). Si al fusionar otra
+  rama también la sube, la renumera quien fusiona; las pruebas solo exigen `>= 4` y `>= 5` en los sitios que
+  dependen de estos mensajes.
+- **Un servicio social, no un cambio en cada pieza.** `SocialService` es lo único que ve `ZoneServer` (tipos
+  `0x40`–`0x4F`, un paso por tick y la baja de cada jugador); el estado de ritmos de cada peer cuelga de
+  `ServerPeer.chat`.
+- **`/r` lo resuelve el cliente** y el servidor no guarda «el último interlocutor» (12.2).
+- **Mismo texto para el enemigo y para nadie.** Susurrar o invitar a alguien de otro reino responde «no está
+  conectado» con lo que escribió el jugador, no gasta del cubo de destinatarios nuevos y no manda nada al otro
+  lado.
+- **Cualquier miembro puede invitar; solo el líder expulsa y cede el mando.** El tope de 5 pendientes es por
+  quien invita y aceptar una invitación cancela las demás del aceptante.
+- **Estado de grupo fuera del interés.** Un mensaje propio a 2 Hz a cada miembro con vida, resistencia, estado y
+  posición; no pasa por los snapshots. El marco se atenúa a más de 100 m.
+- **Intro cierra la línea al enviar**, con canal activo para seguir hablando por un canal.
+- **Un grupo no sobrevive a una desconexión** (SOC-22 lo cambiará con los 5 min de gracia).
+
+**Pendiente del usuario** (provisional, a la espera de ART-12 y de probarlo jugando): los colores de cada canal,
+las medidas y el desvanecimiento de la caja de chat, el aspecto y la posición de los marcos y del aviso de
+invitación, los textos de los avisos y las teclas nuevas (Intro y `/` para el chat, Y y N para responder a una
+invitación, T para el menú de jugador). Además, si la caja de chat debe atenuarse con la pantalla de muerte (hoy
+no).
+
+**Pendiente de implementar:**
+
+- SOC-07: el menú desde un nombre pulsado en el chat con el cursor libre y las acciones de fases posteriores
+  (inspeccionar, amigo, ignorar, reportar).
+- SOC-09 y SOC-10: los miembros del grupo en la brújula, el minimapa y el mapa (ya reciben sus posiciones a 2 Hz en
+  `PartyState`) y los pings y marcas tácticas.
+- SOC-15, SOC-16, SOC-17 y SOC-27: registro persistente, ignorados, reportes y filtro de lenguaje.
+- SOC-21 y SOC-22: más canales (reino, comercio, novatos) y grupos entre zonas y con reconexión.
+- UI-47: las ventanas de la interfaz tampoco suspenden el movimiento (hallazgo de SOC-05).
