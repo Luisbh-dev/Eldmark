@@ -110,6 +110,8 @@ var _free_toggled: bool = false
 var _free_held: bool = false
 ## La vista la controla un guion (demo): no se captura ni se lee el ratón.
 var _scripted_look: bool = false
+## Una ventana de la interfaz (la pantalla de muerte) pide el cursor libre mientras está abierta.
+var _ui_cursor_release: bool = false
 
 var _zoom_target: float = 3.5
 var _zoom_distance: float = 3.5
@@ -279,7 +281,15 @@ func set_look(yaw: float, pitch: float) -> void:
 func is_cursor_free() -> bool:
 	if _scripted_look:
 		return false
-	return _free_toggled or _free_held
+	return _free_toggled or _free_held or _ui_cursor_release
+
+
+## Una ventana de la interfaz (por ejemplo la pantalla de muerte) libera el cursor mientras esté
+## abierta: la cámara no gira, los clics son para ella y el punto de mira se oculta. Al cerrarla
+## ([param enabled] a false) el ratón se recaptura salvo que el jugador lo haya soltado a mano.
+func set_ui_cursor_release(enabled: bool) -> void:
+	_ui_cursor_release = enabled
+	_refresh_mouse_mode()
 
 
 func get_camera() -> Camera3D:

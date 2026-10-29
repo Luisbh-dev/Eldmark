@@ -367,6 +367,11 @@ func get_estimated_server_tick() -> int:
 	return _newest_snapshot_tick + maxi(_local_tick - _newest_snapshot_local_tick, 0)
 
 
+## Tick del último snapshot con estado propio que se reconcilió (0 si aún no ha llegado ninguno).
+func get_last_snapshot_tick() -> int:
+	return _last_snapshot_tick
+
+
 ## Eventos de combate ajenos que esperan a que el tick de dibujo alcance su tick.
 func get_combat_queue() -> CombatEventQueue:
 	return _event_queue

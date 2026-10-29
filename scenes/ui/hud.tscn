@@ -2,6 +2,12 @@
 
 [ext_resource type="Script" path="res://scripts/client/hud.gd" id="1_hud"]
 [ext_resource type="Script" path="res://scripts/client/crosshair.gd" id="2_crsh"]
+[ext_resource type="Script" path="res://scripts/client/low_health_vignette.gd" id="3_vign"]
+[ext_resource type="Script" path="res://scripts/client/damage_indicator.gd" id="4_dmgi"]
+[ext_resource type="Script" path="res://scripts/client/damage_numbers.gd" id="5_dmgn"]
+[ext_resource type="Script" path="res://scripts/client/hit_marker.gd" id="6_hitm"]
+[ext_resource type="Script" path="res://scripts/client/vitals_hud.gd" id="7_vita"]
+[ext_resource type="Script" path="res://scripts/client/death_screen.gd" id="8_deth"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_dbgpnl"]
 content_margin_left = 10.0
@@ -20,6 +26,37 @@ font_names = PackedStringArray("Consolas", "Cascadia Mono", "DejaVu Sans Mono", 
 [node name="HUD" type="CanvasLayer"]
 script = ExtResource("1_hud")
 
+[node name="Vignette" type="TextureRect" parent="."]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("3_vign")
+
+[node name="DamageIndicator" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("4_dmgi")
+
+[node name="DamageNumbers" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("5_dmgn")
+
 [node name="Crosshair" type="Control" parent="."]
 layout_mode = 3
 anchors_preset = 15
@@ -29,6 +66,32 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("2_crsh")
+
+[node name="HitMarker" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("6_hitm")
+
+[node name="Vitals" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -260.0
+offset_top = -118.0
+offset_right = 260.0
+offset_bottom = -64.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+script = ExtResource("7_vita")
 
 [node name="DebugPanel" type="PanelContainer" parent="."]
 offset_left = 16.0
@@ -61,3 +124,13 @@ theme_override_font_sizes/font_size = 16
 text = "Alt: liberar cursor · Esc: soltar ratón · V: cambiar hombro · Rueda: zoom · F3: depuración"
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="DeathScreen" type="Control" parent="."]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("8_deth")

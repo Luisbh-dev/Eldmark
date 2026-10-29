@@ -358,7 +358,7 @@ func test_death_kill_and_respawn_signals() -> void:
 		deaths.append(Vector2i(killer, attack)))
 	_feedback.kill_confirmed.connect(func(victim: int, _e: NetMessages.EntityEvent) -> void:
 		kills.append(victim))
-	_feedback.local_respawned.connect(func(point: int) -> void: respawns.append(point))
+	_feedback.local_respawned.connect(func(point: int, _tick: int) -> void: respawns.append(point))
 	_feedback.handle_event(NetMessages.EntityEvent.death(OTHER_ID, 100, THIRD_ID, 3), false)
 	assert_eq(deaths.size(), 0, "la muerte de otro no es la propia")
 	_feedback.handle_event(NetMessages.EntityEvent.death(OWN_ID, 100, OTHER_ID, 3), true)

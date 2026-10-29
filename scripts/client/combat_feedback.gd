@@ -33,8 +33,8 @@ signal entity_damaged(net_id: int)
 signal kill_confirmed(victim_id: int, event: NetMessages.EntityEvent)
 ## El jugador local ha muerto; [param killer_id] es 0 si fue el entorno.
 signal local_died(killer_id: int, attack_id: int)
-## El jugador local ha reaparecido en el punto [param point].
-signal local_respawned(point: int)
+## El jugador local ha reaparecido en el punto [param point] en el tick [param tick] del servidor.
+signal local_respawned(point: int, tick: int)
 ## La acción del personaje local ha cambiado ([param previous_action] es la anterior).
 signal action_changed(action: int, attack_id: int, action_tick: int, previous_action: int)
 ## El golpe del arma pasa a estar activo (o deja de estarlo): lanza o corta la estela.
@@ -204,6 +204,14 @@ func kind_of(event: NetMessages.EntityEvent) -> int:
 	return HitMarker.Kind.HIT
 
 
+## Nombre del jugador [param net_id] tal como lo ve este cliente ("" si no se le conoce).
+func get_entity_name(net_id: int) -> String:
+	if net_id == 0 or not is_instance_valid(_client):
+		return ""
+	var view: RemotePlayerView = _client.get_remote_world().get_view(net_id)
+	return view.get_display_name() if view != null else ""
+
+
 ## Posición (pies) con la que se dibuja ahora a la entidad [param net_id]: el personaje local o la
 ## vista de un remoto. [constant Vector3.INF] si no se conoce (fuera de interés).
 func get_entity_position(net_id: int) -> Vector3:
@@ -274,7 +282,7 @@ func _on_respawn(event: NetMessages.EntityEvent, is_own: bool) -> void:
 	var own_id: int = get_own_net_id()
 	_request_sound(SOUND_RESPAWN, get_entity_position(event.net_id))
 	if is_own or (own_id != 0 and event.net_id == own_id):
-		local_respawned.emit(event.point)
+		local_respawned.emit(event.point, event.tick)
 
 
 # Texto del número: vacío (el daño) salvo en los golpes parados o bloqueados sin daño.

@@ -464,6 +464,7 @@ func _on_local_spawned(character: PlayerCharacter) -> void:
 	if _hud != null:
 		add_child(_hud)
 		_hud.bind(character, _camera_rig)
+		_hud.bind_net(_client, _world)
 		# En red, el panel de depuración del HUD empieza oculto: F3 lo alterna junto con el de red.
 		_hud.set_debug_visible(false)
 
