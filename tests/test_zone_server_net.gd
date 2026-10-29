@@ -24,6 +24,7 @@ var _clients: Array[RawClient] = []
 var _hooks: Array[Callable] = []
 var _client_tick: int = 0
 var _next_client_index: int = 0
+var _raw_peers: Array[ENetMultiplayerPeer] = []
 
 
 ## Un cliente que habla el protocolo a mano: envía su HELLO al conectar, completa la
@@ -162,6 +163,9 @@ class HidingPolicy:
 
 func after_each() -> void:
 	_hooks.clear()
+	for raw: ENetMultiplayerPeer in _raw_peers:
+		raw.close()
+	_raw_peers.clear()
 	for client: RawClient in _clients:
 		if is_instance_valid(client.transport):
 			client.transport.free()
@@ -759,6 +763,8 @@ func test_client_that_never_sends_ready_is_kicked_after_the_loading_timeout() ->
 
 func test_client_that_never_sends_hello_is_dropped_by_the_auth_timeout() -> void:
 	await _start_server()
+	# Se anula el plazo propio del servidor para el HELLO: aquí actúa el de NetTransport (5 s).
+	_server.hello_timeout_ticks = 100000
 	# Sin HELLO: el cliente conecta pero no envía nada en la autenticación.
 	var client: RawClient = _connect_client(PackedByteArray())
 	var seen: bool = await _run_until(func() -> bool: return _server.get_peer_ids().size() == 1, 120)
@@ -769,6 +775,77 @@ func test_client_that_never_sends_hello_is_dropped_by_the_auth_timeout() -> void
 			int(NetTransport.AUTH_TIMEOUT_SECONDS * 60.0) + 240)
 	assert_true(dropped, "pasado el tiempo de autenticación (5 s) el peer se da de baja")
 	assert_true(client.failed or client.disconnected, "y el cliente ve que se corta")
+
+
+## Una IP no puede ocupar todas las plazas de ENet con conexiones que nunca mandan el HELLO
+## (hallazgo S2): el tope por IP se aplica al conectar, no solo al llegar el HELLO. Con
+## max_players = 2 hay 6 plazas; una IP con 6 conexiones ociosas dejaba al séptimo cliente, legítimo,
+## sin respuesta (ENet descarta su conexión en silencio). Las conexiones ociosas son ENet en bruto
+## (sin SceneMultiplayer), como las de un atacante.
+func test_idle_connections_cannot_exhaust_the_slots_of_one_ip() -> void:
+	await _start_server(func(config: ServerConfig) -> void: config.max_players = 2)
+	# Solo se prueba el tope por IP: el plazo del HELLO no debe cortar nada durante la prueba.
+	_server.hello_timeout_ticks = 100000
+	var opened: Array[int] = [0]
+	_server.remote_address_override = func(_peer_id: int, _address: String) -> String:
+		opened[0] += 1
+		return "203.0.113.7" if opened[0] <= 6 else "198.51.100.9"
+	var idle: Array[ENetMultiplayerPeer] = []
+	for _i: int in 6:
+		var raw := ENetMultiplayerPeer.new()
+		assert_eq(raw.create_client("127.0.0.1", _port, NetProtocol.CUSTOM_CHANNELS), OK)
+		idle.append(raw)
+		_raw_peers.append(raw)
+		await _run_frames(3)
+	_hooks.append(func(_tick: int) -> void:
+		for raw: ENetMultiplayerPeer in idle:
+			# Un peer que el servidor ha cortado queda inactivo y poll() registraría un error.
+			if raw.get_connection_status() != MultiplayerPeer.CONNECTION_DISCONNECTED:
+				raw.poll())
+	var connected_count: Callable = func() -> int:
+		var count: int = 0
+		for raw: ENetMultiplayerPeer in idle:
+			if raw.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
+				count += 1
+		return count
+	await _run_frames(60)
+	assert_eq(connected_count.call(), 4,
+			"el servidor corta lo que pasa del tope: quedan 4 conexiones de la IP")
+	var legit: RawClient = _connect_client(_hello(VARDHEIM, "Ana"))
+	var answered: bool = await _run_until(func() -> bool:
+		return legit.welcome != null or legit.reject != null, 120)
+	assert_true(answered, "el cliente legítimo recibe respuesta en menos de 120 ticks")
+	assert_not_null(legit.welcome, "y es un WELCOME: las plazas no están agotadas")
+	assert_eq(_strike_reasons().size(), 0, "sin avisos")
+	var rejects: Dictionary = _read_report().get("rejects", {})
+	assert_eq(int(rejects.get(NetProtocol.result_text(NetProtocol.Result.TOO_MANY_CONNECTIONS), 0)), 2,
+			"el informe cuenta los dos rechazos")
+
+
+## Un cliente que conecta y no manda el HELLO se corta en cuanto vence el plazo propio del servidor
+## (90 ticks), mucho antes que los 5 s de la autenticación de SceneMultiplayer.
+func test_a_connection_without_hello_is_dropped_after_the_hello_deadline() -> void:
+	await _start_server()
+	assert_eq(_server.hello_timeout_ticks, ZoneServer.HELLO_TIMEOUT_TICKS, "90 ticks por defecto")
+	var client: RawClient = _connect_client(PackedByteArray())
+	var seen: bool = await _run_until(func() -> bool: return _server.get_peer_ids().size() == 1, 120)
+	if not assert_true(seen, "el servidor ve al peer que se autentica"):
+		return
+	var seen_at: int = _server.get_tick()
+	var dropped: bool = await _run_until(func() -> bool: return _server.get_peer_ids().is_empty(),
+			ZoneServer.HELLO_TIMEOUT_TICKS + 90)
+	assert_true(dropped, "el peer sin HELLO se da de baja pasado el plazo")
+	assert_true(_server.get_tick() - seen_at >= ZoneServer.HELLO_TIMEOUT_TICKS - 10,
+			"no antes de tiempo (%d ticks)" % (_server.get_tick() - seen_at))
+	assert_true(_server.get_tick() - seen_at < int(NetTransport.AUTH_TIMEOUT_SECONDS * 60.0),
+			"y bastante antes de los 5 s de la autenticación")
+	var closed: bool = await _run_until(func() -> bool: return client.failed or client.disconnected, 120)
+	assert_true(closed, "el cliente ve que se corta")
+	var rejects: Dictionary = _read_report().get("rejects", {})
+	assert_eq(int(rejects.get(ZoneServer.HELLO_TIMEOUT_REASON, 0)), 1, "el informe lo cuenta")
+	# Un cliente que sí manda el HELLO a tiempo no se ve afectado.
+	var honest: RawClient = await _join("Ana")
+	assert_not_null(honest, "uno normal entra")
 
 
 func test_stop_notifies_the_clients_and_closes_the_transport() -> void:

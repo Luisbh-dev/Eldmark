@@ -58,6 +58,14 @@ const LOADING_TIMEOUT_TICKS: int = 3600
 const STATE_LOG_FLUSH_TICKS: int = 60
 ## Cada cuántos ticks se escribe la línea de métricas en el registro (10 s).
 const METRICS_LOG_TICKS: int = 600
+## Ticks que un peer puede estar conectado sin enviar el HELLO (1,5 s). Mucho menos que los 5 s de
+## la autenticación de [SceneMultiplayer]: una conexión ociosa ocupa una de las plazas de ENet.
+const HELLO_TIMEOUT_TICKS: int = 90
+## Motivo con el que el informe cuenta (en [code]rejects[/code]) las conexiones cortadas por no
+## mandar el HELLO a tiempo.
+const HELLO_TIMEOUT_REASON: String = "sin HELLO a tiempo"
+## Cada cuántos ticks se comprueba el plazo del HELLO.
+const HELLO_CHECK_TICKS: int = 10
 ## Ticks que se espera, tras [method stop], a que los peers se vayan antes de cerrar el transporte.
 const STOP_DRAIN_TICKS: int = 30
 ## Secciones del tick que aparecen en la línea de métricas (las mismas que mide el bucle).
@@ -92,6 +100,9 @@ var log_enabled: bool = true
 ## Ticks que un peer puede estar cargando la zona sin enviar CLIENT_READY antes de que se le
 ## expulse ([constant LOADING_TIMEOUT_TICKS] por defecto; las pruebas lo acortan).
 var loading_timeout_ticks: int = LOADING_TIMEOUT_TICKS
+## Ticks que un peer puede estar conectado sin enviar el HELLO antes de que se le corte
+## ([constant HELLO_TIMEOUT_TICKS] por defecto; las pruebas lo cambian).
+var hello_timeout_ticks: int = HELLO_TIMEOUT_TICKS
 ## Solo pruebas: si es válido, se le pasa [code](peer_id: int, address: String) -> String[/code] y
 ## devuelve la dirección con la que se trata al peer. Sirve para fingir que unos clientes de
 ## loopback vienen de una IP externa y así probar el tope de conexiones por IP, del que el loopback
@@ -545,6 +556,7 @@ func _physics_process(delta: float) -> void:
 	var s: int = _tick
 
 	_check_loading_timeouts(s)
+	_check_hello_timeouts(s)
 	_process_departures(s)
 
 	_metrics.begin_section(&"sim")
@@ -890,6 +902,22 @@ func _check_loading_timeouts(s: int) -> void:
 			_kick(peer, "se agotó el tiempo de carga de la zona")
 
 
+# Peers que llevan demasiado conectados sin mandar el HELLO: cada conexión ociosa ocupa una plaza de
+# ENet (max_players + 4) hasta que vence el plazo de 5 s de SceneMultiplayer, y reabrirla cuesta un
+# RTT. Se cortan con un plazo propio mucho más corto, sin REJECT (no hay nada a lo que contestar).
+func _check_hello_timeouts(s: int) -> void:
+	if s % HELLO_CHECK_TICKS != 0:
+		return
+	for peer: ServerPeer in _peers.values():
+		if peer.state == ServerPeer.State.AUTHENTICATING \
+				and s - peer.connected_tick >= hello_timeout_ticks:
+			_rejects[HELLO_TIMEOUT_REASON] = _rejects.get(HELLO_TIMEOUT_REASON, 0) + 1
+			_log("Conexión de %s (peer %d) cortada: %s" % [peer.remote_address, peer.peer_id,
+					HELLO_TIMEOUT_REASON])
+			_transport.disconnect_after_flush(peer.peer_id)
+			_mark_leaving(peer)
+
+
 # --- Historial, interés y snapshots -----------------------------------------------------------
 
 # StateHistory.record() de todas las entidades (y el CSV de --state-log), tras simular y dar de
@@ -1014,7 +1042,14 @@ func _on_peer_authenticating(peer_id: int) -> void:
 	peer.remote_address = _transport.get_remote_address(peer_id)
 	if remote_address_override.is_valid():
 		peer.remote_address = str(remote_address_override.call(peer_id, peer.remote_address))
+	peer.connected_tick = _tick
 	_peers[peer_id] = peer
+	# El tope por IP se aplica ya al conectar, no solo al llegar el HELLO: una IP que abre conexiones
+	# sin mandar nada ocuparía todas las plazas de ENet y los clientes legítimos quedarían sin
+	# respuesta. Las que pasan del tope reciben un REJECT y se cortan.
+	if _connections_from(peer) >= _config.max_connections_per_ip \
+			and not ServerAuth.is_loopback(peer.remote_address):
+		_reject(peer, NetProtocol.Result.TOO_MANY_CONNECTIONS)
 
 
 # HELLO: se valida y se contesta WELCOME (y complete_auth) o REJECT (y corte ordenado).
@@ -1217,14 +1252,16 @@ func _reject(peer: ServerPeer, result: int) -> void:
 	_mark_leaving(peer)
 
 
-# Conexiones abiertas desde la misma IP que [param peer], sin contarlo a él.
+# Conexiones abiertas desde la misma IP que [param peer], sin contarlo a él (las IPv6 se cuentan por
+# prefijo /64, ver ServerAuth.address_group).
 func _connections_from(peer: ServerPeer) -> int:
 	if peer.remote_address.is_empty():
 		return 0
+	var group: String = ServerAuth.address_group(peer.remote_address)
 	var count: int = 0
 	for other: ServerPeer in _peers.values():
 		if other != peer and other.state != ServerPeer.State.LEAVING \
-				and other.remote_address == peer.remote_address:
+				and ServerAuth.address_group(other.remote_address) == group:
 			count += 1
 	return count
 

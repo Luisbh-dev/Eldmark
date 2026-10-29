@@ -44,6 +44,8 @@ var ack_snapshot_tick: int = 0
 var interp_delay_q: int = 0
 ## Mínimo de (s - ack_snapshot_tick) en los últimos 120 ticks.
 var rtt_ticks: int = 0
+## Tick en el que conectó y empezó a autenticarse (para el plazo del HELLO).
+var connected_tick: int = 0
 ## Tick en el que empezó la carga de la zona (para el límite de CLIENT_READY).
 var loading_since_tick: int = 0
 var limiter_unreliable: RateLimiter

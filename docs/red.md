@@ -296,7 +296,8 @@ Cliente                                         Servidor (tick S)
      sin espacios ni dígitos, mayúscula inicial, sin reservados) y no lo lleva ya un jugador conectado
      en la zona (SOC-01; REJECT `NAME`);
    - que hay sitio;
-   - que no hay más de 4 conexiones desde la misma IP (salvo loopback);
+   - que no hay más de 4 conexiones desde la misma IP (salvo loopback). Este tope se aplica ya al
+     conectar (`peer_authenticating`), no solo al llegar el HELLO (ver la nota de debajo);
    - el `AuthProvider`. En la fase 2 es `DevAuthProvider`, que acepta el reino y el nombre que
      declara el cliente.
 
@@ -334,6 +335,23 @@ Cliente                                         Servidor (tick S)
    - `P0 = S + rtt_ticks + target_margin + 1`.
 
    Y arranca la predicción ([6.3](#63-arranque)).
+
+**Conexiones ociosas (hallazgo S2).** Las plazas de ENet (`max_players + 4`) son limitadas, y una
+conexión que nunca manda el HELLO ocupaba una hasta los 5 s de `auth_timeout` (y se reabre en un
+RTT): una sola IP con unos 68 sockets dejaba la zona sin acceso, y los clientes legítimos no
+recibían ni un REJECT porque ENet descarta su conexión en silencio. Por eso:
+
+- **Tope por IP al conectar.** `ZoneServer._on_peer_authenticating` cuenta las conexiones de la
+  misma IP (las que se autentican también cuentan) y, si ya hay 4 y no es loopback, contesta
+  `REJECT TOO_MANY_CONNECTIONS` y corta, sin esperar al HELLO. Las IPv6 se cuentan por prefijo
+  /64 (`ServerAuth.address_group`): quien tiene IPv6 tiene un /64 entero, y cada dirección suya
+  sería otra IP.
+- **Plazo propio para el HELLO.** Un peer que sigue en `AUTHENTICATING` pasados 90 ticks (1,5 s;
+  `ZoneServer.HELLO_TIMEOUT_TICKS`, comprobado cada 10 ticks) se corta con
+  `disconnect_after_flush` y se cuenta en `rejects` como «sin HELLO a tiempo». Los 5 s de
+  `SceneMultiplayer` quedan como red de seguridad.
+- **Límite que queda.** Con varias IP distintas (una botnet) sigue siendo posible llenar las
+  plazas; eso se resuelve fuera del proceso (cortafuegos, DTLS en las fases 5 y 6).
 
 **`sim_hash`.** Rechaza a los clientes cuya simulación difiere de la del servidor, que
 predecirían mal todo el tiempo.
@@ -1184,7 +1202,8 @@ El servidor nunca acepta estado del cliente, y todo valor decodificado está aco
 | Lotes | Ticks consecutivos por formato; `count` de 1 a 8 |
 | Limitador por peer (`RateLimiter`, en ticks) | No fiables: 2 por tick (120/s), ráfaga de 30. Fiables: 10/s, ráfaga de 20. Bytes: 16 KB/s, ráfaga de 4 KB. Lo que sobra se descarta y suma un aviso. Con crédito por parón (ver abajo) |
 | Avisos | Paquete malformado, tipo inesperado para el estado de la sesión o exceso de ritmo. 50 avisos en 600 ticks → NOTICE de expulsión y desconexión |
-| Conexiones por IP | 4 como mucho (`--max-per-ip`), salvo loopback, para que funcionen los bots locales |
+| Conexiones por IP | 4 como mucho (`--max-per-ip`), salvo loopback, para que funcionen los bots locales. Se comprueba al conectar, no solo con el HELLO; las IPv6 cuentan por /64 ([3](#3-conexión)) |
+| HELLO a tiempo | 90 ticks desde que conecta; si no, se corta la conexión ([3](#3-conexión)) |
 | Reino | Validado contra la zona. En la fase 2 lo declara el cliente (`DevAuthProvider`); desde la fase 5 sale del personaje o del billete, y el campo de HELLO se ignora |
 | Rebobinado | Acotado por lo medido ([10](#10-historial-para-la-compensación-de-latencia)) |
 | Comandos de depuración | Solo con `--debug-commands` |

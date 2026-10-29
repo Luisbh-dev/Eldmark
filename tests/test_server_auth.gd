@@ -235,6 +235,28 @@ func test_loopback_is_exempt_from_the_per_ip_limit() -> void:
 	assert_false(ServerAuth.is_loopback("8.8.8.8"), "is_loopback(8.8.8.8)")
 
 
+## El tope por IP cuenta las direcciones IPv6 por prefijo /64: cada dirección de un /64 es otra IP
+## para el atacante, que suele tener un /64 entero (hallazgo S2).
+func test_address_group_counts_ipv6_by_slash_64() -> void:
+	assert_eq(ServerAuth.address_group("203.0.113.7"), "203.0.113.7", "IPv4 tal cual")
+	assert_eq(ServerAuth.address_group("::ffff:203.0.113.7"), "203.0.113.7",
+			"IPv4 mapeada en IPv6 = su IPv4")
+	var a: String = ServerAuth.address_group("2001:db8:1:2:aaaa:bbbb:cccc:dddd")
+	assert_eq(a, ServerAuth.address_group("2001:0DB8:0001:0002::1"), "mismo /64, distinta forma")
+	assert_eq(a, ServerAuth.address_group("2001:db8:1:2::"), "y con el final comprimido")
+	assert_eq(a, ServerAuth.address_group("2001:db8:1:2:ffff:ffff:ffff:ffff"), "y otra dirección")
+	assert_true(a != ServerAuth.address_group("2001:db8:1:3::1"), "otro /64")
+	assert_true(a != ServerAuth.address_group("2001:db8:2:2::1"), "otro /64 (tercer grupo)")
+	assert_eq(ServerAuth.address_group("2001:db8::5"), ServerAuth.address_group("2001:db8:0:0::9"),
+			"la compresión :: en medio se expande")
+	assert_eq(ServerAuth.address_group("fe80::1%eth0"), ServerAuth.address_group("fe80::2"),
+			"la zona de ámbito no cuenta")
+	assert_eq(ServerAuth.address_group(""), "", "sin dirección, vacío")
+	assert_eq(ServerAuth.address_group("no-es-una-ip"), "no-es-una-ip", "lo que no se entiende, tal cual")
+	assert_eq(ServerAuth.address_group("1:2:3:4:5:6:7:8:9"), "1:2:3:4:5:6:7:8:9", "demasiados grupos")
+	assert_eq(ServerAuth.address_group("1::2::3"), "1::2::3", "dos compresiones")
+
+
 func test_reject_ticket_from_provider() -> void:
 	var provider := CountingProvider.new()
 	provider.result = NetProtocol.Result.TICKET
