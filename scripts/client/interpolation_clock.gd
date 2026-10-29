@@ -15,6 +15,11 @@ extends RefCounted
 ## [code]local_tick + max_offset - retardo[/code] a ritmo de 1 tick por tick de física, con una
 ## corrección de como mucho 0,05 ticks por tick (o con un salto, si el error pasa de 10 ticks).
 ## [br][br]
+## [b]Sesgo de un tick.[/b] El pseudocódigo normativo compara el objetivo de este tick con el tick de
+## dibujo del anterior (antes de sumarle 1), así que la corrección proporcional converge a un tick de
+## dibujo 1 tick por delante del objetivo: el retardo efectivo es el retardo menos 1 tick. Se ha
+## dejado tal cual (ver las pruebas); quien dibuje debe usar siempre [method get_render_tick].
+## [br][br]
 ## Los remotos se dibujan en [code]_process[/code] en el instante
 ## [code]render_tick + Engine.get_physics_interpolation_fraction()[/code].
 

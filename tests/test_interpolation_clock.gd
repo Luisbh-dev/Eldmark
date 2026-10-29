@@ -6,6 +6,14 @@ extends TestCase
 ## Los snapshots sintéticos llegan cada 2 ticks locales con
 ## [code]server_tick = local_tick + base_offset - lateness[/code]: el offset máximo de la ventana
 ## es [code]base_offset[/code] y el jitter, la media de [code]lateness[/code].
+## [br][br]
+## [b]Régimen estable.[/b] El pseudocódigo de la sección 4.3 compara el objetivo de este tick con el
+## tick de dibujo del anterior (antes de sumarle 1), así que la corrección proporcional converge a
+## un tick de dibujo [constant STEADY_LEAD] tick por delante del objetivo y no justo sobre él. Las
+## pruebas lo tienen en cuenta.
+
+## Tick de dibujo menos objetivo una vez estabilizado el reloj (ver arriba).
+const STEADY_LEAD: float = 1.0
 
 
 func test_does_not_start_before_the_first_snapshot() -> void:
@@ -28,7 +36,8 @@ func test_converges_to_the_minimum_delay_without_jitter() -> void:
 			assert_near(render_tick, 2.0 + 30.0 - 4.0, 1e-6, "el primer snapshot arranca el reloj")
 	assert_eq(clock.get_jitter_ticks(), 0.0, "sin jitter")
 	assert_eq(clock.get_delay_ticks(), 4.0, "retardo mínimo de 4 ticks (67 ms)")
-	assert_near(render_tick, 300.0 + 30.0 - 4.0, 1e-6, "se dibuja 4 ticks por detrás del servidor")
+	assert_near(render_tick, 300.0 + 30.0 - 4.0 + STEADY_LEAD, 1e-6,
+			"en régimen estable se dibuja 4 ticks por detrás del servidor, más el tick de sesgo")
 	assert_near(clock.get_render_tick(), render_tick, 1e-9, "get_render_tick() es el último valor")
 
 
@@ -45,7 +54,7 @@ func test_jitter_raises_the_delay() -> void:
 		render_tick = clock.advance(local_tick)
 	assert_near(clock.get_jitter_ticks(), 1.0, 0.1, "jitter medio")
 	assert_near(clock.get_delay_ticks(), 4.0 + 2.0 * 1.0, 0.25, "retardo = 4 + 2 · jitter")
-	assert_near(render_tick, 600.0 + 30.0 - clock.get_delay_ticks(), 0.3,
+	assert_near(render_tick, 600.0 + 30.0 - clock.get_delay_ticks() + STEADY_LEAD, 0.3,
 			"el tick de dibujo sigue al objetivo")
 
 
@@ -107,7 +116,7 @@ func test_small_errors_are_corrected_gradually() -> void:
 	assert_true(max_step_error <= 0.05 + 1e-9,
 			"la corrección nunca pasa de 0,05 ticks por tick (fue %s)" % max_step_error)
 	assert_true(max_step_error > 0.04, "y sí corrige a ese ritmo (fue %s)" % max_step_error)
-	assert_near(render_tick, target, 0.05, "acaba sobre el objetivo")
+	assert_near(render_tick, target + STEADY_LEAD, 0.05, "acaba sobre el objetivo")
 
 
 func test_jumps_when_the_error_exceeds_ten_ticks() -> void:
