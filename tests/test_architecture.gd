@@ -23,7 +23,7 @@ const CLIENT_DIR: String = "res://scripts/client"
 ## El audio es solo del cliente (ART-10): carpeta de sus scripts y script de servicios del cliente.
 const AUDIO_DIR: String = "res://scripts/client/audio"
 const CLIENT_SERVICES_SCRIPT: String = "res://scripts/client/client_services.gd"
-## Scripts de arranque que cargan cliente y servidor (nombran a ClientMain, pero no al audio).
+## Scripts de arranque que cargan cliente y servidor: no nombran ninguna clase del cliente.
 const BOOT_SCRIPTS: Array[String] = ["res://scripts/boot.gd"]
 const SERVER_DIR: String = "res://scripts/server"
 ## Escenas, además de las de zona, que carga el servidor dedicado: el personaje (lo precarga
@@ -349,32 +349,56 @@ func test_server_does_not_load_audio() -> void:
 		assert_true(deps.has(CLIENT_SERVICES_SCRIPT), "%s monta ClientServices" % scene_path)
 
 
-## Comprobación en un proceso aparte, el de verdad: el script de arranque (que ejecuta también el
-## servidor dedicado) no arrastra el [AudioDirector] ni los servicios del cliente. Lo cargarían las
-## referencias de clase de los scripts del cliente que [code]boot.gd[/code] nombra (ClientMain, la
-## cámara, el HUD, el visual del personaje...): si una de ellas pasa a nombrar [code]AudioDirector[/code] o
-## [code]ClientServices[/code] por su clase, este proceso los carga y la prueba falla; hay que llegar a
-## ellos por [method AudioDirector.get_instance] desde una ruta cargada en tiempo de ejecución o desde
-## la escena del cliente, como hace ART-10.
-func test_the_boot_script_does_not_pull_in_the_audio_director() -> void:
-	var audio_path: String = AUDIO_DIR.path_join("audio_director.gd")
+## Comprobación en un proceso aparte, el de verdad: el arranque del servidor dedicado (la escena
+## principal con [code]--server[/code]) no compila ni carga ningún script de [code]scripts/client/[/code].
+## [code]boot.gd[/code] lo ejecuta también el servidor, y cada referencia de clase que contiene arrastra
+## el script de esa clase y, en cadena, todo lo que éste nombra: nombrar [ClientMain] o [OnlineMain] cargaba
+## 56 de los 69 scripts del cliente (la interfaz, los ajustes, el script de buses de audio...) en el
+## servidor, y un error de sintaxis en cualquiera de ellos lo habría tumbado. Por eso [code]boot.gd[/code]
+## llega a los modos del cliente por la ruta de una escena ([code]client_launcher.tscn[/code]), que solo se
+## carga cuando no es el servidor, y no nombra ninguna clase del cliente.
+func test_the_dedicated_server_boot_loads_no_client_script() -> void:
+	# Análisis estático: boot.gd no nombra clases de scripts/client (la ruta de una escena sí vale).
+	var client_patterns: Array[Array] = _class_patterns(CLIENT_DIR)
+	assert_true(client_patterns.size() > 40, "se conocen las clases del cliente (%d)" % client_patterns.size())
+	for path: String in BOOT_SCRIPTS:
+		for found: String in _find_matches(_read_text(path), client_patterns):
+			fail("%s nombra una clase del cliente: %s" % [path, found])
+	assert_false(_find_matches("OnlineMain.config = config", client_patterns).is_empty(),
+			"el análisis detecta una clase del cliente")
+	# La escena principal tampoco arrastra scripts ni escenas del cliente (el lanzador va por ruta).
+	var boot_dependencies: Dictionary = {}
+	_collect_dependencies("res://scenes/boot.tscn", boot_dependencies)
+	assert_true(boot_dependencies.has("res://scripts/boot.gd"), "la escena principal usa boot.gd")
+	assert_eq(_forbidden_dependencies(boot_dependencies), PackedStringArray(),
+			"la escena principal no depende del cliente")
+	# El proceso de verdad: arranca como el proyecto, con --server, y mira qué ha cargado.
+	var control_path: String = AUDIO_DIR.path_join("audio_buses.gd")
+	var port: int = NetHarness.free_udp_port()
 	var args: PackedStringArray = PackedStringArray(["--headless", "--path",
-			ProjectSettings.globalize_path("res://"), "-s", "res://tests/probe_loaded_scripts.gd",
-			"--", audio_path, CLIENT_SERVICES_SCRIPT, "res://scripts/client/client_main.gd"])
+			ProjectSettings.globalize_path("res://"), "-s", "res://tests/probe_server_boot.gd",
+			"--", "--server", "--zone=test_world", "--port=%d" % port, "--quit-after-ticks=3000",
+			"--fake-players=2", "--probe-control=%s" % control_path])
 	var output: Array = []
 	var code: int = OS.execute(OS.get_executable_path(), args, output, true)
-	assert_eq(code, 0, "el proceso auxiliar termina bien")
-	var loaded: Dictionary = {}
-	for line: String in String(output[0]).split("\n"):
+	var text: String = String(output[0]) if not output.is_empty() else ""
+	assert_eq(code, 0, "el servidor arranca en el proceso auxiliar: %s" % text.right(600))
+	var loaded: PackedStringArray = PackedStringArray()
+	var total: int = -1
+	var control_cached: bool = false
+	for line: String in text.split("\n"):
 		var parts: PackedStringArray = line.strip_edges().split(" ")
-		if parts.size() == 3 and parts[0] == "CACHED":
-			loaded[parts[1]] = parts[2] == "true"
-	assert_eq(loaded.size(), 3, "el proceso auxiliar informa de las tres rutas: %s" % [output])
-	assert_true(loaded.get("res://scripts/client/client_main.gd", false),
-			"control: el script de arranque sí arrastra ClientMain (si no, la prueba no prueba nada)")
-	assert_false(loaded.get(audio_path, true),
-			"boot.gd no debe cargar AudioDirector (el servidor dedicado no tiene audio)")
-	assert_false(loaded.get(CLIENT_SERVICES_SCRIPT, true), "ni ClientServices, que lo monta")
+		if parts.size() == 2 and parts[0] == "LOADED":
+			loaded.append(parts[1])
+		elif parts.size() == 3 and parts[0] == "DONE":
+			total = parts[1].trim_prefix("total=").to_int()
+		elif parts.size() == 3 and parts[0] == "CONTROL" and parts[1] == control_path:
+			control_cached = parts[2] == "true"
+	assert_true(total > 60, "el proceso auxiliar revisó los scripts del cliente (%d)" % total)
+	assert_true(control_cached,
+			"control: cargar un script del cliente a propósito sí lo deja en la caché (si no, la prueba no prueba nada)")
+	assert_eq(loaded, PackedStringArray(),
+			"el servidor dedicado no debe cargar scripts de scripts/client/ (cargó %d de %d)" % [loaded.size(), total])
 
 
 ## Si zones.gd cambia (el grupo o el metadato de los puntos de aparición, una firma...), solo se

@@ -78,7 +78,13 @@ que añade otro flujo de trabajo. Aquí se usan, no se redefinen (ver [1.5](#15-
 ### 1.2 Modos de arranque
 
 `boot.gd` lee los argumentos de usuario (los que van tras `--`). Prioridad: `--server` >
-`--bots` > `--connect`/`--local`/`--bot` > sandbox.
+`--bots` > `--connect`/`--local`/`--bot` > sandbox. `boot.gd` solo decide entre servidor y cliente y
+**no nombra ninguna clase de `scripts/client/`** (la escena principal la ejecuta también el
+servidor dedicado, y cada referencia de clase arrastraría el script y, en cadena, la interfaz, los
+ajustes y el audio): para el cliente instancia por su ruta `scenes/client/client_launcher.tscn`
+(`ClientLauncher`), que aplica el resto de la prioridad y cambia a la escena del modo. Lo comprueba
+`test_architecture` arrancando un proceso con `--server` y mirando qué scripts del cliente ha cargado
+(ninguno).
 
 | Argumentos | Modo | Escena |
 |---|---|---|
@@ -2568,7 +2574,10 @@ Los remotos reutilizan `scenes/characters/player_character.tscn`.
   func set_bot(brain: BotBrain) -> void
   ```
 - **`scripts/boot.gd`:** los modos de [1.2](#12-modos-de-arranque). Rellena `ServerMain.config`
-  u `OnlineMain.config` con `from_args()` y cambia a la escena correspondiente.
+  con `from_args()` y cambia a la escena del servidor; para el cliente instancia
+  `scenes/client/client_launcher.tscn`, cuyo `ClientLauncher` (`scripts/client/client_launcher.gd`)
+  rellena `OnlineMain.config`, `BotSwarm.config` o las variables estáticas de `ClientMain` y cambia
+  a la escena correspondiente.
 - **`project.godot`:** `physics/common/physics_ticks_per_second=60` explícito. Lo toca también el
   flujo de arte: hay que fusionar, no sobrescribir.
 - **`tests/test_architecture.gd`:** las reglas de [16](#arquitectura-test_architecture-ampliado)

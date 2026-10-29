@@ -5,7 +5,8 @@ extends Node
 ## Monta la zona elegida ([member zone_id], ver [Zones]), el personaje del jugador en el punto
 ## de aparición de su reino ([member realm]), su aspecto visual ([HumanoidVisual], solo en el
 ## cliente), la cámara de acción, el controlador local y el HUD. Las opciones de arranque llegan
-## desde [code]boot.gd[/code] mediante las variables estáticas.
+## desde [ClientLauncher] (que interpreta lo que deja [code]boot.gd[/code]) mediante las variables
+## estáticas.
 ## [br][br]En modo demo la entrada sale de una demo guionizada ([DemoInput] en el circuito de
 ## pruebas, [RouteDemoInput] en las zonas) y, si hay carpeta de capturas, se guarda un PNG cada
 ## [constant SHOT_INTERVAL_TICKS] ticks y, al terminar, uno desde cada cámara de revisión de la

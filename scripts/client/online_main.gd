@@ -3,7 +3,8 @@ extends Node
 ## Raíz del cliente en red (docs/red.md, secciones 1.2, 3 y 17.5). El sandbox sin red sigue siendo
 ## [ClientMain]; esta escena es la de [code]--connect[/code] y [code]--bot[/code].
 ## [br][br]
-## [code]boot.gd[/code] rellena [member config] con [method ClientConfig.from_args] y cambia a
+## [ClientLauncher] (que monta [code]boot.gd[/code]) rellena [member config] con
+## [method ClientConfig.from_args] y cambia a
 ## [code]scenes/client/online_main.tscn[/code]. El flujo:
 ## [codeblock]
 ## NetTransport + LocalPlayerController + NetClient.start()    "Conectando…"
@@ -67,7 +68,7 @@ const REALM_SELECT_SCENE_PATH: String = "res://scenes/ui/realm_select.tscn"
 ## Capas de la pantalla de elección de reino (por debajo de la de carga, que es la 100).
 const REALM_SELECT_LAYER: int = 90
 
-## Configuración del cliente. La rellena [code]boot.gd[/code]; si es null al arrancar, se lee de los
+## Configuración del cliente. La rellena [ClientLauncher]; si es null al arrancar, se lee de los
 ## argumentos de usuario.
 static var config: ClientConfig
 ## Solo para pruebas: si es válido, el cierre llama a este gancho con el código de salida en lugar de

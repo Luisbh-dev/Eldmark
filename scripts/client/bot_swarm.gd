@@ -3,7 +3,8 @@ extends Node
 ## Enjambre de clientes ligeros para las pruebas de carga (docs/red.md, secciones 14, 15 y 17.5;
 ## TEC-11): la raíz del modo [code]--bots=N[/code].
 ## [br][br]
-## [code]boot.gd[/code] rellena [member config] con [method ClientConfig.from_args] y cambia a
+## [ClientLauncher] (que monta [code]boot.gd[/code]) rellena [member config] con
+## [method ClientConfig.from_args] y cambia a
 ## [code]scenes/client/bot_swarm.tscn[/code]. Crea [member ClientConfig.bot_count] [SwarmBot], uno cada
 ## [constant SPAWN_INTERVAL_TICKS] ticks (para no entrar todos en el mismo tick), cada uno con su
 ## [NetTransport] y su [SceneMultiplayer]. Los bots no cargan la zona ni simulan (ver [SwarmBot]), así
@@ -32,7 +33,7 @@ const LEAVE_WAIT_TICKS: int = 30
 ## Fotogramas por segundo máximos en headless (sección 1.3).
 const MAX_FPS: int = 120
 
-## Configuración del enjambre. La rellena [code]boot.gd[/code]; si es null al arrancar, se lee de
+## Configuración del enjambre. La rellena [ClientLauncher]; si es null al arrancar, se lee de
 ## los argumentos de usuario.
 static var config: ClientConfig
 ## Solo para pruebas: si es válido, el cierre llama a este gancho con el código de salida en lugar de
