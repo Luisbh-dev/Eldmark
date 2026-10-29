@@ -195,7 +195,10 @@ esquiva reactivas se diseñan contra los fuertes, cuya anticipación tras soltar
 | 63 | u32 | `parry_ready_tick` | primer tick en que puede abrirse otra ventana de parada |
 | 67 | u16 | `weapon_id` | arma equipada |
 
-`PROTOCOL_VERSION` pasa a 2. Los ticks absolutos hacen que el estado se restaure sin ambigüedad.
+`PROTOCOL_VERSION` pasa a 2 (y a 3 con la revisión de la fase 3, que cambia la simulación predicha:
+bit 6 de `combat_flags`, carga cancelada tras el silencio del cliente, combo reiniciado al caducar
+el enlace y movimiento aéreo de los controles). Los ticks absolutos hacen que el estado se restaure
+sin ambigüedad.
 
 ### 3.2 Entradas sustituidas (cierra la nota de red.md §8.2)
 
