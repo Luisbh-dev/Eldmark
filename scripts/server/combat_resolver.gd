@@ -11,12 +11,17 @@ extends RefCounted
 ## [br][br]
 ## Para cada atacante:
 ## [br]1. [b]Rebobinado.[/b] [method InputQueue.get_rewind_params] da [code]view_offset_q[/code] y
-## la antelación de su entrada; el tope [method allowed_rewind] sale de red.md, sección 10 (con el mayor de
-## [member ServerPeer.rtt_ticks] y [member ServerPeer.rtt_peak_ticks]: con jitter el mínimo se queda
-## corto para un jugador honrado). Con más
-## de [code]allowed + 1[/code] ticks el golpe no se prueba (puntuación de sospecha del peer y
-## línea en el registro). Si no, [code]view_tick = clamp(s − view_offset_q / 16, s − allowed, s)[/code].
-## Los jugadores falsos y los PNJ no rebobinan ([code]view_tick = s[/code]).
+## la antelación de la entrada del golpe, [b]una sola vez por golpe[/b] (en su primer tick activo: el
+## rebobinado queda fijado en el [Combatant] y los demás ticks activos lo reutilizan, con el
+## [code]view_tick[/code] avanzando con el tick). El tope [method allowed_rewind] sale de red.md,
+## sección 10, con el mayor de [member ServerPeer.rtt_ticks] y [member ServerPeer.rtt_peak_ticks] (con
+## jitter el mínimo se queda corto para un jugador honrado) y una antelación acotada por la habitual
+## del cliente más su dispersión y por un máximo (la de cada entrada la escoge el cliente). Con más de
+## [code]allowed + 1[/code] ticks el golpe no se prueba (puntuación de sospecha del peer y línea en el
+## registro). Si no, [code]view_tick = clamp(s − view_offset_q / 16, s − allowed, s)[/code]. Para las
+## defensas retroactivas se mira atrás como mínimo [code]rtt_floor + 4 − 2[/code] ticks
+## ([member ServerPeer.rtt_floor_ticks], el RTT de ENet): pedir 0 no libra de ellas. Los jugadores
+## falsos y los PNJ no rebobinan ([code]view_tick = s[/code]).
 ## [br]2. [b]Muestras.[/b] El atacante, siempre en su estado congelado de [code]s[/code]. Cada
 ## candidato en [code]view_tick[/code]: del [StateHistory] si [code]view_tick ≤ s − 1[/code],
 ## interpolado entre la pista de [code]s − 1[/code] y lo congelado si está entre [code]s − 1[/code] y
@@ -28,11 +33,12 @@ extends RefCounted
 ## [br]4. [b]Forma y línea de visión.[/b] [method HitShapes.sector_hits_capsule] con la muestra de
 ## la víctima y un rayo contra el mundo actual.
 ## [br]5. [b]Defensa[/b], por este orden: invulnerable en algún tick de
-## [code][floor(view_tick), s][/code] (sin efecto, [b]no consume[/b] el golpe), parada, bloqueo e
-## impacto. La parada y el bloqueo se miran en la muestra de [code]view_tick[/code] y en la de
-## [code]s[/code], con el atacante dentro del cono frontal del defensor; la de [code]view_tick[/code]
-## no cuenta si el defensor ha empezado después un ataque, una esquiva o un control (tambaleo,
-## aturdimiento): quien suelta el escudo para atacar, o a quien se lo quitan, deja de estar protegido.
+## [code][floor(defensa), s][/code] (sin efecto, [b]no consume[/b] el golpe), parada, bloqueo e
+## impacto, donde [code]defensa[/code] es el [code]view_tick[/code] o, si es anterior, el instante que
+## impone el mínimo para la defensa. La parada y el bloqueo se miran en la muestra de ese instante y en
+## la de [code]s[/code], con el atacante dentro del cono frontal del defensor; la antigua no cuenta si
+## el defensor ha empezado después un ataque, una esquiva o un control (tambaleo, aturdimiento): quien
+## suelta el escudo para atacar, o a quien se lo quitan, deja de estar protegido.
 ## [br][br]
 ## Un impacto, un bloqueo o una parada consumen el ataque para ese objetivo.
 
