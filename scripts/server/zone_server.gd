@@ -9,12 +9,17 @@ extends Node
 ## [br][br]
 ## [b]Orden del tick[/b] ([method _physics_process], prioridad -100; es normativo):
 ## [codeblock]
-## poll             recibir: autenticación, READY, LEAVE, INPUT_BATCH -> InputQueue.push()
+## poll             recibir: autenticación, READY, LEAVE, INPUT_BATCH -> InputQueue.push(),
+##                  RESPAWN_REQUEST, DEBUG_COMMAND; y las líneas de la consola
 ## tick += 1        s es el tick que se simula
 ## bajas            desconexión, LEAVE o expulsión -> DESPAWN (motivo 1) y el id en cuarentena
-## simular          por net_id ascendente, con la entrada de InputQueue.take(s); _check_motion
+## simular          todas las entidades con cuerpo (jugadores, falsos y PNJ) por net_id ascendente,
+##                  con la entrada de InputQueue.take(s); _check_motion
+## combate          CombatDirector.process_tick(): congelar, resolver los golpes, aplicar (daño,
+##                  controles, muertes), entorno (caída, volúmenes letales, y < -100),
+##                  reapariciones y publicar la vida; los ENTITY_EVENT salen aquí
 ## altas            los READY pendientes: el jugador aparece con el estado «tras s»
-## historial        StateHistory.record() de todas las entidades
+## historial        StateHistory.record() de todas las entidades, ya con lo impuesto
 ## snapshots        SnapshotBuilder.begin(); interés cada 6 ticks, escalonado; un SNAPSHOT a cada
 ##                  cliente cada 2 ticks, escalonado por la paridad de su net_id
 ## flush            vaciar lo enviado
@@ -35,6 +40,11 @@ extends Node
 ## [br][br]
 ## [b]Jugadores falsos[/b] ([method add_fake_player]): jugadores sin red cuyas entradas salen de un
 ## [BotBrain] y entran directamente en su [InputQueue]; sirven para las pruebas y la carga.
+## [br][br]
+## [b]Combate[/b] (docs/combate.md): un [CombatDirector] lleva la vida, los golpes con rebobinado, las
+## muertes y las reapariciones; los PNJ ([method add_npc], el maniquí de entrenamiento) son cuerpos
+## simulados en el mismo bucle que los jugadores; los comandos de depuración y la consola pasan por el
+## [CommandRegistry] y [code]--combat-log[/code] deja una línea por golpe resuelto.
 
 ## Se emite al terminar cada tick, ya enviado todo lo del tick.
 signal tick_finished(tick: int)
@@ -42,13 +52,16 @@ signal tick_finished(tick: int)
 signal player_joined(peer_id: int, net_id: int)
 ## Un jugador (de red) ha salido del mundo.
 signal player_left(peer_id: int, net_id: int)
+## La cuenta atrás de un cierre pedido por la consola ([code]shutdown <s>[/code]) ha llegado a 0:
+## quien lleva el proceso ([ServerMain]) debe cerrar el servidor.
+signal shutdown_requested(reason: String)
 
 ## Escena del personaje. En el servidor se le libera el nodo [code]Visual[/code].
 const PLAYER_SCENE: PackedScene = preload("res://scenes/characters/player_character.tscn")
 ## Distancia máxima que puede recorrer un personaje en un tick (la velocidad terminal da 0,83 m).
 const MAX_STEP_DISTANCE: float = 1.5
-## Por debajo de esta altura el personaje reaparece en su punto de aparición.
-const FALL_LIMIT_Y: float = -100.0
+## Por debajo de esta altura el personaje muere (cae fuera del mundo).
+const FALL_LIMIT_Y: float = CombatDirector.VOID_LIMIT_Y
 ## Cada cuántos ticks se recalcula el interés de cada peer (escalonado por net_id).
 const INTEREST_INTERVAL_TICKS: int = 6
 ## Ticks que un peer puede estar cargando la zona sin enviar CLIENT_READY (60 s).
@@ -77,7 +90,8 @@ const HELLO_CHECK_TICKS: int = 10
 ## Ticks que se espera, tras [method stop], a que los peers se vayan antes de cerrar el transporte.
 const STOP_DRAIN_TICKS: int = 30
 ## Secciones del tick que aparecen en la línea de métricas (las mismas que mide el bucle).
-const LOGGED_SECTIONS: Array[StringName] = [&"net", &"sim", &"history", &"snapshot", &"flush"]
+const LOGGED_SECTIONS: Array[StringName] = [&"net", &"sim", &"combat", &"history", &"snapshot",
+		&"flush"]
 ## Fichas de jugador y expulsiones que el informe conserva (las más recientes); lo anterior se resume
 ## en totales. Sin tope, un cliente que entra y sale en bucle haría crecer la memoria sin límite.
 const MAX_LOGGED_PLAYERS: int = 1000
@@ -88,6 +102,19 @@ const MAX_LOGGED_PHYSICS_ERRORS: int = 10
 const MAX_TELEPORT_COORDINATE: float = 5000.0
 ## Texto del NOTICE de cierre por defecto.
 const DEFAULT_SHUTDOWN_TEXT: String = "El servidor se está cerrando"
+## Maniquíes de entrenamiento como mucho (los de las zonas y los del comando spawn_dummy).
+const MAX_DUMMIES: int = 16
+## Distancia (m) delante del jugador a la que aparece un maniquí del comando spawn_dummy.
+const DUMMY_SPAWN_DISTANCE: float = 3.0
+## Nombre del maniquí de entrenamiento.
+const DUMMY_NAME: String = "Maniquí"
+## Cabecera del registro de combate (--combat-log).
+const COMBAT_LOG_HEADER: String = "tick,atacante,objetivo,ataque,view_tick,rebobinado,resultado,daño"
+## Segundos restantes en los que una cuenta atrás de cierre avisa a los jugadores.
+const SHUTDOWN_NOTICE_SECONDS: Array[int] = [60, 30, 10, 5, 4, 3, 2, 1]
+## Trazo (m) del rayo con el que se busca el suelo bajo un punto de maniquí.
+const _GROUND_PROBE_UP: float = 4.0
+const _GROUND_PROBE_DOWN: float = 12.0
 ## Trazo de la sonda que decide si un punto de aparición está en el suelo.
 const _PROBE_UP: float = 0.1
 const _PROBE_DOWN: float = 0.3
@@ -146,6 +173,17 @@ var _world_peers: Array[ServerPeer] = []
 var _queues: Dictionary[int, InputQueue] = {}
 # net_id -> cerebro de cada jugador falso.
 var _fakes: Dictionary[int, BotBrain] = {}
+# net_id -> cerebro de cada PNJ (maniquíes).
+var _npcs: Dictionary[int, BotBrain] = {}
+var _combat: CombatDirector
+var _safe_areas: SafeAreas
+var _commands: CommandRegistry = CommandRegistry.new()
+var _console: ServerConsole = null
+var _combat_log: FileAccess = null
+# Tick en el que se cumple la cuenta atrás de un cierre pedido por la consola (-1 = ninguna).
+var _shutdown_tick: int = -1
+var _shutdown_announced: Dictionary[int, bool] = {}
+var _events_sent: int = 0
 # peer_id -> medida del RTT en ticks.
 var _rtt: Dictionary[int, _RttWindow] = {}
 # Peers con CLIENT_READY recibido, en orden de llegada.
@@ -215,6 +253,10 @@ class _PlayerRecord:
 	var late: int = 0
 	var too_early: int = 0
 	var strikes: int = 0
+	var suspicion: int = 0
+	var rewind_rejects: int = 0
+	var swings: int = 0
+	var swings_landed: int = 0
 	var kicked: bool = false
 	var kick_reason: String = ""
 	var queue: InputQueue = null
@@ -232,6 +274,10 @@ class _PlayerRecord:
 			too_early = queue.too_early_count
 		if peer != null:
 			strikes = peer.strikes_total
+			suspicion = peer.suspicion_score
+			rewind_rejects = peer.rewind_rejects
+			swings = peer.swings
+			swings_landed = peer.swings_landed
 		if left_tick < 0 and entity != null and is_instance_valid(entity.node):
 			last_position = entity.get_position()
 
@@ -261,6 +307,10 @@ class _PlayerRecord:
 			"late_inputs": late,
 			"too_early_inputs": too_early,
 			"strikes": strikes,
+			"suspicion": suspicion,
+			"rewind_rejects": rewind_rejects,
+			"swings": swings,
+			"swings_landed": swings_landed,
 			"kicked": kicked,
 			"kick_reason": kick_reason,
 			"position": [last_position.x, last_position.y, last_position.z],
@@ -342,6 +392,12 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 			auth_provider)
 	_auth.set_connected_names_source(get_connected_names)
 	_spawn_picker = SpawnPicker.new(world)
+	_safe_areas = SafeAreas.from_world(world)
+	_combat = CombatDirector.new(_history, StringName(config.zone_id), world, _safe_areas,
+			Callable(self, "_place"), Callable(self, "_pick_spawn_point"))
+	_combat.event_emitted.connect(_on_combat_event)
+	_commands.audit_sink = Callable(self, "_log")
+	_register_commands()
 	if _transport != null:
 		_connect_transport()
 		if not _transport.is_server():
@@ -354,6 +410,7 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 				_players_root = null
 				return error
 	_open_state_log()
+	_open_combat_log()
 	_metrics.register_monitors()
 	_log_last_usec = Time.get_ticks_usec()
 	_clock_origin_usec = _log_last_usec
@@ -395,6 +452,9 @@ func stop(notice_text: String = "") -> void:
 	_fake_leaving.clear()
 	_sync_byte_counters()
 	_close_state_log()
+	_close_combat_log()
+	if _console != null:
+		_console.stop()
 	_metrics.unregister_monitors()
 	_drain_ticks = 0
 	if _transport == null or _peers.is_empty():
@@ -469,6 +529,26 @@ func get_metrics() -> ServerMetrics:
 	return _metrics
 
 
+## El director del combate (vida, golpes, muertes y reapariciones). null antes de [method start].
+func get_combat() -> CombatDirector:
+	return _combat
+
+
+## Plazos del combate en ticks (reaparición, protección...). Las pruebas los acortan.
+func get_combat_timing() -> CombatTiming:
+	return _combat.timing if _combat != null else null
+
+
+## Registro de comandos de administración (red y consola).
+func get_commands() -> CommandRegistry:
+	return _commands
+
+
+## Zonas seguras de la zona.
+func get_safe_areas() -> SafeAreas:
+	return _safe_areas
+
+
 ## Huella de la simulación ([method NetProtocol.compute_sim_hash]) que el servidor exige a los
 ## clientes en el HELLO.
 func get_sim_hash() -> int:
@@ -491,6 +571,8 @@ func add_fake_player(brain: BotBrain, realm: int) -> int:
 	if entity == null:
 		return -1
 	_fakes[entity.net_id] = brain
+	if brain.get_pattern() == BotBrain.Pattern.COMBAT and not brain.has_enemy_finder():
+		brain.set_enemy_finder(_find_enemy_position.bind(entity.net_id))
 	var record: _PlayerRecord = _player_by_net[entity.net_id]
 	record.is_fake = true
 	_announce_arrival(entity, null, _tick)
@@ -519,6 +601,95 @@ func teleport(net_id: int, position: Vector3) -> void:
 		return
 	_place(entity, position, entity.get_character().yaw)
 	_teleports += 1
+
+
+## Crea un PNJ humanoide de nombre [param display_name] y bando [param realm] (0 = los Huecos, hostiles
+## a todos) en [param position] mirando a [param yaw]: un [PlayerCharacter] simulado en el mismo bucle
+## que los jugadores con las entradas de [param brain] (como las de un jugador falso), con vida y
+## grabado en el historial. Con [param immortal] es un maniquí: la vida no baja de 1 y se cura del todo
+## a los 5 s sin daño. Devuelve su [code]net_id[/code], o -1 si el servidor no está en marcha o no
+## quedan ids.
+func add_npc(brain: BotBrain, display_name: String, realm: int, position: Vector3, yaw: float,
+		immortal: bool = false) -> int:
+	if _run_state != _RunState.RUNNING or brain == null:
+		return -1
+	var entity: NetEntity = _create_body(NetProtocol.EntityKind.NPC, display_name, realm, 0, _tick,
+			position, yaw)
+	if entity == null:
+		return -1
+	_npcs[entity.net_id] = brain
+	_combat.get_combatant(entity.net_id).immortal = immortal
+	_announce_arrival(entity, null, _tick)
+	_log("Alta del PNJ %s (net_id %d)%s en %s" % [display_name, entity.net_id,
+			", inmortal" if immortal else "", position])
+	return entity.net_id
+
+
+## Da de baja al PNJ [param net_id] (DESPAWN a quien lo veía). Devuelve false si no es un PNJ.
+func remove_npc(net_id: int) -> bool:
+	var entity: NetEntity = _registry.get_entity(net_id)
+	if entity == null or not _npcs.has(net_id):
+		return false
+	_remove_player(entity, _tick, NetProtocol.DespawnReason.DISCONNECTED)
+	return true
+
+
+## Crea un maniquí de entrenamiento (PNJ inmortal del bando neutral) en [param position] mirando a
+## [param yaw], con el modo [param mode] ([enum NpcBrain.Mode]). La posición se baja al suelo si hay
+## uno debajo. Devuelve su net_id, o -1 si no cabe ([constant MAX_DUMMIES]) o no se puede crear.
+func spawn_dummy(position: Vector3, yaw: float, mode: int = NpcBrain.Mode.STILL) -> int:
+	if get_dummy_count() >= MAX_DUMMIES:
+		return -1
+	return add_npc(NpcBrain.new(mode), DUMMY_NAME, RealmCatalog.NEUTRAL_CODE,
+			_ground_position(position), yaw, true)
+
+
+## Coloca un maniquí quieto en cada marcador del grupo [code]dummy_points[/code] de la zona (uno en
+## el mundo de pruebas y uno junto a cada campamento del Vado Gris). Devuelve cuántos ha creado.
+func spawn_zone_dummies() -> int:
+	var created: int = 0
+	for marker: Node3D in NetZones.get_dummy_points(_world):
+		var transform: Transform3D = marker.global_transform
+		if spawn_dummy(transform.origin, CombatDirector._yaw_of(transform)) > 0:
+			created += 1
+	return created
+
+
+## Maniquíes vivos (PNJ inmortales).
+func get_dummy_count() -> int:
+	var count: int = 0
+	for net_id: int in _npcs:
+		var combatant: Combatant = _combat.get_combatant(net_id)
+		if combatant != null and combatant.immortal:
+			count += 1
+	return count
+
+
+## Ejecuta una línea de la consola ([code]kick Ana[/code]) y devuelve la respuesta. Es lo que hace el
+## servidor con cada línea de la entrada estándar; las pruebas la llaman directamente.
+func console_command(line: String) -> String:
+	return _commands.execute_console(line)
+
+
+## Arranca la consola de la entrada estándar (hilo lector, sin bloquear el tick). Devuelve false si no
+## hay entrada estándar utilizable o ya estaba en marcha.
+func start_console() -> bool:
+	if _console == null:
+		_console = ServerConsole.new()
+	return _console.start()
+
+
+## La consola ([ServerConsole]), o null si no se ha arrancado ni se le ha dado una línea.
+func get_console() -> ServerConsole:
+	return _console
+
+
+## Mete una línea en la cola de la consola como si se hubiera escrito en la entrada estándar; se
+## ejecuta al principio del siguiente tick.
+func push_console_line(line: String) -> void:
+	if _console == null:
+		_console = ServerConsole.new()
+	_console.push_line(line)
 
 
 ## Escribe el informe JSON de la ejecución en [param path] (los directorios que falten se crean).
@@ -571,6 +742,7 @@ func _physics_process(delta: float) -> void:
 	if _transport != null:
 		_grant_stall_credit()
 		_transport.poll(_tick)
+	_run_console_lines()
 	_metrics.end_section(&"net")
 
 	_tick += 1
@@ -583,6 +755,11 @@ func _physics_process(delta: float) -> void:
 	_metrics.begin_section(&"sim")
 	_simulate_players(s, delta)
 	_metrics.end_section(&"sim")
+
+	_metrics.begin_section(&"combat")
+	_combat.process_tick(s, _players_root.get_world_3d().direct_space_state)
+	_metrics.end_section(&"combat")
+	_check_shutdown_countdown(s)
 
 	_process_arrivals(s)
 
@@ -622,20 +799,21 @@ func _grant_stall_credit() -> void:
 		peer.grant_stall_credit(_tick, missed_ticks)
 
 
-# Simula a todos los jugadores por net_id ascendente con la entrada de take(s).
+# Simula a todas las entidades con cuerpo (jugadores, falsos y PNJ) por net_id ascendente con la
+# entrada de take(s).
 func _simulate_players(s: int, delta: float) -> void:
 	var inputs_consumed: int = 0
 	var inputs_substituted: int = 0
 	var logging_states: bool = _state_log != null
 	for entity: NetEntity in _registry.get_sorted():
-		if entity.kind != NetProtocol.EntityKind.PLAYER:
-			continue
 		var character: PlayerCharacter = entity.get_character()
 		var queue: InputQueue = _queues.get(entity.net_id)
 		if character == null or queue == null:
 			continue
 		var before: Vector3 = character.global_position
 		var brain: BotBrain = _fakes.get(entity.net_id)
+		if brain == null:
+			brain = _npcs.get(entity.net_id)
 		if brain != null:
 			var generated: PlayerInput = brain.next_input(s, before, character.yaw)
 			generated.tick = s
@@ -665,22 +843,24 @@ func _simulate_players(s: int, delta: float) -> void:
 
 
 # El servidor no acepta estado del cliente, así que estas comprobaciones solo detectan errores
-# propios: un salto de más de 1,5 m en un tick se anota como error de física, y caer por debajo
-# de FALL_LIMIT_Y devuelve al jugador a su punto de aparición.
+# propios: un salto de más de 1,5 m en un tick se anota como error de física, y una posición que no
+# es finita devuelve al jugador a su punto de aparición. (Caer por debajo de FALL_LIMIT_Y es una
+# muerte: la resuelve el paso de combate.) Un muerto no se comprueba: su cuerpo lo coloca el combate.
 func _check_motion(entity: NetEntity, before: Vector3) -> void:
 	var character: PlayerCharacter = entity.get_character()
+	if character.combat.action == CombatState.Action.DEAD:
+		return
 	var after: Vector3 = character.global_position
 	if not after.is_finite() or after.distance_to(before) > MAX_STEP_DISTANCE:
 		_physics_errors += 1
 		if _physics_errors <= MAX_LOGGED_PHYSICS_ERRORS:
 			push_warning("[Eldmark] Error de física: %s se movió %.2f m en un tick (de %s a %s)"
 					% [entity.display_name, after.distance_to(before), before, after])
-	if not after.is_finite() or after.y < FALL_LIMIT_Y:
+	if not after.is_finite():
 		var spawn: Transform3D = _spawn_picker.pick(entity.realm)
 		_place(entity, spawn.origin, _yaw_of(spawn))
-		_respawns += 1
-		_log("%s cayó fuera del mundo (y = %.1f) y reaparece en %s" % [entity.display_name,
-				after.y if after.is_finite() else 0.0, spawn.origin])
+		_log("%s tiene una posición no válida y reaparece en %s" % [entity.display_name,
+				spawn.origin])
 
 
 # Coloca al personaje en [param position] con el [param yaw] dado y velocidad 0. El estado pasa por
@@ -727,34 +907,15 @@ func _process_arrivals(s: int) -> void:
 				entity.get_position(), get_player_count()])
 
 
-# Crea la entidad y el personaje de un jugador en un punto de aparición de su reino. El estado es
-# «el estado tras s», redondeado por encode/decode; su cola de entradas empieza con el tick s ya
-# consumido y la entrada neutra como última aplicada; y se le abre la pista del historial.
+# Crea la entidad y el personaje de un jugador en un punto de aparición de su reino y le da su
+# combate. Ver _create_body.
 func _create_player(display_name: String, realm: int, owner_peer: int, s: int) -> NetEntity:
-	var entity: NetEntity = _registry.allocate(NetProtocol.EntityKind.PLAYER, s)
+	var spawn: Transform3D = _spawn_picker.pick(realm)
+	var entity: NetEntity = _create_body(NetProtocol.EntityKind.PLAYER, display_name, realm,
+			owner_peer, s, spawn.origin, _yaw_of(spawn))
 	if entity == null:
 		return null
-	entity.realm = realm
-	entity.owner_peer = owner_peer
-	entity.display_name = display_name
-
-	var character: PlayerCharacter = _instantiate_character()
-	character.name = "Player%d" % entity.net_id
-	_players_root.add_child(character)
-	var spawn: Transform3D = _spawn_picker.pick(realm)
-	var state := PlayerState.new()
-	state.position = spawn.origin
-	state.yaw = PlayerState.to_f32(_yaw_of(spawn))
-	state.grounded = _probe_grounded(spawn.origin)
-	state.last_input_tick = s
-	state = PlayerState.decode(state.encode())
-	character.set_state(state)
-	entity.node = character
-
-	var queue := InputQueue.new()
-	queue.reset(s, NetProtocol.neutral_input(s, state.yaw))
-	_queues[entity.net_id] = queue
-	_history.add_entity(entity.net_id)
+	var queue: InputQueue = _queues[entity.net_id]
 
 	var record := _PlayerRecord.new()
 	record.net_id = entity.net_id
@@ -770,6 +931,39 @@ func _create_player(display_name: String, realm: int, owner_peer: int, s: int) -
 	_joined_total += 1
 	_metrics.add_counter(ServerMetrics.COUNTER_PLAYERS, 1)
 	_peak_players = maxi(_peak_players, _metrics.get_counter(ServerMetrics.COUNTER_PLAYERS))
+	return entity
+
+
+# Crea la entidad de tipo [param kind] con su cuerpo (un PlayerCharacter) en [param spawn_origin]
+# mirando a [param spawn_yaw], su cola de entradas, su pista del historial y su combate. El estado es
+# «el estado tras s», redondeado por encode/decode; la cola empieza con el tick s ya consumido y la
+# entrada neutra como última aplicada. null si no quedan ids.
+func _create_body(kind: int, display_name: String, realm: int, owner_peer: int, s: int,
+		spawn_origin: Vector3, spawn_yaw: float) -> NetEntity:
+	var entity: NetEntity = _registry.allocate(kind, s)
+	if entity == null:
+		return null
+	entity.realm = realm
+	entity.owner_peer = owner_peer
+	entity.display_name = display_name
+
+	var character: PlayerCharacter = _instantiate_character()
+	character.name = ("Player%d" if kind == NetProtocol.EntityKind.PLAYER else "Npc%d") % entity.net_id
+	_players_root.add_child(character)
+	var state := PlayerState.new()
+	state.position = spawn_origin
+	state.yaw = PlayerState.to_f32(spawn_yaw)
+	state.grounded = _probe_grounded(spawn_origin)
+	state.last_input_tick = s
+	state = PlayerState.decode(state.encode())
+	character.set_state(state)
+	entity.node = character
+
+	var queue := InputQueue.new()
+	queue.reset(s, NetProtocol.neutral_input(s, state.yaw))
+	_queues[entity.net_id] = queue
+	_history.add_entity(entity.net_id)
+	_combat.add(entity, queue, _peers.get(owner_peer))
 	return entity
 
 
@@ -877,6 +1071,8 @@ func _remove_player(entity: NetEntity, s: int, reason: int) -> void:
 		_player_by_net.erase(net_id)
 	_queues.erase(net_id)
 	_fakes.erase(net_id)
+	_npcs.erase(net_id)
+	_combat.remove(net_id)
 	_history.forget(net_id)
 	_substituted_now.erase(net_id)
 	var character: PlayerCharacter = entity.get_character()
@@ -886,7 +1082,8 @@ func _remove_player(entity: NetEntity, s: int, reason: int) -> void:
 		character.queue_free()
 	entity.node = null
 	_registry.release(net_id, s)
-	_metrics.add_counter(ServerMetrics.COUNTER_PLAYERS, -1)
+	if entity.kind == NetProtocol.EntityKind.PLAYER:
+		_metrics.add_counter(ServerMetrics.COUNTER_PLAYERS, -1)
 
 
 # Libera a todos los jugadores (cierre del servidor), sin enviar DESPAWN.
@@ -902,6 +1099,9 @@ func _clear_players() -> void:
 	_world_peers.clear()
 	_queues.clear()
 	_fakes.clear()
+	_npcs.clear()
+	if _combat != null:
+		_combat.clear()
 	_player_by_net.clear()
 	_substituted_now.clear()
 	for peer: ServerPeer in _peers.values():
@@ -954,6 +1154,8 @@ func _record_history(s: int) -> void:
 			yaw = character.yaw
 			if character.grounded:
 				flags |= EntityRecord.FLAG_GROUNDED
+			# Banderas defensivas (bloqueo, parada, invulnerable, muerto) para el rebobinado.
+			flags |= ActionMachine.defense_flags(character.combat, s)
 		else:
 			flags |= EntityRecord.FLAG_GROUNDED
 			if is_instance_valid(entity.node):
@@ -965,6 +1167,8 @@ func _record_history(s: int) -> void:
 					character.get_state().encode().hex_encode()])
 	if _state_log != null and s % STATE_LOG_FLUSH_TICKS == 0:
 		_state_log.flush()
+	if _combat_log != null and s % STATE_LOG_FLUSH_TICKS == 0:
+		_combat_log.flush()
 	_substituted_now.clear()
 
 
@@ -1028,6 +1232,432 @@ func _is_relevant(observer: NetEntity, entity: NetEntity, was_relevant: bool) ->
 func _send(peer: ServerPeer, channel: int, bytes: PackedByteArray) -> void:
 	if _transport != null:
 		_transport.send(peer.peer_id, channel, bytes)
+
+
+# --- Combate: eventos, enemigos, suelo ----------------------------------------------------------
+
+# Un evento de combate: ENTITY_EVENT (canal fiable) a los dueños de las entidades implicadas
+# (víctima, atacante, asesino y asistentes) y a quien tenga relevante a cualquiera de ellas.
+func _on_combat_event(event: NetMessages.EntityEvent, involved: PackedInt32Array) -> void:
+	if _transport == null or _world_peers.is_empty():
+		return
+	var bytes: PackedByteArray = event.encode()
+	for peer: ServerPeer in _world_peers:
+		var receives: bool = involved.has(peer.entity.net_id)
+		if not receives:
+			for net_id: int in involved:
+				if peer.relevant.get(net_id, false):
+					receives = true
+					break
+		if receives:
+			_transport.send(peer.peer_id, NetProtocol.CH_RELIABLE, bytes)
+			_events_sent += 1
+
+
+# Un punto de aparición del reino (para colocar a quien cae fuera del mundo mientras está muerto).
+func _pick_spawn_point(realm: int) -> Transform3D:
+	return _spawn_picker.pick(realm)
+
+
+# Posición del enemigo vivo más cercano a [param position] para el jugador falso [param net_id] (el
+# cerebro de combate de BotBrain), o null si no hay ninguno que pueda atacar o ser atacado: los
+# maniquíes, los protegidos y los que están en la zona segura de su reino no cuentan, y quien está en
+# la zona segura de su reino no ataca.
+func _find_enemy_position(position: Vector3, net_id: int) -> Variant:
+	var me: Combatant = _combat.get_combatant(net_id)
+	if me == null or me.is_dead() or _safe_areas.contains_own(me.get_realm(), position):
+		return null
+	var zone_id := StringName(_config.zone_id)
+	var best: Variant = null
+	var best_distance: float = INF
+	for other: Combatant in _combat.get_sorted():
+		if other == me or other.is_dead() or other.immortal or other.is_protected(_tick):
+			continue
+		if not FactionRules.can_damage(me.get_realm(), other.get_realm(), zone_id):
+			continue
+		var other_position: Vector3 = other.entity.get_position()
+		if _safe_areas.contains_own(other.get_realm(), other_position):
+			continue
+		var distance: float = position.distance_squared_to(other_position)
+		if distance < best_distance:
+			best_distance = distance
+			best = other_position
+	return best
+
+
+# El suelo bajo [param position]: el punto donde un rayo desde unos metros más arriba toca el mundo, o
+# [param position] si no hay suelo debajo. El rayo va ligeramente inclinado: los verticales pueden fallar
+# contra HeightMapShape3D.
+func _ground_position(position: Vector3) -> Vector3:
+	var space: PhysicsDirectSpaceState3D = _players_root.get_world_3d().direct_space_state
+	var from: Vector3 = position + Vector3(0.0, _GROUND_PROBE_UP, 0.0)
+	var query := PhysicsRayQueryParameters3D.create(from,
+			from + Vector3(0.001, -(_GROUND_PROBE_UP + _GROUND_PROBE_DOWN), 0.0),
+			PlayerCharacter.WORLD_COLLISION_LAYER)
+	var hit: Dictionary = space.intersect_ray(query)
+	if hit.is_empty():
+		return position
+	return (hit["position"] as Vector3) + Vector3(0.0, 0.05, 0.0)
+
+
+func _open_combat_log() -> void:
+	if _config.combat_log_path.is_empty():
+		return
+	var directory: String = _config.combat_log_path.get_base_dir()
+	if not directory.is_empty() and not DirAccess.dir_exists_absolute(directory):
+		DirAccess.make_dir_recursive_absolute(directory)
+	_combat_log = FileAccess.open(_config.combat_log_path, FileAccess.WRITE)
+	if _combat_log == null:
+		push_warning("[Eldmark] No se pudo abrir el registro de combate '%s' (error %d)"
+				% [_config.combat_log_path, FileAccess.get_open_error()])
+		return
+	_combat_log.store_line(COMBAT_LOG_HEADER)
+	_combat.combat_log = _combat_log
+
+
+func _close_combat_log() -> void:
+	if _combat_log != null:
+		if _combat != null:
+			_combat.combat_log = null
+		_combat_log.close()
+		_combat_log = null
+
+
+# --- Comandos y consola ------------------------------------------------------------------------
+
+# Registra los comandos de administración: los seis de red (ids fijos de NetProtocol) con su versión
+# de consola, y los que son solo de consola.
+func _register_commands() -> void:
+	_commands.register(&"teleport", "teleport <jugador> <x> <y> <z>", _console_teleport,
+			_net_teleport)
+	_commands.register(&"heal", "heal <jugador>", _console_heal, _net_heal)
+	_commands.register(&"kill", "kill <jugador>", _console_kill, _net_kill)
+	_commands.register(&"stamina_inf", "stamina_inf <jugador> [on|off]", _console_stamina_inf,
+			_net_stamina_inf)
+	_commands.register(&"set_weapon", "set_weapon <jugador> <arma>", _console_set_weapon,
+			_net_set_weapon)
+	_commands.register(&"spawn_dummy", "spawn_dummy <x> <y> <z> [quieto|bloqueando|girando]",
+			_console_spawn_dummy, _net_spawn_dummy)
+	_commands.register(&"announce", "announce <texto>", _console_announce)
+	_commands.register(&"kick", "kick <jugador> [motivo]", _console_kick)
+	_commands.register(&"shutdown", "shutdown <segundos> | shutdown cancel", _console_shutdown)
+	_commands.register(&"players", "players", _console_players)
+
+
+# Ejecuta las líneas que ha escrito alguien en la consola desde el tick anterior.
+func _run_console_lines() -> void:
+	if _console == null:
+		return
+	for line: String in _console.take_lines():
+		var response: String = _commands.execute_console(line)
+		if not response.is_empty():
+			_log(response)
+
+
+# Un jugador, jugador falso o PNJ por net_id o por nombre (sin distinguir mayúsculas), o null.
+func _find_entity(text: String) -> NetEntity:
+	var wanted: String = text.strip_edges()
+	if wanted.is_valid_int():
+		var by_id: NetEntity = _registry.get_entity(wanted.to_int())
+		if by_id != null:
+			return by_id
+	var key: String = NameRules.normalize_key(wanted)
+	for entity: NetEntity in _registry.get_sorted():
+		if NameRules.normalize_key(entity.display_name) == key:
+			return entity
+	return null
+
+
+func _is_valid_teleport_target(target: Vector3) -> bool:
+	return target.is_finite() and absf(target.x) <= MAX_TELEPORT_COORDINATE \
+			and absf(target.y) <= MAX_TELEPORT_COORDINATE \
+			and absf(target.z) <= MAX_TELEPORT_COORDINATE
+
+
+# Posición de un maniquí del comando spawn_dummy: delante del jugador, mirando hacia él.
+func _dummy_spawn_for(entity: NetEntity) -> Transform3D:
+	var yaw: float = entity.get_character().yaw
+	var forward: Vector3 = Basis(Vector3.UP, yaw) * Vector3.FORWARD
+	return Transform3D(Basis(Vector3.UP, yaw + PI),
+			entity.get_position() + forward * DUMMY_SPAWN_DISTANCE)
+
+
+func _combatant_of_peer(ctx: CommandRegistry.Context) -> Combatant:
+	if ctx.peer == null or ctx.peer.entity == null:
+		return null
+	return _combat.get_combatant(ctx.peer.entity.net_id)
+
+
+# -- Comandos de red (actúan sobre quien los envía) --
+
+func _net_teleport(ctx: CommandRegistry.Context) -> int:
+	if ctx.payload.size() != NetMessages.DebugCommand.TELEPORT_PAYLOAD_SIZE:
+		return CommandRegistry.Result.BAD_ARGUMENTS
+	var target := Vector3(ctx.payload.decode_float(0), ctx.payload.decode_float(4),
+			ctx.payload.decode_float(8))
+	if not _is_valid_teleport_target(target):
+		ctx.note = "destino fuera de rango"
+		return CommandRegistry.Result.BAD_ARGUMENTS
+	teleport(ctx.peer.entity.net_id, target)
+	ctx.note = str(target)
+	return CommandRegistry.Result.OK
+
+
+func _net_heal(ctx: CommandRegistry.Context) -> int:
+	var combatant: Combatant = _combatant_of_peer(ctx)
+	if combatant == null or combatant.is_dead():
+		return CommandRegistry.Result.REFUSED
+	_combat.heal(combatant)
+	return CommandRegistry.Result.OK
+
+
+func _net_kill(ctx: CommandRegistry.Context) -> int:
+	var combatant: Combatant = _combatant_of_peer(ctx)
+	if combatant == null or combatant.is_dead():
+		return CommandRegistry.Result.REFUSED
+	_combat.kill(combatant, _tick + 1)
+	return CommandRegistry.Result.OK
+
+
+func _net_stamina_inf(ctx: CommandRegistry.Context) -> int:
+	var combatant: Combatant = _combatant_of_peer(ctx)
+	if combatant == null:
+		return CommandRegistry.Result.REFUSED
+	var enabled: bool
+	match ctx.payload.size():
+		0:
+			enabled = (combatant.get_character().combat.combat_flags
+					& CombatState.FLAG_INFINITE_STAMINA) == 0
+		1:
+			enabled = ctx.payload[0] != 0
+		_:
+			return CommandRegistry.Result.BAD_ARGUMENTS
+	_combat.set_infinite_stamina(combatant, enabled)
+	ctx.note = "activada" if enabled else "desactivada"
+	return CommandRegistry.Result.OK
+
+
+func _net_set_weapon(ctx: CommandRegistry.Context) -> int:
+	var combatant: Combatant = _combatant_of_peer(ctx)
+	if combatant == null:
+		return CommandRegistry.Result.REFUSED
+	if ctx.payload.size() != 2:
+		return CommandRegistry.Result.BAD_ARGUMENTS
+	var weapon_id: int = ctx.payload.decode_u16(0)
+	if not _combat.set_weapon(combatant, weapon_id):
+		ctx.note = "arma %d inexistente" % weapon_id
+		return CommandRegistry.Result.BAD_ARGUMENTS
+	return CommandRegistry.Result.OK
+
+
+func _net_spawn_dummy(ctx: CommandRegistry.Context) -> int:
+	if ctx.peer == null or ctx.peer.entity == null:
+		return CommandRegistry.Result.REFUSED
+	var mode: int = NpcBrain.Mode.STILL
+	match ctx.payload.size():
+		0:
+			pass
+		1:
+			mode = ctx.payload[0]
+			if mode < NpcBrain.Mode.STILL or mode > NpcBrain.Mode.SPIN:
+				return CommandRegistry.Result.BAD_ARGUMENTS
+		_:
+			return CommandRegistry.Result.BAD_ARGUMENTS
+	var spawn: Transform3D = _dummy_spawn_for(ctx.peer.entity)
+	var net_id: int = spawn_dummy(spawn.origin, CombatDirector._yaw_of(spawn), mode)
+	if net_id < 0:
+		return CommandRegistry.Result.REFUSED
+	ctx.note = "net_id %d, %s" % [net_id, NpcBrain.mode_name(mode)]
+	return CommandRegistry.Result.OK
+
+
+# -- Comandos de consola --
+
+func _console_teleport(ctx: CommandRegistry.Context) -> String:
+	if ctx.args.size() != 4:
+		return "Uso: teleport <jugador> <x> <y> <z>"
+	var entity: NetEntity = _find_entity(ctx.args[0])
+	if entity == null or entity.get_character() == null:
+		return "No hay ningún jugador «%s»" % ctx.args[0]
+	for i: int in range(1, 4):
+		if not ctx.args[i].is_valid_float():
+			return "Coordenada no válida: %s" % ctx.args[i]
+	var target := Vector3(ctx.args[1].to_float(), ctx.args[2].to_float(), ctx.args[3].to_float())
+	if not _is_valid_teleport_target(target):
+		return "Destino fuera de rango"
+	teleport(entity.net_id, target)
+	return "%s teletransportado a %s" % [entity.display_name, target]
+
+
+func _console_heal(ctx: CommandRegistry.Context) -> String:
+	if ctx.args.size() != 1:
+		return "Uso: heal <jugador>"
+	var combatant: Combatant = _combatant_by_name(ctx.args[0])
+	if combatant == null:
+		return "No hay ningún jugador «%s»" % ctx.args[0]
+	if combatant.is_dead():
+		return "%s está muerto" % combatant.entity.display_name
+	_combat.heal(combatant)
+	return "%s curado" % combatant.entity.display_name
+
+
+func _console_kill(ctx: CommandRegistry.Context) -> String:
+	if ctx.args.size() != 1:
+		return "Uso: kill <jugador>"
+	var combatant: Combatant = _combatant_by_name(ctx.args[0])
+	if combatant == null:
+		return "No hay ningún jugador «%s»" % ctx.args[0]
+	if combatant.is_dead() or combatant.immortal:
+		return "%s no se puede matar" % combatant.entity.display_name
+	_combat.kill(combatant, _tick + 1)
+	return "%s muerto" % combatant.entity.display_name
+
+
+func _console_stamina_inf(ctx: CommandRegistry.Context) -> String:
+	if ctx.args.is_empty() or ctx.args.size() > 2:
+		return "Uso: stamina_inf <jugador> [on|off]"
+	var combatant: Combatant = _combatant_by_name(ctx.args[0])
+	if combatant == null:
+		return "No hay ningún jugador «%s»" % ctx.args[0]
+	var enabled: bool = (combatant.get_character().combat.combat_flags
+			& CombatState.FLAG_INFINITE_STAMINA) == 0
+	if ctx.args.size() == 2:
+		match ctx.args[1].to_lower():
+			"on", "1", "si", "sí":
+				enabled = true
+			"off", "0", "no":
+				enabled = false
+			_:
+				return "Uso: stamina_inf <jugador> [on|off]"
+	_combat.set_infinite_stamina(combatant, enabled)
+	return "Resistencia infinita %s para %s" % ["activada" if enabled else "desactivada",
+			combatant.entity.display_name]
+
+
+func _console_set_weapon(ctx: CommandRegistry.Context) -> String:
+	if ctx.args.size() != 2:
+		return "Uso: set_weapon <jugador> <arma>"
+	var combatant: Combatant = _combatant_by_name(ctx.args[0])
+	if combatant == null:
+		return "No hay ningún jugador «%s»" % ctx.args[0]
+	var weapon_id: int = CombatCatalog.weapon_id(StringName(ctx.args[1]))
+	if weapon_id == 0 and ctx.args[1].is_valid_int():
+		weapon_id = ctx.args[1].to_int()
+	if not _combat.set_weapon(combatant, weapon_id):
+		return "No existe el arma «%s»" % ctx.args[1]
+	return "%s lleva ahora %s" % [combatant.entity.display_name, ctx.args[1]]
+
+
+func _console_spawn_dummy(ctx: CommandRegistry.Context) -> String:
+	if ctx.args.size() < 3 or ctx.args.size() > 4:
+		return "Uso: spawn_dummy <x> <y> <z> [quieto|bloqueando|girando]"
+	for i: int in 3:
+		if not ctx.args[i].is_valid_float():
+			return "Coordenada no válida: %s" % ctx.args[i]
+	var target := Vector3(ctx.args[0].to_float(), ctx.args[1].to_float(), ctx.args[2].to_float())
+	if not _is_valid_teleport_target(target):
+		return "Posición fuera de rango"
+	var mode: int = NpcBrain.Mode.STILL
+	if ctx.args.size() == 4:
+		mode = NpcBrain.mode_from_name(ctx.args[3])
+		if mode < 0:
+			return "Modo desconocido: %s (quieto, bloqueando o girando)" % ctx.args[3]
+	var net_id: int = spawn_dummy(target, 0.0, mode)
+	if net_id < 0:
+		return "No se puede crear otro maniquí (hay %d como mucho)" % MAX_DUMMIES
+	return "Maniquí %s creado (net_id %d)" % [NpcBrain.mode_name(mode), net_id]
+
+
+func _console_announce(ctx: CommandRegistry.Context) -> String:
+	if ctx.args.is_empty():
+		return "Uso: announce <texto>"
+	var count: int = _broadcast_notice(" ".join(ctx.args))
+	return "Anuncio enviado a %d jugadores" % count
+
+
+func _console_kick(ctx: CommandRegistry.Context) -> String:
+	if ctx.args.is_empty():
+		return "Uso: kick <jugador> [motivo]"
+	var entity: NetEntity = _find_entity(ctx.args[0])
+	if entity == null or entity.kind != NetProtocol.EntityKind.PLAYER:
+		return "No hay ningún jugador «%s»" % ctx.args[0]
+	var reason: String = "expulsado desde la consola"
+	if ctx.args.size() > 1:
+		reason += ": " + " ".join(ctx.args.slice(1))
+	if _fakes.has(entity.net_id):
+		remove_fake_player(entity.net_id)
+		return "Jugador falso %s dado de baja" % entity.display_name
+	var peer: ServerPeer = _peers.get(entity.owner_peer)
+	if peer == null:
+		return "%s no está conectado" % entity.display_name
+	_kick(peer, reason, false)
+	return "%s expulsado" % entity.display_name
+
+
+func _console_shutdown(ctx: CommandRegistry.Context) -> String:
+	if ctx.args.size() != 1:
+		return "Uso: shutdown <segundos> | shutdown cancel"
+	if ctx.args[0].to_lower() == "cancel":
+		if _shutdown_tick < 0:
+			return "No hay ningún cierre pendiente"
+		_shutdown_tick = -1
+		_broadcast_notice("Cierre del servidor cancelado")
+		return "Cierre cancelado"
+	if not ctx.args[0].is_valid_int() or ctx.args[0].to_int() < 0 or ctx.args[0].to_int() > 86400:
+		return "Uso: shutdown <segundos> | shutdown cancel"
+	var seconds: int = ctx.args[0].to_int()
+	_shutdown_tick = _tick + seconds * Engine.physics_ticks_per_second
+	if seconds > 0:
+		_broadcast_notice("El servidor se cerrará en %d s" % seconds)
+	return "Cierre dentro de %d s" % seconds
+
+
+func _console_players(_ctx: CommandRegistry.Context) -> String:
+	var lines := PackedStringArray()
+	for entity: NetEntity in _registry.get_sorted():
+		var combatant: Combatant = _combat.get_combatant(entity.net_id)
+		lines.append("%d %s (%s%s) vida %d/%d" % [entity.net_id, entity.display_name,
+				NetProtocol.realm_display_name(entity.realm),
+				", PNJ" if entity.kind == NetProtocol.EntityKind.NPC else "",
+				combatant.health if combatant != null else 0,
+				combatant.max_health if combatant != null else 0])
+	return "%d entidades: %s" % [lines.size(), "; ".join(lines)]
+
+
+func _combatant_by_name(text: String) -> Combatant:
+	var entity: NetEntity = _find_entity(text)
+	return _combat.get_combatant(entity.net_id) if entity != null else null
+
+
+# NOTICE informativo a todos los jugadores que están en el mundo. Devuelve cuántos lo reciben.
+func _broadcast_notice(text: String) -> int:
+	if _transport == null:
+		return 0
+	var notice := NetMessages.Notice.new()
+	notice.code = NetProtocol.NoticeCode.INFO
+	notice.text = text
+	var bytes: PackedByteArray = notice.encode()
+	for peer: ServerPeer in _world_peers:
+		_transport.send(peer.peer_id, NetProtocol.CH_RELIABLE, bytes)
+	return _world_peers.size()
+
+
+# Cuenta atrás de un cierre pedido por la consola: avisos en los segundos señalados y, al llegar a 0,
+# shutdown_requested.
+func _check_shutdown_countdown(s: int) -> void:
+	if _shutdown_tick < 0:
+		return
+	var remaining: int = _shutdown_tick - s
+	if remaining <= 0:
+		_shutdown_tick = -1
+		_log("Cuenta atrás de cierre cumplida")
+		shutdown_requested.emit("cierre pedido desde la consola")
+		return
+	var rate: int = Engine.physics_ticks_per_second
+	@warning_ignore("integer_division")
+	var seconds_left: int = remaining / rate
+	if remaining % rate == 0 and SHUTDOWN_NOTICE_SECONDS.has(seconds_left):
+		_broadcast_notice("El servidor se cerrará en %d s" % seconds_left)
 
 
 # --- Transporte -------------------------------------------------------------------------------
@@ -1176,6 +1806,8 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 			_handle_client_leave(peer, bytes)
 		NetProtocol.MSG_DEBUG_COMMAND:
 			_handle_debug_command(peer, bytes)
+		NetProtocol.MSG_RESPAWN_REQUEST:
+			_handle_respawn_request(peer, bytes)
 		_:
 			_add_strike(peer, "tipo de mensaje inesperado (0x%02X)" % msg_type)
 
@@ -1251,16 +1883,29 @@ func _handle_debug_command(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	if command == null:
 		_add_strike(peer, "comando de depuración mal formado")
 		return
-	if command.command != NetProtocol.DEBUG_TELEPORT:
-		_add_strike(peer, "comando de depuración desconocido (%d)" % command.command)
+	var result: int = _commands.execute_network(peer, command.command, command.payload)
+	match result:
+		CommandRegistry.Result.UNKNOWN:
+			_add_strike(peer, "comando de depuración desconocido (%d)" % command.command)
+		CommandRegistry.Result.BAD_ARGUMENTS:
+			_add_strike(peer, "comando de depuración con argumentos no válidos (%d)"
+					% command.command)
+
+
+# RESPAWN_REQUEST: un muerto pide reaparecer en el punto point_index de la lista de su reino. Fuera de
+# plazo (vivo, o mucho antes de poder) es un aviso; un índice que ya no vale no lo es: el estado del
+# cliente va atrasado y se usa el primer punto del reino.
+func _handle_respawn_request(peer: ServerPeer, bytes: PackedByteArray) -> void:
+	if peer.state != ServerPeer.State.IN_WORLD:
+		_add_strike(peer, "petición de reaparición antes de entrar en el mundo")
 		return
-	var target: Vector3 = command.get_teleport_position()
-	if not target.is_finite() or absf(target.x) > MAX_TELEPORT_COORDINATE \
-			or absf(target.y) > MAX_TELEPORT_COORDINATE \
-			or absf(target.z) > MAX_TELEPORT_COORDINATE:
-		_add_strike(peer, "teletransporte fuera de rango")
+	var request: NetMessages.RespawnRequest = NetMessages.RespawnRequest.decode(bytes)
+	if request == null:
+		_add_strike(peer, "petición de reaparición mal formada")
 		return
-	teleport(peer.entity.net_id, target)
+	var result: int = _combat.request_respawn(peer.entity.net_id, request.point_index, _tick + 1)
+	if result != CombatDirector.RespawnRequestResult.ACCEPTED:
+		_add_strike(peer, "petición de reaparición fuera de plazo")
 
 
 # Suma un aviso y expulsa al peer si llega al límite (50 en 600 ticks).
@@ -1541,7 +2186,8 @@ func _build_report() -> Dictionary:
 		"rejects": _rejects,
 		"physics_errors": _physics_errors,
 		"teleports": _teleports,
-		"respawns": _respawns,
+		"respawns": _respawns + _combat_stat(&"respawns") + _combat_stat(&"voids"),
+		"combat": _combat_report(),
 		"simulate": {
 			"calls": _simulate_calls,
 			"total_us": _simulate_usec_total,
@@ -1562,6 +2208,29 @@ func _build_report() -> Dictionary:
 		"metrics": _metrics.summary(),
 		"player_list": player_list,
 	}
+
+
+func _combat_stat(stat: StringName) -> int:
+	return _combat.stats.get(stat, 0) if _combat != null else 0
+
+
+# Resumen del combate para el informe: los contadores del director, los eventos enviados y la
+# puntuación de sospecha por peer (solo los sospechosos).
+func _combat_report() -> Dictionary:
+	var suspicious: Array[Dictionary] = []
+	for record: _PlayerRecord in _player_log:
+		record.refresh()
+		if record.suspicion > 0:
+			suspicious.append({"net_id": record.net_id, "name": record.display_name,
+					"suspicion": record.suspicion, "rewind_rejects": record.rewind_rejects})
+	var report: Dictionary = {}
+	if _combat != null:
+		for stat: StringName in _combat.stats:
+			report[String(stat)] = _combat.stats[stat]
+	report["events_sent"] = _events_sent
+	report["dummies"] = get_dummy_count() if _combat != null else 0
+	report["suspicious"] = suspicious
+	return report
 
 
 func _count_fakes_in_log() -> int:

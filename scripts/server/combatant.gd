@@ -69,6 +69,8 @@ var frozen: Frozen = Frozen.new()
 ## acción y objetivo.
 var swing_action_tick: int = -1
 var swing_hits: Dictionary[int, bool] = {}
+## El ataque en curso ya ha dado en algo (impacto, bloqueo o parada): cuenta como acierto una vez.
+var swing_landed: bool = false
 ## Tick de inicio del ataque cuyo rebobinado se rechazó (para contar la sospecha una sola vez).
 var rejected_swing_tick: int = -1
 
@@ -268,6 +270,7 @@ func mark_respawned(tick: int) -> void:
 	ledger.clear()
 	swing_action_tick = -1
 	swing_hits.clear()
+	swing_landed = false
 
 
 ## Empieza a seguir el ataque que empezó en [param action_tick]; si es otro que el anterior, olvida a
@@ -276,6 +279,7 @@ func track_swing(action_tick: int) -> void:
 	if action_tick != swing_action_tick:
 		swing_action_tick = action_tick
 		swing_hits.clear()
+		swing_landed = false
 
 
 ## true si este ataque ya ha golpeado (o ha sido bloqueado o parado por) a [param victim_id].

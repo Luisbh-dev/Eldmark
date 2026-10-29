@@ -34,20 +34,49 @@ static func make_character(parent: Node3D, position: Vector3, yaw: float) -> Pla
 	return character
 
 
-## Un luchador a mano: [Combatant] con su entidad ([param net_id], [param realm]), su personaje en
-## [param position] mirando a [param yaw] y su cola de entradas. [param peer] puede ser null (sin
-## rebobinado).
-static func make_fighter(parent: Node3D, net_id: int, realm: int, position: Vector3, yaw: float,
-		timing: CombatTiming, peer: ServerPeer = null) -> Combatant:
+## Una entidad de red ([param net_id], [param realm]) con su personaje en [param position] mirando a
+## [param yaw].
+static func make_entity(parent: Node3D, net_id: int, realm: int, position: Vector3,
+		yaw: float) -> NetEntity:
 	var entity := NetEntity.new()
 	entity.net_id = net_id
 	entity.kind = NetProtocol.EntityKind.PLAYER
 	entity.realm = realm
 	entity.display_name = "Luchador%d" % net_id
 	entity.node = make_character(parent, position, yaw)
+	return entity
+
+
+## Una cola de entradas lista para una entidad que aparece mirando a [param yaw].
+static func make_queue(yaw: float) -> InputQueue:
 	var queue := InputQueue.new()
 	queue.reset(0, NetProtocol.neutral_input(0, yaw))
-	return Combatant.new(entity, queue, peer, timing, CombatCatalog.rules().health_max)
+	return queue
+
+
+## Un luchador a mano: [Combatant] con su entidad ([param net_id], [param realm]), su personaje en
+## [param position] mirando a [param yaw] y su cola de entradas. [param peer] puede ser null (sin
+## rebobinado).
+static func make_fighter(parent: Node3D, net_id: int, realm: int, position: Vector3, yaw: float,
+		timing: CombatTiming, peer: ServerPeer = null) -> Combatant:
+	var entity: NetEntity = make_entity(parent, net_id, realm, position, yaw)
+	return Combatant.new(entity, make_queue(yaw), peer, timing, CombatCatalog.rules().health_max)
+
+
+## Lo que hace el servidor al colocar un cuerpo ([code]ZoneServer._place[/code]): velocidad 0,
+## estado pasado por encode/decode y contador de teletransporte +1. Sirve de [code]place[/code] del
+## [CombatDirector] en las pruebas.
+static func place(entity: NetEntity, position: Vector3, yaw: float) -> void:
+	var character: PlayerCharacter = entity.get_character()
+	var state: PlayerState = character.get_state()
+	state.position = position
+	state.velocity = Vector3.ZERO
+	state.yaw = PlayerState.to_f32(yaw)
+	state.grounded = true
+	state.coyote_ticks = 0
+	state.jump_buffer_ticks = 0
+	character.set_state(PlayerState.decode(state.encode()))
+	entity.teleport_counter = (entity.teleport_counter + 1) & EntityRecord.TELEPORT_MASK
 
 
 ## Pone al luchador en el primer tick del golpe activo del ligero [param light_index] (0 a 2) en el

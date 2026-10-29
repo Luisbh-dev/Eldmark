@@ -6,11 +6,16 @@ extends RefCounted
 ## [code]--[/code]):
 ## [codeblock]
 ## --server --port=24600 --zone=<id> --max-players=64 --max-per-ip=4 --idle-quit=<s>
-## --fake-players=N --fake-layout=<cluster|spread> --fake-churn=<ticks> --debug-commands --dev-lock
-## --dev-lock-path=<ruta>
+## --fake-players=N --fake-layout=<cluster|spread> --fake-churn=<ticks> --fake-brain=combat
+## --debug-commands --dev-lock --dev-lock-path=<ruta>
 ## --quit-after-ticks=N --report=<ruta.json> --state-log=<ruta.csv> --net-sim=rtt=120,jitter=20
-## --stop-file=<ruta>
+## --stop-file=<ruta> --combat-log=<ruta.csv> --console --no-dummies
 ## [/codeblock]
+## [code]--combat-log=<ruta>[/code] escribe un CSV con una línea por golpe resuelto
+## ([code]tick,atacante,objetivo,ataque,view_tick,rebobinado,resultado,daño[/code]; en el proyecto
+## usa otra extensión, p. ej. [code].txt[/code], porque el importador convierte los [code].csv[/code]
+## en traducciones). [code]--console[/code] lee comandos de la entrada estándar (anunciar, expulsar,
+## cerrar...; ver [CommandRegistry]) y [code]--no-dummies[/code] no coloca los maniquíes de la zona.
 ## SIGTERM y SIGINT (Ctrl+C, [code]docker stop[/code], systemd) matan el proceso de Godot sin pasar
 ## por GDScript, así que no hay cierre ordenado. Para pararlo desde fuera con NOTICE de cierre,
 ## informe y borrado del bloqueo de [code]--dev-lock[/code] está [code]--stop-file=<ruta>[/code]: el
@@ -52,8 +57,18 @@ var fake_layout: String = ""
 ## Cada cuántos ticks sale el jugador falso más antiguo y entra uno nuevo, para medir altas y bajas
 ## (60 = una alta y una baja por segundo). 0 = ninguna.
 var fake_churn_ticks: int = 0
-## Admite los comandos de depuración del cliente (teletransporte).
+## Admite los comandos de depuración del cliente (teletransporte, curar, matar...; ver
+## [CommandRegistry]).
 var debug_commands: bool = false
+## Ruta del registro de combate (CSV). Vacío = ninguno.
+var combat_log_path: String = ""
+## Cerebro de los jugadores falsos: vacío = el de paseo y [constant FAKE_BRAIN_COMBAT] = el de combate
+## (buscan al enemigo más cercano, atacan, bloquean y esquivan).
+var fake_brain: String = ""
+## Lee los comandos de la consola de la entrada estándar (en un hilo, sin bloquear el tick).
+var console: bool = false
+## No coloca los maniquíes de entrenamiento de los marcadores [code]dummy_points[/code] de la zona.
+var no_dummies: bool = false
 ## Escribe [code]user://dev_server.json[/code] para que [code]--local[/code] reutilice el servidor.
 var dev_lock: bool = false
 ## Dónde se escribe el bloqueo de [member dev_lock] en lugar de [code]user://dev_server.json[/code]
@@ -64,6 +79,8 @@ var dev_lock_path: String = ""
 ## Valores de [member fake_layout].
 const LAYOUT_CLUSTER: String = "cluster"
 const LAYOUT_SPREAD: String = "spread"
+## Valor de [member fake_brain] para el cerebro de combate.
+const FAKE_BRAIN_COMBAT: String = "combat"
 const _MAX_PORT: int = 65535
 ## Tope razonable de jugadores y de jugadores falsos (los ids de red son de 16 bits).
 const _MAX_PLAYERS_LIMIT: int = 4096
@@ -93,6 +110,12 @@ static func from_args(args: PackedStringArray) -> ServerConfig:
 	var layout: String = _string_option(args, "--fake-layout=").to_lower()
 	if layout == LAYOUT_CLUSTER or layout == LAYOUT_SPREAD:
 		config.fake_layout = layout
+	var brain: String = _string_option(args, "--fake-brain=").to_lower()
+	if brain == FAKE_BRAIN_COMBAT:
+		config.fake_brain = brain
+	config.combat_log_path = _string_option(args, "--combat-log=").replace("\\", "/")
+	config.console = args.has("--console")
+	config.no_dummies = args.has("--no-dummies")
 	config.report_path = _string_option(args, "--report=")
 	config.state_log_path = _string_option(args, "--state-log=")
 	config.stop_file_path = _string_option(args, "--stop-file=")

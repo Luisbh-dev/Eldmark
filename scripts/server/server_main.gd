@@ -17,6 +17,11 @@ extends Node
 ## [code]--fake-layout=cluster[/code] se agrupan todos en un mismo punto (a menos de 60 m unos de otros) y
 ## con [code]--fake-layout=spread[/code] se reparten por la zona; con [code]--fake-churn=<ticks>[/code]
 ## sale el más antiguo y entra uno nuevo cada tantos ticks (altas y bajas continuas).
+## [br]- Con [code]--fake-brain=combat[/code] los jugadores falsos pelean ([constant BotBrain.Pattern.COMBAT]):
+## buscan al enemigo más cercano, atacan, bloquean y esquivan. En cada marcador [code]dummy_points[/code]
+## de la zona se coloca un maniquí de entrenamiento (salvo con [code]--no-dummies[/code]) y con
+## [code]--console[/code] el servidor lee comandos de la entrada estándar ([CommandRegistry]); la cuenta
+## atrás de [code]shutdown <s>[/code] cierra el proceso como [code]--quit-after-ticks[/code].
 ## [br]- Con [code]--dev-lock[/code] se escribe [code]user://dev_server.json[/code] (o la ruta de
 ## [code]--dev-lock-path[/code]; [code]{pid, port}[/code]) para que [code]--local[/code] reutilice este servidor, y se borra al
 ## cerrar.
@@ -129,6 +134,7 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 	_zone_server.tick_finished.connect(_on_tick_finished)
+	_zone_server.shutdown_requested.connect(_shutdown)
 	print("[Eldmark] Servidor de la zona '%s' escuchando en el puerto UDP %d (hasta %d jugadores, "
 			% [config.zone_id, config.port, config.max_players]
 			+ "%d ticks/s, huella de la simulación 0x%08X)"
@@ -139,6 +145,15 @@ func _ready() -> void:
 		print("[Eldmark] Comandos de depuración activados (--debug-commands)")
 
 	_spawn_fake_players()
+	if not config.no_dummies:
+		var dummies: int = _zone_server.spawn_zone_dummies()
+		if dummies > 0:
+			print("[Eldmark] Maniquíes de entrenamiento colocados: %d" % dummies)
+	if config.console:
+		if _zone_server.start_console():
+			print("[Eldmark] Consola de la entrada estándar activada (escribe help)")
+		else:
+			push_warning("[Eldmark] No hay entrada estándar utilizable: la consola (--console) no se activa")
 	_clear_stale_stop_file()
 	if config.dev_lock:
 		_lock_path = config.dev_lock_path if not config.dev_lock_path.is_empty() else DEV_LOCK_PATH
@@ -254,8 +269,10 @@ func _add_fake_player() -> int:
 			home = _spread_point(_home_of(realm))
 		_:
 			home = _home_of(realm)
-	var brain := BotBrain.new(FAKE_SEED_BASE + index, FAKE_PATTERNS[index % FAKE_PATTERNS.size()],
-			home, FAKE_RADIUS)
+	var pattern: BotBrain.Pattern = FAKE_PATTERNS[index % FAKE_PATTERNS.size()]
+	if config.fake_brain == ServerConfig.FAKE_BRAIN_COMBAT:
+		pattern = BotBrain.Pattern.COMBAT
+	var brain := BotBrain.new(FAKE_SEED_BASE + index, pattern, home, FAKE_RADIUS)
 	var net_id: int = _zone_server.add_fake_player(brain, realm)
 	if net_id < 0:
 		return -1
