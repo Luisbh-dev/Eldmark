@@ -529,6 +529,17 @@ ninguno debe hacer daño de más.
   visibles: ~37 KB/s) más los ENTITY_EVENT (~27 B por destinatario y golpe). Hay que actualizar
   red.md §5.5, §5.6, §9.3, §14 y `test_snapshot_builder`.
 
+**Fase 4: protocolo 6** ([habilidades.md 5](habilidades.md#5-protocolo-protocol_version--6), paquete H2).
+El `PlayerState` pasa a 111 B (cabecera con estado y bloque extra de 134 B, **50 registros** por snapshot;
+bajada de ~11,6 KB/s con 10 visibles y el mismo tope de ~36,8 KB/s desde 50); los botones válidos, a los bits
+0–12; los `u16 attack_id` de HIT, DEATH, KILL y TELEGRAPH pasan a ser una **fuente** (`CombatSource`: los
+ataques de esta fase conservan su número); HIT gana los bits 5 (interrumpido) y 6 (derriba); el bit 3 del
+`status` del bloque extra es «derribado» y el bit 3 de los `flags` del registro, la ranura de arma 2; el SPAWN
+ajeno enseña también la otra arma y la ranura activa; hay eventos 7–11 (STATUS, HEAL, LOADOUT, DOWNED,
+INTERACT), LOADOUT_SELECT (`0x07`), el SPAWN de proyectiles (kind 3, 32 B) con los DESPAWN 4 y 5, y los
+comandos de depuración 13 `cooldowns_off`, 14 `apply_status`, 15 `down` y 16 `refill`. Formatos en red.md
+§5 (marcados «v6»).
+
 ---
 
 ## 7. PNJ y maniquí (MUN-02, CMB-11)

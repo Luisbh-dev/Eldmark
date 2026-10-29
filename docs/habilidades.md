@@ -1326,3 +1326,106 @@ H3a: `active_hit` en `Combatant.freeze` y el resolutor, `impose_move_effect` des
 `reset_for_respawn` (sustituyen a las armas que llevaba en `CombatDirector`) y la recarga con
 `set_charges`. H4: `ClientPrediction.stepped` con `is_commit_tick` y la barra con `ability_status`.
 H5: bots con `solve_lead` y `look_for`.
+
+### 11.3 H2 · protocolo 6
+
+**Hecho.**
+
+- `NetProtocol`: `PROTOCOL_VERSION` 6 (con su línea en la historia de versiones), `VALID_BUTTONS` = bits
+  0–12 (`SWAP_WEAPON`, `AIM_LEFT`, `CONSUMABLE_1` y `CONSUMABLE_2` viajan; los bits 13–14 y la marca de
+  sustituida, no), `MSG_LOADOUT_SELECT` (`0x07`, canal fiable), los comandos 13 `cooldowns_off`, 14
+  `apply_status`, 15 `down` y 16 `refill` en `DEBUG_COMMAND_IDS` y `DespawnReason.IMPACT` (4) y `EXPIRED`
+  (5).
+- `NetMessages`:
+  - `LoadoutSelect` (2 B).
+  - `DebugCommand`: valida los datos de 13 a 16 en el `decode` (13, `u8` 0 o 1; 14, `u8 status_id` de 1
+    a 255 y `u16` ticks; 15 y 16, sin datos), con `cooldowns_off()`, `apply_status()`,
+    `get_status_id()` y `get_status_ticks()`.
+  - `EntitySpawn` de kind 3 (§5.3): 32 B, `for_projectile()`, `is_harmless()` y los campos `owner_id`,
+    `projectile_def_id`, `source`, `volley_index`, `projectile_flags`, `origin` (`p0`) y `velocity`
+    (`v0`), cuantizados como `Ballistics.quantize` (lo comprueba la prueba).
+  - `EntityEvent`: STATUS (7), HEAL (8), LOADOUT (9), DOWNED (10) e INTERACT (11) con sus tamaños
+    exactos, `StatusOp`, `InteractOp`, sus constructores y `get_source()`; los bits 5
+    (`HIT_FLAG_INTERRUPTED`) y 6 (`HIT_FLAG_DOWNED`) de un HIT.
+  - `STATUS_DOWNED` (bit 3 del `status` del bloque extra y del PARTY_STATUS), `Snapshot.is_downed()` y
+    `PartyStatus.MemberStatus.is_downed()`.
+- `EntityRecord`: `FLAG_SECOND_SLOT` (bit 3 de `flags`), `is_second_slot()`, `HISTORY_FLAGS_MASK`
+  (`0b111`); `encode_character` y `from_state` ponen el bit desde `CombatState.is_second_slot()`.
+- Cliente: `NetClient._on_spawn` mira el `kind` antes que `is_yours` y entrega los proyectiles por las
+  señales nuevas `projectile_spawned` y `projectile_despawned` (el DESPAWN de un id que llegó como
+  proyectil va a la suya); `is_own_event` reconoce los eventos 7–11 (temporización de §5.4); `RemoteWorld`
+  y `SwarmBot` ignoran el kind 3.
+- Documentación: red.md (catálogo de §5.2 con las filas «v6» y la leyenda, versión en §5.3, botones,
+  comandos y LOADOUT_SELECT en §5.4, cabecera de 134 B, 50 registros, bit 3 del `status` y de los
+  `flags`, SPAWN ajeno, PROJECTILE, motivos de DESPAWN, eventos 7–11, bits de HIT y fuentes en §5.5,
+  garantía de §9.3, botones de §12, presupuesto de §14 y contratos de §17.3 y §17.5); nota del protocolo
+  6 en combate.md §6; el bit de derribado del PARTY_STATUS en social.md §12.4; notas «Hecho (H2)» en
+  backlog.md.
+
+**Pruebas.** Nueva `test_net_messages_v6` (17: constantes y canales; los botones nuevos llegan en un
+INPUT_BATCH y los bits 13–15 no; LOADOUT_SELECT; comandos 13 a 16; SPAWN de proyectil con cada offset, el
+`is_yours` a 0 aunque se ponga, la balística igual a `Ballistics.quantize`, saturación y malformados;
+DESPAWN 4 y 5; STATUS, HEAL, LOADOUT, DOWNED e INTERACT con sus offsets, `op` fuera de rango y STATUS
+aplicado sin acumulaciones; longitudes incoherentes; bits 5 y 6 de HIT y las seis clases de fuente en
+HIT, DEATH, KILL, HEAL y DOWNED; bit 3 del registro desde el estado y desde el personaje; bit 3 del status
+del snapshot; el SPAWN de jugador con los 111 B exactos; malformados y *fuzz* de 8000 búferes).
+`test_net_messages` gana los mensajes nuevos en sus ejemplos (malformados, decodificador único por tipo y
+*fuzz*). `test_snapshot_builder` (+1): el bit 3 del registro de quien lleva la ranura 2 y el derribado en
+el bloque extra, sin pasar de 1200 B (los 50 registros ya los comprobaba desde H1a). `test_net_client`
+(+1): proyectiles por su señal, propia y ajena, sin vistas de remotos ni tocar el personaje local; DESPAWN
+4 y 5 por la suya; STATUS y LOADOUT propios al llegar y DOWNED ajeno en su tick de dibujo; un id de flecha
+que vuelve como entidad crea su vista. Adaptadas: `test_net_messages` (versión 6, `VALID_BUTTONS`
+0x1FFF, 16 comandos, el evento 12 es el desconocido, PROJECTILE ya tiene formato), `test_net_messages_v3`
+(el proyectil tiene formato; el 13 ya se valida), `test_party_messages` (el bit 3 es derribado; el
+desconocido pasa a ser el 4), `test_command_registry` (16 ids), `test_input_queue` (texto) y
+`test_combat_server` y `test_hfsm_brain` (los cuatro comandos nuevos aún sin manejador).
+
+**Desvíos y decisiones.**
+
+- **Comandos 13 a 16.** H2 deja sus ids, la tabla y la validación del `decode`; los manejadores son de
+  H3a (13 y 14) y H3c (15 y 16), como dice §7.1. Mientras, el servidor los acepta sin aviso ni efecto
+  (la regla de red.md §5.4 para un id fijo sin manejador) y `missing_network_commands()` los lista:
+  `test_combat_server` y `test_hfsm_brain` esperan esos cuatro y H3a y H3c los irán quitando. El 14 exige
+  `status_id` ≥ 1: 0 no es ningún efecto.
+- **LOADOUT_SELECT en el servidor** es de H3c (con `ServerPeer.pending_template_id`); hasta entonces un
+  `0x07` cuenta «tipo de mensaje inesperado». Nadie lo envía todavía (el selector es de H4).
+- **Flags de la cabecera de un proyectil, a 0 enteros**, no solo el bit `is_yours`: un proyectil no se
+  teletransporta. El `decode` rechaza cualquier flag de la cabecera y los bits de `proj_flags` que no
+  existen.
+- **El bit 3 del registro ya se publica.** El registro se escribe del personaje al construir el snapshot
+  (`EntityRecord.encode_character`), no en un paso aparte, así que §7.1 («publicación del bit 3», H3a)
+  queda hecho aquí. El historial no lo recibe: `ZoneServer._record_history` (y `combat_fixture`)
+  componen sus bits 0–2 a mano y no leen el registro, así que el bit de la ranura 2 nunca se confunde con
+  `DEFENSE_BLOCKING`; `HISTORY_FLAGS_MASK` queda para que H3a lo escriba explícito. En la práctica sale a
+  0 hasta las plantillas de dos armas (H3c).
+- **PARTY_STATUS acepta el bit 3.** Es el mismo byte de estado que el bloque extra (`NetEntity.status`):
+  sin añadirlo, el `encode` lo habría tirado y el `decode` habría rechazado el mensaje de un grupo con un
+  derribado en cuanto H3c lo publique. El bit 4 sigue siendo desconocido.
+- **La fuente sigue en `EntityEvent.attack_id`.** Renombrar el campo tocaba todo el cliente; HEAL y DOWNED
+  guardan ahí su `source` y `get_source()` la devuelve en los seis eventos que la llevan (0 en los
+  demás). STATUS e INTERACT comparten el campo `op` (con `StatusOp` e `InteractOp`). Un STATUS quitado
+  puede llevar 0 acumulaciones; uno aplicado, no. El `encode` satura las acumulaciones a 255 y la vida
+  curada a u16; los ids de LOADOUT y HEAL no se validan al decodificar (no hay catálogo en el mensaje).
+- **Cliente.** Las señales `projectile_spawned` y `projectile_despawned` (contratos de §7.2) ya salen de
+  `NetClient`, para que el SPAWN de kind 3 de H3b nunca llegue a `RemoteWorld`, al directorio de nombres
+  ni al alta propia; `ProjectileWorld` (H4) solo tiene que conectarse. Un id que vuelve como entidad deja
+  de contar como proyectil (comparten espacio de ids). `is_own_event` decide ya la temporización de los
+  eventos 7–11 (§5.4); lo que explican en la predicción (`_note_imposed_state`) es de H4.
+- **Pruebas en un archivo propio**, `test_net_messages_v6.gd`, como hizo el protocolo 3 con
+  `test_net_messages_v3.gd` (`test_net_messages.gd` ya pasa de 2200 líneas); el filtro
+  `test_net_messages` ejecuta los tres.
+
+**Medido.** Los tamaños son los del documento (SPAWN de proyectil 32 B, STATUS 18, HEAL 15, LOADOUT 15,
+DOWNED 13, INTERACT 16, LOADOUT_SELECT 2, cabecera de 134 B y 50 registros en 1186 B). Las 93 pruebas de
+mensajes (los tres archivos) tardan ~1,3 s sin el arranque del motor; sus tres *fuzz* (10 000, 8000 y 8000
+búferes) ~0,1 s cada uno.
+
+**Para los paquetes siguientes.** H3a: manejadores de 13 y 14 (y quitarlos de la lista esperada en
+`test_combat_server` y `test_hfsm_brain`), `_hide_private_state` con `alt_weapon_id` y el bit 0 de
+`combat_flags2`, `EntityRecord.HISTORY_FLAGS_MASK` en `_record_history`, STATUS y HEAL con
+`EntityEvent.status`/`heal`, `HIT_FLAG_INTERRUPTED` y las fuentes de `CombatSource` en HIT, DEATH y KILL.
+H3b: `EntitySpawn.for_projectile` y `DespawnReason.IMPACT`/`EXPIRED` (`NetClient` ya los reparte). H3c:
+LOADOUT_SELECT en `ZoneServer` (limitador de fiables, LOADING e IN_WORLD), LOADOUT, DOWNED, INTERACT,
+`HIT_FLAG_DOWNED`, `STATUS_DOWNED` en `Combatant.status_bits` y los comandos 15 y 16. H4:
+`ProjectileWorld` conectado a las señales de `NetClient`, las explicaciones de `_note_imposed_state`, el
+selector que manda LOADOUT_SELECT y las teclas que ponen los bits 9 a 12.

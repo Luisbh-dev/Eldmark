@@ -41,10 +41,15 @@ const NPC_SPAWN_TAIL_SIZE: int = 2
 ## Bytes del recuento por reino al final del WELCOME ([code]u8 × 3[/code]).
 const WELCOME_REALM_COUNTS_SIZE: int = 3
 
-## Bits de [code]status[/code] del bloque extra propio de un SNAPSHOT.
+## Bits de [code]status[/code] del bloque extra propio de un SNAPSHOT (y del estado compacto de un
+## PARTY_STATUS).
 const STATUS_IN_COMBAT: int = 1 << 0
 const STATUS_PROTECTED: int = 1 << 1
 const STATUS_DEAD: int = 1 << 2
+## Derribado (protocolo 6; docs/habilidades.md, sección 5.2). Nunca va con [constant STATUS_DEAD]: un
+## derribado no está muerto. Con él, la vida del bloque extra es la vida de derribado y la máxima, la de
+## derribado de las reglas.
+const STATUS_DOWNED: int = 1 << 3
 
 ## Bit 0 de los flags de un SNAPSHOT: trae el estado propio.
 const FLAG_OWN_STATE: int = 1 << 0
@@ -629,11 +634,16 @@ class ClientLeave:
 ## [method decode] valida los datos de los comandos con formato fijo: 1 [code]teleport[/code] exige
 ## 12 B; 7 [code]unstuck[/code], 8 [code]fort_reset[/code] y 10 [code]fort_kill_captain[/code], 0 B;
 ## 9 [code]fort_owner[/code], 1 B con el reino (0 a 3); 11 [code]fort_capture_speed[/code], 1 B con el
-## factor (1 a 255); 12 [code]npc_debug[/code], 1 B (0 o 1). Los comandos 2 a 6 los valida el servidor
-## (hasta [constant NetMessages.MAX_DEBUG_PAYLOAD_BYTES]).
+## factor (1 a 255); 12 [code]npc_debug[/code], 1 B (0 o 1). Desde el protocolo 6 (docs/habilidades.md,
+## sección 5.1): 13 [code]cooldowns_off[/code], 1 B (0 o 1); 14 [code]apply_status[/code], 3 B
+## ([code]u8 status_id[/code] de 1 a 255 y [code]u16[/code] ticks, 0 = los del dato); 15 [code]down[/code]
+## y 16 [code]refill[/code], 0 B. Los comandos 2 a 6 los valida el servidor (hasta
+## [constant NetMessages.MAX_DEBUG_PAYLOAD_BYTES]).
 class DebugCommand:
 	## Bytes de datos de un teletransporte (3 × f32).
 	const TELEPORT_PAYLOAD_SIZE: int = 12
+	## Bytes de datos de [constant NetProtocol.DEBUG_APPLY_STATUS]: [code]u8 status_id, u16 ticks[/code].
+	const APPLY_STATUS_PAYLOAD_SIZE: int = 3
 	## Reino más alto que admite [constant NetProtocol.DEBUG_FORT_OWNER].
 	const MAX_FORT_OWNER_REALM: int = 3
 
@@ -682,6 +692,34 @@ class DebugCommand:
 		return debug_command
 
 
+	## Comando [constant NetProtocol.DEBUG_COOLDOWNS_OFF]: habilidades sin reutilización (o con ella otra
+	## vez).
+	static func cooldowns_off(enabled: bool) -> DebugCommand:
+		var debug_command := DebugCommand.simple(NetProtocol.DEBUG_COOLDOWNS_OFF)
+		debug_command.payload = PackedByteArray([1 if enabled else 0])
+		return debug_command
+
+
+	## Comando [constant NetProtocol.DEBUG_APPLY_STATUS]: aplicarse el efecto [param status_id] del catálogo
+	## durante [param ticks] ticks (0 = la duración del dato; se satura a u16).
+	static func apply_status(status_id: int, ticks: int = 0) -> DebugCommand:
+		var debug_command := DebugCommand.simple(NetProtocol.DEBUG_APPLY_STATUS)
+		debug_command.payload.resize(APPLY_STATUS_PAYLOAD_SIZE)
+		debug_command.payload.encode_u8(0, status_id & 0xFF)
+		debug_command.payload.encode_u16(1, clampi(ticks, 0, 0xFFFF))
+		return debug_command
+
+
+	## Id del efecto de un [constant NetProtocol.DEBUG_APPLY_STATUS] (0 si no trae sus datos).
+	func get_status_id() -> int:
+		return payload.decode_u8(0) if payload.size() == APPLY_STATUS_PAYLOAD_SIZE else 0
+
+
+	## Ticks de un [constant NetProtocol.DEBUG_APPLY_STATUS] (0 = los del dato, o sin sus datos).
+	func get_status_ticks() -> int:
+		return payload.decode_u16(1) if payload.size() == APPLY_STATUS_PAYLOAD_SIZE else 0
+
+
 	## Posición de un comando de teletransporte ([constant NetProtocol.DEBUG_TELEPORT]).
 	func get_teleport_position() -> Vector3:
 		if payload.size() < TELEPORT_PAYLOAD_SIZE:
@@ -701,7 +739,7 @@ class DebugCommand:
 
 
 	## Un teletransporte exige exactamente [constant TELEPORT_PAYLOAD_SIZE] bytes de datos y los
-	## comandos 7 a 12 los de su formato (ver la descripción de la clase); los demás comandos
+	## comandos 7 a 16 los de su formato (ver la descripción de la clase); los demás comandos
 	## admiten hasta [constant NetMessages.MAX_DEBUG_PAYLOAD_BYTES].
 	static func decode(bytes: PackedByteArray) -> DebugCommand:
 		var size: int = bytes.size()
@@ -725,14 +763,16 @@ class DebugCommand:
 			NetProtocol.DEBUG_TELEPORT:
 				return data.size() == TELEPORT_PAYLOAD_SIZE
 			NetProtocol.DEBUG_UNSTUCK, NetProtocol.DEBUG_FORT_RESET, \
-					NetProtocol.DEBUG_FORT_KILL_CAPTAIN:
+					NetProtocol.DEBUG_FORT_KILL_CAPTAIN, NetProtocol.DEBUG_DOWN, NetProtocol.DEBUG_REFILL:
 				return data.is_empty()
 			NetProtocol.DEBUG_FORT_OWNER:
 				return data.size() == 1 and data[0] <= MAX_FORT_OWNER_REALM
 			NetProtocol.DEBUG_FORT_CAPTURE_SPEED:
 				return data.size() == 1 and data[0] >= 1
-			NetProtocol.DEBUG_NPC_DEBUG:
+			NetProtocol.DEBUG_NPC_DEBUG, NetProtocol.DEBUG_COOLDOWNS_OFF:
 				return data.size() == 1 and data[0] <= 1
+			NetProtocol.DEBUG_APPLY_STATUS:
+				return data.size() == APPLY_STATUS_PAYLOAD_SIZE and data[0] >= 1
 		return true
 
 
@@ -766,7 +806,8 @@ class Snapshot:
 	## Bloque extra propio: vida máxima.
 	var max_health: int = 0
 	## Bloque extra propio: bits [constant NetMessages.STATUS_IN_COMBAT],
-	## [constant NetMessages.STATUS_PROTECTED] y [constant NetMessages.STATUS_DEAD].
+	## [constant NetMessages.STATUS_PROTECTED], [constant NetMessages.STATUS_DEAD] y
+	## [constant NetMessages.STATUS_DOWNED].
 	var status: int = 0
 	## Bloque extra propio: tick en el que se puede pedir la reaparición (0 si está vivo).
 	var respawn_tick: int = 0
@@ -787,6 +828,12 @@ class Snapshot:
 	## true si el jugador propio está muerto.
 	func is_dead() -> bool:
 		return (status & NetMessages.STATUS_DEAD) != 0
+
+
+	## true si el jugador propio está derribado: [member health] y [member max_health] son entonces la vida
+	## de derribado y su máximo.
+	func is_downed() -> bool:
+		return (status & NetMessages.STATUS_DOWNED) != 0
 
 
 	## Escribe la cabecera en [param bytes] sin crear ningún objeto y devuelve el offset donde
@@ -928,8 +975,23 @@ class Snapshot:
 ## [br]- [code]STRUCTURE[/code]: [code]u8 def_len[/code], el id de la definición en ASCII
 ## ([member definition_id]), [code]u8 field_count[/code] y los campos completos ([member fields]); no
 ## lleva estado de jugador ni nombre. Sin repetir type, net_id ni tick: son los de la cabecera.
-## Los demás tipos ([code]PROJECTILE[/code]) no tienen formato todavía.
+## [br]- [code]PROJECTILE[/code] (protocolo 6; docs/habilidades.md, sección 5.3): 22 B tras la cabecera,
+## [constant PROJECTILE_SIZE] en total: [code]u16 owner, u16 projectile_def_id, u16 source, u8
+## volley_index, u8 proj_flags, u64 position, s16 × 3 velocity[/code]. [member net_id] es el del
+## proyectil, [member realm] el del tirador y [member spawn_tick] el tick del disparo. Los flags de la
+## cabecera van a 0: [member is_yours] nunca (una flecha es «tuya» si [member owner_id] es tu
+## [code]net_id[/code]) y sin contador de teletransporte (un proyectil no se teletransporta). La posición
+## ([member origin]) va empaquetada como en el registro de entidad (1 cm) y la velocidad
+## ([member velocity]) en cm/s: lo mismo que [method Ballistics.quantize].
 class EntitySpawn:
+	## Bytes de un ENTITY_SPAWN de proyectil: la cabecera y sus 22 B.
+	const PROJECTILE_SIZE: int = SPAWN_HEADER_SIZE + 22
+	## Bit 0 de [member projectile_flags]: la flecha es inofensiva (vuela y choca con el mundo, pero no
+	## prueba personajes). El resto de bits van a 0.
+	const PROJECTILE_FLAG_HARMLESS: int = 1 << 0
+	## Bits de [member projectile_flags] que existen.
+	const PROJECTILE_FLAGS_VALID: int = PROJECTILE_FLAG_HARMLESS
+
 	var net_id: int = 0
 	var kind: int = NetProtocol.EntityKind.PLAYER
 	var spawn_tick: int = 0
@@ -948,6 +1010,20 @@ class EntitySpawn:
 	var definition_id: String = ""
 	## STRUCTURE: los campos completos del objeto (de 1 a [constant NetMessages.MAX_OBJECT_FIELDS]).
 	var fields: Array[ObjectField] = []
+	## PROJECTILE: [code]net_id[/code] del tirador.
+	var owner_id: int = 0
+	## PROJECTILE: id de su [ProjectileDefinition] en el catálogo de combate.
+	var projectile_def_id: int = 0
+	## PROJECTILE: fuente del ataque o la habilidad que la disparó ([CombatSource]).
+	var source: int = 0
+	## PROJECTILE: posición dentro del disparo (0 a n − 1; el abanico lanza varias a la vez).
+	var volley_index: int = 0
+	## PROJECTILE: combinación de los [code]PROJECTILE_FLAG_*[/code].
+	var projectile_flags: int = 0
+	## PROJECTILE: origen del vuelo ([code]p0[/code] de [method Ballistics.position]); se cuantiza a 1 cm.
+	var origin: Vector3 = Vector3.ZERO
+	## PROJECTILE: velocidad de salida ([code]v0[/code], m/s); se cuantiza a 1 cm/s.
+	var velocity: Vector3 = Vector3.ZERO
 
 
 	## SPAWN de la fortaleza [param net_id] con [param state] completo: tipo STRUCTURE, reino 0 (manda
@@ -963,6 +1039,33 @@ class EntitySpawn:
 		return spawn
 
 
+	## SPAWN del proyectil [param net_id] disparado en [param spawn_tick] por [param shooter_id] (del reino
+	## [param shooter_realm]) desde [param p0] con velocidad [param v0]. [param p0] y [param v0] deberían
+	## venir ya de [method Ballistics.quantize] (el servidor vuela con lo que viaja), aunque el mensaje los
+	## cuantiza igual.
+	static func for_projectile(net_id: int, spawn_tick: int, shooter_realm: int, shooter_id: int,
+			definition: int, source_of_shot: int, index_in_volley: int, harmless: bool, p0: Vector3,
+			v0: Vector3) -> EntitySpawn:
+		var spawn := EntitySpawn.new()
+		spawn.net_id = net_id
+		spawn.kind = NetProtocol.EntityKind.PROJECTILE
+		spawn.spawn_tick = spawn_tick
+		spawn.realm = shooter_realm
+		spawn.owner_id = shooter_id
+		spawn.projectile_def_id = definition
+		spawn.source = source_of_shot
+		spawn.volley_index = index_in_volley
+		spawn.projectile_flags = PROJECTILE_FLAG_HARMLESS if harmless else 0
+		spawn.origin = p0
+		spawn.velocity = v0
+		return spawn
+
+
+	## true si es un proyectil inofensivo (bit [constant PROJECTILE_FLAG_HARMLESS]).
+	func is_harmless() -> bool:
+		return (projectile_flags & PROJECTILE_FLAG_HARMLESS) != 0
+
+
 	## Los campos de un SPAWN de estructura como un [ObjectState] del tick de alta, para aplicarlos
 	## igual que los de un OBJECT_STATE.
 	func to_object_state() -> ObjectState:
@@ -973,11 +1076,13 @@ class EntitySpawn:
 		return object_state
 
 
-	## Un búfer vacío si [member kind] no es jugador, PNJ ni estructura, o si una estructura no tiene
-	## un id de definición válido o campos que se puedan escribir.
+	## Un búfer vacío si [member kind] no es jugador, PNJ, proyectil ni estructura, o si una estructura no
+	## tiene un id de definición válido o campos que se puedan escribir.
 	func encode() -> PackedByteArray:
 		if kind == NetProtocol.EntityKind.STRUCTURE:
 			return _encode_structure()
+		if kind == NetProtocol.EntityKind.PROJECTILE:
+			return _encode_projectile()
 		if kind != NetProtocol.EntityKind.PLAYER and kind != NetProtocol.EntityKind.NPC:
 			return PackedByteArray()
 		var state_bytes: PackedByteArray = (state if state != null else PlayerState.new()).encode()
@@ -1009,13 +1114,18 @@ class EntitySpawn:
 	## Devuelve null si el tipo no tiene formato, si el tamaño no cuadra con el que dicen las
 	## longitudes, si un texto no es válido o, en una estructura, si el id de la definición no es
 	## ASCII de 1 a 32 B, el contador de campos no está entre 1 y 32, un campo tiene un tipo de valor
-	## desconocido o se repite un id.
+	## desconocido o se repite un id. Un proyectil, si no ocupa exactamente [constant PROJECTILE_SIZE] B,
+	## trae algún flag en la cabecera (el bit [code]is_yours[/code] o un contador de teletransporte) o un bit
+	## de [code]proj_flags[/code] que no existe.
 	static func decode(bytes: PackedByteArray) -> EntitySpawn:
 		var size: int = bytes.size()
 		var name_offset: int = SPAWN_HEADER_SIZE + PlayerState.ENCODED_SIZE
 		if size >= SPAWN_HEADER_SIZE and bytes[0] == NetProtocol.MSG_ENTITY_SPAWN \
 				and bytes[3] == NetProtocol.EntityKind.STRUCTURE:
 			return _decode_structure(bytes)
+		if size >= SPAWN_HEADER_SIZE and bytes[0] == NetProtocol.MSG_ENTITY_SPAWN \
+				and bytes[3] == NetProtocol.EntityKind.PROJECTILE:
+			return _decode_projectile(bytes)
 		if size < name_offset + 1 or bytes[0] != NetProtocol.MSG_ENTITY_SPAWN:
 			return null
 		var kind_code: int = bytes[3]
@@ -1073,6 +1183,52 @@ class EntitySpawn:
 		bytes.encode_u8(fields_offset - 1, fields.size())
 		NetMessages.write_fields(bytes, fields_offset, fields)
 		return bytes
+
+
+	# PROJECTILE: 22 B tras la cabecera; los flags de la cabecera, a 0 (ni is_yours ni teletransporte).
+	func _encode_projectile() -> PackedByteArray:
+		var bytes := PackedByteArray()
+		bytes.resize(PROJECTILE_SIZE)
+		bytes.encode_u8(0, NetProtocol.MSG_ENTITY_SPAWN)
+		bytes.encode_u16(1, net_id & 0xFFFF)
+		bytes.encode_u8(3, kind)
+		bytes.encode_u32(4, spawn_tick & 0xFFFFFFFF)
+		bytes.encode_u8(8, realm & 0xFF)
+		bytes.encode_u8(9, 0)
+		bytes.encode_u16(10, owner_id & 0xFFFF)
+		bytes.encode_u16(12, projectile_def_id & 0xFFFF)
+		bytes.encode_u16(14, source & 0xFFFF)
+		bytes.encode_u8(16, volley_index & 0xFF)
+		bytes.encode_u8(17, projectile_flags & PROJECTILE_FLAGS_VALID)
+		bytes.encode_u64(18, NetMath.pack_position(origin))
+		bytes.encode_s16(26, NetMath.quantize_velocity(velocity.x))
+		bytes.encode_s16(28, NetMath.quantize_velocity(velocity.y))
+		bytes.encode_s16(30, NetMath.quantize_velocity(velocity.z))
+		return bytes
+
+
+	static func _decode_projectile(bytes: PackedByteArray) -> EntitySpawn:
+		if bytes.size() != PROJECTILE_SIZE:
+			return null
+		var flags_of_projectile: int = bytes[17]
+		if bytes[9] != 0 or (flags_of_projectile & ~PROJECTILE_FLAGS_VALID) != 0:
+			return null
+		var spawn := EntitySpawn.new()
+		spawn.net_id = bytes.decode_u16(1)
+		spawn.kind = NetProtocol.EntityKind.PROJECTILE
+		spawn.spawn_tick = bytes.decode_u32(4)
+		spawn.realm = bytes[8]
+		spawn.is_yours = false
+		spawn.owner_id = bytes.decode_u16(10)
+		spawn.projectile_def_id = bytes.decode_u16(12)
+		spawn.source = bytes.decode_u16(14)
+		spawn.volley_index = bytes[16]
+		spawn.projectile_flags = flags_of_projectile
+		spawn.origin = NetMath.unpack_position(bytes.decode_u64(18))
+		spawn.velocity = Vector3(NetMath.dequantize_velocity(bytes.decode_s16(26)),
+				NetMath.dequantize_velocity(bytes.decode_s16(28)),
+				NetMath.dequantize_velocity(bytes.decode_s16(30)))
+		return spawn
 
 
 	static func _decode_structure(bytes: PackedByteArray) -> EntitySpawn:
@@ -1616,7 +1772,7 @@ class PartyRoster:
 ## f32 y, f32 z[/code]. [member MemberStatus.health_q] es la vida cuantizada del registro del snapshot
 ## ([method EntityRecord.quantize_health]: 0 muerto, de 1 a 255 vivo), [member MemberStatus.stamina_q] la
 ## resistencia en 255 pasos y [member MemberStatus.status] los bits [constant STATUS_IN_COMBAT],
-## [constant STATUS_PROTECTED] y [constant STATUS_DEAD].
+## [constant STATUS_PROTECTED], [constant STATUS_DEAD] y (protocolo 6) [constant STATUS_DOWNED].
 ## [br][br]
 ## [method decode] devuelve null si el tamaño no cuadra, hay más de [constant NetProtocol.PARTY_MAX_SIZE]
 ## miembros, un bit de estado es desconocido, una posición no es finita o un net_id se repite.
@@ -1624,7 +1780,7 @@ class PartyStatus:
 	const HEADER_SIZE: int = 2
 	const MEMBER_SIZE: int = 17
 	## Bits de estado válidos.
-	const VALID_STATUS: int = STATUS_IN_COMBAT | STATUS_PROTECTED | STATUS_DEAD
+	const VALID_STATUS: int = STATUS_IN_COMBAT | STATUS_PROTECTED | STATUS_DEAD | STATUS_DOWNED
 
 	## El estado de un miembro.
 	class MemberStatus:
@@ -1646,6 +1802,9 @@ class PartyStatus:
 
 		func is_dead() -> bool:
 			return (status & STATUS_DEAD) != 0
+
+		func is_downed() -> bool:
+			return (status & STATUS_DOWNED) != 0
 
 	var members: Array[MemberStatus] = []
 
@@ -1850,11 +2009,35 @@ class ObjectState:
 ## entidad) y [member impact_in_ticks] los ticks que faltan para el golpe. Es un aviso: se aplica al
 ## llegar.
 ## [br][br]
-## Con [method hit], [method death], [method kill], [method respawn], [method war] y
-## [method telegraph] se crean ya rellenos.
+## Desde el protocolo 6 (docs/habilidades.md, sección 5.4) el [code]attack_id[/code] de HIT, DEATH, KILL y
+## TELEGRAPH es una [b]fuente[/b] ([CombatSource]: clase en los bits 14-15, id en 0-13; los ataques de la
+## fase 3 conservan su número), y hay cinco eventos más:
+## [br]- [code]STATUS[/code] (18 B): [code]u16 source_entity, u8 op, u8 status_id, u8 stacks, u32
+## until_tick[/code]. [member net_id] es el afectado, [member source_entity] quien lo puso (0 = sin autor),
+## [member op] 1 aplicado o renovado y 2 quitado ([enum StatusOp]) y [member until_tick] el fin (exclusivo).
+## [br]- [code]HEAL[/code] (15 B): [code]u16 healer, u16 amount, u16 source[/code]. [member net_id] es el
+## curado, [member healer] quien cura (0 = él mismo) y la fuente va en [member attack_id].
+## [br]- [code]LOADOUT[/code] (15 B): [code]u8 template_id, u16 weapon_1, u16 weapon_2, u8 charges[/code].
+## [member net_id] es el jugador; las armas, en orden de ranura (0 = ninguna); [member charges], las de las
+## dos pociones (bits 0-3 y 4-7; 0 para quien no es el dueño).
+## [br]- [code]DOWNED[/code] (13 B): [code]u16 attacker, u16 source[/code]. [member net_id] es el derribado;
+## la fuente va en [member attack_id].
+## [br]- [code]INTERACT[/code] (16 B): [code]u16 actor, u8 op, u32 end_tick[/code]. [member net_id] es el
+## derribado, [member actor] quien lo levanta o lo remata, [member op] uno de [enum InteractOp] y
+## [member end_tick] el tick en que acabaría.
+## [br][br]
+## Con [method hit], [method death], [method kill], [method respawn], [method war], [method telegraph],
+## [method status], [method heal], [method loadout], [method downed] e [method interact] se crean ya
+## rellenos.
 class EntityEvent:
 	## Evento ([member event]).
-	enum Kind { HIT = 1, DEATH = 2, KILL = 3, RESPAWN = 4, WAR = 5, TELEGRAPH = 6 }
+	enum Kind { HIT = 1, DEATH = 2, KILL = 3, RESPAWN = 4, WAR = 5, TELEGRAPH = 6, STATUS = 7, HEAL = 8,
+			LOADOUT = 9, DOWNED = 10, INTERACT = 11 }
+	## [member op] de un STATUS.
+	enum StatusOp { APPLIED = 1, REMOVED = 2 }
+	## [member op] de un INTERACT: empieza a levantar, levantar cortado, levantado, empieza a rematar y
+	## rematar cortado.
+	enum InteractOp { REVIVE = 1, REVIVE_CUT = 2, REVIVED = 3, EXECUTE = 4, EXECUTE_CUT = 5 }
 
 	## Bytes de la cabecera, antes de los datos.
 	const HEADER_SIZE: int = 9
@@ -1864,6 +2047,11 @@ class EntityEvent:
 	const RESPAWN_DATA_SIZE: int = 1
 	const WAR_DATA_SIZE: int = 2
 	const TELEGRAPH_DATA_SIZE: int = 17
+	const STATUS_DATA_SIZE: int = 9
+	const HEAL_DATA_SIZE: int = 6
+	const LOADOUT_DATA_SIZE: int = 6
+	const DOWNED_DATA_SIZE: int = 4
+	const INTERACT_DATA_SIZE: int = 7
 	## Forma de un TELEGRAPH ([member shape]).
 	const SHAPE_CIRCLE: int = 0
 	const SHAPE_SECTOR: int = 1
@@ -1879,6 +2067,11 @@ class EntityEvent:
 	const HIT_FLAG_PARRIED: int = 1 << 2
 	const HIT_FLAG_GUARD_BREAK: int = 1 << 3
 	const HIT_FLAG_LETHAL: int = 1 << 4
+	## El golpe ha interrumpido a la víctima: beber, un lanzamiento marcado, levantar o rematar (protocolo
+	## 6).
+	const HIT_FLAG_INTERRUPTED: int = 1 << 5
+	## El golpe ha derribado a la víctima (protocolo 6).
+	const HIT_FLAG_DOWNED: int = 1 << 6
 
 	## Entidad a la que se ata el evento (la víctima, o quien reaparece).
 	var net_id: int = 0
@@ -1886,15 +2079,16 @@ class EntityEvent:
 	var tick: int = 0
 	## [enum Kind].
 	var event: int = Kind.HIT
-	## HIT: net_id del atacante.
+	## HIT y DOWNED: net_id del atacante.
 	var attacker: int = 0
-	## HIT: daño que llegó a la vida (ya con bloqueo y armadura).
+	## HIT: daño que llegó a la vida (ya con bloqueo y armadura). HEAL: vida curada.
 	var amount: int = 0
 	## HIT: [enum DamageFormula.DamageType].
 	var damage_type: int = 0
 	## HIT: combinación de los [code]HIT_FLAG_*[/code].
 	var hit_flags: int = 0
-	## HIT, DEATH y KILL: id del ataque del catálogo.
+	## HIT, DEATH, KILL, TELEGRAPH, HEAL y DOWNED: la fuente ([CombatSource]); en un ataque, su id del
+	## catálogo (el nombre es el de la fase 3, cuando solo había ataques).
 	var attack_id: int = 0
 	## DEATH y KILL: net_id de quien dio el golpe de gracia (0 = el entorno).
 	var killer: int = 0
@@ -1917,6 +2111,29 @@ class EntityEvent:
 	var radius_cm: int = 0
 	## TELEGRAPH: ticks que faltan hasta el impacto.
 	var impact_in_ticks: int = 0
+	## STATUS: net_id de quien puso el efecto (0 = sin autor).
+	var source_entity: int = 0
+	## STATUS ([enum StatusOp]) e INTERACT ([enum InteractOp]).
+	var op: int = 0
+	## STATUS: id del efecto en el catálogo de combate (1 a 255).
+	var status_id: int = 0
+	## STATUS: acumulaciones (al menos 1 si se aplica; 0 al quitarlo).
+	var stacks: int = 0
+	## STATUS: tick en que acaba (exclusivo).
+	var until_tick: int = 0
+	## HEAL: net_id de quien cura (0 = el propio curado).
+	var healer: int = 0
+	## LOADOUT: id de la plantilla de equipo.
+	var template_id: int = 0
+	## LOADOUT: armas en orden de ranura (0 = ninguna).
+	var weapon_1: int = 0
+	var weapon_2: int = 0
+	## LOADOUT: cargas de las dos pociones (bits 0-3 y 4-7); 0 si no es el dueño quien lo recibe.
+	var charges: int = 0
+	## INTERACT: net_id de quien levanta o remata.
+	var actor: int = 0
+	## INTERACT: tick en que acabaría levantar o rematar.
+	var end_tick: int = 0
 
 
 	static func hit(victim_id: int, event_tick: int, attacker_id: int, damage: int,
@@ -1995,6 +2212,85 @@ class EntityEvent:
 		return created
 
 
+	## Efecto [param id_of_status] aplicado o renovado ([constant StatusOp.APPLIED]) o quitado
+	## ([constant StatusOp.REMOVED]) en [param target_id] por [param author_id] (0 = sin autor).
+	static func status(target_id: int, event_tick: int, author_id: int, operation: int,
+			id_of_status: int, stack_count: int, ends_at: int) -> EntityEvent:
+		var created := EntityEvent.new()
+		created.event = Kind.STATUS
+		created.net_id = target_id
+		created.tick = event_tick
+		created.source_entity = author_id
+		created.op = operation
+		created.status_id = id_of_status
+		created.stacks = stack_count
+		created.until_tick = ends_at
+		return created
+
+
+	## [param healed_amount] de vida curada a [param target_id] por [param healer_id] (0 = sí mismo) con la
+	## fuente [param source].
+	static func heal(target_id: int, event_tick: int, healer_id: int, healed_amount: int,
+			source: int) -> EntityEvent:
+		var created := EntityEvent.new()
+		created.event = Kind.HEAL
+		created.net_id = target_id
+		created.tick = event_tick
+		created.healer = healer_id
+		created.amount = healed_amount
+		created.attack_id = source
+		return created
+
+
+	## Equipo de [param player_id]: la plantilla, sus armas en orden de ranura y las cargas de las pociones
+	## (0 para quien no es el dueño).
+	static func loadout(player_id: int, event_tick: int, id_of_template: int, first_weapon: int,
+			second_weapon: int, consumable_charges: int) -> EntityEvent:
+		var created := EntityEvent.new()
+		created.event = Kind.LOADOUT
+		created.net_id = player_id
+		created.tick = event_tick
+		created.template_id = id_of_template
+		created.weapon_1 = first_weapon
+		created.weapon_2 = second_weapon
+		created.charges = consumable_charges
+		return created
+
+
+	## [param victim_id] queda derribado por [param attacker_id] con la fuente [param source].
+	static func downed(victim_id: int, event_tick: int, attacker_id: int, source: int) -> EntityEvent:
+		var created := EntityEvent.new()
+		created.event = Kind.DOWNED
+		created.net_id = victim_id
+		created.tick = event_tick
+		created.attacker = attacker_id
+		created.attack_id = source
+		return created
+
+
+	## [param actor_id] empieza a levantar o a rematar al derribado [param downed_id], se le corta o acaba
+	## ([param operation], de [enum InteractOp]); [param ends_at] es el tick en que acabaría.
+	static func interact(downed_id: int, event_tick: int, actor_id: int, operation: int,
+			ends_at: int) -> EntityEvent:
+		var created := EntityEvent.new()
+		created.event = Kind.INTERACT
+		created.net_id = downed_id
+		created.tick = event_tick
+		created.actor = actor_id
+		created.op = operation
+		created.end_tick = ends_at
+		return created
+
+
+	## La fuente del evento ([CombatSource]): el [member attack_id] de un HIT, DEATH, KILL, TELEGRAPH, HEAL o
+	## DOWNED; 0 en los demás.
+	func get_source() -> int:
+		match event:
+			Kind.HIT, Kind.DEATH, Kind.KILL, Kind.TELEGRAPH, Kind.HEAL, Kind.DOWNED:
+				return attack_id
+		return CombatSource.NONE
+
+
 	## Radio de un TELEGRAPH en metros.
 	func get_radius() -> float:
 		return radius_cm / 100.0
@@ -2020,6 +2316,16 @@ class EntityEvent:
 				return WAR_DATA_SIZE
 			Kind.TELEGRAPH:
 				return TELEGRAPH_DATA_SIZE
+			Kind.STATUS:
+				return STATUS_DATA_SIZE
+			Kind.HEAL:
+				return HEAL_DATA_SIZE
+			Kind.LOADOUT:
+				return LOADOUT_DATA_SIZE
+			Kind.DOWNED:
+				return DOWNED_DATA_SIZE
+			Kind.INTERACT:
+				return INTERACT_DATA_SIZE
 		return -1
 
 
@@ -2065,13 +2371,37 @@ class EntityEvent:
 				bytes.encode_u16(20, NetMath.quantize_yaw16(yaw))
 				bytes.encode_u16(22, clampi(radius_cm, 0, 0xFFFF))
 				bytes.encode_u16(24, clampi(impact_in_ticks, 0, 0xFFFF))
+			Kind.STATUS:
+				bytes.encode_u16(9, source_entity & 0xFFFF)
+				bytes.encode_u8(11, op & 0xFF)
+				bytes.encode_u8(12, status_id & 0xFF)
+				bytes.encode_u8(13, clampi(stacks, 0, 0xFF))
+				bytes.encode_u32(14, until_tick & 0xFFFFFFFF)
+			Kind.HEAL:
+				bytes.encode_u16(9, healer & 0xFFFF)
+				bytes.encode_u16(11, clampi(amount, 0, 0xFFFF))
+				bytes.encode_u16(13, attack_id & 0xFFFF)
+			Kind.LOADOUT:
+				bytes.encode_u8(9, template_id & 0xFF)
+				bytes.encode_u16(10, weapon_1 & 0xFFFF)
+				bytes.encode_u16(12, weapon_2 & 0xFFFF)
+				bytes.encode_u8(14, charges & 0xFF)
+			Kind.DOWNED:
+				bytes.encode_u16(9, attacker & 0xFFFF)
+				bytes.encode_u16(11, attack_id & 0xFFFF)
+			Kind.INTERACT:
+				bytes.encode_u16(9, actor & 0xFFFF)
+				bytes.encode_u8(11, op & 0xFF)
+				bytes.encode_u32(12, end_tick & 0xFFFFFFFF)
 		return bytes
 
 
 	## Devuelve null si el tipo, el evento, la longitud declarada o el tamaño total no cuadran
-	## (HIT 8 B de datos, DEATH 4, RESPAWN 1, WAR 2, TELEGRAPH 17 y KILL 5 + 2n con el n declarado y n
-	## a lo sumo [constant MAX_ASSISTANTS]), si un WAR trae un aviso que no es de [WarEvents] o un
-	## reino mayor que 3, o si un TELEGRAPH trae una forma que no es 0 ni 1.
+	## (HIT 8 B de datos, DEATH 4, RESPAWN 1, WAR 2, TELEGRAPH 17, KILL 5 + 2n con el n declarado y n
+	## a lo sumo [constant MAX_ASSISTANTS], STATUS 9, HEAL 6, LOADOUT 6, DOWNED 4 e INTERACT 7), si un WAR
+	## trae un aviso que no es de [WarEvents] o un reino mayor que 3, si un TELEGRAPH trae una forma que no
+	## es 0 ni 1, si un STATUS o un INTERACT traen un [member op] que no existe o si un STATUS aplicado
+	## trae 0 acumulaciones.
 	static func decode(bytes: PackedByteArray) -> EntityEvent:
 		var size: int = bytes.size()
 		if size < HEADER_SIZE or bytes[0] != NetProtocol.MSG_ENTITY_EVENT:
@@ -2130,6 +2460,44 @@ class EntityEvent:
 				parsed.yaw = NetMath.dequantize_yaw16(bytes.decode_u16(20))
 				parsed.radius_cm = bytes.decode_u16(22)
 				parsed.impact_in_ticks = bytes.decode_u16(24)
+			Kind.STATUS:
+				if declared != STATUS_DATA_SIZE:
+					return null
+				parsed.source_entity = bytes.decode_u16(9)
+				parsed.op = bytes.decode_u8(11)
+				parsed.status_id = bytes.decode_u8(12)
+				parsed.stacks = bytes.decode_u8(13)
+				parsed.until_tick = bytes.decode_u32(14)
+				if parsed.op != StatusOp.APPLIED and parsed.op != StatusOp.REMOVED:
+					return null
+				if parsed.op == StatusOp.APPLIED and parsed.stacks == 0:
+					return null
+			Kind.HEAL:
+				if declared != HEAL_DATA_SIZE:
+					return null
+				parsed.healer = bytes.decode_u16(9)
+				parsed.amount = bytes.decode_u16(11)
+				parsed.attack_id = bytes.decode_u16(13)
+			Kind.LOADOUT:
+				if declared != LOADOUT_DATA_SIZE:
+					return null
+				parsed.template_id = bytes.decode_u8(9)
+				parsed.weapon_1 = bytes.decode_u16(10)
+				parsed.weapon_2 = bytes.decode_u16(12)
+				parsed.charges = bytes.decode_u8(14)
+			Kind.DOWNED:
+				if declared != DOWNED_DATA_SIZE:
+					return null
+				parsed.attacker = bytes.decode_u16(9)
+				parsed.attack_id = bytes.decode_u16(11)
+			Kind.INTERACT:
+				if declared != INTERACT_DATA_SIZE:
+					return null
+				parsed.actor = bytes.decode_u16(9)
+				parsed.op = bytes.decode_u8(11)
+				parsed.end_tick = bytes.decode_u32(12)
+				if parsed.op < InteractOp.REVIVE or parsed.op > InteractOp.EXECUTE_CUT:
+					return null
 			_:
 				return null
 		return parsed
@@ -2171,6 +2539,33 @@ class UnstuckRequest:
 		if bytes.size() != SIZE or bytes[0] != NetProtocol.MSG_UNSTUCK_REQUEST:
 			return null
 		return UnstuckRequest.new()
+
+
+## LOADOUT_SELECT (C→S, canal 3, protocolo 6): 2 B, [code]u8 type, u8 template_id[/code]. La plantilla de
+## equipo que el jugador quiere para su siguiente aparición (docs/habilidades.md, secciones 4.6 y 5.1). Vale
+## desde el WELCOME, también antes de CLIENT_READY. [member template_id] es un id del catálogo de combate
+## ([method CombatCatalog.template_id]) o 0, la de por defecto; el servidor cuenta un aviso si no existe o
+## no se puede elegir. [method decode] solo comprueba el tamaño y el tipo.
+class LoadoutSelect:
+	const SIZE: int = 2
+
+	var template_id: int = 0
+
+
+	static func make(id_of_template: int) -> LoadoutSelect:
+		var select := LoadoutSelect.new()
+		select.template_id = id_of_template
+		return select
+
+
+	func encode() -> PackedByteArray:
+		return PackedByteArray([NetProtocol.MSG_LOADOUT_SELECT, template_id & 0xFF])
+
+
+	static func decode(bytes: PackedByteArray) -> LoadoutSelect:
+		if bytes.size() != SIZE or bytes[0] != NetProtocol.MSG_LOADOUT_SELECT:
+			return null
+		return LoadoutSelect.make(bytes[1])
 
 
 ## Una fila del marcador: lo que cuenta de un jugador (docs/fuerte.md, sección 6), 18 B.

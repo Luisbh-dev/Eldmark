@@ -558,5 +558,7 @@ func test_npc_debug_writes_state_target_and_path_every_second() -> void:
 			CommandRegistry.Result.OK, "encender por la red")
 	assert_true(_rig.npcs().is_debug_enabled())
 	assert_true(hollow > 0)
-	assert_eq(_rig.server.get_commands().missing_network_commands(), PackedStringArray(),
-			"con npc_debug ya están todos los comandos de red")
+	# Los del protocolo 6 (13 a 16) llegan con H3a y H3c (docs/habilidades.md §7.1).
+	assert_eq(_rig.server.get_commands().missing_network_commands(),
+			PackedStringArray(["apply_status", "cooldowns_off", "down", "refill"]),
+			"con npc_debug ya están todos los comandos de red hasta el protocolo 5")

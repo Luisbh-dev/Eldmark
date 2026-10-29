@@ -10,17 +10,28 @@ extends RefCounted
 ## 2       u64      position   20 bits por eje (ver NetMath), bits 60-63 a 0
 ## 10      u16      yaw        [0, TAU) -> 0..65535
 ## 12      s16 x3   velocity   cm/s, saturado
-## 18      u8       flags      bit 0 = grounded; bits 1-2 = contador de teletransporte (mod 4)
+## 18      u8       flags      bit 0 = grounded; bits 1-2 = contador de teletransporte (mod 4);
+##                             bit 3 = ranura de arma 2 activa (protocolo 6)
 ## 19      u8       action     acción y fase del combate (0 = ninguna)
 ## 20      u8       health_q   vida cuantizada: 0 = muerto, 1-255 = viva (ver [method quantize_health])
 ## [/codeblock]
 ## El [member kind] no viaja en el registro: lo da la sección del snapshot.
+## [br][br]
+## El bit 3 de [member flags] ([constant FLAG_SECOND_SLOT], docs/habilidades.md, sección 5.2) dice qué arma
+## lleva un remoto: con la pareja de armas de su SPAWN o de su LOADOUT, la de la ranura 2 si está puesto.
+## No entra en el historial del servidor ([StateHistory]), donde el bit 3 es el de bloqueo: el historial
+## toma [code]flags & 0b111[/code] y le suma sus banderas defensivas.
 
 ## Tamaño de un registro codificado (bytes).
 const SIZE: int = 21
 const FLAG_GROUNDED: int = 1 << 0
 const TELEPORT_SHIFT: int = 1
 const TELEPORT_MASK: int = 0b11
+## Bit 3 de [member flags]: el arma activa es la de la ranura 2 (el bit 0 de
+## [member CombatState.combat_flags2]).
+const FLAG_SECOND_SLOT: int = 1 << 3
+## Bits de [member flags] que comparte el historial de compensación de latencia (suelo y teletransporte).
+const HISTORY_FLAGS_MASK: int = 0b111
 ## [member health_q] de una entidad muerta.
 const HEALTH_Q_DEAD: int = 0
 ## [member health_q] de una entidad con la vida llena (también el valor de las que no tienen
@@ -63,6 +74,11 @@ func get_teleport_counter() -> int:
 	return (flags >> TELEPORT_SHIFT) & TELEPORT_MASK
 
 
+## Si el arma activa de la entidad es la de su ranura 2 (bit [constant FLAG_SECOND_SLOT]).
+func is_second_slot() -> bool:
+	return (flags & FLAG_SECOND_SLOT) != 0
+
+
 ## Escribe el registro (cuantizado) en [param bytes] a partir de [param offset]. Si el búfer es
 ## demasiado corto, lo amplía.
 func encode_into(bytes: PackedByteArray, offset: int) -> void:
@@ -101,12 +117,15 @@ static func encode_character(bytes: PackedByteArray, offset: int, net_id: int,
 	var character_flags: int = (teleport_counter & TELEPORT_MASK) << TELEPORT_SHIFT
 	if character.grounded:
 		character_flags |= FLAG_GROUNDED
+	if character.combat != null and character.combat.is_second_slot():
+		character_flags |= FLAG_SECOND_SLOT
 	_write(bytes, offset, net_id, character_position, character.yaw, character.velocity,
 			character_flags, action, health_q)
 
 
 ## Registro (sin cuantizar) a partir de un [PlayerState], con la vida cuantizada
-## [param health_q] (llena por defecto).
+## [param health_q] (llena por defecto). La ranura activa ([constant FLAG_SECOND_SLOT]) sale del
+## [CombatState] del estado.
 static func from_state(net_id: int, kind: int, state: PlayerState,
 		teleport_counter: int, health_q: int = HEALTH_Q_FULL) -> EntityRecord:
 	var record := EntityRecord.new()
@@ -118,6 +137,8 @@ static func from_state(net_id: int, kind: int, state: PlayerState,
 	record.flags = (teleport_counter & TELEPORT_MASK) << TELEPORT_SHIFT
 	if state.grounded:
 		record.flags |= FLAG_GROUNDED
+	if state.combat != null and state.combat.is_second_slot():
+		record.flags |= FLAG_SECOND_SLOT
 	record.health_q = health_q
 	return record
 

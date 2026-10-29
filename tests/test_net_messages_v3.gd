@@ -495,12 +495,13 @@ func test_structure_spawn_rejects_malformed_bytes() -> void:
 	assert_null(NetMessages.EntitySpawn.decode(as_player), "como proyectil")
 
 
-func test_other_spawn_kinds_still_have_no_format() -> void:
+func test_projectile_spawn_has_a_format_and_none_does_not() -> void:
 	var spawn: NetMessages.EntitySpawn = _npc_spawn()
 	spawn.kind = NetProtocol.EntityKind.PROJECTILE
-	assert_true(spawn.encode().is_empty(), "un proyectil no tiene formato")
+	assert_eq(spawn.encode().size(), NetMessages.EntitySpawn.PROJECTILE_SIZE,
+			"un proyectil tiene formato desde el protocolo 6 (32 B, sin estado ni nombre)")
 	spawn.kind = NetProtocol.EntityKind.NONE
-	assert_true(spawn.encode().is_empty(), "el tipo NONE tampoco")
+	assert_true(spawn.encode().is_empty(), "el tipo NONE no tiene formato")
 
 
 # --- ENTITY_EVENT WAR y TELEGRAPH -------------------------------------------------------------
@@ -833,8 +834,9 @@ func test_debug_commands_7_to_12_validate_their_data() -> void:
 	assert_not_null(NetMessages.DebugCommand.decode(PackedByteArray([0x04, 12, 1])), "1 vale")
 	assert_null(NetMessages.DebugCommand.decode(PackedByteArray([0x04, 12, 2])), "2 no")
 	assert_null(NetMessages.DebugCommand.decode(PackedByteArray([0x04, 12])), "sin dato")
-	# Los comandos de la fase 3 y los ids que nadie conoce siguen pasando tal cual (los juzga el servidor).
-	for command_id: int in [2, 3, 4, 5, 6, 13, 99, 255]:
+	# Los comandos de la fase 3 y los ids que nadie conoce siguen pasando tal cual (los juzga el servidor). Los
+	# de 13 a 16 los valida el decode desde el protocolo 6 (test_net_messages_v6.gd).
+	for command_id: int in [2, 3, 4, 5, 6, 17, 99, 255]:
 		var other := PackedByteArray([0x04, command_id, 1, 2, 3])
 		var other_back: NetMessages.DebugCommand = NetMessages.DebugCommand.decode(other)
 		if assert_not_null(other_back, "el comando %d no se valida aquí" % command_id):

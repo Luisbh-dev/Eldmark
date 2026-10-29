@@ -53,9 +53,11 @@ func setup(clock: InterpolationClock) -> void:
 
 
 ## ENTITY_SPAWN de otra entidad: crea su vista con la primera muestra del mensaje. Ignora el SPAWN
-## propio ([code]is_yours[/code]) y los repetidos.
+## propio ([code]is_yours[/code]), los repetidos y los que no son personajes (los proyectiles, kind 3,
+## los dibuja otro; las estructuras no traen estado).
 func on_spawn(msg: NetMessages.EntitySpawn) -> void:
-	if msg == null or msg.is_yours or msg.state == null:
+	if msg == null or msg.is_yours or msg.state == null \
+			or msg.kind == NetProtocol.EntityKind.PROJECTILE:
 		return
 	var existing: RemotePlayerView = _views.get(msg.net_id)
 	if existing != null:

@@ -291,6 +291,37 @@ func test_health_goes_into_the_extra_block_and_the_records() -> void:
 	assert_eq(dead_snapshot.respawn_tick, 9999, "tick de reaparición")
 
 
+func test_protocol_6_bits_3_of_the_records_and_of_the_extra_block() -> void:
+	# docs/habilidades.md, sección 5.2: bit 3 de los flags del registro = ranura de arma 2 activa; bit 3 del
+	# status del bloque extra = derribado (su vida y su máximo son los de derribado).
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 66
+	var registry := NetEntityRegistry.new()
+	var players: Array[NetEntity] = _spawn_players(registry, rng, 3)
+	var swapped: PlayerCharacter = players[1].get_character()
+	swapped.combat.alt_weapon_id = CombatCatalog.weapon_id(&"bow")
+	swapped.combat.combat_flags2 |= CombatState.FLAG2_SECOND_SLOT
+	players[0].set_health_view(250, 400, NetMessages.STATUS_DOWNED | NetMessages.STATUS_IN_COMBAT, 0)
+	var builder := SnapshotBuilder.new(InterestPolicy.new())
+	var peer: ServerPeer = _make_peer(players[0], players)
+	builder.begin(20, registry.get_sorted())
+	var packet: PackedByteArray = builder.build_for(peer)
+	assert_true(packet.size() <= MAX_BYTES, "como mucho 1200 B")
+	var snapshot: NetMessages.Snapshot = _decode(packet)
+	if snapshot == null:
+		return
+	assert_true(snapshot.is_downed(), "el propio derribado: bit 3 del status")
+	assert_false(snapshot.is_dead(), "y no muerto")
+	assert_eq(snapshot.health, 250, "vida de derribado")
+	assert_eq(snapshot.max_health, 400, "máximo de derribado")
+	assert_eq(snapshot.records.size(), 2, "los otros dos")
+	for record: EntityRecord in snapshot.records:
+		var entity: NetEntity = registry.get_entity(record.net_id)
+		_assert_record_matches(record, entity)
+		assert_eq(record.is_second_slot(), entity == players[1],
+				"bit 3 del registro de %d: la ranura 2 activa" % record.net_id)
+
+
 func test_relevant_flag_false_and_unknown_ids_are_not_sent() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 6

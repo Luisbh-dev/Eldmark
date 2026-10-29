@@ -164,7 +164,7 @@ func test_buttons_are_masked_to_valid_bits() -> void:
 	var input: PlayerInput = _input(1)
 	input.buttons = 0xFFFF
 	queue.push(input, 0, 1)
-	assert_eq(queue.take(1).buttons, NetProtocol.VALID_BUTTONS, "solo los bits 0-8")
+	assert_eq(queue.take(1).buttons, NetProtocol.VALID_BUTTONS, "solo los bits 0-12")
 
 
 # --- Ack --------------------------------------------------------------------------------------

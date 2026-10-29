@@ -51,6 +51,11 @@ extends Node
 ## [ScoreboardState] ([signal scoreboard_updated]) y [PlayerDirectory] recuerda nombre y reino de cada
 ## entidad vista, porque el marcador y los KILL de toda la zona solo llevan ids.
 ## [br][br]
+## [b]Proyectiles[/b] (docs/habilidades.md, sección 5.3; protocolo 6): el ENTITY_SPAWN se reparte por
+## [code]kind[/code] antes de mirar [code]is_yours[/code] (que en un proyectil siempre es 0: la flecha
+## propia es la de [code]owner_id[/code] igual al [code]net_id[/code] local). Los de kind 3 no son
+## personajes: salen por [signal projectile_spawned] y su ENTITY_DESPAWN por [signal projectile_despawned].
+## [br][br]
 ## [b]Bot tramposo[/b] ([member ClientConfig.bot_cheat], solo en modo BOT): un [BotCheater] falsea
 ## el HELLO ([code]version[/code]), envía tráfico de más tras el lote honrado de cada tick
 ## ([code]future[/code], [code]dupes[/code], [code]garbage[/code], [code]flood[/code]) o falsea la vista
@@ -85,6 +90,13 @@ signal scoreboard_updated(scoreboard: ScoreboardState)
 ## Ha llegado un mensaje de chat (CHAT_MESSAGE, protocolo 5) ya saneado por el servidor. Se entrega al
 ## llegar: el chat no se temporiza con el tick de dibujo.
 signal chat_received(message: NetMessages.ChatMessage)
+## Ha llegado el ENTITY_SPAWN de un proyectil (kind 3, protocolo 6): balística, tirador y fuente. Se entrega
+## al llegar; quien la dibuja decide cuándo se ve (la propia la sustituye, la remota espera a su tick).
+signal projectile_spawned(spawn: NetMessages.EntitySpawn)
+## Ha llegado el ENTITY_DESPAWN de un proyectil conocido: [param reason] es
+## [constant NetProtocol.DespawnReason.IMPACT] (dio en algo en [param tick]) o
+## [constant NetProtocol.DespawnReason.EXPIRED].
+signal projectile_despawned(projectile_id: int, tick: int, reason: int)
 
 enum State {
 	## Sin [method start].
@@ -213,6 +225,9 @@ var _war_queue: CombatEventQueue = CombatEventQueue.new()
 var _scoreboard: ScoreboardState = ScoreboardState.new()
 var _directory: PlayerDirectory = PlayerDirectory.new()
 var _structure_spawns_received: int = 0
+# Proyectiles (protocolo 6): ids de los que han llegado con SPAWN y aún no se han ido.
+var _projectile_ids: Dictionary[int, bool] = {}
+var _projectile_spawns_received: int = 0
 var _object_states_received: int = 0
 var _scoreboards_received: int = 0
 var _war_events_received: int = 0
@@ -511,21 +526,29 @@ func get_combat_queue() -> CombatEventQueue:
 
 
 ## true si el jugador local interviene en [param event]: atacante o víctima de un HIT, víctima o
-## asesino de un DEATH, víctima, asesino o asistente de un KILL, o quien reaparece en un RESPAWN.
-## Falso mientras no hay personaje local.
+## asesino de un DEATH, víctima, asesino o asistente de un KILL, o quien reaparece en un RESPAWN; y desde
+## el protocolo 6 (docs/habilidades.md, sección 5.4), el afectado o el autor de un STATUS, el curado o quien
+## cura en un HEAL, el dueño de un LOADOUT, el derribado o quien derriba en un DOWNED, y el derribado o
+## quien lo levanta o lo remata en un INTERACT. Falso mientras no hay personaje local.
 func is_own_event(event: NetMessages.EntityEvent) -> bool:
 	if _net_id == 0 or event == null:
 		return false
 	match event.event:
-		NetMessages.EntityEvent.Kind.HIT:
+		NetMessages.EntityEvent.Kind.HIT, NetMessages.EntityEvent.Kind.DOWNED:
 			return event.net_id == _net_id or event.attacker == _net_id
 		NetMessages.EntityEvent.Kind.DEATH:
 			return event.net_id == _net_id or event.killer == _net_id
 		NetMessages.EntityEvent.Kind.KILL:
 			return event.net_id == _net_id or event.killer == _net_id \
 					or event.assistants.has(_net_id)
-		NetMessages.EntityEvent.Kind.RESPAWN:
+		NetMessages.EntityEvent.Kind.RESPAWN, NetMessages.EntityEvent.Kind.LOADOUT:
 			return event.net_id == _net_id
+		NetMessages.EntityEvent.Kind.STATUS:
+			return event.net_id == _net_id or event.source_entity == _net_id
+		NetMessages.EntityEvent.Kind.HEAL:
+			return event.net_id == _net_id or event.healer == _net_id
+		NetMessages.EntityEvent.Kind.INTERACT:
+			return event.net_id == _net_id or event.actor == _net_id
 	return false
 
 
@@ -651,6 +674,7 @@ func get_last_notice_text() -> String:
 ## [br]- [code]combat_events[/code] recibidos, [code]combat_events_own[/code] (los propios),
 ## [code]combat_events_pending[/code] (esperando a su tick de dibujo), [code]respawn_requests[/code],
 ## [code]health[/code] y [code]max_health[/code].
+## [br]- [code]projectile_spawns[/code]: ENTITY_SPAWN de proyectiles recibidos (protocolo 6).
 ## [br]- [code]structure_spawns[/code], [code]object_states[/code], [code]scoreboards[/code],
 ## [code]war_events[/code] y [code]telegraphs[/code]: mensajes del protocolo 4 recibidos;
 ## [code]war_events_pending[/code] (avisos de guerra esperando a su tick de dibujo) y
@@ -719,6 +743,7 @@ func get_stats() -> Dictionary:
 		"combat_events_pending": _event_queue.size(),
 		"respawn_requests": _respawn_requests,
 		"structure_spawns": _structure_spawns_received,
+		"projectile_spawns": _projectile_spawns_received,
 		"object_states": _object_states_received,
 		"scoreboards": _scoreboards_received,
 		"war_events": _war_events_received,
@@ -1142,6 +1167,8 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 			var despawn: NetMessages.EntityDespawn = NetMessages.EntityDespawn.decode(bytes)
 			if despawn == null:
 				_malformed_packets += 1
+			elif _projectile_ids.erase(despawn.net_id):
+				projectile_despawned.emit(despawn.net_id, despawn.despawn_tick, despawn.reason)
 			else:
 				_remote_world.on_despawn(despawn)
 		NetProtocol.MSG_ENTITY_EVENT:
@@ -1260,6 +1287,14 @@ func _on_spawn(bytes: PackedByteArray) -> void:
 	if spawn == null:
 		_malformed_packets += 1
 		return
+	# El tipo antes que is_yours: un proyectil nunca es el personaje propio (docs/habilidades.md, 5.3).
+	if spawn.kind == NetProtocol.EntityKind.PROJECTILE:
+		_projectile_spawns_received += 1
+		_projectile_ids[spawn.net_id] = true
+		projectile_spawned.emit(spawn)
+		return
+	# Un id que vuelve como entidad ya no es de un proyectil (los ids comparten espacio y cuarentena).
+	_projectile_ids.erase(spawn.net_id)
 	if spawn.is_yours:
 		_on_own_spawn(spawn)
 	elif spawn.kind == NetProtocol.EntityKind.STRUCTURE:

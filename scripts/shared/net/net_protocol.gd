@@ -14,7 +14,12 @@ extends RefCounted
 ## REJECT IMBALANCE, el recuento por reino del WELCOME y los comandos de depuración 7 a 12.
 ## [br]- 5: chat y grupos (SOC-03, SOC-06): CHAT_SEND y CHAT_MESSAGE (0x40 y 0x41) y los PARTY_* (0x48 en
 ## adelante), todos por el canal fiable (docs/social.md, sección 12).
-const PROTOCOL_VERSION: int = 5
+## [br]- 6: habilidades, efectos, cambio de arma, proyectiles, derribado y plantillas (docs/habilidades.md,
+## sección 5): [PlayerState] de 111 B, botones 9 a 12 en [constant VALID_BUTTONS], LOADOUT_SELECT (0x07),
+## los comandos de depuración 13 a 16, el ENTITY_SPAWN y los motivos de ENTITY_DESPAWN de los proyectiles,
+## los ENTITY_EVENT 7 a 11, los bits 5 y 6 de un HIT, el bit 3 de los flags del registro (ranura 2 activa)
+## y el bit 3 de [code]status[/code] (derribado).
+const PROTOCOL_VERSION: int = 6
 ## Primeros 4 bytes de los mensajes de autenticación (los bytes «ELDM»).
 const MAGIC: int = 0x4D444C45
 const DEFAULT_PORT: int = 24600
@@ -48,8 +53,10 @@ const MAX_INTERP_DELAY_Q: int = MAX_INTERP_DELAY_TICKS * INTERP_DELAY_Q_SCALE
 const MAX_REWIND_TICKS: int = 24
 ## Valor de [code]input_margin[/code] cuando no hay datos.
 const NO_MARGIN: int = -128
-## Botones válidos de una entrada (bits 0-8). El servidor descarta el resto.
-const VALID_BUTTONS: int = (1 << 9) - 1
+## Botones válidos de una entrada (bits 0-12, desde el protocolo 6: [code]SWAP_WEAPON[/code],
+## [code]AIM_LEFT[/code], [code]CONSUMABLE_1[/code] y [code]CONSUMABLE_2[/code] de [PlayerInput]). El servidor
+## descarta el resto: los bits 13-14 están reservados y el 15 es la marca de sustituida.
+const VALID_BUTTONS: int = (1 << 13) - 1
 const MAX_NAME_BYTES: int = 48
 const MIN_NAME_CHARS: int = 3
 const MAX_NAME_CHARS: int = 24
@@ -66,6 +73,9 @@ const MSG_DEBUG_COMMAND: int = 0x04
 const MSG_RESPAWN_REQUEST: int = 0x05
 ## Petición de /atascado (C→S, fase 4).
 const MSG_UNSTUCK_REQUEST: int = 0x06
+## Plantilla de equipo elegida para la siguiente aparición (C→S, protocolo 6; docs/habilidades.md, sección
+## 5.1). Vale desde el WELCOME, también antes de CLIENT_READY.
+const MSG_LOADOUT_SELECT: int = 0x07
 const MSG_SNAPSHOT: int = 0x10
 const MSG_ENTITY_SPAWN: int = 0x20
 const MSG_ENTITY_DESPAWN: int = 0x21
@@ -123,6 +133,16 @@ const DEBUG_FORT_KILL_CAPTAIN: int = 10
 const DEBUG_FORT_CAPTURE_SPEED: int = 11
 ## Activar o apagar el registro de depuración de los PNJ (1 B: 0 o 1).
 const DEBUG_NPC_DEBUG: int = 12
+## Habilidades sin reutilización (protocolo 6; 1 B: 0 apaga, 1 activa). Es el bit 7 de
+## [code]combat_flags2[/code]: la máquina no fija reutilizaciones ni gasta cargas.
+const DEBUG_COOLDOWNS_OFF: int = 13
+## Aplicarse un efecto de estado (protocolo 6; 3 B: [code]u8 status_id[/code] del catálogo, de 1 a 255, y
+## [code]u16[/code] ticks de duración, 0 = los del dato).
+const DEBUG_APPLY_STATUS: int = 14
+## Derribarse a sí mismo como si lo hubiera derribado un enemigo, sin autor (protocolo 6). Sin datos.
+const DEBUG_DOWN: int = 15
+## Reponer las cargas de los consumibles de la plantilla (protocolo 6). Sin datos.
+const DEBUG_REFILL: int = 16
 ## Nombre -> id de cada comando de depuración de red. El registro de comandos del servidor
 ## comprueba contra esta tabla que todo comando de red tiene un id fijo.
 const DEBUG_COMMAND_IDS: Dictionary[StringName, int] = {
@@ -138,6 +158,10 @@ const DEBUG_COMMAND_IDS: Dictionary[StringName, int] = {
 	&"fort_kill_captain": DEBUG_FORT_KILL_CAPTAIN,
 	&"fort_capture_speed": DEBUG_FORT_CAPTURE_SPEED,
 	&"npc_debug": DEBUG_NPC_DEBUG,
+	&"cooldowns_off": DEBUG_COOLDOWNS_OFF,
+	&"apply_status": DEBUG_APPLY_STATUS,
+	&"down": DEBUG_DOWN,
+	&"refill": DEBUG_REFILL,
 }
 
 ## Reino en la red (independiente de cómo lo represente [Zones]; ver [NetZones]).
@@ -146,7 +170,11 @@ enum EntityKind { NONE = 0, PLAYER = 1, NPC = 2, PROJECTILE = 3, STRUCTURE = 4 }
 ## Resultado de la autenticación: 0 es WELCOME y el resto son motivos de REJECT.
 enum Result { OK = 0, VERSION = 1, SIM_HASH = 2, REALM = 3, FULL = 4, TICKET = 5, MALFORMED = 6,
 		TOO_MANY_CONNECTIONS = 7, NAME = 8, IMBALANCE = 9 }
-enum DespawnReason { OUT_OF_INTEREST = 0, DISCONNECTED = 1, DEATH = 2, HANDOFF = 3 }
+## Motivo de un ENTITY_DESPAWN. IMPACT y EXPIRED son de los proyectiles (protocolo 6): la flecha ha dado
+## en algo en [code]despawn_tick[/code], o ha caducado (o la ha retirado el servidor: tope de flechas, el
+## tirador se ha ido).
+enum DespawnReason { OUT_OF_INTEREST = 0, DISCONNECTED = 1, DEATH = 2, HANDOFF = 3, IMPACT = 4,
+		EXPIRED = 5 }
 enum NoticeCode { INFO = 0, KICK = 1, SHUTDOWN = 2 }
 
 ## Nombre de la cápsula que cuelga del personaje y entra en el [method compute_sim_hash].
@@ -155,15 +183,15 @@ const _COLLISION_NODE: NodePath = ^"Collision"
 
 ## Canal por el que viaja un mensaje de tipo [param msg_type] (el byte 0). Las entradas van por el
 ## canal de entradas y los snapshots por el suyo; todo lo demás (incluidos ENTITY_EVENT,
-## RESPAWN_REQUEST, UNSTUCK_REQUEST, OBJECT_STATE, SCOREBOARD, el chat y los grupos) y los tipos
-## desconocidos o reservados, por el canal fiable.
+## RESPAWN_REQUEST, UNSTUCK_REQUEST, LOADOUT_SELECT, OBJECT_STATE, SCOREBOARD, el chat y los grupos) y
+## los tipos desconocidos o reservados, por el canal fiable.
 static func channel_for_type(msg_type: int) -> int:
 	match msg_type:
 		MSG_INPUT_BATCH:
 			return CH_INPUT
 		MSG_SNAPSHOT:
 			return CH_SNAPSHOT
-		MSG_ENTITY_EVENT, MSG_RESPAWN_REQUEST, MSG_UNSTUCK_REQUEST, MSG_OBJECT_STATE, \
+		MSG_ENTITY_EVENT, MSG_RESPAWN_REQUEST, MSG_UNSTUCK_REQUEST, MSG_LOADOUT_SELECT, MSG_OBJECT_STATE, \
 				MSG_SCOREBOARD, MSG_CHAT_SEND, MSG_CHAT_MESSAGE, MSG_PARTY_INVITE, MSG_PARTY_RESPONSE, \
 				MSG_PARTY_LEAVE, MSG_PARTY_KICK, MSG_PARTY_LEADER, MSG_PARTY_INVITATION, \
 				MSG_PARTY_ROSTER, MSG_PARTY_STATUS:

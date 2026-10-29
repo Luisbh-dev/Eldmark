@@ -495,7 +495,8 @@ resto de reglas están en `PartyRules` (shared).
 | `0x4F` | PARTY_STATUS | S→C | `u8 type, u8 count` y, por miembro, `u16 net_id, u8 health_q, u8 stamina_q, u8 status, f32 x, f32 y, f32 z` (17 B por miembro, ≤ 87 B) |
 
 `health_q` es la vida cuantizada de los snapshots (0 muerto, de 1 a 255 vivo), `stamina_q` la resistencia en 255
-pasos y `status` los bits `STATUS_IN_COMBAT`, `STATUS_PROTECTED` y `STATUS_DEAD`. `decode` devuelve `null` si el
+pasos y `status` los bits `STATUS_IN_COMBAT`, `STATUS_PROTECTED` y `STATUS_DEAD` (y, desde el protocolo 6,
+`STATUS_DOWNED`: el miembro está derribado, [habilidades.md 5.2](habilidades.md#52-estado-snapshot-y-registro)). `decode` devuelve `null` si el
 tamaño no cuadra, hay más de 5 miembros, un id de red se repite, el líder no está en la lista, un nombre está
 vacío (también si solo es un BOM UTF-8, que se lee vacío) o no es UTF-8 válido, un bit de estado es desconocido
 o una posición no es finita.

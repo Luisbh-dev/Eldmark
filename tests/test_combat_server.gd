@@ -644,9 +644,12 @@ func test_console_commands() -> void:
 	var ana: int = _server.add_fake_player(_brain(), VARDHEIM)
 	var commands: CommandRegistry = _server.get_commands()
 	# Los ids 7 a 12 (protocolo 4) son fijos y todos tienen ya su manejador: el /atascado y los cuatro comandos del
-	# fuerte los registró F3 y npc_debug, F4.
-	assert_eq(commands.missing_network_commands(), PackedStringArray(),
-			"todos los comandos de red tienen manejador")
+	# fuerte los registró F3 y npc_debug, F4. Los del protocolo 6 (13 a 16, docs/habilidades.md §5.1) aún no:
+	# cooldowns_off y apply_status llegan con H3a; down y refill, con H3c. Hasta entonces el servidor acepta su id
+	# sin aviso y sin efecto.
+	assert_eq(commands.missing_network_commands(),
+			PackedStringArray(["apply_status", "cooldowns_off", "down", "refill"]),
+			"todos los comandos de red tienen manejador salvo los del protocolo 6")
 	assert_true(_server.console_command("help").contains("teleport"))
 	assert_true(_server.console_command("noexiste").begins_with("Comando desconocido"))
 	# Daño, curar y matar.
