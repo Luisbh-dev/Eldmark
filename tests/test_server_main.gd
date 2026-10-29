@@ -310,10 +310,11 @@ func test_max_realm_diff_rejects_people_and_makes_the_fake_fillers_leave() -> vo
 	var swarm_log: String = _build_path("test_server_main_l_swarm.log")
 	var report_path: String = _build_path("test_server_main_l.json")
 	DirAccess.remove_absolute(report_path)
-	# Zona de pruebas (tres reinos): seis falsos de relleno, dos por reino; hasta 1 persona de ventaja.
+	# Zona de pruebas (tres reinos): seis falsos de relleno, dos por reino; hasta 1 persona de ventaja. El servidor
+	# está lleno solo de relleno (--max-players=6, GUE-43): la persona entra igual y un falso le cede su plaza.
 	var pid: int = _launch(PackedStringArray([
 		"--port=%d" % port, "--zone=test_world", "--quit-after-ticks=840", "--fake-players=6",
-		"--max-realm-diff=1", "--report=%s" % report_path,
+		"--max-players=6", "--max-realm-diff=1", "--report=%s" % report_path,
 	]), log_path)
 	if not assert_true(pid > 0, "el proceso del servidor se lanza"):
 		return
@@ -337,8 +338,11 @@ func test_max_realm_diff_rejects_people_and_makes_the_fake_fillers_leave() -> vo
 	var rejects: Dictionary = report.get("rejects", {})
 	assert_eq(int(rejects.get(NetProtocol.result_text(NetProtocol.Result.IMBALANCE), 0)), 2,
 			"dos de los tres se rechazan por desequilibrio: %s" % [rejects])
+	assert_false(rejects.has(NetProtocol.result_text(NetProtocol.Result.FULL)),
+			"nadie recibe «lleno»: el relleno no ocupa plazas de personas (%s)" % [rejects])
 	var log_text: String = FileAccess.get_file_as_string(log_path)
 	assert_true(log_text.contains("Equilibrio de reinos: diferencia máxima de 1"), "el registro lo anuncia")
+	assert_true(log_text.contains("un falso de relleno cede su plaza"), "con el servidor lleno, un falso cede su plaza")
 	var retired: Array[String] = []
 	var added_back: Array[String] = []
 	for line: String in log_text.split("\n"):

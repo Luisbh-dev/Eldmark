@@ -374,6 +374,17 @@ de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D
     total de *r* queda por debajo del mayor de los otros, sin pasar del cupo de `--fake-players` → entra un
     falso nuevo en *r*. Nada más retira ni añade falsos, y el relleno no cuenta para rechazar a nadie.
     Sin `--max-realm-diff` los falsos no se tocan (las pruebas de carga miden lo de siempre).
+  - *Plazas* (GUE-43, desde F6b). El relleno **no ocupa plazas de personas**: el FULL (y `--max-players`) solo cuenta
+    a las personas y a los falsos que no son de relleno. Si llega el HELLO de una persona de *r* con el servidor lleno
+    solo por el relleno, se acepta (pasadas las demás comprobaciones, IMBALANCE incluido) y **un falso de relleno le
+    cede su plaza en ese momento**, antes de que cargue la zona: el más antiguo del reino con más total (personas
+    más relleno) **contando a quien entra**; a igualdad, el de *r*, y si no, el de código más alto. Con los bandos
+    igualados es siempre uno de *r* (la persona sustituye a un falso de su bando, como en el bando largo); si *r* ya
+    no tiene relleno, cede el bando con más total, que es el que deja la batalla más igualada (la alternativa, «lleno»,
+    es justo lo que GUE-43 quita). Ese falso cuenta como el que retira su entrada: al entrar en el mundo no se retira
+    otro por ella (sigue siendo uno por persona). Si se va sin llegar a entrar (corta o no termina de cargar), vuelve
+    un falso en el reino con menos total, sin pasar del cupo. Las personas nunca pasan de `--max-players`: sin
+    relleno que ceda, «lleno» como siempre.
 - **Telemetría** (GUE-17): eventos de guerra y muertes en JSON Lines (`--battle-log`) y
   `tools/war/summarize_battle.gd` con el tiempo hasta la captura, las muertes por ruta y el tiempo
   hasta romper la puerta.
@@ -771,8 +782,9 @@ pruebas en `test_realm_balance`, `test_bot_brain_siege`, `test_siege_zone`, `tes
 - **Equilibrio de reinos (GUE-42)**: la regla exacta está en la sección 7. Archivos: `scripts/server/realm_balance.gd` (reglas
   puras), `filler_keeper.gd` (los falsos de relleno), `server_auth.gd` (IMBALANCE tras el proveedor de identidad),
   `ZoneServer.get_realm_counts()` (personas por reino: el recuento del WELCOME y del rechazo) y `ServerMain` (cablea las altas y
-  bajas de personas con el `FillerKeeper`). `NetProtocol.Result.IMBALANCE` y el texto ya venían de F2. `RealmSelect` (F5) ya
-  mostraba el recuento y el rechazo. Un `--max-realm-diff` sin `--fake-players` solo rechaza.
+  bajas de personas con el `FillerKeeper`; desde F6b lo hace `ZoneServer.set_filler_keeper()`). `NetProtocol.Result.IMBALANCE` y
+  el texto ya venían de F2. `RealmSelect` (F5) ya mostraba el recuento y el rechazo. Un `--max-realm-diff` sin `--fake-players`
+  solo rechaza.
 - **`BotBrain.Pattern.SIEGE`** (al final del enum; COMBAT y el resto no cambian: una prueba compara la huella de 600 ticks de COMBAT y
   de WANDER con la del código anterior). `set_siege(view, routes, realm)` le da un `SiegeView` (que puede compartirse entre bots: sus
   preguntas llevan el reino), las `ApproachRoutes` y su reino; el buscador de enemigos es el de COMBAT (`set_enemy_finder`). En cada tick
@@ -880,7 +892,8 @@ pruebas en `test_realm_balance`, `test_bot_brain_siege`, `test_siege_zone`, `tes
   (3,4 muertes del atacante por cada una del defensor en el 20 contra 20). Antes de ajustar `vado_gris.tres` con PNJ conviene decidir si el
   atacante espera a sus compañeros en la explanada o si es un efecto deseado (backlog GUE-44).
 - **Los falsos de relleno ocupan plazas** (`FULL` cuenta todos los jugadores): con `--max-players` igual a `--fake-players` el servidor
-  rechaza con «lleno» a la persona que debería sustituir a un falso (backlog GUE-43). Las pruebas dejan sitio.
+  rechaza con «lleno» a la persona que debería sustituir a un falso (backlog GUE-43). Las pruebas dejan sitio. Resuelto en F6b (más
+  abajo).
 - **`FortressView` fallaba con una `FortressDefinition` en el metadato de la fortaleza** (`String(<recurso>)` no existe; solo pasaba con
   las escenas de prueba) y `test_fortress_loopback` fallaba ya en el `b2adb5c`; arreglado (`_definition_of_node`).
 - **`test_combat_cheaters_in_real_processes...`** fallaba en el `b2adb5c` con la máquina cargada: los tres tramposos entran a los ~170
@@ -899,6 +912,36 @@ verdad (Huecos, Capitán del Vado y guarnición), el criterio de `--bots=20` por
 enemigos del servidor incluye a los PNJ no inmortales, así que los bots que entran en el patio atacan al más cercano del dueño (con el
 doble del capitán de pruebas lo hacen: `test_bots_capture_the_neutral_fort_killing_the_captain_themselves`), y `SwarmBot`/`--bot`
 cuentan como enemigos a los PNJ con `npc_def_id`.
+
+**F6b** (la segunda mitad de la fase 6: extremo a extremo con los PNJ, GUE-43, GUE-44, GUE-45 y la carga con PNJ; se hace por
+paquetes, y cada uno se anota aquí)
+
+- **GUE-43, el relleno no ocupa plazas de personas** (regla exacta en la sección 7, *Plazas*). Archivos:
+  - `RealmBalance.realm_to_yield_seat()`: qué reino cede la plaza (el de más total contando a quien entra; a igualdad, el suyo y luego
+    el de código más alto).
+  - `FillerKeeper.yield_seat(peer_id, realm)` (retira ya el falso y apunta la plaza a nombre de esa persona),
+    `on_person_joined(realm, peer_id)` (no retira otro por quien ya tiene plaza cedida) y `on_seat_abandoned(peer_id)` (repone el
+    falso si se va sin entrar).
+  - `ServerAuth.validate(..., filler_seats)`: el FULL descuenta los falsos de relleno.
+  - `ZoneServer.set_filler_keeper()`: el servidor lleva ahora el guardián entero. Le cuenta las altas y bajas de personas (antes las
+    cableaba `ServerMain` con las señales `player_joined` y `player_left`), le pide la plaza tras un HELLO aceptado con el servidor
+    lleno y le avisa de cada falso que se va (`forget`). Así un falso de relleno dado de baja por otra vía (la orden `kick` de la
+    consola) ya no se queda apuntado como relleno.
+  - `ServerMain` solo crea el guardián y se lo da.
+- **`ZoneServer.get_player_count()` ya no cuenta a los falsos con la baja pedida** (`remove_fake_player`, que se van al empezar el
+  siguiente tick), igual que no contaba a los peers que se van. Hacía falta para que dos HELLO del mismo `poll` vean la plaza que acaba
+  de ceder un falso. Las altas de falsos por `--fake-churn` siguen en el tick siguiente a la baja, así que el pico no cambia.
+- **Decisión**: si el reino de quien entra no tiene relleno, cede su plaza el bando con más total, no se rechaza con «lleno». Se elige
+  entre todos los reinos por el total con la persona contada, y no siempre el suyo primero: con Vardheim 1 contra Solmarch 3 (todo
+  relleno), una persona de Vardheim deja 2 contra 2 en lugar de 1 contra 3.
+- Pruebas:
+  - `test_realm_balance` (ocho nuevas: qué reino cede, uno por persona, dos HELLO a la vez, reposición si se va sin entrar). Su `Rig`
+    usa ahora métodos en lugar de lambdas: el ciclo Rig → guardián → lambda dejaba objetos sin liberar al salir.
+  - `test_server_auth` (FULL con relleno).
+  - `test_zone_server_net`, con ENet: cuatro personas entran en un servidor de cuatro plazas lleno de relleno y la quinta recibe «lleno»;
+    un falso que no es de relleno sigue ocupando su plaza; quien se va mientras carga recupera el falso.
+  - `test_server_main` (el proceso real de GUE-42 arranca ahora con `--max-players=6` y seis falsos). Antes del cambio, las tres personas
+    del enjambre recibían «Servidor lleno».
 
 ---
 

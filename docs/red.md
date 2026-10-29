@@ -366,7 +366,8 @@ Cliente                                         Servidor (tick S)
    - que el nombre cabe en el HELLO (24 caracteres y 48 B), cumple `NameRules` (3 a 16 letras,
      sin espacios ni dígitos, mayúscula inicial, sin reservados) y no lo lleva ya un jugador conectado
      en la zona (SOC-01; REJECT `NAME`);
-   - que hay sitio;
+   - que hay sitio (con `--max-realm-diff`, los falsos de relleno no ocupan plazas de personas: si el servidor
+     solo está lleno por ellos, uno cede la suya al aceptar el HELLO; GUE-43, docs/fuerte.md, sección 7);
    - que no hay más de 4 conexiones desde la misma IP (salvo loopback). Este tope se aplica ya al
      conectar (`peer_authenticating`), no solo al llegar el HELLO (ver la nota de debajo);
    - el `AuthProvider`. En la fase 2 es `DevAuthProvider`, que acepta el reino y el nombre que

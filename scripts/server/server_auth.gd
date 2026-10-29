@@ -10,7 +10,7 @@ extends RefCounted
 ## sim_hash                     -> SIM_HASH
 ## reino válido y admitido      -> REALM    (NONE siempre se rechaza)
 ## nombre (NameRules)           -> NAME     (y no repetido entre los conectados)
-## servidor lleno               -> FULL
+## servidor lleno               -> FULL     (los falsos de relleno no ocupan plaza: GUE-43)
 ## demasiadas conexiones por IP -> TOO_MANY_CONNECTIONS (salvo loopback)
 ## el AuthProvider              -> OK o TICKET
 ## el reino elegido              -> IMBALANCE (solo con --max-realm-diff, tras el proveedor: el reino lo puede
@@ -62,8 +62,13 @@ func set_realm_counts_source(source: Callable) -> void:
 ## rechazo. [param player_count] son los jugadores ya conectados y
 ## [param connections_from_address], las conexiones que ya tiene abiertas esa IP (sin contar
 ## esta): se rechaza si llega a [member ServerConfig.max_connections_per_ip].
+## [br][br]
+## [param filler_seats] son los falsos de relleno de [code]--max-realm-diff[/code] que hay entre esos jugadores
+## (GUE-43): no ocupan plazas de personas, así que el servidor solo está lleno (FULL) si los demás (personas y
+## falsos que no son de relleno) llegan a [member ServerConfig.max_players]. Si con un OK el servidor sigue
+## lleno, quien llama retira un falso de relleno para dejar sitio ([method FillerKeeper.yield_seat]).
 func validate(hello: NetMessages.Hello, remote_address: String, player_count: int,
-		connections_from_address: int) -> int:
+		connections_from_address: int, filler_seats: int = 0) -> int:
 	if hello == null:
 		return NetProtocol.Result.MALFORMED
 	if hello.protocol_version != NetProtocol.PROTOCOL_VERSION:
@@ -74,7 +79,7 @@ func validate(hello: NetMessages.Hello, remote_address: String, player_count: in
 		return NetProtocol.Result.REALM
 	if check_name(hello.display_name) != NameRules.Reason.OK:
 		return NetProtocol.Result.NAME
-	if player_count >= _config.max_players:
+	if player_count - clampi(filler_seats, 0, player_count) >= _config.max_players:
 		return NetProtocol.Result.FULL
 	if connections_from_address >= _config.max_connections_per_ip \
 			and not is_loopback(remote_address):

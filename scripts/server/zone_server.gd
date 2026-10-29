@@ -49,7 +49,10 @@ extends Node
 ## estado de la sesión y comandos de depuración solo con [code]--debug-commands[/code].
 ## [br][br]
 ## [b]Jugadores falsos[/b] ([method add_fake_player]): jugadores sin red cuyas entradas salen de un
-## [BotBrain] y entran directamente en su [InputQueue]; sirven para las pruebas y la carga.
+## [BotBrain] y entran directamente en su [InputQueue]; sirven para las pruebas y la carga. Con un
+## [FillerKeeper] ([method set_filler_keeper], [code]--max-realm-diff[/code]) los de relleno siguen las altas y
+## bajas de personas y no ocupan sus plazas: un HELLO que llega con el servidor lleno solo por ellos entra y uno
+## le cede la suya (GUE-43; docs/fuerte.md, sección 7).
 ## [br][br]
 ## [b]Combate[/b] (docs/combate.md): un [CombatDirector] lleva la vida, los golpes con rebobinado, las
 ## muertes y las reapariciones; los PNJ ([method add_npc], el maniquí de entrenamiento) son cuerpos
@@ -209,6 +212,8 @@ var _world_peers: Array[ServerPeer] = []
 var _queues: Dictionary[int, InputQueue] = {}
 # net_id -> cerebro de cada jugador falso.
 var _fakes: Dictionary[int, BotBrain] = {}
+# Los falsos de relleno de --max-realm-diff (null sin equilibrio; ver set_filler_keeper).
+var _filler_keeper: FillerKeeper = null
 # net_id -> cerebro de cada PNJ (maniquíes).
 var _npcs: Dictionary[int, BotBrain] = {}
 var _combat: CombatDirector
@@ -580,9 +585,11 @@ func get_peer_ids() -> PackedInt32Array:
 
 
 ## Jugadores que cuentan para el cupo: los peers aceptados (cargando la zona o ya dentro) más los
-## jugadores falsos. Los que se están autenticando o se van no cuentan.
+## jugadores falsos. Los que se están autenticando o se van (también los falsos con la baja pedida, que
+## desaparecen al empezar el siguiente tick) no cuentan. Los falsos de relleno sí cuentan aquí, pero ceden su
+## plaza a las personas (ver [method set_filler_keeper]).
 func get_player_count() -> int:
-	var count: int = _fakes.size()
+	var count: int = _fakes.size() - _fake_leaving.size()
 	for peer: ServerPeer in _peers.values():
 		if peer.state == ServerPeer.State.LOADING or peer.state == ServerPeer.State.IN_WORLD:
 			count += 1
@@ -786,6 +793,19 @@ func get_approach_routes() -> ApproachRoutes:
 		if ResourceLoader.exists(path):
 			_siege_routes = load(path) as ApproachRoutes
 	return _siege_routes
+
+
+## Le da al servidor los falsos de relleno de [code]--max-realm-diff[/code] (GUE-42 y GUE-43; los crea y los
+## conecta [ServerMain]; null los quita). Desde entonces el servidor le avisa de las altas
+## ([method FillerKeeper.on_person_joined]) y bajas ([method FillerKeeper.on_person_left]) de personas y de cada
+## falso que se va ([method FillerKeeper.forget]), y los falsos de relleno no ocupan plazas de personas: el FULL
+## solo cuenta a las personas y a los demás falsos ([method ServerAuth.validate]), y si un HELLO que se acepta
+## encuentra el servidor lleno, un falso de relleno le cede su plaza en ese momento
+## ([method FillerKeeper.yield_seat]). Si esa persona se va antes de entrar en el mundo, el guardián repone el
+## falso ([method FillerKeeper.on_seat_abandoned]). Nunca entran más personas que
+## [member ServerConfig.max_players].
+func set_filler_keeper(keeper: FillerKeeper) -> void:
+	_filler_keeper = keeper
 
 
 ## Da de baja al jugador falso [param net_id] al empezar el siguiente tick: DESPAWN (motivo 1) a quien
@@ -1223,6 +1243,8 @@ func _process_arrivals(s: int) -> void:
 		_world_peers.append(peer)
 		_announce_arrival(entity, peer, s)
 		player_joined.emit(peer_id, entity.net_id)
+		if _filler_keeper != null:
+			_filler_keeper.on_person_joined(peer.realm, peer_id)
 		_log("Alta de %s (peer %d, net_id %d, %s) en %s; jugadores: %d" % [entity.display_name,
 				peer_id, entity.net_id, NetProtocol.realm_display_name(peer.realm),
 				entity.get_position(), get_player_count()])
@@ -1351,6 +1373,9 @@ func _process_departures(s: int) -> void:
 		_rtt.erase(peer_id)
 		_social.on_peer_left(peer, s)
 		if peer.entity == null:
+			# Se va sin haber entrado: si un falso de relleno le cedió su plaza, vuelve (GUE-43).
+			if _filler_keeper != null:
+				_filler_keeper.on_seat_abandoned(peer_id)
 			continue
 		var entity: NetEntity = peer.entity
 		var lingers: bool = _should_linger(entity, s)
@@ -1361,6 +1386,8 @@ func _process_departures(s: int) -> void:
 		_world_peers.erase(peer)
 		_left_total += 1
 		player_left.emit(peer_id, entity.net_id)
+		if _filler_keeper != null:
+			_filler_keeper.on_person_left(peer.realm)
 		var linger_note: String = ""
 		if lingers:
 			linger_note = "; su cuerpo se queda %.0f s por estar en combate" \
@@ -1381,6 +1408,8 @@ func _process_fake_departures(s: int) -> void:
 			continue
 		_remove_player(entity, s, NetProtocol.DespawnReason.DISCONNECTED)
 		_left_total += 1
+		if _filler_keeper != null:
+			_filler_keeper.forget(net_id)
 		_log("Baja de %s (jugador falso, net_id %d); jugadores: %d" % [entity.display_name, net_id,
 				get_player_count()])
 
@@ -2470,7 +2499,9 @@ func _on_auth_received(peer_id: int, bytes: PackedByteArray) -> void:
 			_reject(peer, NetProtocol.Result.TOO_MANY_CONNECTIONS)
 			return
 		result = _auth.validate(hello, peer.remote_address, get_player_count(),
-				_connections_from(peer))
+				_connections_from(peer), _filler_seats())
+		if result == NetProtocol.Result.OK and not _make_room_for(peer, hello):
+			result = NetProtocol.Result.FULL
 	if result != NetProtocol.Result.OK:
 		_reject(peer, result)
 		return
@@ -2765,6 +2796,35 @@ func _reject(peer: ServerPeer, result: int) -> void:
 	_log("Conexión rechazada de %s (peer %d): %s" % [peer.remote_address, peer.peer_id,
 			reject.text])
 	_mark_leaving(peer)
+
+
+# Falsos de relleno que ceden su plaza a las personas (GUE-43): los vivos que el guardián tiene por relleno, sin
+# los que ya tienen la baja pedida (esos ya no cuentan en get_player_count).
+func _filler_seats() -> int:
+	if _filler_keeper == null:
+		return 0
+	var count: int = 0
+	for net_id: int in _fakes:
+		if _filler_keeper.is_filler(net_id) and not _fake_leaving.has(net_id):
+			count += 1
+	return count
+
+
+# Un HELLO aceptado con el servidor lleno solo por los falsos de relleno: el guardián retira ya los que hagan
+# falta (uno, salvo que el cupo se haya pasado) para que la persona tenga su plaza. false si no hay sitio
+# (no debería pasar: ServerAuth ya ha comprobado que el relleno basta).
+func _make_room_for(peer: ServerPeer, hello: NetMessages.Hello) -> bool:
+	if get_player_count() < _config.max_players:
+		return true
+	if _filler_keeper == null:
+		return false
+	while get_player_count() >= _config.max_players:
+		var before: int = get_player_count()
+		if not _filler_keeper.yield_seat(peer.peer_id, hello.realm) or get_player_count() >= before:
+			return false
+	_log("Servidor lleno de relleno: un falso de relleno cede su plaza a %s (peer %d, %s)"
+			% [hello.display_name, peer.peer_id, NetProtocol.realm_display_name(hello.realm)])
+	return true
 
 
 # Conexiones abiertas desde la misma IP que [param peer], sin contarlo a él (las IPv6 se cuentan por

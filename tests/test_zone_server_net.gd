@@ -528,6 +528,94 @@ func test_a_person_who_is_still_loading_counts_for_the_limit_but_not_for_the_wor
 	assert_eq(second.reject.result, NetProtocol.Result.IMBALANCE, "dos a la vez no se cuelan por estar cargando")
 
 
+## Un guardián de falsos de relleno como el de [ServerMain] (GUE-42), con el cupo [param budget] ya creado: cada
+## falso, en el reino con menos total. Se lo da al servidor, que lo libera con él.
+func _fill_with_fillers(budget: int) -> FillerKeeper:
+	var keeper := FillerKeeper.new(NetZones.allowed_realms("test_world"), budget,
+			_server.get_realm_counts.bind(true))
+	keeper.creator = func(realm: int) -> int:
+		return _server.add_fake_player(BotBrain.new(500 + realm, BotBrain.Pattern.IDLE), realm)
+	keeper.remover = func(net_id: int) -> void: _server.remove_fake_player(net_id)
+	_server.set_filler_keeper(keeper)
+	for _i: int in budget:
+		var realm: int = keeper.next_realm()
+		keeper.track(int(keeper.creator.call(realm)), realm)
+	return keeper
+
+
+func test_a_server_full_of_fillers_lets_people_in_and_a_filler_yields_each_seat() -> void:
+	# GUE-43: con --max-realm-diff el relleno no ocupa plazas de personas.
+	await _start_server(func(config: ServerConfig) -> void:
+		config.max_players = 4
+		config.max_realm_diff = 1)
+	var keeper: FillerKeeper = _fill_with_fillers(4)
+	assert_eq(keeper.filler_counts(), PackedInt32Array([2, 1, 1]), "cuatro falsos de relleno en los tres reinos")
+	assert_eq(_server.get_player_count(), 4, "el servidor está lleno, pero solo de relleno")
+	var first_of_vardheim: int = -1
+	for entity: NetEntity in _server.get_registry().get_sorted():
+		if keeper.is_filler(entity.net_id) and entity.realm == VARDHEIM:
+			first_of_vardheim = entity.net_id
+			break
+	var ana: RawClient = await _join("Ana", VARDHEIM)
+	if ana == null:
+		return
+	assert_null(ana.reject, "Ana no recibe «lleno»")
+	assert_null(_server.get_registry().get_entity(first_of_vardheim), "el falso de relleno más antiguo de Vardheim se ha ido")
+	assert_eq(keeper.filler_counts(), PackedInt32Array([1, 1, 1]), "uno solo: su entrada en el mundo no retira otro")
+	assert_eq(_server.get_player_count(), 4, "siguen cuatro")
+	var bruno: RawClient = await _join("Bruno", SOLMARCH)
+	var carla: RawClient = await _join("Carla", NetProtocol.Realm.ASKARRA)
+	if bruno == null or carla == null:
+		return
+	assert_eq(keeper.filler_counts(), PackedInt32Array([1, 0, 0]), "cada persona en la plaza de un falso de su reino")
+	var diego: RawClient = await _join("Diego", VARDHEIM)
+	if diego == null:
+		return
+	assert_eq(keeper.filler_count(), 0, "el último falso de relleno cede su plaza")
+	assert_eq(_server.get_realm_counts(), PackedInt32Array([2, 1, 1]), "cuatro personas")
+	# Ya no queda relleno: las personas no pasan nunca de --max-players.
+	var elena: RawClient = _connect_client(_hello(SOLMARCH, "Elena"))
+	assert_true(await _run_until(func() -> bool: return elena.reject != null), "la quinta persona recibe un REJECT")
+	assert_eq(elena.reject.result, NetProtocol.Result.FULL, "servidor lleno de personas")
+	await _run_frames(2)
+	assert_eq(_server.get_player_count(), 4, "cuatro jugadores, ninguno falso")
+	var report: Dictionary = _read_report()
+	var rejects: Dictionary = report.get("rejects", {})
+	assert_eq(int(rejects.get(NetProtocol.result_text(NetProtocol.Result.FULL), 0)), 1, "un solo «lleno»: el de Elena")
+
+
+func test_fakes_that_are_not_fillers_still_take_a_seat() -> void:
+	await _start_server(func(config: ServerConfig) -> void:
+		config.max_players = 2
+		config.max_realm_diff = 1)
+	var keeper: FillerKeeper = _fill_with_fillers(1)
+	var plain: int = _server.add_fake_player(BotBrain.new(1, BotBrain.Pattern.IDLE), SOLMARCH)
+	assert_eq(_server.get_player_count(), 2, "un falso de relleno y otro que no lo es")
+	var ana: RawClient = await _join("Ana", VARDHEIM)
+	if ana == null:
+		return
+	assert_eq(keeper.filler_count(), 0, "el de relleno le cede su plaza")
+	var bruno: RawClient = _connect_client(_hello(SOLMARCH, "Bruno"))
+	assert_true(await _run_until(func() -> bool: return bruno.reject != null), "Bruno recibe un REJECT")
+	assert_eq(bruno.reject.result, NetProtocol.Result.FULL, "el falso que no es de relleno ocupa su plaza")
+	assert_not_null(_server.get_registry().get_entity(plain), "y sigue en el mundo")
+
+
+func test_a_person_who_leaves_before_entering_gets_the_yielded_filler_back() -> void:
+	await _start_server(func(config: ServerConfig) -> void:
+		config.max_players = 2
+		config.max_realm_diff = 1)
+	var keeper: FillerKeeper = _fill_with_fillers(2)
+	var loading: RawClient = _connect_client(_hello(VARDHEIM, "Ana"), false)
+	assert_true(await _run_until(func() -> bool: return loading.connected), "Ana entra y carga la zona")
+	assert_eq(keeper.filler_counts(), PackedInt32Array([0, 1, 0]), "el falso de Vardheim le ha cedido su plaza ya")
+	loading.send_raw(NetProtocol.CH_RELIABLE, NetMessages.ClientLeave.new().encode())
+	assert_true(await _run_until(func() -> bool: return keeper.filler_count() == 2),
+			"se va sin entrar en el mundo y vuelve un falso de relleno")
+	assert_eq(keeper.filler_counts(), PackedInt32Array([1, 1, 0]), "en Vardheim, el reino con menos total")
+	assert_eq(_server.get_player_count(), 2, "el servidor vuelve a estar lleno de relleno")
+
+
 func test_duplicate_name_is_rejected_while_the_first_player_is_connected() -> void:
 	await _start_server()
 	var first: RawClient = await _join("Álvaro")

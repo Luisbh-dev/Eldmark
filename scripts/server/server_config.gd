@@ -23,7 +23,8 @@ extends RefCounted
 ## [code]--max-realm-diff=N[/code] (GUE-42) limita la diferencia de personas conectadas entre los reinos de la zona:
 ## el HELLO de quien entraría en un reino y dejaría más de N personas de ventaja sobre el reino con menos
 ## recibe un REJECT 9 (IMBALANCE); 0 = sin límite. Con N > 0 los jugadores falsos de reino automático
-## rellenan el bando corto y se retiran al entrar personas (ver [RealmBalance]).
+## rellenan el bando corto, se retiran al entrar personas y no ocupan sus plazas: con el servidor lleno solo
+## por ellos, una persona entra y un falso le cede su plaza (GUE-43; ver [RealmBalance]).
 ## [code]--run-at=<tick>:<orden>[/code] (repetible) ejecuta una orden de la consola ([CommandRegistry],
 ## por ejemplo [code]fort_kill_captain[/code]) al terminar el tick dado: así una prueba de carga sin
 ## entrada estándar puede abrir el círculo del fuerte.
@@ -40,7 +41,8 @@ var port: int = NetProtocol.DEFAULT_PORT
 ## Id de la zona que sirve ([method NetZones.default_zone_id] si no se indica). No se comprueba
 ## aquí que exista: [code]ServerMain[/code] lo hace con [method NetZones.scene_path].
 var zone_id: String = ""
-## Jugadores como mucho (los falsos cuentan).
+## Jugadores como mucho (los falsos cuentan; los de relleno de [member max_realm_diff] ceden su plaza a las
+## personas, GUE-43).
 var max_players: int = 64
 ## Conexiones simultáneas como mucho desde una misma IP (salvo loopback).
 var max_connections_per_ip: int = 4

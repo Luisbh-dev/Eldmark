@@ -30,7 +30,9 @@ extends Node
 ## [br]- Con [code]--max-realm-diff=N[/code] (N > 0, GUE-42) los falsos de reino automático (todos salvo los de
 ## [code]--fake-layout=cluster[/code] sin cerebro de combate, que van al primer reino) son de relleno
 ## ([FillerKeeper]): se reparten en el reino con menos total, se retiran cuando entran personas en el bando largo
-## y vuelven cuando salen. La regla exacta está en [FillerKeeper] y [RealmBalance].
+## y vuelven cuando salen, y no ocupan plazas de personas: con el servidor lleno solo por ellos, una persona entra y
+## un falso le cede su plaza (GUE-43). La regla exacta está en [FillerKeeper] y [RealmBalance]; las altas y bajas
+## de personas se las cuenta [ZoneServer] ([method ZoneServer.set_filler_keeper]).
 ## [br]- Con [code]--dev-lock[/code] se escribe [code]user://dev_server.json[/code] (o la ruta de
 ## [code]--dev-lock-path[/code]; [code]{pid, port}[/code]) para que [code]--local[/code] reutilice este servidor, y se borra al
 ## cerrar.
@@ -96,9 +98,8 @@ var _fake_ids: Array[int] = []
 var _fake_created: int = 0
 var _fake_realms: Array[int] = []
 var _spread_rng: RandomNumberGenerator = RandomNumberGenerator.new()
-# Los falsos de relleno de --max-realm-diff (null sin equilibrio) y el reino de cada persona que ha entrado.
+# Los falsos de relleno de --max-realm-diff (null sin equilibrio).
 var _fillers: FillerKeeper = null
-var _person_realms: Dictionary[int, int] = {}
 # Órdenes de --run-at que ya se han ejecutado (mismo orden que config.scheduled_commands).
 var _scheduled_done: Array[bool] = []
 var _shutting_down: bool = false
@@ -395,8 +396,8 @@ func _forces_first_realm() -> bool:
 	return config.fake_layout == ServerConfig.LAYOUT_CLUSTER and config.fake_brain.is_empty()
 
 
-# Con --max-realm-diff y falsos de reino automático, prepara a los de relleno y escucha las altas y bajas de
-# personas.
+# Con --max-realm-diff y falsos de reino automático, prepara a los de relleno y se los da al ZoneServer, que les
+# cuenta las altas y bajas de personas y les pide plaza cuando llega una persona con el servidor lleno (GUE-43).
 func _setup_fillers() -> void:
 	if config.max_realm_diff <= 0 or config.fake_players <= 0 or _forces_first_realm():
 		return
@@ -406,25 +407,9 @@ func _setup_fillers() -> void:
 	_fillers.remover = func(net_id: int) -> void:
 		_fake_ids.erase(net_id)
 		_zone_server.remove_fake_player(net_id)
-	_zone_server.player_joined.connect(_on_person_joined)
-	_zone_server.player_left.connect(_on_person_left)
+	_zone_server.set_filler_keeper(_fillers)
 	print("[Eldmark] Equilibrio de reinos: diferencia máxima de %d personas; los falsos rellenan el bando corto"
 			% config.max_realm_diff)
-
-
-func _on_person_joined(_peer_id: int, net_id: int) -> void:
-	var entity: NetEntity = _zone_server.get_registry().get_entity(net_id)
-	if entity == null or _fillers == null:
-		return
-	_person_realms[net_id] = entity.realm
-	_fillers.on_person_joined(entity.realm)
-
-
-func _on_person_left(_peer_id: int, net_id: int) -> void:
-	var realm: int = _person_realms.get(net_id, 0)
-	_person_realms.erase(net_id)
-	if realm > 0 and _fillers != null:
-		_fillers.on_person_left(realm)
 
 
 # --- Cierre -----------------------------------------------------------------------------------
