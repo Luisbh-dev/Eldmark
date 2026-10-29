@@ -657,7 +657,7 @@ F0 (escena, capas, malla y rutas), F1 (fortaleza pura) y F2 (protocolo 3) están
   toda la zona); el nombre y el reino de cada id salen de `PlayerDirectory`, que recuerda cada SPAWN visto. **Límite:** quien nunca estuvo
   en el radio de interés sale como «Jugador N»; haría falta un mensaje con nombres.
 - **Pistas:** `HintCatalog` (siete, con las teclas reales de `UIKeyGlyph`), `HintLog` (`user://hints.cfg`) y el ajuste «Pistas del juego»
-  (`ClientSettings.HINTS`). El ejecutor de pruebas pone un `HintLog` en memoria para no escribir en `user://`.
+  (`ClientSettings.HINTS`). Sin pantalla (headless: pruebas y procesos de prueba) el `HintLog` es solo de memoria y no escribe en `user://`.
 - **Selección de reino:** `RealmSelect` enseña el recuento por reino del último WELCOME (no hay otro antes de conectar), recomienda el
   más corto y, tras un REJECT 9, deja el reino rechazado sin elegir y marcado, con el texto de `NetProtocol.result_text` y el reino corto
   ofrecido. El servidor rellena el recuento en F6.

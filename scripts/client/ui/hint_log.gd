@@ -5,8 +5,9 @@ extends RefCounted
 ## clave por pista) cada vez que se anota una: son pocas y sueltas. Un archivo ilegible o con basura no rompe
 ## nada: se ignora lo que no sea una pista conocida marcada como vista.
 ## [br][br]
-## [method in_memory] da un registro que no toca el disco (el ejecutor de pruebas lo pone como el de por
-## defecto para que montar la interfaz no escriba en [code]user://[/code]). Solo cliente.
+## [method in_memory] da un registro que no toca el disco. Es el que usa [method current] en modo headless
+## (las pruebas y los clientes de procesos de prueba no son un jugador y no deben dejar un archivo en
+## [code]user://[/code]). Solo cliente.
 
 const PATH: String = "user://hints.cfg"
 const SECTION: String = "shown"
@@ -19,10 +20,11 @@ var path: String = ""
 var _shown: Dictionary[StringName, bool] = {}
 
 
-## El registro del jugador: se carga de [constant PATH] la primera vez que se pide.
+## El registro del jugador: se carga de [constant PATH] la primera vez que se pide (sin pantalla, uno en
+## memoria).
 static func current() -> HintLog:
 	if _current == null:
-		_current = load_from(PATH)
+		_current = in_memory() if DisplayServer.get_name() == "headless" else load_from(PATH)
 	return _current
 
 

@@ -186,6 +186,16 @@ func test_an_in_memory_log_never_touches_the_disk() -> void:
 	assert_eq(memory.get_shown_count(), 0)
 
 
+func test_without_a_screen_the_players_log_is_only_in_memory() -> void:
+	HintLog.set_current(null)
+	var current: HintLog = HintLog.current()
+	assert_eq(DisplayServer.get_name(), "headless", "las pruebas van sin pantalla")
+	assert_eq(current.path, "", "y el registro del jugador no tiene archivo: no deja nada en user://")
+	assert_true(current.mark_shown(HintCatalog.COMBAT))
+	assert_eq(HintLog.current(), current, "es siempre el mismo")
+	HintLog.set_current(HintLog.in_memory())
+
+
 func test_the_setting_exists_on_by_default_and_in_the_interface_tab() -> void:
 	var spec: Dictionary = ClientSettings.get_spec(ClientSettings.HINTS)
 	assert_false(spec.is_empty(), "el ajuste existe")
