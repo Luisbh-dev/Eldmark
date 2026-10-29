@@ -28,6 +28,8 @@ const ALLY_RANGE: float = 40.0
 const ALLY_FADE_START: float = 30.0
 ## Distancia máxima (m) a la que se apunta a un enemigo con la retícula o se le enseña herido.
 const ENEMY_RANGE: float = 70.0
+## Color del nombre de los miembros del grupo (provisional, el mismo azul del canal de grupo del chat).
+const PARTY_COLOR: Color = Color(0.4, 0.7, 1.0, 1.0)
 ## Segundos que un enemigo dañado conserva la barra de vida.
 const DAMAGED_SECONDS: float = 5.0
 ## Placas del pool.
@@ -45,6 +47,8 @@ const OCCLUSION_MARGIN: float = 0.4
 var _world: RemoteWorld = null
 var _camera_rig: CameraRig = null
 var _own_realm: int = NetProtocol.Realm.NONE
+# Grupo del jugador local (SOC-08): sus miembros llevan el nombre con el color de grupo.
+var _party: PartyState = null
 var _plates: Array[Nameplate] = []
 # net_id -> placa asignada en el último fotograma.
 var _assigned: Dictionary[int, Nameplate] = {}
@@ -76,6 +80,17 @@ func setup(world: RemoteWorld, camera_rig: CameraRig, own_realm: int) -> void:
 	_own_realm = own_realm
 	_occluded.clear()
 	_damaged_at.clear()
+
+
+## Da a las placas el grupo del jugador local ([param party]): el nombre de sus miembros se pinta con
+## [constant PARTY_COLOR] en lugar del color del reino (SOC-08). null lo quita.
+func set_party(party: PartyState) -> void:
+	_party = party
+
+
+## El grupo que se ha dado a las placas ([method set_party]), o null.
+func get_party() -> PartyState:
+	return _party
 
 
 ## Apunta que [param net_id] recibió un golpe ahora: su barra de vida se ve [constant
@@ -201,15 +216,22 @@ func _is_occluded(net_id: int, eye: Vector3, head: Vector3, distance: float) -> 
 		_occluded[net_id] = false
 		return false
 	_ray_count += 1
-	# Se corta antes de la cabeza para que el suelo o la pared que pisa el jugador no la tapen.
-	var toward: Vector3 = (head - eye)
-	var length: float = toward.length()
-	var blocked: bool = false
-	if length > OCCLUSION_MARGIN:
-		var target: Vector3 = eye + toward * ((length - OCCLUSION_MARGIN) / length)
-		blocked = not HitShapes.is_ray_clear(space, eye, target)
+	var blocked: bool = is_head_hidden(space, eye, head)
 	_occluded[net_id] = blocked
 	return blocked
+
+
+## true si el mundo o una estructura ([constant HitShapes.LINE_OF_SIGHT_MASK]) tapa la cabeza [param head] vista
+## desde [param eye] (la cámara). El rayo se corta [constant OCCLUSION_MARGIN] m antes de la cabeza para que el
+## suelo o la pared que pisa el jugador no la tapen. Es la prueba de oclusión de las placas, y la misma que usa el
+## menú social ([method SocialTarget.find]) para no apuntar a través de las paredes.
+static func is_head_hidden(space: PhysicsDirectSpaceState3D, eye: Vector3, head: Vector3) -> bool:
+	var toward: Vector3 = head - eye
+	var length: float = toward.length()
+	if length <= OCCLUSION_MARGIN:
+		return false
+	var target: Vector3 = eye + toward * ((length - OCCLUSION_MARGIN) / length)
+	return not HitShapes.is_ray_clear(space, eye, target)
 
 
 # --- Placas -----------------------------------------------------------------------------------
@@ -247,6 +269,8 @@ func _show(plate: Nameplate, candidate: Dictionary, camera: Camera3D) -> void:
 		return
 	var fraction: float = EntityRecord.health_fraction(view.get_drawn_health_q())
 	var realm_color: Color = RealmCatalog.color_of(RealmCatalog.id_of_code(view.get_realm()))
+	if ally and _party != null and _party.has_member(net_id):
+		realm_color = PARTY_COLOR
 	plate.configure(net_id, view.get_display_name(), realm_color, show_name, show_bar, fraction,
 			ally, alpha)
 	plate.place(camera.unproject_position(head))

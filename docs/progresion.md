@@ -452,7 +452,7 @@ Al equipar un objeto con `ON_EQUIP` se liga (`bound = true`) y el cambio viaja e
 | 5 | WEAPON_REQUIRED | Dejaría vacía la ranura de arma activa (`Context.active_weapon_slot`, §4.1) | «Necesitas un arma en la mano» |
 | 6 | NO_ROOM | SPLIT a una ranura ocupada | «No cabe» |
 | 7 | LOCKED | DESTROY de algo equipado o de un objeto con `destroyable = false` | «Ese objeto no se puede destruir» |
-| 8 | RATE | Se mira al llegar, antes que todo lo demás: más de 8 peticiones/s (ráfaga 16), o más de 2 SPLIT y DESTROY por segundo (ráfaga 10; gastan ids). Una de cada cinco descartadas suma un aviso, como el chat (social.md §5) | «Más despacio» |
+| 8 | RATE | Se mira al llegar, antes que todo lo demás: más de 8 peticiones/s (ráfaga 16), o más de 2 SPLIT y DESTROY por segundo (ráfaga 10; gastan ids). Pasadas las diez primeras descartadas de cada 10 s, cada una suma un aviso, como el chat (social.md §5) | «Más despacio» |
 
 `InventoryOps.apply()` es **compartida y pura**: la usa el servidor para decidir y el cliente para su
 intención optimista (§11), así que las dos validan igual. El servidor encola las peticiones al llegar

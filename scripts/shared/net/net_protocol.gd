@@ -12,7 +12,9 @@ extends RefCounted
 ## [br]- 4: el fuerte de la fase 4 (docs/fuerte.md, sección 2): OBJECT_STATE, ENTITY_SPAWN de
 ## estructuras y de PNJ con definición, ENTITY_EVENT WAR y TELEGRAPH, UNSTUCK_REQUEST, SCOREBOARD, el
 ## REJECT IMBALANCE, el recuento por reino del WELCOME y los comandos de depuración 7 a 12.
-const PROTOCOL_VERSION: int = 4
+## [br]- 5: chat y grupos (SOC-03, SOC-06): CHAT_SEND y CHAT_MESSAGE (0x40 y 0x41) y los PARTY_* (0x48 en
+## adelante), todos por el canal fiable (docs/social.md, sección 12).
+const PROTOCOL_VERSION: int = 5
 ## Primeros 4 bytes de los mensajes de autenticación (los bytes «ELDM»).
 const MAGIC: int = 0x4D444C45
 const DEFAULT_PORT: int = 24600
@@ -74,6 +76,25 @@ const MSG_NOTICE: int = 0x30
 const MSG_HANDOFF: int = 0x31        # reservado (fase 6)
 ## Marcador de la zona (S→C, fase 4).
 const MSG_SCOREBOARD: int = 0x32
+## Mensaje de chat del jugador (C→S, protocolo 5): canal, destinatario si es un susurro y texto.
+const MSG_CHAT_SEND: int = 0x40
+## Mensaje de chat repartido por el servidor (S→C, protocolo 5): canal, emisor, destinatario y texto.
+const MSG_CHAT_MESSAGE: int = 0x41
+## Grupos (protocolo 5, SOC-06). C→S: invitar a un jugador de tu reino, responder a una invitación, salir,
+## expulsar a un miembro y ceder el liderazgo.
+const MSG_PARTY_INVITE: int = 0x48
+const MSG_PARTY_RESPONSE: int = 0x49
+const MSG_PARTY_LEAVE: int = 0x4A
+const MSG_PARTY_KICK: int = 0x4B
+const MSG_PARTY_LEADER: int = 0x4C
+## Grupos (S→C): una invitación recibida o que deja de valer, la lista de miembros (cuando cambia) y el
+## estado compacto de los miembros (vida, resistencia y posición, a 2 Hz).
+const MSG_PARTY_INVITATION: int = 0x4D
+const MSG_PARTY_ROSTER: int = 0x4E
+const MSG_PARTY_STATUS: int = 0x4F
+## Miembros como mucho de un grupo (docs/social.md, sección 3). El grupo es del mismo reino y la lista de
+## miembros y el estado compacto caben siempre en un paquete.
+const PARTY_MAX_SIZE: int = 5
 
 # Comandos de depuración (byte 1 de un DEBUG_COMMAND, solo con --debug-commands). Los ids son
 # fijos: no se reutilizan ni se reordenan (docs/combate.md, sección 6).
@@ -134,8 +155,8 @@ const _COLLISION_NODE: NodePath = ^"Collision"
 
 ## Canal por el que viaja un mensaje de tipo [param msg_type] (el byte 0). Las entradas van por el
 ## canal de entradas y los snapshots por el suyo; todo lo demás (incluidos ENTITY_EVENT,
-## RESPAWN_REQUEST, UNSTUCK_REQUEST, OBJECT_STATE y SCOREBOARD) y los tipos desconocidos o
-## reservados, por el canal fiable.
+## RESPAWN_REQUEST, UNSTUCK_REQUEST, OBJECT_STATE, SCOREBOARD, el chat y los grupos) y los tipos
+## desconocidos o reservados, por el canal fiable.
 static func channel_for_type(msg_type: int) -> int:
 	match msg_type:
 		MSG_INPUT_BATCH:
@@ -143,7 +164,9 @@ static func channel_for_type(msg_type: int) -> int:
 		MSG_SNAPSHOT:
 			return CH_SNAPSHOT
 		MSG_ENTITY_EVENT, MSG_RESPAWN_REQUEST, MSG_UNSTUCK_REQUEST, MSG_OBJECT_STATE, \
-				MSG_SCOREBOARD:
+				MSG_SCOREBOARD, MSG_CHAT_SEND, MSG_CHAT_MESSAGE, MSG_PARTY_INVITE, MSG_PARTY_RESPONSE, \
+				MSG_PARTY_LEAVE, MSG_PARTY_KICK, MSG_PARTY_LEADER, MSG_PARTY_INVITATION, \
+				MSG_PARTY_ROSTER, MSG_PARTY_STATUS:
 			return CH_RELIABLE
 	return CH_RELIABLE
 

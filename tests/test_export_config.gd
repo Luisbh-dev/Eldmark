@@ -209,8 +209,16 @@ func test_the_shell_script_is_valid_and_dry_runs() -> void:
 	var syntax: Array = []
 	assert_eq(OS.execute("bash", ["-n", script], syntax, true), 0, "export.sh es sintácticamente correcto: %s" % [syntax])
 	assert_true((FileAccess.get_unix_permissions(SCRIPT_SH) & FileAccess.UNIX_EXECUTE_OWNER) != 0, "export.sh es ejecutable")
+	# El script busca Godot en GODOT o en el PATH; se le da el que ejecuta la prueba para no depender
+	# de que haya un «godot» en el PATH de la máquina.
+	var previous_godot: String = OS.get_environment("GODOT")
+	OS.set_environment("GODOT", OS.get_executable_path())
 	var output: Array = []
 	var code: int = OS.execute("bash", [script, "--dry-run", "--pack-only"], output, true)
+	if previous_godot.is_empty():
+		OS.unset_environment("GODOT")
+	else:
+		OS.set_environment("GODOT", previous_godot)
 	var text: String = String(output[0])
 	assert_eq(code, 0, "--dry-run termina bien: %s" % text)
 	assert_true(text.contains("--export-pack"), "con --pack-only exporta paquetes")

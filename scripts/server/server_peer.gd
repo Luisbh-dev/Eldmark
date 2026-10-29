@@ -59,6 +59,8 @@ var loading_since_tick: int = 0
 var limiter_unreliable: RateLimiter
 var limiter_reliable: RateLimiter
 var limiter_bytes: RateLimiter
+## Ritmos y contadores del chat de este peer ([ChatRouter], docs/social.md sección 5).
+var chat: ChatPeerState = ChatPeerState.new()
 ## Avisos sumados en total y motivo del último.
 var strikes_total: int = 0
 var last_strike_reason: String = ""

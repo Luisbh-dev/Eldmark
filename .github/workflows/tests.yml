@@ -1,12 +1,14 @@
 name: Pruebas
 
 # Suite completa de pruebas (también las de red y las de procesos) con Godot 4.7.2 headless en
-# Linux, en cada push y en cada pull request. Para que una prueba rota bloquee el merge hay que
+# Linux, en cada push a main y en cada pull request (un push a la rama de un PR ya la lanza por
+# pull_request; lanzarla también por push gastaba el doble de minutos). Para que una prueba rota bloquee el merge hay que
 # marcar el trabajo «Suite completa» como comprobación obligatoria en la protección de la rama
 # (Settings > Branches): eso no se puede configurar desde este archivo.
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -25,10 +27,16 @@ env:
   GODOT_SHA512: 9aa00f7a605200940bce3027a567b782f49bd8e940dd06ae9e987bd65aee1b1467edd56ed84fcdcbdd44354bf613bdbb4e5d2913e925850368e150c59ed54c65
 
 jobs:
+  # La suite se reparte en cuatro partes que corren a la vez (run_tests.gd --shard=K/4): entera
+  # dura unos 18 min en una máquina de 4 núcleos y crece con cada fase.
   tests:
-    name: Suite completa
+    name: Suite ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     defaults:
       run:
         shell: bash
@@ -97,7 +105,7 @@ jobs:
         timeout-minutes: 15
         run: |
           set -o pipefail
-          godot --headless --path . -s res://tests/run_tests.gd 2>&1 | tee build/tests.log
+          godot --headless --path . -s res://tests/run_tests.gd -- --shard=${{ matrix.shard }}/4 2>&1 | tee build/tests.log
 
       - name: Resumen
         if: always()
@@ -110,10 +118,21 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs
+          name: build-logs-${{ matrix.shard }}
           path: build/
           if-no-files-found: ignore
           retention-days: 14
+
+  # Una sola comprobación con el nombre de siempre, para la protección de la rama: pasa solo si
+  # pasan las cuatro partes.
+  suite:
+    name: Suite completa
+    needs: tests
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resultado de las cuatro partes
+        run: test "${{ needs.tests.result }}" = "success"
 
   # Windows es la plataforma de desarrollo y allí OS.is_process_running solo conoce los procesos
   # hijos propios: este trabajo ejecuta las pruebas de LocalServerLauncher (con sus procesos
@@ -166,11 +185,15 @@ jobs:
             "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/${GODOT_WIN_FILE}.exe.zip"
           echo "${GODOT_WIN_SHA512}  $RUNNER_TEMP/godot.zip" | sha512sum --check -
           7z x -y -o"$HOME/godot" "$RUNNER_TEMP/godot.zip"
-          # El ejecutable de consola (el que escribe en la salida estándar) pasa a llamarse godot.exe.
-          cp "$HOME/godot/${GODOT_WIN_FILE}_console.exe" "$HOME/godot/godot.exe"
 
+      # El ejecutable de consola (el que escribe en la salida estándar) es un envoltorio que lanza el
+      # principal buscándolo por su propio nombre sin «_console»: renombrado, falla con «Invalid wrapper
+      # executable name». Un guion «godot» lo llama con su nombre original.
       - name: Godot en el PATH
-        run: cygpath -w "$HOME/godot" >> "$GITHUB_PATH"
+        run: |
+          printf '#!/usr/bin/env bash\nexec "%s/%s_console.exe" "$@"\n' "$HOME/godot" "$GODOT_WIN_FILE" > "$HOME/godot/godot"
+          chmod +x "$HOME/godot/godot"
+          cygpath -w "$HOME/godot" >> "$GITHUB_PATH"
 
       - name: Versión de Godot
         run: godot --headless --version

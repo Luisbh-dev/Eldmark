@@ -46,6 +46,12 @@ func _init(config: ServerConfig, sim_hash: int, allowed_realms: PackedInt32Array
 ## que devuelve un [PackedStringArray]. Se consulta en cada HELLO; con un nombre que ya está ahí
 ## (se compara con [method NameRules.normalize_key]: da igual mayúsculas y tildes) se rechaza con
 ## NAME, para que los susurros por nombre no sean ambiguos. Sin fuente no se comprueba.
+## [br][br]
+## [b]Limitación conocida de la fase 4[/b] (docs/social.md, 12.7): como el cliente elige su nombre, ese
+## REJECT dice si un nombre, de cualquier reino, está ahora en la zona, y con el «no está conectado» del
+## susurro se deduce que es un enemigo. No se tapa aquí porque el mismo cliente también elige su reino
+## ([DevAuthProvider]) y puede entrar en el del enemigo y susurrarle sin más; desde la fase 5 el nombre y el
+## reino salen del personaje del billete y este REJECT por un nombre ajeno deja de existir.
 func set_connected_names_source(source: Callable) -> void:
 	_connected_names = source
 
