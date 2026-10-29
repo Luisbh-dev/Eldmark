@@ -8,6 +8,7 @@ extends RefCounted
 ## --connect=<host>[:<puerto>]  --local  --bot  --bots=N  --realm=<reino>  --name=<nombre>
 ## --port=<puerto>  --net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1  --bot-seed=N
 ## --bot-cheat=<modo>  --quit-after-ticks=N  --report=<ruta.json>  --state-log=<ruta.csv>
+## --dev-lock-path=<ruta.json>
 ## [/codeblock]
 ## [br]El modo ([enum Mode]) sale de ellos con esta prioridad: [code]--bots[/code] ([constant SWARM])
 ## > [code]--bot[/code] ([constant BOT]) > [code]--local[/code] ([constant LOCAL]) >
@@ -53,6 +54,10 @@ var bot_cheat: String = ""
 var quit_after_ticks: int = 0
 var report_path: String = ""
 var state_log_path: String = ""
+## Archivo de bloqueo del servidor local que consulta el modo [constant Mode.LOCAL] en lugar de
+## [constant LocalServerLauncher.LOCK_PATH] ([code]--dev-lock-path=<ruta>[/code]); se reenvía al
+## servidor que se lanza. Vacío = el de siempre. Lo usan las pruebas de procesos.
+var dev_lock_path: String = ""
 ## Avisos para el usuario sobre argumentos de red que no se han podido interpretar.
 var warnings: PackedStringArray = PackedStringArray()
 
@@ -80,6 +85,7 @@ static func from_args(args: PackedStringArray) -> ClientConfig:
 	config.bot_cheat = _string_option(args, "--bot-cheat=").to_lower()
 	config.report_path = _clean_path(_string_option(args, "--report="))
 	config.state_log_path = _clean_path(_string_option(args, "--state-log="))
+	config.dev_lock_path = _clean_path(_string_option(args, "--dev-lock-path="))
 
 	if _has_option(args, "--realm="):
 		config.realm = NetZones.parse_realm_arg(args)

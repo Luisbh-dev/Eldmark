@@ -292,13 +292,18 @@ func _free_session_nodes() -> void:
 # Modo LOCAL: reutiliza el servidor que describe el archivo de bloqueo si su proceso sigue vivo y, si
 # no, lanza uno.
 func _prepare_local_server() -> void:
-	var running_port: int = LocalServerLauncher.get_running_port(lock_path)
+	var running_port: int = LocalServerLauncher.get_running_port(_effective_lock_path())
 	if running_port > 0:
 		config.port = running_port
 		_launcher = null
 		print("[Eldmark] Servidor local ya en marcha (puerto %d): se reutiliza" % running_port)
 		return
 	_launch_local_server()
+
+
+# Archivo de bloqueo del servidor local: el de --dev-lock-path y, si no se dio, [member lock_path].
+func _effective_lock_path() -> String:
+	return config.dev_lock_path if not config.dev_lock_path.is_empty() else lock_path
 
 
 # Lanza el servidor local y abre la ventana de reintentos de conexión. Devuelve false si no pudo
@@ -312,7 +317,7 @@ func _launch_local_server() -> bool:
 		return false
 	_local_deadline_msec = Time.get_ticks_msec() + LocalServerLauncher.CONNECT_RETRY_MS
 	print("[Eldmark] Servidor local lanzado (pid %d, puerto %d, registro en %s)" % [pid,
-			config.port, ProjectSettings.globalize_path(LocalServerLauncher.LOG_PATH)])
+			config.port, LocalServerLauncher.log_path_for(config.dev_lock_path)])
 	return true
 
 

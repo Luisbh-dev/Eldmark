@@ -7,17 +7,69 @@ extends RefCounted
 ## separados) y tiene su propio [NetTransport] (cada uno registra su [SceneMultiplayer] por la ruta
 ## de su nodo). Las pruebas con varios procesos usan [method launch_process] y
 ## [method read_report].
+## [br][br]
+## [b]Dos suites a la vez[/b] (dos copias del proyecto, o dos ejecuciones en la misma): cada proceso
+## empieza a buscar puertos en su propia ranura ([method first_port_for]) y deja sus informes y
+## registros en su propia carpeta [code]build/<pid>/[/code] ([method get_build_dir]), así que no
+## se pisan ni se leen los archivos del otro.
 
 ## Primer puerto UDP que se prueba.
 const FIRST_PORT: int = 24700
 ## Último puerto que se prueba antes de volver al primero.
 const LAST_PORT: int = 29000
+## Número de ranuras de puertos y puertos por ranura: cada proceso de pruebas empieza en la ranura
+## que le toca por su pid ([method first_port_for]). 64 ranuras de 64 puertos caben en el rango.
+const PORT_SLOT_COUNT: int = 64
+const PORT_SLOT_SIZE: int = 64
+## Carpeta de los informes y registros de las pruebas (un subdirectorio por proceso).
+const BUILD_DIR: String = "res://build"
 ## Radio (m) por el que pasean los bots.
 const BOT_RADIUS: float = 25.0
 
 ## Siguiente puerto que se prueba: así dos llamadas seguidas no devuelven el mismo aunque el
 ## primero aún no se haya abierto.
-static var _next_port: int = FIRST_PORT
+static var _next_port: int = first_port_for(OS.get_process_id())
+## Ya se borraron las carpetas de procesos muertos de [constant BUILD_DIR].
+static var _stale_build_dirs_cleaned: bool = false
+
+
+## Primer puerto que prueba el proceso [param pid]: su ranura de [constant PORT_SLOT_SIZE] puertos
+## dentro de [constant FIRST_PORT]..[constant LAST_PORT]. Dos procesos con pids distintos (salvo que
+## coincidan módulo [constant PORT_SLOT_COUNT]) no empiezan en el mismo puerto, y entre sondear con
+## [PacketPeerUDP] y abrir el puerto de verdad pasan segundos si es un servidor que carga una zona.
+static func first_port_for(pid: int) -> int:
+	return FIRST_PORT + (pid % PORT_SLOT_COUNT) * PORT_SLOT_SIZE
+
+
+## Carpeta [code]build/<pid>/[/code] de este proceso (ruta del sistema), creada si no existe. La
+## primera vez que se pide en un proceso se borran las de procesos que ya no existen
+## ([method clean_stale_build_dirs]).
+static func get_build_dir() -> String:
+	var base: String = ProjectSettings.globalize_path(BUILD_DIR)
+	if not _stale_build_dirs_cleaned:
+		_stale_build_dirs_cleaned = true
+		clean_stale_build_dirs()
+	var dir: String = base.path_join(str(OS.get_process_id()))
+	DirAccess.make_dir_recursive_absolute(dir)
+	return dir
+
+
+## Ruta del sistema de [param file_name] dentro de [method get_build_dir].
+static func build_path(file_name: String) -> String:
+	return get_build_dir().path_join(file_name)
+
+
+## Borra las carpetas [code]build/<número>/[/code] cuyo proceso ya no existe (las de otra suite que
+## sigue en marcha no se tocan). Devuelve cuántas ha borrado.
+static func clean_stale_build_dirs() -> int:
+	var base: String = ProjectSettings.globalize_path(BUILD_DIR)
+	var removed: int = 0
+	for folder: String in DirAccess.get_directories_at(base):
+		if not folder.is_valid_int() or LocalServerLauncher.is_process_alive(folder.to_int()):
+			continue
+		_remove_recursive(base.path_join(folder))
+		removed += 1
+	return removed
 
 
 ## Un puerto UDP libre a partir de [param start] (y de los que ya se han dado).
@@ -145,13 +197,12 @@ static func start_bot(viewport: SubViewport, port: int, realm: int, bot_seed: in
 
 ## Lanza otro proceso de este mismo ejecutable, sin ventana y dentro de este proyecto, con
 ## [param user_args] como argumentos de usuario (los que van tras [code]--[/code]) y su registro de
-## Godot en [code]build/<log_name>.log[/code]. Devuelve el pid, o -1 si no pudo lanzarlo.
+## Godot en [code]build/<pid>/<log_name>.log[/code] ([method build_path]). Devuelve el pid, o -1 si
+## no pudo lanzarlo.
 static func launch_process(user_args: PackedStringArray, log_name: String) -> int:
 	var project_dir: String = ProjectSettings.globalize_path("res://")
-	var log_dir: String = project_dir.path_join("build")
-	DirAccess.make_dir_recursive_absolute(log_dir)
 	var args := PackedStringArray(["--headless", "--path", project_dir, "--log-file",
-			log_dir.path_join("%s.log" % log_name), "--"])
+			build_path("%s.log" % log_name), "--"])
 	args.append_array(user_args)
 	return OS.create_process(OS.get_executable_path(), args)
 
@@ -165,3 +216,11 @@ static func read_report(path: String) -> Dictionary:
 	if json.parse(FileAccess.get_file_as_string(path)) != OK:
 		return {}
 	return json.data if json.data is Dictionary else {}
+
+
+static func _remove_recursive(path: String) -> void:
+	for sub: String in DirAccess.get_directories_at(path):
+		_remove_recursive(path.path_join(sub))
+	for file_name: String in DirAccess.get_files_at(path):
+		DirAccess.remove_absolute(path.path_join(file_name))
+	DirAccess.remove_absolute(path)

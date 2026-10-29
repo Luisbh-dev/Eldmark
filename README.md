@@ -131,7 +131,8 @@ Opciones (después de `--`): `--server`, `--zone=<id>`, `--port=24600`, `--max-p
 (todos agrupados en un punto, a menos de 60 m, o repartidos por la zona) y `--fake-churn=<ticks>`
 (cada tantos ticks sale el más antiguo y entra uno nuevo: 60 = una alta y una baja por segundo),
 `--debug-commands` (admite el teletransporte de depuración de los clientes), `--dev-lock` (escribe
-`user://dev_server.json` para que `--local` reutilice el servidor), `--quit-after-ticks=N`,
+`user://dev_server.json` para que `--local` reutilice el servidor; `--dev-lock-path=<ruta>` lo escribe
+en otro sitio, y `--local --dev-lock-path=<ruta>` lo lee de ahí), `--quit-after-ticks=N`,
 `--report=<ruta.json>`, `--state-log=<ruta.txt>` (`tick,net_id,sustituida,estado` por tick y
 jugador; ver «Registros de estado») y `--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1`. El
 registro escribe las altas, las bajas, las expulsiones y, cada 10 s, la duración del tick y el

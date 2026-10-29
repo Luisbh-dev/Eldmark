@@ -32,7 +32,10 @@ const CONNECT_RETRY_MS: int = 10000
 ## Opciones de [code]--local[/code] que se reenvían al servidor que se lanza (el resto son del
 ## cliente). Si ya hay un servidor en marcha se ignoran, porque se reutiliza tal cual.
 const FORWARDED_OPTIONS: Array[String] = ["--debug-commands"]
-const FORWARDED_OPTION_PREFIXES: Array[String] = ["--zone=", "--fake-players=", "--max-players="]
+const FORWARDED_OPTION_PREFIXES: Array[String] = ["--zone=", "--fake-players=", "--max-players=",
+		"--dev-lock-path="]
+## Opción que cambia el archivo de bloqueo (y, con él, el registro) del servidor local.
+const DEV_LOCK_PATH_OPTION: String = "--dev-lock-path="
 
 var _pid: int = -1
 
@@ -42,7 +45,8 @@ var _pid: int = -1
 ## --dev-lock[/code]) seguidos de [param extra_args]. En una exportación ([param exported], por
 ## defecto [code]OS.has_feature("template")[/code]) no hay [code]--path[/code]: el ejecutable ya
 ## lleva el juego. El servidor toma la primera aparición de cada opción, así que los extra no
-## pueden cambiar las fijas.
+## pueden cambiar las fijas. Si [param extra_args] trae [code]--dev-lock-path=<ruta>[/code], el
+## registro va junto a ese bloqueo ([method log_path_for]).
 static func build_args(port: int, extra_args: PackedStringArray,
 		exported: bool = OS.has_feature("template")) -> PackedStringArray:
 	var args := PackedStringArray(["--headless"])
@@ -50,7 +54,7 @@ static func build_args(port: int, extra_args: PackedStringArray,
 		args.append("--path")
 		args.append(ProjectSettings.globalize_path("res://"))
 	args.append("--log-file")
-	args.append(ProjectSettings.globalize_path(LOG_PATH))
+	args.append(log_path_for(_lock_path_in(extra_args)))
 	args.append("--")
 	args.append("--server")
 	args.append("--port=%d" % port)
@@ -58,6 +62,16 @@ static func build_args(port: int, extra_args: PackedStringArray,
 	args.append("--dev-lock")
 	args.append_array(extra_args)
 	return args
+
+
+## Ruta del sistema del registro del servidor local cuyo archivo de bloqueo es [param lock_path]:
+## [constant LOG_PATH] si está vacío (el de siempre) y, si no, el mismo archivo con extensión
+## [code].log[/code], para que un servidor con bloqueo propio ([code]--dev-lock-path[/code]) no
+## escriba en el registro del servidor local real.
+static func log_path_for(lock_path: String) -> String:
+	if lock_path.is_empty():
+		return ProjectSettings.globalize_path(LOG_PATH)
+	return ProjectSettings.globalize_path(lock_path.get_basename() + ".log")
 
 
 ## Las opciones de [param user_args] (los argumentos de usuario del cliente) que se reenvían al
@@ -125,7 +139,7 @@ static func is_process_alive(pid: int) -> bool:
 ## Lanza el servidor local en [param port] con [method build_args] y devuelve su pid, o -1 si no
 ## pudo lanzarlo. [param extra_args] (por ejemplo [method forwarded_args]) se añade al final.
 func launch(port: int, extra_args: PackedStringArray) -> int:
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(LOG_PATH).get_base_dir())
+	DirAccess.make_dir_recursive_absolute(log_path_for(_lock_path_in(extra_args)).get_base_dir())
 	_pid = OS.create_process(OS.get_executable_path(), build_args(port, extra_args))
 	return _pid
 
@@ -138,6 +152,14 @@ func get_pid() -> int:
 ## true si el servidor que lanzó [method launch] sigue vivo.
 func is_server_alive() -> bool:
 	return is_process_alive(_pid)
+
+
+# El valor de la primera opción --dev-lock-path= de [param args], o una cadena vacía.
+static func _lock_path_in(args: PackedStringArray) -> String:
+	for arg: String in args:
+		if arg.begins_with(DEV_LOCK_PATH_OPTION):
+			return arg.trim_prefix(DEV_LOCK_PATH_OPTION)
+	return ""
 
 
 # En Linux, /proc/<pid>/stat existe mientras el proceso exista, también como zombi (ya terminado y

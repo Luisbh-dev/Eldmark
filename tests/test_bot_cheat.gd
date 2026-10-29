@@ -13,7 +13,7 @@ extends TestCase
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
 const ZONE_ID: String = "test_world"
-const REPORT_PATH: String = "res://build/test_bot_cheat_report.json"
+const REPORT_FILE: String = "test_bot_cheat_report.json"
 ## Fotogramas de física como mucho que se espera a una condición (10 s).
 const WAIT_FRAMES: int = 600
 
@@ -87,7 +87,7 @@ func _both_in_world() -> bool:
 
 ## Ficha del servidor del jugador con ese net_id (vacía si no existe).
 func _server_record(net_id: int) -> Dictionary:
-	var path: String = ProjectSettings.globalize_path(REPORT_PATH)
+	var path: String = NetHarness.build_path(REPORT_FILE)
 	assert_eq(_server.write_report(path), OK, "se escribe el informe del servidor")
 	var report: Dictionary = NetHarness.read_report(path)
 	for entry: Dictionary in report.get("player_list", []):
@@ -97,7 +97,7 @@ func _server_record(net_id: int) -> Dictionary:
 
 
 func _server_report() -> Dictionary:
-	var path: String = ProjectSettings.globalize_path(REPORT_PATH)
+	var path: String = NetHarness.build_path(REPORT_FILE)
 	_server.write_report(path)
 	return NetHarness.read_report(path)
 

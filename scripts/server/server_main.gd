@@ -17,8 +17,8 @@ extends Node
 ## [code]--fake-layout=cluster[/code] se agrupan todos en un mismo punto (a menos de 60 m unos de otros) y
 ## con [code]--fake-layout=spread[/code] se reparten por la zona; con [code]--fake-churn=<ticks>[/code]
 ## sale el más antiguo y entra uno nuevo cada tantos ticks (altas y bajas continuas).
-## [br]- Con [code]--dev-lock[/code] se escribe [code]user://dev_server.json[/code]
-## ([code]{pid, port}[/code]) para que [code]--local[/code] reutilice este servidor, y se borra al
+## [br]- Con [code]--dev-lock[/code] se escribe [code]user://dev_server.json[/code] (o la ruta de
+## [code]--dev-lock-path[/code]; [code]{pid, port}[/code]) para que [code]--local[/code] reutilice este servidor, y se borra al
 ## cerrar.
 ## [br]- Se cierra con [code]--quit-after-ticks[/code], [code]--idle-quit[/code] o la aparición del
 ## archivo de [code]--stop-file[/code] (se mira cada segundo): NOTICE de cierre a los clientes,
@@ -32,7 +32,7 @@ extends Node
 ## El código de salida es 0 en un cierre normal y 1 si no puede arrancar (zona desconocida, puerto
 ## ocupado...).
 
-## Archivo de bloqueo de [code]--dev-lock[/code].
+## Archivo de bloqueo de [code]--dev-lock[/code] si no se da [code]--dev-lock-path[/code].
 const DEV_LOCK_PATH: String = "user://dev_server.json"
 ## Fotogramas por segundo máximos del servidor (sección 1.3).
 const MAX_FPS: int = 120
@@ -80,6 +80,7 @@ var _fake_realms: Array[int] = []
 var _spread_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _shutting_down: bool = false
 var _lock_written: bool = false
+var _lock_path: String = DEV_LOCK_PATH
 
 
 func _ready() -> void:
@@ -140,13 +141,13 @@ func _ready() -> void:
 	_spawn_fake_players()
 	_clear_stale_stop_file()
 	if config.dev_lock:
-		var lock_error: Error = write_dev_lock(DEV_LOCK_PATH, OS.get_process_id(), config.port)
+		_lock_path = config.dev_lock_path if not config.dev_lock_path.is_empty() else DEV_LOCK_PATH
+		var lock_error: Error = write_dev_lock(_lock_path, OS.get_process_id(), config.port)
 		if lock_error == OK:
 			_lock_written = true
-			print("[Eldmark] Archivo de bloqueo escrito: %s" % DEV_LOCK_PATH)
+			print("[Eldmark] Archivo de bloqueo escrito: %s" % _lock_path)
 		else:
-			push_warning("[Eldmark] No se pudo escribir %s (error %d)" % [DEV_LOCK_PATH,
-					lock_error])
+			push_warning("[Eldmark] No se pudo escribir %s (error %d)" % [_lock_path, lock_error])
 
 
 func _exit_tree() -> void:
@@ -190,8 +191,8 @@ func _remove_lock() -> void:
 	if not _lock_written:
 		return
 	_lock_written = false
-	if remove_dev_lock(DEV_LOCK_PATH, OS.get_process_id()):
-		print("[Eldmark] Archivo de bloqueo borrado: %s" % DEV_LOCK_PATH)
+	if remove_dev_lock(_lock_path, OS.get_process_id()):
+		print("[Eldmark] Archivo de bloqueo borrado: %s" % _lock_path)
 
 
 # --- Arranque ---------------------------------------------------------------------------------

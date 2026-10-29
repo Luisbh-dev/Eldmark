@@ -7,7 +7,7 @@ extends TestCase
 ## [br]- Rechazo, cierre del servidor y zona desconocida: código de salida 1 e informe.
 
 const ONLINE_MAIN_SCENE: String = "res://scenes/client/online_main.tscn"
-const REPORT_PATH: String = "res://build/test_online_main_report.json"
+const REPORT_FILE: String = "test_online_main_report.json"
 const WAIT_FRAMES: int = 900
 
 var _root: Node
@@ -27,7 +27,7 @@ func before_each() -> void:
 	_saved_max_fps = Engine.max_fps
 	_exit_codes.clear()
 	OnlineMain.quit_hook = func(code: int) -> void: _exit_codes.append(code)
-	DirAccess.remove_absolute(ProjectSettings.globalize_path(REPORT_PATH))
+	DirAccess.remove_absolute(NetHarness.build_path(REPORT_FILE))
 	_root = Node.new()
 	_root.name = "OnlineMainTest"
 	tree.root.add_child(_root)
@@ -74,7 +74,7 @@ func _start_online(mode: ClientConfig.Mode, configure: Callable = Callable()) ->
 	config.realm = NetProtocol.Realm.SOLMARCH
 	config.display_name = "Ana"
 	config.bot_seed = 3
-	config.report_path = ProjectSettings.globalize_path(REPORT_PATH)
+	config.report_path = NetHarness.build_path(REPORT_FILE)
 	if configure.is_valid():
 		configure.call(config)
 	OnlineMain.config = config
@@ -143,7 +143,7 @@ func test_bot_has_no_camera_and_finishes_with_a_report_and_code_zero() -> void:
 	assert_false(_online.has_node(^"Overlay"), "ni pantallas")
 	assert_true(await _wait_until(_exited), "al cumplir --quit-after-ticks cierra")
 	assert_eq(_exit_codes, [0] as Array[int], "con código 0, una sola vez")
-	var report: Dictionary = NetHarness.read_report(ProjectSettings.globalize_path(REPORT_PATH))
+	var report: Dictionary = NetHarness.read_report(NetHarness.build_path(REPORT_FILE))
 	assert_eq(report.get("name"), "Ana")
 	assert_eq(report.get("mode"), "BOT")
 	assert_eq(report.get("zone"), "test_world")
@@ -168,7 +168,7 @@ func test_rejection_ends_with_code_one_and_the_reason_in_the_report() -> void:
 		config.quit_after_ticks = 600)
 	assert_true(await _wait_until(_exited), "se cierra")
 	assert_eq(_exit_codes, [1] as Array[int])
-	var report: Dictionary = NetHarness.read_report(ProjectSettings.globalize_path(REPORT_PATH))
+	var report: Dictionary = NetHarness.read_report(NetHarness.build_path(REPORT_FILE))
 	assert_eq(report.get("rejected"), true)
 	assert_eq(int(report.get("reject_result", 0)), NetProtocol.Result.NAME)
 	assert_eq(report.get("reject_text"), NetProtocol.result_text(NetProtocol.Result.NAME))
@@ -184,7 +184,7 @@ func test_server_shutdown_ends_with_code_one_and_keeps_the_report() -> void:
 	_server.stop("Cierre de prueba")
 	assert_true(await _wait_until(_exited), "se cierra cuando el servidor se va")
 	assert_eq(_exit_codes, [1] as Array[int])
-	var report: Dictionary = NetHarness.read_report(ProjectSettings.globalize_path(REPORT_PATH))
+	var report: Dictionary = NetHarness.read_report(NetHarness.build_path(REPORT_FILE))
 	assert_eq(report.get("disconnect_text"), "Cierre de prueba")
 	assert_eq(report.get("state"), "CLOSED")
 	assert_true(int(report.get("matches", 0)) > 10, "con lo que se vivió hasta entonces")
@@ -207,5 +207,5 @@ func test_quit_after_ticks_without_entering_the_world_is_a_failure() -> void:
 		config.quit_after_ticks = 30)
 	assert_true(await _wait_until(_exited, 300))
 	assert_eq(_exit_codes, [1] as Array[int], "no llegar a entrar en la zona es un fallo")
-	var report: Dictionary = NetHarness.read_report(ProjectSettings.globalize_path(REPORT_PATH))
+	var report: Dictionary = NetHarness.read_report(NetHarness.build_path(REPORT_FILE))
 	assert_eq(report.get("state"), "CONNECTING")

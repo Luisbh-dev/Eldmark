@@ -7,6 +7,7 @@ extends RefCounted
 ## [codeblock]
 ## --server --port=24600 --zone=<id> --max-players=64 --max-per-ip=4 --idle-quit=<s>
 ## --fake-players=N --fake-layout=<cluster|spread> --fake-churn=<ticks> --debug-commands --dev-lock
+## --dev-lock-path=<ruta>
 ## --quit-after-ticks=N --report=<ruta.json> --state-log=<ruta.csv> --net-sim=rtt=120,jitter=20
 ## --stop-file=<ruta>
 ## [/codeblock]
@@ -55,6 +56,10 @@ var fake_churn_ticks: int = 0
 var debug_commands: bool = false
 ## Escribe [code]user://dev_server.json[/code] para que [code]--local[/code] reutilice el servidor.
 var dev_lock: bool = false
+## Dónde se escribe el bloqueo de [member dev_lock] en lugar de [code]user://dev_server.json[/code]
+## ([code]--dev-lock-path=<ruta>[/code]): las pruebas de procesos lo usan para no pisar el servidor
+## local real de quien las ejecuta. Vacío = el de siempre.
+var dev_lock_path: String = ""
 
 ## Valores de [member fake_layout].
 const LAYOUT_CLUSTER: String = "cluster"
@@ -94,6 +99,7 @@ static func from_args(args: PackedStringArray) -> ServerConfig:
 	config.net_sim_spec = _string_option(args, "--net-sim=")
 	config.debug_commands = args.has("--debug-commands")
 	config.dev_lock = args.has("--dev-lock")
+	config.dev_lock_path = _string_option(args, "--dev-lock-path=").replace("\\", "/")
 	return config
 
 

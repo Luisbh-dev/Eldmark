@@ -117,6 +117,15 @@ func test_flags_need_exact_name() -> void:
 	assert_false(config.dev_lock, "--dev-lockx no es la bandera")
 
 
+func test_dev_lock_path_option() -> void:
+	var defaults: ServerConfig = ServerConfig.from_args(PackedStringArray(["--dev-lock"]))
+	assert_eq(defaults.dev_lock_path, "", "sin la opción, el bloqueo va en el sitio de siempre")
+	var custom: ServerConfig = ServerConfig.from_args(PackedStringArray([
+		"--dev-lock", "--dev-lock-path=build\\123\\lock.json", "--dev-lock-path=otro.json"]))
+	assert_eq(custom.dev_lock_path, "build/123/lock.json", "gana la primera y se normalizan las barras")
+	assert_true(custom.dev_lock)
+
+
 func test_fake_player_layout_and_churn_options() -> void:
 	var defaults: ServerConfig = ServerConfig.from_args(PackedStringArray())
 	assert_eq(defaults.fake_layout, "", "sin reparto: cada falso cerca del campamento de su reino")

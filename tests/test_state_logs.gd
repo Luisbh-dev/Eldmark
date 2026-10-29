@@ -9,7 +9,6 @@ extends TestCase
 ## Godot convierte los [code].csv[/code] de dentro del proyecto en traducciones.
 
 const ZONE_ID: String = "test_world"
-const BUILD_DIR: String = "res://build"
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
 const WAIT_FRAMES: int = 900
@@ -53,8 +52,7 @@ func after_each() -> void:
 # --- Ayudantes --------------------------------------------------------------------------------
 
 func _build_path(file_name: String) -> String:
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(BUILD_DIR))
-	return ProjectSettings.globalize_path(BUILD_DIR.path_join(file_name))
+	return NetHarness.build_path(file_name)
 
 
 ## Estado de mentira: 70 caracteres hexadecimales con el valor [param value] repetido.

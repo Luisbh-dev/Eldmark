@@ -9,15 +9,14 @@ extends TestCase
 ## y que una zona desconocida sale con el código 1. Una de las pruebas usa la zona real, el Vado
 ## Gris, con Terrain3D.
 ## [br][br]
-## No se usa [code]--dev-lock[/code]: escribiría el [code]user://dev_server.json[/code] real de
-## quien ejecuta las pruebas. El archivo de bloqueo se prueba con sus funciones estáticas.
+## [code]--dev-lock[/code] solo se usa con [code]--dev-lock-path[/code] (un archivo en
+## [code]build/<pid>/[/code]): sin él escribiría el [code]user://dev_server.json[/code] real de quien
+## ejecuta las pruebas. El archivo de bloqueo se prueba además con sus funciones estáticas.
 
 const BootScript = preload("res://scripts/boot.gd")
 ## Tiempo máximo de espera a que el proceso termine (cada prueba dura menos de 30 s).
 const MAX_WAIT_SECONDS: float = 25.0
-const BUILD_DIR: String = "res://build"
-const FIRST_PORT: int = 24800
-const LOCK_FILE: String = "user://test_server_main_lock.json"
+const LOCK_FILE_NAME: String = "test_server_main_lock.json"
 
 var _pids: Array[int] = []
 
@@ -27,16 +26,20 @@ func after_each() -> void:
 		if OS.is_process_running(pid):
 			OS.kill(pid)
 	_pids.clear()
-	if FileAccess.file_exists(LOCK_FILE):
-		DirAccess.remove_absolute(LOCK_FILE)
+	if FileAccess.file_exists(_lock_file()):
+		DirAccess.remove_absolute(_lock_file())
 	await wait_process_frames()
 
 
 # --- Ayudantes --------------------------------------------------------------------------------
 
 func _build_path(file_name: String) -> String:
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(BUILD_DIR))
-	return ProjectSettings.globalize_path(BUILD_DIR.path_join(file_name))
+	return NetHarness.build_path(file_name)
+
+
+## Archivo de bloqueo de las pruebas estáticas (en build/<pid>/, no se comparte con otra suite).
+func _lock_file() -> String:
+	return NetHarness.build_path(LOCK_FILE_NAME)
 
 
 ## Lanza el servidor con [param user_args] (los de después de [code]--[/code]). Devuelve el pid.
@@ -63,14 +66,7 @@ func _wait_for_exit(pid: int) -> bool:
 
 
 func _find_free_port() -> int:
-	var start: int = FIRST_PORT + OS.get_process_id() % 40
-	for port: int in range(start, start + 200):
-		var probe := PacketPeerUDP.new()
-		var error: Error = probe.bind(port, "*")
-		probe.close()
-		if error == OK:
-			return port
-	return -1
+	return NetHarness.free_udp_port()
 
 
 func _read_report(path: String) -> Dictionary:
@@ -395,6 +391,35 @@ func test_report_is_rewritten_periodically_so_a_killed_server_leaves_one() -> vo
 			"el cierre ordenado no llegó a ocurrir")
 
 
+func test_dev_lock_is_written_at_the_given_path_while_listening_and_removed_on_close() -> void:
+	var port: int = _find_free_port()
+	var log_path: String = _build_path("test_server_main_j.log")
+	var lock_path: String = _build_path("test_server_main_j_lock.json")
+	DirAccess.remove_absolute(lock_path)
+	var pid: int = _launch(PackedStringArray([
+		"--port=%d" % port, "--zone=test_world", "--quit-after-ticks=420", "--dev-lock",
+		"--dev-lock-path=%s" % lock_path,
+	]), log_path)
+	if not assert_true(pid > 0, "el proceso del servidor se lanza"):
+		return
+	var deadline: int = Time.get_ticks_msec() + 15000
+	while not FileAccess.file_exists(lock_path) and Time.get_ticks_msec() < deadline:
+		await tree.create_timer(0.1).timeout
+	if not assert_true(FileAccess.file_exists(lock_path), "escribe el bloqueo en la ruta dada"):
+		return
+	var lock: Dictionary = LocalServerLauncher.read_lock(lock_path)
+	assert_eq(int(lock.get("pid", 0)), pid, "con su pid")
+	assert_eq(int(lock.get("port", 0)), port, "y su puerto")
+	assert_true(LocalServerLauncher.find_running(port, lock_path), "y --local lo vería como un servidor vivo")
+	assert_true(await _wait_for_exit(pid), "el servidor se cierra solo")
+	assert_eq(OS.get_process_exit_code(pid), 0, "código de salida 0")
+	assert_false(FileAccess.file_exists(lock_path), "y al cerrar borra su bloqueo")
+	assert_false(LocalServerLauncher.find_running(port, lock_path), "ya no hay servidor")
+	var log_text: String = FileAccess.get_file_as_string(log_path)
+	assert_true(log_text.contains("Archivo de bloqueo escrito: %s" % lock_path), "el registro dice dónde")
+	assert_eq(_error_lines(log_path), PackedStringArray(), "sin errores en el registro")
+
+
 func test_unknown_zone_exits_with_error_code() -> void:
 	var log_path: String = _build_path("test_server_main_d.log")
 	var pid: int = _launch(PackedStringArray([
@@ -410,17 +435,17 @@ func test_unknown_zone_exits_with_error_code() -> void:
 
 
 func test_dev_lock_file_is_written_and_only_removed_by_its_owner() -> void:
-	assert_eq(ServerMain.write_dev_lock(LOCK_FILE, 4242, 24600), OK, "se escribe")
+	assert_eq(ServerMain.write_dev_lock(_lock_file(), 4242, 24600), OK, "se escribe")
 	var json := JSON.new()
-	assert_eq(json.parse(FileAccess.get_file_as_string(LOCK_FILE)), OK, "es JSON")
+	assert_eq(json.parse(FileAccess.get_file_as_string(_lock_file())), OK, "es JSON")
 	var data: Dictionary = json.data
 	assert_eq(int(data.get("pid", 0)), 4242, "pid")
 	assert_eq(int(data.get("port", 0)), 24600, "puerto")
-	assert_false(ServerMain.remove_dev_lock(LOCK_FILE, 1111), "el bloqueo de otro servidor no se borra")
-	assert_true(FileAccess.file_exists(LOCK_FILE), "sigue ahí")
-	assert_true(ServerMain.remove_dev_lock(LOCK_FILE, 4242), "el dueño lo borra")
-	assert_false(FileAccess.file_exists(LOCK_FILE), "ya no existe")
-	assert_false(ServerMain.remove_dev_lock(LOCK_FILE, 4242), "borrar lo que no existe no hace nada")
+	assert_false(ServerMain.remove_dev_lock(_lock_file(), 1111), "el bloqueo de otro servidor no se borra")
+	assert_true(FileAccess.file_exists(_lock_file()), "sigue ahí")
+	assert_true(ServerMain.remove_dev_lock(_lock_file(), 4242), "el dueño lo borra")
+	assert_false(FileAccess.file_exists(_lock_file()), "ya no existe")
+	assert_false(ServerMain.remove_dev_lock(_lock_file(), 4242), "borrar lo que no existe no hace nada")
 
 
 func test_boot_ignores_network_arguments_in_the_sandbox_parser() -> void:

@@ -18,10 +18,11 @@ extends TestCase
 ## [br][br]
 ## [b]Enjambre[/b] ([code]--bots=N[/code], [BotSwarm]): un proceso con seis clientes ligeros contra el servidor.
 ## [br][br]
-## Los registros y los informes quedan en [code]build/np_*[/code] (los de estado con extensión
-## [code].txt[/code]: el importador convierte los [code].csv[/code] del proyecto en traducciones).
+## Los registros y los informes quedan en [code]build/<pid>/np_*[/code] ([method NetHarness.build_path]:
+## una carpeta por proceso de pruebas, para que dos suites a la vez no se pisen; los de estado con
+## extensión [code].txt[/code]: el importador convierte los [code].csv[/code] del proyecto en
+## traducciones).
 
-const BUILD_DIR: String = "res://build"
 ## Tiempo máximo de espera a todos los procesos (cada prueba dura menos de 30 s).
 const MAX_WAIT_SECONDS: float = 25.0
 ## Zona de las pruebas de tramposos: el circuito plano, que carga en un instante.
@@ -41,8 +42,7 @@ func after_each() -> void:
 # --- Ayudantes --------------------------------------------------------------------------------
 
 func _build_path(file_name: String) -> String:
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(BUILD_DIR))
-	return ProjectSettings.globalize_path(BUILD_DIR.path_join(file_name))
+	return NetHarness.build_path(file_name)
 
 
 ## Un bot del escenario: [param extra_args] son los argumentos de usuario de más ([code]--net-sim[/code],

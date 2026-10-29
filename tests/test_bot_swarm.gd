@@ -7,7 +7,7 @@ extends TestCase
 ## El enjambre en un proceso aparte lo prueba [code]test_net_processes[/code].
 
 const SWARM_SCENE: String = "res://scenes/client/bot_swarm.tscn"
-const REPORT_PATH: String = "res://build/test_bot_swarm_report.json"
+const REPORT_FILE: String = "test_bot_swarm_report.json"
 const ZONE_ID: String = "test_world"
 const WAIT_FRAMES: int = 900
 
@@ -28,7 +28,7 @@ func before_each() -> void:
 	_saved_max_fps = Engine.max_fps
 	_exit_codes.clear()
 	BotSwarm.quit_hook = func(code: int) -> void: _exit_codes.append(code)
-	DirAccess.remove_absolute(ProjectSettings.globalize_path(REPORT_PATH))
+	DirAccess.remove_absolute(NetHarness.build_path(REPORT_FILE))
 	_root = Node.new()
 	_root.name = "BotSwarmTest"
 	tree.root.add_child(_root)
@@ -73,7 +73,7 @@ func _start_swarm(count: int, configure: Callable = Callable()) -> void:
 	config.port = _port
 	config.bot_count = count
 	config.bot_seed = 40
-	config.report_path = ProjectSettings.globalize_path(REPORT_PATH)
+	config.report_path = NetHarness.build_path(REPORT_FILE)
 	if configure.is_valid():
 		configure.call(config)
 	BotSwarm.config = config
@@ -164,7 +164,7 @@ func test_report_has_bytes_per_client_and_the_swarm_quits_on_its_own() -> void:
 	_start_swarm(4, func(config: ClientConfig) -> void: config.quit_after_ticks = 240)
 	assert_true(await _wait_until(_exited), "el enjambre se cierra solo (--quit-after-ticks)")
 	assert_eq(_exit_codes[0], 0, "con código 0: todos jugaban")
-	var report: Dictionary = NetHarness.read_report(ProjectSettings.globalize_path(REPORT_PATH))
+	var report: Dictionary = NetHarness.read_report(NetHarness.build_path(REPORT_FILE))
 	assert_eq(int(report.get("version", 0)), 1)
 	assert_eq(report.get("mode"), "SWARM")
 	assert_eq(int(report.get("port", 0)), _port)
@@ -197,7 +197,7 @@ func test_bots_rejected_by_a_full_server_make_the_exit_code_one() -> void:
 	_start_swarm(3, func(config: ClientConfig) -> void: config.quit_after_ticks = 200)
 	assert_true(await _wait_until(_exited), "el enjambre se cierra solo")
 	assert_eq(_exit_codes[0], 1, "con código 1: uno no pudo entrar")
-	var report: Dictionary = NetHarness.read_report(ProjectSettings.globalize_path(REPORT_PATH))
+	var report: Dictionary = NetHarness.read_report(NetHarness.build_path(REPORT_FILE))
 	var bots: Dictionary = report.get("bots", {})
 	assert_eq(int(bots.get("played", 0)), 2, "juegan 2")
 	assert_eq(int(bots.get("rejected", 0)), 1, "y uno recibe REJECT")

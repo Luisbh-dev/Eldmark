@@ -3,8 +3,9 @@ extends TestCase
 ## línea de comandos de los dos modos: un proceso de servidor y un proceso de bot de verdad, lanzados
 ## con [method NetHarness.launch_process] y comprobados por sus informes.
 
-const REPORT_DIR: String = "res://build"
 const PROCESS_TIMEOUT_MSEC: int = 25000
+## Un pid que no existe (no cabe en los pid de Linux ni de Windows).
+const DEAD_PID: int = 2147483000
 
 var _viewports: Array[SubViewport] = []
 var _pids: Array[int] = []
@@ -45,6 +46,49 @@ func test_free_udp_port_gives_distinct_ports_that_can_be_bound() -> void:
 	enet.close()
 
 
+func test_each_process_starts_looking_for_ports_in_its_own_slot() -> void:
+	var starts: Dictionary = {}
+	for pid: int in range(5000, 5000 + NetHarness.PORT_SLOT_COUNT):
+		var first: int = NetHarness.first_port_for(pid)
+		assert_true(first >= NetHarness.FIRST_PORT and first + NetHarness.PORT_SLOT_SIZE <= NetHarness.LAST_PORT,
+				"la ranura del pid %d cabe en el rango (%d)" % [pid, first])
+		starts[first] = true
+	assert_eq(starts.size(), NetHarness.PORT_SLOT_COUNT, "pids seguidos, ranuras distintas")
+	assert_eq(NetHarness.first_port_for(7), NetHarness.first_port_for(7 + NetHarness.PORT_SLOT_COUNT),
+			"y se repiten cada PORT_SLOT_COUNT pids")
+	var port: int = NetHarness.free_udp_port()
+	var slot_start: int = NetHarness.first_port_for(OS.get_process_id())
+	assert_true(port >= NetHarness.FIRST_PORT and port <= NetHarness.LAST_PORT)
+	assert_true(port >= slot_start or port < NetHarness.FIRST_PORT + NetHarness.PORT_SLOT_SIZE * 2,
+			"este proceso busca a partir de su ranura (%d), no del primer puerto" % slot_start)
+
+
+func test_build_files_live_in_a_folder_of_this_process() -> void:
+	var dir: String = NetHarness.get_build_dir()
+	assert_eq(dir.get_file(), str(OS.get_process_id()), "build/<pid>")
+	assert_eq(dir.get_base_dir(), ProjectSettings.globalize_path("res://build"))
+	assert_true(DirAccess.dir_exists_absolute(dir), "y existe")
+	assert_eq(NetHarness.build_path("informe.json"), dir.path_join("informe.json"))
+
+
+func test_stale_build_folders_of_dead_processes_are_removed() -> void:
+	var base: String = ProjectSettings.globalize_path("res://build")
+	var dead: String = base.path_join(str(DEAD_PID))
+	var named: String = base.path_join("test_harness_not_a_pid")
+	DirAccess.make_dir_recursive_absolute(dead.path_join("sub"))
+	DirAccess.make_dir_recursive_absolute(named)
+	var file: FileAccess = FileAccess.open(dead.path_join("sub").path_join("np_a.log"), FileAccess.WRITE)
+	file.store_string("x")
+	file.close()
+	var mine: String = NetHarness.get_build_dir()
+	var removed: int = NetHarness.clean_stale_build_dirs()
+	assert_true(removed >= 1, "se borra al menos la del proceso muerto")
+	assert_false(DirAccess.dir_exists_absolute(dead), "la carpeta de un proceso que ya no existe, con su contenido")
+	assert_true(DirAccess.dir_exists_absolute(mine), "la de este proceso, no")
+	assert_true(DirAccess.dir_exists_absolute(named), "ni las que no son un pid")
+	DirAccess.remove_absolute(named)
+
+
 func test_make_world_viewport_has_its_own_physics_world_and_zone() -> void:
 	var first: SubViewport = NetHarness.make_world_viewport(tree.root, "")
 	var second: SubViewport = NetHarness.make_world_viewport(tree.root,
@@ -64,8 +108,7 @@ func test_make_world_viewport_has_its_own_physics_world_and_zone() -> void:
 
 
 func test_read_report_survives_missing_and_broken_files() -> void:
-	var dir: String = ProjectSettings.globalize_path(REPORT_DIR)
-	DirAccess.make_dir_recursive_absolute(dir)
+	var dir: String = NetHarness.get_build_dir()
 	assert_eq(NetHarness.read_report(dir.path_join("no_existe.json")), {})
 	var broken_path: String = dir.path_join("test_harness_broken.json")
 	var broken: FileAccess = FileAccess.open(broken_path, FileAccess.WRITE)
@@ -90,9 +133,8 @@ func test_read_report_survives_missing_and_broken_files() -> void:
 ## comprueba que [code]boot.gd[/code] enruta [code]--server[/code] y [code]--bot[/code], que
 ## [ClientConfig] lee los argumentos de verdad y que los dos informes salen.
 func test_server_and_bot_processes_play_together_and_write_their_reports() -> void:
-	var dir: String = ProjectSettings.globalize_path(REPORT_DIR)
-	var server_report: String = dir.path_join("test_harness_server.json")
-	var bot_report: String = dir.path_join("test_harness_bot.json")
+	var server_report: String = NetHarness.build_path("test_harness_server.json")
+	var bot_report: String = NetHarness.build_path("test_harness_bot.json")
 	DirAccess.remove_absolute(server_report)
 	DirAccess.remove_absolute(bot_report)
 	var port: int = NetHarness.free_udp_port()
@@ -107,9 +149,9 @@ func test_server_and_bot_processes_play_together_and_write_their_reports() -> vo
 	var started: int = Time.get_ticks_msec()
 	while bot_pid < 0 and Time.get_ticks_msec() - started < PROCESS_TIMEOUT_MSEC:
 		await wait_process_frames(30)
-		if FileAccess.file_exists(ProjectSettings.globalize_path("res://build/test_harness_server.log")) \
-				and FileAccess.get_file_as_string(ProjectSettings.globalize_path(
-				"res://build/test_harness_server.log")).contains("escuchando"):
+		var server_log: String = NetHarness.build_path("test_harness_server.log")
+		if FileAccess.file_exists(server_log) \
+				and FileAccess.get_file_as_string(server_log).contains("escuchando"):
 			bot_pid = NetHarness.launch_process(PackedStringArray([
 				"--bot", "--connect=127.0.0.1:%d" % port, "--realm=solmarch", "--bot-seed=4",
 				"--name=%s" % NameRules.bot_name(4), "--quit-after-ticks=300", "--report=%s" % bot_report,

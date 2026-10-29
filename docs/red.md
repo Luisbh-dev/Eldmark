@@ -83,7 +83,7 @@ que añade otro flujo de trabajo. Aquí se usan, no se redefinen (ver [1.5](#15-
 | Argumentos | Modo | Escena |
 |---|---|---|
 | ninguno, `--demo`, `--shots=`, `--quit-after-demo` | Sandbox sin red de la fase 1, sin cambios | `scenes/client/client_main.tscn` |
-| `--server [--port=24600] [--zone=<id>] [--max-players=64] [--max-per-ip=4] [--idle-quit=<s>] [--fake-players=N [--fake-layout=cluster\|spread] [--fake-churn=<ticks>]] [--debug-commands] [--dev-lock] [--stop-file=<ruta>]` | Servidor dedicado (siempre con `--headless`) | `scenes/server/server_main.tscn` |
+| `--server [--port=24600] [--zone=<id>] [--max-players=64] [--max-per-ip=4] [--idle-quit=<s>] [--fake-players=N [--fake-layout=cluster\|spread] [--fake-churn=<ticks>]] [--debug-commands] [--dev-lock [--dev-lock-path=<ruta>]] [--stop-file=<ruta>]` | Servidor dedicado (siempre con `--headless`) | `scenes/server/server_main.tscn` |
 | `--connect=<host>[:<puerto>] [--realm=<reino>] [--name=<nombre>]` | Cliente en red | `scenes/client/online_main.tscn` |
 | `--local [--realm=…] [--name=…]` | Cliente contra un servidor local, que se lanza si no hay ninguno | `scenes/client/online_main.tscn` |
 | `--bot --connect=… [--bot-seed=N] [--bot-cheat=<modo>]` | Un cliente que predice, sin cámara ni HUD, guiado por `BotBrain` | `scenes/client/online_main.tscn` |
@@ -1498,6 +1498,14 @@ ms, p50 / p99 / máximo de los últimos 34 s de régimen:
 Todo corre con el ejecutor actual (`godot --headless --path . -s res://tests/run_tests.gd`), que
 falla ante cualquier error del motor; cada prueba dura menos de 30 s. Los ayudantes van en
 `tests/net_harness.gd`.
+
+**Dos suites a la vez** (dos copias del proyecto, o dos ejecuciones en la misma carpeta) no se
+pisan: cada proceso de pruebas empieza a buscar puertos en su propia ranura según su pid
+(`NetHarness.first_port_for`), deja los informes y registros de los procesos que lanza en
+`build/<pid>/` (`NetHarness.build_path`; al empezar se borran las carpetas de procesos que ya no
+existen) y la prueba de procesos de `--local` usa un bloqueo propio (`--dev-lock-path=<ruta>`,
+junto a él va el registro del servidor) en vez del `user://dev_server.json` real, que comparten
+todas las copias del proyecto.
 
 ### Unitarias
 

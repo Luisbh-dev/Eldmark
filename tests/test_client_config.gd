@@ -159,6 +159,13 @@ func test_common_options() -> void:
 	assert_true(config.warnings.is_empty())
 
 
+func test_dev_lock_path_option() -> void:
+	assert_eq(_parse(["--local"]).dev_lock_path, "", "sin la opción, el bloqueo va en el sitio de siempre")
+	var config: ClientConfig = _parse(["--local", "--dev-lock-path=build\\123\\lock.json"])
+	assert_eq(config.dev_lock_path, "build/123/lock.json", "las barras invertidas se normalizan")
+	assert_true(config.warnings.is_empty())
+
+
 func test_invalid_numbers_are_ignored_with_a_warning() -> void:
 	var config: ClientConfig = _parse(["--quit-after-ticks=-5", "--bots=abc", "--port=70000"])
 	assert_eq(config.quit_after_ticks, 0)
