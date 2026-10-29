@@ -1163,12 +1163,27 @@ El servidor nunca acepta estado del cliente, y todo valor decodificado está aco
 | Una entrada por tick | No hay speedhack; las sustitutas nunca inventan acciones |
 | Botones | `buttons &= VALID_BUTTONS` (bits 0–8) |
 | Lotes | Ticks consecutivos por formato; `count` de 1 a 8 |
-| Limitador por peer (`RateLimiter`, en ticks) | No fiables: 2 por tick (120/s), ráfaga de 30. Fiables: 10/s, ráfaga de 20. Bytes: 16 KB/s, ráfaga de 4 KB. Lo que sobra se descarta y suma un aviso |
+| Limitador por peer (`RateLimiter`, en ticks) | No fiables: 2 por tick (120/s), ráfaga de 30. Fiables: 10/s, ráfaga de 20. Bytes: 16 KB/s, ráfaga de 4 KB. Lo que sobra se descarta y suma un aviso. Con crédito por parón (ver abajo) |
 | Avisos | Paquete malformado, tipo inesperado para el estado de la sesión o exceso de ritmo. 50 avisos en 600 ticks → NOTICE de expulsión y desconexión |
 | Conexiones por IP | 4 como mucho (`--max-per-ip`), salvo loopback, para que funcionen los bots locales |
 | Reino | Validado contra la zona. En la fase 2 lo declara el cliente (`DevAuthProvider`); desde la fase 5 sale del personaje o del billete, y el campo de HELLO se ignora |
 | Rebobinado | Acotado por lo medido ([10](#10-historial-para-la-compensación-de-latencia)) |
 | Comandos de depuración | Solo con `--debug-commands` |
+
+**Crédito por parón.** Los limitadores cuentan en ticks del servidor, y el tick no avanza mientras
+el proceso está parado. Si el servidor pierde `k` ticks (un parón, una pausa de la máquina virtual;
+Godot solo recupera 8 por fotograma), los clientes honrados siguen mandando un lote por tick y todo
+llega junto en el primer poll, con el tick sin avanzar: el cubo no se recargaría, solo pasarían los
+30 más antiguos y el resto (los más nuevos) sumaría avisos hasta expulsar al cliente (hallazgo N2).
+Por eso `ZoneServer` mide con un reloj entero de ticks reales (`Time.get_ticks_usec()`, solo en
+`scripts/server/`) cuántos ticks se han perdido entre dos polls y, antes de `poll()`, llama a
+`ServerPeer.grant_stall_credit(tick, perdidos)`: `RateLimiter.grant()` recarga primero y suma
+después `tasa × perdidos` sin tope, y la siguiente recarga vuelve a limitar el cubo a su ráfaga.
+Como el reloj es entero, lo concedido en total no supera los ticks que han transcurrido de verdad.
+Límites: el crédito cubre lo que cabe en un poll (ENet entrega todo lo pendiente del socket, pero
+un parón de varios segundos desborda de todos modos el búfer del sistema), y una ráfaga de red sin
+parón del servidor (un corte de Wi-Fi que entrega de golpe más de 30 lotes) sigue contando como
+exceso de ritmo.
 
 **Fases 5 y 6:**
 

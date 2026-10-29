@@ -811,6 +811,33 @@ func test_input_flood_trips_the_unreliable_limiter() -> void:
 	assert_eq(peer.strikes_total, strikes_before, "un lote por tick no es exceso de ritmo")
 
 
+## Un parón del servidor (el proceso se queda sin ejecutarse) hace que los lotes de entradas que el
+## cliente siguió mandando lleguen todos juntos en el primer poll posterior: no es exceso de ritmo
+## (hallazgo N2). Sin crédito por parón, el cubo no se recarga porque el tick no avanza y el cliente
+## honrado suma un aviso por lote y es expulsado.
+func test_a_server_stall_does_not_get_an_honest_client_kicked() -> void:
+	await _start_server()
+	var client: RawClient = await _join("Ana")
+	if client == null:
+		return
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	_hooks.append(func(_tick: int) -> void:
+		client.send_inputs(_server.get_tick() + 2, 4, Vector2(0.0, 1.0), 0.0))
+	await _run_frames(30)
+	assert_eq(peer.strikes_total, 0, "antes del parón, ningún aviso")
+	_server.set_physics_process(false)
+	await _run_frames(90)
+	_server.set_physics_process(true)
+	await _run_frames(30)
+	assert_eq(peer.strikes_total, 0, "tras un parón de 90 ticks, ningún aviso")
+	assert_eq(peer.state, ServerPeer.State.IN_WORLD, "el cliente sigue en el mundo")
+	assert_null(client.notice_with_code(NetProtocol.NoticeCode.KICK), "sin NOTICE de expulsión")
+	var report: Dictionary = _read_report()
+	assert_eq((report.get("kicks", []) as Array).size(), 0, "el informe no registra expulsiones")
+	assert_eq(int((report.get("strikes", {}) as Dictionary).get("total", 0)), 0,
+			"ni avisos")
+
+
 func test_reliable_flood_trips_the_reliable_limiter() -> void:
 	await _start_server(func(config: ServerConfig) -> void: config.debug_commands = true)
 	var client: RawClient = await _join("Ana")

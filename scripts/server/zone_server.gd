@@ -140,6 +140,10 @@ var _respawns: int = 0
 var _synced_wire_in: int = 0
 var _synced_wire_out: int = 0
 var _log_last_usec: int = 0
+# Reloj de ticks «reales» (a la cadencia nominal), para saber cuántos ticks ha perdido el servidor
+# entre dos polls. _clock_origin_usec es el instante de start().
+var _clock_origin_usec: int = 0
+var _last_poll_real_tick: int = 0
 var _log_last_wire_out: int = 0
 var _log_last_wire_in: int = 0
 var _state_log: FileAccess = null
@@ -302,6 +306,8 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_open_state_log()
 	_metrics.register_monitors()
 	_log_last_usec = Time.get_ticks_usec()
+	_clock_origin_usec = _log_last_usec
+	_last_poll_real_tick = 0
 	_run_state = _RunState.RUNNING
 	set_physics_process(true)
 	return OK
@@ -503,6 +509,7 @@ func _physics_process(delta: float) -> void:
 
 	_metrics.begin_section(&"net")
 	if _transport != null:
+		_grant_stall_credit()
 		_transport.poll(_tick)
 	_metrics.end_section(&"net")
 
@@ -535,6 +542,23 @@ func _physics_process(delta: float) -> void:
 	if s % METRICS_LOG_TICKS == 0:
 		_log_metrics(s)
 	tick_finished.emit(s)
+
+
+# Si el servidor ha perdido ticks respecto al reloj (un parón del proceso: Godot solo recupera 8 por
+# fotograma), los clientes siguieron enviando un lote por tick y todo llega junto en este poll, con
+# el tick del servidor sin avanzar: el cubo no se recargaría y lo más nuevo se descartaría como
+# exceso de ritmo. Se da a cada peer el crédito de los ticks perdidos (ver
+# ServerPeer.grant_stall_credit). Los ticks reales son un reloj entero, así que la suma de lo
+# concedido no pasa de los ticks que de verdad han transcurrido.
+func _grant_stall_credit() -> void:
+	var elapsed_usec: int = Time.get_ticks_usec() - _clock_origin_usec
+	var real_tick: int = elapsed_usec * Engine.physics_ticks_per_second / 1000000
+	var missed_ticks: int = real_tick - _last_poll_real_tick - 1
+	_last_poll_real_tick = real_tick
+	if missed_ticks <= 0:
+		return
+	for peer: ServerPeer in _peers.values():
+		peer.grant_stall_credit(_tick, missed_ticks)
 
 
 # Simula a todos los jugadores por net_id ascendente con la entrada de take(s).

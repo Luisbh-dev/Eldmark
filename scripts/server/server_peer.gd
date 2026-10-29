@@ -69,6 +69,19 @@ func _init(id: int = 0) -> void:
 	_strike_ticks.fill(-STRIKE_WINDOW_TICKS - 1)
 
 
+## Da a los tres limitadores el crédito de [param missed_ticks] ticks que el servidor no ha
+## simulado (un parón del proceso) en el tick [param now_tick]: lo que el cliente siguió enviando
+## durante el parón llega junto y no debe contar como exceso de ritmo. El crédito dura hasta la
+## siguiente recarga (ver [method RateLimiter.grant]).
+func grant_stall_credit(now_tick: int, missed_ticks: int) -> void:
+	if missed_ticks <= 0:
+		return
+	var ticks: float = float(missed_ticks)
+	limiter_unreliable.grant(now_tick, UNRELIABLE_RATE_PER_TICK * ticks)
+	limiter_reliable.grant(now_tick, RELIABLE_RATE_PER_TICK * ticks)
+	limiter_bytes.grant(now_tick, BYTES_RATE_PER_TICK * ticks)
+
+
 ## Suma un aviso en el tick [param now_tick] por [param reason] (paquete malformado, tipo
 ## inesperado para el estado de la sesión o exceso de ritmo). Devuelve true si hay que expulsar
 ## al peer: [constant STRIKE_LIMIT] avisos dentro de los últimos [constant STRIKE_WINDOW_TICKS]
