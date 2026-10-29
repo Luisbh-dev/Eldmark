@@ -6,9 +6,13 @@ extends RefCounted
 ## ejecuta en el hilo principal ([method CommandRegistry.execute_console]).
 ## [br][br]
 ## El hilo termina solo cuando la entrada se cierra (EOF); mientras espera una línea no se puede
-## interrumpir, así que al cerrar el proceso queda donde está (Godot lo avisa con un aviso, no con un
-## error). Solo se arranca con [code]--console[/code]: una entrada estándar compartida con una
-## terminal no debe leerla un proceso que nadie ha pedido que la lea.
+## interrumpir. [b]Límite conocido[/b]: en Linux, [code]exit()[/code] de libc se queda esperando el
+## bloqueo de [code]stdin[/code] que tiene la lectura, así que con la entrada abierta el proceso no
+## termina tras cerrarse el servidor hasta que llega una línea más o se cierra la entrada (Ctrl+D);
+## en Windows no ocurre. Con la entrada ya cerrada ([code]/dev/null[/code], systemd, un contenedor sin
+## [code]-i[/code]) el hilo acaba en el acto y no hay espera. Solo se arranca con
+## [code]--console[/code]: una entrada estándar compartida con una terminal no debe leerla un proceso
+## que nadie ha pedido que la lea.
 ## [br][br]
 ## Las pruebas no necesitan stdin: [method push_line] mete una línea como si la hubiera escrito alguien.
 
@@ -36,7 +40,13 @@ func start() -> bool:
 
 ## true mientras el hilo lector sigue esperando líneas.
 func is_running() -> bool:
-	return _thread != null and _running and not _reached_eof
+	return _thread != null and _running and not has_reached_eof()
+
+
+## true si el hilo lector está vivo, aunque se le haya pedido parar con [method stop]: sigue dentro de
+## la lectura bloqueada hasta que llegue una línea o se cierre la entrada.
+func is_reading() -> bool:
+	return _thread != null and not has_reached_eof()
 
 
 ## true si la entrada estándar se cerró (el hilo ya terminó).

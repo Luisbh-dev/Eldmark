@@ -140,3 +140,21 @@ func test_fake_player_layout_and_churn_options() -> void:
 		"--fake-layout=circulo", "--fake-churn=-4"]))
 	assert_eq(invalid.fake_layout, "", "un reparto desconocido se ignora")
 	assert_eq(invalid.fake_churn_ticks, 0, "y un número negativo también")
+
+
+func test_combat_options() -> void:
+	var defaults: ServerConfig = ServerConfig.from_args(PackedStringArray())
+	assert_eq(defaults.combat_log_path, "", "sin registro de combate")
+	assert_eq(defaults.fake_brain, "", "los falsos pasean")
+	assert_false(defaults.console, "sin consola")
+	assert_false(defaults.no_dummies, "con maniquíes")
+	var config: ServerConfig = ServerConfig.from_args(PackedStringArray([
+		"--server", "--combat-log=build\\combate.txt", "--fake-brain=COMBAT", "--console",
+		"--no-dummies",
+	]))
+	assert_eq(config.combat_log_path, "build/combate.txt", "ruta con barras normales")
+	assert_eq(config.fake_brain, ServerConfig.FAKE_BRAIN_COMBAT, "cerebro de combate")
+	assert_true(config.console)
+	assert_true(config.no_dummies)
+	var wrong: ServerConfig = ServerConfig.from_args(PackedStringArray(["--fake-brain=volar"]))
+	assert_eq(wrong.fake_brain, "", "un cerebro desconocido se ignora")

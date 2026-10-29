@@ -53,6 +53,8 @@ const FAKE_SEED_BASE: int = 7000
 ## [code]--fake-layout=cluster[/code] todos pasean alrededor del mismo punto, así que ninguno está a
 ## más de 2 × FAKE_RADIUS = 50 m de otro.
 const FAKE_RADIUS: float = 25.0
+## Con [code]--fake-brain=combat --fake-layout=cluster[/code]: radio (m) del corro en el que aparecen.
+const FAKE_COMBAT_RING_RADIUS: float = 3.0
 ## Con [code]--fake-layout=spread[/code]: mitad del lado (m) del cuadrado, centrado en el origen, por
 ## el que se reparten los jugadores falsos; altura desde la que se busca el suelo; y semilla.
 const FAKE_SPREAD_HALF_EXTENT: float = 900.0
@@ -259,18 +261,29 @@ func _spawn_fake_players() -> void:
 # Crea el siguiente jugador falso según --fake-layout. Devuelve su net_id, o -1 si no cabe.
 func _add_fake_player() -> int:
 	var index: int = _fake_created
+	var combat: bool = config.fake_brain == ServerConfig.FAKE_BRAIN_COMBAT
 	var realm: int = _fake_realms[index % _fake_realms.size()]
 	var home: Vector3 = Vector3.ZERO
+	# Dónde se coloca al aparecer (null = en su punto de aparición).
+	var placed_at: Variant = null
 	match config.fake_layout:
 		ServerConfig.LAYOUT_CLUSTER:
-			realm = _fake_realms[0]
-			home = _home_of(realm)
+			if combat:
+				# Los de combate se reparten entre los reinos y se juntan en un corro alrededor del
+				# punto del primero, para que se encuentren enseguida.
+				home = _home_of(_fake_realms[0])
+				placed_at = home + Vector3(cos(float(index) * 2.4), 0.0,
+						sin(float(index) * 2.4)) * FAKE_COMBAT_RING_RADIUS
+			else:
+				realm = _fake_realms[0]
+				home = _home_of(realm)
 		ServerConfig.LAYOUT_SPREAD:
 			home = _spread_point(_home_of(realm))
+			placed_at = home
 		_:
 			home = _home_of(realm)
 	var pattern: BotBrain.Pattern = FAKE_PATTERNS[index % FAKE_PATTERNS.size()]
-	if config.fake_brain == ServerConfig.FAKE_BRAIN_COMBAT:
+	if combat:
 		pattern = BotBrain.Pattern.COMBAT
 	var brain := BotBrain.new(FAKE_SEED_BASE + index, pattern, home, FAKE_RADIUS)
 	var net_id: int = _zone_server.add_fake_player(brain, realm)
@@ -278,8 +291,8 @@ func _add_fake_player() -> int:
 		return -1
 	_fake_created += 1
 	_fake_ids.append(net_id)
-	if config.fake_layout == ServerConfig.LAYOUT_SPREAD:
-		_zone_server.teleport(net_id, home)
+	if placed_at is Vector3:
+		_zone_server.teleport(net_id, placed_at)
 	return net_id
 
 
@@ -312,6 +325,15 @@ func _fake_player_realms() -> Array[int]:
 			realms.append(realm)
 	if realms.is_empty():
 		realms.append(NetProtocol.Realm.VARDHEIM)
+	# Para pelear hacen falta dos bandos hostiles: si la zona no reparte puntos por reino, los de
+	# combate se reparten entre los dos primeros reinos que admite.
+	if config.fake_brain == ServerConfig.FAKE_BRAIN_COMBAT and realms.size() < 2:
+		realms.clear()
+		for realm: int in RealmCatalog.realm_codes():
+			if allowed.is_empty() or allowed.has(realm):
+				realms.append(realm)
+			if realms.size() == 2:
+				break
 	return realms
 
 
@@ -391,4 +413,10 @@ func _shutdown(reason: String) -> void:
 	if _stop_file_exists():
 		DirAccess.remove_absolute(config.stop_file_path)
 	print("[Eldmark] Servidor cerrado")
+	var console: ServerConsole = _zone_server.get_console()
+	if console != null and console.is_reading():
+		# El hilo de la consola sigue esperando una línea de la entrada estándar y, en Linux, libc no
+		# deja salir al proceso mientras la lectura tenga cogido el bloqueo de stdin.
+		print("[Eldmark] La consola sigue leyendo la entrada estándar: el proceso termina al cerrarla "
+				+ "(Ctrl+D) o al pulsar Intro")
 	get_tree().quit(0)

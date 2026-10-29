@@ -184,6 +184,7 @@ var _combat_log: FileAccess = null
 var _shutdown_tick: int = -1
 var _shutdown_announced: Dictionary[int, bool] = {}
 var _events_sent: int = 0
+var _dummies_created: int = 0
 # peer_id -> medida del RTT en ticks.
 var _rtt: Dictionary[int, _RttWindow] = {}
 # Peers con CLIENT_READY recibido, en orden de llegada.
@@ -619,6 +620,8 @@ func add_npc(brain: BotBrain, display_name: String, realm: int, position: Vector
 		return -1
 	_npcs[entity.net_id] = brain
 	_combat.get_combatant(entity.net_id).immortal = immortal
+	if immortal:
+		_dummies_created += 1
 	_announce_arrival(entity, null, _tick)
 	_log("Alta del PNJ %s (net_id %d)%s en %s" % [display_name, entity.net_id,
 			", inmortal" if immortal else "", position])
@@ -1161,7 +1164,9 @@ func _record_history(s: int) -> void:
 			if is_instance_valid(entity.node):
 				yaw = entity.node.rotation.y
 		_history.record(s, entity.net_id, position, yaw, flags)
-		if _state_log != null and character != null:
+		# El registro de estados es solo de jugadores: un PNJ no tiene cliente con el que compararse.
+		if _state_log != null and character != null \
+				and entity.kind == NetProtocol.EntityKind.PLAYER:
 			_state_log.store_line("%d,%d,%d,%s" % [s, entity.net_id,
 					_substituted_now.get(entity.net_id, 0),
 					character.get_state().encode().hex_encode()])
@@ -2229,6 +2234,7 @@ func _combat_report() -> Dictionary:
 			report[String(stat)] = _combat.stats[stat]
 	report["events_sent"] = _events_sent
 	report["dummies"] = get_dummy_count() if _combat != null else 0
+	report["dummies_created"] = _dummies_created
 	report["suspicious"] = suspicious
 	return report
 
