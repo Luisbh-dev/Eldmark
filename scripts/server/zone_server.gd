@@ -15,13 +15,18 @@ extends Node
 ## bajas            desconexión, LEAVE o expulsión -> DESPAWN (motivo 1) y el id en cuarentena
 ## simular          todas las entidades con cuerpo (jugadores, falsos y PNJ) por net_id ascendente,
 ##                  con la entrada de InputQueue.take(s); _check_motion
-## combate          CombatDirector.process_tick(): congelar, resolver los golpes, aplicar (daño,
-##                  controles, muertes), entorno (caída, volúmenes letales, y < -100),
-##                  reapariciones y publicar la vida; los ENTITY_EVENT salen aquí
+## combate          CombatDirector.process_tick(): congelar, resolver los golpes (también contra las
+##                  puertas de los fuertes), aplicar (daño, controles, muertes), entorno (caída,
+##                  volúmenes letales, y < -100), reapariciones y publicar la vida; los ENTITY_EVENT
+##                  salen aquí
+## fuertes          FortressController.step() (paso 4b): presencia en el círculo, avance del estado de
+##                  cada fortaleza, capas de la puerta (valen desde s + 1), avisos WAR y OBJECT_STATE;
+##                  /atascado; cuerpos que se quedan tras una baja en combate
 ## altas            los READY pendientes: el jugador aparece con el estado «tras s»
 ## historial        StateHistory.record() de todas las entidades, ya con lo impuesto
 ## snapshots        SnapshotBuilder.begin(); interés cada 6 ticks, escalonado; un SNAPSHOT a cada
-##                  cliente cada 2 ticks, escalonado por la paridad de su net_id
+##                  cliente cada 2 ticks, escalonado por la paridad de su net_id; el SCOREBOARD de la
+##                  zona cada 2 s
 ## flush            vaciar lo enviado
 ## métricas         ServerMetrics y, cada 10 s, una línea en el registro
 ## [/codeblock]
@@ -45,6 +50,13 @@ extends Node
 ## muertes y las reapariciones; los PNJ ([method add_npc], el maniquí de entrenamiento) son cuerpos
 ## simulados en el mismo bucle que los jugadores; los comandos de depuración y la consola pasan por el
 ## [CommandRegistry] y [code]--combat-log[/code] deja una línea por golpe resuelto.
+## [br][br]
+## [b]Fortalezas[/b] (docs/fuerte.md): un [FortressController] lleva el estado de cada fortaleza de la zona,
+## su puerta (blanco de los golpes), los avisos de guerra y el OBJECT_STATE; [method get_fortresses] lo
+## expone a los PNJ. [code]--battle-log[/code] deja los eventos de guerra y las muertes en JSON Lines.
+## Quien sale o se desconecta en combate deja el cuerpo [constant LINGER_TICKS] ticks en el mundo
+## (GUE-41), el comando /atascado ([UnstuckTracker]) teletransporta a quien lo pide y el marcador
+## ([ScoreKeeper]) se manda a toda la zona cada [constant SCOREBOARD_INTERVAL_TICKS] ticks.
 
 ## Se emite al terminar cada tick, ya enviado todo lo del tick.
 signal tick_finished(tick: int)
@@ -91,7 +103,16 @@ const HELLO_CHECK_TICKS: int = 10
 const STOP_DRAIN_TICKS: int = 30
 ## Secciones del tick que aparecen en la línea de métricas (las mismas que mide el bucle).
 const LOGGED_SECTIONS: Array[StringName] = [&"net", &"sim", &"combat", &"combat_resolve",
-		&"combat_events", &"history", &"snapshot", &"flush"]
+		&"combat_events", &"war", &"history", &"snapshot", &"flush"]
+## Sección de [ServerMetrics] del paso de las fortalezas (4b del tick).
+const SECTION_WAR: StringName = &"war"
+## Cada cuántos ticks se manda el SCOREBOARD a toda la zona (2 s).
+const SCOREBOARD_INTERVAL_TICKS: int = 120
+## Ticks que el cuerpo de quien sale o se desconecta «en combate» sigue en el mundo, quieto y atacable
+## (15 s, GUE-41).
+const LINGER_TICKS: int = 900
+## Usos de /atascado que conserva el informe (los más recientes).
+const MAX_LOGGED_UNSTUCK: int = 200
 ## Sección de [ServerMetrics] del envío de los ENTITY_EVENT (dentro de la de combate).
 const SECTION_COMBAT_EVENTS: StringName = &"combat_events"
 ## Fichas de jugador y expulsiones que el informe conserva (las más recientes); lo anterior se resume
@@ -178,6 +199,19 @@ var _fakes: Dictionary[int, BotBrain] = {}
 # net_id -> cerebro de cada PNJ (maniquíes).
 var _npcs: Dictionary[int, BotBrain] = {}
 var _combat: CombatDirector
+var _fortresses: FortressController = null
+var _scores: ScoreKeeper = ScoreKeeper.new()
+var _battle_log: BattleLog = null
+var _unstuck: UnstuckTracker = UnstuckTracker.new()
+var _unstuck_log: Array[Dictionary] = []
+var _unstuck_uses: int = 0
+# net_id -> tick en el que se retira el cuerpo de quien salió en combate (GUE-41).
+var _lingering: Dictionary[int, int] = {}
+var _lingering_total: int = 0
+# Clave del nombre -> net_id de quien está canalizando /atascado.
+var _unstuck_players: Dictionary[String, int] = {}
+var _object_states_sent: int = 0
+var _scoreboards_sent: int = 0
 var _safe_areas: SafeAreas
 var _commands: CommandRegistry = CommandRegistry.new()
 var _console: ServerConsole = null
@@ -422,6 +456,7 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 			Callable(self, "_place"), Callable(self, "_pick_spawn_point"))
 	_combat.event_emitted.connect(_on_combat_event)
 	_combat.metrics = _metrics
+	_setup_fortresses(world)
 	_commands.audit_sink = Callable(self, "_log")
 	_register_commands()
 	if _transport != null:
@@ -437,6 +472,7 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 				return error
 	_open_state_log()
 	_open_combat_log()
+	_open_battle_log()
 	_metrics.register_monitors()
 	_log_last_usec = Time.get_ticks_usec()
 	_clock_origin_usec = _log_last_usec
@@ -479,6 +515,7 @@ func stop(notice_text: String = "") -> void:
 	_sync_byte_counters()
 	_close_state_log()
 	_close_combat_log()
+	_close_battle_log()
 	if _console != null:
 		_console.stop()
 	_metrics.unregister_monitors()
@@ -540,6 +577,11 @@ func get_connected_names() -> PackedStringArray:
 		var record: _PlayerRecord = _player_by_net.get(net_id)
 		if record != null:
 			names.append(record.display_name)
+	# El nombre de quien salió en combate sigue reservado mientras su cuerpo está en el mundo (GUE-41).
+	for net_id: int in _lingering:
+		var body: NetEntity = _registry.get_entity(net_id)
+		if body != null:
+			names.append(body.display_name)
 	return names
 
 
@@ -573,6 +615,33 @@ func get_commands() -> CommandRegistry:
 ## Zonas seguras de la zona.
 func get_safe_areas() -> SafeAreas:
 	return _safe_areas
+
+
+## Las fortalezas de la zona (estado, puerta, avisos). null antes de [method start]. Es la interfaz de
+## los generadores de PNJ: [method FortressController.get_fortress_state],
+## [method FortressController.on_captain_died] y [method FortressController.set_guards_alive].
+func get_fortresses() -> FortressController:
+	return _fortresses
+
+
+## El marcador de la batalla (bajas, muertes, asistencias, daño a la puerta, círculo y méritos).
+func get_scores() -> ScoreKeeper:
+	return _scores
+
+
+## El control del comando /atascado (canalizaciones y reutilizaciones).
+func get_unstuck() -> UnstuckTracker:
+	return _unstuck
+
+
+## Cuerpos que siguen en el mundo tras la baja de un jugador en combate (GUE-41).
+func get_lingering_count() -> int:
+	return _lingering.size()
+
+
+## true si [param net_id] es el cuerpo de un jugador que ha salido en combate y espera su retirada.
+func is_lingering(net_id: int) -> bool:
+	return _lingering.has(net_id)
 
 
 ## Huella de la simulación ([method NetProtocol.compute_sim_hash]) que el servidor exige a los
@@ -683,6 +752,26 @@ func spawn_zone_dummies() -> int:
 	return created
 
 
+## Doble de pruebas del capitán de [param fortress_id] mientras no hay generador de PNJ: un PNJ mortal
+## y quieto en el [code]CaptainSpawn[/code] de la fortaleza, del bando del dueño, registrado como su
+## capitán ([method FortressController.register_captain]). Al morir (de un golpe o con
+## [code]fort_kill_captain[/code]) abre el círculo de captura. Devuelve su net_id, o -1 si no se puede.
+func spawn_captain_double(fortress_id: StringName) -> int:
+	if _fortresses == null:
+		return -1
+	var node: Node3D = _fortresses.get_node_of(fortress_id)
+	var state: FortressState = _fortresses.get_fortress_state(fortress_id)
+	if node == null or state == null:
+		return -1
+	var marker: Node3D = node.get_node_or_null(^"CaptainSpawn") as Node3D
+	var transform: Transform3D = marker.global_transform if marker != null else node.global_transform
+	var net_id: int = add_npc(NpcBrain.new(NpcBrain.Mode.STILL), "Capitán (prueba)", state.owner,
+			transform.origin, _yaw_of(transform))
+	if net_id > 0:
+		_fortresses.register_captain(fortress_id, net_id)
+	return net_id
+
+
 ## Maniquíes vivos (PNJ inmortales).
 func get_dummy_count() -> int:
 	var count: int = 0
@@ -787,6 +876,12 @@ func _physics_process(delta: float) -> void:
 	_metrics.begin_section(&"combat")
 	_combat.process_tick(s, _players_root.get_world_3d().direct_space_state)
 	_metrics.end_section(&"combat")
+
+	# Paso 4b (docs/fuerte.md, 1.7): las fortalezas, con lo que ha dejado el combate.
+	_metrics.begin_section(SECTION_WAR)
+	_fortresses.step(s)
+	_process_unstuck(s)
+	_metrics.end_section(SECTION_WAR)
 	_check_shutdown_countdown(s)
 
 	_process_arrivals(s)
@@ -797,6 +892,8 @@ func _physics_process(delta: float) -> void:
 
 	_metrics.begin_section(&"snapshot")
 	_send_snapshots(s)
+	if s % SCOREBOARD_INTERVAL_TICKS == 0:
+		_send_scoreboard()
 	_metrics.end_section(&"snapshot")
 
 	_metrics.begin_section(&"flush")
@@ -842,14 +939,19 @@ func _simulate_players(s: int, delta: float) -> void:
 		var brain: BotBrain = _fakes.get(entity.net_id)
 		if brain == null:
 			brain = _npcs.get(entity.net_id)
+		var synthetic: bool = brain != null
 		if brain != null:
 			var generated: PlayerInput = brain.next_input(s, before, character.yaw)
 			generated.tick = s
 			queue.push(generated.quantized(), 0, s)
+		elif _lingering.has(entity.net_id):
+			# El cuerpo de quien salió en combate: entradas neutras de verdad (sin botones), quieto.
+			synthetic = true
+			queue.push(NetProtocol.neutral_input(s, character.yaw), 0, s)
 		var substitutions_before: int = queue.substitutions_total
 		var input: PlayerInput = queue.take(s)
 		var was_substituted: bool = queue.substitutions_total != substitutions_before
-		if brain == null:
+		if not synthetic:
 			inputs_consumed += 1
 			if was_substituted:
 				inputs_substituted += 1
@@ -1045,6 +1147,7 @@ func _announce_arrival(entity: NetEntity, peer: ServerPeer, s: int) -> void:
 # Cierra la sesión de los peers que se van: DESPAWN (motivo 1) a quien los tenía por relevantes, id
 # en cuarentena, personaje liberado y pista del historial borrada.
 func _process_departures(s: int) -> void:
+	_process_lingering(s)
 	_process_fake_departures(s)
 	if _leaving.is_empty():
 		return
@@ -1059,12 +1162,18 @@ func _process_departures(s: int) -> void:
 		if peer.entity == null:
 			continue
 		var entity: NetEntity = peer.entity
-		_remove_player(entity, s, NetProtocol.DespawnReason.DISCONNECTED)
+		var lingers: bool = _should_linger(entity, s)
+		if lingers:
+			_start_lingering(entity, s)
+		else:
+			_remove_player(entity, s, NetProtocol.DespawnReason.DISCONNECTED)
 		_world_peers.erase(peer)
 		_left_total += 1
 		player_left.emit(peer_id, entity.net_id)
-		_log("Baja de %s (peer %d, net_id %d); jugadores: %d" % [entity.display_name, peer_id,
-				entity.net_id, get_player_count()])
+		_log("Baja de %s (peer %d, net_id %d); jugadores: %d%s" % [entity.display_name, peer_id,
+				entity.net_id, get_player_count(),
+				"; su cuerpo se queda %d s por estar en combate" % (LINGER_TICKS / 60) \
+				if lingers else ""])
 
 
 # Bajas de los jugadores falsos pedidas con remove_fake_player().
@@ -1104,6 +1213,8 @@ func _remove_player(entity: NetEntity, s: int, reason: int) -> void:
 	_queues.erase(net_id)
 	_fakes.erase(net_id)
 	_npcs.erase(net_id)
+	_lingering.erase(net_id)
+	_scores.forget(net_id)
 	_combat.remove(net_id)
 	_history.forget(net_id)
 	_substituted_now.erase(net_id)
@@ -1132,6 +1243,10 @@ func _clear_players() -> void:
 	_queues.clear()
 	_fakes.clear()
 	_npcs.clear()
+	_lingering.clear()
+	_scores.clear()
+	if _fortresses != null:
+		_fortresses.clear()
 	if _combat != null:
 		_combat.clear()
 	_player_by_net.clear()
@@ -1177,6 +1292,8 @@ func _check_hello_timeouts(s: int) -> void:
 # alta: es el estado «tras s».
 func _record_history(s: int) -> void:
 	for entity: NetEntity in _registry.get_sorted():
+		if entity.kind == NetProtocol.EntityKind.STRUCTURE:
+			continue
 		var character: PlayerCharacter = entity.get_character()
 		var position: Vector3 = entity.get_position()
 		var yaw: float = 0.0
@@ -1203,6 +1320,8 @@ func _record_history(s: int) -> void:
 		_state_log.flush()
 	if _combat_log != null and s % STATE_LOG_FLUSH_TICKS == 0:
 		_combat_log.flush()
+	if _battle_log != null and s % STATE_LOG_FLUSH_TICKS == 0:
+		_battle_log.flush()
 	_substituted_now.clear()
 
 
@@ -1271,14 +1390,18 @@ func _send(peer: ServerPeer, channel: int, bytes: PackedByteArray) -> void:
 # --- Combate: eventos, enemigos, suelo ----------------------------------------------------------
 
 # Un evento de combate: ENTITY_EVENT (canal fiable) a los dueños de las entidades implicadas
-# (víctima, atacante, asesino y asistentes) y a quien tenga relevante a cualquiera de ellas.
+# (víctima, atacante, asesino y asistentes) y a quien tenga relevante a cualquiera de ellas. Los KILL
+# van a toda la zona (el registro de bajas lo ve todo el mundo, docs/fuerte.md sección 6). Antes de
+# enviarlo se apunta en el marcador y en el registro de batalla.
 func _on_combat_event(event: NetMessages.EntityEvent, involved: PackedInt32Array) -> void:
+	_track_battle(event)
 	if _transport == null or _world_peers.is_empty():
 		return
 	_metrics.begin_section(SECTION_COMBAT_EVENTS)
 	var bytes: PackedByteArray = event.encode()
+	var to_everyone: bool = event.event == NetMessages.EntityEvent.Kind.KILL
 	for peer: ServerPeer in _world_peers:
-		var receives: bool = involved.has(peer.entity.net_id)
+		var receives: bool = to_everyone or involved.has(peer.entity.net_id)
 		if not receives:
 			for net_id: int in involved:
 				if peer.relevant.get(net_id, false):
@@ -1289,6 +1412,33 @@ func _on_combat_event(event: NetMessages.EntityEvent, involved: PackedInt32Array
 			_events_sent += 1
 			_event_bytes_sent += bytes.size()
 	_metrics.end_section(SECTION_COMBAT_EVENTS)
+
+
+# Marcador y registro de batalla: una muerte suma una muerte a la víctima (si es un jugador) y queda en el
+# registro; un KILL suma una baja al asesino y una asistencia a cada asistente (si son jugadores).
+func _track_battle(event: NetMessages.EntityEvent) -> void:
+	match event.event:
+		NetMessages.EntityEvent.Kind.DEATH:
+			var victim: NetEntity = _registry.get_entity(event.net_id)
+			if victim == null:
+				return
+			if victim.kind == NetProtocol.EntityKind.PLAYER:
+				_scores.add_death(victim.net_id)
+			if _battle_log != null:
+				_battle_log.log_death(event.tick, victim,
+						_registry.get_entity(event.killer) if event.killer != 0 else null,
+						event.attack_id, victim.get_position())
+		NetMessages.EntityEvent.Kind.KILL:
+			if _is_player(event.killer):
+				_scores.add_kill(event.killer)
+			for assistant: int in event.assistants:
+				if _is_player(assistant):
+					_scores.add_assist(assistant)
+
+
+func _is_player(net_id: int) -> bool:
+	var entity: NetEntity = _registry.get_entity(net_id)
+	return entity != null and entity.kind == NetProtocol.EntityKind.PLAYER
 
 
 # Un punto de aparición del reino (para colocar a quien cae fuera del mundo mientras está muerto).
@@ -1404,6 +1554,8 @@ func _register_commands() -> void:
 			_net_set_weapon)
 	_commands.register(&"spawn_dummy", "spawn_dummy <x> <y> <z> [quieto|bloqueando|girando]",
 			_console_spawn_dummy, _net_spawn_dummy)
+	_fortresses.register_commands(_commands, Callable(self, "_next_tick"))
+	_commands.register(&"unstuck", "unstuck <jugador>", _console_unstuck, _net_unstuck)
 	_commands.register(&"announce", "announce <texto>", _console_announce)
 	_commands.register(&"kick", "kick <jugador> [motivo]", _console_kick)
 	_commands.register(&"shutdown", "shutdown <segundos> | shutdown cancel", _console_shutdown)
@@ -1537,7 +1689,29 @@ func _net_spawn_dummy(ctx: CommandRegistry.Context) -> int:
 	return CommandRegistry.Result.OK
 
 
+func _net_unstuck(ctx: CommandRegistry.Context) -> int:
+	if not ctx.payload.is_empty():
+		return CommandRegistry.Result.BAD_ARGUMENTS
+	if ctx.peer == null or ctx.peer.entity == null:
+		return CommandRegistry.Result.REFUSED
+	return CommandRegistry.Result.OK \
+			if _request_unstuck(ctx.peer) == UnstuckTracker.RequestResult.STARTED \
+			else CommandRegistry.Result.REFUSED
+
+
 # -- Comandos de consola --
+
+# Teletransporta ya al jugador al punto seguro más cercano de su reino (sin canalización ni
+# reutilización: es una herramienta de administración).
+func _console_unstuck(ctx: CommandRegistry.Context) -> String:
+	if ctx.args.size() != 1:
+		return "Uso: unstuck <jugador>"
+	var entity: NetEntity = _find_entity(ctx.args[0])
+	if entity == null or entity.kind != NetProtocol.EntityKind.PLAYER:
+		return "No hay ningún jugador «%s»" % ctx.args[0]
+	_teleport_unstuck(entity, _tick + 1)
+	return "%s llevado al punto seguro más cercano de su reino" % entity.display_name
+
 
 func _console_teleport(ctx: CommandRegistry.Context) -> String:
 	if ctx.args.size() != 4:
@@ -1681,6 +1855,8 @@ func _console_shutdown(ctx: CommandRegistry.Context) -> String:
 func _console_players(_ctx: CommandRegistry.Context) -> String:
 	var lines := PackedStringArray()
 	for entity: NetEntity in _registry.get_sorted():
+		if entity.kind == NetProtocol.EntityKind.STRUCTURE:
+			continue
 		var combatant: Combatant = _combat.get_combatant(entity.net_id)
 		lines.append("%d %s (%s%s) vida %d/%d" % [entity.net_id, entity.display_name,
 				NetProtocol.realm_display_name(entity.realm),
@@ -1724,6 +1900,291 @@ func _check_shutdown_countdown(s: int) -> void:
 	var seconds_left: int = remaining / rate
 	if remaining % rate == 0 and SHUTDOWN_NOTICE_SECONDS.has(seconds_left):
 		_broadcast_notice("El servidor se cerrará en %d s" % seconds_left)
+
+
+# --- Fortalezas, marcador, salida en combate y /atascado -------------------------------------------
+
+# Crea el controlador de las fortalezas de la zona y lo conecta con el combate: los golpes a la puerta,
+# los DEATH y HIT de los defensores, los puntos de reaparición que valen y las oleadas.
+func _setup_fortresses(world: Node3D) -> void:
+	_fortresses = FortressController.new()
+	_fortresses.score_keeper = _scores
+	_fortresses.candidates_source = Callable(self, "_presence_candidates")
+	_fortresses.bodies_source = Callable(self, "_gate_blockers")
+	_fortresses.captain_killer = Callable(self, "_kill_captain_npc")
+	_fortresses.setup(world, _registry, _tick)
+	_fortresses.war_event_emitted.connect(_on_war_event)
+	_fortresses.object_state_emitted.connect(_on_object_state)
+	_fortresses.gate_damage_started.connect(_on_gate_damage_started)
+	_combat.event_emitted.connect(_fortresses.on_combat_event)
+	_combat.structure_hit.connect(_fortresses.on_structure_hit)
+	_combat.set_structure_targets(_fortresses.get_structure_targets())
+	_combat.fortress_states = Callable(_fortresses, "get_states")
+	if _fortresses.has_fortresses():
+		# Oleadas de reaparición cada 10 s en las zonas con fortaleza (GUE-14).
+		_combat.timing.respawn_wave_ticks = CombatTiming.WAVE_TICKS
+
+
+# El tick que va a simular el servidor: el de las órdenes de depuración que llegan en el poll.
+func _next_tick() -> int:
+	return _tick + 1
+
+
+# Los jugadores (de red y falsos, no los PNJ) que pueden contar en el círculo: vivos, con la última
+# entrada real que han mandado y sin ser el cuerpo que queda tras una baja.
+func _presence_candidates(_tick_now: int) -> Array:
+	var candidates: Array = []
+	for entity: NetEntity in _registry.get_sorted():
+		if entity.kind != NetProtocol.EntityKind.PLAYER:
+			continue
+		var combatant: Combatant = _combat.get_combatant(entity.net_id)
+		var queue: InputQueue = _queues.get(entity.net_id)
+		if combatant == null or queue == null or entity.get_character() == null:
+			continue
+		var candidate: FortressController.PlayerCandidate = FortressController.PlayerCandidate \
+				.make_player(entity.net_id, entity.realm, entity.get_position(),
+				queue.get_last_real_tick())
+		candidate.alive = combatant.is_alive()
+		candidate.connected = not _lingering.has(entity.net_id)
+		candidates.append(candidate)
+	return candidates
+
+
+# Los pies de los personajes vivos (jugadores y PNJ): los que impiden cerrar la puerta si solapan el vano.
+func _gate_blockers() -> PackedVector3Array:
+	var positions := PackedVector3Array()
+	for entity: NetEntity in _registry.get_sorted():
+		if entity.get_character() == null:
+			continue
+		var combatant: Combatant = _combat.get_combatant(entity.net_id)
+		if combatant != null and combatant.is_alive():
+			positions.append(entity.get_position())
+	return positions
+
+
+# Mata al PNJ capitán registrado (para fort_kill_captain). Devuelve false si no se puede.
+func _kill_captain_npc(net_id: int) -> bool:
+	var combatant: Combatant = _combat.get_combatant(net_id)
+	if combatant == null or combatant.is_dead() or combatant.immortal:
+		return false
+	_combat.kill(combatant, _tick + 1)
+	return true
+
+
+# Un aviso de guerra a toda la zona (ENTITY_EVENT WAR) y al registro de batalla.
+func _on_war_event(event: NetMessages.EntityEvent) -> void:
+	if _battle_log != null:
+		var fortress_id: StringName = _fortresses.get_fortress_id_of(event.net_id)
+		_battle_log.log_war(event.tick, event.war_event, event.war_realm, fortress_id,
+				_fortresses.get_circle(fortress_id)["center"])
+	if _transport == null or _world_peers.is_empty():
+		return
+	var bytes: PackedByteArray = event.encode()
+	for peer: ServerPeer in _world_peers:
+		_transport.send(peer.peer_id, NetProtocol.CH_RELIABLE, bytes)
+		_events_sent += 1
+		_event_bytes_sent += bytes.size()
+
+
+# El OBJECT_STATE de una fortaleza a toda la zona (canal fiable).
+func _on_object_state(object_state: NetMessages.ObjectState) -> void:
+	_object_states_sent += 1
+	if _transport == null or _world_peers.is_empty():
+		return
+	var bytes: PackedByteArray = object_state.encode()
+	if bytes.is_empty():
+		return
+	for peer: ServerPeer in _world_peers:
+		_transport.send(peer.peer_id, NetProtocol.CH_RELIABLE, bytes)
+
+
+func _on_gate_damage_started(fortress_id: StringName, tick: int) -> void:
+	if _battle_log == null:
+		return
+	var gate: FortGate = _fortresses.get_gate(fortress_id)
+	_battle_log.log_gate_damage_started(tick, fortress_id,
+			gate.global_position if gate != null else Vector3.ZERO)
+
+
+# El marcador de la zona a todos los jugadores (páginas de 66 filas como mucho).
+func _send_scoreboard() -> void:
+	if _transport == null or _world_peers.is_empty():
+		return
+	var ids: Array[int] = []
+	for entity: NetEntity in _registry.get_sorted():
+		if entity.kind == NetProtocol.EntityKind.PLAYER:
+			ids.append(entity.net_id)
+	var rows: Array[NetMessages.ScoreRow] = _scores.build_rows(ids)
+	for page: NetMessages.Scoreboard in NetMessages.Scoreboard.split(rows):
+		var bytes: PackedByteArray = page.encode()
+		for peer: ServerPeer in _world_peers:
+			_transport.send(peer.peer_id, NetProtocol.CH_RELIABLE, bytes)
+	_scoreboards_sent += 1
+
+
+# -- Salida y desconexión en combate (GUE-41) --
+
+# true si quien se va ha dado o recibido daño hace menos de 10 s y sigue vivo: su cuerpo se queda.
+func _should_linger(entity: NetEntity, s: int) -> bool:
+	if entity.kind != NetProtocol.EntityKind.PLAYER or _run_state != _RunState.RUNNING:
+		return false
+	var combatant: Combatant = _combat.get_combatant(entity.net_id)
+	return combatant != null and combatant.is_alive() and combatant.is_in_combat(s)
+
+
+# El cuerpo queda LINGER_TICKS ticks en el mundo con entradas neutras (quieto, sin botones), atacable, sin
+# contar en el círculo y con el nombre reservado. Deja de ser de ningún peer.
+func _start_lingering(entity: NetEntity, s: int) -> void:
+	var net_id: int = entity.net_id
+	var record: _PlayerRecord = _player_by_net.get(net_id)
+	if record != null:
+		record.close(s)
+		_player_by_net.erase(net_id)
+	var combatant: Combatant = _combat.get_combatant(net_id)
+	if combatant != null:
+		combatant.peer = null
+	entity.owner_peer = 0
+	_unstuck.cancel(NameRules.normalize_key(entity.display_name))
+	_lingering[net_id] = s + LINGER_TICKS
+	_lingering_total += 1
+
+
+# Retira los cuerpos cuyo plazo ha vencido o a los que han matado (su muerte ya se acreditó como cualquier
+# otra).
+func _process_lingering(s: int) -> void:
+	if _lingering.is_empty():
+		return
+	for net_id: int in _lingering.keys():
+		var entity: NetEntity = _registry.get_entity(net_id)
+		if entity == null:
+			_lingering.erase(net_id)
+			continue
+		var combatant: Combatant = _combat.get_combatant(net_id)
+		if s >= _lingering[net_id] or combatant == null or combatant.is_dead():
+			_log("Se retira el cuerpo de %s (net_id %d)" % [entity.display_name, net_id])
+			_remove_player(entity, s, NetProtocol.DespawnReason.DISCONNECTED)
+
+
+# -- /atascado (MUN-41) --
+
+# UNSTUCK_REQUEST o comando 7: empieza la canalización si procede y avisa al jugador de cómo ha ido.
+func _request_unstuck(peer: ServerPeer) -> int:
+	var entity: NetEntity = peer.entity
+	var combatant: Combatant = _combat.get_combatant(entity.net_id) if entity != null else null
+	if combatant == null:
+		return UnstuckTracker.RequestResult.DEAD
+	var s: int = _tick + 1
+	var key: String = NameRules.normalize_key(entity.display_name)
+	var result: int = _unstuck.request(key, s, combatant.is_alive(), combatant.is_in_combat(s))
+	var text: String = "/atascado: te llevaré al punto más cercano de tu reino en %d s si no " \
+			% (UnstuckTracker.CHANNEL_TICKS / 60) + "entras en combate"
+	match result:
+		UnstuckTracker.RequestResult.STARTED:
+			_unstuck_players[key] = entity.net_id
+		UnstuckTracker.RequestResult.IN_COMBAT:
+			text = "/atascado: no se puede usar en combate"
+		UnstuckTracker.RequestResult.COOLDOWN:
+			text = "/atascado: disponible de nuevo en %d s" % ceili(
+					float(_unstuck.cooldown_remaining(key, s)) / 60.0)
+		UnstuckTracker.RequestResult.ALREADY_CHANNELING:
+			text = "/atascado: ya lo estás usando"
+		UnstuckTracker.RequestResult.DEAD:
+			text = "/atascado: no se puede usar estando muerto"
+	_send_notice(peer, text)
+	return result
+
+
+# Avanza las canalizaciones de /atascado: el combate o la muerte las interrumpen y al final se teletransporta.
+func _process_unstuck(s: int) -> void:
+	for key: String in _unstuck.get_channeling():
+		var entity: NetEntity = _registry.get_entity(_unstuck_players.get(key, 0))
+		var combatant: Combatant = _combat.get_combatant(entity.net_id) if entity != null else null
+		if combatant == null:
+			_unstuck.cancel(key)
+			_unstuck_players.erase(key)
+			continue
+		var outcome: int = _unstuck.update(key, s, combatant.is_alive(), combatant.is_in_combat(s))
+		if outcome == UnstuckTracker.UpdateResult.CHANNELING:
+			continue
+		_unstuck_players.erase(key)
+		var peer: ServerPeer = _peers.get(entity.owner_peer)
+		if outcome == UnstuckTracker.UpdateResult.INTERRUPTED:
+			if peer != null:
+				_send_notice(peer, "/atascado: interrumpido")
+		else:
+			_teleport_unstuck(entity, s)
+			if peer != null:
+				_send_notice(peer, "/atascado: ya estás en un punto seguro de tu reino")
+
+
+# Teletransporta a [param entity] al punto de reaparición válido más cercano de su reino (o, si no hay,
+# a un punto de aparición) y anota el uso (zona, posición de origen y de destino) para arreglar el mapa.
+func _teleport_unstuck(entity: NetEntity, s: int) -> void:
+	var from: Vector3 = entity.get_position()
+	var destination: Transform3D = _nearest_safe_point(entity, s)
+	_place(entity, destination.origin, CombatDirector._yaw_of(destination))
+	_unstuck_uses += 1
+	_unstuck_log.append({
+		"tick": s, "net_id": entity.net_id, "name": entity.display_name, "zone": _config.zone_id,
+		"from": [from.x, from.y, from.z],
+		"to": [destination.origin.x, destination.origin.y, destination.origin.z],
+	})
+	while _unstuck_log.size() > MAX_LOGGED_UNSTUCK:
+		_unstuck_log.pop_front()
+	_log("/atascado: %s (net_id %d, zona %s) pasa de %s a %s" % [entity.display_name,
+			entity.net_id, _config.zone_id, from, destination.origin])
+
+
+# El punto de reaparición que vale para el reino de [param entity] más cercano a ella.
+func _nearest_safe_point(entity: NetEntity, s: int) -> Transform3D:
+	var points: Array[Node3D] = _combat.get_all_respawn_points()
+	var position: Vector3 = entity.get_position()
+	var best: Node3D = null
+	var best_distance: float = INF
+	for index: int in _combat.get_valid_respawn_points(entity.realm, s):
+		var distance: float = points[index].global_position.distance_squared_to(position)
+		if distance < best_distance:
+			best_distance = distance
+			best = points[index]
+	if best == null:
+		return _spawn_picker.pick(entity.realm)
+	return best.global_transform
+
+
+func _send_notice(peer: ServerPeer, text: String) -> void:
+	if _transport == null or peer.state != ServerPeer.State.IN_WORLD:
+		return
+	var notice := NetMessages.Notice.new()
+	notice.code = NetProtocol.NoticeCode.INFO
+	notice.text = text
+	_transport.send(peer.peer_id, NetProtocol.CH_RELIABLE, notice.encode())
+
+
+# -- Registro de batalla (GUE-17) --
+
+func _open_battle_log() -> void:
+	if _config.battle_log_path.is_empty():
+		return
+	_battle_log = BattleLog.open(_config.battle_log_path)
+	if _battle_log == null:
+		return
+	var fortresses: Array[Dictionary] = []
+	for fortress_id: StringName in _fortresses.get_fortress_ids():
+		var node: Node3D = _fortresses.get_node_of(fortress_id)
+		var gate: FortGate = _fortresses.get_gate(fortress_id)
+		var circle: Dictionary = _fortresses.get_circle(fortress_id)
+		fortresses.append({
+			"id": fortress_id, "position": node.global_position,
+			"gate": gate.global_position if gate != null else node.global_position,
+			"circle": circle["center"], "radius": circle["radius"],
+		})
+	_battle_log.log_start(_config.zone_id, fortresses)
+
+
+func _close_battle_log() -> void:
+	if _battle_log != null:
+		_battle_log.close()
+		_battle_log = null
 
 
 # --- Transporte -------------------------------------------------------------------------------
@@ -1985,15 +2446,16 @@ func _handle_respawn_request(peer: ServerPeer, bytes: PackedByteArray) -> void:
 		_add_strike(peer, "petición de reaparición fuera de plazo")
 
 
-# UNSTUCK_REQUEST (/atascado, docs/fuerte.md sección 5). El protocolo v3 solo lo acepta: bien formado y
-# desde dentro del mundo no suma avisos. TODO(F3): canalización de 10 s que el daño interrumpe, fuera
-# de combate, 5 min de reutilización y teletransporte al punto de aparición más cercano del reino.
+# UNSTUCK_REQUEST (/atascado, docs/fuerte.md sección 5): sin necesidad de --debug-commands. Canalización
+# de 10 s fuera de combate, que el combate interrumpe, con 5 min de reutilización; ver _request_unstuck.
 func _handle_unstuck_request(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	if peer.state != ServerPeer.State.IN_WORLD:
 		_add_strike(peer, "petición de /atascado antes de entrar en el mundo")
 		return
 	if NetMessages.UnstuckRequest.decode(bytes) == null:
 		_add_strike(peer, "petición de /atascado mal formada")
+		return
+	_request_unstuck(peer)
 
 
 # Suma un aviso y expulsa al peer si llega al límite (50 en 600 ticks).
@@ -2276,6 +2738,7 @@ func _build_report() -> Dictionary:
 		"teleports": _teleports,
 		"respawns": _respawns + _combat_stat(&"respawns") + _combat_stat(&"voids"),
 		"combat": _combat_report(),
+		"war": _war_report(),
 		"simulate": {
 			"calls": _simulate_calls,
 			"total_us": _simulate_usec_total,
@@ -2321,6 +2784,33 @@ func _combat_report() -> Dictionary:
 	report["dummies_created"] = _dummies_created
 	report["suspicious"] = suspicious
 	return report
+
+
+# Resumen de la guerra para el informe: el estado de cada fortaleza, el marcador, las salidas en combate y los
+# usos de /atascado.
+func _war_report() -> Dictionary:
+	var fortresses: Array[Dictionary] = []
+	if _fortresses != null:
+		for fortress_id: StringName in _fortresses.get_fortress_ids():
+			var state: FortressState = _fortresses.get_fortress_state(fortress_id)
+			fortresses.append({
+				"id": String(fortress_id), "owner": state.owner, "phase": state.phase,
+				"gate_health": state.gate_health, "gate_max": state.gate_max,
+				"captain_alive": state.captain_alive, "guards_alive": state.guards_alive,
+			})
+	return {
+		"fortresses": fortresses,
+		"object_states_sent": _object_states_sent,
+		"scoreboards_sent": _scoreboards_sent,
+		"lingering_total": _lingering_total,
+		"lingering_now": _lingering.size(),
+		"unstuck": {
+			"uses": _unstuck_uses,
+			"completed": _unstuck.completed_count,
+			"interrupted": _unstuck.interrupted_count,
+			"log": _unstuck_log,
+		},
+	}
 
 
 func _count_fakes_in_log() -> int:

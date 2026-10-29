@@ -55,4 +55,24 @@ extends Resource
 @export var backstab_angle_deg: float = 120.0
 ## Multiplicador del daño por la espalda.
 @export var crit_multiplier: float = 1.5
+## Multiplicadores del daño contra estructuras (la puerta de un fuerte, docs/fuerte.md, sección 3.3),
+## por tipo de daño: cortante, perforante, contundente y elemental. Solo los usa el servidor.
+@export var structure_slash_multiplier: float = 0.35
+@export var structure_pierce_multiplier: float = 0.2
+@export var structure_blunt_multiplier: float = 1.0
+@export var structure_elemental_multiplier: float = 0.6
 
+
+## Multiplicador del daño de tipo [param damage_type] ([enum DamageFormula.DamageType]) contra
+## una estructura. 1 para un tipo desconocido.
+func structure_multiplier(damage_type: int) -> float:
+	match damage_type:
+		DamageFormula.DamageType.SLASH:
+			return structure_slash_multiplier
+		DamageFormula.DamageType.PIERCE:
+			return structure_pierce_multiplier
+		DamageFormula.DamageType.BLUNT:
+			return structure_blunt_multiplier
+		DamageFormula.DamageType.ELEMENTAL:
+			return structure_elemental_multiplier
+	return 1.0

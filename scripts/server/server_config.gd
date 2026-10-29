@@ -10,13 +10,15 @@ extends RefCounted
 ## --fake-center=<x>,<z>
 ## --debug-commands --dev-lock --dev-lock-path=<ruta>
 ## --quit-after-ticks=N --report=<ruta.json> --state-log=<ruta.csv> --net-sim=rtt=120,jitter=20
-## --stop-file=<ruta> --combat-log=<ruta.csv> --console --no-dummies
+## --stop-file=<ruta> --combat-log=<ruta.csv> --console --no-dummies --battle-log=<ruta.jsonl>
 ## [/codeblock]
 ## [code]--combat-log=<ruta>[/code] escribe un CSV con una línea por golpe resuelto
 ## ([code]tick,atacante,objetivo,ataque,view_tick,rebobinado,resultado,daño[/code]; en el proyecto
 ## usa otra extensión, p. ej. [code].txt[/code], porque el importador convierte los [code].csv[/code]
 ## en traducciones). [code]--console[/code] lee comandos de la entrada estándar (anunciar, expulsar,
 ## cerrar...; ver [CommandRegistry]) y [code]--no-dummies[/code] no coloca los maniquíes de la zona.
+## [code]--battle-log=<ruta>[/code] escribe los eventos de guerra y las muertes en JSON Lines
+## ([BattleLog]; lo resume [code]tools/war/summarize_battle.gd[/code], GUE-17).
 ## SIGTERM y SIGINT (Ctrl+C, [code]docker stop[/code], systemd) matan el proceso de Godot sin pasar
 ## por GDScript, así que no hay cierre ordenado. Para pararlo desde fuera con NOTICE de cierre,
 ## informe y borrado del bloqueo de [code]--dev-lock[/code] está [code]--stop-file=<ruta>[/code]: el
@@ -63,6 +65,8 @@ var fake_churn_ticks: int = 0
 var debug_commands: bool = false
 ## Ruta del registro de combate (CSV). Vacío = ninguno.
 var combat_log_path: String = ""
+## Ruta del registro de batalla (JSON Lines: avisos de guerra y muertes). Vacío = ninguno.
+var battle_log_path: String = ""
 ## Cerebro de los jugadores falsos: vacío = el de paseo y [constant FAKE_BRAIN_COMBAT] = el de combate
 ## (buscan al enemigo más cercano, atacan, bloquean y esquivan).
 var fake_brain: String = ""
@@ -130,6 +134,7 @@ static func from_args(args: PackedStringArray) -> ServerConfig:
 		if center.is_finite() and absf(center.x) <= MAX_FAKE_CENTER and absf(center.y) <= MAX_FAKE_CENTER:
 			config.fake_center = center
 	config.combat_log_path = _string_option(args, "--combat-log=").replace("\\", "/")
+	config.battle_log_path = _string_option(args, "--battle-log=").replace("\\", "/")
 	config.console = args.has("--console")
 	config.no_dummies = args.has("--no-dummies")
 	config.report_path = _string_option(args, "--report=")

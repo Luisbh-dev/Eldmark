@@ -203,6 +203,10 @@ static func _validate_rules(rules_value: CombatRules, errors: PackedStringArray)
 		errors.append("la ventana de parada no puede ser mayor que su enfriamiento")
 	if rules_value.health_max < 1:
 		errors.append("health_max debe ser positivo")
+	if rules_value.structure_slash_multiplier < 0.0 or rules_value.structure_pierce_multiplier < 0.0 \
+			or rules_value.structure_blunt_multiplier < 0.0 \
+			or rules_value.structure_elemental_multiplier < 0.0:
+		errors.append("los multiplicadores contra estructuras no pueden ser negativos")
 
 
 # Ataques con id, ordenados por id; si dos objetos distintos comparten id, se avisa y se queda el

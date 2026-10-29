@@ -254,7 +254,7 @@ func heal_full() -> void:
 func mark_dead(tick: int, killer: int, attack_id: int) -> void:
 	health = 0
 	death_tick = tick
-	respawn_tick = tick + timing.respawn
+	respawn_tick = timing.respawn_tick_for(tick)
 	pending_respawn_point = -1
 	killer_id = killer
 	death_attack_id = attack_id

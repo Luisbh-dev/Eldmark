@@ -12,6 +12,8 @@ extends RefCounted
 const AUTO_RESPAWN_S: float = 30.0
 ## Segundos sin recibir daño tras los que el maniquí de entrenamiento se cura del todo.
 const DUMMY_HEAL_S: float = 5.0
+## Cada cuántos ticks sale una oleada de reaparición en una zona con fortaleza (10 s).
+const WAVE_TICKS: int = 600
 ## Ticks de adelanto con los que se admite un RESPAWN_REQUEST antes de [member Combatant.respawn_tick]:
 ## el cliente cuenta el tick del servidor por delante (lleva la antelación de sus entradas), así que
 ## su botón puede llegar un par de ticks antes de que el servidor lo permita. La petición queda
@@ -26,6 +28,11 @@ var respawn: int = 600
 var auto_respawn: int = 1800
 ## Ticks de protección tras reaparecer.
 var protection: int = 180
+## Oleadas de reaparición (docs/fuerte.md, sección 5; GUE-14): si es mayor que 1, nadie reaparece fuera
+## de un múltiplo de este número de ticks (el primero que cae a [member respawn] ticks o más de la
+## muerte). 0 = sin oleadas, reaparece a los [member respawn] ticks. El servidor lo pone a
+## [constant WAVE_TICKS] en las zonas con fortaleza.
+var respawn_wave_ticks: int = 0
 ## Ventana (ticks) en la que se cuentan los controles encadenados y ticks de inmunidad tras la cadena.
 var cc_window: int = 180
 var cc_immunity: int = 120
@@ -54,3 +61,13 @@ static func from_rules(rules: CombatRules) -> CombatTiming:
 ## Segundos a ticks de simulación ([constant CombatCatalog.TICK_RATE] por segundo), redondeando.
 static func seconds_to_ticks(seconds: float) -> int:
 	return roundi(seconds * float(CombatCatalog.TICK_RATE))
+
+
+## Primer tick en el que puede reaparecer quien muere en [param death_tick]: [member respawn] ticks
+## después o, con oleadas ([member respawn_wave_ticks]), el primer múltiplo de la oleada a partir de ahí.
+func respawn_tick_for(death_tick: int) -> int:
+	var earliest: int = death_tick + respawn
+	if respawn_wave_ticks <= 1:
+		return earliest
+	@warning_ignore("integer_division")
+	return ((earliest + respawn_wave_ticks - 1) / respawn_wave_ticks) * respawn_wave_ticks

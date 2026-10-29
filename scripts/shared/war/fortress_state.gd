@@ -87,6 +87,10 @@ var presence: PackedInt32Array = PackedInt32Array([0, 0, 0, 0])
 var progress_max: int = 0
 ## Tick del último reinicio a neutral (o de la creación), del que cuenta el reinicio periódico.
 var last_reset_tick: int = 0
+## Factor (1 = normal) por el que se multiplica la velocidad de captura positiva: es el comando de
+## depuración [code]fort_capture_speed[/code]. No viaja por la red: el cliente solo ve la velocidad ya
+## multiplicada en [member capture_rate]. El decaimiento no se multiplica.
+var capture_rate_multiplier: int = 1
 
 # Constantes de la definición en ticks, copiadas al crear el estado para que los métodos de la
 # interfaz (que no reciben la definición) las tengan.
@@ -305,6 +309,7 @@ func copy_from(other: FortressState) -> void:
 	presence = other.presence.duplicate()
 	progress_max = other.progress_max
 	last_reset_tick = other.last_reset_tick
+	capture_rate_multiplier = other.capture_rate_multiplier
 	_captain_respawn_ticks = other._captain_respawn_ticks
 	_under_attack_ticks = other._under_attack_ticks
 	_gate_repair_ticks = other._gate_repair_ticks
@@ -452,7 +457,7 @@ func _start_capture(tick: int, realm: int) -> void:
 	capture_realm = realm
 	capture_start_tick = tick
 	capture_progress_at_start = 0
-	capture_rate = rate_for_count(_presence_of(realm))
+	capture_rate = rate_for_count(_presence_of(realm)) * maxi(capture_rate_multiplier, 1)
 	contested = false
 	empty_since_tick = NO_TICK
 
@@ -475,7 +480,7 @@ func _advance_capturing(def: FortressDefinition, tick: int) -> PackedInt32Array:
 		# Solo el captor: avanza según cuántos son.
 		contested = false
 		empty_since_tick = NO_TICK
-		new_rate = rate_for_count(captors)
+		new_rate = rate_for_count(captors) * maxi(capture_rate_multiplier, 1)
 	elif captors > 0:
 		# El captor y alguien más (el dueño u otro reino): se congela.
 		empty_since_tick = NO_TICK

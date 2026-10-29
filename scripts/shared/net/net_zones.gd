@@ -99,6 +99,39 @@ static func get_respawn_points(zone: Node, realm: int) -> Array[Node3D]:
 	return Zones.get_respawn_points(zone, &"")
 
 
+## Todos los puntos de reaparición de la zona [param zone] (que debe estar en el árbol), de todos los
+## reinos y de las fortalezas, en el orden de la escena: la lista [b]estática[/b] sobre la que va el
+## índice de RESPAWN_REQUEST y RESPAWN (docs/fuerte.md, sección 5). Qué puntos valen para un jugador lo
+## decide [method RespawnRules.points_for]. Una zona sin ningún nodo del grupo
+## [constant RESPAWN_GROUP] usa sus puntos de aparición.
+static func get_all_respawn_points(zone: Node) -> Array[Node3D]:
+	var all_points: Array[Node3D] = Zones.get_group_nodes(zone, Zones.RESPAWN_GROUP)
+	if all_points.is_empty():
+		return Zones.get_spawn_points(zone)
+	return all_points
+
+
+## Nodos de las fortalezas de la zona [param zone] (grupo [constant Zones.FORTRESS_GROUP]) que
+## tienen el metadato [constant Zones.FORTRESS_DEFINITION_META], en el orden de la escena.
+static func get_fortress_nodes(zone: Node) -> Array[Node3D]:
+	var result: Array[Node3D] = []
+	for node: Node3D in Zones.get_group_nodes(zone, Zones.FORTRESS_GROUP):
+		if node.has_meta(Zones.FORTRESS_DEFINITION_META):
+			result.append(node)
+	return result
+
+
+## Metadato con el reino de un punto de aparición o de reaparición (el de un campamento).
+static func realm_meta() -> StringName:
+	return Zones.REALM_META
+
+
+## Metadato de la fortaleza con su definición: la ruta del [code].tres[/code] (o la propia
+## [FortressDefinition], que usan las pruebas).
+static func fortress_definition_meta() -> StringName:
+	return Zones.FORTRESS_DEFINITION_META
+
+
 ## Zonas seguras de la zona [param zone] (grupo [constant Zones.SAFE_AREA_GROUP]).
 static func get_safe_areas(zone: Node) -> Array[Node3D]:
 	return Zones.get_group_nodes(zone, Zones.SAFE_AREA_GROUP)

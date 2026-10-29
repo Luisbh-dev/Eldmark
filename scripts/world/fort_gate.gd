@@ -36,6 +36,12 @@ const LEAF_HEIGHT: float = 4.3
 const OPEN_ANGLE: float = 1.658
 ## Hijo con el cuerpo de vista (capa de estructuras).
 const VIEW_BODY: NodePath = ^"Vista"
+## Hijo con la forma de la puerta cerrada (la caja que golpean los ataques y que ocupa el vano).
+const CLOSED_SHAPE: NodePath = ^"ColisionCerrada"
+## Caja de la puerta cerrada si la escena no tiene [code]ColisionCerrada[/code]: tamaño y centro
+## (en el espacio local de la puerta).
+const DEFAULT_BOX_SIZE: Vector3 = Vector3(0.5, 4.3, 4.0)
+const DEFAULT_BOX_CENTER: Vector3 = Vector3(0.0, 2.15, 0.0)
 ## Códigos de los reinos jugables (los de [RealmCatalog]) que tienen capa de movimiento.
 const _REALM_CODES: Array[int] = [1, 2, 3]
 
@@ -93,6 +99,38 @@ func get_leaf_angle(index: int) -> float:
 ## Cuerpo de vista (capa de estructuras), o null si la escena no lo tiene.
 func get_view_body() -> StaticBody3D:
 	return get_node_or_null(VIEW_BODY) as StaticBody3D
+
+
+## Transformación (en el mundo) del [b]centro[/b] de la caja de la puerta cerrada: es lo que golpean los
+## ataques ([method HitShapes.sector_hits_box]) y lo que ocupa el vano
+## ([method HitShapes.capsule_overlaps_box]). Sale de la forma [code]ColisionCerrada[/code] de la
+## escena o, si no la tiene, de [constant DEFAULT_BOX_CENTER]. Solo vale con la puerta en el árbol.
+func get_hit_box() -> Transform3D:
+	var base: Transform3D = global_transform if is_inside_tree() else transform
+	var shape_node: CollisionShape3D = get_node_or_null(CLOSED_SHAPE) as CollisionShape3D
+	if shape_node != null:
+		return base * shape_node.transform
+	return base * Transform3D(Basis(), DEFAULT_BOX_CENTER)
+
+
+## Medias dimensiones de la caja de [method get_hit_box].
+func get_hit_half_extents() -> Vector3:
+	var shape_node: CollisionShape3D = get_node_or_null(CLOSED_SHAPE) as CollisionShape3D
+	if shape_node != null:
+		var box: BoxShape3D = shape_node.shape as BoxShape3D
+		if box != null:
+			return box.size * 0.5
+	return DEFAULT_BOX_SIZE * 0.5
+
+
+## Cuerpos de física de la puerta (movimiento y vista): la línea de visión de los golpes a la
+## propia puerta los excluye.
+func get_body_rids() -> Array[RID]:
+	var rids: Array[RID] = [get_rid()]
+	var view: StaticBody3D = get_view_body()
+	if view != null:
+		rids.append(view.get_rid())
+	return rids
 
 
 func _apply() -> void:

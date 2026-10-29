@@ -83,6 +83,72 @@ static func segment_hits_capsule(a: Vector3, b: Vector3, capsule_feet: Vector3, 
 	return squared <= radius * radius + _EPSILON
 
 
+## true si el sector anular con altura de [param shape], con su origen en [param origin] (los pies
+## del atacante) y orientado según [param yaw], toca la caja [param box] de medias dimensiones
+## [param half_extents] (docs/fuerte.md, sección 3.3: la puerta del fuerte como blanco).
+## [br][br]
+## [param box] es la transformación del [b]centro[/b] de la caja; solo se admite un giro en el eje Y
+## (o ninguno): la altura se toma de [code]box.origin.y ± half_extents.y[/code]. Los bordes cuentan
+## como contacto. Mismas tres condiciones que [method sector_hits_capsule], pero exactas para el
+## rectángulo en planta de la caja: se recorta con las dos semiplanos del cono del ataque y se
+## comprueba que alguna parte de lo que queda esté entre [code]inner_m[/code] y [code]range_m[/code]
+## del origen. Un sector de 360° o más no tiene cono; uno de entre 180° y 360° es la unión de dos
+## semiplanos.
+static func sector_hits_box(origin: Vector3, yaw: float, shape: HitShape, box: Transform3D,
+		half_extents: Vector3) -> bool:
+	# Altura.
+	var box_bottom: float = box.origin.y - half_extents.y
+	var box_top: float = box.origin.y + half_extents.y
+	if origin.y + shape.height_min > box_top + _EPSILON \
+			or origin.y + shape.height_max < box_bottom - _EPSILON:
+		return false
+	# Rectángulo en planta (x, z) de la caja, recorrido por el perímetro.
+	var rectangle: Array[Vector2] = []
+	for corner_signs: Vector2 in [Vector2(-1.0, -1.0), Vector2(1.0, -1.0), Vector2(1.0, 1.0),
+			Vector2(-1.0, 1.0)]:
+		var corner: Vector3 = box * Vector3(corner_signs.x * half_extents.x, 0.0,
+				corner_signs.y * half_extents.z)
+		rectangle.append(Vector2(corner.x, corner.z))
+	var apex := Vector2(origin.x, origin.z)
+	var forward3: Vector3 = Basis(Vector3.UP, yaw) * Vector3.FORWARD
+	var forward := Vector2(forward3.x, forward3.z)
+	var half_angle: float = deg_to_rad(shape.angle_deg) * 0.5
+	var pieces: Array[Array] = []
+	if half_angle >= PI - _EPSILON:
+		pieces.append(rectangle)
+	else:
+		var ray_left: Vector2 = forward.rotated(half_angle)
+		var ray_right: Vector2 = forward.rotated(-half_angle)
+		# d dentro del cono <=> cross(ray_right, d) >= 0 y cross(d, ray_left) >= 0.
+		var normal_right := Vector2(-ray_right.y, ray_right.x)
+		var normal_left := Vector2(ray_left.y, -ray_left.x)
+		if half_angle <= PI * 0.5 + _EPSILON:
+			var clipped: Array[Vector2] = _clip_to_half_plane(rectangle, apex, normal_right)
+			clipped = _clip_to_half_plane(clipped, apex, normal_left)
+			pieces.append(clipped)
+		else:
+			pieces.append(_clip_to_half_plane(rectangle, apex, normal_right))
+			pieces.append(_clip_to_half_plane(rectangle, apex, normal_left))
+	for piece: Array in pieces:
+		if _polygon_reaches_ring(piece, apex, shape.inner_m, shape.range_m):
+			return true
+	return false
+
+
+## true si la cápsula vertical de [param radius] y [param height] que apoya en [param capsule_feet]
+## solapa la caja [param box] (transformación de su centro, con giro solo en Y) de medias
+## dimensiones [param half_extents]. Sirve para saber si un personaje ocupa el vano de la puerta del
+## fuerte (docs/fuerte.md, sección 3.3: no se repara la puerta mientras alguien lo solape).
+static func capsule_overlaps_box(capsule_feet: Vector3, radius: float, height: float,
+		box: Transform3D, half_extents: Vector3) -> bool:
+	var local: Vector3 = box.affine_inverse() * capsule_feet
+	if local.y > half_extents.y + _EPSILON or local.y + height < -half_extents.y - _EPSILON:
+		return false
+	var dx: float = maxf(absf(local.x) - half_extents.x, 0.0)
+	var dz: float = maxf(absf(local.z) - half_extents.z, 0.0)
+	return dx * dx + dz * dz <= radius * radius + _EPSILON
+
+
 ## true si no hay nada del mundo (ni la puerta cerrada de un fuerte) entre el pecho del atacante
 ## y el centro de la víctima.
 ## [param attacker_feet] y [param victim_feet] son las posiciones de los pies (el origen de cada
@@ -161,3 +227,65 @@ static func _segment_segment_distance_squared(p1: Vector3, q1: Vector3, p2: Vect
 	var closest2: Vector3 = p2 + d2 * t
 	var gap: Vector3 = closest1 - closest2
 	return gap.dot(gap)
+
+
+# Recorta el polígono convexo [param polygon] a los puntos p con dot(p - apex, normal) >= 0
+# (Sutherland-Hodgman). Devuelve el polígono resultante (vacío si no queda nada).
+static func _clip_to_half_plane(polygon: Array[Vector2], apex: Vector2,
+		normal: Vector2) -> Array[Vector2]:
+	var result: Array[Vector2] = []
+	var count: int = polygon.size()
+	for i: int in count:
+		var current: Vector2 = polygon[i]
+		var next: Vector2 = polygon[(i + 1) % count]
+		var current_side: float = (current - apex).dot(normal)
+		var next_side: float = (next - apex).dot(normal)
+		var current_inside: bool = current_side >= -_EPSILON
+		var next_inside: bool = next_side >= -_EPSILON
+		if current_inside:
+			result.append(current)
+		if current_inside != next_inside:
+			var denominator: float = current_side - next_side
+			if absf(denominator) > _EPSILON:
+				result.append(current.lerp(next, current_side / denominator))
+	return result
+
+
+# true si algún punto del polígono convexo [param polygon] (vértices en orden; puede ser un punto o
+# un segmento degenerado) está entre [param inner] y [param outer] del punto [param apex].
+static func _polygon_reaches_ring(polygon: Array[Vector2], apex: Vector2, inner: float,
+		outer: float) -> bool:
+	if polygon.is_empty():
+		return false
+	var farthest: float = 0.0
+	for vertex: Vector2 in polygon:
+		farthest = maxf(farthest, apex.distance_to(vertex))
+	var nearest: float = INF
+	if polygon.size() == 1:
+		nearest = apex.distance_to(polygon[0])
+	else:
+		for i: int in polygon.size():
+			var closest: Vector2 = Geometry2D.get_closest_point_to_segment(apex, polygon[i],
+					polygon[(i + 1) % polygon.size()])
+			nearest = minf(nearest, apex.distance_to(closest))
+		if _polygon_contains(polygon, apex):
+			nearest = 0.0
+	return nearest <= outer + _EPSILON and farthest >= inner - _EPSILON
+
+
+# true si [param point] está dentro (o en el borde) del polígono convexo [param polygon] de al menos
+# 3 vértices, en cualquier sentido de giro.
+static func _polygon_contains(polygon: Array[Vector2], point: Vector2) -> bool:
+	if polygon.size() < 3:
+		return false
+	var positive: bool = false
+	var negative: bool = false
+	for i: int in polygon.size():
+		var a: Vector2 = polygon[i]
+		var b: Vector2 = polygon[(i + 1) % polygon.size()]
+		var side: float = (b - a).cross(point - a)
+		if side > _EPSILON:
+			positive = true
+		elif side < -_EPSILON:
+			negative = true
+	return not (positive and negative)

@@ -24,6 +24,9 @@ extends RefCounted
 ## Un evento de combate (HIT, DEATH, KILL o RESPAWN) y los net_id de las entidades implicadas
 ## (víctima, atacante, asesino y asistentes): sus dueños y quien las tenga por relevantes lo reciben.
 signal event_emitted(event: NetMessages.EntityEvent, involved: PackedInt32Array)
+## Un golpe ha dado en un blanco estático (la puerta de un fuerte) y le ha quitado [param amount] de
+## vida en el tick [param tick]: ya se ha emitido su HIT. Lo recoge el [FortressController].
+signal structure_hit(target: StructureTarget, attacker: Combatant, amount: int, tick: int)
 
 ## Resultado de [method request_respawn].
 enum RespawnRequestResult {
@@ -59,8 +62,11 @@ var stats: Dictionary[StringName, int] = {
 	&"hits": 0, &"blocked": 0, &"parried": 0, &"guard_breaks": 0, &"invulnerable": 0,
 	&"criticals": 0, &"rewind_rejected": 0, &"damage": 0, &"deaths": 0, &"kills": 0,
 	&"respawns": 0, &"falls": 0, &"lethal_volumes": 0, &"voids": 0, &"events": 0,
-	&"hit_tests": 0, &"resolve_us": 0, &"resolve_busy_ticks": 0,
+	&"hit_tests": 0, &"resolve_us": 0, &"resolve_busy_ticks": 0, &"gate_hits": 0, &"gate_damage": 0,
 }
+## [code]() -> Dictionary[/code]: los [FortressState] vivos por id de fortaleza, para decidir qué puntos
+## de reaparición valen ([method RespawnRules.points_for]). Sin esto no hay fortalezas.
+var fortress_states: Callable = Callable()
 
 var _history: StateHistory
 var _zone_id: StringName
@@ -70,8 +76,10 @@ var _pick_spawn: Callable
 var _combatants: Dictionary[int, Combatant] = {}
 var _sorted: Array[Combatant] = []
 var _sorted_dirty: bool = false
-# Reino -> puntos de reaparición (nodos de la escena), leídos la primera vez.
-var _respawn_points: Dictionary[int, Array] = {}
+# La lista estática de puntos de reaparición de la zona (todos, en el orden de la escena), leída la
+# primera vez.
+var _all_respawn_points: Array[Node3D] = []
+var _respawn_points_loaded: bool = false
 
 
 ## [param history] es el historial del servidor, [param zone_id] la zona, [param world] su raíz
@@ -237,14 +245,30 @@ func request_respawn(net_id: int, point_index: int, tick: int) -> int:
 	return RespawnRequestResult.ACCEPTED
 
 
-## Puntos de reaparición del reino [param realm] ([method NetZones.get_respawn_points]), en el
-## orden de la escena.
-func get_respawn_points(realm: int) -> Array[Node3D]:
-	if not _respawn_points.has(realm):
-		_respawn_points[realm] = NetZones.get_respawn_points(_world, realm)
-	var points: Array[Node3D] = []
-	points.assign(_respawn_points[realm])
-	return points
+## Pone los blancos estáticos de la zona (las puertas de los fuertes): el resolutor los prueba para
+## cada ataque activo.
+func set_structure_targets(targets: Array[StructureTarget]) -> void:
+	resolver.structure_targets = targets
+
+
+## Todos los puntos de reaparición de la zona, en el orden de la escena ([method
+## NetZones.get_all_respawn_points]): la lista [b]estática[/b] sobre la que va el índice de
+## RESPAWN_REQUEST y RESPAWN. Qué puntos valen para un jugador lo dice [method get_valid_respawn_points].
+func get_all_respawn_points() -> Array[Node3D]:
+	if not _respawn_points_loaded:
+		_all_respawn_points = NetZones.get_all_respawn_points(_world)
+		_respawn_points_loaded = true
+	return _all_respawn_points
+
+
+## Índices (de la lista estática) de los puntos en los que puede reaparecer un jugador del reino
+## [param realm] en el tick [param tick] ([method RespawnRules.points_for]): su campamento y las
+## fortalezas de su reino en GARRISONED que no estén atacadas.
+func get_valid_respawn_points(realm: int, tick: int) -> PackedInt32Array:
+	var states: Dictionary = {}
+	if fortress_states.is_valid():
+		states = fortress_states.call()
+	return RespawnRules.points_for(realm, get_all_respawn_points(), states, tick)
 
 
 # --- Aplicar los golpes -----------------------------------------------------------------------
@@ -254,6 +278,9 @@ func _apply_hit(hit: CombatResolver.Hit, s: int) -> void:
 	if hit.outcome == CombatResolver.Outcome.REWIND_REJECTED:
 		stats[&"rewind_rejected"] += 1
 		_log_hit(s, hit, "rewind_rejected", 0)
+		return
+	if hit.outcome == CombatResolver.Outcome.STRUCTURE:
+		_apply_structure_hit(hit, s)
 		return
 	var victim: Combatant = hit.victim
 	if hit.outcome == CombatResolver.Outcome.INVULNERABLE:
@@ -270,6 +297,39 @@ func _apply_hit(hit: CombatResolver.Hit, s: int) -> void:
 		_apply_parry(hit, s)
 		return
 	_apply_impact(hit, s)
+
+
+# Golpe a la puerta de un fuerte (docs/fuerte.md, 3.3): daño de la fórmula (sin crítico ni defensa) por el
+# multiplicador contra estructuras de su tipo de daño, mínimo 1 si queda algo, sin pasar de la vida que le
+# queda. HIT con el net_id de la fortaleza para el atacante (y quien lo tenga por relevante); el atacante
+# queda «en combate».
+func _apply_structure_hit(hit: CombatResolver.Hit, s: int) -> void:
+	var attacker: Combatant = hit.attacker
+	var target: StructureTarget = hit.structure
+	var attack: AttackTicks = hit.attack
+	if not target.can_be_hit_by(attacker.get_realm()):
+		# La rompió otro golpe de este mismo tick, o el fuerte cambió de manos.
+		return
+	var rules: CombatRules = CombatCatalog.rules()
+	var result: DamageFormula.Result = DamageFormula.compute(attack.base_damage,
+			attacker.frozen.charge_ticks, attack.charge_min_ticks, attack.charge_max_ticks,
+			attack.charge_damage_scale, false, false, 0.0, 0.0, 0, 0, rules.crit_multiplier)
+	var scaled: int = roundi(float(result.damage) * rules.structure_multiplier(attack.damage_type))
+	if result.damage > 0:
+		scaled = maxi(scaled, 1)
+	var health_before: int = target.state.gate_health
+	var applied: int = mini(scaled, health_before)
+	if applied <= 0:
+		return
+	_note_landed(attacker)
+	attacker.mark_combat(s)
+	stats[&"gate_hits"] += 1
+	stats[&"gate_damage"] += applied
+	var flags: int = _HIT_LETHAL if applied >= health_before else 0
+	_emit(NetMessages.EntityEvent.hit(target.net_id, s, attacker.get_id(), applied,
+			attack.damage_type, flags, attack.id), _ids([attacker.get_id()]))
+	structure_hit.emit(target, attacker, applied, s)
+	_log_hit(s, hit, "gate", applied)
 
 
 # Parada: sin daño y el atacante queda tambaleándose.
@@ -473,15 +533,20 @@ func _process_respawns(s: int, list: Array[Combatant]) -> void:
 			_respawn(combatant, combatant.pending_respawn_point if requested else 0, s)
 
 
-# Reaparece a [param combatant] en el punto [param point_index] de su reino (el primero si el índice
-# no vale o no hay puntos de reaparición): estado de combate nuevo, vida llena, protección,
-# teletransporte con contador y evento RESPAWN.
+# Reaparece a [param combatant] en el punto [param point_index] de la lista estática de la zona: si ya no
+# vale para su reino (un campamento ajeno, una fortaleza que ha cambiado de manos, en combate o en otra
+# fase), en el primer campamento válido de su reino, sin aviso; y, si la zona no tiene puntos para su
+# reino, en un punto de aparición. Estado de combate nuevo, vida llena, protección, teletransporte con
+# contador y evento RESPAWN.
 func _respawn(combatant: Combatant, point_index: int, s: int) -> void:
-	var points: Array[Node3D] = get_respawn_points(combatant.get_realm())
-	var index: int = point_index if point_index >= 0 and point_index < points.size() else 0
+	var points: Array[Node3D] = get_all_respawn_points()
+	var valid: PackedInt32Array = get_valid_respawn_points(combatant.get_realm(), s)
+	var index: int = point_index
+	if not valid.has(index):
+		index = _first_camp_point(valid, points)
 	var position: Vector3
 	var yaw: float
-	if points.is_empty():
+	if index < 0:
 		var spawn: Transform3D = _pick_spawn.call(combatant.get_realm())
 		position = spawn.origin
 		yaw = _yaw_of(spawn)
@@ -498,6 +563,14 @@ func _respawn(combatant: Combatant, point_index: int, s: int) -> void:
 	stats[&"respawns"] += 1
 	_emit(NetMessages.EntityEvent.respawn(combatant.get_id(), s, index),
 			_ids([combatant.get_id()]))
+
+
+# El primer punto válido que es un campamento (lleva el metadato de reino), o -1 si no hay ninguno.
+static func _first_camp_point(valid: PackedInt32Array, points: Array[Node3D]) -> int:
+	for index: int in valid:
+		if points[index].has_meta(NetZones.realm_meta()):
+			return index
+	return -1
 
 
 # --- Utilidades -------------------------------------------------------------------------------
@@ -550,6 +623,11 @@ static func _yaw_of(transform: Transform3D) -> float:
 func _log_hit(s: int, hit: CombatResolver.Hit, result: String, damage: int) -> void:
 	if combat_log == null:
 		return
+	var target_id: int = 0
+	if hit.victim != null:
+		target_id = hit.victim.get_id()
+	elif hit.structure != null:
+		target_id = hit.structure.net_id
 	combat_log.store_line("%d,%d,%d,%s,%.2f,%.2f,%s,%d" % [s, hit.attacker.get_id(),
-			hit.victim.get_id() if hit.victim != null else 0, hit.attack.name, hit.view_tick,
+			target_id, hit.attack.name, hit.view_tick,
 			hit.rewind, result, damage])

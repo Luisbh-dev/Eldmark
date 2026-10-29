@@ -54,6 +54,9 @@ enum Outcome {
 	INVULNERABLE,
 	## El rebobinado pedido supera el tope: el ataque no se prueba (no hay objetivo).
 	REWIND_REJECTED,
+	## Acierta un blanco estático (la puerta de un fuerte, [member Hit.structure]): sin rebobinado,
+	## sin crítico y sin defensa.
+	STRUCTURE,
 }
 
 ## Escala de [code]view_offset_q[/code] (ticks × 16).
@@ -73,6 +76,9 @@ const _MAX_LEAD_CREDIT: int = 8
 ## adelantada a propósito.
 const _LEAD_SPREAD: int = 3
 
+## Blancos estáticos de la zona (las puertas de los fuertes, docs/fuerte.md 3.3): se prueban para cada
+## ataque activo después de los jugadores, sin rebobinado (no se mueven).
+var structure_targets: Array[StructureTarget] = []
 ## Golpes rechazados por rebobinado excesivo desde que existe el resolutor.
 var rewind_rejects: int = 0
 ## Comprobaciones de forma y línea de visión de un ataque contra un candidato (con muestra del historial
@@ -89,8 +95,10 @@ var _hostile_cache: Dictionary = {}
 ## Un resultado de [method resolve].
 class Hit:
 	var attacker: Combatant
-	## null en [constant Outcome.REWIND_REJECTED].
+	## null en [constant Outcome.REWIND_REJECTED] y en [constant Outcome.STRUCTURE].
 	var victim: Combatant
+	## El blanco estático golpeado ([constant Outcome.STRUCTURE]); null en los demás.
+	var structure: StructureTarget = null
 	var attack: AttackTicks
 	var outcome: int = Outcome.IMPACT
 	## Instante (en ticks, fraccionario) en el que el atacante veía al objetivo.
@@ -133,6 +141,8 @@ func resolve(s: int, combatants: Array[Combatant],
 		if attack == null or attack.shape == null:
 			continue
 		attacker.track_swing(attacker_frame.action_tick)
+		if not structure_targets.is_empty():
+			_resolve_structures(attacker, attack, space, hits)
 		var rewind: float = _swing_rewind(attacker, s)
 		if is_nan(rewind):
 			_reject(attacker, attack, s, hits)
@@ -159,6 +169,45 @@ func resolve(s: int, combatants: Array[Combatant],
 			if hit != null:
 				hits.append(hit)
 	return hits
+
+
+# Prueba el ataque activo de [param attacker] contra los blancos estáticos: forma (sector contra caja)
+# y línea de visión hasta la caja, sin contar los cuerpos de la propia puerta. Sin rebobinado, sin
+# críticos ni defensa. Quien está en la zona segura de su reino no ataca (tampoco a la puerta).
+func _resolve_structures(attacker: Combatant, attack: AttackTicks,
+		space: PhysicsDirectSpaceState3D, hits: Array[Hit]) -> void:
+	var frame: Combatant.Frozen = attacker.frozen
+	if _safe_areas.contains_own(attacker.get_realm(), frame.position):
+		return
+	for target: StructureTarget in structure_targets:
+		if attacker.has_hit(target.net_id) or not target.can_be_hit_by(attacker.get_realm()):
+			continue
+		tests += 1
+		if not HitShapes.sector_hits_box(frame.position, frame.yaw, attack.shape, target.box,
+				target.half_extents):
+			continue
+		var from: Vector3 = frame.position + Vector3(0.0, HitShapes.LINE_OF_SIGHT_FROM_HEIGHT, 0.0)
+		if not _is_clear_to(space, from, target.closest_point(from), target.exclude):
+			continue
+		var hit := Hit.new()
+		hit.attacker = attacker
+		hit.attack = attack
+		hit.structure = target
+		hit.outcome = Outcome.STRUCTURE
+		hit.view_tick = float(frame.tick)
+		attacker.mark_hit(target.net_id)
+		hits.append(hit)
+
+
+# Línea de visión de [param from] a [param to] contra el mundo y las estructuras, sin contar los cuerpos
+# [param exclude] (los de la propia puerta).
+static func _is_clear_to(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3,
+		exclude: Array[RID]) -> bool:
+	if from.distance_squared_to(to) < 0.0001:
+		return true
+	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(from, to,
+			HitShapes.LINE_OF_SIGHT_MASK, exclude)
+	return space.intersect_ray(query).is_empty()
 
 
 # Ticks que el golpe ve atrás, o NAN si pide más de lo permitido. Se fija una vez, en el primer tick

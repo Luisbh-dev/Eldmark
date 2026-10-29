@@ -26,3 +26,7 @@ parry_stagger_s = 0.6
 guard_break_stun_s = 1.0
 backstab_angle_deg = 120.0
 crit_multiplier = 1.5
+structure_slash_multiplier = 0.35
+structure_pierce_multiplier = 0.2
+structure_blunt_multiplier = 1.0
+structure_elemental_multiplier = 0.6

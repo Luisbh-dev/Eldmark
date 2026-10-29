@@ -234,6 +234,13 @@ func get_typical_lead(tick: int) -> int:
 	return leads[leads.size() / 2]
 
 
+## Tick de la última entrada [b]real[/b] consumida (no sustituida ni repetida por el servidor); el del
+## alta si todavía no ha llegado ninguna. La fortaleza lo usa para no contar en el círculo a quien lleva
+## 60 s sin enviar entradas.
+func get_last_real_tick() -> int:
+	return _last_real_tick
+
+
 ## Último tick consumido con [method take] (o el del alta).
 func get_last_consumed() -> int:
 	return _last_consumed

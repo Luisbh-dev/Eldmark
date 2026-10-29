@@ -53,6 +53,11 @@ var action: int = 0
 ## PNJ: id de su definición en el catálogo de PNJ, que viaja en su ENTITY_SPAWN para que el cliente
 ## elija modelo, tabardo y barra de jefe (0 = sin definición).
 var npc_def_id: int = 0
+## STRUCTURE: id de su definición (ASCII, el de [member FortressDefinition.id]) y el estado vivo de la
+## fortaleza, que el [code]FortressController[/code] mantiene al día. Su ENTITY_SPAWN lleva el estado
+## completo en el momento del alta.
+var definition_id: String = ""
+var fortress_state: FortressState = null
 
 
 ## Posición global de la entidad (los pies, si es un jugador).
@@ -107,6 +112,11 @@ func encode_record(bytes: PackedByteArray, offset: int) -> void:
 ## enfriamiento de la parada, búfer, controles ni botones mantenidos (docs/combate.md, secciones 1
 ## y 6).
 func encode_spawn(tick: int, for_owner: bool) -> PackedByteArray:
+	if kind == NetProtocol.EntityKind.STRUCTURE:
+		if fortress_state == null:
+			return PackedByteArray()
+		return NetMessages.EntitySpawn.for_fortress(net_id, tick, definition_id,
+				fortress_state).encode()
 	var spawn := NetMessages.EntitySpawn.new()
 	spawn.net_id = net_id
 	spawn.kind = kind
