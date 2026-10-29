@@ -129,6 +129,23 @@ func test_fake_players_run_for_300_ticks() -> void:
 			"el contador de jugadores de las métricas")
 
 
+func test_the_social_step_has_its_own_metrics_section() -> void:
+	# El paso social (caducidad de invitaciones y PARTY_STATUS a 2 Hz) va tras las altas y antes del
+	# historial, y se mide en su propia sección (docs/social.md 12.2; cabecera de ZoneServer).
+	assert_eq(ZoneServer.SECTION_SOCIAL, &"social", "la sección se llama «social»")
+	var social_index: int = ZoneServer.LOGGED_SECTIONS.find(&"social")
+	assert_true(social_index >= 0, "la línea de métricas la incluye")
+	assert_true(social_index > ZoneServer.LOGGED_SECTIONS.find(&"npc")
+			and social_index < ZoneServer.LOGGED_SECTIONS.find(&"history"), "entre «npc» y «history»")
+	await _start_server()
+	_server.add_fake_player(BotBrain.new(1, BotBrain.Pattern.IDLE), VARDHEIM)
+	await wait_physics_frames(40)
+	var sections: Dictionary = _server.get_metrics().summary()["sections"]
+	assert_true(sections.has("social"), "el servidor mide el paso social")
+	if sections.has("social"):
+		assert_true(int(sections["social"]["samples"]) > 0, "una muestra por tick")
+
+
 func test_history_records_every_tick_of_every_player() -> void:
 	await _start_server()
 	var ids: Array[int] = []

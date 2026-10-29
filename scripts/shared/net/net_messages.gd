@@ -149,7 +149,9 @@ static func utf8_limited(text: String, max_bytes: int) -> PackedByteArray:
 
 
 ## Texto UTF-8 de [param length] bytes desde [param offset]. Hay que haberlo validado antes con
-## [method is_valid_utf8].
+## [method is_valid_utf8]. Ojo: [method PackedByteArray.get_string_from_utf8] se salta un BOM (EF BB BF) al
+## principio, así que unos bytes no vacíos pueden leerse como una cadena vacía; quien exige un nombre lo
+## comprueba después de leerlo.
 static func read_text(bytes: PackedByteArray, offset: int, length: int) -> String:
 	if length <= 0:
 		return ""
@@ -1236,6 +1238,9 @@ class ChatSend:
 		if message.recipient.length() > NetProtocol.MAX_NAME_CHARS \
 				or message.text.length() > ChatText.MAX_CHARS:
 			return null
+		# Un nombre que se lee vacío (solo un BOM UTF-8, que get_string_from_utf8 se salta) no es un nombre.
+		if channel_id == ChatChannel.Id.WHISPER and message.recipient.is_empty():
+			return null
 		return message
 
 
@@ -1325,6 +1330,9 @@ class ChatMessage:
 		message.text = NetMessages.read_text(bytes, text_offset, text_len)
 		if message.text.length() > ChatText.MAX_CHARS:
 			return null
+		if (channel_id != ChatChannel.Id.SYSTEM and message.sender.is_empty()) \
+				or (channel_id == ChatChannel.Id.WHISPER and message.recipient.is_empty()):
+			return null
 		return message
 
 
@@ -1383,7 +1391,7 @@ class PartyTargetRequest:
 		var request := PartyTargetRequest.new()
 		request.type = bytes[0]
 		request.target = NetMessages.read_text(bytes, HEADER_SIZE, name_len)
-		if request.target.length() > NetProtocol.MAX_NAME_CHARS:
+		if request.target.is_empty() or request.target.length() > NetProtocol.MAX_NAME_CHARS:
 			return null
 		return request
 
@@ -1426,7 +1434,7 @@ class PartyResponse:
 		var response := PartyResponse.new()
 		response.accept = bytes[1] == 1
 		response.inviter = NetMessages.read_text(bytes, HEADER_SIZE, name_len)
-		if response.inviter.length() > NetProtocol.MAX_NAME_CHARS:
+		if response.inviter.is_empty() or response.inviter.length() > NetProtocol.MAX_NAME_CHARS:
 			return null
 		return response
 
@@ -1499,6 +1507,8 @@ class PartyInvitation:
 		invitation.state = bytes[1]
 		invitation.tick = bytes.decode_u32(2)
 		invitation.inviter = NetMessages.read_text(bytes, HEADER_SIZE, name_len)
+		if invitation.inviter.is_empty():
+			return null
 		return invitation
 
 
@@ -1588,8 +1598,10 @@ class PartyRoster:
 			if not NetMessages.is_valid_utf8(bytes, offset + MEMBER_HEADER_SIZE, name_len):
 				return null
 			seen[net_id] = true
-			roster.members.append(Member.make(net_id,
-					NetMessages.read_text(bytes, offset + MEMBER_HEADER_SIZE, name_len)))
+			var member_name: String = NetMessages.read_text(bytes, offset + MEMBER_HEADER_SIZE, name_len)
+			if member_name.is_empty():
+				return null
+			roster.members.append(Member.make(net_id, member_name))
 			offset += MEMBER_HEADER_SIZE + name_len
 		if offset != size:
 			return null

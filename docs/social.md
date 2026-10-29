@@ -131,16 +131,17 @@ también del **menú social** sobre el jugador bajo el punto de mira, a 20 m com
 
 ## 5. Límites de ritmo y saneado
 
-Se aplican en el servidor, por peer, con el `RateLimiter` de cubo de fichas que ya existe
-([red.md](red.md), sección 12). Cuando algo se descarta, el jugador recibe un aviso del sistema
-(«Hablas demasiado rápido») y, para que pulsar Intro de más no expulse a nadie, solo **uno de cada
-cinco** mensajes descartados cuenta como aviso del peer para la expulsión (50 avisos en 600 ticks:
-red.md sección 12), de modo que la inundación sostenida sí expulsa.
+Se aplican en el servidor, por conexión, con el `RateLimiter` de cubo de fichas que ya existe
+([red.md](red.md), sección 12); desde la fase 5, por personaje (12.7). Cuando algo se descarta, el jugador
+recibe un aviso del sistema («Hablas demasiado rápido», como mucho uno por segundo) y, para que pulsar
+Intro de más no expulse a nadie, los **diez primeros descartes de cada 10 s son gratis**; a partir de ahí
+cada descarte cuenta como un aviso del peer para la expulsión (50 avisos en 600 ticks: red.md sección
+12), de modo que la inundación sostenida sí expulsa (12.2).
 
 | Acción | Ritmo | Ráfaga | Notas |
 |---|---|---|---|
 | Decir, zona, grupo, banda, gremio | 1 mensaje/s | 5 | Un mensaje idéntico al anterior en los últimos 10 s se descarta |
-| Susurro | 1 mensaje/s | 3 | Y como mucho 5 destinatarios nuevos por minuto (SOC-38) |
+| Susurro | 1 mensaje/s | 3 | Y como mucho 5 destinatarios nuevos por minuto (SOC-38); repetir el texto solo se descarta si va al mismo destinatario |
 | Reino | 1 mensaje cada 10 s | 1 | SOC-21 |
 | Comercio | 1 mensaje cada 15 s | 1 | |
 | Novatos | 1 mensaje cada 5 s | 2 | |
@@ -151,9 +152,10 @@ red.md sección 12), de modo que la inundación sostenida sí expulsa.
 | Reportes | 1 por objetivo cada 10 min | 10 por hora | SOC-17 |
 | Peticiones a un GM | 1 abierta a la vez | | SOC-36 |
 
-Antes de repartir un mensaje, el servidor lo **sanea**: quita los caracteres de control, la
-secuencia BBCode (`[…]`), los espacios repetidos y los de los extremos, y rechaza el texto vacío o que
-pase de 255 caracteres. En los canales públicos bloquea además los enlaces (SOC-27). El cliente tiene un
+Antes de repartir un mensaje, el servidor lo **sanea**: quita los caracteres de control y todo lo
+invisible (formato, marcas de dirección, rellenos, sin asignar, uso privado), la secuencia BBCode
+(`[…]`), las marcas combinantes sin letra y las que pasan de cuatro sobre una misma letra, los espacios
+repetidos y los de los extremos, y rechaza el texto vacío o que pase de 255 caracteres (detalle en 12.2). En los canales públicos bloquea además los enlaces (SOC-27). El cliente tiene un
 filtro de lenguaje opcional, activo por defecto, con listas editables en español e inglés. Un personaje
 con menos de 2 h jugadas no puede usar `/reino`, `/comercio` ni adjuntos de correo (SOC-38).
 
@@ -287,7 +289,9 @@ sistema; los otros contestan «Ese canal aún no está disponible».
 si el canal no existe, si un cliente manda el del sistema, si un susurro no lleva destinatario o cualquier
 otro canal lo lleva, si algún texto no es UTF-8 válido o lleva un byte nulo, si el destinatario pasa de
 24 caracteres o el texto de 255 caracteres o 768 B. Un CHAT_MESSAGE además exige emisor en todos los
-canales menos el del sistema y destinatario solo en el susurro. Un texto vacío sí se decodifica: es el
+canales menos el del sistema y destinatario solo en el susurro. Un nombre obligatorio que se lee vacío
+también es `null`: `get_string_from_utf8` se salta un BOM (`EF BB BF`) al principio, así que esos tres bytes
+solos pasarían la comprobación de longitud y saldrían como «». Un texto vacío sí se decodifica: es el
 servidor quien lo descarta al sanear. `encode` recorta a los límites sin partir ningún carácter.
 
 ### 12.2 Enrutado en el servidor de zona (SOC-04)
@@ -300,7 +304,7 @@ mundo, el envío por el canal fiable y la suma de avisos). El resto es:
 |---|---|
 | `SocialService` | Reúne el enrutador del chat y, cuando existan, los grupos; es lo único que conoce `ZoneServer` |
 | `ChatRouter` | Sanea, aplica los ritmos y reparte; resultado de cada mensaje en `ChatRouter.Result` |
-| `ChatPeerState` | Cubos de fichas, último texto, descartes y contadores de cada peer; cuelga de `ServerPeer.chat` |
+| `ChatPeerState` | Cubos de fichas, último texto, descartes recientes y contadores de cada conexión; cuelga de `ServerPeer.chat` |
 | `SocialPeers` | Búsqueda de jugadores en el mundo por nombre (clave de `NameRules`) y por reino |
 
 **Destinatarios.** La lista se construye ya filtrada por reino; nunca se filtra al mostrar.
@@ -321,32 +325,68 @@ Susurrarse a uno mismo se rechaza («No puedes susurrarte a ti mismo.»).
 quien susurró) y manda un susurro a ese nombre. El servidor no guarda «el último interlocutor»: un susurro a
 un nombre que ya no está da la respuesta de siempre, y así el protocolo no necesita otro canal.
 
-**Ritmos** (`RateLimiter` por peer, en ticks; no cambian los cubos del transporte, que van antes):
+**Ritmos** (`RateLimiter` por conexión, en ticks; no cambian los cubos del transporte, que van antes). Cada
+CHAT_SEND gasta primero una ficha de su cubo, **antes de sanear** o de contestar nada: el saneado no es gratis
+y un texto que queda vacío, o un canal sin servicio, también cuestan su ficha. (Antes se saneaba primero y un
+texto que quedaba vacío salía gratis: 127 niveles de corchetes costaban 0,6 ms de hilo principal por mensaje,
+sin gastar ritmo ni sumar avisos.)
 
 | Cubo | Ritmo | Ráfaga |
 |---|---|---|
-| Hablar (decir, zona, grupo; banda y gremio cuando existan) | 1/s | 5 |
+| Hablar (decir, zona, grupo; banda y gremio cuando existan; también los canales sin servicio) | 1/s | 5 |
 | Susurro | 1/s | 3 |
 | Destinatarios nuevos de susurro | 5/min | 5 |
-| Repetición | un texto igual al último aceptado en 600 ticks (10 s) se descarta | |
+| Repetición | un texto igual al último aceptado en 600 ticks (10 s) **y al mismo sitio** se descarta: los canales públicos comparten la comprobación (la misma frase por zona y por decir es repetición) y en un susurro cuenta el destinatario («ok» a Bea y después a Eva llega a las dos) | |
 
 Un interlocutor reciente (quien te ha susurrado, o a quien has susurrado, en los últimos 5 min) no cuenta
-como destinatario nuevo, así que responder a seis desconocidos seguidos no gasta del cubo. Lo descartado,
-por ritmo o por repetición:
+como destinatario nuevo, así que responder a seis desconocidos seguidos no gasta del cubo. Ese diccionario se
+poda en los dos lados de cada susurro: quien solo recibe susurros tampoco acumula a todos los que le
+escribieron. Lo descartado, por ritmo o por repetición:
 
-- avisa al jugador por el canal del sistema, «Hablas demasiado rápido.», como mucho una vez por segundo;
-- y uno de cada cinco suma un aviso del peer (`exceso de mensajes de chat`): 250 descartes seguidos en
-  10 s llegan a los 50 avisos y expulsan; pulsar Intro de más, no.
+- avisa al jugador por el canal del sistema, «Hablas demasiado rápido.» o «Ya has enviado ese mensaje.», como
+  mucho un aviso por segundo;
+- y, pasados los diez primeros descartes de cada 600 ticks (`ChatPeerState.FLOOD_FREE_DISCARDS`, en un anillo
+  con los ticks de los últimos diez), cada uno suma un aviso del peer (`exceso de mensajes de chat`). Pulsar
+  Intro de más no suma nada; la inundación sostenida, sí: a través del cubo fiable del transporte (10 por
+  segundo sin avisos), un cliente que manda 6 mensajes por segundo o más llega a los 50 avisos y se le expulsa
+  (en unos 13 s; a 10 por segundo, en 7 s). Por debajo no se le expulsa, pero el cubo ya deja a los demás en 1
+  mensaje por segundo. Antes sumaba uno de cada cinco descartes, que a 10 por segundo son unos 20 avisos por
+  ventana: la inundación no expulsaba nunca.
+
+**Saneado** (`ChatText`, compartido; el cliente aplica lo mismo antes de enviar). Por este orden:
+
+1. Quita los controles (C0, DEL, C1), todo el formato invisible (categoría Cf de Unicode: anchura cero, marcas
+   de dirección como U+200E o U+061C, el guion blando, las etiquetas U+E0000…), los separadores de línea y de
+   párrafo, el uso privado, los no caracteres y los puntos sin asignar, los ignorables por defecto (rellenos
+   hangul, el unidor de grafemas, los selectores de variación salvo U+FE0F, que pide el emoji en color) y
+   U+FFFC y U+FFFD. El tabulador, los saltos de línea, los espacios de Unicode y el blanco braille (U+2800)
+   pasan a ser un espacio.
+2. Quita el BBCode y los corchetes sueltos en una sola pasada lineal (cada «]» se lleva todo desde el último
+   «[» abierto), con el mismo resultado que quitar una y otra vez el par más interior.
+3. Quita las marcas combinantes (categoría M) sin letra delante y las que pasan de cuatro seguidas sobre una
+   letra (`ChatText.MAX_MARKS_PER_BASE`).
+4. Junta los espacios repetidos y quita los de los extremos.
+
+Las categorías salen de las tablas de Unicode del motor (las `RegEx` de PCRE2 con `\p{…}`), que son las mismas en
+el cliente y el servidor. **Hallazgo:** una letra con unas 250 marcas variadas encima cabe en 255 caracteres y deja
+colgada la maquetación de texto de Godot 4.7.2 en quien la recibe (reproducido con `TextLine` y la fuente por
+defecto: con 253 marcas acaba en milisegundos; con 254, no); el tope de cuatro lo evita y, de paso, el «zalgo»
+que ocupaba toda la caja. Coste medido: 5 µs un texto ASCII normal de 255 caracteres y de 40 a 65 µs el peor
+caso (antes, de 210 a 600 µs).
 
 **Otros resultados.** Un CHAT_SEND mal formado, con el canal del sistema, o de quien aún no está en el
-mundo, suma un aviso. Un texto vacío tras sanear se descarta sin más. Banda, gremio y reino contestan
+mundo, suma un aviso. Un texto vacío tras sanear se descarta sin avisar a nadie (ya ha gastado su ficha: un
+cliente honrado nunca lo manda, porque sanea antes de enviar). Banda, gremio y reino contestan
 «Ese canal aún no está disponible.»; GM contesta «Comando desconocido. Escribe /ayuda.» para no revelar que
 existe. Un grupo inexistente contesta «No estás en un grupo.».
 
 **Informe.** `write_report` incluye `social.chat` con los mensajes procesados, las copias repartidas y
 cuántos acabaron en cada resultado.
 
-**Pruebas.** `test_chat_router` (24, sin red: alcance, filtro por reino, saneado, ritmos, susurros),
+**Pruebas.** `test_chat_text` (el saneado, con tablas de puntos de código: invisibles, espacios, visibles y marcas;
+el «zalgo», el BBCode comparado con el método anterior en textos al azar y un fuzz de idempotencia),
+`test_chat_router` (30, sin red: alcance, filtro por reino, saneado, ritmos antes del saneado, descartes gratis y
+expulsión por inundar a través del cubo del transporte, repetición por destinatario, susurros),
 `test_chat_loopback` (8, con ENet real: dos bots de un reino y uno del otro; el del otro reino no recibe
 ningún CHAT_MESSAGE ni ningún paquete cuyos bytes contengan el texto de los demás, en los cuatro canales y
 con el enemigo a 3 m del emisor).
@@ -440,7 +480,8 @@ resto de reglas están en `PartyRules` (shared).
 `health_q` es la vida cuantizada de los snapshots (0 muerto, de 1 a 255 vivo), `stamina_q` la resistencia en 255
 pasos y `status` los bits `STATUS_IN_COMBAT`, `STATUS_PROTECTED` y `STATUS_DEAD`. `decode` devuelve `null` si el
 tamaño no cuadra, hay más de 5 miembros, un id de red se repite, el líder no está en la lista, un nombre está
-vacío o no es UTF-8 válido, un bit de estado es desconocido o una posición no es finita.
+vacío (también si solo es un BOM UTF-8, que se lee vacío) o no es UTF-8 válido, un bit de estado es desconocido
+o una posición no es finita.
 
 **Reglas** (`PartyManager`, en `scripts/server/social/`):
 
@@ -448,9 +489,12 @@ vacío o no es UTF-8 válido, un bit de estado es desconocido o una posición no
   lo mismo que un susurro («no está conectado»), no avisa al invitado y no deja ninguna invitación.
 - Cualquier miembro puede invitar; solo el líder expulsa (`/expulsar`) y cede el mando (`/lider`). El primero
   en invitar crea el grupo cuando el invitado acepta, y es su líder.
-- Una invitación caduca a los 3600 ticks (60 s); cada jugador puede tener como mucho 5 enviadas a la vez, y
-  aceptar una cancela las demás que tuviera el aceptante. Invitar tiene su cubo (1 cada 2 s, ráfaga de 3): lo
-  descartado avisa («Invitas demasiado rápido.») y uno de cada cinco suma un aviso del peer.
+- Una invitación caduca a los 3600 ticks (60 s); cada jugador puede tener como mucho 5 enviadas a la vez. Al
+  aceptar una se cancelan las demás que tuviera el aceptante y, si con ello nace el grupo, también las que
+  tuviera quien invitó, que acaba de entrar en él: nadie que esté en un grupo tiene invitaciones pendientes (ni
+  ocupa un hueco de las 5 de quien le invitó). Invitar tiene su cubo (1 cada 2 s, ráfaga de 3): lo descartado
+  avisa («Invitas demasiado rápido.», como mucho una vez por segundo) y, pasados los diez primeros descartes
+  de cada 10 s, cada uno suma un aviso del peer, como en el chat (12.2).
 - Si el líder sale o se desconecta, hereda el mando el siguiente más antiguo; un grupo que se queda en uno se
   disuelve. Aceptar una invitación a un grupo que se llenó entretanto contesta «El grupo está completo.».
 - Cada resultado llega al jugador como un mensaje del canal del sistema del chat; la interfaz recibe además
@@ -458,7 +502,10 @@ vacío o no es UTF-8 válido, un bit de estado es desconocido o una posición no
 - **Estado a 2 Hz.** Cada 30 ticks (`PartyRules.STATUS_INTERVAL_TICKS`) el servidor manda un PARTY_STATUS a cada
   miembro con la vida, la resistencia, los bits de estado y la posición de todos, estén donde estén: no pasa
   por la política de interés de los snapshots, así que un miembro a 250 m y fuera del radio de interés sigue
-  apareciendo (la prueba usa una política de 100 m y un miembro a 210 m).
+  apareciendo (la prueba usa una política de 100 m y un miembro a 210 m). Cada grupo lo manda en su tick del
+  intervalo, cuando `(tick + id del grupo) % 30 == 0` (`PartyManager.is_status_tick`), como los snapshots por la
+  paridad del `net_id`: el coste se reparte entre los 30 ticks en lugar de caer entero en uno (con 100 grupos de
+  5 eran de 3 a 4,6 ms en un solo tick, cada 30).
 - Canal de grupo del chat (`/g`): los miembros, esté donde esté cada uno; el enrutador vuelve a filtrar por
   reino a quien le da el `PartyManager`.
 
@@ -466,8 +513,8 @@ vacío o no es UTF-8 válido, un bit de estado es desconocido o una posición no
 no guarda nada. Cuando alguien se desconecta, sale del grupo.
 
 **Pruebas.** `test_party_messages` (formatos a mano, corruptos, truncados en cada longitud y fuzz),
-`test_party_manager` (sin red: todos los flujos, topes, enemigo, líder heredado, estado a 2 Hz, canal de
-grupo) y `test_party_loopback` (con ENet y bots: invitar, aceptar, rechazar, caducar, expulsar, ceder el mando,
+`test_party_manager` (sin red: todos los flujos, topes, enemigo, líder heredado, invitaciones de quien invita
+canceladas al formarse el grupo, ritmo de invitar, estado a 2 Hz escalonado por grupo, canal de grupo) y `test_party_loopback` (con ENet y bots: invitar, aceptar, rechazar, caducar, expulsar, ceder el mando,
 salir y desconectarse, la invitación a un enemigo rechazada sin que se entere, y el estado de un miembro fuera
 del radio de interés).
 
@@ -525,17 +572,46 @@ cercano gana), las opciones, el menú con un aliado y con un enemigo, y la tecla
   dependen de estos mensajes.
 - **Un servicio social, no un cambio en cada pieza.** `SocialService` es lo único que ve `ZoneServer` (tipos
   `0x40`–`0x4F`, un paso por tick y la baja de cada jugador); el estado de ritmos de cada peer cuelga de
-  `ServerPeer.chat`.
+  `ServerPeer.chat`. En el orden del tick (cabecera de `ZoneServer`, que es la normativa) la baja
+  (`on_peer_left`: sale de su grupo y se cancelan sus invitaciones) va en el paso de bajas, y el paso social
+  (`SocialService.step`: caducan las invitaciones y sale el PARTY_STATUS) va tras las altas y antes del
+  historial, con su propia sección `social` en las métricas. Los mensajes que llegan se atienden en el poll y
+  cuentan en la sección `net`.
 - **`/r` lo resuelve el cliente** y el servidor no guarda «el último interlocutor» (12.2).
 - **Mismo texto para el enemigo y para nadie.** Susurrar o invitar a alguien de otro reino responde «no está
   conectado» con lo que escribió el jugador, no gasta del cubo de destinatarios nuevos y no manda nada al otro
   lado.
 - **Cualquier miembro puede invitar; solo el líder expulsa y cede el mando.** El tope de 5 pendientes es por
-  quien invita y aceptar una invitación cancela las demás del aceptante.
+  quien invita, y al aceptar se cancelan las demás del aceptante y, si el grupo es nuevo, las de quien invitó.
+- **El ritmo va antes que el trabajo.** Cada CHAT_SEND gasta su ficha antes de sanearlo o contestar; los diez
+  primeros descartes de cada 10 s son gratis y los siguientes suman un aviso cada uno (chat e invitaciones).
 - **Estado de grupo fuera del interés.** Un mensaje propio a 2 Hz a cada miembro con vida, resistencia, estado y
   posición; no pasa por los snapshots. El marco se atenúa a más de 100 m.
 - **Intro cierra la línea al enviar**, con canal activo para seguir hablando por un canal.
 - **Un grupo no sobrevive a una desconexión** (SOC-22 lo cambiará con los 5 min de gracia).
+
+**Limitaciones conocidas de la fase 4** (se aceptan hasta la fase 5; documentadas también en
+[red.md](red.md), sección 12):
+
+- **Los ritmos son por conexión.** `ChatPeerState` nace lleno con cada `ServerPeer`: quien sale y vuelve a entrar
+  recupera las ráfagas, los 5 destinatarios nuevos de susurro y la ventana de descartes, igual que los cubos del
+  transporte y los avisos (hallazgo S6 de red.md). Guardar el estado por nombre no lo arreglaría, porque en la
+  fase 4 el cliente elige su nombre en cada conexión (`DevAuthProvider`). Desde la fase 5 se guardará por
+  personaje o cuenta (la del billete) durante los 5 min de `KNOWN_RECIPIENT_TICKS` tras la baja, y se
+  reenganchará al volver a entrar.
+- **El HELLO dice si un nombre está conectado.** `ServerAuth` rechaza con `REJECT NAME` un nombre que ya lleva
+  alguien en la zona, de cualquier reino (para que los susurros no sean ambiguos); como el cliente elige el
+  nombre del HELLO, abrir otra conexión con el de un jugador dice si está en la zona y, si además el susurro
+  contesta «no está conectado», que es del otro reino. Se acepta por ahora porque no añade nada a un agujero
+  mayor de la misma fase: el cliente también elige su reino, así que puede entrar en el del enemigo y
+  susurrarle o leer su zona directamente. Comprobar la unicidad solo dentro del reino no lo taparía (la sonda
+  declararía el reino del enemigo) y rompería la regla de nombres únicos de la sección 1; un enfriamiento tras
+  varios `REJECT NAME` solo lo frenaría, y castigaría a quien reconecta mientras su sesión anterior o su cuerpo
+  (GUE-41) aún retienen el nombre. Se cierra en la fase 5 (SOC-13, TEC-24): el nombre y el reino salen del
+  personaje del billete, el campo del HELLO se ignora y la unicidad la garantiza la base de datos al crear el
+  personaje; contra los conectados solo queda la sesión duplicada del mismo personaje, cuya respuesta solo ve
+  su dueño. Prueba prevista entonces: `test_hello_cannot_probe_an_enemy_name` (con ENet, un HELLO con billete de
+  otro personaje y el nombre de un enemigo conectado no recibe `NAME`).
 
 **Pendiente del usuario** (provisional, a la espera de ART-12 y de probarlo jugando): los colores de cada canal,
 las medidas y el desvanecimiento de la caja de chat, el aspecto y la posición de los marcos y del aviso de

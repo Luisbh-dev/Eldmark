@@ -252,7 +252,7 @@ func test_text_is_sanitized_by_the_server_even_if_the_client_does_not() -> void:
 	assert_false(_any_packet_contains(bruno, "[b]"), "y los corchetes no cruzan la red")
 
 
-func test_rate_limit_warns_the_player_and_counts_strikes_every_fifth_discard() -> void:
+func test_rate_limit_warns_the_player_and_counts_strikes_after_ten_discards() -> void:
 	await _start_server()
 	var ana: NetClient = _add_bot(VARDHEIM, 1)
 	var bruno: NetClient = _add_bot(VARDHEIM, 2)
@@ -262,18 +262,19 @@ func test_rate_limit_warns_the_player_and_counts_strikes_every_fifth_discard() -
 	if not assert_not_null(peer, "el servidor conoce a Ana"):
 		return
 	var strikes_before: int = peer.strikes_total
-	# Doce mensajes distintos en un instante: cinco caben, siete se descartan (un aviso del peer).
-	for i: int in 12:
+	# Dieciséis mensajes distintos en un instante (caben en la ráfaga del transporte): cinco pasan, once se
+	# descartan; los diez primeros descartes son gratis y el undécimo suma un aviso del peer.
+	for i: int in 16:
 		assert_true(ana.send_chat(ChatChannel.Id.ZONE, "", "mensaje %d" % i), "se envía el %d" % i)
 	assert_true(await _wait_until(func() -> bool:
 		return _chat_lines(bruno).size() >= 5 and not _system_texts(ana).is_empty()),
 			"llegan cinco y el aviso")
 	await wait_physics_frames(30)
 	assert_eq(_chat_lines(bruno).size(), 5, "Bruno recibe solo la ráfaga de cinco")
-	assert_eq(_system_texts(ana).size(), 1, "un solo aviso al jugador, aunque se descartaran siete")
+	assert_eq(_system_texts(ana).size(), 1, "un solo aviso al jugador, aunque se descartaran once")
 	assert_eq(_system_texts(ana)[0], ChatRouter.TEXT_TOO_FAST, "«Hablas demasiado rápido.»")
-	assert_eq(peer.strikes_total - strikes_before, 1, "siete descartes suman un aviso del peer")
-	assert_eq(peer.chat.discards, 7, "siete descartes")
+	assert_eq(peer.strikes_total - strikes_before, 1, "once descartes suman un aviso del peer")
+	assert_eq(peer.chat.discards, 11, "once descartes")
 	assert_eq(peer.state, ServerPeer.State.IN_WORLD, "y Ana sigue dentro")
 
 

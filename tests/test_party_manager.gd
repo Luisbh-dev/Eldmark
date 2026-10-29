@@ -128,6 +128,14 @@ func _ps(list: Array) -> Array[ServerPeer]:
 	return result
 
 
+# Primer tick desde [param from_tick] (incluido) en el que el grupo [param party_id] manda su estado.
+func _status_tick_from(party_id: int, from_tick: int) -> int:
+	var tick: int = from_tick
+	while not PartyManager.is_status_tick(party_id, tick):
+		tick += 1
+	return tick
+
+
 # Une a [param joiners] al grupo de [param leader] (invitaciones y aceptaciones espaciadas para no pasar los
 # ritmos).
 func _form_party(leader: ServerPeer, joiners: Array[ServerPeer], start_tick: int = 100) -> int:
@@ -315,9 +323,17 @@ func test_inviting_has_its_own_rate_limit_and_flooding_adds_strikes() -> void:
 	assert_eq(_last_system(ana), "Invitas demasiado rápido.", "la cuarta se descarta")
 	assert_eq(_party.get_pending_count(), 3, "y no se crea")
 	assert_true(_strikes.is_empty(), "un descarte no suma avisos")
-	for i: int in 4:
+	# Veinte descartes en el mismo tick: un solo aviso al jugador y, pasados los diez gratis, uno del peer
+	# por descarte.
+	for i: int in 19:
 		_party.invite(ana, "Blancod", 100)
-	assert_eq(_strikes, [[ana.peer_id, PartyManager.STRIKE_REASON_FLOOD]], "el quinto descarte suma uno")
+	assert_eq(_system_texts(ana).count("Invitas demasiado rápido."), 1,
+			"un solo «Invitas demasiado rápido.» por segundo, no uno por descarte")
+	assert_eq(_strikes.size(), 20 - ChatPeerState.FLOOD_FREE_DISCARDS, "diez avisos del peer")
+	assert_eq(_strikes[0], [ana.peer_id, PartyManager.STRIKE_REASON_FLOOD], "por inundar")
+	# Un segundo después, si sigue sin caber, otro aviso al jugador.
+	_party.invite(ana, "Blancod", 100 + ChatRouter.WARNING_INTERVAL_TICKS)
+	assert_eq(_system_texts(ana).count("Invitas demasiado rápido."), 2, "un segundo después, otro")
 	# Pasados 2 s vuelve a caber una.
 	_party.invite(ana, "Blancod", 100 + 120)
 	assert_eq(_party.get_pending_count(), 4, "2 s después, otra")
@@ -339,6 +355,25 @@ func test_accepting_one_invitation_cancels_the_others() -> void:
 			cancelled += 1
 	assert_eq(cancelled, 2, "los dos avisos de Cora se retiran")
 	assert_eq(_party.members_of(cora), _ps([ana, cora]), "Cora está con Ana")
+
+
+func test_forming_a_party_cancels_the_inviters_received_invitations() -> void:
+	var ana: ServerPeer = _add_peer("Ana")
+	var bea: ServerPeer = _add_peer("Bea")
+	var eva: ServerPeer = _add_peer("Eva")
+	_party.invite(eva, "Ana", 100)
+	_party.invite(ana, "Bea", 230)
+	_party.respond(bea, "Ana", true, 360)
+	assert_eq(_party.members_of(ana), _ps([ana, bea]), "Ana y Bea forman grupo")
+	assert_eq(_party.get_pending_count(), 0, "la invitación de Eva a Ana deja de valer")
+	assert_eq(_party.get_pending_from(eva), 0, "y Eva recupera su hueco de pendientes")
+	var offers: Array[NetMessages.PartyInvitation] = _invitations(ana)
+	var last: NetMessages.PartyInvitation = offers[offers.size() - 1]
+	assert_eq(last.state, NetMessages.PartyInvitation.State.CANCELLED, "el aviso de Ana se retira")
+	assert_eq(last.inviter, "Eva", "el de Eva")
+	_party.respond(ana, "Eva", true, 400)
+	assert_eq(_last_system(ana), "No tienes ninguna invitación de «Eva».", "ya no se puede aceptar")
+	assert_eq(_party.members_of(ana).size(), 2, "y Ana sigue en su grupo")
 
 
 # --- Salir, expulsar y el mando ---------------------------------------------------------------
@@ -462,16 +497,17 @@ func test_member_status_is_sent_at_2_hz_even_to_far_members() -> void:
 	bruno.entity.set_health_view(500, 1000, NetMessages.STATUS_IN_COMBAT, 0)
 	ana.entity.set_health_view(1000, 1000, 0, 0)
 	var before: int = _packets(ana, NetProtocol.MSG_PARTY_STATUS).size()
-	_party.step(29)
-	assert_eq(_packets(ana, NetProtocol.MSG_PARTY_STATUS).size(), before, "no se manda fuera del ritmo")
-	_party.step(30)
-	assert_eq(_packets(ana, NetProtocol.MSG_PARTY_STATUS).size(), before + 1, "a los 30 ticks, uno")
+	var first: int = _status_tick_from(_party.party_id_of(ana), 1000)
+	_party.step(first - 1)
+	assert_eq(_packets(ana, NetProtocol.MSG_PARTY_STATUS).size(), before, "no se manda fuera de su tick")
+	_party.step(first)
+	assert_eq(_packets(ana, NetProtocol.MSG_PARTY_STATUS).size(), before + 1, "en su tick, uno")
 	assert_eq(_packets(bruno, NetProtocol.MSG_PARTY_STATUS).size(), before + 1, "a cada miembro")
 	assert_false(_raw_inbox.has(outsider.peer_id), "y a nadie más")
-	_party.step(31)
-	_party.step(59)
+	_party.step(first + 1)
+	_party.step(first + PartyRules.STATUS_INTERVAL_TICKS - 1)
 	assert_eq(_packets(ana, NetProtocol.MSG_PARTY_STATUS).size(), before + 1, "entre medias, nada")
-	_party.step(60)
+	_party.step(first + PartyRules.STATUS_INTERVAL_TICKS)
 	assert_eq(_packets(ana, NetProtocol.MSG_PARTY_STATUS).size(), before + 2, "a 2 Hz")
 
 	var bytes: PackedByteArray = _packets(ana, NetProtocol.MSG_PARTY_STATUS)[0]
@@ -495,11 +531,43 @@ func test_dead_members_are_marked_in_the_status() -> void:
 	var bruno: ServerPeer = _add_peer("Bruno")
 	_form_party(ana, [bruno])
 	bruno.entity.set_health_view(0, 1000, NetMessages.STATUS_DEAD, 500)
-	_party.step(60)
+	_party.step(_status_tick_from(_party.party_id_of(ana), 1000))
 	var status: NetMessages.PartyStatus = NetMessages.PartyStatus.decode(
 			_packets(ana, NetProtocol.MSG_PARTY_STATUS)[0])
 	assert_true(status.members[1].is_dead(), "Bruno está muerto")
 	assert_eq(status.members[1].health_q, 0, "sin vida")
+
+
+func test_status_ticks_are_staggered_between_parties() -> void:
+	# Tres grupos de dos: en una ventana de 30 ticks cada miembro recibe un estado, y nunca salen dos grupos
+	# en el mismo tick (el coste se reparte, como los snapshots por la paridad del net_id).
+	var members: Array[ServerPeer] = []
+	var tick: int = 100
+	for i: int in 3:
+		var leader: ServerPeer = _add_peer("Lider%s" % char(97 + i))
+		var joiner: ServerPeer = _add_peer("Miembro%s" % char(97 + i))
+		tick = _form_party(leader, [joiner], tick)
+		members.append_array([leader, joiner])
+	var initial: Dictionary = {}
+	var received: Dictionary = {}
+	for peer: ServerPeer in members:
+		initial[peer.peer_id] = _packets(peer, NetProtocol.MSG_PARTY_STATUS).size()
+		received[peer.peer_id] = initial[peer.peer_id]
+	var start: int = 1020
+	assert_eq(start % PartyRules.STATUS_INTERVAL_TICKS, 0, "la ventana empieza en un múltiplo de 30")
+	for t: int in range(start, start + PartyRules.STATUS_INTERVAL_TICKS):
+		_party.step(t)
+		var parties_this_tick: Dictionary = {}
+		for peer: ServerPeer in members:
+			var count: int = _packets(peer, NetProtocol.MSG_PARTY_STATUS).size()
+			if count > received[peer.peer_id]:
+				parties_this_tick[_party.party_id_of(peer)] = true
+			received[peer.peer_id] = count
+		assert_true(parties_this_tick.size() <= 1, "el tick %d manda estado a %d grupos" % [t,
+				parties_this_tick.size()])
+	for peer: ServerPeer in members:
+		assert_eq(received[peer.peer_id] - initial[peer.peer_id], 1,
+				"%s recibe un estado en 30 ticks" % peer.display_name)
 
 
 # --- Canal de grupo ---------------------------------------------------------------------------

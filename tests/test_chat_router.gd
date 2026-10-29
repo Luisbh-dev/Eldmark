@@ -181,6 +181,39 @@ func test_empty_text_after_sanitizing_is_dropped_without_a_strike() -> void:
 	assert_eq(ana.chat.discarded_empty, 4, "se cuenta")
 
 
+func test_an_empty_text_still_spends_its_token() -> void:
+	# El ritmo va antes que el saneado: un cliente tramposo no puede hacer trabajar al servidor gratis con
+	# textos que quedan vacíos (ni con canales sin servicio).
+	var ana: ServerPeer = _add_peer("Ana", VARDHEIM)
+	var bruno: ServerPeer = _add_peer("Bruno", VARDHEIM)
+	assert_eq(_send(ana, ChatChannel.Id.ZONE, "[[x]]", "", 100), ChatRouter.Result.EMPTY, "el primero, vacío")
+	assert_true(ana.chat.limiter_public.get_tokens(100) < ChatPeerState.PUBLIC_BURST,
+			"y ya ha gastado una ficha")
+	for i: int in 3:
+		assert_eq(_send(ana, ChatChannel.Id.ZONE, "[[x]]", "", 100), ChatRouter.Result.EMPTY, "vacío %d" % i)
+	assert_eq(_send(ana, ChatChannel.Id.RAID, "Hola", "", 100), ChatRouter.Result.UNAVAILABLE,
+			"un canal sin servicio también gasta la suya")
+	assert_eq(_send(ana, ChatChannel.Id.ZONE, "hola", "", 100), ChatRouter.Result.RATE_LIMITED,
+			"cinco gastadas: el texto normal ya no cabe")
+	assert_eq(_send(ana, ChatChannel.Id.RAID, "Hola", "", 100), ChatRouter.Result.RATE_LIMITED,
+			"ni otra respuesta del sistema")
+	assert_eq(_chat_lines(bruno).size(), 0, "Bruno no ha recibido nada")
+
+
+func test_flooding_texts_that_sanitize_to_nothing_adds_strikes() -> void:
+	var ana: ServerPeer = _add_peer("Ana", VARDHEIM)
+	# El peor caso del saneado de antes: 127 niveles de corchetes, que quedan en nada.
+	var nested: String = "[".repeat(127) + "]".repeat(127)
+	var results: Dictionary = {}
+	for i: int in 30:
+		var result: int = _send(ana, ChatChannel.Id.ZONE, nested, "", 100)
+		results[result] = results.get(result, 0) + 1
+	assert_eq(results.get(ChatRouter.Result.EMPTY, 0), 5, "la ráfaga de cinco se gasta en vacíos")
+	assert_eq(results.get(ChatRouter.Result.RATE_LIMITED, 0), 25, "y el resto se descarta por ritmo")
+	assert_eq(ana.chat.discards, 25, "veinticinco descartes")
+	assert_eq(_strikes.size(), 25 - ChatPeerState.FLOOD_FREE_DISCARDS, "pasados los diez gratis, un aviso cada uno")
+
+
 # --- Susurros ---------------------------------------------------------------------------------
 
 func test_whisper_reaches_the_target_and_the_sender_only() -> void:
@@ -197,6 +230,9 @@ func test_whisper_reaches_the_target_and_the_sender_only() -> void:
 		assert_eq(lines[0].recipient, "Bruno", "destinatario con su nombre canónico")
 		assert_eq(lines[0].text, "Psst", "texto")
 	assert_true(_received_nothing(tercero), "un tercero, aunque esté al lado, no oye el susurro")
+	# El servidor no guarda «el último interlocutor» (/r lo resuelve el cliente, docs/social.md 12.2).
+	for property: Dictionary in ana.chat.get_property_list():
+		assert_false(String(property["name"]).contains("partner"), "ChatPeerState no guarda el interlocutor")
 
 
 func test_whisper_name_ignores_case_and_accents() -> void:
@@ -344,19 +380,66 @@ func test_the_warning_is_sent_at_most_once_per_second() -> void:
 	assert_eq(_system_texts(ana).size(), 1, "aún dentro del segundo")
 
 
-func test_every_fifth_discard_adds_a_strike() -> void:
+func test_the_first_ten_discards_in_ten_seconds_are_free_and_then_each_adds_a_strike() -> void:
 	var ana: ServerPeer = _add_peer("Ana", VARDHEIM)
+	assert_eq(ChatPeerState.FLOOD_FREE_DISCARDS, 10, "diez gratis")
+	assert_eq(ChatPeerState.FLOOD_WINDOW_TICKS, ServerPeer.STRIKE_WINDOW_TICKS, "en la ventana de los avisos")
 	for i: int in 5:
 		_send(ana, ChatChannel.Id.SAY, "m%d" % i, "", 100)
-	for i: int in 4:
-		_send(ana, ChatChannel.Id.SAY, "d%d" % i, "", 100)
-	assert_true(_strikes.is_empty(), "cuatro descartes no suman nada")
-	_send(ana, ChatChannel.Id.SAY, "d4", "", 100)
-	assert_eq(_strikes, [[ana.peer_id, ChatRouter.STRIKE_REASON_FLOOD]], "el quinto suma un aviso")
+	for i: int in 10:
+		_send(ana, ChatChannel.Id.SAY, "d%d" % i, "", 100 + i)
+	assert_true(_strikes.is_empty(), "diez descartes no suman nada: pulsar Intro de más no cuesta")
+	_send(ana, ChatChannel.Id.SAY, "d10", "", 110)
+	assert_eq(_strikes, [[ana.peer_id, ChatRouter.STRIKE_REASON_FLOOD]], "el undécimo suma un aviso")
+	_send(ana, ChatChannel.Id.SAY, "d11", "", 111)
+	assert_eq(_strikes.size(), 2, "y cada uno de los siguientes, otro")
+	assert_eq(ana.chat.discards, 12, "doce descartes")
+	# Pasados 10 s desde los primeros, la ventana se ha vaciado y vuelven a ser gratis.
+	var later: int = 112 + ChatPeerState.FLOOD_WINDOW_TICKS
 	for i: int in 5:
-		_send(ana, ChatChannel.Id.SAY, "e%d" % i, "", 100)
-	assert_eq(_strikes.size(), 2, "y el décimo, otro")
-	assert_eq(ana.chat.discards, 10, "diez descartes")
+		_send(ana, ChatChannel.Id.SAY, "n%d" % i, "", later)
+	for i: int in 10:
+		_send(ana, ChatChannel.Id.SAY, "x%d" % i, "", later)
+	assert_eq(_strikes.size(), 2, "diez descartes más, diez segundos después, no suman nada")
+
+
+func test_an_honest_burst_never_adds_a_strike() -> void:
+	var ana: ServerPeer = _add_peer("Ana", VARDHEIM)
+	# Diez Intro seguidos y otros cinco a los 2 s: se descartan ocho, ningún aviso.
+	for i: int in 10:
+		_send(ana, ChatChannel.Id.SAY, "prisa %d" % i, "", 100)
+	for i: int in 5:
+		_send(ana, ChatChannel.Id.SAY, "más prisa %d" % i, "", 220)
+	assert_eq(ana.chat.discards, 8, "ocho descartes")
+	assert_true(_strikes.is_empty(), "y ningún aviso del peer")
+
+
+func test_a_sustained_flood_through_the_transport_gets_the_player_kicked() -> void:
+	# Como en ZoneServer: cada CHAT_SEND pasa antes por el cubo fiable del transporte (10/s, ráfaga de 20) y
+	# los avisos van al ServerPeer de verdad, que expulsa con 50 en 600 ticks. Un cliente que manda
+	# justo 10 mensajes distintos por segundo no recibe ningún aviso del transporte.
+	var ana: ServerPeer = _add_peer("Ana", VARDHEIM)
+	var clock: Dictionary = {"tick": 0, "kicked_at": -1, "transport_drops": 0}
+	var router := ChatRouter.new(func() -> Array[ServerPeer]: return _peers,
+			func(_peer_id: int, _bytes: PackedByteArray) -> void: pass,
+			func(peer: ServerPeer, reason: String) -> void:
+				if peer.add_strike(clock["tick"], reason) and clock["kicked_at"] < 0:
+					clock["kicked_at"] = clock["tick"])
+	var message := NetMessages.ChatSend.new()
+	message.channel = ChatChannel.Id.ZONE
+	for tick: int in range(0, 1200, 6):
+		clock["tick"] = tick
+		message.text = "oro barato %d" % tick
+		if not ana.limiter_reliable.try_consume(tick):
+			clock["transport_drops"] += 1
+			continue
+		router.handle_send(ana, message.encode(), tick)
+		if clock["kicked_at"] >= 0:
+			break
+	assert_eq(clock["transport_drops"], 0, "el transporte no descarta nada a 10/s")
+	assert_true(clock["kicked_at"] >= 0, "la inundación sostenida expulsa (tick %d)" % clock["kicked_at"])
+	assert_true(clock["kicked_at"] < 600, "en menos de 10 s")
+	router = null
 
 
 func test_a_repeated_text_is_dropped_for_ten_seconds() -> void:
@@ -373,6 +456,27 @@ func test_a_repeated_text_is_dropped_for_ten_seconds() -> void:
 			ChatRouter.Result.DELIVERED, "pasados 10 s se admite de nuevo")
 	assert_eq(_chat_lines(bruno).size(), 3, "Bruno ve tres, no las repeticiones")
 	assert_eq(ana.chat.discarded_repeat, 2, "dos repeticiones")
+	assert_eq(_system_texts(ana), PackedStringArray([ChatRouter.TEXT_REPEATED]),
+			"con su propio aviso (uno por segundo como mucho), no «Hablas demasiado rápido»")
+
+
+func test_the_same_whisper_to_another_recipient_is_delivered() -> void:
+	var ana: ServerPeer = _add_peer("Ana", VARDHEIM)
+	var bea: ServerPeer = _add_peer("Bea", VARDHEIM)
+	var eva: ServerPeer = _add_peer("Eva", VARDHEIM)
+	assert_eq(_send(ana, ChatChannel.Id.WHISPER, "ok", "Bea", 100), ChatRouter.Result.DELIVERED, "«ok» a Bea")
+	assert_eq(_send(ana, ChatChannel.Id.WHISPER, "ok", "Eva", 200), ChatRouter.Result.DELIVERED,
+			"y el mismo «ok» a Eva también llega")
+	assert_eq(_chat_lines(eva).size(), 1, "Eva lo recibe")
+	assert_true(_system_texts(ana).is_empty(), "sin avisos")
+	assert_eq(_send(ana, ChatChannel.Id.WHISPER, "ok", "EVA", 260), ChatRouter.Result.REPEATED,
+			"al mismo destinatario (escrito como sea) sí es repetición")
+	assert_eq(_system_texts(ana), PackedStringArray([ChatRouter.TEXT_REPEATED]), "con su aviso")
+	assert_eq(_send(ana, ChatChannel.Id.SAY, "ok", "", 400), ChatRouter.Result.DELIVERED,
+			"de un susurro a un canal público no cruza")
+	assert_eq(_send(ana, ChatChannel.Id.WHISPER, "ok", "Bea", 460), ChatRouter.Result.DELIVERED,
+			"ni de un canal público a un susurro")
+	assert_eq(_chat_lines(bea).size(), 3, "Bea: dos susurros y el «decir»")
 
 
 func test_whisper_has_its_own_burst_of_three() -> void:
@@ -407,6 +511,22 @@ func test_whisper_allows_five_new_recipients_per_minute() -> void:
 	# Pasado el tiempo, el cubo se recarga a razón de 5 por minuto.
 	assert_eq(_send(ana, ChatChannel.Id.WHISPER, "ahora sí", others[5].display_name, tick + 900),
 			ChatRouter.Result.DELIVERED, "un rato después cabe otro nuevo")
+
+
+func test_a_player_who_only_receives_whispers_keeps_only_recent_partners() -> void:
+	var diana: ServerPeer = _add_peer("Diana", VARDHEIM)
+	var gap: int = ChatRouter.KNOWN_RECIPIENT_TICKS * 5
+	for i: int in 200:
+		var sender: ServerPeer = _add_peer("Emisor%s%s" % [char(97 + i / 26), char(97 + i % 26)], VARDHEIM)
+		var tick: int = 100 + i * gap
+		assert_eq(_send(sender, ChatChannel.Id.WHISPER, "hola", "Diana", tick), ChatRouter.Result.DELIVERED,
+				"%s susurra a Diana" % sender.display_name)
+		assert_true(diana.chat.knows_recipient(SocialPeers.name_key_of(sender), tick,
+				ChatRouter.KNOWN_RECIPIENT_TICKS), "justo después, Diana lo cuenta como interlocutor")
+		# El emisor se va de la zona.
+		_peers.erase(sender)
+	assert_true(diana.chat.known_recipients.size() <= 1,
+			"Diana solo guarda a los de los últimos 5 min (%d)" % diana.chat.known_recipients.size())
 
 
 func test_replying_to_someone_who_whispered_you_is_not_a_new_recipient() -> void:

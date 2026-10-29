@@ -74,6 +74,13 @@ func test_target_requests_malformed_are_null() -> void:
 		wrong[0] = wrong_type
 		assert_null(NetMessages.PartyTargetRequest.decode(wrong), "tipo 0x%02X" % wrong_type)
 	assert_null(NetMessages.PartyTargetRequest.decode(PackedByteArray([0x48, 0])), "nombre vacío")
+	# Un BOM UTF-8 solo: tres bytes que get_string_from_utf8 lee como una cadena vacía.
+	assert_null(NetMessages.PartyTargetRequest.decode(PackedByteArray([0x48, 3, 0xEF, 0xBB, 0xBF])),
+			"nombre que se lee vacío (solo un BOM)")
+	var bom_then_name: NetMessages.PartyTargetRequest = NetMessages.PartyTargetRequest.decode(
+			PackedByteArray([0x48, 8, 0xEF, 0xBB, 0xBF, 0x42, 0x72, 0x75, 0x6E, 0x6F]))
+	if assert_not_null(bom_then_name, "un BOM delante de un nombre sí se decodifica"):
+		assert_eq(bom_then_name.target, "Bruno", "y se queda en el nombre")
 	var utf8: PackedByteArray = valid.duplicate()
 	utf8[2] = 0xFF
 	assert_null(NetMessages.PartyTargetRequest.decode(utf8), "UTF-8 inválido")
@@ -107,6 +114,8 @@ func test_response_layout_round_trip_and_malformed() -> void:
 	bad_accept[1] = 2
 	assert_null(NetMessages.PartyResponse.decode(bad_accept), "accept 2")
 	assert_null(NetMessages.PartyResponse.decode(PackedByteArray([0x49, 1, 0])), "nombre vacío")
+	assert_null(NetMessages.PartyResponse.decode(PackedByteArray([0x49, 1, 3, 0xEF, 0xBB, 0xBF])),
+			"nombre que se lee vacío (solo un BOM)")
 	var longer: PackedByteArray = bytes.duplicate()
 	longer.append(0x61)
 	assert_null(NetMessages.PartyResponse.decode(longer), "un byte de más")
@@ -149,6 +158,9 @@ func test_invitation_layout_round_trip_and_malformed() -> void:
 	var empty_name: PackedByteArray = bytes.slice(0, 6)
 	empty_name.append(0)
 	assert_null(NetMessages.PartyInvitation.decode(empty_name), "nombre vacío")
+	var bom_name: PackedByteArray = bytes.slice(0, 6)
+	bom_name.append_array(PackedByteArray([3, 0xEF, 0xBB, 0xBF]))
+	assert_null(NetMessages.PartyInvitation.decode(bom_name), "nombre que se lee vacío (solo un BOM)")
 	var longer: PackedByteArray = bytes.duplicate()
 	longer.append(0x61)
 	assert_null(NetMessages.PartyInvitation.decode(longer), "un byte de más")
@@ -217,6 +229,8 @@ func test_roster_malformed_is_null() -> void:
 	assert_null(NetMessages.PartyRoster.decode(PackedByteArray([0x4E, 0, 1])), "sin miembros y con líder")
 	var empty_name: PackedByteArray = PackedByteArray([0x4E, 1, 0, 1, 0, 0])
 	assert_null(NetMessages.PartyRoster.decode(empty_name), "nombre vacío")
+	assert_null(NetMessages.PartyRoster.decode(PackedByteArray([0x4E, 1, 0, 7, 0, 3, 0xEF, 0xBB, 0xBF])),
+			"nombre que se lee vacío (solo un BOM)")
 	var duplicate := PackedByteArray([0x4E, 2, 0, 7, 0, 1, 0x41, 7, 0, 1, 0x42])
 	assert_null(NetMessages.PartyRoster.decode(duplicate), "net_id repetido")
 	var utf8: PackedByteArray = valid.duplicate()

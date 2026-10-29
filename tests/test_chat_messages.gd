@@ -180,6 +180,17 @@ func test_chat_send_malformed_is_null() -> void:
 	# Destinatario: obligatorio en un susurro y sobrante en los demás canales.
 	assert_null(NetMessages.ChatSend.decode(_raw_send(ChatChannel.Id.WHISPER, "", "Hola")),
 			"un susurro sin destinatario")
+	var bom_recipient: PackedByteArray = _raw_send(ChatChannel.Id.WHISPER, "", "hi")
+	bom_recipient[2] = 3
+	var bom := PackedByteArray([0xEF, 0xBB, 0xBF])
+	var with_bom: PackedByteArray = bom_recipient.slice(0, 5)
+	with_bom.append_array(bom)
+	with_bom.append_array(bom_recipient.slice(5))
+	assert_null(NetMessages.ChatSend.decode(with_bom), "un susurro cuyo destinatario se lee vacío (solo un BOM)")
+	var bom_text: PackedByteArray = _raw_send(ChatChannel.Id.SAY, "", "")
+	bom_text.encode_u16(3, 3)
+	bom_text.append_array(bom)
+	assert_not_null(NetMessages.ChatSend.decode(bom_text), "un texto que se lee vacío sí (lo descarta el servidor)")
 	assert_null(NetMessages.ChatSend.decode(_raw_send(ChatChannel.Id.SAY, "Ana", "Hola")),
 			"un «decir» con destinatario")
 	assert_null(NetMessages.ChatSend.decode(_raw_send(ChatChannel.Id.WHISPER,
@@ -310,6 +321,22 @@ func test_chat_message_malformed_is_null() -> void:
 			"un «decir» sin emisor")
 	assert_null(NetMessages.ChatMessage.decode(_raw_message(ChatChannel.Id.WHISPER, 1, "Ana", "", "Hola")),
 			"un susurro sin destinatario")
+	var bom: String = PackedByteArray([0xEF, 0xBB, 0xBF]).get_string_from_utf8()
+	assert_eq(bom, "", "get_string_from_utf8 se salta el BOM")
+	var bom_sender: PackedByteArray = _raw_message(ChatChannel.Id.SAY, 1, "A", "", "Hola")
+	bom_sender[7] = 3
+	var bom_bytes := PackedByteArray([0xEF, 0xBB, 0xBF])
+	var say_with_bom: PackedByteArray = bom_sender.slice(0, 11)
+	say_with_bom.append_array(bom_bytes)
+	say_with_bom.append_array(bom_sender.slice(12))
+	assert_null(NetMessages.ChatMessage.decode(say_with_bom), "un «decir» cuyo emisor se lee vacío (solo un BOM)")
+	var whisper_bom: PackedByteArray = _raw_message(ChatChannel.Id.WHISPER, 1, "Ana", "B", "Hola")
+	whisper_bom[8] = 3
+	var whisper_with_bom: PackedByteArray = whisper_bom.slice(0, 14)
+	whisper_with_bom.append_array(bom_bytes)
+	whisper_with_bom.append_array(whisper_bom.slice(15))
+	assert_null(NetMessages.ChatMessage.decode(whisper_with_bom),
+			"un susurro cuyo destinatario se lee vacío (solo un BOM)")
 	assert_null(NetMessages.ChatMessage.decode(_raw_message(ChatChannel.Id.ZONE, 1, "Ana", "Bruno", "Hola")),
 			"un mensaje de zona con destinatario")
 	# UTF-8 inválido en cada parte.

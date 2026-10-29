@@ -2,8 +2,8 @@ class_name ChatRouter
 extends RefCounted
 ## Enrutado del chat en el servidor de zona (SOC-04, docs/social.md, secciones 1, 2, 5 y 12).
 ## [br][br]
-## Recibe cada CHAT_SEND ya autenticado ([method handle_send]), lo sanea ([ChatText]), aplica los ritmos
-## por peer y lo reparte con un CHAT_MESSAGE solo a quien debe verlo. [b]Nunca envía a un cliente un texto
+## Recibe cada CHAT_SEND ya autenticado ([method handle_send]), aplica los ritmos por conexión, lo sanea
+## ([ChatText]) y lo reparte con un CHAT_MESSAGE solo a quien debe verlo. [b]Nunca envía a un cliente un texto
 ## de otro reino[/b]: la lista de destinatarios se filtra por reino al construirla (el cliente no puede
 ## pedir lo que el servidor no manda), y la prueba de aceptación mira los bytes recibidos, no lo que se
 ## pinta.
@@ -23,14 +23,18 @@ extends RefCounted
 ## a un nombre que ya no está conectado da la respuesta de siempre) y así el protocolo no necesita un
 ## canal más.
 ## [br][br]
-## [b]Ritmos[/b] (por peer, [RateLimiter] en ticks, docs/social.md sección 5): decir, zona y grupo comparten
-## 1 mensaje por segundo con ráfaga de 5; el susurro, 1 por segundo con ráfaga de 3 y como mucho 5
-## destinatarios nuevos por minuto (quien ya habló contigo en los últimos [constant KNOWN_RECIPIENT_TICKS]
-## ticks no cuenta como nuevo, y tú tampoco para él); un texto igual al último aceptado en
-## [constant REPEAT_WINDOW_TICKS] ticks se descarta. Lo descartado avisa al jugador por el canal del
-## sistema («Hablas demasiado rápido», como mucho una vez por segundo) y uno de cada
-## [constant STRIKE_EVERY_DISCARDS] suma un aviso del peer (50 en 600 ticks expulsan): pulsar Intro de más
-## no expulsa a nadie, la inundación sostenida sí.
+## [b]Ritmos[/b] (por conexión, [RateLimiter] en ticks, docs/social.md sección 5). Cada CHAT_SEND gasta
+## primero una ficha de su cubo, [b]antes de sanear[/b] o de contestar nada: el saneado no es gratis y un
+## texto que queda vacío, o un canal sin servicio, también cuestan. Decir, zona, grupo y los canales sin
+## servicio comparten 1 mensaje por segundo con ráfaga de 5; el susurro, 1 por segundo con ráfaga de 3 y
+## como mucho 5 destinatarios nuevos por minuto (quien ya habló contigo en los últimos
+## [constant KNOWN_RECIPIENT_TICKS] ticks no cuenta como nuevo, y tú tampoco para él). Un texto igual al
+## último aceptado en [constant REPEAT_WINDOW_TICKS] ticks se descarta si va al mismo sitio: los canales
+## públicos comparten la comprobación y en un susurro cuenta el destinatario («ok» a dos personas pasa).
+## Lo descartado avisa al jugador por el canal del sistema («Hablas demasiado rápido.» o «Ya has enviado
+## ese mensaje.», como mucho un aviso por segundo); los [constant ChatPeerState.FLOOD_FREE_DISCARDS]
+## primeros descartes de cada 10 s no suman nada y, a partir de ahí, cada uno suma un aviso del peer (50 en
+## 600 ticks expulsan): pulsar Intro de más no expulsa a nadie, la inundación sostenida sí.
 ## [br][br]
 ## No toca la red ni el reloj: recibe de quien lo monta ([SocialService]) tres [Callable]s ([code]peers_source
 ## () -> Array[ServerPeer][/code], [code]send_sink(peer_id: int, bytes: PackedByteArray)[/code] y
@@ -47,7 +51,7 @@ enum Result {
 	RATE_LIMITED,
 	## Descartado por ser igual al anterior.
 	REPEATED,
-	## Texto vacío tras sanear: se descarta sin más.
+	## Texto vacío tras sanear: se descarta (ya ha gastado su ficha) sin avisar a nadie.
 	EMPTY,
 	## Canal sin servicio en la fase 4.
 	UNAVAILABLE,
@@ -57,11 +61,10 @@ enum Result {
 
 ## Distancia (m) a la que llega «decir».
 const SAY_RANGE: float = 30.0
-## Ticks en los que un texto idéntico al anterior se descarta (10 s).
+## Ticks en los que un texto idéntico al anterior (al mismo sitio) se descarta (10 s).
 const REPEAT_WINDOW_TICKS: int = 600
-## De cada cuántos mensajes descartados uno suma un aviso del peer.
-const STRIKE_EVERY_DISCARDS: int = 5
-## Ticks mínimos entre dos avisos «Hablas demasiado rápido» al mismo jugador (1 s).
+## Ticks mínimos entre dos avisos de mensaje descartado al mismo jugador (1 s). Las invitaciones de
+## grupo ([PartyManager]) usan el mismo intervalo para «Invitas demasiado rápido.».
 const WARNING_INTERVAL_TICKS: int = 60
 ## Ticks que un interlocutor de susurro deja de contar como «nuevo» (5 min).
 const KNOWN_RECIPIENT_TICKS: int = 18000
@@ -71,6 +74,7 @@ const STRIKE_REASON_MALFORMED: String = "mensaje de chat mal formado"
 const STRIKE_REASON_NOT_IN_WORLD: String = "chat antes de entrar en el mundo"
 
 const TEXT_TOO_FAST: String = "Hablas demasiado rápido."
+const TEXT_REPEATED: String = "Ya has enviado ese mensaje."
 const TEXT_UNAVAILABLE: String = "Ese canal aún no está disponible."
 const TEXT_UNKNOWN_COMMAND: String = "Comando desconocido. Escribe /ayuda."
 const TEXT_NOT_CONNECTED: String = "«%s» no está conectado."
@@ -112,6 +116,13 @@ func handle_send(peer: ServerPeer, bytes: PackedByteArray, now_tick: int) -> int
 ## Enruta un mensaje ya decodificado de [param peer] (en el mundo). Ver la documentación de la clase.
 func route(peer: ServerPeer, message: NetMessages.ChatSend, now_tick: int) -> int:
 	var state: ChatPeerState = peer.chat
+	# Ritmo antes que nada: ni el saneado ni las respuestas del sistema son gratis.
+	var limiter: RateLimiter = state.limiter_whisper \
+			if message.channel == ChatChannel.Id.WHISPER else state.limiter_public
+	if not limiter.try_consume(now_tick):
+		state.discarded_rate += 1
+		_note_discard(peer, now_tick, TEXT_TOO_FAST)
+		return _count(Result.RATE_LIMITED)
 	if not ChatChannel.is_implemented(message.channel):
 		state.rejected_channel += 1
 		var text: String = TEXT_UNKNOWN_COMMAND if message.channel == ChatChannel.Id.GM \
@@ -123,16 +134,12 @@ func route(peer: ServerPeer, message: NetMessages.ChatSend, now_tick: int) -> in
 		state.discarded_empty += 1
 		return _count(Result.EMPTY)
 
-	# Ritmo: el cubo del canal, y después la repetición.
-	var limiter: RateLimiter = state.limiter_whisper \
-			if message.channel == ChatChannel.Id.WHISPER else state.limiter_public
-	if not limiter.try_consume(now_tick):
-		state.discarded_rate += 1
-		_note_discard(peer, now_tick)
-		return _count(Result.RATE_LIMITED)
-	if text_clean == state.last_text and now_tick - state.last_text_tick < REPEAT_WINDOW_TICKS:
+	# Repetición: el mismo texto al mismo sitio (los canales públicos comparten clave).
+	var repeat_key: String = _repeat_key(message)
+	if text_clean == state.last_text and repeat_key == state.last_text_key \
+			and now_tick - state.last_text_tick < REPEAT_WINDOW_TICKS:
 		state.discarded_repeat += 1
-		_note_discard(peer, now_tick)
+		_note_discard(peer, now_tick, TEXT_REPEATED)
 		return _count(Result.REPEATED)
 
 	var result: int = Result.DELIVERED
@@ -148,6 +155,7 @@ func route(peer: ServerPeer, message: NetMessages.ChatSend, now_tick: int) -> in
 	if result == Result.DELIVERED:
 		state.accepted += 1
 		state.last_text = text_clean
+		state.last_text_key = repeat_key
 		state.last_text_tick = now_tick
 	return _count(result)
 
@@ -224,13 +232,14 @@ func _route_whisper(sender: ServerPeer, recipient_name: String, text: String, no
 	if not state.knows_recipient(key, now_tick, KNOWN_RECIPIENT_TICKS):
 		if not state.limiter_new_recipients.try_consume(now_tick):
 			state.discarded_rate += 1
-			_note_discard(sender, now_tick)
+			_note_discard(sender, now_tick, TEXT_TOO_FAST)
 			return Result.RATE_LIMITED
+	# Los dos lados se podan antes de apuntar: el diccionario de quien solo recibe susurros también se
+	# queda en los interlocutores de los últimos KNOWN_RECIPIENT_TICKS ticks.
 	state.forget_old_recipients(now_tick, KNOWN_RECIPIENT_TICKS)
 	state.remember_recipient(key, now_tick)
+	target.chat.forget_old_recipients(now_tick, KNOWN_RECIPIENT_TICKS)
 	target.chat.remember_recipient(SocialPeers.name_key_of(sender), now_tick)
-	state.last_whisper_partner = target.display_name
-	target.chat.last_whisper_partner = sender.display_name
 	var copies: Array[ServerPeer] = [target, sender]
 	_deliver(sender, copies, ChatChannel.Id.WHISPER, target.display_name, text, now_tick)
 	return Result.DELIVERED
@@ -255,15 +264,24 @@ func _deliver(sender: ServerPeer, recipients: Array[ServerPeer], channel: int, r
 	_delivered_copies += recipients.size()
 
 
-# Un mensaje descartado: aviso al jugador (como mucho uno por segundo) y, de cada cinco, un aviso del peer.
-func _note_discard(peer: ServerPeer, now_tick: int) -> void:
+# Un mensaje descartado: [param warning] al jugador (como mucho un aviso por segundo) y, pasados los
+# descartes gratis de la ventana, un aviso del peer.
+func _note_discard(peer: ServerPeer, now_tick: int, warning: String) -> void:
 	var state: ChatPeerState = peer.chat
 	state.discards += 1
 	if state.last_warning_tick < 0 or now_tick - state.last_warning_tick >= WARNING_INTERVAL_TICKS:
 		state.last_warning_tick = now_tick
-		send_system(peer, TEXT_TOO_FAST, now_tick)
-	if state.discards % STRIKE_EVERY_DISCARDS == 0:
+		send_system(peer, warning, now_tick)
+	if state.chat_flood.note(now_tick):
 		_strike_sink.call(peer, STRIKE_REASON_FLOOD)
+
+
+# Dónde va un mensaje, para la repetición: los canales públicos comparten clave; un susurro, la del
+# destinatario tal como se busca ([method SocialPeers.find_by_name]).
+static func _repeat_key(message: NetMessages.ChatSend) -> String:
+	if message.channel != ChatChannel.Id.WHISPER:
+		return ""
+	return "w:" + NameRules.normalize_key(message.recipient)
 
 
 func _world_peers() -> Array[ServerPeer]:

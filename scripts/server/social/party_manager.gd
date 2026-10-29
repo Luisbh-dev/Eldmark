@@ -9,14 +9,18 @@ extends RefCounted
 ## ceder el mando; cualquier miembro puede invitar. Si el líder se va, el siguiente más antiguo hereda el
 ## mando; un grupo de uno se disuelve. Una invitación caduca a los [constant PartyRules.INVITE_TTL_TICKS]
 ## ticks (60 s), cada jugador puede tener como mucho [constant PartyRules.MAX_PENDING_PER_INVITER] enviadas
-## y aceptar una invitación cancela las demás que tuviera. Invitar tiene su cubo (1 cada 2 s, ráfaga de 3); lo
-## que se descarta avisa al jugador y uno de cada cinco suma un aviso del peer.
+## y, al formarse o crecer el grupo, se cancelan las demás que tuvieran quien acepta y, si el grupo es nuevo,
+## quien invitó. Invitar tiene su cubo (1 cada 2 s, ráfaga de 3); lo que se descarta avisa al jugador (como
+## mucho una vez por segundo) y, pasados los [constant ChatPeerState.FLOOD_FREE_DISCARDS] primeros de cada
+## 10 s, cada descarte suma un aviso del peer.
 ## [br][br]
 ## [b]Lo que se manda.[/b] Cada resultado llega al jugador como un mensaje del canal del sistema
 ## ([code]notify[/code]); la interfaz recibe además PARTY_INVITATION (la invitación, y cuándo deja de valer),
 ## PARTY_ROSTER (la lista de miembros y el líder, cada vez que cambia; vacía al salir) y PARTY_STATUS (vida,
 ## resistencia y posición de cada miembro) a 2 Hz ([constant PartyRules.STATUS_INTERVAL_TICKS]) a todos los
-## miembros, estén donde estén: no pasa por el interés de los snapshots.
+## miembros, estén donde estén: no pasa por el interés de los snapshots. Cada grupo lo manda en su tick del
+## intervalo ([method is_status_tick], escalonado por el id del grupo), como los snapshots por la paridad
+## del net_id: así el coste se reparte entre los 30 ticks y no cae entero en uno.
 ## [br][br]
 ## No toca la red ni el reloj: recibe de [SocialService] cuatro [Callable]s ([code]peers_source() ->
 ## Array[ServerPeer][/code], [code]send_sink(peer_id: int, bytes: PackedByteArray)[/code],
@@ -26,8 +30,6 @@ extends RefCounted
 const STRIKE_REASON_MALFORMED: String = "mensaje de grupo mal formado"
 const STRIKE_REASON_NOT_IN_WORLD: String = "grupo antes de entrar en el mundo"
 const STRIKE_REASON_FLOOD: String = "exceso de invitaciones de grupo"
-## De cada cuántas invitaciones descartadas por ritmo una suma un aviso del peer.
-const STRIKE_EVERY_DISCARDS: int = 5
 
 const TEXT_NOT_CONNECTED: String = "«%s» no está conectado."
 const TEXT_SELF_INVITE: String = "No puedes invitarte a ti mismo."
@@ -144,8 +146,11 @@ func invite(peer: ServerPeer, target_name: String, now_tick: int) -> void:
 	if not state.limiter_invites.try_consume(now_tick):
 		state.invite_discards += 1
 		_stats["rate_limited"] += 1
-		_notify.call(peer, TEXT_TOO_FAST, now_tick)
-		if state.invite_discards % STRIKE_EVERY_DISCARDS == 0:
+		if state.last_invite_warning_tick < 0 \
+				or now_tick - state.last_invite_warning_tick >= ChatRouter.WARNING_INTERVAL_TICKS:
+			state.last_invite_warning_tick = now_tick
+			_notify.call(peer, TEXT_TOO_FAST, now_tick)
+		if state.invite_flood.note(now_tick):
 			_strike_sink.call(peer, STRIKE_REASON_FLOOD)
 		return
 	var target: ServerPeer = SocialPeers.find_by_name(_world_peers(), target_name, peer.realm)
@@ -212,6 +217,9 @@ func respond(peer: ServerPeer, inviter_name: String, accept: bool, now_tick: int
 		return
 	if party == null:
 		party = _create_party(inviter)
+		# Quien invitó acaba de entrar en un grupo: sus invitaciones recibidas dejan de valer, igual que las de
+		# quien acepta (nadie tiene invitaciones estando en un grupo; invite() no las crea).
+		_cancel_invitations_to(inviter, now_tick)
 	party.members.append(peer)
 	_party_of[peer.peer_id] = party
 	_stats["accepted"] += 1
@@ -280,7 +288,8 @@ func on_peer_left(peer: ServerPeer, now_tick: int) -> void:
 		_remove_member(party, peer, now_tick, TEXT_LEFT, false)
 
 
-## Un tick del servidor: caduca las invitaciones vencidas y, a 2 Hz, manda el estado de los miembros.
+## Un tick del servidor: caduca las invitaciones vencidas y, a 2 Hz, manda el estado de los miembros de cada
+## grupo en su tick ([method is_status_tick]).
 func step(now_tick: int) -> void:
 	for invitation: Invitation in _invitations.duplicate():
 		if invitation.expire_tick <= now_tick:
@@ -289,9 +298,15 @@ func step(now_tick: int) -> void:
 			_send_invitation(invitation.target, NetMessages.PartyInvitation.State.EXPIRED, now_tick,
 					invitation.inviter)
 			_notify.call(invitation.inviter, TEXT_EXPIRED % invitation.target.display_name, now_tick)
-	if now_tick % PartyRules.STATUS_INTERVAL_TICKS == 0:
-		for party: Party in _parties:
+	for party: Party in _parties:
+		if is_status_tick(party.id, now_tick):
 			_send_status(party)
+
+
+## true si el grupo [param party_id] manda su PARTY_STATUS en el tick [param now_tick]: uno de cada
+## [constant PartyRules.STATUS_INTERVAL_TICKS], escalonado por el id para que no salgan todos juntos.
+static func is_status_tick(party_id: int, now_tick: int) -> bool:
+	return posmod(now_tick + party_id, PartyRules.STATUS_INTERVAL_TICKS) == 0
 
 
 # --- Consultas --------------------------------------------------------------------------------
@@ -308,6 +323,13 @@ func members_of(peer: ServerPeer) -> Array[ServerPeer]:
 func leader_of(peer: ServerPeer) -> ServerPeer:
 	var party: Party = _party_of.get(peer.peer_id)
 	return party.leader if party != null else null
+
+
+## Id del grupo de [param peer] (0 si no tiene grupo); con él, [method is_status_tick] dice cuándo le toca
+## el PARTY_STATUS.
+func party_id_of(peer: ServerPeer) -> int:
+	var party: Party = _party_of.get(peer.peer_id)
+	return party.id if party != null else 0
 
 
 func get_party_count() -> int:
@@ -377,7 +399,7 @@ func _pending_from(inviter: ServerPeer) -> int:
 	return count
 
 
-# Quita todas las invitaciones que tenía [param target] (ya está en un grupo) y le quita el aviso.
+# Quita todas las invitaciones que tenía [param target] (ya está en un grupo) y le quita los avisos.
 func _cancel_invitations_to(target: ServerPeer, now_tick: int) -> void:
 	for invitation: Invitation in _invitations.duplicate():
 		if invitation.target == target:

@@ -1190,6 +1190,7 @@ func _physics_process(delta: float) -> void:
 		_check_motion(entity, before)                        # |Δpos| > 1,5 m o y < -100
 	# Fase 3: acciones validadas contra StateHistory. Fase 4: PNJ, estructuras y captura.
 	_process_arrivals(s)            # READY pendientes: alta con el estado «tras s» (ver 3)
+	_social.step(s)                 # invitaciones caducadas y PARTY_STATUS (social.md 12.2 y 12.4)
 	_record_history(s)              # StateHistory.record() de todas las entidades
 	_snapshot_builder.begin(s, _registry.get_sorted())       # codifica cada registro una vez
 	_update_interest(s)             # cada peer, cada 6 ticks, escalonado por net_id
@@ -1201,8 +1202,13 @@ func _physics_process(delta: float) -> void:
 	tick_finished.emit(s)
 ```
 
+Es un esbozo de la fase 2: el orden normativo, con todos los pasos que se han ido sumando (cerebros de
+PNJ, combate, fuertes, PNJ, el paso social y las métricas por sección), es el de la cabecera de
+`scripts/server/zone_server.gd`.
+
 - **Envíos escalonados.** Cada cliente recibe su snapshot en los ticks de la paridad de su
-  `net_id`, así que el coste se reparte entre los dos ticks del intervalo.
+  `net_id`, así que el coste se reparte entre los dos ticks del intervalo. El PARTY_STATUS de cada grupo
+  sale igual, en su tick de los 30 del intervalo (`(tick + id del grupo) % 30 == 0`).
 - **Altas y bajas.**
   - Las altas van después de simular, así que la primera simulación de un jugador nuevo es la
     del tick `s + 1`, sin desfase de un tick.
@@ -1482,7 +1488,7 @@ El servidor nunca acepta estado del cliente, y todo valor decodificado está aco
 | Reino | Validado contra la zona. En la fase 2 lo declara el cliente (`DevAuthProvider`); desde la fase 5 sale del personaje (la reclamación de plataforma.md §5) y el campo de HELLO se ignora |
 | Rebobinado | Acotado por lo medido ([10](#10-historial-para-la-compensación-de-latencia)); el RTT que declara el cliente con sus acks se acota con el de ENet más el simulador del servidor + 3 ticks |
 | Comandos de depuración | Solo con `--debug-commands` |
-| Chat (protocolo 5) | Cada CHAT_SEND cuenta como un mensaje fiable más y además tiene sus cubos por peer: decir, zona y grupo, 1 mensaje/s con ráfaga de 5; susurro, 1/s con ráfaga de 3 y 5 destinatarios nuevos por minuto; un texto igual al anterior en 10 s se descarta. Uno de cada cinco descartados suma un aviso (el resto no expulsa). El servidor sanea el texto y nunca manda a un cliente el de otro reino ([social.md](social.md#12-implementación-fase-4)) |
+| Chat (protocolo 5) | Cada CHAT_SEND cuenta como un mensaje fiable más y además tiene sus cubos por peer, que gasta antes de sanear: decir, zona y grupo, 1 mensaje/s con ráfaga de 5; susurro, 1/s con ráfaga de 3 y 5 destinatarios nuevos por minuto; un texto igual al anterior en 10 s y al mismo sitio se descarta. Los diez primeros descartes de cada 600 ticks son gratis y cada uno de los siguientes suma un aviso: desde unos 6 mensajes por segundo sostenidos (el transporte deja pasar 10 sin avisos) se llega a la expulsión. Las invitaciones de grupo, igual. El servidor sanea el texto (también invisibles y marcas combinantes) y nunca manda a un cliente el de otro reino ([social.md](social.md#12-implementación-fase-4)) |
 
 **Crédito por parón.** Los limitadores cuentan en ticks del servidor, y el tick no avanza mientras
 el proceso está parado. Si el servidor pierde `k` ticks (un parón, una pausa de la máquina virtual;
@@ -1514,7 +1520,15 @@ REJECT). Ahora `ZoneServer._kick` apunta una entrada `_kick_until` de 30 s:
   crece más que las expulsiones de los últimos 30 s (`get_cooldown_count()`).
 - **Límite.** Es un freno, no un veto: el atacante con varias IP o con otro nombre desde loopback
   sigue entrando, y quien comparte IP con el expulsado (una red con NAT) espera los mismos 30 s. El
-  veto por cuenta llega con las fases 5 y 6.
+  veto por cuenta llega con las fases 5 y 6. Lo mismo vale para los cubos sociales (`ChatPeerState`):
+  son por conexión hasta la fase 5 ([social.md](social.md#127-decisiones-y-pendiente-de-la-fase-4)).
+
+**Nombres en el HELLO (fase 4).** Como el cliente elige el nombre, el `REJECT NAME` por un nombre que ya
+lleva alguien en la zona dice si ese nombre está conectado, sea del reino que sea; junto con el «no está
+conectado» del susurro delata a un enemigo. No se tapa en la fase 4 porque el cliente también elige su
+reino (`DevAuthProvider`) y puede entrar directamente en el del enemigo; desde la fase 5 el nombre y el
+reino salen del personaje del billete y ese rechazo desaparece (detalle en
+[social.md](social.md#127-decisiones-y-pendiente-de-la-fase-4)).
 
 **Fases 5 y 6:**
 

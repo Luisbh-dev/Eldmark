@@ -137,7 +137,9 @@ dueño (con un fuerte neutral, `D` es falso).
 2. Congelar. 3. Resolver golpes (también contra las puertas, §3). 4. Aplicar resultados.
 4b. `FortressController.step(s)`: presencia, `advance`, efectos. Los cambios de colisión de la
    puerta valen **desde `s + 1`** en el servidor y en el cliente.
-5. Altas de jugadores y de PNJ, historial, snapshots, OBJECT_STATE y eventos.
+5. Altas de jugadores y de PNJ, el paso social (invitaciones caducadas y PARTY_STATUS, social.md §12),
+   historial, snapshots, OBJECT_STATE y eventos. El orden completo y normativo es el de la cabecera de
+   `ZoneServer`.
 
 ---
 
