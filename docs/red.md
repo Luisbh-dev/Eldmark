@@ -1410,38 +1410,63 @@ Sobrecoste por paquete UDP: unos 40 B (IPv4 20, UDP 8, ENet ~12).
 64 bots agrupados. Se mide por sección: red, simulación (µs por personaje), historial,
 snapshots. Ese dato es el primero del límite de jugadores por batalla que pide `vision.md`.
 
-**Medidas de la fase 2** (`tools/load_test.gd --matrix`, TEC-11). Vado Gris con su Terrain3D, el servidor y
-el enjambre `--bots` en la misma máquina de 4 núcleos (con poca carga ajena), GDScript sin optimizar. Los
-falsos son `--fake-players`; los bots, clientes reales por ENet en loopback que reciben snapshots. Tick en
-ms, p50 / p99 / máximo de los últimos 34 s de régimen:
+**Medidas de la fase 2** (`tools/load_test.gd --matrix`, TEC-11, revisadas tras la revisión adversarial).
+Vado Gris con su Terrain3D, el servidor y el enjambre `--bots` en la misma máquina de 4 núcleos (sin más
+carga), GDScript sin optimizar, **120 s de medida por escenario**. Los falsos son `--fake-players`; los
+bots, clientes reales por ENet en loopback que reciben snapshots (el de «rtt=100» con el simulador de red
+`--net-sim=rtt=100`; los demás, sin retardo). Tick en ms, p50 / p99 / máximo de los últimos 34 s de
+régimen. Sustituidas: entradas de los bots que el servidor tuvo que sustituir, en toda la sesión y dentro
+de la ventana de medida (sin el arranque, ver más abajo):
 
-| Escenario | Jugadores | Tick | `sim` p50 | `snapshot` p50 | Bajada por cliente |
-|---|---|---|---|---|---|
-| agrupado, 62 falsos y 2 bots | 64 | 4,8 / 8,7 / 14,1 | 3,9 | 0,5 | 35,3 KB/s |
-| agrupado, 54 falsos y 10 bots | 64 | 5,7 / 9,6 / 23,4 | 3,9 | 1,2 | 35,2 KB/s |
-| agrupado, 64 falsos y 2 bots | 66 | 4,8 / 8,0 / 12,1 | 4,0 | 0,5 | 35,3 KB/s |
-| agrupado, 64 falsos y 10 bots | 74 | 6,5 / 12,1 / 45,2 | 4,5 | 1,3 | 35,3 KB/s |
-| agrupado, 64 falsos y 50 bots | 114 | 15,3 / 26,9 / 49,6 | 6,4 | 6,9 | 34,3 KB/s |
-| disperso, 64 falsos y 10 bots | 74 | 6,7 / 11,2 / 19,2 | 4,8 | 1,3 | 35,3 KB/s |
-| altas y bajas (1 por segundo), 64 falsos y 10 bots | 74 | 6,4 / 11,0 / 41,6 | 4,5 | 1,3 | 35,3 KB/s |
+| Escenario | Jugadores | Tick | `sim` p50 | `snapshot` p50 | Bajada por cliente | Sustituidas (sesión / ventana) |
+|---|---|---|---|---|---|---|
+| agrupado, 64 falsos y 2 bots | 66 | 4,9 / 8,2 / 20,0 | 4,0 | 0,5 | 35,2 KB/s | 0,07 % / 0,00 % |
+| agrupado, 64 falsos y 10 bots | 74 | 6,2 / 9,7 / 17,2 | 4,3 | 1,2 | 35,3 KB/s | 0,03 % / 0,00 % |
+| agrupado, 64 falsos y 50 bots | 114 | 15,3 / 26,5 / 36,5 | 6,4 | 7,0 | 34,9 KB/s | 0,05 % / 0,00 % |
+| **agrupado, 64 falsos y 10 bots, rtt=100** | 74 | 6,5 / 10,6 / 21,6 | 4,5 | 1,3 | 35,3 KB/s | **0,36 % / 0,00 %** |
+| disperso, 64 falsos y 10 bots | 74 | 6,8 / 11,4 / 20,5 | 4,9 | 1,3 | 35,3 KB/s | 0,03 % / 0,00 % |
+| altas y bajas (1 por segundo), 64 falsos y 10 bots | 74 | 6,7 / 10,7 / 15,4 | 4,6 | 1,5 | 35,3 KB/s | 0,08 % / 0,00 % |
+| agrupado, 128 falsos y 10 bots | 138 | 11,3 / 19,7 / 24,2 | 8,3 | 2,1 | 35,2 KB/s | 0,03 % / 0,00 % |
+| agrupado, 256 falsos y 10 bots | 266 | 15,9 / 24,8 / 79,7 | 15,1 | 0,0 | 25,4 KB/s | 97,3 % / 100 % |
+| disperso, 256 falsos y 10 bots | 266 | 17,5 / 27,1 / 41,8 | 16,7 | 0,0 | 24,0 KB/s | 97,2 % / 100 % |
 
-- **Sustituidas.** Entre 0,09 % y 0,16 % de las entradas (criterio: menos de un 1 %), sin avisos ni
-  expulsiones ni errores de física en ningún escenario.
+- **Sustituidas, con 100 ms de RTT (el criterio de §16).** Con 64 falsos agrupados y 10 bots con
+  `rtt=100`: 277 de 76 012 entradas (**0,36 %** de la sesión, menos de un 1 %) y ninguna dentro de la
+  ventana de medida. Cada bot pierde unas 27 entradas (19–20 llegan tarde) en los primeros segundos,
+  mientras `TickSync` busca su antelación: es un coste fijo de arranque, así que el porcentaje de la
+  sesión depende de cuánto dure (con 30 s sale un 1,2 %, con 120 s un 0,36 %) y el de la ventana de medida
+  (de la primera línea de métricas tras entrar los bots a la última antes de que se vayan, restando lo
+  acumulado al empezar) es el que mide el régimen. **Criterio cumplido.** Sin retardo y hasta 138
+  jugadores, como mucho un 0,08 % en la sesión. Ningún escenario tuvo avisos, expulsiones ni errores de
+  física. (Los primeros resultados de esta sección, de 30 s y sin retardo, decían 0,09–0,16 %: no medían el
+  criterio, que pide 100 ms de RTT.) Pendiente de mirar: el arranque con 100 ms de RTT empieza con poca
+  antelación (19–20 tardías por bot).
+- **128 y 256 jugadores falsos.** Con 138 jugadores el tick de mediana ocupa 11,3 de los 16,7 ms y el p99
+  (19,7 ms) los rebasa en alguna ocasión, pero el servidor aguanta los 60 ticks/s (60,1) y no sustituye
+  entradas. **Con 266 el servidor no sostiene el tiempo real**: `simulate()` y su sección ocupan 15–17 ms de
+  mediana, el servidor va a 44–47 ticks/s y casi todas las entradas de los clientes reales (el 97 %) se
+  sustituyen; la mediana de `snapshot` y de `net` cae a unos microsegundos (probablemente porque el
+  servidor encadena ticks para recuperar el retraso; no se ha comprobado) y la bajada por cliente cae a
+  24–25 KB/s. Es un resultado de CPU del servidor, no de la red: 266 jugadores en un proceso de GDScript sin
+  optimizar quedan fuera de lo que esta fase promete.
 - **Ancho de banda.** Con 57 o más jugadores visibles cada snapshot llena el paquete (1191 B) y cada cliente
-  baja unos 35 KB/s (criterio: 37 KB/s como mucho) y sube unos 2,5 KB/s. Dispersos o agrupados da igual: sin
-  interés por rejilla todo el mundo ve a todo el mundo.
-- **`simulate()` por personaje: 44 a 50 µs** (medido alrededor de cada llamada), por encima de los 25 µs que
+  baja unos 35 KB/s (criterio: 37 KB/s como mucho) y sube de 2,3 a 3,7 KB/s (3,7 con 100 ms de RTT).
+  Dispersos o agrupados da igual: sin interés por rejilla todo el mundo ve a todo el
+  mundo.
+- **`simulate()` por personaje: 42 a 50 µs** (medido alrededor de cada llamada), por encima de los 25 µs que
   marcan la palanca 6. La sección `sim` entera (cola de entradas, cerebro de los falsos, comprobación de
-  movimiento) sale a unos 60 µs por personaje: con 64 jugadores son ~4 ms de los 16,7 ms del tick.
-- **Construir un snapshot** de 57 registros cuesta de 250 a 525 µs (la codificación común de los registros
-  del tick se reparte entre los snapshots de ese tick, así que sale más caro con pocos clientes). Con N
-  clientes reales se construyen N/2 por tick: con 50, la sección `snapshot` llega a 6,9 ms de mediana y es lo
-  que satura el tick (palancas 2 a 5).
-- **Criterio de CPU no cumplido.** El p99 del tick con 64 jugadores es de 8,7 a 9,6 ms (criterio: menos de
-  8 ms), con una mediana de 4,8 a 5,7 ms. Con 66 jugadores y 2 clientes queda justo en 8,0 ms. Con 74
-  jugadores pasa de 11 ms y con 114 (50 reales) el tick de mediana ya ocupa 15,3 ms de los 16,7: el servidor
-  no aguanta 50 clientes reales más 64 falsos. El primer cuello es `simulate()` en GDScript (palanca 6,
-  ~46 µs por personaje frente a los 25 µs de umbral) y, con muchos clientes reales, el `SnapshotBuilder`.
+  movimiento) sale a unos 57–66 µs por personaje: con 64 jugadores son ~4 ms de los 16,7 ms del tick.
+- **Construir un snapshot** de 57 registros cuesta de 250 a 730 µs (la codificación común de los registros
+  del tick se reparte entre los snapshots de ese tick, así que sale más caro con pocos clientes y con el
+  servidor saturado). Con N clientes reales se construyen N/2 por tick: con 50, la sección `snapshot` llega
+  a 7,0 ms de mediana y es lo que satura el tick (palancas 2 a 5).
+- **Criterio de CPU no cumplido.** El p99 del tick con 64 falsos y 2 bots (66 jugadores) es de 8,2 ms y con
+  64 falsos y 10 bots (74) de 9,7 ms (criterio: menos de 8 ms con 64 jugadores), con medianas de 4,9 y
+  6,2 ms; la serie anterior de 30 s, con exactamente 64 jugadores, daba 8,7 y 9,6 ms. Con 74 jugadores
+  pasa de 10 ms (hasta 11,4 ms dispersos) y con 114 (50 reales) el tick de mediana ya ocupa 15,3 ms de los
+  16,7: el servidor no aguanta 50 clientes reales más 64 falsos. El primer cuello es `simulate()` en GDScript
+  (palanca 6, ~44 µs por personaje frente a los 25 µs de umbral) y, con muchos clientes reales, el
+  `SnapshotBuilder`.
 
 **Palancas para Eldrun, por orden,** decididas con las medidas del final de la fase 2:
 
@@ -1659,11 +1684,14 @@ todas las copias del proyecto.
 - Servidor con `--fake-players=N` (entradas inyectadas en la `InputQueue`, sin red) y procesos
   `--bots=50`.
 - 64, 128 y 256 jugadores; escenarios disperso, agrupado (todos en 60 m) y de altas y bajas a 1
-  por segundo; 120 s cada uno.
+  por segundo; 120 s cada uno. `--matrix` lo hace con 64 falsos (+ 2, 10 y 50 bots, dispersos y con
+  altas y bajas), 128 falsos agrupados y 256 falsos agrupados y dispersos (+ 10 bots), y los bots del
+  escenario del criterio con `--net-sim=rtt=100`.
 - Criterio de la fase 2, con 64 bots agrupados:
   - p99 del tick < 8 ms;
   - ≤ 37 KB/s por cliente;
-  - menos de un 1 % de entradas sustituidas con 100 ms de RTT.
+  - menos de un 1 % de entradas sustituidas con 100 ms de RTT, medido dentro de la ventana de medida
+    (sin el arranque); la herramienta muestra también el porcentaje de toda la sesión.
 
 ### Arquitectura (`test_architecture`, ampliado)
 

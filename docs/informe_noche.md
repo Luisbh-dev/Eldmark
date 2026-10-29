@@ -8,7 +8,7 @@ y está siempre en la rama más reciente.
 | Trabajo | Rama | Estado |
 |---|---|---|
 | Backlog (`docs/backlog.md`) | `main` | Hecho y subido |
-| Fase 2: red | `fase2-red` | Implementada (594 pruebas en verde, CI de GitHub en verde); revisión adversarial en marcha |
+| Fase 2: red | `fase2-red` | Implementada (594 pruebas en verde, CI de GitHub en verde); revisión adversarial en marcha. Con las correcciones de la revisión (A1 a A8 y S5, carril F2): 618 pruebas en verde |
 
 ## Entorno (Linux)
 
@@ -76,30 +76,59 @@ produjo diferencia (la sustituta repetía la misma entrada). Servidor: 0 errores
 `simulate()` 74–77 µs de media con 3 jugadores (incluye el arranque); snapshot medio de 91 B con 2
 remotos.
 
-### Medidas de §19 (carril B, `tools/load_test.gd --matrix`, máquina de 4 núcleos compartida)
+### Medidas de §19 (`tools/load_test.gd --matrix`, máquina de 4 núcleos, 120 s por escenario)
 
-| Escenario | Jugadores | Tick p50 / p99 / máx (ms) | KB/s por cliente | Sustituidas |
+Revisadas tras la revisión adversarial (hallazgo A4). Las primeras cifras de este informe (30 s, sin
+retardo, sustituidas entre 0,09 % y 0,16 %) **no medían el criterio**, que pide 100 ms de RTT, y la
+batería no tenía los tamaños de 128 y 256 ni los 120 s de §16. Ahora la batería usa 120 s por escenario,
+un escenario con `rtt=100`, los de 128 y 256 jugadores falsos y calcula las sustituidas también dentro de
+la ventana de medida (sin el arranque).
+
+| Escenario | Jugadores | Tick p50 / p99 / máx (ms) | KB/s por cliente | Sustituidas (sesión / ventana) |
 |---|---|---|---|---|
-| 64 falsos agrupados + 2 bots | 66 | 4,8 / 8,0 / 12,1 | 35,3 | 0,09 % |
-| 62 falsos + 2 bots | 64 | 4,8 / 8,7 / 14,1 | | |
-| 54 falsos + 10 bots | 64 | 5,7 / 9,6 / 23,4 | | |
-| 64 falsos agrupados + 10 bots | 74 | 6,5 / 12,1 / 45,2 | 35,3 | 0,14 % |
-| 64 falsos agrupados + 50 bots | 114 | 15,3 / 26,9 / 49,6 | 34,3 | 0,16 % |
-| 64 dispersos + 10 bots | 74 | 6,7 / 11,2 / 19,2 | | |
-| Altas y bajas a 1/s + 10 bots | 74 | 6,4 / 11,0 / 41,6 | | |
+| 64 falsos agrupados + 2 bots | 66 | 4,9 / 8,2 / 20,0 | 35,2 | 0,07 % / 0,00 % |
+| 64 falsos agrupados + 10 bots | 74 | 6,2 / 9,7 / 17,2 | 35,3 | 0,03 % / 0,00 % |
+| 64 falsos agrupados + 50 bots | 114 | 15,3 / 26,5 / 36,5 | 34,9 | 0,05 % / 0,00 % |
+| **64 falsos agrupados + 10 bots, rtt=100** | 74 | 6,5 / 10,6 / 21,6 | 35,3 | **0,36 % / 0,00 %** |
+| 64 dispersos + 10 bots | 74 | 6,8 / 11,4 / 20,5 | 35,3 | 0,03 % / 0,00 % |
+| Altas y bajas a 1/s + 10 bots | 74 | 6,7 / 10,7 / 15,4 | 35,3 | 0,08 % / 0,00 % |
+| 128 falsos agrupados + 10 bots | 138 | 11,3 / 19,7 / 24,2 | 35,2 | 0,03 % / 0,00 % |
+| 256 falsos agrupados + 10 bots | 266 | 15,9 / 24,8 / 79,7 | 25,4 | 97,3 % / 100 % |
+| 256 dispersos + 10 bots | 266 | 17,5 / 27,1 / 41,8 | 24,0 | 97,2 % / 100 % |
 
-- `simulate()` por personaje: **44–50 µs** (la sección de simulación entera, ~60 µs por personaje).
-- Snapshot lleno (57 registros): 1191 B, 250–525 µs de construcción.
-- Subida: 2,2–2,7 KB/s por cliente.
-- **Criterio de la fase 2**: bajada (≤ 37 KB/s) y sustituidas (< 1 %) se cumplen; **p99 del tick
-  < 8 ms con 64 jugadores agrupados NO se cumple** en esta máquina (8,7–9,6 ms). Los cuellos son
-  `simulate()` en GDScript (por encima de los 25 µs de la palanca 6 de red.md §14) y
-  `SnapshotBuilder` con muchos clientes reales. Primer límite orientativo de jugadores por batalla:
-  unos 60 en un servidor de esta clase sin optimizar. Está anotado en red.md §14.
+- `simulate()` por personaje: **42–50 µs** (la sección de simulación entera, ~57–66 µs por personaje).
+- Snapshot lleno (57 registros): 1191 B, 250–730 µs de construcción.
+- Subida: 2,3–3,7 KB/s por cliente (3,7 con 100 ms de RTT).
+- **Criterio de la fase 2**: bajada (≤ 37 KB/s) **cumplida**; sustituidas (< 1 %) **cumplida y ahora sí
+  medida con 100 ms de RTT** (0,36 % de la sesión con 64 agrupados y 10 bots; 0 dentro de la ventana; cada
+  bot pierde unas 27 entradas en el arranque, 19–20 tardías, así que con 30 s salía un 1,2 % y con 120 s un
+  0,36 %); **p99 del tick < 8 ms con 64 jugadores agrupados NO se cumple** en esta máquina (8,2 ms con 66
+  jugadores, 9,7 con 74; la serie anterior de 30 s con exactamente 64 daba 8,7–9,6 ms). Los cuellos son
+  `simulate()` en GDScript (por encima de los 25 µs de la palanca 6 de red.md §14) y `SnapshotBuilder`
+  con muchos clientes reales.
+- **128 y 256 jugadores**: con 138 el tick de mediana ocupa 11,3 de los 16,7 ms (p99 19,7 ms) pero el
+  servidor aguanta los 60 ticks/s y no sustituye entradas. **Con 266 el servidor no sostiene el tiempo
+  real** (44–47 ticks/s) y sustituye el 97 % de las entradas de los clientes reales: 256 jugadores en un
+  proceso de GDScript sin optimizar quedan fuera de lo que esta fase promete. Primer límite orientativo
+  de jugadores por batalla: unos 60 en un servidor de esta clase sin optimizar. Está anotado en red.md §14.
+- Observación pendiente: el arranque con 100 ms de RTT empieza con poca antelación (19–20 entradas tardías
+  por bot en los primeros segundos); vale la pena mirarlo.
 
 ## Pendiente de probar mañana con ventana
 
 (Se completa al terminar la fase 2.)
+
+- **Windows, sin probar en esta máquina (Linux):** la rama de Windows de
+  `LocalServerLauncher.is_process_alive` (A1, `tasklist /FI "PID eq <pid>" /FO CSV /NH`) está escrita
+  según el código de Godot 4.7.2 (`OS.is_process_running` solo conoce los procesos hijos propios). Sus
+  pruebas corren en todas las plataformas (lectura de la salida de `tasklist`; un proceso hijo mira al
+  ejecutor y el ejecutor mira a un nieto), pero hay que ejecutar en Windows la suite completa y, en
+  particular, `--filter=test_local_server_launcher`, y abrir dos ventanas con `--local` para ver el mensaje
+  «Servidor local ya en marcha … se reutiliza». También hay un trabajo `windows-latest` en
+  `.github/workflows/tests.yml` (sin ejecutar aún: la primera ejecución en GitHub dirá si el paso de
+  descarga y descompresión de Godot para Windows funciona).
+- El bloqueo huérfano tras `SIGTERM`/`SIGINT` (S5) solo se mitiga en Linux (`/proc/<pid>/cmdline`); en
+  Windows un bloqueo huérfano con el pid reutilizado seguiría engañando a `--local` durante un intento.
 
 ## Decisiones tomadas fuera del contrato
 
