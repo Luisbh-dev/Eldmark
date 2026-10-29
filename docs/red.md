@@ -94,7 +94,8 @@ que añade otro flujo de trabajo. Aquí se usan, no se redefinen (ver [1.5](#15-
 - **Elección de reino.** Si un modo en red arranca sin `--realm`, `OnlineMain` muestra
   `RealmSelect`: tres botones (Vardheim, Solmarch, Askarra), el campo de dirección y «Entrar»,
   con los textos en español.
-- **Nombre.** Sin `--name`, el cliente usa `Jugador-NNNN`.
+- **Nombre.** Sin `--name`, el cliente usa `NameRules.default_name(semilla)`: «Jugador» más cuatro
+  letras (p. ej. `Jugadorabcd`), que es un nombre válido (SOC-01; el antiguo `Jugador-NNNN` ya no lo es).
 
 ### 1.3 Ajustes del servidor headless
 
@@ -283,7 +284,9 @@ Cliente                                         Servidor (tick S)
    - magic y versión;
    - `sim_hash`;
    - que el reino es válido y está admitido en la zona;
-   - que el nombre tiene de 3 a 24 caracteres;
+   - que el nombre cabe en el HELLO (24 caracteres y 48 B), cumple `NameRules` (3 a 16 letras,
+     sin espacios ni dígitos, mayúscula inicial, sin reservados) y no lo lleva ya un jugador conectado
+     en la zona (SOC-01; REJECT `NAME`);
    - que hay sitio;
    - que no hay más de 4 conexiones desde la misma IP (salvo loopback);
    - el `AuthProvider`. En la fase 2 es `DevAuthProvider`, que acepta el reino y el nombre que
@@ -1741,6 +1744,9 @@ func _init(config: ServerConfig, sim_hash: int, allowed_realms: PackedInt32Array
 ## Devuelve un NetProtocol.Result.
 func validate(hello: NetMessages.Hello, remote_address: String, player_count: int,
 		connections_from_address: int) -> int
+## SOC-01: fuente de los nombres ya conectados (Callable sin argumentos -> PackedStringArray).
+func set_connected_names_source(source: Callable) -> void
+func check_name(display_name: String) -> int   # NameRules.Reason (TAKEN si ya está conectado)
 
 # auth_provider.gd
 class_name AuthProvider extends RefCounted

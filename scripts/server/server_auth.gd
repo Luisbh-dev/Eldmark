@@ -9,7 +9,7 @@ extends RefCounted
 ## versión del protocolo        -> VERSION
 ## sim_hash                     -> SIM_HASH
 ## reino válido y admitido      -> REALM    (NONE siempre se rechaza)
-## nombre de 3 a 24 caracteres  -> NAME     (y 48 B como mucho en UTF-8)
+## nombre (NameRules)           -> NAME     (y no repetido entre los conectados)
 ## servidor lleno               -> FULL
 ## demasiadas conexiones por IP -> TOO_MANY_CONNECTIONS (salvo loopback)
 ## el AuthProvider              -> OK o TICKET
@@ -25,6 +25,7 @@ var _config: ServerConfig
 var _sim_hash: int
 var _allowed_realms: PackedInt32Array
 var _provider: AuthProvider
+var _connected_names: Callable = Callable()
 
 
 ## [param sim_hash] es la huella de la simulación del servidor
@@ -36,6 +37,14 @@ func _init(config: ServerConfig, sim_hash: int, allowed_realms: PackedInt32Array
 	_sim_hash = sim_hash
 	_allowed_realms = allowed_realms
 	_provider = provider
+
+
+## Fuente de los nombres de los jugadores ya conectados en la zona: un [Callable] sin argumentos
+## que devuelve un [PackedStringArray]. Se consulta en cada HELLO; con un nombre que ya está ahí
+## (se compara con [method NameRules.normalize_key]: da igual mayúsculas y tildes) se rechaza con
+## NAME, para que los susurros por nombre no sean ambiguos. Sin fuente no se comprueba.
+func set_connected_names_source(source: Callable) -> void:
+	_connected_names = source
 
 
 ## Devuelve un [enum NetProtocol.Result]: OK si hay que aceptar al cliente o el motivo del
@@ -52,7 +61,7 @@ func validate(hello: NetMessages.Hello, remote_address: String, player_count: in
 		return NetProtocol.Result.SIM_HASH
 	if not _is_realm_allowed(hello.realm):
 		return NetProtocol.Result.REALM
-	if not is_valid_name(hello.display_name):
+	if check_name(hello.display_name) != NameRules.Reason.OK:
 		return NetProtocol.Result.NAME
 	if player_count >= _config.max_players:
 		return NetProtocol.Result.FULL
@@ -76,23 +85,45 @@ static func is_loopback(remote_address: String) -> bool:
 	return false
 
 
-## true si [param display_name] cumple las reglas de la fase 2: de
-## [constant NetProtocol.MIN_NAME_CHARS] a [constant NetProtocol.MAX_NAME_CHARS] caracteres, no
-## más de [constant NetProtocol.MAX_NAME_BYTES] bytes en UTF-8, ni solo espacios ni caracteres de
-## control. Las reglas completas (letras, reservados, colisiones) llegan con SOC-01.
+## true si [param display_name] cabe en el HELLO (como mucho [constant NetProtocol.MAX_NAME_CHARS]
+## caracteres y [constant NetProtocol.MAX_NAME_BYTES] bytes en UTF-8) y cumple las reglas de
+## [NameRules]. No mira los nombres de los conectados: para eso está [method check_name].
 static func is_valid_name(display_name: String) -> bool:
-	var length: int = display_name.length()
-	if length < NetProtocol.MIN_NAME_CHARS or length > NetProtocol.MAX_NAME_CHARS:
+	return _fits_protocol(display_name) and NameRules.is_valid(display_name)
+
+
+## Motivo ([enum NameRules.Reason]) por el que [param display_name] no se admite, o
+## [constant NameRules.Reason.OK] si vale: cabe en el HELLO, cumple las reglas de [NameRules] y
+## no lo lleva ya un jugador conectado ([constant NameRules.Reason.TAKEN]).
+func check_name(display_name: String) -> int:
+	if not _fits_protocol(display_name):
+		return NameRules.Reason.TOO_LONG
+	var reason: int = NameRules.validate(display_name)
+	if reason != NameRules.Reason.OK:
+		return reason
+	if is_name_connected(display_name):
+		return NameRules.Reason.TAKEN
+	return NameRules.Reason.OK
+
+
+## true si la fuente de [method set_connected_names_source] da algún nombre con la misma clave
+## ([method NameRules.normalize_key]) que [param display_name].
+func is_name_connected(display_name: String) -> bool:
+	if not _connected_names.is_valid():
 		return false
-	if display_name.to_utf8_buffer().size() > NetProtocol.MAX_NAME_BYTES:
+	var key: String = NameRules.normalize_key(display_name)
+	var names: PackedStringArray = _connected_names.call()
+	for existing: String in names:
+		if NameRules.normalize_key(existing) == key:
+			return true
+	return false
+
+
+# Los topes del cable: 24 caracteres y 48 bytes en UTF-8 como mucho (el mínimo lo pone NameRules).
+static func _fits_protocol(display_name: String) -> bool:
+	if display_name.length() > NetProtocol.MAX_NAME_CHARS:
 		return false
-	if display_name.strip_edges().is_empty():
-		return false
-	for i: int in length:
-		var code: int = display_name.unicode_at(i)
-		if code < 0x20 or (code >= 0x7F and code <= 0x9F):
-			return false
-	return true
+	return display_name.to_utf8_buffer().size() <= NetProtocol.MAX_NAME_BYTES
 
 
 func _is_realm_allowed(realm: int) -> bool:

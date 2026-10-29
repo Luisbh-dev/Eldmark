@@ -182,7 +182,5 @@ static func result_text(result: int) -> String:
 		Result.TOO_MANY_CONNECTIONS:
 			return "Demasiadas conexiones desde tu dirección"
 		Result.NAME:
-			return "Nombre no válido: debe tener de %d a %d caracteres" % [
-				MIN_NAME_CHARS, MAX_NAME_CHARS,
-			]
+			return "Nombre no válido o ya en uso: " + NameRules.rules_summary()
 	return "Conexión rechazada"

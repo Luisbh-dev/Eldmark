@@ -268,6 +268,7 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_sim_hash = _compute_sim_hash()
 	_auth = ServerAuth.new(config, _sim_hash, NetZones.allowed_realms(config.zone_id),
 			auth_provider)
+	_auth.set_connected_names_source(get_connected_names)
 	_spawn_picker = SpawnPicker.new(world)
 	if _transport != null:
 		_connect_transport()
@@ -359,6 +360,20 @@ func get_player_count() -> int:
 		if peer.state == ServerPeer.State.LOADING or peer.state == ServerPeer.State.IN_WORLD:
 			count += 1
 	return count
+
+
+## Nombres de los jugadores presentes en la zona: los peers aceptados (cargando o ya dentro) y los
+## jugadores falsos. [ServerAuth] rechaza con NAME un HELLO cuyo nombre repite alguno de ellos.
+func get_connected_names() -> PackedStringArray:
+	var names := PackedStringArray()
+	for peer: ServerPeer in _peers.values():
+		if peer.state == ServerPeer.State.LOADING or peer.state == ServerPeer.State.IN_WORLD:
+			names.append(peer.display_name)
+	for net_id: int in _fakes:
+		var record: _PlayerRecord = _player_by_net.get(net_id)
+		if record != null:
+			names.append(record.display_name)
+	return names
 
 
 func get_registry() -> NetEntityRegistry:

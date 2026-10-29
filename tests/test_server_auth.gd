@@ -112,6 +112,10 @@ func test_reject_name() -> void:
 		"", "A", "ab", "x".repeat(25), "   ", " \t ", "Ana\nBruno", "Ana" + char(127),
 		# 24 caracteres de 3 bytes: 72 B, más que los 48 B del formato.
 		"€".repeat(24),
+		# Reglas de NameRules (SOC-01): sin espacios ni dígitos ni signos, con mayúscula inicial,
+		# 16 letras como máximo y sin reservados.
+		"Ana B", "Jugador-0001", "Ana1", "ana", "Anabcdefghijklmnopq", "Admin", "ADMINISTRADOR",
+		"Vardheim", "Capitán",
 	]
 	for display_name: String in bad_names:
 		var hello: NetMessages.Hello = _make_hello()
@@ -123,7 +127,7 @@ func test_reject_name() -> void:
 func test_name_length_boundaries() -> void:
 	var auth: ServerAuth = _make_auth()
 	var good_names: Array[String] = [
-		"Ana", "x".repeat(24), "Ñandú", "ñ".repeat(24), "Jugador-0001", "Ana B",
+		"Ana", "A" + "x".repeat(15), "Ñandú", "Ñ" + "ñ".repeat(15), "Jugadorabcd", "Álvaro",
 	]
 	for display_name: String in good_names:
 		var hello: NetMessages.Hello = _make_hello()
@@ -131,8 +135,65 @@ func test_name_length_boundaries() -> void:
 		assert_eq(auth.validate(hello, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.OK,
 				"nombre válido: '%s' (%d caracteres, %d B)" % [display_name, display_name.length(),
 				display_name.to_utf8_buffer().size()])
-	assert_true(ServerAuth.is_valid_name("ñ".repeat(24)), "24 caracteres de 2 B son 48 B: caben")
-	assert_false(ServerAuth.is_valid_name("ñ".repeat(25)), "25 caracteres no caben")
+	assert_true(ServerAuth.is_valid_name("Ñ" + "ñ".repeat(15)), "16 letras de 2 B: caben")
+	assert_false(ServerAuth.is_valid_name("Ñ" + "ñ".repeat(16)), "17 letras no caben")
+	assert_false(ServerAuth.is_valid_name("ab"), "dos letras no bastan")
+	# El tope del protocolo (24 caracteres) sigue siendo el límite del cable, por encima de NameRules.
+	assert_false(ServerAuth.is_valid_name("A" + "x".repeat(24)), "25 caracteres no caben en el HELLO")
+	assert_eq(_make_auth().check_name("A" + "x".repeat(24)), NameRules.Reason.TOO_LONG,
+			"y se informa como demasiado largo")
+
+
+func test_check_name_reports_the_reason() -> void:
+	var auth: ServerAuth = _make_auth()
+	assert_eq(auth.check_name("Ana"), NameRules.Reason.OK, "válido")
+	assert_eq(auth.check_name("Ana B"), NameRules.Reason.HAS_SPACE, "espacio")
+	assert_eq(auth.check_name("Ana1"), NameRules.Reason.HAS_DIGIT, "dígito")
+	assert_eq(auth.check_name("ana"), NameRules.Reason.NOT_CAPITALIZED, "minúscula")
+	assert_eq(auth.check_name("Admin"), NameRules.Reason.RESERVED, "reservado")
+	assert_eq(auth.check_name("ab"), NameRules.Reason.TOO_SHORT, "corto")
+
+
+func test_duplicate_name_is_rejected() -> void:
+	var auth: ServerAuth = _make_auth()
+	var connected := PackedStringArray(["Álvaro", "Bruno"])
+	auth.set_connected_names_source(func() -> PackedStringArray: return connected)
+	var hello: NetMessages.Hello = _make_hello()
+	hello.display_name = "Carla"
+	assert_eq(auth.validate(hello, REMOTE_ADDRESS, 2, 0), NetProtocol.Result.OK,
+			"un nombre libre entra")
+	# Mismo nombre, y con las variantes de mayúsculas y tildes que lo harían ambiguo.
+	for display_name: String in ["Álvaro", "Alvaro", "ALVARO", "ÁLVARO", "AlVaRo", "Bruno", "BRUNO"]:
+		hello.display_name = display_name
+		assert_eq(auth.validate(hello, REMOTE_ADDRESS, 2, 0), NetProtocol.Result.NAME,
+				"'%s' ya está conectado" % display_name)
+		assert_eq(auth.check_name(display_name), NameRules.Reason.TAKEN,
+				"el motivo de '%s' es TAKEN" % display_name)
+	hello.display_name = "Alvaro"
+	assert_true(auth.is_name_connected("Alvaro"), "is_name_connected")
+	assert_false(auth.is_name_connected("Carla"), "Carla no está")
+	# Cuando el otro jugador se va, el nombre queda libre (la fuente se consulta en cada HELLO).
+	connected.remove_at(0)
+	assert_eq(auth.validate(hello, REMOTE_ADDRESS, 1, 0), NetProtocol.Result.OK,
+			"libre tras irse el jugador")
+
+
+func test_duplicate_name_is_checked_after_the_rules_and_before_the_cap() -> void:
+	var auth: ServerAuth = _make_auth(null, PackedInt32Array(), _make_config(4, 2))
+	auth.set_connected_names_source(func() -> PackedStringArray: return PackedStringArray(["Ana"]))
+	var hello: NetMessages.Hello = _make_hello()
+	hello.display_name = "Ana"
+	# Un nombre repetido se informa antes que el servidor lleno (orden de la sección 3).
+	assert_eq(auth.validate(hello, REMOTE_ADDRESS, 4, 0), NetProtocol.Result.NAME,
+			"NAME antes que FULL")
+	# Sin fuente de nombres no se comprueba nada.
+	assert_eq(_make_auth().validate(hello, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.OK,
+			"sin fuente de nombres conectados")
+	# Una fuente inválida (un Callable vacío) tampoco rompe nada.
+	var no_source: ServerAuth = _make_auth()
+	no_source.set_connected_names_source(Callable())
+	assert_eq(no_source.validate(hello, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.OK,
+			"Callable vacío")
 
 
 func test_reject_full() -> void:

@@ -424,6 +424,35 @@ func test_full_server_rejects_with_full() -> void:
 	assert_eq(_server.get_player_count(), 2, "siguen dos")
 
 
+func test_duplicate_name_is_rejected_while_the_first_player_is_connected() -> void:
+	await _start_server()
+	var first: RawClient = await _join("Álvaro")
+	if first == null:
+		return
+	assert_true(_server.get_connected_names().has("Álvaro"), "el servidor conoce el nombre")
+	# Mismo nombre con otras mayúsculas y sin tilde: se rechaza con NAME.
+	var second: RawClient = _connect_client(_hello(VARDHEIM, "ALVARO"))
+	var rejected: bool = await _run_until(func() -> bool: return second.reject != null)
+	if not assert_true(rejected, "el segundo recibe un REJECT"):
+		return
+	assert_eq(second.reject.result, NetProtocol.Result.NAME, "nombre repetido")
+	assert_null(second.welcome, "no hay WELCOME")
+	assert_eq(_server.get_player_count(), 1, "sigue solo el primero")
+	# Otro nombre sí entra.
+	var third: RawClient = await _join("Bruno", SOLMARCH)
+	if third == null:
+		return
+	assert_eq(_server.get_connected_names().size(), 2, "Álvaro y Bruno")
+	# Cuando el primero se va, su nombre queda libre.
+	var leave := NetMessages.ClientLeave.new()
+	first.send_raw(NetProtocol.CH_RELIABLE, leave.encode())
+	var gone: bool = await _run_until(func() -> bool:
+		return not _server.get_connected_names().has("Álvaro"))
+	assert_true(gone, "Álvaro se ha ido")
+	var again: RawClient = await _join("Alvaro")
+	assert_not_null(again, "y su nombre se puede volver a usar")
+
+
 func test_inputs_move_the_player_and_the_snapshot_feeds_back() -> void:
 	await _start_server()
 	var client: RawClient = await _join("Ana")
