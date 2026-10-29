@@ -456,6 +456,79 @@ func test_substituted_inputs_do_not_open_parry_windows() -> void:
 	assert_true(ActionMachine.is_parry_window(e.c, e.tick), "con una entrada real, ventana de parada")
 
 
+func test_a_substituted_input_during_the_press_only_delays_the_charge() -> void:
+	# C1: una sola entrada sustituida entre los ticks p+1 y p+7 de la pulsación retrasa la carga un
+	# tick (primary_held cuenta solo los ticks reales), pero no la anula para siempre.
+	for lost: int in range(1, 8):
+		var d := Driver.new()
+		d.hold(0, 4)
+		var p: int = d.tick + 1
+		d.step(PRIMARY)
+		for rel: int in range(1, 8):
+			d.step(PRIMARY, rel == lost)
+		assert_eq(d.tick, p + 7, "(perdida en p+%d) tick p+7" % lost)
+		assert_eq(d.c.action, Action.LIGHT, "(perdida en p+%d) aún no hay 8 ticks reales" % lost)
+		assert_eq(d.c.primary_held, 7, "(perdida en p+%d) siete ticks reales" % lost)
+		var out: ActionMachine.Output = d.step(PRIMARY)
+		assert_eq(d.tick, p + 8, "(perdida en p+%d) tick p+8" % lost)
+		assert_eq(d.c.action, Action.CHARGE, "(perdida en p+%d) un tick más tarde, carga" % lost)
+		assert_eq(d.c.primary_held, 8, "(perdida en p+%d) ocho ticks reales" % lost)
+		assert_eq(d.c.action_tick, p, "(perdida en p+%d) conserva el action_tick" % lost)
+		assert_true(out.snap_yaw, "(perdida en p+%d) el yaw salta al empezar la carga" % lost)
+		d.hold(PRIMARY, 22)
+		d.step()
+		assert_eq(d.c.action, Action.HEAVY, "(perdida en p+%d) al soltar sale el fuerte" % lost)
+		assert_eq(d.c.charge_ticks, 31, "(perdida en p+%d) con la carga desde la pulsación" % lost)
+		assert_eq(d.c.stamina, 850, "(perdida en p+%d) y gasta 150" % lost)
+
+
+func test_substituted_inputs_after_the_charge_started_change_nothing() -> void:
+	# Perder una entrada con la carga ya empezada no la deshace (control de C1).
+	var d := Driver.new()
+	d.hold(PRIMARY, 8)
+	assert_eq(d.c.action, Action.CHARGE, "cargando")
+	d.step(PRIMARY, true)
+	d.step(PRIMARY)
+	assert_eq(d.c.action, Action.CHARGE, "sigue la carga")
+	assert_eq(d.c.primary_held, 9, "y solo cuentan los ticks reales")
+
+
+func test_a_new_press_during_another_lights_windup_still_does_not_charge_it() -> void:
+	# C1 no debe romper la regla de §3.3: la pulsación que llega con otro ligero ya en marcha no lo
+	# convierte, aunque haya entradas sustituidas de por medio.
+	for lost: int in [-1, 4, 6]:
+		var d := Driver.new()
+		var p: int = d.tick + 1
+		d.step(PRIMARY)
+		d.hold(0, 3)
+		var second: int = d.tick + 1
+		d.step(PRIMARY)
+		assert_eq(second, p + 4, "segunda pulsación en p+4, con el ligero en la anticipación")
+		for rel: int in range(1, 10):
+			d.step(PRIMARY, rel == lost)
+		assert_ne_int(d.c.action, Action.CHARGE,
+				"(perdida %d) la pulsación nueva no convierte el ligero de otra" % lost)
+
+
+func test_a_press_held_across_a_buffer_still_converts_the_light_it_starts() -> void:
+	# Pulsación en el aire (al búfer) mantenida hasta aterrizar: el ligero que empieza al aterrizar
+	# es de esa pulsación y se convierte en carga (control de C1).
+	var d := Driver.new()
+	d.grounded = false
+	var p: int = d.tick + 1
+	d.step(PRIMARY)
+	assert_eq(d.c.action, Action.NONE, "en el aire no se ataca")
+	assert_eq(d.c.buffered_type(), CombatState.BUFFER_PRIMARY, "queda en el búfer")
+	d.hold(PRIMARY, 2)
+	d.grounded = true
+	d.step(PRIMARY)
+	assert_eq(d.c.action, Action.LIGHT, "al aterrizar empieza el ligero")
+	assert_eq(d.c.action_tick, p + 3, "en el tick de aterrizaje")
+	d.hold(PRIMARY, 4)
+	assert_eq(d.c.primary_held, 8, "ocho ticks reales de pulsación")
+	assert_eq(d.c.action, Action.CHARGE, "y el ligero de la pulsación se convierte")
+
+
 func test_substituted_bit_is_not_a_button() -> void:
 	var d := Driver.new()
 	d.step(PlayerInput.SUBSTITUTED, true)

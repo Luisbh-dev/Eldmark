@@ -188,7 +188,7 @@ esquiva reactivas se diseñan contra los fuertes, cuya anticipación tras soltar
 | 45 | u8 | `buffered` | bits 0–1 tipo (0 nada, 1 PRIMARY, 2 DODGE), bits 2–5 ticks que le quedan |
 | 46 | u16 | `stamina` | 0–`stamina_max` |
 | 48 | u32 | `stamina_regen_tick` | primer tick en que vuelve a regenerar |
-| 52 | u8 | `combat_flags` | bit0 agotado, bit1 último intento sin resistencia (para la interfaz), bit2 resistencia infinita (comando) |
+| 52 | u8 | `combat_flags` | bit0 agotado, bit1 último intento sin resistencia (para la interfaz), bit2 resistencia infinita (comando), bits 3–5 botones DODGE/BLOCK/PRIMARY pulsados en el tick anterior, bit6 ligero de la pulsación viva (§11) |
 | 53 | u16 | `action_dir` | yaw cuantizado (como `look_yaw`) de la esquiva |
 | 55 | u32 | `cc_until_tick` | fin del control actual (exclusivo) |
 | 59 | s16 × 2 | `knockback` | empuje horizontal (x, z) en cm/s |
@@ -205,7 +205,9 @@ servidor aplica la máscara al decodificar). Lo ponen `InputQueue.take()` y
 botones. Con ese bit, la máquina de acciones:
 
 - no suma a `primary_held`, no convierte un ligero en carga ni lanza el fuerte al llegar a la
-  carga máxima (la carga se congela hasta la siguiente entrada real);
+  carga máxima (la carga se congela hasta la siguiente entrada real; una sustituida solo
+  *retrasa* la conversión, no la pierde: el bit `FLAG_LIGHT_OF_PRESS` recuerda de qué pulsación
+  es el ligero, §11);
 - no abre ventanas de parada;
 - calcula los flancos sin el bit (`prev_buttons` nunca lo guarda).
 
@@ -605,13 +607,22 @@ Huecos del documento que se cerraron al implementar (K1a, K1b, K2):
 
 - **`combat_flags`**: además de los bits 0–2, bit 3 DODGE, bit 4 BLOCK y bit 5 PRIMARY guardan
   si el botón estaba pulsado en el tick anterior; así los flancos no dependen de `prev_buttons` y
-  un control impuesto con el botón mantenido no crea un ataque fantasma. El bit 1 dura un tick.
+  un control impuesto con el botón mantenido no crea un ataque fantasma. El bit 1 dura un tick. El
+  bit 6 (`FLAG_LIGHT_OF_PRESS`) marca que el ligero en curso es de la pulsación viva (siguiente
+  punto).
 - **Búfer**: tipo 3 = enlace de combo (la pulsación en la ventana de enlace espera al fin de la
   recuperación; 4 bits no bastaban para 9 + 8 ticks). Una sola ranura; la pulsación del tick `p`
   vale en `p+1 … p+8`; la esquiva guardada usa `move`/`look_yaw` del tick en que se ejecuta; una
   esquiva rechazada por resistencia se descarta.
-- **Conversión a carga**: «ligero empezado por esta pulsación» = `action_tick ≥ t − primary_held
-  + 1`. Mantener PRIMARY desde la ventana de enlace convierte el siguiente ligero en carga.
+- **Conversión a carga**: «ligero empezado por esta pulsación» lo dice el bit 6 de `combat_flags`
+  (`FLAG_LIGHT_OF_PRESS`): lo pone `_try_start_light` cuando el ligero empieza con la pulsación viva
+  abajo (flanco de ese tick, o búfer o enlace que ella dejó) y lo borra soltar PRIMARY, empezar otra
+  acción o un control. Antes se deducía de `action_tick ≥ t − primary_held + 1`, que solo vale sin
+  entradas sustituidas: `primary_held` no cuenta las sustituidas, y con un hueco el servidor nunca
+  convertía el ligero (el cliente sí había predicho la carga). Ahora una entrada sustituida entre
+  `p+1` y `p+7` retrasa la carga un tick por cada una (sigue contando ticks reales y exige
+  anticipación), no la anula. Mantener PRIMARY desde la ventana de enlace convierte el siguiente
+  ligero en carga. El tamaño codificado no cambia.
 - **Movimiento en acciones**: velocidad objetivo literal `wish · run_speed · move_scale (+ avance)`
   sin los multiplicadores de retroceso, lateral ni esprint (campo extra `scaled_movement` en
   `Output`). BLOCK se deja al dejar de pulsar o en el aire. La ventana de parada exige además que

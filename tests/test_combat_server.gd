@@ -467,6 +467,72 @@ func test_a_client_pressing_primary_every_other_tick_cannot_hit_faster_than_the_
 	assert_true(hits <= most_hits, "pero no más que el ritmo del combo: %d <= %d" % [hits, most_hits])
 
 
+## Cola de entradas que pierde las de ciertos ticks (como si llegaran tarde): el servidor las
+## sustituye repitiendo la anterior.
+class LossyQueue:
+	extends InputQueue
+
+	var lost_ticks: Array[int] = []
+
+
+	func push(input: PlayerInput, view_offset_q: int, next_tick: int) -> PushResult:
+		if lost_ticks.has(input.tick):
+			return PushResult.TOO_EARLY
+		return super.push(input, view_offset_q, next_tick)
+
+
+## Un atacante que mantiene PRIMARY 30 ticks sobre un maniquí a 2,2 m, con una cola que pierde las
+## entradas de [param lost] (ticks relativos a la pulsación). Devuelve el atacante, el maniquí y la
+## cola.
+func _hold_primary_duel(lost: Array[int]) -> Dictionary:
+	await _start_server()
+	var press: int = _server.get_tick() + 6
+	var attacker: int = _server.add_fake_player(_brain(func(tick: int, _position: Vector3,
+			_yaw: float) -> PlayerInput:
+		var input := PlayerInput.new()
+		input.tick = tick
+		input.look_yaw = 0.0
+		if tick >= press and tick < press + 30:
+			input.buttons = PlayerInput.PRIMARY
+		return input), VARDHEIM)
+	var dummy: int = _server.spawn_dummy(Vector3(0.0, 0.0, -2.2), PI)
+	_put(attacker, Vector3(0.0, 0.05, 0.0), 0.0)
+	var queue := LossyQueue.new()
+	queue.reset(_server.get_tick(), NetProtocol.neutral_input(_server.get_tick(), 0.0))
+	for offset: int in lost:
+		queue.lost_ticks.append(press + offset)
+	_server._queues[attacker] = queue
+	_combatant(attacker).queue = queue
+	return {"attacker": attacker, "dummy": dummy, "queue": queue}
+
+
+func _heavy_hits_on(dummy: int) -> int:
+	var heavy: int = CombatCatalog.attack_id(&"sword_heavy")
+	var count: int = 0
+	for event: NetMessages.EntityEvent in _events_of(NetMessages.EntityEvent.Kind.HIT):
+		if event.net_id == dummy and event.attack_id == heavy:
+			count += 1
+	return count
+
+
+func test_holding_primary_launches_a_heavy_attack_on_the_server() -> void:
+	var duel: Dictionary = await _hold_primary_duel([])
+	await wait_physics_frames(110)
+	assert_eq(duel["queue"].substitutions_total, 0, "sin pérdidas")
+	assert_eq(_heavy_hits_on(duel["dummy"]), 1, "el fuerte cargado acierta")
+
+
+func test_a_lost_input_during_the_press_still_launches_the_heavy_attack() -> void:
+	# C1: la entrada del tick p+3 llega tarde y el servidor la sustituye; el fuerte sale igual (el
+	# cliente, con todas sus entradas, predijo la carga).
+	for lost: int in [1, 3, 7]:
+		var duel: Dictionary = await _hold_primary_duel([lost])
+		await wait_physics_frames(110)
+		assert_eq(duel["queue"].substitutions_total, 1, "(p+%d) una entrada sustituida" % lost)
+		assert_eq(_heavy_hits_on(duel["dummy"]), 1, "(p+%d) el servidor lanza el fuerte" % lost)
+		await after_each()
+
+
 func test_an_attack_from_five_meters_hits_nothing() -> void:
 	await _start_server()
 	var press: int = _server.get_tick() + 6

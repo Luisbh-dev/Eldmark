@@ -16,7 +16,7 @@ extends RefCounted
 ## 45   u8       buffered            bits 0-1 tipo (BUFFER_*), bits 2-5 ticks que le quedan
 ## 46   u16      stamina             0..stamina_max
 ## 48   u32      stamina_regen_tick  primer tick en que vuelve a regenerar
-## 52   u8       combat_flags        FLAG_*
+## 52   u8       combat_flags        FLAG_* (bits 0-6)
 ## 53   u16      action_dir          yaw cuantizado de la esquiva
 ## 55   u32      cc_until_tick       fin del control actual (exclusivo)
 ## 59   s16 x2   knockback           empuje horizontal (x, z) en cm/s
@@ -44,6 +44,12 @@ const FLAG_INFINITE_STAMINA: int = 1 << 2
 const FLAG_DODGE_HELD: int = 1 << 3
 const FLAG_BLOCK_HELD: int = 1 << 4
 const FLAG_PRIMARY_HELD: int = 1 << 5
+## Bit 6: el ligero en curso empezó mientras la pulsación viva de PRIMARY estaba abajo (del flanco o
+## del búfer o enlace que ella dejó), así que mantenerla lo convierte en carga. No se deduce de
+## [member primary_held] y el tick actual porque una entrada sustituida no suma a esa cuenta y abriría
+## un hueco para siempre. Lo pone y lo borra la máquina de acciones (solo tiene sentido con un ligero
+## en curso).
+const FLAG_LIGHT_OF_PRESS: int = 1 << 6
 
 ## Tipos del búfer de entradas ([member buffered], bits 0-1).
 const BUFFER_NONE: int = 0

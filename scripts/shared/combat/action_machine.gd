@@ -406,6 +406,7 @@ static func _try_dodge(c: CombatState, input: PlayerInput, data: CombatTables,
 		return _DODGE_DROPPED
 	_spend(c, dodge.stamina_cost, t, data)
 	_clear_link(c)
+	c.combat_flags &= ~CombatState.FLAG_LIGHT_OF_PRESS
 	c.action = _DODGE
 	c.action_id = 0
 	c.action_tick = t
@@ -457,6 +458,12 @@ static func _try_start_light(c: CombatState, t: int, data: CombatTables,
 	c.action_tick = t
 	c.combo_step = (index + 1) % count
 	c.charge_ticks = 0
+	# Es de la pulsación viva si el botón sigue abajo (flanco de este tick, o búfer o enlace que ella
+	# dejó): mantenerla lo convierte en carga.
+	if c.primary_held > 0 and (c.combat_flags & CombatState.FLAG_PRIMARY_HELD) != 0:
+		c.combat_flags |= CombatState.FLAG_LIGHT_OF_PRESS
+	else:
+		c.combat_flags &= ~CombatState.FLAG_LIGHT_OF_PRESS
 	return true
 
 
@@ -466,6 +473,7 @@ static func _run_primary(c: CombatState, out: Output, t: int, data: CombatTables
 		edges: int) -> void:
 	if (down & PlayerInput.PRIMARY) == 0:
 		c.primary_held = 0
+		c.combat_flags &= ~CombatState.FLAG_LIGHT_OF_PRESS
 		return
 	if (edges & PlayerInput.PRIMARY) != 0:
 		# Mientras se carga, una pulsación nueva (tras soltar y esperar a la carga mínima) no hace
@@ -505,9 +513,10 @@ static func _try_charge(c: CombatState, out: Output, t: int, data: CombatTables,
 	var attack: AttackTicks = data.attack(c.action_id)
 	if attack == null or t - c.action_tick >= attack.windup_ticks:
 		return
-	# primary_held cuenta los ticks reales de la pulsación: si el ligero empezó antes de ella, no
-	# es el suyo.
-	if c.action_tick < t - c.primary_held + 1:
+	# Si el ligero empezó antes de la pulsación viva, no es suyo. (No se deduce de primary_held: solo
+	# cuenta ticks reales, y con una entrada sustituida de por medio t - primary_held + 1 deja de ser
+	# el tick de la pulsación.)
+	if (c.combat_flags & CombatState.FLAG_LIGHT_OF_PRESS) == 0:
 		return
 	var heavy: AttackTicks = data.attack(weapon.heavy_id)
 	if heavy == null:
@@ -516,6 +525,7 @@ static func _try_charge(c: CombatState, out: Output, t: int, data: CombatTables,
 		c.combat_flags |= CombatState.FLAG_NO_STAMINA
 		return
 	_clear_link(c)
+	c.combat_flags &= ~CombatState.FLAG_LIGHT_OF_PRESS
 	c.action = _CHARGE
 	c.action_id = heavy.id
 	c.charge_ticks = 0
@@ -649,6 +659,7 @@ static func _to_none(c: CombatState) -> void:
 	c.action = _NONE
 	c.action_id = 0
 	c.charge_ticks = 0
+	c.combat_flags &= ~CombatState.FLAG_LIGHT_OF_PRESS
 
 
 # Borra un enlace de combo pendiente: ya no tiene sentido cuando empieza otra acción.
@@ -662,3 +673,4 @@ static func _clear_transient(c: CombatState) -> void:
 	c.primary_held = 0
 	c.combo_step = 0
 	c.charge_ticks = 0
+	c.combat_flags &= ~CombatState.FLAG_LIGHT_OF_PRESS
