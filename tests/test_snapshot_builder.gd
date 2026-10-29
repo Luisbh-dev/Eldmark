@@ -9,8 +9,9 @@ extends TestCase
 const PLAYER: int = NetProtocol.EntityKind.PLAYER
 const NPC: int = NetProtocol.EntityKind.NPC
 const MAX_BYTES: int = NetProtocol.MAX_PACKET_BYTES
-## Registros que caben con estado propio y una sola sección: (1200 - 49 - 2) / 20.
-const CAPACITY: int = 57
+## Registros que caben con estado propio y una sola sección: (1200 - 83 - 2) / 20, con el estado
+## de 69 B (cabecera de 13 B + estado + section_count).
+const CAPACITY: int = 55
 ## sqrt(3) * 0,5 cm: error máximo de un vector cuantizado a 1 cm por eje.
 const POSITION_TOLERANCE: float = 0.0087
 
@@ -389,12 +390,12 @@ func test_packet_never_exceeds_the_limit_for_any_player_count() -> void:
 		if snapshot == null or snapshot.records.size() != written:
 			fail("con %d visibles el paquete no se decodifica con %d registros" % [others, written])
 			return
-	assert_eq(NetMessages.SNAPSHOT_HEADER_SIZE_WITH_STATE + 2 + CAPACITY * EntityRecord.SIZE, 1191,
-			"57 registros ocupan 1191 B")
+	assert_eq(NetMessages.SNAPSHOT_HEADER_SIZE_WITH_STATE + 2 + CAPACITY * EntityRecord.SIZE, 1185,
+			"55 registros ocupan 1185 B")
 
 
 func test_with_63_visible_players_every_entity_goes_out_at_least_every_other_snapshot() -> void:
-	# La garantía de red.md 9.3: 63 jugadores visibles y 57 plazas, cada entidad sale al menos
+	# La garantía de red.md 9.3: 63 jugadores visibles y CAPACITY plazas, cada entidad sale al menos
 	# uno de cada dos snapshots.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 13
@@ -406,7 +407,7 @@ func test_with_63_visible_players_every_entity_goes_out_at_least_every_other_sna
 	for snapshot_index: int in 200:
 		builder.begin(snapshot_index + 1, registry.get_sorted())
 		var ids: Array[int] = _record_ids(_decode(builder.build_for(peer)))
-		assert_eq(ids.size(), CAPACITY, "57 registros por paquete")
+		assert_eq(ids.size(), CAPACITY, "%d registros por paquete" % CAPACITY)
 		for net_id: int in range(2, 65):
 			var sent: bool = ids.has(net_id)
 			if not sent and previous_sent.get(net_id, true) == false:
@@ -423,23 +424,26 @@ func test_priority_accumulator_orders_the_unsent_first() -> void:
 	var players: Array[NetEntity] = _spawn_players(registry, rng, 101)
 	var builder := SnapshotBuilder.new(InterestPolicy.new())
 	var peer: ServerPeer = _make_peer(players[0], players)
-	# 100 candidatas (ids 2..101) y 57 plazas. Con todas a prioridad 1 gana el menor net_id.
+	# 100 candidatas (ids 2..101) y CAPACITY plazas. Con todas a prioridad 1 gana el menor net_id.
+	var unsent: int = 100 - CAPACITY
+	var resent: int = CAPACITY - unsent
 	builder.begin(1, registry.get_sorted())
 	var first: Array[int] = _record_ids(_decode(builder.build_for(peer)))
-	assert_eq(first, range(2, 59), "primer snapshot: las 57 de menor net_id (desempate por id)")
+	assert_eq(first, range(2, 2 + CAPACITY),
+			"primer snapshot: las de menor net_id (desempate por id)")
 	assert_near(peer.priority[2], 0.0, 1e-9, "las escritas vuelven a 0")
-	assert_near(peer.priority[59], 1.0, 1e-9, "las demás acumulan el peso")
-	# Segundo: las 43 que no salieron (prioridad 2) y 14 de las que ya salieron.
+	assert_near(peer.priority[2 + CAPACITY], 1.0, 1e-9, "las demás acumulan el peso")
+	# Segundo: las que no salieron (prioridad 2) y las primeras de las que ya salieron.
 	builder.begin(2, registry.get_sorted())
 	var second: Array[int] = _record_ids(_decode(builder.build_for(peer)))
 	var expected_second: Array[int] = []
-	expected_second.append_array(range(2, 16))
-	expected_second.append_array(range(59, 102))
-	assert_eq(second, expected_second, "segundo snapshot: todas las que esperaban y 14 más")
-	assert_near(peer.priority[59], 0.0, 1e-9, "las que salieron, a 0")
+	expected_second.append_array(range(2, 2 + resent))
+	expected_second.append_array(range(2 + CAPACITY, 102))
+	assert_eq(second, expected_second, "segundo snapshot: todas las que esperaban y %d más" % resent)
+	assert_near(peer.priority[2 + CAPACITY], 0.0, 1e-9, "las que salieron, a 0")
 	assert_near(peer.priority[20], 1.0, 1e-9,
 			"las que salieron antes y ahora no, empiezan de nuevo")
-	assert_near(peer.priority[2], 0.0, 1e-9, "las 14 que sí salieron, a 0")
+	assert_near(peer.priority[2], 0.0, 1e-9, "las que sí volvieron a salir, a 0")
 
 
 func test_priority_weights_decide_what_goes_first() -> void:
@@ -454,7 +458,7 @@ func test_priority_weights_decide_what_goes_first() -> void:
 	var peer: ServerPeer = _make_peer(players[0], players)
 	builder.begin(1, registry.get_sorted())
 	var first: Array[int] = _record_ids(_decode(builder.build_for(peer)))
-	assert_eq(first, range(45, 102), "con pesos iguales al id salen los 57 de mayor peso")
+	assert_eq(first, range(102 - CAPACITY, 102), "con pesos iguales al id salen las de mayor peso")
 	assert_near(peer.priority[10], 10.0, 1e-9, "una no enviada acumula su peso")
 	assert_near(peer.priority[100], 0.0, 1e-9, "una enviada vuelve a 0")
 
@@ -511,7 +515,7 @@ func test_extreme_weights_do_not_break_the_packet() -> void:
 		var packet: PackedByteArray = builder.build_for(peer)
 		assert_true(packet.size() <= MAX_BYTES, "tick %d: como mucho 1200 B" % tick)
 		var snapshot: NetMessages.Snapshot = _decode(packet)
-		assert_eq(snapshot.records.size(), CAPACITY, "57 registros")
+		assert_eq(snapshot.records.size(), CAPACITY, "%d registros" % CAPACITY)
 		assert_true(_record_ids(snapshot).has(2) and _record_ids(snapshot).has(5),
 				"los pesos enormes siempre salen")
 	for net_id: int in peer.priority:
@@ -667,5 +671,5 @@ func test_property_200_entities_600_ticks() -> void:
 				+ "(N = %d, C = %d): máximo observado %d")
 				% [bound, observer.max_candidates, CAPACITY, observer.max_wait])
 	assert_true(observer_a.max_candidates >= 199, "el observador A llegó a ver a 199")
-	assert_true(observer_a.max_wait >= 1, "con 199 candidatas y 57 plazas alguna tuvo que esperar")
+	assert_true(observer_a.max_wait >= 1, "con 199 candidatas y %d plazas alguna tuvo que esperar" % CAPACITY)
 	assert_eq(observer_c.max_wait, 0, "con 40 candidatas caben todas: ninguna espera")

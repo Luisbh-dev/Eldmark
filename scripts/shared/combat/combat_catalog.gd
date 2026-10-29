@@ -382,7 +382,8 @@ static func _bake_dodge(definition: DodgeDefinition, label: String, rules_value:
 	if ticks.invulnerable_from_ticks < 0 \
 			or ticks.invulnerable_to_ticks < ticks.invulnerable_from_ticks \
 			or ticks.invulnerable_to_ticks > ticks.duration_ticks:
-		errors.append("%s: la invulnerabilidad debe cumplir 0 <= desde <= hasta <= duración" % label)
+		errors.append("%s: la invulnerabilidad debe cumplir 0 <= desde <= hasta <= duración"
+				% label)
 	if ticks.cancel_to_attack_from_ticks < 0 \
 			or ticks.cancel_to_attack_from_ticks > ticks.duration_ticks:
 		errors.append("%s: cancel_to_attack_from_s fuera de la duración" % label)

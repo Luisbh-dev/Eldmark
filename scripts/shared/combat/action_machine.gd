@@ -286,7 +286,9 @@ static func _regenerate(c: CombatState, rules: CombatRules, t: int) -> void:
 		return
 	var exhausted: bool = (c.combat_flags & CombatState.FLAG_EXHAUSTED) != 0
 	if c.stamina < rules.stamina_max:
-		var rate: int = rules.exhausted_regen_per_tick if exhausted else rules.stamina_regen_per_tick
+		var rate: int = rules.stamina_regen_per_tick
+		if exhausted:
+			rate = rules.exhausted_regen_per_tick
 		c.stamina = mini(c.stamina + rate, rules.stamina_max)
 	if exhausted and c.stamina > rules.exhausted_exit_threshold:
 		c.combat_flags &= ~CombatState.FLAG_EXHAUSTED

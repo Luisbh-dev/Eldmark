@@ -122,7 +122,11 @@ func _ready() -> void:
 ## Avanza la simulación un tick con la entrada dada. Determinista: no lee Input, tiempo,
 ## aleatoriedad ni estado global, solo los miembros de estado ([member yaw],
 ## [member grounded], [member prev_buttons], [member last_input_tick], [member coyote_ticks],
-## [member jump_buffer_ticks], la posición y [member CharacterBody3D.velocity]).
+## [member jump_buffer_ticks], [member combat], la posición y [member CharacterBody3D.velocity]).
+## [br][br]
+## Al principio de cada tick avanza la máquina de acciones ([method ActionMachine.step]), que
+## decide cuánto puede moverse, girar, saltar y esprintar el personaje durante un ataque, un
+## bloqueo, una esquiva o un control; sin acción, el movimiento es el de siempre.
 ## [br][br]
 ## [b]Importante:[/b] move_and_slide() usa internamente el delta del tick de física, así que
 ## [param delta] debe ser exactamente [code]1.0 / Engine.physics_ticks_per_second[/code] y la

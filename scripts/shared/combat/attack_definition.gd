@@ -45,7 +45,8 @@ extends Resource
 @export var charge_min_s: float = 0.0
 ## Solo fuertes: carga máxima (s), contada desde la pulsación.
 @export var charge_max_s: float = 0.0
-## Solo fuertes: multiplicador del daño a carga máxima (lineal desde x1 en la mínima; solo servidor).
+## Solo fuertes: multiplicador del daño a carga máxima (lineal desde x1 en la mínima; solo
+## servidor).
 @export var charge_damage_scale: float = 1.0
 ## Solo fuertes: fracción de la velocidad de carrera permitida mientras se carga.
 @export var charge_move_scale: float = 0.4
