@@ -1433,6 +1433,68 @@ func test_cannot_jump_while_attacking_or_dodging_but_can_while_blocking() -> voi
 	assert_eq(character.combat.action, Action.NONE, "y al estar en el aire se deja el bloqueo")
 
 
+## Velocidad horizontal tras [param ticks] ticks en el aire (30 m de altura, 7,5 m/s hacia -Z) con una
+## acción impuesta ([param kind]: "none", "death", "stun" o "stagger") y el movimiento [param move].
+## Devuelve la velocidad y el estado codificado del final.
+func _air_run(character: PlayerCharacter, kind: String, move: Vector2, ticks: int) -> Dictionary:
+	await wait_physics_frames(1)
+	var start := PlayerState.new()
+	start.position = Vector3(0.0, 30.0, 40.0)
+	start.velocity = Vector3(0.0, 0.0, -7.5)
+	start.grounded = false
+	character.set_state(PlayerState.decode(start.encode()))
+	character.reset_physics_interpolation()
+	var tick: int = START_TICK
+	match kind:
+		"death":
+			ActionMachine.impose_death(character.combat, tick)
+		"stun":
+			ActionMachine.impose_stun(character.combat, tick, tick + 600)
+		"stagger":
+			ActionMachine.impose_stagger(character.combat, tick, tick + 600, Vector2.ZERO)
+	character.set_state(PlayerState.decode(character.get_state().encode()))
+	for _i: int in ticks:
+		tick += 1
+		character.simulate(_input(tick, move, 0.0, 0), _dt)
+	return {
+		"velocity": Vector2(character.velocity.x, character.velocity.z),
+		"bytes": character.get_state().encode(),
+		"grounded": character.grounded,
+	}
+
+
+func test_a_dead_stunned_or_staggered_body_in_the_air_brakes_and_cannot_be_steered() -> void:
+	# C4: con move_scale 0 la velocidad objetivo es 0, pero la rama del aire conservaba el impulso
+	# empujando hacia delante (o lo giraba en diagonal). Frenar es lo que dice §3.3 (DEAD, STUN y
+	# STAGGER sin empuje «frenan»).
+	var rig: Dictionary = await _make_rig("AireControlado")
+	var character: PlayerCharacter = rig["character"]
+	await _settle(character, Vector3(0.0, 0.0, 40.0), 0.0)
+	for kind: String in ["death", "stun", "stagger"]:
+		var rest: Dictionary = await _air_run(character, kind, Vector2.ZERO, 30)
+		assert_false(rest["grounded"], "(%s) sigue en el aire" % kind)
+		var rest_velocity: Vector2 = rest["velocity"]
+		assert_true(rest_velocity.length() < 7.5 - 2.0, "(%s) sin entrada frena (%s)" % [kind,
+				rest_velocity])
+		for move: Vector2 in [Vector2(0.0, 1.0), Vector2(0.7, 0.7), Vector2(-1.0, 0.0)]:
+			var steered: Dictionary = await _air_run(character, kind, move, 30)
+			var velocity: Vector2 = steered["velocity"]
+			assert_vec_near(velocity, rest_velocity, 1e-5,
+					"(%s) con move=%s la velocidad es la misma que sin entrada" % [kind, move])
+			assert_eq(steered["bytes"], rest["bytes"],
+					"(%s) con move=%s el estado codificado es el mismo" % [kind, move])
+		# Determinista: repetir la misma entrada da los mismos bytes.
+		var again: Dictionary = await _air_run(character, kind, Vector2.ZERO, 30)
+		assert_eq(again["bytes"], rest["bytes"], "(%s) repetible byte a byte" % kind)
+	# Control: sin ninguna acción, empujar hacia delante conserva el impulso en el aire.
+	var free_rest: Dictionary = await _air_run(character, "none", Vector2.ZERO, 30)
+	var free_forward: Dictionary = await _air_run(character, "none", Vector2(0.0, 1.0), 30)
+	var free_velocity: Vector2 = free_forward["velocity"]
+	assert_near(free_velocity.length(), 7.5, 0.01, "sin acción, W conserva los 7,5 m/s")
+	var brake_velocity: Vector2 = free_rest["velocity"]
+	assert_true(brake_velocity.length() < 5.0, "y sin entrada frena (%s)" % brake_velocity)
+
+
 func test_last_landing_speed_is_measured_before_move_and_slide() -> void:
 	var rig: Dictionary = await _make_rig("Caida")
 	var character: PlayerCharacter = rig["character"]

@@ -266,7 +266,10 @@ bloqueando hasta el timeout de ENet (3–8 s): se acepta.
 | DEAD | frena; la gravedad sigue | ninguno | no | no |
 
 La gravedad y `move_and_slide` se aplican siempre, así que la esquiva y el empuje respetan muros
-y bloqueos del puente. Ni ataques, ni esquiva, ni bloqueo en el aire: un PRIMARY o DODGE en el
+y bloqueos del puente. Las acciones con movimiento escalado a 0 (STUN, DEAD y STAGGER sin empuje)
+frenan también en el aire: la regla de `simulate()` que conserva el impulso aéreo mientras se
+empuja hacia delante no se aplica con ellas, así que el stick no dirige a un cadáver, un aturdido
+ni un tambaleado en pleno salto. Ni ataques, ni esquiva, ni bloqueo en el aire: un PRIMARY o DODGE en el
 aire va al búfer.
 
 ### 3.4 Lo que impone el servidor
