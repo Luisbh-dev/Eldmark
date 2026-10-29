@@ -507,6 +507,13 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 				_malformed_packets += 1
 			else:
 				_last_notice_text = notice.text
+		NetProtocol.MSG_OBJECT_STATE:
+			# TODO(F6): los bots que asedian leen aquí el estado de la fortaleza (SiegeView).
+			if NetMessages.ObjectState.decode(bytes) == null:
+				_malformed_packets += 1
+		NetProtocol.MSG_SCOREBOARD:
+			if NetMessages.Scoreboard.decode(bytes) == null:
+				_malformed_packets += 1
 		_:
 			_malformed_packets += 1
 

@@ -555,6 +555,59 @@ func test_garbage_from_the_server_is_counted_not_fatal() -> void:
 	assert_eq(_client.get_state(), NetClient.State.IN_WORLD, "el cliente sigue en el mundo")
 
 
+func test_protocol_3_messages_are_accepted_and_not_counted_as_malformed() -> void:
+	await _start()
+	assert_true(await _wait_until(_in_world))
+	var def: FortressDefinition = load("res://data/fortresses/vado_gris.tres") as FortressDefinition
+	var state := FortressState.initial(def, 0)
+	var send: Callable = func(bytes: PackedByteArray) -> void:
+		_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, bytes)
+	# El SPAWN de la fortaleza, dos OBJECT_STATE, el marcador y los dos avisos nuevos.
+	send.call(NetMessages.EntitySpawn.for_fortress(900, _fake.tick, "vado_gris_fort", state).encode())
+	send.call(NetMessages.ObjectState.from_fortress(900, _fake.tick, state).encode())
+	var changes := NetMessages.ObjectState.new()
+	changes.net_id = 900
+	changes.tick = _fake.tick + 6
+	changes.add_field(FortressFields.OWNER, NetMessages.ObjectField.ValueType.U8, 1)
+	changes.add_field(250, NetMessages.ObjectField.ValueType.U16, 7)
+	send.call(changes.encode())
+	var board := NetMessages.Scoreboard.new()
+	board.rows.append(NetMessages.ScoreRow.make(5, 1, 2, 3, 400, 50, 600))
+	send.call(board.encode())
+	send.call(NetMessages.EntityEvent.war(900, _fake.tick, WarEvents.CAPTURE_STARTED, 1).encode())
+	send.call(NetMessages.EntityEvent.telegraph(901, _fake.tick, 3, NetMessages.EntityEvent.SHAPE_SECTOR,
+			Vector3(4.0, 0.0, 4.0), 0.5, 400, 40).encode())
+	# Un PNJ con su id de definición se dibuja como cualquier remoto.
+	var npc := NetMessages.EntitySpawn.new()
+	npc.net_id = 902
+	npc.kind = NetProtocol.EntityKind.NPC
+	npc.spawn_tick = _fake.tick
+	npc.state = PlayerState.new()
+	npc.state.position = Vector3(5.0, 0.0, 5.0)
+	npc.display_name = "Hueco"
+	npc.npc_def_id = 2
+	send.call(npc.encode())
+	assert_true(await _wait_until(func() -> bool:
+		return _client.get_remote_world().get_view(902) != null), "el SPAWN del PNJ crea su vista")
+	await wait_physics_frames(10)
+	var stats: Dictionary = _client.get_stats()
+	assert_eq(stats["malformed_packets"], 0, "ninguno de los mensajes nuevos cuenta como malformado")
+	assert_eq(stats["structure_spawns"], 1, "el SPAWN de la estructura")
+	assert_eq(stats["object_states"], 2, "los OBJECT_STATE")
+	assert_eq(stats["scoreboards"], 1, "el marcador")
+	assert_eq(stats["war_events"], 1, "el aviso de guerra")
+	assert_eq(stats["telegraphs"], 1, "el aviso de ataque")
+	assert_eq(stats["combat_events"], 0, "los avisos nuevos no son eventos de combate")
+	assert_eq(stats["combat_events_pending"], 0, "ni esperan en la cola del combate")
+	assert_eq(stats["remote_views"], 1, "solo el PNJ tiene vista: la estructura aún no se dibuja (F5)")
+	assert_eq(_client.get_state(), NetClient.State.IN_WORLD, "el cliente sigue en el mundo")
+	# Lo mal formado de los tipos nuevos sí cuenta.
+	send.call(PackedByteArray([NetProtocol.MSG_OBJECT_STATE, 1, 0, 0, 0, 0, 0, 0]))
+	send.call(PackedByteArray([NetProtocol.MSG_SCOREBOARD, 0, 0, 0]))
+	await wait_physics_frames(10)
+	assert_eq(_client.get_stats()["malformed_packets"], 2, "un OBJECT_STATE sin campos y un marcador sin páginas")
+
+
 func test_remote_entities_flow_to_the_remote_world() -> void:
 	await _start()
 	assert_true(await _wait_until(_in_world))

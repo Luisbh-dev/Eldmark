@@ -231,6 +231,21 @@ func test_encode_spawn_of_a_node_without_character() -> void:
 	assert_eq(message.kind, NetProtocol.EntityKind.NPC, "kind")
 	assert_vec_near(message.state.position, Vector3(3, 0, 4), 1e-5, "posición")
 	assert_eq(message.display_name, "Guardia", "nombre")
+	assert_eq(message.npc_def_id, 0, "sin definición de PNJ por defecto")
+	# Con su id de definición (protocolo 3) el SPAWN lo lleva tras el nombre.
+	npc.npc_def_id = 4
+	var with_definition: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(
+			npc.encode_spawn(8, false))
+	if assert_not_null(with_definition, "con npc_def_id se decodifica"):
+		assert_eq(with_definition.npc_def_id, 4, "npc_def_id")
+		assert_eq(with_definition.display_name, "Guardia", "y el nombre sigue igual")
+	# Un jugador no lleva el campo, tenga o no valor puesto.
+	var player: NetEntity = _make_player()
+	player.npc_def_id = 4
+	var player_message: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(
+			player.encode_spawn(8, false))
+	if assert_not_null(player_message, "el SPAWN de un jugador"):
+		assert_eq(player_message.npc_def_id, 0, "un jugador no lleva npc_def_id")
 
 
 func test_always_relevant_flag() -> void:

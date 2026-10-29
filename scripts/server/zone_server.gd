@@ -1874,6 +1874,8 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 			_handle_debug_command(peer, bytes)
 		NetProtocol.MSG_RESPAWN_REQUEST:
 			_handle_respawn_request(peer, bytes)
+		NetProtocol.MSG_UNSTUCK_REQUEST:
+			_handle_unstuck_request(peer, bytes)
 		_:
 			_add_strike(peer, "tipo de mensaje inesperado (0x%02X)" % msg_type)
 
@@ -1954,7 +1956,10 @@ func _handle_debug_command(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	var result: int = _commands.execute_network(peer, command.command, command.payload)
 	match result:
 		CommandRegistry.Result.UNKNOWN:
-			_add_strike(peer, "comando de depuración desconocido (%d)" % command.command)
+			# Un id fijo del protocolo cuyo manejador aún no existe en este servidor (los ids 7 a 12 de la
+			# versión 3 hasta que lleguen F3 y F4) se acepta sin hacer nada: no es un cliente defectuoso.
+			if not NetProtocol.DEBUG_COMMAND_IDS.values().has(command.command):
+				_add_strike(peer, "comando de depuración desconocido (%d)" % command.command)
 		CommandRegistry.Result.BAD_ARGUMENTS:
 			_add_strike(peer, "comando de depuración con argumentos no válidos (%d)"
 					% command.command)
@@ -1974,6 +1979,17 @@ func _handle_respawn_request(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	var result: int = _combat.request_respawn(peer.entity.net_id, request.point_index, _tick + 1)
 	if result != CombatDirector.RespawnRequestResult.ACCEPTED:
 		_add_strike(peer, "petición de reaparición fuera de plazo")
+
+
+# UNSTUCK_REQUEST (/atascado, docs/fuerte.md sección 5). El protocolo v3 solo lo acepta: bien formado y
+# desde dentro del mundo no suma avisos. TODO(F3): canalización de 10 s que el daño interrumpe, fuera
+# de combate, 5 min de reutilización y teletransporte al punto de aparición más cercano del reino.
+func _handle_unstuck_request(peer: ServerPeer, bytes: PackedByteArray) -> void:
+	if peer.state != ServerPeer.State.IN_WORLD:
+		_add_strike(peer, "petición de /atascado antes de entrar en el mundo")
+		return
+	if NetMessages.UnstuckRequest.decode(bytes) == null:
+		_add_strike(peer, "petición de /atascado mal formada")
 
 
 # Suma un aviso y expulsa al peer si llega al límite (50 en 600 ticks).

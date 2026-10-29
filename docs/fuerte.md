@@ -124,7 +124,9 @@ dueño (con un fuerte neutral, `D` es falso).
 - los estandartes (`Estandarte`, `EstandartePuertaN`, `EstandartePuertaS`) se recolorean **solo
   en el cliente** (`FortressView`): el servidor no tiene mallas;
 - comandos con ids fijos (`--debug-commands`): 8 `fort_reset`, 9 `fort_owner <reino>`, 10
-  `fort_kill_captain`, 11 `fort_capture_speed <×>`.
+  `fort_kill_captain`, 11 `fort_capture_speed <×>`. Sus datos, que valida
+  `DebugCommand.decode` (F2): 8 y 10, ninguno; 9, `u8` con el reino (0 a 3); 11, `u8` con el factor
+  (1 a 255).
 
 ### 1.7 Orden del tick (completa combate.md §4.2)
 
@@ -144,15 +146,15 @@ Ocupa el tipo `0x22` reservado en red.md §5.6 y sube **`PROTOCOL_VERSION` a 3**
 
 - **Formato**: `u8 type`, `u16 net_id`, `u32 tick` (el tick del servidor tras el que vale el
   estado), `u8 field_count` (1–32) y, por campo, `u8 field_id`, `u8 value_type` (1 u8, 2 u16, 3 u32,
-  4 s32) y el valor. Canal fiable 3.
+  4 s32) y el valor. Canal fiable 3. Cabecera de 8 B; el estado completo de una fortaleza son 80 B.
 - **Validación** (como red.md §5.7): `null` si el tamaño no cuadra, `value_type` desconocido,
   `field_count` fuera de rango o un campo repetido. Un `field_id` desconocido con tipo válido se
   salta (compatibilidad hacia delante).
 - **Ritmo**: como mucho un OBJECT_STATE por fortaleza cada 6 ticks, con los campos cambiados en
   ese intervalo; `under_attack_until_tick` solo se envía si avanza al menos 60 ticks.
-- **ENTITY_SPAWN de STRUCTURE**: payload `u8 def_len`, id de la definición (ASCII), `u8
-  field_count` y los campos completos (sin repetir type, net_id ni tick). El `realm` de la cabecera
-  es 0: manda el campo `owner`.
+- **ENTITY_SPAWN de STRUCTURE**: payload `u8 def_len` (1–32), id de la definición (ASCII
+  imprimible), `u8 field_count` (1–32) y los campos completos (sin repetir type, net_id ni tick). El
+  `realm` de la cabecera es 0: manda el campo `owner`. Con el id del Vado Gris son 98 B.
 - **ENTITY_SPAWN de NPC**: tras el `PlayerState` y el nombre, `u16 npc_def_id` (catálogo
   `NpcCatalog`, ids alfabéticos 1..n) para que el cliente elija modelo, tabardo y barra de jefe.
 - El snapshot **no** lleva registros de `STRUCTURE`.
@@ -323,9 +325,11 @@ de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D
   como `assets/maps/vado_gris.png` (por LFS) con su escala en un `.tres`. Minimapa circular y
   mapa a pantalla completa con la elección de reaparición.
 - **Marcador** (UI-41, Tab): mensaje nuevo `0x32 SCOREBOARD` (S→C, canal 3, cada 2 s a toda la
-  zona): por jugador `u16 net_id, u16 bajas, u16 muertes, u16 asistencias, u32 daño a la puerta,
-  u16 s en el círculo, u32 méritos`. El registro de bajas sale de los KILL, que en la fase 4 van a
-  toda la zona.
+  zona): cabecera `u8 type, u8 page_index, u8 page_count, u8 row_count` y, por jugador, `u16 net_id,
+  u16 bajas, u16 muertes, u16 asistencias, u32 daño a la puerta, u16 s en el círculo, u32 méritos`
+  (18 B). Una página lleva como mucho 66 filas (1192 B); con más jugadores el servidor parte el
+  marcador en varios mensajes (`NetMessages.Scoreboard.split`) y el cliente los junta por página. El
+  registro de bajas sale de los KILL, que en la fase 4 van a toda la zona.
 - **Pistas** (UI-42): una vez por jugador, en `user://`, con opción para desactivarlas.
 
 ---
@@ -345,7 +349,7 @@ de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D
   círculo durante 120 s.
 - **Equilibrio** (GUE-42): `--max-realm-diff=N`; un REJECT nuevo, **9 IMBALANCE**, con texto propio.
   El recuento por reino para RealmSelect llega en el WELCOME (`u8 × 3` al final; sube la versión
-  con el resto). Los jugadores falsos de `--fake-players` rellenan el bando corto y se retiran al
+  con el resto; el formato ya está en F2 y el servidor lo rellena en F6, hasta entonces va a 0). Los jugadores falsos de `--fake-players` rellenan el bando corto y se retiran al
   entrar personas.
 - **Telemetría** (GUE-17): eventos de guerra y muertes en JSON Lines (`--battle-log`) y
   `tools/war/summarize_battle.gd` con el tiempo hasta la captura, las muertes por ruta y el tiempo
@@ -404,10 +408,10 @@ func set_realm_collision(realm_code: int) -> void
 var before_simulate: Callable                                  # (tick: int) -> void
 ```
 
-### 8.3 Lo que han dejado F0 y F1 (añadidos al contrato y decisiones)
+### 8.3 Lo que han dejado F0, F1 y F2 (añadidos al contrato y decisiones)
 
-F0 (escena, capas, malla y rutas) y F1 (fortaleza pura) están hechos. Además de lo de 8.2, quien
-siga con F2 a F6 encontrará esto:
+F0 (escena, capas, malla y rutas), F1 (fortaleza pura) y F2 (protocolo 3) están hechos. Además de lo de
+8.2, quien siga con F3 a F6 encontrará esto:
 
 **F0**
 
@@ -472,6 +476,44 @@ siga con F2 a F6 encontrará esto:
   `SiegeView` se llena con `update_from_state` (servidor) o `update_from_fields` (campos de
   OBJECT_STATE) y responde `is_gate_closed_for`, `can_damage_gate`, `should_defend`,
   `should_attack`, `is_circle_active`, `is_capturing` e `is_in_circle`.
+
+**F2** (protocolo 3, `PROTOCOL_VERSION = 3`; formatos en [red.md 5](red.md#5-formatos-de-los-mensajes))
+
+- Todo está en `scripts/shared/net/`. `NetMessages` gana `ObjectField` (campo suelto: `field_id`,
+  `value_type`, `value`; satura al codificar), `ObjectState` (OBJECT_STATE), `UnstuckRequest`,
+  `ScoreRow` y `Scoreboard`; `EntitySpawn` gana `npc_def_id`, `definition_id` y `fields`;
+  `EntityEvent` gana los tipos `WAR` y `TELEGRAPH`; `Welcome` gana `realm_counts`; `NetProtocol`
+  gana `MSG_UNSTUCK_REQUEST` (0x06), `MSG_SCOREBOARD` (0x32), `Result.IMBALANCE` (9, con su texto),
+  `MAX_DEFINITION_ID_BYTES` y los ids de depuración 7 a 12 (`DEBUG_UNSTUCK`, `DEBUG_FORT_RESET`,
+  `DEBUG_FORT_OWNER`, `DEBUG_FORT_KILL_CAPTAIN`, `DEBUG_FORT_CAPTURE_SPEED`, `DEBUG_NPC_DEBUG`, también
+  en `DEBUG_COMMAND_IDS`). Los tres tipos nuevos de mensaje van por el canal fiable 3.
+- Utilidades para F3 y F5: `ObjectState.from_fortress(id, tick, state)` (estado completo, 17 campos),
+  `from_fortress_changes(id, tick, state, previous)` (solo los de `changed_fields_since`; si no ha
+  cambiado nada, `fields` queda vacío y `encode()` devuelve un búfer vacío: no hay nada que mandar),
+  `from_fortress_fields` (lista de ids a medida), `apply_to_fortress(state)` (aplica los campos
+  conocidos con su tipo y salta los ids desconocidos y los de otro tipo; devuelve cuántos aplicó),
+  `EntitySpawn.for_fortress(net_id, tick, definition_id, state)` y `EntitySpawn.to_object_state()`
+  (el cliente aplica los campos del alta igual que un OBJECT_STATE), `EntityEvent.war(...)` y
+  `EntityEvent.telegraph(...)`, `Scoreboard.split(filas)`, `DebugCommand.simple/fort_owner/
+  fort_capture_speed/npc_debug`. `NetEntity` gana `npc_def_id`, que su `encode_spawn` pone en el
+  SPAWN de un PNJ.
+- Reglas de validación que el documento no fijaba: un WAR exige un aviso de `WarEvents` (1–7) y un
+  reino de 0 a 3; un TELEGRAPH, una forma 0 o 1; un `value_type` desconocido, un `field_id`
+  repetido o un contador fuera de 1–32 invalidan un OBJECT_STATE y el SPAWN de una estructura (un
+  `field_id` desconocido con un tipo válido, no); el SCOREBOARD añade un `row_count` al índice y
+  total de páginas para poder exigir el tamaño exacto, con 66 filas como máximo.
+- `ZoneServer` acepta `UNSTUCK_REQUEST` (un aviso si llega antes de entrar en el mundo o mal formado)
+  y no suma avisos por un comando de depuración con id fijo (7 a 12) y datos válidos aunque aún no
+  tenga manejador (F3 y F4 los registrarán; `test_combat_server` lista los pendientes). `NetClient`
+  acepta `OBJECT_STATE`, `SCOREBOARD`, el SPAWN de estructuras y los eventos `WAR` y `TELEGRAPH` sin
+  contarlos como malformados ni como eventos de combate, y los cuenta en `get_stats()`
+  (`object_states`, `scoreboards`, `structure_spawns`, `war_events`, `telegraphs`); `SwarmBot`
+  también acepta los dos mensajes sueltos. Quedan con `TODO(F3)`, `TODO(F5)` y `TODO(F6)` en el
+  código.
+- El WELCOME ya lleva `realm_counts`, pero `ZoneServer` lo manda a 0 hasta GUE-42 (F6).
+- Cuidado con `String.to_ascii_buffer()`: con caracteres que no son ASCII registra un error del
+  motor y los cambia por espacios. Los ids de definición se comprueban antes
+  (`NetMessages.is_printable_ascii_text`).
 
 ---
 

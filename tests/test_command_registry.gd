@@ -89,7 +89,13 @@ func test_ids_of_the_network_commands_are_fixed() -> void:
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"stamina_inf"], 4)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"set_weapon"], 5)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"spawn_dummy"], 6)
-	assert_eq(NetProtocol.DEBUG_COMMAND_IDS.size(), 6)
+	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"unstuck"], 7)
+	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"fort_reset"], 8)
+	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"fort_owner"], 9)
+	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"fort_kill_captain"], 10)
+	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"fort_capture_speed"], 11)
+	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"npc_debug"], 12)
+	assert_eq(NetProtocol.DEBUG_COMMAND_IDS.size(), 12)
 
 
 func test_network_execution_results_and_audit() -> void:

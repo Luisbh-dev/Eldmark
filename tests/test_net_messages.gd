@@ -433,7 +433,7 @@ func test_entity_record_interpolate() -> void:
 # --- NetProtocol ------------------------------------------------------------------------------
 
 func test_protocol_constants_and_helpers() -> void:
-	assert_eq(NetProtocol.PROTOCOL_VERSION, 2, "versión")
+	assert_eq(NetProtocol.PROTOCOL_VERSION, 3, "versión")
 	assert_eq(NetProtocol.MAGIC, 0x4D444C45, "magic")
 	assert_eq(PackedByteArray([0x45, 0x4C, 0x44, 0x4D]).decode_u32(0), NetProtocol.MAGIC,
 			"los bytes del magic leen «ELDM»")
@@ -448,7 +448,8 @@ func test_protocol_constants_and_helpers() -> void:
 	for msg_type: int in [NetProtocol.MSG_CLIENT_READY, NetProtocol.MSG_CLIENT_LEAVE,
 			NetProtocol.MSG_DEBUG_COMMAND, NetProtocol.MSG_ENTITY_SPAWN,
 			NetProtocol.MSG_ENTITY_DESPAWN, NetProtocol.MSG_OBJECT_STATE,
-			NetProtocol.MSG_ENTITY_EVENT, NetProtocol.MSG_NOTICE, NetProtocol.MSG_HANDOFF, 0x7F]:
+			NetProtocol.MSG_ENTITY_EVENT, NetProtocol.MSG_NOTICE, NetProtocol.MSG_HANDOFF,
+			NetProtocol.MSG_UNSTUCK_REQUEST, NetProtocol.MSG_SCOREBOARD, 0x7F]:
 		assert_eq(NetProtocol.channel_for_type(msg_type), NetProtocol.CH_RELIABLE,
 				"el tipo 0x%02X va por el canal fiable" % msg_type)
 
@@ -466,7 +467,7 @@ func test_protocol_constants_and_helpers() -> void:
 	assert_eq(NetProtocol.realm_display_name(NetProtocol.Realm.VARDHEIM), "Vardheim", "Vardheim")
 	assert_eq(NetProtocol.realm_display_name(NetProtocol.Realm.SOLMARCH), "Solmarch", "Solmarch")
 	assert_eq(NetProtocol.realm_display_name(NetProtocol.Realm.ASKARRA), "Askarra", "Askarra")
-	for result: int in range(0, 9):
+	for result: int in range(0, 10):
 		assert_false(NetProtocol.result_text(result).is_empty(), "texto del resultado %d" % result)
 	assert_false(NetProtocol.result_text(99).is_empty(), "texto de un resultado desconocido")
 	assert_true(NetProtocol.result_text(NetProtocol.Result.NAME)
@@ -836,7 +837,8 @@ func test_hello_roundtrip_and_layout() -> void:
 func test_welcome_roundtrip_and_layout() -> void:
 	var welcome: NetMessages.Welcome = _sample_welcome()
 	var bytes: PackedByteArray = welcome.encode()
-	assert_eq(bytes.size(), 18 + "vado_gris".length(), "tamaño: 18 B + id de zona")
+	assert_eq(bytes.size(), 18 + "vado_gris".length() + 3,
+			"tamaño: 18 B + id de zona + 3 B del recuento por reino")
 	assert_eq(bytes.decode_u32(0), 0x4D444C45, "u32 magic en 0")
 	assert_eq(bytes.decode_u8(4), 0, "u8 result en 4 (0 = aceptado)")
 	assert_eq(bytes.decode_u16(5), NetProtocol.PROTOCOL_VERSION, "u16 protocol_version en 5")
@@ -848,7 +850,8 @@ func test_welcome_roundtrip_and_layout() -> void:
 	assert_eq(bytes.decode_u8(15), NetProtocol.Realm.ASKARRA, "u8 realm en 15")
 	assert_eq(bytes.decode_u8(16), 0, "u8 channel en 16")
 	assert_eq(bytes.decode_u8(17), 9, "u8 zone_len en 17")
-	assert_eq(bytes.slice(18).get_string_from_ascii(), "vado_gris", "zone_id en 18")
+	assert_eq(bytes.slice(18, 18 + 9).get_string_from_ascii(), "vado_gris", "zone_id en 18")
+	assert_eq(bytes.slice(18 + 9), PackedByteArray([4, 0, 255]), "u8 × 3 con el recuento por reino")
 
 	var decoded: NetMessages.Welcome = NetMessages.Welcome.decode(bytes)
 	if not assert_not_null(decoded, "decode del WELCOME"):
@@ -862,6 +865,11 @@ func test_welcome_roundtrip_and_layout() -> void:
 	assert_eq(decoded.realm, NetProtocol.Realm.ASKARRA, "realm")
 	assert_eq(decoded.channel, 0, "channel")
 	assert_eq(decoded.zone_id, "vado_gris", "zone_id")
+	assert_eq(decoded.realm_counts, PackedInt32Array([4, 0, 255]), "recuento por reino")
+	assert_eq(decoded.get_realm_count(NetProtocol.Realm.VARDHEIM), 4, "Vardheim")
+	assert_eq(decoded.get_realm_count(NetProtocol.Realm.SOLMARCH), 0, "Solmarch")
+	assert_eq(decoded.get_realm_count(NetProtocol.Realm.ASKARRA), 255, "Askarra")
+	assert_eq(decoded.get_realm_count(NetProtocol.Realm.NONE), 0, "sin reino")
 
 	var defaults := NetMessages.Welcome.new()
 	assert_eq(defaults.tick_rate, 60, "tick_rate por defecto")
@@ -869,7 +877,8 @@ func test_welcome_roundtrip_and_layout() -> void:
 			"intervalo por defecto")
 	assert_eq(defaults.max_input_batch, NetProtocol.MAX_INPUTS_PER_BATCH, "lote por defecto")
 	assert_eq(defaults.max_rewind_ticks, NetProtocol.MAX_REWIND_TICKS, "rebobinado por defecto")
-	assert_eq(defaults.encode().size(), 18, "WELCOME con zona vacía: 18 B")
+	assert_eq(defaults.encode().size(), 21, "WELCOME con zona vacía: 18 B + el recuento")
+	assert_eq(defaults.realm_counts, PackedInt32Array([0, 0, 0]), "recuento por defecto a 0")
 
 	var long_zone := NetMessages.Welcome.new()
 	long_zone.zone_id = "z".repeat(50)
@@ -895,7 +904,7 @@ func test_reject_roundtrip_and_layout() -> void:
 		assert_eq(decoded.result, NetProtocol.Result.REALM, "result")
 		assert_eq(decoded.text, reject.text, "texto en español")
 
-	for result: int in range(1, 9):
+	for result: int in range(1, 10):
 		var each := NetMessages.Reject.new()
 		each.result = result
 		each.text = NetProtocol.result_text(result)
@@ -1123,16 +1132,16 @@ func test_small_client_messages() -> void:
 		assert_vec_near(teleport_decoded.get_teleport_position(), Vector3(1.5, -2.0, 300.25), 0.0,
 				"posición")
 	var other := NetMessages.DebugCommand.new()
-	other.command = 9
+	other.command = NetProtocol.DEBUG_SET_WEAPON
 	other.payload = PackedByteArray([1, 2, 3])
 	var other_decoded: NetMessages.DebugCommand = NetMessages.DebugCommand.decode(other.encode())
 	if assert_not_null(other_decoded, "decode de otro comando"):
-		assert_eq(other_decoded.command, 9, "command")
+		assert_eq(other_decoded.command, NetProtocol.DEBUG_SET_WEAPON, "command")
 		assert_eq(other_decoded.payload, other.payload, "datos")
 	assert_eq(NetMessages.DebugCommand.new().encode().size(), 2, "sin datos: 2 B")
 	assert_null(NetMessages.DebugCommand.decode(PackedByteArray([0x04, 1, 0, 0, 0, 0])),
 			"un teletransporte sin sus 12 B de datos")
-	var huge := PackedByteArray([0x04, 9])
+	var huge := PackedByteArray([0x04, NetProtocol.DEBUG_SET_WEAPON])
 	huge.resize(2 + 65)
 	assert_null(NetMessages.DebugCommand.decode(huge), "datos de más de 64 B")
 
@@ -1667,8 +1676,8 @@ func test_entity_event_rejects_inconsistent_lengths() -> void:
 	too_many.encode_u8(13, too_many_count)
 	assert_null(NetMessages.EntityEvent.decode(too_many),
 			"más de %d asistentes" % NetMessages.EntityEvent.MAX_ASSISTANTS)
-	# Evento desconocido o cero.
-	for event_code: int in [0, 5, 255]:
+	# Evento desconocido o cero (el 5 WAR y el 6 TELEGRAPH existen desde el protocolo 3).
+	for event_code: int in [0, 7, 255]:
 		var unknown_bytes: PackedByteArray = _sample_respawn().encode()
 		unknown_bytes.encode_u8(7, event_code)
 		assert_null(NetMessages.EntityEvent.decode(unknown_bytes), "evento %d" % event_code)
@@ -1712,7 +1721,13 @@ func test_new_message_channels_and_debug_command_ids() -> void:
 	assert_eq(NetProtocol.DEBUG_STAMINA_INF, 4, "stamina_inf")
 	assert_eq(NetProtocol.DEBUG_SET_WEAPON, 5, "set_weapon")
 	assert_eq(NetProtocol.DEBUG_SPAWN_DUMMY, 6, "spawn_dummy")
-	assert_eq(NetProtocol.DEBUG_COMMAND_IDS.size(), 6, "seis comandos")
+	assert_eq(NetProtocol.DEBUG_UNSTUCK, 7, "unstuck")
+	assert_eq(NetProtocol.DEBUG_FORT_RESET, 8, "fort_reset")
+	assert_eq(NetProtocol.DEBUG_FORT_OWNER, 9, "fort_owner")
+	assert_eq(NetProtocol.DEBUG_FORT_KILL_CAPTAIN, 10, "fort_kill_captain")
+	assert_eq(NetProtocol.DEBUG_FORT_CAPTURE_SPEED, 11, "fort_capture_speed")
+	assert_eq(NetProtocol.DEBUG_NPC_DEBUG, 12, "npc_debug")
+	assert_eq(NetProtocol.DEBUG_COMMAND_IDS.size(), 12, "doce comandos")
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"set_weapon"], 5, "tabla: set_weapon")
 	var seen: Dictionary = {}
 	for command_name: StringName in NetProtocol.DEBUG_COMMAND_IDS:
@@ -1885,8 +1900,9 @@ func test_malformed_lengths_and_counters_return_null() -> void:
 	bad_spawn.encode_u8(3, 0)
 	assert_null(NetMessages.EntitySpawn.decode(bad_spawn), "kind NONE")
 
-	# Tipos reservados: nadie los decodifica todavía.
-	for reserved: int in [NetProtocol.MSG_OBJECT_STATE, NetProtocol.MSG_HANDOFF]:
+	# Tipos reservados: nadie los decodifica todavía. (OBJECT_STATE ya no lo es: sus pruebas están en
+	# test_net_messages_v3.gd.)
+	for reserved: int in [NetProtocol.MSG_HANDOFF]:
 		var bytes := PackedByteArray([reserved, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 		for decoder: Callable in _decoders():
 			assert_null(decoder.call(bytes), "tipo reservado 0x%02X" % reserved)
@@ -2018,6 +2034,7 @@ func _sample_welcome() -> NetMessages.Welcome:
 	welcome.server_tick = 123456
 	welcome.realm = NetProtocol.Realm.ASKARRA
 	welcome.zone_id = "vado_gris"
+	welcome.realm_counts = PackedInt32Array([4, 0, 300])
 	return welcome
 
 

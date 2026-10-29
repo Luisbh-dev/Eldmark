@@ -186,6 +186,13 @@ var _events_received: int = 0
 var _events_own: int = 0
 var _respawn_requests: int = 0
 
+# Mensajes de la fase 4 que el cliente solo acepta por ahora (F5 los aplicará).
+var _structure_spawns_received: int = 0
+var _object_states_received: int = 0
+var _scoreboards_received: int = 0
+var _war_events_received: int = 0
+var _telegraphs_received: int = 0
+
 # Envío de entradas.
 var _view_offsets_q: PackedInt32Array = PackedInt32Array()
 var _batches_sent: int = 0
@@ -521,6 +528,9 @@ func get_last_notice_text() -> String:
 ## [br]- [code]combat_events[/code] recibidos, [code]combat_events_own[/code] (los propios),
 ## [code]combat_events_pending[/code] (esperando a su tick de dibujo), [code]respawn_requests[/code],
 ## [code]health[/code] y [code]max_health[/code].
+## [br]- [code]structure_spawns[/code], [code]object_states[/code], [code]scoreboards[/code],
+## [code]war_events[/code] y [code]telegraphs[/code]: mensajes del protocolo 3 recibidos (todavía sin
+## efecto, F5).
 func get_stats() -> Dictionary:
 	var prediction_stats: Dictionary = _prediction.get_stats()
 	# Las diferencias que aún esperan su evento cuentan ya, según lo que se sepa ahora.
@@ -581,6 +591,11 @@ func get_stats() -> Dictionary:
 		"combat_events_own": _events_own,
 		"combat_events_pending": _event_queue.size(),
 		"respawn_requests": _respawn_requests,
+		"structure_spawns": _structure_spawns_received,
+		"object_states": _object_states_received,
+		"scoreboards": _scoreboards_received,
+		"war_events": _war_events_received,
+		"telegraphs": _telegraphs_received,
 		"health": _health,
 		"max_health": _max_health,
 	}
@@ -985,6 +1000,10 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 			else:
 				_last_notice_text = notice.text
 				notice_received.emit(notice.code, notice.text)
+		NetProtocol.MSG_OBJECT_STATE:
+			_on_object_state(bytes)
+		NetProtocol.MSG_SCOREBOARD:
+			_on_scoreboard(bytes)
 		_:
 			_malformed_packets += 1
 
@@ -1008,11 +1027,40 @@ func _on_snapshot(bytes: PackedByteArray) -> void:
 		_latest = snapshot
 
 
+# OBJECT_STATE (protocolo v3): se acepta y se cuenta. TODO(F5): FortressView guarda la historia de
+# cambios y aplica el estado cuando el tick de dibujo alcanza object_state.tick (docs/fuerte.md,
+# sección 2).
+func _on_object_state(bytes: PackedByteArray) -> void:
+	var object_state: NetMessages.ObjectState = NetMessages.ObjectState.decode(bytes)
+	if object_state == null:
+		_malformed_packets += 1
+		return
+	_object_states_received += 1
+
+
+# SCOREBOARD (protocolo v3): se acepta y se cuenta. TODO(F5): marcador de la zona (Tab).
+func _on_scoreboard(bytes: PackedByteArray) -> void:
+	var scoreboard: NetMessages.Scoreboard = NetMessages.Scoreboard.decode(bytes)
+	if scoreboard == null:
+		_malformed_packets += 1
+		return
+	_scoreboards_received += 1
+
+
 # ENTITY_EVENT: los propios se entregan ya; los ajenos esperan a su tick de dibujo.
 func _on_entity_event(bytes: PackedByteArray) -> void:
 	var event: NetMessages.EntityEvent = NetMessages.EntityEvent.decode(bytes)
 	if event == null:
 		_malformed_packets += 1
+		return
+	# Los avisos de guerra y de ataques de PNJ (protocolo v3) no son eventos de combate de nadie: se
+	# aceptan y se cuentan aparte. TODO(F5): banners de WarEvents en el tick de dibujo y zonas de
+	# peligro de TELEGRAPH al llegar.
+	if event.event == NetMessages.EntityEvent.Kind.WAR:
+		_war_events_received += 1
+		return
+	if event.event == NetMessages.EntityEvent.Kind.TELEGRAPH:
+		_telegraphs_received += 1
 		return
 	_events_received += 1
 	if is_own_event(event):
@@ -1030,6 +1078,10 @@ func _on_spawn(bytes: PackedByteArray) -> void:
 		return
 	if spawn.is_yours:
 		_on_own_spawn(spawn)
+	elif spawn.kind == NetProtocol.EntityKind.STRUCTURE:
+		# Estructura (protocolo v3): se acepta y se cuenta. TODO(F5): FortressView crea la fortaleza
+		# con los campos completos del SPAWN (spawn.to_object_state()).
+		_structure_spawns_received += 1
 	else:
 		_remote_world.on_spawn(spawn)
 

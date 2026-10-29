@@ -524,7 +524,13 @@ func test_console_commands() -> void:
 	await _start_server()
 	var ana: int = _server.add_fake_player(_brain(), VARDHEIM)
 	var commands: CommandRegistry = _server.get_commands()
-	assert_eq(commands.missing_network_commands(), PackedStringArray(), "todos los comandos de red tienen manejador")
+	# Los ids 7 a 12 (protocolo 3) ya son fijos, pero sus manejadores llegan con F3 y F4: solo pueden faltar
+	# esos. Cuando existan, esta lista deja de hacer falta.
+	var pending_network_commands: PackedStringArray = PackedStringArray(["unstuck", "fort_reset",
+			"fort_owner", "fort_kill_captain", "fort_capture_speed", "npc_debug"])
+	for missing_name: String in commands.missing_network_commands():
+		assert_true(pending_network_commands.has(missing_name),
+				"todos los comandos de red tienen manejador (falta %s)" % missing_name)
 	assert_true(_server.console_command("help").contains("teleport"))
 	assert_true(_server.console_command("noexiste").begins_with("Comando desconocido"))
 	# Daño, curar y matar.

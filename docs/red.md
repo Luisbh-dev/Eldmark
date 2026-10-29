@@ -593,20 +593,25 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 | Tipo | Mensaje | Sentido | Canal | Tamaño |
 |---|---|---|---|---|
 | — | HELLO | C→S | autenticación | 23 B + nombre + billete |
-| — | WELCOME | S→C | autenticación | 18 B + id de zona |
+| — | WELCOME | S→C | autenticación | 18 B + id de zona + 3 B (v3) |
 | — | REJECT | S→C | autenticación | 6 B + texto |
 | `0x01` | INPUT_BATCH | C→S | 1 | 11 + 10·n B (21–91) |
 | `0x02` | CLIENT_READY | C→S | 3 | 2 B |
 | `0x03` | CLIENT_LEAVE | C→S | 3 | 2 B |
 | `0x04` | DEBUG_COMMAND | C→S | 3 | 2 B + datos |
 | `0x05` | RESPAWN_REQUEST | C→S | 3 | 2 B |
+| `0x06` | UNSTUCK_REQUEST (v3) | C→S | 3 | 1 B |
 | `0x10` | SNAPSHOT | S→C | 2 | ≤ 1200 B (cabecera de 14 B, o de 92 B con estado y bloque extra propios, + 2 B por sección + 21 B por registro) |
 | `0x20` | ENTITY_SPAWN | S→C | 3 | 10 B + datos |
 | `0x21` | ENTITY_DESPAWN | S→C | 3 | 8 B |
-| `0x22` | OBJECT_STATE (reservado, fase 4) | S→C | 3 | — |
-| `0x23` | ENTITY_EVENT | S→C | 3 | 9 B + datos (HIT 17 B, DEATH 13 B, RESPAWN 10 B, KILL 14 + 2·n B) |
+| `0x22` | OBJECT_STATE (v3) | S→C | 3 | 8 B + campos (de 1 a 32; 3, 4 o 6 B cada uno: ≤ 200 B) |
+| `0x23` | ENTITY_EVENT | S→C | 3 | 9 B + datos (HIT 17 B, DEATH 13 B, RESPAWN 10 B, KILL 14 + 2·n B, WAR 11 B, TELEGRAPH 26 B) |
 | `0x30` | NOTICE | S→C | 3 | 3 B + texto |
 | `0x31` | HANDOFF (reservado, fase 6) | S→C | 3 | — |
+| `0x32` | SCOREBOARD (v3) | S→C | 3 | 4 B + 18 B por fila (hasta 66 filas por mensaje: ≤ 1192 B) |
+
+«v3» marca lo que añade el protocolo 3 (fase 4, [fuerte.md](fuerte.md#2-replicación-con-estado-object_state-gue-09)).
+El tamaño de un ENTITY_SPAWN depende de `kind` (ver 5.5).
 
 ### 5.3 Autenticación
 
@@ -615,7 +620,7 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
 | 0 | u32 | magic | `0x4D444C45` |
-| 4 | u16 | protocol_version | `NetProtocol.PROTOCOL_VERSION` (= 1) |
+| 4 | u16 | protocol_version | `NetProtocol.PROTOCOL_VERSION` (= 3) |
 | 6 | u32 | sim_hash | ver [3](#3-conexión) |
 | 10 | u8 | realm | 0 ninguno (se rechaza), 1 Vardheim, 2 Solmarch, 3 Askarra |
 | 11 | u8 | flags | bit0 = bot; resto, 0 |
@@ -625,7 +630,7 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 | 21+n | u16 | ticket_len | 0 en la fase 2; ≤ 256 |
 | 23+n | t B | ticket | sesión o billete de traspaso (fases 5–6) |
 
-**WELCOME** (S→C)
+**WELCOME** (S→C): 18 B + id de zona + 3 B con el recuento por reino (v3).
 
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
@@ -641,13 +646,16 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 | 16 | u8 | channel | canal de la zona; 0 en la fase 2 |
 | 17 | u8 | zone_len | ≤ 32 |
 | 18 | z B | zone_id | id ASCII de `zones.gd` |
+| 18+z | u8 × 3 | realm_counts | jugadores de Vardheim, Solmarch y Askarra en la zona (saturan a 255), para que la selección de reino ofrezca el más corto ([fuerte.md 7](fuerte.md#7-bots-que-asedian-gue-15-gue-16-gue-42)). El servidor los rellena desde GUE-42 (F6); hasta entonces van a 0 |
+
+El tamaño es exactamente `21 + z`: un WELCOME de la versión 2 (sin el recuento) ya no se decodifica.
 
 **REJECT** (S→C)
 
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
 | 0 | u32 | magic | |
-| 4 | u8 | result | 1 VERSION, 2 SIM_HASH, 3 REALM, 4 FULL, 5 TICKET, 6 MALFORMED, 7 TOO_MANY_CONNECTIONS, 8 NAME |
+| 4 | u8 | result | 1 VERSION, 2 SIM_HASH, 3 REALM, 4 FULL, 5 TICKET, 6 MALFORMED, 7 TOO_MANY_CONNECTIONS, 8 NAME, 9 IMBALANCE (v3: el reino elegido tiene demasiados jugadores, `--max-realm-diff`) |
 | 5 | u8 | text_len | |
 | 6 | n B | text | UTF-8, en español (`NetProtocol.result_text`) |
 
@@ -696,9 +704,14 @@ inmediata sin esperar al timeout.
 
 - `command` 1 = TELEPORT, con `f32 × 3` de posición (14 B en total).
 - **Ids fijos** (`NetProtocol.DEBUG_*`), que no se reutilizan ni se reordenan: 1 `teleport`,
-  2 `heal`, 3 `kill`, 4 `stamina_inf`, 5 `set_weapon`, 6 `spawn_dummy`. Los datos de 2 a 6 los
-  define el servidor ([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)); el
-  `decode` solo exige 64 B de datos como mucho. `NetProtocol.DEBUG_COMMAND_IDS` es la tabla
+  2 `heal`, 3 `kill`, 4 `stamina_inf`, 5 `set_weapon`, 6 `spawn_dummy` y, desde la versión 3
+  ([fuerte.md 1.6](fuerte.md#16-controlador-gue-08-gue-12)), 7 `unstuck`, 8 `fort_reset`, 9
+  `fort_owner`, 10 `fort_kill_captain`, 11 `fort_capture_speed` y 12 `npc_debug`. Los datos de 2 a 6
+  los define el servidor ([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)); el
+  `decode` solo exige 64 B de datos como mucho. Los de 7 a 12 los valida el `decode`: 7, 8 y 10, sin
+  datos; 9, `u8` con el reino (0 a 3); 11, `u8` con el factor (1 a 255); 12, `u8` (0 apaga, 1
+  activa). Un id fijo cuyo manejador aún no existe en el servidor se acepta sin aviso y sin efecto
+  (los de 7 a 12 hasta que lleguen F3 y F4). `NetProtocol.DEBUG_COMMAND_IDS` es la tabla
   nombre → id con la que el registro de comandos del servidor comprueba que todo comando de red
   tiene su id. `announce`, `kick` y `shutdown` son solo de consola.
 - Solo se acepta si el servidor arrancó con `--debug-commands`; si no, cuenta un aviso
@@ -708,6 +721,11 @@ inmediata sin esperar al timeout.
 reaparecer en el punto `point_index` de la lista de puntos de su reino
 ([combate.md 5](combate.md#5-vida-eventos-muerte-y-reaparición-cmb-10-cmb-15-cmb-41-gue-03-gue-05)).
 Fuera de plazo o con un índice inválido, el servidor cuenta un aviso.
+
+**UNSTUCK_REQUEST** (`0x06`, canal 3, v3): 1 B, solo `u8 type`. El jugador pide `/atascado`
+([fuerte.md 5](fuerte.md#5-avisos-reaparición-salida-y-atascado)). Vale sin `--debug-commands`. Antes
+de entrar en el mundo, o con algún byte más, cuenta un aviso; la canalización de 10 s, la
+reutilización y el teletransporte son de F3.
 
 ### 5.5 Servidor → cliente
 
@@ -768,7 +786,24 @@ porque no cambia la simulación ([combate.md 1](combate.md#1-qué-se-predice-y-q
 | 4 | u32 | spawn_tick | tick del estado incluido |
 | 8 | u8 | realm | |
 | 9 | u8 | flags | bit0 = es tu personaje; bits 1–2 = contador de teletransporte |
-| 10 | … | payload | según `kind`. PLAYER: `PlayerState` (69 B, estado tras `spawn_tick`), `u8 name_len` y el nombre (≤ 48 B) |
+| 10 | … | payload | según `kind` (abajo) |
+
+Payload según `kind`:
+
+- **PLAYER** (1): `PlayerState` (69 B, estado tras `spawn_tick`), `u8 name_len` y el nombre (≤ 48 B).
+- **NPC** (2): lo mismo que un jugador y, tras el nombre, `u16 npc_def_id` (v3): el id del catálogo
+  de PNJ (`NpcCatalog`, ids alfabéticos 1..n; 0 = sin definición) para que el cliente elija modelo,
+  tabardo y barra de jefe. Tamaño: 10 + 69 + 1 + n + 2 B.
+- **STRUCTURE** (4, v3): `u8 def_len` (1–32), el id de la definición en ASCII imprimible (por
+  ejemplo `vado_gris_fort`), `u8 field_count` (1–32) y los campos completos, cada uno `u8 field_id,
+  u8 value_type` y el valor, como en OBJECT_STATE (sin repetir type, net_id ni tick). No lleva
+  estado de jugador ni nombre. El `realm` de la cabecera es 0: manda el campo `owner`. Para una
+  fortaleza son 98 B con el id del Vado Gris (10 + 1 + 14 + 1 + 72).
+- **PROJECTILE** (3): sin formato todavía.
+
+`decode` devuelve `null` si el tamaño no cuadra con las longitudes, un texto no es válido, el `kind`
+no tiene formato o, en una estructura, el id de definición no es ASCII imprimible de 1 a 32 B, el
+contador no está entre 1 y 32, un campo trae un `value_type` desconocido o se repite un `field_id`.
 
 **ENTITY_DESPAWN** (`0x21`, canal 3)
 
@@ -786,9 +821,9 @@ demás mensajes del canal 3.
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
 | 0 | u8 | type | `0x23` |
-| 1 | u16 | net_id | la entidad a la que se ata: la víctima en HIT, DEATH y KILL; la que reaparece en RESPAWN |
+| 1 | u16 | net_id | la entidad a la que se ata: la víctima en HIT, DEATH y KILL; la que reaparece en RESPAWN; la fortaleza en WAR; el PNJ en TELEGRAPH |
 | 3 | u32 | tick | tick del servidor en que ocurrió |
-| 7 | u8 | event | 1 HIT, 2 DEATH, 3 KILL, 4 RESPAWN |
+| 7 | u8 | event | 1 HIT, 2 DEATH, 3 KILL, 4 RESPAWN, 5 WAR, 6 TELEGRAPH |
 | 8 | u8 | len | bytes de datos que siguen |
 | 9 | len B | datos | según `event` |
 
@@ -798,12 +833,23 @@ demás mensajes del canal 3.
 | 2 DEATH | `u16 killer` (0 = el entorno), `u16 attack_id` | 4 | 13 B |
 | 3 KILL | `u16 killer`, `u16 attack_id`, `u8 n`, `n × u16` asistentes | 5 + 2·n | 14 + 2·n B |
 | 4 RESPAWN | `u8 point` | 1 | 10 B |
+| 5 WAR (v3) | `u8 war_event` (1–7, `WarEvents`), `u8 realm` (0–3) | 2 | 11 B |
+| 6 TELEGRAPH (v3) | `u16 attack_id`, `u8 shape` (0 círculo, 1 sector), `u64 position`, `u16 yaw`, `u16 radius_cm`, `u16 impact_in_ticks` | 17 | 26 B |
+
+- **WAR**: el `net_id` es la fortaleza y el `realm` el reino que acompaña al aviso
+  (`FortressState.event_realm`). Va a toda la zona y se aplica en el tick de dibujo
+  ([fuerte.md 5](fuerte.md#5-avisos-reaparición-salida-y-atascado)).
+- **TELEGRAPH**: el `net_id` es el PNJ que prepara el ataque. `position` va empaquetada como en el
+  registro de entidad (20 bits por eje, 1 cm), `yaw` como en el registro (0..65535 sobre [0, TAU)),
+  `radius_cm` es el alcance y `impact_in_ticks` los ticks que faltan para el golpe. Se aplica al
+  llegar: es un aviso.
 
 - **Flags de HIT:** bit0 crítico, bit1 bloqueado, bit2 parado, bit3 rotura de guardia, bit4
   mortal.
 - **Validación.** `decode` devuelve `null` si el tipo no es `0x23`, el `event` es desconocido,
   `len` no cuadra con el evento o con el tamaño real del mensaje, `n` no cuadra con `len` o
-  `n > 16` (los asistentes hacen al menos el 10 % del daño, así que nunca son más de 10).
+  `n > 16` (los asistentes hacen al menos el 10 % del daño, así que nunca son más de 10), un WAR trae
+  un aviso fuera de 1–7 o un reino mayor que 3, o un TELEGRAPH trae una forma que no es 0 ni 1.
   `encode` recorta un KILL a 16 asistentes.
 - **Destinatarios y temporización:** ver [combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2).
 
@@ -812,14 +858,50 @@ demás mensajes del canal 3.
 - Códigos: 0 informativo, 1 expulsión, 2 servidor cerrándose.
 - Con el código 1, el servidor desconecta al peer después del `flush()`.
 
+**OBJECT_STATE** (`0x22`, canal 3, v3). El estado replicado de un objeto que no es un jugador ni un
+PNJ, hoy una fortaleza ([fuerte.md 2](fuerte.md#2-replicación-con-estado-object_state-gue-09)).
+
+| Offset | Tipo | Campo | Notas |
+|---|---|---|---|
+| 0 | u8 | type | `0x22` |
+| 1 | u16 | net_id | la estructura |
+| 3 | u32 | tick | tick del servidor tras el que vale el estado |
+| 7 | u8 | field_count | 1–32 |
+| 8 | … | campos | cada uno: `u8 field_id`, `u8 value_type` (1 u8, 2 u16, 3 u32, 4 s32) y el valor (1, 2, 4 o 4 B) |
+
+- Un mensaje trae solo los campos que han cambiado (como mucho uno por fortaleza cada 6 ticks); el
+  estado completo viaja en el ENTITY_SPAWN de la estructura. Los ids de campo de una fortaleza son
+  los de `FortressFields`.
+- **Validación.** `decode` devuelve `null` si el tamaño no cuadra, un `value_type` es desconocido,
+  `field_count` no está entre 1 y 32 o se repite un `field_id`. Un `field_id` desconocido con un tipo
+  válido se conserva y quien interpreta el objeto lo salta (compatibilidad hacia delante). Un campo
+  conocido con otro tipo de valor que el suyo no lo rechaza el `decode` (no sabe de qué objeto es):
+  `ObjectState.apply_to_fortress` lo salta e `is_valid_for_fortress` lo señala.
+
+**SCOREBOARD** (`0x32`, canal 3, v3). El marcador de la zona, cada 2 s a todos los jugadores
+([fuerte.md 6](fuerte.md#6-interfaz-ui-18-ui-21-ui-41-ui-42)).
+
+| Offset | Tipo | Campo | Notas |
+|---|---|---|---|
+| 0 | u8 | type | `0x32` |
+| 1 | u8 | page_index | desde 0 |
+| 2 | u8 | page_count | total de páginas, 1–255 |
+| 3 | u8 | row_count | 0–66 |
+| 4 | row_count × 18 B | filas | `u16 net_id`, `u16 bajas`, `u16 muertes`, `u16 asistencias`, `u32 daño a la puerta`, `u16 segundos en el círculo`, `u32 méritos` |
+
+- Una página no pasa de **66 filas** (4 + 66 · 18 = 1192 B ≤ `MAX_PACKET_BYTES`). Con más jugadores el
+  marcador se parte en varios mensajes (`Scoreboard.split`), que el cliente junta por `page_index`
+  de `page_count`; sin jugadores se manda una sola página vacía.
+- Los contadores saturan a su máximo al codificar. `decode` devuelve `null` si el tamaño no es
+  exactamente `4 + 18 · row_count`, `row_count > 66`, `page_count` es 0 o `page_index ≥ page_count`.
+
 ### 5.6 Reservados
 
-- **OBJECT_STATE** (`0x22`, fase 4): `u8 type`, `u16 object_id`, `u32 tick`, `u8 field_count`
-  y, por campo, `u8 field_id`, `u8 value_type` y el valor.
 - **HANDOFF** (`0x31`, fase 6): zona, canal, host, puerto y billete.
 
 Ocupar uno de estos tipos sube `PROTOCOL_VERSION`. ENTITY_EVENT (`0x23`) dejó de estar
-reservado en la fase 3: su formato está en [5.5](#55-servidor--cliente).
+reservado en la fase 3 y OBJECT_STATE (`0x22`) en la fase 4 (protocolo 3): sus formatos están en
+[5.5](#55-servidor--cliente).
 
 ### 5.7 Validación
 
@@ -1649,7 +1731,9 @@ pero aquí son siempre 10.
 - **El fuerte** es una `NetEntity` de tipo STRUCTURE con `ALWAYS_RELEVANT`. Se replica por
   OBJECT_STATE fiable:
   - estado completo en el SPAWN y después solo los cambios;
-  - captura como fórmula.
+  - captura como fórmula;
+  - formatos fijados en el protocolo 3 ([5.5](#55-servidor--cliente)): OBJECT_STATE, ENTITY_SPAWN de
+    STRUCTURE y los ENTITY_EVENT WAR y TELEGRAPH.
 - **Guardias PNJ:** entidades por flujo (tipo NPC, mismo registro), simuladas en el paso 4 de
   [8.1](#81-orden-del-tick) e interpoladas en el cliente.
 - **Avisos** («¡Vado Gris capturado!»): por NOTICE o ENTITY_EVENT, aplicados en el tick de
@@ -1912,7 +1996,7 @@ func set_idle_from(tick: int) -> void
 ```gdscript
 # net_protocol.gd
 class_name NetProtocol extends RefCounted
-const PROTOCOL_VERSION: int = 1
+const PROTOCOL_VERSION: int = 3
 const MAGIC: int = 0x4D444C45
 const DEFAULT_PORT: int = 24600
 const CUSTOM_CHANNELS: int = 3
@@ -1937,29 +2021,38 @@ const MIN_NAME_CHARS: int = 3
 const MAX_NAME_CHARS: int = 24
 const MAX_TICKET_BYTES: int = 256
 const MAX_ZONE_ID_BYTES: int = 32
+const MAX_DEFINITION_ID_BYTES: int = 32              # id ASCII de la definición de una estructura
 const MSG_INPUT_BATCH: int = 0x01
 const MSG_CLIENT_READY: int = 0x02
 const MSG_CLIENT_LEAVE: int = 0x03
 const MSG_DEBUG_COMMAND: int = 0x04
 const MSG_RESPAWN_REQUEST: int = 0x05
+const MSG_UNSTUCK_REQUEST: int = 0x06
 const MSG_SNAPSHOT: int = 0x10
 const MSG_ENTITY_SPAWN: int = 0x20
 const MSG_ENTITY_DESPAWN: int = 0x21
-const MSG_OBJECT_STATE: int = 0x22   # reservado (fase 4)
+const MSG_OBJECT_STATE: int = 0x22
 const MSG_ENTITY_EVENT: int = 0x23
 const MSG_NOTICE: int = 0x30
 const MSG_HANDOFF: int = 0x31        # reservado (fase 6)
+const MSG_SCOREBOARD: int = 0x32
 const DEBUG_TELEPORT: int = 1
 const DEBUG_HEAL: int = 2
 const DEBUG_KILL: int = 3
 const DEBUG_STAMINA_INF: int = 4
 const DEBUG_SET_WEAPON: int = 5
 const DEBUG_SPAWN_DUMMY: int = 6
+const DEBUG_UNSTUCK: int = 7
+const DEBUG_FORT_RESET: int = 8
+const DEBUG_FORT_OWNER: int = 9
+const DEBUG_FORT_KILL_CAPTAIN: int = 10
+const DEBUG_FORT_CAPTURE_SPEED: int = 11
+const DEBUG_NPC_DEBUG: int = 12
 const DEBUG_COMMAND_IDS: Dictionary[StringName, int]   # nombre -> id de cada comando de red
 enum Realm { NONE = 0, VARDHEIM = 1, SOLMARCH = 2, ASKARRA = 3 }
 enum EntityKind { NONE = 0, PLAYER = 1, NPC = 2, PROJECTILE = 3, STRUCTURE = 4 }
 enum Result { OK = 0, VERSION = 1, SIM_HASH = 2, REALM = 3, FULL = 4, TICKET = 5, MALFORMED = 6,
-		TOO_MANY_CONNECTIONS = 7, NAME = 8 }
+		TOO_MANY_CONNECTIONS = 7, NAME = 8, IMBALANCE = 9 }
 enum DespawnReason { OUT_OF_INTEREST = 0, DISCONNECTED = 1, DEATH = 2, HANDOFF = 3 }
 enum NoticeCode { INFO = 0, KICK = 1, SHUTDOWN = 2 }
 static func channel_for_type(msg_type: int) -> int
@@ -2039,6 +2132,8 @@ class Welcome:
 	var protocol_version: int; var server_tick: int; var tick_rate: int
 	var snapshot_interval: int; var max_input_batch: int; var max_rewind_ticks: int
 	var realm: int; var channel: int; var zone_id: String
+	var realm_counts: PackedInt32Array      # 3 posiciones: Vardheim, Solmarch, Askarra (v3)
+	func get_realm_count(realm_code: int) -> int
 class Reject:
 	var result: int; var text: String
 class InputBatch:
@@ -2051,6 +2146,11 @@ class ClientLeave:
 	var reason: int
 class DebugCommand:
 	var command: int; var payload: PackedByteArray
+	## Valida los datos de los comandos 1 (12 B) y 7 a 12 (v3); el resto, hasta 64 B.
+	static func simple(command_id: int) -> DebugCommand
+	static func fort_owner(realm_code: int) -> DebugCommand
+	static func fort_capture_speed(factor: int) -> DebugCommand
+	static func npc_debug(enabled: bool) -> DebugCommand
 class Snapshot:
 	var server_tick: int; var input_ack_tick: int; var input_margin: int
 	var substitutions: int; var own_teleport: int
@@ -2068,12 +2168,35 @@ class Snapshot:
 class EntitySpawn:
 	var net_id: int; var kind: int; var spawn_tick: int; var realm: int
 	var is_yours: bool; var teleport_counter: int; var state: PlayerState; var display_name: String
+	var npc_def_id: int                                  # NPC (v3): u16 tras el nombre
+	var definition_id: String; var fields: Array[ObjectField]   # STRUCTURE (v3)
+	static func for_fortress(net_id: int, spawn_tick: int, definition_id: String,
+			state: FortressState) -> EntitySpawn         # reino 0, los 17 campos
+	func to_object_state() -> ObjectState
+class ObjectField:                                       # u8 field_id, u8 value_type, valor
+	enum ValueType { U8 = 1, U16 = 2, U32 = 3, S32 = 4 }
+	var field_id: int; var value_type: int; var value: int
+	static func make(id: int, type: int, field_value: int) -> ObjectField
+	static func size_of_type(type: int) -> int           # 0 si no existe
+class ObjectState:                                       # OBJECT_STATE (v3)
+	var net_id: int; var tick: int; var fields: Array[ObjectField]
+	static func from_fortress(object_id: int, state_tick: int, state: FortressState) -> ObjectState
+	static func from_fortress_fields(object_id: int, state_tick: int, state: FortressState,
+			field_ids: PackedInt32Array) -> ObjectState
+	static func from_fortress_changes(object_id: int, state_tick: int, state: FortressState,
+			previous: FortressState) -> ObjectState       # fields vacío si nada cambió: no hay nada que mandar
+	func add_field(field_id: int, type: int, field_value: int) -> void
+	func get_field(field_id: int) -> ObjectField          # null si no está
+	func get_value(field_id: int, default: int = 0) -> int
+	func apply_to_fortress(state: FortressState) -> int   # campos aplicados; salta desconocidos y de otro tipo
+	func is_valid_for_fortress() -> bool
 class EntityDespawn:
 	var net_id: int; var despawn_tick: int; var reason: int
 class Notice:
 	var code: int; var text: String
 class EntityEvent:
-	enum Kind { HIT = 1, DEATH = 2, KILL = 3, RESPAWN = 4 }
+	enum Kind { HIT = 1, DEATH = 2, KILL = 3, RESPAWN = 4, WAR = 5, TELEGRAPH = 6 }
+	const SHAPE_CIRCLE: int = 0; const SHAPE_SECTOR: int = 1
 	const MAX_ASSISTANTS: int = 16
 	const HIT_FLAG_CRITICAL: int = 1 << 0; const HIT_FLAG_BLOCKED: int = 1 << 1
 	const HIT_FLAG_PARRIED: int = 1 << 2; const HIT_FLAG_GUARD_BREAK: int = 1 << 3
@@ -2083,14 +2206,29 @@ class EntityEvent:
 	var attack_id: int                                                              # HIT, DEATH, KILL
 	var killer: int; var assistants: PackedInt32Array                               # DEATH, KILL
 	var point: int                                                                  # RESPAWN
+	var war_event: int; var war_realm: int                                          # WAR (v3)
+	var shape: int; var position: Vector3; var yaw: float                           # TELEGRAPH (v3),
+	var radius_cm: int; var impact_in_ticks: int                                    # con attack_id
 	static func hit(victim_id: int, event_tick: int, attacker_id: int, damage: int,
 			type_of_damage: int, flags: int, id_of_attack: int) -> EntityEvent
 	static func death(victim_id: int, event_tick: int, killer_id: int, id_of_attack: int) -> EntityEvent
 	static func kill(victim_id: int, event_tick: int, killer_id: int, id_of_attack: int,
 			assistant_ids: PackedInt32Array) -> EntityEvent
 	static func respawn(entity_id: int, event_tick: int, point_index: int) -> EntityEvent
+	static func war(fortress_id: int, event_tick: int, war_event_id: int, realm_code: int) -> EntityEvent
+	static func telegraph(npc_id: int, event_tick: int, id_of_attack: int, area_shape: int,
+			origin: Vector3, area_yaw: float, area_radius_cm: int, ticks_to_impact: int) -> EntityEvent
 class RespawnRequest:
 	var point_index: int
+class UnstuckRequest:                                    # UNSTUCK_REQUEST (v3), 1 B
+	pass
+class ScoreRow:                                          # 18 B
+	var net_id: int; var kills: int; var deaths: int; var assists: int
+	var gate_damage: int; var circle_seconds: int; var merits: int
+class Scoreboard:                                        # SCOREBOARD (v3)
+	const MAX_ROWS: int = 66
+	var page_index: int; var page_count: int; var rows: Array[ScoreRow]
+	static func split(all_rows: Array[ScoreRow]) -> Array[Scoreboard]
 
 # net_sim.gd
 class_name NetSim extends RefCounted

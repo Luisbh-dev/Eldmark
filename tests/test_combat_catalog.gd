@@ -417,8 +417,9 @@ func test_prediction_hash_depends_on_the_id_assignment() -> void:
 
 
 func test_sim_hash_includes_the_combat_hash() -> void:
-	# NetProtocol.compute_sim_hash lleva la huella del catálogo y la versión 2 del protocolo.
-	assert_eq(NetProtocol.PROTOCOL_VERSION, 2, "el protocolo del combate es la versión 2")
+	# NetProtocol.compute_sim_hash lleva la huella del catálogo y la versión del protocolo (la 3 desde
+	# la fase 4).
+	assert_eq(NetProtocol.PROTOCOL_VERSION, 3, "el protocolo del fuerte es la versión 3")
 	var scene: PackedScene = load("res://scenes/characters/player_character.tscn") as PackedScene
 	var character: PlayerCharacter = scene.instantiate() as PlayerCharacter
 	tree.root.add_child(character)

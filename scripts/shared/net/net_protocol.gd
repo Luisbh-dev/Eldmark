@@ -6,7 +6,10 @@ extends RefCounted
 ## el reloj ni depende de [code]scripts/client/[/code].
 
 ## Versión del protocolo. Cualquier cambio en los formatos o en la simulación la sube.
-const PROTOCOL_VERSION: int = 2
+## La 3 (fase 4, docs/fuerte.md sección 2) añade OBJECT_STATE, el ENTITY_SPAWN de estructuras y de
+## PNJ con definición, los ENTITY_EVENT WAR y TELEGRAPH, UNSTUCK_REQUEST, SCOREBOARD, el REJECT
+## IMBALANCE, el recuento por reino del WELCOME y los comandos de depuración 7 a 12.
+const PROTOCOL_VERSION: int = 3
 ## Primeros 4 bytes de los mensajes de autenticación (los bytes «ELDM»).
 const MAGIC: int = 0x4D444C45
 const DEFAULT_PORT: int = 24600
@@ -47,6 +50,8 @@ const MIN_NAME_CHARS: int = 3
 const MAX_NAME_CHARS: int = 24
 const MAX_TICKET_BYTES: int = 256
 const MAX_ZONE_ID_BYTES: int = 32
+## Máximo de bytes del id (ASCII) de la definición de una estructura en su ENTITY_SPAWN.
+const MAX_DEFINITION_ID_BYTES: int = 32
 
 # Tipos de mensaje (byte 0 de lo que va por send_bytes).
 const MSG_INPUT_BATCH: int = 0x01
@@ -54,13 +59,18 @@ const MSG_CLIENT_READY: int = 0x02
 const MSG_CLIENT_LEAVE: int = 0x03
 const MSG_DEBUG_COMMAND: int = 0x04
 const MSG_RESPAWN_REQUEST: int = 0x05
+## Petición de /atascado (C→S, fase 4).
+const MSG_UNSTUCK_REQUEST: int = 0x06
 const MSG_SNAPSHOT: int = 0x10
 const MSG_ENTITY_SPAWN: int = 0x20
 const MSG_ENTITY_DESPAWN: int = 0x21
-const MSG_OBJECT_STATE: int = 0x22   # reservado (fase 4)
+## Estado replicado de un objeto (S→C, fase 4): campos sueltos de una estructura.
+const MSG_OBJECT_STATE: int = 0x22
 const MSG_ENTITY_EVENT: int = 0x23
 const MSG_NOTICE: int = 0x30
 const MSG_HANDOFF: int = 0x31        # reservado (fase 6)
+## Marcador de la zona (S→C, fase 4).
+const MSG_SCOREBOARD: int = 0x32
 
 # Comandos de depuración (byte 1 de un DEBUG_COMMAND, solo con --debug-commands). Los ids son
 # fijos: no se reutilizan ni se reordenan (docs/combate.md, sección 6).
@@ -76,6 +86,19 @@ const DEBUG_STAMINA_INF: int = 4
 const DEBUG_SET_WEAPON: int = 5
 ## Crear un maniquí de entrenamiento.
 const DEBUG_SPAWN_DUMMY: int = 6
+## /atascado (fase 4, docs/fuerte.md sección 5). El comando de jugador va por su propio mensaje
+## ([constant MSG_UNSTUCK_REQUEST]); el id queda reservado. Sin datos.
+const DEBUG_UNSTUCK: int = 7
+## Devolver la fortaleza a neutral. Sin datos.
+const DEBUG_FORT_RESET: int = 8
+## Dar la fortaleza a un reino (1 B: código de reino de 0 a 3).
+const DEBUG_FORT_OWNER: int = 9
+## Matar al capitán de la fortaleza. Sin datos.
+const DEBUG_FORT_KILL_CAPTAIN: int = 10
+## Multiplicar la velocidad de captura (1 B: factor de 1 a 255).
+const DEBUG_FORT_CAPTURE_SPEED: int = 11
+## Activar o apagar el registro de depuración de los PNJ (1 B: 0 o 1).
+const DEBUG_NPC_DEBUG: int = 12
 ## Nombre -> id de cada comando de depuración de red. El registro de comandos del servidor
 ## comprueba contra esta tabla que todo comando de red tiene un id fijo.
 const DEBUG_COMMAND_IDS: Dictionary[StringName, int] = {
@@ -85,6 +108,12 @@ const DEBUG_COMMAND_IDS: Dictionary[StringName, int] = {
 	&"stamina_inf": DEBUG_STAMINA_INF,
 	&"set_weapon": DEBUG_SET_WEAPON,
 	&"spawn_dummy": DEBUG_SPAWN_DUMMY,
+	&"unstuck": DEBUG_UNSTUCK,
+	&"fort_reset": DEBUG_FORT_RESET,
+	&"fort_owner": DEBUG_FORT_OWNER,
+	&"fort_kill_captain": DEBUG_FORT_KILL_CAPTAIN,
+	&"fort_capture_speed": DEBUG_FORT_CAPTURE_SPEED,
+	&"npc_debug": DEBUG_NPC_DEBUG,
 }
 
 ## Reino en la red (independiente de cómo lo represente [Zones]; ver [NetZones]).
@@ -92,7 +121,7 @@ enum Realm { NONE = 0, VARDHEIM = 1, SOLMARCH = 2, ASKARRA = 3 }
 enum EntityKind { NONE = 0, PLAYER = 1, NPC = 2, PROJECTILE = 3, STRUCTURE = 4 }
 ## Resultado de la autenticación: 0 es WELCOME y el resto son motivos de REJECT.
 enum Result { OK = 0, VERSION = 1, SIM_HASH = 2, REALM = 3, FULL = 4, TICKET = 5, MALFORMED = 6,
-		TOO_MANY_CONNECTIONS = 7, NAME = 8 }
+		TOO_MANY_CONNECTIONS = 7, NAME = 8, IMBALANCE = 9 }
 enum DespawnReason { OUT_OF_INTEREST = 0, DISCONNECTED = 1, DEATH = 2, HANDOFF = 3 }
 enum NoticeCode { INFO = 0, KICK = 1, SHUTDOWN = 2 }
 
@@ -101,15 +130,17 @@ const _COLLISION_NODE: NodePath = ^"Collision"
 
 
 ## Canal por el que viaja un mensaje de tipo [param msg_type] (el byte 0). Las entradas van por el
-## canal de entradas y los snapshots por el suyo; todo lo demás (incluidos ENTITY_EVENT y
-## RESPAWN_REQUEST) y los tipos desconocidos o reservados, por el canal fiable.
+## canal de entradas y los snapshots por el suyo; todo lo demás (incluidos ENTITY_EVENT,
+## RESPAWN_REQUEST, UNSTUCK_REQUEST, OBJECT_STATE y SCOREBOARD) y los tipos desconocidos o
+## reservados, por el canal fiable.
 static func channel_for_type(msg_type: int) -> int:
 	match msg_type:
 		MSG_INPUT_BATCH:
 			return CH_INPUT
 		MSG_SNAPSHOT:
 			return CH_SNAPSHOT
-		MSG_ENTITY_EVENT, MSG_RESPAWN_REQUEST:
+		MSG_ENTITY_EVENT, MSG_RESPAWN_REQUEST, MSG_UNSTUCK_REQUEST, MSG_OBJECT_STATE, \
+				MSG_SCOREBOARD:
 			return CH_RELIABLE
 	return CH_RELIABLE
 
@@ -216,4 +247,7 @@ static func result_text(result: int) -> String:
 			return "Demasiadas conexiones desde tu dirección"
 		Result.NAME:
 			return "Nombre no válido o ya en uso: " + NameRules.rules_summary()
+		Result.IMBALANCE:
+			return "Ese reino tiene demasiados jugadores en esta zona: elige otro para " \
+					+ "equilibrar la batalla"
 	return "Conexión rechazada"

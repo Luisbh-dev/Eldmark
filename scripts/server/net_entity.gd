@@ -50,6 +50,9 @@ var status: int = 0
 var respawn_tick: int = 0
 ## Byte de acción del registro de red ([method ActionMachine.action_byte]); 0 = sin datos.
 var action: int = 0
+## PNJ: id de su definición en el catálogo de PNJ, que viaja en su ENTITY_SPAWN para que el cliente
+## elija modelo, tabardo y barra de jefe (0 = sin definición).
+var npc_def_id: int = 0
 
 
 ## Posición global de la entidad (los pies, si es un jugador).
@@ -108,6 +111,7 @@ func encode_spawn(tick: int, for_owner: bool) -> PackedByteArray:
 	spawn.is_yours = for_owner
 	spawn.teleport_counter = teleport_counter & EntityRecord.TELEPORT_MASK
 	spawn.display_name = display_name
+	spawn.npc_def_id = npc_def_id
 	var character: PlayerCharacter = get_character()
 	if character != null:
 		spawn.state = character.get_state()

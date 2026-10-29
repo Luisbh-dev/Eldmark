@@ -606,6 +606,51 @@ func test_unexpected_messages_count_strikes_by_session_state() -> void:
 	assert_eq(int((report.get("strikes", {}) as Dictionary).get("total", 0)), 5, "el informe cuenta los avisos")
 
 
+func test_protocol_3_messages_do_not_count_as_strikes() -> void:
+	await _start_server(func(config: ServerConfig) -> void: config.debug_commands = true)
+	# Cargando la zona, el /atascado no tiene sentido (como el resto de peticiones de jugador).
+	var loading: RawClient = _connect_client(_hello(VARDHEIM, "Ana"), false)
+	var connected: bool = await _run_until(func() -> bool: return loading.connected)
+	if not assert_true(connected, "el cliente se conecta"):
+		return
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	if assert_not_null(loading.welcome, "llegó el WELCOME"):
+		assert_eq(loading.welcome.realm_counts.size(), 3, "el WELCOME lleva el recuento por reino")
+	loading.send_raw(NetProtocol.CH_RELIABLE, NetMessages.UnstuckRequest.new().encode())
+	await _run_frames(3)
+	assert_eq(peer.strikes_total, 1, "UNSTUCK_REQUEST antes de entrar en el mundo es un aviso")
+	loading.send_ready()
+	var entered: bool = await _run_until(func() -> bool: return loading.own_spawn != null)
+	if not assert_true(entered, "entra en el mundo"):
+		return
+	# Dentro del mundo, el /atascado bien formado se acepta (F3 hará lo que pide) y no suma nada.
+	loading.send_raw(NetProtocol.CH_RELIABLE, NetMessages.UnstuckRequest.new().encode())
+	await _run_frames(3)
+	assert_eq(peer.strikes_total, 1, "UNSTUCK_REQUEST en el mundo no suma avisos")
+	# Los comandos de depuración con id fijo de la versión 3 y datos válidos tampoco, aunque F3 y F4 aún
+	# no les hayan puesto manejador.
+	for command: NetMessages.DebugCommand in [
+			NetMessages.DebugCommand.simple(NetProtocol.DEBUG_FORT_RESET),
+			NetMessages.DebugCommand.fort_owner(NetProtocol.Realm.SOLMARCH),
+			NetMessages.DebugCommand.simple(NetProtocol.DEBUG_FORT_KILL_CAPTAIN),
+			NetMessages.DebugCommand.fort_capture_speed(10), NetMessages.DebugCommand.npc_debug(true),
+			NetMessages.DebugCommand.simple(NetProtocol.DEBUG_UNSTUCK)]:
+		loading.send_raw(NetProtocol.CH_RELIABLE, command.encode())
+	await _run_frames(5)
+	assert_eq(peer.strikes_total, 1, "los comandos 7 a 12 válidos no suman avisos")
+	# Lo que está mal formado o no es de un cliente sí cuenta.
+	loading.send_raw(NetProtocol.CH_RELIABLE, PackedByteArray([NetProtocol.MSG_UNSTUCK_REQUEST, 0]))
+	loading.send_raw(NetProtocol.CH_RELIABLE,
+			PackedByteArray([NetProtocol.MSG_DEBUG_COMMAND, NetProtocol.DEBUG_FORT_OWNER, 9]))
+	loading.send_raw(NetProtocol.CH_RELIABLE,
+			NetMessages.Scoreboard.new().encode())
+	loading.send_raw(NetProtocol.CH_RELIABLE,
+			NetMessages.ObjectState.from_fortress(1, 1, FortressState.new()).encode())
+	await _run_frames(5)
+	assert_eq(peer.strikes_total, 5, "un /atascado con datos, fort_owner 9 y dos mensajes del servidor")
+	assert_eq(peer.state, ServerPeer.State.IN_WORLD, "sin expulsión")
+
+
 func test_flooding_gets_the_client_kicked_with_a_notice() -> void:
 	await _start_server()
 	var client: RawClient = await _join("Ana")
