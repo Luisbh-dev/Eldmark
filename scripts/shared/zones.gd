@@ -17,6 +17,16 @@ const SCENES: Dictionary[StringName, String] = {
 	&"test_world": "res://scenes/world/test_world.tscn",
 }
 
+## Modo PvP de una zona (docs/combate.md, sección 5): en una zona [code]SAFE[/code] los reinos
+## enemigos no se dañan entre sí; en una [code]RVR[/code] (reino contra reino) sí.
+enum PvpMode { SAFE, RVR }
+
+## Modo PvP de cada zona registrada. Una zona que no figura aquí es [code]SAFE[/code].
+const PVP_MODES: Dictionary[StringName, int] = {
+	&"vado_gris": PvpMode.RVR,
+	&"test_world": PvpMode.RVR,
+}
+
 ## Reinos jugables (ver docs/mundo.md): los de [RealmCatalog].
 const REALMS: Array[StringName] = RealmCatalog.REALM_IDS
 ## Reino que se usa si no se indica otro.
@@ -38,6 +48,12 @@ static func has_zone(zone_id: StringName) -> bool:
 ## Ruta de la escena de [param zone_id], o una cadena vacía si la zona no existe.
 static func get_scene_path(zone_id: StringName) -> String:
 	return SCENES.get(zone_id, "")
+
+
+## Modo PvP de [param zone_id] (un valor de [enum PvpMode]). El Vado Gris y el mundo de pruebas
+## son RVR; una zona desconocida es [code]SAFE[/code], la opción segura.
+static func get_pvp_mode(zone_id: StringName) -> int:
+	return PVP_MODES.get(zone_id, PvpMode.SAFE)
 
 
 ## Identificadores de todas las zonas registradas, ordenados.
