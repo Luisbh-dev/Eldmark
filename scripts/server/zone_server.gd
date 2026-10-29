@@ -979,6 +979,9 @@ func _create_body(kind: int, display_name: String, realm: int, owner_peer: int, 
 	var character: PlayerCharacter = _instantiate_character()
 	character.name = ("Player%d" if kind == NetProtocol.EntityKind.PLAYER else "Npc%d") % entity.net_id
 	_players_root.add_child(character)
+	# Después de _ready() (que reescribe la máscara): las puertas cerradas de los fuertes paran a
+	# los reinos que no son su dueño. El cliente hace lo mismo con su personaje local.
+	character.set_realm_collision(realm)
 	var state := PlayerState.new()
 	state.position = spawn_origin
 	state.yaw = PlayerState.to_f32(spawn_yaw)

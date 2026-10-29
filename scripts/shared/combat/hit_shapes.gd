@@ -18,8 +18,10 @@ const CAPSULE_HEIGHT: float = 1.8
 const LINE_OF_SIGHT_FROM_HEIGHT: float = 1.4
 ## Altura sobre los pies de la víctima a la que llega el rayo de la línea de visión (su centro).
 const LINE_OF_SIGHT_TO_HEIGHT: float = 0.9
-## Capa de física contra la que se lanza el rayo de la línea de visión: la del mundo (capa 1).
-const LINE_OF_SIGHT_MASK: int = PlayerCharacter.WORLD_COLLISION_LAYER
+## Capas contra las que se lanza el rayo de la línea de visión: la del mundo (capa 1) y la de las
+## estructuras (capa 4, el cuerpo de vista de la puerta del fuerte: no para a nadie, pero no se
+## ve ni se golpea a través de ella).
+const LINE_OF_SIGHT_MASK: int = PlayerCharacter.WORLD_COLLISION_LAYER | PlayerCharacter.STRUCTURE_LAYER
 
 ## Por debajo de esta distancia horizontal dos puntos se consideran en el mismo sitio, y no hay
 ## dirección entre ellos.
@@ -81,11 +83,13 @@ static func segment_hits_capsule(a: Vector3, b: Vector3, capsule_feet: Vector3, 
 	return squared <= radius * radius + _EPSILON
 
 
-## true si no hay nada del mundo entre el pecho del atacante y el centro de la víctima.
+## true si no hay nada del mundo (ni la puerta cerrada de un fuerte) entre el pecho del atacante
+## y el centro de la víctima.
 ## [param attacker_feet] y [param victim_feet] son las posiciones de los pies (el origen de cada
 ## personaje); la función sube el origen del rayo [constant LINE_OF_SIGHT_FROM_HEIGHT] metros y su
-## destino [constant LINE_OF_SIGHT_TO_HEIGHT]. El rayo solo mira la capa del mundo
-## ([constant LINE_OF_SIGHT_MASK]), así que los personajes y los bloqueos invisibles no lo cortan.
+## destino [constant LINE_OF_SIGHT_TO_HEIGHT]. El rayo solo mira las capas del mundo y de las
+## estructuras ([constant LINE_OF_SIGHT_MASK]), así que los personajes y los bloqueos invisibles no
+## lo cortan.
 ## [param space] es el espacio de física del mundo actual (no se rebobina: las paredes no se
 ## mueven).
 static func has_line_of_sight(space: PhysicsDirectSpaceState3D, attacker_feet: Vector3,
@@ -95,7 +99,7 @@ static func has_line_of_sight(space: PhysicsDirectSpaceState3D, attacker_feet: V
 	return is_ray_clear(space, from, to)
 
 
-## true si el rayo de [param from] a [param to] no choca con la capa del mundo
+## true si el rayo de [param from] a [param to] no choca con el mundo ni con las estructuras
 ## ([constant LINE_OF_SIGHT_MASK]). Base de [method has_line_of_sight] con los puntos ya
 ## calculados.
 static func is_ray_clear(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3) -> bool:

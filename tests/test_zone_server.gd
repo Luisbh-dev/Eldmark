@@ -302,6 +302,20 @@ func test_players_spawn_at_their_realm_and_on_the_ground() -> void:
 		assert_true(character.grounded)
 
 
+## Cada cuerpo del servidor lleva en su máscara la capa de su reino (las puertas cerradas de los
+## fuertes paran a los demás); los Huecos y los PNJ neutrales, ninguna.
+func test_bodies_collide_with_the_layer_of_their_realm() -> void:
+	await _start_server()
+	var base: int = PlayerCharacter.WORLD_COLLISION_LAYER | PlayerCharacter.PLAYER_BLOCKER_LAYER
+	var vardheim: int = _server.add_fake_player(BotBrain.new(1, BotBrain.Pattern.IDLE), VARDHEIM)
+	var solmarch: int = _server.add_fake_player(BotBrain.new(2, BotBrain.Pattern.IDLE), SOLMARCH)
+	assert_eq(_character_of(vardheim).collision_mask, base | (1 << 4), "Vardheim: capa 5")
+	assert_eq(_character_of(solmarch).collision_mask, base | (1 << 5), "Solmarch: capa 6")
+	var npc_id: int = _server.spawn_dummy(Vector3(0.0, 0.0, 10.0), 0.0)
+	if assert_true(npc_id > 0, "se crea un maniquí neutral"):
+		assert_eq(_character_of(npc_id).collision_mask, base, "los Huecos no tienen capa de reino")
+
+
 func test_state_log_and_report() -> void:
 	var config: ServerConfig = _make_config()
 	config.state_log_path = _state_log_path()

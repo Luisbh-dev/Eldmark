@@ -339,6 +339,17 @@ func test_batch_header_has_ack_delay_and_view_offsets() -> void:
 		previous = ack
 
 
+## El personaje local lleva en su máscara la capa de movimiento de su reino (la que paran las
+## puertas cerradas de los fuertes ajenos), puesta después de su _ready().
+func test_the_local_character_collides_with_the_layer_of_its_realm() -> void:
+	await _start()
+	assert_true(await _wait_until(_in_world))
+	var character: PlayerCharacter = _client.get_character()
+	assert_eq(character.collision_mask, PlayerCharacter.WORLD_COLLISION_LAYER
+			| PlayerCharacter.PLAYER_BLOCKER_LAYER | PlayerCharacter.realm_layer(VARDHEIM),
+			"mundo, bloqueos invisibles y la capa 5 de Vardheim")
+
+
 # --- Snapshots y reconciliación ---------------------------------------------------------------
 
 func test_out_of_order_snapshots_only_feed_the_interpolators() -> void:

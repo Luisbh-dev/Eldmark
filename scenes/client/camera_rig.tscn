@@ -14,7 +14,7 @@ script = ExtResource("1_camrig")
 [node name="Pitch" type="Node3D" parent="Yaw"]
 
 [node name="Arm" type="SpringArm3D" parent="Yaw/Pitch"]
-collision_mask = 1
+collision_mask = 9
 shape = SubResource("SphereShape3D_arm")
 spring_length = 3.5
 margin = 0.15

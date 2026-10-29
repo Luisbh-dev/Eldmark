@@ -8,7 +8,10 @@ extends CharacterBody3D
 ## repetición del cliente. Este script no lee Input, ni el tiempo, ni números aleatorios, para
 ## que el servidor dedicado pueda cargarlo sin depender de nada del cliente.
 ## [br][br]
-## El origen del nodo está en los pies. Capa de colisión 2 (personajes), máscara 1 (mundo).
+## El origen del nodo está en los pies. Capa de colisión 2 (personajes); máscara 1 (mundo) y 3
+## (bloqueos invisibles), más la capa de su reino (5 a 7) si la simulación llama a
+## [method set_realm_collision]: es lo que hace que la puerta cerrada de un fuerte pare a los
+## enemigos de su dueño y no a los suyos.
 
 ## Se emite en el tick en el que el personaje salta (para animación y sonido futuros).
 signal jumped
@@ -266,6 +269,19 @@ func simulate(input: PlayerInput, delta: float) -> void:
 	# si la entrada llegó o se repitió.
 	prev_buttons = input.buttons & ~PlayerInput.SUBSTITUTED
 	last_input_tick = input.tick
+
+
+## Añade a la máscara de colisión la capa de movimiento del reino [param realm_code] (código de
+## red; 1 Vardheim, 2 Solmarch, 3 Askarra), para que lo paren las puertas cerradas de los fuertes
+## de otros reinos ([method FortGate.layers_for]). Con 0 (los Huecos) o un código que no es un
+## reino, la máscara queda sin capa de reino. Sustituye a la llamada anterior, no se acumula.
+## [br][br]
+## [b]Hay que llamarla después de que el personaje entre en el árbol[/b]: [method _ready]
+## reescribe la máscara. La llaman, al crear a cada personaje que simula, el servidor (al dar de
+## alta) y el cliente (con el personaje local); los remotos no colisionan. Debe ser el mismo
+## reino en los dos lados para que la predicción coincida.
+func set_realm_collision(realm_code: int) -> void:
+	collision_mask = WORLD_COLLISION_LAYER | PLAYER_BLOCKER_LAYER | realm_layer(realm_code)
 
 
 ## Devuelve una copia del estado de simulación actual.

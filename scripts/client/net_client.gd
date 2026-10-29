@@ -1051,6 +1051,9 @@ func _on_own_spawn(spawn: NetMessages.EntitySpawn) -> void:
 		return
 	character.name = "LocalPlayer"
 	_world_root.add_child(character)
+	# Después de _ready() (que reescribe la máscara) y con el mismo reino que el servidor: las
+	# puertas cerradas de los fuertes paran a los enemigos de su dueño. Los remotos no colisionan.
+	character.set_realm_collision(spawn.realm)
 	_character = character
 	_net_id = spawn.net_id
 	_spawn_tick = spawn.spawn_tick
