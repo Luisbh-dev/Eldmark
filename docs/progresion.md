@@ -6,35 +6,46 @@ inventario autoritativo (PRG-11), monedas y libro mayor (PRG-12), niveles (PRG-1
 herramientas de GM (PRG-16), configuración de combate persistente (CMB-30), apariencia (ART-19) y la
 ventana de inventario y personaje (UI-26).
 
-Se apoya en [red.md](red.md), [combate.md](combate.md), [fuerte.md](fuerte.md) y [social.md](social.md).
-Dos documentos se escriben a la vez:
+Versión 2: la 1 tras la revisión de tres revisores (§18). Lo marcado «comprobado» sale de sondas en
+esta máquina (Godot 4.7.2 headless, PostgreSQL 16, Go 1.24) que no se suben.
 
-- **`docs/plataforma.md`** (TEC-22 a TEC-28): el servicio en Go con PostgreSQL, cuentas, billetes,
-  arrendamiento, guardado, copias. Este documento dice **qué** se guarda y qué tiene que cumplir;
-  plataforma.md dice **cómo y dónde**. Lo que necesito de él está en la [sección 13](#13-interfaz-con-plataformamd).
-- **`docs/habilidades.md`** (fase 4): equipo (PRG-04), plantillas al aparecer (PRG-07), pociones
-  (PRG-08), habilidades y cambio de arma (CMB-19 a CMB-24). Este diseño encaja con ellos por los
-  puntos que nombra la [sección 1](#1-qué-es-de-quién); si habilidades.md fija otro nombre, manda el suyo.
+Se apoya en [red.md](red.md), [combate.md](combate.md), [fuerte.md](fuerte.md), [social.md](social.md)
+y `docs/habilidades.md` (fase 4, ya fusionado en `fase4-fuerte`). Con **`docs/plataforma.md`**
+(TEC-22 a TEC-28), escrito a la vez, el reparto es este:
+
+- **plataforma.md**: servicio, cuentas, billete, reclamación, arrendamiento, `CharacterSaver` (cuándo y
+  cómo se guarda), posición, vida, tiempo jugado, purgas y RGPD.
+- **Este documento**: qué va en la sección `progress` del guardado, sus invariantes, su almacén en Go
+  (`platform/internal/progress/`, migraciones 0010 en adelante, paquete P7) y lo que se juega con ello.
+  Lo que pide a plataforma.md está en la [sección 13](#13-interfaz-con-plataformamd).
+- **habilidades.md**: armas en `CombatState`, evento LOADOUT, `set_loadout`, `set_charges`, plantillas y
+  pociones. Este documento añade `ActionMachine.set_weapons` (§4.1) y cambia la recarga del campamento
+  para quien tiene inventario (§4.4).
 
 ## 0. Decisiones
 
-Provisionales, tomadas de noche (revisar), igual que todas las cifras del documento (curva,
-recompensas, topes). Las cinco primeras salen de la recomendación del backlog y desde ahora están en
-«Decisiones tomadas» de [backlog.md](backlog.md).
+Provisionales, **tomadas de noche** (revisar), igual que todas las cifras del documento (curva,
+recompensas, topes). Las de la recomendación del backlog y las que deja la revisión están en
+«Decisiones tomadas» de [backlog.md](backlog.md) con esa marca.
 
 | Pregunta | Decisión |
 |---|---|
 | ¿Qué razas tiene cada reino? | **Un pueblo humano por reino, solo estético**: peinados, barbas, marcas y corte de los trajes. Mismo esqueleto, misma cápsula, ninguna estadística racial (§7). La piel usa la paleta completa en los tres reinos |
-| ¿Inventario por ranuras o por peso? | **Ranuras en la bolsa** (30, ampliables) y **peso solo en el equipo puesto**, que ya decide la categoría de carga (PRG-06) |
+| ¿Inventario por ranuras o por peso? | **Ranuras en la bolsa** (30, ampliables) y **peso solo en el equipo puesto**, cuando lleguen las armaduras (PRG-06) |
 | ¿Monedas y banco por personaje o por cuenta? | **Por personaje** (§5) |
-| ¿Méritos gastables y puntos de reino separados? | **Dos contadores con el mismo evento**: méritos gastables (moneda) y puntos de reino que nunca bajan (ya tomada en fuerte.md §0; se mueve ahora) |
+| ¿Méritos gastables y puntos de reino separados? | **Dos contadores con el mismo evento**: méritos gastables (moneda) y puntos de reino que nunca bajan (fuerte.md §0) |
 | ¿Quién recibe XP y crédito sin selección de objetivo? | **Contribución**: todo el que hace ≥ 10 % del daño en los últimos 900 ticks (`DamageLedger`, GUE-05), con recompensa personal (§6) |
-| ¿Cambia el nivel las estadísticas en la fase 5? | **No.** La hoja base es la misma a cualquier nivel hasta que la zona PvE (fase 6) y la normalización de Eldrun (PRG-31) lo activen. El Vado Gris es la única zona y es RvR |
+| ¿Cambia el nivel las estadísticas en la fase 5? | **No.** La hoja base es la misma a cualquier nivel hasta que la zona PvE (PRG-22) y la normalización de Eldrun (PRG-31) lo activen. El Vado Gris es la única zona y es RvR |
+| ¿Qué equipo hay en la fase 5? | **Las dos armas y las pociones.** Armaduras, `StatBlock` y hoja derivada esperan a PRG-01 y PRG-06, como en habilidades.md §9. Las ranuras de equipo 2–6 existen y quedan reservadas. *Provisional, tomada de noche* |
 | Unidad del oro | Un solo entero, «oro», sin plata ni cobre |
 | ¿Se equipa en combate? | No: equipar y desequipar solo fuera de combate y sin acción en curso. El cambio entre las dos armas (Q, CMB-24) sí vale en combate |
-| Plantillas de la fase 4 (PRG-07) | Se convierten en el **kit de inicio**: la elegida al crear el personaje, puesta; los demás objetos de inicio, en la bolsa (§2.5) |
-| Pociones (PRG-08) | Objetos apilables ligados; el campamento repone la pila hasta 5 |
-| Enteros de 64 bits en JSON | **Cadenas decimales**. Comprobado: `JSON.parse_string` de Godot 4.7.2 devuelve `float` y lee 2^53 + 1 como 2^53 |
+| Plantillas de la fase 4 (PRG-07) | Se convierten en el **kit de inicio** (§2.5). La plantilla se elige en la **primera entrada** con LOADOUT_SELECT (habilidades.md §5.1), no al crear el personaje: la creación de plataforma.md no cambia |
+| Pociones (PRG-08) | Objetos apilables y ligados. Las cargas de `CombatState` son las pociones de la bolsa (tope 15). El campamento repone el **total** a 3 de vida y 2 de resistencia, las cargas del escudero (§4.4) |
+| ¿De quién es CMB-30? ¿Corre el tiempo sin conexión? | **De este documento** (§8). **Sí**: las reutilizaciones largas se guardan con su fin en UTC. En la fase 5 solo `/atascado` llega a 30 s. *Provisional, tomada de noche* |
+| Carga, guardado e idempotencia | **Los de plataforma.md**: el progreso es la sección `progress` de `CharacterSaver`, llega en la reclamación antes del WELCOME y cada guardado se aplica una vez por `(lease_id, seq)` (§9) |
+| Posición y vida | Las guarda y restaura plataforma.md §7.1. En el Vado Gris, zona de guerra, se vuelve al campamento del reino |
+| Enteros en JSON | **Números**, con todo id por debajo de 2^53. Comprobado en Godot 4.7.2: `JSON.stringify` escribe un int64 exacto y `JSON.parse_string` devuelve `float` (lee 2^53 + 1 como 2^53). Todos los ids salen de secuencias y bloques que empiezan en 1 |
+| Sin plataforma | **Nada se guarda.** Todo personaje es efímero, con inventario en memoria. No hay modo de archivo local. *Provisional, tomada de noche* |
 
 Siguen **pendientes** (fase 6) y el modelo admite cualquier respuesta: reglas de ligado (el campo
 existe; los objetos de inicio van ligados), penalización por morir (la durabilidad existe y no baja en
@@ -45,28 +56,30 @@ la fase 5), formato de los datos de diseño (en la fase 5, `.tres` a mano) y niv
 
 | Pieza | La decide | Dónde |
 |---|---|---|
-| Qué se guarda del personaje, sus invariantes, formatos de objeto, inventario, libro, niveles, apariencia | Este documento | §2–§12 |
-| Servicio, migraciones, API HTTP, arrendamiento, billetes, guardado en la BD, copias, RGPD | plataforma.md | TEC-22 a TEC-28, TEC-41, TEC-43 |
-| Nombres únicos, roles de GM, auditoría, sanciones | plataforma.md y social.md | SOC-13, SOC-14, SOC-18 |
-| `EquipmentState`, recálculo de `StatBlock`, mensaje de hoja derivada, ids visuales de cada ranura | habilidades.md (PRG-04) | En la fase 5 se construye desde el contenedor EQUIPMENT (§4.1) |
-| Plantillas `.tres` y su elección al aparecer | habilidades.md (PRG-07) | En la fase 5 solo para personajes efímeros (§2.5) |
-| Pociones: acción, cargas por vida, reutilización | habilidades.md (PRG-08) | En la fase 5 consumen objetos (§4.4) |
-| Habilidades, reutilizaciones en `PlayerState`, efectos | habilidades.md (CMB-19, CMB-20) | Se guardan las largas (§8) |
-| Estadísticas PvP y fortalezas; atributos, maestrías, rareza y afijos | GUE-19; fase 6 (PRG-17 a PRG-20) | Sus tablas; los campos de la fase 6 ya existen (§2, §3) |
+| Contenido de la sección `progress`, invariantes, objetos, inventario, libro, niveles, apariencia, CMB-30 | Este documento | §2–§12 |
+| Almacén en Go del progreso: migraciones 0010+, comprobaciones, retención del libro, rutas de operación y libro | Este documento (P7) | §3.3, §3.5, §13 |
+| Servicio, billete, reclamación, arrendamiento, `CharacterSaver`, cadencia, críticos, posición, vida, tiempo jugado, purgas, exportación | plataforma.md | Sus §5–§7 y §11 |
+| Identidad, nombre, raza y apariencia guardadas (`characters`) | plataforma.md, con las reglas exportadas de aquí | §7, §13 |
+| Roles, auditoría, sanciones | plataforma.md y social.md | SOC-13, SOC-14, SOC-18 |
+| Armas en `CombatState`, LOADOUT, `set_loadout`, `set_charges`, plantillas, pociones, recarga | habilidades.md (H1a–H3c) | Para quien tiene inventario, §4.1 y §4.4 |
+| Armaduras, `StatBlock`, hoja derivada, ids visuales por ranura | PRG-01, PRG-05, PRG-06 y el resto de PRG-04: después de la fase 5, sin diseño | §4.1, §7.3 |
+| Méritos: reparto y antifarmeo | PRG-09 | Aquí solo se filtran y se apuntan (§6.2) |
+| Estadísticas PvP; atributos, maestrías, habilidades elegidas, rareza y afijos | plataforma.md (GUE-19); fase 6 (PRG-17 a PRG-20) | Los campos de objeto ya existen (§2); sus tablas llegan con sus entradas |
 
-**Qué se juega en la fase 5.** El jugador entra con su cuenta (UI-22), crea un personaje (reino,
-apariencia de su pueblo, nombre y plantilla de inicio; UI-24) y aparece en el Vado Gris con su kit.
-Pelea como en la fase 4 y gana méritos, puntos de reino, XP y algo de oro de los Huecos, el capitán y
-las capturas. Sube de nivel (1–40), ordena la bolsa, se equipa armas y armaduras fuera de combate,
-bebe pociones que salen de su bolsa y se reponen en el campamento, y al volver lo encuentra todo:
-equipo, monedas, nivel, vida, reutilizaciones largas y, si fue hace poco, el sitio donde lo dejó.
+**Qué se juega en la fase 5.** El jugador entra con su cuenta (UI-22) y crea un personaje (reino,
+apariencia de su pueblo y nombre; UI-24). En su primera entrada elige plantilla y aparece en el Vado
+Gris con su kit. Pelea como en la fase 4 y gana méritos, puntos de reino, XP y algo de oro de los
+Huecos, el capitán y las capturas. Sube de nivel (1–40), ordena la bolsa, cambia de arma fuera de
+combate y bebe las pociones de su bolsa, que repone en el campamento. Al volver encuentra sus armas, sus
+monedas, su nivel, su vida y la reutilización de `/atascado`. En el Vado Gris reaparece en el
+campamento de su reino.
 
 ## 2. Objetos (PRG-02)
 
 ### 2.1 Definición y instancia
 
 Una **definición** es lo que un objeto es (datos de diseño en `data/items/<categoría>/<id>.tres`, en
-el repo, con un `id` estable); una **instancia** es un objeto concreto que alguien posee (una fila de
+el repo, con un `id` estable). Una **instancia** es un objeto concreto que alguien posee (una fila de
 `item_instances`, con un `uid` único en todo el mundo y para siempre).
 
 **`ItemDefinition`** (`scripts/shared/progression/item_definition.gd`, `Resource`):
@@ -77,7 +90,7 @@ el repo, con un `id` estable); una **instancia** es un objeto concreto que algui
 | `display_name`, `description` | `String` | Español; el nombre no vacío |
 | `category` | `Category` | `WEAPON = 1`, `ARMOR = 2`, `CONSUMABLE = 3`, `MATERIAL = 4`, `QUEST = 5`, `MISC = 6` |
 | `equip_slot` | `EquipSlot` | `NONE = 0`, `WEAPON = 1` (vale para las dos ranuras de arma), `HEAD = 2`, `CHEST = 3`, `HANDS = 4`, `LEGS = 5`, `FEET = 6` |
-| `ref_id` | `StringName` | WEAPON → `WeaponDefinition.id` de `CombatCatalog`; ARMOR → la armadura de PRG-06; CONSUMABLE → el consumible de PRG-08; resto, vacío |
+| `ref_id` | `StringName` | WEAPON → `WeaponDefinition.id` de `CombatCatalog`; ARMOR → la armadura de PRG-06 (sin contenido en la fase 5); CONSUMABLE → el id del consumible en `CombatCatalog` (`potion_health`, `potion_stamina`); resto, vacío |
 | `max_stack` | `int` | 1 = no apilable; tope 999. Equipables y objetos con durabilidad: 1 |
 | `required_level` | `int` | 1–40 |
 | `base_value` | `int` | Oro; ≥ 0. Base de los precios de la fase 6 |
@@ -85,20 +98,27 @@ el repo, con un `id` estable); una **instancia** es un objeto concreto que algui
 | `destroyable` | `bool` | false: el jugador no puede destruirlo |
 | `has_durability` | `bool` | La instancia lleva durabilidad (por mil) |
 | `starter` | `bool` | Objeto de inicio (§2.5) |
-| `camp_refill` | `int` | Cantidad a la que el campamento repone la pila; 0 = no se repone |
-| `icon_path` | `String` | `res://assets/icons/items/…`; solo cliente |
-| `visual_paths` | `PackedStringArray` | Escena por cuerpo (índice 0 masculino, 1 femenino; una sola sirve a los dos); solo cliente. Vacío en lo que no se ve |
+| `camp_refill` | `int` | Total al que el campamento repone esa definición; 0 = no se repone (§4.4) |
+| `icon_path` | `String` | `res://assets/icons/items/…`; solo cliente. Vacío: el casillero pinta el nombre corto con el color de la categoría |
+| `visual_paths` | `PackedStringArray` | Escena por cuerpo para las armaduras (PRG-05); solo cliente. Vacío en la fase 5: las armas se ven por su id de `CombatCatalog` (habilidades.md) |
 
 Coherencia que exige la prueba: WEAPON ⇒ `equip_slot = WEAPON` y `ref_id` en `CombatCatalog`;
-ARMOR ⇒ `equip_slot` de HEAD a FEET; CONSUMABLE ⇒ `equip_slot = NONE`; equipable ⇒ `max_stack = 1`.
-`ItemDefinition` no tiene ninguna propiedad de tipo `Texture2D`, `PackedScene` ni `Mesh`: el preset
-del servidor recorta `assets/` (TEC-12) y el servidor nunca debe intentar cargarlo.
+ARMOR ⇒ `equip_slot` de HEAD a FEET; CONSUMABLE ⇒ `equip_slot = NONE` y `ref_id` en los consumibles de
+`CombatCatalog`; equipable ⇒ `max_stack = 1`. `data/items/` no tiene armaduras en la fase 5: la regla de
+ARMOR se prueba con `tests/fixtures/items/`. `ItemDefinition` no tiene ninguna propiedad de tipo
+`Texture2D`, `PackedScene` ni `Mesh`: el preset del servidor recorta `assets/` (TEC-12) y el servidor
+nunca debe intentar cargarlo.
+
+**A otro cliente nunca viaja el net id de un objeto.** Lo que se ve de otro jugador sale de su
+`CombatState` (las armas, públicas desde habilidades.md §5.2). Las armaduras visibles de PRG-05 y PRG-06
+llevarán un id visual propio (`ItemDefinition.visual_id`, de un catálogo visual de solo añadir), que no
+deja deducir nivel, rareza ni estadísticas.
 
 **`ItemInstance`** (`scripts/shared/progression/item_instance.gd`, `RefCounted`):
 
 | Campo | Tipo | Regla |
 |---|---|---|
-| `uid` | `int` | 1 … 2^63 − 1. Lo da el `IdAllocator` de la zona (§4.5) |
+| `uid` | `int` | 1 … 2^53 − 1. Lo da el `IdAllocator` de la zona (§4.5) |
 | `def_id` | `StringName` | Existe en `ItemDatabase` |
 | `count` | `int` | 1 … `max_stack` |
 | `durability` | `int` | 0–1000 (por mil) si `has_durability`; si no, −1 (NULL en la BD y en JSON, `0xFFFF` en el cable) |
@@ -113,11 +133,13 @@ Igual que `CombatCatalog`: lee `data/items/` (con subcarpetas) una vez, con carg
 `.tres.remap` de un proyecto exportado y registra los errores una sola vez.
 
 - **Net id.** 1..n por orden alfabético de `id`; 0 = ninguno. Cambia al añadir objetos, por eso
-  solo viaja por el cable y nunca se guarda.
+  solo viaja por el cable hacia el dueño y nunca se guarda.
 - **Huella.** `wire_hash()`: u32 del SHA-256 de la lista ordenada `(id, net_id, category,
-  equip_slot, max_stack, has_durability)`. Entra en `NetProtocol.compute_sim_hash`, igual que
-  `CombatCatalog.prediction_hash()`: un cliente con otro catálogo recibe REJECT SIM_HASH. Tope: 65 535
-  definiciones (u16).
+  equip_slot, max_stack, has_durability)`. Entra en `NetProtocol.compute_sim_hash` (§12): un cliente
+  con otro catálogo recibe REJECT SIM_HASH. Tope: 65 535 definiciones (u16).
+- **Búsquedas.** `for_ref(category, ref_id)`: el objeto de ese arma o consumible (en la fase 5 hay uno
+  por `ref_id`). `consumable_definition(index)`: el objeto del consumible `index` de
+  `CombatCatalog.consumable_ids()` (0 vida, R; 1 resistencia, T).
 
 ### 2.3 Formato binario (`ItemInstance.encode()`, versión 1)
 
@@ -126,7 +148,7 @@ Un solo formato para la red y las pruebas; la BD guarda columnas (§3), no este 
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
 | 0 | u8 | format | 1. Otro valor: `decode` devuelve null |
-| 1 | u64 | uid | 1 … 2^63 − 1 (el bit 63 a 0) |
+| 1 | u64 | uid | 1 … 2^53 − 1 |
 | 9 | u16 | def | net id (≥ 1) |
 | 11 | u16 | count | 1 … `max_stack` |
 | 13 | u16 | durability | 0–1000; `0xFFFF` = sin durabilidad |
@@ -137,121 +159,177 @@ Un solo formato para la red y las pruebas; la BD guarda columnas (§3), no este 
 | 22 | n × u16 | affixes | |
 
 Tamaño: 22 + 2·n B (22–34). `decode(bytes, offset)` devuelve null si falta algún byte, el formato no
-es 1, el uid es 0 o tiene el bit 63, el net id no existe, la cantidad es 0 o pasa de `max_stack`, la
+es 1, el uid es 0 o llega a 2^53, el net id no existe, la cantidad es 0 o pasa de `max_stack`, la
 durabilidad no cuadra con `has_durability`, la rareza pasa de 4, hay bits de flags desconocidos o más
 de 6 afijos. Nunca registra errores del motor (red.md §5.7).
 
 ### 2.4 Contenido inicial (fase 5)
 
-Un objeto por arma, pieza de armadura y poción de la fase 4, todos `starter = true`, `bind_rule =
-ON_PICKUP`, `required_level = 1`, `base_value = 0`:
+Un objeto por arma y por poción de la fase 4. Todos llevan `starter = true`, `bind_rule = ON_PICKUP`,
+`required_level = 1` y `base_value = 0`:
 
 | Objetos | Categoría | Pila | Notas |
 |---|---|---|---|
-| `sword_shield_vado` (espada y escudo), `bow_vado` (arco) | WEAPON | 1 | `ref_id` = el arma de `CombatCatalog`; sin durabilidad en la fase 5 |
-| Las 15 piezas de PRG-06 (`armor_<carga>_<ranura>`) | ARMOR | 1 | `ref_id` = su armadura |
-| `potion_health`, `potion_stamina` | CONSUMABLE | 20 | `camp_refill = 5` |
+| `sword_shield_vado` (espada y escudo), `bow_vado` (arco) | WEAPON | 1 | `ref_id` = el arma de `CombatCatalog`; sin durabilidad; `destroyable = false` (en la fase 5 no hay otra forma de conseguirlas) |
+| `potion_health`, `potion_stamina` | CONSUMABLE | 15 | `ref_id` = el consumible; `camp_refill` 3 y 2 |
 
 ### 2.5 Kit de inicio y plantillas
 
-Al crear el personaje se elige una plantilla de PRG-07 (`starter_template_id`). En la **primera
-entrada** al mundo (`starter_granted = false`), la zona crea el kit en una sola operación con motivo
-`STARTER_KIT` y guarda al instante:
+En la **primera entrada** al mundo (`starter_granted = false`), al dar de alta al personaje, la zona
+crea el kit en una sola operación STARTER_KIT y marca el guardado como crítico. La plantilla es
+`ServerPeer.pending_template_id` (la que mandó LOADOUT_SELECT antes de CLIENT_READY; habilidades.md
+§4.6) o, si no hay, `default_template`:
 
-1. Cada arma y armadura de la plantilla → su objeto de inicio (`ItemDatabase.starter_for_ref`),
-   puesto: las armas en las ranuras 0 y 1 por el orden de la plantilla; cada armadura, en la suya.
-2. Cada objeto de inicio que no haya quedado puesto (las armas y armaduras de las demás plantillas)
-   → una unidad en la bolsa, desde la ranura 0 por orden de `id`.
+1. Cada arma de la plantilla → su objeto (`ItemDatabase.for_ref`), puesto en las ranuras de equipo 0 y
+   1 por el orden de la plantilla.
+2. Cada objeto de inicio sin `camp_refill` que no haya quedado puesto (las armas de las demás
+   plantillas) → una unidad en la bolsa, desde la ranura 0 por orden de `id`.
 3. Cada objeto con `camp_refill > 0` → una pila con esa cantidad en la bolsa.
 
-Así se conserva la libertad de la fase 4 (cambiar de estilo) dentro del inventario. Una plantilla
-desconocida usa la primera por orden de `id`, con aviso en el registro. Para un personaje
-**persistente** desaparece la elección de plantilla al reaparecer (el servidor ignora esa petición);
-los **efímeros** (`--fake-players`, bots y clientes con `DevAuthProvider` sin `--progress-file`) la
-conservan tal como la deja PRG-07, con el kit en memoria y sin guardar nada.
+Así se conserva la libertad de la fase 4 (cambiar de estilo) dentro del inventario. Se guardan
+`starter_template_id` (solo informativo) y `starter_granted = true`. Una plantilla desconocida usa la
+primera por orden de `id`, con aviso en el registro.
+
+Después de la primera entrada, para quien tiene inventario el servidor **ignora** LOADOUT_SELECT (sin
+aviso) y la reaparición toma las armas de su equipo, no de la plantilla. El cliente oculta entonces el
+selector de la pantalla de muerte. Los **jugadores falsos** (`--fake-players`) no tienen inventario:
+siguen con su plantilla y la recarga de habilidades.md.
 
 ## 3. El personaje que se guarda (PRG-10)
 
-### 3.1 Qué se guarda
+### 3.1 Qué se guarda (un dueño por campo)
 
-| Grupo | Campos | Dueño | Cuándo cambia |
+| Grupo | Campos | Dónde | Dueño |
 |---|---|---|---|
-| Identidad | `character_id`, `account_id`, `world_id`, `realm`, `name`, `name_key`, fechas, borrado con gracia, renombrado obligatorio | plataforma.md | Al crear, renombrar, borrar |
-| Apariencia | `race_id`, `appearance` (8 B, §7.2) | Este documento | Solo al crear en la fase 5 |
-| Progreso | `level`, `xp_total`, `realm_points`, `played_seconds` | Este documento | Al ganar XP o méritos; cada guardado |
-| Inventario | Una fila por instancia; `bag_slots` | Este documento | Cada operación |
-| Monedas | Saldo por moneda y el libro mayor | Este documento | Cada apunte |
-| Combate | `health`, `active_weapon_slot`, `consumable_def_id`, habilidades elegidas, temporizadores largos | Este documento (CMB-30) | Cada guardado |
-| Posición | `last_zone_id`, `last_channel`, posición, yaw, `last_in_combat`, `saved_at` | Este documento | Cada guardado |
-| Inicio | `starter_template_id`, `starter_granted` | Este documento | Al crear y en la primera entrada |
+| Identidad | `character_id`, `account_id`, `world_id`, `realm`, `name`, `name_key`, fechas, borrado con gracia, renombrado obligatorio | `characters` | plataforma.md |
+| Raza y apariencia | `race_id`, `appearance` (8 B exactos, §7.2) | `characters` | plataforma.md las guarda al crear; las reglas son de aquí (§7, §13) |
+| Posición, giro, vida, tiempo jugado | `state.zone_id`, `state.position`, `state.yaw`, `state.health`, `state.played_s` | `characters.state` | plataforma.md §7.1 (`played_s` también para SOC-38) |
+| Nivel | `level` | `character_progress`; copia en `characters.level` para la lista (UI-23), que escribe P7 | Este documento |
+| Progreso | `xp_total`, `realm_points`, `bag_slots`, `starter_template_id`, `starter_granted` | `character_progress` | Este documento |
+| Inventario | Una fila por instancia | `item_instances` | Este documento |
+| Monedas | Saldo por moneda y el libro mayor | `character_wallets`, `ledger_entries` | Este documento |
+| Combate (CMB-30) | `active_weapon_slot` y temporizadores largos | `character_progress`, `character_timers` | Este documento (§8) |
+| PvP | Totales | `character_pvp_stats` | plataforma.md (GUE-19) |
 
-`played_seconds` lo necesita además SOC-38 (menos de 2 h jugadas: sin `/reino` ni `/comercio`).
+No se guardan las habilidades elegidas (en la fase 5 son el kit fijo del arma, habilidades.md §2.3) ni
+las cargas de pociones (son las pociones de la bolsa, §4.4).
 
 ### 3.2 Invariantes
 
-Los comprueban la zona al aplicar y el servicio al guardar (§13, S1–S9).
+Los comprueban la zona al aplicar y el servicio al guardar (§13.3, S1–S8).
 
 | # | Invariante |
 |---|---|
-| I1 | Un `uid` identifica una sola instancia en todo el mundo y nunca se reutiliza, ni tras destruirla |
-| I2 | Una instancia está en un solo sitio: `(character_id, container, slot)` es único. En la fase 5 no hay objetos sin dueño |
+| I1 | Un `uid` identifica una sola instancia en todo el mundo y nunca se reutiliza, ni tras destruirla (la fila retirada se queda) |
+| I2 | Una instancia viva está en un solo sitio: `(character_id, container, slot)` es único. En la fase 5 no hay objetos sin dueño |
 | I3 | `1 ≤ count ≤ max_stack ≤ 999` |
-| I4 | **Conservación.** La cantidad total de una definición solo cambia por un evento de objeto con motivo de fuente o de sumidero (§5.3). Mover, dividir, juntar e intercambiar no la cambian |
+| I4 | **Conservación.** La cantidad total de una definición solo cambia con un evento de objeto (fuente, sumidero, reversión o migración, §5.3). Mover, dividir, juntar, intercambiar y equipar no la cambian y no dejan eventos |
 | I5 | `0 ≤ saldo ≤ tope` de su moneda y `saldo = Σ delta` de sus apuntes |
-| I6 | Los apuntes y los eventos de objeto son inmutables; cada uno pertenece a una operación (`op_id`) que se aplica una sola vez |
-| I7 | Una operación es atómica: todos sus apuntes y eventos se guardan en la misma transacción o ninguno |
-| I8 | `level = curva.level_for(xp_total)`, entre 1 y 40; en el tope no se acumula XP; el nivel nunca baja (salvo `level_set` de GM) |
-| I9 | `realm_points` solo sube con los apuntes positivos de méritos de juego y solo baja al revertirlos |
-| I10 | En EQUIPMENT cada objeto está en una ranura compatible y la ranura de arma activa tiene un arma |
+| I6 | Los apuntes y los eventos de objeto son inmutables; cada uno pertenece a una operación, y `(op_id, character_id)` se aplica una sola vez |
+| I7 | Una operación es atómica y nunca se parte entre dos guardados |
+| I8 | `level = curva.level_for(xp_total)`, entre 1 y 40; en el tope no se acumula XP; `xp_total` solo baja con una operación GM o REVERSAL |
+| I9 | `realm_points` sube con cada apunte de méritos de motivo 3–5 (juego) y por la misma cantidad; solo baja al revertir esos apuntes |
+| I10 | En EQUIPMENT solo hay armas, en las ranuras 0 y 1, y la ranura activa tiene un arma |
 | I11 | La apariencia es válida para su raza y la raza es del reino del personaje |
-| I12 | `save_version` crece de uno en uno; un guardado se aplica si su `base_version` es la actual o si repite el `save_id` ya aplicado (idempotente) |
+| I12 | `starter_granted` nunca vuelve a false; `bound` nunca pasa de true a false; `bag_slots` no cambia en la fase 5 |
+| I13 | Un guardado se aplica una vez: idempotencia por `(lease_id, seq)` de plataforma.md §7.3 |
 
-### 3.3 Esquema propuesto
+### 3.3 Esquema (migración `0010_progress`)
 
-Nombres que plataforma.md puede adoptar tal cual (las migraciones y el DDL son suyos). Todo id es
-`bigint` positivo de 63 bits; `characters` (identidad) es de plataforma.md. Probado en PostgreSQL 16
-con una sonda: restricciones, disparador de solo añadir, intercambio de ranuras y secuencia.
+Todas las tablas llevan `world_id`. Las de **estado** cuelgan de `characters` con `on delete cascade`.
+Las de **solo añadir** no tienen clave ajena hacia `characters`: `character_id` queda como seudónimo y
+se borran por retención (§3.5), como el `audit_log` de plataforma.md. Comprobado en PostgreSQL 16 con
+una sonda en `build/`: restricciones, disparador, operación de dos personajes, uid retirado que no se
+reutiliza, intercambio de ranuras con la restricción diferida, purga del personaje con libro dentro de
+la transacción de la lápida de la cuenta y retención a un año.
 
 | Tabla | Columnas | Claves y restricciones |
 |---|---|---|
-| `character_progress` | `character_id`, `race_id text`, `appearance bytea` (8 B), `level smallint` (1–40), `xp_total bigint`, `realm_points bigint`, `played_seconds bigint`, `bag_slots smallint` (1–120, 30 por defecto), `starter_template_id text`, `starter_granted bool`, `health int` (NULL = llena), `active_weapon_slot smallint` (0–1), `consumable_def_id text`, `last_zone_id text`, `last_channel smallint`, `pos_x`, `pos_y`, `pos_z`, `yaw real`, `last_in_combat bool`, `saved_at timestamptz`, `save_version bigint`, `last_save_id bigint` | PK `character_id` (1:1 con `characters`); los rangos como CHECK; contadores ≥ 0 |
-| `character_wallets` | `character_id`, `currency smallint` (1 oro, 2 méritos), `balance bigint`, `last_seq bigint` | PK (`character_id`, `currency`); CHECK `balance BETWEEN 0 AND 1000000000` |
-| `economy_ops` | `op_id`, `character_id`, `kind smallint` (§5.3), `actor_account_id` (NULL salvo GM), `ref_op_id` (la revertida), `zone_id text`, `created_at` | PK `op_id`. Solo añadir |
-| `ledger_entries` | `entry_id bigserial`, `character_id`, `currency`, `seq bigint`, `op_id`, `delta bigint`, `balance_after bigint`, `reason smallint`, `ref_kind smallint`, `ref_id bigint`, `created_at` | UNIQUE (`character_id`, `currency`, `seq`) y (`op_id`, `character_id`, `currency`); CHECK `delta <> 0`, `balance_after >= 0`. **Disparador que rechaza UPDATE y DELETE** |
-| `item_instances` | `uid`, `character_id`, `container smallint`, `slot smallint`, `def_id text`, `count int` (1–999), `durability smallint` (0–1000; NULL = sin), `rarity smallint` (0–4), `bound bool`, `seed bigint`, `affixes smallint[]` (≤ 6), `created_op bigint` | PK `uid` (CHECK > 0); UNIQUE (`character_id`, `container`, `slot`) **DEFERRABLE INITIALLY DEFERRED** |
-| `item_events` | `event_id bigserial`, `op_id`, `character_id`, `uid`, `def_id`, `event smallint` (1 CREATE, 2 DESTROY, 3 COUNT), `count_delta int`, `reason smallint`, `created_at` | FK `op_id`. Solo añadir |
-| `op_reversals` | `op_id`, `reversal_op_id` | PK `op_id`; UNIQUE `reversal_op_id`: una operación se revierte una vez |
-| `character_ability_slots` | `character_id`, `weapon_id text`, `slot smallint` (0–2), `ability_id text` | PK (`character_id`, `weapon_id`, `slot`) |
-| `character_timers` | `character_id`, `key text`, `ends_at timestamptz`, `stacks smallint` | PK (`character_id`, `key`) (§8) |
-| `character_attributes` | `character_id`, `attribute smallint`, `spent smallint` | PK (`character_id`, `attribute`). Vacía hasta PRG-17 |
-| `character_masteries` | `character_id`, `weapon_family text`, `level smallint`, `xp bigint` | PK (`character_id`, `weapon_family`). Vacía hasta PRG-18 |
-| `uid_block_seq` | Secuencia `START 1 INCREMENT 1024` | §4.5 |
+| `character_progress` | `character_id`, `world_id`, `level smallint` (1–40), `xp_total bigint`, `realm_points bigint`, `bag_slots smallint` (1–120, 30), `starter_template_id text`, `starter_granted bool` (false), `active_weapon_slot smallint` (0–1), `updated_at` | PK `character_id`, FK a `characters` en cascada; contadores ≥ 0 |
+| `character_wallets` | `character_id`, `world_id`, `currency smallint` (1 oro, 2 méritos), `balance bigint`, `last_seq bigint` | PK (`character_id`, `currency`), FK en cascada; CHECK `balance BETWEEN 0 AND 1000000000` |
+| `item_instances` | `uid`, `world_id`, `character_id`, `container smallint` (0–3), `slot smallint` (0–119), `def_id text`, `count int` (1–999), `durability smallint` (0–1000; NULL = sin), `rarity smallint` (0–4), `bound bool`, `seed bigint` (0 … 2^32 − 1), `affixes integer[]` (≤ 6, cada uno 0–65535), `created_op bigint` (NULL = nació al dividir), `retired_at timestamptz` | PK `uid` (CHECK > 0), FK en cascada; CHECK `(retired_at IS NULL) = (container IS NOT NULL AND slot IS NOT NULL)`; UNIQUE (`character_id`, `container`, `slot`) **DEFERRABLE INITIALLY DEFERRED**; índice por `character_id` de las vivas |
+| `character_timers` | `character_id`, `world_id`, `key text` (`^[a-z0-9_:]{1,48}$`), `ends_at timestamptz` | PK (`character_id`, `key`), FK en cascada (§8) |
+| `economy_ops` | `op_id`, `world_id`, `kind smallint` (§5.3), `actor_account_id` (NULL salvo GM), `ref_op_id` (la revertida), `zone_id text`, `note text` (≤ 200), `detail jsonb`, `created_at` | PK `op_id` (CHECK > 0); CHECK: `kind` GM o REVERSAL ⇒ `note` no vacía. **Solo añadir** |
+| `op_participants` | `op_id`, `character_id`, `world_id` | PK (`op_id`, `character_id`); FK `op_id`; índice por `character_id`. **Solo añadir** |
+| `ledger_entries` | `entry_id` (identidad), `world_id`, `character_id`, `currency`, `seq bigint`, `op_id`, `delta bigint`, `balance_after bigint`, `reason smallint`, `ref_kind smallint`, `ref_id bigint`, `created_at` | UNIQUE (`character_id`, `currency`, `seq`); FK (`op_id`, `character_id`) a `op_participants`; CHECK `delta <> 0`, `balance_after` 0 … tope; índice (`character_id`, `entry_id` desc). **Solo añadir** |
+| `item_events` | `event_id` (identidad), `world_id`, `op_id`, `character_id`, `def_id`, `uid bigint` (NULL = agregado), `reason smallint`, `count_delta int`, `created_at` | FK (`op_id`, `character_id`) a `op_participants`; CHECK `count_delta <> 0`; índice (`character_id`, `op_id`). **Solo añadir** |
+| `op_reversals` | `op_id`, `reversal_op_id`, `world_id` | PK `op_id`; UNIQUE `reversal_op_id`; las dos, FK a `economy_ops`: una operación se revierte una vez. **Solo añadir** |
+| `progress_tombstones` | `character_id`, `world_id`, `purged_at` | PK `character_id` (§3.5) |
 
-`container`: 0 BAG, 1 EQUIPMENT, 2 BANK (PRG-25), 3 reservado. La restricción de ranura es diferida
-para que un intercambio quepa en una transacción. Mover e intercambiar no dejan filas en `item_events`
-(no cambian cantidades): quedan en el registro de la zona.
+`container`: 0 BAG, 1 EQUIPMENT, 2 BANK (PRG-25), 3 reservado; en la fase 5 solo 0 y 1. La restricción
+de ranura es diferida para que un intercambio quepa en una transacción. Un `uid` que muere (destruido
+o juntado con otro) no se borra: su fila queda **retirada** (`retired_at`, sin contenedor ni ranura) y la
+clave primaria impide reutilizarlo. Las operaciones son de varios personajes desde ya
+(`op_participants`): el comercio de la fase 6 guarda una sola operación con los dos.
 
-### 3.4 `CharacterRecord` en JSON (`record_format` 1)
+El disparador de las cinco tablas de solo añadir (`economy_ops`, `op_participants`, `ledger_entries`,
+`item_events`, `op_reversals`), tal como se probó:
 
-Es el cuerpo que la zona recibe al cargar y la parte `record` de un guardado. Las claves son las
-columnas. **Los enteros que pueden pasar de 2^53** (`character_id`, `uid`, `op_id`, `seed`, `ref_id`,
-`actor_account_id`, `last_save_id`) **van como cadena decimal**; el resto, como número.
-
-```json
-{"record_format": 1, "character_id": "41", "realm": 1, "name": "Ana", "race_id": "race_vardheim",
- "appearance": "AQEAAgEDAgE=", "level": 7, "xp_total": 12345, "realm_points": 420,
- "played_seconds": 7200, "bag_slots": 30, "starter_template_id": "escudero", "starter_granted": true,
- "health": 640, "active_weapon_slot": 0, "consumable_def_id": "potion_health",
- "location": {"zone_id": "vado_gris", "channel": 0, "position": [12.5, 3.0, -40.25], "yaw": 1.5, "in_combat": false, "saved_at": "2026-10-29T14:00:00Z"},
- "wallets": [{"currency": 1, "balance": 150}, {"currency": 2, "balance": 3200}],
- "items": [{"uid": "1025", "def_id": "sword_shield_vado", "container": 1, "slot": 0, "count": 1,
-            "durability": null, "rarity": 0, "bound": true, "seed": "0", "affixes": []}],
- "ability_slots": [{"weapon_id": "sword_shield", "slot": 0, "ability_id": "shield_bash"}],
- "timers": [{"key": "unstuck", "ends_at": "2026-10-29T14:05:00Z", "stacks": 1}],
- "attributes": [], "masteries": [], "save_version": 12, "last_save_id": "5121"}
+```sql
+create function eldmark_append_only() returns trigger language plpgsql as $$
+begin
+  if tg_op = 'DELETE' and current_setting('eldmark.retention_purge', true) = 'on' then
+    return old;
+  end if;
+  raise exception '% es de solo añadir', tg_table_name using errcode = 'P0001';
+end $$;
+create trigger append_only before update or delete on ledger_entries
+  for each row execute function eldmark_append_only();   -- y lo mismo en las otras cuatro
 ```
 
-`appearance` va en Base64. `location` es null si no hay posición guardada. Las fechas, en UTC ISO 8601.
+`0010_progress.down.sql` quita disparadores, función y tablas en orden inverso. Las tablas de
+atributos (PRG-17), maestrías (PRG-18) y habilidades elegidas (PRG-19) llegan con sus entradas, en
+migraciones propias de la franja 0010–0029.
+
+### 3.4 `ProgressRecord` en JSON (`progress_format` 1)
+
+Es la sección `progress` de la reclamación (`CharacterRecord.progress`, plataforma.md §6) y la parte
+fija de cada guardado (§9.3). `{}` es un personaje nuevo: lo da el `jsonProgressStore` provisional de
+plataforma.md tras crear; el almacén de P7 devuelve el registro con los valores por defecto. Todo número
+que no sea una cantidad pequeña (`uid`, `op_id`, `actor_account_id`, `ref_op_id`, `ref_id`, `seed`,
+`ends_at_unix`) tiene que ser un entero exacto entre 0 y 2^53 − 1 (`v == floor(v)`; los ids, desde 1);
+si no, la zona rechaza el registro.
+
+```json
+{"progress_format": 1, "level": 7, "xp_total": 12345, "realm_points": 420, "bag_slots": 30,
+ "starter_template_id": "squire", "starter_granted": true, "active_weapon_slot": 0,
+ "wallets": [{"currency": 1, "balance": 150}, {"currency": 2, "balance": 3200}],
+ "items": [{"uid": 1025, "def_id": "sword_shield_vado", "container": 1, "slot": 0, "count": 1,
+            "durability": null, "rarity": 0, "bound": true, "seed": 0, "affixes": []},
+           {"uid": 1027, "def_id": "potion_health", "container": 0, "slot": 1, "count": 3,
+            "durability": null, "rarity": 0, "bound": true, "seed": 0, "affixes": []}],
+ "timers": [{"key": "unstuck", "ends_at_unix": 1793282700}]}
+```
+
+`items` son las instancias vivas. Los temporizadores van en segundos Unix. `from_dictionary` ignora
+`zone_id` y `ops` (el `jsonProgressStore` guarda el cuerpo del guardado entero) y devuelve null ante
+cualquier otra clave desconocida, un tipo que no cuadra o un valor fuera de rango. Nivel y `xp_total`
+deben cumplir I8; la apariencia y la raza vienen aparte, en `CharacterRecord`.
+
+### 3.5 Retención y purga
+
+| Qué | Cuánto | Cómo |
+|---|---|---|
+| Estado: progreso, saldos, objetos (vivos y retirados), temporizadores | Mientras exista la fila de `characters` | `on delete cascade` |
+| Operaciones, participantes, libro, eventos de objeto, reversiones | Mientras exista el personaje y **1 año** después de su purga (PRG-39) | Lápida y trabajo de retención |
+
+- **Purga.** La purga de plataforma.md (personaje al vencer `restore_until`, cuenta en §11.2) llama a
+  `ProgressStore.Purge` dentro de su transacción y antes de borrar la fila de `characters`. `Purge`
+  inserta la lápida (`progress_tombstones`). El borrado en cascada solo toca las tablas de estado: el
+  libro se queda y la transacción de la cuenta no se aborta (comprobado: personaje borrado, correo a
+  NULL, 2 apuntes y 1 evento intactos).
+- **Retención.** El trabajo horario de plataforma.md §2.5 llama a `ProgressStore.PurgeRetention` con
+  una transacción suya. Dentro, `set local eldmark.retention_purge = 'on'` y borra, de las lápidas con
+  más de 365 días, sus apuntes, eventos y participaciones; después, las reversiones y operaciones que se
+  han quedado sin participantes, y las lápidas ya vacías. Como mucho 10 000 apuntes por llamada: el
+  trabajo la repite, una transacción cada vez, mientras devuelva más de 0.
+- **Sin la marca**, UPDATE y DELETE fallan siempre (también tras una transacción que la puso: `set
+  local` solo vale dentro de ella, comprobado). Corregir datos es añadir apuntes de MIGRATION; una
+  migración que tuviera que borrar pone la misma marca y se revisa a mano.
+- **Seudónimos.** Tras la purga, `character_id` y los `ref_id` de víctimas apuntan a filas que ya no
+  existen y la cuenta es una lápida: no se reescriben (sería un UPDATE en una tabla de solo añadir).
+- **Exportación.** `ProgressStore.Export` da el progreso y las operaciones, apuntes y eventos propios
+  para el archivo de plataforma.md §11.2.
 
 ## 4. Inventario autoritativo (PRG-11)
 
@@ -260,13 +338,31 @@ columnas. **Los enteros que pueden pasar de 2^53** (`character_id`, `uid`, `op_i
 | Contenedor | Ranuras | Reglas |
 |---|---|---|
 | 0 BAG | `bag_slots` (30; tope 120) | Cualquier objeto; las pilas se juntan |
-| 1 EQUIPMENT | 7: 0 WEAPON_1, 1 WEAPON_2, 2 HEAD, 3 CHEST, 4 HANDS, 5 LEGS, 6 FEET | Un objeto por ranura, compatible con su `equip_slot` |
+| 1 EQUIPMENT | 7: 0 WEAPON_1, 1 WEAPON_2; 2 HEAD, 3 CHEST, 4 HANDS, 5 LEGS, 6 FEET reservadas | Un arma por ranura; en la fase 5 las ranuras 2–6 dan CANNOT_EQUIP |
 
-El equipo puesto **es** el contenedor EQUIPMENT. Tras cada cambio confirmado, la zona reconstruye el
-`EquipmentState` de PRG-04 desde él (`EquipmentState.rebuild_from(inventory, db)`) y PRG-04 recalcula
-el `StatBlock` y manda su hoja derivada con el tick de entrada en vigor, como en la fase 4. El arma
-activa (`CombatState.weapon_id`) es la del objeto de la ranura activa; la segunda ranura puede estar
-vacía (CMB-24 no cambia entonces de arma).
+El equipo puesto **es** el contenedor EQUIPMENT. Tras cada cambio confirmado de las ranuras 0 o 1, la
+zona impone las armas en el `CombatState`:
+
+```gdscript
+# scripts/shared/combat/action_machine.gd (amplía habilidades.md §7.2; lo añade P2)
+## Pone las armas de las dos ranuras sin reiniciar nada más. Solo con action NONE: si no, no hace nada
+## y registra el error (el inventario nunca la llama entonces: NOT_NOW de §4.2).
+static func set_weapons(c: CombatState, weapon_1: int, weapon_2: int, second_active: bool,
+		ready_1: PackedInt64Array, ready_2: PackedInt64Array) -> void
+```
+
+- Pone `weapon_id` y `alt_weapon_id` según `second_active`, `ability_ready[0..2]` con las del arma
+  activa y `[3..5]` con las de la otra, y el bit0 de `combat_flags2` = `second_active`.
+- No toca `consumable_ready_tick`, las cargas, las ranuras de movimiento ni los botones.
+- Los `ready_*` son ticks absolutos de cada arma (3 valores; vacío = 0). `PlayerProgress` guarda en
+  memoria los de un arma que se quita (`stash_ready`) y los devuelve al volver a ponerla: desequipar y
+  equipar no reinicia reutilizaciones. Al aparecer y al reaparecer van vacíos, como en `set_loadout`.
+- Le siguen `CombatDirector.commit_state` y LOADOUT (habilidades.md §5.4, `template_id` 0 = el equipo
+  del inventario) al dueño y, si cambian las armas, a quien lo tenga relevante (con `charges` 0).
+- Se aplica al final del tick `s`, con las altas; la simulación lo usa desde `s + 1`. La corrección del
+  dueño la explica el LOADOUT propio (`NetClient._note_imposed_state`, habilidades.md §5.4).
+
+Con la ranura 0 vacía y la 1 activa, `weapon_id` es la de la 1 y `alt_weapon_id` 0 (no hay SWAP).
 
 ### 4.2 Operaciones
 
@@ -274,7 +370,7 @@ Todas son intenciones del cliente que el servidor valida y aplica enteras o no a
 
 | Op | Código | Efecto |
 |---|---|---|
-| MOVE | 1 | A una ranura vacía: mueve la pila. A una con la misma definición apilable, el mismo `bound` y hueco en la pila: **junta** `min(count, max − destino)`; lo que no cabe se queda. Si no: **intercambia**. Hacia o desde EQUIPMENT es **equipar** o desequipar |
+| MOVE | 1 | A una ranura vacía: mueve la pila. A una pila de la misma definición apilable, con el mismo `bound` y hueco: **junta** `min(count, max − destino)` y lo que no cabe se queda. En cualquier otro caso (otra definición, otro `bound` o pila de destino llena): **intercambia**. Hacia o desde EQUIPMENT es **equipar** o desequipar |
 | SPLIT | 2 | Saca `n` (1 ≤ n < count) a una ranura vacía de la bolsa, con `uid` nuevo |
 | DESTROY | 3 | Quita `n` (0 = toda la pila); si no queda nada, el `uid` muere |
 
@@ -285,56 +381,80 @@ Al equipar un objeto con `ON_EQUIP` se liga (`bound = true`) y el cambio viaja e
 | Código | Nombre | Cuándo | Texto (`result_text`) |
 |---|---|---|---|
 | 0 | OK | Aplicada | — |
-| 1 | INVALID | Op desconocida, contenedor o ranura fuera de rango, cantidad imposible (MOVE con `count ≠ 0`, SPLIT fuera de 1..count−1 o a una ranura que no es de la bolsa), origen igual a destino. **Suma un aviso** (red.md §12) | «Petición no válida» |
+| 1 | INVALID | Op desconocida, contenedor o ranura fuera de rango (contenedores 2 y 3 en la fase 5), cantidad imposible (MOVE con `count ≠ 0`, SPLIT fuera de 1..count−1 o a una ranura que no es de la bolsa), origen igual a destino. **Suma un aviso** (red.md §12) | «Petición no válida» |
 | 2 | STALE | El origen está vacío o su `uid` no es `expected_uid` | «Ese objeto ya no está ahí» |
-| 3 | NOT_NOW | Sin personaje cargado o fuera del mundo; o la op toca EQUIPMENT y el personaje está muerto, en combate, con una acción en curso (`CombatState.action ≠ NONE`), bebiendo o cambiando de arma; o la op cambia cantidades y no queda bloque de ids (§4.5) | «Ahora no puedes hacerlo»; en combate, «No puedes cambiar el equipo en combate» |
-| 4 | CANNOT_EQUIP | Ranura de equipo incompatible o `required_level` por encima del nivel | «No puedes equipar eso ahí» o «Necesitas nivel N» |
+| 3 | NOT_NOW | Sin personaje o fuera del mundo. La op toca EQUIPMENT y el personaje está muerto, derribado, en combate (`Combatant.is_in_combat`) o con una acción (`CombatState.action ≠ NONE`: beber, cambiar de arma, levantar y rematar incluidos). DESTROY de un consumible mientras bebe uno (si no, el compromiso restaría una carga de 0). SPLIT o DESTROY sin ids para clientes (§4.5) | «Ahora no puedes hacerlo»; en combate, «No puedes cambiar el equipo en combate» |
+| 4 | CANNOT_EQUIP | Ranura de equipo incompatible, ranura 2–6 en la fase 5 o `required_level` por encima del nivel | «No puedes equipar eso ahí» o «Necesitas nivel N» |
 | 5 | WEAPON_REQUIRED | Dejaría vacía la ranura de arma activa | «Necesitas un arma en la mano» |
-| 6 | NO_ROOM | SPLIT a una ranura ocupada; MOVE que junta en una pila llena del todo | «No cabe» |
+| 6 | NO_ROOM | SPLIT a una ranura ocupada | «No cabe» |
 | 7 | LOCKED | DESTROY de algo equipado o de un objeto con `destroyable = false` | «Ese objeto no se puede destruir» |
-| 8 | RATE | Se mira al llegar, antes que todo lo demás: más de 8 peticiones/s (ráfaga 16). Una de cada cinco descartadas suma un aviso, como el chat (social.md §5) | «Más despacio» |
+| 8 | RATE | Se mira al llegar, antes que todo lo demás: más de 8 peticiones/s (ráfaga 16), o más de 2 SPLIT y DESTROY por segundo (ráfaga 10; gastan ids). Una de cada cinco descartadas suma un aviso, como el chat (social.md §5) | «Más despacio» |
 
 `InventoryOps.apply()` es **compartida y pura**: la usa el servidor para decidir y el cliente para su
 intención optimista (§11), así que las dos validan igual. El servidor encola las peticiones al llegar
-(en el `poll`) y las aplica al final del tick `s`, junto a las altas (red.md §8.1), en orden de
-llegada; lo que cambia la simulación entra en vigor en `s + 1` por el mecanismo de PRG-04.
+(en el `poll`) y las aplica al final del tick `s`, tras las altas (red.md §8.1), en orden de llegada.
 
 ### 4.3 Transaccional en memoria y en la BD
 
 - `InventoryOps.apply()` calcula el resultado sobre una copia de las ranuras implicadas y solo si todo
-  vale lo escribe en el `InventoryState`; con el mismo paso añade al diario la operación (`op_id`, sus
-  eventos de objeto y sus apuntes).
-- El guardado (§9) manda el estado completo y el diario de operaciones pendientes, y el servicio lo
-  aplica en **una** transacción. Una operación nunca se parte entre dos guardados.
-- `kill -9`, SIGTERM o SIGINT (no llegan a GDScript, red.md §1.3) pierden 60 s como mucho, y a la vez
-  el cambio y su registro: la BD nunca ve uno sin el otro. TEC-25 lo prueba matando el proceso.
-- Cada operación aplicada (también los movimientos) deja una línea en el registro de la zona (`op_id`,
-  personaje, op, ranuras, uids, resultado); los cambios de cantidad van además a la BD.
+  vale lo escribe en el `InventoryState`.
+- **Mover, dividir, juntar, intercambiar y equipar no crean eventos ni gastan `op_id`**: su resultado
+  va en la foto del guardado. SPLIT gasta un `uid`. Solo DESTROY (sumidero) da un evento, en una
+  operación PLAYER.
+- El diario de `PlayerProgress` guarda las operaciones con eventos o apuntes que aún no ha confirmado
+  un guardado. Cada guardado manda la foto completa y ese diario, y el servicio lo aplica en **una**
+  transacción (I7).
+- `kill -9`, SIGTERM o SIGINT (no llegan a GDScript, red.md §1.3) pierden lo posterior al último
+  guardado aceptado (60 s como mucho, plataforma.md §7.4), y a la vez el cambio y su registro: la BD
+  nunca ve uno sin el otro. TEC-25 lo prueba matando el proceso (§15, P8).
+- Cada petición aplicada deja una línea en el registro de la zona (personaje, op, ranuras, uids,
+  resultado).
 
 ### 4.4 Lo que cambia el servidor por su cuenta
 
 | Motivo | Cuándo | Efecto |
 |---|---|---|
-| `STARTER_KIT` | Primera entrada | §2.5; luego INVENTORY_FULL |
-| `CAMP_REFILL` | Al entrar y al reaparecer en el campamento propio | Cada definición con `camp_refill` sube hasta esa cantidad en su pila de ranura más baja, o en una pila nueva en la primera ranura libre; con la bolsa llena no se repone (NOTICE «Bolsa llena») |
-| `CONSUME` | Cuando el servidor acepta empezar a beber (PRG-08) | −1 de la pila de esa definición con la ranura de bolsa más baja; si no queda ninguna, PRG-08 lo trata como sin cargas |
-| `GM_GRANT`, `GM_REMOVE`, `REVERSAL` | Comandos de §10 | Guardado inmediato |
+| `STARTER_KIT` | Primera entrada | §2.5; operación suelta, guardado crítico; luego INVENTORY_FULL |
+| `CAMP_REFILL` | Paso 8 del tick (habilidades.md §4.1), cada 60 ticks, si está vivo, fuera de combate y en la zona segura de su reino | Por cada definición con `camp_refill`: `falta = camp_refill − count_of(def)` (bolsa y equipo). Si falta > 0, se suma a la pila de esa definición con la ranura más baja hasta `max_stack` y el resto va a una pila nueva en la primera ranura libre. Bolsa llena: no se repone y llega un NOTICE «Bolsa llena», una vez por entrada en la zona segura. Agregado (§5.2). **Sustituye** la recarga de habilidades.md §4.6 para quien tiene inventario |
+| `CONSUME` | Tras el paso 1 (simular), si bajó la carga de un consumible: es el compromiso de beber (habilidades.md §3.3, regla 5) | −1 por carga gastada, de la pila de esa definición con la ranura de bolsa más baja. Beber interrumpido no baja la carga y no gasta nada. Agregado |
+| `GM_GRANT`, `GM_REMOVE`, `REVERSAL` | Comandos de §10 | Operación suelta, guardado crítico |
+
+Dividir la pila no da más pociones: la reposición mira el **total** de la definición.
+
+**Cargas.** Para quien tiene inventario, la carga de cada consumible es `min(15, count_of(def))`, con
+`def = ItemDatabase.consumable_definition(i)`. Se impone con `ActionMachine.set_charges` (solo toca las
+cargas, habilidades.md §3.5) y LOADOUT al dueño en dos momentos:
+
+- tras cada cambio confirmado de la cantidad de un consumible (CONSUME, CAMP_REFILL, DESTROY, GM,
+  reversión);
+- en el alta y en la reaparición, como el argumento `charges` de `set_loadout` y `reset_for_respawn`.
+
+Con más de 15 en la bolsa, tras beber la carga vuelve a 15 con un LOADOUT. El comando 16 `refill`
+(habilidades.md §5.1) es para ellos un CAMP_REFILL forzado, sin mirar zona ni combate. Los jugadores
+falsos siguen con la plantilla y la recarga de habilidades.md.
 
 ### 4.5 `uid` y `op_id`: bloques
 
-- La zona pide al servicio bloques de 1024 ids (`nextval('uid_block_seq')` da el primero: 1, 1025,
-  2049…; comprobado en PostgreSQL 16). Los ids de un bloque son de esa zona y solo de ella.
-- `IdAllocator` reparte los `uid` de los objetos **y** los `op_id` del mismo bloque: así los dos son
-  únicos sin otra fuente. Pide el siguiente bloque cuando quedan menos de 256 y guarda dos como mucho.
+- Con plataforma, un solo generador: `POST /internal/v1/item-uid-blocks {world_id, count: 1024}` →
+  `{first, count}` (plataforma.md §6, tabla `item_uid_blocks` por mundo). Del mismo bloque salen los
+  `uid` y los `op_id`.
+- `IdAllocator` guarda dos bloques como mucho y pide otro cuando quedan menos de 512.
+- **Reserva del servidor**: los últimos 256 ids solo los usa el servidor (kit, pila nueva de
+  CAMP_REFILL, cierre de la agregación, GM, reversión). Un SPLIT o DESTROY del cliente con 256 o menos
+  da NOT_NOW: ningún cliente deja a otro sin beber ni a la zona sin guardar.
+- Las operaciones agregadas toman su `op_id` al construir el guardado: beber y reponer nunca esperan a
+  un id (salvo la pila nueva, que sale de la reserva).
+- **Primer bloque**: la zona lo pide tras registrarse y antes de abrir el puerto, como las fortalezas
+  (plataforma.md §8).
 - Un bloque a medias que se pierde en una caída deja un hueco: no importa, nunca se repite nada.
-- Sin bloque disponible, todo lo que cambia cantidades (dividir, juntar, destruir, crear, monedas)
-  responde NOT_NOW; mover, intercambiar y equipar no necesitan id y siguen funcionando.
-- Los repositorios de memoria y de archivo (§9.4) reparten bloques de un contador propio.
+- Sin plataforma, `IdAllocator.local()` cuenta desde 1 en memoria (nada se guarda).
 
 ### 4.6 Mensajes de red
 
 Canal fiable 3, tipos `0x50`–`0x5F` (el chat usa `0x40`–`0x47` y los grupos `0x48` en adelante).
-Ningún mensaje pasa de 1200 B.
+Ningún mensaje pasa de 1200 B. INVENTORY_DELTA, INVENTORY_FULL, WALLET_UPDATE y PROGRESS_UPDATE solo
+van al dueño. `NetClient` los decodifica y emite señales; `SwarmBot` los decodifica y los descarta.
+Ninguno de los dos los cuenta como malformados salvo que el `decode` falle (§14.1, P4).
 
 **INVENTORY_REQUEST** (`0x50`, C→S, 18 B)
 
@@ -391,29 +511,38 @@ rechaza el 2 y el 3 en la fase 5) y cada objeto según §2.3. Devuelve null en c
 | 2 | Méritos | 1 000 000 000 | PvP y objetivos (PRG-09), GM | Solo GM. La intendencia llega en la fase 7 (PRG-33) |
 
 - **Por personaje**, `int64`, nunca negativo (CHECK en la BD y `CurrencyRules` en la zona).
-- **Puntos de reino**: no son moneda. Suben en la misma operación que cada apunte positivo de méritos
-  de juego y por la misma cantidad (I9).
+- **Puntos de reino**: no son moneda. Suben con cada apunte de méritos de motivo 3–5, en la misma
+  operación y por la misma cantidad (I9). Los méritos de GM no los mueven.
 - Lo ganado en las pruebas de la fase 5 se puede borrar al abrir la economía de la fase 6: una
   migración con motivo `MIGRATION` deja los saldos a 0 con su apunte.
 
 ### 5.2 Apunte
 
-- `op_id`: la operación (§4.5). Clave de idempotencia: `(op_id, character_id, currency)` es única.
-- `currency`, `delta` (≠ 0), `balance_after` (saldo tras el apunte) y `seq` (1, 2, 3… por saldo).
-- `reason`: motivo de §5.3; su signo debe cuadrar con su rango.
-- `ref_kind`, `ref_id`: 0 ninguna, 1 personaje (PvP), 2 PNJ (`npc_def_id`), 3 fortaleza, 4 operación.
-- En la operación, `actor_account_id`: la cuenta del GM (SOC-14) o null.
+- `op_id`: la operación (§4.5). `(op_id, character_id)` se aplica una vez (I6).
+- `currency`, `delta` (≠ 0), `balance_after` (saldo tras el apunte), `reason` (§5.3; su signo debe
+  cuadrar con su rango) y `ref_kind`, `ref_id`: 0 ninguna; 1 personaje (víctima PvP: su
+  `character_id`); 2 PNJ y 3 fortaleza (la huella u32 de su id de texto, los 4 primeros bytes del
+  SHA-256 como el `zone_key` de plataforma.md §5.1: los ids de `NpcCatalog` cambian al añadir PNJ);
+  4 operación (la revertida). Ejemplo: `hollow` da 3021413298; `vado_gris`, 0x19efc013, el del vector
+  de plataforma.md.
+- `seq` (1, 2, 3… por saldo) **lo pone el servicio**: `last_seq + 1` en el orden del diario. La zona no
+  lo manda.
+- En la operación: `actor_account_id` (la cuenta del GM o null), `note` y `detail` (§10).
 
-**Agregación.** Las ganancias de juego (méritos de cada baja, oro de cada PNJ, cada segundo en el
-círculo) cambian el saldo en memoria al momento y se apuntan al guardar: **un apunte por (moneda,
-motivo)** y una operación por guardado. Así un jugador en batalla deja unos cinco apuntes por minuto,
-no uno por segundo. Los de GM, kit y reversiones van sueltos y con guardado inmediato.
+**Agregación.** Las ganancias y gastos de juego (méritos, oro de PNJ y capturas, CAMP_REFILL, CONSUME)
+cambian el saldo o la bolsa en memoria al momento y se apuntan al construir el guardado. Van en una
+operación GAMEPLAY con un apunte por (moneda, motivo, `ref_kind`, `ref_id`) y un evento sin `uid` por
+(definición, motivo). Un jugador en batalla deja unos cinco apuntes por minuto, no uno por segundo.
+
+**Orden del diario.** Antes de crear una operación suelta (DESTROY del jugador, kit, GM, reversión),
+`PlayerProgress` cierra lo agregado como una GAMEPLAY. Así el diario va siempre en orden de aplicación
+y cada `balance_after` sale del saldo ya apuntado. Ejemplo: 100 de oro en la BD, +2 de un PNJ y un
+`currency_add +50` → GAMEPLAY (+2, 102) y después GM (+50, 152).
 
 ### 5.3 Motivos (`EconomyReason`, u8, fijos: nunca se reutilizan)
 
 Rango 1–63: **fuentes** (`delta > 0`). Rango 64–127: **sumideros** (`delta < 0`). Rango 128–191:
-**internos o neutros** (cualquier signo; dividir y juntar suman 0 por definición dentro de su
-operación).
+**internos** (cualquier signo).
 
 | Código | Motivo | Fase | Código | Motivo | Fase |
 |---|---|---|---|---|---|
@@ -428,13 +557,12 @@ operación).
 | 9 | QUEST | 6 | 72 | CRAFT_INPUT | 6 |
 | 10 | VENDOR_SELL | 6 | 73 | QUARTERMASTER | 7 |
 | 11 | TRADE_IN | 6 | 74 | MARKET_FEE | 8 |
-| 12 | MAIL_IN | 6 | 128 | SPLIT | 5 |
-| 13 | CRAFT_OUTPUT | 6 | 129 | MERGE | 5 |
-| | | | 130 | REVERSAL | 5 |
-| | | | 131 | MIGRATION | 5 |
+| 12 | MAIL_IN | 6 | 128 | REVERSAL | 5 |
+| 13 | CRAFT_OUTPUT | 6 | 129 | MIGRATION | 5 |
 
-Los mismos códigos sirven para los eventos de objeto. Tipos de operación (`economy_ops.kind`): 1
-INVENTORY, 2 CONSUME, 3 STARTER_KIT, 4 CAMP_REFILL, 5 REWARD, 6 GM, 7 REVERSAL, 8 MIGRATION.
+Los mismos códigos sirven para los eventos de objeto. Tipos de operación (`economy_ops.kind`,
+`EconomyOp.Kind`): 1 PLAYER, 2 GAMEPLAY, 3 STARTER_KIT, 4 GM, 5 REVERSAL, 6 MIGRATION; 7 TRADE y 8 MAIL
+(fase 6); 9–15 reservados.
 
 ### 5.4 Reglas
 
@@ -442,13 +570,14 @@ INVENTORY, 2 CONSUME, 3 STARTER_KIT, 4 CAMP_REFILL, 5 REWARD, 6 GM, 7 REVERSAL, 
   memoria: `CurrencyRules.can_apply`). Una ganancia de juego que pasa el tope se recorta al tope.
 - **Concurrencia en la zona.** Un personaje vive en una sola zona (arrendamiento, TEC-25) y sus
   operaciones se aplican en orden dentro del tick: no hay carreras.
-- **Concurrencia en la BD.** El servicio aplica cada apunte con un `UPDATE … SET balance = balance +
-  delta WHERE … AND balance + delta >= 0`. Comprobado con PostgreSQL 16 y dos transacciones a la vez
-  que gastan 60 de un saldo de 100: la segunda espera el bloqueo, vuelve a evaluar la condición, no
-  toca ninguna fila y se aborta; el saldo queda en 40 y la suma del libro es 40.
+- **Concurrencia en la BD.** El guardado bloquea el arrendamiento (`for update`, plataforma.md §7.3),
+  así que dos guardados del mismo personaje van en serie. Además, cada saldo se escribe con `UPDATE …
+  SET balance = balance + delta WHERE … AND balance + delta >= 0`. Comprobado con PostgreSQL 16 y dos
+  transacciones a la vez que gastan 60 de un saldo de 100: la segunda espera el bloqueo, vuelve a
+  evaluar la condición, no toca ninguna fila y se aborta; el saldo queda en 40 y la suma del libro es 40.
 - **Reconstrucción.** `saldo = Σ delta` de sus apuntes; lo comprueba la prueba y, a diario, PRG-30.
-- **Idempotencia.** Repetir una operación ya aplicada no hace nada: la restricción única la frena
-  aunque dos repeticiones lleguen a la vez.
+- **Idempotencia.** Un reintento repite `(lease_id, seq)` y plataforma.md lo descarta antes de llegar al
+  progreso. Una operación repetida en un guardado nuevo choca con la clave de `op_participants`.
 
 ## 6. Niveles y experiencia (PRG-13)
 
@@ -473,13 +602,19 @@ y las horas por nivel los fija PRG-22 en la fase 6 con la zona PvE.
 
 | Fuente | XP | Oro | Regla |
 |---|---|---|---|
-| PvP | `méritos × 10` | — | Los méritos de PRG-09 (reparto por daño y antifarmeo incluidos): sin méritos no hay XP. Sin oro por matar jugadores, para que no se compre oro pactando muertes |
-| PNJ | `NpcDefinition.xp_reward` | `NpcDefinition.gold_reward` | Cada contribuyente con ≥ 10 % del daño en 900 ticks recibe la recompensa entera (decisión §0). Valores: Hueco 40 XP y 2 oro; guardia de reino enemigo 60 y 3; Capitán del Vado 400 y 50; Guardianes de la Puerta 0 y 0 |
-| Captura | 300 | 20 | A cada jugador del nuevo dueño que esté en el círculo en el tick de la captura |
+| Bajas y asistencias PvP | `méritos × 10` | — | Los méritos de PRG-09 (reparto por daño y antifarmeo incluidos). **Solo si la víctima es un personaje persistente de otro reino**; las de PNJ, jugadores falsos y personajes efímeros no dan méritos ni XP de PvP. Sin oro, para que no se compre oro pactando muertes |
+| Objetivos | `méritos × 10` | — | Los méritos de objetivo de PRG-09 (círculo, puerta, defensa), sin víctima |
+| PNJ | `NpcDefinition.xp_reward` | `NpcDefinition.gold_reward` | Cada contribuyente con ≥ 10 % del daño en 900 ticks recibe la recompensa entera (§0). Sin méritos. Valores: `hollow` 40 XP y 2 de oro; `realm_guard` 60 y 3; `ford_captain` y `realm_captain` 400 y 50; `gate_guardian` 0 y 0 |
+| Captura | 300 | 20 | A cada jugador del nuevo dueño que esté en el círculo en el tick de la captura. **Una vez por personaje y fortaleza cada 30 min**: temporizador `capture:<fortress_id>` (§8). Guardado crítico |
 | GM | `xp_add` | `currency_add` | §10 |
 
-`xp_reward` y `gold_reward` son dos campos nuevos de `NpcDefinition` (MUN-07), con 0 por defecto.
-El reparto de XP en grupo es de SOC-23 (fase 6).
+- `xp_reward` y `gold_reward` son dos campos nuevos de `NpcDefinition`
+  (`scripts/shared/ai/npc_definition.gd`, MUN-07), con 0 por defecto, y se rellenan en `data/npcs/`.
+- **Con `--platform` y `--fake-players` la zona no da ninguna recompensa persistente** y lo dice en el
+  registro al arrancar: los falsos podrían ayudar a capturar o a sostener un círculo.
+- La captura sin defensores no se penaliza todavía: en el Vado Gris lo normal es quitársela a los
+  Huecos. Las capturas pactadas y el granjeo son de GUE-35 (fase 7).
+- El reparto de XP en grupo es de SOC-23 (fase 6).
 
 ### 6.3 Subida
 
@@ -488,11 +623,11 @@ El reparto de XP en grupo es de SOC-23 (fase 6).
   tope se aplica 0 y el total se queda en `curve.total_to(40)`.
 - **Puntos de atributo** = `(level − 1) · attribute_points_per_level − Σ gastados`. No se guardan:
   se derivan, así PRG-17 puede cambiar el reparto sin migrar. En la fase 5 se ven y no se gastan.
-- **Qué cambia al subir:** nada de la simulación ni de la hoja (decisión §0). Se ve en la ventana de
-  personaje, en la placa de los aliados y desbloquea objetos por `required_level`.
+- **Qué cambia al subir:** nada de la simulación ni de la hoja (§0). Se ve en la ventana de personaje y
+  en la placa de los aliados, y desbloquea objetos por `required_level`.
 - **Avisos:** PROGRESS_UPDATE al dueño (§12) y ENTITY_EVENT `16 LEVEL_UP` (`u8 level`, 10 B) al dueño
   y a los del **mismo reino** que lo tienen relevante, para el efecto visual; al enemigo no le llega
-  (social.md §1: el nivel del enemigo no cruza). Subir de nivel guarda al instante.
+  (social.md §1). Subir de nivel marca el guardado como crítico.
 - PROGRESS_UPDATE se agrupa: como mucho uno cada 10 ticks por jugador, con la suma de lo ganado.
 
 ## 7. Razas y apariencia (PRG-14, ART-19)
@@ -507,25 +642,29 @@ El reparto de XP en grupo es de SOC-23 (fase 6).
 
 El nombre del pueblo en la interfaz es provisional («Gente de Vardheim») hasta que lo fije el lore
 (MUN-28). **En la simulación no cambia nada:** misma escena de `PlayerCharacter`, misma cápsula de
-1,8 m, mismo `sim_hash`, ninguna estadística. No hay control de altura ni de complexión: el aspecto
-debe llenar la misma cápsula que se usa para los golpes, o el rival vería un cuerpo más pequeño que
-su hitbox. Cambia lo visual: peinados, barbas, marcas y, por PRG-05 y ART-27, el corte y el tinte de
-los trajes. La piel usa la paleta completa en los tres reinos.
+1,8 m, ninguna estadística; la apariencia no entra en el `sim_hash`. No hay control de altura ni de
+complexión: el aspecto debe llenar la misma cápsula que se usa para los golpes, o el rival vería un
+cuerpo más pequeño que su hitbox. Cambia lo visual: peinados, barbas, marcas y, con PRG-05 y ART-27, el
+corte y el tinte de los trajes. Askarra tiene su raza en los datos aunque su reino aún no se pueda
+elegir (plataforma.md §0). Hasta ART-20, las tres razas comparten las piezas que hay en el repo
+(§7.4) y solo cambian los colores permitidos.
 
 ### 7.2 `CharacterAppearance`: 8 B
 
 Índices sobre `AppearanceCatalog` (`data/characters/appearance_catalog.tres`), que tiene listas
 **solo de añadir**: `races`, `bodies`, `heads`, `hairs`, `beards`, `marks` (`AppearancePart`: `id`,
-`display_name`, rutas de malla solo cliente y `bodies` compatibles, vacío = todos) y `skin_tones`,
-`hair_colors`, `eye_colors` (`AppearanceColor`: `id`, `display_name`, `color` y textura opcional).
-`data/characters/appearance_ids.txt` congela el orden («categoría índice id» por línea) y la prueba
-exige que el catálogo empiece por esa lista: nada se reordena ni se borra (se retira quitándolo de
-las razas). Así los 8 B guardados en la BD siguen valiendo tras cualquier parche.
+`display_name`, `scene_path: String` solo cliente y `bodies` compatibles, vacío = todos) y
+`skin_tones`, `hair_colors`, `eye_colors` (`AppearanceColor`: `id`, `display_name`, `color` y
+`texture_path: String`, opcional y solo cliente). El catálogo de la fase 5 **solo lista piezas que
+existen** en el repo. `data/characters/appearance_ids.txt` congela el orden («categoría índice id» por
+línea), solo crece, y la prueba exige que el catálogo empiece por esa lista: nada se reordena ni se
+borra (se retira quitándolo de las razas). Así los 8 B guardados en la BD siguen valiendo tras
+cualquier parche.
 
 | Byte | Campo | Valor |
 |---|---|---|
 | 0 | race | índice en `races` + 1 (0 no vale) |
-| 1 | body | índice en `bodies` (0 masculino, 1 femenino: los dos cuerpos de Universal Base Characters) |
+| 1 | body | índice en `bodies` (en la fase 5 solo hay el 0; el femenino llega con ART-20, §16) |
 | 2 | head | índice en `heads` |
 | 3 | hair | 0 sin pelo; si no, índice + 1 |
 | 4 | beard | 0 sin barba; si no, índice + 1 |
@@ -540,139 +679,240 @@ las razas). Así los 8 B guardados en la BD siguen valiendo tras cualquier parch
 **Validación** (`CharacterAppearance.validate(catalog, realm)`): la raza existe y es del reino; cada
 índice está en las listas de la raza; cada pieza es compatible con el cuerpo; un 0 de pelo o barba solo
 si la raza lo admite. Valida la plataforma al crear el personaje (con las reglas exportadas, §13) y la
-zona al cargarlo: una apariencia inválida en la zona se sustituye por la primera válida de la raza y
-se registra, sin echar al jugador.
+zona al cargarlo: una apariencia inválida en la zona se sustituye por `default_for(raza)` y se registra,
+sin echar al jugador.
 
 ### 7.3 En el SPAWN
 
-El payload de PLAYER de ENTITY_SPAWN (red.md §5.5) crece **9 B** tras el nombre: `u8 level` (0 si el
-receptor es de otro reino) y los 8 B de apariencia. Si en la fase 4 el SPAWN de PLAYER ya lleva un
-bloque de equipo (PRG-04), ese bloque va primero y no cambia; los 9 B van detrás. Desde la fase 5 los
-ids visuales del equipo son los net id de `ItemDatabase` del objeto de cada ranura (0 = vacía): el
-cliente resuelve modelo e icono con un solo catálogo (`visual_paths` por cuerpo). El `decode` solo
-comprueba el tamaño; la validez la mira el cliente (inválida → apariencia por defecto de la raza).
+El payload de PLAYER de ENTITY_SPAWN (red.md §5.5) crece **9 B** tras el nombre: `u8 level` y los 8 B de
+apariencia. `level` es 0 si el receptor no es del reino del jugador (social.md §1: el nivel del enemigo
+no cruza). Por eso el SPAWN se codifica **por reino receptor**:
+
+- `NetEntity.encode_spawn(tick, for_owner, receiver_realm)`; `level` real solo si `for_owner` o
+  `receiver_realm == realm`.
+- `ZoneServer._announce_arrival` guarda como mucho tres variantes (una por reino) del SPAWN del recién
+  llegado y manda a cada `other_peer` la de su reino; los SPAWN de los demás hacia el recién llegado
+  usan el reino de este. `_refresh_interest` usa el reino del observador.
+- Hoy `_announce_arrival` codifica una sola vez y manda los mismos bytes a todos: P4 cambia los tres
+  sitios que llaman a `encode_spawn` y `test_progress_messages` y `test_progress_loopback` lo prueban.
+
+No hay bloque de equipo: las armas ya van en el `PlayerState` público (`weapon_id`, `alt_weapon_id`,
+habilidades.md §5.2) y cambian con LOADOUT. El `decode` solo comprueba el tamaño; la validez la mira el
+cliente (inválida → `default_for` de la raza). El bit 3 de `flags` (personal del juego) es de
+plataforma.md §5.4 y va en la misma versión.
 
 ### 7.4 En el cliente (kit de Quaternius)
 
 `AppearanceApplier` (solo cliente) monta sobre `HumanoidVisual` (ART-01, un solo `GeneralSkeleton`)
-cuerpo, cabeza, pelo y barba como escenas glTF de Universal Base Characters (hoy en el repo:
-`Superhero_Male_Head`, `Hair_SimpleParted`, `Hair_Beard`) y tiñe piel, ojos y pelo por material (los
-shaders de la versión Source, cuando se compre). El equipo de PRG-05 oculta pelo y barba (capucha,
-yelmo) con la lógica que ya tiene `HumanoidVisual`. Cambiar una pieza no recrea el personaje.
+cuerpo, cabeza, pelo y barba como escenas glTF de Universal Base Characters y tiñe piel, ojos y pelo por
+material. Hoy en el repo hay `Superhero_Male_Head`, `Hair_SimpleParted` y `Hair_Beard` (versión
+Standard); el resto es del usuario (§16). `HumanoidVisual` solo monta piezas en `_ready()`
+(`_attach_part` es privado), así que gana dos funciones públicas para que cambiar una pieza no recree
+el personaje:
+
+```gdscript
+# scripts/client/humanoid_visual.gd (amplía; P6)
+func set_part(slot: StringName, scene: PackedScene) -> void   # &"body", &"head", &"hair", &"beard", &"marks"
+func clear_part(slot: StringName) -> void
+```
+
+El equipo de PRG-05 ocultará pelo y barba (capucha, yelmo) con la lógica que ya tiene `HumanoidVisual`.
 
 ## 8. Configuración de combate persistente (CMB-30)
 
+Es de este documento: plataforma.md solo guarda la sección `progress` (§13.1).
+
 | Qué | Cómo se guarda | Al cargar |
 |---|---|---|
-| Las dos armas | Son objetos de EQUIPMENT 0 y 1 | Arman `EquipmentState` (PRG-04) |
-| Arma activa | `active_weapon_slot`, leída del `PlayerState` al guardar (CMB-24) | Fija `CombatState.weapon_id` en el estado inicial del alta |
-| Habilidades elegidas | `ability_slots`: 3 por arma (`WeaponDefinition.id`) | En la fase 5 deben ser el kit fijo del arma (CMB-21, CMB-23); otra cosa se corrige al kit. PRG-19 lo abrirá |
-| Consumible de la barra | `consumable_def_id` (si PRG-08 permite elegirlo) | Ranura de consumible de UI-11 |
-| Vida | `health` (null = llena) | `min(máx, guardada + health_regen_per_s · segundos desde saved_at)`; con 0 (murió) entra con la vida llena en el campamento |
-| Reutilizaciones largas | `timers` con clave `ability:<id>`, `unstuck` o `consumable:<grupo>`, para las de **duración total ≥ 30 s** | `ready_tick = s + ceil((ends_at − ahora) · 60)`; vencidas, se descartan |
-| Efectos largos | `timers` con clave `effect:<id>` y `stacks`, para los que su `StatusEffectDefinition` marca `persists = true` (CMB-20) | Se vuelven a aplicar con lo que les quede |
+| Las dos armas | Son objetos de EQUIPMENT 0 y 1 | `set_loadout` con sus armas de `CombatCatalog` (habilidades.md §3.5), en el sitio donde H3c pone las de la plantilla |
+| Arma activa | `active_weapon_slot` = bit0 de `combat_flags2` al construir el guardado (CMB-24): 0 WEAPON_1, 1 WEAPON_2 | En el alta, tras `set_loadout`, `set_weapons(…, second_active = true, [], [])` si vale 1. Al reaparecer, como `reset_for_respawn`: WEAPON_1 activa |
+| Habilidades elegidas | No se guardan: en la fase 5 son el kit fijo del arma (habilidades.md §2.3). Llegan con PRG-19 | — |
+| Consumibles | Las pociones de la bolsa (§4.4) | Cargas = `min(15, en la bolsa)` |
+| Vida | `state.health`, de plataforma.md §7.1 | La guardada; muerto, en el campamento con la vida llena |
+| Reutilizaciones de 30 s o más | `timers`: clave y `ends_at_unix` | `ready_tick = s + max(0, ends_at_unix − now_unix) · 60`; las vencidas se descartan |
+| Efectos largos | No hay en la fase 5: el más largo, `bleed`, dura 6 s | Cuando CMB-20 tenga uno con `persists`, con clave `effect:<id>` |
+| Posición | plataforma.md §7.1 | En el Vado Gris, el campamento del reino |
+
+**Temporizadores de la fase 5:**
+
+| Clave | Qué | Quién la lee y la escribe |
+|---|---|---|
+| `unstuck` | Reutilización de `/atascado` (5 min, fuerte.md §5) | `UnstuckTracker.get_ready_at(player)` y `set_ready_at(player, tick)`, nuevos; con plataforma, `player` es `"character:<id>"` en lugar del nombre normalizado |
+| `capture:<fortress_id>` | Recompensa de captura (30 min, §6.2) | `ProgressService` |
+| `ability:<id>`, `consumable` | Reservadas | Ninguna habilidad ni consumible llega a 30 s (las reutilizaciones van de 10 a 20 s). `test_player_progress` falla si aparece una: habría que imponer su `ability_ready` al aparecer, solo con la misma arma |
+
+El tiempo **corre sin conexión** (decisión §0). Al construir el guardado: `ends_at_unix = now_unix +
+ceil((ready_tick − s) / 60)`, con `now_unix = ZonePlatform.now_unix()` (el reloj corregido de
+plataforma.md §6). `scripts/shared/` no ve fechas y `scripts/server/progress/` no lee `Time`.
 
 **Nada de lo que se predice por tick se guarda**: ni el resto de `CombatState` (resistencia, acción,
 combo, controles, parada), ni la posición exacta entre guardados, ni las reutilizaciones de menos de
-30 s. La conversión entre ticks y UTC solo existe en `scripts/server/` (`ProgressClock`, que lee
-`Time`), como pide GUE-19; `scripts/shared/` no ve fechas. Para aplicar lo cargado, ProgressService
-llama a `CombatDirector.apply_cooldown(entity, key, ready_tick)` y `apply_effect(entity, effect_id,
-remaining_ticks, stacks)`, que habilidades.md debe ofrecer (CMB-19, CMB-20).
+30 s (reconectar las reinicia; §17).
 
-**Posición.** Se vuelve al sitio guardado solo si es la misma zona y canal, `saved_at` tiene menos de
-15 min, no estaba en combate ni muerto, el punto pisa suelo (sondeo de 2 m), no está en un volumen
-letal ni en la zona segura de otro reino. Si no, punto de aparición del reino (`SpawnPicker`).
-
-**Traspasos (fase 6).** CMB-30 dice que esto «viaja en el billete», pero el billete tiene 47 B: la
-zona de origen hace un guardado crítico antes del HANDOFF y la de destino lo carga. El billete solo
-lleva la identidad.
+**Traspasos (fase 6).** CMB-30 dice que esto «viaja en el billete», pero el billete tiene 52 B
+(plataforma.md §5.1) y solo lleva la identidad. La zona de origen hace un guardado final con
+`release`. Desde la foto, el personaje queda **congelado**: inventario y monedas responden NOT_NOW y no
+recibe recompensas. El HANDOFF sale solo tras el OK del guardado; si falla, el traspaso se cancela y se
+descongela. La zona de destino lo carga en su reclamación.
 
 ## 9. Ciclo de vida en la zona
 
 ### 9.1 Carga y alta
 
-1. HELLO con billete → `TicketAuthProvider` (TEC-24) → WELCOME con el reino del billete.
-2. A la vez, `ProgressService.begin_load(peer, character_id, lease_token)` pide el registro.
-3. `_process_arrivals` da de alta al peer cuando ha llegado su CLIENT_READY **y** su registro. Si el
-   registro no llega en 10 s o falla: NOTICE de expulsión «No se ha podido cargar el personaje».
-4. Alta: nombre, reino, apariencia y equipo del registro; vida, temporizadores y posición (§8); kit de
-   inicio si toca (§2.5); reposición del campamento si aparece en él.
-5. Tras el SPAWN propio: INVENTORY_FULL, un WALLET_UPDATE por moneda y un PROGRESS_UPDATE (estado).
+1. HELLO con billete → `TicketAuthProvider` → `VERIFYING` → reclamación (plataforma.md §5.2).
+2. **Reclamación con 200**: `AuthOutcome.record: CharacterRecord` trae `progress`. Antes del WELCOME,
+   en el paso «poll», `ZoneServer` llama a `progress.prepare(peer_id, outcome.record)`:
+   - decodifica `ProgressRecord.from_dictionary(record.progress, ItemDatabase.shared())`;
+   - valida `record.appearance` con `record.race_id` y el reino (inválida → `default_for`, aviso);
+   - crea el `PlayerProgress` del peer.
 
-### 9.2 Guardados
+   Si `from_dictionary` devuelve null: REJECT `UNAVAILABLE` con el texto «No se ha podido cargar el
+   personaje», alerta en el registro y `ZonePlatform.release(character_id, lease_id)`. Así nadie
+   recibe WELCOME sin haber pasado el un solo uso, las sanciones y la carga.
+3. WELCOME y `LOADING` (plataforma.md). LOADOUT_SELECT vale ya en `LOADING` (habilidades.md §5.1).
+4. CLIENT_READY → `_process_arrivals`. Antes del SPAWN, `progress.on_arrival(entity, peer, s)`:
+   - kit de inicio si toca (§2.5);
+   - `NetEntity.level` y `NetEntity.appearance`;
+   - devuelve el `Loadout` (armas, ranura activa y cargas) que usa el alta en lugar de la plantilla.
+5. Tras el SPAWN propio, `progress.after_spawn(entity, peer, s)`: INVENTORY_FULL, un WALLET_UPDATE por
+   moneda y un PROGRESS_UPDATE (estado). Después `CharacterSaver.track(net_id, record, s)` llama a la
+   `restore` de la sección (§9.2), que ata el `PlayerProgress` al `net_id` e impone los temporizadores.
 
-| Cuándo | Qué |
+Sin plataforma, el paso 2 no existe: `on_arrival` crea un personaje efímero (§9.4).
+
+### 9.2 La sección `progress` de `CharacterSaver`
+
+`ProgressService.setup` la registra con `CharacterSaver.register_section(&"progress", build, restore,
+acknowledge)`:
+
+| Llamada | Qué hace |
 |---|---|
-| Cada 60 s si hubo cambios | `next_checkpoint_tick = alta + 3600`, y +3600 tras cada uno: se reparten solos por hora de entrada |
-| Al instante (crítico) | Kit de inicio, subida de nivel, comandos de GM y reversiones; en la fase 6, comercio y botín raro |
-| Al salir | Tras la baja (y tras los 15 s del cuerpo que se queda si salió en combate, GUE-41), con `release_lease = true` |
-| Al cerrar el servidor | `--stop-file`, `--quit-after-ticks`, `--idle-quit`: guarda a todos y espera las respuestas 10 s como mucho antes de salir |
+| `build(net_id, seq) -> Dictionary` | `PlayerProgress.build_section(seq)`: cierra lo agregado (una GAMEPLAY), toma `active_weapon_slot` y los temporizadores (§8) y devuelve la foto y el diario sin confirmar, marcados con `seq` (§9.3) |
+| `restore(net_id, record)` | Ata el `PlayerProgress` preparado a su `net_id` e impone `unstuck` (`set_ready_at`); no vuelve a decodificar |
+| `acknowledge(net_id, seq)` | Guardado aplicado o `duplicate`: quita del diario las operaciones marcadas con `seq` o antes |
 
-- Como mucho **un guardado en vuelo por personaje** y 32 por zona; lo que cambie mientras tanto va en
-  el siguiente. Un crítico durante un guardado en vuelo sale nada más llegar su respuesta.
-- Un guardado sin respuesta se reintenta con el **mismo** `save_id` (1 s, 2 s, 4 s, hasta 30 s).
-- `LEASE_LOST`: NOTICE de expulsión y se descarta el estado en memoria (manda el de la BD).
-  `VERSION_CONFLICT` o `INVALID`: igual, más una alerta en el registro (es un error nuestro).
+- **Cuándo**: lo decide plataforma.md §7.2 (cada 60 s con cambios, críticos al instante, al salir con
+  `release`, cierre ordenado). Los críticos de aquí, con `CharacterSaver.mark_critical(net_id,
+  reason)`: `&"starter_kit"`, `&"level_up"`, `&"capture"` y `&"gm"` (todo comando de §10 que cambia
+  algo, `op_revert` incluido).
+- **Un `seq`, un cuerpo**: `build` se llama una vez por `seq` y los reintentos mandan el mismo cuerpo.
+  Lo que cambie mientras hay uno en vuelo va en el siguiente.
+- **Salida**: `CharacterSaver.finish` llama a `build` por última vez; después, en el mismo paso,
+  `progress.on_departure(net_id)` libera el estado. Al cerrar el servidor, `CharacterSaver` toma las
+  fotos finales antes de `_clear_players()` (hoy `stop()` vacía los jugadores en ese mismo paso).
 
-### 9.3 `CharacterSave` en JSON (`save_format` 1)
+| Respuesta | La zona |
+|---|---|
+| 200 `applied` o `duplicate` | `acknowledge` |
+| 409 `lease_lost` | Expulsa y descarta el estado (plataforma.md §7.3); manda la BD |
+| 400 `invalid_progress` (§13.3) | Es un error nuestro: alerta con la comprobación y el detalle, NOTICE de expulsión «Error al guardar el personaje. Avisa a un GM.», `release` sin guardar y se descarta el estado. Manda la BD, que no tiene nada a medias |
+| 409 `schema_mismatch` (también un `progress_format` que no es el suyo) | Como plataforma.md §7.1: error en el registro y conserva el guardado en memoria |
+| 409 `instance_replaced` | Cierre ordenado sin guardar (plataforma.md §5.3) |
+| 5xx o sin respuesta | Reintenta el mismo cuerpo (plataforma.md §6) |
+
+### 9.3 La sección `progress` de un guardado
+
+Es el `ProgressRecord` de §3.4 más `zone_id` y el diario (`ops`), en orden de aplicación:
 
 ```json
-{"save_format": 1, "character_id": "41", "lease_token": "…", "save_id": "5121", "base_version": 12,
- "reason": 1, "release_lease": false,
- "record": {"…": "CharacterRecord sin character_id, realm, name, race_id ni appearance"},
- "ops": [{"op_id": "5120", "kind": 6, "actor_account_id": "77", "ref_op_id": null,
-          "ledger": [{"currency": 1, "delta": 50, "balance_after": 200, "reason": 7,
-                      "ref_kind": 0, "ref_id": "0"}],
-          "items": [{"uid": "5119", "def_id": "potion_health", "event": 1, "count_delta": 5,
-                     "reason": 7}]}]}
+{"progress_format": 1, "zone_id": "vado_gris", "level": 7, "xp_total": 12345, "…": "resto de §3.4",
+ "ops": [{"op_id": 5120, "kind": 2, "actor_account_id": null, "ref_op_id": null, "note": null, "detail": {},
+          "ledger": [{"currency": 1, "delta": 2, "balance_after": 102, "reason": 6, "ref_kind": 2, "ref_id": 3021413298},
+                     {"currency": 2, "delta": 30, "balance_after": 3230, "reason": 3, "ref_kind": 1, "ref_id": 88}],
+          "items": [{"uid": null, "def_id": "potion_health", "count_delta": -1, "reason": 65}]},
+         {"op_id": 5121, "kind": 4, "actor_account_id": 77, "ref_op_id": null, "note": "devolución del fallo 12",
+          "detail": {"command": "currency_add", "source": "gm", "args": ["Ana", "oro", "50"]},
+          "ledger": [{"currency": 1, "delta": 50, "balance_after": 152, "reason": 7, "ref_kind": 0, "ref_id": 0}],
+          "items": []}]}
 ```
 
-`reason`: 1 periódico, 2 crítico, 3 salida, 4 cierre del servidor. `ops` va en orden de aplicación;
-los apuntes de cada moneda, en orden de `seq`.
+- `items` de la foto: todas las instancias vivas. `items` de una operación: sus eventos (I4). Un evento
+  lleva `uid` cuando es de una instancia concreta (kit, GM, DESTROY del jugador) y `null` cuando es
+  agregado (CAMP_REFILL, CONSUME).
+- Los apuntes de cada moneda, en orden. No llevan `seq` (§5.2).
+- No hay `save_id`, `base_version` ni versión propia: la idempotencia es `(lease_id, seq)` del cuerpo de
+  plataforma.md §7.3, que envuelve esta sección.
 
-### 9.4 Repositorios
+### 9.4 Sin plataforma: personajes efímeros
 
-| Repositorio | Dónde | Uso |
-|---|---|---|
-| `MemoryProgressRepository` | `scripts/server/progress/` | Pruebas y efímeros. Responde en el `poll()` siguiente, determinista. Aplica las mismas comprobaciones S1–S9 |
-| `FileProgressRepository` | ídem | Desarrollo sin plataforma: `--progress-file=<ruta.json>` con `DevAuthProvider`; el personaje se identifica por `NameRules.normalize_key(nombre)` y su reino queda fijado en la primera entrada (con otro reino, NOTICE de expulsión «Ese personaje es de otro reino»). Escribe a un temporal y renombra |
-| `PlatformProgressRepository` | ídem, de TEC-25 | HTTP al servicio con los JSON de §3.4 y §9.3 |
+- Sin `--platform`, todo jugador con peer es efímero: `on_arrival` crea `ProgressRecord.new_character()`
+  y el kit con la plantilla de LOADOUT_SELECT, con `IdAllocator.local()`. Nada se guarda y al salir se
+  pierde.
+- Inventario, monedas, niveles, pociones y comandos funcionan igual, para probar en local (`--local`) y
+  con bots (`--bot`, `--bots=N`).
+- El diario se queda en memoria (las últimas 256 operaciones por personaje) para `op_show`,
+  `ledger_show` y `op_revert`.
+- Con plataforma, todos los jugadores con peer son persistentes (`AuthProvider.uses_tickets()`); los
+  jugadores falsos no tienen inventario nunca.
+- Para probar la persistencia en local hace falta la plataforma: `deploy/dev.sh` o su
+  `docker-compose.yml` (plataforma.md §12).
 
 ## 10. Herramientas de GM (PRG-16)
 
-Comandos del `CommandRegistry` (TEC-19): por la consola del servidor, por `/gm …` con rol (SOC-14) y,
-solo con `--debug-commands`, los cuatro primeros por DEBUG_COMMAND sobre el propio jugador. En la fase 5
-el personaje tiene que estar conectado en esa zona; la edición sin conexión es del panel de
+Comandos del `CommandRegistry` (TEC-19): por la consola del servidor, por `/gm …` con rol (SOC-14,
+plataforma.md §9.1: cada comando declara su `min_role`) y por DEBUG_COMMAND con las reglas de abajo. En
+la fase 5 el personaje tiene que estar conectado en esa zona; la edición sin conexión es del panel de
 moderación (SOC-37, fase 8).
 
 | Comando | Argumentos | Efecto | Rol | Id de red |
 |---|---|---|---|---|
-| `item_give` | personaje def_id [cantidad] | Crea en la primera ranura libre de la bolsa (GM_GRANT); bolsa llena → error | GM | 40: `u16 def`, `u16 count` (1–999) |
-| `currency_add` | personaje oro\|meritos ±cantidad motivo… | Apunte GM_GRANT o GM_REMOVE; el motivo escrito es obligatorio | GM | 41: `u8 currency` (1–2), `s32 amount` (≠ 0) |
-| `level_set` | personaje nivel | Nivel y `xp_total = curve.total_to(nivel)` | GM | 42: `u8 level` (1–40) |
-| `xp_add` | personaje cantidad | Como una fuente más | GM | 43: `u32 amount` (1–10 000 000) |
-| `item_take` | personaje uid [cantidad] | Destruye (GM_REMOVE) | GM | — |
-| `mastery_set` | personaje arma nivel | Reservado: «No disponible hasta la fase 6» | GM | — |
-| `inv_show` | personaje | Bolsa y equipo con uid, cantidad y ligado | Moderador | — |
-| `ledger_show` | personaje [n = 20] | Últimos n apuntes (los de la sesión y los del servicio) | Moderador | — |
-| `op_show` | op_id | Apuntes y eventos de una operación | Moderador | — |
-| `op_revert` | op_id motivo… | Revierte (abajo) | GM | — |
+| `item_give` | personaje def_id [cantidad] | Crea en la primera ranura libre de la bolsa (GM_GRANT); bolsa llena → error | gm | 40: `u16 def`, `u16 count` (1–999) |
+| `currency_add` | personaje oro\|meritos ±cantidad motivo… | Apunte GM_GRANT o GM_REMOVE; el motivo escrito es la `note`, obligatoria | gm | 41: `u8 currency` (1–2), `s32 amount` (≠ 0); `note` = «debug» |
+| `level_set` | personaje nivel | Nivel y `xp_total = curve.total_to(nivel)` | gm | 42: `u8 level` (1–40) |
+| `xp_add` | personaje cantidad | Como una fuente más | gm | 43: `u32 amount` (1–10 000 000) |
+| `item_take` | personaje uid [cantidad] | Destruye (GM_REMOVE) | gm | — |
+| `mastery_set` | personaje arma nivel | Reservado: «No disponible hasta la fase 6» | gm | — |
+| `inv_show` | personaje | Bolsa y equipo con uid, cantidad y ligado | gm | — |
+| `ledger_show` | personaje [n = 20] | Últimos n apuntes: el diario sin confirmar y, con plataforma, `GET /internal/v1/characters/{id}/ledger` | gm | — |
+| `op_show` | op_id | Apuntes y eventos de una operación (`GET /internal/v1/ops/{op_id}`) | gm | — |
+| `op_revert` | op_id motivo… | Revierte (abajo) | gm | — |
 
 Los ids 40–43 son fijos en `NetProtocol.DEBUG_*` y su `decode` valida el tamaño y los rangos.
 
-**Reversión.** Crea una operación REVERSAL con `ref_op_id` = la original y guarda al instante:
+**DEBUG_COMMAND** (todos los ids, no solo 40–43; siempre sobre el propio jugador):
 
-- Cada apunte → otro con el `delta` contrario. Si dejaría un saldo negativo (ya se lo gastó), no se
-  revierte nada y el GM recibe el motivo; puede usar `currency_add`.
-- Cada objeto creado → se destruye si sigue existiendo con al menos esa cantidad; si no, no se
-  revierte nada y se dice qué falta.
-- Cada objeto destruido → se crea de nuevo con **otro** `uid` (I1), la misma definición, cantidad y
-  ligado, y el registro anota el `uid` antiguo.
-- Méritos revertidos → bajan también los puntos de reino (I9).
-- Solo se revierte una vez (`op_reversals`) y una reversión no se revierte. Dividir y juntar no se
-  revierten (no cambian valor); una destrucción del jugador sí (le devuelve el objeto).
-- Cada comando que cambia algo crea una operación GM con `actor_account_id`, aunque no tenga apuntes
-  (así S7 admite que `level_set` baje el nivel), y queda en la auditoría de SOC-14.
+| Servidor | Regla |
+|---|---|
+| Sin `--debug-commands` | Aviso, como hoy (red.md §12) |
+| `--debug-commands`, sin plataforma | Como hoy: personajes efímeros, nada se guarda |
+| `--debug-commands` y `--platform` | Además, rol `gm` o más de la reclamación (`CharacterRecord.role`); los ids 40–43, que crean valor sobre uno mismo, exigen `admin`. Sin rol: aviso y nada |
+| `--debug-commands`, `--platform` y `ELDMARK_ENV` = `staging` o `production` | `ServerMain` no arranca, con un mensaje en español |
+
+**Rastro de cada comando que cambia algo.** Crea una operación GM (aunque no tenga apuntes ni eventos)
+con:
+
+- `actor_account_id` (null solo desde la consola);
+- `note`: el motivo escrito; «debug» por DEBUG_COMMAND; obligatoria y no vacía;
+- `detail`: `command`, `args`, `source` (`gm`, `console` o `debug`) y, si toca nivel o XP,
+  `level_before`, `level_after`, `xp_before`, `xp_after` y `xp_delta`.
+
+Su fila de `audit_log` la escribe el propio guardado (§13.3, S8) con `event_key = "op:<op_id>"`, y la
+entrada del lote de auditoría de la zona usa la misma clave: llegue antes o después, no se duplica ni se
+pierde. Los comandos de consulta van al lote de auditoría como cualquier otro (plataforma.md §9.1).
+
+**Sobre un personaje de la cuenta del propio GM**, cualquier comando que cambie algo exige `admin`; si
+no, «No puedes usarlo sobre tus personajes». El servicio lo vuelve a comprobar (S2).
+
+**Reversión** (`op_revert op_id motivo…`):
+
+- Solo de una operación ya guardada (con plataforma, la lee de `GET /internal/v1/ops/{op_id}`; sin
+  plataforma, del diario de la sesión) de un personaje conectado en esta zona. Ni una REVERSAL, ni una
+  MIGRATION, ni una ya revertida (`op_reversals`). Una aún sin guardar: «Esa operación aún no está
+  guardada; inténtalo en unos segundos».
+- Cierra lo agregado (§5.2) y crea una REVERSAL con `ref_op_id` y el motivo como `note`. Es crítica.
+  Todo o nada.
+- **Apuntes**: otro con el `delta` contrario, motivo REVERSAL, `ref_kind` 4 y `ref_id` = la original.
+  Si un saldo quedaría negativo (ya se lo gastó), no se revierte nada y el GM recibe lo que falta.
+- **Eventos con `count_delta > 0`**: se quita esa cantidad de la definición. Primero del `uid` del
+  evento si sigue vivo, después de las pilas de la bolsa por orden de ranura y, si es equipable, de una
+  ranura de equipo que no sea la activa. Dividir o juntar no la esquiva. Si en todo el personaje no
+  queda tanta, no se revierte nada y se dice cuánta falta.
+- **Eventos con `count_delta < 0`**: se crea esa cantidad con **otros** `uid` (I1), en pilas hasta
+  `max_stack`. Si el evento tiene `uid`, se copian los campos de su fila retirada (la devuelve la ruta);
+  si no, ligado. Bolsa llena: no se revierte nada.
+- **Méritos** revertidos de motivo 3–5: bajan los puntos de reino lo mismo (I9).
+- **XP**: el `detail.xp_delta` de la original se resta de `xp_total` (sin bajar de 0) y se recalcula el
+  nivel.
 
 ## 11. Interfaz: inventario y ventana de personaje (UI-26)
 
@@ -681,7 +921,7 @@ Los ids 40–43 son fijos en `NetProtocol.DEBUG_*` y su `decode` valida el tama�
 | Ventana | Tecla | Contenido |
 |---|---|---|
 | Inventario | I | Rejilla de 6 columnas con `bag_slots` casillas (`InventorySlotView`, un `UIIconSlot` con arrastre); al pie, oro y méritos |
-| Personaje | C | Figura 3D (SubViewport con `HumanoidVisual`, apariencia y equipo; gira al arrastrar), las 7 ranuras de equipo alrededor, nombre, reino, nivel y barra de XP, puntos de reino, puntos de atributo y la hoja derivada de PRG-01 (vida y resistencia máximas, armadura, categoría de carga, poder por familia) |
+| Personaje | C | Figura 3D (SubViewport con `HumanoidVisual`, su apariencia y sus armas; gira al arrastrar), las dos ranuras de arma (las otras cinco, en gris con «Próximamente»), nombre, reino, nivel y barra de XP, puntos de reino, puntos de atributo y la hoja de `CombatRules` (vida y resistencia máximas). En la fase 5 la hoja no cambia con el equipo |
 
 Las dos usan `UIWindow` (UI-09), se abren a la vez y liberan el cursor. Se arrastra de una a otra.
 
@@ -691,14 +931,14 @@ Las dos usan `UIWindow` (UI-09), se abren a la vez y liberan el cursor. Se arras
 |---|---|
 | Arrastrar y soltar | MOVE (mover, juntar, intercambiar, equipar, desequipar) |
 | Mayúsculas + arrastrar | SPLIT, con un diálogo de cantidad (por defecto, la mitad) |
-| Doble clic o clic derecho en la bolsa | Equipar: a su ranura; un arma, a WEAPON_2 si está vacía y si no a la ranura no activa |
+| Doble clic o clic derecho en la bolsa | Equipar: un arma, a WEAPON_2 si está vacía y si no a la ranura no activa |
 | Doble clic o clic derecho en el equipo | Desequipar a la primera ranura libre de la bolsa |
-| Soltar fuera de las ventanas | DESTROY tras `UIConfirmDialog` («¿Destruir Poción de vida ×5?», con cantidad en las pilas) |
+| Soltar fuera de las ventanas | DESTROY tras `UIConfirmDialog` («¿Destruir Poción de vida ×3?», con cantidad en las pilas) |
 
 **Tooltip** (`UITooltip`): nombre con el color de su rareza, categoría y ranura, nivel requerido (en
-rojo si no llega), lo que aporta (arma: daño de sus ataques de `CombatCatalog`; armadura: armadura y
-peso de PRG-06; poción: su efecto de PRG-08), «Ligado», valor, y la **comparación** con lo que hay
-puesto en esa ranura (diferencias de la hoja derivada en verde o rojo).
+rojo si no llega), lo que aporta (arma: daño de sus ataques y habilidades de `CombatCatalog`; poción: su
+efecto), «Ligado», valor y, en un arma, la **comparación** de daño con la de esa ranura (en verde o
+rojo).
 
 ### 11.3 Intención optimista y reversión
 
@@ -719,25 +959,25 @@ confirmado con las pendientes aplicadas por `InventoryOps.apply()`, la misma fun
 5. **Sin respuesta en 5 s** (no debería pasar en un canal fiable): se vacían las pendientes y se pide
    INVENTORY_SYNC_REQUEST; el FULL reconstruye todo.
 
-Lo que **no** es optimista: el modelo 3D, la barra de acciones (UI-11) y la hoja derivada cambian con
-el estado **confirmado** y con la hoja de PRG-04, un RTT después; así un rechazo nunca hace parpadear
-el arma en las manos.
+Lo que **no** es optimista: el arma en las manos, la barra de acciones (UI-11) y las cargas cambian
+con el estado **confirmado** (LOADOUT y el estado propio), un RTT después; así un rechazo nunca hace
+parpadear el arma.
 
 ## 12. Protocolo
 
-La fase 5 ocupa **una** versión, la siguiente libre al integrar (el chat de la fase 4 ya usa la 5):
-
 | Qué | Formato |
 |---|---|
-| HELLO | Sin cambios de formato: `character_id` y `ticket` pasan a usarse (TEC-24); `realm` y `name` se ignoran con billete |
-| ENTITY_SPAWN de PLAYER | +9 B tras el nombre (y tras el bloque de equipo de PRG-04 si existe): `u8 level`, 8 B de apariencia (§7.3) |
+| Versión | **Una sola para la fase 5, compartida con plataforma.md**: la siguiente libre tras la 6 de habilidades.md (la 7 si nadie la toma antes). La sube el primero de los dos P4 que se fusione, con la línea «7: la fase 5 (docs/plataforma.md y docs/progresion.md): …»; el segundo la completa sin subirla. red.md §5.2, §5.3 y §5.5 anotan en la misma versión los REJECT 10–12, el billete de 52 B, el bit 3 del SPAWN y estos 9 B |
+| HELLO | Sin cambios (plataforma.md §5.4) |
+| ENTITY_SPAWN de PLAYER | +9 B tras el nombre: `u8 level` (0 si el receptor no es de su reino) y 8 B de apariencia (§7.3) |
 | `0x50`–`0x53` | INVENTORY_REQUEST (C→S, 18 B), INVENTORY_DELTA (S→C, ≤ 1120 B), INVENTORY_FULL (S→C, ≤ 1089 B), INVENTORY_SYNC_REQUEST (C→S, 1 B): §4.6 |
 | `0x54` WALLET_UPDATE | S→C, 19 B: `u8 type`, `u8 currency`, `u64 balance`, `s64 delta` (0 en el estado inicial), `u8 reason`. Uno cada 10 ticks por moneda como mucho, con el delta sumado |
 | `0x55` PROGRESS_UPDATE | S→C, 25 B: `u8 type`, `u8 level`, `u32 xp_in_level`, `u32 xp_to_next` (0 en el tope), `u32 gained`, `u8 source` (0 estado, 1 PvP, 2 PNJ, 3 captura, 4 GM), `u64 realm_points`, `u16 attribute_points` |
 | `0x56`–`0x5F` | Reservados (banco, comercio y correo de la fase 6) |
-| ENTITY_EVENT `16 LEVEL_UP` | `u8 level`, 10 B. El 16 deja hueco a los eventos que añada la fase 4 |
+| ENTITY_EVENT `16 LEVEL_UP` | `u8 level`, 10 B. El 16 deja hueco a los eventos de la fase 4 (habilidades.md usa del 7 al 11) |
+| ENTITY_EVENT `9 LOADOUT` | De habilidades.md, sin cambios: `template_id` 0 = el equipo del inventario |
 | DEBUG_COMMAND 40–43 | §10 |
-| `sim_hash` | Añade `ItemDatabase.wire_hash()` y `AppearanceCatalog.wire_hash()` |
+| `sim_hash` | Añade `ItemDatabase.wire_hash()`, porque los net id de objeto viajan. red.md §3 pasa a decir «la simulación y los catálogos cuyos ids viajan (`CombatCatalog`, `ItemDatabase`)» y el texto del REJECT, «Los datos del juego no coinciden con los del servidor: actualiza el cliente». La apariencia **no** entra: un índice desconocido ya cae a la apariencia por defecto |
 
 Van en `scripts/shared/net/progress_messages.gd` (`ProgressMessages`), aparte de `net_messages.gd`
 para no chocar con otros carriles; por el canal 3 y solo al dueño salvo LEVEL_UP. Una petición antes
@@ -745,60 +985,129 @@ de estar en el mundo suma un aviso.
 
 ## 13. Interfaz con plataforma.md
 
-Lo que este documento **necesita** del servicio. Los nombres de §3.3, §3.4 y §9.3 son propuestas: si
-plataforma.md elige otros, se cambian aquí y en las pruebas.
+### 13.1 Lo que este documento pide a plataforma.md
 
-| # | Necesito | Notas |
+Anotado aquí; lo cambia el documento de plataforma.
+
+| # | Pide | En plataforma.md |
 |---|---|---|
-| 1 | Las tablas de §3.3 con sus restricciones, en sus migraciones | `characters` y lo de identidad son suyos |
-| 2 | **Cargar** un personaje con arrendamiento → `CharacterRecord` (§3.4) | Con el billete (TEC-24, TEC-25) |
-| 3 | **Guardar** un `CharacterSave` (§9.3) → `{version}` o un error: `LEASE_LOST`, `VERSION_CONFLICT`, `INVALID` (con detalle), `UNAVAILABLE` | Idempotente por `save_id` |
-| 4 | **Bloque de ids** → `{"first": "…", "count": 1024}` | `uid_block_seq` |
-| 5 | **Operación** por `op_id` y **libro** de un personaje (`limit`, `before_entry_id`) | Para `op_show`, `ledger_show` y la reversión |
-| 6 | **Crear personaje** con `race_id`, `appearance` (Base64) y `starter_template_id`, validados con `data/generated/progression_rules.json` | Ese archivo lo genera `tools/progression/export_rules.gd` desde los `.tres` (razas y límites de apariencia, plantillas, curva, topes, rangos de motivos, `MAX_STACK`); una prueba falla si está desfasado. El servicio no lee `.tres` |
-| 7 | En JSON, los enteros que pueden pasar de 2^53, como cadena | Comprobado en Godot 4.7.2 |
-| 8 | Retención: el libro y los eventos de objeto mientras exista el personaje y un año después (PRG-39) | Lo encaja TEC-43 con el RGPD |
-| 9 | `actor_account_id` de SOC-14 en las operaciones de GM | |
-| 10 | Un arnés de PostgreSQL desechable para las pruebas del servicio | Receta comprobada en §15 |
+| 1 | CMB-30 es de progresion.md: se quitan `state.combat` y la frase «de `docs/habilidades.md`». Lo que guarda va en `progress` | Introducción, §7.1, §16 |
+| 2 | Las tablas de solo añadir del progreso, **sin** clave ajena a `characters`; la cascada, solo en las de estado (§3.3) | §3, la frase de las tablas de progreso |
+| 3 | La purga (personaje y cuenta) llama a `ProgressStore.Purge` antes de borrar la fila; el trabajo horario, a `PurgeRetention`; la exportación incluye `ProgressStore.Export`. Fila nueva en §11.1: «Libro, eventos y operaciones de un personaje purgado: 1 año» | §2.5, §4.4, §7.5, §11.1, §11.2 |
+| 4 | `characters.level` lo escribe `ProgressStore.Apply` (copia de `progress.level`) y se quita `state.level`: un solo dueño del nivel | §7.1, §7.3 paso 4 |
+| 5 | Apariencia de **8 B exactos** (`check (length(appearance) = 8)`); mientras no exista el catálogo, la de `default_for(raza)`. Razas `race_vardheim`, `race_solmarch` y `race_askarra` también en el modo provisional | §3 (0002), §4.4 paso 5 |
+| 6 | Un solo archivo de reglas: `platform/internal/gamedata/progression_rules.json` (razas, límites de apariencia, objetos, curva, topes, motivos, contenedores), escrito por `tools/platform/export_gamedata.gd` con `ProgressionRulesExport.build()` y comprobado por `test_platform_gamedata.gd`. Sustituye a `appearance_limits.json`. Dentro de `platform/` porque `go:embed` no admite `..` | §4.4 paso 5, P2 |
+| 7 | La creación **no** necesita `starter_template_id`: la plantilla se elige en la primera entrada (§2.5). `ProgressStore.Create` no cambia de firma | §4.4 |
+| 8 | Gancho antes del WELCOME: `progress.prepare(peer_id, outcome.record)`; si devuelve false, REJECT `UNAVAILABLE` con «No se ha podido cargar el personaje» y `release` (§9.1). `CharacterRecord` gana `race_id: StringName` | §5.2, §14.3 |
+| 9 | `register_section(section, build, restore, acknowledge)` con `build(net_id, seq) -> Dictionary`, `restore(net_id, record)` y `acknowledge(net_id, seq)`; `build` una vez por `seq` y los reintentos con el mismo cuerpo | §7.2, §7.5, §14.3 |
+| 10 | Los críticos de §9.2 (añade el kit de inicio) y la tabla de respuestas de §9.2: un 400 de un guardado expulsa y libera sin guardar | §7.2, §7.3 |
+| 11 | `ProgressStore.Apply` devuelve `*progress.InvalidError` (→ 400 `invalid_progress` con `fields.check`) o `progress.ErrFormat` (→ 409 `schema_mismatch`) | §6, §7.3 |
+| 12 | P7 (almacén en Go, migraciones 0010+, rutas `GET /internal/v1/ops/{op_id}` y `GET /internal/v1/characters/{id}/ledger`) es de este documento; `jsonProgressStore` vale hasta que llegue. El enrutador interno llama a `progress.RegisterInternalRoutes` | §6, §7.5, §14.1 |
+| 13 | Bloques de `item_uid_blocks` con `count` 1024, el primero antes de abrir el puerto; de ellos salen también los `op_id` | §6, §8 |
+| 14 | Una sola versión del protocolo para la fase 5 (§12) | §5.4 |
+| 15 | DEBUG_COMMAND con plataforma exige rol `gm` (40–43, `admin`) y `ServerMain` no arranca con `--platform`, `--debug-commands` y `ELDMARK_ENV` de staging o producción (§10) | §5.5, §9.1 |
+| 16 | La auditoría de un comando de progreso usa `key = "op:<op_id>"` (§10) | §9.1 |
+| 17 | Con `--platform` y `--fake-players`, la zona no da recompensas persistentes (§6.2) | §5.5 |
+| 18 | JSON: ids como números por debajo de 2^53, como su §4.1. El único que puede pasar es el `ticket_id` aleatorio de 63 bits: solo va de la zona a la plataforma (Godot lo escribe exacto, comprobado); si alguna respuesta lo devolviera, como cadena | §4.1, §6 |
+| 19 | `take_events()` reparte a `progress.on_platform_event(event)` los resultados de bloques, operaciones y libro (`kind` que empiezan por `progress_`) | §14.3 |
 
-**Comprobaciones del guardado (S1–S9)**, en una transacción y con la fila del personaje bloqueada:
+### 13.2 El almacén en Go (P7, este documento)
+
+```go
+// platform/internal/progress. Implementa persistence.ProgressStore (plataforma.md §7.5) y lo amplía.
+package progress
+
+type Rules struct{ /* de gamedata: progression_rules.json */ }
+func LoadRules(raw []byte) (*Rules, error)
+
+type Store struct{ /* reglas y reloj inyectable */ }
+func New(rules *Rules, now func() time.Time) *Store
+func (s *Store) Create(ctx context.Context, tx pgx.Tx, worldID int16, characterID int64) error
+func (s *Store) Load(ctx context.Context, tx pgx.Tx, characterID int64) (json.RawMessage, error)
+func (s *Store) Apply(ctx context.Context, tx pgx.Tx, worldID int16, characterID int64,
+	progress json.RawMessage, key persistence.SaveKey) error             // S1–S8; key solo para el registro
+func (s *Store) Purge(ctx context.Context, tx pgx.Tx, worldID int16, characterID int64) error  // lápida
+func (s *Store) PurgeRetention(ctx context.Context, tx pgx.Tx) (deleted int64, err error)     // §3.5
+func (s *Store) Export(ctx context.Context, tx pgx.Tx, characterID int64) (json.RawMessage, error)
+func (s *Store) Op(ctx context.Context, q Querier, worldID int16, opID int64) (json.RawMessage, error)
+func (s *Store) Ledger(ctx context.Context, q Querier, characterID int64, limit int,
+	beforeEntryID int64) (json.RawMessage, error)                        // limit 1–100; más recientes primero
+func RegisterInternalRoutes(mux *http.ServeMux, s *Store, pool *pgxpool.Pool)
+
+type Querier interface { // lo cumplen pgx.Tx y *pgxpool.Pool
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+type InvalidError struct{ Check, Detail string } // 400 invalid_progress
+var ErrFormat = errors.New("progress_format")     // 409 schema_mismatch
+var ErrNotFound = errors.New("not_found")         // 404
+```
+
+- Archivos: `store.go`, `checks.go` (S1–S7), `write.go` (S8), `retention.go`, `routes.go` y sus
+  pruebas; migraciones `internal/migrate/migrations/0010_progress.up.sql` y `.down.sql`. Las reglas,
+  con `//go:embed progression_rules.json` en `internal/gamedata`.
+- `Load` arma el JSON de §3.4 desde las tablas; un personaje recién creado da el registro con los
+  valores por defecto.
+- **Rutas** (con el token de zona de plataforma.md §6):
+  - `GET /internal/v1/ops/{op_id}?world_id=` → `{op: {op_id, kind, actor_account_id, ref_op_id,
+    zone_id, note, detail, created_at_unix, participants, reversed_by, ledger: [{character_id,
+    currency, seq, delta, balance_after, reason, ref_kind, ref_id}], items: [{character_id, uid,
+    def_id, count_delta, reason}], instances: [{uid, def_id, count, durability, rarity, bound, seed,
+    affixes, retired}]}}`, o 404.
+  - `GET /internal/v1/characters/{id}/ledger?limit=20&before_entry_id=` → `{entries: [{entry_id,
+    op_id, currency, seq, delta, balance_after, reason, ref_kind, ref_id, created_at_unix}]}`.
+- Los casos de `tests/fixtures/progression/` se leen con `os.ReadFile("../../../tests/fixtures/…")`
+  (no con `go:embed`, que no admite `..`).
+
+### 13.3 Comprobaciones del guardado (S1–S8)
+
+Dentro del paso 4 de plataforma.md §7.3: el arrendamiento ya está bloqueado y el `seq` es nuevo.
+Cualquier fallo de S1–S7 devuelve `InvalidError` con su número y el guardado entero se deshace.
 
 | # | Comprobación |
 |---|---|
-| S1 | El arrendamiento es de quien guarda; si no, `LEASE_LOST` |
-| S2 | `save_id = last_save_id` → OK con la versión actual (repetición). Si no, `base_version = save_version`, o `VERSION_CONFLICT` |
-| S3 | Ningún `op_id` existe ya |
-| S4 | Por moneda y en orden: `balance_after = anterior + delta`, entre 0 y el tope, signo según el rango del motivo; el último es el saldo de `record` |
-| S5 | Por `uid`: cantidad guardada (0 si no estaba) + Σ `count_delta` = cantidad en `record` (0 si no está). Un CREATE solo de un `uid` que nunca existió (ni destruido); un `uid` de otro personaje → `INVALID` |
-| S6 | En cada operación, Σ `count_delta` de los motivos internos (SPLIT, MERGE) por definición = 0 |
-| S7 | Ranuras únicas y en rango (bolsa < `bag_slots`, equipo < 7), `count ≤ 999`, nivel 1–40, `xp_total` y `realm_points` no bajan salvo con una operación GM o REVERSAL |
-| S8 | Los `timers` caducan en menos de 7 días |
-| S9 | Escribe todo: fila de progreso (versión + 1, `last_save_id`), objetos (borra los que faltan y actualiza o inserta el resto), operaciones, apuntes, eventos, temporizadores y habilidades; libera el arrendamiento si se pide |
+| S1 | `progress_format` = 1 (si no, `ErrFormat`). Claves conocidas. Todo id es entero de 1 a 2^53 − 1 |
+| S2 | **Operaciones.** `(op_id, character_id)` no está en `op_participants`. `op_id` < `item_uid_blocks.next_uid` de su mundo. `kind` 1–6 en la fase 5. GM y REVERSAL, con `note` no vacía. GM: `actor_account_id` con rol `gm` o `admin` en `accounts`, o `detail.source = "console"` sin actor; sobre un personaje de la cuenta del actor, solo `admin`. STARTER_KIT solo si `starter_granted` era false en la BD. REVERSAL: `ref_op_id` existe, es de este personaje, no es REVERSAL ni MIGRATION y no está en `op_reversals`. Una operación que ya existe con otro participante (comercio, fase 6) debe tener el mismo `kind` |
+| S3 | **Libro.** Por moneda y en orden: `balance_after = anterior + delta`, entre 0 y el tope, con el signo del rango de su motivo; el último es el saldo de la foto; una moneda sin apuntes no cambia de saldo |
+| S4 | **Objetos (I4).** Por definición: Σ `count` vivas en la BD + Σ `count_delta` de los eventos = Σ `count` de la foto. Un evento con `uid` y `count_delta > 0` es de un uid que no estaba en la BD; con `count_delta < 0`, de un uid vivo de este personaje en la BD |
+| S5 | **Foto.** Uids sin repetir; contenedor 0–1; ranuras únicas, bolsa < `bag_slots`, equipo 0–1; definición en las reglas; `count` 1 … `max_stack`; durabilidad según `has_durability`; rareza 0 y sin afijos en la fase 5; en el equipo, un WEAPON por ranura y la activa con arma (I10); el `bound` de un uid que ya estaba no pasa a false. Un uid nuevo que ya exista en `item_instances` (vivo o retirado, de cualquier personaje) choca con la clave primaria al insertarlo (I1) y se devuelve como S5 |
+| S6 | **Progreso.** `level = level_for(xp_total)` con la curva de las reglas; `xp_total` no baja sin una GM o REVERSAL en el guardado; `realm_points` nuevo = antiguo + Σ apuntes de méritos de motivo 3–5 + Σ apuntes de méritos de las REVERSAL de operaciones con méritos de motivo 3–5; `bag_slots` no cambia; `starter_granted` no vuelve a false; `active_weapon_slot` 0–1 |
+| S7 | **Temporizadores.** Claves `^[a-z0-9_:]{1,48}$`, 16 como mucho, `ends_at_unix` entre ahora y ahora + 7 días |
+| S8 | **Escribe.** `character_progress` y `characters.level`; saldos con su `last_seq`; objetos: inserta los nuevos, actualiza los que cambian y retira los que faltan (`retired_at`, sin contenedor ni ranura); operaciones (`on conflict do nothing`), participantes, apuntes con su `seq`, eventos y `op_reversals`; una fila de `audit_log` por operación GM (`event_key = "op:<op_id>"`, `on conflict do nothing`); temporizadores (sustituye el conjunto) |
 
-S4 a S6 duplican en Go lo que `InventoryOps` y `CurrencyRules` ya garantizan en GDScript: es la red de
-seguridad contra un error de la zona, no la regla del juego. Para que las dos implementaciones no
-diverjan, las pruebas de GDScript escriben en `tests/fixtures/progression/` casos de guardado válidos
-e inválidos que las pruebas de Go leen.
+S3 a S6 repiten en Go lo que `InventoryOps`, `CurrencyRules` y `PlayerProgress` ya garantizan en
+GDScript: son la red de seguridad contra un error de la zona, no la regla del juego. Para que las dos
+implementaciones no diverjan, `tools/progression/write_fixtures.gd` genera con `PlayerProgress` los
+casos de `tests/fixtures/progression/` (secuencias de guardados con su resultado esperado, válidos e
+inválidos, uno por comprobación). Los casos se suben al repo; `test_progression_fixtures.gd` los
+regenera en memoria y falla si difieren, y las pruebas de Go los leen.
 
 ## 14. Paquetes y contratos
 
 ### 14.1 Paquetes
 
+Todo empieza con habilidades.md fusionado (H1a a H3c para P2 y P5b, H4 para P6). Los paquetes de
+servidor esperan además a los de plataforma.md que se nombran.
+
 | Paquete | Contenido | Depende de |
 |---|---|---|
-| **P1 · objetos** | `ItemDefinition`, `ItemInstance` (encode/decode), `ItemDatabase`, `data/items/` (§2.4), `test_item_database`, `test_item_instance` | `CombatCatalog`; PRG-06 y PRG-08 para validar sus `ref_id` (sin ellos, la prueba salta esas categorías) |
-| **P2 · inventario puro** | `InventoryState`, `InventoryOps`, `ItemEvent`, `EconomyReason`, `Currency`, `CurrencyRules`, `StarterKit`; `test_inventory_ops`, `test_inventory_properties`, `test_currency_rules` | P1; PRG-07 para `StarterKit` |
-| **P3 · progreso y apariencia** | `LevelCurve` y su `.tres`, `ProgressionRules`, `CharacterAppearance`, `AppearanceCatalog`, `AppearancePart`, `AppearanceColor`, `RaceDefinition`, `data/characters/`, `tools/progression/export_rules.gd`; `test_level_curve`, `test_character_appearance`, `test_progression_rules_export` | — |
-| **P4 · protocolo** | `ProgressMessages` (0x50–0x55), cola del SPAWN, LEVEL_UP, ids 40–43, `PROTOCOL_VERSION`, `sim_hash`; red.md actualizado; `test_progress_messages` | P1, P3 |
-| **P5 · servidor** | `scripts/server/progress/`: `CharacterRecord`, `CharacterSave`, `EconomyOp`, `LedgerEntry`, `IdAllocator`, `ProgressClock`, `ProgressRepository`, `MemoryProgressRepository`, `FileProgressRepository`, `PlayerProgress`, `ProgressService` y su cableado en `ZoneServer` (carga, alta, peticiones, recompensas, guardados, cierre, comandos de §10), `--progress-file` en `ServerConfig`, campos de `NpcDefinition`; `test_player_progress`, `test_progress_persistence`, `test_progress_service`, `test_gm_progress` | P2, P3, P4; PRG-04, PRG-08, CMB-19, CMB-20 en sus puntos de §8 |
-| **P6 · cliente** | `ClientInventory`, `InventoryWindow`, `CharacterWindow`, `InventorySlotView`, `SplitDialog`, `AppearanceApplier`, mensajes en `NetClient`; `test_client_inventory`, `test_inventory_window`, `test_appearance_visual` | P2, P3, P4, UI-09 |
-| **P7 · servicio** (plataforma.md) | Tablas de §3.3, S1–S9, bloques, operación y libro; pruebas de Go | §3, §9.3 y §13; TEC-22 |
-| **P8 · integración** | `test_progress_loopback` (§15), `PlatformProgressRepository` con TEC-25 | P5, P6; P7 para la parte real |
+| **P1 · objetos** | `ItemDefinition`, `ItemInstance` (encode/decode, `to_dictionary`/`from_dictionary`), `ItemDatabase`, `data/items/` (§2.4), `tests/fixtures/items/`; `test_item_database`, `test_item_instance` | `CombatCatalog` |
+| **P2 · inventario puro** | `InventoryState`, `InventoryOps`, `ItemEvent`, `EconomyReason`, `Currency`, `CurrencyRules`, `StarterKit`, `ActionMachine.set_weapons`; `test_inventory_ops`, `test_inventory_properties`, `test_currency_rules`, `test_action_machine_weapons` | P1; H1b |
+| **P3 · progreso y apariencia** | `LevelCurve` y su `.tres`, `ProgressionRules`, `CharacterAppearance`, `AppearanceCatalog`, `AppearancePart`, `AppearanceColor`, `RaceDefinition`, `data/characters/`, `ProgressionRulesExport`; `test_level_curve`, `test_character_appearance`, `test_progression_rules_export` | — |
+| **P4 · protocolo** | `ProgressMessages` (0x50–0x55), LEVEL_UP, ids 40–43, `NetEntity.level`, `appearance` y `encode_spawn(…, receiver_realm)` con sus tres llamadas en `ZoneServer`, versión (§12), `sim_hash`; recepción en `NetClient` (señales) y en `SwarmBot` (descarte); red.md; `test_progress_messages` | P1, P3; H2 |
+| **P5a · registro y sección** | `scripts/server/progress/`: `ProgressRecord`, `LedgerEntry`, `EconomyOp`, `IdAllocator`, `PlayerProgress` (inventario, monedas, agregación, diario, `build_section`, `acknowledge`), `ProgressService.setup`, `start`, `prepare` y `on_platform_event`; la sección en `CharacterSaver`; el gancho antes del WELCOME; `tools/progression/write_fixtures.gd` y los casos; `test_progress_record`, `test_player_progress`, `test_progress_section`, `test_progression_fixtures` | P2, P3; plataforma.md P4 y P5 |
+| **P5b · inventario en la zona** | Alta (`on_arrival`, `after_spawn`, `loadout_for`, donde H3c pone la plantilla), `handle_packet` en `_on_packet_received` (0x50–0x53, con RATE), `apply_pending` tras `_process_arrivals`, `set_weapons` y LOADOUT, CONSUME (`after_simulate`, tras el paso 1), CAMP_REFILL (`camp_step`, en el paso 8 en lugar de la recarga), cargas, `UnstuckTracker.get_ready_at`/`set_ready_at` y su clave, `on_departure` tras `CharacterSaver.finish`, efímeros, `NetEntity.level`; `test_progress_service`. `test_bot_swarm` y `test_net_processes` siguen con 0 malformados | P5a, P4; H3c |
+| **P5c · recompensas** | `on_merits` (PRG-09), `on_npc_killed` (`xp_reward` y `gold_reward` en `NpcDefinition` y `data/npcs/`), `on_capture` (GUE-12) con su temporizador, XP, LEVEL_UP, PROGRESS_UPDATE, críticos, regla de `--fake-players`; `test_progress_rewards` | P5b; PRG-09, MUN-07, GUE-12 |
+| **P5d · GM** | Comandos de §10 con `min_role`, ids 40–43, reglas de DEBUG_COMMAND en `_handle_debug_command`, guardia de `ELDMARK_ENV` en `ServerMain`, reversión, `op_show` y `ledger_show` por las rutas; `test_gm_progress` | P5b; plataforma.md P7 (roles); TEC-19 |
+| **P6 · cliente** | `ClientInventory`, `InventoryWindow`, `CharacterWindow`, `InventorySlotView`, `SplitDialog`, `AppearanceApplier`, `HumanoidVisual.set_part`/`clear_part`, selector de plantilla oculto tras la primera entrada; `test_client_inventory`, `test_inventory_window`, `test_appearance_visual` | P2, P3, P4, UI-09; H4 |
+| **P7 · almacén en Go** | `platform/internal/progress/` (§13.2), `0010_progress` con su `.down.sql`, S1–S8, retención, exportación, rutas; pruebas de Go de §15 | plataforma.md P0 (`testdb`, `migrate`) y P3 (contratos); P3 de aquí (reglas exportadas); los casos de P5a |
+| **P8 · integración** | `test_progress_loopback`, `test_progress_platform_loopback`, `--bot-scenario=progress` del bot, `platform/e2e/progress_test.go` (§15) | P5a–P5d, P6, P7; plataforma.md P8 y P10 |
 
-P1 y P3 van en paralelo; después P2 y P4; después P5 y P6 en paralelo. P7 puede empezar en cuanto
-este documento esté fijado. P8 al final.
+P1 y P3 van en paralelo; después P2 y P4; después P5a y P6 en paralelo; después P5b; después P5c y P5d
+en serie (los dos tocan `zone_server.gd`). P7 empieza en cuanto estén plataforma.md P0 y P3, P3 de aquí
+y los casos de P5a. P8 al final.
 
-### 14.2 Contratos
+### 14.2 Contratos en GDScript
 
 Firmas públicas y estables; lo privado queda a criterio de quien implemente. Los campos de datos son
 los de §2.1, §3.4 y §7.2 con tipos estáticos.
@@ -809,11 +1118,14 @@ class_name ItemDefinition extends Resource          # enums Category, EquipSlot,
 
 class_name ItemInstance extends RefCounted
 const FORMAT: int = 1; const MAX_AFFIXES: int = 6; const NO_DURABILITY: int = -1
+const MAX_UID: int = (1 << 53) - 1
 var uid: int; var def_id: StringName; var count: int; var durability: int; var rarity: int
 var bound: bool; var seed: int; var affixes: PackedInt32Array
 func encode(db: ItemDatabase = null) -> PackedByteArray                  # null = shared()
 static func decode(bytes: PackedByteArray, offset: int, db: ItemDatabase = null) -> ItemInstance
 static func encoded_size_at(bytes: PackedByteArray, offset: int) -> int   # −1 si no cabe
+func to_dictionary(container: int, slot: int) -> Dictionary              # una entrada de §3.4
+static func from_dictionary(data: Dictionary, db: ItemDatabase) -> ItemInstance  # null si no cuadra
 func duplicate_instance() -> ItemInstance; func equals(other: ItemInstance) -> bool
 
 class_name ItemDatabase extends RefCounted
@@ -822,19 +1134,21 @@ var errors: PackedStringArray
 static func shared() -> ItemDatabase; static func build_from_directory(dir: String) -> ItemDatabase
 func get_definition(id: StringName) -> ItemDefinition                    # null si no existe
 func net_id_of(id: StringName) -> int; func definition_by_net_id(net_id: int) -> ItemDefinition
-func starter_for_ref(category: int, ref_id: StringName) -> ItemDefinition
+func for_ref(category: int, ref_id: StringName) -> ItemDefinition
+func consumable_definition(index: int) -> ItemDefinition                 # CombatCatalog.consumable_ids()
 func all_ids() -> Array[StringName]; func wire_hash() -> int
 
 class_name InventoryState extends RefCounted
 enum Container { BAG = 0, EQUIPMENT = 1, BANK = 2 }
 enum EquipmentSlot { WEAPON_1 = 0, WEAPON_2 = 1, HEAD = 2, CHEST = 3, HANDS = 4, LEGS = 5, FEET = 6 }
 const BAG_SLOTS_DEFAULT: int = 30; const BAG_SLOTS_MAX: int = 120; const EQUIPMENT_SLOTS: int = 7
+const OPEN_EQUIPMENT_SLOTS: int = 2                                      # fase 5: solo las armas
 var bag_slots: int; var active_weapon_slot: int
 func get_item(container: int, slot: int) -> ItemInstance                 # null si vacía
 func set_item(container: int, slot: int, item: ItemInstance) -> void     # null la vacía
 func first_free(container: int) -> int; func find_uid(uid: int) -> Vector2i   # −1 / (−1, −1)
-func count_of(def_id: StringName) -> int; func all_items() -> Array[ItemInstance]
-func duplicate_state() -> InventoryState
+func count_of(def_id: StringName) -> int                                 # bolsa y equipo
+func all_items() -> Array[ItemInstance]; func duplicate_state() -> InventoryState
 
 class_name InventoryOps extends RefCounted
 enum Op { MOVE = 1, SPLIT = 2, DESTROY = 3 }
@@ -845,21 +1159,28 @@ class Request:
 	var to_slot: int; var count: int; var expected_uid: int
 class Context:
 	var db: ItemDatabase; var level: int = 1
-	var can_touch_equipment: bool = true          # false: muerto, en combate, en una acción…
-	var new_id: Callable = Callable()             # () -> int; inválido = sin bloque de ids
+	var can_touch_equipment: bool = true          # false: muerto, derribado, en combate o con acción
+	var drinking: bool = false                    # ABILITY de consumible en curso
+	var new_uid: Callable = Callable()            # () -> int; 0 = sin ids para clientes
 class Outcome:
 	var result: int; var changed: Array[Vector2i]; var events: Array[ItemEvent]
+	var weapons_changed: bool                     # tocó EQUIPMENT 0 o 1
 static func apply(state: InventoryState, request: Request, context: Context) -> Outcome
 static func result_text(result: int) -> String                           # español (§4.2)
 
 class_name ItemEvent extends RefCounted
-enum Kind { CREATE = 1, DESTROY = 2, COUNT = 3 }
-var uid: int; var def_id: StringName; var kind: int; var count_delta: int; var reason: int
+var uid: int                                      # 0 = agregado (null en JSON)
+var def_id: StringName; var count_delta: int; var reason: int
 class_name EconomyReason extends RefCounted    # constantes de §5.3; is_source, is_sink, is_internal
 class_name Currency extends RefCounted         # enum Code { GOLD = 1, MERITS = 2 }; const CAP = 10^9
 class_name CurrencyRules extends RefCounted
 static func can_apply(balance: int, delta: int) -> bool
 static func clamp_gain(balance: int, gain: int) -> int
+
+class_name StarterKit extends RefCounted
+## Coloca el kit de §2.5 en un inventario vacío; devuelve los eventos (motivo STARTER_KIT, con uid).
+static func grant(state: InventoryState, template_id: StringName, db: ItemDatabase,
+		new_uid: Callable) -> Array[ItemEvent]
 
 class_name LevelCurve extends Resource
 @export var level_cap: int = 40
@@ -882,54 +1203,91 @@ static func random(catalog: AppearanceCatalog, race_index: int,
 		rng: RandomNumberGenerator) -> CharacterAppearance
 static func default_for(catalog: AppearanceCatalog, race_index: int) -> CharacterAppearance
 
-class_name StarterKit extends RefCounted
-## Coloca el kit de §2.5 en un inventario vacío; devuelve los CREATE (motivo STARTER_KIT).
-static func grant(state: InventoryState, template_id: StringName, db: ItemDatabase,
-		new_id: Callable) -> Array[ItemEvent]
+class_name ProgressionRulesExport extends RefCounted
+static func build() -> Dictionary     # §13.1 #6; claves ordenadas: el JSON sale igual en cada llamada
 
-# scripts/server/progress/ (servidor)
-class_name ProgressRepository extends RefCounted
-enum Result { OK = 0, NOT_FOUND = 1, LEASE_LOST = 2, VERSION_CONFLICT = 3, INVALID = 4,
-		UNAVAILABLE = 5 }
-signal character_loaded(request_id: int, result: int, record: CharacterRecord)
-signal character_saved(request_id: int, result: int, version: int)
-signal id_block_granted(request_id: int, result: int, first_id: int, count: int)
-func load_character(character_id: int, lease_token: String) -> int       # id de petición
-func save_character(save: CharacterSave) -> int; func request_id_block() -> int
-func poll() -> void                                                      # una vez por tick
+# scripts/shared/combat/action_machine.gd (amplía): set_weapons de §4.1
 
-class_name CharacterRecord extends RefCounted     # campos de §3.4
-const RECORD_FORMAT: int = 1
-static func ephemeral(display_name: String, realm: int, template_id: StringName) -> CharacterRecord
-func to_dictionary() -> Dictionary
-static func from_dictionary(data: Dictionary) -> CharacterRecord         # null si no cuadra
+# scripts/server/net_entity.gd (amplía)
+var level: int = 0; var appearance: PackedByteArray
+func encode_spawn(tick: int, for_owner: bool, receiver_realm: int = 0) -> PackedByteArray
+
+# scripts/server/unstuck_tracker.gd (amplía)
+func get_ready_at(player: String) -> int; func set_ready_at(player: String, tick: int) -> void
+
+# scripts/server/progress/ (servidor; sin Time: la hora UTC es ZonePlatform.now_unix())
+class_name ProgressRecord extends RefCounted     # la sección progress de §3.4
+const FORMAT: int = 1
+var level: int = 1; var xp_total: int; var realm_points: int; var bag_slots: int = 30
+var starter_template_id: StringName; var starter_granted: bool; var active_weapon_slot: int
+var inventory: InventoryState; var wallets: PackedInt64Array      # índice = moneda; [0] sin usar
+var timers: Dictionary[String, int]                               # clave → ends_at_unix
+static func new_character() -> ProgressRecord                     # lo que es {}
+static func from_dictionary(data: Dictionary, db: ItemDatabase) -> ProgressRecord   # null si no cuadra
+func to_dictionary() -> Dictionary                                # sin zone_id ni ops
+
+class_name LedgerEntry extends RefCounted
+var currency: int; var delta: int; var balance_after: int; var reason: int; var ref_kind: int
+var ref_id: int
+class_name EconomyOp extends RefCounted
+enum Kind { PLAYER = 1, GAMEPLAY = 2, STARTER_KIT = 3, GM = 4, REVERSAL = 5, MIGRATION = 6 }
+var op_id: int; var kind: int; var actor_account_id: int; var ref_op_id: int; var note: String
+var detail: Dictionary; var ledger: Array[LedgerEntry]; var items: Array[ItemEvent]
+var save_seq: int                                                 # 0 = aún en ningún guardado
+func to_dictionary() -> Dictionary; static func from_dictionary(data: Dictionary) -> EconomyOp
+
+class_name IdAllocator extends RefCounted
+const BLOCK_SIZE: int = 1024; const REFILL_BELOW: int = 512; const SERVER_RESERVE: int = 256
+static func local() -> IdAllocator                                # sin plataforma: desde 1, sin bloques
+func add_block(first: int, count: int) -> void
+func needs_block() -> bool; func available() -> int
+func next_for_client() -> int                                     # 0 si quedan ≤ SERVER_RESERVE
+func next_for_server() -> int                                     # 0 si no queda ninguno
 
 class_name PlayerProgress extends RefCounted   # estado autoritativo de un personaje en la zona
-var record: CharacterRecord; var inventory: InventoryState
+var record: ProgressRecord; var persistent: bool
+var character_id: int; var account_id: int                        # 0 si es efímero
+func _init(record: ProgressRecord, persistent: bool, ids: IdAllocator, db: ItemDatabase) -> void
 func apply_request(request: InventoryOps.Request, context: InventoryOps.Context) -> InventoryOps.Outcome
-func grant_item(def_id: StringName, count: int, reason: int, actor: int) -> InventoryOps.Outcome
-func consume_one(def_id: StringName) -> bool
-func add_currency(currency: int, delta: int, reason: int, ref_kind: int, ref_id: int,
-		actor: int) -> bool
-func add_merits(amount: int, reason: int, ref_kind: int, ref_id: int) -> void
+func begin_op(kind: int, actor_account_id: int, note: String, detail: Dictionary) -> EconomyOp  # cierra lo agregado; null sin id
+func add_items(op: EconomyOp, def_id: StringName, count: int, reason: int) -> bool              # false: no cabe y nada cambia
+func remove_items(op: EconomyOp, def_id: StringName, count: int, reason: int,
+		prefer_uid: int = 0) -> bool
+func change_currency(op: EconomyOp, currency: int, delta: int, reason: int, ref_kind: int,
+		ref_id: int) -> bool
+func gain_currency(currency: int, amount: int, reason: int, ref_kind: int, ref_id: int) -> int  # agregada; lo aplicado tras el tope
+func gain_items(def_id: StringName, count: int, reason: int) -> bool                            # agregada (CAMP_REFILL)
+func lose_items(def_id: StringName, count: int, reason: int) -> bool                             # agregada (CONSUME)
 func add_xp(amount: int, source: int) -> ProgressionRules.XpResult
-func is_dirty() -> bool
-func build_save(save_id: int, reason: int, release_lease: bool) -> CharacterSave
-func acknowledge(save: CharacterSave, version: int) -> void
+func charges() -> int                                             # byte de consumable_charges (§4.4)
+func weapons() -> PackedInt32Array                                # ids de CombatCatalog; 0 = vacía
+func stash_ready(weapon_id: int, ready: PackedInt64Array) -> void
+func stashed_ready(weapon_id: int) -> PackedInt64Array
+func build_section(seq: int) -> Dictionary                        # §9.3
+func acknowledge(seq: int) -> void
+func journal() -> Array[EconomyOp]                                # sin plataforma: las últimas 256
 
 class_name ProgressService extends RefCounted
-signal record_ready(peer_id: int); signal record_failed(peer_id: int, reason: String)
-func setup(zone: ZoneServer, repository: ProgressRepository, commands: CommandRegistry) -> void
-func begin_load(peer_id: int, character_id: int, lease_token: String) -> void
-func is_ready(peer_id: int) -> bool
-func on_spawned(entity: NetEntity, peer: ServerPeer, s: int) -> void     # §9.1, pasos 4 y 5
-func handle_request(peer: ServerPeer, bytes: PackedByteArray) -> void    # 0x50 y 0x53
-func apply_pending(s: int) -> void                                       # final del tick
-func on_merits(net_id: int, amount: int, reason: int, ref_kind: int, ref_id: int) -> void
-func on_npc_killed(npc_def_id: int, contributors: PackedInt32Array) -> void
-func on_capture(fortress_id: StringName, owner_realm: int, in_circle: PackedInt32Array) -> void
-func on_departure(net_id: int) -> void
-func tick(s: int) -> void; func drain(timeout_ms: int) -> void           # guardados; cierre
+class Loadout:
+	var weapon_1: int; var weapon_2: int; var second_active: bool; var charges: int
+func setup(zone: ZoneServer, platform: ZonePlatform, saver: CharacterSaver,
+		commands: CommandRegistry) -> void                             # platform y saver null sin plataforma
+func start(s: int) -> void; func is_ready_to_open() -> bool         # primer bloque de ids
+func prepare(peer_id: int, record: CharacterRecord) -> bool         # §9.1 paso 2
+func on_arrival(entity: NetEntity, peer: ServerPeer, s: int) -> Loadout
+func after_spawn(entity: NetEntity, peer: ServerPeer, s: int) -> void
+func loadout_for(net_id: int) -> Loadout                            # también al reaparecer
+func has_inventory(net_id: int) -> bool; func level_of(net_id: int) -> int
+func handle_packet(peer: ServerPeer, bytes: PackedByteArray) -> void   # 0x50 y 0x53
+func after_simulate(s: int) -> void                                 # CONSUME
+func camp_step(entity: NetEntity, s: int) -> void                   # CAMP_REFILL
+func apply_pending(s: int) -> void                                  # peticiones, tras las altas
+func on_merits(net_id: int, amount: int, reason: int, victim_net_id: int, s: int) -> void
+func on_npc_killed(npc: NpcDefinition, contributors: PackedInt32Array, s: int) -> void
+func on_capture(fortress_id: StringName, owner_realm: int, in_circle: PackedInt32Array, s: int) -> void
+func on_platform_event(event: PlatformEvent) -> bool                # true si era suyo
+func on_departure(net_id: int) -> void                              # tras CharacterSaver.finish
+func flush(s: int) -> void                                          # WALLET_UPDATE y PROGRESS_UPDATE
 
 # scripts/client/inventory/ (cliente)
 class_name ClientInventory extends RefCounted
@@ -943,56 +1301,120 @@ func tick(now_msec: int) -> void                              # plazo de 5 s
 class_name AppearanceApplier extends RefCounted
 static func apply(visual: HumanoidVisual, appearance: CharacterAppearance,
 		catalog: AppearanceCatalog) -> void
+# humanoid_visual.gd: set_part y clear_part de §7.4
 ```
 
-`test_architecture` se amplía: `scripts/shared/progression/` no nombra `Time`, `OS`, `Input` ni nada
-de `scripts/client/` o `scripts/server/`; ningún recurso de `data/items/` ni de `data/characters/`
-tiene propiedades `Texture2D`, `PackedScene` o `Mesh`; `ProgressClock` es el único de
-`scripts/server/progress/` que lee `Time`.
+`test_architecture` se amplía:
+
+- `scripts/shared/progression/` no nombra `Time`, `OS`, `Input` ni nada de `scripts/client/` o
+  `scripts/server/`;
+- ningún recurso de `data/items/` ni de `data/characters/` tiene propiedades `Texture2D`, `PackedScene`
+  o `Mesh`;
+- `scripts/server/progress/` no lee `Time`;
+- ningún `class_name` se repite en `scripts/` ni en `tests/` (Godot registra en silencio solo uno de
+  los dos).
 
 ## 15. Pruebas
 
-Cada una dura menos de 30 s con el ejecutor actual (`run_tests.gd`) o con `go test`.
+Cada una dura menos de 30 s con el ejecutor actual (`run_tests.gd`) o con `go test` (caché caliente).
 
-| Prueba | Qué comprueba |
-|---|---|
-| `test_item_database` | ids únicos y con formato; todos los `.tres` en texto (empiezan por `[gd_resource`); coherencia de §2.1; `ref_id` que existen; un objeto de inicio por `ref_id` de plantilla; net ids alfabéticos; `wire_hash` estable entre dos cargas |
-| `test_item_instance` | Ida y vuelta de 1000 instancias aleatorias con semilla; null en cada caso de §2.3 (truncado, formato 2, uid 0, bit 63, net id desconocido, cantidad 0 o > pila, 7 afijos) |
-| `test_inventory_ops` | Tabla de casos: cada op y cada código de §4.2, en su orden; juntar parcial; intercambio; ligado al equipar |
-| `test_inventory_properties` | 20 semillas × 5000 operaciones aleatorias (válidas e inválidas): la cantidad por definición no cambia sin fuente ni sumidero, ningún `uid` se repite ni reaparece tras morir, ranuras únicas, la ranura activa siempre con arma. Menos de 10 s |
-| `test_currency_rules` | Topes, negativos, dos operaciones del mismo tick sobre un saldo, reconstrucción desde los apuntes |
-| `test_level_curve` | 39 valores crecientes; `level_for(total_to(n)) = n`; varias subidas con un solo aporte; tope |
-| `test_character_appearance` | Ida y vuelta de 8 B; `validate` rechaza cada índice fuera de rango y la raza de otro reino; 100 aleatorias válidas por raza; `appearance_ids.txt` es prefijo del catálogo; `stat_modifiers` vacío |
-| `test_progression_rules_export` | `data/generated/progression_rules.json` coincide con lo que genera la herramienta |
-| `test_progress_messages` | Ida y vuelta de 0x50–0x55, SPAWN con apariencia y LEVEL_UP; null con cada malformación; ninguno pasa de 1200 B; DEBUG 40–43 |
-| `test_player_progress`, `test_progress_service` | Kit de inicio; reposición; consumo; recompensas por méritos, PNJ y captura; agregación de apuntes; forma del guardado; alta que espera al registro (plazo de 10 s); `LEASE_LOST` expulsa; el cierre guarda a todos |
-| `test_progress_persistence` | Crea, guarda, recarga y compara **campo a campo** (incluidos objetos, saldos, temporizadores pasados por UTC y posición); repetir un `save_id` no cambia nada; S1–S9 rechazan cada caso de `tests/fixtures/progression/`; `FileProgressRepository` sobrevive a reabrir el archivo |
-| `test_gm_progress` | Da un objeto, lo revierte y encuentra el CREATE y el DESTROY (y sus apuntes de oro) en el repositorio; segunda reversión rechazada |
-| `test_client_inventory`, `test_inventory_window` | Optimista, confirmación, rechazo que devuelve el objeto, deltas del servidor intercalados, plazo de 5 s; arrastrar, dividir y destruir simulados generan la petición correcta |
-| `test_appearance_visual` | 100 apariencias aleatorias aplicadas a `HumanoidVisual` sin errores del motor |
-| `test_progress_loopback` | Dos clientes por `NetHarness` con `MemoryProgressRepository`: equipar un arma desde la bolsa cambia el modelo del otro (net id en la ranura), la barra y la hoja sin correcciones de predicción; un rechazo devuelve el objeto; desconectar y volver conserva equipo, arma activa, vida y una reutilización de 5 min |
-| Go: `TestSave*` | S1–S9 con los fixtures; dos guardados a la vez del mismo personaje (uno gana); dos apuntes a la vez sobre un saldo; repetición idempotente; reconstrucción del saldo; intercambio de ranuras con la restricción diferida; bloques de ids |
+| Paquete | Prueba | Qué comprueba |
+|---|---|---|
+| P1 | `test_item_database` | ids únicos y con formato; todos los `.tres` en texto (empiezan por `[gd_resource`); coherencia de §2.1 (ARMOR con `tests/fixtures/items/`); `ref_id` que existen; un objeto por arma y consumible de las plantillas; net ids alfabéticos; `wire_hash` estable entre dos cargas |
+| P1 | `test_item_instance` | Ida y vuelta de 1000 instancias aleatorias con semilla, en binario y en diccionario; null en cada caso de §2.3 (truncado, formato 2, uid 0, uid 2^53, net id desconocido, cantidad 0 o > pila, 7 afijos) |
+| P2 | `test_inventory_ops` | Tabla de casos: cada op y cada código de §4.2, en su orden; juntar parcial; pila de destino llena → intercambio; ligado al equipar; ranuras 2–6 → CANNOT_EQUIP; DESTROY de un consumible bebiendo → NOT_NOW; solo DESTROY da eventos |
+| P2 | `test_inventory_properties` | 20 semillas × 1000 operaciones aleatorias (válidas e inválidas), con invariantes incrementales (cantidad por definición y uids vivos y muertos, que actualizan los eventos de cada `Outcome`) y la comprobación completa cada 100 operaciones y al final: la cantidad no cambia sin evento, ningún uid se repite ni vuelve, ranuras únicas, la activa con arma; tras CAMP_REFILL, `count_of(def) ≤ max(camp_refill, antes)`, con un caso de tabla de la pila dividida. Menos de 5 s medidos. La versión larga (20 × 5000) solo con `--filter=inventory_properties_long` |
+| P2 | `test_currency_rules` | Topes, negativos, dos operaciones del mismo tick sobre un saldo, reconstrucción desde los apuntes |
+| P2 | `test_action_machine_weapons` | `set_weapons` conserva cargas, `consumable_ready_tick` y ranuras de movimiento; reparte `ability_ready` por arma; con acción, no hace nada |
+| P3 | `test_level_curve` | 39 valores crecientes; `level_for(total_to(n)) = n`; varias subidas con un solo aporte; tope |
+| P3 | `test_character_appearance` | Ida y vuelta de 8 B; `validate` rechaza cada índice fuera de rango y la raza de otro reino; 100 aleatorias válidas por raza; `appearance_ids.txt` es prefijo del catálogo; el catálogo solo nombra escenas que existen; `stat_modifiers` vacío |
+| P3 | `test_progression_rules_export` | `build()` da lo mismo dos veces y contiene las tres razas, los objetos, la curva, los topes y los rangos de motivos (el archivo lo compara `test_platform_gamedata.gd`) |
+| P4 | `test_progress_messages` | Ida y vuelta de 0x50–0x55, SPAWN con nivel y apariencia y LEVEL_UP; null con cada malformación; ninguno pasa de 1200 B; DEBUG 40–43; `encode_spawn` con un receptor de otro reino da `level` 0 |
+| P5a | `test_progress_record` | Ida y vuelta de `ProgressRecord` por `JSON.stringify` y `parse_string`, campo a campo; `{}` es un personaje nuevo; ignora `zone_id` y `ops`; null con una clave desconocida, un id no entero o ≥ 2^53 |
+| P5a | `test_player_progress` | Kit de inicio (por plantilla y por defecto); agregación (un apunte por moneda, motivo y referencia); el cierre antes de una operación suelta (ganancia, `currency_add`, guardado: S3 cuadra); `build_section` y `acknowledge`; reserva de ids; ninguna habilidad ni consumible de `CombatCatalog` dura 30 s o más |
+| P5a | `test_progress_section` | Con `FakeZonePlatform` (plataforma.md P4): sección registrada; reintento con el mismo cuerpo; `duplicate` confirma; `lease_lost` descarta; 400 expulsa y libera; `schema_mismatch` conserva; `prepare` con un `progress` roto → REJECT `UNAVAILABLE` y liberación |
+| P5a | `test_progression_fixtures` | Los casos de `tests/fixtures/progression/` coinciden con los que genera `write_fixtures.gd` |
+| P5b | `test_progress_service` | Alta con el `Loadout` del inventario y la ranura activa; equipar y desequipar sin reiniciar reutilizaciones; CONSUME al comprometer y no al interrumpir; CAMP_REFILL por total y con la cadencia de habilidades.md; cargas `min(15, bolsa)`; peticiones antes del mundo → aviso; un cliente que manda 10 000 SPLIT y juntar: ningún evento, ids acotados por RATE y otro jugador sigue bebiendo y guardando; `/atascado` restaurado por su clave |
+| P5c | `test_progress_rewards` | Méritos de una víctima persistente de otro reino → apunte y XP; matar a un falso o a un PNJ no da méritos; PNJ con dos contribuyentes → los dos cobran; dos capturas en 30 min pagan una; `--fake-players` con plataforma → nada; subida de nivel → LEVEL_UP solo al mismo reino y crítico |
+| P5d | `test_gm_progress` | Da un objeto, lo divide en 3 y 2, junta las 2 con otra pila y lo revierte: el total baja 5 y se encuentran el GM_GRANT, la REVERSAL y sus apuntes; segunda reversión rechazada; con plataforma falsa y rol `player`, el id 41 no cambia el saldo y suma un aviso; un `gm` sobre su propio personaje, rechazado; `level_set` deja `detail` con antes y después |
+| P6 | `test_client_inventory`, `test_inventory_window` | Optimista, confirmación, rechazo que devuelve el objeto, deltas del servidor intercalados, plazo de 5 s; arrastrar, dividir y destruir simulados generan la petición correcta |
+| P6 | `test_appearance_visual` | Todas las combinaciones de piezas que existen (cuerpo, cabeza, pelo y barba, con y sin) con un color aleatorio cada una, y 100 aleatorias, aplicadas a `HumanoidVisual` sin errores del motor; `set_part` no recrea el nodo |
+| P7 | Go: `TestApply*` | Cada caso de los fixtures con su resultado; S1–S8 uno a uno; `characters.level` copiado; auditoría con `op:<op_id>` sin duplicar |
+| P7 | Go: `TestWalletConcurrency` | Dos transacciones a la vez sobre un saldo (§5.4); reconstrucción del saldo |
+| P7 | Go: `TestTwoCharacterOp` | Una operación con dos participantes en una transacción; el mismo participante dos veces falla |
+| P7 | Go: `TestPurgeKeepsLedger`, `TestRetention` | Purga de un personaje con apuntes dentro de la purga de la cuenta: la cuenta queda como lápida y el libro sigue; con el reloj a +366 días, `PurgeRetention` lo borra y deja las operaciones de otros |
+| P7 | Go: `TestRoutes` | `GET` de operación (con las filas retiradas) y de libro con paginación; 404 |
+| P8 | `test_progress_loopback` | Dos clientes por `NetHarness`, sin plataforma: equipar el arco desde la bolsa cambia el arma del otro por LOADOUT, la barra y 0 correcciones sin explicar; un rechazo devuelve el objeto; un cliente de otro reino recibe `level` 0 y uno del mismo, el real; beber gasta una poción de la bolsa |
+| P8 | `test_progress_platform_loopback` | Con `FakeZonePlatform` y billetes de prueba: primera entrada con LOADOUT_SELECT `marksman` → kit; beber, reponer, `/atascado`; salir y volver conserva uids, equipo, arma activa, saldos y la reutilización de 5 min (menos lo transcurrido); vuelve al campamento |
+| P8 | Go: `platform/e2e/progress_test.go` | `TestProgressEndToEnd`: plataforma en el proceso, PostgreSQL efímero, `test_world` con `--platform --debug-commands`, cuenta `admin` y `--bot --bot-scenario=progress --report=<ruta>` (equipa el arco, da 50 de oro y una poción por DEBUG_COMMAND y sale); `Load` de la BD frente al informe del bot, campo a campo. `TestProgressCrash`: lo mismo con `kill -9` a la zona tras el delta del oro; por SQL, Σ `delta` = saldo, por definición Σ `count_delta` = Σ `count` vivas, y el bot vuelve a entrar con lo mismo |
 
 **PostgreSQL en esta máquina (comprobado).** Docker está instalado pero sin demonio: las pruebas no
-dependen de él. `initdb` no corre como root, así que los binarios de `/usr/lib/postgresql/16/bin` se
-lanzan como `postgres` con `setpriv --reuid=postgres --regid=postgres --init-groups` sobre una carpeta
-`build/<pid>/pg/` suya, y el servidor escucha solo en un socket Unix (`pg_ctl … -o "-k <carpeta> -p
-<puerto> -c listen_addresses= -c fsync=off -c synchronous_commit=off -c full_page_writes=off"`).
-Medido: `initdb --no-sync` 0,64 s, arranque 0,12 s, esquema 0,15 s, parada 0,1 s: ~1 s por clúster
-desechable. En CI (sin root) van sin `setpriv`. Go 1.24 baja los módulos por el proxy (pgx v5.7.1
-comprobado). El arnés es de plataforma.md.
+dependen de él. El arnés es `internal/testdb` de plataforma.md §2.6: `initdb` no corre como root, así
+que cada orden va con `runuser -u postgres --` sobre una carpeta suya, y el servidor escucha solo en un
+socket Unix con `fsync`, `synchronous_commit` y `full_page_writes` apagados. Medido con la sonda de este
+documento (clúster, esquema de §3.3 y los casos de §3.3 y §3.5): 0,9 s en total. Go 1.24 baja los
+módulos por el proxy.
 
-## 16. Riesgos
+## 16. Pendiente del usuario
 
-- **Dos validaciones** (GDScript y Go) pueden divergir: las fija la misma colección de casos.
-- **Precisión de JSON**: un id de 64 bits como número se corrompe sin avisar; las pruebas de
-  `CharacterRecord` usan ids por encima de 2^53.
-- **Net ids alfabéticos**: añadir un objeto cambia los de los demás; la huella del `sim_hash` impide
-  mezclar clientes y servidores con catálogos distintos, y la BD nunca guarda net ids.
-- **Reutilizaciones de menos de 30 s**: reconectar las reinicia. Lo limita el tiempo de reconexión y,
-  en combate, el cuerpo que se queda 15 s (GUE-41); se revisa con la telemetría.
-- **Encaje con habilidades.md**: `EquipmentState.rebuild_from`, el bloque de equipo del SPAWN, las
-  plantillas, las pociones y los `apply_cooldown`/`apply_effect` dependen de cómo quede la fase 4. Si
-  sus nombres cambian, se ajusta §1, §4.1, §7.3 y §8 al integrar.
-- **Volumen del guardado**: unos 40 objetos y 5 apuntes por minuto y jugador (~6 KB de JSON por
-  guardado); con 1000 jugadores, ~100 KB/s hacia el servicio. Se mide en TEC-25.
+| Qué | Para qué | Mientras tanto |
+|---|---|---|
+| Cuerpo femenino y más cabezas, peinados, barbas y marcas (ART-20): comprar la Source de Universal Base Characters o importar más piezas del Standard desde `../Eldmark-raw/` | La variedad por raza de §7.1 y el índice `body = 1` | El catálogo solo lista lo que hay: un cuerpo, una cabeza, `Hair_SimpleParted` y `Hair_Beard`; las razas difieren en colores permitidos |
+| Iconos de los cuatro objetos (ART-12) | Inventario y tooltip | `icon_path` vacío: el casillero pinta el nombre corto con el color de la categoría |
+| Visto bueno visual de la apariencia y de las dos ventanas | UI-26, ART-19 | Lo provisional queda marcado con `# TODO(arte)` |
+| Revisión legal de la retención de un año del libro tras la purga | RGPD, con las de plataforma.md §11 | La cifra es provisional |
+| Las decisiones provisionales de §0 | | Se aplican tal cual |
+
+## 17. Riesgos
+
+| Riesgo | Mitigación |
+|---|---|
+| Dos validaciones (GDScript y Go) que divergen | Los mismos casos, generados por `write_fixtures.gd`, subidos al repo y comprobados por las dos (§13.3) |
+| Precisión de JSON: un id de 2^53 o más se corrompe sin avisar en Godot | Todos los ids salen de secuencias y bloques desde 1; la zona y el servicio rechazan los que no sean enteros por debajo de 2^53 (§3.4, S1) |
+| Net ids alfabéticos: añadir un objeto cambia los de los demás | Entran en el `sim_hash`; la BD nunca guarda net ids; a otros clientes nunca viajan |
+| Reutilizaciones de menos de 30 s: reconectar las reinicia | Las limita el tiempo de reconexión y, en combate, el cuerpo que se queda 15 s (GUE-41); se revisa con la telemetría |
+| Encaje con habilidades.md: `set_weapons`, el reparto de cargas y el cambio de la recarga dependen de H1b, H3c y H4 | Los nombres de habilidades.md mandan; si cambian, se ajustan §4.1, §4.4 y §8 al integrar |
+| Encaje con plataforma.md: la sección, el gancho del WELCOME, la purga y la retención dependen de lo pedido en §13.1 | Si plataforma.md no lo adopta, este documento se cambia antes de P5a y P7 |
+| Sin persistencia local sin plataforma (el usuario desarrolla en Windows) | `deploy/dev.sh` o el compose de plataforma.md; sin ellos, todo funciona en efímero |
+| Abuso con dividir y juntar, o con clientes que gastan ids | No dejan eventos (§4.3), RATE de 2/s para lo que gasta ids y reserva del servidor (§4.5) |
+| Volumen del guardado | Unos 40 objetos (~4 KB de JSON) y una GAMEPLAY por guardado; con 1000 jugadores y un guardado por minuto, ~70 KB/s hacia el servicio. Se mide en TEC-25 |
+| Retención de un año: datos de un personaje purgado | Seudónimos sin cuenta detrás; revisión legal (§16) |
+
+## 18. Revisión
+
+Tres revisores (seguridad, coherencia e implementabilidad): 41 hallazgos sobre la versión 1, los
+repetidos en una fila. Comprobados en el código, en plataforma.md (0f6781b) y en habilidades.md
+(32e23af): todos se sostienen. En ocho filas la solución es otra que la propuesta o se queda en parte
+(«en parte», «de otra forma»). Lo que pide cambiar en plataforma.md está en §13.1.
+
+| Id | Gravedad | Qué era | Qué se hizo |
+|---|---|---|---|
+| PR-SEG2 · PR-COH2 · PR-IMP1 | bloqueante | Dos tuberías de carga y guardado incompatibles con plataforma.md: WELCOME antes del un solo uso y las sanciones, `begin_load` sin `lease_token`, dos idempotencias (`save_id`/`base_version` frente a `lease_id`/`seq`), dos generadores de uid, JSON distinto (cadenas frente a números, campos repetidos en `state`), raza y apariencia distintas | El progreso es la sección `progress` de `CharacterSaver`; llega en la reclamación y `prepare` corre antes del WELCOME; idempotencia `(lease_id, seq)`; fuera `save_id`, `base_version`, `save_version`, VERSION_CONFLICT y la antigua S2; un solo generador (`item_uid_blocks`); vida, posición y tiempo jugado solo en `state`; números < 2^53; `race_<reino>` y 8 B pedidos a plataforma.md (§0, §3, §9, §13.1). **En parte**: sin `starter_template_id` al crear (la plantilla se elige en la primera entrada) |
+| PR-COH1 · PR-IMP2 | bloqueante | Dos `class_name CharacterRecord` (Godot registra solo una) | La de aquí es `ProgressRecord`; `CharacterRecord` es de plataforma.md y lleva `progress`; `test_architecture` prohíbe `class_name` repetidos (§14.2) |
+| PR-SEG1 · PR-COH4 · PR-IMP7 | bloqueante | El disparador de solo añadir abortaba la cascada desde `characters`: ni purga horaria ni supresión de cuenta, y sin camino para «un año después» | Tablas de solo añadir sin clave ajena; lápida con `Purge`; retención a un año con `set local eldmark.retention_purge`; exportación; comprobado en PostgreSQL 16; pruebas de Go (§3.3, §3.5, §15). **En parte**: los `ref_id` no se ponen a 0 (sería un UPDATE en el libro y ya son seudónimos) |
+| PR-COH3 · PR-IMP3 | bloqueante | Nadie diseñaba el lado Go del progreso; esquemas que se pisaban; rutas de operación y libro inexistentes | P7 es de aquí: `platform/internal/progress/`, migración 0010 con `world_id`, S1–S8, rutas, retención y pruebas, con dependencias de plataforma.md P0 y P3; `character_progress` sin lo que guarda plataforma.md (§3.3, §13.2, §14.1) |
+| PR-COH5 · PR-IMP4 | bloqueante | `EquipmentState`, `StatBlock`, hoja derivada, armaduras e ids visuales que habilidades.md deja fuera y nadie diseña | Decisión provisional: en la fase 5 solo armas y pociones; ranuras 2–6 reservadas; `ActionMachine.set_weapons` que conserva reutilizaciones y cargas, y LOADOUT con `template_id` 0; criterio de UI-26 anotado en el backlog (§0, §4.1, §11) |
+| PR-SEG3 · PR-COH11 | importante | Con `--debug-commands` y `--platform`, cualquiera se daba oro, XP y objetos persistentes; `currency_add` por red sin motivo | DEBUG_COMMAND con plataforma exige `gm` (40–43, `admin`); `ServerMain` no arranca en staging o producción con los dos; nota «debug»; prueba en `test_gm_progress` (§10). **En parte**: sin texto libre en el id 41 |
+| PR-SEG4 | importante | Comandos de GM sin rastro en la BD o con rastro que se podía perder; actor sin comprobar; GM que se regala; roles distintos | `note` y `detail` en `economy_ops`; S2 comprueba el rol y la propia cuenta; el guardado escribe la auditoría con `op:<op_id>`; consultas para `gm` (§3.3, §10, §13.3) |
+| PR-SEG5 | importante | CAMP_REFILL por pila: dividir daba pociones sin límite | Reposición por total de la definición; propiedad y caso de tabla (§4.4, §15) |
+| PR-SEG6 | importante | Dividir y juntar gastaban ids y llenaban el libro; un cliente agotaba los bloques de la zona | Mover, dividir y juntar sin eventos ni `op_id`; RATE de 2/s para lo que gasta ids; reserva de 256 para el servidor; sin `save_id`; prueba con 10 000 peticiones (§4.2, §4.3, §4.5) |
+| PR-SEG7 | importante | Méritos y XP de víctimas falsas o PNJ; capturas sin freno | Méritos de baja solo por víctimas persistentes de otro reino; PNJ solo `xp_reward` y `gold_reward`; captura una vez cada 30 min por fortaleza; sin recompensas con `--fake-players` y plataforma (§6.2). **En parte**: la captura sin defensores sigue pagando (en el Vado Gris es la de los Huecos; GUE-35) |
+| PR-SEG8 · PR-COH9 | importante | El SPAWN se codificaba una vez para todos: nivel real al enemigo; net id de objeto como id visual | `encode_spawn(tick, for_owner, receiver_realm)` y tres variantes por reino; sin bloque de equipo ni net ids hacia otros (las armas van en `CombatState`); `visual_id` previsto para PRG-05 y PRG-06; pruebas (§2.1, §7.3) |
+| PR-SEG9 | importante | Una operación de dos personajes no cabía en el esquema; traspaso sin congelar | `op_participants` con S2 por `(op_id, character_id)`; traspaso con congelación y HANDOFF tras el OK (§3.3, §8) |
+| PR-COH6 | importante | Vida, posición, nivel, tiempo jugado, raza y apariencia en dos sitios con reglas opuestas | Un dueño por campo (§3.1); reglas de plataforma.md para posición y vida; `characters.level` lo escribe P7 |
+| PR-COH7 · PR-IMP8 | importante | CMB-30 sin dueño, con semánticas opuestas y ganchos inexistentes | Es de aquí; el tiempo corre (UTC con `ZonePlatform.now_unix()`); en la fase 5 solo `unstuck` y `capture:<id>`, con `get_ready_at`/`set_ready_at` por personaje; efectos largos aplazados; billete de 52 B (§8). **En parte**: la imposición de `ability_ready` no se escribe hasta que exista una reutilización de 30 s (una prueba lo vigila) |
+| PR-COH8 · PR-IMP5 | importante | Pociones contra el modelo de habilidades.md: cargas predichas, gasto al empezar, recarga gratis | Cargas `min(15, bolsa)` con `set_charges`; CONSUME en el compromiso; la recarga de habilidades.md se sustituye por CAMP_REFILL con su cadencia; pila de 15 (§4.4) |
+| PR-COH10 · PR-IMP9 | importante | Creación sin `starter_template_id`, razas distintas, dos archivos de reglas, apariencia de 0–64 B; `go:embed` no admite `..` | Un solo `progression_rules.json` dentro de `platform/internal/gamedata/`, escrito por la herramienta de plataforma.md con `ProgressionRulesExport`; 8 B y `race_<reino>` pedidos (§13.1). **En parte**: sin `starter_template_id` al crear |
+| PR-COH12 | importante | Mensajes nuevos que `NetClient` y `SwarmBot` contaban como malformados; «efímero» mal definido | La recepción va en P4; `test_bot_swarm` y `test_net_processes` siguen en 0; efímero = sin plataforma; los falsos, sin inventario (§4.6, §9.4) |
+| PR-IMP6 | importante | Una operación suelta a mitad de minuto rompía S3 por las ganancias sin apuntar; nadie ponía `seq` | Se cierra lo agregado antes de cada operación suelta; `seq` lo pone el servicio; caso en `test_player_progress` (§5.2) |
+| PR-IMP10 | importante | P5 demasiado grande, sin ganchos ni dependencias, primer bloque sin definir | P5a a P5d con sus ganchos en `ZoneServer`, dependencias de PRG-09, MUN-07 y GUE-12, y primer bloque antes de abrir el puerto (§4.5, §9, §14.1) |
+| PR-IMP11 | importante | Pruebas que no demostraban PRG-10 ni TEC-25; casos escritos por pruebas; Askarra cerrada | Prueba de extremo a extremo con PostgreSQL y `kill -9`; casos generados por herramienta y subidos; criterio de PRG-14 anotado en el backlog (§15) |
+| PR-IMP12 | importante | 20 × 5000 operaciones no cabían en 10 s | 20 × 1000 con invariantes incrementales, menos de 5 s; la larga, aparte (§15) |
+| PR-IMP13 | importante | Lo que necesita al usuario sin marcar; catálogo con piezas que no existen; `HumanoidVisual` sin API para cambiar piezas | Tabla «Pendiente del usuario»; el catálogo solo lista lo que hay; `set_part` y `clear_part` (§7, §16) |
+| PR-SEG10 | menor | La red de seguridad dejaba pasar `starter_granted`, `bound` y `bag_slots` hacia atrás, I8, I9 y uids fuera de la unión | I12; S2, S4, S5 y S6 los comprueban; conservación por definición sobre la BD, la foto y los eventos (§3.2, §13.3) |
+| PR-SEG11 | menor | `--progress-file` persistía sin autenticación ni bloqueo y delataba reinos | **De otra forma**: se quita el modo; sin plataforma nada se guarda y la persistencia local usa `deploy/dev.sh` (§0, §9.4) |
+| PR-SEG12 | menor | Dividir o juntar esquivaba una reversión | La reversión quita la cantidad de la definición en todo el personaje (§10). **En parte**: sin `parent_uid`, que deja de hacer falta |
+| PR-COH13 | menor | Versión del protocolo sin coordinar | Una sola para la fase 5, compartida, con la regla de quién la sube (§12) |
+| PR-COH14 | menor | La apariencia en el `sim_hash` rechazaba clientes sin motivo | Fuera; `ItemDatabase` se queda y red.md §3 y el texto del REJECT cambian (§12) |
+| PR-COH15 | menor | PRG-13, el billete de 47 B, `escudero` y MUN-07 desfasados | PRG-13 y la decisión, en el backlog; 52 B; `squire`; MUN-07 en P5c |
+| PR-IMP14 | menor | MOVE sobre pila llena, pociones en dos reglas del kit, `smallint[]`, textura en `data/characters/`, motivo del id 41, reino en JSON | Intercambia; regla 2 sin `camp_refill`; `integer[]` 0–65535; `texture_path`; «debug»; sin reino en `progress` (§2.5, §3.3, §4.2, §7.2, §10) |
