@@ -261,7 +261,8 @@ cubre ±5,24 km, así que caben los 5 × 5 km de terreno de Eldrun.
 **`SceneMultiplayer`:** uno propio por cada `NetTransport`.
 
 - Configuración: `server_relay = false`, `allow_object_decoding = false`, `auth_callback` en los
-  dos lados y `auth_timeout = 5.0`.
+  dos lados y `auth_timeout = 5.0` (10 s desde la subida de protocolo de la fase 5, plataforma.md
+  §5.4: cuenta desde la conexión y deja sitio a la reclamación del billete).
 - Se registra con `get_tree().set_multiplayer(mp, transport.get_path())`. Así caben varias
   instancias en un mismo proceso (pruebas y enjambre de bots).
 - **Filtro de paquetes en el servidor (`GuardedEnetPeer`, hallazgo S1).** `SceneMultiplayer`
@@ -1467,7 +1468,7 @@ El servidor nunca acepta estado del cliente, y todo valor decodificado está aco
 | Conexiones por IP | 4 como mucho (`--max-per-ip`), salvo loopback, para que funcionen los bots locales. Se comprueba al conectar, no solo con el HELLO; las IPv6 cuentan por /64 ([3](#3-conexión)) |
 | HELLO a tiempo | 90 ticks desde que conecta; si no, se corta la conexión ([3](#3-conexión)) |
 | Paquetes ajenos al protocolo | Antes del HELLO solo se admite autenticación; después, solo RAW. Lo demás se descarta sin error del motor y cada paquete suma un aviso ([2](#2-transporte-y-canales)) |
-| Reino | Validado contra la zona. En la fase 2 lo declara el cliente (`DevAuthProvider`); desde la fase 5 sale del personaje o del billete, y el campo de HELLO se ignora |
+| Reino | Validado contra la zona. En la fase 2 lo declara el cliente (`DevAuthProvider`); desde la fase 5 sale del personaje (la reclamación de plataforma.md §5) y el campo de HELLO se ignora |
 | Rebobinado | Acotado por lo medido ([10](#10-historial-para-la-compensación-de-latencia)); el RTT que declara el cliente con sus acks se acota con el de ENet más el simulador del servidor + 3 ticks |
 | Comandos de depuración | Solo con `--debug-commands` |
 
@@ -1505,13 +1506,17 @@ REJECT). Ahora `ZoneServer._kick` apunta una entrada `_kick_until` de 30 s:
 
 **Fases 5 y 6:**
 
-- **`TicketAuthProvider`** con `HandoffTicket` de 47 B:
-  - campos: versión, `ticket_id`, `character_id`, reino, zona y canal de destino, punto de
-    llegada, emisión, caducidad (+10 s) y flags;
-  - firma HMAC-SHA256 truncada a 16 B con el secreto del clúster;
-  - verificación con `Crypto.constant_time_compare`, de un solo uso.
+- **`TicketAuthProvider`** con `HandoffTicket` de **52 B** (formato y vector de prueba en
+  [plataforma.md](plataforma.md) §5.1; sustituye al de 47 B que se preveía aquí):
+  - campos: versión, clave, mundo, `ticket_id`, `character_id`, huella de la zona, canal, reino
+    (informativo), punto de llegada, flags, emisión y caducidad (+10 s);
+  - firma HMAC-SHA256 truncada a 16 B con una clave con identificador (rotable);
+  - verificación con `Crypto.constant_time_compare`; el un solo uso lo garantiza la plataforma al
+    reclamar el billete (`authenticate` devuelve `PENDING` y el peer espera en `VERIFYING`), y el
+    reino sale del personaje, no del billete.
 - **DTLS** (`host.dtls_server_setup(TLSOptions.server(…))`), obligatorio antes de las pruebas
-  públicas.
+  públicas: en staging y producción la plataforma no registra una zona sin certificado
+  (plataforma.md §10.2).
 
 El hueco ya existe en HELLO y la interfaz `AuthProvider` ya está.
 
@@ -2435,6 +2440,9 @@ static func address_group(remote_address: String) -> String
 class_name AuthProvider extends RefCounted
 ## Identidad y reino: OK o TICKET. Base de DevAuthProvider y del futuro TicketAuthProvider.
 func authenticate(hello: NetMessages.Hello) -> int
+## Desde la fase 5 (plataforma.md §14.3): authenticate(peer_id, hello) -> int (OK, PENDING = -1 o
+## motivo), on_platform_event(event) -> bool, take_completed() -> Array[AuthOutcome],
+## cancel(peer_id) y uses_tickets() -> bool.
 
 # dev_auth_provider.gd
 class_name DevAuthProvider extends AuthProvider   # acepta el reino y el nombre declarados

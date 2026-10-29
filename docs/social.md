@@ -22,10 +22,10 @@ Tomadas de noche, con la recomendación del backlog (provisionales; revisar). La
 | ¿Tamaño máximo del grupo? | 5, coherente con las mazmorras de 3–5 jugadores de mundo.md y con marcos legibles en combate; las batallas grandes se cubren con bandas (sección 3) |
 | ¿Chat de voz integrado? | Sin voz hasta después del lanzamiento: es caro y difícil de moderar y Discord ya lo cubre; los pings y marcas (SOC-10) resuelven la táctica dentro del juego (sección 7) |
 
-Quedan **pendientes** (fase 5 en adelante; aquí van como propuesta y los detalles, en las secciones
-8 y 9): si «ignorar» afecta a un personaje o a la cuenta (propuesta: a la cuenta, en silencio) y la
-retención del registro de chat (propuesta: 30 días, un año para lo ligado a reportes), que además
-necesita revisión legal (RGPD) antes de las pruebas públicas.
+Las dos que quedaban pendientes se tomaron en la fase 5 ([plataforma.md](plataforma.md) §0,
+provisionales, de noche): «ignorar» afecta a **la cuenta**, en silencio, y el servidor filtra también los
+canales públicos (sección 10); el registro de chat se guarda **30 días**, susurros incluidos, y **un año** lo
+ligado a reportes o sanciones (sección 8), con revisión legal (RGPD) antes de las pruebas públicas.
 
 ## 1. Qué cruza entre reinos
 
@@ -172,7 +172,7 @@ una integración opcional de presencia). La coordinación táctica dentro del ju
 grupo o la banda en el mundo, la brújula y el minimapa (SOC-10), con límite de ritmo y sin que los
 vea el enemigo.
 
-## 8. Registros y retención (propuesta; decisión pendiente para la fase 5)
+## 8. Registros y retención (decidido en la fase 5: plataforma.md §0 y §11)
 
 | Qué | Qué se guarda | Cuánto |
 |---|---|---|
@@ -183,7 +183,8 @@ vea el enemigo.
 | Nombres de personajes borrados | Reservados para que nadie los herede | 30 días (SOC-13) |
 
 Los susurros se guardan porque sin ellos no se puede atender un reporte de acoso. Acceso solo a
-moderadores con rol, con registro de cada consulta. Antes de abrir pruebas públicas hay que pasar la
+moderadores con rol, con registro de cada consulta (plataforma.md §9.1: la CLI exige `--actor` y cada
+lectura deja su fila en la auditoría). Antes de abrir pruebas públicas hay que pasar la
 retención y el consentimiento por una revisión legal (RGPD); esas cifras pueden cambiar entonces.
 
 ## 9. Sanciones y normas
@@ -216,10 +217,11 @@ humana (SOC-38).
 ## 10. Ignorados, amigos y gremios
 
 - **Amigos:** hasta 100, del mismo reino, por solicitud aceptada (SOC-24).
-- **Ignorados:** hasta 100. Propuesta pendiente de decisión: ignorar afecta a **la cuenta**, en
-  silencio y sin revelar qué otros personajes comparte, porque el acoso con personajes alternativos es
-  el caso más frecuente. El servidor descarta del ignorado susurros, invitaciones y correo; el cliente
-  oculta sus mensajes en los canales públicos (SOC-16).
+- **Ignorados:** hasta 100. Ignorar afecta a **la cuenta** (decidido en la fase 5, plataforma.md §0),
+  en silencio y sin revelar qué otros personajes comparte, porque el acoso con personajes alternativos es
+  el caso más frecuente. El servidor descarta del ignorado susurros, invitaciones y correo, y lo quita
+  también de los destinatarios de los canales públicos: el cliente no puede ocultarlo, porque no sabe qué
+  personajes comparten cuenta (SOC-16, plataforma.md §9.3).
 - **Gremios:** del mismo reino, con 5 rangos y permisos por bits; el nombre del gremio de un aliado
   aparece en su placa, el del enemigo no (SOC-25, sección 1).
 
