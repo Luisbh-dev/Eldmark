@@ -42,6 +42,8 @@ const UPPER_LETTERS: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÚÜÑ"
 const LOWER_LETTERS: String = "abcdefghijklmnopqrstuvwxyzáéíóúüñ"
 ## Nombre por defecto de un jugador: este prefijo más [constant DEFAULT_SUFFIX_LETTERS] letras.
 const DEFAULT_PREFIX: String = "Jugador"
+## Prefijo de los nombres por defecto de los bots.
+const BOT_PREFIX: String = "Bot"
 const DEFAULT_SUFFIX_LETTERS: int = 4
 
 ## Nombres reservados (se comparan con [method normalize_key], así que da igual cómo se
@@ -158,6 +160,16 @@ static func is_reserved(display_name: String) -> bool:
 ## es un nombre válido, y semillas distintas dan nombres distintos hasta 26^4 (456 976).
 ## Determinista: no usa el reloj ni el azar global.
 static func default_name(seed_value: int) -> String:
+	return DEFAULT_PREFIX + _letters_suffix(seed_value)
+
+
+## Nombre de un bot sin [code]--name[/code]: «Bot» más cuatro letras sacadas de [param seed_value]
+## ([code]1[/code] da «Botaaab»). Válido y determinista, como [method default_name].
+static func bot_name(seed_value: int) -> String:
+	return BOT_PREFIX + _letters_suffix(seed_value)
+
+
+static func _letters_suffix(seed_value: int) -> String:
 	var combinations: int = 1
 	for i: int in DEFAULT_SUFFIX_LETTERS:
 		combinations *= 26
@@ -166,4 +178,4 @@ static func default_name(seed_value: int) -> String:
 	for i: int in DEFAULT_SUFFIX_LETTERS:
 		suffix = LOWER_LETTERS[value % 26] + suffix
 		value = int(value / 26.0)
-	return DEFAULT_PREFIX + suffix
+	return suffix

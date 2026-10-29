@@ -112,7 +112,7 @@ func test_server_and_bot_processes_play_together_and_write_their_reports() -> vo
 				"res://build/test_harness_server.log")).contains("escuchando"):
 			bot_pid = NetHarness.launch_process(PackedStringArray([
 				"--bot", "--connect=127.0.0.1:%d" % port, "--realm=solmarch", "--bot-seed=4",
-				"--name=Bot-4", "--quit-after-ticks=300", "--report=%s" % bot_report,
+				"--name=%s" % NameRules.bot_name(4), "--quit-after-ticks=300", "--report=%s" % bot_report,
 			]), "test_harness_bot")
 	_pids.append(bot_pid)
 	assert_true(bot_pid > 0, "el servidor llega a escuchar y se lanza el bot")
@@ -129,7 +129,7 @@ func test_server_and_bot_processes_play_together_and_write_their_reports() -> vo
 	assert_eq(int(players.get("joined_total", 0)), 1, "entró un jugador")
 	assert_eq(int(players.get("left_total", 0)), 1, "y se fue")
 	var bot: Dictionary = NetHarness.read_report(bot_report)
-	assert_eq(bot.get("name"), "Bot-4")
+	assert_eq(bot.get("name"), NameRules.bot_name(4))
 	assert_eq(bot.get("mode"), "BOT")
 	assert_eq(bot.get("realm"), "Solmarch")
 	assert_eq(bot.get("state"), "IN_WORLD")

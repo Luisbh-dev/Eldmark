@@ -33,8 +33,8 @@ enum Mode {
 	SWARM,
 }
 
-## Prefijo de los nombres por defecto: «Jugador-0042».
-const DEFAULT_NAME_PREFIX: String = "Jugador-"
+## Prefijo de los nombres por defecto: «Jugadorabcd» (ver [method NameRules.default_name]).
+const DEFAULT_NAME_PREFIX: String = NameRules.DEFAULT_PREFIX
 ## Máximo de ticks, bots y semilla que se aceptan.
 const _MAX_INT: int = 2147483647
 const _MAX_PORT: int = 65535
@@ -87,7 +87,9 @@ static func from_args(args: PackedStringArray) -> ClientConfig:
 			config.warnings.append("Reino desconocido '%s'" % _string_option(args, "--realm="))
 	config.display_name = _string_option(args, "--name=")
 	if config.display_name.is_empty():
-		config.display_name = default_name()
+		# Los bots usan un nombre fijo por semilla (válido para NameRules); los jugadores, uno al azar.
+		config.display_name = NameRules.bot_name(config.bot_seed) if is_bot or has_swarm \
+				else default_name()
 
 	if has_swarm and config.bot_count > 0:
 		config.mode = Mode.SWARM
@@ -100,9 +102,9 @@ static func from_args(args: PackedStringArray) -> ClientConfig:
 	return config
 
 
-## Nombre por defecto de un jugador: «Jugador-NNNN» con cuatro cifras al azar.
+## Nombre por defecto de un jugador: «Jugador» y cuatro letras al azar (siempre válido).
 static func default_name() -> String:
-	return "%s%04d" % [DEFAULT_NAME_PREFIX, randi_range(0, 9999)]
+	return NameRules.default_name(randi_range(0, 456975))
 
 
 ## true si el modo conecta con un servidor (todos menos [constant OFFLINE]).

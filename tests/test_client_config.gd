@@ -138,7 +138,7 @@ func test_name_default_and_explicit() -> void:
 	for _i: int in 20:
 		var generated: String = _parse(["--connect=h"]).display_name
 		var regex := RegEx.new()
-		regex.compile("^Jugador-[0-9]{4}$")
+		regex.compile("^Jugador[a-z]{4}$")
 		assert_true(regex.search(generated) != null, "nombre por defecto: %s" % generated)
 	var blank: ClientConfig = _parse(["--name="])
 	assert_true(blank.display_name.begins_with(ClientConfig.DEFAULT_NAME_PREFIX),

@@ -212,8 +212,8 @@ func test_b_spawn_and_despawn_on_connect_leave_and_cut() -> void:
 	assert_not_null(second_view, "y el segundo, al primero")
 	if first_view == null or second_view == null:
 		return
-	assert_eq(first_view.get_display_name(), "Bot-2")
-	assert_eq(second_view.get_display_name(), "Bot-1")
+	assert_eq(first_view.get_display_name(), NameRules.bot_name(2))
+	assert_eq(second_view.get_display_name(), NameRules.bot_name(1))
 	assert_eq(first_view.get_realm(), SOLMARCH)
 	assert_true(await _wait_until(func() -> bool: return first_view.get_body().visible),
 			"y aparece en pantalla cuando el dibujo alcanza su alta")
@@ -349,7 +349,7 @@ func test_c_report_and_state_log_are_written() -> void:
 			"hard_resets", "resyncs", "tick_sync_adjustments", "substitutions", "final", "name",
 			"snapshots_with_state", "state", "rtt_ticks"]:
 		assert_true(report.has(key), "el informe tiene «%s»" % key)
-	assert_eq(report.get("name"), "Bot-5")
+	assert_eq(report.get("name"), NameRules.bot_name(5))
 	assert_eq(report.get("state"), "IN_WORLD")
 	assert_true(int(report.get("matches", 0)) > 20)
 	assert_eq(int(report.get("unexplained_diffs", -1)), 0)

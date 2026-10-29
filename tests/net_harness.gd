@@ -124,7 +124,7 @@ static func start_bot(viewport: SubViewport, port: int, realm: int, bot_seed: in
 	config.address = "127.0.0.1"
 	config.port = port
 	config.realm = realm
-	config.display_name = "Bot-%d" % bot_seed
+	config.display_name = NameRules.bot_name(bot_seed)
 	config.bot_seed = bot_seed
 	config.net_sim_spec = net_sim_spec
 	client.welcomed.connect(func(_welcome: NetMessages.Welcome) -> void:

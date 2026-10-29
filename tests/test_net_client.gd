@@ -214,7 +214,7 @@ func test_hello_carries_the_clients_identity() -> void:
 	var hello: NetMessages.Hello = _fake.hello
 	assert_eq(hello.protocol_version, NetProtocol.PROTOCOL_VERSION)
 	assert_eq(hello.realm, VARDHEIM)
-	assert_eq(hello.display_name, "Bot-9")
+	assert_eq(hello.display_name, NameRules.bot_name(9))
 	assert_true(hello.is_bot(), "un bot lo declara en los flags")
 	assert_eq(hello.character_id, 0)
 	assert_true(hello.ticket.is_empty())
