@@ -379,7 +379,10 @@ func test_combat_cheaters_in_real_processes_deal_no_damage_beyond_the_rules() ->
 		_bot(2, "solmarch", PackedStringArray(["--bot-cheat=reach"])),
 		_bot(3, "solmarch", PackedStringArray(["--bot-cheat=rate"])),
 	]
-	var scenario: Dictionary = await _run_scenario("cheat_combat", LIGHT_ZONE, 760, 640, bots)
+	# 4 s de margen entre lo que dura cada bot y lo que dura el servidor: los tres procesos de bot
+	# arrancan uno tras otro y, con la máquina cargada, el último puede tardar más de 2 s en entrar;
+	# si el servidor cierra antes de que el bot acabe sus ticks, el bot sale con 1.
+	var scenario: Dictionary = await _run_scenario("cheat_combat", LIGHT_ZONE, 880, 640, bots)
 	if not assert_true(scenario["ok"], "el escenario termina"):
 		return
 	var server: Dictionary = scenario["server"]

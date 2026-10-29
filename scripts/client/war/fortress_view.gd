@@ -391,8 +391,7 @@ func _bind_node(fortress: Fortress) -> void:
 		var candidate: Node3D = node as Node3D
 		if candidate == null or (restrict_to_zone and not _zone.is_ancestor_of(candidate)):
 			continue
-		var definition: FortressDefinition = _load_definition(
-				String(candidate.get_meta(DEFINITION_META, "")))
+		var definition: FortressDefinition = _definition_from_meta(candidate)
 		if definition != null and String(definition.id) == fortress.definition_id:
 			fortress.node = candidate
 			return
@@ -415,8 +414,7 @@ func _find_banners(root: Node) -> Array[MeshInstance3D]:
 # id en la carpeta de datos; si tampoco está, una por defecto.
 func _definition_for(fortress: Fortress) -> FortressDefinition:
 	if fortress.node != null:
-		var from_scene: FortressDefinition = _load_definition(
-				String(fortress.node.get_meta(DEFINITION_META, "")))
+		var from_scene: FortressDefinition = _definition_from_meta(fortress.node)
 		if from_scene != null:
 			return from_scene
 	_scan_definitions()
@@ -426,6 +424,19 @@ func _definition_for(fortress: Fortress) -> FortressDefinition:
 	var fallback := FortressDefinition.new()
 	fallback.id = StringName(fortress.definition_id)
 	return fallback
+
+
+# La definición que lleva el nodo en el metadato: la propia [FortressDefinition] (las escenas de
+# prueba) o la ruta de su .tres (el generador del Vado Gris), como en el servidor.
+func _definition_from_meta(node: Node) -> FortressDefinition:
+	var value: Variant = node.get_meta(DEFINITION_META, null)
+	if value is FortressDefinition:
+		var definition: FortressDefinition = value as FortressDefinition
+		_definitions_by_id[String(definition.id)] = definition
+		return definition
+	if value is String or value is StringName:
+		return _load_definition(String(value))
+	return null
 
 
 func _load_definition(path: String) -> FortressDefinition:
