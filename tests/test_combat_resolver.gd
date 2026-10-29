@@ -100,6 +100,17 @@ func _set_view_offset(attacker: Combatant, view_offset_q: int, tick: int = S) ->
 	attacker.queue.take(tick)
 
 
+## Graba a la víctima (net_id 2) bloqueando de frente en los ticks S - 30 a [param last_block] y sin
+## bloquear en los siguientes hasta S - 1, y al atacante quieto.
+func _record_block_until(last_block: int) -> void:
+	for tick: int in range(S - 30, S):
+		_history.record(tick, 1, Vector3.ZERO, 0.0, EntityRecord.FLAG_GROUNDED)
+		var flags: int = EntityRecord.FLAG_GROUNDED
+		if tick <= last_block:
+			flags |= ActionMachine.DEFENSE_BLOCKING
+		_history.record(tick, 2, Vector3(0.0, 0.0, -1.5), PI_YAW, flags)
+
+
 func _outcomes(hits: Array[CombatResolver.Hit]) -> Array[int]:
 	var result: Array[int] = []
 	for hit: CombatResolver.Hit in hits:
@@ -307,6 +318,65 @@ func test_a_dodge_started_after_view_tick_also_drops_the_old_block() -> void:
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT)
+
+
+## C2/R3: un control impuesto después de view_tick (aturdimiento, tambaleo) también baja el escudo: la
+## muestra rebobinada de bloqueo ya no protege (ni castiga) a quien está aturdido o tambaleándose.
+func test_a_defender_stunned_after_view_tick_loses_the_old_block() -> void:
+	var peer: ServerPeer = _lagged_peer()
+	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
+	var victim: Combatant = _fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
+	CombatFixture.start_light_active(attacker, S)
+	_set_view_offset(attacker, 10 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	# Bloqueaba hasta S - 8; en S - 7 le rompieron la guardia (aturdido hasta S + 53, sin resistencia).
+	_record_block_until(S - 8)
+	var state: CombatState = victim.get_character().combat
+	state.stamina = 0
+	ActionMachine.impose_stun(state, S - 7, S + 53)
+	var hits: Array[CombatResolver.Hit] = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT,
+				"aturdido en s: la muestra de hace 10 ticks no cuenta")
+
+
+func test_a_defender_staggered_after_view_tick_loses_the_old_block() -> void:
+	var peer: ServerPeer = _lagged_peer()
+	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
+	var victim: Combatant = _fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
+	CombatFixture.start_light_active(attacker, S)
+	_set_view_offset(attacker, 10 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	# Bloqueaba hasta S - 9, empezó un ligero en S - 8 y un golpe lo dejó tambaleándose en S - 5.
+	_record_block_until(S - 9)
+	var state: CombatState = victim.get_character().combat
+	state.action = CombatState.Action.LIGHT
+	state.action_id = CombatCatalog.attack_id(&"sword_light_1")
+	state.action_tick = S - 8
+	ActionMachine.impose_stagger(state, S - 5, S + 13, Vector2.ZERO)
+	var hits: Array[CombatResolver.Hit] = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT,
+				"tambaleándose en s: no está protegido por su bloqueo de hace 10 ticks")
+
+
+func test_a_defender_that_only_released_the_shield_keeps_the_old_block() -> void:
+	# Control de C2: soltar el escudo sin hacer nada más (NONE en s) conserva la muestra de view_tick.
+	var peer: ServerPeer = _lagged_peer()
+	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
+	var victim: Combatant = _fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
+	CombatFixture.start_light_active(attacker, S)
+	_set_view_offset(attacker, 10 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	_record_block_until(S - 8)
+	CombatFixture.start_block(victim, S - 30)
+	victim.get_character().combat.action = CombatState.Action.NONE
+	var hits: Array[CombatResolver.Hit] = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.BLOCKED,
+				"soltó el escudo hace 7 ticks: lo que veía el atacante sigue valiendo")
+	# Y si sigue bloqueando de verdad, también (el aturdimiento se cura al acabar).
+	CombatFixture.start_block(victim, S - 30)
+	hits = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.BLOCKED)
 
 
 # --- Un impacto por acción ---------------------------------------------------------------------

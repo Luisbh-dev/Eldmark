@@ -348,9 +348,14 @@ Para cada atacante en golpe activo en `s`:
      sin daño, tambaleo de `parry_stagger_s` al atacante. Consume el golpe.
    - **Bloqueo**: bloqueando en la muestra de `view_tick` o en la de `s`, con el cono: mitigación y
      gasto de resistencia. Consume el golpe.
-   - La muestra de `view_tick` solo cuenta para parada y bloqueo si el defensor **no** ha empezado
-     después una acción ofensiva o una esquiva (`action_tick > view_tick` con LIGHT, HEAVY,
-     CHARGE o DODGE en `s`): quien suelta el escudo para atacar deja de estar protegido.
+   - La muestra de `view_tick` solo cuenta para parada y bloqueo si el defensor **no** ha bajado el
+     escudo después: su acción en `s` es distinta de BLOCK y NONE y tiene `action_tick > view_tick`
+     (LIGHT, HEAVY, CHARGE y DODGE propios, pero también STAGGER, STUN o DEAD impuestos). Quien
+     suelta el escudo para atacar, o a quien se lo quitan con un control, deja de estar protegido;
+     quien lo suelta sin más (NONE conserva el `action_tick` del bloqueo) conserva lo que el
+     atacante veía. Sin esto, un aturdido que bloqueaba hace 20 ticks «bloqueaba» el ligero de un
+     segundo atacante con rebobinado: con 0 de resistencia eso es una rotura de guardia que le
+     alargaba el aturdimiento.
    - Si nada aplica: **impacto**.
 
 `StateHistory` añade a sus banderas por tick: bit 3 bloqueando, bit 4 ventana de parada, bit 5

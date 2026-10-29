@@ -31,8 +31,8 @@ extends RefCounted
 ## [code][floor(view_tick), s][/code] (sin efecto, [b]no consume[/b] el golpe), parada, bloqueo e
 ## impacto. La parada y el bloqueo se miran en la muestra de [code]view_tick[/code] y en la de
 ## [code]s[/code], con el atacante dentro del cono frontal del defensor; la de [code]view_tick[/code]
-## no cuenta si el defensor ha empezado después un ataque o una esquiva: quien suelta el escudo para
-## atacar deja de estar protegido.
+## no cuenta si el defensor ha empezado después un ataque, una esquiva o un control (tambaleo,
+## aturdimiento): quien suelta el escudo para atacar, o a quien se lo quitan, deja de estar protegido.
 ## [br][br]
 ## Un impacto, un bloqueo o una parada consumen el ataque para ese objetivo.
 
@@ -239,9 +239,9 @@ func _defense(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_
 		return Outcome.IMPACT
 	var attacker_position: Vector3 = attacker.frozen.position
 	var cone: float = weapon.block_angle_deg
-	# La muestra de view_tick solo cuenta si el defensor no ha empezado después un ataque o una
-	# esquiva.
-	var old_counts: bool = view_tick < float(s) and not _started_offense_after(victim_frame,
+	# La muestra de view_tick solo cuenta si el defensor no ha bajado el escudo después: ni por un
+	# ataque o una esquiva propios ni porque le hayan impuesto un control.
+	var old_counts: bool = view_tick < float(s) and not _dropped_guard_after(victim_frame,
 			view_tick)
 	# Parada (solo contra golpes cuerpo a cuerpo: todos los de la fase 3).
 	if _defends(victim_frame, sample, old_counts, ActionMachine.DEFENSE_PARRY, cone,
@@ -265,15 +265,15 @@ func _defends(victim_frame: Combatant.Frozen, sample: StateHistory.Sample, old_c
 			sample.yaw, attacker_position, cone)
 
 
-# true si el defensor empezó (después de view_tick) un ataque, una carga o una esquiva.
-static func _started_offense_after(victim_frame: Combatant.Frozen, view_tick: float) -> bool:
+# true si el defensor, después de view_tick, empezó una acción que baja el escudo: un ataque, una carga
+# o una esquiva suyos, o un control que le han impuesto (tambaleo, aturdimiento, muerte). Soltar el
+# escudo sin hacer nada más (NONE, que conserva el action_tick del bloqueo) o seguir bloqueando no
+# cuenta: ahí la muestra de view_tick sigue siendo lo que el atacante veía.
+static func _dropped_guard_after(victim_frame: Combatant.Frozen, view_tick: float) -> bool:
 	if float(victim_frame.action_tick) <= view_tick:
 		return false
-	match victim_frame.action:
-		CombatState.Action.LIGHT, CombatState.Action.HEAVY, CombatState.Action.CHARGE, \
-				CombatState.Action.DODGE:
-			return true
-	return false
+	return victim_frame.action != CombatState.Action.NONE \
+			and victim_frame.action != CombatState.Action.BLOCK
 
 
 # true si el objetivo fue invulnerable en algún tick de [floor(view_tick), s].
