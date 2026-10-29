@@ -43,6 +43,7 @@ static func ensure_defaults() -> void:
 
 	# Depuración.
 	_ensure_key(&"toggle_debug", KEY_F3)
+	_ensure_key(&"toggle_net_ghost", KEY_F4)
 
 
 static func _ensure_key(action: StringName, physical_keycode: Key) -> void:

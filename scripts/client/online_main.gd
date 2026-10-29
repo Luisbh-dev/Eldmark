@@ -44,6 +44,7 @@ extends Node
 
 const CAMERA_RIG_SCENE_PATH: String = "res://scenes/client/camera_rig.tscn"
 const HUD_SCENE_PATH: String = "res://scenes/ui/hud.tscn"
+const NET_DEBUG_SCENE_PATH: String = "res://scenes/ui/net_debug_overlay.tscn"
 const WINDOW_TITLE: String = "Eldmark"
 ## Fotogramas por segundo máximos en headless (sección 1.3).
 const MAX_FPS: int = 120
@@ -89,6 +90,7 @@ var _entities: Node3D = null
 var _world: Node3D = null
 var _camera_rig: CameraRig = null
 var _hud: HUD = null
+var _net_debug: NetDebugOverlay = null
 var _brain: BotBrain = null
 var _loading_path: String = ""
 var _zone_id: String = ""
@@ -145,6 +147,11 @@ func get_camera_rig() -> CameraRig:
 ## HUD (null en modo bot o antes de aparecer).
 func get_hud() -> HUD:
 	return _hud
+
+
+## Depuración de red, F3 y F4 (null en modo bot o antes de aparecer).
+func get_net_debug() -> NetDebugOverlay:
+	return _net_debug
 
 
 ## Pantalla de elección de reino (null si nunca se ha mostrado).
@@ -452,6 +459,14 @@ func _on_local_spawned(character: PlayerCharacter) -> void:
 	if _hud != null:
 		add_child(_hud)
 		_hud.bind(character, _camera_rig)
+		# En red, el panel de depuración del HUD empieza oculto: F3 lo alterna junto con el de red.
+		_hud.set_debug_visible(false)
+
+	# Depuración de red (F3 y F4). No marca F3 como gestionado: el HUD lo recibe también.
+	_net_debug = _instantiate_scene(NET_DEBUG_SCENE_PATH, NetDebugOverlay) as NetDebugOverlay
+	if _net_debug != null:
+		add_child(_net_debug)
+		_net_debug.bind(_client)
 
 
 # --- Elección de reino ------------------------------------------------------------------------
@@ -526,10 +541,11 @@ func _return_to_realm_select(notice: String) -> void:
 		return
 	_loading_path = ""
 	set_process(false)
-	for node: Node in [_hud, _camera_rig, _world]:
+	for node: Node in [_net_debug, _hud, _camera_rig, _world]:
 		if is_instance_valid(node):
 			node.get_parent().remove_child(node)
 			node.free()
+	_net_debug = null
 	_hud = null
 	_camera_rig = null
 	_world = null

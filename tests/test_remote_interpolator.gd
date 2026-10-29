@@ -47,6 +47,23 @@ func test_lerp_between_two_samples() -> void:
 	assert_eq(middle.net_id, NET_ID, "conserva el identificador de red")
 
 
+func test_sample_positions_are_the_raw_stored_samples_oldest_first() -> void:
+	var interpolator := RemoteInterpolator.new()
+	assert_eq(interpolator.get_sample_positions().size(), 0, "sin muestras, ninguna posición")
+	# Llegan desordenadas: se guardan por tick y las posiciones salen de la más antigua a la más nueva.
+	interpolator.push(14, _record(Vector3(14.0, 0.0, 0.0)))
+	interpolator.push(10, _record(Vector3(10.0, 1.0, 0.0)))
+	interpolator.push(12, _record(Vector3(12.0, 2.0, 0.0)))
+	assert_eq(interpolator.get_sample_positions(), PackedVector3Array([
+		Vector3(10.0, 1.0, 0.0), Vector3(12.0, 2.0, 0.0), Vector3(14.0, 0.0, 0.0),
+	]), "sin interpolar, tal como llegaron")
+	for tick: int in range(20, 20 + RemoteInterpolator.BUFFER_SIZE):
+		interpolator.push(tick, _record(Vector3(float(tick), 0.0, 0.0)))
+	var positions: PackedVector3Array = interpolator.get_sample_positions()
+	assert_eq(positions.size(), RemoteInterpolator.BUFFER_SIZE, "como mucho BUFFER_SIZE")
+	assert_eq(positions[positions.size() - 1].x, float(20 + RemoteInterpolator.BUFFER_SIZE - 1))
+
+
 func test_interpolates_between_the_right_pair_of_samples() -> void:
 	var interpolator := RemoteInterpolator.new()
 	for tick: int in [10, 12, 14, 16]:

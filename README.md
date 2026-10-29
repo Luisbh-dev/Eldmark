@@ -98,7 +98,8 @@ Opciones de arranque (van después de `--`):
   headless se omiten.
 - `--quit-after-demo`: cierra el juego al terminar la demo.
 - `--server`: servidor dedicado de una zona (ver «Servidor dedicado» más abajo).
-- `--connect=<host>[:<puerto>]` y `--bot`: cliente en red (ver «Cliente en red» más abajo).
+- `--connect=<host>[:<puerto>]`, `--local` y `--bot`: cliente en red (ver «Cliente en red» más
+  abajo).
 
 Las capturas y otros ficheros temporales pueden ir en `build/`, que Godot ignora.
 
@@ -148,16 +149,56 @@ godot --headless --path . -- --bot --connect=127.0.0.1:24600 --bot-seed=3 \
 ```
 
 Opciones (después de `--`): `--connect=<host>[:<puerto>]`, `--port=<puerto>` (gana al de
-`--connect`), `--realm=<reino>` (sin él entra como Vardheim, con un aviso: la pantalla de elección
-de reino llega con TEC-45), `--name=<nombre>` (por defecto `Jugador-NNNN`), `--bot`,
-`--bot-seed=N`, `--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1`, `--quit-after-ticks=N` (ticks de
-física locales desde que arranca la sesión, contando la conexión y la carga de la zona; los últimos
-ticks el bot se queda quieto), `--report=<ruta.json>` (coincidencias exactas, diferencias
-explicadas y sin explicar, reinicios y resincronizaciones, ajustes de TickSync y estado final) y
+`--connect`), `--realm=<reino>` (sin él, un cliente con ventana muestra la pantalla de elección de
+reino; un bot o un cliente sin ventana entra como Vardheim, con un aviso), `--name=<nombre>` (por
+defecto «Jugador» y cuatro letras al azar), `--local`, `--bot`, `--bot-seed=N`,
+`--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1`, `--quit-after-ticks=N` (ticks de física locales
+desde que arranca la sesión, contando la conexión y la carga de la zona; los últimos ticks el bot se
+queda quieto), `--report=<ruta.json>` (coincidencias exactas, diferencias explicadas y sin
+explicar, reinicios y resincronizaciones, ajustes de TickSync y estado final) y
 `--state-log=<ruta.csv>` (`server_tick,predicho,servidor` en hexadecimal por snapshot). Con
 `--quit-after-ticks` el código de salida es 0 si el bot llegó a jugar y salió por su pie, y 1 si
-fue rechazado, se desconectó o no llegó a entrar en la zona. `--local` y `--bots=N` todavía no
-existen: avisan y cierran con código 1.
+fue rechazado, se desconectó o no llegó a entrar en la zona. `--bots=N` todavía no existe: avisa y
+cierra con código 1.
+
+### Todo en uno: `--local`
+
+```bash
+godot --path . -- --local --realm=vardheim --name=Ana
+```
+
+`--local` no necesita un servidor arrancado: lee `user://dev_server.json` (`{pid, port}`, lo
+escribe un servidor lanzado con `--dev-lock`) y, si ese proceso sigue vivo, se conecta a él. Si no,
+lanza el servidor como proceso aparte (`--headless --server --port=24600 --idle-quit=30
+--dev-lock`, con su registro en `user://logs/dev_server.log`) y reintenta conectar durante 10 s con
+un tiempo de espera corto de ENet (1 s). Así varias ventanas lanzadas con `--local` comparten el
+mismo servidor. El servidor se cierra solo tras 30 s sin jugadores, y el cliente nunca lo cierra:
+si el cliente se cae, el servidor no queda huérfano. `--zone=<id>`, `--debug-commands`,
+`--fake-players=N` y `--max-players=N` se reenvían al servidor que se lanza (si ya había uno en
+marcha, se usa tal cual). `--port=<puerto>` elige el puerto del servidor que se lanza.
+
+### Elegir reino (`RealmSelect`)
+
+Un cliente con ventana que arranca sin `--realm` abre la pantalla de elección: tres botones
+(Vardheim, Solmarch, Askarra; los que la zona no admite salen desactivados), los campos de
+dirección del servidor (`host` o `host:puerto`; en `--local` no se edita) y de nombre del personaje,
+y «Entrar». El nombre se valida con las reglas de nombres (de 3 a 16 letras, sin espacios ni
+números, empezando por mayúscula) y el motivo se muestra junto al campo antes de conectar; mientras
+algo no valga, «Entrar» queda desactivado. Tras un rechazo del servidor, un fallo de conexión o una
+desconexión se vuelve a esta pantalla, con el motivo como aviso, y se puede reintentar sin cerrar el
+juego.
+
+### Depuración de red (F3 y F4)
+
+En el cliente en red, **F3** muestra y oculta a la vez el panel de depuración del HUD (a la izquierda,
+el mismo del sandbox) y el panel de red (a la derecha); los dos empiezan ocultos. El panel de red
+enseña: RTT de ENet (sin el simulador de red) y en ticks, pérdida de ENet, KB/s de subida y de
+bajada, `input_margin` (último y mínimo de la ventana de TickSync) y margen objetivo, ajustes de
+TickSync, sustituciones y correcciones (con su tasa por minuto cuando hay 10 s de historia), última y
+máxima corrección, ticks vueltos a simular, retardo de interpolación, jitter, entidades visibles y
+bytes medios por snapshot. **F4** enciende un fantasma translúcido en la posición del último estado
+propio que mandó el servidor y una marca en cada muestra, sin interpolar, de los jugadores remotos.
+El sandbox sin argumentos no cambia: F3 sigue alternando solo su panel, que empieza visible.
 
 ## Estructura
 
@@ -168,7 +209,7 @@ scenes/        Escenas de Godot (.tscn)
   boot.tscn    Escena principal: lee las opciones de arranque
   characters/  Personajes (PlayerCharacter) y su aspecto visual (solo cliente)
   client/      Raíces del cliente (sandbox y red) y cámara de acción
-  ui/          Interfaz (HUD)
+  ui/          Interfaz (HUD, elección de reino, depuración de red)
   world/       Zonas (zones/) y sus piezas (props/), y el circuito de pruebas
 scripts/
   client/      Solo cliente: cámara, input, interfaz, visual y animación del personaje

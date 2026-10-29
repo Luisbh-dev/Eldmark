@@ -157,6 +157,11 @@ func get_drawn_position() -> Vector3:
 	return _drawn_position
 
 
+## Posición de cada muestra guardada del remoto, sin interpolar (para marcarlas en la depuración).
+func get_sample_positions() -> PackedVector3Array:
+	return _interpolator.get_sample_positions()
+
+
 ## true si el registro del tick [param tick] pertenece a esta vista: no es anterior al alta ni
 ## posterior (o igual) a la baja programada.
 func accepts_tick(tick: int) -> bool:

@@ -164,6 +164,11 @@ $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Mi
 No se detecta un servidor intentando `bind` en el puerto: en Windows, la reutilización de
 direcciones UDP lo hace poco fiable.
 
+`OS.is_process_running(pid)` solo conoce los procesos que lanzó el propio proceso: en Linux y macOS,
+con el pid de otra ventana registra un error del motor y devuelve `false`. `LocalServerLauncher`
+usa `/proc/<pid>/stat` (o `kill -0`) fuera de Windows. Cada intento de conexión fallido es una
+sesión nueva en `OnlineMain` (`NetClient.connect_timeout_ms` fija el tiempo de espera corto).
+
 **Desde el editor:** *Depurar ▸ Personalizar instancias de ejecución*.
 
 - Instancia 1: `--headless -- --server --debug-commands`.
@@ -1201,6 +1206,9 @@ El hueco ya existe en HELLO y la interfaz `AuthProvider` ya está.
   - retardo de interpolación, jitter, entidades visibles y bytes medios por snapshot.
 - **F4:** fantasma translúcido en la posición del último estado propio del servidor y marcas en
   las muestras sin interpolar de los remotos.
+- **Junto al HUD.** En el cliente en red, F3 alterna a la vez este panel (a la derecha) y el panel de
+  depuración del HUD del sandbox (a la izquierda): `OnlineMain` los empieza ocultos y el overlay no
+  marca el evento como gestionado. El sandbox sin argumentos no cambia.
 
 **Servidor:**
 

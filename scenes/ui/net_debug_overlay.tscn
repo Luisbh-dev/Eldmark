@@ -1,0 +1,42 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/client/net_debug_overlay.gd" id="1_ndbg"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+content_margin_left = 10.0
+content_margin_top = 8.0
+content_margin_right = 10.0
+content_margin_bottom = 8.0
+bg_color = Color(0.05, 0.06, 0.08, 0.7)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="SystemFont" id="SystemFont_mono"]
+font_names = PackedStringArray("Consolas", "Cascadia Mono", "DejaVu Sans Mono", "Menlo", "Monospace")
+
+[node name="NetDebugOverlay" type="CanvasLayer"]
+layer = 10
+script = ExtResource("1_ndbg")
+
+[node name="Panel" type="PanelContainer" parent="."]
+visible = false
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -16.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = 40.0
+grow_horizontal = 0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="Label" type="Label" parent="Panel"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.92, 0.94, 0.96, 1)
+theme_override_fonts/font = SubResource("SystemFont_mono")
+theme_override_font_sizes/font_size = 15
+text = "RED"

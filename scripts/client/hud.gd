@@ -57,6 +57,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
+## Muestra u oculta el panel de depuración sin esperar a F3. El cliente en red lo empieza oculto y
+## F3 lo alterna junto con [NetDebugOverlay].
+func set_debug_visible(visible_now: bool) -> void:
+	_debug_panel.visible = visible_now
+	if visible_now:
+		_debug_refresh_left = 0.0
+		_refresh_debug_text()
+
+
 ## El punto de mira solo tiene sentido mientras el ratón controla la cámara.
 func _update_crosshair() -> void:
 	var cursor_free: bool = is_instance_valid(_camera_rig) and _camera_rig.is_cursor_free()

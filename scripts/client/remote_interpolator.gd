@@ -92,6 +92,16 @@ func get_sample_count() -> int:
 	return _ticks.size()
 
 
+## Posición de cada muestra guardada, tal como llegó (sin interpolar), de la más antigua a la más
+## nueva. La usa la depuración de red para marcar las muestras.
+func get_sample_positions() -> PackedVector3Array:
+	var positions := PackedVector3Array()
+	positions.resize(_records.size())
+	for i: int in _records.size():
+		positions[i] = _records[i].position
+	return positions
+
+
 ## Descarta todas las muestras.
 func clear() -> void:
 	_ticks.clear()
