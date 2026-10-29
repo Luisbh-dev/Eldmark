@@ -593,3 +593,40 @@ static func can_damage(attacker_realm: int, victim_realm: int, zone_id: StringNa
   usan sustitutos y se anota.
 - **Ancho de banda**: +34 B de estado, +9 B de bloque y +1 B por registro por snapshot (~2,7 KB/s
   más al tope) y 52 registros por snapshot en vez de 57.
+
+---
+
+## 11. Cambios durante la implementación
+
+Huecos del documento que se cerraron al implementar (K1a, K1b, K2):
+
+- **`combat_flags`**: además de los bits 0–2, bit 3 DODGE, bit 4 BLOCK y bit 5 PRIMARY guardan
+  si el botón estaba pulsado en el tick anterior; así los flancos no dependen de `prev_buttons` y
+  un control impuesto con el botón mantenido no crea un ataque fantasma. El bit 1 dura un tick.
+- **Búfer**: tipo 3 = enlace de combo (la pulsación en la ventana de enlace espera al fin de la
+  recuperación; 4 bits no bastaban para 9 + 8 ticks). Una sola ranura; la pulsación del tick `p`
+  vale en `p+1 … p+8`; la esquiva guardada usa `move`/`look_yaw` del tick en que se ejecuta; una
+  esquiva rechazada por resistencia se descarta.
+- **Conversión a carga**: «ligero empezado por esta pulsación» = `action_tick ≥ t − primary_held
+  + 1`. Mantener PRIMARY desde la ventana de enlace convierte el siguiente ligero en carga.
+- **Movimiento en acciones**: velocidad objetivo literal `wish · run_speed · move_scale (+ avance)`
+  sin los multiplicadores de retroceso, lateral ni esprint (campo extra `scaled_movement` en
+  `Output`). BLOCK se deja al dejar de pulsar o en el aire. La ventana de parada exige además que
+  el BLOCK sea el que la abrió.
+- **`action_byte`**: NONE, BLOCK y DODGE llevan fase 3 («sin fases»), así que NONE vale `0x30`;
+  quien lea la acción usa `byte & 15`.
+- **IDs**: orden alfabético; `sword_heavy` = 1, `sword_light_1..3` = 2..4. Se piden por nombre
+  (`CombatCatalog.attack_id()`, `WeaponTicks.light_ids/heavy_id`).
+- **`reset_for_respawn(c, tick)`** sin `rules` (las saca del catálogo).
+- **`DamageFormula.compute`** recibe los campos sueltos (`base_damage, charge_ticks,
+  charge_min_ticks, charge_max_ticks, charge_damage_scale, critical, blocked, block_mitigation,
+  block_stamina_per_damage, defender_stamina, armor, crit_multiplier`). El bloqueo no distingue el
+  daño elemental: `is_physical()` deja que el servidor decida.
+- **`HitShapes.has_line_of_sight(space, pies_atacante, pies_víctima)`** suma las alturas (1,4 y
+  0,9 m); `is_ray_clear` para puntos ya calculados.
+- **`FactionRules`**: un código de reino desconocido ni daña ni recibe daño; los Huecos son
+  hostiles a los reinos en cualquier zona, no entre sí.
+- **Bloque extra**: va siempre que va el estado propio (bit 0 ⇔ bit 3). Hasta que exista
+  `Combatant`, `NetEntity.set_health_view()` anuncia 1000/1000.
+- **Coste medido** de `simulate()` (microbanco, un mundo): sin acción +4–5 µs respecto a la fase 2
+  (16,9 µs quieto, 37,9 µs corriendo); bloqueando 48 µs; combate mixto 44 µs.
