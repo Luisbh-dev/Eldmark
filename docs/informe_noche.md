@@ -13,7 +13,7 @@ a150b78) tiene el chat y los grupos **sin revisar ni fusionar**.
 | Backlog (`docs/backlog.md`) | `main` | Hecho y subido |
 | Fase 2: red | `fase2-red` | Implementada (594 pruebas en verde, CI de GitHub en verde); revisión adversarial hecha y sus 19 hallazgos corregidos, cada uno con su prueba (656 pruebas en verde) |
 | Fase 3: combate | `fase3-combate` (desde `fase2-red`, que está fusionada dentro) | Diseño revisado (`docs/combate.md`); K1–K5 y el carril de audio, tema, ajustes, documento social y exportación integrados; revisión adversarial hecha y sus 18 hallazgos corregidos con prueba (1262 pruebas en verde) |
-| Fase 4: fuerte | `fase4-fuerte` (desde `fase3-combate`) | Diseño v2 revisado (`docs/fuerte.md`); F0 a F5 y F6a integrados (escena, fortaleza pura, protocolo 4, servidor del fuerte, PNJ, cliente, bots de asedio, equilibrio de reinos, carga). Suite completa en verde con F4 (1687 pruebas); con F6a, ver «Cierre». Diseño de habilidades revisado (`docs/habilidades.md`), sin implementar. Falta F6b, las habilidades (H1–H5) y la revisión adversarial de la fase 4 |
+| Fase 4: fuerte | `fase4-fuerte` (desde `fase3-combate`) | Diseño v2 revisado (`docs/fuerte.md`); F0 a F5 y F6a integrados (escena, fortaleza pura, protocolo 4, servidor del fuerte, PNJ, cliente, bots de asedio, equilibrio de reinos, carga). Suite completa en verde con F4 y F6a (1747 pruebas). Diseño de habilidades revisado (`docs/habilidades.md`), sin implementar. Falta F6b, las habilidades (H1–H5) y la revisión adversarial de la fase 4 |
 | Fase 4: chat y grupos | `fase4-chat-grupos` (desde `fase4-fuerte` a150b78) | SOC-03 a SOC-08 implementados (protocolo 5, `ChatRouter`, caja de chat, `PartyManager`, marcos de grupo, menú social), con su suite; **sin la revisión adversarial y sin fusionar** (la sesión se cerró durante la revisión) |
 | Fase 5: diseño | `fase5-cuentas` (desde `fase4-fuerte`) | `docs/plataforma.md` y `docs/progresion.md` escritos y revisados por tres lentes cada uno (45 y 41 hallazgos); **falta conciliarlos entre sí** (cada uno lista en su sección de interfaz lo que pide al otro). Sin código |
 
@@ -348,7 +348,7 @@ habían dejado; nada se ha perdido salvo F6b, que aún no tenía commits.
    - En esta máquina hay Go 1.24 y PostgreSQL 16. Las pruebas del servicio usan un `initdb` efímero
      con `runuser -u postgres`, comprobado.
 
-**Suite completa de `fase4-fuerte` tras F6a**: en marcha al cerrar (las 617 primeras, sin fallos).
+**Suite completa de `fase4-fuerte` tras F6a** (commit 4bb0eab, los posteriores son solo documentos): **1747 pruebas, todas correctas** (1046 s).
 
 Lo que tiene que decidir el usuario está en «Decisiones abiertas» al final.
 
