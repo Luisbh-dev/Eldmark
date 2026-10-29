@@ -27,8 +27,12 @@ extends Node
 ## [constant IDLE_TAIL_TICKS] ticks (un cuarto como mucho) el bot se queda quieto, para que las
 ## pruebas de convergencia comparen estados estacionarios.
 ## [br][br]
-## [b]Elección de reino.[/b] TODO(TEC-45): aquí irá [code]RealmSelect[/code]. Mientras no exista, si
-## falta [code]--realm[/code] se usa Vardheim y se avisa.
+## [b]Elección de reino.[/b] Si un cliente con ventana arranca sin [code]--realm[/code] se muestra
+## [RealmSelect] (reino, dirección y nombre, validados antes de conectar). También se vuelve a ella,
+## con el motivo como aviso, tras un rechazo, un fallo de conexión o una desconexión: la zona, la
+## cámara, el HUD y la sesión de red se quitan y «Entrar» empieza una sesión nueva. Un bot o un
+## cliente sin pantalla (headless) no tiene a quién preguntar: entra como Vardheim con un aviso, y en
+## un fallo escribe el informe y cierra con código 1.
 ## [br][br]
 ## [b]Modo LOCAL[/b] ([code]--local[/code], sección 1.4): antes de conectar, si
 ## [code]user://dev_server.json[/code] describe un servidor vivo se usa su puerto; si no, se lanza uno
@@ -57,6 +61,9 @@ const BOT_RADIUS: float = 30.0
 const LEAVE_WAIT_TICKS: int = 30
 ## Ancho (píxeles de la ventana base) de la columna de texto de la pantalla de carga.
 const OVERLAY_WIDTH: float = 900.0
+const REALM_SELECT_SCENE_PATH: String = "res://scenes/ui/realm_select.tscn"
+## Capas de la pantalla de elección de reino (por debajo de la de carga, que es la 100).
+const REALM_SELECT_LAYER: int = 90
 
 ## Configuración del cliente. La rellena [code]boot.gd[/code]; si es null al arrancar, se lee de los
 ## argumentos de usuario.
@@ -67,6 +74,10 @@ static var quit_hook: Callable = Callable()
 ## Solo para pruebas: archivo de bloqueo del servidor local que se consulta en modo LOCAL (así una
 ## prueba no toca el [constant LocalServerLauncher.LOCK_PATH] real).
 static var lock_path: String = LocalServerLauncher.LOCK_PATH
+## Solo para pruebas: el cliente se comporta como uno con ventana aunque sea headless: muestra
+## [RealmSelect] si falta el reino y vuelve a ella tras un fallo (en headless, sin esto, entra como
+## Vardheim y un fallo cierra el proceso con código 1).
+static var force_interactive: bool = false
 
 var _transport: NetTransport = null
 var _client: NetClient = null
@@ -84,6 +95,9 @@ var _zone_id: String = ""
 var _overlay_layer: CanvasLayer = null
 var _overlay_label: Label = null
 var _overlay_button: Button = null
+var _realm_layer: CanvasLayer = null
+var _realm_select: RealmSelect = null
+var _returning_to_menu: bool = false
 var _idle_set: bool = false
 var _finishing: bool = false
 var _leave_wait_ticks: int = 0
@@ -98,17 +112,18 @@ func _ready() -> void:
 	_apply_settings()
 	for warning: String in config.warnings:
 		push_warning("[Eldmark] %s" % warning)
-	if config.realm == NetProtocol.Realm.NONE:
-		# TODO(TEC-45): aquí se mostrará RealmSelect (tres botones, dirección y «Entrar»).
-		push_warning("[Eldmark] Falta --realm=<reino>: se entra como %s"
-				% NetProtocol.realm_display_name(DEFAULT_REALM))
-		config.realm = DEFAULT_REALM
 	set_process(false)
 	set_physics_process(config.quit_after_ticks > 0)
 	if not _is_bot():
 		InputBindings.ensure_defaults()
 		_create_overlay()
-
+	if config.realm == NetProtocol.Realm.NONE:
+		if _is_interactive():
+			_show_realm_select("")
+			return
+		push_warning("[Eldmark] Falta --realm=<reino>: se entra como %s"
+				% NetProtocol.realm_display_name(DEFAULT_REALM))
+		config.realm = DEFAULT_REALM
 	_begin_session()
 
 
@@ -130,6 +145,11 @@ func get_camera_rig() -> CameraRig:
 ## HUD (null en modo bot o antes de aparecer).
 func get_hud() -> HUD:
 	return _hud
+
+
+## Pantalla de elección de reino (null si nunca se ha mostrado).
+func get_realm_select() -> RealmSelect:
+	return _realm_select
 
 
 ## Cerebro del bot (null si no es un bot o aún no ha aparecido).
@@ -350,7 +370,7 @@ func _enter_zone(path: String) -> void:
 	_show_status("Entrando en %s…" % _zone_id)
 	for _i: int in WARMUP_PHYSICS_FRAMES:
 		await get_tree().physics_frame
-	if _client.get_state() != NetClient.State.WELCOMED:
+	if not is_instance_valid(_client) or _client.get_state() != NetClient.State.WELCOMED:
 		return
 	print("[Eldmark] Zona '%s' lista" % _zone_id)
 	_client.notify_zone_ready(_entities)
@@ -434,6 +454,94 @@ func _on_local_spawned(character: PlayerCharacter) -> void:
 		_hud.bind(character, _camera_rig)
 
 
+# --- Elección de reino ------------------------------------------------------------------------
+
+# true si hay alguien delante que pueda elegir: no es un bot y hay pantalla (o es una prueba).
+func _is_interactive() -> bool:
+	return not _is_bot() and (force_interactive or DisplayServer.get_name() != "headless")
+
+
+# Muestra RealmSelect con el aviso [param notice] (vacío = ninguno). Sin sesión de red: antes se
+# quita lo que hubiera.
+func _show_realm_select(notice: String) -> void:
+	_hide_overlay()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if _realm_select == null:
+		var scene: PackedScene = load(REALM_SELECT_SCENE_PATH) as PackedScene
+		_realm_select = scene.instantiate() as RealmSelect if scene != null else null
+		if _realm_select == null:
+			push_error("[Eldmark] No se pudo cargar la escena %s" % REALM_SELECT_SCENE_PATH)
+			_show_message(notice if not notice.is_empty() else "No se pudo mostrar la elección de reino")
+			return
+		_realm_layer = CanvasLayer.new()
+		_realm_layer.name = "RealmSelectLayer"
+		_realm_layer.layer = REALM_SELECT_LAYER
+		add_child(_realm_layer)
+		_realm_layer.add_child(_realm_select)
+		_realm_select.realm_chosen.connect(_on_realm_chosen)
+		_realm_select.quit_requested.connect(_on_quit_requested)
+	# El reino que se puede elegir depende de la zona; antes de conectar solo se conoce la que se
+	# pide con --zone o, si no, la de por defecto (el servidor rechaza lo que no admita).
+	var zone_id: String = NetZones.parse_zone_arg(OS.get_cmdline_user_args())
+	if zone_id.is_empty():
+		zone_id = NetZones.default_zone_id()
+	_realm_select.setup(_address_text(), config.display_name, NetZones.allowed_realms(zone_id))
+	_realm_select.set_address_editable(not _is_local())
+	_realm_select.select_realm(config.realm)
+	_realm_select.set_notice(notice)
+	_realm_layer.visible = true
+	_returning_to_menu = false
+
+
+# Dirección de config como se escribe en el campo: «host» o «host:puerto» (IPv6 entre corchetes).
+func _address_text() -> String:
+	var host: String = "[%s]" % config.address if config.address.contains(":") else config.address
+	return host if config.port == NetProtocol.DEFAULT_PORT else "%s:%d" % [host, config.port]
+
+
+func _on_realm_chosen(realm: int, address: String, display_name: String) -> void:
+	if not _is_local():
+		var parsed: Dictionary = ClientConfig.parse_address(address)
+		if not String(parsed["error"]).is_empty():
+			_realm_select.set_notice(String(parsed["error"]))
+			return
+		config.address = parsed["host"]
+		config.port = int(parsed["port"]) if int(parsed["port"]) > 0 else NetProtocol.DEFAULT_PORT
+	config.realm = realm
+	config.display_name = display_name
+	_realm_layer.visible = false
+	_begin_session()
+
+
+func _on_quit_requested() -> void:
+	if quit_hook.is_valid():
+		quit_hook.call(0)
+		return
+	get_tree().quit(0)
+
+
+# Vuelve a la elección de reino tras un fallo: quita la zona, la cámara, el HUD y la sesión de red.
+func _return_to_realm_select(notice: String) -> void:
+	if _quitting:
+		return
+	_loading_path = ""
+	set_process(false)
+	for node: Node in [_hud, _camera_rig, _world]:
+		if is_instance_valid(node):
+			node.get_parent().remove_child(node)
+			node.free()
+	_hud = null
+	_camera_rig = null
+	_world = null
+	_free_session_nodes()
+	_brain = null
+	_idle_set = false
+	_finishing = false
+	_leave_wait_ticks = 0
+	_was_welcomed = false
+	_show_realm_select(notice)
+
+
 # --- Cierre -----------------------------------------------------------------------------------
 
 # Fin normal de un cliente con --quit-after-ticks: informe, salida de la zona y cierre.
@@ -452,19 +560,19 @@ func _finish_session() -> void:
 
 
 # Fallo de conexión o carga. En modo bot (o sin pantalla) se escribe el informe y se cierra con
-# código 1; con pantalla se muestra el aviso con un botón para salir.
-# TODO(TEC-45): volver a RealmSelect en lugar de quedarse en este aviso.
+# código 1; con pantalla se vuelve a la elección de reino con el motivo como aviso.
 func _fail(text: String) -> void:
 	printerr("[Eldmark] %s" % text)
-	_exit_code = 1
-	if _is_bot() or DisplayServer.get_name() == "headless":
+	if not _is_interactive():
+		_exit_code = 1
 		_write_report()
 		_quit(1)
 		return
-	if _camera_rig != null:
-		_camera_rig.process_mode = Node.PROCESS_MODE_DISABLED
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	_show_message(text)
+	if _returning_to_menu:
+		return
+	_returning_to_menu = true
+	# Casi siempre se llama desde una señal del cliente, que no se puede liberar en ese momento.
+	_return_to_realm_select.call_deferred(text)
 
 
 func _quit(code: int) -> void:
