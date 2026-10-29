@@ -1650,8 +1650,13 @@ todas las copias del proyecto.
 
 ### Arquitectura (`test_architecture`, ampliado)
 
-- `scripts/shared/` (también `net/`, de forma recursiva) mantiene sus reglas: nada de `Time.get_`,
-  `Input`, UI ni clases del cliente.
+- `scripts/shared/` (también `net/`, de forma recursiva) y `scripts/world/` (lo que carga el
+  servidor) mantienen sus reglas: nada de `Time.get_`, `Input`, UI ni clases del cliente, ni
+  contadores de fotogramas (`Engine.get_physics_frames`), ni aleatoriedad global (`randf()`,
+  `Array.pick_random()`, `shuffle()`, `rng.randomize()`), y todo `RandomNumberGenerator` se crea con
+  su semilla.
+- Las escenas que carga el servidor (las de zona, `player_character.tscn` y `server_main.tscn`) no
+  arrastran scripts del cliente, animaciones ni visuales de personaje.
 - `scripts/server/` no referencia rutas ni clases de `scripts/client/`.
 - `scripts/client/` no referencia rutas ni clases de `scripts/server/`. `LocalServerLauncher`
   solo lanza un proceso.
