@@ -38,12 +38,23 @@ extends CanvasLayer
 ## [br][br]
 ## [b]Menú social (SOC-07).[/b] La tecla [code]social_menu[/code] abre el [SocialMenu] sobre el aliado al que apunta la
 ## retícula a 20 m o menos y a la vista ([method open_social_menu]): invitar al grupo y susurrar.
+## [br][br]
+## [b]Habilidades (fase 4, docs/habilidades.md, sección 6).[/b] Encima de la vida, la fila de efectos propios
+## ([StatusIcons] con el [StatusTracker] del jugador local, contra el tick del servidor estimado) y, encima, la
+## [ActionBar] (también en el sandbox: lee el estado predicho). Arriba, los avisos de derribado
+## ([DownedNotice]); en la pantalla de muerte, el selector de plantilla, que manda el LOADOUT_SELECT. Tensando
+## el arco, la cámara cierra el campo de visión ([method CameraRig.set_aim_zoom]) y la retícula se cierra
+## con la carga ([method Crosshair.set_tension]).
 
 ## Cada cuánto se refresca el texto del panel de depuración, en segundos.
 ## Refrescarlo cada frame hace que las cifras parpadeen y sean ilegibles.
 const DEBUG_REFRESH_INTERVAL: float = 0.1
 ## Opacidad a la que se atenúa la interfaz de juego con la pantalla de muerte abierta.
 const DEAD_DIM_ALPHA: float = 0.3
+## Posición (px desde abajo, anclada al centro) de la barra de acciones y de la fila de efectos propios,
+## por encima de la vida y la resistencia ([code]Vitals[/code] empieza a 118 px del borde).
+const ACTION_BAR_RECT: Rect2 = Rect2(-320.0, -240.0, 640.0, 56.0)
+const STATUS_ROW_RECT: Rect2 = Rect2(-200.0, -172.0, 400.0, 30.0)
 ## Aviso del menú social (SOC-07) cuando no hay a quién ofrecérselo. Es el único: un enemigo, un muerto, un jugador
 ## falso o alguien tras una pared dan el mismo que no apuntar a nadie, para no delatar lo que no se ve.
 const TEXT_NO_SOCIAL_TARGET: String = "Apunta a un jugador de tu reino (a 20 m o menos) para ver sus acciones."
@@ -81,6 +92,10 @@ var _party_hud: PartyHud = null
 var _social_menu: SocialMenu = null
 # Lo que enseña ahora la lista de reaparición de la pantalla de muerte (para saber si cambió).
 var _death_signature: String = ""
+# Fase 4: barra de acciones, efectos propios y avisos de derribado (los crea _ready, también en el sandbox).
+var _action_bar: ActionBar = null
+var _status_row: StatusIcons = null
+var _downed_notice: DownedNotice = null
 
 @onready var _nameplates: Nameplates = $Nameplates
 @onready var _crosshair: Crosshair = $Crosshair
@@ -108,6 +123,8 @@ func _ready() -> void:
 	_death.opened.connect(_hint_respawn_map)
 	_death.opened.connect(_on_death_opened)
 	_death.closed.connect(_on_death_closed)
+	_death.get_template_selector().template_chosen.connect(_on_template_chosen)
+	_setup_ability_hud()
 	_update_crosshair()
 	_refresh_debug_text()
 
@@ -127,8 +144,16 @@ func bind(character: PlayerCharacter, camera_rig: CameraRig) -> void:
 	if is_node_ready():
 		_vitals.set_health_visible(_client != null)
 		_setup_feedback()
+		_action_bar.bind(character)
 		_update_crosshair()
 		_refresh_debug_text()
+
+
+## Conecta la barra de acciones con el controlador del personaje local: una pulsación a destiempo hace
+## parpadear su casilla (en red lo hace [method bind_net] con el del cliente).
+func bind_controller(controller: LocalPlayerController) -> void:
+	if is_node_ready():
+		_action_bar.bind(_character, controller)
 
 
 ## Conecta el HUD con el cliente de red [param client] (la vida y los eventos de combate) y con la
@@ -142,6 +167,11 @@ func bind_net(client: NetClient, world: Node) -> void:
 		_vitals.set_health_visible(true)
 		_setup_feedback()
 		_nameplates.setup(_client.get_remote_world(), _camera_rig, _client.get_config().realm)
+		_nameplates.set_client(_client)
+		_action_bar.bind(_character, _client.get_controller())
+		_downed_notice.set_own_id(_client.get_net_id())
+		if not _client.combat_event.is_connected(_on_combat_event):
+			_client.combat_event.connect(_on_combat_event)
 		_setup_war_hud()
 		_setup_world_map()
 		_setup_scoreboard()
@@ -157,6 +187,7 @@ func _process(delta: float) -> void:
 	_update_death()
 	_update_crosshair()
 	_update_vitals()
+	_update_ability_hud()
 	if is_instance_valid(_camera_rig):
 		_indicator.set_camera_yaw(_camera_rig.get_yaw())
 	if not _debug_panel.visible:
@@ -173,6 +204,7 @@ func _physics_process(_delta: float) -> void:
 	if is_instance_valid(_character) and (_character.combat.combat_flags
 			& CombatState.FLAG_NO_STAMINA) != 0:
 		_vitals.notify_no_stamina()
+		_action_bar.notify_no_stamina()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -283,6 +315,21 @@ func open_social_menu() -> bool:
 	return true
 
 
+## Barra de acciones (UI-11).
+func get_action_bar() -> ActionBar:
+	return _action_bar
+
+
+## Fila de efectos propios sobre la vida (UI-45).
+func get_status_row() -> StatusIcons:
+	return _status_row
+
+
+## Avisos de derribado.
+func get_downed_notice() -> DownedNotice:
+	return _downed_notice
+
+
 ## Reparto de la sensación de combate (null hasta [method bind]).
 func get_feedback() -> CombatFeedback:
 	return _feedback
@@ -391,6 +438,96 @@ func _setup_social_menu() -> void:
 	_social_menu.setup(_client, _chat, _camera_rig)
 
 
+# --- Habilidades (fase 4) ------------------------------------------------------------------------
+
+# Crea la barra de acciones, la fila de efectos propios y los avisos de derribado, por debajo de la pantalla
+# de muerte.
+func _setup_ability_hud() -> void:
+	_action_bar = ActionBar.new()
+	_place_bottom(_action_bar, ACTION_BAR_RECT)
+	_status_row = StatusIcons.new()
+	_status_row.name = "EfectosPropios"
+	_place_bottom(_status_row, STATUS_ROW_RECT)
+	_downed_notice = DownedNotice.new()
+	_downed_notice.name_of = _entity_name
+	add_child(_downed_notice)
+	move_child(_downed_notice, _death.get_index())
+	_downed_notice.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	if is_instance_valid(_character):
+		_action_bar.bind(_character)
+
+
+# Añade [param control] anclado abajo al centro con el rectángulo [param rect] (offsets desde ese ancla),
+# justo por debajo de la pantalla de muerte.
+func _place_bottom(control: Control, rect: Rect2) -> void:
+	add_child(control)
+	move_child(control, _death.get_index())
+	control.anchor_left = 0.5
+	control.anchor_right = 0.5
+	control.anchor_top = 1.0
+	control.anchor_bottom = 1.0
+	control.offset_left = rect.position.x
+	control.offset_right = rect.position.x + rect.size.x
+	control.offset_top = rect.position.y
+	control.offset_bottom = rect.position.y + rect.size.y
+	control.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	control.grow_vertical = Control.GROW_DIRECTION_BEGIN
+
+
+# Cada fotograma: efectos propios, avisos de derribado y la puntería del arco.
+func _update_ability_hud() -> void:
+	var online: bool = is_instance_valid(_client)
+	var server_tick: int = _client.get_estimated_server_tick() if online else 0
+	var tracker: StatusTracker = _client.get_status_tracker(_client.get_net_id()) if online else null
+	_status_row.show_tracker(tracker, server_tick)
+	if online:
+		var downed: bool = _client.is_downed() and not _is_dead_now()
+		var target: int = 0
+		if not downed and not _client.is_dead() and is_instance_valid(_character) \
+				and _client.get_config() != null:
+			target = DownedNotice.find_downed_ally(_client.get_remote_world(),
+					_character.global_position if _character.is_inside_tree() else _character.position,
+					_client.get_config().realm)
+		_downed_notice.update_view(downed, _client.get_health() if downed else 0, server_tick, target)
+	_update_bow_aim()
+
+
+# Tensando el arco: la cámara cierra el campo de visión al llegar a la carga mínima y la retícula se
+# cierra con la carga (docs/habilidades.md, sección 6.5). En cualquier otra acción, nada.
+func _update_bow_aim() -> void:
+	var zoom: float = 0.0
+	var tension: float = 0.0
+	if is_instance_valid(_character):
+		var combat: CombatState = _character.combat
+		var weapon: WeaponTicks = CombatCatalog.weapon(combat.weapon_id)
+		if combat.action == CombatState.Action.CHARGE and ActionBar.is_ranged(weapon):
+			var heavy: AttackTicks = CombatCatalog.attack(weapon.heavy_id)
+			var held: int = _character.last_input_tick - combat.action_tick
+			zoom = clampf(float(held) / float(maxi(heavy.charge_min_ticks, 1)), 0.0, 1.0)
+			tension = ProjectileLaunch.charge_progress(held, heavy.charge_min_ticks, heavy.charge_max_ticks)
+	_crosshair.set_tension(tension)
+	if is_instance_valid(_camera_rig):
+		_camera_rig.set_aim_zoom(zoom)
+
+
+# Eventos de combate ya temporizados del cliente: levantar, rematar y derribos van a los avisos.
+func _on_combat_event(event: NetMessages.EntityEvent, _is_own: bool) -> void:
+	_downed_notice.set_own_id(_client.get_net_id() if is_instance_valid(_client) else 0)
+	_downed_notice.handle_event(event)
+
+
+# Plantilla elegida en la pantalla de muerte: vale para esta reaparición.
+func _on_template_chosen(template_id: int) -> void:
+	if is_instance_valid(_client):
+		_client.send_loadout_select(template_id)
+
+
+func _entity_name(net_id: int) -> String:
+	if is_instance_valid(_client) and _client.get_directory().knows(net_id):
+		return _client.get_directory().name_of(net_id)
+	return _feedback.get_entity_name(net_id) if _feedback != null else ""
+
+
 # --- Vida y resistencia -----------------------------------------------------------------------
 
 func _update_vitals() -> void:
@@ -469,6 +606,9 @@ func _open_death_screen() -> void:
 	var own_id: int = _client.get_net_id()
 	_death.set_point_indices(RespawnPointList.option_indices(options, own_id))
 	_death_signature = _options_signature(options, own_id)
+	# La plantilla marcada es la que se pidió la última vez (o la de por defecto).
+	if _client.get_config() != null:
+		_death.get_template_selector().select(_client.get_config().get_loadout_template_id())
 
 
 # Las opciones de reaparición que valen ahora para el jugador: su campamento y un fuerte suyo en calma
@@ -566,7 +706,8 @@ func _on_respawn_requested(point_index: int) -> void:
 func _set_dimmed(dim: bool) -> void:
 	_dimmed = dim
 	var alpha: float = DEAD_DIM_ALPHA if dim else 1.0
-	for item: CanvasItem in [_vitals, _crosshair, _hint, _numbers, _marker, _indicator, _nameplates]:
+	for item: CanvasItem in [_vitals, _crosshair, _hint, _numbers, _marker, _indicator, _nameplates,
+			_action_bar, _status_row]:
 		item.modulate.a = alpha
 	if is_instance_valid(_war_hud):
 		_war_hud.modulate.a = alpha

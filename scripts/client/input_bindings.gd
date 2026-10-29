@@ -33,6 +33,10 @@ static func ensure_defaults() -> void:
 	_ensure_key(&"ability_2", KEY_2)
 	_ensure_key(&"ability_3", KEY_3)
 	_ensure_key(&"interact", KEY_E)
+	# Fase 4 (docs/habilidades.md, sección 0, «Teclas nuevas»): cambiar de arma y las dos pociones.
+	_ensure_key(&"swap_weapon", KEY_Q)
+	_ensure_key(&"consumable_1", KEY_R)
+	_ensure_key(&"consumable_2", KEY_T)
 
 	# Cámara y cursor.
 	_ensure_key(&"free_cursor", KEY_ALT)
@@ -54,7 +58,9 @@ static func ensure_defaults() -> void:
 	_ensure_keys(&"chat_open", [KEY_ENTER, KEY_KP_ENTER])
 	_ensure_key(&"party_accept", KEY_Y)
 	_ensure_key(&"party_decline", KEY_N)
-	_ensure_key(&"social_menu", KEY_T)
+	# Menú de jugador (SOC-07). Era T, provisional: T es la poción de resistencia desde la fase 4
+	# (docs/habilidades.md, sección 0, y sección 11.4).
+	_ensure_key(&"social_menu", KEY_G)
 
 
 static func _ensure_key(action: StringName, physical_keycode: Key) -> void:

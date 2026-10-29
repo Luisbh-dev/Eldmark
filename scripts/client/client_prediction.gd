@@ -19,8 +19,17 @@ extends RefCounted
 ## ese tick (docs/fuerte.md, sección 3.2), para que cliente y servidor simulen cada tick con el mismo
 ## mundo aunque la reconciliación repita ticks pasados.
 ## [br][br]
+## [b]Pasos dados.[/b] [signal stepped] sale tras [b]cada[/b] [method step] (un tick de física puede dar 0,
+## 1, 2 o más pasos), nunca en las repeticiones de la reconciliación ni en el avance neutro de
+## [method start]. Es donde [ProjectileWorld] mira el compromiso de un disparo y crea la flecha predicha
+## (docs/habilidades.md, sección 6.2): mirarlo una vez por tick de física perdería los pasos de en medio.
+## [br][br]
 ## Todo lo que simula debe llamarse dentro del tick de física y con
 ## [code]delta = 1 / Engine.physics_ticks_per_second[/code] ([method PlayerCharacter.simulate]).
+
+## Se ha dado un paso de predicción: [param input] es la entrada del tick [param tick] y [param state] el
+## estado resultante (el guardado en el anillo: no se debe modificar). Solo en [method step].
+signal stepped(tick: int, input: PlayerInput, state: PlayerState)
 
 ## Qué hizo [method on_server_state] con el estado recibido.
 enum Result {
@@ -142,8 +151,10 @@ func step() -> PlayerInput:
 	var input: PlayerInput = _controller.build_input(tick)
 	_notify_before_simulate(tick)
 	_character.simulate(input, _dt)
-	_store(tick, input, _character.get_state())
+	var state: PlayerState = _character.get_state()
+	_store(tick, input, state)
 	_predicted_tick = tick
+	stepped.emit(tick, input, state)
 	return input
 
 

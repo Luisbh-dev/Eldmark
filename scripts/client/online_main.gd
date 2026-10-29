@@ -524,6 +524,7 @@ func _show_realm_select(notice: String) -> void:
 	_realm_select.set_address_editable(not _is_local())
 	_realm_select.set_realm_counts(_last_realm_counts)
 	_realm_select.set_rejected_realm(_imbalanced_realm)
+	_realm_select.set_selected_template(config.get_loadout_template_id())
 	if _imbalanced_realm == NetProtocol.Realm.NONE:
 		_realm_select.select_realm(config.realm)
 	else:
@@ -550,6 +551,12 @@ func _on_realm_chosen(realm: int, address: String, display_name: String) -> void
 		config.port = int(parsed["port"]) if int(parsed["port"]) > 0 else NetProtocol.DEFAULT_PORT
 	config.realm = realm
 	config.display_name = display_name
+	# La plantilla elegida sale en un LOADOUT_SELECT nada más llegar el WELCOME (NetClient); la de por
+	# defecto no hace falta pedirla.
+	var template_id: int = _realm_select.get_selected_template()
+	var template: EquipmentTemplate = CombatCatalog.template(template_id)
+	config.loadout = String(template.id) \
+			if template != null and template_id != CombatCatalog.default_template_id() else ""
 	_realm_layer.visible = false
 	_begin_session()
 

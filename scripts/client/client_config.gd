@@ -8,7 +8,7 @@ extends RefCounted
 ## --connect=<host>[:<puerto>]  --local  --bot  --bots=N  --realm=<reino>  --name=<nombre>
 ## --port=<puerto>  --net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1  --bot-seed=N
 ## --bot-cheat=<modo>  --bot-brain=<wander|combat|siege>  --quit-after-ticks=N  --report=<ruta.json>
-## --state-log=<ruta.csv>  --dev-lock-path=<ruta.json>
+## --state-log=<ruta.csv>  --dev-lock-path=<ruta.json>  --loadout=<plantilla>
 ## [/codeblock]
 ## [br]El modo ([enum Mode]) sale de ellos con esta prioridad: [code]--bots[/code] ([constant SWARM])
 ## > [code]--bot[/code] ([constant BOT]) > [code]--local[/code] ([constant LOCAL]) >
@@ -69,6 +69,11 @@ var state_log_path: String = ""
 ## [constant LocalServerLauncher.LOCK_PATH] ([code]--dev-lock-path=<ruta>[/code]); se reenvía al
 ## servidor que se lanza. Vacío = el de siempre. Lo usan las pruebas de procesos.
 var dev_lock_path: String = ""
+## Plantilla de equipo para la siguiente aparición ([code]--loadout=<plantilla>[/code], el
+## [member EquipmentTemplate.id] de una que se pueda elegir, como [code]marksman[/code]; docs/habilidades.md,
+## sección 4.6): [NetClient] la manda en un LOADOUT_SELECT nada más llegar el WELCOME. Vacía = la de por
+## defecto (no se manda nada). La cambian también la elección de reino y la pantalla de muerte.
+var loadout: String = ""
 ## Avisos para el usuario sobre argumentos de red que no se han podido interpretar.
 var warnings: PackedStringArray = PackedStringArray()
 
@@ -102,6 +107,13 @@ static func from_args(args: PackedStringArray) -> ClientConfig:
 	config.report_path = _clean_path(_string_option(args, "--report="))
 	config.state_log_path = _clean_path(_string_option(args, "--state-log="))
 	config.dev_lock_path = _clean_path(_string_option(args, "--dev-lock-path="))
+	var loadout_text: String = _string_option(args, "--loadout=").to_lower()
+	if not loadout_text.is_empty():
+		if is_selectable_template(loadout_text):
+			config.loadout = loadout_text
+		else:
+			config.warnings.append("Plantilla de equipo desconocida '%s'; se usa la de por defecto"
+					% loadout_text)
 
 	if _has_option(args, "--realm="):
 		config.realm = NetZones.parse_realm_arg(args)
@@ -127,6 +139,21 @@ static func from_args(args: PackedStringArray) -> ClientConfig:
 ## Nombre por defecto de un jugador: «Jugador» y cuatro letras al azar (siempre válido).
 static func default_name() -> String:
 	return NameRules.default_name(randi_range(0, 456975))
+
+
+## true si [param template_name] es el [member EquipmentTemplate.id] de una plantilla del catálogo que el
+## jugador puede elegir ([member EquipmentTemplate.selectable]).
+static func is_selectable_template(template_name: String) -> bool:
+	var id: int = CombatCatalog.template_id(StringName(template_name))
+	var template: EquipmentTemplate = CombatCatalog.template(id) if id > 0 else null
+	return template != null and template.selectable
+
+
+## Id del catálogo de [member loadout] (0 si no hay o no es una plantilla que se pueda elegir).
+func get_loadout_template_id() -> int:
+	if loadout.is_empty() or not is_selectable_template(loadout):
+		return 0
+	return CombatCatalog.template_id(StringName(loadout))
 
 
 ## true si el modo conecta con un servidor (todos menos [constant OFFLINE]).

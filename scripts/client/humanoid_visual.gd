@@ -96,8 +96,11 @@ func _ready() -> void:
 		_attach_part(scene)
 	_apply_hood()
 	_apply_shadow_casting()
-	# Armas provisionales en las manos (ART-06): hasta que lleguen los modelos definitivos.
+	# Armas provisionales en las manos (ART-06): hasta que lleguen los modelos definitivos. El animador
+	# avisa del arma que se lleva (la activa del personaje o la del registro de un remoto) y se enseñan
+	# sus accesorios (fase 4: el arco o la espada y el escudo).
 	WeaponProps.install(_skeleton)
+	get_animator().weapon_shown.connect(_on_weapon_shown)
 	# Pose de combate sobre la locomoción (ART-08). Va antes que el giro de la columna, que se
 	# aplica encima.
 	var combat := CombatPoseModifier.new()
@@ -109,6 +112,10 @@ func _ready() -> void:
 	spine.name = "SpineTwist"
 	_skeleton.add_child(spine)
 	get_animator().set_spine_modifier(spine)
+
+
+func _on_weapon_shown(weapon_id: int) -> void:
+	WeaponProps.show_weapon(_skeleton, weapon_id)
 
 
 ## Esqueleto que anima todas las mallas (perfil humanoide de Godot: Hips, Head, RightHand...).

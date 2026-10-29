@@ -43,6 +43,8 @@ class FakeServer extends Node:
 	var batches: Array[Dictionary] = []
 	var debug_commands: Array[NetMessages.DebugCommand] = []
 	var chat_sends: Array[NetMessages.ChatSend] = []
+	## LOADOUT_SELECT recibidos: {template, ready_count} (CLIENT_READY recibidos hasta entonces).
+	var loadout_selects: Array[Dictionary] = []
 	var leave_received: bool = false
 	var snapshots_sent: int = 0
 	var last_newest: int = 0
@@ -148,6 +150,10 @@ class FakeServer extends Node:
 				var chat: NetMessages.ChatSend = NetMessages.ChatSend.decode(bytes)
 				if chat != null:
 					chat_sends.append(chat)
+			NetProtocol.MSG_LOADOUT_SELECT:
+				var select: NetMessages.LoadoutSelect = NetMessages.LoadoutSelect.decode(bytes)
+				if select != null:
+					loadout_selects.append({"template": select.template_id, "ready_count": ready_count})
 
 
 var _root: Node
@@ -879,3 +885,51 @@ func test_protocol_6_projectiles_go_by_kind_and_new_events_are_timed_like_combat
 	send.call(other.encode())
 	assert_true(await _wait_until(func() -> bool:
 		return _client.get_remote_world().get_view(600) != null), "el id reutilizado crea su vista")
+
+
+func test_the_chosen_template_goes_in_a_loadout_select_right_after_the_welcome() -> void:
+	await _start()
+	# La plantilla elegida antes de conectar (elección de reino o --loadout).
+	_client.get_config().loadout = "marksman"
+	assert_true(await _wait_until(_in_world))
+	await wait_physics_frames(4)
+	var marksman: int = CombatCatalog.template_id(&"marksman")
+	assert_eq(_fake.loadout_selects.size(), 1, "un LOADOUT_SELECT")
+	assert_eq(int(_fake.loadout_selects[0]["template"]), marksman, "con el id del tirador")
+	assert_eq(int(_fake.loadout_selects[0]["ready_count"]), 0, "antes del CLIENT_READY (vale ya en la carga)")
+	# Desde la pantalla de muerte: otra, que también se recuerda para la próxima conexión.
+	var squire: int = CombatCatalog.template_id(&"squire")
+	assert_true(_client.send_loadout_select(squire))
+	assert_eq(_client.get_config().loadout, "squire")
+	assert_false(_client.send_loadout_select(250), "un id que no es una plantilla no sale")
+	assert_true(await _wait_until(func() -> bool: return _fake.loadout_selects.size() == 2))
+	assert_eq(int(_fake.loadout_selects[1]["template"]), squire)
+	assert_eq(_client.get_stats()["loadout_selects"], 2)
+
+
+func test_protocol_6_own_events_explain_corrections() -> void:
+	var client := NetClient.new()
+	_root.add_child(client)
+	client._net_id = 5
+	var slowed: int = CombatCatalog.status_id(&"slowed")
+	var bleed: int = CombatCatalog.status_id(&"bleed")
+	var cases: Array[Array] = [
+		# evento, ¿explica?, texto
+		[NetMessages.EntityEvent.status(5, 100, 9, 1, slowed, 1, 280), true, "una ralentización sobre uno mismo"],
+		[NetMessages.EntityEvent.status(5, 200, 9, 1, bleed, 1, 560), false, "un sangrado no toca la simulación"],
+		[NetMessages.EntityEvent.status(7, 300, 5, 1, slowed, 1, 480), false, "ralentizar a otro no"],
+		[NetMessages.EntityEvent.downed(5, 400, 9, 0), true, "el derribo propio"],
+		[NetMessages.EntityEvent.downed(7, 500, 5, 0), false, "derribar a otro no"],
+		[NetMessages.EntityEvent.interact(7, 600, 5, 1, 780), true, "levantar a otro (el servidor empieza REVIVE)"],
+		[NetMessages.EntityEvent.interact(5, 700, 9, 4, 760), true, "que le rematen a uno"],
+		[NetMessages.EntityEvent.interact(7, 800, 9, 1, 980), false, "lo que hacen otros, no"],
+		[NetMessages.EntityEvent.loadout(5, 900, 1, 1, 0, 0x23), true, "el LOADOUT propio"],
+		[NetMessages.EntityEvent.loadout(7, 1000, 1, 1, 0, 0), false, "el ajeno no"],
+		[NetMessages.EntityEvent.hit(5, 1100, 9, 30, 0, NetMessages.EntityEvent.HIT_FLAG_INTERRUPTED, 1), true,
+				"un golpe que interrumpe"],
+	]
+	for row: Array in cases:
+		var event: NetMessages.EntityEvent = row[0]
+		client._note_imposed_state(event)
+		assert_eq(client._is_imposed_at(event.tick + 2), bool(row[1]), str(row[2]))
+	client.free()

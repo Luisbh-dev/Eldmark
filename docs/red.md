@@ -2691,6 +2691,7 @@ var bot_cheat: String = ""
 var quit_after_ticks: int = 0
 var report_path: String = ""
 var state_log_path: String = ""
+var loadout: String = ""        # v6: --loadout=<plantilla>; sale en un LOADOUT_SELECT tras el WELCOME
 static func from_args(args: PackedStringArray) -> ClientConfig
 
 # online_main.gd (+ scenes/client/online_main.tscn)
@@ -2714,6 +2715,12 @@ signal projectile_spawned(spawn: NetMessages.EntitySpawn)
 signal projectile_despawned(projectile_id: int, tick: int, reason: int)
 func start(config: ClientConfig, transport: NetTransport,
 		controller: LocalPlayerController) -> Error
+## v6 (habilidades.md 6, H4): LOADOUT_SELECT desde el WELCOME; los STATUS de cada entidad en su
+## StatusTracker; las flechas en el ProjectileWorld (que entra en la zona con el RemoteWorld).
+func send_loadout_select(template_id: int) -> bool
+func get_status_tracker(net_id: int) -> StatusTracker
+func get_projectile_world() -> ProjectileWorld
+func is_downed() -> bool
 ## Envía CLIENT_READY (solo tras peer_connected(1)). world_root recibe al personaje local
 ## y a RemoteWorld.
 func notify_zone_ready(world_root: Node3D) -> void
@@ -2734,6 +2741,8 @@ func write_report(path: String) -> Error
 
 # client_prediction.gd
 class_name ClientPrediction extends RefCounted
+## v6 (H4): tras cada step() (nunca en las repeticiones); ProjectileWorld mira ahí el compromiso.
+signal stepped(tick: int, input: PlayerInput, state: PlayerState)
 enum Result { IGNORED, MATCH, CORRECTED, HARD_RESET }
 const HISTORY_SIZE: int = 256
 const SNAP_DISTANCE: float = 3.0

@@ -393,7 +393,7 @@ func test_the_hud_opens_the_menu_on_the_player_under_the_crosshair() -> void:
 	assert_eq(hud.get_chat().get_log().get_lines().back().text, HUD.TEXT_NO_SOCIAL_TARGET, "y se dice por qué")
 	# Un aliado en el rayo: la tecla abre el menú.
 	_spawn(ALLY_ID, VARDHEIM, "Bruno", _on_the_aim_ray(10.0))
-	hud._unhandled_input(_key(KEY_T))
+	hud._unhandled_input(_key(KEY_G))
 	assert_true(menu.is_open(), "la tecla de jugador abre el menú")
 	assert_eq(menu.get_target_name(), "Bruno", "sobre Bruno")
 	# Con el menú abierto otra pulsación no hace nada (el cursor es de la ventana).

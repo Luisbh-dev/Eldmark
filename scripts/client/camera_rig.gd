@@ -48,6 +48,9 @@ const SHAKE_FREQUENCY_X: float = 61.0
 const SHAKE_FREQUENCY_Y: float = 47.0
 ## Amplitud máxima (m) de una sacudida, por muy fuerte que sea el golpe.
 const MAX_SHAKE_AMPLITUDE: float = 0.25
+## Fracción del campo de visión configurado con la puntería del arco al máximo
+## ([method set_aim_zoom] a 1; docs/habilidades.md, sección 6.5).
+const AIM_ZOOM_FOV_SCALE: float = 0.75
 
 ## Radianes de giro por píxel de movimiento del ratón.
 @export var mouse_sensitivity: float = DEFAULT_MOUSE_SENSITIVITY
@@ -80,6 +83,8 @@ const MAX_SHAKE_AMPLITUDE: float = 0.25
 @export var max_distance: float = 6.0
 ## Rapidez (1/s) con la que la distancia alcanza el zoom pedido.
 @export var zoom_sharpness: float = 12.0
+## Rapidez (1/s) con la que el campo de visión sigue a la puntería del arco ([method set_aim_zoom]).
+@export var aim_zoom_sharpness: float = 10.0
 
 @export_group("Sacudida")
 ## Si es false, [method add_shake] no mueve la cámara (opción del jugador).
@@ -146,6 +151,11 @@ var _shake_clock: float = 0.0
 var _shake_offset: Vector2 = Vector2.ZERO
 ## Desplazamiento vertical de la cámara de la escena (sin sacudida).
 var _base_v_offset: float = 0.0
+## Campo de visión vertical configurado (escena o ajustes), sin la puntería del arco.
+var _configured_fov: float = 72.0
+## Puntería del arco pedida (0 a 1) y la que se aplica ahora (la sigue con suavidad).
+var _aim_zoom_target: float = 0.0
+var _aim_zoom: float = 0.0
 
 var _exclude: Array[RID] = []
 var _query: PhysicsShapeQueryParameters3D = PhysicsShapeQueryParameters3D.new()
@@ -174,6 +184,7 @@ func _ready() -> void:
 	_zoom_distance = _zoom_target
 	_shoulder_offset = absf(_camera.h_offset)
 	_base_v_offset = _camera.v_offset
+	_configured_fov = _camera.fov
 	_shoulder_side = -1.0 if _camera.h_offset < 0.0 else 1.0
 	_shoulder_blend = _shoulder_side
 
@@ -190,6 +201,7 @@ func _process(delta: float) -> void:
 	_poll_free_cursor()
 	_update_follow(delta)
 	_zoom_distance = lerpf(_zoom_distance, _zoom_target, _smoothing(zoom_sharpness, delta))
+	_update_aim_zoom(delta)
 	_update_shake(delta)
 	_update_collision(delta)
 
@@ -278,19 +290,47 @@ func get_pitch() -> float:
 	return _pitch
 
 
-## Campo de visión vertical de la cámara, en grados.
+## Campo de visión vertical configurado, en grados (el de los ajustes: sin el cierre de la puntería del
+## arco, que lo reduce en la cámara mientras se tensa).
 func get_fov() -> float:
-	return _camera.fov
+	return _configured_fov
 
 
-## Fija el campo de visión vertical de la cámara, en grados (ajustes del jugador).
+## Fija el campo de visión vertical configurado, en grados (ajustes del jugador). La puntería del arco
+## lo cierra después sobre este valor.
 func set_fov(degrees: float) -> void:
-	_camera.fov = degrees
+	_configured_fov = degrees
+	_apply_fov()
+
+
+## Puntería del arco (docs/habilidades.md, sección 6.5): con [param amount] de 0 (nada) a 1 (tensado), el
+## campo de visión de la cámara se cierra hasta [constant AIM_ZOOM_FOV_SCALE] del configurado, con
+## suavidad ([member aim_zoom_sharpness]). No toca el brazo ni el hombro: el rayo canónico de la puntería
+## no cambia.
+func set_aim_zoom(amount: float) -> void:
+	_aim_zoom_target = clampf(amount, 0.0, 1.0)
+
+
+## Puntería del arco pedida (0 a 1, [method set_aim_zoom]).
+func get_aim_zoom() -> float:
+	return _aim_zoom_target
+
+
+## Campo de visión vertical que tiene ahora la cámara (el configurado con el cierre de la puntería).
+func get_effective_fov() -> float:
+	return _camera.fov if _camera != null else _configured_fov
 
 
 ## Hombro elegido: 1 derecho, -1 izquierdo (sin contar el cambio temporal por una pared).
 func get_chosen_shoulder() -> int:
 	return -1 if _shoulder_side < 0.0 else 1
+
+
+## Hombro por el que se mira ahora: 1 derecho, -1 izquierdo, contando el cambio temporal por una pared.
+## Es el que pone el bit [constant PlayerInput.AIM_LEFT] de las entradas (docs/habilidades.md, sección
+## 6.5).
+func get_effective_shoulder() -> int:
+	return -1 if _get_shoulder_side() < 0.0 else 1
 
 
 ## Elige el hombro por el que se mira, 1 derecho o -1 izquierdo (el valor por defecto de los
@@ -464,6 +504,26 @@ func _clamp_below_ceiling() -> void:
 
 func _is_target_airborne() -> bool:
 	return is_instance_valid(_target_body) and not _target_body.is_on_floor()
+
+
+## La puntería del arco sigue a la pedida con suavidad y cierra el campo de visión.
+func _update_aim_zoom(delta: float) -> void:
+	if is_equal_approx(_aim_zoom, _aim_zoom_target):
+		if _aim_zoom != _aim_zoom_target:
+			_aim_zoom = _aim_zoom_target
+			_apply_fov()
+		return
+	_aim_zoom = lerpf(_aim_zoom, _aim_zoom_target, _smoothing(aim_zoom_sharpness, delta))
+	if absf(_aim_zoom - _aim_zoom_target) < 0.001:
+		_aim_zoom = _aim_zoom_target
+	_apply_fov()
+
+
+## Campo de visión de la cámara: el configurado, cerrado por la puntería del arco.
+func _apply_fov() -> void:
+	if _camera == null:
+		return
+	_camera.fov = _configured_fov * lerpf(1.0, AIM_ZOOM_FOV_SCALE, _aim_zoom)
 
 
 ## Avanza la sacudida de impacto y calcula su desplazamiento de este fotograma.

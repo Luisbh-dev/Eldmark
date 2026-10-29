@@ -10,6 +10,10 @@ extends Control
 ## un jefe ([BossInfo]); las del entorno ([code]killer = 0[/code]) salen como «Bruno cayó». Las líneas en las
 ## que intervienes (matas, mueres o asistes) llevan un fondo para encontrarlas.
 ## [br][br]
+## Desde el protocolo 6 (docs/habilidades.md, sección 5.4) los DOWNED, que también van a toda la zona,
+## dejan su línea: «Ana derribó a Bruno con una flecha lastrante» ([method show_downed]); el KILL que llega
+## después (rematado o desangrado) deja la suya.
+## [br][br]
 ## Medidas, colores y duraciones provisionales. Solo cliente.
 
 ## Líneas a la vez como mucho (al llegar otra, se quita la más antigua).
@@ -23,6 +27,7 @@ const RIGHT_MARGIN: float = 16.0
 const WIDTH: float = 520.0
 const OWN_BACKGROUND: Color = Color(0.88, 0.51, 0.18, 0.28)
 const TEXT_DEFEATED: String = " derrotó a "
+const TEXT_DOWNED: String = " derribó a "
 const TEXT_FELL: String = " cayó"
 const TEXT_WITH: String = " con %s"
 const TEXT_ASSISTS: String = " (+%d)"
@@ -88,6 +93,37 @@ func show_kill(event: NetMessages.EntityEvent) -> String:
 	var text: String = "".join(parts)
 	_entries.append({"row": row, "left": LIFETIME_SECONDS, "text": text, "role": role,
 			"killer": event.killer, "victim": event.net_id, "assistants": event.assistants.size()})
+	return text
+
+
+## Muestra el derribo [param event] (un ENTITY_EVENT de tipo DOWNED). Devuelve el texto de la línea o vacío
+## si no es un DOWNED.
+func show_downed(event: NetMessages.EntityEvent) -> String:
+	if event == null or event.event != NetMessages.EntityEvent.Kind.DOWNED:
+		return ""
+	_ensure_built()
+	var attacker_name: String = _name_of(event.attacker) if event.attacker != 0 else ""
+	var victim_name: String = _name_of(event.net_id)
+	var attack_text: String = CombatText.source_label(event.attack_id)
+	if attack_text == CombatText.TEXT_UNKNOWN_ATTACK:
+		attack_text = ""
+	var parts: PackedStringArray = line_parts(attacker_name, victim_name, attack_text, 0)
+	if not attacker_name.is_empty():
+		parts[1] = TEXT_DOWNED
+	var own: int = _own_id()
+	var role: StringName = ROLE_NONE
+	if own != 0 and event.attacker == own:
+		role = ROLE_KILLER
+	elif own != 0 and event.net_id == own:
+		role = ROLE_VICTIM
+	while _entries.size() >= MAX_ENTRIES:
+		_remove_entry(0)
+	var row: PanelContainer = _make_row(parts, _color_of(event.attacker), _color_of(event.net_id),
+			role != ROLE_NONE)
+	_column.add_child(row)
+	var text: String = "".join(parts)
+	_entries.append({"row": row, "left": LIFETIME_SECONDS, "text": text, "role": role,
+			"killer": event.attacker, "victim": event.net_id, "assistants": 0})
 	return text
 
 
@@ -167,7 +203,10 @@ func get_name_color(net_id: int) -> Color:
 # --- Interno ----------------------------------------------------------------------------------
 
 func _on_combat_event(event: NetMessages.EntityEvent, _is_own: bool) -> void:
-	show_kill(event)
+	if event.event == NetMessages.EntityEvent.Kind.DOWNED:
+		show_downed(event)
+	else:
+		show_kill(event)
 
 
 func _disconnect() -> void:
