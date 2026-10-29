@@ -263,10 +263,12 @@ supuestos técnicos comprobados ejecutando Godot y Terrain3D).
 | F0 | Escena y generador del Vado Gris (ejecutado aquí): nodo de fortaleza, puerta cerrada con dos cuerpos (movimiento por capas de reino, vista en la capa de estructuras), `respawn_points`, patrullas, `NpcSpawner`; navmesh horneada (0,3 MB, celda 0,25 m, verificada: sin salida con la puerta cerrada y sin cruzar el lecho del río); rutas en `data/routes/vado_gris.tres` | Hecho |
 | F1 | `FortressState` con toda la tabla de captura, presencia, progreso en enteros, `WarEvents`, `RespawnRules`, `SiegeView` (44 pruebas de estado) | Hecho |
 | F2 | Protocolo 4: OBJECT_STATE, SPAWN de estructuras y PNJ, WAR, TELEGRAPH, /atascado, SCOREBOARD, REJECT de desequilibrio | Hecho |
-| F3 | Servidor del fuerte | En marcha (cortado por un segundo reinicio del contenedor y relanzado desde sus commits) |
-| F5 | Cliente del fuerte | En marcha (ídem) |
-| F4 | PNJ (navegación, IA, Huecos, Capitán, guarnición, Guardianes) | Pendiente |
-| F6 | Bots de asedio, carga y prueba de extremo a extremo | Pendiente |
+| F3 | Servidor del fuerte: `FortressController` (presencia, `advance`, efectos, OBJECT_STATE y WAR), la puerta como blanco (multiplicadores, capas por reino, reparación), comandos 8–11, reaparición en el fuerte, GUE-41 (salida en combate), /atascado, SCOREBOARD, KILL a toda la zona, `--battle-log` y `tools/war/summarize_battle.gd` | Hecho |
+| F5 | Cliente del fuerte: `FortressView` con el gancho `before_simulate` (la puerta igual en cliente y servidor en cada tick), HUD de captura, banners, barra de jefe, marcas de TELEGRAPH, brújula, mapa horneado (`assets/maps/vado_gris.png`), minimapa, mapa completo con la reaparición, marcador (Tab) y registro de bajas, pistas, recuento por reino en la selección | Hecho |
+| F4 | PNJ (navegación, IA, Huecos, Capitán, guarnición, Guardianes) | En marcha |
+| F6a | Bots de asedio (`SIEGE`, `SwarmBot` con rutas), `--max-realm-diff`, escenario de carga del asedio, números de batalla | En marcha |
+| F6b | Prueba de extremo a extremo neutral → Vardheim → Solmarch con los PNJ de verdad | Pendiente (tras F4) |
+| Habilidades | Diseño corto `docs/habilidades.md` (CMB-19 a 24, CMB-28, PRG-04/07/08, UI-11, UI-45) | Diseño en marcha |
 
 ## Pendiente de probar mañana con ventana
 
