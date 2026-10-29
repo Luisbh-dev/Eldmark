@@ -1714,6 +1714,23 @@ pero aquí son siempre 10.
   ayuda en una refriega, porque todos ven a todos. El p99 de 8 ms con 64 pide dejar `sim` por debajo de
   unos 3 ms: la mitad del coste actual por personaje.
 
+**Medidas de la fase 4: asedios** (`tools/load_test.gd --siege`, GUE-16, F6a). El Vado Gris con su Terrain3D, 120 s de medida con
+todos los bots ya en la puerta y el círculo del fuerte (falsos con `--fake-brain=siege` y 10 bots reales `--bot-brain=siege`, mitad de
+cada reino), en la misma máquina de 4 núcleos **con otro agente ejecutando su suite a la vez** (`uptime` de 0,9 a 1,7). Sin PNJ.
+Tick en ms, p50 / p95 / p99 / máximo del último tramo de 34 s:
+
+| Asedio | Jugadores | Tick | `sim` p50 | Bajada por cliente | Sustituidas (ventana) | Rebobinados rechazados |
+|---|---|---|---|---|---|---|
+| 32 contra 32 | 64 | 10,6 / 15,3 / 19,1 / 27,8 | 6,8 | 36,1 KB/s | 0,00 % | 0 |
+| 64 contra 64 | 128 | 14,8 / 22,0 / 26,4 / 42,8 | 12,0 | 28,5 KB/s | 50,76 % | 25 (6 sospechosos) |
+
+Los resultados completos y lo que pasa en la batalla están en [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones). Con 64 jugadores
+el criterio de 8 ms de p99 **no se cumple** (19,1 ms, con la mediana ya en 10,6), igual que en la refriega de la fase 3 (15,9 ms con 64
+combatientes en una máquina en reposo), los KB/s por cliente se cumplen (36,1 de 37) y no se sustituye ni una entrada; con 128 el
+servidor no sostiene el tiempo real (la mitad de las entradas de los clientes se sustituye y el rebobinado falla a los honrados).
+**El primer límite de jugadores por batalla en el fuerte sigue siendo 64 (32 contra 32)**. El coste de las fortalezas (la sección `war`)
+es de 0,1 ms de mediana: el cuello es `simulate()` (palanca 6).
+
 **Palancas para Eldrun, por orden,** decididas con las medidas del final de la fase 2:
 
 1. Interés por rejilla.
@@ -1953,6 +1970,9 @@ todas las copias del proyecto.
   `--fake-brain=combat` en un corro (`--fake-center`) más 10 bots reales de combate, 60 s de medida
   cada una. Mide por sección (golpes con rebobinado, eventos, snapshots) y los KB/s con los ENTITY_EVENT;
   resultados y primer límite de jugadores por batalla en 14.
+- Asedios de fuerte (GUE-16): `--siege` (o `--scenario=siege`) con 32 contra 32 y 64 contra 64, 120 s de medida con los bots ya en la
+  puerta y el círculo; los falsos llevan `--fake-brain=siege`, los bots reales `--bot-brain=siege` y el servidor abre el círculo con
+  `--run-at=<tick>:fort_kill_captain` y escribe un registro de batalla. Cifras en 14.
 
 ### Arquitectura (`test_architecture`, ampliado)
 

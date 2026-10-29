@@ -202,7 +202,10 @@ Medido con `tools/terrain/verify_vado_gris_routes.gd`: un `PlayerCharacter` real
 sin esprintar) desde un punto de aparición hasta la explanada de la puerta del fuerte. Los puntos de
 paso de cada ruta y reino son datos compartidos, `data/routes/vado_gris.tres` (`ApproachRoutes`,
 `scripts/shared/war/approach_routes.gd`), que escribe `tools/terrain/export_vado_gris_routes.gd` (las de
-Solmarch son el reflejo exacto de las de Vardheim) y que leen la verificación y los bots de asedio.
+Solmarch son el reflejo exacto de las de Vardheim; también guarda dónde están la puerta y el círculo del
+fuerte, para los bots que no cargan la zona) y que leen la verificación y los bots de asedio. Los bots de
+asedio (`BotBrain.Pattern.SIEGE`) esprintan por ellas: con esprint llegan a la puerta en unos 25 s por el
+puente y unos 37 s por el vado (docs/fuerte.md, 8.3).
 
 | Ruta | Recorrido | Vardheim | Solmarch | Diferencia |
 |---|---|---|---|---|
