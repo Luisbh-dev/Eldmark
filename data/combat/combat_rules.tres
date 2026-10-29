@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="CombatRules" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/combat/combat_rules.gd" id="1_rules"]
+
+[resource]
+script = ExtResource("1_rules")
+stamina_max = 1000
+stamina_regen_per_tick = 3
+stamina_regen_delay_s = 0.6
+exhausted_regen_per_tick = 1
+exhausted_exit_threshold = 300
+hold_to_heavy_ticks = 8
+input_buffer_ticks = 8
+parry_window_ticks = 6
+parry_cooldown_ticks = 30
+health_max = 1000
+health_regen_per_s = 20
+in_combat_s = 10.0
+respawn_s = 10.0
+respawn_protection_s = 3.0
+cc_chain_window_s = 3.0
+cc_immunity_s = 2.0
+fall_damage_threshold = 15.0
+fall_damage_per_mps = 70
+parry_stagger_s = 0.6
+guard_break_stun_s = 1.0
+backstab_angle_deg = 120.0
+crit_multiplier = 1.5

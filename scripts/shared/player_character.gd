@@ -91,6 +91,15 @@ var last_input_tick: int = 0
 var coyote_ticks: int = 0
 ## Ticks que le quedan a una pulsación de salto guardada en el búfer (0 = ninguna pendiente).
 var jump_buffer_ticks: int = 0
+## Estado de combate (docs/combate.md, sección 3): acción en curso, resistencia, controles...
+## Entra en [method get_state] y [method set_state], y [method simulate] lo avanza con
+## [method ActionMachine.step] al principio de cada tick.
+var combat: CombatState = CombatState.initial(
+		CombatCatalog.rules(), CombatCatalog.default_weapon_id())
+## Velocidad de aterrizaje (m/s, positiva hacia abajo) medida justo antes de move_and_slide() en
+## el tick en que [member grounded] pasa a true; 0 en los demás ticks. El servidor la usa para el
+## daño por caída. No viaja en el estado: es una salida de [method simulate].
+var last_landing_speed: float = 0.0
 
 # Tras set_state(), el estado interno de CharacterBody3D (suelo, normal del suelo) puede
 # corresponder a otro tick; se recalcula al principio de la siguiente simulación.
@@ -126,6 +135,10 @@ func simulate(input: PlayerInput, delta: float) -> void:
 		_resync_floor_contact()
 	var was_grounded: bool = grounded
 
+	# Máquina de acciones: ataques, bloqueo, esquiva, resistencia y controles. Decide cuánto puede
+	# moverse el personaje este tick (sin acción, el movimiento es el de siempre).
+	var action: ActionMachine.Output = ActionMachine.step(combat, input, was_grounded)
+
 	# Dirección deseada en el plano horizontal, relativa al yaw de la cámara.
 	var look_basis := Basis(Vector3.UP, input.look_yaw)
 	var forward: Vector3 = look_basis * Vector3.FORWARD
@@ -133,35 +146,63 @@ func simulate(input: PlayerInput, delta: float) -> void:
 	var wish: Vector3 = (right * input.move.x + forward * input.move.y).limit_length(1.0)
 	var wish_length: float = wish.length()
 
-	# Velocidad objetivo. El esprint solo empieza en el suelo; en el aire se conserva el impulso
-	# que se traía (ver más abajo).
-	var speed: float = run_speed
-	if input.has(PlayerInput.SPRINT) and input.move.y > 0.5 and grounded:
-		speed = sprint_speed
-	if input.move.y < 0.0:
-		speed *= backward_multiplier
-	if absf(input.move.x) > absf(input.move.y):
-		speed *= strafe_multiplier
-	var target_velocity: Vector3 = wish * speed
+	# Orientación: al moverse, el personaje gira hacia donde mira la cámara; durante una acción
+	# lo decide ella (gira aunque esté quieto, salta a la cámara en el primer tick o no gira). El
+	# yaw se asigna siempre (también parado) para que su setter reescriba la base del nodo por si
+	# algo externo tocó la rotación o la escala.
+	var new_yaw: float = yaw
+	if action.snap_yaw:
+		new_yaw = wrapf(input.look_yaw, -PI, PI)
+	elif action.turn_rate >= 0.0:
+		new_yaw = wrapf(rotate_toward(yaw, input.look_yaw, action.turn_rate * delta), -PI, PI)
+	elif wish_length > FACING_MIN_WISH:
+		new_yaw = wrapf(rotate_toward(yaw, input.look_yaw, turn_speed * delta), -PI, PI)
+	yaw = new_yaw
 
-	# Aceleración horizontal. En el suelo se usa la deceleración cuando el objetivo reduce la
-	# velocidad en la dirección actual (frenar, soltar el esprint, girar o invertir el sentido).
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
-	var rate: float = air_acceleration
-	if grounded:
-		var slowing_down: bool = horizontal.dot(target_velocity) < horizontal.length_squared()
-		rate = ground_deceleration if slowing_down else ground_acceleration
-	elif wish_length > _MIN_WISH_DIRECTION:
-		# En el aire no se frena en la dirección deseada: un salto o una caída esprintando
-		# mantienen su velocidad mientras se siga empujando hacia delante. El control aéreo
-		# solo gira el movimiento o añade velocidad hasta el objetivo.
-		var wish_direction: Vector3 = wish / wish_length
-		var carried_speed: float = horizontal.dot(wish_direction)
-		if carried_speed > target_velocity.length():
-			target_velocity = wish_direction * carried_speed
-	horizontal = horizontal.move_toward(target_velocity, rate * delta)
-	velocity.x = horizontal.x
-	velocity.z = horizontal.z
+	if action.forced_velocity:
+		# Esquiva o empuje: la velocidad horizontal la impone la acción, sin aceleración.
+		velocity.x = action.velocity.x
+		velocity.z = action.velocity.z
+	else:
+		# Velocidad objetivo. El esprint solo empieza en el suelo; en el aire se conserva el
+		# impulso que se traía (ver más abajo).
+		var target_velocity: Vector3
+		if action.scaled_movement:
+			# Dentro de una acción: carrera reducida más el avance del ataque hacia donde mira el
+			# personaje (ya girado este tick).
+			target_velocity = wish * run_speed * action.move_scale
+			if action.lunge_speed != 0.0:
+				target_velocity += (Basis(Vector3.UP, yaw) * Vector3.FORWARD) * action.lunge_speed
+		else:
+			var speed: float = run_speed
+			if action.allow_sprint and input.has(PlayerInput.SPRINT) and input.move.y > 0.5 \
+					and grounded:
+				speed = sprint_speed
+			if input.move.y < 0.0:
+				speed *= backward_multiplier
+			if absf(input.move.x) > absf(input.move.y):
+				speed *= strafe_multiplier
+			target_velocity = wish * speed
+
+		# Aceleración horizontal. En el suelo se usa la deceleración cuando el objetivo reduce la
+		# velocidad en la dirección actual (frenar, soltar el esprint, girar o invertir el
+		# sentido).
+		var rate: float = air_acceleration
+		if grounded:
+			var slowing_down: bool = horizontal.dot(target_velocity) < horizontal.length_squared()
+			rate = ground_deceleration if slowing_down else ground_acceleration
+		elif wish_length > _MIN_WISH_DIRECTION:
+			# En el aire no se frena en la dirección deseada: un salto o una caída esprintando
+			# mantienen su velocidad mientras se siga empujando hacia delante. El control aéreo
+			# solo gira el movimiento o añade velocidad hasta el objetivo.
+			var wish_direction: Vector3 = wish / wish_length
+			var carried_speed: float = horizontal.dot(wish_direction)
+			if carried_speed > target_velocity.length():
+				target_velocity = wish_direction * carried_speed
+		horizontal = horizontal.move_toward(target_velocity, rate * delta)
+		velocity.x = horizontal.x
+		velocity.z = horizontal.z
 
 	# Gravedad, con velocidad de caída limitada.
 	if not grounded:
@@ -169,30 +210,26 @@ func simulate(input: PlayerInput, delta: float) -> void:
 
 	# Salto: el flanco de subida del botón entra en el búfer y se salta si hay suelo o aún queda
 	# coyote time. Así no se pierde un salto pulsado justo antes de aterrizar ni justo después
-	# de caer por un borde, y mantener el botón no repite el salto.
+	# de caer por un borde, y mantener el botón no repite el salto. Las acciones que lo impiden
+	# (ataque, esquiva, controles) lo dejan en el búfer.
 	var just_pressed: int = input.buttons & ~prev_buttons
 	jump_buffer_ticks = maxi(jump_buffer_ticks - 1, 0)
 	if (just_pressed & PlayerInput.JUMP) != 0:
 		jump_buffer_ticks = clampi(jump_buffer_window, 1, PlayerState.MAX_JUMP_BUFFER_TICKS)
 	var jumped_now: bool = false
-	if jump_buffer_ticks > 0 and (grounded or coyote_ticks > 0):
+	if action.allow_jump and jump_buffer_ticks > 0 and (grounded or coyote_ticks > 0):
 		velocity.y = jump_velocity
 		jump_buffer_ticks = 0
 		jumped_now = true
 		if events_enabled:
 			jumped.emit()
 
-	# Orientación: al moverse, el personaje gira hacia donde mira la cámara. El yaw se asigna
-	# siempre (también parado) para que su setter reescriba la base del nodo por si algo externo
-	# tocó la rotación o la escala.
-	var new_yaw: float = yaw
-	if wish_length > FACING_MIN_WISH:
-		new_yaw = wrapf(rotate_toward(yaw, input.look_yaw, turn_speed * delta), -PI, PI)
-	yaw = new_yaw
-
+	# Velocidad de caída justo antes de que move_and_slide() la anule al aterrizar.
+	var fall_speed: float = maxf(-velocity.y, 0.0)
 	move_and_slide()
 
 	grounded = is_on_floor()
+	last_landing_speed = fall_speed if grounded and not was_grounded else 0.0
 	if grounded and not was_grounded and events_enabled:
 		landed.emit()
 	# El coyote time se recarga mientras se pisa suelo (también en el tick en el que se deja) y
@@ -203,7 +240,9 @@ func simulate(input: PlayerInput, delta: float) -> void:
 		coyote_ticks = clampi(coyote_window, 0, PlayerState.MAX_COYOTE_TICKS)
 	else:
 		coyote_ticks = maxi(coyote_ticks - 1, 0)
-	prev_buttons = input.buttons
+	# El bit de entrada sustituida no es un botón: no se guarda, para que el estado no dependa de
+	# si la entrada llegó o se repitió.
+	prev_buttons = input.buttons & ~PlayerInput.SUBSTITUTED
 	last_input_tick = input.tick
 
 
@@ -218,11 +257,12 @@ func get_state() -> PlayerState:
 	state.last_input_tick = last_input_tick
 	state.coyote_ticks = coyote_ticks
 	state.jump_buffer_ticks = jump_buffer_ticks
+	state.combat = combat.duplicate_state()
 	return state
 
 
 ## Restaura un estado de simulación (posición global, velocidad, yaw y rotación, grounded,
-## prev_buttons, last_input_tick y los contadores de salto). No llama a
+## prev_buttons, last_input_tick, los contadores de salto y el estado de combate). No llama a
 ## reset_physics_interpolation(): decide quien llama.
 func set_state(state: PlayerState) -> void:
 	yaw = state.yaw
@@ -236,6 +276,7 @@ func set_state(state: PlayerState) -> void:
 	last_input_tick = state.last_input_tick
 	coyote_ticks = state.coyote_ticks
 	jump_buffer_ticks = state.jump_buffer_ticks
+	combat.copy_from(state.combat)
 	_floor_contact_dirty = true
 
 

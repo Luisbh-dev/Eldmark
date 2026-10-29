@@ -100,7 +100,10 @@ func start(spawn_tick: int, spawn_state: PlayerState, first_real_tick: int) -> v
 	_first_real_tick = first_real_tick
 	_last_reconciled = spawn_tick - 1
 
+	# El servidor sustituye estos ticks (nunca le llega una entrada real): llevan la marca de
+	# entrada sustituida, como las suyas.
 	var neutral: PlayerInput = NetProtocol.neutral_input(0, spawn_state.yaw)
+	neutral.buttons |= PlayerInput.SUBSTITUTED
 	var events_were_enabled: bool = _character.events_enabled
 	_character.events_enabled = false
 	for tick: int in range(spawn_tick + 1, first_real_tick):
@@ -271,9 +274,10 @@ func _begin_substitution(from_tick: int) -> void:
 
 
 # La entrada guardada para el tick si su etiqueta coincide y, si no, la sustituta que aplicaría el
-# servidor (docs/red.md, 8.2): repite la última aplicada con todos sus botones y pone el movimiento a
-# 0 si han pasado más de REPEAT_MOVE_TICKS ticks desde la última real. Solo hace falta tras un
-# hard_reset (huecos en el anillo); en una reconciliación normal están todas.
+# servidor (docs/red.md, 8.2): repite la última aplicada con todos sus botones y la marca
+# PlayerInput.SUBSTITUTED, y pone el movimiento a 0 si han pasado más de REPEAT_MOVE_TICKS ticks
+# desde la última real. Solo hace falta tras un hard_reset (huecos en el anillo); en una
+# reconciliación normal están todas.
 func _input_or_substitute(tick: int) -> PlayerInput:
 	var stored: PlayerInput = get_input(tick)
 	if stored != null:
@@ -282,6 +286,7 @@ func _input_or_substitute(tick: int) -> PlayerInput:
 		return stored
 	var input: PlayerInput = _sub_last_applied.duplicate_input()
 	input.tick = tick
+	input.buttons |= PlayerInput.SUBSTITUTED
 	if tick - _sub_last_real_tick > NetProtocol.REPEAT_MOVE_TICKS:
 		input.move = Vector2.ZERO
 	_sub_last_applied = input

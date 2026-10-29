@@ -13,6 +13,11 @@ extends RefCounted
 ## [member PlayerCharacter.prev_buttons] ya lo contiene. Tras
 ## [constant NetProtocol.REPEAT_MOVE_TICKS] ticks sin entradas reales el movimiento pasa a 0 (un
 ## cliente que se ha ido en silencio se queda quieto) y los botones se conservan.
+## [br][br]
+## [b]La sustituta lleva [constant PlayerInput.SUBSTITUTED].[/b] La máquina de acciones del combate
+## (docs/combate.md, sección 3.2) lo respeta: una entrada repetida no cuenta pulsación mantenida,
+## no convierte un ligero en carga, no lanza el fuerte al llegar a la carga máxima y no abre
+## ventanas de parada, de modo que ninguna pérdida de paquetes inventa un fuerte o una parada.
 
 ## Resultado de [method push].
 enum PushResult {
@@ -118,9 +123,9 @@ func push(input: PlayerInput, view_offset_q: int, next_tick: int) -> PushResult:
 
 
 ## La entrada que el servidor aplica en el tick [param tick]: la real si llegó y, si no, la
-## sustituta (la última aplicada con este tick, y con el movimiento a 0 tras
-## [constant NetProtocol.REPEAT_MOVE_TICKS] ticks sin entradas reales). Nunca devuelve null. Hay
-## que llamarla con ticks seguidos.
+## sustituta (la última aplicada con este tick, con el bit [constant PlayerInput.SUBSTITUTED] y con
+## el movimiento a 0 tras [constant NetProtocol.REPEAT_MOVE_TICKS] ticks sin entradas reales).
+## Nunca devuelve null. Hay que llamarla con ticks seguidos.
 func take(tick: int) -> PlayerInput:
 	var slot: Slot = _slot(tick)
 	var input: PlayerInput
@@ -131,6 +136,7 @@ func take(tick: int) -> PlayerInput:
 	else:
 		input = _last_applied.duplicate_input()
 		input.tick = tick
+		input.buttons |= PlayerInput.SUBSTITUTED
 		if tick - _last_real_tick > NetProtocol.REPEAT_MOVE_TICKS:
 			input.move = Vector2.ZERO
 		slot.set_input(tick, SlotState.SUBSTITUTED, input, -1)

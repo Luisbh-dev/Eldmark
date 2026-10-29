@@ -6,7 +6,7 @@ extends RefCounted
 ## el reloj ni depende de [code]scripts/client/[/code].
 
 ## Versión del protocolo. Cualquier cambio en los formatos o en la simulación la sube.
-const PROTOCOL_VERSION: int = 1
+const PROTOCOL_VERSION: int = 2
 ## Primeros 4 bytes de los mensajes de autenticación (los bytes «ELDM»).
 const MAGIC: int = 0x4D444C45
 const DEFAULT_PORT: int = 24600
@@ -103,7 +103,8 @@ static func is_unreliable_channel(channel: int) -> bool:
 ## versión del protocolo, los ticks de física por segundo, el nombre del motor de física, los
 ## [code]@export[/code] de [PlayerCharacter] ordenados por nombre, los valores [code]floor_*[/code]
 ## que fija su [code]_ready()[/code] y el radio, la altura y la posición de la cápsula del nodo
-## [code]Collision[/code]. Se toman los 4 primeros bytes como u32.
+## [code]Collision[/code], más la huella de la parte predicha del catálogo de combate
+## ([method CombatCatalog.prediction_hash]). Se toman los 4 primeros bytes como u32.
 ## [br][br]
 ## La instancia debe estar en el árbol (o al menos haber pasado por [code]_ready()[/code]).
 static func compute_sim_hash(character: PlayerCharacter) -> int:
@@ -135,7 +136,7 @@ static func compute_sim_hash(character: PlayerCharacter) -> int:
 	var physics_engine: String = str(ProjectSettings.get_setting("physics/3d/physics_engine", ""))
 	var summary: Array = [
 		PROTOCOL_VERSION, Engine.physics_ticks_per_second, physics_engine, exports, floor_values,
-		capsule,
+		capsule, CombatCatalog.prediction_hash(),
 	]
 	var context := HashingContext.new()
 	context.start(HashingContext.HASH_SHA256)
