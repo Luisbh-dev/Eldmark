@@ -207,12 +207,18 @@ botones. Con ese bit, la máquina de acciones:
 - no suma a `primary_held`, no convierte un ligero en carga ni lanza el fuerte al llegar a la
   carga máxima (la carga se congela hasta la siguiente entrada real; una sustituida solo
   *retrasa* la conversión, no la pierde: el bit `FLAG_LIGHT_OF_PRESS` recuerda de qué pulsación
-  es el ligero, §11);
+  es el ligero, §11). La carga congelada dura como mucho `input_buffer_ticks` tras la carga
+  máxima: pasado ese margen con el cliente aún callado, **se cancela** (a NONE, sin lanzar ni
+  gastar resistencia), de modo que un cliente que deja de enviar con la conexión viva no puede
+  guardar un fuerte al máximo para soltarlo al instante con la primera entrada real;
 - no abre ventanas de parada;
 - calcula los flancos sin el bit (`prev_buttons` nunca lo guarda).
 
-Así ninguna pérdida inventa un fuerte ni una parada. Quien se desconecta con BLOCK pulsado sigue
-bloqueando hasta el timeout de ENet (3–8 s): se acepta.
+Así ninguna pérdida inventa un fuerte ni una parada. Quien deja de enviar entradas con BLOCK
+pulsado sigue bloqueando mientras no se le expulse: con la conexión viva no hay límite de
+inactividad (el timeout de ENet solo salta si el par deja de responder a nivel de ENet, no si
+deja de mandar `INPUT_BATCH`). No da ventaja sobre un jugador honrado, que también puede
+bloquear sin límite (gasta resistencia al recibir), y se acepta.
 
 ### 3.3 Reglas por tick
 

@@ -19,7 +19,9 @@ extends RefCounted
 ## firma de [method step] no necesita [member PlayerCharacter.prev_buttons]. Una entrada
 ## sustituida ([constant PlayerInput.SUBSTITUTED]) repite los botones y por tanto no crea
 ## flancos; además no suma a [member CombatState.primary_held], no convierte un ligero en carga,
-## no lanza el fuerte al llegar a la carga máxima y no abre ventanas de parada.
+## no lanza el fuerte al llegar a la carga máxima (la carga se congela hasta
+## [member CombatRules.input_buffer_ticks] ticks más; si el silencio sigue, se cancela) y no abre
+## ventanas de parada.
 
 ## Cómo debe moverse el personaje este tick (lo aplica [method PlayerCharacter.simulate]).
 class Output:
@@ -551,6 +553,11 @@ static func _run_charge(c: CombatState, t: int, data: CombatTables, real: bool,
 	if live:
 		if real and charge >= heavy.charge_max_ticks:
 			_launch_heavy(c, t, heavy, data)
+		elif not real and charge >= heavy.charge_max_ticks + data.rules.input_buffer_ticks:
+			# El cliente lleva más del búfer de entradas callado con la carga al máximo: se cancela
+			# sin lanzar ni gastar. Si no, un cliente que deja de enviar (con la conexión viva)
+			# guardaría el fuerte cargado todo el tiempo que quisiera y lo soltaría al instante.
+			_to_none(c)
 	elif charge >= heavy.charge_min_ticks:
 		_launch_heavy(c, t, heavy, data)
 

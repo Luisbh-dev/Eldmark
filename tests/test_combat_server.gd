@@ -481,10 +481,10 @@ class LossyQueue:
 		return super.push(input, view_offset_q, next_tick)
 
 
-## Un atacante que mantiene PRIMARY 30 ticks sobre un maniquí a 2,2 m, con una cola que pierde las
-## entradas de [param lost] (ticks relativos a la pulsación). Devuelve el atacante, el maniquí y la
-## cola.
-func _hold_primary_duel(lost: Array[int]) -> Dictionary:
+## Un atacante que mantiene PRIMARY [param hold] ticks sobre un maniquí a 2,2 m, con una cola que
+## pierde las entradas de [param lost] (ticks relativos a la pulsación). Devuelve el atacante, el
+## maniquí y la cola.
+func _hold_primary_duel(lost: Array[int], hold: int = 30) -> Dictionary:
 	await _start_server()
 	var press: int = _server.get_tick() + 6
 	var attacker: int = _server.add_fake_player(_brain(func(tick: int, _position: Vector3,
@@ -492,7 +492,7 @@ func _hold_primary_duel(lost: Array[int]) -> Dictionary:
 		var input := PlayerInput.new()
 		input.tick = tick
 		input.look_yaw = 0.0
-		if tick >= press and tick < press + 30:
+		if tick >= press and tick < press + hold:
 			input.buttons = PlayerInput.PRIMARY
 		return input), VARDHEIM)
 	var dummy: int = _server.spawn_dummy(Vector3(0.0, 0.0, -2.2), PI)
@@ -531,6 +531,20 @@ func test_a_lost_input_during_the_press_still_launches_the_heavy_attack() -> voi
 		assert_eq(duel["queue"].substitutions_total, 1, "(p+%d) una entrada sustituida" % lost)
 		assert_eq(_heavy_hits_on(duel["dummy"]), 1, "(p+%d) el servidor lanza el fuerte" % lost)
 		await after_each()
+
+
+func test_a_client_that_goes_silent_while_charging_cannot_bank_a_heavy_attack() -> void:
+	# R2: el cliente carga el fuerte, deja de mandar entradas (el servidor sustituye) y suelta 190 ticks
+	# después. Antes el fuerte salía de golpe con la carga máxima; ahora la carga caducó sola.
+	var silent: Array[int] = []
+	for offset: int in range(10, 200):
+		silent.append(offset)
+	var duel: Dictionary = await _hold_primary_duel(silent, 200)
+	await wait_physics_frames(300)
+	assert_eq(duel["queue"].substitutions_total, silent.size(), "190 entradas sustituidas")
+	assert_eq(_heavy_hits_on(duel["dummy"]), 0, "ningún fuerte guardado")
+	assert_eq(_combatant(duel["attacker"]).get_character().combat.stamina, 1000,
+			"y sin gastar resistencia")
 
 
 func test_an_attack_from_five_meters_hits_nothing() -> void:

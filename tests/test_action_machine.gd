@@ -488,15 +488,52 @@ func test_substituted_inputs_freeze_the_charge() -> void:
 	d.hold(PRIMARY, 8)
 	assert_eq(d.c.action, Action.CHARGE, "cargando")
 	assert_eq(d.c.primary_held, 8, "ocho ticks reales")
-	d.hold(PRIMARY, 120, true)
-	assert_eq(d.c.action, Action.CHARGE, "120 ticks de entradas repetidas: no lanza al llegar a la máxima")
+	# Hasta la carga máxima más el búfer de entradas (72 + 8 = 80 ticks desde la pulsación: 72 ticks
+	# sustituidos tras los 8 reales) la carga se congela: las repetidas no lanzan al llegar a la máxima.
+	d.hold(PRIMARY, 72, true)
+	assert_eq(d.c.action, Action.CHARGE, "72 ticks de entradas repetidas: no lanza al llegar a la máxima")
 	assert_eq(d.c.primary_held, 8, "primary_held congelado")
 	assert_eq(d.c.charge_ticks, 0, "y no se ha lanzado nada")
 	assert_eq(d.c.stamina, 1000, "ni se ha gastado resistencia")
 	# La primera entrada real lanza con la carga máxima (no más).
 	d.step(PRIMARY)
 	assert_eq(d.c.action, Action.HEAVY, "con una entrada real, lanza")
-	assert_eq(d.c.charge_ticks, 72, "con la carga máxima, no con los 130 ticks transcurridos")
+	assert_eq(d.c.charge_ticks, 72, "con la carga máxima")
+
+
+func test_a_silent_client_cannot_keep_a_charged_heavy_attack_ready() -> void:
+	# R2: pasada la carga máxima más el búfer de entradas, las entradas sustituidas cancelan la carga
+	# (sin lanzar ni gastar resistencia); la primera entrada real tras el silencio no encuentra nada.
+	var margin: int = CombatCatalog.rules().input_buffer_ticks
+	var max_charge: int = _data.attack(_heavy_id()).charge_max_ticks
+	for release: bool in [false, true]:
+		var d := Driver.new()
+		var p: int = d.tick + 1
+		d.hold(PRIMARY, 10)
+		assert_eq(d.c.action, Action.CHARGE, "cargando")
+		while d.tick < p + max_charge + margin - 1:
+			d.step(PRIMARY, true)
+			assert_eq(d.c.action, Action.CHARGE, "tick p+%d: la carga se congela" % (d.tick - p))
+		assert_eq(d.tick, p + max_charge + margin - 1, "último tick congelado")
+		d.step(PRIMARY, true)
+		assert_eq(d.c.action, Action.NONE, "(suelta %s) pasado el margen, la carga se cancela" % release)
+		assert_eq(d.c.stamina, 1000, "sin gastar resistencia")
+		assert_eq(d.c.charge_ticks, 0, "ni dejar carga")
+		d.hold(PRIMARY, 600, true)
+		assert_eq(d.c.action, Action.NONE, "el silencio no vuelve a cargar")
+		d.step(0 if release else PRIMARY)
+		assert_eq(d.c.action, Action.NONE, "(suelta %s) la primera entrada real no lanza nada" % release)
+		assert_eq(d.c.stamina, 1000, "y la resistencia sigue llena")
+		d.hold(0 if release else PRIMARY, 100)
+		assert_eq(d.c.action, Action.NONE, "tampoco después")
+	# Con un hueco más corto que el margen, la primera real sí lanza el fuerte con la carga máxima.
+	var e := Driver.new()
+	e.hold(PRIMARY, 10)
+	e.hold(PRIMARY, max_charge + margin - 11, true)
+	assert_eq(e.c.action, Action.CHARGE, "(hueco corto) aún congelada")
+	e.step(PRIMARY)
+	assert_eq(e.c.action, Action.HEAVY, "(hueco corto) la entrada real lanza")
+	assert_eq(e.c.charge_ticks, max_charge, "con la carga máxima")
 
 
 func test_substituted_inputs_still_launch_after_a_real_release() -> void:
