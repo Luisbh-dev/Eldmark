@@ -8,7 +8,7 @@ y está siempre en la rama más reciente.
 | Trabajo | Rama | Estado |
 |---|---|---|
 | Backlog (`docs/backlog.md`) | `main` | Hecho y subido |
-| Fase 2: red | `fase2-red` | En curso: paquetes A, B y C1 integrados (310 pruebas en verde); D y C2 en marcha |
+| Fase 2: red | `fase2-red` | En curso: paquetes A, B, C y D integrados (407 pruebas en verde); E (cliente en red) en marcha |
 
 ## Entorno (Linux)
 
@@ -35,12 +35,16 @@ y está siempre en la rama más reciente.
 | A | `PlayerState.to_f32`/`equals_exact`, yaw en f32, `events_enabled`, `NetProtocol`, `NetMath`, `NetZones`, `EntityRecord`, `NetMessages`, `BotBrain` | Hecho | `test_net_messages` (42) |
 | B | `NetSim`, `NetTransport` (ENet + `SceneMultiplayer` propio, autenticación, canales, simulador) | Hecho | `test_net_sim` (22, con ENet real en 127.0.0.1) |
 | C1 | Piezas del servidor: `InputQueue`, `SnapshotBuilder`, `StateHistory`, `NetEntity(Registry)`, `ServerAuth`, `RateLimiter`, `SpawnPicker`, `ServerConfig`, `ServerMetrics`... | Hecho | 12 archivos de prueba; `test_architecture` con las reglas server/client |
-| D | `TickSync`, `InterpolationClock`, `ClientPrediction`, `CorrectionSmoother`, `RemoteInterpolator`, cambios en `LocalPlayerController` | En curso | |
-| C2 | `ZoneServer`, `ServerMain`, `--server` | En curso | |
+| D | `TickSync`, `InterpolationClock`, `ClientPrediction`, `CorrectionSmoother`, `RemoteInterpolator`, cambios en `LocalPlayerController` | Hecho | `test_tick_sync` (17), `test_interpolation_clock` (8), `test_remote_interpolator` (16), `test_prediction` (24, dos mundos de física separados) |
+| C2 | `ZoneServer`, `ServerMain`, `--server`, `--fake-players`, `--report`, `--dev-lock`, `--idle-quit` | Hecho | `test_zone_server`, `test_zone_server_net` (15, ENet real), `test_server_main` (6, procesos aparte con la zona real) |
 | E, F | Cliente en red, integración, procesos, bots y carga | Pendiente | |
 
 Incidencia: el contenedor se reinició a mitad del paquete D; su trabajo a medias se recuperó de su
-worktree y se está terminando.
+worktree y se terminó.
+
+Primera medida orientativa (C2, Linux): Vado Gris con 64 jugadores falsos, tick p50 4,4 ms, p99
+7,3 ms, máx. 11,7 ms; unos 100 µs por personaje (simulación + cerebro del bot). Se repetirá con
+bots reales al final de la fase.
 
 ## Pendiente de probar mañana con ventana
 
@@ -52,3 +56,11 @@ worktree y se está terminando.
   `NetZones.allowed_realms` devuelve vacío (todos los reinos) porque `Zones` no registra reinos por
   zona; `NetZones` añade `realm_name()` y `find_spawn_point()`; los `decode` rechazan UTF-8
   inválido sin registrar errores del motor.
+- **Reloj de interpolación (red.md §4.3)**: el pseudocódigo normativo corregía contra el tick de
+  dibujo anterior y convergía 1 tick por delante del objetivo (retardo efectivo de 3 ticks en vez
+  de 4). Corregido en el código y en red.md: primero se avanza y luego se corrige.
+- Paquete D: `ClientPrediction.get_stats()` usa las claves `matches`, `ignored`, `replays`,
+  `corrections`, `resimulated_ticks`, `last_correction`, `max_correction` y `hard_resets`; el
+  jitter por debajo de 0,001 ticks cuenta como 0.
+- Paquete C2: el `sim_hash` lo calcula `ZoneServer.start()`; un salto de más de 1,5 m en un tick
+  se registra como aviso (no error) y en el contador `physics_errors` del informe.
