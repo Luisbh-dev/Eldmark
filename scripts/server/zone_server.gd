@@ -64,6 +64,8 @@ const KICK_COOLDOWN_TICKS: int = 1800
 ## Margen (ticks) que se suma al RTT de ENet y al retardo del simulador al acotar el RTT que declara
 ## el cliente con sus acks: los snapshots salen cada 2 ticks y hay que procesarlos.
 const RTT_SLACK_TICKS: int = 3
+## Motivo del aviso por cada paquete que el transporte descarta por no ser del protocolo.
+const DISCARDED_REASON: String = "paquete ajeno al protocolo"
 ## Ticks que un peer puede estar conectado sin enviar el HELLO (1,5 s). Mucho menos que los 5 s de
 ## la autenticación de [SceneMultiplayer]: una conexión ociosa ocupa una de las plazas de ENet.
 const HELLO_TIMEOUT_TICKS: int = 90
@@ -1036,6 +1038,7 @@ func _connect_transport() -> void:
 	_transport.peer_connected.connect(_on_peer_connected)
 	_transport.peer_disconnected.connect(_on_peer_disconnected)
 	_transport.packet_received.connect(_on_packet_received)
+	_transport.packets_discarded.connect(_on_packets_discarded)
 
 
 func _disconnect_transport() -> void:
@@ -1051,6 +1054,8 @@ func _disconnect_transport() -> void:
 		_transport.peer_disconnected.disconnect(_on_peer_disconnected)
 	if _transport.packet_received.is_connected(_on_packet_received):
 		_transport.packet_received.disconnect(_on_packet_received)
+	if _transport.packets_discarded.is_connected(_on_packets_discarded):
+		_transport.packets_discarded.disconnect(_on_packets_discarded)
 
 
 # Un cliente ha conectado y empieza a autenticarse: se espera su HELLO.
@@ -1129,6 +1134,20 @@ func _on_peer_disconnected(peer_id: int) -> void:
 		_peers.erase(peer_id)
 		return
 	_mark_leaving(peer)
+
+
+# El transporte ha descartado [param count] paquetes de este peer por no ser del protocolo (SYS que no
+# es autenticación antes del HELLO; después, cualquier cosa que no sea un paquete de aplicación): un
+# cliente de verdad nunca los manda. Cada uno suma un aviso; a los 50 se le expulsa. Con más de 50
+# de golpe no hace falta contarlos todos.
+func _on_packets_discarded(peer_id: int, count: int) -> void:
+	var peer: ServerPeer = _peers.get(peer_id)
+	if peer == null or _run_state != _RunState.RUNNING or peer.state == ServerPeer.State.LEAVING:
+		return
+	for _i: int in mini(count, ServerPeer.STRIKE_LIMIT):
+		_add_strike(peer, DISCARDED_REASON)
+		if peer.state == ServerPeer.State.LEAVING:
+			return
 
 
 func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:

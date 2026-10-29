@@ -71,6 +71,12 @@ const SERVER_PEER_ID: int = 1
 ## Escala de [constant ENetPacketPeer.PEER_PACKET_LOSS] (ENET_PEER_PACKET_LOSS_SCALE).
 const PACKET_LOSS_SCALE: float = 65536.0
 
+## Paquetes de un peer que se han descartado sin entregarlos porque no son del protocolo (ver
+## [GuardedEnetPeer]): antes del HELLO, cualquier cosa que no sea autenticación; después, cualquier
+## cosa que no sea un paquete de aplicación. Solo en el servidor. Lo normal es que el dueño sume un
+## aviso por cada uno.
+signal packets_discarded(peer_id: int, count: int)
+
 # Tipos de evento pendientes de entregar a los oyentes.
 const _EVENT_AUTHENTICATING: int = 0
 const _EVENT_AUTH: int = 1
@@ -78,6 +84,7 @@ const _EVENT_CONNECTED: int = 2
 const _EVENT_DISCONNECTED: int = 3
 const _EVENT_PACKET: int = 4
 const _EVENT_CONNECTION_FAILED: int = 5
+const _EVENT_DISCARDED: int = 6
 
 
 # Suceso que el motor ha producido dentro de poll() y que se entrega al terminar.
@@ -85,6 +92,8 @@ class _Event:
 	var kind: int = 0
 	var peer_id: int = 0
 	var bytes: PackedByteArray = PackedByteArray()
+	## Solo en _EVENT_DISCARDED: cuántos paquetes.
+	var count: int = 0
 
 	func _init(p_kind: int, p_peer_id: int = 0,
 			p_bytes: PackedByteArray = PackedByteArray()) -> void:
@@ -95,6 +104,8 @@ class _Event:
 
 var _mp: SceneMultiplayer = null
 var _enet: ENetMultiplayerPeer = null
+# Filtro de paquetes entre ENet y SceneMultiplayer (solo en el servidor; null en el cliente).
+var _guard: GuardedEnetPeer = null
 var _is_server: bool = false
 var _now_tick: int = 0
 # Sube con cada close(): corta el reparto de eventos si un oyente cierra el transporte.
@@ -283,6 +294,9 @@ func disconnect_after_flush(peer_id: int) -> void:
 	var packet_peer: ENetPacketPeer = _enet.get_peer(peer_id)
 	if packet_peer != null:
 		packet_peer.peer_disconnect_later()
+	if _guard != null:
+		# Ya se le está cortando: lo que siga mandando se descarta sin contarlo.
+		_guard.mute_peer(peer_id)
 	_closing[peer_id] = _now_tick + FORCE_DISCONNECT_TICKS
 
 
@@ -408,7 +422,17 @@ func _attach(peer: ENetMultiplayerPeer, as_server: bool) -> void:
 	_is_server = as_server
 	_client_connected = false
 	_client_failed = false
-	_mp.multiplayer_peer = peer
+	if as_server:
+		# El servidor no deja que SceneMultiplayer vea nada que no sea de su protocolo: cada paquete
+		# ajeno registraría un error del motor y se saltaría los limitadores (hallazgo S1).
+		_guard = GuardedEnetPeer.new()
+		_guard.attach(peer)
+		_guard.packets_discarded.connect(_on_packets_discarded)
+		_guard.admitted = _mp_connected
+		_guard.raw_sink = _on_peer_packet
+		_mp.multiplayer_peer = _guard
+	else:
+		_mp.multiplayer_peer = peer
 
 
 # Cierra el peer de ENet sin avisar a los oyentes y deja el transporte listo para reutilizarse.
@@ -417,12 +441,17 @@ func _teardown() -> void:
 		_sample_wire_stats()
 		if _mp != null:
 			_mp.multiplayer_peer = null
-		_enet.close()
+		if _guard != null:
+			# Cierra también el peer de ENet y suelta sus señales (si no, se quedarían referenciados).
+			_guard.close()
+		else:
+			_enet.close()
 	_reset_state()
 
 
 func _reset_state() -> void:
 	_enet = null
+	_guard = null
 	_is_server = false
 	_client_connected = false
 	_client_failed = false
@@ -616,6 +645,12 @@ func _on_mp_server_disconnected() -> void:
 		_fail_client()
 
 
+func _on_packets_discarded(peer_id: int, count: int) -> void:
+	var event := _Event.new(_EVENT_DISCARDED, peer_id)
+	event.count = count
+	_events.append(event)
+
+
 func _on_auth_callback(peer_id: int, bytes: PackedByteArray) -> void:
 	if _in_sim != null:
 		_in_sim.enqueue(NetSim.Packet.new(peer_id, NetSim.AUTH_CHANNEL, bytes, true), _now_tick)
@@ -683,3 +718,5 @@ func _emit_event(event: _Event) -> void:
 			packet_received.emit(event.peer_id, event.bytes)
 		_EVENT_CONNECTION_FAILED:
 			connection_failed.emit()
+		_EVENT_DISCARDED:
+			packets_discarded.emit(event.peer_id, event.count)

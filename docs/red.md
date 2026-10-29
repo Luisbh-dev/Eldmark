@@ -237,6 +237,38 @@ cubre ±5,24 km, así que caben los 5 × 5 km de terreno de Eldrun.
   dos lados y `auth_timeout = 5.0`.
 - Se registra con `get_tree().set_multiplayer(mp, transport.get_path())`. Así caben varias
   instancias en un mismo proceso (pruebas y enjambre de bots).
+- **Filtro de paquetes en el servidor (`GuardedEnetPeer`, hallazgo S1).** `SceneMultiplayer`
+  procesa dentro de `poll()` todo lo que llega, y solo entrega a la aplicación los paquetes RAW
+  de los peers admitidos. Un cliente ENet sin `SceneMultiplayer` que mandase otra cosa, antes del
+  HELLO (`[3, 1]`, RPC, SIMPLIFY_PATH...) o después (RPC, SPAWN, órdenes SYS...), hacía que el
+  motor registrase un error por paquete con su traza de GDScript (2000 paquetes: 742 KB de
+  registro y un tick de 28–37 ms), que esos paquetes no pasasen por los limitadores ni sumaran
+  avisos, y antes del HELLO solo los cortaba el `auth_timeout` de 5 s (el atacante reconecta).
+  Por eso el `NetTransport` del servidor entrega a `SceneMultiplayer` un
+  `MultiplayerPeerExtension` (`scripts/shared/net/guarded_enet_peer.gd`) que envuelve al
+  `ENetMultiplayerPeer` y filtra antes de que el motor vea nada:
+  - a un peer sin admitir, solo mensajes de autenticación (`SYS` + `AUTH`: byte 0 & 7 = 7 y
+    byte 1 = 0) de como mucho 1200 B, 3 con contenido (el HELLO) y una confirmación de 2 B;
+  - a un peer admitido (los dos lados han confirmado: el envoltorio ve pasar la del otro lado y
+    la propia), solo paquetes RAW (byte 0 & 7 = 3);
+  - lo demás se descarta, sin error del motor, y al final de `poll()` se emite
+    `NetTransport.packets_discarded(peer_id, count)`. `ZoneServer` suma un aviso por paquete
+    (motivo «paquete ajeno al protocolo»; con 50 en 600 ticks, NOTICE de expulsión y corte);
+  - un peer al que el servidor ya está cortando (`disconnect_after_flush`) se silencia: lo que
+    siga mandando se descarta sin contarlo ni procesarlo;
+  - como mucho se procesan 4096 paquetes por `poll()` (lo demás se queda en la cola de ENet): la
+    inundación no puede alargar el tick sin límite. Medido: con 2000 paquetes en un tick, el
+    tick más largo pasa de 28–37 ms a ~1 ms.
+  - **Atajo para el camino caliente.** Los RAW de los peers que `SceneMultiplayer` ya ha admitido
+    de verdad (`NetTransport._mp_connected`) se entregan directamente a la aplicación, sin pasar
+    por la cola del motor. Los de un peer que se admite en ese mismo `poll()` van por la cola,
+    detrás de su confirmación, para no perder el orden. Medido con 64 clientes y 48 000 paquetes
+    (cinco repeticiones alternadas): 9,4 µs por paquete sin filtro, 9,9 µs con filtro y atajo
+    (+6 %, el nivel del ruido) y 11,3 µs con filtro y sin atajo (+25 %).
+  - **Acoplamiento.** El filtro conoce el formato interno de `SceneMultiplayer` (RAW = 3,
+    SYS = 7, AUTH = 0 y las confirmaciones de 2 B). Si una versión del motor lo cambiara, el
+    apretón de manos dejaría de completarse y `tests/test_net_sim.gd` lo detectaría enseguida. El
+    cliente no lleva filtro.
 
 **Timeouts:**
 
@@ -723,7 +755,9 @@ Ocupar uno de estos tipos sube `PROTOCOL_VERSION`.
 - **Lotes de entradas.** `count` debe estar entre 1 y 8, el tamaño debe ser exactamente
   `11 + 10 · count` y `newest_tick ≥ count`.
 - **Avisos.** Los paquetes malformados, los tipos inesperados para el estado de la sesión y los
-  excesos de ritmo cuentan avisos ([12](#12-seguridad-de-la-fase-2)).
+  excesos de ritmo cuentan avisos ([12](#12-seguridad-de-la-fase-2)). También los paquetes que no
+  son del protocolo de `SceneMultiplayer` (ver [2](#2-transporte-y-canales)): ya no llegan a
+  registrar errores del motor.
 
 ---
 
@@ -1226,6 +1260,7 @@ El servidor nunca acepta estado del cliente, y todo valor decodificado está aco
 | Enfriamiento tras una expulsión | 1800 ticks (30 s): su IP (las IPv6, por /64) o, desde loopback, su nombre normalizado reciben `REJECT TOO_MANY_CONNECTIONS` nada más conectar (o al llegar el HELLO, para el nombre) |
 | Conexiones por IP | 4 como mucho (`--max-per-ip`), salvo loopback, para que funcionen los bots locales. Se comprueba al conectar, no solo con el HELLO; las IPv6 cuentan por /64 ([3](#3-conexión)) |
 | HELLO a tiempo | 90 ticks desde que conecta; si no, se corta la conexión ([3](#3-conexión)) |
+| Paquetes ajenos al protocolo | Antes del HELLO solo se admite autenticación; después, solo RAW. Lo demás se descarta sin error del motor y cada paquete suma un aviso ([2](#2-transporte-y-canales)) |
 | Reino | Validado contra la zona. En la fase 2 lo declara el cliente (`DevAuthProvider`); desde la fase 5 sale del personaje o del billete, y el campo de HELLO se ignora |
 | Rebobinado | Acotado por lo medido ([10](#10-historial-para-la-compensación-de-latencia)); el RTT que declara el cliente con sus acks se acota con el de ENet más el simulador del servidor + 3 ticks |
 | Comandos de depuración | Solo con `--debug-commands` |
@@ -1650,6 +1685,9 @@ const INPUT_REDUNDANCY_LOSSY: int = 8
 const MAX_INPUT_LEAD_TICKS: int = 30
 const REPEAT_MOVE_TICKS: int = 6
 const MAX_REWIND_TICKS: int = 24
+const INTERP_DELAY_Q_SCALE: int = 8                  # interp_delay_q = retardo en ticks × 8
+const MAX_INTERP_DELAY_TICKS: int = 12
+const MAX_INTERP_DELAY_Q: int = 96                   # lo que pase es un aviso (S4)
 const NO_MARGIN: int = -128
 const VALID_BUTTONS: int = (1 << 9) - 1
 const MAX_NAME_BYTES: int = 48
@@ -1781,6 +1819,8 @@ static func from_arg(spec: String, seed_offset: int = 0) -> NetSim
 func configure(rtt_ms: int, jitter_ms: int, loss_percent: float, duplicate_percent: float,
 		seed: int) -> void
 func is_enabled() -> bool
+## Retardo máximo de un sentido, en ticks: rtt/2 + jitter redondeado (S4).
+func get_max_delay_ticks() -> int
 func enqueue(packet: NetSim.Packet, now_tick: int) -> void
 func pop_due(now_tick: int) -> Array[NetSim.Packet]
 func describe() -> String
@@ -1793,6 +1833,8 @@ signal peer_connected(peer_id: int)          # autenticación completada en ambo
 signal peer_disconnected(peer_id: int)
 signal packet_received(peer_id: int, bytes: PackedByteArray)
 signal connection_failed()
+## Solo servidor (S1): paquetes de un peer descartados por no ser del protocolo (ver 2).
+signal packets_discarded(peer_id: int, count: int)
 ## Antes de host()/connect_to(). Vacío = sin simulador.
 func set_net_sim_spec(spec: String) -> void
 func host(port: int, max_peers: int) -> Error
@@ -1808,10 +1850,21 @@ func poll(now_tick: int) -> void
 func flush() -> void
 func close() -> void
 func get_rtt_ms(peer_id: int) -> float
+## Retardo máximo (ticks) que los simuladores de este transporte añaden a un viaje de ida y vuelta (S4).
+func get_sim_round_trip_ticks() -> int
 func get_packet_loss(peer_id: int) -> float
 func get_remote_address(peer_id: int) -> String
 ## {"app_in": int, "app_out": int, "wire_in": int, "wire_out": int} acumulados.
 func get_byte_counters() -> Dictionary
+
+# guarded_enet_peer.gd (S1): el peer que ve SceneMultiplayer en el servidor
+class_name GuardedEnetPeer extends MultiplayerPeerExtension
+signal packets_discarded(peer_id: int, count: int)     # al final de cada poll
+var admitted: Dictionary                               # peers admitidos por SceneMultiplayer (lo rellena el dueño)
+var raw_sink: Callable                                 # (peer_id, payload) -> void: atajo de los RAW
+func attach(inner: ENetMultiplayerPeer) -> void
+func mute_peer(peer_id: int) -> void                   # descarta sin contar
+func get_discarded_total() -> int
 ```
 
 ### 17.4 `scripts/server/` (servidor)
@@ -1827,6 +1880,7 @@ var idle_quit_seconds: int = 0
 var quit_after_ticks: int = 0
 var report_path: String = ""
 var state_log_path: String = ""
+var stop_file_path: String = ""     # S5: su existencia pide el cierre ordenado (se mira cada segundo)
 var net_sim_spec: String = ""
 var fake_players: int = 0
 var debug_commands: bool = false
@@ -1836,7 +1890,8 @@ static func from_args(args: PackedStringArray) -> ServerConfig
 # server_main.gd (+ scenes/server/server_main.tscn)
 ## Ajustes de 1.3, carga la zona con NetZones, prepara Terrain3D, crea NetTransport y
 ## ZoneServer, escribe y borra user://dev_server.json (con --dev-lock) y cierra con
-## --quit-after-ticks o --idle-quit.
+## --quit-after-ticks, --idle-quit o la aparición del archivo de --stop-file. Con --report reescribe
+## el informe cada 600 ticks (S5). SIGTERM y SIGINT no cierran de forma ordenada (ver 1.3).
 class_name ServerMain extends Node
 static var config: ServerConfig
 
@@ -1846,6 +1901,13 @@ signal tick_finished(tick: int)
 signal player_joined(peer_id: int, net_id: int)
 signal player_left(peer_id: int, net_id: int)
 var interest_policy: InterestPolicy = InterestPolicy.new()
+## Solo pruebas: plazos y topes que se acortan (valores por defecto: las constantes del mismo nombre).
+var loading_timeout_ticks: int = LOADING_TIMEOUT_TICKS
+var hello_timeout_ticks: int = HELLO_TIMEOUT_TICKS      # S2: 90
+var kick_cooldown_ticks: int = KICK_COOLDOWN_TICKS      # S6: 1800
+var max_logged_players: int = MAX_LOGGED_PLAYERS        # S3: 1000
+var max_logged_kicks: int = MAX_LOGGED_KICKS            # S3: 200
+const RTT_SLACK_TICKS: int = 3                          # S4
 func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 		auth_provider: AuthProvider) -> Error
 func stop(notice_text: String = "") -> void
@@ -1856,6 +1918,7 @@ func get_player_count() -> int
 func get_registry() -> NetEntityRegistry
 func get_history() -> StateHistory
 func get_metrics() -> ServerMetrics
+func get_cooldown_count() -> int                        # S6: enfriamientos tras expulsiones sin purgar
 ## Jugador sin red: sus entradas salen de brain y entran directamente en su InputQueue.
 func add_fake_player(brain: BotBrain, realm: int) -> int
 ## Teletransporte autoritativo: sube el contador de teletransporte.
@@ -1877,12 +1940,15 @@ var priority: Dictionary[int, float] = {}
 var ack_snapshot_tick: int = 0
 var interp_delay_q: int = 0
 var rtt_ticks: int = 0              # mín. de (s - ack_snapshot_tick) en los últimos 120 ticks
+var connected_tick: int = 0         # S2: para el plazo del HELLO
 var loading_since_tick: int = 0
 var limiter_unreliable: RateLimiter
 var limiter_reliable: RateLimiter
 var limiter_bytes: RateLimiter
 ## Suma un aviso; devuelve true si hay que expulsar (50 en 600 ticks).
 func add_strike(now_tick: int, reason: String) -> bool
+## N2: crédito de los ticks que el servidor no ha simulado (un parón) para los tres limitadores.
+func grant_stall_credit(now_tick: int, missed_ticks: int) -> void
 
 # server_auth.gd
 class_name ServerAuth extends RefCounted
@@ -1894,6 +1960,8 @@ func validate(hello: NetMessages.Hello, remote_address: String, player_count: in
 ## SOC-01: fuente de los nombres ya conectados (Callable sin argumentos -> PackedStringArray).
 func set_connected_names_source(source: Callable) -> void
 func check_name(display_name: String) -> int   # NameRules.Reason (TAKEN si ya está conectado)
+## S2: clave con la que se cuentan las conexiones por IP (IPv6 por prefijo /64, IPv4 mapeada como IPv4).
+static func address_group(remote_address: String) -> String
 
 # auth_provider.gd
 class_name AuthProvider extends RefCounted
@@ -1907,6 +1975,8 @@ class_name DevAuthProvider extends AuthProvider   # acepta el reino y el nombre 
 class_name RateLimiter extends RefCounted
 func _init(rate_per_tick: float, burst: float) -> void
 func try_consume(now_tick: int, cost: float = 1.0) -> bool
+## N2: suma fichas por encima de la ráfaga hasta la siguiente recarga (primero recarga, después suma).
+func grant(now_tick: int, extra: float) -> void
 
 # input_queue.gd
 class_name InputQueue extends RefCounted

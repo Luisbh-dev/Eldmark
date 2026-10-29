@@ -25,6 +25,7 @@ var _hooks: Array[Callable] = []
 var _client_tick: int = 0
 var _next_client_index: int = 0
 var _raw_peers: Array[ENetMultiplayerPeer] = []
+var _raw_attackers: Array[RawEnetAttacker] = []
 
 
 ## Un cliente que habla el protocolo a mano: envía su HELLO al conectar, completa la
@@ -171,6 +172,9 @@ func after_each() -> void:
 	for raw: ENetMultiplayerPeer in _raw_peers:
 		raw.close()
 	_raw_peers.clear()
+	for attacker: RawEnetAttacker in _raw_attackers:
+		attacker.close()
+	_raw_attackers.clear()
 	for client: RawClient in _clients:
 		if is_instance_valid(client.transport):
 			client.transport.free()
@@ -804,6 +808,90 @@ func test_interp_delay_above_the_clients_maximum_is_clamped_and_costs_a_strike()
 	assert_eq(peer.strikes_total, 1, "sin más avisos")
 
 
+## Un cliente ENet en bruto (sin SceneMultiplayer) que manda paquetes que no son del protocolo antes del
+## HELLO: antes registraban un error del motor por paquete (el ejecutor falla con cualquiera), se
+## saltaban los limitadores y los avisos, solo los cortaba el auth_timeout de 5 s y 2000 paquetes
+## llevaban el tick a 28 ms (hallazgo S1). Ahora cada uno suma un aviso, a los 50 se le expulsa y el
+## tick no pasa de su presupuesto de 16 ms.
+func test_foreign_packets_before_the_hello_get_the_sender_kicked() -> void:
+	await _start_server()
+	var attacker := RawEnetAttacker.new()
+	assert_eq(attacker.connect_to(_port), OK, "el atacante conecta")
+	_raw_attackers.append(attacker)
+	_hooks.append(func(_tick: int) -> void: attacker.poll())
+	var seen: bool = await _run_until(func() -> bool:
+		return attacker.is_connected_to_server() and _server.get_peer_ids().size() == 1, 300)
+	if not assert_true(seen, "el servidor ve al peer que se autentica"):
+		return
+	for _i: int in 2000:
+		attacker.send(PackedByteArray([3, 1]), 1)
+	attacker.flush()
+	var gone: bool = await _run_until(func() -> bool: return _server.get_peer_ids().is_empty(), 300)
+	assert_true(gone, "el peer se expulsa en cuanto suma 50 avisos, sin esperar a los 5 s")
+	var reasons: Dictionary = _strike_reasons()
+	assert_eq(int(reasons.get(ZoneServer.DISCARDED_REASON, 0)), ServerPeer.STRIKE_LIMIT,
+			"cada paquete ajeno es un aviso, hasta los 50")
+	var report: Dictionary = _read_report()
+	assert_eq((report.get("kicks", []) as Array).size(), 1, "una expulsión")
+	assert_eq(_server.get_player_count(), 0, "y nadie ocupa sitio")
+	var tick_max: int = _server.get_metrics().get_max_us(&"tick")
+	assert_true(tick_max < 16000, "el tick más largo no pasa de 16 ms (%d µs)" % tick_max)
+
+
+## Lo mismo con el peer ya autenticado y dentro del mundo: RPC, SIMPLIFY_PATH, SPAWN y órdenes de
+## sistema. Quien juega con normalidad no se entera.
+func test_foreign_packets_after_the_hello_get_the_sender_kicked_and_not_the_others() -> void:
+	await _start_server()
+	var honest: RawClient = await _join("Ana")
+	if honest == null:
+		return
+	var attacker := RawEnetAttacker.new()
+	assert_eq(attacker.connect_to(_port), OK, "el atacante conecta")
+	_raw_attackers.append(attacker)
+	_hooks.append(func(_tick: int) -> void: attacker.poll())
+	var connected: bool = await _run_until(func() -> bool: return attacker.is_connected_to_server(), 300)
+	if not assert_true(connected, "el atacante conecta"):
+		return
+	attacker.send_auth(_hello(VARDHEIM, "Malvado"))
+	attacker.flush()
+	var welcomed: bool = await _run_until(func() -> bool:
+		return attacker.server_confirmed and not attacker.auth_messages.is_empty(), 300)
+	if not assert_true(welcomed, "contesta WELCOME"):
+		return
+	assert_eq(NetMessages.peek_auth_result(attacker.auth_messages[0]), NetProtocol.Result.OK)
+	attacker.send_confirmation()
+	attacker.flush()
+	var is_loading: Callable = func() -> bool:
+		var peer: ServerPeer = _peer_named("Malvado")
+		return peer != null and peer.state == ServerPeer.State.LOADING
+	var admitted: bool = await _run_until(is_loading, 300)
+	if not assert_true(admitted, "y lo admite (cargando la zona)"):
+		return
+	var mallory: ServerPeer = _peer_named("Malvado")
+	var flood: int = 300
+	for i: int in flood:
+		attacker.send(PackedByteArray([1, 0, 0, 0, 0, 0, 0, 0, 0, 0]), 0)  # SIMPLIFY_PATH
+		attacker.send(PackedByteArray([0, 1, 2, 3, 4, 5, 6]), 0)  # RPC
+		attacker.send(PackedByteArray([4, 1, 2, 3, 4, 5, 6, 7, 8]), 0)  # SPAWN
+		attacker.send(PackedByteArray([7, 1, 2, 0, 0, 0]), 0)  # SYS ADD_PEER
+	attacker.flush()
+	var kicked: bool = await _run_until(func() -> bool: return _peer_named("Malvado") == null, 300)
+	assert_true(kicked, "el atacante acaba expulsado")
+	assert_true(mallory.strikes_total >= ServerPeer.STRIKE_LIMIT, "tras sumar 50 avisos (%d)"
+			% mallory.strikes_total)
+	assert_eq(int(_strike_reasons().get(ZoneServer.DISCARDED_REASON, 0)), ServerPeer.STRIKE_LIMIT,
+			"todos por paquetes ajenos")
+	# El otro jugador, a lo suyo.
+	var honest_peer: ServerPeer = _peer_of(honest.own_spawn.net_id)
+	assert_eq(honest_peer.strikes_total, 0, "el jugador honrado no suma avisos")
+	assert_eq(honest_peer.state, ServerPeer.State.IN_WORLD, "y sigue en el mundo")
+	var snapshots_before: int = honest.snapshots.size()
+	await _run_frames(30)
+	assert_true(honest.snapshots.size() > snapshots_before + 5, "recibiendo snapshots")
+	var tick_max: int = _server.get_metrics().get_max_us(&"tick")
+	assert_true(tick_max < 16000, "el tick más largo no pasa de 16 ms (%d µs)" % tick_max)
+
+
 func test_debug_commands_need_the_flag() -> void:
 	await _start_server()
 	var client: RawClient = await _join("Ana")
@@ -1025,6 +1113,15 @@ func test_stop_notifies_the_clients_and_closes_the_transport() -> void:
 func _strike_reasons() -> Dictionary:
 	var report: Dictionary = _read_report()
 	return (report.get("strikes", {}) as Dictionary).get("by_reason", {})
+
+
+## El peer con ese nombre (null si no hay ninguno).
+func _peer_named(player_name: String) -> ServerPeer:
+	for peer_id: int in _server.get_peer_ids():
+		var peer: ServerPeer = _server.get_peer(peer_id)
+		if peer.display_name == player_name:
+			return peer
+	return null
 
 
 ## El peer cuyo personaje es el de ese net_id (null si no hay ninguno).
