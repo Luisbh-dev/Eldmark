@@ -246,6 +246,12 @@ func request_respawn(net_id: int, point_index: int, tick: int) -> int:
 	return RespawnRequestResult.ACCEPTED
 
 
+## Emite un evento que no sale del combate propiamente dicho (el aviso [code]TELEGRAPH[/code] de un ataque fuerte
+## de un PNJ) por el mismo canal que los demás: [signal event_emitted], con [param involved] como destinatarios.
+func emit_event(event: NetMessages.EntityEvent, involved: PackedInt32Array) -> void:
+	_emit(event, involved)
+
+
 ## Pone los blancos estáticos de la zona (las puertas de los fuertes): el resolutor los prueba para
 ## cada ataque activo.
 func set_structure_targets(targets: Array[StructureTarget]) -> void:
@@ -527,6 +533,9 @@ func _apply_fall(combatant: Combatant, s: int, damage: int) -> void:
 func _process_respawns(s: int, list: Array[Combatant]) -> void:
 	for combatant: Combatant in list:
 		if combatant.is_alive() or combatant.death_tick < 0:
+			continue
+		# Los PNJ no reaparecen solos: los repone su generador (NpcSpawnerSystem).
+		if combatant.entity.kind == NetProtocol.EntityKind.NPC:
 			continue
 		var requested: bool = combatant.pending_respawn_point >= 0 and s >= combatant.respawn_tick
 		var automatic: bool = s >= combatant.death_tick + timing.auto_respawn

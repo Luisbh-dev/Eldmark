@@ -6,7 +6,7 @@
 script = ExtResource("1_npcdef")
 id = &"ford_captain"
 display_name = "Capitán del Vado"
-max_health = 12000
+max_health = 30000
 weapon_id = &"npc_captain"
 is_boss = true
 patrol_speed_scale = 0.4
@@ -18,7 +18,7 @@ lose_radius = 34.0
 leash_radius = 36.0
 heavy_chance = 0.0
 block_chance = 0.0
-attack_gap_s = Vector2(0.4, 0.9)
+attack_gap_s = Vector2(0.5, 1.0)
 special_every = 3
 circle_distance = 4.0
 shouts = true

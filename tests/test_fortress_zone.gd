@@ -33,6 +33,8 @@ func before_each() -> void:
 	config.zone_id = ZONE_ID
 	config.max_players = 16
 	config.no_dummies = true
+	# Esta prueba habla del fuerte con el doble del capitán (spawn_captain_double): sin los PNJ de verdad.
+	config.no_npcs = true
 	assert_eq(_server.start(config, _world, null, DevAuthProvider.new()), OK, "el servidor arranca")
 	_server.get_fortresses().war_event_emitted.connect(func(event: NetMessages.EntityEvent) -> void:
 		_war.append(event))

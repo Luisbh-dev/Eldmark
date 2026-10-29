@@ -13,6 +13,8 @@ extends Node
 ##                  RESPAWN_REQUEST, DEBUG_COMMAND; y las líneas de la consola
 ## tick += 1        s es el tick que se simula
 ## bajas            desconexión, LEAVE o expulsión -> DESPAWN (motivo 1) y el id en cuarentena
+## cerebros (paso 0) los PNJ piensan con el estado tras s - 1 y empujan su entrada de s a su InputQueue
+##                  (cada 6 ticks; entre medias repiten su plan)
 ## simular          todas las entidades con cuerpo (jugadores, falsos y PNJ) por net_id ascendente,
 ##                  con la entrada de InputQueue.take(s); _check_motion
 ## combate          CombatDirector.process_tick(): congelar, resolver los golpes (también contra las
@@ -22,6 +24,8 @@ extends Node
 ## fuertes          FortressController.step() (paso 4b): presencia en el círculo, avance del estado de
 ##                  cada fortaleza, capas de la puerta (valen desde s + 1), avisos WAR y OBJECT_STATE;
 ##                  /atascado; cuerpos que se quedan tras una baja en combate
+## PNJ              NpcSpawnerSystem.step(): altas y retiradas de PNJ según los generadores y las
+##                  fortalezas, cadáveres, avisos TELEGRAPH de los ataques fuertes
 ## altas            los READY pendientes: el jugador aparece con el estado «tras s»
 ## historial        StateHistory.record() de todas las entidades, ya con lo impuesto
 ## snapshots        SnapshotBuilder.begin(); interés cada 6 ticks, escalonado; un SNAPSHOT a cada
@@ -49,7 +53,9 @@ extends Node
 ## [b]Combate[/b] (docs/combate.md): un [CombatDirector] lleva la vida, los golpes con rebobinado, las
 ## muertes y las reapariciones; los PNJ ([method add_npc], el maniquí de entrenamiento) son cuerpos
 ## simulados en el mismo bucle que los jugadores; los comandos de depuración y la consola pasan por el
-## [CommandRegistry] y [code]--combat-log[/code] deja una línea por golpe resuelto.
+## [CommandRegistry] y [code]--combat-log[/code] deja una línea por golpe resuelto. Un [NpcSpawnerSystem]
+## ([method get_npc_system]) crea y retira los PNJ de los generadores de la zona (Huecos, Capitán del Vado,
+## guarnición del dueño y Guardianes de la Puerta) con el cerebro [HfsmBrain]; [code]--no-npcs[/code] lo apaga.
 ## [br][br]
 ## [b]Fortalezas[/b] (docs/fuerte.md): un [FortressController] lleva el estado de cada fortaleza de la zona,
 ## su puerta (blanco de los golpes), los avisos de guerra y el OBJECT_STATE; [method get_fortresses] lo
@@ -102,8 +108,11 @@ const HELLO_CHECK_TICKS: int = 10
 ## Ticks que se espera, tras [method stop], a que los peers se vayan antes de cerrar el transporte.
 const STOP_DRAIN_TICKS: int = 30
 ## Secciones del tick que aparecen en la línea de métricas (las mismas que mide el bucle).
-const LOGGED_SECTIONS: Array[StringName] = [&"net", &"sim", &"combat", &"combat_resolve",
-		&"combat_events", &"war", &"history", &"snapshot", &"flush"]
+const LOGGED_SECTIONS: Array[StringName] = [&"net", &"npc_brains", &"sim", &"combat", &"combat_resolve",
+		&"combat_events", &"war", &"npc", &"history", &"snapshot", &"flush"]
+## Secciones de [ServerMetrics] de los PNJ: los cerebros (paso 0) y el sistema de generadores.
+const SECTION_NPC_BRAINS: StringName = &"npc_brains"
+const SECTION_NPC: StringName = &"npc"
 ## Sección de [ServerMetrics] del paso de las fortalezas (4b del tick).
 const SECTION_WAR: StringName = &"war"
 ## Cada cuántos ticks se manda el SCOREBOARD a toda la zona (2 s).
@@ -203,6 +212,7 @@ var _fakes: Dictionary[int, BotBrain] = {}
 var _npcs: Dictionary[int, BotBrain] = {}
 var _combat: CombatDirector
 var _fortresses: FortressController = null
+var _npc_system: NpcSpawnerSystem = null
 var _scores: ScoreKeeper = ScoreKeeper.new()
 var _battle_log: BattleLog = null
 var _unstuck: UnstuckTracker = UnstuckTracker.new()
@@ -214,6 +224,7 @@ var _lingering_total: int = 0
 # Clave del nombre -> net_id de quien está canalizando /atascado.
 var _unstuck_players: Dictionary[String, int] = {}
 var _object_states_sent: int = 0
+var _telegraphs_sent: int = 0
 var _scoreboards_sent: int = 0
 var _safe_areas: SafeAreas
 var _commands: CommandRegistry = CommandRegistry.new()
@@ -463,6 +474,7 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_combat.metrics = _metrics
 	_war_fortresses_at_stop = []
 	_setup_fortresses(world)
+	_setup_npcs(world)
 	_commands.audit_sink = Callable(self, "_log")
 	_register_commands()
 	if _transport != null:
@@ -631,6 +643,30 @@ func get_fortresses() -> FortressController:
 	return _fortresses
 
 
+## El sistema de generadores de PNJ (puestos, navegación, fichas). null antes de [method start] o con
+## [code]--no-npcs[/code].
+func get_npc_system() -> NpcSpawnerSystem:
+	return _npc_system
+
+
+## net_id de todos los PNJ con cuerpo (los de los generadores, los maniquíes y los sueltos), ordenados.
+func get_npc_ids() -> Array[int]:
+	var ids: Array[int] = []
+	ids.assign(_npcs.keys())
+	ids.sort()
+	return ids
+
+
+## El cerebro del PNJ [param net_id], o null.
+func get_npc_brain(net_id: int) -> BotBrain:
+	return _npcs.get(net_id)
+
+
+## El espacio de física del mundo del servidor (línea de visión de los PNJ). null antes de [method start].
+func get_physics_space() -> PhysicsDirectSpaceState3D:
+	return _players_root.get_world_3d().direct_space_state if _players_root != null else null
+
+
 ## El marcador de la batalla (bajas, muertes, asistencias, daño a la puerta, círculo y méritos).
 func get_scores() -> ScoreKeeper:
 	return _scores
@@ -710,9 +746,10 @@ func teleport(net_id: int, position: Vector3) -> void:
 ## que los jugadores con las entradas de [param brain] (como las de un jugador falso), con vida y
 ## grabado en el historial. Con [param immortal] es un maniquí: la vida no baja de 1 y se cura del todo
 ## a los 5 s sin daño. Devuelve su [code]net_id[/code], o -1 si el servidor no está en marcha o no
-## quedan ids.
+## quedan ids. Con [param definition] (una [NpcDefinition]) el PNJ toma de ella su vida, su arma, si ignora las
+## zonas seguras y su número del catálogo (el [code]npc_def_id[/code] del ENTITY_SPAWN).
 func add_npc(brain: BotBrain, display_name: String, realm: int, position: Vector3, yaw: float,
-		immortal: bool = false) -> int:
+		immortal: bool = false, definition: NpcDefinition = null) -> int:
 	if _run_state != _RunState.RUNNING or brain == null:
 		return -1
 	var entity: NetEntity = _create_body(NetProtocol.EntityKind.NPC, display_name, realm, 0, _tick,
@@ -720,7 +757,17 @@ func add_npc(brain: BotBrain, display_name: String, realm: int, position: Vector
 	if entity == null:
 		return -1
 	_npcs[entity.net_id] = brain
-	_combat.get_combatant(entity.net_id).immortal = immortal
+	var combatant: Combatant = _combat.get_combatant(entity.net_id)
+	if definition != null:
+		# Su definición manda: vida, arma, zona segura y el número que ve el cliente (modelo y barra de jefe).
+		entity.npc_def_id = NpcCatalog.number_of(definition.id)
+		combatant.max_health = definition.max_health
+		combatant.health = definition.max_health
+		combatant.ignores_safe_area = definition.ignores_safe_area
+		_combat.set_weapon(combatant, CombatCatalog.weapon_id(definition.weapon_id))
+		entity.set_health_view(combatant.health, combatant.max_health, 0, 0)
+		immortal = immortal or definition.immortal
+	combatant.immortal = immortal
 	if immortal:
 		_dummies_created += 1
 	_announce_arrival(entity, null, _tick)
@@ -832,6 +879,8 @@ func push_console_line(line: String) -> void:
 ## snapshots {sent, bytes, avg_bytes, max_bytes, build_us, avg_build_us}   build_us: construir cada
 ##           snapshot y encolarlo (sin el cálculo del interés ni el envío real de ENet)
 ## metrics   ServerMetrics.summary() (p50/p99/máx de cada sección en µs, KB/s, jugadores...)
+## npcs      NpcSpawnerSystem.get_report(): puestos, PNJ vivos, altas, muertes, ataques fuertes avisados,
+##           fichas de ataque, rutas calculadas...
 ## player_list  una ficha por jugador que ha pasado por el servidor (también los que se fueron),
 ##           las últimas max_logged_players; de las anteriores solo quedan los totales
 ##           (players.archived cuenta las fichas resumidas)
@@ -876,12 +925,17 @@ func _physics_process(delta: float) -> void:
 	_check_hello_timeouts(s)
 	_process_departures(s)
 
+	_metrics.begin_section(SECTION_NPC_BRAINS)
+	_run_npc_brains(s)
+	_metrics.end_section(SECTION_NPC_BRAINS)
+
 	_metrics.begin_section(&"sim")
 	_simulate_players(s, delta)
 	_metrics.end_section(&"sim")
 
 	_metrics.begin_section(&"combat")
 	_combat.process_tick(s, _players_root.get_world_3d().direct_space_state)
+	_emit_npc_telegraphs(s)
 	_metrics.end_section(&"combat")
 
 	# Paso 4b (docs/fuerte.md, 1.7): las fortalezas, con lo que ha dejado el combate.
@@ -889,6 +943,10 @@ func _physics_process(delta: float) -> void:
 	_fortresses.step(s)
 	_process_unstuck(s)
 	_metrics.end_section(SECTION_WAR)
+	if _npc_system != null:
+		_metrics.begin_section(SECTION_NPC)
+		_npc_system.step(s)
+		_metrics.end_section(SECTION_NPC)
 	_check_shutdown_countdown(s)
 
 	_process_arrivals(s)
@@ -931,6 +989,50 @@ func _grant_stall_credit() -> void:
 		peer.grant_stall_credit(_tick, missed_ticks)
 
 
+# Paso 0 del tick (docs/fuerte.md, 1.7): los cerebros de los PNJ piensan con el estado de los cuerpos tras s - 1
+# (antes de simular a nadie) y empujan su entrada de s a su cola, por net_id ascendente. Entre pensamientos
+# repiten su plan.
+func _run_npc_brains(s: int) -> void:
+	if _npcs.is_empty():
+		return
+	if _npc_system != null:
+		_npc_system.begin_tick(s)
+	var ids: Array[int] = []
+	ids.assign(_npcs.keys())
+	ids.sort()
+	for net_id: int in ids:
+		var entity: NetEntity = _registry.get_entity(net_id)
+		var queue: InputQueue = _queues.get(net_id)
+		var brain: BotBrain = _npcs.get(net_id)
+		if entity == null or queue == null or brain == null or entity.get_character() == null:
+			continue
+		var character: PlayerCharacter = entity.get_character()
+		var generated: PlayerInput = brain.next_input(s, character.global_position, character.yaw)
+		generated.tick = s
+		queue.push(generated.quantized(), 0, s)
+
+
+# Aviso TELEGRAPH (docs/fuerte.md, sección 5) de cada ataque fuerte que un PNJ lanza en el tick [param s]: la zona
+# de peligro (un sector delante de él, con el alcance del golpe) y los ticks que faltan hasta el impacto, para que
+# el cliente la dibuje y la rellene. Los ligeros no se avisan: su anticipación ya se ve en el movimiento.
+func _emit_npc_telegraphs(s: int) -> void:
+	for net_id: int in _npcs:
+		var entity: NetEntity = _registry.get_entity(net_id)
+		var character: PlayerCharacter = entity.get_character() if entity != null else null
+		if character == null:
+			continue
+		var state: CombatState = character.combat
+		if state.action != CombatState.Action.HEAVY or state.action_tick != s:
+			continue
+		var attack: AttackTicks = CombatCatalog.attack(state.action_id)
+		if attack == null or attack.shape == null:
+			continue
+		_telegraphs_sent += 1
+		_combat.emit_event(NetMessages.EntityEvent.telegraph(net_id, s, attack.id,
+				NetMessages.EntityEvent.SHAPE_SECTOR, entity.get_position(), character.yaw,
+				roundi(attack.shape.range_m * 100.0), attack.windup_ticks), PackedInt32Array([net_id]))
+
+
 # Simula a todas las entidades con cuerpo (jugadores, falsos y PNJ) por net_id ascendente con la
 # entrada de take(s).
 func _simulate_players(s: int, delta: float) -> void:
@@ -944,13 +1046,14 @@ func _simulate_players(s: int, delta: float) -> void:
 			continue
 		var before: Vector3 = character.global_position
 		var brain: BotBrain = _fakes.get(entity.net_id)
-		if brain == null:
-			brain = _npcs.get(entity.net_id)
-		var synthetic: bool = brain != null
+		# Los PNJ ya empujaron su entrada en el paso 0 (_run_npc_brains); los falsos la generan aquí.
+		var synthetic: bool = brain != null or _npcs.has(entity.net_id)
 		if brain != null:
 			var generated: PlayerInput = brain.next_input(s, before, character.yaw)
 			generated.tick = s
 			queue.push(generated.quantized(), 0, s)
+		elif _npcs.has(entity.net_id):
+			pass
 		elif _lingering.has(entity.net_id):
 			# El cuerpo de quien salió en combate: entradas neutras de verdad (sin botones), quieto.
 			synthetic = true
@@ -1564,6 +1667,8 @@ func _register_commands() -> void:
 	_commands.register(&"spawn_dummy", "spawn_dummy <x> <y> <z> [quieto|bloqueando|girando]",
 			_console_spawn_dummy, _net_spawn_dummy)
 	_fortresses.register_commands(_commands, Callable(self, "_next_tick"))
+	if _npc_system != null:
+		_npc_system.register_commands(_commands)
 	_commands.register(&"unstuck", "unstuck <jugador>", _console_unstuck, _net_unstuck)
 	_commands.register(&"announce", "announce <texto>", _console_announce)
 	_commands.register(&"kick", "kick <jugador> [motivo]", _console_kick)
@@ -1932,6 +2037,16 @@ func _setup_fortresses(world: Node3D) -> void:
 	if _fortresses.has_fortresses():
 		# Oleadas de reaparición cada 10 s en las zonas con fortaleza (GUE-14).
 		_combat.timing.respawn_wave_ticks = CombatTiming.WAVE_TICKS
+
+
+# Crea el sistema de generadores de PNJ de la zona (puestos, navegación, fichas) y lo conecta con el combate y las
+# fortalezas, salvo con --no-npcs.
+func _setup_npcs(world: Node3D) -> void:
+	if _config.no_npcs:
+		return
+	_npc_system = NpcSpawnerSystem.new()
+	_npc_system.log_sink = Callable(self, "_log")
+	_npc_system.setup(self, world, _config.zone_id)
 
 
 # El tick que va a simular el servidor: el de las órdenes de depuración que llegan en el poll.
@@ -2431,8 +2546,8 @@ func _handle_debug_command(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	var result: int = _commands.execute_network(peer, command.command, command.payload)
 	match result:
 		CommandRegistry.Result.UNKNOWN:
-			# Un id fijo del protocolo cuyo manejador aún no existe en este servidor (el 12, npc_debug, hasta
-			# que llegue F4) se acepta sin hacer nada: no es un cliente defectuoso.
+			# Un id fijo del protocolo cuyo manejador no existe en este servidor (el de un comando que se haya
+			# quitado, o el de npc_debug con --no-npcs) se acepta sin hacer nada: no es un cliente defectuoso.
 			if not NetProtocol.DEBUG_COMMAND_IDS.values().has(command.command):
 				_add_strike(peer, "comando de depuración desconocido (%d)" % command.command)
 		CommandRegistry.Result.BAD_ARGUMENTS:
@@ -2668,6 +2783,9 @@ func _close_state_log() -> void:
 
 
 func _release_resources() -> void:
+	if _npc_system != null:
+		_npc_system.dispose()
+		_npc_system = null
 	_close_state_log()
 	_metrics.unregister_monitors()
 	_disconnect_transport()
@@ -2750,6 +2868,7 @@ func _build_report() -> Dictionary:
 		"respawns": _respawns + _combat_stat(&"respawns") + _combat_stat(&"voids"),
 		"combat": _combat_report(),
 		"war": _war_report(),
+		"npcs": _npc_report(),
 		"simulate": {
 			"calls": _simulate_calls,
 			"total_us": _simulate_usec_total,
@@ -2794,6 +2913,14 @@ func _combat_report() -> Dictionary:
 	report["dummies"] = get_dummy_count() if _combat != null else 0
 	report["dummies_created"] = _dummies_created
 	report["suspicious"] = suspicious
+	return report
+
+
+# Resumen de los PNJ para el informe: lo del sistema de generadores y los avisos de ataques fuertes.
+func _npc_report() -> Dictionary:
+	var report: Dictionary = _npc_system.get_report() if _npc_system != null else {}
+	report["npcs_now"] = _npcs.size()
+	report["telegraphs"] = _telegraphs_sent
 	return report
 
 

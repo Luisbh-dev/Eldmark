@@ -78,6 +78,9 @@ var fake_center: Vector2 = NO_FAKE_CENTER
 var console: bool = false
 ## No coloca los maniquíes de entrenamiento de los marcadores [code]dummy_points[/code] de la zona.
 var no_dummies: bool = false
+## No crea los PNJ de los generadores de la zona (Huecos, Capitán del Vado, guarnición y Guardianes de la
+## Puerta; [NpcSpawnerSystem]).
+var no_npcs: bool = false
 ## Escribe [code]user://dev_server.json[/code] para que [code]--local[/code] reutilice el servidor.
 var dev_lock: bool = false
 ## Dónde se escribe el bloqueo de [member dev_lock] en lugar de [code]user://dev_server.json[/code]
@@ -137,6 +140,7 @@ static func from_args(args: PackedStringArray) -> ServerConfig:
 	config.battle_log_path = _string_option(args, "--battle-log=").replace("\\", "/")
 	config.console = args.has("--console")
 	config.no_dummies = args.has("--no-dummies")
+	config.no_npcs = args.has("--no-npcs")
 	config.report_path = _string_option(args, "--report=")
 	config.state_log_path = _string_option(args, "--state-log=")
 	config.stop_file_path = _string_option(args, "--stop-file=")
