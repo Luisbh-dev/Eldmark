@@ -218,6 +218,34 @@ func test_a_letter_keeps_at_most_four_marks() -> void:
 	assert_eq(ChatText.sanitize(hebrew), hebrew, "letra hebrea con cuatro puntos y acentos")
 
 
+func test_a_grapheme_keeps_at_most_five_code_points() -> void:
+	# Lo que se pega a la letra anterior sin ser una marca (categoría M) también forma un grafema largo: con
+	# 128 «ำ» (U+0E33) tras una consonante tailandesa, la maquetación de Godot 4.7.2 se cuelga en quien lo
+	# recibe. Cada caso: la base y lo que se le pega, repetido.
+	var cases: Dictionary = {
+		"ำ tailandés": [0x0E01, 0x0E33], "ຳ lao": [0x0E81, 0x0EB3],
+		"vocal del hangul antiguo": [0x1100, 0x1161], "tono de piel": [0x1F44D, 0x1F3FB],
+	}
+	var limit: int = ChatText.MAX_CODE_POINTS_PER_GRAPHEME
+	assert_eq(limit, 1 + ChatText.MAX_MARKS_PER_BASE, "la letra y sus cuatro marcas")
+	for what: String in cases:
+		var codes: Array = cases[what]
+		var hostile: String = _chr(codes[0]) + _chr(codes[1]).repeat(128)
+		var cleaned: String = ChatText.sanitize("hola " + hostile + " adiós")
+		var expected: String = "hola " + hostile.left(limit) + " adiós"
+		assert_eq(cleaned, expected, "%s: se queda la base con %d más" % [what, limit - 1])
+		assert_eq(ChatText.sanitize(cleaned), cleaned, "%s: idempotente" % what)
+		if cleaned == expected:
+			# Lo saneado se maqueta sin colgarse (lo de antes del saneado no se maqueta aquí: colgaría la prueba).
+			var line := TextLine.new()
+			line.add_string(cleaned, ThemeDB.fallback_font, 16)
+			assert_true(line.get_size().x > 0.0, "%s: lo saneado se maqueta" % what)
+	# Lo normal, aunque no sea latino, pasa entero.
+	for normal: String in ["café con leche, ñandú", "สวัสดีครับ", "ສະບາຍດີ", "안녕하세요", "こんにちは",
+			"Здравствуйте", "नमस्ते", _chr(0x1F44D) + _chr(0x1F3FD)]:
+		assert_eq(ChatText.sanitize(normal), normal, "«%s» no cambia" % normal)
+
+
 func test_text_that_only_looks_blank_is_empty() -> void:
 	for blank: String in [_chr(0x3164).repeat(5), _chr(0xFFA0) + _chr(0x115F) + _chr(0x1160),
 			_chr(0x2800).repeat(3), _chr(0x0301).repeat(5), _chr(0x200B) + " " + _chr(0x061C),
@@ -251,8 +279,10 @@ func test_sanitizing_random_hostile_text_is_stable_and_clean() -> void:
 	rng.seed = 7
 	var pieces: Array[String] = ["a", "Ñ", " ", "  ", "[", "]", "[b]", _chr(0x0301), _chr(0x0300),
 			_chr(0x094D), _chr(0x200B), _chr(0x061C), _chr(0x202E), _chr(0x3164), _chr(0x2800), _chr(0xFE0F),
-			_chr(0xFE0E), _chr(0xE0041), _chr(0xE000), _chr(0x0378), _chr(0x1F600), "\t", "\n"]
+			_chr(0xFE0E), _chr(0xE0041), _chr(0xE000), _chr(0x0378), _chr(0x1F600), "\t", "\n",
+			_chr(0x0E01), _chr(0x0E33), _chr(0x0EB3), _chr(0x1100), _chr(0x1161), _chr(0x1F3FB)]
 	var mark := RegEx.create_from_string("\\p{M}")
+	var grapheme := RegEx.create_from_string("\\X")
 	for i: int in 300:
 		var sample: String = ""
 		for _k: int in rng.randi_range(0, 40):
@@ -272,6 +302,9 @@ func test_sanitizing_random_hostile_text_is_stable_and_clean() -> void:
 			else:
 				run = 0
 			assert_true(run <= ChatText.MAX_MARKS_PER_BASE, "demasiadas marcas: %s" % _codes(sample))
+		for found: RegExMatch in grapheme.search_all(once):
+			assert_true(found.get_string().length() <= ChatText.MAX_CODE_POINTS_PER_GRAPHEME,
+					"grafema demasiado largo: %s" % _codes(sample))
 
 
 # Carácter con el código [param code] (así el archivo no lleva caracteres invisibles).

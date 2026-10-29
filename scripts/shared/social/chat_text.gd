@@ -18,7 +18,10 @@ extends RefCounted
 ## y las que pasan de [constant MAX_MARKS_PER_BASE] seguidas: una letra con cientos de marcas encima
 ## («zalgo») ocupa toda la caja de chat, y con unas 250 la maquetación de texto de Godot 4.7.2 se queda
 ## colgada en el cliente que la recibe;
-## [br]- los espacios repetidos y los de los extremos.
+## [br]- los espacios repetidos y los de los extremos;
+## [br]- lo que pasa de [constant MAX_CODE_POINTS_PER_GRAPHEME] puntos de código en un mismo grafema (lo
+## que se ve como un solo carácter): acota lo que se pega a la letra anterior sin ser una marca, como el
+## «ำ» tailandés (U+0E33) o el lao (U+0EB3), que con 128 seguidos también cuelgan la maquetación.
 ## [br][br]
 ## Las categorías salen de las tablas de Unicode del motor (las [RegEx] de PCRE2 con [code]\p{…}[/code]),
 ## que son las mismas en el cliente y en el servidor porque los dos son el mismo binario. Cuesta lineal en
@@ -35,6 +38,10 @@ const MAX_BYTES: int = 768
 ## Marcas combinantes seguidas que se conservan sobre una misma letra (el hebreo con puntos y acentos o
 ## una sílaba tibetana usan hasta cuatro); el resto se quita.
 const MAX_MARKS_PER_BASE: int = 4
+## Puntos de código que se conservan en un grafema: la letra y sus [constant MAX_MARKS_PER_BASE] marcas.
+## Vale también para lo que se combina sin ser de la categoría M (vocales tailandesas y laosianas, vocales
+## y finales del hangul antiguo, tonos de piel).
+const MAX_CODE_POINTS_PER_GRAPHEME: int = 1 + MAX_MARKS_PER_BASE
 
 ## Motivo por el que un texto no vale. [constant OK] es un texto utilizable.
 enum Problem { OK = 0, EMPTY = 1, TOO_LONG = 2 }
@@ -60,6 +67,12 @@ const _BASELESS_MARKS_PATTERN: String = "(^|\\x20)\\p{M}+"
 # Marcas seguidas de más (el número lo pone MAX_MARKS_PER_BASE).
 const _EXTRA_MARKS_PATTERN: String = "(\\p{M}{%d})\\p{M}+"
 const _REPEATED_SPACES_PATTERN: String = "\\x20{2,}"
+# Nada que se combine con lo anterior está por debajo de U+0300, así que un grafema de más de
+# MAX_CODE_POINTS_PER_GRAPHEME puntos tiene al menos ese número seguidos por encima de U+02FF: solo
+# entonces se recorre el texto grafema a grafema (el español con tildes nunca llega).
+const _LONG_RUN_PATTERN: String = "[^\\x{0}-\\x{2FF}]{%d,}"
+# Un grafema extendido de Unicode (UAX #29).
+const _GRAPHEME_PATTERN: String = "\\X"
 
 static var _needs_work: RegEx = null
 static var _other_spaces: RegEx = null
@@ -67,6 +80,8 @@ static var _stripped: RegEx = null
 static var _baseless_marks: RegEx = null
 static var _extra_marks: RegEx = null
 static var _repeated_spaces: RegEx = null
+static var _long_run: RegEx = null
+static var _grapheme: RegEx = null
 
 
 ## Texto saneado de [param text]: sin caracteres de control ni invisibles, sin BBCode, con las marcas
@@ -111,7 +126,7 @@ static func clean(text: String) -> String:
 	result = _strip_markup(result)
 	result = _baseless_marks.sub(result, "$1", true)
 	result = _extra_marks.sub(result, "$1", true)
-	return _repeated_spaces.sub(result, " ", true).strip_edges()
+	return _cap_graphemes(_repeated_spaces.sub(result, " ", true).strip_edges())
 
 
 ## true si el carácter con código [param code] se trata como un espacio (normal, Unicode, un salto de
@@ -141,6 +156,8 @@ static func _ensure_patterns() -> void:
 	_baseless_marks = RegEx.create_from_string(_BASELESS_MARKS_PATTERN)
 	_extra_marks = RegEx.create_from_string(_EXTRA_MARKS_PATTERN % MAX_MARKS_PER_BASE)
 	_repeated_spaces = RegEx.create_from_string(_REPEATED_SPACES_PATTERN)
+	_long_run = RegEx.create_from_string(_LONG_RUN_PATTERN % MAX_CODE_POINTS_PER_GRAPHEME)
+	_grapheme = RegEx.create_from_string(_GRAPHEME_PATTERN)
 
 
 # Quita lo que va entre corchetes y los corchetes sueltos, en una sola pasada: cada «]» cierra el último
@@ -170,3 +187,14 @@ static func _strip_markup(text: String) -> String:
 		return ""
 	# Los únicos «[» que quedan son los que no se cerraron (los cerrados se fueron con su contenido).
 	return kept.slice(0, size).to_byte_array().get_string_from_utf32().replace("[", "")
+
+
+# Deja cada grafema en sus primeros MAX_CODE_POINTS_PER_GRAPHEME puntos de código. Va al final: los pasos
+# anteriores no alargan ningún grafema, así que sanear dos veces sigue dando lo mismo.
+static func _cap_graphemes(text: String) -> String:
+	if _long_run.search(text) == null:
+		return text
+	var parts: PackedStringArray = PackedStringArray()
+	for found: RegExMatch in _grapheme.search_all(text):
+		parts.append(found.get_string().left(MAX_CODE_POINTS_PER_GRAPHEME))
+	return "".join(parts)

@@ -155,7 +155,7 @@ cada descarte cuenta como un aviso del peer para la expulsión (50 avisos en 600
 Antes de repartir un mensaje, el servidor lo **sanea**: quita los caracteres de control y todo lo
 invisible (formato, marcas de dirección, rellenos, sin asignar, uso privado), la secuencia BBCode
 (`[…]`), las marcas combinantes sin letra y las que pasan de cuatro sobre una misma letra, los espacios
-repetidos y los de los extremos, y rechaza el texto vacío o que pase de 255 caracteres (detalle en 12.2). En los canales públicos bloquea además los enlaces (SOC-27). El cliente tiene un
+repetidos y los de los extremos y lo que pase de cinco puntos de código en un mismo grafema, y rechaza el texto vacío o que pase de 255 caracteres (detalle en 12.2). En los canales públicos bloquea además los enlaces (SOC-27). El cliente tiene un
 filtro de lenguaje opcional, activo por defecto, con listas editables en español e inglés. Un personaje
 con menos de 2 h jugadas no puede usar `/reino`, `/comercio` ni adjuntos de correo (SOC-38).
 
@@ -366,12 +366,18 @@ escribieron. Lo descartado, por ritmo o por repetición:
 3. Quita las marcas combinantes (categoría M) sin letra delante y las que pasan de cuatro seguidas sobre una
    letra (`ChatText.MAX_MARKS_PER_BASE`).
 4. Junta los espacios repetidos y quita los de los extremos.
+5. Deja cada grafema (lo que se ve como un solo carácter, `\X` de PCRE2) en sus cinco primeros puntos de código
+   (`ChatText.MAX_CODE_POINTS_PER_GRAPHEME`: la letra y sus cuatro marcas). Acota lo que se pega a la letra
+   anterior sin ser de la categoría M: el «ำ» tailandés (U+0E33) y el lao (U+0EB3), las vocales y finales del
+   hangul antiguo y los tonos de piel. Solo recorre el texto grafema a grafema si hay cinco o más puntos seguidos
+   por encima de U+02FF (nada que se combine está por debajo), así que el español con tildes nunca paga ese paso.
 
 Las categorías salen de las tablas de Unicode del motor (las `RegEx` de PCRE2 con `\p{…}`), que son las mismas en
 el cliente y el servidor. **Hallazgo:** una letra con unas 250 marcas variadas encima cabe en 255 caracteres y deja
 colgada la maquetación de texto de Godot 4.7.2 en quien la recibe (reproducido con `TextLine` y la fuente por
 defecto: con 253 marcas acaba en milisegundos; con 254, no); el tope de cuatro lo evita y, de paso, el «zalgo»
-que ocupaba toda la caja. Coste medido: 5 µs un texto ASCII normal de 255 caracteres y de 40 a 65 µs el peor
+que ocupaba toda la caja. La verificación de la revisión encontró lo mismo con 128 «ำ» (U+0E33, de la categoría
+Lo y no M) tras una consonante tailandesa: de ahí el paso 5, que acota cualquier grafema y no solo las marcas. Coste medido: 5 µs un texto ASCII normal de 255 caracteres y de 40 a 65 µs el peor
 caso (antes, de 210 a 600 µs).
 
 **Otros resultados.** Un CHAT_SEND mal formado, con el canal del sistema, o de quien aún no está en el
@@ -384,7 +390,7 @@ existe. Un grupo inexistente contesta «No estás en un grupo.».
 cuántos acabaron en cada resultado.
 
 **Pruebas.** `test_chat_text` (el saneado, con tablas de puntos de código: invisibles, espacios, visibles y marcas;
-el «zalgo», el BBCode comparado con el método anterior en textos al azar y un fuzz de idempotencia),
+el «zalgo», los grafemas largos sin marcas (tailandés, lao, hangul antiguo, tonos de piel), el BBCode comparado con el método anterior en textos al azar y un fuzz de idempotencia),
 `test_chat_router` (30, sin red: alcance, filtro por reino, saneado, ritmos antes del saneado, descartes gratis y
 expulsión por inundar a través del cubo del transporte, repetición por destinatario, susurros),
 `test_chat_loopback` (8, con ENet real: dos bots de un reino y uno del otro; el del otro reino no recibe
