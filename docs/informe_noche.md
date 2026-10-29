@@ -8,7 +8,7 @@ y está siempre en la rama más reciente.
 | Trabajo | Rama | Estado |
 |---|---|---|
 | Backlog (`docs/backlog.md`) | `main` | Hecho y subido |
-| Fase 2: red | `fase2-red` | En curso: paquetes A–E integrados más GUE-02, SOC-01, TEC-03 y ART-05 (515 pruebas en verde); M4–M5 en marcha |
+| Fase 2: red | `fase2-red` | Implementada (594 pruebas en verde, CI de GitHub en verde); revisión adversarial en marcha |
 
 ## Entorno (Linux)
 
@@ -39,7 +39,7 @@ y está siempre en la rama más reciente.
 | C2 | `ZoneServer`, `ServerMain`, `--server`, `--fake-players`, `--report`, `--dev-lock`, `--idle-quit` | Hecho | `test_zone_server`, `test_zone_server_net` (15, ENet real), `test_server_main` (6, procesos aparte con la zona real) |
 | E | `NetClient`, `RemoteWorld`, `RemotePlayerView` (con el humanoide animado), `OnlineMain` (`--connect`, `--bot`), `ClientConfig`, `NetHarness` | Hecho | `test_net_loopback` a, b, c, e (ENet real), `test_net_client`, `test_remote_world`, `test_online_main`, `test_net_harness` (procesos) |
 | Carril 2 | GUE-02 `RealmCatalog`, SOC-01 `NameRules`, TEC-03 GitHub Actions, ART-05 validador de assets | Hecho | `test_realm_catalog`, `test_name_rules`, `test_assets` |
-| F (M4–M5) | Escenario d con NetSim, `--local`, `RealmSelect`, overlay F3/F4, tramposos, `--state-log`, `test_net_processes`, `BotSwarm`, `load_test` | En curso | |
+| F (M4–M5) | Escenario d con NetSim, `--local`, `RealmSelect`, overlay F3/F4, seguridad, bot tramposo (5 modos), `--state-log` y `compare_state_logs`, `test_net_processes`, `BotSwarm` (`--bots`), `load_test` | Hecho | `test_net_loopback` d (y corte de 24 ticks), `test_net_processes`, `test_local_server_launcher`, `test_realm_select`, `test_net_debug_overlay`, seguridad en `test_zone_server_net` |
 
 **Primera prueba real en procesos separados** (servidor headless en el Vado Gris, 1800 ticks, y dos
 `--bot`, sin NetSim): bot 1, 704 snapshots con estado, 703 coincidencias exactas, 0 diferencias
@@ -53,6 +53,49 @@ worktree y se terminó.
 Primera medida orientativa (C2, Linux): Vado Gris con 64 jugadores falsos, tick p50 4,4 ms, p99
 7,3 ms, máx. 11,7 ms; unos 100 µs por personaje (simulación + cerebro del bot). Se repetirá con
 bots reales al final de la fase.
+
+### Prueba de aceptación de la fase 2 (procesos separados, sin ventana)
+
+Servidor headless en el Vado Gris (4500 ticks = 75 s) y 3 `--bot` (2 de Vardheim y 1 de Solmarch,
+4000 ticks cada uno), dos pasadas. Script: `build/real/run.sh` (no versionado; los comandos están
+abajo). Cruce de registros con `tools/compare_state_logs.gd`: «CORRECTO» en los 6 casos, 0 ERROR en
+los registros.
+
+| Pasada | Bot | Snapshots con estado | Coincidencias exactas | Correcciones | Dif. sin explicar | Reinicios duros | Resinc. | Ajustes TickSync |
+|---|---|---|---|---|---|---|---|---|
+| Sin NetSim | 1 | 1956 | 1956 | 0 | 0 | 0 | 0 | 9 |
+| Sin NetSim | 2 | 1957 | 1957 | 0 | 0 | 0 | 0 | 0 |
+| Sin NetSim | 3 | 1955 | 1954 | 0 | 0 | 1 | 0 | 7 |
+| rtt=120, jitter=20, loss=5 | 1 | 1730 | 1730 | 0 | 0 | 0 | 0 | 3 |
+| rtt=120, jitter=20, loss=5 | 2 | 1725 | 1725 | 0 | 0 | 0 | 0 | 20 |
+| rtt=120, jitter=20, loss=5 | 3 | 1728 | 1728 | 0 | 0 | 0 | 0 | 18 |
+
+El reinicio duro del bot 3 es del arranque (llegó un snapshot por delante de su predicción al entrar
+el tercero); no dejó diferencias. Con NetSim hubo 9–10 entradas sustituidas por bot y ninguna
+produjo diferencia (la sustituta repetía la misma entrada). Servidor: 0 errores de física, 0 avisos;
+`simulate()` 74–77 µs de media con 3 jugadores (incluye el arranque); snapshot medio de 91 B con 2
+remotos.
+
+### Medidas de §19 (carril B, `tools/load_test.gd --matrix`, máquina de 4 núcleos compartida)
+
+| Escenario | Jugadores | Tick p50 / p99 / máx (ms) | KB/s por cliente | Sustituidas |
+|---|---|---|---|---|
+| 64 falsos agrupados + 2 bots | 66 | 4,8 / 8,0 / 12,1 | 35,3 | 0,09 % |
+| 62 falsos + 2 bots | 64 | 4,8 / 8,7 / 14,1 | | |
+| 54 falsos + 10 bots | 64 | 5,7 / 9,6 / 23,4 | | |
+| 64 falsos agrupados + 10 bots | 74 | 6,5 / 12,1 / 45,2 | 35,3 | 0,14 % |
+| 64 falsos agrupados + 50 bots | 114 | 15,3 / 26,9 / 49,6 | 34,3 | 0,16 % |
+| 64 dispersos + 10 bots | 74 | 6,7 / 11,2 / 19,2 | | |
+| Altas y bajas a 1/s + 10 bots | 74 | 6,4 / 11,0 / 41,6 | | |
+
+- `simulate()` por personaje: **44–50 µs** (la sección de simulación entera, ~60 µs por personaje).
+- Snapshot lleno (57 registros): 1191 B, 250–525 µs de construcción.
+- Subida: 2,2–2,7 KB/s por cliente.
+- **Criterio de la fase 2**: bajada (≤ 37 KB/s) y sustituidas (< 1 %) se cumplen; **p99 del tick
+  < 8 ms con 64 jugadores agrupados NO se cumple** en esta máquina (8,7–9,6 ms). Los cuellos son
+  `simulate()` en GDScript (por encima de los 25 µs de la palanca 6 de red.md §14) y
+  `SnapshotBuilder` con muchos clientes reales. Primer límite orientativo de jugadores por batalla:
+  unos 60 en un servidor de esta clase sin optimizar. Está anotado en red.md §14.
 
 ## Pendiente de probar mañana con ventana
 
