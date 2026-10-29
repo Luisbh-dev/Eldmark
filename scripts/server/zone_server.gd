@@ -62,6 +62,10 @@ const METRICS_LOG_TICKS: int = 600
 const STOP_DRAIN_TICKS: int = 30
 ## Secciones del tick que aparecen en la línea de métricas (las mismas que mide el bucle).
 const LOGGED_SECTIONS: Array[StringName] = [&"net", &"sim", &"history", &"snapshot", &"flush"]
+## Fichas de jugador y expulsiones que el informe conserva (las más recientes); lo anterior se resume
+## en totales. Sin tope, un cliente que entra y sale en bucle haría crecer la memoria sin límite.
+const MAX_LOGGED_PLAYERS: int = 1000
+const MAX_LOGGED_KICKS: int = 200
 ## Avisos de error de física que se escriben en el registro (el resto solo se cuenta).
 const MAX_LOGGED_PHYSICS_ERRORS: int = 10
 ## Coordenada máxima (en valor absoluto) que admite un teletransporte de depuración.
@@ -93,6 +97,10 @@ var loading_timeout_ticks: int = LOADING_TIMEOUT_TICKS
 ## loopback vienen de una IP externa y así probar el tope de conexiones por IP, del que el loopback
 ## está exento.
 var remote_address_override: Callable = Callable()
+## Fichas de jugador y expulsiones que conserva el informe ([constant MAX_LOGGED_PLAYERS] y
+## [constant MAX_LOGGED_KICKS] por defecto; las pruebas los acortan).
+var max_logged_players: int = MAX_LOGGED_PLAYERS
+var max_logged_kicks: int = MAX_LOGGED_KICKS
 
 var _run_state: _RunState = _RunState.IDLE
 var _config: ServerConfig
@@ -122,9 +130,16 @@ var _rtt: Dictionary[int, _RttWindow] = {}
 var _pending_ready: Array[int] = []
 # Peers que se van (bajas del tick siguiente).
 var _leaving: Array[int] = []
-# net_id -> ficha del jugador vivo; _player_log guarda todas, también las de los que se han ido.
+# net_id -> ficha del jugador vivo; _player_log guarda las últimas max_logged_players, también las de
+# los que se han ido (las más viejas de los que se fueron se resumen en _archived_*).
 var _player_by_net: Dictionary[int, _PlayerRecord] = {}
 var _player_log: Array[_PlayerRecord] = []
+var _archived_players: int = 0
+var _archived_fakes: int = 0
+var _archived_inputs: int = 0
+var _archived_substituted: int = 0
+var _archived_late: int = 0
+var _archived_too_early: int = 0
 var _fake_counter: int = 0
 var _peak_players: int = 0
 var _players_at_stop: int = 0
@@ -133,6 +148,7 @@ var _left_total: int = 0
 var _strikes_total: int = 0
 var _strike_reasons: Dictionary[String, int] = {}
 var _kicks: Array[Dictionary] = []
+var _kicks_total: int = 0
 var _rejects: Dictionary[String, int] = {}
 var _physics_errors: int = 0
 var _teleports: int = 0
@@ -194,6 +210,16 @@ class _PlayerRecord:
 			strikes = peer.strikes_total
 		if left_tick < 0 and entity != null and is_instance_valid(entity.node):
 			last_position = entity.get_position()
+
+
+	# El jugador se va en el tick [param tick]: copia los contadores y la posición y suelta la cola,
+	# el peer y la entidad, que si no se quedarían en memoria mientras la ficha siga en el informe.
+	func close(tick: int) -> void:
+		refresh()
+		left_tick = tick
+		queue = null
+		peer = null
+		entity = null
 
 
 	func to_dictionary() -> Dictionary:
@@ -338,8 +364,7 @@ func stop(notice_text: String = "") -> void:
 			peer.state = ServerPeer.State.LEAVING
 		_transport.flush()
 	for record: _PlayerRecord in _player_by_net.values():
-		record.refresh()
-		record.left_tick = _tick
+		record.close(_tick)
 	_clear_players()
 	_pending_ready.clear()
 	_leaving.clear()
@@ -469,17 +494,20 @@ func teleport(net_id: int, position: Vector3) -> void:
 ## Claves:
 ## [codeblock]
 ## version, zone, port, ticks, tick_rate, sim_hash
-## players   {current, fake, peak, joined_total, left_total}
+## players   {current, at_stop, fake, peak, joined_total, left_total, archived}
 ## inputs    {consumed, substituted, late, too_early, substituted_percent}  (solo jugadores de red)
 ## bytes     {wire_in, wire_out, app_in, app_out}  (acumulados; ver NetTransport.get_byte_counters)
-## strikes   {total, by_reason}      kicks [{tick, peer_id, net_id, name, reason}]
+## strikes   {total, by_reason, kicks_total}
+## kicks     [{tick, peer_id, net_id, name, reason}]  (las últimas max_logged_kicks)
 ## rejects   {motivo: veces}
 ## physics_errors, teleports, respawns
 ## simulate  {calls, total_us, avg_us, max_us}        µs de cada PlayerCharacter.simulate()
 ## snapshots {sent, bytes, avg_bytes, max_bytes, build_us, avg_build_us}   build_us: construir cada
 ##           snapshot y encolarlo (sin el cálculo del interés ni el envío real de ENet)
 ## metrics   ServerMetrics.summary() (p50/p99/máx de cada sección en µs, KB/s, jugadores...)
-## player_list  una ficha por jugador que ha pasado por el servidor (también los que se fueron)
+## player_list  una ficha por jugador que ha pasado por el servidor (también los que se fueron),
+##           las últimas max_logged_players; de las anteriores solo quedan los totales
+##           (players.archived cuenta las fichas resumidas)
 ## [/codeblock]
 func write_report(path: String) -> Error:
 	if path.is_empty():
@@ -705,10 +733,34 @@ func _create_player(display_name: String, realm: int, owner_peer: int, s: int) -
 	record.entity = entity
 	_player_by_net[entity.net_id] = record
 	_player_log.append(record)
+	_trim_player_log()
 	_joined_total += 1
 	_metrics.add_counter(ServerMetrics.COUNTER_PLAYERS, 1)
 	_peak_players = maxi(_peak_players, _metrics.get_counter(ServerMetrics.COUNTER_PLAYERS))
 	return entity
+
+
+# Mantiene el anillo del informe en max_logged_players fichas: saca la más antigua de las de quien ya
+# se ha ido (las de quien sigue dentro se quedan, aunque el anillo se pase) y la resume en totales.
+func _trim_player_log() -> void:
+	while _player_log.size() > max_logged_players:
+		var index: int = -1
+		for i: int in _player_log.size():
+			if _player_log[i].left_tick >= 0:
+				index = i
+				break
+		if index < 0:
+			return
+		var record: _PlayerRecord = _player_log[index]
+		_player_log.remove_at(index)
+		_archived_players += 1
+		if record.is_fake:
+			_archived_fakes += 1
+		else:
+			_archived_inputs += record.inputs
+			_archived_substituted += record.substituted
+			_archived_late += record.late
+			_archived_too_early += record.too_early
 
 
 # Mensajes de un alta (sección 3): el SPAWN propio, los de todo lo relevante para el recién
@@ -788,8 +840,7 @@ func _remove_player(entity: NetEntity, s: int, reason: int) -> void:
 		other.priority.erase(net_id)
 	var record: _PlayerRecord = _player_by_net.get(net_id)
 	if record != null:
-		record.refresh()
-		record.left_tick = s
+		record.close(s)
 		_player_by_net.erase(net_id)
 	_queues.erase(net_id)
 	_fakes.erase(net_id)
@@ -1134,6 +1185,9 @@ func _kick(peer: ServerPeer, reason: String) -> void:
 		"tick": _tick, "peer_id": peer.peer_id, "net_id": net_id, "name": peer.display_name,
 		"reason": reason,
 	})
+	_kicks_total += 1
+	while _kicks.size() > max_logged_kicks:
+		_kicks.pop_front()
 	var record: _PlayerRecord = _player_by_net.get(net_id)
 	if record != null:
 		record.kicked = true
@@ -1305,10 +1359,10 @@ func _build_report() -> Dictionary:
 	if _transport != null and is_instance_valid(_transport):
 		network_bytes = _transport.get_byte_counters()
 	var player_list: Array[Dictionary] = []
-	var inputs: int = 0
-	var substituted: int = 0
-	var late: int = 0
-	var too_early: int = 0
+	var inputs: int = _archived_inputs
+	var substituted: int = _archived_substituted
+	var late: int = _archived_late
+	var too_early: int = _archived_too_early
 	for record: _PlayerRecord in _player_log:
 		player_list.append(record.to_dictionary())
 		if not record.is_fake:
@@ -1333,6 +1387,7 @@ func _build_report() -> Dictionary:
 			"peak": _peak_players,
 			"joined_total": _joined_total,
 			"left_total": _left_total,
+			"archived": _archived_players,
 		},
 		"inputs": {
 			"consumed": inputs,
@@ -1342,7 +1397,8 @@ func _build_report() -> Dictionary:
 			"substituted_percent": substituted_percent,
 		},
 		"bytes": network_bytes,
-		"strikes": {"total": _strikes_total, "by_reason": _strike_reasons},
+		"strikes": {"total": _strikes_total, "by_reason": _strike_reasons,
+				"kicks_total": _kicks_total},
 		"kicks": _kicks,
 		"rejects": _rejects,
 		"physics_errors": _physics_errors,
@@ -1371,7 +1427,7 @@ func _build_report() -> Dictionary:
 
 
 func _count_fakes_in_log() -> int:
-	var count: int = 0
+	var count: int = _archived_fakes
 	for record: _PlayerRecord in _player_log:
 		if record.is_fake:
 			count += 1

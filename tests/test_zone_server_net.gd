@@ -625,6 +625,27 @@ func test_flooding_gets_the_client_kicked_with_a_notice() -> void:
 			"y marca al jugador como expulsado")
 
 
+## Las expulsiones del informe son las últimas max_logged_kicks, pero se cuentan todas (hallazgo S3:
+## la lista crecía con cada expulsión, sin límite).
+func test_kick_list_in_the_report_is_bounded_but_counts_every_kick() -> void:
+	await _start_server()
+	_server.max_logged_kicks = 10
+	for i: int in 25:
+		var peer_id: int = 9000 + i
+		_server_transport.peer_authenticating.emit(peer_id)
+		# Mensajes antes de autenticarse: cada uno es un aviso y a los 50 se le expulsa.
+		for _j: int in 50:
+			_server_transport.packet_received.emit(peer_id, NetMessages.ClientReady.new().encode())
+	var report: Dictionary = _read_report()
+	var kicks: Array = report.get("kicks", [])
+	assert_eq(kicks.size(), 10, "el informe conserva las últimas 10 expulsiones")
+	assert_eq(int((report.get("strikes", {}) as Dictionary).get("kicks_total", 0)), 25,
+			"pero cuenta las 25")
+	assert_eq(int((kicks[kicks.size() - 1] as Dictionary).get("peer_id", 0)), 9024,
+			"la última es la más reciente")
+	assert_eq(int((kicks[0] as Dictionary).get("peer_id", 0)), 9015, "y la primera, la décima desde el final")
+
+
 func test_debug_commands_need_the_flag() -> void:
 	await _start_server()
 	var client: RawClient = await _join("Ana")

@@ -1256,6 +1256,13 @@ El hueco ya existe en HELLO y la interfaz `AuthProvider` ya está.
   está permitido).
 - `Performance.add_custom_monitor("eldmark/…")` para la depuración remota desde el editor.
 - `--report=<json>` al cerrar.
+  - **Memoria acotada** (hallazgo S3). Cada alta dejaba para siempre su ficha en el informe con su
+    `InputQueue`, su `ServerPeer` y su `NetEntity` (unos 70 objetos y 80 KB por ciclo: ~3 GB/h con
+    un cliente que entra y sale en bucle). Ahora la ficha suelta esas referencias al irse el jugador,
+    `player_list` conserva solo las últimas 1000 fichas (`max_logged_players`) y `kicks`, las
+    últimas 200 expulsiones (`max_logged_kicks`). Lo anterior se resume en `players.archived`,
+    `strikes.kicks_total` y en los totales de `inputs`/`players.fake`. Nunca se saca del anillo la
+    ficha de quien sigue dentro.
 
 **`--state-log=<csv>`:**
 
