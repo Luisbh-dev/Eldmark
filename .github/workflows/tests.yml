@@ -1,12 +1,14 @@
 name: Pruebas
 
 # Suite completa de pruebas (también las de red y las de procesos) con Godot 4.7.2 headless en
-# Linux, en cada push y en cada pull request. Para que una prueba rota bloquee el merge hay que
+# Linux, en cada push a main y en cada pull request (un push a la rama de un PR ya la lanza por
+# pull_request; lanzarla también por push gastaba el doble de minutos). Para que una prueba rota bloquee el merge hay que
 # marcar el trabajo «Suite completa» como comprobación obligatoria en la protección de la rama
 # (Settings > Branches): eso no se puede configurar desde este archivo.
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 

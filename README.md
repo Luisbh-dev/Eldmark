@@ -152,7 +152,7 @@ Las capturas y otros ficheros temporales pueden ir en `build/`, que Godot ignora
 ### Integración continua
 
 `.github/workflows/tests.yml` (GitHub Actions, `ubuntu-latest`) ejecuta la suite completa, red y
-procesos incluidos, en cada push y en cada pull request: descarga Godot 4.7.2-stable para Linux
+procesos incluidos, en cada push a `main` y en cada pull request: descarga Godot 4.7.2-stable para Linux
 (con comprobación SHA-512 y en caché), baja los objetos de Git LFS (también en caché), importa el
 proyecto y lanza `tests/run_tests.gd` repartido en cuatro partes a la vez (`--shard=K/4`), cada una
 con un plazo de 20 minutos. Si una falla, sube su `build/` (logs e informes) como artefacto
