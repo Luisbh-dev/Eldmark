@@ -845,7 +845,12 @@ Vida 1000 y resistencia 1000 para todos; 1 tick = 1/60 s. Estos datos están en 
 
 - **El DPS medido es igual al calculado con los datos** (156,3, 150,0, 127,1 y 135,0, con 45, 50, 21 y 13
   golpes en 30 s, ciclos completos): la máquina de acciones, la ventana de enlace y la carga hacen
-  exactamente lo que dicen los `.tres`; no hay pérdidas de ticks al enlazar.
+  exactamente lo que dicen los `.tres`; no hay pérdidas de ticks al enlazar. Lo que lo demuestra no
+  es la división (daño de ciclos enteros entre sus segundos da siempre el DPS calculado, y el búfer de
+  8 ticks absorbe un tick de retraso por enlace sin cambiar el recuento de golpes) sino el **tick de
+  cada golpe**: la herramienta lo exporta (`hit_ticks` frente a `expected_hit_ticks`) y
+  `test_combat_server` y `test_combat_balance` exigen que coincidan, con un control que alarga un
+  tick el ligero 1 y comprueba que se detecta.
 - **TTK ideal calculado:** 1000 de vida entre 156,3 de DPS son 6,4 s de combo continuo, o 7,4 s con
   fuertes cargados al máximo. Medido con un atacante perfecto (combo encadenado, del primer golpe a la
   muerte): **5,95 s y 10 golpes contra alguien quieto** (el primer golpe va 12 ticks después de empezar).

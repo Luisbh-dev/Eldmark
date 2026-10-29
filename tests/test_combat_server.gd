@@ -380,27 +380,47 @@ func test_the_dummy_modes_block_and_spin() -> void:
 	assert_near(_character(still).yaw, 0.0, 1e-6, "el quieto no gira")
 
 
-func test_the_sword_combo_dps_against_the_dummy_matches_the_data() -> void:
+## Resultado de [method _run_sword_combo].
+class ComboRun:
+	## Tick de cada golpe del atacante al maniquí, y el que le toca según los datos de los .tres.
+	var hit_ticks: Array[int] = []
+	var expected_hit_ticks: Array[int] = []
+	var damage: int = 0
+	var cycle_damage: int = 0
+	var dummy_alive: bool = false
+
+
+## Un atacante falso da [param cycles] combos de tres ligeros a un maniquí, con las pulsaciones fijadas
+## por los datos (la primera abre el ligero 1 y cada enlace cae 4 ticks antes de que acabe el ligero
+## en curso, dentro de su ventana de combo). Devuelve el tick de cada golpe y el que dicen los datos:
+## inicio del ciclo, más lo que duran los ligeros anteriores, más la anticipación del suyo.
+## Con [param extra_first_light_ticks] el servidor alarga ese número de ticks el ligero 1 [b]después[/b]
+## de calcular el calendario con los datos buenos: simula una máquina que no cumple lo que dicen los
+## .tres y sirve de control de que la prueba lo detecta.
+func _run_sword_combo(cycles: int, extra_first_light_ticks: int = 0) -> ComboRun:
 	await _start_server()
+	var run := ComboRun.new()
 	var weapon: WeaponTicks = CombatCatalog.weapon(
 			CombatCatalog.weapon_id(CombatCatalog.DEFAULT_WEAPON))
-	# Un ciclo: la primera pulsación abre el ligero 1 y cada enlace cae 4 ticks antes de que acabe el
-	# ligero en curso (dentro de su ventana de combo). Al acabar el tercero empieza otro ciclo.
 	var cycle_presses: Array[int] = [0]
+	var cycle_hits: Array[int] = []
 	var cycle_ticks: int = 0
-	var cycle_damage: int = 0
 	for index: int in weapon.light_ids.size():
 		var attack: AttackTicks = CombatCatalog.attack(weapon.light_ids[index])
-		cycle_damage += attack.base_damage
+		run.cycle_damage += attack.base_damage
+		cycle_hits.append(cycle_ticks + attack.windup_ticks)
 		cycle_ticks += attack.total_ticks
 		if index < weapon.light_ids.size() - 1:
 			cycle_presses.append(cycle_ticks - 4)
-	var cycles: int = 3
 	var start_tick: int = _server.get_tick() + 8
 	var all_presses: Array[int] = []
 	for cycle_index: int in cycles:
 		for press: int in cycle_presses:
 			all_presses.append(start_tick + cycle_index * cycle_ticks + press)
+		for hit: int in cycle_hits:
+			run.expected_hit_ticks.append(start_tick + cycle_index * cycle_ticks + hit)
+	var first_light: AttackTicks = CombatCatalog.attack(weapon.light_ids[0])
+	first_light.total_ticks += extra_first_light_ticks
 	var attacker: int = _server.add_fake_player(_brain(func(tick: int, _position: Vector3,
 			_yaw: float) -> PlayerInput:
 		var input := PlayerInput.new()
@@ -419,18 +439,37 @@ func test_the_sword_combo_dps_against_the_dummy_matches_the_data() -> void:
 			if next_tick == start_tick + cycle_index * cycle_ticks - 1:
 				_server.teleport(attacker, Vector3(0.0, 0.05, 0.0))
 		await tree.physics_frame
-	var damage: int = 0
-	var hits: int = 0
+	first_light.total_ticks -= extra_first_light_ticks
 	for event: NetMessages.EntityEvent in _events_of(NetMessages.EntityEvent.Kind.HIT):
 		if event.net_id == dummy and event.attacker == attacker:
-			damage += event.amount
-			hits += 1
-	assert_eq(hits, weapon.light_ids.size() * cycles, "tres golpes por ciclo")
-	assert_eq(damage, cycle_damage * cycles, "el daño de los %d combos coincide con los .tres" % cycles)
-	var seconds: float = float(cycles * cycle_ticks) / 60.0
-	assert_near(float(damage) / seconds, float(cycle_damage) / (float(cycle_ticks) / 60.0), 0.01,
-			"el DPS medido es el calculado con los datos")
-	assert_true(_combatant(dummy).is_alive(), "el maniquí sigue ahí")
+			run.damage += event.amount
+			run.hit_ticks.append(event.tick)
+	run.dummy_alive = _combatant(dummy).is_alive()
+	return run
+
+
+func test_the_sword_combo_dps_against_the_dummy_matches_the_data() -> void:
+	var cycles: int = 3
+	var run: ComboRun = await _run_sword_combo(cycles)
+	# El DPS medido es el calculado con los .tres solo si cada golpe cae en el tick que dicen los datos
+	# (no basta contar golpes y daño: dividir lo uno entre lo otro da siempre el DPS calculado, y el
+	# búfer de entradas absorbe un tick de retraso en cada enlace sin que cambie el recuento).
+	assert_eq(run.hit_ticks, run.expected_hit_ticks,
+			"cada golpe cae en el tick de los datos (inicio del ciclo + duraciones anteriores + anticipación)")
+	assert_eq(run.damage, run.cycle_damage * cycles,
+			"el daño de los %d combos coincide con los .tres" % cycles)
+	assert_true(run.dummy_alive, "el maniquí sigue ahí")
+
+
+func test_a_light_attack_one_tick_longer_than_the_data_is_detected_by_the_dps_test() -> void:
+	# Control de la prueba anterior: con el primer ligero un tick más largo de lo que dicen los datos
+	# (un -2,5 % de DPS), recuento y daño siguen dando lo mismo, pero los ticks de los golpes no.
+	var run: ComboRun = await _run_sword_combo(1, 1)
+	assert_eq(run.hit_ticks.size(), run.expected_hit_ticks.size(), "sigue habiendo un golpe por ligero")
+	assert_eq(run.damage, run.cycle_damage, "y el mismo daño total")
+	assert_true(run.hit_ticks != run.expected_hit_ticks,
+			"pero los golpes caen tarde: %s frente a %s" % [run.hit_ticks, run.expected_hit_ticks])
+	assert_true(run.hit_ticks[1] == run.expected_hit_ticks[1] + 1, "el segundo, un tick después")
 
 
 # --- Antitrampas: el servidor decide el ritmo y el alcance -------------------------------------

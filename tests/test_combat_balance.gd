@@ -79,6 +79,12 @@ func test_a_minimal_balance_run_matches_the_catalog_and_ends_without_errors() ->
 		assert_true(int(measured.get("hits", 0)) > 0, "%s: golpea al maniquí" % key)
 		assert_near(float(measured.get("dps", -1.0)), float(measured.get("expected_dps", -2.0)), 0.5,
 				"%s: el DPS medido es el calculado con los datos" % key)
+		# El DPS por sí solo sale siempre igual al calculado (daño de ciclos enteros entre sus segundos):
+		# lo que lo ata a los datos es que cada golpe caiga en el tick que le toca.
+		var hit_ticks: Array = measured.get("hit_ticks", [])
+		assert_false(hit_ticks.is_empty(), "%s: se anotan los ticks de los golpes" % key)
+		assert_eq(hit_ticks, measured.get("expected_hit_ticks", []),
+				"%s: cada golpe cae en el tick que dicen los datos" % key)
 
 	# El atacante perfecto mata a quien no se defiende y tarda más contra quien bloquea.
 	var ideal: Dictionary = result.get("ideal", {})
