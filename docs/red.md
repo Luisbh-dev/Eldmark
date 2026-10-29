@@ -83,7 +83,7 @@ que añade otro flujo de trabajo. Aquí se usan, no se redefinen (ver [1.5](#15-
 | Argumentos | Modo | Escena |
 |---|---|---|
 | ninguno, `--demo`, `--shots=`, `--quit-after-demo` | Sandbox sin red de la fase 1, sin cambios | `scenes/client/client_main.tscn` |
-| `--server [--port=24600] [--zone=<id>] [--max-players=64] [--max-per-ip=4] [--idle-quit=<s>] [--fake-players=N [--fake-layout=cluster\|spread] [--fake-churn=<ticks>]] [--debug-commands] [--dev-lock]` | Servidor dedicado (siempre con `--headless`) | `scenes/server/server_main.tscn` |
+| `--server [--port=24600] [--zone=<id>] [--max-players=64] [--max-per-ip=4] [--idle-quit=<s>] [--fake-players=N [--fake-layout=cluster\|spread] [--fake-churn=<ticks>]] [--debug-commands] [--dev-lock] [--stop-file=<ruta>]` | Servidor dedicado (siempre con `--headless`) | `scenes/server/server_main.tscn` |
 | `--connect=<host>[:<puerto>] [--realm=<reino>] [--name=<nombre>]` | Cliente en red | `scenes/client/online_main.tscn` |
 | `--local [--realm=…] [--name=…]` | Cliente contra un servidor local, que se lanza si no hay ninguno | `scenes/client/online_main.tscn` |
 | `--bot --connect=… [--bot-seed=N] [--bot-cheat=<modo>]` | Un cliente que predice, sin cámara ni HUD, guiado por `BotBrain` | `scenes/client/online_main.tscn` |
@@ -123,6 +123,17 @@ que añade otro flujo de trabajo. Aquí se usan, no se redefinen (ver [1.5](#15-
   `Engine.time_scale` ni los ticks por segundo: cambian el delta que usa `move_and_slide()` y
   rompen el determinismo.
 - **Registro:** con la opción `--log-file <ruta>` de Godot.
+- **Cómo se para el servidor (hallazgo S5).** Hay cierre ordenado (NOTICE de cierre a los
+  clientes, `ZoneServer.stop`, informe de `--report` y borrado del bloqueo de `--dev-lock`) con
+  `--quit-after-ticks`, `--idle-quit` y `--stop-file=<ruta>`: el servidor mira cada segundo si ese
+  archivo existe (por ejemplo, un `ExecStop` de systemd que lo cree con `touch`), hace el mismo
+  cierre y lo borra; uno que ya existiera al arrancar es de una parada anterior y se borra.
+  **`SIGTERM` y `SIGINT` (Ctrl+C, `docker stop`, `kill`) no cierran de forma ordenada**: GDScript
+  no puede atraparlas y Godot termina el proceso al instante (código de salida 143 o 130), sin
+  NOTICE, sin informe final y con el bloqueo de `--dev-lock` sin borrar. Para limitar el daño, con
+  `--report` el informe se reescribe cada 10 s (`"closed": false`) además de al cerrar
+  (`"closed": true`), igual que el registro de estados se vuelca cada segundo; y quien lee el
+  bloqueo (`LocalServerLauncher`) no debe fiarse de que su pid siga siendo el servidor.
 
 ### 1.4 Flujo de trabajo local
 
@@ -987,8 +998,9 @@ func _physics_process(delta: float) -> void:
 - **Métricas.** Cada 10 s se registran la duración del tick (p50, p99 y máximo en µs, por
   sección), los bytes por segundo (`host.pop_statistic`), el número de jugadores y el
   porcentaje de entradas sustituidas.
-- **Cierre.** `--quit-after-ticks` y `--idle-quit` envían un NOTICE con el código 2, hacen
-  `flush()` y cierran.
+- **Cierre.** `--quit-after-ticks`, `--idle-quit` y `--stop-file` envían un NOTICE con el código 2,
+  hacen `flush()` y cierran. `SIGTERM` y `SIGINT` no llegan a GDScript y no cierran de forma
+  ordenada (ver [1.3](#13-ajustes-del-servidor-headless)).
 
 ### 8.2 Cola de entradas (`InputQueue`)
 
@@ -1300,7 +1312,9 @@ El hueco ya existe en HELLO y la interfaz `AuthProvider` ya está.
 - `ServerMetrics` mide cada sección del tick con `Time.get_ticks_usec()` (en `scripts/server`
   está permitido).
 - `Performance.add_custom_monitor("eldmark/…")` para la depuración remota desde el editor.
-- `--report=<json>` al cerrar.
+- `--report=<json>` al cerrar y, mientras corre, cada 600 ticks (10 s): si matan al servidor
+  (`SIGTERM`, `SIGINT`) queda el de la última marca, con `"closed": false`. Construirlo cuesta
+  unos milisegundos con muchas fichas; la escritura va dentro del tick que cumple la marca.
   - **Memoria acotada** (hallazgo S3). Cada alta dejaba para siempre su ficha en el informe con su
     `InputQueue`, su `ServerPeer` y su `NetEntity` (unos 70 objetos y 80 KB por ciclo: ~3 GB/h con
     un cliente que entra y sale en bucle). Ahora la ficha suelta esas referencias al irse el jugador,

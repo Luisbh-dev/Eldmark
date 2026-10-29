@@ -523,6 +523,7 @@ func teleport(net_id: int, position: Vector3) -> void:
 ## Claves:
 ## [codeblock]
 ## version, zone, port, ticks, tick_rate, sim_hash
+## closed    false mientras el servidor está en marcha (informe periódico), true tras stop()
 ## players   {current, at_stop, fake, peak, joined_total, left_total, archived}
 ## inputs    {consumed, substituted, late, too_early, substituted_percent}  (solo jugadores de red)
 ## bytes     {wire_in, wire_out, app_in, app_out}  (acumulados; ver NetTransport.get_byte_counters)
@@ -1497,6 +1498,7 @@ func _build_report() -> Dictionary:
 		"ticks": _tick,
 		"tick_rate": Engine.physics_ticks_per_second,
 		"sim_hash": _sim_hash,
+		"closed": _run_state == _RunState.STOPPING or _run_state == _RunState.STOPPED,
 		"players": {
 			"current": get_player_count(),
 			"at_stop": _players_at_stop,

@@ -8,7 +8,13 @@ extends RefCounted
 ## --server --port=24600 --zone=<id> --max-players=64 --max-per-ip=4 --idle-quit=<s>
 ## --fake-players=N --fake-layout=<cluster|spread> --fake-churn=<ticks> --debug-commands --dev-lock
 ## --quit-after-ticks=N --report=<ruta.json> --state-log=<ruta.csv> --net-sim=rtt=120,jitter=20
+## --stop-file=<ruta>
 ## [/codeblock]
+## SIGTERM y SIGINT (Ctrl+C, [code]docker stop[/code], systemd) matan el proceso de Godot sin pasar
+## por GDScript, así que no hay cierre ordenado. Para pararlo desde fuera con NOTICE de cierre,
+## informe y borrado del bloqueo de [code]--dev-lock[/code] está [code]--stop-file=<ruta>[/code]: el
+## servidor mira cada segundo si el archivo existe (por ejemplo, un [code]ExecStop[/code] que lo
+## cree con [code]touch[/code]).
 ## Un valor que no es un número válido o está fuera de rango se ignora y se queda el valor por
 ## defecto: el servidor nunca arranca con una configuración absurda por un error al teclear.
 
@@ -29,6 +35,10 @@ var quit_after_ticks: int = 0
 var report_path: String = ""
 ## Ruta del CSV con el estado de cada jugador en cada tick. Vacío = ninguno.
 var state_log_path: String = ""
+## Ruta de un archivo cuya existencia pide el cierre ordenado del servidor (se comprueba cada
+## segundo; se borra al cerrar, y si ya existía al arrancar es de una parada anterior y se borra).
+## Vacío = ninguno.
+var stop_file_path: String = ""
 ## Especificación del simulador de red ([code]rtt=120,jitter=20,loss=5,dup=0,seed=1[/code]).
 ## Vacío = sin simulador.
 var net_sim_spec: String = ""
@@ -80,6 +90,7 @@ static func from_args(args: PackedStringArray) -> ServerConfig:
 		config.fake_layout = layout
 	config.report_path = _string_option(args, "--report=")
 	config.state_log_path = _string_option(args, "--state-log=")
+	config.stop_file_path = _string_option(args, "--stop-file=")
 	config.net_sim_spec = _string_option(args, "--net-sim=")
 	config.debug_commands = args.has("--debug-commands")
 	config.dev_lock = args.has("--dev-lock")

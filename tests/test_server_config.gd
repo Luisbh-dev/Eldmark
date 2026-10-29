@@ -32,7 +32,7 @@ func test_all_options() -> void:
 		"--server", "--port=24700", "--zone=test_world", "--max-players=32", "--max-per-ip=2",
 		"--idle-quit=30", "--fake-players=10", "--debug-commands", "--dev-lock",
 		"--quit-after-ticks=900", "--report=build/report.json", "--state-log=build/state.csv",
-		"--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1",
+		"--stop-file=build/parar.txt", "--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1",
 	])
 	var config: ServerConfig = ServerConfig.from_args(args)
 	assert_eq(config.port, 24700, "port")
@@ -46,6 +46,7 @@ func test_all_options() -> void:
 	assert_eq(config.quit_after_ticks, 900, "quit_after_ticks")
 	assert_eq(config.report_path, "build/report.json", "report_path")
 	assert_eq(config.state_log_path, "build/state.csv", "state_log_path")
+	assert_eq(config.stop_file_path, "build/parar.txt", "stop_file_path")
 	assert_eq(config.net_sim_spec, "rtt=120,jitter=20,loss=5,dup=0,seed=1",
 			"el simulador conserva los = de su especificación")
 
@@ -95,6 +96,9 @@ func test_paths_keep_case_and_lose_quotes() -> void:
 	var config: ServerConfig = ServerConfig.from_args(args)
 	assert_eq(config.report_path, "Salida/Informe Final.json", "mayúsculas, espacios y comillas")
 	assert_eq(config.state_log_path, "x.csv", "espacios alrededor")
+	assert_eq(ServerConfig.from_args(PackedStringArray(["--stop-file=\"Parar Ya.txt\""])).stop_file_path,
+			"Parar Ya.txt", "--stop-file también conserva mayúsculas, espacios y quita las comillas")
+	assert_eq(ServerConfig.new().stop_file_path, "", "sin --stop-file, vacío")
 
 
 func test_first_occurrence_wins_and_unknown_arguments_are_ignored() -> void:
