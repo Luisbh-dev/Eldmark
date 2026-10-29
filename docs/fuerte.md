@@ -220,9 +220,24 @@ aplica un cambio de `collision_layer` en el siguiente `move_and_slide` del mismo
   deja 1 m útil);
 - resultado en `scenes/world/zones/vado_gris/vado_gris_navmesh.tres` (texto).
 
+Hecho en F0 (medido): se hornea en 2 s, el archivo pesa 0,3 MB (4223 vértices, 5930 polígonos) con
+celda de 0,25 m (no hizo falta subirla a 0,3) y sale byte a byte igual en cada ejecución.
+`tests/test_navmesh.gd` comprueba que desde cada `GuardSpawn` hay ruta a la pasarela (por las
+rampas, sin salir), y, con un enlace por la puerta como el que crea el servidor, al vado y a los
+dos puentes; que **sin el enlace no hay salida del fuerte**; que desde los campamentos se llega al
+vado, a los puentes y a la explanada; y que el lecho profundo no se alcanza andando (hornear sin la
+capa 3 lo rompe).
+
 `NpcNavigation` (servidor) crea un mapa propio de `NavigationServer3D` con **iteraciones
 síncronas**, registra la región y un enlace por la puerta por RID (no desde la escena), y no da
-rutas hasta `map_get_iteration_id(map) > 0`. El enlace de la puerta está siempre activo, en la capa
+rutas hasta que el mapa esté construido. **Comprobado en F0 (corrige lo anterior):** con
+`map_set_use_async_iterations(false)` o sin ello, y con o sin `map_force_update`, la primera
+iteración del mapa (`map_get_iteration_id(map) == 1`) sale **vacía** (las órdenes de la región se
+aplican después) y las rutas buenas llegan unos pasos de física más tarde (iteración 2); consultar
+el mapa antes de la primera sincronización registra un error del motor. Por eso `NpcNavigation`
+tiene que esperar a que una consulta de prueba devuelva un punto de la malla (como
+`_wait_for_map()` de `tests/test_navmesh.gd`), no solo a que `map_get_iteration_id(map) > 0`. El
+enlace de la puerta está siempre activo, en la capa
 de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D`) filtra con
 `navigation_layers` del reino del agente (inmediato, sin esperar iteraciones). API:
 `get_path(from: Vector3, to: Vector3, realm: int) -> PackedVector3Array`.

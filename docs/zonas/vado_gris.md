@@ -322,6 +322,7 @@ godot --headless --path . -s res://tools/materials/build_realm_materials.gd  # m
 godot --headless --path . --import
 godot --headless --path . -s res://tools/props/build_vado_gris_props.gd      # scenes/world/props/ (fuerte, puerta, marcadores de PNJ)
 godot --headless --path . -s res://tools/terrain/generate_vado_gris.gd       # terreno + vado_gris.tscn
+godot --headless --path . -s res://tools/bake_navmesh.gd                     # vado_gris_navmesh.tres (2 s)
 ```
 
 Comprobaciones:
@@ -332,6 +333,9 @@ godot --headless --path . --fixed-fps 60 -s res://tools/terrain/verify_vado_gris
 godot --path . -s res://tools/render/render_screenshot_points.gd -- --out=<ruta>/build/vado_gris
 ```
 
+- Hay que volver a hornear la malla de navegación de los PNJ (`tools/bake_navmesh.gd`, ver
+  docs/fuerte.md 4.1) cada vez que cambia la geometría de juego: rampas, pasarela, puerta, puentes,
+  murallas, bloqueos... `tests/test_navmesh.gd` lo recuerda con rutas rotas.
 - Los dos primeros pasos solo hacen falta si cambian los assets. Para cambiar el trazado se edita
   `tools/terrain/vado_gris_layout.gd` (posiciones, río, calzadas, función de alturas) y se
   vuelve a lanzar el generador; la vegetación, la pintura y las escenas de piezas, en sus scripts.
