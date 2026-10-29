@@ -468,3 +468,23 @@ no guarda nada. Cuando alguien se desconecta, sale del grupo.
 grupo) y `test_party_loopback` (con ENet y bots: invitar, aceptar, rechazar, caducar, expulsar, ceder el mando,
 salir y desconectarse, la invitación a un enemigo rechazada sin que se entere, y el estado de un miembro fuera
 del radio de interés).
+
+### 12.5 Interfaz de grupo (SOC-08)
+
+`scripts/client/party/`; la monta el `HUD` en red a la izquierda de la pantalla, por debajo de la pantalla de
+muerte.
+
+| Pieza | Qué hace |
+|---|---|
+| `PartyState` | Lo que el cliente sabe del grupo: miembros por orden de llegada, líder, estado a 2 Hz e invitaciones (la más antigua a la vista). Lo alimenta `NetClient` y lo expone `NetClient.get_party()` |
+| `PartyFrames` y `PartyFrame` | Un marco por miembro: nombre con el color del reino, corona dibujada del líder, vida, resistencia y distancia a partir de 30 m; atenuado si está a más de 100 m, muerto o sin datos todavía |
+| `PartyInvitePrompt` | «Ana te invita a su grupo», los segundos que quedan y las teclas reales de aceptar (Y) y rechazar (N) con su glifo; quita lo caducado por tick |
+| `PartyHud` | Reúne los dos y traduce `/invitar`, `/salir`, `/expulsar` y `/lider` de la caja de chat en peticiones (`NetClient.send_party_*`) |
+| `Nameplates.set_party` | Los miembros del grupo llevan el nombre con el color de grupo (azul del canal) en lugar del de su reino |
+
+Teclas nuevas en `InputBindings`: `party_accept` (Y), `party_decline` (N) y `social_menu` (T); todas
+provisionales (pendiente del usuario, igual que las medidas y los colores de los marcos).
+
+La demo del backlog (cuatro bots agrupados con el jugador local) está en `test_party_hud`
+(`test_a_party_of_five_shows_the_right_frames`): comprueba nombres, orden, corona única, vida, resistencia,
+distancia, atenuado por lejos, por muerte y por falta de datos, y que los marcos siguen a la lista.

@@ -52,6 +52,8 @@ static func ensure_defaults() -> void:
 	_ensure_key(&"map_zoom_out", KEY_MINUS)
 	_ensure_key(&"scoreboard", KEY_TAB)
 	_ensure_keys(&"chat_open", [KEY_ENTER, KEY_KP_ENTER])
+	_ensure_key(&"party_accept", KEY_Y)
+	_ensure_key(&"party_decline", KEY_N)
 
 
 static func _ensure_key(action: StringName, physical_keycode: Key) -> void:

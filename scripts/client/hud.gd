@@ -30,6 +30,11 @@ extends CanvasLayer
 ## [b]Chat (SOC-05).[/b] En red, la [ChatBox] abajo a la izquierda enseña los mensajes de [signal
 ## NetClient.chat_received] y los NOTICE; Intro abre su línea y suspende el movimiento y la cámara mientras se
 ## escribe.
+## [br][br]
+## [b]Grupo (SOC-08).[/b] En red, el [PartyHud] a la izquierda enseña el aviso de invitación (con aceptar y rechazar
+## por teclado) y los marcos de los miembros del grupo; atiende los comandos [code]/invitar[/code],
+## [code]/salir[/code], [code]/expulsar[/code] y [code]/lider[/code] de la caja de chat y avisa a las placas de nombre de
+## quién es del grupo.
 
 ## Cada cuánto se refresca el texto del panel de depuración, en segundos.
 ## Refrescarlo cada frame hace que las cifras parpadeen y sean ilegibles.
@@ -63,6 +68,8 @@ var _world_map: WorldMap = null
 var _scoreboard: ScoreboardPanel = null
 # Caja de chat (SOC-05); null en el sandbox.
 var _chat: ChatBox = null
+# Interfaz de grupo (SOC-08): invitación y marcos; null en el sandbox.
+var _party_hud: PartyHud = null
 # Lo que enseña ahora la lista de reaparición de la pantalla de muerte (para saber si cambió).
 var _death_signature: String = ""
 
@@ -130,6 +137,7 @@ func bind_net(client: NetClient, world: Node) -> void:
 		_setup_world_map()
 		_setup_scoreboard()
 		_setup_chat()
+		_setup_party()
 		var hints: Array[Dictionary] = UIHintBar.DEFAULT_HINTS.duplicate()
 		hints.append_array(NET_HINTS_EXTRA)
 		_hint.set_hints(hints)
@@ -227,6 +235,11 @@ func get_chat() -> ChatBox:
 	return _chat
 
 
+## Interfaz de grupo: aviso de invitación y marcos de los miembros (null sin red).
+func get_party_hud() -> PartyHud:
+	return _party_hud
+
+
 ## Reparto de la sensación de combate (null hasta [method bind]).
 func get_feedback() -> CombatFeedback:
 	return _feedback
@@ -302,6 +315,22 @@ func _setup_chat() -> void:
 	add_child(_chat)
 	move_child(_chat, _death.get_index())
 	_chat.bind(_client, _camera_rig, _client.get_controller())
+
+
+# Crea (de nuevo, si ya había una) la interfaz de grupo: a la izquierda, por debajo de la pantalla de muerte, con
+# los comandos de grupo de la caja de chat conectados a ella y las placas de nombre avisadas de quién es del grupo.
+func _setup_party() -> void:
+	if is_instance_valid(_party_hud):
+		remove_child(_party_hud)
+		_party_hud.free()
+	_party_hud = PartyHud.new()
+	_party_hud.name = "Grupo"
+	add_child(_party_hud)
+	move_child(_party_hud, _death.get_index())
+	_party_hud.bind(_client)
+	if is_instance_valid(_chat):
+		_chat.party_handler = Callable(_party_hud, "handle_command")
+	_nameplates.set_party(_client.get_party())
 
 
 # --- Vida y resistencia -----------------------------------------------------------------------
