@@ -257,7 +257,9 @@ func test_the_hud_gets_its_look_from_the_theme() -> void:
 	var label: Label = hud.get_node(^"DebugPanel/DebugLabel") as Label
 	assert_eq(label.get_theme_font_size(&"font_size"), UIThemeBuilder.FONT_SIZE)
 	assert_eq(label.get_theme_color(&"font_color"), UIPalette.TEXT)
-	var hint: Label = hud.get_node(^"HintLabel") as Label
+	var bar: UIHintBar = hud.get_node(^"HintLabel") as UIHintBar
+	var hint: Label = bar.find_children("*", "Label", true, false)[0] as Label
+	assert_eq(hint.theme_type_variation, &"HintLabel", "la ayuda usa la variación del tema")
 	assert_eq(hint.get_theme_constant(&"outline_size"), 4)
 	assert_eq(hint.get_theme_color(&"font_outline_color"), UIPalette.with_alpha(Color.BLACK, 0.6))
 

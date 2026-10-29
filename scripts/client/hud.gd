@@ -46,7 +46,7 @@ var _dimmed: bool = false
 @onready var _numbers: DamageNumbers = $DamageNumbers
 @onready var _marker: HitMarker = $HitMarker
 @onready var _death: DeathScreen = $DeathScreen
-@onready var _hint: Label = $HintLabel
+@onready var _hint: UIHintBar = $HintLabel
 @onready var _debug_panel: PanelContainer = $DebugPanel
 @onready var _debug_label: Label = $DebugPanel/DebugLabel
 

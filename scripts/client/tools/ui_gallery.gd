@@ -27,6 +27,11 @@ const BACKGROUND_COLOR: Color = Color(0.2, 0.27, 0.24, 1.0)
 
 var _content: VBoxContainer = null
 var _dialog: AcceptDialog = null
+var _tooltip: UITooltip = null
+var _confirm: UIConfirmDialog = null
+var _confirm_result: Label = null
+var _cooldown_slot: UIIconSlot = null
+var _slots: Array[UIIconSlot] = []
 
 
 func _ready() -> void:
@@ -67,6 +72,7 @@ func _ready() -> void:
 	_build_windows()
 	_build_factions()
 	_build_extra_sections()
+	UISounds.hook_all(self)
 
 
 ## Todos los nodos de la galería (para las pruebas).
@@ -308,9 +314,144 @@ func _build_factions() -> void:
 		row.add_child(swatch)
 
 
-## Hueco para las secciones de los componentes comunes (UI-09).
+## Tooltip de la galería (propio, no el compartido).
+func get_ui_tooltip() -> UITooltip:
+	return _tooltip
+
+
+## Diálogo de confirmación de la galería.
+func get_confirm_dialog() -> UIConfirmDialog:
+	return _confirm
+
+
+## Casillas de icono de la galería.
+func get_slots() -> Array[UIIconSlot]:
+	return _slots
+
+
+## Casilla que repite una reutilización sin parar.
+func get_cooldown_slot() -> UIIconSlot:
+	return _cooldown_slot
+
+
+# --- Componentes comunes (UI-09) --------------------------------------------------------------
+
 func _build_extra_sections() -> void:
-	pass
+	# Capa propia del tooltip y diálogo de confirmación: viven en la galería (no en los
+	# compartidos) para desaparecer con ella.
+	var layer: CanvasLayer = CanvasLayer.new()
+	layer.name = "ComponentLayer"
+	layer.layer = UITooltip.LAYER
+	add_child(layer)
+	_tooltip = UITooltip.new()
+	layer.add_child(_tooltip)
+	_confirm = UIConfirmDialog.new()
+	layer.add_child(_confirm)
+	_build_slots()
+	_build_glyphs()
+	_build_confirmation()
+	_build_focus_grid()
+
+
+func _build_slots() -> void:
+	var row: Container = _section("Casillas de icono, rarezas y reutilización")
+	var icons: Array[Texture2D] = []
+	for faction_id: StringName in RealmCatalog.FACTION_IDS:
+		icons.append(UIPalette.load_emblem(faction_id))
+	for rarity: int in UIPalette.RARITY_COLORS.size():
+		var slot: UIIconSlot = _slot(icons[rarity % icons.size()], rarity)
+		slot.set_tooltip_info(UIPalette.rarity_name(rarity) + ": objeto de ejemplo",
+				"Cuerpo con [b]BBCode[/b] y [color=#E9C341]color[/color]. Un texto algo más largo "
+				+ "para que el tooltip se ajuste en varias líneas.", "Arma · una mano")
+		slot.bind_tooltip(_tooltip)
+		row.add_child(slot)
+	var stack: UIIconSlot = _slot(icons[0], UIPalette.Rarity.COMMON)
+	stack.count = 20
+	row.add_child(stack)
+	var bound: UIIconSlot = _slot(icons[1], -1)
+	bound.key_action = &"ability_1"
+	bound.start_cooldown(6.0)
+	bound.cooldown_finished.connect(func() -> void:
+		await get_tree().create_timer(1.2).timeout
+		if is_instance_valid(bound):
+			bound.start_cooldown(6.0))
+	_cooldown_slot = bound
+	row.add_child(bound)
+	var disabled: UIIconSlot = _slot(icons[2], -1)
+	disabled.enabled = false
+	row.add_child(disabled)
+	var chosen: UIIconSlot = _slot(icons[3], UIPalette.Rarity.RARE)
+	chosen.selected = true
+	chosen.key_action = &"primary_attack"
+	row.add_child(chosen)
+	row.add_child(_slot(null, -1))
+
+
+func _build_glyphs() -> void:
+	var row: Container = _section("Glifos de tecla y línea de ayuda")
+	for action: StringName in [&"move_forward", &"jump", &"sprint", &"dodge", &"primary_attack",
+			&"block", &"ability_1", &"interact", &"free_cursor", &"toggle_cursor", &"open_settings"]:
+		var pair: HBoxContainer = HBoxContainer.new()
+		pair.add_theme_constant_override("separation", 6)
+		pair.add_child(UIKeyGlyph.for_action(action))
+		var label: Label = Label.new()
+		label.text = String(action)
+		label.theme_type_variation = &"DimLabel"
+		pair.add_child(label)
+		row.add_child(pair)
+	var bar: UIHintBar = UIHintBar.new()
+	row.add_child(bar)
+
+
+func _build_confirmation() -> void:
+	var row: Container = _section("Diálogo de confirmación")
+	_confirm_result = Label.new()
+	_confirm_result.theme_type_variation = &"DimLabel"
+	_confirm_result.text = "Sin respuesta"
+	var normal: Button = _button("Confirmar una acción")
+	normal.pressed.connect(func() -> void:
+		_confirm.open("Salir de la zona", "¿Quieres volver al campamento?", "Volver", "Quedarme"))
+	row.add_child(normal)
+	var danger: Button = _button("Borrar personaje")
+	danger.theme_type_variation = &"DangerButton"
+	danger.pressed.connect(func() -> void:
+		_confirm.open("Borrar personaje", "Esta acción no se puede deshacer.", "Borrar", "Cancelar",
+				true))
+	row.add_child(danger)
+	_confirm.confirmed.connect(func() -> void: _confirm_result.text = "Confirmado")
+	_confirm.canceled.connect(func() -> void: _confirm_result.text = "Cancelado")
+	row.add_child(_confirm_result)
+
+
+func _build_focus_grid() -> void:
+	var row: Container = _section("Foco navegable (flechas o Tab)")
+	var grid: GridContainer = GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	row.add_child(grid)
+	var controls: Array[Control] = []
+	for index: int in 5:
+		var slot: UIIconSlot = _slot(UIPalette.load_emblem(RealmCatalog.FACTION_IDS[index % 4]), -1)
+		grid.add_child(slot)
+		controls.append(slot)
+	UIFocus.grid(controls, 3)
+	var buttons: HBoxContainer = HBoxContainer.new()
+	var button_row: Array[Control] = []
+	for text: String in ["Uno", "Dos", "Tres"]:
+		var button: Button = _button(text)
+		buttons.add_child(button)
+		button_row.append(button)
+	UIFocus.chain_horizontal(button_row)
+	row.add_child(buttons)
+
+
+func _slot(icon: Texture2D, rarity: int) -> UIIconSlot:
+	var slot: UIIconSlot = UIIconSlot.new()
+	slot.icon = icon
+	slot.rarity = rarity
+	_slots.append(slot)
+	return slot
 
 
 # --- Utilidades -------------------------------------------------------------------------------

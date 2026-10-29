@@ -45,6 +45,9 @@ static func ensure_defaults() -> void:
 	_ensure_key(&"toggle_debug", KEY_F3)
 	_ensure_key(&"toggle_net_ghost", KEY_F4)
 
+	# Interfaz.
+	_ensure_key(&"open_settings", KEY_F10)
+
 
 static func _ensure_key(action: StringName, physical_keycode: Key) -> void:
 	if InputMap.has_action(action):
