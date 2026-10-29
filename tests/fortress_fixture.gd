@@ -99,3 +99,23 @@ static func _add_respawn(world: Node3D, marker_name: String, position: Vector3,
 	marker.add_to_group(&"respawn_points")
 	for key: StringName in meta:
 		marker.set_meta(key, meta[key])
+
+
+## Avanza un [ZoneServer] a mano y deprisa: en cada tick de física de Godot llama a su
+## [code]_physics_process[/code] [member per_frame] veces (el servidor ya sin proceso propio), así que los
+## ticks los corre «dentro» de la física, con su delta, y una prueba de 20 s de juego dura un par de
+## segundos. Para lo que depende del movimiento de verdad (cruzar la puerta) se deja al servidor a su
+## ritmo.
+class Stepper:
+	extends Node
+
+	var server: ZoneServer = null
+	var remaining: int = 0
+	var per_frame: int = 40
+
+
+	func _physics_process(delta: float) -> void:
+		var count: int = mini(remaining, per_frame)
+		for _i: int in count:
+			server._physics_process(delta)
+		remaining -= count

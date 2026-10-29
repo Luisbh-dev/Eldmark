@@ -24,6 +24,10 @@ const COOLDOWN_TICKS: int = 18000
 var _channel_end: Dictionary[String, int] = {}
 # jugador (clave de su nombre) -> primer tick en que puede volver a usarlo.
 var _ready_at: Dictionary[String, int] = {}
+## Ticks de canalización y de reutilización de esta instancia ([constant CHANNEL_TICKS] y
+## [constant COOLDOWN_TICKS] por defecto; las pruebas los acortan).
+var channel_ticks: int = CHANNEL_TICKS
+var cooldown_ticks: int = COOLDOWN_TICKS
 ## Canalizaciones completadas desde que existe el rastreador.
 var completed_count: int = 0
 ## Canalizaciones interrumpidas.
@@ -42,7 +46,7 @@ func request(player: String, tick: int, alive: bool, in_combat: bool) -> int:
 		return RequestResult.IN_COMBAT
 	if tick < _ready_at.get(player, 0):
 		return RequestResult.COOLDOWN
-	_channel_end[player] = tick + CHANNEL_TICKS
+	_channel_end[player] = tick + channel_ticks
 	return RequestResult.STARTED
 
 
@@ -59,7 +63,7 @@ func update(player: String, tick: int, alive: bool, in_combat: bool) -> int:
 	if tick >= _channel_end[player]:
 		_channel_end.erase(player)
 		_purge_expired(tick)
-		_ready_at[player] = tick + COOLDOWN_TICKS
+		_ready_at[player] = tick + cooldown_ticks
 		completed_count += 1
 		return UpdateResult.COMPLETED
 	return UpdateResult.CHANNELING

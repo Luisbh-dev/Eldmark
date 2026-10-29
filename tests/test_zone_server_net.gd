@@ -627,7 +627,7 @@ func test_protocol_3_messages_do_not_count_as_strikes() -> void:
 	loading.send_raw(NetProtocol.CH_RELIABLE, NetMessages.UnstuckRequest.new().encode())
 	await _run_frames(3)
 	assert_eq(peer.strikes_total, 1, "UNSTUCK_REQUEST en el mundo no suma avisos")
-	# Los comandos de depuración con id fijo de la versión 4 y datos válidos tampoco, aunque F3 y F4 aún
+	# Los comandos de depuración con id fijo de la versión 4 y datos válidos tampoco, aunque F4 aún
 	# no les hayan puesto manejador.
 	for command: NetMessages.DebugCommand in [
 			NetMessages.DebugCommand.simple(NetProtocol.DEBUG_FORT_RESET),

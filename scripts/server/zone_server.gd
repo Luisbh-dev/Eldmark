@@ -169,6 +169,9 @@ var kick_cooldown_ticks: int = KICK_COOLDOWN_TICKS
 ## loopback vienen de una IP externa y así probar el tope de conexiones por IP, del que el loopback
 ## está exento.
 var remote_address_override: Callable = Callable()
+## Ticks que el cuerpo de quien sale o se desconecta en combate sigue en el mundo
+## ([constant LINGER_TICKS] por defecto; las pruebas lo acortan).
+var linger_ticks: int = LINGER_TICKS
 ## Fichas de jugador y expulsiones que conserva el informe ([constant MAX_LOGGED_PLAYERS] y
 ## [constant MAX_LOGGED_KICKS] por defecto; las pruebas los acortan).
 var max_logged_players: int = MAX_LOGGED_PLAYERS
@@ -1170,10 +1173,12 @@ func _process_departures(s: int) -> void:
 		_world_peers.erase(peer)
 		_left_total += 1
 		player_left.emit(peer_id, entity.net_id)
+		var linger_note: String = ""
+		if lingers:
+			linger_note = "; su cuerpo se queda %.0f s por estar en combate" \
+					% (float(linger_ticks) / float(Engine.physics_ticks_per_second))
 		_log("Baja de %s (peer %d, net_id %d); jugadores: %d%s" % [entity.display_name, peer_id,
-				entity.net_id, get_player_count(),
-				"; su cuerpo se queda %d s por estar en combate" % (LINGER_TICKS / 60) \
-				if lingers else ""])
+				entity.net_id, get_player_count(), linger_note])
 
 
 # Bajas de los jugadores falsos pedidas con remove_fake_player().
@@ -2045,7 +2050,7 @@ func _start_lingering(entity: NetEntity, s: int) -> void:
 		combatant.peer = null
 	entity.owner_peer = 0
 	_unstuck.cancel(NameRules.normalize_key(entity.display_name))
-	_lingering[net_id] = s + LINGER_TICKS
+	_lingering[net_id] = s + linger_ticks
 	_lingering_total += 1
 
 
@@ -2076,8 +2081,9 @@ func _request_unstuck(peer: ServerPeer) -> int:
 	var s: int = _tick + 1
 	var key: String = NameRules.normalize_key(entity.display_name)
 	var result: int = _unstuck.request(key, s, combatant.is_alive(), combatant.is_in_combat(s))
-	var text: String = "/atascado: te llevaré al punto más cercano de tu reino en %d s si no " \
-			% (UnstuckTracker.CHANNEL_TICKS / 60) + "entras en combate"
+	var text: String = "/atascado: te llevaré al punto más cercano de tu reino en %.0f s si no " \
+			% (float(_unstuck.channel_ticks) / float(Engine.physics_ticks_per_second)) \
+			+ "entras en combate"
 	match result:
 		UnstuckTracker.RequestResult.STARTED:
 			_unstuck_players[key] = entity.net_id
