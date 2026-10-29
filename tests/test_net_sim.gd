@@ -347,6 +347,28 @@ func test_delay_is_within_half_rtt_plus_minus_jitter() -> void:
 	assert_eq(idle.pop_due(7).size(), 1)
 
 
+func test_max_delay_ticks_matches_the_worst_case_of_one_direction() -> void:
+	assert_eq(NetSim.from_arg("rtt=100,jitter=10").get_max_delay_ticks(), 4,
+			"rtt/2 + jitter = 60 ms = 3,6 ticks, redondeado a 4")
+	assert_eq(NetSim.from_arg("rtt=0,jitter=0,loss=5").get_max_delay_ticks(), 0, "sin retardo")
+	assert_eq(NetSim.from_arg("rtt=200").get_max_delay_ticks(), 6, "100 ms = 6 ticks")
+	# Ningún retardo sorteado pasa del máximo.
+	var sim: NetSim = NetSim.from_arg("rtt=120,jitter=40,seed=9")
+	for i: int in 200:
+		sim.enqueue(NetSim.Packet.new(1, NetProtocol.CH_RELIABLE, PackedByteArray([1]), false), 0)
+	for packet: NetSim.Packet in sim.pop_due(1000):
+		assert_true(packet.due_tick <= sim.get_max_delay_ticks(), "el retardo cabe en el máximo")
+
+
+func test_transport_reports_the_round_trip_its_simulators_add() -> void:
+	var transport: NetTransport = _make_transport("NetTransportSimRtt")
+	assert_eq(transport.get_sim_round_trip_ticks(), 0, "sin simulador no añade nada")
+	transport.set_net_sim_spec("rtt=100,jitter=10")
+	assert_eq(transport.get_sim_round_trip_ticks(), 8, "salida + entrada: 2 × 4 ticks")
+	transport.set_net_sim_spec("")
+	assert_eq(transport.get_sim_round_trip_ticks(), 0, "se quita con el texto vacío")
+
+
 func test_pop_due_returns_only_due_packets_in_order() -> void:
 	var sim: NetSim = NetSim.from_arg("rtt=100,seed=1")  # 3 ticks por sentido, sin jitter
 	var late: NetSim.Packet = _packet(1, NetProtocol.CH_INPUT, 1)

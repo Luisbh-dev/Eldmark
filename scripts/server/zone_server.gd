@@ -61,6 +61,9 @@ const METRICS_LOG_TICKS: int = 600
 ## Ticks durante los que no puede volver a entrar quien ha sido expulsado (30 s): su IP o, desde
 ## loopback, su nombre reciben un REJECT nada más conectar.
 const KICK_COOLDOWN_TICKS: int = 1800
+## Margen (ticks) que se suma al RTT de ENet y al retardo del simulador al acotar el RTT que declara
+## el cliente con sus acks: los snapshots salen cada 2 ticks y hay que procesarlos.
+const RTT_SLACK_TICKS: int = 3
 ## Ticks que un peer puede estar conectado sin enviar el HELLO (1,5 s). Mucho menos que los 5 s de
 ## la autenticación de [SceneMultiplayer]: una conexión ociosa ocupa una de las plazas de ENet.
 const HELLO_TIMEOUT_TICKS: int = 90
@@ -1165,7 +1168,10 @@ func _handle_input_batch(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	if batch == null:
 		_add_strike(peer, "lote de entradas mal formado")
 		return
-	peer.interp_delay_q = batch.interp_delay_q
+	# El retardo de interpolación del cliente no pasa de 12 ticks (× 8): más es un cliente falso.
+	peer.interp_delay_q = mini(batch.interp_delay_q, NetProtocol.MAX_INTERP_DELAY_Q)
+	if batch.interp_delay_q > NetProtocol.MAX_INTERP_DELAY_Q:
+		_add_strike(peer, "retardo de interpolación fuera de rango")
 	# El ack no puede ir por delante del servidor ni retroceder; con él se mide el RTT en ticks.
 	if batch.ack_snapshot_tick > 0 and batch.ack_snapshot_tick <= _tick \
 			and batch.ack_snapshot_tick >= peer.ack_snapshot_tick:
@@ -1176,9 +1182,24 @@ func _handle_input_batch(peer: ServerPeer, bytes: PackedByteArray) -> void:
 			_rtt[peer.peer_id] = window
 		var next_tick: int = _tick + 1
 		window.add(next_tick, next_tick - batch.ack_snapshot_tick)
-		peer.rtt_ticks = maxi(window.get_min(next_tick), 0)
+		peer.rtt_ticks = mini(maxi(window.get_min(next_tick), 0), _max_plausible_rtt_ticks(peer))
 	for i: int in batch.inputs.size():
 		peer.input_queue.push(batch.inputs[i], batch.view_offsets_q[i], _tick + 1)
+
+
+# Cota del RTT en ticks que puede declarar un cliente con sus acks. El ack lo decide el cliente: uno
+# que atrasara sus acks se haría pasar por alguien con lag y obtendría el rebobinado máximo de la fase
+# 3. La cota sale de fuentes que no controla: el RTT de ENet, el retardo que añade el simulador de
+# red del propio servidor y un margen. (El --net-sim del cliente no cuenta: en producción sería
+# fingir lag; para probar con lag se usa el del servidor.)
+func _max_plausible_rtt_ticks(peer: ServerPeer) -> int:
+	var enet_ticks: int = 0
+	var sim_ticks: int = 0
+	if _transport != null:
+		enet_ticks = ceili(_transport.get_rtt_ms(peer.peer_id) \
+				* float(Engine.physics_ticks_per_second) / 1000.0)
+		sim_ticks = _transport.get_sim_round_trip_ticks()
+	return enet_ticks + sim_ticks + RTT_SLACK_TICKS
 
 
 func _handle_client_ready(peer: ServerPeer, bytes: PackedByteArray) -> void:

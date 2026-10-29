@@ -37,6 +37,10 @@ class RawClient:
 	var hello: PackedByteArray
 	var tick: int = 0
 	var auto_ready: bool = true
+	## Ticks que atrasa el ack de snapshot que declara en cada lote (fingir lag).
+	var ack_lag_ticks: int = 0
+	## Retardo de interpolación (×8) que declara en cada lote.
+	var interp_delay_q: int = 32
 	var welcome: NetMessages.Welcome = null
 	var reject: NetMessages.Reject = null
 	var connected: bool = false
@@ -113,8 +117,9 @@ class RawClient:
 	## mismo movimiento y la misma vista.
 	func send_inputs(newest_tick: int, count: int, move: Vector2, look_yaw: float) -> void:
 		var batch := NetMessages.InputBatch.new()
-		batch.ack_snapshot_tick = last_snapshot().server_tick if not snapshots.is_empty() else 0
-		batch.interp_delay_q = 32
+		if not snapshots.is_empty():
+			batch.ack_snapshot_tick = maxi(last_snapshot().server_tick - ack_lag_ticks, 1)
+		batch.interp_delay_q = interp_delay_q
 		batch.newest_tick = newest_tick
 		for i: int in count:
 			var input := PlayerInput.new()
@@ -737,6 +742,66 @@ func test_expired_cooldowns_are_purged() -> void:
 	for _j: int in 50:
 		_server_transport.packet_received.emit(9200, NetMessages.ClientReady.new().encode())
 	assert_eq(_server.get_cooldown_count(), 1, "las vencidas se purgan; solo queda la nueva")
+
+
+## El RTT en ticks que mide el servidor con el ack de snapshot lo decide el cliente: un tramposo
+## que atrase sus acks se haría pasar por alguien con lag y obtendría el rebobinado máximo de la
+## fase 3 (hallazgo S4). El servidor lo acota con una fuente independiente: el RTT de ENet más el
+## retardo del simulador del propio servidor, más un margen.
+func test_a_client_cannot_fake_lag_with_late_acks() -> void:
+	await _start_server()
+	var client: RawClient = await _join("Ana")
+	if client == null:
+		return
+	client.ack_lag_ticks = 20
+	client.interp_delay_q = NetProtocol.MAX_INTERP_DELAY_Q
+	_hooks.append(func(_tick: int) -> void:
+		client.send_inputs(_server.get_tick() + 2, 1, Vector2(0.0, 1.0), 0.0))
+	await _run_frames(300)
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	var bound: int = ceili(_server_transport.get_rtt_ms(peer.peer_id) * 60.0 / 1000.0) \
+			+ _server_transport.get_sim_round_trip_ticks() + ZoneServer.RTT_SLACK_TICKS
+	assert_true(peer.rtt_ticks <= bound,
+			"el RTT medido (%d ticks) no pasa del que permite ENet (%d)" % [peer.rtt_ticks, bound])
+	assert_true(peer.rtt_ticks <= 6, "en loopback es de pocos ticks (%d)" % peer.rtt_ticks)
+	assert_eq(peer.strikes_total, 0, "sin avisos: fingir lag no es un paquete ilegal")
+
+
+## El simulador de red del propio servidor sí cuenta: es retardo real para el servidor.
+func test_the_server_side_net_sim_still_raises_the_measured_rtt() -> void:
+	await _start_server(func(config: ServerConfig) -> void:
+		config.net_sim_spec = "rtt=200,jitter=0,loss=0,dup=0,seed=3")
+	var client: RawClient = _connect_client(_hello(VARDHEIM, "Ana"))
+	var joined: bool = await _run_until(func() -> bool: return client.own_spawn != null, 900)
+	if not assert_true(joined, "entra en el mundo"):
+		return
+	_hooks.append(func(_tick: int) -> void:
+		client.send_inputs(_server.get_tick() + 14, 4, Vector2(0.0, 1.0), 0.0))
+	await _run_frames(240)
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	assert_true(peer.rtt_ticks >= 10,
+			"con 200 ms de retardo simulado (12 ticks) el RTT medido lo refleja (%d)" % peer.rtt_ticks)
+
+
+## interp_delay_q no puede pasar del máximo del reloj de interpolación del cliente (12 ticks × 8):
+## el servidor lo limita y lo cuenta como aviso.
+func test_interp_delay_above_the_clients_maximum_is_clamped_and_costs_a_strike() -> void:
+	await _start_server()
+	var client: RawClient = await _join("Ana")
+	if client == null:
+		return
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	client.interp_delay_q = 255
+	client.send_inputs(_server.get_tick() + 2, 1, Vector2.ZERO, 0.0)
+	await _run_frames(5)
+	assert_eq(peer.interp_delay_q, NetProtocol.MAX_INTERP_DELAY_Q, "se limita al máximo del cliente")
+	assert_eq(peer.strikes_total, 1, "y suma un aviso")
+	assert_eq(_strike_reasons().get("retardo de interpolación fuera de rango", 0), 1, "con su motivo")
+	client.interp_delay_q = NetProtocol.MAX_INTERP_DELAY_Q
+	client.send_inputs(_server.get_tick() + 2, 1, Vector2.ZERO, 0.0)
+	await _run_frames(5)
+	assert_eq(peer.interp_delay_q, NetProtocol.MAX_INTERP_DELAY_Q, "el máximo legítimo se acepta")
+	assert_eq(peer.strikes_total, 1, "sin más avisos")
 
 
 func test_debug_commands_need_the_flag() -> void:

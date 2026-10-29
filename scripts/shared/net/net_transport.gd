@@ -342,6 +342,18 @@ func get_rtt_ms(peer_id: int) -> float:
 	return packet_peer.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME)
 
 
+## Retardo máximo (ticks) que los simuladores de este transporte añaden a un viaje de ida y vuelta
+## con el peer: el de salida más el de entrada. 0 sin simulador. Sirve para separar el RTT real del
+## simulado (ver [method get_rtt_ms], que no incluye el simulador).
+func get_sim_round_trip_ticks() -> int:
+	var ticks: int = 0
+	if _out_sim != null:
+		ticks += _out_sim.get_max_delay_ticks()
+	if _in_sim != null:
+		ticks += _in_sim.get_max_delay_ticks()
+	return ticks
+
+
 ## Pérdida de paquetes fiables con el peer según ENet, como fracción de 0 a 1 (no incluye la
 ## del simulador), o 0 si no se conoce.
 func get_packet_loss(peer_id: int) -> float:

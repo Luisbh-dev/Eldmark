@@ -595,7 +595,7 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 |---|---|---|---|
 | 0 | u8 | type | `0x01` |
 | 1 | u32 | ack_snapshot_tick | `server_tick` del snapshot más nuevo recibido (0 = ninguno). Sirve para medir el RTT en el servidor y, en el futuro, como base del delta |
-| 5 | u8 | interp_delay_q | retardo de interpolación actual × 8, en ticks. Acota el rebobinado de la fase 3 |
+| 5 | u8 | interp_delay_q | retardo de interpolación actual × 8, en ticks (como mucho 96 = 12 ticks: lo que pase es un aviso). Acota el rebobinado de la fase 3 |
 | 6 | u32 | newest_tick | tick de la entrada más nueva |
 | 10 | u8 | count | 1..8 |
 | 11 | count × 10 B | records | de la más antigua a la más nueva; el registro *i* es del tick `newest_tick − count + 1 + i` |
@@ -1139,7 +1139,7 @@ snapshots. Lo comprueba `test_snapshot_builder`.
 
 - **`StateHistory`** (servidor) guarda, por entidad, una pista de 64 ticks (~1 s):
   - posición en `PackedVector3Array`, yaw en `PackedFloat32Array`, flags en `PackedByteArray` y
-    etiquetas de tick en `PackedInt32Array`;
+    etiquetas de tick en `PackedInt64Array` (los ticks son u32: ver [4.1](#41-tick-del-servidor-y-regla-de-aplicación));
   - indexada por `tick % 64`;
   - se crea al dar de alta la entidad y se escribe en el sitio cada tick, sin asignar memoria;
   - guarda valores sin cuantizar y se graba tras cada tick, haya interés o no.
@@ -1153,9 +1153,18 @@ snapshots. Lo comprueba `test_snapshot_builder`.
   view_tick = clamp(view_tick, T − allowed, T)
   ```
   - **`rtt_ticks`** lo mide el servidor sin reloj: es el mínimo, en los últimos 120 ticks, de
-    `s − ack_snapshot_tick` al llegar cada INPUT_BATCH. Incluye la latencia simulada por
-    `NetSim`, al revés que `PEER_ROUND_TRIP_TIME`.
+    `s − ack_snapshot_tick` al llegar cada INPUT_BATCH, **acotado por una fuente que el cliente no
+    controla** (hallazgo S4): `ceil(PEER_ROUND_TRIP_TIME · 60 / 1000) + retardo máximo del
+    `NetSim` del propio servidor + 3` (`ZoneServer.RTT_SLACK_TICKS`: los snapshots salen cada 2
+    ticks y hay que procesarlos). Sin la cota, un cliente que atrasara 20 ticks su
+    `ack_snapshot_tick` (sin lag real) se hacía pasar por alguien con 350 ms de RTT y obtenía los
+    24 ticks de rebobinado. El `--net-sim` del servidor sí cuenta (es retardo real para él); el del
+    cliente no: en producción equivaldría a fingir lag, así que para probar con lag simulado se usa
+    el del servidor.
   - **`lead(T)`** es la antelación medida de esa entrada.
+  - **`interp_delay_q`** no pasa de 96 (12 ticks × 8, el máximo del `InterpolationClock`): el
+    servidor lo limita y suma un aviso a quien envíe más (`NetProtocol.MAX_INTERP_DELAY_Q`). La
+    fórmula ya lo acota con `clamp(…, 4, 12)`.
   - **Fingir lag no da más rebobinado.**
   - **Por qué 24 ticks.** El rebobinado real es RTT + margen + retardo de interpolación, unos 20
     ticks con 200 ms de RTT. El tope de 24 ticks (400 ms) cubre hasta ~250 ms de RTT con el
@@ -1206,7 +1215,7 @@ El servidor nunca acepta estado del cliente, y todo valor decodificado está aco
 | Conexiones por IP | 4 como mucho (`--max-per-ip`), salvo loopback, para que funcionen los bots locales. Se comprueba al conectar, no solo con el HELLO; las IPv6 cuentan por /64 ([3](#3-conexión)) |
 | HELLO a tiempo | 90 ticks desde que conecta; si no, se corta la conexión ([3](#3-conexión)) |
 | Reino | Validado contra la zona. En la fase 2 lo declara el cliente (`DevAuthProvider`); desde la fase 5 sale del personaje o del billete, y el campo de HELLO se ignora |
-| Rebobinado | Acotado por lo medido ([10](#10-historial-para-la-compensación-de-latencia)) |
+| Rebobinado | Acotado por lo medido ([10](#10-historial-para-la-compensación-de-latencia)); el RTT que declara el cliente con sus acks se acota con el de ENet más el simulador del servidor + 3 ticks |
 | Comandos de depuración | Solo con `--debug-commands` |
 
 **Crédito por parón.** Los limitadores cuentan en ticks del servidor, y el tick no avanza mientras
