@@ -112,35 +112,58 @@ func is_online() -> bool:
 	return mode != Mode.OFFLINE
 
 
-# Interpreta [code]host[/code], [code]host:puerto[/code], [code][::1][/code] y
-# [code][::1]:puerto[/code]. Un IPv6 sin corchetes (varios ':') se toma entero como host.
+## Interpreta una dirección de servidor: [code]host[/code], [code]host:puerto[/code],
+## [code][::1][/code] o [code][::1]:puerto[/code] (un IPv6 sin corchetes, con varios ':', se toma
+## entero como host). Devuelve [code]{"host": String, "port": int, "error": String}[/code]:
+## [code]port[/code] es 0 si no viene o no es válido y [code]error[/code] (en español) está vacío si
+## todo es válido. Con un puerto no válido el host sí se devuelve.
+static func parse_address(text: String) -> Dictionary:
+	var clean: String = text.strip_edges()
+	var result: Dictionary = {"host": "", "port": 0, "error": ""}
+	if clean.is_empty():
+		result["error"] = "Escribe la dirección del servidor"
+		return result
+	var host: String = clean
+	var port_text: String = ""
+	if clean.begins_with("["):
+		var close: int = clean.find("]")
+		if close < 0:
+			result["error"] = "Dirección mal escrita: «%s»" % clean
+			return result
+		host = clean.substr(1, close - 1)
+		var rest: String = clean.substr(close + 1)
+		if rest.begins_with(":"):
+			port_text = rest.substr(1)
+	elif clean.count(":") == 1:
+		host = clean.get_slice(":", 0)
+		port_text = clean.get_slice(":", 1)
+	if host.strip_edges().is_empty():
+		result["error"] = "Dirección sin servidor: «%s»" % clean
+		return result
+	result["host"] = host.strip_edges()
+	if not port_text.is_empty():
+		if port_text.is_valid_int() and port_text.to_int() >= 1 and port_text.to_int() <= _MAX_PORT:
+			result["port"] = port_text.to_int()
+		else:
+			result["error"] = "Puerto no válido «%s»" % port_text
+	return result
+
+
+# Interpreta el valor de --connect con [method parse_address]. Una dirección que no se entiende se
+# ignora con un aviso; un puerto no válido deja el puerto por defecto.
 func _parse_connect(text: String) -> void:
 	if text.is_empty():
 		warnings.append("--connect necesita una dirección (por ejemplo --connect=127.0.0.1:24600)")
 		return
-	var host: String = text
-	var port_text: String = ""
-	if text.begins_with("["):
-		var close: int = text.find("]")
-		if close < 0:
-			warnings.append("Dirección mal escrita: '%s'" % text)
-			return
-		host = text.substr(1, close - 1)
-		var rest: String = text.substr(close + 1)
-		if rest.begins_with(":"):
-			port_text = rest.substr(1)
-	elif text.count(":") == 1:
-		host = text.get_slice(":", 0)
-		port_text = text.get_slice(":", 1)
-	if host.is_empty():
-		warnings.append("Dirección sin host: '%s'" % text)
+	var parsed: Dictionary = parse_address(text)
+	if String(parsed["host"]).is_empty():
+		warnings.append(String(parsed["error"]))
 		return
-	address = host
-	if not port_text.is_empty():
-		if port_text.is_valid_int() and port_text.to_int() >= 1 and port_text.to_int() <= _MAX_PORT:
-			port = port_text.to_int()
-		else:
-			warnings.append("Puerto no válido '%s'; se usa %d" % [port_text, port])
+	address = parsed["host"]
+	if int(parsed["port"]) > 0:
+		port = int(parsed["port"])
+	elif not String(parsed["error"]).is_empty():
+		warnings.append("%s; se usa %d" % [parsed["error"], port])
 
 
 static func _has_option(args: PackedStringArray, prefix: String) -> bool:

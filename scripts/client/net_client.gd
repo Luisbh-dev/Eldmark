@@ -97,6 +97,9 @@ const TEXT_BAD_TICK_RATE: String = "El servidor simula a %d ticks por segundo y 
 ## enviarlo y puede modificarlo (versión, huella, reino...). Debe estar puesto antes de que el
 ## transporte empiece a autenticar, es decir, justo después de [method start].
 var hello_hook: Callable = Callable()
+## Tiempo de espera de ENet al conectar (ms). [constant CONNECT_TIMEOUT_MS] salvo que quien llama a
+## [method start] ponga otro antes (el modo [code]--local[/code] usa uno corto para reintentar).
+var connect_timeout_ms: int = CONNECT_TIMEOUT_MS
 
 var _state: State = State.IDLE
 var _config: ClientConfig = null
@@ -214,7 +217,7 @@ func start(config: ClientConfig, transport: NetTransport,
 				% config.bot_cheat)
 	_connect_transport()
 	_transport.set_net_sim_spec(config.net_sim_spec)
-	var error: Error = _transport.connect_to(config.address, config.port, CONNECT_TIMEOUT_MS)
+	var error: Error = _transport.connect_to(config.address, config.port, connect_timeout_ms)
 	if error != OK:
 		_disconnect_transport()
 		return error

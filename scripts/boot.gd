@@ -6,8 +6,10 @@ extends Node
 ## [br]- [code]--server[/code]: servidor dedicado de una zona ([ServerMain], siempre con
 ## [code]--headless[/code]; opciones en [ServerConfig]). Tiene prioridad sobre el resto.
 ## [br]- [code]--connect=<host>[:<puerto>][/code] o [code]--bot[/code]: cliente en red
-## ([OnlineMain], ver [ClientConfig]). Tiene prioridad sobre el sandbox. [code]--local[/code] y
-## [code]--bots=N[/code] todavía no existen: avisan y cierran con código 1.
+## ([OnlineMain], ver [ClientConfig]). Tiene prioridad sobre el sandbox. [code]--bots=N[/code]
+## todavía no existe: avisa y cierra con código 1.
+## [br]- [code]--local[/code]: cliente en red contra un servidor local que se lanza solo si no hay
+## ninguno ([LocalServerLauncher]); ver [method _start_local].
 ## [br]- [code]--zone=<id>[/code]: zona que se carga ([code]vado_gris[/code] por defecto,
 ## [code]test_world[/code] para el circuito de la fase 1). Ver [Zones].
 ## [br]- [code]--realm=<reino>[/code]: reino del jugador ([code]vardheim[/code] por defecto o
@@ -49,7 +51,9 @@ func _ready() -> void:
 	match config.mode:
 		ClientConfig.Mode.ONLINE, ClientConfig.Mode.BOT:
 			_start_online(config)
-		ClientConfig.Mode.LOCAL, ClientConfig.Mode.SWARM:
+		ClientConfig.Mode.LOCAL:
+			_start_local(config)
+		ClientConfig.Mode.SWARM:
 			_reject_unavailable_mode(config)
 		_:
 			_start_client(args)
@@ -138,6 +142,12 @@ func _reject_unavailable_mode(config: ClientConfig) -> void:
 	push_error("[Eldmark] %s todavía no está disponible. Usa --connect=<host>[:<puerto>] contra un "
 			% option + "servidor ya arrancado (--server), o --bot --connect=...")
 	get_tree().quit(1)
+
+
+## [code]--local[/code]: igual que un cliente en red, pero [OnlineMain] primero reutiliza o lanza el
+## servidor local ([LocalServerLauncher], docs/red.md 1.4) y apunta el cliente a su puerto.
+func _start_local(config: ClientConfig) -> void:
+	_start_online(config)
 
 
 ## Pasa las opciones a [ClientMain] mediante sus variables estáticas y cambia

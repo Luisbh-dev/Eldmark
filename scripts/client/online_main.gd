@@ -29,6 +29,14 @@ extends Node
 ## [br][br]
 ## [b]Elección de reino.[/b] TODO(TEC-45): aquí irá [code]RealmSelect[/code]. Mientras no exista, si
 ## falta [code]--realm[/code] se usa Vardheim y se avisa.
+## [br][br]
+## [b]Modo LOCAL[/b] ([code]--local[/code], sección 1.4): antes de conectar, si
+## [code]user://dev_server.json[/code] describe un servidor vivo se usa su puerto; si no, se lanza uno
+## ([LocalServerLauncher]) y se reintenta conectar durante [constant LocalServerLauncher.CONNECT_RETRY_MS]
+## ms con un tiempo de espera corto de ENet (cada intento es una sesión nueva: [NetClient],
+## transporte y controlador). Si el servidor que se creía vivo no contesta, se lanza uno entonces. El
+## cliente nunca cierra el servidor: se apaga solo tras [constant LocalServerLauncher.IDLE_QUIT_SECONDS]
+## s sin jugadores.
 
 const CAMERA_RIG_SCENE_PATH: String = "res://scenes/client/camera_rig.tscn"
 const HUD_SCENE_PATH: String = "res://scenes/ui/hud.tscn"
@@ -56,9 +64,15 @@ static var config: ClientConfig
 ## Solo para pruebas: si es válido, el cierre llama a este gancho con el código de salida en lugar de
 ## cerrar el proceso.
 static var quit_hook: Callable = Callable()
+## Solo para pruebas: archivo de bloqueo del servidor local que se consulta en modo LOCAL (así una
+## prueba no toca el [constant LocalServerLauncher.LOCK_PATH] real).
+static var lock_path: String = LocalServerLauncher.LOCK_PATH
 
 var _transport: NetTransport = null
 var _client: NetClient = null
+var _launcher: LocalServerLauncher = null
+var _local_deadline_msec: int = 0
+var _was_welcomed: bool = false
 var _controller: LocalPlayerController = null
 var _entities: Node3D = null
 var _world: Node3D = null
@@ -95,30 +109,7 @@ func _ready() -> void:
 		InputBindings.ensure_defaults()
 		_create_overlay()
 
-	_transport = NetTransport.new()
-	_transport.name = "NetTransport"
-	add_child(_transport)
-	_controller = LocalPlayerController.new()
-	_controller.name = "LocalPlayerController"
-	add_child(_controller)
-	_entities = Node3D.new()
-	_entities.name = "Entities"
-	add_child(_entities)
-	_client = NetClient.new()
-	add_child(_client)
-	_client.welcomed.connect(_on_welcomed)
-	_client.rejected.connect(_on_rejected)
-	_client.local_spawned.connect(_on_local_spawned)
-	_client.disconnected.connect(_on_disconnected)
-	_client.notice_received.connect(_on_notice)
-
-	print("[Eldmark] Conectando con %s:%d como %s (%s)%s" % [config.address, config.port,
-			config.display_name, NetProtocol.realm_display_name(config.realm),
-			" [bot, semilla %d]" % config.bot_seed if _is_bot() else ""])
-	_show_status("Conectando con %s:%d…" % [config.address, config.port])
-	var error: Error = _client.start(config, _transport, _controller)
-	if error != OK:
-		_fail("No se pudo iniciar la conexión (%s)" % error_string(error))
+	_begin_session()
 
 
 ## Cliente de red.
@@ -208,9 +199,122 @@ func _is_bot() -> bool:
 	return config.mode == ClientConfig.Mode.BOT
 
 
+func _is_local() -> bool:
+	return config.mode == ClientConfig.Mode.LOCAL
+
+
+# --- Sesión -----------------------------------------------------------------------------------
+
+# Empieza una sesión: transporte, controlador, nodo de entidades y cliente de red, y la conexión. En
+# modo LOCAL, antes se reutiliza o se lanza el servidor local.
+func _begin_session() -> void:
+	_was_welcomed = false
+	if _is_local():
+		_prepare_local_server()
+	_create_session_nodes()
+	print("[Eldmark] Conectando con %s:%d como %s (%s)%s" % [config.address, config.port,
+			config.display_name, NetProtocol.realm_display_name(config.realm),
+			" [bot, semilla %d]" % config.bot_seed if _is_bot() else ""])
+	_show_status("Conectando con %s:%d…" % [config.address, config.port])
+	_start_client()
+
+
+func _create_session_nodes() -> void:
+	_transport = NetTransport.new()
+	_transport.name = "NetTransport"
+	add_child(_transport)
+	_controller = LocalPlayerController.new()
+	_controller.name = "LocalPlayerController"
+	add_child(_controller)
+	_entities = Node3D.new()
+	_entities.name = "Entities"
+	add_child(_entities)
+	_client = NetClient.new()
+	add_child(_client)
+	_client.welcomed.connect(_on_welcomed)
+	_client.rejected.connect(_on_rejected)
+	_client.local_spawned.connect(_on_local_spawned)
+	_client.disconnected.connect(_on_disconnected)
+	_client.notice_received.connect(_on_notice)
+	if _is_local():
+		_client.connect_timeout_ms = LocalServerLauncher.CONNECT_TIMEOUT_MS
+
+
+func _start_client() -> void:
+	var error: Error = _client.start(config, _transport, _controller)
+	if error != OK:
+		_fail("No se pudo iniciar la conexión (%s)" % error_string(error))
+
+
+# Quita los nodos de la sesión (el cliente cierra el transporte al salir del árbol). No se llama
+# desde una señal del propio cliente: hay que diferirlo.
+func _free_session_nodes() -> void:
+	for node: Node in [_client, _transport, _controller, _entities]:
+		if is_instance_valid(node):
+			if node.get_parent() == self:
+				remove_child(node)
+			node.free()
+	_client = null
+	_transport = null
+	_controller = null
+	_entities = null
+
+
+# --- Servidor local ---------------------------------------------------------------------------
+
+# Modo LOCAL: reutiliza el servidor que describe el archivo de bloqueo si su proceso sigue vivo y, si
+# no, lanza uno.
+func _prepare_local_server() -> void:
+	var running_port: int = LocalServerLauncher.get_running_port(lock_path)
+	if running_port > 0:
+		config.port = running_port
+		_launcher = null
+		print("[Eldmark] Servidor local ya en marcha (puerto %d): se reutiliza" % running_port)
+		return
+	_launch_local_server()
+
+
+# Lanza el servidor local y abre la ventana de reintentos de conexión. Devuelve false si no pudo
+# lanzarlo.
+func _launch_local_server() -> bool:
+	_launcher = LocalServerLauncher.new()
+	var pid: int = _launcher.launch(config.port,
+			LocalServerLauncher.forwarded_args(OS.get_cmdline_user_args()))
+	if pid < 0:
+		_launcher = null
+		return false
+	_local_deadline_msec = Time.get_ticks_msec() + LocalServerLauncher.CONNECT_RETRY_MS
+	print("[Eldmark] Servidor local lanzado (pid %d, puerto %d, registro en %s)" % [pid,
+			config.port, ProjectSettings.globalize_path(LocalServerLauncher.LOG_PATH)])
+	return true
+
+
+# true si una conexión fallida en modo LOCAL se debe reintentar: aún no hubo respuesta del servidor y
+# queda tiempo (o hay que lanzar el servidor porque el del archivo de bloqueo no contestó).
+func _should_retry_local() -> bool:
+	if not _is_local() or _was_welcomed:
+		return false
+	if _launcher == null:
+		return true
+	return _launcher.is_server_alive() and Time.get_ticks_msec() < _local_deadline_msec
+
+
+# Nueva sesión tras un intento fallido de conectar con el servidor local.
+func _retry_local_connection() -> void:
+	if _quitting or not is_instance_valid(_client):
+		return
+	if _launcher == null and not _launch_local_server():
+		_fail("No se pudo lanzar el servidor local")
+		return
+	_free_session_nodes()
+	_create_session_nodes()
+	_start_client()
+
+
 # --- Conexión y carga -------------------------------------------------------------------------
 
 func _on_welcomed(welcome: NetMessages.Welcome) -> void:
+	_was_welcomed = true
 	_zone_id = welcome.zone_id
 	var path: String = NetZones.scene_path(welcome.zone_id)
 	if path.is_empty():
@@ -267,6 +371,7 @@ func _force_full_terrain_collision(root: Node) -> void:
 
 
 func _on_rejected(result: int, text: String) -> void:
+	_was_welcomed = true
 	push_warning("[Eldmark] Conexión rechazada (%d): %s" % [result, text])
 	_fail("Conexión rechazada: %s" % text)
 
@@ -278,6 +383,13 @@ func _on_disconnected(text: String) -> void:
 		print("[Eldmark] Sesión cerrada: %s" % text)
 		_quit(0)
 		return
+	if _should_retry_local():
+		print("[Eldmark] %s; se reintenta (servidor local)" % text)
+		_retry_local_connection.call_deferred()
+		return
+	if _is_local() and not _was_welcomed:
+		text = "No se pudo conectar con el servidor local. Revisa %s" \
+				% ProjectSettings.globalize_path(LocalServerLauncher.LOG_PATH)
 	if _client.get_last_notice_text().is_empty():
 		push_warning("[Eldmark] Desconectado: %s" % text)
 	else:
