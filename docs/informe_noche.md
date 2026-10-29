@@ -8,7 +8,8 @@ y está siempre en la rama más reciente.
 | Trabajo | Rama | Estado |
 |---|---|---|
 | Backlog (`docs/backlog.md`) | `main` | Hecho y subido |
-| Fase 2: red | `fase2-red` | Implementada (594 pruebas en verde, CI de GitHub en verde); revisión adversarial en marcha |
+| Fase 2: red | `fase2-red` | Implementada (594 pruebas en verde, CI de GitHub en verde); revisión adversarial hecha, 19 hallazgos confirmados en corrección |
+| Fase 3: combate | `fase3-combate` (desde `fase2-red`) | Diseño revisado (`docs/combate.md`); K1a, K1b y K2 integrados (745 pruebas en verde) |
 
 ## Entorno (Linux)
 
@@ -96,6 +97,38 @@ remotos.
   `simulate()` en GDScript (por encima de los 25 µs de la palanca 6 de red.md §14) y
   `SnapshotBuilder` con muchos clientes reales. Primer límite orientativo de jugadores por batalla:
   unos 60 en un servidor de esta clase sin optimizar. Está anotado en red.md §14.
+
+### Revisión adversarial de la fase 2
+
+Tres revisores Opus (netcode frente al diseño; robustez y seguridad; arquitectura y pruebas) y un
+verificador por lente que intentó refutar cada hallazgo, casi siempre reproduciéndolo con un
+script. 20 hallazgos, 19 confirmados y 1 refutado (N4: era un artefacto del simulador de red, que
+sella los paquetes entrantes con el tick del poll).
+
+| Id | Gravedad | Hallazgo |
+|---|---|---|
+| N1 | alta | Si el cliente se adelanta más de 30 ticks (parón del servidor de ~0,6 s), las entradas TOO_EARLY no dan margen y TickSync nunca se recupera |
+| N2 | media | Los limitadores se recargan por tick del servidor: tras un parón de ~1,3 s se expulsa a todos los clientes honrados |
+| N3 | media | Tras perder ticks el servidor, el reloj de interpolación conserva el máximo viejo 120 ticks y los remotos se congelan ~1,3 s |
+| N5 | baja | Ticks u32 guardados en int32 (historial, avisos, reloj): 414 días de rango en vez de 828 |
+| S1 | alta | Paquetes de SceneMultiplayer que no son RAW registran errores del motor, se saltan los limitadores y alargan el tick |
+| S2 | alta | El tope por IP solo se aplica en el HELLO: una IP ocupa todas las plazas con conexiones mudas |
+| S3 | alta | Cada alta queda para siempre en el registro de jugadores (~80 KB por ciclo de conexión) |
+| S4 | media | El RTT medido lo decide el cliente: «fingir lag» daría el rebobinado máximo en la fase 3 |
+| S5 | media | SIGTERM/Ctrl+C matan el servidor sin informe ni cierre ordenado y dejan el bloqueo de `--local` |
+| S6 | baja | Un expulsado vuelve en un RTT con los avisos a cero |
+| S7 | baja | El tiempo de espera al conectar es 3,5 veces el documentado |
+| A1 | alta | En Windows, `--local` nunca reconoce un servidor lanzado por otra ventana (`OS.is_process_running` solo ve hijos propios) |
+| A2 | media | La prueba d mide el mínimo de la ventana de TickSync, no el margen de cada snapshot (se corrige el documento) |
+| A3 | media | `test_architecture` deja pasar `pick_random`, `shuffle`, `randomize` y contadores de fotogramas |
+| A4 | media | El criterio «< 1 % sustituidas con 100 ms» nunca se midió con 100 ms (con rtt=100 sale 1,2 %, sobre todo del arranque) |
+| A5 | baja | Las pruebas de procesos no miran los registros de los bots |
+| A6 | baja | `test_prediction` tiene aserciones débiles («por la rampa» pasa saltando en llano) |
+| A7 | baja | Dos suites a la vez en la misma máquina chocan en puertos, rutas de `build/` y el bloqueo de `--local` |
+| A8 | baja | `SpawnPicker` usa `Zones` directamente, contra la frontera de `NetZones` |
+
+Ninguno afecta al juego normal en una red sana (la prueba de aceptación salió limpia), pero N1, N2,
+S1, S2, S3 y A1 son fallos de verdad en producción o en el uso diario con `--local` en Windows.
 
 ## Pendiente de probar mañana con ventana
 
