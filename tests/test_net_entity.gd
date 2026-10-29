@@ -190,10 +190,70 @@ func test_encode_spawn_for_other_players() -> void:
 	assert_eq(message.teleport_counter, 1, "contador de teletransporte")
 	assert_eq(message.display_name, "Brunilda", "nombre")
 	if assert_not_null(message.state, "con el estado"):
-		assert_eq(message.state.encode(), entity.get_character().get_state().encode(),
-				"el PlayerState del personaje, completo")
+		var own: PlayerState = entity.get_character().get_state()
+		assert_eq(message.state.position, own.position, "la posición, que ya viaja en el registro")
+		assert_eq(message.state.velocity, own.velocity, "la velocidad")
+		assert_eq(message.state.yaw, own.yaw, "el giro")
+		assert_eq(message.state.grounded, own.grounded, "y si pisa suelo")
 		assert_eq(message.state.last_input_tick, 39, "incluido last_input_tick")
-		assert_eq(message.state.prev_buttons, PlayerInput.JUMP, "e incluido prev_buttons")
+		# R4: de lo ajeno no viaja nada que no esté ya en el registro de 21 B (ver la prueba siguiente).
+		assert_eq(message.state.prev_buttons, 0, "los botones que mantiene no se envían")
+
+
+## R4: el ENTITY_SPAWN de una entidad ajena no lleva el CombatState entero (resistencia exacta,
+## agotamiento, enfriamiento de la parada, búfer y controles del enemigo); solo el propio, completo.
+func test_encode_spawn_of_another_player_hides_the_private_combat_state() -> void:
+	var entity: NetEntity = _make_player()
+	var character: PlayerCharacter = entity.get_character()
+	character.prev_buttons = PlayerInput.BLOCK | PlayerInput.PRIMARY
+	character.coyote_ticks = 3
+	character.jump_buffer_ticks = 2
+	var combat: CombatState = character.combat
+	combat.stamina = 137
+	combat.stamina_regen_tick = 777
+	combat.combat_flags = CombatState.FLAG_EXHAUSTED | CombatState.FLAG_BLOCK_HELD
+	combat.parry_ready_tick = 1234
+	combat.cc_until_tick = 999
+	combat.buffered = CombatState.BUFFER_PRIMARY | (5 << 2)
+	combat.combo_step = 2
+	combat.primary_held = 9
+	combat.knockback = Vector2(1.5, -2.0)
+	combat.action = CombatState.Action.LIGHT
+	combat.action_id = CombatCatalog.attack_id(&"sword_light_2")
+	combat.action_tick = 33
+	var others: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(
+			entity.encode_spawn(40, false))
+	var mine: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(entity.encode_spawn(40, true))
+	if not assert_not_null(others, "se decodifica") or not assert_not_null(mine, "(propio)"):
+		return
+	var neutral: CombatState = CombatState.initial(CombatCatalog.rules(), combat.weapon_id)
+	var seen: CombatState = others.state.combat
+	assert_eq(seen.stamina, neutral.stamina, "sin la resistencia exacta del enemigo")
+	assert_eq(seen.stamina_regen_tick, 0, "ni cuándo vuelve a regenerar")
+	assert_eq(seen.combat_flags, 0, "ni agotado, ni botones mantenidos, ni infinita")
+	assert_eq(seen.parry_ready_tick, 0, "ni cuándo no puede parar")
+	assert_eq(seen.cc_until_tick, 0, "ni cuándo acaba su control")
+	assert_eq(seen.buffered, 0, "ni su búfer")
+	assert_eq(seen.combo_step, 0, "ni el paso del combo")
+	assert_eq(seen.primary_held, 0, "ni la pulsación")
+	assert_eq(seen.knockback, Vector2.ZERO, "ni el empuje")
+	assert_eq(others.state.prev_buttons, 0, "ni los botones del último tick")
+	assert_eq(others.state.coyote_ticks, 0, "ni los contadores de salto")
+	assert_eq(others.state.jump_buffer_ticks, 0)
+	# Lo que ya enseña el registro (y el animador necesita) sí: acción, arma, posición y giro.
+	assert_eq(seen.action, CombatState.Action.LIGHT, "la acción en curso")
+	assert_eq(seen.action_id, combat.action_id, "con su ataque")
+	assert_eq(seen.action_tick, 33, "y su tick de inicio")
+	assert_eq(seen.weapon_id, combat.weapon_id, "el arma equipada")
+	assert_eq(others.state.position, character.get_state().position, "la posición")
+	assert_eq(others.state.yaw, character.get_state().yaw, "el giro")
+	# El SPAWN propio lo lleva todo.
+	assert_eq(mine.state.encode(), character.get_state().encode(), "el propio, completo")
+	assert_eq(mine.state.combat.stamina, 137)
+	assert_eq(mine.state.combat.parry_ready_tick, 1234)
+	assert_eq(mine.state.prev_buttons, PlayerInput.BLOCK | PlayerInput.PRIMARY)
+	# El estado real del personaje no se toca al ocultarlo.
+	assert_eq(combat.stamina, 137, "la copia enviada no altera el personaje")
 
 
 func test_encode_spawn_for_the_owner_sets_the_flag() -> void:

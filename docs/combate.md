@@ -445,6 +445,11 @@ ninguno debe hacer daño de más.
 ## 6. Protocolo (TEC-13): `PROTOCOL_VERSION = 2`
 
 - **`PlayerState`** de 69 B (§3.1).
+- **ENTITY_SPAWN ajeno**: su `PlayerState` va con el `CombatState` neutro del arma (resistencia llena,
+  sin banderas, búfer, controles ni parada), salvo la acción en curso (`action`, y `action_id` y
+  `action_tick` si no es NONE) y el arma, y con `prev_buttons` y los contadores de salto a 0: lo demás es
+  estado privado del enemigo (§1: la resistencia viaja en el «estado propio») y no debe volcarse a quien
+  entra en la zona. El SPAWN propio lo lleva entero. El formato (69 B) no cambia.
 - **Bloque extra propio**, en **todo** snapshot con estado propio (bit 3 de `flags` ⇔ bit 0;
   `decode` rechaza bit 3 sin bit 0), tras el estado propio: `u16 health`, `u16 max_health`, `u8
   status` (bit0 en combate, bit1 protegido, bit2 muerto), `u32 respawn_tick` (0 si vivo). 9 B.

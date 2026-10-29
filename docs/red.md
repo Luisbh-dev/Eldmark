@@ -770,6 +770,13 @@ porque no cambia la simulación ([combate.md 1](combate.md#1-qué-se-predice-y-q
 | 9 | u8 | flags | bit0 = es tu personaje; bits 1–2 = contador de teletransporte |
 | 10 | … | payload | según `kind`. PLAYER: `PlayerState` (69 B, estado tras `spawn_tick`), `u8 name_len` y el nombre (≤ 48 B) |
 
+El `PlayerState` del SPAWN **propio** (bit0 = 1) va entero. El de una entidad **ajena** es público: lleva
+posición, velocidad, giro y suelo, y del combate solo la acción en curso (con su ataque y su tick de inicio)
+y el arma; el resto del `CombatState` (resistencia exacta, agotamiento, enfriamiento de la parada, búfer,
+paso del combo, controles, empuje), los botones del último tick y los contadores de salto vuelven a sus
+valores iniciales. Lo contrario volcaba a cualquiera que entrara en la zona el estado privado de cada
+enemigo (combate.md 6).
+
 **ENTITY_DESPAWN** (`0x21`, canal 3)
 
 | Offset | Tipo | Campo | Notas |

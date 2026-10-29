@@ -98,7 +98,11 @@ func encode_record(bytes: PackedByteArray, offset: int) -> void:
 
 
 ## Mensaje ENTITY_SPAWN de la entidad con su estado actual, que se da como el estado «tras
-## [param tick]». [param for_owner] pone el bit «es tu personaje» (el SPAWN propio).
+## [param tick]». [param for_owner] pone el bit «es tu personaje» (el SPAWN propio), que lleva el
+## [PlayerState] entero; el de una entidad ajena solo lleva lo que ya enseña su registro de 21 B
+## (posición, velocidad, giro, suelo, acción y arma): ni su resistencia exacta, agotamiento,
+## enfriamiento de la parada, búfer, controles ni botones mantenidos (docs/combate.md, secciones 1
+## y 6).
 func encode_spawn(tick: int, for_owner: bool) -> PackedByteArray:
 	var spawn := NetMessages.EntitySpawn.new()
 	spawn.net_id = net_id
@@ -111,6 +115,8 @@ func encode_spawn(tick: int, for_owner: bool) -> PackedByteArray:
 	var character: PlayerCharacter = get_character()
 	if character != null:
 		spawn.state = character.get_state()
+		if not for_owner:
+			_hide_private_state(spawn.state)
 	else:
 		var state := PlayerState.new()
 		state.position = get_position()
@@ -118,3 +124,20 @@ func encode_spawn(tick: int, for_owner: bool) -> PackedByteArray:
 		state.grounded = true
 		spawn.state = state
 	return spawn.encode()
+
+
+# Deja en [param state] solo lo público de un personaje ajeno: el combate vuelve a los valores
+# iniciales del arma (resistencia llena, sin banderas, búfer, controles ni parada) salvo la acción en
+# curso, que el registro de 21 B ya muestra, y se borran los botones del último tick y los contadores de
+# salto.
+static func _hide_private_state(state: PlayerState) -> void:
+	var own: CombatState = state.combat
+	var public := CombatState.initial(CombatCatalog.rules(), own.weapon_id)
+	public.action = own.action
+	if own.action != CombatState.Action.NONE:
+		public.action_id = own.action_id
+		public.action_tick = own.action_tick
+	state.combat = public
+	state.prev_buttons = 0
+	state.coyote_ticks = 0
+	state.jump_buffer_ticks = 0
