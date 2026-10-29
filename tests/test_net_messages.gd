@@ -1334,11 +1334,11 @@ func test_snapshot_capacity_fits_in_one_packet() -> void:
 	# Capacidad con estado propio, bloque extra y una sección: floor((1200 - cabecera - 2) / 21).
 	var capacity: int = floori((NetProtocol.MAX_PACKET_BYTES - HEADER_WITH_STATE - 2)
 			/ float(EntityRecord.SIZE))
-	# Con el PlayerState de 69 B de la fase 3 (combate.md, 3.1): 13 + 69 + 9 + 1 = 92 B de cabecera
-	# y floor((1200 - 94) / 21) = 52 registros.
-	if PlayerState.ENCODED_SIZE == 69:
-		assert_eq(HEADER_WITH_STATE, 92, "cabecera de 92 B")
-		assert_eq(capacity, 52, "capacidad del documento: 52 registros")
+	# Con el PlayerState de 111 B de la fase 4 (habilidades.md, 3.1): 13 + 111 + 9 + 1 = 134 B de
+	# cabecera y floor((1200 - 136) / 21) = 50 registros (52 con los 69 B de la fase 3).
+	if PlayerState.ENCODED_SIZE == 111:
+		assert_eq(HEADER_WITH_STATE, 134, "cabecera de 134 B")
+		assert_eq(capacity, 50, "capacidad del documento: 50 registros")
 	var snapshot := NetMessages.Snapshot.new()
 	snapshot.own_state = PlayerState.new()
 	for i: int in capacity:

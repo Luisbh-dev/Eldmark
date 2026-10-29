@@ -27,6 +27,15 @@ const ABILITY_1: int = 1 << 5
 const ABILITY_2: int = 1 << 6
 const ABILITY_3: int = 1 << 7
 const INTERACT: int = 1 << 8
+## Cambiar de arma (Q; docs/habilidades.md, sección 3.2).
+const SWAP_WEAPON: int = 1 << 9
+## Hombro izquierdo de la cámara: lo pone el cliente con el hombro efectivo de la cámara. Es un nivel,
+## no una pulsación; solo lo lee la puntería de los proyectiles (docs/habilidades.md, sección 4.4).
+const AIM_LEFT: int = 1 << 10
+## Consumibles: poción de vida (R) y de resistencia (T).
+const CONSUMABLE_1: int = 1 << 11
+const CONSUMABLE_2: int = 1 << 12
+## Bits 13-14 reservados.
 ## Marca de entrada sustituida (docs/combate.md, sección 3.2): no es un botón. La ponen la cola
 ## de entradas del servidor y la predicción del cliente en la entrada que repite la última
 ## aplicada cuando la real no ha llegado. Está fuera de

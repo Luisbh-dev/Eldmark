@@ -1,9 +1,11 @@
 extends TestCase
-## Pruebas de [CombatState] (34 bytes, docs/combate.md sección 3.1) y de su sitio dentro de
-## [PlayerState] (69 bytes): offsets, ida y vuelta, copia y comparación.
+## Pruebas de [CombatState] (docs/combate.md sección 3.1) y de su sitio dentro de [PlayerState]:
+## offsets, ida y vuelta, copia y comparación de los campos de la fase 3 (los bytes 35-68). Los
+## campos de la versión 5 (76 B dentro de un PlayerState de 111 B, docs/habilidades.md sección 3.1)
+## se prueban en test_combat_state_v5.gd.
 
-const COMBAT_SIZE: int = 34
-const PLAYER_STATE_SIZE: int = 69
+const COMBAT_SIZE: int = 76
+const PLAYER_STATE_SIZE: int = 111
 ## Offset del combate dentro del estado de jugador codificado.
 const COMBAT_AT: int = 35
 
@@ -16,7 +18,7 @@ func _full_state() -> CombatState:
 	c.combo_step = 2
 	c.primary_held = 200
 	c.charge_ticks = 72
-	c.buffered = CombatState.BUFFER_DODGE | (5 << 2)
+	c.buffered = CombatState.pack_buffer(CombatState.BUFFER_DODGE, 5)
 	c.stamina = 987
 	c.stamina_regen_tick = 0x01020304
 	c.combat_flags = CombatState.FLAG_EXHAUSTED | CombatState.FLAG_BLOCK_HELD
@@ -29,10 +31,10 @@ func _full_state() -> CombatState:
 
 
 func test_sizes() -> void:
-	assert_eq(CombatState.ENCODED_SIZE, COMBAT_SIZE, "el estado de combate ocupa 34 bytes")
-	assert_eq(PlayerState.ENCODED_SIZE, PLAYER_STATE_SIZE, "el estado de jugador ocupa 69 bytes")
+	assert_eq(CombatState.ENCODED_SIZE, COMBAT_SIZE, "el estado de combate ocupa 76 bytes")
+	assert_eq(PlayerState.ENCODED_SIZE, PLAYER_STATE_SIZE, "el estado de jugador ocupa 111 bytes")
 	assert_eq(PlayerState.COMBAT_OFFSET, COMBAT_AT, "el combate empieza en el byte 35")
-	assert_eq(PlayerState.ENCODED_SIZE, 35 + CombatState.ENCODED_SIZE, "35 + 34")
+	assert_eq(PlayerState.ENCODED_SIZE, 35 + CombatState.ENCODED_SIZE, "35 + 76")
 
 
 func test_offsets_match_the_table() -> void:
@@ -48,7 +50,7 @@ func test_offsets_match_the_table() -> void:
 	assert_eq(bytes.decode_u8(42), 2, "u8 combo_step en 42")
 	assert_eq(bytes.decode_u8(43), 200, "u8 primary_held en 43")
 	assert_eq(bytes.decode_u8(44), 72, "u8 charge_ticks en 44")
-	assert_eq(bytes.decode_u8(45), CombatState.BUFFER_DODGE | (5 << 2), "u8 buffered en 45")
+	assert_eq(bytes.decode_u8(45), CombatState.BUFFER_DODGE | (5 << 4), "u8 buffered en 45")
 	assert_eq(bytes.decode_u16(46), 987, "u16 stamina en 46")
 	assert_eq(bytes.decode_u32(48), 0x01020304, "u32 stamina_regen_tick en 48")
 	assert_eq(bytes.decode_u8(52), CombatState.FLAG_EXHAUSTED | CombatState.FLAG_BLOCK_HELD,
@@ -67,7 +69,7 @@ func test_combat_roundtrip() -> void:
 	bytes.resize(COMBAT_SIZE)
 	original.encode_into(bytes, 0)
 	var decoded: CombatState = CombatState.decode_from(bytes, 0)
-	if not assert_not_null(decoded, "decode_from de 34 bytes"):
+	if not assert_not_null(decoded, "decode_from de 76 bytes"):
 		return
 	assert_eq(decoded.action, original.action, "action")
 	assert_eq(decoded.action_id, original.action_id, "action_id")
@@ -107,9 +109,9 @@ func test_encode_into_respects_the_offset() -> void:
 func test_decode_from_rejects_short_buffers() -> void:
 	var bytes := PackedByteArray()
 	bytes.resize(COMBAT_SIZE - 1)
-	assert_null(CombatState.decode_from(bytes, 0), "33 bytes no bastan")
+	assert_null(CombatState.decode_from(bytes, 0), "75 bytes no bastan")
 	bytes.resize(COMBAT_SIZE + 5)
-	assert_not_null(CombatState.decode_from(bytes, 5), "justo caben 34 bytes desde el offset 5")
+	assert_not_null(CombatState.decode_from(bytes, 5), "justo caben 76 bytes desde el offset 5")
 	assert_null(CombatState.decode_from(bytes, 6), "desde el offset 6 ya no caben")
 	assert_null(CombatState.decode_from(bytes, -1), "offset negativo")
 
@@ -190,7 +192,7 @@ func test_equals_detects_every_field() -> void:
 		"combo_step": func(c: CombatState) -> void: c.combo_step = 1,
 		"primary_held": func(c: CombatState) -> void: c.primary_held += 1,
 		"charge_ticks": func(c: CombatState) -> void: c.charge_ticks += 1,
-		"buffered": func(c: CombatState) -> void: c.buffered += 4,
+		"buffered": func(c: CombatState) -> void: c.buffered += 16,
 		"stamina": func(c: CombatState) -> void: c.stamina += 1,
 		"stamina_regen_tick": func(c: CombatState) -> void: c.stamina_regen_tick += 1,
 		"combat_flags": func(c: CombatState) -> void: c.combat_flags ^= 1,
@@ -223,7 +225,7 @@ func test_player_state_roundtrip_keeps_the_combat() -> void:
 	state.last_input_tick = 12345
 	state.combat = _full_state()
 	var decoded: PlayerState = PlayerState.decode(state.encode())
-	if not assert_not_null(decoded, "decode() de 69 bytes"):
+	if not assert_not_null(decoded, "decode() de 111 bytes"):
 		return
 	assert_true(decoded.combat.equals(state.combat), "el combate sobrevive")
 	assert_true(decoded.equals_exact(state), "y el estado entero es igual byte a byte")
@@ -241,4 +243,6 @@ func test_player_state_decode_rejects_old_size() -> void:
 	old.resize(35)
 	assert_null(PlayerState.decode(old), "35 bytes (la versión 1) ya no son un estado")
 	old.resize(69)
-	assert_not_null(PlayerState.decode(old), "69 bytes sí")
+	assert_null(PlayerState.decode(old), "69 bytes (la fase 3) tampoco")
+	old.resize(111)
+	assert_not_null(PlayerState.decode(old), "111 bytes sí")

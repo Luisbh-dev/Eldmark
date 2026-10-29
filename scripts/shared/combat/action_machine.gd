@@ -249,16 +249,22 @@ static func impose_death(c: CombatState, tick: int) -> void:
 	c.knockback = Vector2.ZERO
 
 
-## Deja el combate como al aparecer por primera vez (resistencia llena, sin acción, control ni
-## parada pendiente) conservando el arma y los niveles de los botones.
+## Deja el combate como al aparecer por primera vez (resistencia llena, sin acción, control,
+## parada, reutilizaciones ni efectos de movimiento pendientes) conservando las armas (y cuál está
+## activa), las cargas de los consumibles y los niveles de los botones. H1b la sustituye por la
+## versión que recibe las armas y las cargas de la plantilla (docs/habilidades.md, sección 3.5).
 static func reset_for_respawn(c: CombatState, tick: int) -> void:
 	var rules: CombatRules = CombatCatalog.rules()
 	var held: int = c.combat_flags & _HELD_FLAGS
+	var flags2: int = c.combat_flags2 & (CombatState.FLAG2_HELD_MASK | CombatState.FLAG2_SECOND_SLOT)
 	var weapon: int = c.weapon_id
-	c.copy_from(CombatState.initial(rules, weapon))
+	var alt_weapon: int = c.alt_weapon_id
+	var charges: int = c.consumable_charges
+	c.copy_from(CombatState.initial(rules, weapon, alt_weapon, charges))
 	c.action_tick = tick
 	c.stamina_regen_tick = tick
 	c.combat_flags = held
+	c.combat_flags2 = flags2
 
 
 ## Resta [param amount] de resistencia (sin bajar de 0), retrasa la regeneración y, si llega a 0,
@@ -276,10 +282,10 @@ static func _finish_expired(c: CombatState, data: CombatTables, weapon: WeaponTi
 		_LIGHT, _HEAVY:
 			var attack: AttackTicks = data.attack(c.action_id)
 			if attack == null or t >= c.action_tick + attack.total_ticks:
-				# Sin una pulsación que enlace, el combo vuelve a empezar.
+				# Sin una pulsación que enlace (PRIMARY guardada o enlace), el combo vuelve a empezar.
+				var kind: int = c.buffered_type()
 				var linked: bool = c.action == _LIGHT and attack != null \
-						and (c.buffered & 3) != CombatState.BUFFER_NONE \
-						and (c.buffered & 3) != CombatState.BUFFER_DODGE
+						and (kind == CombatState.BUFFER_PRIMARY or kind == CombatState.BUFFER_LINK)
 				_to_none(c)
 				if not linked:
 					c.combo_step = 0
@@ -357,15 +363,21 @@ static func _run_inputs(c: CombatState, out: Output, input: PlayerInput,
 # Ejecuta lo que hubiera en el búfer en el primer tick en que se pueda; si no, le resta un tick.
 static func _run_buffer(c: CombatState, input: PlayerInput, data: CombatTables,
 		weapon: WeaponTicks, rules: CombatRules, grounded: bool) -> void:
-	var kind: int = c.buffered & 3
+	var kind: int = c.buffered_type()
 	if kind == CombatState.BUFFER_NONE:
 		return
-	var remaining: int = (c.buffered >> 2) & 15
+	var remaining: int = c.buffered_ticks()
 	var done: bool = false
-	if kind == CombatState.BUFFER_DODGE:
-		done = _try_dodge(c, input, data, weapon, grounded) != _DODGE_RETRY
-	else:
-		done = _try_start_light(c, input.tick, data, weapon, grounded)
+	# Despacho por tipo (docs/habilidades.md, sección 3.1): 1 y 3 ligero, 2 esquiva. Los tipos de
+	# habilidades, cambio de arma y consumibles (4-9) los ejecuta H1b; hasta entonces nada los guarda
+	# y, si apareciera uno, se descarta.
+	match kind:
+		CombatState.BUFFER_DODGE:
+			done = _try_dodge(c, input, data, weapon, grounded) != _DODGE_RETRY
+		CombatState.BUFFER_PRIMARY, CombatState.BUFFER_LINK:
+			done = _try_start_light(c, input.tick, data, weapon, grounded)
+		_:
+			done = true
 	if done:
 		c.buffered = 0
 		return
@@ -380,15 +392,17 @@ static func _run_buffer(c: CombatState, input: PlayerInput, data: CombatTables,
 		c.buffered = 0
 		# Una pulsación que caduca sin haber empezado nada, con el ligero anterior ya terminado (el
 		# enlace no pudo ejecutarse, p. ej. en el aire), no deja el combo a medias: el siguiente
-		# ligero vuelve a ser el primero. Con un ligero en curso, su propio final lo decide.
-		if kind == CombatState.BUFFER_PRIMARY and c.action != _LIGHT:
+		# ligero vuelve a ser el primero. Con un ligero en curso, su propio final lo decide. Vale para
+		# cualquier tipo (docs/habilidades.md, sección 3.1): también una esquiva o una habilidad que
+		# sustituyó en el búfer a la pulsación que enlazaba.
+		if c.action != _LIGHT:
 			c.combo_step = 0
 	else:
-		c.buffered = kind | (remaining << 2)
+		c.buffered = CombatState.pack_buffer(kind, remaining)
 
 
 static func _store_buffer(c: CombatState, rules: CombatRules, kind: int) -> void:
-	c.buffered = kind | (clampi(rules.input_buffer_ticks, 1, 15) << 2)
+	c.buffered = CombatState.pack_buffer(kind, clampi(rules.input_buffer_ticks, 1, 15))
 
 
 # Intenta una esquiva en el tick de [param input]. Devuelve _DODGE_STARTED si empezó,
@@ -676,7 +690,7 @@ static func _to_none(c: CombatState) -> void:
 
 # Borra un enlace de combo pendiente: ya no tiene sentido cuando empieza otra acción.
 static func _clear_link(c: CombatState) -> void:
-	if (c.buffered & 3) == CombatState.BUFFER_LINK:
+	if c.buffered_type() == CombatState.BUFFER_LINK:
 		c.buffered = 0
 
 

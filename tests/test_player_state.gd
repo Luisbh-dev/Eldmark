@@ -1,11 +1,11 @@
 extends TestCase
-## Pruebas de PlayerState: formato de red (69 bytes little-endian: 35 de movimiento y 34 de combate)
+## Pruebas de PlayerState: formato de red (111 bytes little-endian: 35 de movimiento y 76 de combate)
 ## y comparación con tolerancia. El formato del combate se prueba en test_combat_state.gd.
 ##
 ## En la fase 2 el servidor envía este estado y el cliente lo compara con su predicción
 ## ([method PlayerState.is_close_to]) para decidir si tiene que reconciliar.
 
-const ENCODED_SIZE: int = 69
+const ENCODED_SIZE: int = 111
 ## Error admitido al pasar por f32 (los valores de prueba son exactos en f32 salvo el yaw).
 const F32_EPSILON: float = 1e-5
 
@@ -27,7 +27,7 @@ func test_encode_size_and_layout() -> void:
 			"u8 flags en el byte 28 (bit 0 = grounded, contadores a 0)")
 	assert_eq(bytes.decode_u16(29), 0x1FF, "u16 prev_buttons en el byte 29")
 	assert_eq(bytes.decode_u32(31), 4000000000, "u32 last_input_tick en el byte 31")
-	assert_eq(bytes.slice(35), _initial_combat_bytes(), "el combate inicial va en los bytes 35-68")
+	assert_eq(bytes.slice(35), _initial_combat_bytes(), "el combate inicial va en los bytes 35-110")
 
 	state.grounded = false
 	assert_eq(state.encode().decode_u8(28), 0, "flags sin grounded")
@@ -55,7 +55,7 @@ func test_encode_decode_roundtrip() -> void:
 		state.coyote_ticks = 6 if grounded else 2
 		state.jump_buffer_ticks = 0 if grounded else 11
 		var decoded: PlayerState = PlayerState.decode(state.encode())
-		if not assert_not_null(decoded, "decode() de 69 bytes válidos"):
+		if not assert_not_null(decoded, "decode() de 111 bytes válidos"):
 			return
 		assert_vec_near(decoded.position, state.position, F32_EPSILON, "position")
 		assert_vec_near(decoded.velocity, state.velocity, F32_EPSILON, "velocity")
@@ -70,7 +70,7 @@ func test_encode_decode_roundtrip() -> void:
 
 
 func test_decode_wrong_size_returns_null() -> void:
-	for size: int in [0, 1, 34, 35, 68, 70]:
+	for size: int in [0, 1, 34, 35, 68, 69, 70, 76, 110, 112]:
 		var bytes := PackedByteArray()
 		bytes.resize(size)
 		assert_null(PlayerState.decode(bytes), "decode() de %d bytes debe devolver null" % size)

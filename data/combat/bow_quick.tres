@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="AttackDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/combat/attack_definition.gd" id="1_attack"]
+[ext_resource type="Resource" path="res://data/combat/arrow.tres" id="2_arrow"]
+
+[resource]
+script = ExtResource("1_attack")
+id = &"bow_quick"
+heavy = false
+windup_s = 0.25
+active_s = 0.0166667
+recovery_s = 0.35
+combo_window_s = 0.0
+cancel_to_dodge_from_s = 0.27
+stamina_cost = 0
+lunge_speed = 0.0
+turn_rate = 8.0
+move_speed_scale = 0.5
+base_damage = 60
+damage_type = 1
+hyper_armor = false
+unblockable = false
+stagger_s = 0.0
+knockback_speed = 0.0
+projectile = ExtResource("2_arrow")
+projectile_speed_mps = 45.0

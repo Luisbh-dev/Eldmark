@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="EquipmentTemplate" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/combat/equipment_template.gd" id="1_template"]
+[ext_resource type="Script" path="res://scripts/shared/combat/weapon_definition.gd" id="2_weapon"]
+[ext_resource type="Resource" path="res://data/combat/bow.tres" id="3_bow"]
+[ext_resource type="Resource" path="res://data/combat/sword_shield.tres" id="4_sword_shield"]
+
+[resource]
+script = ExtResource("1_template")
+id = &"marksman"
+selectable = true
+weapons = Array[ExtResource("2_weapon")]([ExtResource("3_bow"), ExtResource("4_sword_shield")])
+consumable_charges = PackedInt32Array(2, 3)

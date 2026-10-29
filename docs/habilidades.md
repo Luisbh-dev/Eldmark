@@ -1094,3 +1094,107 @@ comportamiento y prueba de carga) van en PRE3 y SER2–SER3.
 | IMP13 | menor | Sin columna de resistencia; un atacante no rompe el muro; agotado no se tensa | **En parte**: párrafo de resistencia (§2.4); el muro que uno solo no rompe es a propósito y H5 lo mide; el agotamiento impide tensar y el muro, escrito |
 | IMP14 | menor | Faltaban `downed`, `swap` y un arco provisional | `Death01`, `Crouch_Fwd_Loop`, fundido de 0,4 s y arco en `WeaponProps`; pendientes del usuario marcados (§6.6) |
 | IMP15 | menor | Cota de 2 µs en una prueba | Contador de llamadas determinista; el microbanco, informativo en `tools/combat_balance.gd` (§7.3) |
+
+---
+
+## 11. Implementación
+
+Lo que hizo cada paquete, sus desvíos de este documento (que se escribió antes de fusionar F4, F6a,
+F6b y el protocolo 5 del chat y los grupos) y lo medido.
+
+### 11.1 H1a · estado y datos
+
+**Hecho.**
+
+- `CombatState` v5 (`scripts/shared/combat/combat_state.gd`): acciones 9–13 (ABILITY, SWAP, DOWNED,
+  REVIVE, EXECUTE), `ENCODED_SIZE` 76, los campos de §3.1 en sus offsets (`alt_weapon_id`,
+  `combat_flags2`, `ability_ready` como `PackedInt64Array` de 6, `consumable_ready_tick`,
+  `consumable_charges`, `move_effect_ids` y `move_effect_until`), `initial(rules, weapon, alt_weapon,
+  charges)`, `copy_from` elemento a elemento (los `Packed*Array` se pasan por referencia: comprobado
+  en 4.7.2), `buffered_type()`/`buffered_ticks()` con el formato nuevo, `charges_of()`,
+  `is_second_slot()` y las constantes `FLAG2_*` y `BUFFER_*` (4–9). `PlayerState` pasa a 111 B.
+- `PlayerInput`: `SWAP_WEAPON` (bit 9), `AIM_LEFT` (10), `CONSUMABLE_1` (11) y `CONSUMABLE_2` (12).
+- Recursos nuevos `AbilityDefinition`, `StatusEffectDefinition`, `ProjectileDefinition` y
+  `EquipmentTemplate`, con sus `AbilityTicks`, `StatusTicks` y `ProjectileTicks`; `AttackDefinition`
+  gana `projectile`, `projectile_speed_mps`, `charge_speed_scale`, `stun_s` y `on_hit_status` (y la
+  forma puede ser nula con proyectil); `WeaponDefinition`, `abilities` y `can_block` (el combo ligero
+  admite de 1 a 3 golpes); `CombatRules`, todos los campos de §2.1.
+- `CombatCatalog`: seis espacios de ids por orden alfabético, todos pedidos por nombre
+  (`ability_id`, `status_id`, `projectile_id`, `template_id`); `ability()`, `status()`,
+  `projectile()`, `template()`, `template_count()`, `consumable_ids()`; dueño de cada habilidad
+  (arma y ranura o consumible), golpe sintetizado con la fuente de la habilidad como id, avances
+  horneados como la esquiva, la validación de §2.2 y la huella con `_HASH_FORMAT` 2.
+- `CombatSource` (`make`, `kind_of`, `id_of`, `EXECUTE`, `BLEED_OUT`) y `Ballistics` (`position` con
+  `n` entero o fraccionario, `quantize` a 1 cm y 1 cm/s con `NetMath`, como el SPAWN).
+- Datos de §2.3 en `data/combat/`: `shield_bash`, `shield_rush`, `shield_wall` (en las ranuras de
+  `sword_shield.tres`) y sus dos formas; `bow`, `bow_quick`, `bow_drawn`, `bow_volley`,
+  `bow_slowing_shot`, `bow_evasive_shot`; `arrow`; `potion_health` y `potion_stamina` (los
+  `consumables` de las reglas); `slowed`, `potion_regen`, `bleed`, `rooted`; `squire` (la
+  `default_template`) y `marksman`.
+- backlog.md: las cuatro decisiones de §0 y los desvíos de CMB-21, CMB-23, CMB-24 y PRG-04 ya estaban
+  anotados al cerrar este diseño; H1a añade las notas «Hecho (H1a)» de lo que deja hecho.
+
+**Pruebas.** `test_combat_state_v5` (nueva, 12: offsets de cada campo nuevo dentro de `PlayerState`,
+76 y 111 B, ida y vuelta, u32 de los ticks, el `buffered` nuevo y la esquiva guardada con él,
+`initial`, cargas, ranura activa, copia de los arrays, `equals` y la reconciliación notan cada campo,
+`reset_for_respawn`); `test_combat_catalog` (de 25 a 35: los seis espacios de ids por nombre, los
+kits de espada y escudo y de arco, pociones, efectos, plantillas y reglas en ticks, el golpe
+sintetizado, cada error de §2.2, los ids de efectos y plantillas en u8, la huella con 47 cambios
+predichos —tiempos de habilidad, `downed_move_scale`, `revive_s`, `blocks`, puntería, efectos,
+flecha…— y 27 de solo servidor —daños, formas, controles, pulsos, derribado, muros, topes y
+plantillas— y el camino rápido de `simulate()` sin buscar arma ni habilidades, con los contadores
+`weapon_lookups` y `ability_lookups` de `CombatTables`); `test_ballistics` y `test_combat_source`
+(nuevas, 6 y 3); `test_player_input`, `test_combat_state`, `test_player_state`, `test_net_entity`,
+`test_net_messages` y `test_snapshot_builder` adaptadas a 111 B y al `buffered` nuevo.
+
+**Desvíos y decisiones.**
+
+- **`consumables`: 0 o exactamente 2.** Las reglas sin pociones (`CombatRules.new()`, las de las
+  pruebas que montan catálogos a mano) son válidas; con alguna, han de ser dos. El catálogo real
+  lleva las dos (lo prueba `test_combat_catalog`). Igual `default_template`: puede ser nula
+  (`default_template_id()` = 0) fuera de `data/combat/`.
+- **Huecos y habilidades sueltas.** Un `null` en `WeaponDefinition.abilities` es una ranura vacía (un
+  arma puede llevar solo la 3). Una habilidad que no lleva ningún arma ni es consumible es válida
+  (ranura −1, arma 0) y no se puede usar.
+- **Validaciones de más**: el activo dura al menos un tick (el del compromiso, también en una
+  canalización); un consumible lleva `interrupt_on_damage` (§2.1: «siempre true»); velocidad de un
+  proyectil ≤ 327,67 m/s (viaja en s16 de cm/s), también a carga máxima; ids de ataques y habilidades
+  en 14 bits (la fuente); una plantilla lleva una o dos armas y dos cargas de 0 a 15.
+- **Valores que §2.3 no fija**: `dash_curve` nula = plana (la embestida); el salto atrás frena de 1 a
+  0,4 en su ventana; el tensado cancela a esquiva desde su recuperación (tick 4) y, como el rápido,
+  mueve ×0,5 y gira 8 mientras dispara; las tres habilidades de arco, ×0,5 y giro 8; las pociones,
+  giro 6; `rooted` renueva; las formas nuevas van de 0,2 a 2,0 m de alto, como la de la espada.
+- **`buffered` y la máquina.** Cambiar el formato obliga a tocar `ActionMachine`: `_run_buffer`
+  despacha por tipo (1 y 3 ligero, 2 esquiva; los tipos 4–9 los descarta hasta H1b, y nadie los
+  guarda), `linked` es PRIMARY o enlace (§3.1) y la caducidad de cualquier tipo con el ligero ya
+  acabado pone `combo_step = 0`. Lo único que cambia de conducta es un caso de esquina: una esquiva
+  guardada en el aire que sustituyó a la pulsación que enlazaba y caduca reinicia el combo (antes lo
+  dejaba a medias). `test_action_machine` sigue entera (73).
+- **`reset_for_respawn(c, tick)`** conserva su firma hasta H1b: ahora guarda las dos armas, la ranura
+  activa, las cargas y los botones mantenidos de `combat_flags2`, y pone a 0 reutilizaciones y
+  ranuras de movimiento.
+- **Protocolo.** `PROTOCOL_VERSION` sigue en 5 y `VALID_BUTTONS` en los bits 0–8 hasta H2: el formato
+  del estado ya es el de 111 B en los dos lados y la huella nueva cambia el `sim_hash`, así que un
+  cliente anterior no entra. `test_snapshot_builder` y `test_net_messages` ya comprueban los 50
+  registros de §3.1 (cabecera de 134 B, 1186 B llenos); la prueba de propiedades del constructor
+  da a su observador C 30 relevantes en vez de 40 para que, con las 15 que entran, sigan cabiendo
+  todas en 50 plazas (antes eran 52).
+- **Ayudas de más**: `CombatState.pack_buffer`/`pack_charges`, `CombatCatalog.template_weapons`/
+  `template_charges`/`default_template_id`, las duraciones de las reglas en ticks en `CombatTables`
+  (`swap_ticks`, `revive_ticks`, `execute_ticks`, `consumable_cooldown_ticks`, `downed_ticks`),
+  `CombatSource.name_of` (para el registro de combate de H3a) y consultas de `AbilityTicks` y
+  `StatusTicks` (`is_dashing`, `dash_speed_at`, `is_movement`, `has_pulses`, `is_harmful`).
+
+**Medido** (máquina compartida, 4 núcleos con otros trabajos; orientativo): `PlayerState.encode`
+2,3–3,2 µs, `PlayerState.decode` 18–22 µs, `CombatState.duplicate_state` 6–7 µs, `copy_from`
+1,8–2,6 µs, `CombatState.new` 4,2–4,7 µs (los tres arrays suman ~1,4 µs por estado, medido aparte
+contra un objeto igual sin ellos) y el camino rápido de `ActionMachine.step` 3,3 µs. El decode
+sigue creando un `CombatState` inicial que tira (el valor por defecto de `PlayerState.combat`); no
+se toca aquí.
+
+**Para los paquetes siguientes.** H1b: la conducta de §3 (máquina, `ActionWire`, `simulate` con
+`speed_factor` y `rooted`, `AimRay`, `Ballistics.solve_lead`, fracciones de `HitShapes`, modificadores
+de `DamageFormula`) y la firma nueva de `reset_for_respawn`/`set_loadout`; el camino rápido debe seguir
+sin tocar los contadores de `CombatTables`. H2: `PROTOCOL_VERSION` 6, `VALID_BUTTONS` hasta el bit
+12 y red.md. H3a: `_hide_private_state` con los campos nuevos (hoy el SPAWN ajeno los lleva a su
+valor inicial porque nadie los rellena todavía).

@@ -200,6 +200,10 @@ bit 6 de `combat_flags`, carga cancelada tras el silencio del cliente, combo rei
 el enlace y movimiento aéreo de los controles). Los ticks absolutos hacen que el estado se restaure
 sin ambigüedad.
 
+**Fase 4.** La versión 5 de `CombatState` (76 B, `PlayerState` de 111 B) añade al final la otra arma,
+las reutilizaciones, los consumibles y los efectos de movimiento, y `buffered` pasa a bits 0–3 tipo
+y 4–7 ticks: [habilidades.md 3.1](habilidades.md#31-combatstate-v5).
+
 ### 3.2 Entradas sustituidas (cierra la nota de red.md §8.2)
 
 `PlayerInput.SUBSTITUTED = 1 << 15`, fuera de `VALID_BUTTONS` (el cliente no puede ponerlo: el

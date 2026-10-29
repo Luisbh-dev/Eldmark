@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="AttackDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/combat/attack_definition.gd" id="1_attack"]
+[ext_resource type="Resource" path="res://data/combat/arrow.tres" id="2_arrow"]
+
+[resource]
+script = ExtResource("1_attack")
+id = &"bow_drawn"
+heavy = true
+windup_s = 0.05
+active_s = 0.0166667
+recovery_s = 0.3
+combo_window_s = 0.0
+cancel_to_dodge_from_s = 0.0666667
+stamina_cost = 0
+lunge_speed = 0.0
+turn_rate = 8.0
+move_speed_scale = 0.5
+base_damage = 90
+damage_type = 1
+hyper_armor = false
+unblockable = false
+stagger_s = 0.0
+knockback_speed = 0.0
+charge_min_s = 0.35
+charge_max_s = 1.0
+charge_damage_scale = 2.0
+charge_move_scale = 0.5
+charge_turn_rate = 8.0
+charge_speed_scale = 1.75
+projectile = ExtResource("2_arrow")
+projectile_speed_mps = 40.0

@@ -10,7 +10,8 @@ const PLAYER: int = NetProtocol.EntityKind.PLAYER
 const NPC: int = NetProtocol.EntityKind.NPC
 const MAX_BYTES: int = NetProtocol.MAX_PACKET_BYTES
 ## Registros que caben con estado propio, bloque extra y una sola sección:
-## (1200 - cabecera - 2) / 21. Con el PlayerState de 69 B de la fase 3 son 52 (92 B de cabecera).
+## (1200 - cabecera - 2) / 21. Con el PlayerState de 111 B de la fase 4 son 50 (134 B de cabecera;
+## 52 con los 69 B de la fase 3).
 @warning_ignore("integer_division")
 const CAPACITY: int = (NetProtocol.MAX_PACKET_BYTES - NetMessages.SNAPSHOT_HEADER_SIZE_WITH_STATE
 		- 2) / EntityRecord.SIZE
@@ -445,15 +446,15 @@ func test_packet_never_exceeds_the_limit_for_any_player_count() -> void:
 			+ CAPACITY * EntityRecord.SIZE
 	assert_true(full_size <= MAX_BYTES, "los %d registros llenos caben" % CAPACITY)
 	assert_true(full_size + EntityRecord.SIZE > MAX_BYTES, "uno más ya no cabría")
-	# Con el PlayerState de 69 B de la fase 3: 52 registros en 1186 B (combate.md, sección 6).
-	if PlayerState.ENCODED_SIZE == 69:
-		assert_eq(CAPACITY, 52, "capacidad del documento: 52 registros")
-		assert_eq(full_size, 1186, "52 registros ocupan 1186 B")
+	# Con el PlayerState de 111 B de la fase 4: 50 registros en 1186 B (habilidades.md, sección 3.1).
+	if PlayerState.ENCODED_SIZE == 111:
+		assert_eq(CAPACITY, 50, "capacidad del documento: 50 registros")
+		assert_eq(full_size, 1186, "50 registros ocupan 1186 B")
 
 
 func test_with_63_visible_players_every_entity_goes_out_at_least_every_other_snapshot() -> void:
-	# La garantía de red.md 9.3: 63 jugadores visibles y CAPACITY plazas (52 con el estado de
-	# 69 B), cada entidad sale al menos uno de cada dos snapshots: ceil(63 / C) = 2.
+	# La garantía de red.md 9.3: 63 jugadores visibles y CAPACITY plazas (50 con el estado de
+	# 111 B), cada entidad sale al menos uno de cada dos snapshots: ceil(63 / C) = 2.
 	assert_eq(ceili(63.0 / float(CAPACITY)), 2, "con 63 candidatas ceil(N / C) es 2")
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 13
@@ -502,7 +503,11 @@ func test_priority_accumulator_orders_the_unsent_first() -> void:
 	assert_near(peer.priority[first_unsent], 0.0, 1e-9, "las que salieron, a 0")
 	assert_near(peer.priority[first_unsent - 1], 1.0, 1e-9,
 			"las que salieron antes y ahora no, empiezan de nuevo")
-	assert_near(peer.priority[2], 0.0, 1e-9, "las que sí salieron de nuevo, a 0")
+	if CAPACITY > waiting:
+		assert_near(peer.priority[2], 0.0, 1e-9, "las que sí salieron de nuevo, a 0")
+	else:
+		# Con 50 plazas y 50 esperando, el segundo solo lleva las que esperaban.
+		assert_near(peer.priority[2], 1.0, 1e-9, "las que no caben esta vez acumulan el peso")
 
 
 func test_priority_weights_decide_what_goes_first() -> void:
@@ -648,7 +653,8 @@ func test_property_200_entities_600_ticks() -> void:
 	var players: Array[NetEntity] = _spawn_players(registry, rng, 200)
 	var builder := SnapshotBuilder.new(InterestPolicy.new())
 
-	# A ve a todos; B ve un subconjunto que cambia cada 25 ticks; C ve a 40 (caben todos).
+	# A ve a todos; B ve un subconjunto que cambia cada 25 ticks; C ve a 30 más las 15 que entran
+	# (caben todas: CAPACITY es 50 con el estado de 111 B).
 	var observer_a := Observer.new()
 	observer_a.peer = _make_peer(players[0], players)
 	var nobody: Array[NetEntity] = []
@@ -656,7 +662,7 @@ func test_property_200_entities_600_ticks() -> void:
 	observer_b.peer = _make_peer(players[1], nobody)
 	var observer_c := Observer.new()
 	observer_c.peer = _make_peer(players[2], nobody)
-	for i: int in range(3, 43):
+	for i: int in range(3, 33):
 		observer_c.peer.relevant[players[i].net_id] = true
 	var observers: Array[Observer] = [observer_a, observer_b, observer_c]
 
@@ -733,4 +739,6 @@ func test_property_200_entities_600_ticks() -> void:
 	assert_true(observer_a.max_candidates >= 199, "el observador A llegó a ver a 199")
 	assert_true(observer_a.max_wait >= 1,
 			"con 199 candidatas y %d plazas alguna tuvo que esperar" % CAPACITY)
-	assert_eq(observer_c.max_wait, 0, "con 40 candidatas caben todas: ninguna espera")
+	assert_true(observer_c.max_candidates <= CAPACITY,
+			"C nunca tiene más candidatas que plazas (%d de %d)" % [observer_c.max_candidates, CAPACITY])
+	assert_eq(observer_c.max_wait, 0, "con todas sus candidatas cabiendo, ninguna espera")

@@ -1,0 +1,44 @@
+[gd_resource type="Resource" script_class="AbilityDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/combat/ability_definition.gd" id="1_ability"]
+[ext_resource type="Resource" path="res://data/combat/arrow.tres" id="2_arrow"]
+[ext_resource type="Resource" path="res://data/combat/slowed.tres" id="3_slowed"]
+
+[resource]
+script = ExtResource("1_ability")
+id = &"bow_slowing_shot"
+cast_s = 0.35
+active_s = 0.0166667
+recovery_s = 0.3
+cooldown_s = 12.0
+channel = false
+channel_hold = true
+channel_breaks_on_move = false
+cancel_to_dodge_from_s = -1.0
+cancel_to_attack_from_s = -1.0
+move_speed_scale = 0.5
+turn_rate = 8.0
+lunge_speed = 0.0
+dash_distance_m = 0.0
+dash_from_s = 0.0
+dash_to_s = 0.0
+dash_direction = 0
+usable_in_air = false
+stamina_restore = 0
+blocks = false
+projectile = ExtResource("2_arrow")
+projectile_count = 1
+projectile_spread_deg = 0.0
+projectile_speed_mps = 55.0
+base_damage = 60
+damage_type = 1
+stagger_s = 0.0
+stun_s = 0.0
+knockback_speed = 0.0
+hyper_armor = false
+unblockable = false
+target_status = ExtResource("3_slowed")
+self_heal = 0
+interrupt_on_damage = false
+wall_half_extents = Vector3(0, 0, 0)
+wall_forward_m = 0.7

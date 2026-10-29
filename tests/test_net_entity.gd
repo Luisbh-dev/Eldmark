@@ -214,7 +214,7 @@ func test_encode_spawn_of_another_player_hides_the_private_combat_state() -> voi
 	combat.combat_flags = CombatState.FLAG_EXHAUSTED | CombatState.FLAG_BLOCK_HELD
 	combat.parry_ready_tick = 1234
 	combat.cc_until_tick = 999
-	combat.buffered = CombatState.BUFFER_PRIMARY | (5 << 2)
+	combat.buffered = CombatState.pack_buffer(CombatState.BUFFER_PRIMARY, 5)
 	combat.combo_step = 2
 	combat.primary_held = 9
 	combat.knockback = Vector2(1.5, -2.0)
