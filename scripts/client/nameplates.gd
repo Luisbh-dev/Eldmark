@@ -60,6 +60,8 @@ var _ray_count: int = 0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Opción «Placas de nombre» de los ajustes del jugador.
+	ClientSettings.bind_visibility(self, ClientSettings.NAMEPLATES)
 
 
 func _process(delta: float) -> void:

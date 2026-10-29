@@ -37,9 +37,49 @@ Controles:
 | Cambiar de hombro | V |
 | Acercar / alejar la cámara | Rueda del ratón |
 | Panel de depuración | F3 |
+| Ajustes (gráficos, audio, cámara e interfaz) | F10 |
 
 Las teclas de combate (clic izquierdo y derecho, Ctrl, 1-3, E) ya están asignadas, pero
 todavía no hacen nada (fase 3).
+
+## Ajustes del jugador (F10)
+
+**F10** abre y cierra la ventana de ajustes, tanto en el sandbox sin red como en el cliente en red
+(Esc también la cierra; mientras está abierta el cursor queda libre). Tiene cuatro pestañas:
+
+| Pestaña | Ajustes |
+|---|---|
+| Gráficos | modo de ventana (ventana, pantalla completa sin bordes o exclusiva), resolución (solo en modo ventana), sincronía vertical, límite de FPS, escala de render, sombras (desactivadas, bajas, medias o altas), distancia de la hierba (0 la quita) y suavizado de bordes (ninguno, FXAA, MSAA 2x o 4x) |
+| Audio | volumen de cada bus: General, Música, Efectos, Ambiente, Interfaz y Voces |
+| Cámara | sensibilidad del ratón, invertir el eje vertical, campo de visión y hombro por defecto |
+| Interfaz | números de daño y placas de nombre |
+
+Los cambios se aplican en vivo, se guardan al cerrar la ventana en `user://settings.cfg` (en Linux,
+`~/.local/share/godot/app_userdata/Eldmark/`; en Windows, `%APPDATA%\Godot\app_userdata\Eldmark\`) y se
+aplican al arrancar. Solo se escribe lo que el jugador ha tocado: un cliente sin `settings.cfg` arranca
+exactamente igual que siempre, con el Vado Gris, la ventana y el suavizado del proyecto. «Restaurar
+pestaña» y «Restaurar todo» devuelven los valores por defecto (y quitan esas claves del archivo). El
+archivo es texto (`[graphics]`, `[audio]`, `[camera]` y `[interface]`) y se puede editar a mano: lo que
+no sea válido se ignora y queda el valor por defecto. Está implementado en `ClientSettings`
+(`scripts/client/ui/client_settings.gd`, que también describe cada ajuste) y `SettingsMenu`.
+
+## Interfaz y audio
+
+- El tema global (`assets/ui/theme/eldmark_theme.tres`, asignado en `project.godot` con
+  `gui/theme/custom`) lo genera `tools/ui/build_theme.gd` a partir de la paleta `UIPalette`; para
+  cambiar el aspecto se cambia la paleta o `UIThemeBuilder` y se vuelve a ejecutar
+  (`godot --headless --path . -s res://tools/ui/build_theme.gd`). Aún no hay fuentes en el repositorio
+  (usa la del motor): las ranuras de Noto Sans y Cinzel están preparadas y las instrucciones para
+  añadirlas, en `assets/LICENCIAS.md`. Los emblemas de bando de `assets/emblems/` son provisionales
+  (`tools/assets/make_emblems.py`).
+- La galería de la interfaz muestra todos los estilos del tema y los componentes comunes (casillas
+  de icono con rareza y reutilización, glifos de tecla, tooltip, diálogo de confirmación, foco):
+  `godot --path . res://scenes/tests/ui_gallery.tscn`.
+- Los glifos de tecla (la línea de ayuda del HUD, las casillas) leen la asignación real del
+  `InputMap`, así que reflejan cualquier tecla reasignada.
+- El audio es solo del cliente: `default_bus_layout.tres` define los buses (General con limitador,
+  Música, Efectos, Ambiente, Interfaz y Voces) y `AudioDirector` reparte los sonidos en pools con un
+  límite de voces por categoría. Todavía no hay sonidos reales en `assets/audio/`.
 
 ## Zonas
 
@@ -308,8 +348,10 @@ El sandbox sin argumentos no cambia: F3 sigue alternando solo su panel, que empi
 ## Estructura
 
 ```
-assets/        Modelos, animaciones, texturas, materiales y audio (binarios en Git LFS)
+assets/        Modelos, animaciones, texturas, materiales, audio y fuentes (binarios en Git LFS),
+               más el tema de la interfaz (ui/) y los emblemas de bando (emblems/)
   LICENCIAS.md Procedencia y licencia de cada pack y addon de terceros
+default_bus_layout.tres  Buses de audio (General con limitador, Música, Efectos, Ambiente, Interfaz, Voces)
 scenes/        Escenas de Godot (.tscn)
   boot.tscn    Escena principal: lee las opciones de arranque
   characters/  Personajes (PlayerCharacter) y su aspecto visual (solo cliente)
@@ -317,7 +359,7 @@ scenes/        Escenas de Godot (.tscn)
   ui/          Interfaz (HUD, elección de reino, depuración de red)
   world/       Zonas (zones/) y sus piezas (props/), y el circuito de pruebas
 scripts/
-  client/      Solo cliente: cámara, input, interfaz, visual y animación del personaje
+  client/      Solo cliente: cámara, input, interfaz (ui/), audio (audio/), visual y animación del personaje
   server/      Solo servidor: lógica autoritativa, IA, persistencia
   shared/      Compartido: datos, fórmulas, protocolo de red, simulación, registro de zonas
   world/       Nodos de las escenas de zona (ZoneRoot...), los cargan cliente y servidor

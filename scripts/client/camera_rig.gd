@@ -38,6 +38,11 @@ extends Node3D
 const AUTO_SWAP_CLEAR_RATIO: float = 0.9
 ## Metros de histéresis al volver a mostrar el nodo oculto por cercanía.
 const HIDE_HYSTERESIS: float = 0.15
+## Grupo en el que está toda cámara de acción: los ajustes ([ClientSettings]) lo usan para aplicarles
+## sensibilidad, invertir Y, campo de visión y hombro por defecto en vivo.
+const GROUP: StringName = &"camera_rig"
+## Radianes por píxel con la sensibilidad del ratón a 1 en los ajustes.
+const DEFAULT_MOUSE_SENSITIVITY: float = 0.0025
 ## Frecuencia (rad/s) de las dos ondas que forman la sacudida de impacto.
 const SHAKE_FREQUENCY_X: float = 61.0
 const SHAKE_FREQUENCY_Y: float = 47.0
@@ -45,7 +50,7 @@ const SHAKE_FREQUENCY_Y: float = 47.0
 const MAX_SHAKE_AMPLITUDE: float = 0.25
 
 ## Radianes de giro por píxel de movimiento del ratón.
-@export var mouse_sensitivity: float = 0.0025
+@export var mouse_sensitivity: float = DEFAULT_MOUSE_SENSITIVITY
 ## Invierte el eje vertical del ratón.
 @export var invert_y: bool = false
 
@@ -152,6 +157,7 @@ var _fallback_shape: SphereShape3D = null
 
 func _ready() -> void:
 	InputBindings.ensure_defaults()
+	add_to_group(GROUP)
 	# Se mueve en _process con la posición ya interpolada: no debe volver a
 	# interpolarse. Los hijos (brazo y cámara) heredan el modo.
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
@@ -174,6 +180,8 @@ func _ready() -> void:
 
 	_apply_look()
 	_refresh_mouse_mode()
+	# Lo que el jugador tiene guardado en los ajustes (solo lo que ha cambiado él).
+	ClientSettings.current().apply_to_camera(self, true)
 
 
 func _process(delta: float) -> void:
@@ -266,6 +274,28 @@ func get_yaw() -> float:
 ## Inclinación de la vista en radianes; positivo mira hacia arriba.
 func get_pitch() -> float:
 	return _pitch
+
+
+## Campo de visión vertical de la cámara, en grados.
+func get_fov() -> float:
+	return _camera.fov
+
+
+## Fija el campo de visión vertical de la cámara, en grados (ajustes del jugador).
+func set_fov(degrees: float) -> void:
+	_camera.fov = degrees
+
+
+## Hombro elegido: 1 derecho, -1 izquierdo (sin contar el cambio temporal por una pared).
+func get_chosen_shoulder() -> int:
+	return -1 if _shoulder_side < 0.0 else 1
+
+
+## Elige el hombro por el que se mira, 1 derecho o -1 izquierdo (el valor por defecto de los
+## ajustes; la tecla de cambio de hombro lo alterna después). El cambio es suave.
+func set_default_shoulder(side: int) -> void:
+	_shoulder_side = -1.0 if side < 0 else 1.0
+	_shoulder_override = 0.0
 
 
 ## Fija la vista. El pitch se limita a [[member min_pitch_degrees],

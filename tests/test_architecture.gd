@@ -349,6 +349,34 @@ func test_server_does_not_load_audio() -> void:
 		assert_true(deps.has(CLIENT_SERVICES_SCRIPT), "%s monta ClientServices" % scene_path)
 
 
+## Comprobación en un proceso aparte, el de verdad: el script de arranque (que ejecuta también el
+## servidor dedicado) no arrastra el [AudioDirector] ni los servicios del cliente. Lo cargarían las
+## referencias de clase de los scripts del cliente que [code]boot.gd[/code] nombra (ClientMain, la
+## cámara, el HUD, el visual del personaje...): si una de ellas pasa a nombrar [code]AudioDirector[/code] o
+## [code]ClientServices[/code] por su clase, este proceso los carga y la prueba falla; hay que llegar a
+## ellos por [method AudioDirector.get_instance] desde una ruta cargada en tiempo de ejecución o desde
+## la escena del cliente, como hace ART-10.
+func test_the_boot_script_does_not_pull_in_the_audio_director() -> void:
+	var audio_path: String = AUDIO_DIR.path_join("audio_director.gd")
+	var args: PackedStringArray = PackedStringArray(["--headless", "--path",
+			ProjectSettings.globalize_path("res://"), "-s", "res://tests/probe_loaded_scripts.gd",
+			"--", audio_path, CLIENT_SERVICES_SCRIPT, "res://scripts/client/client_main.gd"])
+	var output: Array = []
+	var code: int = OS.execute(OS.get_executable_path(), args, output, true)
+	assert_eq(code, 0, "el proceso auxiliar termina bien")
+	var loaded: Dictionary = {}
+	for line: String in String(output[0]).split("\n"):
+		var parts: PackedStringArray = line.strip_edges().split(" ")
+		if parts.size() == 3 and parts[0] == "CACHED":
+			loaded[parts[1]] = parts[2] == "true"
+	assert_eq(loaded.size(), 3, "el proceso auxiliar informa de las tres rutas: %s" % [output])
+	assert_true(loaded.get("res://scripts/client/client_main.gd", false),
+			"control: el script de arranque sí arrastra ClientMain (si no, la prueba no prueba nada)")
+	assert_false(loaded.get(audio_path, true),
+			"boot.gd no debe cargar AudioDirector (el servidor dedicado no tiene audio)")
+	assert_false(loaded.get(CLIENT_SERVICES_SCRIPT, true), "ni ClientServices, que lo monta")
+
+
 ## Si zones.gd cambia (el grupo o el metadato de los puntos de aparición, una firma...), solo se
 ## tocan NetZones y los pocos archivos de la excepción; no SpawnPicker ni nada de la red.
 func test_only_net_zones_talks_to_zones_in_the_network_code() -> void:

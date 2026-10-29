@@ -71,6 +71,8 @@ class _Number:
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Opción «Números de daño» de los ajustes del jugador.
+	ClientSettings.bind_visibility(self, ClientSettings.DAMAGE_NUMBERS)
 
 
 func _process(delta: float) -> void:
