@@ -501,7 +501,11 @@ ninguno debe hacer daño de más.
     KILL) y quien tenga relevante a cualquiera de ellos.
   - **Temporización**: un evento es **propio** si el jugador local es atacante, víctima, asesino
     o asistente; su marcador, número y HUD se aplican al llegar. La reacción visual de un remoto
-    (destello, sacudida, animación) se aplica cuando su `render_tick` alcanza `tick`.
+    (destello, sacudida, animación) se aplica cuando su `render_tick` alcanza `tick`. Eso vale
+    también cuando el remoto es la víctima (o el muerto) de un evento propio: `CombatFeedback`
+    aplica al llegar lo que es del jugador local y guarda el destello, la placa de vida
+    (`entity_damaged`) y el sonido de muerte o de baja del remoto en su propia cola hasta ese
+    `render_tick`.
 - **RESPAWN_REQUEST** (`0x05`, C→S, canal 3): `u8 type`, `u8 point_index`. Fuera de plazo o con un
   índice inválido cuenta un aviso.
 - **DEBUG_COMMAND** (TEC-19) con ids fijos en `NetProtocol`: 1 `teleport` (sin cambios), 2 `heal`,
