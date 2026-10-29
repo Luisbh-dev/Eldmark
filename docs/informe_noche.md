@@ -266,11 +266,26 @@ supuestos técnicos comprobados ejecutando Godot y Terrain3D).
 | F3 | Servidor del fuerte: `FortressController` (presencia, `advance`, efectos, OBJECT_STATE y WAR), la puerta como blanco (multiplicadores, capas por reino, reparación), comandos 8–11, reaparición en el fuerte, GUE-41 (salida en combate), /atascado, SCOREBOARD, KILL a toda la zona, `--battle-log` y `tools/war/summarize_battle.gd` | Hecho |
 | F5 | Cliente del fuerte: `FortressView` con el gancho `before_simulate` (la puerta igual en cliente y servidor en cada tick), HUD de captura, banners, barra de jefe, marcas de TELEGRAPH, brújula, mapa horneado (`assets/maps/vado_gris.png`), minimapa, mapa completo con la reaparición, marcador (Tab) y registro de bajas, pistas, recuento por reino en la selección | Hecho |
 | F4 | PNJ: `NpcNavigation` (mapa propio, enlace de la puerta por reino), `NpcDefinition`/`NpcCatalog` (`data/npcs/`), armas de PNJ y golpe imbloqueable del Capitán con TELEGRAPH, `HfsmBrain` (reposo, patrulla, alerta, combate, regreso; fichas: nunca más de 2 atacan a la vez), `NpcSpawnerSystem` (Huecos, Capitán del Vado, guarnición del reino dueño, 2 Guardianes por campamento), `--no-npcs`, comando 12 `npc_debug` | Hecho (MUN-10 y MUN-11 siguen «en curso»: falta jugarlos con personas) |
-| F6a | Bots de asedio (`SIEGE`, `SwarmBot` con rutas), `--max-realm-diff`, escenario de carga del asedio, números de batalla | En marcha |
-| F6b | Prueba de extremo a extremo neutral → Vardheim → Solmarch con los PNJ de verdad | Pendiente (tras F4) |
+| F6a | Bots de asedio (`BotBrain` SIEGE, `--fake-brain=siege`, `--bot-brain=siege` para `--bot` y `--bots`), `--max-realm-diff` con REJECT 9 y recuento real en el WELCOME, falsos de relleno, `--run-at`, escenario `siege` de `load_test`, `tools/war/siege_runner.gd` y `siege_battle.gd` | Hecho (GUE-42; GUE-15/16/17 siguen «en curso» hasta F6b). Medido sin PNJ |
+| F6b | Prueba de extremo a extremo neutral → Vardheim → Solmarch con los PNJ de verdad, GUE-43/44/45, carga con PNJ | En marcha (implementación, verificación escéptica y arreglos) |
 | Habilidades | Diseño corto `docs/habilidades.md` (CMB-19 a 24, CMB-28, PRG-04/07/08, UI-11, UI-45), revisado por tres lentes escépticas (41 hallazgos, 3 bloqueantes; 34 aplicados, 4 rechazados en parte con motivo en su sección «Revisión») | Diseño hecho; implementación tras fusionar F4 (paquetes H1 a H5) |
 | Social | Chat (SOC-03 a SOC-05) y grupos (SOC-06 a SOC-08): implementación, revisión adversarial por tres lentes con refutación y arreglos | En marcha |
 | Fase 5 (diseño) | `docs/plataforma.md` (servicio en Go + PostgreSQL, cuentas, billetes, guardado, RGPD, GM) y `docs/progresion.md` (objetos, inventario, monedas, niveles, razas): borrador, revisión escéptica y corrección | En marcha (solo documentos) |
+
+### Medidas de F6a (asedio sin PNJ; 4 núcleos con otra suite en marcha, `uptime` 0,87 → 1,66)
+
+| Medida | Valor |
+|---|---|
+| Del campamento a la puerta (con esprint) | puente 24–25 s; vado 36,5–37,5 s |
+| Romper la puerta (9000 de vida) desde el primer golpe | 14,9 s con 20 atacantes; 21,9 s con 10; 36,9 s con 6 |
+| Captura del neutral con 20 de Vardheim (capitán con `fort_kill_captain`) | 55,9 s (puerta rota a los 39,5 s) |
+| Recaptura por 20 de Solmarch | 6,0 min (puerta 199,5 s, 117,7 s de disputa en el círculo); con 10 por bando, 8,8 min |
+| Carga 32 contra 32 (64 jugadores, 120 s en la puerta y el círculo) | tick p50/p95/p99/máx 10,6 / 15,3 / 19,1 / 27,8 ms; 36,1 KB/s por cliente; 0 % sustituidas |
+| Carga 64 contra 64 (128) | 14,8 / 22,0 / 26,4 / 42,8 ms; 28,5 KB/s; **50,8 % sustituidas** |
+
+**El criterio de p99 < 8 ms con 64 jugadores no se cumple** (19,1 ms); domina `simulate()`
+(77 µs por personaje); la sección `war` cuesta 0,1 ms. Primer límite de batalla en el fuerte:
+**32 contra 32**. La recaptura desequilibrada (los refuerzos llegan de uno en uno) queda en GUE-44.
 
 ### Medidas de F4 (máquina compartida con otras suites: cotas altas)
 
