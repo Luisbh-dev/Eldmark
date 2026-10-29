@@ -1512,7 +1512,8 @@ falla ante cualquier error del motor; cada prueba dura menos de 30 s. Los ayudan
   - ventana de aceptación (tardías, demasiado adelantadas, duplicadas distintas: gana la
     primera);
   - `get_ack_tick()` con huecos y tras una sustitución;
-  - antelación solo con primeras copias, y con las tardías;
+  - antelación solo con primeras copias, con las tardías y con las demasiado tempranas
+    (saturada a 127);
   - movimiento a 0 tras 6 ticks.
   - **Sin flancos inventados:** con JUMP mantenido y entradas 15–17 perdidas, la entrada 18 con
     JUMP no hace saltar otra vez (con un `PlayerCharacter` real).
@@ -1522,19 +1523,24 @@ falla ante cualquier error del motor; cada prueba dura menos de 30 s. Los ayudan
   - resincronización hacia delante y nunca hacia atrás;
   - margen objetivo según el jitter.
 - **`test_interpolation_clock`**: converge al retardo con jitter sintético y salta con errores
-  de más de 10 ticks.
+  de más de 10 ticks; adopta en ≤ 40 ticks un escalón sostenido hacia abajo de los offsets, no
+  confunde un bache corto con un escalón y sigue bien con ticks por encima de 2^31.
 - **`test_remote_interpolator`**:
   - `lerp`, y `lerp_angle` al cruzar ±PI;
   - extrapolación de 6 ticks y parada;
   - contador de teletransporte;
   - visibilidad según `spawn_tick` y `despawn_tick`.
 - **`test_state_history`**: muestras fraccionarias, sobrescritura del anillo, teletransporte y
-  `forget`.
+  `forget`; ticks por encima de 2^31.
 - **`test_net_sim`**:
   - misma semilla → misma secuencia;
   - la pérdida no toca los canales fiables;
   - orden FIFO de los fiables;
-  - retardo dentro de `rtt/2 ± jitter`.
+  - retardo dentro de `rtt/2 ± jitter`;
+  - `NetTransport`: `connect_timeout_ms` (fallo de conexión en ≤ el doble) y el filtro de
+    paquetes ajenos al protocolo con un cliente ENet en bruto (`tests/raw_enet_attacker.gd`):
+    descartes antes y después del HELLO sin errores del motor, un RAW que llega junto a la
+    confirmación no se pierde, mensajes de autenticación acotados, peer silenciado.
 - **`test_snapshot_builder`** (prueba de propiedades): 200 entidades aleatorias durante 600
   ticks.
   - Ningún paquete pasa de 1200 B.
@@ -1542,7 +1548,13 @@ falla ante cualquier error del motor; cada prueba dura menos de 30 s. Los ayudan
   - El propio jugador nunca aparece entre los registros.
   - Lo que se construye se decodifica con `NetMessages.Snapshot.decode`.
 - **`test_rate_limiter`** y **`test_server_auth`**: cada motivo de REJECT y el tope por IP con
-  la excepción de loopback.
+  la excepción de loopback (y las IPv6 por /64); crédito por parón de los limitadores; avisos con
+  ticks por encima de 2^31.
+- **`test_zone_server`** / **`test_zone_server_net`** (seguridad y robustez): parón del servidor
+  sin expulsar a un cliente honrado; conexiones ociosas de una IP que no agotan las plazas y plazo
+  del HELLO; enfriamiento tras una expulsión; RTT acotado frente a un cliente que atrasa sus
+  acks; inundación de paquetes ajenos antes y después del HELLO (expulsión, tick < 16 ms); altas y
+  bajas continuas sin crecimiento de memoria.
 
 ### Integración en un proceso
 
@@ -1574,6 +1586,14 @@ falla ante cualquier error del motor; cada prueba dura menos de 30 s. Los ayudan
     - convergencia exacta tras 60 ticks quietos;
     - ninguna resincronización dura después del arranque.
   - **e)** `DEBUG_COMMAND teleport`: el cliente salta (sin suavizado) y queda exacto.
+  - **f)** Parones del servidor (40 ticks con un bot; 20 con dos): `TickSync` se recupera (la
+    antelación vuelve a la normal, sin sustituciones ni correcciones nuevas) y los remotos no
+    se congelan más de 15 ticks tras volver los datos.
+
+### Un proceso aparte (`test_server_main`)
+
+- El servidor como proceso: `--quit-after-ticks`, `--idle-quit`, informe, `--stop-file` (cierre
+  ordenado y archivo de parada viejo) y el informe periódico que queda si matan al proceso.
 
 ### Varios procesos (`test_net_processes`)
 
