@@ -101,7 +101,7 @@ dueño (con un fuerte neutral, `D` es falso).
 | `CAPTURING` | solo el captor | `rate` = velocidad de su número |
 | `CAPTURING` | captor y alguien más (dueño u otro reino) | `contested`, `rate = 0` |
 | `CAPTURING` | sin el captor, con no-captores | `rate = −24` |
-| `CAPTURING` | nadie, más de 5 s | `rate = −4` |
+| `CAPTURING` | nadie, 5 s o más (`decay_after_empty_s`) | `rate = −4` (antes, 5 s congelado) |
 | `CAPTURING` | progreso 0 y un único reino no dueño presente | ese reino pasa a ser el captor |
 | `CAPTURING` | progreso 0 y ningún atacante | `VULNERABLE`, `capture_realm = 0` |
 | `CAPTURING` | progreso `P` | `CONSOLIDATING`, `owner = capture_realm`, puerta reparada, PNJ del dueño anterior retirados |
@@ -404,14 +404,82 @@ func set_realm_collision(realm_code: int) -> void
 var before_simulate: Callable                                  # (tick: int) -> void
 ```
 
+### 8.3 Lo que han dejado F0 y F1 (añadidos al contrato y decisiones)
+
+F0 (escena, capas, malla y rutas) y F1 (fortaleza pura) están hechos. Además de lo de 8.2, quien
+siga con F2 a F6 encontrará esto:
+
+**F0**
+
+- El generador del Vado Gris **se puede ejecutar aquí** (los assets están en el repo): la escena
+  sale igual que la guardada salvo los `unique_id`, los identificadores de recurso y el ruido de la
+  última cifra decimal de algunas transformaciones (Linux frente a Windows); los `.res` de región y
+  la malla del agua sí salen con otros bytes, así que no se tocan (docs/zonas/vado_gris.md,
+  «Cómo regenerar»). `vado_gris.tscn` se ha regenerado, no editado a mano.
+- El nodo de la fortaleza es el propio `Fuerte` (grupo `fortresses`, metadato `definition`), y sus
+  hijos llevan los nombres fijos `CaptureCircle`, `CaptainSpawn`, `GuardSpawn1..4`, `FortGate`,
+  `Estandarte`, `EstandartePuertaN` y `EstandartePuertaS`. `Zones` ganó las constantes de los grupos
+  y metadatos nuevos (`FORTRESS_GROUP`, `FORTRESS_DEFINITION_META`, `FORTRESS_META`,
+  `NPC_SPAWNER_GROUP`, `PATROL_GROUP`, `PATROL_ROUTE_META`).
+- `NpcSpawner` (`scripts/world/npc_spawner.gd`) guarda el **id** de la definición de PNJ (`npc_id`,
+  el archivo de `data/npcs/` sin extensión) en lugar de una referencia a `NpcDefinition`, porque esa
+  clase llega con el paquete F4. Ids en uso: `hollow`, `ford_captain` y `gate_guardian`; F4 tiene que
+  crear `data/npcs/hollow.tres`, `ford_captain.tres` y `gate_guardian.tres`. Los Huecos y el Capitán
+  llevan `respawn_s = 0` (los repone la fortaleza); los Guardianes, 30 s. La guarnición del dueño
+  (`FORT_OWNER`) no tiene generadores todavía.
+- Los `respawn_points` del Vado Gris son 12: los 8 de los campamentos (con `realm`) y después los 4
+  del patio del fuerte (con `fortress` y sin `realm`). Mientras `NetZones` no use `RespawnRules`, la
+  lista de un reino son solo sus campamentos (los del fuerte no tienen `realm`), igual que antes.
+- `FortGate`: el estado se pone con `set_state(dueño, rota)` (`get_owner_realm()`, `is_broken()`);
+  además de `layers_for` hay `view_layer_for(rota)` (la capa del cuerpo de vista, 4 o 0) y
+  `get_view_body()`. Ya no existe la propiedad `open` ni las colisiones de las hojas abiertas: rota,
+  los dos cuerpos se quedan sin capas y las hojas cuelgan abiertas. `PlayerCharacter` ganó además
+  `realm_layer(código)` (la máscara de un reino) y `set_realm_collision` sustituye a la anterior
+  en cada llamada. El modo sin red no la llama: el personaje cruza la puerta cerrada.
+- La navmesh sale de `tools/bake_navmesh.gd` en 2 s y pesa 0,3 MB con celda de 0,25 m. Ojo con el
+  mapa de navegación: la primera iteración sale vacía (4.1).
+- Las rutas son `ApproachRoutes` (`scripts/shared/war/approach_routes.gd`), con puntos (x, z) por
+  ruta (`bridge`, `ford`) y reino; `data/routes/vado_gris.tres` lo escribe
+  `tools/terrain/export_vado_gris_routes.gd` y lo lee `verify_vado_gris_routes.gd`.
+
+**F1**
+
+- `FortressDefinition` ganó `display_name` (para los textos de `WarEvents`) y los métodos
+  `*_ticks()`. El radio del círculo sigue saliendo solo del marcador.
+- `FortressState` guarda, además de los campos de 1.4, `progress_max`, `last_reset_tick` (de ahí
+  cuenta el reinicio periódico) y copia de la definición los ticks que necesitan los métodos que no
+  la reciben. Solo viajan los campos de `FortressFields`; el cliente reconstruye el resto con
+  `FortressState.initial(def, tick)`.
+- La velocidad decidida en el tick `s` vale desde `s` (el progreso de `s + 1` suma esa velocidad).
+  Con el círculo vacío, el decaimiento a −4 empieza a los `decay_after_empty_s` justos (≥, no >).
+  Al volver a VULNERABLE desde CAPTURING el capitán recibe un plazo nuevo de `captain_respawn_s`.
+- Reglas que la tabla no cubre y que se han resuelto así: con el progreso en cero y varios reinos (o
+  un reino y el dueño) dentro, la captura vuelve a VULNERABLE, disputada; la disputa avisa al entrar,
+  no mientras sigue, y como mucho cada 10 s; los avisos de «atacado» salen como mucho cada 60 s por
+  fortaleza (`claim_attack_notice`, que el controlador usa también para los golpes a defensores).
+- Métodos añadidos a 8.2: `copy_from`/`duplicate_state`, `respawn_captain(tick)` (la reaparición
+  completa de los Huecos trae al capitán), `guards_respawn_due(tick)` (el estado dice cuándo toca
+  reponer a los guardias; quien los crea llama luego a `set_guards_alive`), `gate_repair_due(tick)`
+  y `repair_gate()` (la reparación con el vano ocupado se aplaza en el controlador),
+  `claim_attack_notice(tick)`, `event_realm(evento, reino_de_quien_llama)` (el reino que acompaña a
+  cada aviso), `is_circle_active()` e `is_gate_broken()`. `advance` y los `on_*` devuelven solo los
+  ids de los avisos.
+- `FortressPresence.count(def, centro, radio, candidatos, tick)` es la presencia de 1.2 (con la
+  clase interna `Candidate`); `FortressFields` da, además de los ids, el tipo de valor de cada campo
+  (`value_type`), `get_value`/`set_value` sobre un `FortressState` y `fits`; `WarEvents.text(id,
+  reino, nombre_del_fuerte)` da el texto en español.
+- `RespawnRules.points_for` acepta las claves de `fortresses` como `StringName` o `String`.
+  `SiegeView` se llena con `update_from_state` (servidor) o `update_from_fields` (campos de
+  OBJECT_STATE) y responde `is_gate_closed_for`, `can_damage_gate`, `should_defend`,
+  `should_attack`, `is_circle_active`, `is_capturing` e `is_in_circle`.
+
 ---
 
 ## 9. Riesgos
 
 - **Coste de los PNJ**: 5–10 PNJ más con `simulate()` y su cerebro; se mide en F6.
-- **Generador de la zona**: `vado_gris.tscn` sale de un script con assets que podrían no estar
-  todos en el repo; si no se puede regenerar aquí, F0 edita el `.tscn` a mano (texto) y deja el
-  generador al día, y se anota.
+- **Generador de la zona** (resuelto en F0): `vado_gris.tscn` sale de un script y los assets que
+  necesita sí están en el repo, así que se regenera (no se edita a mano); ver 8.3.
 - **Arte**: Huecos, Capitán, tabardos, estandartes y efectos de la puerta definitivos son del
   usuario (ART-15, ART-16, ART-17); de momento, provisionales.
 
