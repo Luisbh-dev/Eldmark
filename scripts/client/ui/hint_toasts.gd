@@ -6,7 +6,8 @@ extends Control
 ## [br][br]
 ## [b]Qué las dispara.[/b] Eventos del cliente: un aviso de guerra de capitán caído ([signal
 ## NetClient.war_event]) o un TELEGRAPH ([signal NetClient.telegraph_received]); y cosas que se miran cada
-## [constant POLL_SECONDS] ([method poll]): estar ya dentro del mundo, estar cerca del fuerte (el panel de
+## [constant POLL_SECONDS] ([method poll]): estar ya dentro del mundo (los controles de combate y los del
+## mapa y el marcador), estar cerca del fuerte (el panel de
 ## captura se ve) o a menos de [constant GATE_DISTANCE] m de una puerta cerrada para tu reino. La pantalla
 ## de muerte pide [constant HintCatalog.RESPAWN_MAP] con [method request].
 ## [br][br]
@@ -137,6 +138,7 @@ func poll() -> void:
 	var character: PlayerCharacter = _client.get_character()
 	if character == null or not is_instance_valid(character):
 		return
+	request(HintCatalog.COMBAT)
 	request(HintCatalog.CONTROLS)
 	if is_instance_valid(_capture_panel) and _capture_panel.is_shown():
 		request(HintCatalog.FORT_NEAR)

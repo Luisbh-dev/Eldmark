@@ -97,6 +97,14 @@ func _make_toasts(client: FakeClient, hint_log: HintLog, settings: ClientSetting
 	return toasts
 
 
+## Un registro en el que las dos pistas de bienvenida ya se han visto (para probar las demás sin ellas).
+func _log_after_the_intro() -> HintLog:
+	var hint_log: HintLog = HintLog.in_memory()
+	hint_log.mark_shown(HintCatalog.COMBAT)
+	hint_log.mark_shown(HintCatalog.CONTROLS)
+	return hint_log
+
+
 func _war(war_event: int) -> NetMessages.EntityEvent:
 	return NetMessages.EntityEvent.war(NET_ID, 100, war_event, VARDHEIM)
 
@@ -113,8 +121,29 @@ func test_every_hint_has_a_spanish_text_and_an_order() -> void:
 		var text: String = HintCatalog.text_of(id)
 		assert_true(text.length() > 20 and text.length() < 160, "%s: texto corto y útil (%d)" % [id, text.length()])
 		assert_true(text.ends_with("."), "%s acaba en punto" % id)
+		assert_false(text.contains("{") or text.contains("}"), "%s no deja marcas sin sustituir: %s" % [id, text])
 	assert_false(HintCatalog.has_hint(&"inventada"))
 	assert_eq(HintCatalog.text_of(&"inventada"), "")
+
+
+func test_the_texts_name_the_keys_the_player_really_has() -> void:
+	InputBindings.ensure_defaults()
+	assert_eq(HintCatalog.text_of(HintCatalog.CONTROLS),
+			"Pulsa M para abrir el mapa, mantén Tab para ver el marcador y F10 para los ajustes.")
+	assert_true(HintCatalog.text_of(HintCatalog.COMBAT).contains("Ctrl esquiva"), "con la esquiva en Ctrl")
+	# Si el jugador reasigna el mapa, la pista lo dice.
+	var saved: Array[InputEvent] = InputMap.action_get_events(&"open_map")
+	InputMap.action_erase_events(&"open_map")
+	var event := InputEventKey.new()
+	event.physical_keycode = KEY_N
+	InputMap.action_add_event(&"open_map", event)
+	var text: String = HintCatalog.text_of(HintCatalog.CONTROLS)
+	InputMap.action_erase_events(&"open_map")
+	for old: InputEvent in saved:
+		InputMap.action_add_event(&"open_map", old)
+	assert_true(text.begins_with("Pulsa N ") or text.begins_with("Pulsa " + UIKeyGlyph.label_for_event(event) + " "),
+			"la tecla nueva sale en el texto (%s)" % text)
+	assert_eq(HintCatalog.resolve("sin marcas"), "sin marcas")
 
 
 func test_the_log_remembers_what_was_shown_in_a_file_and_ignores_garbage() -> void:
@@ -273,12 +302,14 @@ func test_polling_offers_the_controls_hint_once_in_the_world_and_the_fort_hint_n
 	assert_false(toasts.is_showing(), "sin personaje (aún no está en el mundo) no hay nada")
 	client.fake_character = _track((load(CHARACTER_SCENE_PATH) as PackedScene).instantiate(), _root) as PlayerCharacter
 	toasts.poll()
-	assert_eq(toasts.get_current_id(), HintCatalog.CONTROLS, "ya en el mundo, los controles")
+	assert_eq(toasts.get_current_id(), HintCatalog.COMBAT, "ya en el mundo, primero los controles de combate")
+	assert_eq(toasts.get_queued_ids(), [HintCatalog.CONTROLS] as Array[StringName], "y después los del mapa y el marcador")
 	toasts.poll()
-	assert_true(toasts.get_queued_ids().is_empty(), "una sola vez, aunque se mire de nuevo")
+	assert_eq(toasts.get_queued_ids().size(), 1, "una sola vez, aunque se mire de nuevo")
 	panel.fake_shown = true
 	toasts.poll()
-	assert_eq(toasts.get_queued_ids(), [HintCatalog.FORT_NEAR] as Array[StringName], "con el panel del fuerte visible, la del fuerte")
+	assert_eq(toasts.get_queued_ids(), [HintCatalog.CONTROLS, HintCatalog.FORT_NEAR] as Array[StringName],
+			"con el panel del fuerte visible, la del fuerte")
 
 
 func _fort_view(owner_realm: int, broken: bool = false) -> FortressView:
@@ -304,36 +335,34 @@ func test_a_gate_closed_for_your_realm_triggers_its_hint_only_when_you_are_close
 	var gate: Vector3 = view.get_gate_position(NET_ID)
 	assert_true(gate != Vector3.INF, "la puerta está enlazada")
 	var near: FakeClient = _make_client(gate + Vector3(0.0, 0.0, HintToasts.GATE_DISTANCE - 2.0), VARDHEIM)
-	var toasts: HintToasts = _make_toasts(near, HintLog.in_memory(), null, view)
+	var toasts: HintToasts = _make_toasts(near, _log_after_the_intro(), null, view)
 	toasts.poll()
-	assert_eq(toasts.get_current_id(), HintCatalog.CONTROLS, "la de los controles sale primero")
-	assert_eq(toasts.get_queued_ids(), [HintCatalog.GATE_CLOSED] as Array[StringName],
-			"y, cerrada para Vardheim y a 13 m de la puerta, la de la puerta espera")
+	assert_eq(toasts.get_current_id(), HintCatalog.GATE_CLOSED, "cerrada para Vardheim y a 13 m de la puerta, sale")
 	# Lejos, no.
 	var far: FakeClient = _make_client(gate + Vector3(0.0, 0.0, HintToasts.GATE_DISTANCE + 20.0), VARDHEIM)
-	var far_toasts: HintToasts = _make_toasts(far, HintLog.in_memory(), null, view)
+	var far_toasts: HintToasts = _make_toasts(far, _log_after_the_intro(), null, view)
 	far_toasts.poll()
-	assert_true(far_toasts.get_queued_ids().is_empty(), "a 35 m, no")
+	assert_eq(far_toasts.get_current_id(), &"", "a 35 m, no")
 	# Para su dueño la puerta no está cerrada.
 	var owner_client: FakeClient = _make_client(gate + Vector3(0.0, 0.0, 3.0), SOLMARCH)
-	var owner_toasts: HintToasts = _make_toasts(owner_client, HintLog.in_memory(), null, view)
+	var owner_toasts: HintToasts = _make_toasts(owner_client, _log_after_the_intro(), null, view)
 	owner_toasts.poll()
-	assert_true(owner_toasts.get_queued_ids().is_empty(), "al dueño no se le dice")
+	assert_eq(owner_toasts.get_current_id(), &"", "al dueño no se le dice")
 
 
 func test_a_broken_gate_or_a_neutral_fort_changes_who_it_is_closed_to() -> void:
 	var broken_view: FortressView = _fort_view(SOLMARCH, true)
 	var gate: Vector3 = broken_view.get_gate_position(NET_ID)
 	var client: FakeClient = _make_client(gate + Vector3(0.0, 0.0, 3.0), VARDHEIM)
-	var toasts: HintToasts = _make_toasts(client, HintLog.in_memory(), null, broken_view)
+	var toasts: HintToasts = _make_toasts(client, _log_after_the_intro(), null, broken_view)
 	toasts.poll()
-	assert_true(toasts.get_queued_ids().is_empty(), "derribada, ya no está cerrada (solo salió la de los controles)")
+	assert_eq(toasts.get_current_id(), &"", "derribada, ya no está cerrada")
 	# Con el fuerte neutral la puerta está cerrada para todos los reinos.
 	var neutral_view: FortressView = _fort_view(RealmCatalog.NEUTRAL_CODE)
 	var neutral_client: FakeClient = _make_client(neutral_view.get_gate_position(NET_ID) + Vector3(0.0, 0.0, 3.0), SOLMARCH)
-	var neutral_toasts: HintToasts = _make_toasts(neutral_client, HintLog.in_memory(), null, neutral_view)
+	var neutral_toasts: HintToasts = _make_toasts(neutral_client, _log_after_the_intro(), null, neutral_view)
 	neutral_toasts.poll()
-	assert_eq(neutral_toasts.get_queued_ids(), [HintCatalog.GATE_CLOSED] as Array[StringName], "neutral, cerrada para todos")
+	assert_eq(neutral_toasts.get_current_id(), HintCatalog.GATE_CLOSED, "neutral, cerrada para todos")
 
 
 # --- El HUD ------------------------------------------------------------------------------------
