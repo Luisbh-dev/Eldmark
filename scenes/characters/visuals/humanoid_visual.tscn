@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" path="res://assets/models/characters/base/Hair_SimpleParted.gltf" id="5_hair"]
 [ext_resource type="PackedScene" path="res://assets/models/characters/base/Hair_Beard.gltf" id="6_beard"]
 [ext_resource type="AnimationLibrary" path="res://assets/animations/ual1/UAL1_Standard.glb" id="7_ual1"]
+[ext_resource type="Resource" path="res://data/animation/sword_shield_clips.tres" id="8_clips"]
 
 [sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_idle"]
 animation = &"ual1/Idle_Loop"
@@ -132,5 +133,6 @@ parameters/air/blend_amount = 0.0
 
 [node name="CharacterAnimator" type="Node" parent="."]
 script = ExtResource("2_animator")
+clip_set = ExtResource("8_clips")
 animation_tree = NodePath("../AnimationTree")
 pivot = NodePath("../Pivot")

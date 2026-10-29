@@ -77,6 +77,10 @@ func on_spawn(msg: NetMessages.EntitySpawn) -> void:
 	view.name = "View%d" % msg.net_id
 	add_child(view)
 	view.setup(body, msg)
+	# El animador de combate del remoto lee el byte action de su registro dibujado.
+	var visual: HumanoidVisual = body.get_node_or_null(^"Visual/HumanoidVisual") as HumanoidVisual
+	if visual != null:
+		visual.get_animator().set_remote_source(Callable(view, "get_drawn_action"))
 	_views[msg.net_id] = view
 	_spawn_count += 1
 

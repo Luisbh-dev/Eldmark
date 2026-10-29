@@ -96,6 +96,14 @@ func _ready() -> void:
 		_attach_part(scene)
 	_apply_hood()
 	_apply_shadow_casting()
+	# Armas provisionales en las manos (ART-06): hasta que lleguen los modelos definitivos.
+	WeaponProps.install(_skeleton)
+	# Pose de combate sobre la locomoción (ART-08). Va antes que el giro de la columna, que se
+	# aplica encima.
+	var combat := CombatPoseModifier.new()
+	combat.name = "CombatPose"
+	_skeleton.add_child(combat)
+	get_animator().set_combat_modifier(combat)
 	# Giro de la columna hacia el punto de mira (lo conduce el animador).
 	var spine := SpineTwistModifier.new()
 	spine.name = "SpineTwist"
@@ -104,7 +112,7 @@ func _ready() -> void:
 
 
 ## Esqueleto que anima todas las mallas (perfil humanoide de Godot: Hips, Head, RightHand...).
-## Sirve para colgar armas con un [BoneAttachment3D].
+## De él cuelgan las armas provisionales ([WeaponProps]) y los modificadores de pose.
 func get_skeleton() -> Skeleton3D:
 	return _skeleton
 
