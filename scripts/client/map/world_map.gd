@@ -344,12 +344,7 @@ func _refresh_options() -> void:
 		return
 	var tick: int = _client.get_estimated_server_tick()
 	var states: Dictionary = _view.get_states_by_definition(tick) if is_instance_valid(_view) else {}
-	var names: Dictionary = {}
-	if is_instance_valid(_view):
-		for net_id: int in _view.get_fortress_ids():
-			var definition: FortressDefinition = _view.get_definition(net_id)
-			if definition != null:
-				names[definition.id] = definition.display_name
+	var names: Dictionary = _view.get_display_names() if is_instance_valid(_view) else {}
 	_options = RespawnPointList.options(_world, _realm(), states, tick, names)
 
 

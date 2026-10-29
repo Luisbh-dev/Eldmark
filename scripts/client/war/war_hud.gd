@@ -13,6 +13,9 @@ extends Control
 ## y así vive y muere con esta interfaz sin colgar nada de la zona.
 ## [br]- [Compass] y [WorldMarkers] (UI-19): la brújula y los iconos del fuerte, los campamentos y los
 ## pasos, con el mapa horneado de la zona ([ZoneMapDefinition]) para los lugares fijos.
+## [br]- [Minimap] (UI-20): el minimapa circular, abajo a la derecha. El mapa a pantalla completa
+## ([WorldMap]) lo monta el [HUD], por encima de la pantalla de muerte, con el mismo mapa horneado
+## ([method get_map]).
 ## [br][br]
 ## Todo cuelga del cliente de red; sin él (el sandbox) no existe. Solo cliente.
 
@@ -22,6 +25,7 @@ var _banners: WarBanners = null
 var _boss_bar: BossBar = null
 var _telegraph_marks: TelegraphMarks = null
 var _compass: Compass = null
+var _minimap: Minimap = null
 var _world_markers: WorldMarkers = null
 var _camera_rig: CameraRig = null
 var _map: ZoneMapDefinition = null
@@ -64,6 +68,10 @@ func bind(client: NetClient, camera_rig: CameraRig = null) -> void:
 	_compass = Compass.new()
 	_compass.name = "Compass"
 	add_child(_compass)
+	_minimap = Minimap.new()
+	_minimap.name = "Minimap"
+	add_child(_minimap)
+	_minimap.bind(client, view, camera_rig, _map)
 	_telegraph_marks = TelegraphMarks.new()
 	add_child(_telegraph_marks)
 	_telegraph_marks.bind(client)
@@ -91,6 +99,10 @@ func get_compass() -> Compass:
 
 func get_world_markers() -> WorldMarkers:
 	return _world_markers
+
+
+func get_minimap() -> Minimap:
+	return _minimap
 
 
 ## Mapa horneado de la zona (null si no tiene).

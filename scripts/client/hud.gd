@@ -17,12 +17,23 @@ extends CanvasLayer
 ## [CombatFeedback]. Al morir (estado «muerto» del snapshot) se abre la [DeathScreen], que libera el
 ## cursor y atenúa el resto de la interfaz, y el botón envía el RESPAWN_REQUEST con el punto elegido;
 ## al reaparecer (evento RESPAWN propio o vida de nuevo) se cierra y todo vuelve a la normalidad.
+## [br][br]
+## [b]Reaparición y mapa (UI-21).[/b] La lista de la pantalla de muerte son las opciones válidas ahora
+## ([method RespawnPointList.valid_options]: tu campamento y un fuerte tuyo en calma), se actualiza mientras
+## está abierta (el fuerte puede cambiar de manos) y cada opción envía el índice de su marcador entre todos
+## los de la zona (docs/fuerte.md, sección 5). «Elegir en el mapa» (o M con la pantalla abierta) abre el
+## [WorldMap] en modo de reaparición por encima de ella: pulsar un punto válido lo deja elegido en la lista.
 
 ## Cada cuánto se refresca el texto del panel de depuración, en segundos.
 ## Refrescarlo cada frame hace que las cifras parpadeen y sean ilegibles.
 const DEBUG_REFRESH_INTERVAL: float = 0.1
 ## Opacidad a la que se atenúa la interfaz de juego con la pantalla de muerte abierta.
 const DEAD_DIM_ALPHA: float = 0.3
+## Pistas de la línea de ayuda del cliente en red: las de siempre y, tras la depuración, el mapa y el marcador.
+const NET_HINTS_EXTRA: Array[Dictionary] = [
+	{"action": &"open_map", "text": "Mapa"},
+	{"action": &"scoreboard", "text": "Marcador"},
+]
 
 var _character: PlayerCharacter = null
 var _camera_rig: CameraRig = null
@@ -39,6 +50,10 @@ var _respawn_event_tick: int = 0
 var _dimmed: bool = false
 # Interfaz de guerra del cliente en red (fuerte, avisos, jefe...); null en el sandbox.
 var _war_hud: WarHud = null
+# Mapa a pantalla completa (por encima de la pantalla de muerte); null en el sandbox.
+var _world_map: WorldMap = null
+# Lo que enseña ahora la lista de reaparición de la pantalla de muerte (para saber si cambió).
+var _death_signature: String = ""
 
 @onready var _nameplates: Nameplates = $Nameplates
 @onready var _crosshair: Crosshair = $Crosshair
@@ -62,6 +77,7 @@ func _ready() -> void:
 	process_physics_priority = 100
 	_vitals.set_health_visible(_client != null)
 	_death.respawn_requested.connect(_on_respawn_requested)
+	_death.map_requested.connect(_on_map_requested)
 	_death.opened.connect(_on_death_opened)
 	_death.closed.connect(_on_death_closed)
 	_update_crosshair()
@@ -99,6 +115,10 @@ func bind_net(client: NetClient, world: Node) -> void:
 		_setup_feedback()
 		_nameplates.setup(_client.get_remote_world(), _camera_rig, _client.get_config().realm)
 		_setup_war_hud()
+		_setup_world_map()
+		var hints: Array[Dictionary] = UIHintBar.DEFAULT_HINTS.duplicate()
+		hints.append_array(NET_HINTS_EXTRA)
+		_hint.set_hints(hints)
 
 
 func _process(delta: float) -> void:
@@ -178,6 +198,11 @@ func get_war_hud() -> WarHud:
 	return _war_hud
 
 
+## Mapa a pantalla completa (null sin red).
+func get_world_map() -> WorldMap:
+	return _world_map
+
+
 ## Reparto de la sensación de combate (null hasta [method bind]).
 func get_feedback() -> CombatFeedback:
 	return _feedback
@@ -214,6 +239,21 @@ func _setup_war_hud() -> void:
 	add_child(_war_hud)
 	move_child(_war_hud, _death.get_index())
 	_war_hud.bind(_client, _camera_rig)
+
+
+# Crea (de nuevo, si ya había uno) el mapa a pantalla completa: el último hijo, por encima de la pantalla de
+# muerte para poder elegir reaparición. Usa el mapa horneado que cargó la interfaz de guerra.
+func _setup_world_map() -> void:
+	if is_instance_valid(_world_map):
+		remove_child(_world_map)
+		_world_map.free()
+	_world_map = WorldMap.new()
+	_world_map.name = "WorldMap"
+	add_child(_world_map)
+	_world_map.bind(_client, _client.get_fortress_view(), _camera_rig,
+			_war_hud.get_map() if is_instance_valid(_war_hud) else null, _world)
+	_world_map.opened.connect(_on_map_opened)
+	_world_map.respawn_option_chosen.connect(_on_map_option_chosen)
 
 
 # --- Vida y resistencia -----------------------------------------------------------------------
@@ -272,6 +312,7 @@ func _update_death() -> void:
 		_death.close()
 	if _death.is_open() and is_instance_valid(_client):
 		_death.update_countdown(_client.get_estimated_server_tick())
+		_refresh_respawn_options()
 
 
 func _on_local_died(killer_id: int, attack_id: int) -> void:
@@ -288,10 +329,62 @@ func _on_local_respawned(_point: int, tick: int) -> void:
 
 
 func _open_death_screen() -> void:
-	var points: Array[Node3D] = []
-	if is_instance_valid(_world) and is_instance_valid(_client):
-		points = RespawnPointList.list(_world, _client.get_config().realm)
-	_death.open(_death_cause_text(), _client.get_respawn_tick(), RespawnPointList.labels(points))
+	var options: Array[RespawnPointList.Option] = _valid_respawn_options()
+	_death.open(_death_cause_text(), _client.get_respawn_tick(), RespawnPointList.option_labels(options))
+	var own_id: int = _client.get_net_id()
+	_death.set_point_indices(RespawnPointList.option_indices(options, own_id))
+	_death_signature = _options_signature(options, own_id)
+
+
+# Las opciones de reaparición que valen ahora para el jugador: su campamento y un fuerte suyo en calma
+# (RespawnRules, la misma regla que aplica el servidor).
+func _valid_respawn_options() -> Array[RespawnPointList.Option]:
+	var empty: Array[RespawnPointList.Option] = []
+	if not is_instance_valid(_world) or not is_instance_valid(_client) or _client.get_config() == null:
+		return empty
+	var view: FortressView = _client.get_fortress_view()
+	var tick: int = _client.get_estimated_server_tick()
+	return RespawnPointList.valid_options(_world, _client.get_config().realm,
+			view.get_states_by_definition(tick), tick, view.get_display_names())
+
+
+# Vuelve a calcular las opciones mientras la pantalla está abierta (un fuerte cambia de manos o entra en
+# combate) y rehace la lista solo si ha cambiado algo; conserva el punto elegido.
+func _refresh_respawn_options() -> void:
+	var options: Array[RespawnPointList.Option] = _valid_respawn_options()
+	var own_id: int = _client.get_net_id()
+	var signature: String = _options_signature(options, own_id)
+	if signature == _death_signature:
+		return
+	_death_signature = signature
+	_death.update_points(RespawnPointList.option_labels(options), RespawnPointList.option_indices(options, own_id))
+
+
+static func _options_signature(options: Array[RespawnPointList.Option], spread_seed: int) -> String:
+	var parts: PackedStringArray = PackedStringArray()
+	for option: RespawnPointList.Option in options:
+		parts.append("%s=%d" % [option.label, option.index_for(spread_seed)])
+	return "|".join(parts)
+
+
+func _on_map_requested() -> void:
+	if is_instance_valid(_world_map):
+		_world_map.open(true)
+
+
+# El mapa se abre con la pantalla de muerte delante (con M o con el botón): es para elegir reaparición.
+func _on_map_opened() -> void:
+	if _death.is_open() and is_instance_valid(_world_map):
+		_world_map.set_respawn_mode(true)
+
+
+# Un punto de reaparición válido pulsado en el mapa: queda elegido en la lista y se vuelve a la pantalla.
+func _on_map_option_chosen(option: RespawnPointList.Option) -> void:
+	if not _death.is_open():
+		return
+	_refresh_respawn_options()
+	_death.select_point_index(option.index_for(_client.get_net_id()))
+	_world_map.close()
 
 
 # «Te ha derrotado X con Y.» con lo que se sabe del DEATH propio.
@@ -310,6 +403,9 @@ func _on_death_opened() -> void:
 
 func _on_death_closed() -> void:
 	_set_dimmed(false)
+	_death_signature = ""
+	if is_instance_valid(_world_map) and _world_map.is_respawn_mode():
+		_world_map.close()
 	if is_instance_valid(_camera_rig):
 		_camera_rig.set_ui_cursor_release(false, self)
 	_death_killer_id = -1

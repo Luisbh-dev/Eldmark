@@ -14,6 +14,9 @@ extends Control
 ## Diámetro del minimapa en píxeles.
 const DIAMETER: float = 200.0
 const MARGIN: float = 16.0
+## Margen inferior: deja libre la línea de ayuda de controles del HUD y el panel de depuración de red (F3),
+## que ocupa la esquina superior derecha.
+const BOTTOM_MARGIN: float = 64.0
 ## Metros que abarca el diámetro en cada nivel de zoom, del más cerca al más lejos.
 const ZOOM_METERS: Array[float] = [80.0, 160.0, 320.0]
 const DEFAULT_ZOOM: int = 1
@@ -47,15 +50,15 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	# Arriba a la derecha.
+	# Abajo a la derecha.
 	anchor_left = 1.0
 	anchor_right = 1.0
-	anchor_top = 0.0
-	anchor_bottom = 0.0
+	anchor_top = 1.0
+	anchor_bottom = 1.0
 	offset_left = -DIAMETER - MARGIN
 	offset_right = -MARGIN
-	offset_top = MARGIN
-	offset_bottom = MARGIN + DIAMETER
+	offset_top = -DIAMETER - BOTTOM_MARGIN
+	offset_bottom = -BOTTOM_MARGIN
 
 
 func _process(_delta: float) -> void:

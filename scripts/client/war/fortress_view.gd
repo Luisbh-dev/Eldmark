@@ -267,6 +267,17 @@ func get_states_by_definition(tick: int) -> Dictionary:
 	return states
 
 
+## Nombre para la interfaz de cada fortaleza conocida, por id de definición (los puntos de reaparición del
+## interior de un fuerte se llaman como él, [method RespawnPointList.options]).
+func get_display_names() -> Dictionary:
+	var names: Dictionary = {}
+	for fortress: Fortress in _fortresses.values():
+		var definition: FortressDefinition = fortress.timeline.get_definition()
+		if definition != null and not definition.display_name.is_empty():
+			names[StringName(fortress.definition_id)] = definition.display_name
+	return names
+
+
 ## Posición del nodo de la fortaleza en el mundo ([constant Vector3.INF] si no está enlazada).
 func get_anchor_position(net_id: int) -> Vector3:
 	var fortress: Fortress = _fortresses.get(net_id)

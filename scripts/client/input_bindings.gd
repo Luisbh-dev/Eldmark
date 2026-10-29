@@ -47,6 +47,10 @@ static func ensure_defaults() -> void:
 
 	# Interfaz.
 	_ensure_key(&"open_settings", KEY_F10)
+	_ensure_key(&"open_map", KEY_M)
+	_ensure_key(&"map_zoom_in", KEY_EQUAL)
+	_ensure_key(&"map_zoom_out", KEY_MINUS)
+	_ensure_key(&"scoreboard", KEY_TAB)
 
 
 static func _ensure_key(action: StringName, physical_keycode: Key) -> void:
