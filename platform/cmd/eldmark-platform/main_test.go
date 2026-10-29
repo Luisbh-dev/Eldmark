@@ -110,6 +110,12 @@ func serveEnv(pool *pgxpool.Pool) map[string]string {
 // arranque; devuelve la URL de la API pública. Se para al acabar la prueba.
 func startServe(t *testing.T, pool *pgxpool.Pool, env map[string]string) string {
 	t.Helper()
+	return "http://" + startServeApp(t, pool, env).PublicAddr()
+}
+
+// startServeApp es startServe y devuelve el proceso (las dos direcciones).
+func startServeApp(t *testing.T, pool *pgxpool.Pool, env map[string]string) *app.App {
+	t.Helper()
 	cfg, err := config.Load(func(k string) (string, bool) { v, ok := env[k]; return v, ok })
 	if err != nil {
 		t.Fatal(err)
@@ -144,7 +150,7 @@ func startServe(t *testing.T, pool *pgxpool.Pool, env map[string]string) string 
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	return "http://" + a.PublicAddr()
+	return a
 }
 
 // request hace una petición a /v1 con el protocolo y, si se da, el token; devuelve el estado y el
@@ -255,5 +261,62 @@ func TestServeRefusesTheMemoryStoreWhenDeployed(t *testing.T) {
 		if _, err := mountServices(a, cfg, pool, logx.Discard()); !errors.Is(err, errNoProgressStore) {
 			t.Errorf("%s: %v", e, err)
 		}
+	}
+}
+
+// internalRequest hace una petición a la API interna con el token de zona dado.
+func internalRequest(t *testing.T, method, url, token, body string) (int, map[string]any) {
+	t.Helper()
+	req, _ := http.NewRequest(method, url, strings.NewReader(body))
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	return resp.StatusCode, out
+}
+
+// serve monta la API interna (P3) en ELDMARK_INTERNAL_ADDR: una zona con el token de su despliegue
+// se registra, pasa a live, pide un bloque de ids y late; sin token, 401 bad_token; una ruta
+// desconocida, 404.
+func TestServeMountsTheInternalAPI(t *testing.T) {
+	pool := testdb.New(t)
+	a := startServeApp(t, pool, serveEnv(pool))
+	base := "http://" + a.InternalAddr()
+	status, body := internalRequest(t, http.MethodPost, base+"/internal/v1/zone-instances", "token", `{"world_id": 1,
+		"zone_id": "vado_gris", "channel": 0, "public_host": "127.0.0.1", "public_port": 24600, "realms": [1, 2],
+		"build_id": "b", "protocol_version": `+strconv.Itoa(gamedata.MustLoad().ProtocolVersion)+`, "record_format": 1,
+		"max_players": 64, "dtls_cert_pem": null, "dtls_name": null, "replace": false}`)
+	id, _ := body["zone_instance_id"].(string)
+	if status != 200 || id == "" || body["env"] != "test" {
+		t.Fatalf("registro: %d %v", status, body)
+	}
+	if status, body = internalRequest(t, http.MethodPost, base+"/internal/v1/zone-instances/"+id+"/live", "token", ""); status != 204 {
+		t.Fatalf("live: %d %v", status, body)
+	}
+	if status, body = internalRequest(t, http.MethodPost, base+"/internal/v1/id-blocks", "token",
+		`{"zone_instance_id": "`+id+`"}`); status != 200 || body["first"] != "1" {
+		t.Fatalf("bloque: %d %v", status, body)
+	}
+	if status, body = internalRequest(t, http.MethodPost, base+"/internal/v1/zone-instances/"+id+"/heartbeat", "token",
+		`{"players": 0, "characters": []}`); status != 200 {
+		t.Fatalf("latido: %d %v", status, body)
+	}
+	if status, body = internalRequest(t, http.MethodPost, base+"/internal/v1/id-blocks", "",
+		`{"zone_instance_id": "`+id+`"}`); status != 401 || body["error"].(map[string]any)["code"] != "bad_token" {
+		t.Fatalf("sin token: %d %v", status, body)
+	}
+	if status, _ = internalRequest(t, http.MethodGet, base+"/internal/v1/nada", "token", ""); status != 404 {
+		t.Fatalf("ruta desconocida: %d", status)
+	}
+	// La API pública no tiene las rutas internas.
+	if status, _ = internalRequest(t, http.MethodPost, "http://"+a.PublicAddr()+"/internal/v1/id-blocks", "token",
+		`{"zone_instance_id": "`+id+`"}`); status != 404 {
+		t.Fatalf("interna por la pública: %d", status)
 	}
 }

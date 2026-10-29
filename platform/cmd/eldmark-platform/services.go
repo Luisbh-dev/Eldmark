@@ -19,6 +19,9 @@ import (
 	"eldmark/platform/internal/mail"
 	"eldmark/platform/internal/names"
 	"eldmark/platform/internal/persistence"
+	"eldmark/platform/internal/social"
+	"eldmark/platform/internal/war"
+	"eldmark/platform/internal/zones"
 	"eldmark/platform/legal"
 )
 
@@ -41,8 +44,8 @@ func progressStore(cfg *config.Config, log *slog.Logger) (persistence.ProgressSt
 	return persistence.NewMemoryProgressStore(), persistence.ProvisionalValidator{}, nil
 }
 
-// mountServices monta en el proceso los servicios de los paquetes: cuentas y sesiones (P1) y
-// personajes (P2). Devuelve lo que hay que cerrar al parar (la cola de correo).
+// mountServices monta en el proceso los servicios de los paquetes: cuentas y sesiones (P1),
+// personajes (P2) y la API interna (P3). Devuelve lo que hay que cerrar al parar (la cola de correo).
 func mountServices(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger) (func(), error) {
 	rules, err := gamedata.Load()
 	if err != nil {
@@ -97,7 +100,42 @@ func mountServices(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog
 	auth := accounts.NewAPI(svc)
 	auth.Mount(a)
 	characters.NewAPI(chars).Mount(a, auth)
+	if err := mountInternal(a, cfg, pool, log, progress, nameRules, minProtocol); err != nil {
+		mail.Close(sender)
+		return nil, err
+	}
 	a.AddJob("accounts_purge", purgeEvery, svc.PurgeDue)
 	a.AddJob("characters_purge", purgeEvery, purger.PurgeExpired)
 	return func() { mail.Close(sender) }, nil
+}
+
+// mountInternal monta la API interna (P3, §6): las instancias de zona y los bloques de ids, la
+// reclamación, el guardado y la liberación, operación y libro, las fortalezas y los eventos de
+// guerra, y los lotes de chat y auditoría con ignorados, reportes y sanciones; y el trabajo de
+// instancias perdidas, cada min(5 s, HEARTBEAT_S).
+func mountInternal(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger,
+	progress persistence.ProgressStore, nameRules *names.Rules, minProtocol int) error {
+	zoneSvc, err := zones.New(zones.Options{Config: cfg, Pool: pool, Log: log, MinProtocol: minProtocol})
+	if err != nil {
+		return err
+	}
+	store, err := persistence.NewStore(persistence.StoreOptions{Pool: pool, Progress: progress, LeaseTTL: cfg.LeaseTTL,
+		Log: log})
+	if err != nil {
+		return err
+	}
+	warSvc, err := war.New(war.Options{Pool: pool, Guard: zoneSvc.Guard(), Log: log})
+	if err != nil {
+		return err
+	}
+	socialSvc, err := social.New(social.Options{Pool: pool, Guard: zoneSvc.Guard(), Log: log, Names: nameRules})
+	if err != nil {
+		return err
+	}
+	zones.NewAPI(zoneSvc).Mount(a)
+	persistence.NewAPI(store, zoneSvc.Guard()).Mount(a)
+	warSvc.Mount(a)
+	socialSvc.Mount(a)
+	a.AddJob("zones_lost", zoneSvc.LostEvery(), zoneSvc.MarkLost)
+	return nil
 }

@@ -2263,3 +2263,143 @@ y de Godot (ninguno de los casos lo hace).
 vectores (P4); `admin names block|unblock` y la sanción `rename` (P7a); el cliente (P8); `reapply-purges`, la
 retención del libro, el borrado de las lápidas vacías y el progreso en la exportación (P9a); las secciones de
 progresion.md en las reglas exportadas y `*progress.Rules` con el almacén de verdad (progresion.md P3 y P7).
+
+### 19.4 P3 · API interna (TEC-24, TEC-25)
+
+**Qué hay.** La API interna de §6 entera, montada en `serve` sobre `ELDMARK_INTERNAL_ADDR`, con el trabajo de
+instancias perdidas:
+
+| Pieza | Contenido |
+|---|---|
+| `internal/zones` | `Registry` (`Authenticate`: SHA-256 del token y `subtle.ConstantTimeCompare` con todas las entradas), `Scope`, `Instance` y la tabla de estados de §6.1 (`Instance.Check` por petición), `Guard` (los pasos 1 a 3 de §6.1: 401 `bad_token`, 403 `forbidden` y el 409 del estado), `Fail` (503 `db_unavailable`), los UUID (`NewUUID` de `crypto/rand`, `FormatUUID`, `ParseUUID`), el servicio (`Register` con sustitución y perdida al registrar, `Live`, `Heartbeat`, `Stop`, `MarkLost`, `IDBlock`) y sus rutas; para los lotes, `DecodeBatch`, `ParseEntry`, `KeyChecker` (key `<uuid>:<n>` de la instancia u `op:<op_id>` de sus bloques) e `InsertEach` |
+| `internal/persistence` | `store.go`: `Store` con `Claim`, `Save`, `SaveMany` y `Release` de §14.2, `ParseEnvelope` (el sobre estricto) y `SaveError` (la regla de errores de §7.3); `api.go`: las rutas de reclamación, guardado, lote de guardados, liberación, operación y libro. `memory.go` (el falso) añade lo de abajo |
+| `internal/war` | Fortalezas (GET de la zona de la instancia, PUT con versión) y el lote de eventos de guerra |
+| `internal/social` | Los lotes de chat y de auditoría, ignorados, reportes y sanciones con la autorización de §9.5 |
+| `internal/sanctions` | Hoja nueva: la restricción vigente (`Active`, `ActiveMany`), los silencios (`Mutes`), los textos para el jugador (`Restriction.Message`, `PendingDeletionMessage`, `Truncate` a 255 B), `Rank` y `MinRole` (§9.1) |
+| `internal/platformtest` | Para las pruebas: la plataforma entera en el proceso (base efímera, reloj falso, progreso en memoria, las dos API) con ayudas de cliente (`NewPlayer`, `NewCharacter`, `MustEnter`) y de zona (`Zone.Start`, `Join`, `Heartbeat`, `SaveBody`, `Save`…) |
+| `internal/accounts` | `ActiveRestriction` y `Restriction.Message` usan `internal/sanctions`: un solo texto para el 403 de la API pública, el `account_blocked` de la reclamación y el `text` del latido |
+| `cmd/eldmark-platform` | `mountInternal` (`services.go`): zonas, almacén, guerra y lo social, y el trabajo `zones_lost` cada `min(5 s, HEARTBEAT_S)` |
+
+Todas las rutas de la tabla de §6, en el orden de comprobaciones de §6.1. Cuerpos que §6 no fijaba:
+`POST /internal/v1/saves` responde `{instance_status, saves: [{character_id, applied, duplicate,
+save_version}]}` en el orden del lote, y un error de uno lleva además su `character_id`; `DELETE
+/internal/v1/ignores` lleva el mismo cuerpo que el `POST` y da 204 aunque no hubiera nada; la sanción responde
+`{sanction_id, ends_at_unix}`; un reporte, `{report_id}`. Códigos nuevos: 409 `ignore_list_full` (100
+ignorados) y el `not_found` de un nombre que no existe en el mundo de la instancia.
+
+**Para los paquetes siguientes.**
+
+- **P4** (la zona): los cuerpos y errores son los de §6 con lo de arriba. La reclamación da
+  `muted_until_unix` 0 sin silencio y `253402300799` (`sanctions.NoEndUnix`) en uno sin fin; `revoked` trae
+  `text` compuesto por la plataforma (también en `lease_lost`: «Tu personaje ha entrado en otro servidor»);
+  `account_blocked` trae `message` de 255 B como mucho. `maintenance` del latido es siempre null (TEC-28).
+- **P5**: el guardado acepta `release_lease` ausente (false); `seq` empieza en 1 y puede saltar números; un
+  `duplicate` no vuelve a llamar a `Apply`.
+- **P6**: el primer PUT de una fortaleza lleva `expected_version` 0; una que no existe con otro valor es 409
+  `version_conflict` con `version` 0. El GET devuelve el registro como lo guarda `jsonb` (claves reordenadas).
+- **P7a**: las rutas internas de ignorados, reportes y sanciones ya están (abajo). Quedan la CLI `admin`
+  (`set-role` con su fila, `reports list|show|close`, `audit`, `chat`, `names block|unblock`, `sanction`,
+  `purge-now`), las consultas auditadas y las pruebas de caducidad de cada sanción.
+- **progresion.md P7**: la ruta de operación llama a `Op(ctx, pool, opID, instance)` sin transacción y la del
+  libro a `Ledger(ctx, pool, …)` después de mirar el arrendamiento del personaje en la instancia; `Apply`
+  recibe `SaveKey` con `ZoneID` de la instancia `claimed_by` y `WorldID` del arrendamiento, dentro de la
+  transacción que ya tiene el arrendamiento bloqueado y el `seq` comprobado.
+- **P9a**: las retenciones de `enter_tickets` (1 día), `zone_instances` paradas (30 días), `chat_messages` y
+  `audit_log`.
+
+**Desviaciones y decisiones de la implementación:**
+
+- **Ignorados, reportes y sanciones ya en P3** (§14.1 los ponía en P7a): §15 P3 los prueba (el mundo lo pone
+  la instancia) y la tabla de §6.1 los incluye. Están enteros, con la autorización de las sanciones en tres
+  pasos y la fila `sanction_denied`.
+- **Paquetes nuevos que §2.1 no nombra:** `internal/sanctions`, una hoja, para que ni `zones` ni `persistence`
+  importen `accounts` (cuando P9a lleve `ProgressStore.Export` a la exportación de `accounts`, `accounts →
+  persistence → accounts` sería un ciclo), y `internal/platformtest`, el arnés de las pruebas de la API interna.
+- **El reloj.** Todas las horas de P3 salen del reloj inyectable de Go (`started_at`, `last_heartbeat_at`,
+  `expires_at` de los arrendamientos, `consumed_at`, `granted_at`…), no de `now()`: las pruebas adelantan el
+  reloj en lugar de esperar los 15 s de una instancia perdida o los 30 s del TTL. La gracia de arranque de P0
+  sigue con `now()` (en `serve` los dos relojes son el mismo).
+- **Reclamación.** Bloquea antes la fila de la instancia (`for share`): el orden es instancia → cuenta → billete
+  → arrendamiento, y el trabajo de perdidas y el latido (que la actualizan) no se cruzan con una reclamación en
+  curso. Lee la cuenta del personaje antes de bloquearla y vuelve a mirar el personaje después. Un personaje de
+  otro mundo que el de la instancia o de una cuenta purgada es `ticket_invalid`. Toma un arrendamiento con
+  `expires_at ≤ ahora` (§5.3 decía `<`: así «caducado» es justo lo contrario de «vivo», `expires_at > ahora`,
+  que miran `enter`, borrar y la propia reclamación). Escribe `characters.last_entered_at`.
+- **Latido.** Prioridad de `revoked` por cuenta: `banned` > `suspended` > `pending_deletion` >
+  `session_revoked`. Los textos de `session_revoked`: «Has iniciado sesión desde otro lugar» (`replaced`), «Has
+  cerrado la sesión» (`logout`), «Un administrador ha cerrado tu sesión» (`admin`) y «Tu cuenta ha cambiado:
+  vuelve a entrar» (el resto). Los expulsados se siguen renovando: la zona aún manda su guardado final. Un
+  `lease_lost` sale una vez por personaje aunque el latido lo repita.
+- **Registro.** `protocol_version` por debajo del protocolo mínimo de los clientes, o `record_format` distinto
+  de 1: 409 `schema_mismatch`. El certificado se lee como X.509 en PEM y con él `dtls_name` es obligatorio.
+  Dos registros a la vez del mismo alcance: el segundo choca con el índice único parcial y recibe
+  `instance_alive`. La fila de `replace` en `audit_log`: `source = 'platform'`, `command = 'zone_replace'`,
+  `args = {replaced, by, channel}`. Con `replace` sobre una instancia que ya lleva 3 × `HEARTBEAT_S` sin latir,
+  esa pasa a `lost` (no a `replaced`) y sus arrendamientos quedan libres.
+- **Baja** (`DELETE`): de una `replaced`, libera lo que le quede y sigue `replaced`; de una `lost`, 409
+  `instance_lost`; repetida, 204.
+- **`zone_instance_id` que no es un UUID canónico** (en minúsculas): 400 `validation`, no 403.
+- **Sobre del guardado.** `release_lease` es opcional; `pvp` exige sus seis totales; `seq` desde 1; un `{id}`
+  de la ruta que no es un id es `envelope`. El `detail` de un `invalid_save` se corta a 500 B. Los
+  `invalid_save`, `seq_conflict` y `stale_seq` se registran como aviso.
+- **Lote de guardados.** Bloquea los arrendamientos en orden de `character_id`; el mismo personaje dos veces o
+  un sobre de otra instancia es `envelope`.
+- **Liberación** de un arrendamiento ya libre con el mismo `lease_id`: 204.
+- **Libro:** el arrendamiento en la instancia es `zone_instance_id` igual a ella, sin mirar `expires_at`; un
+  `limit` fuera de 1–100 o un `before_entry_id` que no es un id, 400 `validation`; un `op_id` que no es un id,
+  404.
+- **Eventos de guerra** de una fortaleza que aún no tiene fila valen (su primer PUT va por otra cola y puede
+  llegar después); los de una fortaleza de otra zona, a `rejected`.
+- **Claves de los lotes:** `<uuid>:<n>` sin ceros a la izquierda; `op:<op_id>` solo en la auditoría (en el chat
+  y la guerra va a `rejected`). Las filas válidas se insertan en una ida y vuelta (`pgx.Batch`); si alguna
+  choca con una restricción, se insertan de una en una para rechazar solo esa.
+- **Auditoría:** `command` con la forma `^[a-z][a-z0-9_]{0,47}$` (los de la CLI llevan guiones o espacios) y
+  fuera de los de la plataforma (`sanction_denied`, `sanction`, `zone_replace`); `console` sin actor ni
+  `actor_character_id`, `zone` con `actor_account_id`.
+- **Chat:** el emisor tiene que ser un personaje del mundo de la instancia; el texto, 255 caracteres como
+  mucho y sin NUL. El registro solo lleva las claves rechazadas, nunca el texto.
+- **Ignorados:** a uno mismo, 400; el nombre que se guarda es el del personaje; dejar de ignorar borra la
+  cuenta del nombre y la fila guardada con ese nombre (el ignorado puede haberse renombrado).
+- **Reportes:** el objetivo tiene que existir (404) y no ser la propia cuenta (400); los límites se cuentan en
+  `reports` (en la base, no en memoria), en serie por la fila de la cuenta, y «por objetivo» es por personaje.
+- **Sanciones:** `minutes` ≥ 1 en silencio y suspensión, 0 en las demás (la expulsión es permanente); los
+  `report_ids` tienen que ser reportes del mundo de la instancia (400); un renombrado pone `must_rename`;
+  sancionarse a uno mismo es `target_role`. Cada sanción creada deja una fila `sanction` en `audit_log` y cada
+  denegada una `sanction_denied` con `args.denied` (`no_lease`, `role` o `target_role`), sin nombres ni correos.
+- **El falso (`MemoryProgressStore`)** gana `SetApplyTxHook` (corre dentro de la transacción del guardado),
+  `AddOp` (y `Op` mira los arrendamientos de los participantes con la misma consulta que hará el almacén de
+  verdad), una S2 de juguete (un `op_id` ya aplicado falla), `SaveVersion` y `Applied`. Sigue sin ver las
+  transacciones: si el COMMIT falla, lo suyo queda escrito; las pruebas de «nada escrito» miran las tablas de
+  la plataforma.
+
+**Pruebas** (51 nuevas, con la base efímera, el reloj falso y el falso del progreso): todas las de §15 P3 y
+además el token sin alcance y la instancia que no existe, los campos del registro, el certificado en
+`staging`, live repetido y la baja, la tabla de estados de §6.1 petición a petición en los cinco estados,
+los bloques de ids (1, 1025, 2049), la renovación y los textos de cada `revoked`, los silencios del latido, el
+billete de otro personaje, `character_busy` sin consumir el billete, el lote de guardados, la liberación
+repetida, el op_id repetido (S2 del falso), el 40P01 que se arregla al reintentar, el arrendamiento de la
+sustituida que caduca con el TTL, dos instancias que reclaman a la vez, eventos de guerra con todos los motivos
+de rechazo, fortalezas de otro mundo, el chat de una instancia perdida, ignorados (tope de 100 y renombrados),
+los dos límites de los reportes, la autorización de las sanciones (moderador que pide `ban`, GM contra admin,
+sin arrendamiento, a sí mismo) con el silencio en el latido y la reclamación y el renombrado, `InsertEach` con
+una fila mala y `serve` con la API interna por HTTP.
+
+**Medido** (esta máquina, 4 núcleos, Go 1.24.7, PostgreSQL 16.15):
+
+| Qué | Resultado |
+|---|---|
+| `go test -p 2 -count=1 ./...` con la caché caliente | 30 s; `internal/persistence` 6–8 s (28 pruebas), `internal/zones` 4–5 s |
+| `go test -race` de los paquetes nuevos, `accounts`, `characters` y `serve` | 30 s, sin carreras |
+| `DELETE` y reclamación a la vez, 8 rondas | 3 borrados sin arrendamiento y 5 reclamados vivos; ninguna mezcla |
+| 100 guardados del mismo personaje, 8 a la vez con `seq` crecientes | 70–75 aplicados y el resto `stale_seq`; `save_version` = aplicados en todas |
+| Binario | 20,3 MB (19,8 MB en P2) |
+
+Godot: `--import` da el mismo registro que antes (no se ha tocado nada fuera de `platform/` salvo la
+documentación).
+
+**Sin comprobar:** contra una zona de verdad (P4) y con el almacén de verdad (progresion.md P7: S1–S8, la
+restricción diferida de las ranuras de `0010_progress`, que aquí se simula con una tabla de prueba); lotes y
+latidos con cientos de personajes; el trabajo `zones_lost` dentro de `serve` (se prueba `MarkLost` directo).
+
+**Queda para después:** el mantenimiento en el latido (TEC-28); la zona (P4–P6, P7b); la CLI de P7a; las
+retenciones de P9a; la prueba de extremo a extremo (P10).

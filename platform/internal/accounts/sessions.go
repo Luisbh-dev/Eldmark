@@ -10,7 +10,7 @@ import (
 
 	"eldmark/platform/internal/db"
 	"eldmark/platform/internal/httpx"
-	"eldmark/platform/internal/mail"
+	"eldmark/platform/internal/sanctions"
 )
 
 // Session es la sesión de una petición autenticada.
@@ -44,21 +44,14 @@ type Restriction struct {
 }
 
 // Message es el texto para el jugador (§4.1 y §6.1): «Tu cuenta está suspendida hasta el
-// 3/11/2026 18:00 UTC: motivo» o «Tu cuenta está expulsada: motivo».
+// 3/11/2026 18:00 UTC: motivo» o «Tu cuenta está expulsada: motivo», cortado a 255 B
+// (sanctions.Restriction.Message, el mismo texto que la reclamación y el latido).
 func (r *Restriction) Message() string {
-	var msg string
-	switch {
-	case r.Code == "account_banned":
-		msg = "Tu cuenta está expulsada"
-	case r.Until != nil:
-		msg = "Tu cuenta está suspendida hasta el " + mail.FormatDate(*r.Until)
-	default:
-		msg = "Tu cuenta está suspendida"
+	kind := sanctions.KindSuspension
+	if r.Code == "account_banned" {
+		kind = sanctions.KindBan
 	}
-	if r.Reason != "" {
-		msg += ": " + r.Reason
-	}
-	return msg
+	return (&sanctions.Restriction{Kind: kind, Until: r.Until, Reason: r.Reason}).Message()
 }
 
 // Error es el 403 de la restricción, con until (fecha Unix o null) y reason.
@@ -84,20 +77,12 @@ func (r *Restriction) view() *RestrictionView {
 // ActiveRestriction devuelve la suspensión o expulsión vigente de la cuenta, o nil. Una expulsión
 // manda sobre una suspensión; entre suspensiones, la que acaba más tarde.
 func ActiveRestriction(ctx context.Context, q querier, accountID int64, now time.Time) (*Restriction, error) {
-	var kind, reason string
-	var until *time.Time
-	err := q.QueryRow(ctx, `select kind, ends_at, reason from sanctions
-		where account_id = $1 and revoked_at is null and kind in ('suspension', 'ban')
-		  and starts_at <= $2 and (ends_at is null or ends_at > $2)
-		order by (kind = 'ban') desc, ends_at desc nulls first limit 1`, accountID, now).Scan(&kind, &until, &reason)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
+	active, err := sanctions.Active(ctx, q, accountID, now)
+	if err != nil || active == nil {
 		return nil, err
 	}
-	r := &Restriction{Code: "account_suspended", Until: until, Reason: reason}
-	if kind == "ban" {
+	r := &Restriction{Code: "account_suspended", Until: active.Until, Reason: active.Reason}
+	if active.Kind == sanctions.KindBan {
 		r.Code = "account_banned"
 	}
 	return r, nil

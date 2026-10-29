@@ -228,6 +228,21 @@ godot --headless --path . -s res://tools/progression/export_rules.gd            
 godot --headless --path . -s res://tools/progression/export_rules.gd -- --check  # solo lo compara
 ```
 
+La API interna (`/internal/v1`, en `ELDMARK_INTERNAL_ADDR`, solo para las zonas) pide en cada petición el
+token de un despliegue de zona: `ELDMARK_ZONE_TOKENS` guarda su SHA-256 con el alcance
+`<mundo>:<zona>:<canal>`. Para probarla a mano con el token `secreto` de `1:vado_gris:0` (`protocol_version`, el
+de `progression_rules.json`):
+
+```bash
+export ELDMARK_ZONE_TOKENS="1:vado_gris:0:$(printf %s secreto | sha256sum | cut -d' ' -f1)"
+curl -s -H 'Authorization: Bearer secreto' -d '{"world_id": 1, "zone_id": "vado_gris", "channel": 0,
+  "public_host": "127.0.0.1", "public_port": 24600, "realms": [1, 2], "build_id": "dev", "protocol_version": 5,
+  "record_format": 1, "max_players": 64, "dtls_cert_pem": null, "dtls_name": null, "replace": false}' \
+  http://127.0.0.1:24681/internal/v1/zone-instances
+```
+
+Una instancia que deja de latir 3 × `ELDMARK_HEARTBEAT_S` se da por perdida y sus personajes quedan libres.
+
 ## Exportación (cliente Windows y servidor Linux)
 
 `export_presets.cfg` (en texto, versionado) define dos destinos, y `tools/export.sh` (Linux y macOS) o

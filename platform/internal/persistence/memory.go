@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
 	"sync"
 
 	"github.com/jackc/pgx/v5"
@@ -26,6 +27,18 @@ type MemoryProgressStore struct {
 	// applyHook, si no es nil, decide el resultado de Apply antes de guardar nada (pruebas: un
 	// *InvalidSaveError, un error de la base…).
 	applyHook func(key SaveKey, progress json.RawMessage) error
+	// applyTxHook, si no es nil, corre dentro de la transacción del guardado antes de guardar nada
+	// (pruebas: escribir algo que falle en el COMMIT).
+	applyTxHook func(ctx context.Context, tx pgx.Tx, key SaveKey, progress json.RawMessage) error
+	// ops son los op_id ya aplicados (para la S2 del falso) y las operaciones de Op.
+	appliedOps map[int64]bool
+	ops        map[int64]memoryOp
+}
+
+// memoryOp es una operación del falso: el cuerpo que devuelve Op y sus participantes.
+type memoryOp struct {
+	participants []int64
+	body         json.RawMessage
 }
 
 type memoryCharacter struct {
@@ -39,7 +52,49 @@ type memoryCharacter struct {
 
 // NewMemoryProgressStore devuelve un almacén vacío.
 func NewMemoryProgressStore() *MemoryProgressStore {
-	return &MemoryProgressStore{chars: map[int64]*memoryCharacter{}}
+	return &MemoryProgressStore{chars: map[int64]*memoryCharacter{}, appliedOps: map[int64]bool{},
+		ops: map[int64]memoryOp{}}
+}
+
+// SetApplyTxHook pone (o quita, con nil) la función que corre dentro de la transacción de Apply
+// antes de guardar nada; si devuelve un error, Apply lo devuelve.
+func (m *MemoryProgressStore) SetApplyTxHook(hook func(ctx context.Context, tx pgx.Tx, key SaveKey,
+	progress json.RawMessage) error) {
+	m.mu.Lock()
+	m.applyTxHook = hook
+	m.mu.Unlock()
+}
+
+// AddOp añade una operación que Op devolverá con body si alguno de sus participantes tiene
+// arrendamiento en la instancia que pregunta.
+func (m *MemoryProgressStore) AddOp(opID int64, participants []int64, body json.RawMessage) {
+	m.mu.Lock()
+	m.ops[opID] = memoryOp{participants: append([]int64(nil), participants...), body: body}
+	m.mu.Unlock()
+}
+
+// SaveVersion devuelve el save_version del personaje (0 si no tiene progreso).
+func (m *MemoryProgressStore) SaveVersion(characterID int64) int64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if c, ok := m.chars[characterID]; ok {
+		return c.saveVersion
+	}
+	return 0
+}
+
+// Applied devuelve la última sección progress aplicada (sin ops), o nil.
+func (m *MemoryProgressStore) Applied(characterID int64) map[string]any {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if c, ok := m.chars[characterID]; ok && c.applied != nil {
+		out := make(map[string]any, len(c.applied))
+		for k, v := range c.applied {
+			out[k] = v
+		}
+		return out
+	}
+	return nil
 }
 
 // SetApplyHook pone (o quita, con nil) la función que decide el resultado de Apply.
@@ -113,9 +168,19 @@ func (m *MemoryProgressStore) Load(_ context.Context, _ Querier, characterID int
 }
 
 // Apply implementa [ProgressStore]. Solo comprueba que la sección es un objeto con
-// progress_format 1 (S1) y que el personaje existe; guarda la sección sin ops y saca de ella el
-// nivel, el tiempo jugado y la última zona del resumen.
-func (m *MemoryProgressStore) Apply(_ context.Context, _ pgx.Tx, key SaveKey, progress json.RawMessage) (int64, error) {
+// progress_format 1 (S1), que el personaje existe y, como S2, que ningún op_id de ops se aplicó
+// antes; guarda la sección sin ops y saca de ella el nivel, el tiempo jugado y la última zona del
+// resumen.
+func (m *MemoryProgressStore) Apply(ctx context.Context, tx pgx.Tx, key SaveKey, progress json.RawMessage) (int64, error) {
+	m.mu.Lock()
+	txHook := m.applyTxHook
+	m.mu.Unlock()
+	if txHook != nil {
+		// Fuera del cerrojo: la función habla con la base.
+		if err := txHook(ctx, tx, key, progress); err != nil {
+			return 0, err
+		}
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.applyHook != nil {
@@ -136,6 +201,18 @@ func (m *MemoryProgressStore) Apply(_ context.Context, _ pgx.Tx, key SaveKey, pr
 	if f, ok := whole(section["progress_format"]); !ok || f != 1 {
 		return 0, &InvalidSaveError{Check: "S1", Detail: "progress_format distinto de 1"}
 	}
+	opIDs, err := sectionOps(section["ops"])
+	if err != nil {
+		return 0, err
+	}
+	for _, id := range opIDs {
+		if m.appliedOps[id] {
+			return 0, &InvalidSaveError{Check: "S2", Detail: fmt.Sprintf("la operación %d ya está guardada", id)}
+		}
+	}
+	for _, id := range opIDs {
+		m.appliedOps[id] = true
+	}
 	delete(section, "ops")
 	c.applied = section
 	if v, ok := whole(section["level"]); ok {
@@ -154,6 +231,28 @@ func (m *MemoryProgressStore) Apply(_ context.Context, _ pgx.Tx, key SaveKey, pr
 	}
 	c.saveVersion++
 	return c.saveVersion, nil
+}
+
+// sectionOps lee los op_id de la lista ops de la sección (cadenas decimales); sin ops, ninguno.
+func sectionOps(v any) ([]int64, error) {
+	if v == nil {
+		return nil, nil
+	}
+	list, ok := v.([]any)
+	if !ok {
+		return nil, &InvalidSaveError{Check: "S1", Detail: "ops no es una lista"}
+	}
+	ids := make([]int64, 0, len(list))
+	for _, item := range list {
+		op, ok := item.(map[string]any)
+		s, okID := op["op_id"].(string)
+		id, err := strconv.ParseInt(s, 10, 64)
+		if !ok || !okID || err != nil || id < 1 {
+			return nil, &InvalidSaveError{Check: "S1", Detail: "una operación sin op_id"}
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
 }
 
 // whole lee un número entero del JSON, también con decimales nulos (Godot escribe 7.0).
@@ -209,9 +308,25 @@ func (m *MemoryProgressStore) Export(_ context.Context, _ Querier, characterID i
 	return json.Marshal(map[string]any{"record": rec, "ops": []any{}})
 }
 
-// Op implementa [ProgressStore]: el falso no tiene operaciones.
-func (m *MemoryProgressStore) Op(context.Context, Querier, int64, [16]byte) (json.RawMessage, error) {
-	return nil, ErrNotFound
+// Op implementa [ProgressStore]: las operaciones de [MemoryProgressStore.AddOp], si alguno de sus
+// participantes tiene character_leases.zone_instance_id = instance (la misma consulta que hará el
+// almacén de verdad con un join de op_participants); si no, [ErrNotFound].
+func (m *MemoryProgressStore) Op(ctx context.Context, q Querier, opID int64, instance [16]byte) (json.RawMessage, error) {
+	m.mu.Lock()
+	op, ok := m.ops[opID]
+	m.mu.Unlock()
+	if !ok {
+		return nil, ErrNotFound
+	}
+	var inside bool
+	if err := q.QueryRow(ctx, `select exists (select 1 from character_leases
+		where character_id = any($1) and zone_instance_id = $2)`, op.participants, instance).Scan(&inside); err != nil {
+		return nil, err
+	}
+	if !inside {
+		return nil, ErrNotFound
+	}
+	return op.body, nil
 }
 
 // Ledger implementa [ProgressStore]: un libro vacío, o [ErrNotFound] si el personaje no tiene

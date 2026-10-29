@@ -1715,3 +1715,23 @@ el almacén `persistence.ProgressStore`; `serve` los elige cambiando solo `progr
 entrado», y un personaje que el almacén no devuelve sale en la lista con raza, apariencia y última zona a null y
 nivel 1. `Purge` ya se llama desde la purga de personajes de plataforma.md (§11.2), dentro de su transacción y con
 el arrendamiento y la fila del personaje bloqueados.
+
+### 19.2 Lo que dejó plataforma.md P3
+
+plataforma.md P3 (su §19.4) montó la API interna sobre la interfaz `ProgressStore`, así que P7 solo tiene que
+implementarla:
+
+- **Rutas de §13.2.** `GET /internal/v1/ops/{op_id}?zone_instance_id=` llama a `Op(ctx, pool, opID,
+  instance)` fuera de transacción y responde su JSON tal cual (o 404 con `ErrNotFound`); `GET
+  /internal/v1/characters/{id}/ledger?zone_instance_id=&limit=&before_entry_id=` mira antes el arrendamiento
+  del personaje en la instancia, valida `limit` (1–100, 20 por defecto) y `before_entry_id` (0 sin él) y llama
+  a `Ledger(ctx, pool, …)`. Las dos exigen la instancia `live` (§6.1 de plataforma.md).
+- **Guardado.** `Apply(ctx, tx, key, progress)` corre en la transacción que ya tiene el arrendamiento
+  bloqueado y el `seq` comprobado, con `key.ZoneID` de la instancia `claimed_by` y `key.WorldID` del
+  arrendamiento; un `*InvalidSaveError` o un SQLSTATE de clase 23 o `P0001` (también en el COMMIT) son 400
+  `invalid_save`, y un `40001` se reintenta con la transacción entera. Un `duplicate` no llama a `Apply`.
+- **Reclamación.** `Load(ctx, tx, characterID)` corre en la transacción de la reclamación, con el
+  arrendamiento recién tomado; un error de `Load` es un 500.
+- **El falso** (`MemoryProgressStore`) imita una S2 mínima (un `op_id` ya aplicado falla) y `Op` con la
+  consulta de los arrendamientos de los participantes: las pruebas de P7 con el almacén de verdad son las que
+  dicen que S1–S8 y el `join` de `op_participants` hacen lo mismo.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"eldmark/platform/internal/persistence"
@@ -103,6 +104,12 @@ func TestMemoryProgressStore(t *testing.T) {
 	if err != nil || v != 1 {
 		t.Fatalf("Apply: %d, %v", v, err)
 	}
+	// Como S2: un op_id ya guardado no vuelve a valer; uno nuevo, sí.
+	var invalidS2 *persistence.InvalidSaveError
+	if _, err := m.Apply(ctx, nil, key, json.RawMessage(body)); !errors.As(err, &invalidS2) || invalidS2.Check != "S2" {
+		t.Errorf("op_id repetido: %v", err)
+	}
+	body = strings.Replace(body, `"5120"`, `"5121"`, 1)
 	if v, _ := m.Apply(ctx, nil, key, json.RawMessage(body)); v != 2 {
 		t.Errorf("save_version sube: %d", v)
 	}
