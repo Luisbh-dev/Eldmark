@@ -82,6 +82,19 @@ const FORBIDDEN_RANDOMNESS: Array[Array] = [
 	[".shuffle()", "\\.shuffle\\s*\\("],
 ]
 
+## NetZones es el único contacto de la red con zones.gd (docs/red.md, 1.5 y 17.3): en estas carpetas
+## ningún otro script nombra [Zones]. Excepciones: [code]server_main.gd[/code] (la lista de zonas del
+## aviso de zona desconocida y los reinos con campamento de los jugadores falsos, sección 19) y
+## [code]client_main.gd[/code], el sandbox sin red de la fase 1, que es anterior a la red.
+const ZONES_CONTACT_DIRS: Array[String] = [
+	"res://scripts/server", "res://scripts/client", "res://scripts/shared/net",
+]
+const ZONES_CONTACT_EXCEPTIONS: Array[String] = [
+	"res://scripts/shared/net/net_zones.gd", "res://scripts/server/server_main.gd",
+	"res://scripts/client/client_main.gd",
+]
+const ZONES_PATTERN: Array[Array] = [["Zones.", "\\bZones\\."]]
+
 const CLASS_NAME_PATTERN: String = "(?m)^\\s*(?:@\\w+\\s+)*class_name\\s+([A-Za-z_]\\w*)"
 
 
@@ -281,6 +294,26 @@ func test_shared_does_not_depend_on_server() -> void:
 	for path: String in files:
 		for found: String in _find_matches(_read_text(path), patterns):
 			fail("%s depende del servidor: %s" % [path, found])
+
+
+## Si zones.gd cambia (el grupo o el metadato de los puntos de aparición, una firma...), solo se
+## tocan NetZones y los pocos archivos de la excepción; no SpawnPicker ni nada de la red.
+func test_only_net_zones_talks_to_zones_in_the_network_code() -> void:
+	assert_eq(_find_matches("var p: Array = Zones.get_spawn_points(_world)\nZones.SPAWN_GROUP", ZONES_PATTERN).size(), 2,
+			"detecta las llamadas a Zones")
+	assert_eq(_find_matches("NetZones.scene_path(id)\nMyZones.x\n# Zones.x en un comentario", ZONES_PATTERN),
+			PackedStringArray(), "pero no NetZones, otros nombres ni los comentarios")
+	var checked: int = 0
+	for dir: String in ZONES_CONTACT_DIRS:
+		for path: String in _list_scripts(dir):
+			if ZONES_CONTACT_EXCEPTIONS.has(path):
+				continue
+			checked += 1
+			for found: String in _find_matches(_read_text(path), ZONES_PATTERN):
+				fail("%s nombra Zones (%s); la red habla con zones.gd solo a través de NetZones" % [path, found])
+	assert_true(checked > 20, "se revisan los scripts de la red (%d)" % checked)
+	for excepted: String in ZONES_CONTACT_EXCEPTIONS:
+		assert_true(FileAccess.file_exists(excepted), "existe la excepción %s" % excepted)
 
 
 func test_dependency_scanner_detects_cross_references() -> void:

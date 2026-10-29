@@ -72,5 +72,20 @@ static func find_spawn_point(zone: Node, realm: int) -> Node3D:
 	return Zones.find_spawn_point(zone, realm_name(realm))
 
 
+## Puntos de aparición de la zona [param zone] (que debe estar en el árbol), en el orden de la
+## escena: los del reino [param realm] o, con [constant NetProtocol.Realm.NONE] (o un código que no
+## es un reino jugable), los de toda la zona.
+static func get_spawn_points(zone: Node, realm: int = NetProtocol.Realm.NONE) -> Array[Node3D]:
+	var realm_id: StringName = realm_name(realm)
+	if realm_id.is_empty():
+		return Zones.get_spawn_points(zone)
+	return Zones.get_spawn_points(zone, realm_id)
+
+
+## Grupo de nodos que marca los puntos de aparición de una zona (para avisos y registros).
+static func spawn_group() -> StringName:
+	return Zones.SPAWN_GROUP
+
+
 static func _clean_value(value: String) -> String:
 	return value.strip_edges().trim_prefix("\"").trim_suffix("\"").strip_edges().to_lower()

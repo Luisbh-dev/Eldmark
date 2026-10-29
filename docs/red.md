@@ -206,7 +206,15 @@ sesión nueva en `OnlineMain` (`NetClient.connect_timeout_ms` fija el tiempo de 
 - el id de la zona por defecto;
 - la ruta de escena de cada zona;
 - los reinos admitidos en cada zona;
-- leer `--zone` y `--realm`.
+- leer `--zone` y `--realm`;
+- los puntos de aparición de una zona (`get_spawn_points`, `find_spawn_point`) y el grupo que los
+  marca (`spawn_group`).
+
+`test_architecture` vigila esta frontera: en `scripts/server/`, `scripts/client/` y
+`scripts/shared/net/` solo `net_zones.gd` nombra `Zones.`, con tres excepciones: `server_main.gd`
+(la lista de zonas del aviso de zona desconocida y los reinos con campamento de los jugadores
+falsos, ver la sección 19), `client_main.gd` (el sandbox sin red de la fase 1) y, fuera de esas
+carpetas, `boot.gd` y `scripts/world/zone_root.gd`.
 
 Los reinos admitidos por zona y la correspondencia código de red <-> id de reino salen de
 `RealmCatalog` (`scripts/shared/war/realm_catalog.gd`, GUE-02); `NetZones` solo traduce. Si una zona
@@ -1778,6 +1786,10 @@ static func allowed_realms(zone_id: String) -> PackedInt32Array    # códigos Re
 static func parse_zone_arg(args: PackedStringArray) -> String      # "" si no viene
 static func parse_realm_arg(args: PackedStringArray) -> int        # Realm.NONE si no viene
 static func realm_from_name(text: String) -> int
+static func realm_name(realm: int) -> StringName                   # id de RealmCatalog; "" si no es jugable
+static func find_spawn_point(zone: Node, realm: int) -> Node3D     # el del reino o el primero; null si no hay
+static func get_spawn_points(zone: Node, realm: int = NetProtocol.Realm.NONE) -> Array[Node3D]
+static func spawn_group() -> StringName
 
 # net_math.gd
 class_name NetMath extends RefCounted

@@ -105,8 +105,11 @@ remotos.
 
 - Paquete A: `BotBrain._init(rng_seed, …)` en vez de `seed` (para no tapar la función global);
   `NetZones.allowed_realms` devuelve vacío (todos los reinos) porque `Zones` no registra reinos por
-  zona; `NetZones` añade `realm_name()` y `find_spawn_point()`; los `decode` rechazan UTF-8
-  inválido sin registrar errores del motor.
+  zona; `NetZones` añade `realm_name()`, `find_spawn_point()`, `get_spawn_points()` y
+  `spawn_group()` (estas dos últimas, tras la revisión, para que `SpawnPicker` no llame a `Zones`
+  directamente: §1.5 y §17.3); los `decode` rechazan UTF-8 inválido sin registrar errores del motor.
+  `ServerMain` sí llama a `Zones` (lista de zonas y reinos con campamento, §19) y
+  `test_architecture` lo admite como excepción, igual que el sandbox `ClientMain`.
 - **Reloj de interpolación (red.md §4.3)**: el pseudocódigo normativo corregía contra el tick de
   dibujo anterior y convergía 1 tick por delante del objetivo (retardo efectivo de 3 ticks en vez
   de 4). Corregido en el código y en red.md: primero se avanza y luego se corrige.
