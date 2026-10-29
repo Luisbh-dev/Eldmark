@@ -84,7 +84,10 @@ Sobre una colina baja (meseta a 10,2 m, 6 m por encima del valle, laderas de 12�
     el fuerte neutral, grupo de alerta `vado_gris_hollows`; los dos del este, junto a las rampas,
     patrullan por `hollow_north` y `hollow_south`) y `FordCaptainSpawner` en el `CaptainSpawn` (id
     `ford_captain`, mismo grupo de alerta). No reaparecen uno a uno: los repone la fortaleza. La
-    guarnición del reino dueño (condición `fort_owner`) la añade el paquete de PNJ.
+    guarnición del reino dueño no tiene generadores propios: sale de estos mismos cinco puestos con la
+    definición de PNJ que cada uno nombra en `garrison_id` (los Huecos dan guardias del reino y el
+    Capitán del Vado, el capitán del reino), con su ruta de patrulla y su grupo de alerta
+    (`NpcSpawnerSystem`, fuerte.md 8.3 F4).
 
 ### Murallas, puertas y campamentos
 
@@ -109,7 +112,8 @@ Sobre una colina baja (meseta a 10,2 m, 6 m por encima del valle, laderas de 12�
 - **Guardianes de la Puerta** (`NpcSpawners/GateGuardian<Reino>1..2`): dos generadores `NpcSpawner`
   por campamento (id `gate_guardian`, siempre activos, reaparición de 30 s, grupo de alerta
   `camp_<reino>`) a los lados de la puerta de su muralla (x = ±11, a 9,5 m de la muralla), dentro de
-  su zona segura.
+  su zona segura. Atacan a los enemigos que entran en ella (no a los que están fuera) y matan a un
+  intruso en unos 5 s.
 - **Zona segura** de cada campamento (`SafeAreas/CampamentoVardheim` y `CampamentoSolmarch`, un
   `Marker3D` del grupo `safe_areas` con los metadatos `realm` y `radius = 24`): centrada en el centro
   de los cuatro puntos de aparición de su reino (x = 0, z = ∓138) y con el radio del campamento.

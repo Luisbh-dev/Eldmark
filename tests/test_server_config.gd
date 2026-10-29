@@ -148,14 +148,16 @@ func test_combat_options() -> void:
 	assert_eq(defaults.fake_brain, "", "los falsos pasean")
 	assert_false(defaults.console, "sin consola")
 	assert_false(defaults.no_dummies, "con maniquíes")
+	assert_false(defaults.no_npcs, "con los PNJ de los generadores")
 	var config: ServerConfig = ServerConfig.from_args(PackedStringArray([
 		"--server", "--combat-log=build\\combate.txt", "--fake-brain=COMBAT", "--console",
-		"--no-dummies",
+		"--no-dummies", "--no-npcs",
 	]))
 	assert_eq(config.combat_log_path, "build/combate.txt", "ruta con barras normales")
 	assert_eq(config.fake_brain, ServerConfig.FAKE_BRAIN_COMBAT, "cerebro de combate")
 	assert_true(config.console)
 	assert_true(config.no_dummies)
+	assert_true(config.no_npcs, "--no-npcs apaga los generadores de PNJ")
 	var wrong: ServerConfig = ServerConfig.from_args(PackedStringArray(["--fake-brain=volar"]))
 	assert_eq(wrong.fake_brain, "", "un cerebro desconocido se ignora")
 

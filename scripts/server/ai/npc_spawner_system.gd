@@ -74,6 +74,11 @@ class Slot:
 	var need_fill: bool = false
 	var last_definition: StringName = &""
 	var last_realm: int = -1
+	## El estado vivo de su fortaleza (null si no cuelga de ninguna) y la clave (dueño y fase) con la que se
+	## calculó [member wanted]: solo se vuelve a calcular cuando cambia.
+	var state: FortressState = null
+	var state_key: int = -1
+	var wanted: Dictionary = {}
 	var spawn_count: int = 0
 	var members: Array[Member] = []
 	## Ticks en los que reaparecen los que han muerto (solo con reaparición propia).
@@ -313,6 +318,8 @@ func _add_slot(spawner: NpcSpawner, fortress_id: StringName, mirror: bool) -> vo
 	slot.marker = spawner
 	slot.fortress_id = fortress_id
 	slot.mirror = mirror
+	if _fortresses != null and not fortress_id.is_empty():
+		slot.state = _fortresses.get_fortress_state(fortress_id)
 	_slots.append(slot)
 
 
@@ -360,7 +367,11 @@ func _desired(slot: Slot) -> Dictionary:
 
 
 func _step_slot(slot: Slot, tick: int) -> void:
-	var wanted: Dictionary = _desired(slot)
+	var key: int = slot.state.owner * 8 + slot.state.phase if slot.state != null else 0
+	if key != slot.state_key or slot.wanted.is_empty():
+		slot.state_key = key
+		slot.wanted = _desired(slot)
+	var wanted: Dictionary = slot.wanted
 	var active: bool = wanted["active"]
 	var changed: bool = active and slot.active and (slot.last_definition != wanted["definition"]
 			or slot.last_realm != wanted["realm"])
@@ -398,7 +409,7 @@ func _fill_slot(slot: Slot, tick: int) -> void:
 
 
 func _spawn(slot: Slot, tick: int) -> Member:
-	var wanted: Dictionary = _desired(slot)
+	var wanted: Dictionary = slot.wanted if not slot.wanted.is_empty() else _desired(slot)
 	var definition: NpcDefinition = NpcCatalog.get_definition(wanted["definition"])
 	if definition == null:
 		push_warning("[Eldmark] El generador '%s' pide la definición de PNJ '%s', que no existe"

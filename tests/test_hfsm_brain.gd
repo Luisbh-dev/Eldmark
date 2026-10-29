@@ -471,16 +471,27 @@ func _holding_block_brain() -> BotBrain:
 
 func test_a_bot_that_blocks_a_quarter_second_after_seeing_a_heavy_starts_blocks_every_hollow_heavy() -> void:
 	await _flat_with_no_spawners()
-	# Un Hueco que solo ataca con el golpe fuerte.
-	var definition: NpcDefinition = NpcCatalog.get_definition(&"hollow").duplicate() as NpcDefinition
+	await _check_every_heavy_is_blocked(&"hollow", 0, &"npc_hollow_slam")
+
+
+func test_a_bot_that_blocks_a_quarter_second_after_seeing_a_heavy_starts_blocks_every_guard_heavy() -> void:
+	await _flat_with_no_spawners()
+	await _check_every_heavy_is_blocked(&"realm_guard", SOLMARCH, &"npc_guard_bash")
+
+
+## Un PNJ de [param definition_id] que solo ataca con el golpe fuerte contra un jugador que lo bloquea 550 ms
+## después de verlo empezar: todos los golpes fuertes (de [param attack_name]) tienen que llegar bloqueados.
+func _check_every_heavy_is_blocked(definition_id: StringName, realm: int, attack_name: StringName) -> void:
+	var definition: NpcDefinition = NpcCatalog.get_definition(definition_id).duplicate() as NpcDefinition
 	definition.heavy_chance = 1.0
 	definition.block_chance = 0.0
 	var brain := HfsmBrain.new(5)
-	var hollow: int = _rig.server.add_npc(brain, "Hueco", 0, Vector3.ZERO, 0.0, false, definition)
-	brain.bind(_rig.npcs().get_world(), _rig.entity(hollow), _rig.combatant(hollow), definition, Vector3.ZERO, 0.0)
-	# El jugador ve la preparación con 100 ms de retraso (la mitad de un RTT de 200 ms), reacciona 250 ms después y su
-	# entrada tarda otros 100 ms en llegar: 450 ms, 27 ticks.
-	var delay: int = 27
+	var npc: int = _rig.server.add_npc(brain, "PNJ", realm, Vector3.ZERO, 0.0, false, definition)
+	brain.bind(_rig.npcs().get_world(), _rig.entity(npc), _rig.combatant(npc), definition, Vector3.ZERO, 0.0)
+	# Con un RTT de 200 ms (--net-sim=rtt=200) el jugador ve la preparación 100 ms después (la mitad del RTT) más unos
+	# 100 ms de retardo de interpolación, reacciona 250 ms más tarde y su entrada tarda otros 100 ms en llegar al
+	# servidor: 550 ms, 33 ticks.
+	var delay: int = 33
 	var watcher := {"seen_at": -1, "last_action_tick": -1}
 	var rig: NpcRig = _rig
 	var player_brain := CombatFixture.ScriptBrain.new(1)
@@ -488,7 +499,7 @@ func test_a_bot_that_blocks_a_quarter_second_after_seeing_a_heavy_starts_blocks_
 		var input := PlayerInput.new()
 		input.tick = tick
 		input.look_yaw = yaw
-		var state: CombatState = rig.character(hollow).combat
+		var state: CombatState = rig.character(npc).combat
 		if state.action == CombatState.Action.HEAVY and state.action_tick != watcher["last_action_tick"]:
 			watcher["last_action_tick"] = state.action_tick
 			watcher["seen_at"] = tick
@@ -496,24 +507,25 @@ func test_a_bot_that_blocks_a_quarter_second_after_seeing_a_heavy_starts_blocks_
 		if watcher["seen_at"] >= 0 and since >= delay and since < delay + 60:
 			input.buttons = PlayerInput.BLOCK
 		return input
-	var player: int = _rig.add_player(VARDHEIM, Vector3(0.0, 0.0, -2.0), player_brain, PI)
+	var player_realm: int = VARDHEIM if realm != VARDHEIM else SOLMARCH
+	var player: int = _rig.add_player(player_realm, Vector3(0.0, 0.0, -2.0), player_brain, PI)
 	var combatant: Combatant = _rig.combatant(player)
 	_rig.server.tick_finished.connect(func(_tick: int) -> void:
 		combatant.health = combatant.max_health
 		combatant.protected_until = 0)
 	await _rig.advance(2400)
-	var slam_id: int = CombatCatalog.attack_id(&"npc_hollow_slam")
-	var slams: int = 0
+	var heavy_id: int = CombatCatalog.attack_id(attack_name)
+	var heavies: int = 0
 	var blocked: int = 0
 	for event: NetMessages.EntityEvent in _rig.events_of(NetMessages.EntityEvent.Kind.HIT):
-		if event.attack_id == slam_id and event.net_id == player:
-			slams += 1
-			if event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_BLOCKED) or event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_GUARD_BREAK):
+		if event.attack_id == heavy_id and event.net_id == player:
+			heavies += 1
+			if event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_BLOCKED):
 				blocked += 1
-	assert_true(slams >= 4, "el Hueco lanza varios golpes fuertes (%d)" % slams)
-	assert_eq(blocked, slams, "y el jugador, con 450 ms de retraso, los bloquea todos")
-	assert_true(CombatCatalog.attack(slam_id).windup_ticks > delay + 6, "la anticipación (%d) deja sitio a esa reacción"
-			% CombatCatalog.attack(slam_id).windup_ticks)
+	assert_true(heavies >= 4, "%s lanza varios golpes fuertes (%d)" % [definition_id, heavies])
+	assert_eq(blocked, heavies, "y el jugador, con 550 ms de retraso, los bloquea todos")
+	assert_true(CombatCatalog.attack(heavy_id).windup_ticks > delay + 6, "la anticipación (%d ticks) deja sitio a esa reacción"
+			% CombatCatalog.attack(heavy_id).windup_ticks)
 
 
 # --- Depuración -------------------------------------------------------------------------------

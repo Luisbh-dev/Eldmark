@@ -10,13 +10,14 @@ extends RefCounted
 ## --fake-center=<x>,<z>
 ## --debug-commands --dev-lock --dev-lock-path=<ruta>
 ## --quit-after-ticks=N --report=<ruta.json> --state-log=<ruta.csv> --net-sim=rtt=120,jitter=20
-## --stop-file=<ruta> --combat-log=<ruta.csv> --console --no-dummies --battle-log=<ruta.jsonl>
+## --stop-file=<ruta> --combat-log=<ruta.csv> --console --no-dummies --no-npcs --battle-log=<ruta.jsonl>
 ## [/codeblock]
 ## [code]--combat-log=<ruta>[/code] escribe un CSV con una línea por golpe resuelto
 ## ([code]tick,atacante,objetivo,ataque,view_tick,rebobinado,resultado,daño[/code]; en el proyecto
 ## usa otra extensión, p. ej. [code].txt[/code], porque el importador convierte los [code].csv[/code]
 ## en traducciones). [code]--console[/code] lee comandos de la entrada estándar (anunciar, expulsar,
-## cerrar...; ver [CommandRegistry]) y [code]--no-dummies[/code] no coloca los maniquíes de la zona.
+## cerrar...; ver [CommandRegistry]), [code]--no-dummies[/code] no coloca los maniquíes de la zona y
+## [code]--no-npcs[/code] no crea los PNJ de sus generadores (Huecos, Capitán, guarnición y Guardianes; [NpcSpawnerSystem]).
 ## [code]--battle-log=<ruta>[/code] escribe los eventos de guerra y las muertes en JSON Lines
 ## ([BattleLog]; lo resume [code]tools/war/summarize_battle.gd[/code], GUE-17).
 ## SIGTERM y SIGINT (Ctrl+C, [code]docker stop[/code], systemd) matan el proceso de Godot sin pasar

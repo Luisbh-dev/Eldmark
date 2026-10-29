@@ -171,6 +171,55 @@ func test_the_hollows_that_patrol_walk_the_walkway_and_come_back() -> void:
 	assert_eq(_rig.alive_of(&"hollow").size(), 4, "sin pelear no muere nadie")
 
 
+func test_the_leash_keeps_the_hollows_on_the_hill_when_a_runner_drags_them_toward_the_ford() -> void:
+	await _rig.start(tree)
+	assert_true(await _rig.advance_until_populated())
+	var fort: Node3D = _rig.fort_node()
+	# Un corredor sale por delante de la puerta hacia el vado (al oeste) y los PNJ del fuerte, avisados de él, lo
+	# persiguen por el enlace de la puerta; la correa los vuelve a su puesto antes de bajar de la colina.
+	var runner_brain := CombatFixture.ScriptBrain.new(1)
+	runner_brain.script_fn = func(tick: int, _position: Vector3, _yaw: float) -> PlayerInput:
+		var input := PlayerInput.new()
+		input.tick = tick
+		input.look_yaw = PI * 0.5
+		input.move = Vector2(0.0, 1.0)
+		return input
+	var start: Vector3 = _surface_at(Vector2(fort.global_position.x - 30.0, 0.0))
+	var runner: int = _rig.add_player(VARDHEIM, start + Vector3(0.0, 0.1, 0.0), runner_brain, PI * 0.5)
+	_rig.combatant(runner).protected_until = 0
+	var chasers: Array[int] = _rig.alive_of(&"hollow") + _rig.alive_of(&"ford_captain")
+	for net_id: int in chasers:
+		assert_true(_rig.npcs().get_brain(net_id).receive_alert(runner, _rig.server.get_tick()), "alertado")
+	var farthest: Dictionary = {"from_post": 0.0, "west": INF, "returning": false}
+	_rig.server.tick_finished.connect(func(_tick: int) -> void:
+		for net_id: int in chasers:
+			var brain: HfsmBrain = _rig.npcs().get_brain(net_id)
+			var position: Vector3 = _rig.entity(net_id).get_position()
+			farthest["from_post"] = maxf(farthest["from_post"], position.distance_to(brain.get_home()))
+			farthest["west"] = minf(farthest["west"], position.x)
+			if brain.state == HfsmBrain.State.RETURN:
+				farthest["returning"] = true)
+	await _rig.advance(60 * 40)
+	var leash: float = NpcCatalog.get_definition(&"ford_captain").leash_radius
+	assert_true(farthest["from_post"] > 18.0, "salieron del fuerte tras él (hasta %.1f m de su puesto)" % farthest["from_post"])
+	assert_true(farthest["from_post"] <= leash + 5.0, "pero no más que su correa (%.1f m de %.1f)" % [farthest["from_post"], leash])
+	assert_true(farthest["west"] > fort.global_position.x - 56.0, "y ninguno llegó al vado (x = %.1f)" % farthest["west"])
+	assert_true(farthest["returning"], "volvieron, regenerados e inmunes")
+	for net_id: int in chasers:
+		assert_true(_rig.npcs().get_brain(net_id).state != HfsmBrain.State.COMBAT or _rig.entity(net_id).get_position().distance_to(
+				_rig.npcs().get_brain(net_id).get_home()) <= leash, "ninguno sigue peleando fuera de su correa")
+
+
+## Primer suelo (capa del mundo) que se toca bajando desde arriba en ([param point].x, .y).
+func _surface_at(point: Vector2) -> Vector3:
+	var space: PhysicsDirectSpaceState3D = _rig.world.get_world_3d().direct_space_state
+	var from: Vector3 = Vector3(point.x, 60.0, point.y)
+	var query := PhysicsRayQueryParameters3D.create(from, from + Vector3(0.001, -120.0, 0.0),
+			PlayerCharacter.WORLD_COLLISION_LAYER)
+	var hit: Dictionary = space.intersect_ray(query)
+	return hit["position"] if not hit.is_empty() else Vector3(point.x, 0.0, point.y)
+
+
 func test_two_or_three_bots_clear_the_hollows_in_a_reasonable_time() -> void:
 	# El Capitán, que se une a la pelea por el grito, se mide aparte: aquí caído, como si ya lo hubieran derrotado.
 	await _rig.start(tree)

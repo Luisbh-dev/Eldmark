@@ -130,8 +130,9 @@ dueño (con un fuerte neutral, `D` es falso).
 
 ### 1.7 Orden del tick (completa combate.md §4.2)
 
-0. **Cerebros de PNJ**: con el estado tras `s − 1`, cada `NpcBrain` empuja su entrada de `s` a su
-   `InputQueue` (piensan cada 6 ticks; entre medias repiten su plan).
+0. **Cerebros de PNJ**: con el estado tras `s − 1`, cada cerebro de PNJ (`HfsmBrain`, y el `NpcBrain`
+   del maniquí) empuja su entrada de `s` a su `InputQueue` (el `HfsmBrain` piensa cada 6 ticks; entre
+   medias repite su plan).
 1. Simular a todos por `net_id` (jugadores, falsos y PNJ).
 2. Congelar. 3. Resolver golpes (también contra las puertas, §3). 4. Aplicar resultados.
 4b. `FortressController.step(s)`: presencia, `advance`, efectos. Los cambios de colisión de la
@@ -230,7 +231,7 @@ dos puentes; que **sin el enlace no hay salida del fuerte**; que desde los campa
 vado, a los puentes y a la explanada; y que el lecho profundo no se alcanza andando (hornear sin la
 capa 3 lo rompe).
 
-`NpcNavigation` (servidor) crea un mapa propio de `NavigationServer3D` con **iteraciones
+`NpcNavigation` (servidor, hecho en F4) crea un mapa propio de `NavigationServer3D` con **iteraciones
 síncronas**, registra la región y un enlace por la puerta por RID (no desde la escena), y no da
 rutas hasta que el mapa esté construido. **Comprobado en F0 (corrige lo anterior):** con
 `map_set_use_async_iterations(false)` o sin ello, y con o sin `map_force_update`, la primera
@@ -251,9 +252,9 @@ de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D
   `data/combat/npc_*.tres`, en el catálogo de combate: cambian los ids y el `sim_hash`, lo que va
   con la versión 3), velocidades, percepción (radio, cono), radio de alerta de grupo, correa,
   inmortal, `ignores_safe_area`, `is_boss`.
-- `NpcBrain` (`scripts/server/ai/npc_brain.gd`): **REPOSO → PATRULLA → ALERTA → COMBATE →
-  REGRESO**; RNG con semilla por PNJ; produce `PlayerInput` sintéticas (§1.7 paso 0). Dos
-  ejecuciones con las mismas entradas dan la misma secuencia de estados.
+- `HfsmBrain` (`scripts/server/ai/hfsm_brain.gd`; `NpcBrain` sigue siendo el maniquí): **REPOSO →
+  PATRULLA → ALERTA → COMBATE → REGRESO**; RNG con semilla por PNJ; produce `PlayerInput` sintéticas
+  (§1.7 paso 0). Dos ejecuciones con las mismas entradas dan la misma secuencia de estados.
 - Percepción por radio, cono y `HitShapes.has_line_of_sight`; amenaza por daño y proximidad;
   correa con regreso regenerado e inmune.
 - Ataques legibles: armas de PNJ con anticipación ≥ 0,45 s (ligeros) y ≥ 0,70 s (fuertes).
@@ -367,7 +368,7 @@ de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D
 | **F1 · fortaleza pura** | `FortressDefinition`, `FortressState`, `FortressFields`, `WarEvents`, `RespawnRules`, `SiegeView`, `FortGate.layers_for`, `PlayerCharacter.set_realm_collision`; pruebas de toda la tabla de §1.5 y de la fórmula | fase 3 |
 | **F2 · protocolo v3** | OBJECT_STATE, SPAWN de STRUCTURE y de NPC, WAR, TELEGRAPH, UNSTUCK_REQUEST, SCOREBOARD, REJECT 9, recuento en el WELCOME, ids de comandos 7–12 | F1 |
 | **F3 · servidor del fuerte** | `FortressController`, presencia, puerta (blanco, multiplicadores, capas, reparación), orden del tick, comandos, reaparición en el fuerte, GUE-41, /atascado, SCOREBOARD, `--battle-log` | F0, F1, F2, K3 |
-| **F4 · PNJ** | `NpcNavigation`, `NpcDefinition`, `NpcCatalog`, `NpcBrain`, fichas, `NpcSpawnerSystem`, armas de PNJ, Huecos, Capitán, guarnición, Guardianes | F0, F1 (`FortressState`, señales), K3 |
+| **F4 · PNJ** | `NpcNavigation`, `NpcDefinition`, `NpcCatalog`, `HfsmBrain`, fichas, `NpcSpawnerSystem`, armas de PNJ, Huecos, Capitán, guarnición, Guardianes | F0, F1 (`FortressState`, señales), K3 |
 | **F5 · cliente** | `FortressView` y su gancho en `ClientPrediction`, HUD de captura, banners, barra de jefe, brújula, mapa horneado y minimapa, mapa con reaparición, marcador, pistas | F1, F2 |
 | **F6 · bots, carga y extremo a extremo** | `SIEGE`, `SwarmBot` con rutas, `--max-realm-diff`, carga, prueba neutral → Vardheim → Solmarch con jugadores falsos | F3, F4, F5 |
 
@@ -410,8 +411,8 @@ var before_simulate: Callable                                  # (tick: int) -> 
 
 ### 8.3 Lo que han dejado F0, F1 y F2 (añadidos al contrato y decisiones)
 
-F0 (escena, capas, malla y rutas), F1 (fortaleza pura) y F2 (protocolo 3) están hechos, y F5 (cliente) también. Además de lo de
-8.2, quien siga con F3 a F6 encontrará esto:
+F0 (escena, capas, malla y rutas), F1 (fortaleza pura), F2 (protocolo 3), F3 (servidor del fuerte), F4 (PNJ) y F5 (cliente)
+están hechos. Además de lo de 8.2, quien siga con F6 (y con lo que toque a los PNJ) encontrará esto:
 
 **F0**
 
@@ -427,8 +428,8 @@ F0 (escena, capas, malla y rutas), F1 (fortaleza pura) y F2 (protocolo 3) están
   `NPC_SPAWNER_GROUP`, `PATROL_GROUP`, `PATROL_ROUTE_META`).
 - `NpcSpawner` (`scripts/world/npc_spawner.gd`) guarda el **id** de la definición de PNJ (`npc_id`,
   el archivo de `data/npcs/` sin extensión) en lugar de una referencia a `NpcDefinition`, porque esa
-  clase llega con el paquete F4. Ids en uso: `hollow`, `ford_captain` y `gate_guardian`; F4 tiene que
-  crear `data/npcs/hollow.tres`, `ford_captain.tres` y `gate_guardian.tres`. Los Huecos y el Capitán
+  clase llegó con el paquete F4. Ids en uso: `hollow`, `ford_captain` y `gate_guardian` (más
+  `realm_guard` y `realm_captain`, de la guarnición; los cinco están en `data/npcs/`). Los Huecos y el Capitán
   llevan `respawn_s = 0` (los repone la fortaleza); los Guardianes, 30 s. La guarnición del dueño
   (`FORT_OWNER`) no tiene generadores todavía.
 - Los `respawn_points` del Vado Gris son 12: los 8 de los campamentos (con `realm`) y después los 4
@@ -504,7 +505,7 @@ F0 (escena, capas, malla y rutas), F1 (fortaleza pura) y F2 (protocolo 3) están
   total de páginas para poder exigir el tamaño exacto, con 66 filas como máximo.
 - `ZoneServer` acepta `UNSTUCK_REQUEST` (un aviso si llega antes de entrar en el mundo o mal formado)
   y no suma avisos por un comando de depuración con id fijo (7 a 12) y datos válidos aunque aún no
-  tenga manejador (F3 registró del 7 al 11 y F4 registrará `npc_debug`; `test_combat_server` lista los pendientes). `NetClient`
+  tenga manejador (F3 registró del 7 al 11 y F4 registró `npc_debug`). `NetClient`
   acepta `OBJECT_STATE`, `SCOREBOARD`, el SPAWN de estructuras y los eventos `WAR` y `TELEGRAPH` sin
   contarlos como malformados ni como eventos de combate, y los cuenta en `get_stats()`
   (`object_states`, `scoreboards`, `structure_spawns`, `war_events`, `telegraphs`); `SwarmBot`
@@ -567,7 +568,7 @@ F0 (escena, capas, malla y rutas), F1 (fortaleza pura) y F2 (protocolo 3) están
   GARRISONED con ese dueño (guarnición y capitán, puerta llena, captura a cero) y manda `FORT_CAPTURED` (o
   `FORT_RESET` con 0). `fort_capture_speed` multiplica solo la velocidad positiva (`FortressState`
   `capture_rate_multiplier`, que no viaja: el cliente ve la velocidad ya multiplicada). `unstuck` (id 7) también
-  está registrado y pasa por la misma canalización que el mensaje propio; `npc_debug` (12) es de F4.
+  está registrado y pasa por la misma canalización que el mensaje propio; `npc_debug` (12) lo registra F4 (`NpcSpawnerSystem`).
 - **Reaparición**: `RESPAWN_REQUEST.point_index` y el `point` del evento RESPAWN son el índice de la lista
   **estática** (`NetZones.get_all_respawn_points`: todos los marcadores `respawn_points` en el orden de la
   escena, 12 en el Vado Gris; sin ninguno, los puntos de aparición). Vale lo que dice
@@ -628,6 +629,77 @@ F0 (escena, capas, malla y rutas), F1 (fortaleza pura) y F2 (protocolo 3) están
 - Lo que **no** hace F3: nada del cliente (`FortressView`, HUD, mapa, `RespawnPointList`), ni PNJ reales (F4),
   ni bots que asedian ni `--max-realm-diff` (F6).
 
+**F4** (los PNJ; pruebas en `test_npc_navigation`, `test_npc_catalog`, `test_hfsm_brain` y `test_npc_system`, y ampliaciones de
+`test_combat_catalog`, `test_combat_resolver`, `test_combat_server`, `test_server_config` y `test_fortress_zone`)
+
+- **Archivos**: `scripts/server/ai/` (`NpcNavigation`, `HfsmBrain`, `NpcWorld`, `AttackTokens`, `NpcSpawnerSystem`),
+  `scripts/shared/ai/` (`NpcDefinition`, `NpcCatalog`), `data/npcs/` (`hollow`, `ford_captain`, `gate_guardian`, `realm_guard` y
+  `realm_captain`) y `data/combat/npc_*.tres` (4 armas, 8 ataques y 5 formas). Cambios en lo ya hecho: `AttackDefinition.unblockable`
+  (y `AttackTicks.unblockable`, solo servidor, fuera de la huella), `Combatant.ignores_safe_area`, `ServerConfig.no_npcs`
+  (`--no-npcs`), `NetZones.navmesh_path` / `get_npc_spawners` / `get_patrol_route`, `CombatDirector.emit_event` y, en `ZoneServer`,
+  `add_npc(..., definition)`, `get_npc_system`, `get_npc_ids`, `get_npc_brain`, `get_physics_space`, el paso 0 del tick
+  (`_run_npc_brains`) y el aviso TELEGRAPH.
+- **Navegación**: `NpcNavigation` monta un mapa propio (iteraciones síncronas), la región de `<escena>_navmesh.tres` (junto a la
+  escena de la zona) y un enlace por el vano de cada puerta (2,5 m dentro y 3 m fuera del origen de `FortGate`). La región está en la
+  capa de navegación 1; el enlace, en la del reino dueño (bit 1 el bando neutral de los Huecos, bits 2 a 4 los reinos 1 a 3) y en las de
+  todos con la puerta rota; cada consulta pide la capa de la región más la de su reino, así que cruza por el enlace quien también
+  cruza la puerta de verdad. `poll()` da el mapa por listo cuando una consulta de prueba (un vértice de la malla) devuelve un punto de
+  ella, y hasta entonces `get_path` devuelve una ruta vacía sin tocar el servidor de navegación. `NpcSpawnerSystem` no genera PNJ hasta
+  que está lista (como mucho 600 ticks; luego van en línea recta).
+- **Números del catálogo** (`npc_def_id`, por orden alfabético): `ford_captain` 1, `gate_guardian` 2, `hollow` 3, `realm_captain` 4 y
+  `realm_guard` 5. `BossInfo` (cliente) da los mismos nombres y `is_boss` (lo comprueba `test_npc_catalog`). Las armas de PNJ cambian
+  los ids del catálogo de combate (los `npc_*` van antes que los `sword_*`: `sword_shield` pasa de 1 a 5, `sword_heavy` de 1 a 9...)
+  y el `sim_hash`; nada dependía de un número fijo salvo `test_combat_catalog` y `test_action_machine`, que ahora buscan por nombre.
+- **Armas** (anticipación → daño): Hueco `npc_hollow_swipe` (0,50 s → 70, alcance 2,4 m) y `npc_hollow_slam` (fuerte, 0,75 s → 160,
+  tambaleo y empuje); guardia del reino `npc_guard_slash` (0,45 s → 85) y `npc_guard_bash` (0,70 s → 150); Capitán `npc_captain_sweep`
+  (barrido de 170°, 0,60 s → 110, bloqueable) y `npc_captain_crush` (fuerte **imbloqueable**, 1,00 s → 300, alcance 3,5 m);
+  Guardián `npc_guardian_halberd` (0,50 s → 260, alcance 3,6 m) y `npc_guardian_thrust` (no se usa). El combo de tres ligeros repite el
+  mismo ataque (sin ventana de enlace: cada ataque es una decisión del cerebro). Vida: Hueco, guardia del reino y Guardián 2500,
+  Capitán del Vado 30 000 y capitán del reino 15 000. El `CombatResolver` salta la parada y el bloqueo con `unblockable` (la esquiva
+  invulnerable sigue valiendo) y no frena a un atacante con `ignores_safe_area` en la zona segura de su propio reino.
+- **Cerebro** (`HfsmBrain`): piensa cada 6 ticks, escalonado por `net_id` (`THINK_INTERVAL_TICKS`), y en el paso 0 del tick (antes de
+  simular a nadie). Percepción: radio, cono y rayo de línea de visión (más el «oído» de `awareness_radius`, que también necesita
+  línea de visión); quien está a salvo en la zona segura de su reino no cuenta, y los Guardianes (`ignores_safe_area`) solo ven a los
+  enemigos que están dentro de la del suyo. Amenaza: daño recibido de cada enemigo (el `DamageLedger`) más cercanía, con 60 puntos de
+  ventaja al objetivo actual. Un golpe recibido sin ver a nadie lleva derecho al combate. Ataca solo con una ficha
+  (`AttackTokens`, 2 por objetivo, caducan a 1 s sin renovar); sin ella rodea a 3,5 m (retrocede por debajo de 3,1 y se acerca por
+  encima de 4,0). Antes de atacar decide el siguiente ataque (el especial cada `special_every`, si no bloqueo, fuerte o ligero según sus
+  probabilidades) y lo recuerda hasta hacerlo; el fuerte se pide manteniendo PRIMARY durante la carga mínima. La correa es el radio
+  desde su puesto: al pasarla (o al perder al objetivo, a los 3 s) pasa a REGRESO, **inmune** (`protected_until`) hasta llegar, y al
+  llegar o al perder el combate junto a su puesto queda **regenerado**; si no llega en 60 s o se atasca tres veces, se teletransporta.
+  Alertado desde lejos (grito) no pierde al objetivo hasta los 60 m.
+- **Generadores** (`NpcSpawnerSystem`): un puesto por `NpcSpawner`; ALWAYS siempre, FORT_NEUTRAL con el fuerte neutral y FORT_OWNER con
+  dueño (y fuera de CONSOLIDATING). Si el fuerte no tiene generadores FORT_OWNER, la guarnición sale de **los puestos de los Huecos**
+  con la definición que cada una nombra en `garrison_id` (`hollow` → `realm_guard`, `ford_captain` → `realm_captain`), con su misma
+  ruta de patrulla y su grupo de alerta: no hizo falta tocar la escena. Con `respawn_s > 0` reaparecen en el tick exacto (muerte +
+  `respawn_s`); sin él los repone la fortaleza: `garrison_due` (completa o solo el capitán), `guards_respawn_due` (los guardias que
+  faltan) y la reaparición completa de los Huecos. `defenders_retired` o pasar a inactivo retiran a los vivos y a los cadáveres.
+  Los cadáveres se quedan 300 ticks (5 s) y el `CombatDirector` ya no reaparece solo a los PNJ. Registra al capitán
+  (`register_captain`) y a los demás (`register_defender`) y cuenta los guardias vivos con `set_guards_alive`. La señal
+  `npc_died(net_id, spawner, killer)` avisa de cada muerte (la fortaleza ya se entera sola por los DEATH).
+- **Capitán**: el especial (`special_every = 3`) es el fuerte imbloqueable, que el `ZoneServer` avisa con un TELEGRAPH (sector, alcance
+  3,5 m, `impact_in_ticks` = 60) en el tick en que lo lanza; grita al entrar en combate (alerta a todo su grupo a 60 m, solo si hay
+  compañeros vivos) y al bajar al 50 % de vida llama a dos Huecos junto a él, una vez y también solo si queda alguno. El TELEGRAPH se
+  manda para **todo** fuerte de un PNJ (no solo el imbloqueable): los ligeros no se avisan.
+- **Decisiones donde el documento callaba**: la reaparición completa mide la distancia desde el centro del círculo y solo cuenta con el
+  fuerte neutral y faltando algo; los Guardianes ven 38 m (toda su zona segura desde su puesto) y su correa es de 40 m; `--no-npcs` apaga
+  el sistema (`test_fortress_zone`, que usa el doble del capitán, lo pone) y, sin él, `spawn_captain_double` sigue funcionando y
+  sustituye al capitán registrado. `npc_debug` escribe una línea por PNJ de combate a menos de 60 m de quien lo pide (todos desde la
+  consola) cada segundo: estado, objetivo, distancia, punto de la ruta, vida y si tiene ficha.
+- **Medido** (en una máquina compartida con otra suite, así que son cotas altas): 3 bots de combate (que no esquivan ni bloquean con
+  criterio) limpian los 4 Huecos del Vado Gris en unos **46 s** de juego (con el Capitán ya caído); 4 bots a los que se cura en cada
+  tick derrotan al Capitán del Vado en unos **78 s** (sin curarlos, cuatro bots mueren antes de bajarle a la mitad y el Capitán regresa
+  regenerado); un intruso en la zona segura muere en **4 a 5 s** con los dos Guardianes; con cuatro guardias contra uno nunca atacan más de
+  dos a la vez (casi la mitad del tiempo atacan dos). Un bot que bloquea 550 ms después de ver empezar un fuerte (RTT 200 ms, 250 ms de
+  reacción) bloquea todos los de un Hueco y de un guardia. Coste: el cerebro cuesta de **15 a 30 µs por PNJ y tick** (p50) y su
+  `simulate()` de **32 a 55 µs**, es decir, unos **50 a 85 µs por PNJ y tick** (hasta ~100 µs en pleno combate); el sistema de
+  generadores, unos 60 µs por tick con los 14 puestos del Vado Gris. Con los 9 PNJ del Vado Gris, 3 bots peleando y el resto de la
+  zona, el tick tarda de media 1,3 ms.
+- **Pendiente / fuera de F4**: el modelo, el tabardo y las animaciones propias de los Huecos y del Capitán (ART-15, ART-16: hoy
+  se ven con el humanoide y el barrido de espada); jugarlo con personas para fijar los 60-90 s de los Huecos y los 60-120 s del
+  Capitán (los bots no sirven de medida fina); el criterio de MUN-08 con `--net-sim=rtt=200` real por la red (aquí se emula el
+  retardo en el bot); el LOD de IA y el sueño sin jugadores (MUN-29); `SwarmBot` y los bots que asedian lo harán en F6.
+
 **F5** (cliente: todo en `scripts/client/`, `tools/` y `assets/maps/`; no toca `scripts/server` ni `scripts/shared`)
 
 - **`FortressView`** (`scripts/client/war/fortress_view.gd`, nodo hijo de `NetClient`) y **`FortressTimeline`** (la historia
@@ -672,7 +744,8 @@ F0 (escena, capas, malla y rutas), F1 (fortaleza pura) y F2 (protocolo 3) están
 
 ## 9. Riesgos
 
-- **Coste de los PNJ**: 5–10 PNJ más con `simulate()` y su cerebro; se mide en F6.
+- **Coste de los PNJ**: 5–10 PNJ más con `simulate()` y su cerebro. Medido en F4: unos 50 a 85 µs por PNJ y tick (8.3); con 10 a 20
+  PNJ son de 0,5 a 1,7 ms del tick de 16,7 ms. La carga con 64 + 64 y los PNJ se mide en F6.
 - **Generador de la zona** (resuelto en F0): `vado_gris.tscn` sale de un script y los assets que
   necesita sí están en el repo, así que se regenera (no se edita a mano); ver 8.3.
 - **Arte**: Huecos, Capitán, tabardos, estandartes y efectos de la puerta definitivos son del

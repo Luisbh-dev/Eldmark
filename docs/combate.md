@@ -530,6 +530,13 @@ ninguno debe hacer daño de más.
   KILL) que se cura del todo a los 5 s sin daño, con modos quieto, bloqueando y girando (comando
   `spawn_dummy`). Uno en `test_world` y uno junto a cada campamento del Vado Gris (marcadores del
   grupo `dummy_points`).
+- **PNJ de guerra (F4, MUN-07, MUN-08)**: las armas de los PNJ son `data/combat/npc_*.tres` (Hueco, guardia del reino,
+  Capitán, Guardián) y se piden por nombre. Entran en el catálogo, así que, por el orden alfabético, los `npc_*` van antes que
+  los `sword_*` y los números cambian (`sword_shield` 1 a 5, `sword_heavy` 1 a 9...) y también el `sim_hash`; las pruebas buscan
+  por `id`. `AttackDefinition.unblockable` (solo servidor, no entra en el hash de predicción, `AttackTicks.unblockable`) hace que
+  el `CombatResolver` dé IMPACT aunque el defensor pare o bloquee; la esquiva invulnerable sigue valiendo. `Combatant.ignores_safe_area`
+  deja atacar en la zona segura de su propio reino al Guardián de la Puerta. El cerebro (`HfsmBrain`) y el aviso TELEGRAPH están
+  en `docs/fuerte.md` 8.3.
 - **Registro de combate** (`--combat-log=<csv>`): `tick, atacante, objetivo, ataque, view_tick,
   rebobinado, resultado, daño`.
 - **Medidor de DPS** en el panel F3: suma los `amount` de los HIT propios en una ventana de 30 s.
