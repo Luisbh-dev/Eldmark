@@ -102,6 +102,7 @@ func test_server_process_with_fake_players_writes_report_and_states() -> void:
 	var pid: int = _launch(PackedStringArray([
 		"--port=%d" % port, "--zone=test_world", "--quit-after-ticks=300", "--fake-players=4",
 		"--report=%s" % report_path, "--state-log=%s" % states_path,
+		"--net-sim=rtt=80,jitter=10,loss=0,dup=0,seed=3",
 	]), log_path)
 	if not assert_true(pid > 0, "el proceso del servidor se lanza"):
 		return
@@ -135,6 +136,7 @@ func test_server_process_with_fake_players_writes_report_and_states() -> void:
 	var log_text: String = FileAccess.get_file_as_string(log_path)
 	assert_true(log_text.contains("escuchando en el puerto UDP %d" % port), "el registro dice el puerto")
 	assert_true(log_text.contains("Alta de Bot-01"), "y las altas")
+	assert_true(log_text.contains("Simulador de red: rtt=80"), "y el simulador de red")
 	assert_true(log_text.contains("Servidor cerrado"), "y el cierre")
 	assert_eq(_error_lines(log_path), PackedStringArray(), "sin errores en el registro")
 

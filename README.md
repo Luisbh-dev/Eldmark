@@ -97,9 +97,30 @@ Opciones de arranque (van después de `--`):
   (`zona_<nombre>.png`, marcadores del grupo `screenshot_points`). Necesita ventana; en modo
   headless se omiten.
 - `--quit-after-demo`: cierra el juego al terminar la demo.
-- `--server`: servidor dedicado (pendiente, fase 2).
+- `--server`: servidor dedicado de una zona (ver «Servidor dedicado» más abajo).
 
 Las capturas y otros ficheros temporales pueden ir en `build/`, que Godot ignora.
+
+## Servidor dedicado
+
+Un proceso del mismo proyecto, siempre con `--headless`, sirve una zona en un puerto UDP (diseño
+en `docs/red.md`). Por ejemplo, el Vado Gris con 8 jugadores falsos durante 30 s y un informe
+JSON al cerrar:
+
+```bash
+godot --headless --path . --log-file build/servidor.log -- --server --zone=vado_gris \
+    --port=24600 --fake-players=8 --quit-after-ticks=1800 --report=build/informe.json
+```
+
+Opciones (después de `--`): `--server`, `--zone=<id>`, `--port=24600`, `--max-players=64`,
+`--max-per-ip=4`, `--idle-quit=<s>` (se cierra tras esos segundos sin jugadores),
+`--fake-players=N` (jugadores sin red, para pruebas y carga), `--debug-commands` (admite el
+teletransporte de depuración de los clientes), `--dev-lock` (escribe `user://dev_server.json`
+para que `--local` reutilice el servidor), `--quit-after-ticks=N`, `--report=<ruta.json>`,
+`--state-log=<ruta.csv>` (`tick,net_id,sustituida,estado` por tick y jugador) y
+`--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1`. El registro escribe las altas, las bajas, las
+expulsiones y, cada 10 s, la duración del tick y el ancho de banda. El código de salida es 0 en un
+cierre normal y 1 si no puede arrancar (zona desconocida, puerto ocupado).
 
 ## Estructura
 

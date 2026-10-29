@@ -354,6 +354,11 @@ func test_handshake_spawns_the_player_and_streams_snapshots() -> void:
 	assert_vec_near(own.state.velocity, Vector3.ZERO, 1e-6, "velocidad 0")
 	assert_true(own.state.equals_exact(PlayerState.decode(own.state.encode())),
 			"el estado impuesto pasa por encode/decode")
+	var history: StateHistory = _server.get_history()
+	assert_true(history.has_tick(own.net_id, own.spawn_tick), "el historial graba el tick del alta")
+	var at_spawn: StateHistory.Sample = history.sample(own.net_id, float(own.spawn_tick))
+	if assert_not_null(at_spawn, "y se puede muestrear"):
+		assert_vec_near(at_spawn.position, own.state.position, 1e-4, "con la posición del alta")
 
 	# Snapshots: sin entradas reales, el servidor sustituye por la entrada neutra del alta.
 	await _run_frames(40)
@@ -369,6 +374,9 @@ func test_handshake_spawns_the_player_and_streams_snapshots() -> void:
 					"sigue quieto en el punto de aparición")
 		assert_eq(snapshot.input_ack_tick, snapshot.server_tick, "ack = último tick consumido")
 		assert_true(snapshot.records.is_empty(), "solo está él")
+		assert_eq(snapshot.server_tick % NetProtocol.SNAPSHOT_INTERVAL_TICKS,
+				own.net_id % NetProtocol.SNAPSHOT_INTERVAL_TICKS,
+				"los snapshots van en los ticks de la paridad de su net_id")
 	var last: NetMessages.Snapshot = client.last_snapshot()
 	assert_true(last.substitutions > 0, "las entradas sustituidas se cuentan")
 	assert_eq(last.input_margin, NetProtocol.NO_MARGIN, "sin entradas no hay margen")
@@ -497,6 +505,8 @@ func test_players_see_each_other_and_leave_cleanly() -> void:
 			"despawn_tick es el tick de la baja (%d)" % despawn.despawn_tick)
 	await _run_frames(30)
 	assert_null(_server.get_registry().get_entity(b_id), "Bruno ya no está en el registro")
+	assert_false(_server.get_history().has_tick(b_id, _server.get_tick()),
+			"ni su pista del historial")
 	assert_true(_server.get_registry().is_quarantined(b_id, _server.get_tick()),
 			"su id queda en cuarentena")
 	assert_eq(_server.get_peer_ids().size(), 1, "solo queda Ana")
@@ -677,6 +687,38 @@ func test_handshake_and_snapshots_with_a_network_simulator() -> void:
 			% peer.rtt_ticks)
 	assert_true(client.last_snapshot().own_state.position.z < client.own_spawn.state.position.z - 2.0,
 			"y las entradas surten efecto")
+
+
+func test_client_that_never_sends_ready_is_kicked_after_the_loading_timeout() -> void:
+	await _start_server()
+	_server.loading_timeout_ticks = 90
+	var client: RawClient = _connect_client(_hello(VARDHEIM, "Ana"), false)
+	var connected: bool = await _run_until(func() -> bool: return client.connected)
+	if not assert_true(connected, "el cliente se conecta y empieza a cargar"):
+		return
+	assert_eq(_server.get_player_count(), 1, "cargando la zona ya ocupa un sitio")
+	var kicked: bool = await _run_until(func() -> bool:
+		return client.notice_with_code(NetProtocol.NoticeCode.KICK) != null, 400)
+	if assert_true(kicked, "pasado el límite de carga recibe un NOTICE de expulsión"):
+		assert_true(client.notice_with_code(NetProtocol.NoticeCode.KICK).text.contains("carga"),
+				"que explica el motivo")
+	await _run_frames(10)
+	assert_eq(_server.get_peer_ids().size(), 0, "y se le da de baja")
+	assert_eq(_server.get_player_count(), 0)
+
+
+func test_client_that_never_sends_hello_is_dropped_by_the_auth_timeout() -> void:
+	await _start_server()
+	# Sin HELLO: el cliente conecta pero no envía nada en la autenticación.
+	var client: RawClient = _connect_client(PackedByteArray())
+	var seen: bool = await _run_until(func() -> bool: return _server.get_peer_ids().size() == 1, 120)
+	if not assert_true(seen, "el servidor ve al peer que se autentica"):
+		return
+	assert_eq(_server.get_player_count(), 0, "un peer que se autentica no ocupa sitio")
+	var dropped: bool = await _run_until(func() -> bool: return _server.get_peer_ids().is_empty(),
+			int(NetTransport.AUTH_TIMEOUT_SECONDS * 60.0) + 240)
+	assert_true(dropped, "pasado el tiempo de autenticación (5 s) el peer se da de baja")
+	assert_true(client.failed or client.disconnected, "y el cliente ve que se corta")
 
 
 func test_stop_notifies_the_clients_and_closes_the_transport() -> void:

@@ -23,6 +23,19 @@ var _server: ZoneServer
 var _world: Node3D
 
 
+## Cerebro que solo salta, una vez, en el tick 5.
+class JumpOnceBrain:
+	extends BotBrain
+
+	func next_input(tick: int, _position: Vector3, yaw: float) -> PlayerInput:
+		var input := PlayerInput.new()
+		input.tick = tick
+		input.look_yaw = yaw
+		if tick == 5:
+			input.buttons = PlayerInput.JUMP
+		return input
+
+
 func after_each() -> void:
 	if is_instance_valid(_server):
 		_server.free()
@@ -236,6 +249,20 @@ func test_falling_out_of_the_world_respawns_at_the_spawn_point() -> void:
 	var report: Dictionary = _read_json(_report_path())
 	assert_eq(int(report.get("respawns", -1)), 1, "el informe cuenta la reaparición")
 	assert_eq(int(report.get("teleports", -1)), 1, "y el teletransporte")
+
+
+func test_large_step_is_counted_as_a_physics_error() -> void:
+	await _start_server()
+	var id: int = _server.add_fake_player(JumpOnceBrain.new(1), VARDHEIM)
+	var character: PlayerCharacter = _character_of(id)
+	# El salto emite jumped dentro de simulate(): ahí se mueve al personaje 3 m en un solo tick.
+	character.jumped.connect(func() -> void:
+		character.global_position += Vector3(0.0, 3.0, 0.0))
+	await wait_physics_frames(12)
+	assert_eq(_server.write_report(_report_path()), OK)
+	var report: Dictionary = _read_json(_report_path())
+	assert_eq(int(report.get("physics_errors", -1)), 1, "el salto de 3 m se cuenta como error de física")
+	assert_eq(int(report.get("respawns", -1)), 0, "pero no se le devuelve al punto de aparición")
 
 
 func test_player_limit_counts_fake_players() -> void:

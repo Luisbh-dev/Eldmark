@@ -82,6 +82,9 @@ var interest_policy: InterestPolicy = InterestPolicy.new():
 		_snapshot_builder = SnapshotBuilder.new(interest_policy)
 ## Escribe en el registro las altas, las bajas, las expulsiones y las métricas.
 var log_enabled: bool = true
+## Ticks que un peer puede estar cargando la zona sin enviar CLIENT_READY antes de que se le
+## expulse ([constant LOADING_TIMEOUT_TICKS] por defecto; las pruebas lo acortan).
+var loading_timeout_ticks: int = LOADING_TIMEOUT_TICKS
 
 var _run_state: _RunState = _RunState.IDLE
 var _config: ServerConfig
@@ -739,7 +742,7 @@ func _check_loading_timeouts(s: int) -> void:
 		return
 	for peer: ServerPeer in _peers.values():
 		if peer.state == ServerPeer.State.LOADING \
-				and s - peer.loading_since_tick >= LOADING_TIMEOUT_TICKS:
+				and s - peer.loading_since_tick >= loading_timeout_ticks:
 			_kick(peer, "se agotó el tiempo de carga de la zona")
 
 
