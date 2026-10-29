@@ -56,9 +56,11 @@ const SNAP_TICKS: float = 10.0
 const CORRECTION_GAIN: float = 0.1
 const MAX_CORRECTION_PER_TICK: float = 0.05
 
-## Muestras (tick local, offset) con offsets estrictamente decrecientes: la cola monótona cuyo
-## primer elemento es el máximo de la ventana.
-var _samples: Array[Vector2i] = []
+# Muestras (tick local, offset) con offsets estrictamente decrecientes: la cola monótona cuyo
+# primer elemento es el máximo de la ventana. Dos arrays de 64 bits en paralelo: los ticks del
+# servidor son u32 y el offset pasa de 2^31 a los 414 días de proceso (un Vector2i no cabe).
+var _sample_ticks: PackedInt64Array = PackedInt64Array()
+var _sample_offsets: PackedInt64Array = PackedInt64Array()
 var _max_offset: int = 0
 var _jitter: float = 0.0
 var _delay: float = MIN_DELAY_TICKS
@@ -70,13 +72,16 @@ var _started: bool = false
 ## cliente en el que se leyó el paquete. Se llama también con los snapshots desordenados.
 func on_snapshot(server_tick: int, local_tick: int) -> void:
 	var offset: int = server_tick - local_tick
-	while not _samples.is_empty() and _samples[_samples.size() - 1].y <= offset:
-		_samples.pop_back()
-	_samples.append(Vector2i(local_tick, offset))
-	while _samples[0].x <= local_tick - WINDOW_TICKS:
-		_samples.pop_front()
+	while not _sample_ticks.is_empty() and _sample_offsets[_sample_offsets.size() - 1] <= offset:
+		_sample_ticks.remove_at(_sample_ticks.size() - 1)
+		_sample_offsets.remove_at(_sample_offsets.size() - 1)
+	_sample_ticks.append(local_tick)
+	_sample_offsets.append(offset)
+	while _sample_ticks[0] <= local_tick - WINDOW_TICKS:
+		_sample_ticks.remove_at(0)
+		_sample_offsets.remove_at(0)
 	_drop_samples_before_a_step_down(local_tick)
-	_max_offset = _samples[0].y
+	_max_offset = _sample_offsets[0]
 
 	_jitter += JITTER_ALPHA * (float(_max_offset - offset) - _jitter)
 	if _jitter < JITTER_EPSILON:
@@ -90,17 +95,18 @@ func on_snapshot(server_tick: int, local_tick: int) -> void:
 # que la primera muestra reciente es el máximo de las recientes.
 func _drop_samples_before_a_step_down(local_tick: int) -> void:
 	var recent: int = 0
-	while _samples[recent].x <= local_tick - RECENT_TICKS:
+	while _sample_ticks[recent] <= local_tick - RECENT_TICKS:
 		recent += 1
-	if recent > 0 and _samples[0].y - _samples[recent].y > STEP_DOWN_TICKS:
-		_samples = _samples.slice(recent)
+	if recent > 0 and _sample_offsets[0] - _sample_offsets[recent] > STEP_DOWN_TICKS:
+		_sample_ticks = _sample_ticks.slice(recent)
+		_sample_offsets = _sample_offsets.slice(recent)
 
 
 ## Avanza el reloj un tick de física ([param local_tick] es el tick local actual) y devuelve el
 ## tick de dibujo. Hasta que llega el primer snapshot no hay con qué medir, así que no arranca y
 ## devuelve 0.
 func advance(local_tick: int) -> float:
-	if _samples.is_empty():
+	if _sample_ticks.is_empty():
 		return _render_tick
 	var target: float = float(local_tick + _max_offset) - _delay
 	if not _started or absf(target - _render_tick) > SNAP_TICKS:

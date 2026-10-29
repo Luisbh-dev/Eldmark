@@ -231,3 +231,18 @@ func test_offsets_that_go_up_are_adopted_immediately() -> void:
 	var render_tick: float = clock.advance(local_tick)
 	assert_near(render_tick, float(local_tick + 45) - clock.get_delay_ticks(), 1e-6,
 			"salta a la medida nueva en el mismo snapshot")
+
+
+## Con ticks de servidor por encima de 2^31 (el u32 de red.md 4.1 llega a 828 días) el reloj sigue
+## bien: las muestras no pueden ir en enteros de 32 bits (hallazgo N5).
+func test_server_ticks_beyond_two_to_the_thirty_one_do_not_overflow() -> void:
+	var clock := InterpolationClock.new()
+	var base: int = 2147483648 + 1000
+	var render_tick: float = 0.0
+	for local_tick: int in range(1, 301):
+		if local_tick % 2 == 0:
+			clock.on_snapshot(base + local_tick + 5, local_tick)
+		render_tick = clock.advance(local_tick)
+	assert_near(render_tick, float(base + 300 + 5) - 4.0, 0.5,
+			"el tick de dibujo es el del servidor menos el retardo, sin desbordar")
+	assert_true(render_tick > 0.0, "y positivo")

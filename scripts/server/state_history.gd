@@ -32,8 +32,9 @@ class Track:
 	var positions: PackedVector3Array = PackedVector3Array()
 	var yaws: PackedFloat32Array = PackedFloat32Array()
 	var flags: PackedByteArray = PackedByteArray()
-	# Tick que guarda cada hueco; -1 si está vacío.
-	var ticks: PackedInt32Array = PackedInt32Array()
+	# Tick que guarda cada hueco; -1 si está vacío. De 64 bits: los ticks del servidor son u32 y
+	# pasan de 2^31 a los 414 días de proceso.
+	var ticks: PackedInt64Array = PackedInt64Array()
 
 
 	func _init() -> void:

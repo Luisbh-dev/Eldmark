@@ -179,8 +179,6 @@ func test_peer_bytes_limiter_is_16kb_per_second_with_burst_of_4kb() -> void:
 	assert_eq(denied, 0, "~8 KB/s caben")
 
 
-# --- Avisos y expulsión -----------------------------------------------------------------------
-
 func test_peer_stall_credit_covers_the_ticks_the_server_missed() -> void:
 	# El servidor perdió 90 ticks: el cliente siguió mandando un lote por tick y llegan todos juntos.
 	var peer := ServerPeer.new(1)
@@ -200,6 +198,8 @@ func test_peer_stall_credit_covers_the_ticks_the_server_missed() -> void:
 	assert_near(late.limiter_unreliable.get_tokens(10), ServerPeer.UNRELIABLE_BURST, 1e-6,
 			"sin ticks perdidos no hay crédito")
 
+
+# --- Avisos y expulsión -----------------------------------------------------------------------
 
 func test_fifty_strikes_in_the_same_tick_kick() -> void:
 	var peer := ServerPeer.new(1)
@@ -258,3 +258,28 @@ func test_new_peer_has_clean_state() -> void:
 	assert_not_null(peer.limiter_unreliable, "limitador de no fiables")
 	assert_not_null(peer.limiter_reliable, "limitador de fiables")
 	assert_not_null(peer.limiter_bytes, "limitador de bytes")
+
+
+## Los ticks del servidor son u32 (414 días a 60 Hz ya pasan de 2^31): la ventana de avisos no puede
+## guardarlos en enteros de 32 bits con signo (hallazgo N5), o la resta con el aviso más antiguo
+## desborda y nunca se expulsa.
+func test_strikes_beyond_two_to_the_thirty_one_ticks_still_kick() -> void:
+	var big: int = 2147483648 + 5
+	var peer := ServerPeer.new(1)
+	var kicked_at: int = -1
+	for i: int in 60:
+		if peer.add_strike(big + i, "prueba") and kicked_at < 0:
+			kicked_at = i
+	assert_eq(kicked_at, 49, "el aviso 50 expulsa también con ticks por encima de 2^31")
+	var spread := ServerPeer.new(2)
+	var kicks: int = 0
+	for i: int in 200:
+		# Un aviso cada 13 ticks: 46 por ventana de 600 ticks, nunca llega a 50.
+		if spread.add_strike(big + i * 13, "prueba"):
+			kicks += 1
+	assert_eq(kicks, 0, "y avisos espaciados no expulsan nunca")
+	var max_tick: int = 4294967295
+	var edge := ServerPeer.new(3)
+	for i: int in 49:
+		edge.add_strike(max_tick - 100 + i, "prueba")
+	assert_true(edge.add_strike(max_tick - 50, "prueba"), "ni en el último rango del u32")

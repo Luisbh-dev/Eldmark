@@ -352,7 +352,12 @@ predecirían mal todo el tiempo.
 ### 4.1 Tick del servidor y regla de aplicación
 
 - **`server_tick`** empieza en 0 y sube 1 al empezar cada tick simulado. El primero es el 1; el
-  0 significa «ninguno». El u32 no da la vuelta en la práctica (828 días).
+  0 significa «ninguno». El u32 no da la vuelta en la práctica (828 días). Para que ese rango sea
+  real, los ticks se guardan siempre en enteros de 64 bits (`int`, `PackedInt64Array`): un
+  `PackedInt32Array` o un `Vector2i` con signo se desbordarían a los 414 días (2^31 ticks) y
+  dejarían inservibles el historial de rebobinado, la ventana de avisos y el reloj de
+  interpolación (hallazgo N5; `StateHistory.Track.ticks`, `ServerPeer._strike_ticks` e
+  `InterpolationClock` usan ya 64 bits).
 - **Regla:** la entrada con `tick = T` se aplica exactamente en el tick T del servidor. El
   snapshot del tick S lleva el estado tras simular S (`last_input_tick == S`).
 - **Antelación de cada entrada.** El servidor la mide al recibir la *primera copia aceptada*:

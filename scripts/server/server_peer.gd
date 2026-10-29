@@ -54,8 +54,9 @@ var strikes_total: int = 0
 var last_strike_reason: String = ""
 
 # Anillo con los ticks de los últimos STRIKE_LIMIT avisos. El más antiguo de ellos está en
-# _strike_head, que es también el hueco que se sobrescribe con el siguiente.
-var _strike_ticks: PackedInt32Array = PackedInt32Array()
+# _strike_head, que es también el hueco que se sobrescribe con el siguiente. De 64 bits: los ticks
+# del servidor son u32 y pasan de 2^31 a los 414 días de proceso.
+var _strike_ticks: PackedInt64Array = PackedInt64Array()
 var _strike_head: int = 0
 
 
