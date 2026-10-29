@@ -8,7 +8,7 @@ y está siempre en la rama más reciente.
 | Trabajo | Rama | Estado |
 |---|---|---|
 | Backlog (`docs/backlog.md`) | `main` | Hecho y subido |
-| Fase 2: red | `fase2-red` | En curso: paquetes A, B, C y D integrados (407 pruebas en verde); E (cliente en red) en marcha |
+| Fase 2: red | `fase2-red` | En curso: paquetes A–E integrados más GUE-02, SOC-01, TEC-03 y ART-05 (515 pruebas en verde); M4–M5 en marcha |
 
 ## Entorno (Linux)
 
@@ -37,7 +37,15 @@ y está siempre en la rama más reciente.
 | C1 | Piezas del servidor: `InputQueue`, `SnapshotBuilder`, `StateHistory`, `NetEntity(Registry)`, `ServerAuth`, `RateLimiter`, `SpawnPicker`, `ServerConfig`, `ServerMetrics`... | Hecho | 12 archivos de prueba; `test_architecture` con las reglas server/client |
 | D | `TickSync`, `InterpolationClock`, `ClientPrediction`, `CorrectionSmoother`, `RemoteInterpolator`, cambios en `LocalPlayerController` | Hecho | `test_tick_sync` (17), `test_interpolation_clock` (8), `test_remote_interpolator` (16), `test_prediction` (24, dos mundos de física separados) |
 | C2 | `ZoneServer`, `ServerMain`, `--server`, `--fake-players`, `--report`, `--dev-lock`, `--idle-quit` | Hecho | `test_zone_server`, `test_zone_server_net` (15, ENet real), `test_server_main` (6, procesos aparte con la zona real) |
-| E, F | Cliente en red, integración, procesos, bots y carga | Pendiente | |
+| E | `NetClient`, `RemoteWorld`, `RemotePlayerView` (con el humanoide animado), `OnlineMain` (`--connect`, `--bot`), `ClientConfig`, `NetHarness` | Hecho | `test_net_loopback` a, b, c, e (ENet real), `test_net_client`, `test_remote_world`, `test_online_main`, `test_net_harness` (procesos) |
+| Carril 2 | GUE-02 `RealmCatalog`, SOC-01 `NameRules`, TEC-03 GitHub Actions, ART-05 validador de assets | Hecho | `test_realm_catalog`, `test_name_rules`, `test_assets` |
+| F (M4–M5) | Escenario d con NetSim, `--local`, `RealmSelect`, overlay F3/F4, tramposos, `--state-log`, `test_net_processes`, `BotSwarm`, `load_test` | En curso | |
+
+**Primera prueba real en procesos separados** (servidor headless en el Vado Gris, 1800 ticks, y dos
+`--bot`, sin NetSim): bot 1, 704 snapshots con estado, 703 coincidencias exactas, 0 diferencias
+sin explicar, 1 reinicio duro (el proceso se paró en la VM; TickSync lo recuperó); bot 2, 707/707
+coincidencias, 0 diferencias. Servidor: 0,32 % de entradas sustituidas, 0 avisos, 0 errores de
+física. Cada bot vio al otro como remoto.
 
 Incidencia: el contenedor se reinició a mitad del paquete D; su trabajo a medias se recuperó de su
 worktree y se terminó.
@@ -62,5 +70,15 @@ bots reales al final de la fase.
 - Paquete D: `ClientPrediction.get_stats()` usa las claves `matches`, `ignored`, `replays`,
   `corrections`, `resimulated_ticks`, `last_correction`, `max_correction` y `hard_resets`; el
   jitter por debajo de 0,001 ticks cuenta como 0.
+- **Nombres** (SOC-01, provisional): 3–16 letras con tildes y ñ, mayúscula inicial, sin espacios
+  ni dígitos, lista de reservados, únicos entre los conectados (sin tildes ni mayúsculas, y la ñ
+  cuenta como n). Nombres por defecto «Jugador» + 4 letras y, para bots, «Bot» + 4 letras.
+- **Reinos por zona** (GUE-02): el Vado Gris solo admite Vardheim y Solmarch (Askarra recibe
+  REJECT REALM); `test_world`, los tres.
+- **CI** (TEC-03): el checkout no baja LFS; se restaura la caché de `.git/lfs` y luego `git lfs
+  pull`. Para que una prueba rota bloquee el merge hay que marcar «Suite completa» como
+  comprobación obligatoria en la protección de la rama (solo desde GitHub).
+- Paquete E: sin servidor, `--local` y `--bots` daban error (hasta M4–M5); en modo bot headless la
+  zona se carga sin lo visual; el cliente también fuerza la colisión completa de Terrain3D.
 - Paquete C2: el `sim_hash` lo calcula `ZoneServer.start()`; un salto de más de 1,5 m en un tick
   se registra como aviso (no error) y en el contador `physics_errors` del informe.
