@@ -99,7 +99,39 @@ remotos.
 
 ## Pendiente de probar mañana con ventana
 
-(Se completa al terminar la fase 2.)
+Nada de lo que sigue se ha podido ver: aquí no hay GPU ni ventana. Todo lo de red está probado sin
+ventana (pruebas, procesos y bots), pero falta el ojo humano.
+
+En PowerShell, desde la raíz del repo y en la rama `fase2-red` (o en la más reciente, que la
+contiene):
+
+```powershell
+$godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Microsoft.Winget.Source_8wekyb3d8bbwe\Godot_v4.7.2-stable_win64_console.exe"
+& $godot --headless --path . --import
+& $godot --headless --path . -s res://tests/run_tests.gd        # ~7 min, 594 pruebas
+```
+
+1. **F5 sin argumentos** (o `& $godot --path .`): debe ser exactamente el sandbox de siempre en el
+   Vado Gris. Comprobar también `-- --demo --quit-after-demo`.
+2. **Servidor y dos clientes con ventana** (tres terminales):
+   ```powershell
+   & $godot --headless --path . -- --server --debug-commands
+   & $godot --path . -- --connect=127.0.0.1 --realm=vardheim --name=Ana
+   & $godot --path . -- --connect=127.0.0.1 --realm=solmarch --name=Bruno --net-sim=rtt=120,jitter=20,loss=3
+   ```
+   Mirar: que cada uno ve al otro moverse suave (animado, sin patinar ni tirones), que el propio
+   responde al instante, que F3 muestra el panel de red y F4 el fantasma, y que no hay saltos
+   visibles al corregir.
+3. **Todo en uno**: `& $godot --path . -- --local`. Sin `--realm` debe salir la pantalla de
+   elección de reino (comprobar su maquetación: no se ha visto nunca). Abrir una segunda ventana
+   con `--local` y comprobar que reutiliza el mismo servidor.
+4. **Bots contra tu cliente**: con el servidor del punto 2,
+   `& $godot --headless --path . -- --bots=20 --connect=127.0.0.1` y mirar a 20 remotos a la vez.
+5. **Servidor Linux, clientes Windows** (si hay VPS): la reconciliación debería absorber las
+   diferencias de último bit; el panel F3 cuenta las correcciones.
+6. Desde el editor: *Depurar ▸ Personalizar instancias de ejecución* (instancia 1:
+   `--headless -- --server --debug-commands`; 2 y 3: `-- --connect=127.0.0.1 --realm=vardheim` y
+   `--realm=solmarch`).
 
 ## Decisiones tomadas fuera del contrato
 
