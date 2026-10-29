@@ -445,3 +445,22 @@ func test_stats_count_spawns_and_despawns() -> void:
 	assert_eq(stats["spawned"], 2)
 	assert_eq(stats["despawns"], 1)
 	assert_eq(stats["views"], 2)
+
+
+# --- Acción y vida dibujadas (combate) --------------------------------------------------------
+
+func test_view_exposes_the_drawn_action_and_health() -> void:
+	_world.on_spawn(_spawn(7, 100, Vector3.ZERO))
+	var view: RemotePlayerView = _world.get_view(7)
+	assert_eq(view.get_drawn_action(), 0, "al aparecer, sin acción")
+	assert_eq(view.get_drawn_health_q(), EntityRecord.HEALTH_Q_FULL, "y con la vida llena")
+	var attacking: EntityRecord = _record(7, Vector3(0.0, 0.0, -1.0))
+	attacking.action = ActionMachine.PHASE_ACTIVE << 4 | CombatState.Action.LIGHT
+	attacking.health_q = 100
+	_push(104, attacking)
+	_push(108, attacking)
+	_clock.render = 104.0
+	_world.draw(104.0, 0.016)
+	assert_eq(view.get_drawn_action() & 15, CombatState.Action.LIGHT, "la acción del registro")
+	assert_eq((view.get_drawn_action() >> 4) & 3, ActionMachine.PHASE_ACTIVE, "y su fase")
+	assert_eq(view.get_drawn_health_q(), 100, "y la vida cuantizada")

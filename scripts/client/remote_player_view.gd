@@ -56,6 +56,9 @@ var _last_teleport: int = 0
 var _extrapolating: bool = false
 var _jumped_count: int = 0
 var _landed_count: int = 0
+# Byte action (acción, fase y paso del combo) y vida cuantizada del último registro dibujado.
+var _drawn_action: int = 0
+var _drawn_health_q: int = EntityRecord.HEALTH_Q_FULL
 
 
 ## Toma el control de [param body] (un [PlayerCharacter] recién instanciado) y le pone como primera
@@ -83,6 +86,8 @@ func setup(body: PlayerCharacter, spawn: NetMessages.EntitySpawn) -> void:
 	_last_teleport = first.get_teleport_counter()
 	_last_sample_position = first.position
 	_was_grounded = first.is_grounded()
+	_drawn_action = first.action
+	_drawn_health_q = first.health_q
 
 
 ## Guarda la muestra del snapshot [param tick]. Se ignora si cae fuera de
@@ -134,6 +139,8 @@ func apply(render_time: float, real_delta: float) -> void:
 		_offset = Vector3.ZERO
 	_last_teleport = record.get_teleport_counter()
 	_last_sample_position = record.position
+	_drawn_action = record.action
+	_drawn_health_q = record.health_q
 	_place(record)
 	if _has_drawn and should_show:
 		_emit_flanks(record)
@@ -206,6 +213,19 @@ func get_despawn_tick() -> int:
 ## true si el cuerpo se está mostrando (ya ha alcanzado su alta y todavía no su baja).
 func is_drawn() -> bool:
 	return _drawn_visible
+
+
+## Byte [code]action[/code] del registro dibujado (docs/combate.md, sección 3.4: bits 0-3 la
+## acción, 4-5 la fase y 6-7 el paso del combo; [method ActionMachine.action_byte]). Lo lee el
+## animador de combate del remoto.
+func get_drawn_action() -> int:
+	return _drawn_action
+
+
+## Vida cuantizada ([method EntityRecord.quantize_health]) del registro dibujado: 0 muerto, 1-255
+## vivo. Lo leen las placas de nombre.
+func get_drawn_health_q() -> int:
+	return _drawn_health_q
 
 
 ## Desfase de vuelta tras extrapolar que se suma ahora a la muestra (m, en el mundo).

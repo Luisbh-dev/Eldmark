@@ -34,6 +34,14 @@ extends Node
 ## [method get_stats]. Con [member ClientConfig.state_log_path] se escribe
 ## [code]server_tick,hex(predicho),hex(servidor)[/code] por cada snapshot con estado propio.
 ## [br][br]
+## [b]Combate[/b] (docs/combate.md, secciones 5 y 6): de cada snapshot con estado propio se guarda el
+## bloque extra (vida, vida máxima, estado y tick de reaparición; ver [method get_health]) y los
+## ENTITY_EVENT se reparten por [signal combat_event]. Un evento [b]propio[/b] (el jugador local es
+## atacante, víctima, asesino o asistente) se entrega nada más llegar; los demás esperan en un
+## [CombatEventQueue] hasta que el tick de dibujo ([InterpolationClock]) alcanza su tick, para que la
+## reacción visual de un remoto (destello, animación) coincida con lo que se ve. [method
+## send_respawn_request] pide la reaparición tras morir.
+## [br][br]
 ## [b]Bot tramposo[/b] ([member ClientConfig.bot_cheat], solo en modo BOT): un [BotCheater] falsea
 ## el HELLO ([code]version[/code]) o envía tráfico de más tras el lote honrado de cada tick
 ## ([code]future[/code], [code]dupes[/code], [code]garbage[/code], [code]flood[/code]). El bot
@@ -51,6 +59,10 @@ signal local_spawned(character: PlayerCharacter)
 signal disconnected(text: String)
 ## NOTICE del servidor: [param code] es un [enum NetProtocol.NoticeCode].
 signal notice_received(code: int, text: String)
+## Un ENTITY_EVENT listo para mostrarse. Si [param is_own], el jugador local interviene (atacante,
+## víctima, asesino o asistente) y se entrega al llegar; si no, cuando el tick de dibujo alcanza
+## [code]event.tick[/code].
+signal combat_event(event: NetMessages.EntityEvent, is_own: bool)
 
 enum State {
 	## Sin [method start].
@@ -87,6 +99,8 @@ const INTERP_DELAY_SCALE: float = 8.0
 const VIEW_OFFSET_SCALE: float = 16.0
 ## Resincronizaciones de TickSync (pasos de golpe) y reinicios que se recuerdan con su tick.
 const MAX_REMEMBERED_EVENTS: int = 64
+## Vida máxima que se supone mientras no ha llegado el bloque extra del snapshot.
+const DEFAULT_MAX_HEALTH: int = 1000
 ## Mensajes de [signal disconnected].
 const TEXT_CONNECT_FAILED: String = "No se pudo conectar con el servidor %s:%d"
 const TEXT_CONNECTION_LOST: String = "Se perdió la conexión con el servidor"
@@ -143,6 +157,18 @@ var _snapshots_received: int = 0
 var _snapshots_late: int = 0
 var _snapshots_with_state: int = 0
 var _malformed_packets: int = 0
+var _newest_snapshot_local_tick: int = 0
+
+# Combate: bloque extra propio del último snapshot reconciliado y cola de eventos ajenos.
+var _health: int = DEFAULT_MAX_HEALTH
+var _max_health: int = DEFAULT_MAX_HEALTH
+var _status: int = 0
+var _respawn_tick: int = 0
+var _has_extra: bool = false
+var _event_queue: CombatEventQueue = CombatEventQueue.new()
+var _events_received: int = 0
+var _events_own: int = 0
+var _respawn_requests: int = 0
 
 # Envío de entradas.
 var _view_offsets_q: PackedInt32Array = PackedInt32Array()
@@ -278,6 +304,93 @@ func send_debug_command(command: int, payload: PackedByteArray) -> void:
 	_transport.send(SERVER_PEER_ID, NetProtocol.CH_RELIABLE, message.encode())
 
 
+## Pide reaparecer en el punto [param point_index] de la lista de puntos del reino (RESPAWN_REQUEST,
+## docs/combate.md sección 5). Solo tiene sentido muerto y pasado el [method get_respawn_tick]: el
+## servidor ignora (con un aviso) lo que llega fuera de plazo. Devuelve false si no hay sesión en el
+## mundo o no se pudo enviar.
+func send_respawn_request(point_index: int) -> bool:
+	if _state != State.IN_WORLD:
+		return false
+	var request := NetMessages.RespawnRequest.new()
+	request.point_index = clampi(point_index, 0, 255)
+	if _transport.send(SERVER_PEER_ID, NetProtocol.CH_RELIABLE, request.encode()) != OK:
+		return false
+	_respawn_requests += 1
+	return true
+
+
+## Vida del jugador local según el último snapshot reconciliado (vida máxima por defecto hasta que
+## llega el primer bloque extra). La vida la decide el servidor: no se predice.
+func get_health() -> int:
+	return _health
+
+
+func get_max_health() -> int:
+	return _max_health
+
+
+## true si ya ha llegado al menos un bloque extra (la vida mostrada es la del servidor).
+func has_health() -> bool:
+	return _has_extra
+
+
+## Bits [constant NetMessages.STATUS_IN_COMBAT], [constant NetMessages.STATUS_PROTECTED] y
+## [constant NetMessages.STATUS_DEAD] del último bloque extra.
+func get_status() -> int:
+	return _status
+
+
+func is_dead() -> bool:
+	return (_status & NetMessages.STATUS_DEAD) != 0
+
+
+func is_in_combat() -> bool:
+	return (_status & NetMessages.STATUS_IN_COMBAT) != 0
+
+
+func is_protected() -> bool:
+	return (_status & NetMessages.STATUS_PROTECTED) != 0
+
+
+## Tick del servidor en el que se puede pedir la reaparición (0 si el jugador está vivo).
+func get_respawn_tick() -> int:
+	return _respawn_tick
+
+
+## Estimación del tick actual del servidor: el del último snapshot más los ticks locales que han
+## pasado desde que llegó. Va por detrás del servidor real lo que tarda un snapshot en llegar
+## (medio RTT), y eso es lo que conviene a la cuenta atrás de la reaparición: cuando la cuenta llega
+## a 0 la petición, que tarda otro medio RTT, ya llega a tiempo.
+func get_estimated_server_tick() -> int:
+	if _newest_snapshot_tick <= 0:
+		return 0
+	return _newest_snapshot_tick + maxi(_local_tick - _newest_snapshot_local_tick, 0)
+
+
+## Eventos de combate ajenos que esperan a que el tick de dibujo alcance su tick.
+func get_combat_queue() -> CombatEventQueue:
+	return _event_queue
+
+
+## true si el jugador local interviene en [param event]: atacante o víctima de un HIT, víctima o
+## asesino de un DEATH, víctima, asesino o asistente de un KILL, o quien reaparece en un RESPAWN.
+## Falso mientras no hay personaje local.
+func is_own_event(event: NetMessages.EntityEvent) -> bool:
+	if _net_id == 0 or event == null:
+		return false
+	match event.event:
+		NetMessages.EntityEvent.Kind.HIT:
+			return event.net_id == _net_id or event.attacker == _net_id
+		NetMessages.EntityEvent.Kind.DEATH:
+			return event.net_id == _net_id or event.killer == _net_id
+		NetMessages.EntityEvent.Kind.KILL:
+			return event.net_id == _net_id or event.killer == _net_id \
+					or event.assistants.has(_net_id)
+		NetMessages.EntityEvent.Kind.RESPAWN:
+			return event.net_id == _net_id
+	return false
+
+
 ## Personaje local (null hasta [signal local_spawned]).
 func get_character() -> PlayerCharacter:
 	return _character
@@ -370,6 +483,9 @@ func get_last_notice_text() -> String:
 ## [br]- [code]delay_ticks[/code], [code]jitter_ticks[/code], [code]render_tick[/code],
 ## [code]batches_sent[/code], [code]cheat_packets[/code] (paquetes de más del bot tramposo),
 ## [code]remote_views[/code].
+## [br]- [code]combat_events[/code] recibidos, [code]combat_events_own[/code] (los propios),
+## [code]combat_events_pending[/code] (esperando a su tick de dibujo), [code]respawn_requests[/code],
+## [code]health[/code] y [code]max_health[/code].
 func get_stats() -> Dictionary:
 	var prediction_stats: Dictionary = _prediction.get_stats()
 	return {
@@ -414,6 +530,12 @@ func get_stats() -> Dictionary:
 		"batches_sent": _batches_sent,
 		"cheat_packets": _cheat_packets_sent,
 		"remote_views": _remote_world.get_view_count(),
+		"combat_events": _events_received,
+		"combat_events_own": _events_own,
+		"combat_events_pending": _event_queue.size(),
+		"respawn_requests": _respawn_requests,
+		"health": _health,
+		"max_health": _max_health,
 	}
 
 
@@ -463,6 +585,7 @@ func _physics_process(_delta: float) -> void:
 			_prediction.step()
 		_send_input_batch()
 	_interp_clock.advance(_local_tick)
+	_deliver_due_events()
 	_smoother.physics_step()
 	_transport.flush()
 
@@ -482,6 +605,7 @@ func _reconcile_latest() -> void:
 	if snapshot.own_state == null:
 		return
 	_snapshots_with_state += 1
+	_apply_extra_block(snapshot)
 	var teleported: bool = snapshot.own_teleport != _own_teleport
 	_own_teleport = snapshot.own_teleport
 	var logging: bool = _open_state_log()
@@ -498,6 +622,24 @@ func _reconcile_latest() -> void:
 		_state_log.store_line("%d,%s,%s" % [snapshot.server_tick, predicted_hex,
 				snapshot.own_state.encode().hex_encode()])
 		_state_log.flush()
+
+
+# Bloque extra propio del snapshot (vida, vida máxima, estado y tick de reaparición). Llega con
+# todos los snapshots que traen el estado propio.
+func _apply_extra_block(snapshot: NetMessages.Snapshot) -> void:
+	_has_extra = true
+	_health = snapshot.health
+	_max_health = snapshot.max_health
+	_status = snapshot.status
+	_respawn_tick = snapshot.respawn_tick
+
+
+# Entrega los eventos ajenos cuyo tick ya alcanzó el tick de dibujo.
+func _deliver_due_events() -> void:
+	if _event_queue.size() == 0:
+		return
+	for event: NetMessages.EntityEvent in _event_queue.pop_due(_interp_clock.get_render_tick()):
+		combat_event.emit(event, false)
 
 
 # Apunta qué hizo la predicción con el estado del servidor. Una diferencia se da por explicada si
@@ -714,6 +856,7 @@ func _close_session(text: String) -> void:
 		return
 	_state = State.CLOSED
 	_last_disconnect_text = text
+	_event_queue.clear()
 	if is_instance_valid(_transport):
 		_transport.close()
 	set_physics_process(false)
@@ -736,6 +879,8 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 				_malformed_packets += 1
 			else:
 				_remote_world.on_despawn(despawn)
+		NetProtocol.MSG_ENTITY_EVENT:
+			_on_entity_event(bytes)
 		NetProtocol.MSG_NOTICE:
 			var notice: NetMessages.Notice = NetMessages.Notice.decode(bytes)
 			if notice == null:
@@ -757,11 +902,27 @@ func _on_snapshot(bytes: PackedByteArray) -> void:
 	_snapshots_received += 1
 	if snapshot.server_tick < _newest_snapshot_tick:
 		_snapshots_late += 1
+	if snapshot.server_tick > _newest_snapshot_tick:
+		_newest_snapshot_local_tick = _local_tick
 	_newest_snapshot_tick = maxi(_newest_snapshot_tick, snapshot.server_tick)
 	_interp_clock.on_snapshot(snapshot.server_tick, _local_tick)
 	_remote_world.on_snapshot(snapshot)
 	if _latest == null or snapshot.server_tick > _latest.server_tick:
 		_latest = snapshot
+
+
+# ENTITY_EVENT: los propios se entregan ya; los ajenos esperan a su tick de dibujo.
+func _on_entity_event(bytes: PackedByteArray) -> void:
+	var event: NetMessages.EntityEvent = NetMessages.EntityEvent.decode(bytes)
+	if event == null:
+		_malformed_packets += 1
+		return
+	_events_received += 1
+	if is_own_event(event):
+		_events_own += 1
+		combat_event.emit(event, true)
+	else:
+		_event_queue.push(event)
 
 
 func _on_spawn(bytes: PackedByteArray) -> void:
