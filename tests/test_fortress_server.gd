@@ -178,6 +178,17 @@ func test_the_server_creates_the_fortress_entity_and_turns_on_the_respawn_waves(
 	assert_true(_war.is_empty(), "una fortaleza sola no avisa de nada")
 
 
+func test_the_default_times_are_the_designed_ones() -> void:
+	assert_eq(ZoneServer.LINGER_TICKS, 15 * 60, "el cuerpo de quien sale en combate se queda 15 s")
+	assert_eq(ZoneServer.SCOREBOARD_INTERVAL_TICKS, 2 * 60, "el marcador sale cada 2 s")
+	assert_eq(CombatTiming.WAVE_TICKS, 10 * 60, "las oleadas de reaparición, cada 10 s")
+	assert_eq(UnstuckTracker.CHANNEL_TICKS, 10 * 60, "/atascado canaliza 10 s")
+	assert_eq(UnstuckTracker.COOLDOWN_TICKS, 5 * 60 * 60, "y se reutiliza a los 5 min")
+	assert_eq(ScoreKeeper.MERITS_PER_KILL, 10)
+	assert_eq(ScoreKeeper.MERITS_PER_ASSIST, 5)
+	assert_eq(FortressController.OBJECT_STATE_INTERVAL_TICKS, 6, "un OBJECT_STATE cada 6 ticks como mucho")
+
+
 func test_a_zone_without_fortresses_keeps_the_plain_respawn_timing() -> void:
 	_viewport = SubViewport.new()
 	_viewport.own_world_3d = true
@@ -543,3 +554,10 @@ func test_the_report_lists_the_fortress_and_the_war_counters() -> void:
 		assert_eq(int(fortresses[0]["owner"]), VARDHEIM)
 		assert_eq(int(fortresses[0]["gate_health"]), 900)
 	assert_true(war.has("unstuck") and war.has("lingering_total") and war.has("scoreboards_sent"))
+	# El servidor escribe el informe final después de stop(): la fortaleza sigue en él.
+	_server.stop()
+	assert_eq(_server.write_report(REPORT_FILE), OK)
+	var final_report: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(REPORT_FILE))
+	var final_fortresses: Array = (final_report["war"] as Dictionary)["fortresses"]
+	if assert_eq(final_fortresses.size(), 1, "tras el cierre, el informe sigue listando la fortaleza"):
+		assert_eq(int(final_fortresses[0]["owner"]), VARDHEIM)

@@ -250,6 +250,8 @@ var _archived_too_early: int = 0
 var _fake_counter: int = 0
 var _peak_players: int = 0
 var _players_at_stop: int = 0
+# Estado de las fortalezas en el cierre, para el informe que se escribe después de stop().
+var _war_fortresses_at_stop: Array[Dictionary] = []
 var _joined_total: int = 0
 var _left_total: int = 0
 var _strikes_total: int = 0
@@ -459,6 +461,7 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 			Callable(self, "_place"), Callable(self, "_pick_spawn_point"))
 	_combat.event_emitted.connect(_on_combat_event)
 	_combat.metrics = _metrics
+	_war_fortresses_at_stop = []
 	_setup_fortresses(world)
 	_commands.audit_sink = Callable(self, "_log")
 	_register_commands()
@@ -511,6 +514,7 @@ func stop(notice_text: String = "") -> void:
 		_transport.flush()
 	for record: _PlayerRecord in _player_by_net.values():
 		record.close(_tick)
+	_war_fortresses_at_stop = _fortress_entries()
 	_clear_players()
 	_pending_ready.clear()
 	_leaving.clear()
@@ -2427,8 +2431,8 @@ func _handle_debug_command(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	var result: int = _commands.execute_network(peer, command.command, command.payload)
 	match result:
 		CommandRegistry.Result.UNKNOWN:
-			# Un id fijo del protocolo cuyo manejador aún no existe en este servidor (los ids 7 a 12 de la
-			# versión 4 hasta que lleguen F3 y F4) se acepta sin hacer nada: no es un cliente defectuoso.
+			# Un id fijo del protocolo cuyo manejador aún no existe en este servidor (el 12, npc_debug, hasta
+			# que llegue F4) se acepta sin hacer nada: no es un cliente defectuoso.
 			if not NetProtocol.DEBUG_COMMAND_IDS.values().has(command.command):
 				_add_strike(peer, "comando de depuración desconocido (%d)" % command.command)
 		CommandRegistry.Result.BAD_ARGUMENTS:
@@ -2436,9 +2440,10 @@ func _handle_debug_command(peer: ServerPeer, bytes: PackedByteArray) -> void:
 					% command.command)
 
 
-# RESPAWN_REQUEST: un muerto pide reaparecer en el punto point_index de la lista de su reino. Fuera de
-# plazo (vivo, o mucho antes de poder) es un aviso; un índice que ya no vale no lo es: el estado del
-# cliente va atrasado y se usa el primer punto del reino.
+# RESPAWN_REQUEST: un muerto pide reaparecer en el punto point_index de la lista estática de la zona
+# (NetZones.get_all_respawn_points). Fuera de plazo (vivo, o mucho antes de poder) es un aviso; un índice que
+# ya no vale (un campamento ajeno, un fuerte que ha cambiado de manos o está atacado) no lo es: el estado del
+# cliente va atrasado y se usa el primer campamento válido de su reino.
 func _handle_respawn_request(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	if peer.state != ServerPeer.State.IN_WORLD:
 		_add_strike(peer, "petición de reaparición antes de entrar en el mundo")
@@ -2795,15 +2800,11 @@ func _combat_report() -> Dictionary:
 # Resumen de la guerra para el informe: el estado de cada fortaleza, el marcador, las salidas en combate y los
 # usos de /atascado.
 func _war_report() -> Dictionary:
-	var fortresses: Array[Dictionary] = []
-	if _fortresses != null:
-		for fortress_id: StringName in _fortresses.get_fortress_ids():
-			var state: FortressState = _fortresses.get_fortress_state(fortress_id)
-			fortresses.append({
-				"id": String(fortress_id), "owner": state.owner, "phase": state.phase,
-				"gate_health": state.gate_health, "gate_max": state.gate_max,
-				"captain_alive": state.captain_alive, "guards_alive": state.guards_alive,
-			})
+	# Tras stop() el controlador ya no tiene fortalezas (se liberan con los jugadores): el informe final
+	# lleva su estado en el momento del cierre.
+	var fortresses: Array[Dictionary] = _fortress_entries()
+	if fortresses.is_empty():
+		fortresses = _war_fortresses_at_stop
 	return {
 		"fortresses": fortresses,
 		"object_states_sent": _object_states_sent,
@@ -2817,6 +2818,21 @@ func _war_report() -> Dictionary:
 			"log": _unstuck_log,
 		},
 	}
+
+
+# El estado de cada fortaleza viva para el informe.
+func _fortress_entries() -> Array[Dictionary]:
+	var fortresses: Array[Dictionary] = []
+	if _fortresses == null:
+		return fortresses
+	for fortress_id: StringName in _fortresses.get_fortress_ids():
+		var state: FortressState = _fortresses.get_fortress_state(fortress_id)
+		fortresses.append({
+			"id": String(fortress_id), "owner": state.owner, "phase": state.phase,
+			"gate_health": state.gate_health, "gate_max": state.gate_max,
+			"captain_alive": state.captain_alive, "guards_alive": state.guards_alive,
+		})
+	return fortresses
 
 
 func _count_fakes_in_log() -> int:

@@ -160,6 +160,16 @@ func test_combat_options() -> void:
 	assert_eq(wrong.fake_brain, "", "un cerebro desconocido se ignora")
 
 
+func test_battle_log_option() -> void:
+	var defaults: ServerConfig = ServerConfig.from_args(PackedStringArray())
+	assert_eq(defaults.battle_log_path, "", "sin registro de batalla")
+	var config: ServerConfig = ServerConfig.from_args(PackedStringArray([
+		"--server", "--battle-log=build\\batalla.jsonl"]))
+	assert_eq(config.battle_log_path, "build/batalla.jsonl", "ruta con barras normales")
+	var empty: ServerConfig = ServerConfig.from_args(PackedStringArray(["--battle-log="]))
+	assert_eq(empty.battle_log_path, "", "sin ruta, sin registro")
+
+
 func test_fake_center_option() -> void:
 	var defaults: ServerConfig = ServerConfig.from_args(PackedStringArray())
 	assert_false(defaults.has_fake_center(), "sin centro: los de combate se juntan en el campamento")
