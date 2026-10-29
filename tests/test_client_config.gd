@@ -19,6 +19,7 @@ func test_defaults_without_arguments() -> void:
 	assert_eq(config.bot_seed, 1)
 	assert_eq(config.bot_count, 0)
 	assert_eq(config.bot_cheat, "")
+	assert_eq(config.bot_brain, "", "sin cerebro elegido: el de paseo")
 	assert_eq(config.quit_after_ticks, 0)
 	assert_eq(config.report_path, "")
 	assert_eq(config.state_log_path, "")
@@ -184,3 +185,15 @@ func test_network_arguments_are_not_reported_as_unknown_by_boot() -> void:
 	assert_eq(options["realm"], &"solmarch", "--realm se sigue leyendo como antes")
 	assert_eq(options["zone"], Zones.DEFAULT_ZONE)
 	assert_false(options["demo"])
+
+
+func test_bot_brain_option_accepts_the_known_brains_and_warns_about_the_others() -> void:
+	var combat: ClientConfig = ClientConfig.from_args(PackedStringArray(["--bot", "--bot-brain=Combat"]))
+	assert_eq(combat.bot_brain, "combat", "en minúsculas")
+	assert_eq(combat.warnings.size(), 0)
+	var wander: ClientConfig = ClientConfig.from_args(PackedStringArray(["--bot", "--bot-brain=wander"]))
+	assert_eq(wander.bot_brain, "wander")
+	var unknown: ClientConfig = ClientConfig.from_args(PackedStringArray(["--bot", "--bot-brain=volar"]))
+	assert_eq(unknown.bot_brain, "", "uno desconocido se ignora")
+	if assert_eq(unknown.warnings.size(), 1, "con un aviso en español"):
+		assert_true(unknown.warnings[0].contains("volar") and unknown.warnings[0].contains("combat"))

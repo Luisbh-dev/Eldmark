@@ -15,17 +15,33 @@ extends RefCounted
 ##          y por el fiable                                 NOTICE de expulsión a los 50 en 600 ticks
 ## flood    más paquetes por tick de los que permiten   -> avisos por exceso de ritmo y expulsión
 ##          los limitadores
+## rewind   pelea (cerebro de combate), pero falsea el   -> el golpe no se prueba (más de 24 ticks de
+##          view_offset_q de todas sus entradas a 40        rebobinado): ningún daño y la puntuación de
+##          ticks                                           sospecha del peer sube con cada golpe
+## reach    ataca a un enemigo desde 5 m, con entradas   -> no hay golpe: el sector del arma llega a
+##          legítimas                                       2,6 m (3 m con la cápsula)
+## rate     machaca PRIMARY (un flanco cada dos ticks,   -> no pega más rápido que el combo de los
+##          lo máximo que se puede pulsar)                  datos: la máquina de acciones del servidor
+##                                                          decide el ritmo
 ## [/codeblock]
-## Las semillas son de la configuración ([member ClientConfig.bot_seed]), así que lo que envía es
-## reproducible. Esto es solo cliente: el servidor no sabe quién hace trampa, solo valida.
+## Los modos de combate ([constant MODE_REWIND], [constant MODE_REACH], [constant MODE_RATE]) no mandan
+## tráfico de más: el bot juega con las reglas del juego ([method make_brain]) y el servidor tiene que
+## dejarlo sin ventaja. Las semillas son de la configuración ([member ClientConfig.bot_seed]), así que lo
+## que envía es reproducible. Esto es solo cliente: el servidor no sabe quién hace trampa, solo valida.
 
 const MODE_VERSION: String = "version"
 const MODE_FUTURE: String = "future"
 const MODE_DUPES: String = "dupes"
 const MODE_GARBAGE: String = "garbage"
 const MODE_FLOOD: String = "flood"
+const MODE_REWIND: String = "rewind"
+const MODE_REACH: String = "reach"
+const MODE_RATE: String = "rate"
 ## Los modos admitidos de [code]--bot-cheat[/code].
-const MODES: Array[String] = [MODE_VERSION, MODE_FUTURE, MODE_DUPES, MODE_GARBAGE, MODE_FLOOD]
+const MODES: Array[String] = [MODE_VERSION, MODE_FUTURE, MODE_DUPES, MODE_GARBAGE, MODE_FLOOD,
+		MODE_REWIND, MODE_REACH, MODE_RATE]
+## Los modos que cambian cómo juega el bot (tienen cerebro propio, [method make_brain]).
+const COMBAT_MODES: Array[String] = [MODE_REWIND, MODE_REACH, MODE_RATE]
 
 ## Versión del protocolo que miente el modo [constant MODE_VERSION].
 const FAKE_PROTOCOL_VERSION: int = NetProtocol.PROTOCOL_VERSION + 1
@@ -46,6 +62,11 @@ const GARBAGE_MAX_BYTES: int = 120
 ## Primer byte de los paquetes de relleno del modo [constant MODE_FLOOD]: un tipo que nadie envía al
 ## servidor.
 const FLOOD_FILLER_TYPE: int = 0x7F
+## Ticks de rebobinado que dice llevar el modo [constant MODE_REWIND] en todas sus entradas (el tope del
+## servidor es [constant NetProtocol.MAX_REWIND_TICKS]).
+const REWIND_VIEW_TICKS: int = 40
+## Escala de [code]view_offset_q[/code] (ticks × 16).
+const VIEW_OFFSET_SCALE: int = 16
 
 
 ## Un paquete que el bot envía además de su lote honrado.
@@ -62,6 +83,7 @@ class Extra:
 
 
 var _mode: String = ""
+var _seed: int = 0
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _packets: int = 0
 
@@ -69,6 +91,7 @@ var _packets: int = 0
 ## [param mode] debe ser uno de [constant MODES] (si no, el objeto no hace nada).
 func _init(mode: String, rng_seed: int) -> void:
 	_mode = mode.to_lower()
+	_seed = rng_seed
 	_rng.seed = rng_seed
 
 
@@ -85,6 +108,39 @@ func get_mode() -> String:
 ## Paquetes de más generados desde el principio.
 func get_packets_generated() -> int:
 	return _packets
+
+
+## true si el modo cambia cómo juega el bot ([constant COMBAT_MODES]).
+func is_combat_mode() -> bool:
+	return COMBAT_MODES.has(_mode)
+
+
+## El cerebro con el que juega un bot de un modo de combate, o null si el modo es de tráfico.
+## [param enemy_finder] es [code](position: Vector3) -> Variant[/code] (ver
+## [method BotBrain.set_enemy_finder]). El modo [constant MODE_REWIND] pelea con el cerebro de combate
+## de siempre (lo tramposo es la vista que declara, [method tamper_batch]); [constant MODE_REACH] y
+## [constant MODE_RATE] usan [BotCheatBrain].
+func make_brain(enemy_finder: Callable, home: Vector3, radius: float) -> BotBrain:
+	var brain: BotBrain = null
+	match _mode:
+		MODE_REWIND:
+			brain = BotBrain.new(_seed, BotBrain.Pattern.COMBAT, home, radius)
+		MODE_REACH:
+			brain = BotCheatBrain.new(_seed, BotCheatBrain.Style.REACH, home, radius)
+		MODE_RATE:
+			brain = BotCheatBrain.new(_seed, BotCheatBrain.Style.RATE, home, radius)
+	if brain != null:
+		brain.set_enemy_finder(enemy_finder)
+	return brain
+
+
+## Falsea el lote de entradas honrado antes de enviarlo. Solo el modo [constant MODE_REWIND] lo toca:
+## todas sus entradas dicen que el bot veía el mundo [constant REWIND_VIEW_TICKS] ticks atrás.
+func tamper_batch(batch: NetMessages.InputBatch) -> void:
+	if _mode != MODE_REWIND:
+		return
+	for index: int in batch.view_offsets_q.size():
+		batch.view_offsets_q[index] = REWIND_VIEW_TICKS * VIEW_OFFSET_SCALE
 
 
 ## Falsea el HELLO que se va a enviar. Solo el modo [constant MODE_VERSION] lo toca.
@@ -168,3 +224,4 @@ func _garbage() -> PackedByteArray:
 	for i: int in bytes.size():
 		bytes[i] = _rng.randi_range(0, 255)
 	return bytes
+

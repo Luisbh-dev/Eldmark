@@ -23,7 +23,8 @@ func _honest_batch(newest: int) -> NetMessages.InputBatch:
 
 
 func test_modes_are_the_documented_ones() -> void:
-	assert_eq(BotCheater.MODES, ["version", "future", "dupes", "garbage", "flood"] as Array[String])
+	assert_eq(BotCheater.MODES, ["version", "future", "dupes", "garbage", "flood", "rewind", "reach",
+			"rate"] as Array[String])
 	for mode: String in BotCheater.MODES:
 		assert_true(BotCheater.is_valid_mode(mode), "%s es un modo válido" % mode)
 	assert_true(BotCheater.is_valid_mode("FLOOD"), "sin distinguir mayúsculas")
@@ -133,3 +134,55 @@ func test_same_seed_same_traffic() -> void:
 				if from_a[i].bytes != from_c[i].bytes:
 					differs = true
 		assert_true(differs, "%s: otra semilla, otro tráfico" % mode)
+
+
+# --- Modos de combate ---------------------------------------------------------------------------
+
+func test_combat_modes_are_the_three_new_ones() -> void:
+	assert_eq(BotCheater.COMBAT_MODES, ["rewind", "reach", "rate"] as Array[String])
+	for mode: String in BotCheater.MODES:
+		assert_eq(BotCheater.new(mode, 1).is_combat_mode(), BotCheater.COMBAT_MODES.has(mode),
+				"%s: solo los de combate cambian cómo juega el bot" % mode)
+
+
+func test_combat_modes_send_no_extra_traffic_and_leave_the_hello_alone() -> void:
+	for mode: String in BotCheater.COMBAT_MODES:
+		var cheater := BotCheater.new(mode, 4)
+		assert_true(cheater.extra_packets(_honest_batch(300)).is_empty(), "%s: ni un paquete de más" % mode)
+		var hello := NetMessages.Hello.new()
+		cheater.tamper_hello(hello)
+		assert_eq(hello.protocol_version, NetProtocol.PROTOCOL_VERSION, "%s: el HELLO es el de verdad" % mode)
+
+
+func test_rewind_mode_claims_forty_ticks_of_view_in_every_input() -> void:
+	var cheater := BotCheater.new("rewind", 2)
+	var batch: NetMessages.InputBatch = _honest_batch(300)
+	cheater.tamper_batch(batch)
+	assert_eq(batch.view_offsets_q.size(), batch.inputs.size(), "sigue habiendo un desfase por entrada")
+	for offset: int in batch.view_offsets_q:
+		assert_eq(offset, 40 * 16, "40 ticks × 16")
+	assert_true(BotCheater.REWIND_VIEW_TICKS > NetProtocol.MAX_REWIND_TICKS + 1, "más que el tope del servidor")
+	# Lo que decodifica el servidor es eso mismo.
+	var decoded: NetMessages.InputBatch = NetMessages.InputBatch.decode(batch.encode())
+	assert_eq(decoded.view_offsets_q[0], 640)
+
+
+func test_other_modes_leave_the_batch_as_it_was() -> void:
+	for mode: String in ["version", "future", "dupes", "garbage", "flood", "reach", "rate"]:
+		var batch: NetMessages.InputBatch = _honest_batch(300)
+		var before: PackedByteArray = batch.encode()
+		BotCheater.new(mode, 2).tamper_batch(batch)
+		assert_eq(batch.encode(), before, "%s no toca el lote" % mode)
+
+
+func test_combat_modes_make_a_brain_and_the_traffic_modes_do_not() -> void:
+	var finder: Callable = func(_position: Vector3) -> Variant: return Vector3(0.0, 0.0, -9.0)
+	for mode: String in ["version", "future", "dupes", "garbage", "flood"]:
+		assert_null(BotCheater.new(mode, 1).make_brain(finder, Vector3.ZERO, 10.0), "%s: sin cerebro" % mode)
+	var rewind: BotBrain = BotCheater.new("rewind", 1).make_brain(finder, Vector3.ZERO, 10.0)
+	assert_eq(rewind.get_pattern(), BotBrain.Pattern.COMBAT, "rewind pelea con el cerebro de combate")
+	assert_true(rewind.has_enemy_finder())
+	var reach: BotBrain = BotCheater.new("reach", 1).make_brain(finder, Vector3.ZERO, 10.0)
+	assert_true(reach is BotCheatBrain and (reach as BotCheatBrain).get_style() == BotCheatBrain.Style.REACH)
+	var rate: BotBrain = BotCheater.new("rate", 1).make_brain(finder, Vector3.ZERO, 10.0)
+	assert_true(rate is BotCheatBrain and (rate as BotCheatBrain).get_style() == BotCheatBrain.Style.RATE)

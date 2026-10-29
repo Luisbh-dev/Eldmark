@@ -144,16 +144,18 @@ static func start_server(viewport: SubViewport, config: ServerConfig) -> ZoneSer
 
 ## Arranca un bot ([NetClient] en modo [constant ClientConfig.Mode.BOT]) dentro de [param viewport]
 ## que conecta con 127.0.0.1:[param port] como [param realm], con la semilla [param bot_seed] y,
-## si se indica, el simulador de red [param net_sim_spec] y el modo de trampa [param bot_cheat]
-## ([BotCheater.MODES], [code]--bot-cheat[/code]). Hace lo mismo que [OnlineMain] en modo
+## si se indica, el simulador de red [param net_sim_spec], el modo de trampa [param bot_cheat]
+## ([BotCheater.MODES], [code]--bot-cheat[/code]) y el cerebro [param bot_brain]
+## ([constant ClientConfig.BOT_BRAINS], [code]--bot-brain[/code]). Hace lo mismo que [OnlineMain] en modo
 ## bot: carga la zona (la del viewport, sin lo visual), avisa en cuanto se autentica y, al aparecer,
-## le pone a su controlador un [BotBrain] que pasea alrededor del punto de aparición.
+## le pone a su controlador el [BotBrain] de [ClientBotBrains] (por defecto, uno que pasea alrededor del
+## punto de aparición).
 ## [br][br]
 ## Metadatos del cliente devuelto: [code]controller[/code] ([LocalPlayerController]),
 ## [code]transport[/code] ([NetTransport]), [code]entities[/code] (el nodo que recibe al personaje
 ## local y al [RemoteWorld]) y, tras aparecer, [code]bot_brain[/code] ([BotBrain]).
 static func start_bot(viewport: SubViewport, port: int, realm: int, bot_seed: int,
-		net_sim_spec: String = "", bot_cheat: String = "") -> NetClient:
+		net_sim_spec: String = "", bot_cheat: String = "", bot_brain: String = "") -> NetClient:
 	var zone_root: ZoneRoot = get_world(viewport) as ZoneRoot
 	if zone_root != null:
 		zone_root.strip_for_server()
@@ -181,10 +183,11 @@ static func start_bot(viewport: SubViewport, port: int, realm: int, bot_seed: in
 	config.bot_seed = bot_seed
 	config.net_sim_spec = net_sim_spec
 	config.bot_cheat = bot_cheat
+	config.bot_brain = bot_brain
 	client.welcomed.connect(func(_welcome: NetMessages.Welcome) -> void:
 		client.notify_zone_ready(entities))
 	client.local_spawned.connect(func(character: PlayerCharacter) -> void:
-		var brain := BotBrain.new(bot_seed, BotBrain.Pattern.WANDER, character.global_position,
+		var brain: BotBrain = ClientBotBrains.make(client, config, character.global_position,
 				BOT_RADIUS)
 		controller.set_bot(brain)
 		client.set_meta(&"bot_brain", brain))

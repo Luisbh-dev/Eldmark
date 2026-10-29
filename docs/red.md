@@ -86,7 +86,7 @@ que añade otro flujo de trabajo. Aquí se usan, no se redefinen (ver [1.5](#15-
 | `--server [--port=24600] [--zone=<id>] [--max-players=64] [--max-per-ip=4] [--idle-quit=<s>] [--fake-players=N [--fake-layout=cluster\|spread] [--fake-churn=<ticks>]] [--debug-commands] [--dev-lock [--dev-lock-path=<ruta>]] [--stop-file=<ruta>]` | Servidor dedicado (siempre con `--headless`) | `scenes/server/server_main.tscn` |
 | `--connect=<host>[:<puerto>] [--realm=<reino>] [--name=<nombre>]` | Cliente en red | `scenes/client/online_main.tscn` |
 | `--local [--realm=…] [--name=…]` | Cliente contra un servidor local, que se lanza si no hay ninguno | `scenes/client/online_main.tscn` |
-| `--bot --connect=… [--bot-seed=N] [--bot-cheat=<modo>]` | Un cliente que predice, sin cámara ni HUD, guiado por `BotBrain` | `scenes/client/online_main.tscn` |
+| `--bot --connect=… [--bot-seed=N] [--bot-brain=wander\|combat] [--bot-cheat=<modo>]` | Un cliente que predice, sin cámara ni HUD, guiado por `BotBrain` (pasea, o pelea con el cerebro de combate) | `scenes/client/online_main.tscn` |
 | `--bots=N --connect=… [--bot-seed=N]` | Enjambre de N clientes ligeros que no simulan, para pruebas de carga | `scenes/client/bot_swarm.tscn` |
 | Comunes | `--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1`, `--quit-after-ticks=N`, `--report=<ruta.json>`, `--state-log=<ruta.csv>` | |
 
@@ -1757,6 +1757,12 @@ todas las copias del proyecto.
 - **Bot tramposo** (`--bot-cheat=version|future|dupes|garbage|flood`, un método por modo):
   rechazado o expulsado, sin que el bot honrado tenga diferencias sin explicar ni el servidor
   registre errores.
+- **Bot tramposo de combate** (K5, TEC-14; `--bot-cheat=rewind|reach|rate`, los tres a la vez
+  contra el maniquí de `test_world`): `rewind` pelea con la vista falseada a 40 ticks y el servidor
+  no prueba ni un golpe (sospecha por golpe); `reach` ataca desde 5 m y no conecta; `rate` machaca
+  PRIMARY y pega solo al ritmo del combo. Ninguno hace daño de más. En un proceso con ENet real
+  están en `test_bot_cheat` (uno por modo, con un bot honrado de control) y en
+  `test_net_processes`.
 
 ### Carga (manual)
 

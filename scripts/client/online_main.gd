@@ -18,8 +18,9 @@ extends Node
 ## [br][b]Ajustes.[/b] [code]multiplayer_poll = false[/code] (cada tick lo sondea [NetClient]) y, en
 ## headless, [code]Engine.max_fps = 120[/code] (sección 1.3).
 ## [br][br]
-## [b]Modo BOT[/b]: sin cámara ni HUD. La entrada sale de un [BotBrain] (patrón de paseo, semilla
-## [member ClientConfig.bot_seed], alrededor de su punto de aparición) y, en headless, la zona se
+## [b]Modo BOT[/b]: sin cámara ni HUD. La entrada sale de un [BotBrain] ([ClientBotBrains]: paseo, o
+## combate con [code]--bot-brain=combat[/code], semilla [member ClientConfig.bot_seed], alrededor de su
+## punto de aparición) y, en headless, la zona se
 ## carga sin lo visual ([method ZoneRoot.strip_for_server]), igual que en el servidor. Con
 ## [code]--quit-after-ticks=N[/code], tras N ticks de física locales (desde que arranca la sesión:
 ## cuentan la conexión y la carga) escribe el informe ([code]--report[/code]), sale de la zona con
@@ -442,8 +443,7 @@ func _on_local_spawned(character: PlayerCharacter) -> void:
 		_client.get_rtt_ticks(),
 	])
 	if _is_bot():
-		_brain = BotBrain.new(config.bot_seed, BotBrain.Pattern.WANDER, character.global_position,
-				BOT_RADIUS)
+		_brain = ClientBotBrains.make(_client, config, character.global_position, BOT_RADIUS)
 		_controller.set_bot(_brain)
 		return
 

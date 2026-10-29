@@ -667,3 +667,23 @@ Cerrado durante K3 (servidor) y K4 (cliente):
   fase desde que la ven entrar. La vida, la resistencia y el DPS están en el panel F3 del HUD.
 - **Coste medido** del paso de combate con refriegas de jugadores falsos (test_world): 32 →
   combate p50 0,44 ms / p99 2,8 ms; 64 → 0,64 / 6,1; 128 → 1,3 / 4,3 (domina `simulate()`).
+
+Cerrado durante K5 (integración):
+
+- **Tope del rebobinado con jitter**: el mínimo del RTT de la ventana (red.md 10) se queda por debajo
+  del viaje de un tick cualquiera, y con `rtt=150,jitter=30` el tope rechazaba un 20 % de los ticks
+  activos de un bot honrado (y le sumaba sospecha). El tope usa `max(mínimo, máximo)` de la ventana
+  (`ServerPeer.rtt_peak_ticks`), con la misma cota independiente del cliente. Con 150 ms de RTT y 30
+  de jitter el servidor confirma el 100 % de los golpes que el atacante veía dentro del arco (20 de 20;
+  8 de ellos habrían fallado sin rebobinar) con un rebobinado medio de 21,7 ticks; con 200 ms el tope
+  de 24 ticks ya no cubre a un jugador honrado (11 de 20): decisión de diseño pendiente (subir
+  `MAX_REWIND_TICKS` o recortar el margen de `TickSync`).
+- **Modos del bot tramposo**: `rewind` (pelea con el cerebro de combate y 40 ticks de vista en todas sus
+  entradas: ningún daño, una sospecha por golpe), `reach` (`BotCheatBrain`: ataca desde 5 m con entradas
+  legítimas: ningún impacto, ninguna sospecha) y `rate` (machaca PRIMARY un tick de cada dos: 14 aciertos
+  en 600 ticks, el tope del combo es 17). La puntuación de sospecha de la fase 3 solo sube con el
+  rebobinado; alcance y ritmo los resuelve la propia simulación del servidor sin que haya nada que
+  puntuar.
+- **Cerebro de combate del cliente**: `--bot-brain=combat` (`ClientBotBrains`, `BotEnemySight`): el
+  enemigo más cercano que dibuja su `RemoteWorld` y que el servidor dejaría dañar; no ve a los
+  maniquíes (los modos tramposos sí) ni conoce las zonas seguras.

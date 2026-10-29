@@ -16,6 +16,9 @@ extends TestCase
 ## sea rápido): rechazado o expulsado, sin que el bot honrado tenga diferencias sin explicar ni el
 ## servidor registre errores en su registro.
 ## [br][br]
+## [b]Bot tramposo de combate[/b] ([code]rewind[/code], [code]reach[/code] y [code]rate[/code], los tres a la
+## vez contra el maniquí de [code]test_world[/code]): ninguno hace daño de más.
+## [br][br]
 ## [b]Enjambre[/b] ([code]--bots=N[/code], [BotSwarm]): un proceso con seis clientes ligeros contra el servidor.
 ## [br][br]
 ## Los registros y los informes quedan en [code]build/<pid>/np_*[/code] ([method NetHarness.build_path]:
@@ -361,6 +364,62 @@ func _assert_kicked(cheat: String) -> void:
 	var players: Dictionary = data.get("players", {})
 	assert_eq(int(players.get("joined_total", 0)), 2, "entraron los dos")
 	assert_eq(int(players.get("left_total", 0)), 2, "y se fueron los dos: uno expulsado y otro por su pie")
+
+
+## Los tres modos de combate del bot tramposo (TEC-14) a la vez, cada uno un proceso de verdad con
+## [code]--bot --bot-cheat=<modo>[/code], contra el maniquí de test_world. Ninguno hace daño de más: el
+## de [code]rewind[/code] (40 ticks de vista) ni acierta y suma sospecha con cada golpe; el de
+## [code]reach[/code] ataca desde 5 m y no conecta; el de [code]rate[/code] machaca el botón y pega solo al
+## ritmo del combo de los datos.
+func test_combat_cheaters_in_real_processes_deal_no_damage_beyond_the_rules() -> void:
+	var bots: Array[Dictionary] = [
+		_bot(1, "solmarch", PackedStringArray(["--bot-cheat=rewind"])),
+		_bot(2, "solmarch", PackedStringArray(["--bot-cheat=reach"])),
+		_bot(3, "solmarch", PackedStringArray(["--bot-cheat=rate"])),
+	]
+	var scenario: Dictionary = await _run_scenario("cheat_combat", LIGHT_ZONE, 760, 640, bots)
+	if not assert_true(scenario["ok"], "el escenario termina"):
+		return
+	var server: Dictionary = scenario["server"]
+	assert_eq(server["exit"], 0, "el servidor sale con 0")
+	assert_eq(_error_lines(server["log"]), PackedStringArray(), "sin errores en el registro del servidor")
+	var data: Dictionary = server["data"]
+	assert_eq(int((data.get("strikes", {}) as Dictionary).get("total", -1)), 0, "sin avisos: ninguno rompe el protocolo")
+	assert_true((data.get("kicks", []) as Array).is_empty(), "ni expulsiones")
+	var players: Dictionary = {}
+	for index: int in 3:
+		var bot: Dictionary = scenario["bots"][index]
+		var report: Dictionary = bot["data"]
+		assert_eq(bot["exit"], 0, "el tramposo %d sale con 0" % (index + 1))
+		assert_eq(_error_lines(bot["log"]), PackedStringArray(), "y sin errores en su registro")
+		assert_eq(report.get("cheat"), ["rewind", "reach", "rate"][index], "lleva el modo pedido")
+		assert_eq(int(report.get("unexplained_diffs", -1)), 0, "su predicción no falla")
+		players[report.get("cheat")] = _server_player(scenario, int(report.get("net_id", 0)))
+	var rewind: Dictionary = players["rewind"]
+	var reach: Dictionary = players["reach"]
+	var rate: Dictionary = players["rate"]
+	assert_true(int(rewind.get("swings", 0)) >= 3, "rewind lanza golpes (%s)" % rewind.get("swings"))
+	assert_eq(int(rewind.get("swings_landed", -1)), 0, "ninguno acierta")
+	assert_true(int(rewind.get("rewind_rejects", 0)) >= 3, "el servidor los rechaza por el tope")
+	assert_eq(int(rewind.get("suspicion", -1)), int(rewind.get("rewind_rejects", -2)), "y la sospecha sube")
+	assert_true(int(reach.get("swings", 0)) >= 3, "reach lanza golpes (%s)" % reach.get("swings"))
+	assert_eq(int(reach.get("swings_landed", -1)), 0, "desde 5 m no acierta ninguno")
+	assert_eq(int(reach.get("suspicion", -1)), 0, "con entradas legítimas no hay sospecha")
+	var weapon: WeaponTicks = CombatCatalog.weapon(CombatCatalog.weapon_id(CombatCatalog.DEFAULT_WEAPON))
+	var combo_ticks: int = 0
+	for light_id: int in weapon.light_ids:
+		combo_ticks += CombatCatalog.attack(light_id).total_ticks
+	var most_swings: int = ceili(640.0 * float(weapon.light_ids.size()) / float(combo_ticks)) + 1
+	assert_true(int(rate.get("swings_landed", 0)) >= 3, "rate sí acierta alguno (%s)" % rate.get("swings_landed"))
+	assert_true(int(rate.get("swings", 0)) <= most_swings,
+			"pero no lanza más ataques que el combo permite: %s <= %d" % [rate.get("swings"), most_swings])
+	assert_eq(int(rate.get("suspicion", -1)), 0, "machacar el botón no suma sospecha")
+	var combat: Dictionary = data.get("combat", {})
+	assert_eq(int(combat.get("rewind_rejected", -1)), int(rewind.get("rewind_rejects", -2)),
+			"el servidor rechazó solo los de rewind")
+	var suspicious: Array = combat.get("suspicious", [])
+	if assert_eq(suspicious.size(), 1, "el informe señala a uno solo"):
+		assert_eq(int((suspicious[0] as Dictionary).get("net_id", 0)), int(rewind.get("net_id", -1)))
 
 
 # --- Enjambre de bots (--bots=N) --------------------------------------------------------------

@@ -7,8 +7,8 @@ extends RefCounted
 ## [codeblock]
 ## --connect=<host>[:<puerto>]  --local  --bot  --bots=N  --realm=<reino>  --name=<nombre>
 ## --port=<puerto>  --net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1  --bot-seed=N
-## --bot-cheat=<modo>  --quit-after-ticks=N  --report=<ruta.json>  --state-log=<ruta.csv>
-## --dev-lock-path=<ruta.json>
+## --bot-cheat=<modo>  --bot-brain=<wander|combat>  --quit-after-ticks=N  --report=<ruta.json>
+## --state-log=<ruta.csv>  --dev-lock-path=<ruta.json>
 ## [/codeblock]
 ## [br]El modo ([enum Mode]) sale de ellos con esta prioridad: [code]--bots[/code] ([constant SWARM])
 ## > [code]--bot[/code] ([constant BOT]) > [code]--local[/code] ([constant LOCAL]) >
@@ -34,6 +34,10 @@ enum Mode {
 	SWARM,
 }
 
+## Cerebros de los bots ([member bot_brain], [code]--bot-brain[/code]): pasear (por defecto) o pelear.
+const BOT_BRAIN_WANDER: String = "wander"
+const BOT_BRAIN_COMBAT: String = "combat"
+const BOT_BRAINS: Array[String] = [BOT_BRAIN_WANDER, BOT_BRAIN_COMBAT]
 ## Prefijo de los nombres por defecto: «Jugadorabcd» (ver [method NameRules.default_name]).
 const DEFAULT_NAME_PREFIX: String = NameRules.DEFAULT_PREFIX
 ## Máximo de ticks, bots y semilla que se aceptan.
@@ -51,6 +55,9 @@ var net_sim_spec: String = ""
 var bot_seed: int = 1
 var bot_count: int = 0
 var bot_cheat: String = ""
+## Cerebro de los bots ([constant BOT_BRAINS]): vacío o [constant BOT_BRAIN_WANDER] pasea;
+## [constant BOT_BRAIN_COMBAT] busca al enemigo más cercano y pelea ([constant BotBrain.Pattern.COMBAT]).
+var bot_brain: String = ""
 var quit_after_ticks: int = 0
 var report_path: String = ""
 var state_log_path: String = ""
@@ -83,6 +90,11 @@ static func from_args(args: PackedStringArray) -> ClientConfig:
 			config.warnings)
 	config.net_sim_spec = _string_option(args, "--net-sim=")
 	config.bot_cheat = _string_option(args, "--bot-cheat=").to_lower()
+	config.bot_brain = _string_option(args, "--bot-brain=").to_lower()
+	if not config.bot_brain.is_empty() and not BOT_BRAINS.has(config.bot_brain):
+		config.warnings.append("Cerebro de bot desconocido '%s' (hay: %s); se usa %s" % [
+				config.bot_brain, ", ".join(BOT_BRAINS), BOT_BRAIN_WANDER])
+		config.bot_brain = ""
 	config.report_path = _clean_path(_string_option(args, "--report="))
 	config.state_log_path = _clean_path(_string_option(args, "--state-log="))
 	config.dev_lock_path = _clean_path(_string_option(args, "--dev-lock-path="))

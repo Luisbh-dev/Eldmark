@@ -43,9 +43,11 @@ extends Node
 ## send_respawn_request] pide la reaparición tras morir.
 ## [br][br]
 ## [b]Bot tramposo[/b] ([member ClientConfig.bot_cheat], solo en modo BOT): un [BotCheater] falsea
-## el HELLO ([code]version[/code]) o envía tráfico de más tras el lote honrado de cada tick
-## ([code]future[/code], [code]dupes[/code], [code]garbage[/code], [code]flood[/code]). El bot
-## sigue prediciendo con sus entradas honradas; lo que se comprueba es que el servidor no se deja.
+## el HELLO ([code]version[/code]), envía tráfico de más tras el lote honrado de cada tick
+## ([code]future[/code], [code]dupes[/code], [code]garbage[/code], [code]flood[/code]) o falsea la vista
+## que declara en sus entradas ([code]rewind[/code]; los modos [code]reach[/code] y [code]rate[/code]
+## solo cambian cómo juega, con el cerebro de [method BotCheater.make_brain]). El bot sigue prediciendo
+## con sus entradas honradas; lo que se comprueba es que el servidor no se deja.
 
 ## Se emite al completar la autenticación en los dos lados: es el momento de cargar la zona
 ## [code]welcome.zone_id[/code] y llamar a [method notify_zone_ready].
@@ -457,6 +459,11 @@ func get_config() -> ClientConfig:
 	return _config
 
 
+## El bot tramposo de esta sesión (null si juega limpio o no es un bot).
+func get_cheater() -> BotCheater:
+	return _cheater
+
+
 func get_transport() -> NetTransport:
 	return _transport
 
@@ -721,6 +728,8 @@ func _send_input_batch() -> void:
 		batch.view_offsets_q.append(_view_offsets_q[tick % ClientPrediction.HISTORY_SIZE])
 	if batch.inputs.is_empty():
 		return
+	if _cheater != null:
+		_cheater.tamper_batch(batch)
 	if batch_hook.is_valid():
 		batch_hook.call(batch)
 	var bytes: PackedByteArray = batch.encode()
