@@ -22,7 +22,7 @@ const S32: int = NetMessages.ObjectField.ValueType.S32
 # --- Constantes y canales ---------------------------------------------------------------------
 
 func test_protocol_3_constants_and_channels() -> void:
-	assert_eq(NetProtocol.PROTOCOL_VERSION, 4, "el fuerte sube el protocolo a la versión 4")
+	assert_true(NetProtocol.PROTOCOL_VERSION >= 4, "el fuerte sube el protocolo a la versión 4")
 	assert_eq(NetProtocol.MSG_UNSTUCK_REQUEST, 0x06, "UNSTUCK_REQUEST es el 0x06")
 	assert_eq(NetProtocol.MSG_OBJECT_STATE, 0x22, "OBJECT_STATE es el 0x22")
 	assert_eq(NetProtocol.MSG_SCOREBOARD, 0x32, "SCOREBOARD es el 0x32")

@@ -238,3 +238,317 @@ humana (SOC-38).
 Quien implemente una pieza debe respetar el filtro por reino de la sección 1 en el servidor, aunque el
 cliente «ya no muestre» lo que no debe: la prueba de aceptación de SOC-04 es que un cliente de otro
 reino no recibe ningún paquete con el texto, no que no lo pinte.
+
+## 12. Implementación (fase 4)
+
+Lo que se ha hecho de SOC-03 a SOC-08 en la fase 4, con los formatos de bytes, las decisiones que se
+tomaron al implementarlo y lo que queda. Las cifras siguen siendo provisionales (sección 0).
+
+### 12.1 Mensajes de chat (SOC-03)
+
+El protocolo sube a la **versión 5** (`NetProtocol.PROTOCOL_VERSION`). Los tipos van del `0x40` en adelante,
+por el canal fiable 3 ([red.md](red.md), sección 2); ningún paquete pasa de 1200 B. Todo en
+little-endian y con las cadenas en UTF-8 (sin byte nulo) con su longitud delante, como el resto del
+protocolo.
+
+**CHAT_SEND** (`0x40`, C→S): lo que el jugador quiere decir.
+
+| Offset | Tipo | Campo | Notas |
+|---|---|---|---|
+| 0 | u8 | type | `0x40` |
+| 1 | u8 | channel | `ChatChannel.Id`; el 7 (sistema) no lo envía un cliente |
+| 2 | u8 | recipient_len | bytes del destinatario (≤ 48; ≤ 24 caracteres); solo en un susurro, y obligatorio en él |
+| 3 | u16 | text_len | bytes del texto (≤ 768) |
+| 5 | n B | recipient | el nombre tal como lo escribió el jugador |
+| 5 + n | m B | text | ≤ 255 caracteres |
+
+**CHAT_MESSAGE** (`0x41`, S→C): un mensaje ya saneado y repartido solo a quien debe verlo.
+
+| Offset | Tipo | Campo | Notas |
+|---|---|---|---|
+| 0 | u8 | type | `0x41` |
+| 1 | u8 | channel | `ChatChannel.Id` |
+| 2 | u8 | sender_realm | reino del emisor (0 en el sistema) |
+| 3 | u32 | tick | tick del servidor al repartirlo |
+| 7 | u8 | sender_len | 0 si y solo si el canal es el del sistema |
+| 8 | u8 | recipient_len | solo en un susurro (y obligatorio en él) |
+| 9 | u16 | text_len | ≤ 768 |
+| 11 | n B | sender | nombre canónico del emisor |
+| 11 + n | m B | recipient | nombre canónico del destinatario |
+| 11 + n + m | k B | text | ≤ 255 caracteres |
+
+Tamaños máximos: 821 B el CHAT_SEND y 875 B el CHAT_MESSAGE.
+
+Canales (`ChatChannel.Id`, no se reordenan): `0` decir, `1` zona, `2` susurro, `3` grupo, `4` banda, `5`
+gremio, `6` reino, `7` sistema, `8` GM. En la fase 4 el servidor reparte decir, zona, susurro, grupo y
+sistema; los otros contestan «Ese canal aún no está disponible».
+
+`decode` devuelve `null` (y no registra ningún error del motor) si el tamaño no cuadra con las longitudes,
+si el canal no existe, si un cliente manda el del sistema, si un susurro no lleva destinatario o cualquier
+otro canal lo lleva, si algún texto no es UTF-8 válido o lleva un byte nulo, si el destinatario pasa de
+24 caracteres o el texto de 255 caracteres o 768 B. Un CHAT_MESSAGE además exige emisor en todos los
+canales menos el del sistema y destinatario solo en el susurro. Un texto vacío sí se decodifica: es el
+servidor quien lo descarta al sanear. `encode` recorta a los límites sin partir ningún carácter.
+
+### 12.2 Enrutado en el servidor de zona (SOC-04)
+
+Todo lo social vive en `scripts/server/social/`; `ZoneServer` solo crea un `SocialService`, le pasa los
+mensajes de los tipos `0x40` a `0x4F` (`handle_packet`) y le presta tres funciones (la lista de peers en el
+mundo, el envío por el canal fiable y la suma de avisos). El resto es:
+
+| Pieza | Qué hace |
+|---|---|
+| `SocialService` | Reúne el enrutador del chat y, cuando existan, los grupos; es lo único que conoce `ZoneServer` |
+| `ChatRouter` | Sanea, aplica los ritmos y reparte; resultado de cada mensaje en `ChatRouter.Result` |
+| `ChatPeerState` | Cubos de fichas, último texto, descartes y contadores de cada peer; cuelga de `ServerPeer.chat` |
+| `SocialPeers` | Búsqueda de jugadores en el mundo por nombre (clave de `NameRules`) y por reino |
+
+**Destinatarios.** La lista se construye ya filtrada por reino; nunca se filtra al mostrar.
+
+| Canal | Quién lo recibe |
+|---|---|
+| Decir | Los del mismo reino a 30 m en 3D del emisor, él incluido |
+| Zona | Todos los del mismo reino en el proceso, él incluido |
+| Susurro | El destinatario y, como copia, el emisor |
+| Grupo | Los miembros de su grupo (que el enrutador vuelve a filtrar por reino) |
+
+**Susurro.** Se busca por la clave de comparación (minúsculas y sin tildes: `peña` encuentra a `Peña`).
+Si no hay nadie con ese nombre en el mundo *o* es del otro reino, la respuesta es idéntica: el mensaje del
+sistema ««X» no está conectado.», con lo que escribió el jugador y no el nombre canónico del otro lado.
+Susurrarse a uno mismo se rechaza («No puedes susurrarte a ti mismo.»).
+
+**Responder (`/r`).** Lo resuelve el cliente: guarda con quién habló la última vez (quien le susurró o a
+quien susurró) y manda un susurro a ese nombre. El servidor no guarda «el último interlocutor»: un susurro a
+un nombre que ya no está da la respuesta de siempre, y así el protocolo no necesita otro canal.
+
+**Ritmos** (`RateLimiter` por peer, en ticks; no cambian los cubos del transporte, que van antes):
+
+| Cubo | Ritmo | Ráfaga |
+|---|---|---|
+| Hablar (decir, zona, grupo; banda y gremio cuando existan) | 1/s | 5 |
+| Susurro | 1/s | 3 |
+| Destinatarios nuevos de susurro | 5/min | 5 |
+| Repetición | un texto igual al último aceptado en 600 ticks (10 s) se descarta | |
+
+Un interlocutor reciente (quien te ha susurrado, o a quien has susurrado, en los últimos 5 min) no cuenta
+como destinatario nuevo, así que responder a seis desconocidos seguidos no gasta del cubo. Lo descartado,
+por ritmo o por repetición:
+
+- avisa al jugador por el canal del sistema, «Hablas demasiado rápido.», como mucho una vez por segundo;
+- y uno de cada cinco suma un aviso del peer (`exceso de mensajes de chat`): 250 descartes seguidos en
+  10 s llegan a los 50 avisos y expulsan; pulsar Intro de más, no.
+
+**Otros resultados.** Un CHAT_SEND mal formado, con el canal del sistema, o de quien aún no está en el
+mundo, suma un aviso. Un texto vacío tras sanear se descarta sin más. Banda, gremio y reino contestan
+«Ese canal aún no está disponible.»; GM contesta «Comando desconocido. Escribe /ayuda.» para no revelar que
+existe. Un grupo inexistente contesta «No estás en un grupo.».
+
+**Informe.** `write_report` incluye `social.chat` con los mensajes procesados, las copias repartidas y
+cuántos acabaron en cada resultado.
+
+**Pruebas.** `test_chat_router` (24, sin red: alcance, filtro por reino, saneado, ritmos, susurros),
+`test_chat_loopback` (8, con ENet real: dos bots de un reino y uno del otro; el del otro reino no recibe
+ningún CHAT_MESSAGE ni ningún paquete cuyos bytes contengan el texto de los demás, en los cuatro canales y
+con el enemigo a 3 m del emisor).
+
+### 12.3 Caja de chat y comandos (SOC-05)
+
+`scripts/client/chat/` (solo cliente); la caja cuelga del `HUD` en red, abajo a la izquierda, por debajo de la
+pantalla de muerte. Una vista previa sin servidor para probarla a mano o sacar capturas está en
+`scenes/tests/chat_preview.tscn`:
+
+```
+godot --path . res://scenes/tests/chat_preview.tscn
+xvfb-run -a godot --path . res://scenes/tests/chat_preview.tscn --resolution 1600x900 -- --shots=/ruta/absoluta/build/chat
+```
+
+(`--headless` no sirve para las capturas: el renderizador falso no dibuja. Con `xvfb-run`, Mesa llvmpipe sí.)
+La captura de demo con mensajes de todos los canales, la línea abierta con un comando a medio escribir y la
+pestaña de susurros es [capturas/chat_demo.png](capturas/chat_demo.png).
+
+| Pieza | Qué hace |
+|---|---|
+| `ChatBox` | Pestañas, registro y línea; abrir, cerrar, enviar, desvanecer |
+| `ChatCommandParser` | Decide si la línea es texto o comando y cuál (puro, solo texto) |
+| `ChatLog` | Últimas 200 líneas con lo necesario para pintarlas y filtrarlas |
+| `ChatStyle` | Color de cada canal y composición de una línea («Ana te susurra: …») |
+| `ChatInputHistory` | Historial de lo enviado, 50 líneas, para flecha arriba y abajo |
+
+**Teclas.** Intro (acción `chat_open`, también el Intro del teclado numérico) abre la línea; escribir `/` la
+abre ya con la barra (se mira el carácter, no la tecla, así vale en cualquier distribución); Esc la cierra sin
+enviar; Intro envía y cierra; flecha arriba y abajo recorren el historial; perder el foco (un clic fuera)
+también la cierra. No se abre si otra ventana (ajustes, mapa, pantalla de muerte) tiene el cursor.
+
+**Entrada suspendida.** Mientras la línea está abierta la caja pide el cursor libre a la cámara
+(`CameraRig.set_ui_cursor_release`, como las ventanas), con lo que la cámara no gira y los clics no atacan, y
+suspende la entrada de juego en `LocalPlayerController.set_input_blocked`: la entrada del dispositivo sale
+neutra (sin movimiento ni botones) aunque se teclee W. **Hallazgo:** las ventanas de la interfaz (ajustes F10,
+mapa) solo liberaban el cursor, no el movimiento: seguir caminando con W al abrirlas era posible. Para escribir
+no vale, así que el bloqueo es un mecanismo nuevo por solicitante (id de instancia), igual que el del cursor;
+las ventanas pueden pedirlo cuando se quiera.
+
+**Comandos de la fase 4** (sin distinguir mayúsculas ni tildes; `/ayuda` los lista desde la tabla
+`ChatCommandParser.COMMANDS`):
+
+| Comando | Efecto |
+|---|---|
+| `/d` `/decir` `[texto]` | Decir. Con texto lo envía por ahí sin cambiar el canal activo; sin texto, lo deja activo |
+| `/z` `/zona` `[texto]` | Zona (igual) |
+| `/g` `/grupo` `[texto]` | Grupo (igual) |
+| `/s` `/susurrar` `nombre [texto]` | Susurro. Sin texto deja «susurro a nombre» como canal activo; sin nombre, «Uso: /s nombre [texto]» |
+| `/r` `/responder` `[texto]` | Susurro al último interlocutor (copia de un susurro propio o susurro recibido) |
+| `/ayuda` `[comando]` | La lista de comandos o el detalle de uno |
+| `/invitar` `/salir` `/expulsar` `/lider` | Grupos (se entregan a `ChatBox.party_handler`; ver 12.5) |
+
+Cualquier otro (`/b`, `/gr`, `/reino`, `/gm`, `/amigo`...) contesta «Comando desconocido. Escribe /ayuda.»,
+también los de fases futuras: no se avisa de que existen. Los nombres de más de 16 letras no pueden existir
+(`NameRules`) y se rechazan en local.
+
+**Qué se ve.** Pestañas Todo, Decir, Zona, Grupo, Susurros y Sistema. Cada canal tiene su color propio (el
+sistema, amarillo pálido; los GM, cian) y el nombre del emisor va con el color de su reino. Los NOTICE del
+servidor salen en el canal del sistema, igual que los avisos locales (ayuda, errores de un comando).
+**El texto de otros jugadores se pinta con `RichTextLabel.add_text`**: nunca se interpreta BBCode, aunque el
+servidor lo deje pasar (la prueba pasa `[b]`, `[color]`, `[url]`, `[img]` y `[font_size]` y comprueba que se ve
+literal). Cerrada, la caja se desvanece 8 s después del último mensaje (fundido de 2 s) y vuelve con el
+siguiente; abierta, no se desvanece.
+
+**Decisiones.** `/r` lo resuelve el cliente (12.2); Intro cierra la línea al enviar (como New World), y para
+seguir hablando por un canal está el canal activo; el texto se sanea en el cliente con `ChatText` antes de
+enviarlo (el servidor lo vuelve a sanear) y un texto vacío tras sanear no se envía.
+
+**Pendiente del usuario.** Colores de los canales, medidas de la caja (560 x 236, abajo a la izquierda),
+tiempos de desvanecimiento y los textos de los avisos son provisionales (ART-12); también si la caja debe
+atenuarse con la pantalla de muerte (hoy no) y qué tecla debe abrir el chat en el menú de controles.
+
+### 12.4 Grupos: protocolo y servidor (SOC-06)
+
+Ocho tipos nuevos, del `0x48` al `0x4F`, por el canal fiable 3 (los atiende el `SocialService`, que ya tenía el
+rango `0x40`–`0x4F`). `NetProtocol.PARTY_MAX_SIZE` (5) es la constante compartida del tope de miembros; el
+resto de reglas están en `PartyRules` (shared).
+
+| Tipo | Mensaje | Sentido | Formato |
+|---|---|---|---|
+| `0x48` | PARTY_INVITE | C→S | `u8 type, u8 name_len` + nombre (UTF-8, 1 a 48 B y 24 caracteres) |
+| `0x49` | PARTY_RESPONSE | C→S | `u8 type, u8 accept (0 o 1), u8 name_len` + nombre de quien invitó |
+| `0x4A` | PARTY_LEAVE | C→S | `u8 type` (1 B) |
+| `0x4B` | PARTY_KICK | C→S | como PARTY_INVITE |
+| `0x4C` | PARTY_LEADER | C→S | como PARTY_INVITE |
+| `0x4D` | PARTY_INVITATION | S→C | `u8 type, u8 state (0 nueva, 1 caducada, 2 cancelada), u32 tick, u8 name_len` + nombre canónico; con `state` 0, `tick` es cuándo caduca |
+| `0x4E` | PARTY_ROSTER | S→C | `u8 type, u8 count (0 a 5), u8 leader_index` y, por miembro, `u16 net_id, u8 name_len` + nombre (≤ 258 B); `count` 0 = «ya no estás en un grupo» |
+| `0x4F` | PARTY_STATUS | S→C | `u8 type, u8 count` y, por miembro, `u16 net_id, u8 health_q, u8 stamina_q, u8 status, f32 x, f32 y, f32 z` (17 B por miembro, ≤ 87 B) |
+
+`health_q` es la vida cuantizada de los snapshots (0 muerto, de 1 a 255 vivo), `stamina_q` la resistencia en 255
+pasos y `status` los bits `STATUS_IN_COMBAT`, `STATUS_PROTECTED` y `STATUS_DEAD`. `decode` devuelve `null` si el
+tamaño no cuadra, hay más de 5 miembros, un id de red se repite, el líder no está en la lista, un nombre está
+vacío o no es UTF-8 válido, un bit de estado es desconocido o una posición no es finita.
+
+**Reglas** (`PartyManager`, en `scripts/server/social/`):
+
+- Un grupo es de 5 como mucho y **solo del mismo reino**. Invitar a un enemigo, o a quien no existe, contesta
+  lo mismo que un susurro («no está conectado»), no avisa al invitado y no deja ninguna invitación.
+- Cualquier miembro puede invitar; solo el líder expulsa (`/expulsar`) y cede el mando (`/lider`). El primero
+  en invitar crea el grupo cuando el invitado acepta, y es su líder.
+- Una invitación caduca a los 3600 ticks (60 s); cada jugador puede tener como mucho 5 enviadas a la vez, y
+  aceptar una cancela las demás que tuviera el aceptante. Invitar tiene su cubo (1 cada 2 s, ráfaga de 3): lo
+  descartado avisa («Invitas demasiado rápido.») y uno de cada cinco suma un aviso del peer.
+- Si el líder sale o se desconecta, hereda el mando el siguiente más antiguo; un grupo que se queda en uno se
+  disuelve. Aceptar una invitación a un grupo que se llenó entretanto contesta «El grupo está completo.».
+- Cada resultado llega al jugador como un mensaje del canal del sistema del chat; la interfaz recibe además
+  PARTY_INVITATION y PARTY_ROSTER cuando cambian.
+- **Estado a 2 Hz.** Cada 30 ticks (`PartyRules.STATUS_INTERVAL_TICKS`) el servidor manda un PARTY_STATUS a cada
+  miembro con la vida, la resistencia, los bits de estado y la posición de todos, estén donde estén: no pasa
+  por la política de interés de los snapshots, así que un miembro a 250 m y fuera del radio de interés sigue
+  apareciendo (la prueba usa una política de 100 m y un miembro a 210 m).
+- Canal de grupo del chat (`/g`): los miembros, esté donde esté cada uno; el enrutador vuelve a filtrar por
+  reino a quien le da el `PartyManager`.
+
+**Fuera de alcance de la fase 4** (SOC-22): el grupo no sobrevive a una desconexión ni cruza zonas; el servidor
+no guarda nada. Cuando alguien se desconecta, sale del grupo.
+
+**Pruebas.** `test_party_messages` (formatos a mano, corruptos, truncados en cada longitud y fuzz),
+`test_party_manager` (sin red: todos los flujos, topes, enemigo, líder heredado, estado a 2 Hz, canal de
+grupo) y `test_party_loopback` (con ENet y bots: invitar, aceptar, rechazar, caducar, expulsar, ceder el mando,
+salir y desconectarse, la invitación a un enemigo rechazada sin que se entere, y el estado de un miembro fuera
+del radio de interés).
+
+### 12.5 Interfaz de grupo (SOC-08)
+
+`scripts/client/party/`; la monta el `HUD` en red a la izquierda de la pantalla, por debajo de la pantalla de
+muerte.
+
+| Pieza | Qué hace |
+|---|---|
+| `PartyState` | Lo que el cliente sabe del grupo: miembros por orden de llegada, líder, estado a 2 Hz e invitaciones (la más antigua a la vista). Lo alimenta `NetClient` y lo expone `NetClient.get_party()` |
+| `PartyFrames` y `PartyFrame` | Un marco por miembro: nombre con el color del reino, corona dibujada del líder, vida, resistencia y distancia a partir de 30 m; atenuado si está a más de 100 m, muerto o sin datos todavía |
+| `PartyInvitePrompt` | «Ana te invita a su grupo», los segundos que quedan y las teclas reales de aceptar (Y) y rechazar (N) con su glifo; quita lo caducado por tick |
+| `PartyHud` | Reúne los dos y traduce `/invitar`, `/salir`, `/expulsar` y `/lider` de la caja de chat en peticiones (`NetClient.send_party_*`) |
+| `Nameplates.set_party` | Los miembros del grupo llevan el nombre con el color de grupo (azul del canal) en lugar del de su reino |
+
+Teclas nuevas en `InputBindings`: `party_accept` (Y), `party_decline` (N) y `social_menu` (T); todas
+provisionales (pendiente del usuario, igual que las medidas y los colores de los marcos).
+
+La demo del backlog (cuatro bots agrupados con el jugador local) está en `test_party_hud`
+(`test_a_party_of_five_shows_the_right_frames`): comprueba nombres, orden, corona única, vida, resistencia,
+distancia, atenuado por lejos, por muerte y por falta de datos, y que los marcos siguen a la lista.
+
+### 12.6 Menú social sobre el jugador bajo el punto de mira (SOC-07)
+
+Solo el primer origen de las acciones: la tecla `social_menu` (T) lanza un rayo desde la cámara contra la
+cápsula de cada jugador remoto que se está dibujando (como el de las placas de nombre) y toma al más cercano a
+lo largo del rayo a **20 m o menos del jugador local** (no de la cámara, que va detrás). Con él se abre una
+ventana pequeña (`SocialMenu`, una `UIWindow`: libera el cursor, se maneja con teclado o ratón y Esc la cierra)
+con las acciones que aplican:
+
+| Objetivo | Opciones |
+|---|---|
+| Aliado | Invitar al grupo (si no es ya del grupo y el grupo no está completo) y Susurrar |
+| Miembro del grupo, o grupo completo | Solo Susurrar |
+| Enemigo | Ninguna: el menú no se abre y el chat avisa («No hay acciones sociales disponibles con ese jugador.») |
+| Nadie | No se abre y el chat avisa («Apunta a un jugador (a 20 m o menos) para ver sus acciones.») |
+
+**Invitar** manda PARTY_INVITE; **susurrar** cierra el menú y abre la línea del chat con `/s nombre ` ya escrito.
+Cuando existan inspeccionar, añadir amigo, ignorar y reportar, saldrán de `SocialTarget.options_for` (una función
+pura) sin mostrar con un enemigo las que no apliquen.
+
+**Pendiente de SOC-07:** el segundo origen, un nombre pulsado en el chat con el cursor libre (los nombres de las
+líneas del chat no son todavía pulsables), y las opciones que dependen de fases posteriores.
+
+**Pruebas.** `test_social_menu`: el rayo (20 m desde el jugador y no desde la cámara, PNJ ignorados, el más
+cercano gana), las opciones, el menú con un aliado y con un enemigo, y la tecla del HUD.
+
+### 12.7 Decisiones y pendiente de la fase 4
+
+**Decisiones tomadas al implementar** (todas provisionales, revisables con las pruebas reales):
+
+- **Protocolo.** `PROTOCOL_VERSION` sube a 5 con una sola línea de historia («chat y grupos»). Si al fusionar otra
+  rama también la sube, la renumera quien fusiona; las pruebas solo exigen `>= 4` y `>= 5` en los sitios que
+  dependen de estos mensajes.
+- **Un servicio social, no un cambio en cada pieza.** `SocialService` es lo único que ve `ZoneServer` (tipos
+  `0x40`–`0x4F`, un paso por tick y la baja de cada jugador); el estado de ritmos de cada peer cuelga de
+  `ServerPeer.chat`.
+- **`/r` lo resuelve el cliente** y el servidor no guarda «el último interlocutor» (12.2).
+- **Mismo texto para el enemigo y para nadie.** Susurrar o invitar a alguien de otro reino responde «no está
+  conectado» con lo que escribió el jugador, no gasta del cubo de destinatarios nuevos y no manda nada al otro
+  lado.
+- **Cualquier miembro puede invitar; solo el líder expulsa y cede el mando.** El tope de 5 pendientes es por
+  quien invita y aceptar una invitación cancela las demás del aceptante.
+- **Estado de grupo fuera del interés.** Un mensaje propio a 2 Hz a cada miembro con vida, resistencia, estado y
+  posición; no pasa por los snapshots. El marco se atenúa a más de 100 m.
+- **Intro cierra la línea al enviar**, con canal activo para seguir hablando por un canal.
+- **Un grupo no sobrevive a una desconexión** (SOC-22 lo cambiará con los 5 min de gracia).
+
+**Pendiente del usuario** (provisional, a la espera de ART-12 y de probarlo jugando): los colores de cada canal,
+las medidas y el desvanecimiento de la caja de chat, el aspecto y la posición de los marcos y del aviso de
+invitación, los textos de los avisos y las teclas nuevas (Intro y `/` para el chat, Y y N para responder a una
+invitación, T para el menú de jugador). Además, si la caja de chat debe atenuarse con la pantalla de muerte (hoy
+no).
+
+**Pendiente de implementar:**
+
+- SOC-07: el menú desde un nombre pulsado en el chat con el cursor libre y las acciones de fases posteriores
+  (inspeccionar, amigo, ignorar, reportar).
+- SOC-09 y SOC-10: los miembros del grupo en la brújula, el minimapa y el mapa (ya reciben sus posiciones a 2 Hz en
+  `PartyState`) y los pings y marcas tácticas.
+- SOC-15, SOC-16, SOC-17 y SOC-27: registro persistente, ignorados, reportes y filtro de lenguaje.
+- SOC-21 y SOC-22: más canales (reino, comercio, novatos) y grupos entre zonas y con reconexión.
+- UI-47: las ventanas de la interfaz tampoco suspenden el movimiento (hallazgo de SOC-05).

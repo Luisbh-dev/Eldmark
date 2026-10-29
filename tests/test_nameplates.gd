@@ -165,6 +165,29 @@ func test_ally_shows_name_realm_color_and_health_bar_within_range() -> void:
 	assert_eq(_plates.get_visible_count(), 1)
 
 
+func test_party_members_wear_the_party_color_and_other_allies_keep_their_realm_color() -> void:
+	var party := PartyState.new()
+	var roster := NetMessages.PartyRoster.new()
+	roster.members.append(NetMessages.PartyRoster.Member.make(OWN_ID, "Yo"))
+	roster.members.append(NetMessages.PartyRoster.Member.make(ALLY_ID, "Ana"))
+	party.apply_roster(roster)
+	_plates.set_party(party)
+	assert_eq(_plates.get_party(), party, "las placas guardan el grupo")
+	_spawn(ALLY_ID, VARDHEIM, "Ana", Vector3(6.0, 0.0, -15.0))
+	_spawn(OTHER_ENEMY_ID, VARDHEIM, "Bruno", Vector3(-6.0, 0.0, -15.0))
+	_frame()
+	var member_plate: Nameplate = _plates.get_plate_for(ALLY_ID)
+	var other_plate: Nameplate = _plates.get_plate_for(OTHER_ENEMY_ID)
+	if not assert_true(member_plate != null and other_plate != null, "los dos aliados tienen placa"):
+		return
+	assert_eq(member_plate.get_color(), Nameplates.PARTY_COLOR, "el del grupo, con el color de grupo")
+	assert_eq(other_plate.get_color(), RealmCatalog.color_of(RealmCatalog.VARDHEIM), "el otro, con el de su reino")
+	_plates.set_party(null)
+	_frame()
+	assert_eq(_plates.get_plate_for(ALLY_ID).get_color(), RealmCatalog.color_of(RealmCatalog.VARDHEIM),
+			"sin grupo, todos con el color de su reino")
+
+
 func test_ally_beyond_forty_meters_has_no_plate_and_fades_near_the_limit() -> void:
 	_spawn(ALLY_ID, VARDHEIM, "Ana", Vector3(0.0, 0.0, -60.0))
 	_frame()

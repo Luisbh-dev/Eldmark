@@ -10,7 +10,8 @@ extends Node
 ## [b]Orden del tick[/b] ([method _physics_process], prioridad -100; es normativo):
 ## [codeblock]
 ## poll             recibir: autenticación, READY, LEAVE, INPUT_BATCH -> InputQueue.push(),
-##                  RESPAWN_REQUEST, DEBUG_COMMAND; y las líneas de la consola
+##                  RESPAWN_REQUEST, DEBUG_COMMAND, el chat y los grupos (SocialService); y las
+##                  líneas de la consola
 ## tick += 1        s es el tick que se simula
 ## bajas            desconexión, LEAVE o expulsión -> DESPAWN (motivo 1) y el id en cuarentena
 ## cerebros (paso 0) los PNJ piensan con el estado tras s - 1 y empujan su entrada de s a su InputQueue
@@ -216,6 +217,8 @@ var _npc_system: NpcSpawnerSystem = null
 var _scores: ScoreKeeper = ScoreKeeper.new()
 var _battle_log: BattleLog = null
 var _unstuck: UnstuckTracker = UnstuckTracker.new()
+# Chat y grupos (SOC-04, SOC-06); se crea en start().
+var _social: SocialService = null
 var _unstuck_log: Array[Dictionary] = []
 var _unstuck_uses: int = 0
 # net_id -> tick en el que se retira el cuerpo de quien salió en combate (GUE-41).
@@ -483,6 +486,8 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_setup_npcs(world)
 	_commands.audit_sink = Callable(self, "_log")
 	_register_commands()
+	_social = SocialService.new(Callable(self, "_social_peers"), Callable(self, "_social_send"),
+			Callable(self, "_add_strike"))
 	if _transport != null:
 		_connect_transport()
 		if not _transport.is_server():
@@ -695,6 +700,10 @@ func get_scores() -> ScoreKeeper:
 
 
 ## El control del comando /atascado (canalizaciones y reutilizaciones).
+func get_social() -> SocialService:
+	return _social
+
+
 func get_unstuck() -> UnstuckTracker:
 	return _unstuck
 
@@ -1011,6 +1020,7 @@ func _physics_process(delta: float) -> void:
 	_check_shutdown_countdown(s)
 
 	_process_arrivals(s)
+	_social.step(s)
 
 	_metrics.begin_section(&"history")
 	_record_history(s)
@@ -1339,6 +1349,7 @@ func _process_departures(s: int) -> void:
 			continue
 		_peers.erase(peer_id)
 		_rtt.erase(peer_id)
+		_social.on_peer_left(peer, s)
 		if peer.entity == null:
 			continue
 		var entity: NetEntity = peer.entity
@@ -1567,6 +1578,16 @@ func _is_relevant(observer: NetEntity, entity: NetEntity, was_relevant: bool) ->
 func _send(peer: ServerPeer, channel: int, bytes: PackedByteArray) -> void:
 	if _transport != null:
 		_transport.send(peer.peer_id, channel, bytes)
+
+
+# Lo que el servicio social necesita del servidor: los peers en el mundo y enviar por el canal fiable.
+func _social_peers() -> Array[ServerPeer]:
+	return _world_peers
+
+
+func _social_send(peer_id: int, bytes: PackedByteArray) -> void:
+	if _transport != null:
+		_transport.send(peer_id, NetProtocol.CH_RELIABLE, bytes)
 
 
 # --- Combate: eventos, enemigos, suelo ----------------------------------------------------------
@@ -2534,7 +2555,9 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 		NetProtocol.MSG_UNSTUCK_REQUEST:
 			_handle_unstuck_request(peer, bytes)
 		_:
-			_add_strike(peer, "tipo de mensaje inesperado (0x%02X)" % msg_type)
+			# El chat y los grupos (0x40 a 0x4F) los atiende el servicio social.
+			if not _social.handle_packet(peer, msg_type, bytes, _tick):
+				_add_strike(peer, "tipo de mensaje inesperado (0x%02X)" % msg_type)
 
 
 func _handle_input_batch(peer: ServerPeer, bytes: PackedByteArray) -> void:
@@ -2940,6 +2963,7 @@ func _build_report() -> Dictionary:
 		"combat": _combat_report(),
 		"war": _war_report(),
 		"npcs": _npc_report(),
+		"social": _social.get_stats() if _social != null else {},
 		"simulate": {
 			"calls": _simulate_calls,
 			"total_us": _simulate_usec_total,

@@ -56,6 +56,9 @@ var _pending_presses: int = 0
 ## para que el clic que recaptura el ratón (o un clic en la interfaz) no ataque.
 var _suppressed_buttons: int = 0
 var _cursor_was_free: bool = false
+## Quién tiene la entrada de juego suspendida (la caja de chat mientras se escribe): id de instancia ->
+## true. Mientras haya alguno, la entrada del dispositivo es neutra (sin movimiento ni botones).
+var _input_blockers: Dictionary = {}
 
 
 func _ready() -> void:
@@ -83,6 +86,27 @@ func enable_demo(demo: DemoInput) -> void:
 ## teclado o de la demo. Con null vuelve al dispositivo (o a la demo, si está activada).
 func set_bot(brain: BotBrain) -> void:
 	_bot = brain
+
+
+## Suspende (o devuelve) la entrada de juego del dispositivo en nombre de [param holder]: mientras alguno
+## la tenga suspendida, el personaje no se mueve ni usa botones aunque se pulsen las teclas, y la vista
+## sigue la de la cámara (que el solicitante suele tener con el cursor libre). Cada solicitante cuenta una
+## sola vez. Lo usa la caja de chat mientras el jugador escribe (SOC-05). La entrada de un bot o de una demo
+## no se ve afectada.
+func set_input_blocked(blocked: bool, holder: Object) -> void:
+	var key: int = holder.get_instance_id()
+	if blocked:
+		_input_blockers[key] = true
+	else:
+		_input_blockers.erase(key)
+
+
+## true si algún solicitante vivo tiene suspendida la entrada de juego ([method set_input_blocked]).
+func is_input_blocked() -> bool:
+	for key: int in _input_blockers.keys():
+		if not is_instance_id_valid(key):
+			_input_blockers.erase(key)
+	return not _input_blockers.is_empty()
 
 
 ## Últimas entradas generadas (como mucho [constant HISTORY_SIZE]), de la más
@@ -136,7 +160,7 @@ func build_input(tick: int) -> PlayerInput:
 ## física para que el siguiente [method build_input] las sume y no se pierda ningún toque corto.
 ## Con un bot o una demo no hace nada, porque su entrada no depende del dispositivo.
 func accumulate_presses() -> void:
-	if _bot != null or _demo != null:
+	if _bot != null or _demo != null or is_input_blocked():
 		return
 	var cursor_free: bool = _cursor_was_free
 	if is_instance_valid(_camera_rig):
@@ -184,6 +208,11 @@ func _device_input() -> PlayerInput:
 	_suppressed_buttons &= held_mouse
 	_cursor_was_free = cursor_free
 	input.buttons = buttons & ~_suppressed_buttons
+	# Con la entrada suspendida (escribiendo en el chat) el personaje se queda quieto y sin botones; los
+	# botones del ratón que se mantienen siguen suprimidos hasta soltarlos (arriba).
+	if is_input_blocked():
+		input.move = Vector2.ZERO
+		input.buttons = 0
 	return input
 
 
