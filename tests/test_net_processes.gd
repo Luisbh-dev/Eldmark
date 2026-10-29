@@ -16,6 +16,8 @@ extends TestCase
 ## sea rápido): rechazado o expulsado, sin que el bot honrado tenga diferencias sin explicar ni el
 ## servidor registre errores en su registro.
 ## [br][br]
+## [b]Enjambre[/b] ([code]--bots=N[/code], [BotSwarm]): un proceso con seis clientes ligeros contra el servidor.
+## [br][br]
 ## Los registros y los informes quedan en [code]build/np_*[/code] (los de estado con extensión
 ## [code].txt[/code]: el importador convierte los [code].csv[/code] del proyecto en traducciones).
 
@@ -48,6 +50,11 @@ func _build_path(file_name: String) -> String:
 func _bot(seed_value: int, realm_name: String,
 		extra_args: PackedStringArray = PackedStringArray()) -> Dictionary:
 	return {"seed": seed_value, "realm": realm_name, "extra": extra_args}
+
+
+## Un proceso [code]--bots=N[/code] (enjambre de clientes ligeros) en lugar de un [code]--bot[/code].
+func _swarm(count: int, seed_value: int, realm_name: String = "vardheim") -> Dictionary:
+	return {"seed": seed_value, "realm": realm_name, "extra": PackedStringArray(), "swarm": count}
 
 
 ## Lanza un servidor (con [param server_extra] de más) y los bots, espera a que terminen y recoge sus
@@ -96,10 +103,14 @@ func _run_scenario(tag: String, zone: String, server_ticks: int, bot_ticks: int,
 		for key: String in ["report", "states", "log"]:
 			DirAccess.remove_absolute(info[key])
 		var args := PackedStringArray([
-			"--bot", "--connect=127.0.0.1:%d" % port, "--realm=%s" % spec["realm"],
+			"--connect=127.0.0.1:%d" % port, "--realm=%s" % spec["realm"],
 			"--bot-seed=%d" % spec["seed"], "--quit-after-ticks=%d" % bot_ticks,
-			"--report=%s" % info["report"], "--state-log=%s" % info["states"],
+			"--report=%s" % info["report"],
 		])
+		if spec.has("swarm"):
+			args.append("--bots=%d" % spec["swarm"])
+		else:
+			args.append_array(PackedStringArray(["--bot", "--state-log=%s" % info["states"]]))
 		args.append_array(spec["extra"])
 		info["pid"] = NetHarness.launch_process(args, "np_%s_bot%d" % [tag, i])
 		if info["pid"] > 0:
@@ -351,3 +362,33 @@ func _assert_kicked(cheat: String) -> void:
 	var players: Dictionary = data.get("players", {})
 	assert_eq(int(players.get("joined_total", 0)), 2, "entraron los dos")
 	assert_eq(int(players.get("left_total", 0)), 2, "y se fueron los dos: uno expulsado y otro por su pie")
+
+
+# --- Enjambre de bots (--bots=N) --------------------------------------------------------------
+
+func test_a_swarm_process_fills_the_server_with_light_clients() -> void:
+	var scenario: Dictionary = await _run_scenario("swarm", LIGHT_ZONE, 560, 360, [_swarm(6, 100)])
+	if not assert_true(scenario["ok"], "el escenario termina"):
+		return
+	var server: Dictionary = scenario["server"]
+	assert_eq(server["exit"], 0, "el servidor sale con 0")
+	assert_eq(_error_lines(server["log"]), PackedStringArray(), "sin errores en el registro del servidor")
+	var data: Dictionary = server["data"]
+	assert_eq(int((data.get("players", {}) as Dictionary).get("joined_total", 0)), 6, "entran los 6 bots")
+	assert_eq(int((data.get("strikes", {}) as Dictionary).get("total", -1)), 0, "sin avisos")
+	assert_true((data.get("kicks", []) as Array).is_empty(), "ni expulsiones")
+	assert_true(float((data.get("inputs", {}) as Dictionary).get("substituted_percent", 100.0)) < 5.0,
+			"con casi todas las entradas a tiempo")
+	var swarm: Dictionary = scenario["bots"][0]
+	assert_eq(swarm["exit"], 0, "el enjambre sale con 0: todos jugaban")
+	assert_eq(_error_lines(swarm["log"]), PackedStringArray(), "sin errores en el registro del enjambre")
+	var report: Dictionary = swarm["data"]
+	assert_eq(report.get("mode"), "SWARM")
+	assert_eq(int((report.get("bots", {}) as Dictionary).get("played", 0)), 6)
+	var clients: Array = report.get("clients", [])
+	assert_eq(clients.size(), 6, "una ficha por bot")
+	for entry: Dictionary in clients:
+		assert_true(int(entry.get("snapshots", 0)) > 40, "%s recibe snapshots" % entry.get("name"))
+		assert_true(int(entry.get("bytes_down", 0)) > 1000 and int(entry.get("bytes_up", 0)) > 1000,
+				"%s: bytes de subida y de bajada" % entry.get("name"))
+		assert_true(float(entry.get("avg_snapshot_bytes", 0.0)) > 49.0, "y tamaño medio de snapshot")

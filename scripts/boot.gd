@@ -48,6 +48,9 @@ func _ready() -> void:
 		return
 	# Prioridad de la sección 1.2: --server > --bots > --connect/--local/--bot > sandbox.
 	var config: ClientConfig = ClientConfig.from_args(args)
+	if config.mode == ClientConfig.Mode.SWARM:
+		_start_swarm(config)
+		return
 	match config.mode:
 		ClientConfig.Mode.ONLINE, ClientConfig.Mode.BOT:
 			_start_online(config)
@@ -176,3 +179,15 @@ static func _clean_value(value: String) -> String:
 ## Ruta de una opción sin espacios ni comillas alrededor y con barras normales.
 static func _clean_path(value: String) -> String:
 	return value.strip_edges().trim_prefix("\"").trim_suffix("\"").replace("\\", "/")
+
+
+# --- Enjambre de bots (TEC-11) ----------------------------------------------------------------
+
+## Escena del enjambre de clientes ligeros ([code]--bots=N[/code]).
+const SWARM_SCENE: String = "res://scenes/client/bot_swarm.tscn"
+
+
+## Rellena [member BotSwarm.config] y cambia a la escena del enjambre de bots ([BotSwarm]).
+func _start_swarm(config: ClientConfig) -> void:
+	BotSwarm.config = config
+	get_tree().change_scene_to_file.call_deferred(SWARM_SCENE)
