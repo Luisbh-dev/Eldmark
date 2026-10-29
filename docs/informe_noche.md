@@ -9,7 +9,7 @@ y está siempre en la rama más reciente.
 |---|---|---|
 | Backlog (`docs/backlog.md`) | `main` | Hecho y subido |
 | Fase 2: red | `fase2-red` | Implementada (594 pruebas en verde, CI de GitHub en verde); revisión adversarial hecha y sus 19 hallazgos corregidos, cada uno con su prueba (656 pruebas en verde) |
-| Fase 3: combate | `fase3-combate` (desde `fase2-red`, que está fusionada dentro) | Diseño revisado (`docs/combate.md`); K1–K4 integrados (1052 pruebas); K5 (integración y carga) y el carril de audio, tema y ajustes, pendientes |
+| Fase 3: combate | `fase3-combate` (desde `fase2-red`, que está fusionada dentro) | Diseño revisado (`docs/combate.md`); K1–K5 y el carril de audio, tema, ajustes, documento social y exportación integrados; revisión adversarial pendiente |
 | Fase 4: fuerte | (aún sin rama) | Diseño v2 revisado (`docs/fuerte.md`) |
 
 ## Entorno (Linux)
@@ -182,9 +182,31 @@ Diseño en [combate.md](combate.md): revisado con dos lentes antes de implementa
 | K3 | `CombatDirector` (orden del tick), `CombatResolver` con rebobinado y precedencia de defensas, `Combatant`, `DamageLedger`, muerte, reaparición, caída, volúmenes letales, zonas seguras, maniquíes, `CommandRegistry` y consola (`--console`), `--combat-log`, bots de combate (`--fake-brain=combat`) | 134 (resolutor, director, loopback ENet, procesos...) |
 | K4 | Eventos temporizados, `CombatFeedback` (marcador, números, DPS), barras de vida y resistencia, placas con nombre y vida, pantalla de muerte con reaparición, capa de animación de combate con clips de UAL, armas provisionales, demo con el combo | 111 |
 
-Coste medido del paso de combate con refriegas de jugadores falsos: 64 → p99 del combate 6,1 ms
-(tick p99 16,2 ms); 128 → combate p99 4,3 ms, pero el tick lo domina `simulate()`. Lo mide en serio
-K5.
+| K5 | Rebobinado con NetSim (20/20 golpes vistos confirmados con rtt=150 y jitter=30; 0 impactos con 30 ticks de desfase), bot tramposo `rewind`/`reach`/`rate` (sin daño de más), reconciliación con rtt=120 y 5 % de pérdida en refriega, carga con combate, demo, primera pasada de equilibrio (`tools/combat_balance.gd`) | `test_combat_loopback`, `test_combat_reconciliation`, `test_bot_cheat*`, `test_combat_balance` |
+| Carril 3 | ART-10 audio (buses, `AudioDirector` con pools y límite de voces), UI-02 tema (`eldmark_theme.tres`, emblemas SVG provisionales, galería), UI-09 componentes, UI-16 ajustes (F10, `user://settings.cfg`), SOC-02 `docs/social.md`, TEC-12 `export_presets.cfg` y `tools/export.sh`/`.ps1` | 81 |
+
+**Carga con combate** (K5, máquina en reposo, 60 s, 10 bots reales y el resto jugadores falsos con
+cerebro de combate):
+
+| Combatientes | Tick p50 / p99 / máx (ms) | simulate | combate | snapshots | KB/s por cliente |
+|---|---|---|---|---|---|
+| 32 | 4,9 / 8,9 / 17,2 | 3,1 | 0,35 | 0,84 | 23,6 |
+| 64 | 9,4 / 15,9 / 24,9 | 6,5 | 0,77 | 1,41 | 35,3 |
+| 128 | 17,5 / 30,0 / 36,3 | 13,3 | 1,41 | 2,16 | 31,4 |
+
+- **Primer límite de jugadores por batalla con combate: 64** (cabe en el tick, 0 entradas
+  sustituidas, 0 rebobinados rechazados). El criterio estricto de p99 < 8 ms solo se cumple hasta
+  unos 28. El cuello es `simulate()` (69–72 µs por personaje con la máquina de acciones), no la
+  resolución de golpes (76–97 µs por comprobación, pocas por tick). Con 128 el servidor se satura y
+  los honrados empiezan a superar el tope del rebobinado.
+- **Equilibrio** (bots que no reaccionan, cota baja): DPS medido = calculado (combo 156,3); muerte
+  en 5,95 s contra uno quieto y 14,47 s contra uno que bloquea; mediana de 60 duelos de bots 10,7 s.
+  No se ha cambiado ningún dato (propuesta: tercer ligero de 130 a 150, a decidir viendo jugar).
+
+**Decisiones abiertas que dejo para el usuario** (no bloquean):
+- El tope de rebobinado de 24 ticks no cubre a un honrado con 200 ms de RTT (11 de 20 golpes):
+  subir `MAX_REWIND_TICKS` o recortar el margen de TickSync. Importa para Latinoamérica.
+- Bajar el coste de `simulate()` (palanca 6 de red.md §14: C++) si se quieren batallas de más de 64.
 
 ## Pendiente de probar mañana con ventana
 
@@ -225,7 +247,11 @@ $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Mi
    en `test_world` y junto a cada campamento del Vado Gris. Vista previa de los clips:
    `& $godot --path . res://scenes/tests/combat_preview.tscn`. Las armas son una caja y un
    cilindro (provisionales).
-7. Desde el editor: *Depurar ▸ Personalizar instancias de ejecución* (instancia 1:
+7. **Interfaz**: tema (`scenes/tests/ui_gallery.tscn`), ajustes con F10, emblemas SVG
+   provisionales. Faltan las fuentes OFL (ver `assets/LICENCIAS.md`).
+8. **Exportación** (TEC-12): instalar las plantillas 4.7.2 desde el editor y lanzar
+   `tools\export.ps1` (no se ha podido ejecutar aquí).
+9. Desde el editor: *Depurar ▸ Personalizar instancias de ejecución* (instancia 1:
    `--headless -- --server --debug-commands`; 2 y 3: `-- --connect=127.0.0.1 --realm=vardheim` y
    `--realm=solmarch`).
 
