@@ -37,10 +37,16 @@ extends RefCounted
 ## impacto, donde [code]defensa[/code] es el [code]view_tick[/code] o, si es anterior, el instante que
 ## impone el mínimo para la defensa. La parada y el bloqueo se miran en la muestra de ese instante y en
 ## la de [code]s[/code], con el atacante dentro del cono frontal del defensor; la antigua no cuenta si
-## el defensor ha empezado después un ataque, una esquiva o un control (tambaleo, aturdimiento): quien
-## suelta el escudo para atacar, o a quien se lo quitan, deja de estar protegido.
+## la acción congelada del defensor no es BLOCK y empezó después de ese instante, sea NONE o no
+## (docs/habilidades.md, sección 4.2): quien suelta el escudo para atacar, beber o levantar, o a quien se
+## lo quitan con un control, deja de estar protegido; quien lo suelta sin más (NONE conserva el
+## [code]action_tick[/code] del bloqueo) no. El muro de escudos ([constant ActionMachine.DEFENSE_WIDE_BLOCK])
+## bloquea con el cono de [member CombatRules.ability_block_angle_deg] (y el director cobra
+## [member CombatRules.ability_block_stamina_per_damage]).
 ## [br][br]
-## Un impacto, un bloqueo o una parada consumen el ataque para ese objetivo.
+## Los golpes de las habilidades ([member AbilityTicks.hit], el golpe sintetizado que congela
+## [method Combatant.freeze]) siguen el mismo camino que los ataques, también contra las puertas.
+## Un impacto, un bloqueo o una parada consumen el golpe para ese objetivo (una vez por acción).
 
 ## Resultado de un golpe sobre un objetivo.
 enum Outcome {
@@ -107,6 +113,9 @@ class Hit:
 	var rewind: float = 0.0
 	## Golpe por la espalda (solo en impactos y bloqueos).
 	var critical: bool = false
+	## BLOCKED por un bloqueo ancho (el muro de escudos, [constant ActionMachine.DEFENSE_WIDE_BLOCK]):
+	## gasta [member CombatRules.ability_block_stamina_per_damage] en vez del coste del arma.
+	var wide_block: bool = false
 
 
 ## [param history] es el historial de posiciones del servidor, [param zone_id] la zona (para las
@@ -137,7 +146,9 @@ func resolve(s: int, combatants: Array[Combatant],
 		var attacker_frame: Combatant.Frozen = attacker.frozen
 		if not attacker_frame.attack_active or attacker.is_dead():
 			continue
-		var attack: AttackTicks = CombatCatalog.attack(attacker_frame.action_id)
+		# El golpe activo congelado: un ataque o el golpe sintetizado de una habilidad. Sin forma (una
+		# canalización, un disparo) no hay golpe cuerpo a cuerpo.
+		var attack: AttackTicks = attacker_frame.hit
 		if attack == null or attack.shape == null:
 			continue
 		attacker.track_swing(attacker_frame.action_tick)
@@ -305,7 +316,7 @@ func _test(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_tic
 	hit.attack = attack
 	hit.view_tick = view_tick
 	hit.rewind = float(s) - view_tick
-	hit.outcome = _defense(attacker, victim, attack, view_tick, defense_tick, s, sample)
+	hit.outcome = _defense(attacker, victim, attack, view_tick, defense_tick, s, sample, rules, hit)
 	if hit.outcome == Outcome.IMPACT or hit.outcome == Outcome.BLOCKED:
 		hit.critical = DamageFormula.is_backstab(attacker_frame.position, sample.position,
 				sample.yaw, rules.backstab_angle_deg)
@@ -316,9 +327,10 @@ func _test(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_tic
 
 # Precedencia de la defensa (docs/combate.md, 4.3, paso 6). [param defense_tick] es el instante más
 # antiguo que se mira para las defensas retroactivas: view_tick, o antes si el servidor impone un
-# rebobinado mínimo (el cliente no se libra de ellas pidiendo 0).
+# rebobinado mínimo (el cliente no se libra de ellas pidiendo 0). Un bloqueo del muro de escudos marca
+# [member Hit.wide_block] en [param hit].
 func _defense(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_tick: float,
-		defense_tick: float, s: int, sample: StateHistory.Sample) -> int:
+		defense_tick: float, s: int, sample: StateHistory.Sample, rules: CombatRules, hit: Hit) -> int:
 	var old_tick: float = minf(view_tick, defense_tick)
 	if _was_invulnerable(victim, old_tick, s):
 		return Outcome.INVULNERABLE
@@ -337,15 +349,32 @@ func _defense(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_
 		old_sample = _sample(victim, old_tick, s)
 	var old_counts: bool = old_sample != null and old_tick < float(s) \
 			and not _dropped_guard_after(victim_frame, old_tick)
-	# Parada (solo contra golpes cuerpo a cuerpo: todos los de la fase 3).
+	# Parada (solo contra golpes cuerpo a cuerpo: todos los que prueba este resolutor).
 	if _defends(victim_frame, old_sample, old_counts, ActionMachine.DEFENSE_PARRY, cone,
 			attacker_position):
 		return Outcome.PARRIED
-	# Bloqueo: el escudo solo frena el daño físico.
-	if DamageFormula.is_physical(attack.damage_type) and _defends(victim_frame, old_sample,
-			old_counts, ActionMachine.DEFENSE_BLOCKING, cone, attacker_position):
+	# Bloqueo: el escudo solo frena el daño físico. El del muro de escudos es ancho: su cono es el de
+	# las reglas, en la muestra que lo lleve.
+	if not DamageFormula.is_physical(attack.damage_type):
+		return Outcome.IMPACT
+	var wide_cone: float = rules.ability_block_angle_deg
+	if _blocks(victim_frame, victim_frame.defense, cone, wide_cone, attacker_position):
+		hit.wide_block = (victim_frame.defense & ActionMachine.DEFENSE_WIDE_BLOCK) != 0
+		return Outcome.BLOCKED
+	if old_counts and _blocks(old_sample, old_sample.flags, cone, wide_cone, attacker_position):
+		hit.wide_block = (old_sample.flags & ActionMachine.DEFENSE_WIDE_BLOCK) != 0
 		return Outcome.BLOCKED
 	return Outcome.IMPACT
+
+
+# true si la muestra [param sample] (con sus banderas [param flags]) bloquea al atacante: bloqueando y
+# con el atacante en su cono, el del arma ([param cone]) o, con el bloqueo ancho, [param wide_cone].
+static func _blocks(sample: StateHistory.Sample, flags: int, cone: float, wide_cone: float,
+		attacker_position: Vector3) -> bool:
+	if (flags & ActionMachine.DEFENSE_BLOCKING) == 0:
+		return false
+	var used: float = wide_cone if (flags & ActionMachine.DEFENSE_WIDE_BLOCK) != 0 else cone
+	return HitShapes.is_in_front(sample.position, sample.yaw, attacker_position, used)
 
 
 # true si el defensor tiene la bandera [param flag] en s (muestra congelada) o en view_tick
@@ -359,15 +388,16 @@ func _defends(victim_frame: Combatant.Frozen, sample: StateHistory.Sample, old_c
 			sample.yaw, attacker_position, cone)
 
 
-# true si el defensor, después de view_tick, empezó una acción que baja el escudo: un ataque, una carga
-# o una esquiva suyos, o un control que le han impuesto (tambaleo, aturdimiento, muerte). Soltar el
-# escudo sin hacer nada más (NONE, que conserva el action_tick del bloqueo) o seguir bloqueando no
-# cuenta: ahí la muestra de view_tick sigue siendo lo que el atacante veía.
+# true si la muestra de view_tick ya no cuenta (docs/habilidades.md, sección 4.2): la acción congelada del
+# defensor no es BLOCK y empezó después de view_tick, sea NONE o no. Un ataque, una carga, una esquiva,
+# una habilidad, beber, levantar o un control (tambaleo, aturdimiento, muerte) bajan el escudo; y
+# también volver a NONE desde ellos, porque NONE conserva el action_tick de lo que acaba (_to_none,
+# impose_interrupt). Soltar el escudo sin más (NONE con el action_tick del bloqueo) o seguir bloqueando
+# no cuenta: ahí la muestra de view_tick sigue siendo lo que el atacante veía.
 static func _dropped_guard_after(victim_frame: Combatant.Frozen, view_tick: float) -> bool:
 	if float(victim_frame.action_tick) <= view_tick:
 		return false
-	return victim_frame.action != CombatState.Action.NONE \
-			and victim_frame.action != CombatState.Action.BLOCK
+	return victim_frame.action != CombatState.Action.BLOCK
 
 
 # true si el objetivo fue invulnerable en algún tick de [floor(view_tick), s].

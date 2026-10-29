@@ -307,6 +307,19 @@ func test_line_of_sight_only_looks_at_world_layer() -> void:
 			Vector3(20.0, 0.0, -6.0)), "el muro de la capa del mundo sí corta")
 
 
+## H3a (docs/habilidades.md, 4.4): is_ray_clear usa hit_from_inside: un rayo que empieza dentro de un cuerpo
+## choca en su origen (sin eso, Godot lo ignora y el dueño de un fuerte golpearía desde el vano de su puerta).
+func test_a_ray_that_starts_inside_a_body_is_not_clear() -> void:
+	await _build_world([_wall(Vector3(0.0, 2.0, -3.0), Vector3(4.0, 4.0, 0.6))])
+	var space: PhysicsDirectSpaceState3D = _viewport.find_world_3d().direct_space_state
+	assert_false(HitShapes.is_ray_clear(space, Vector3(0.0, 1.4, -3.0), Vector3(0.0, 0.9, 3.0)),
+			"del interior del muro hacia fuera")
+	assert_false(HitShapes.is_ray_clear(space, Vector3(0.0, 1.4, 3.0), Vector3(0.0, 0.9, -3.0)),
+			"de fuera hacia el interior (entra por su cara)")
+	assert_true(HitShapes.is_ray_clear(space, Vector3(0.0, 1.4, -1.0), Vector3(0.0, 0.9, 3.0)),
+			"pegado al muro pero fuera, libre")
+
+
 # --- Utilidades -------------------------------------------------------------------------------
 
 ## Sector contra una cápsula de personaje con sus pies en [param target_feet], desde el origen.

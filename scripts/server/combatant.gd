@@ -11,7 +11,11 @@ extends RefCounted
 ## [br][br]
 ## [member frozen] es la «muestra del tick actual» (docs/combate.md, 4.2): la posición, el giro, las
 ## banderas defensivas y la acción de la entidad justo después de simular el tick, que el
-## [CombatResolver] usa para que todos los golpes de un tick sean simultáneos.
+## [CombatResolver] usa para que todos los golpes de un tick sean simultáneos. Desde la fase 4
+## (docs/habilidades.md, sección 4.1, paso 2) congela también el golpe activo (un ataque o el golpe
+## sintetizado de una habilidad), si es el tick del compromiso y la caja del muro de escudos.
+## [br][br]
+## [member effects] son sus efectos de estado activos (los lleva el [StatusSystem]).
 
 ## Estado congelado de la entidad tras simular el tick [member tick]. Es una
 ## [StateHistory.Sample] (posición, giro y banderas) con la acción en curso.
@@ -28,11 +32,27 @@ class Frozen:
 	var weapon_id: int = 0
 	## Carga con la que se lanzó el golpe fuerte en curso.
 	var charge_ticks: int = 0
-	## Hay un ataque en su golpe activo.
+	## El golpe activo del tick ([method ActionMachine.active_hit]): el ataque en su golpe activo o el
+	## golpe sintetizado de la habilidad en su activo o su canalización ([member AbilityTicks.hit]);
+	## null si no hay. Sin forma no prueba a nadie.
+	var hit: AttackTicks = null
+	## Hay un golpe activo ([member hit] no es null).
 	var attack_active: bool = false
-	## Está en el golpe activo de un ataque con entereza ([member AttackTicks.hyper_armor]).
+	## Está en el golpe activo de un ataque o una habilidad con entereza
+	## ([member AttackTicks.hyper_armor]).
 	var hyper_armor: bool = false
+	## El tick es el del compromiso ([method ActionMachine.is_commit_tick]): el primer tick activo de un
+	## LIGHT, un HEAVY o una ABILITY (salen los proyectiles y los efectos propios).
+	var commit: bool = false
+	## Caja del muro de escudos (centro y giro) mientras la canalización que bloquea la lleva
+	## ([member AbilityTicks.wall_half_extents]); vale si [member wall_half_extents] no es cero.
+	var wall: Transform3D = Transform3D.IDENTITY
+	## Semiejes de [member wall] (cero = sin muro).
+	var wall_half_extents: Vector3 = Vector3.ZERO
 
+
+## [member effects_due] sin efectos: nunca.
+const NO_EFFECTS_DUE: int = 0x7FFFFFFFFFFFFFFF
 
 var entity: NetEntity
 ## Cola de entradas de la entidad (la de un jugador de red, un jugador falso o un PNJ).
@@ -68,6 +88,12 @@ var cc_chain: PackedInt64Array = PackedInt64Array()
 var cc_immune_until: int = 0
 var ledger: DamageLedger
 var frozen: Frozen = Frozen.new()
+## Efectos de estado activos (hasta [constant StatusSystem.MAX_EFFECTS], por id de efecto). Los lleva el
+## [StatusSystem]: nadie más los toca.
+var effects: Array[StatusSystem.ActiveEffect] = []
+## Primer tick en que a [member effects] le pasa algo (un pulso o una caducidad); el [StatusSystem] no mira
+## a la entidad antes. [constant NO_EFFECTS_DUE] si no lleva ninguno.
+var effects_due: int = NO_EFFECTS_DUE
 ## Ataque (por su tick de inicio) que se está resolviendo, y a quién ha golpeado ya: un impacto por
 ## acción y objetivo.
 var swing_action_tick: int = -1
@@ -169,16 +195,36 @@ func freeze(tick: int) -> void:
 	sample.weapon_id = state.weapon_id
 	sample.charge_ticks = state.charge_ticks
 	sample.defense = ActionMachine.defense_flags(state, tick)
+	# El byte del historial: los bits 0-2 del registro (suelo y teletransporte) y las banderas
+	# defensivas; el bit 3 del registro (ranura 2) no entra nunca (es DEFENSE_BLOCKING aquí).
 	sample.flags = (entity.teleport_counter & EntityRecord.TELEPORT_MASK) \
 			<< EntityRecord.TELEPORT_SHIFT
 	if character.grounded:
 		sample.flags |= EntityRecord.FLAG_GROUNDED
-	sample.flags |= sample.defense
-	sample.attack_active = ActionMachine.is_attack_active(state, tick)
-	sample.hyper_armor = false
-	if sample.attack_active:
-		var attack: AttackTicks = CombatCatalog.attack(state.action_id)
-		sample.hyper_armor = attack != null and attack.hyper_armor
+	sample.flags = (sample.flags & EntityRecord.HISTORY_FLAGS_MASK) | sample.defense
+	sample.hit = null
+	sample.commit = false
+	sample.wall_half_extents = Vector3.ZERO
+	match state.action:
+		CombatState.Action.LIGHT, CombatState.Action.HEAVY, CombatState.Action.ABILITY:
+			sample.hit = ActionMachine.active_hit(state, tick)
+			sample.commit = ActionMachine.is_commit_tick(state, tick)
+			if (sample.defense & ActionMachine.DEFENSE_WIDE_BLOCK) != 0:
+				_freeze_wall(sample, state, character.yaw)
+	sample.attack_active = sample.hit != null
+	sample.hyper_armor = sample.hit != null and sample.hit.hyper_armor
+
+
+# La caja del muro de escudos de la canalización que bloquea: delante de los pies
+# [member AbilityTicks.wall_forward_m], con su base en el suelo y girada con el cuerpo.
+static func _freeze_wall(sample: Frozen, state: CombatState, yaw: float) -> void:
+	var ability: AbilityTicks = CombatCatalog.ability(state.action_id)
+	if ability == null or ability.wall_half_extents == Vector3.ZERO:
+		return
+	var basis := Basis(Vector3.UP, yaw)
+	sample.wall = Transform3D(basis, sample.position
+			+ basis * Vector3(0.0, ability.wall_half_extents.y, -ability.wall_forward_m))
+	sample.wall_half_extents = ability.wall_half_extents
 
 
 ## Quita hasta [param amount] de vida y devuelve lo que ha quitado de verdad. Un maniquí
@@ -245,6 +291,16 @@ func regenerate(tick: int, per_second: int) -> void:
 	_regen_carry -= gained * CombatCatalog.TICK_RATE
 	if gained > 0:
 		health = mini(health + gained, max_health)
+
+
+## Cura hasta [param amount] sin pasar del máximo (pociones, curación en el tiempo) y devuelve lo que
+## ha curado de verdad. No hace nada sobre un muerto.
+func restore_health(amount: int) -> int:
+	if amount <= 0 or health <= 0 or health >= max_health:
+		return 0
+	var restored: int = mini(amount, max_health - health)
+	health += restored
+	return restored
 
 
 ## Cura del todo (comando de depuración, reaparición).

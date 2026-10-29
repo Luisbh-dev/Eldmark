@@ -39,9 +39,10 @@ extends RefCounted
 ## descarta.
 ## [br][br]
 ## [b]Historial.[/b] [method defense_flags] da los bits 3-7 de [StateHistory]; el byte que graba el
-## servidor es [code](flags del registro & 0b111) | defense_flags[/code]: el bit 3 del registro de red
-## (ranura 2 activa, docs/habilidades.md, sección 5.2) no entra nunca, porque en el historial el bit 3
-## es [constant DEFENSE_BLOCKING].
+## servidor es [code](flags del registro & 0b111) | defense_flags[/code]
+## ([constant EntityRecord.HISTORY_FLAGS_MASK]; lo enmascaran [code]ZoneServer._record_history[/code] y
+## [method Combatant.freeze]): el bit 3 del registro de red (ranura 2 activa, docs/habilidades.md,
+## sección 5.2) no entra nunca, porque en el historial el bit 3 es [constant DEFENSE_BLOCKING].
 
 ## Cómo debe moverse el personaje este tick (lo aplica [method PlayerCharacter.simulate]).
 class Output:
@@ -458,6 +459,16 @@ static func impose_move_effect(c: CombatState, effect_id: int, until_tick: int) 
 			earliest = i
 	c.move_effect_ids[earliest] = effect_id
 	c.move_effect_until[earliest] = until_tick
+
+
+## Vacía la ranura de efecto de movimiento que ocupa [param effect_id] (si alguna lo lleva): el
+## servidor la quita cuando el efecto se va antes de tiempo (su autor se da de baja, muere quien lo
+## lleva).
+static func remove_move_effect(c: CombatState, effect_id: int) -> void:
+	for i: int in CombatState.MOVE_EFFECT_SLOTS:
+		if c.move_effect_ids[i] == effect_id:
+			c.move_effect_ids[i] = 0
+			c.move_effect_until[i] = 0
 
 
 ## Vacía las dos ranuras de efectos de movimiento.

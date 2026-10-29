@@ -20,10 +20,13 @@ extends Node
 ##                  (cada 6 ticks; entre medias repiten su plan)
 ## simular          todas las entidades con cuerpo (jugadores, falsos y PNJ) por net_id ascendente,
 ##                  con la entrada de InputQueue.take(s); _check_motion
-## combate          CombatDirector.process_tick(): congelar, resolver los golpes (también contra las
-##                  puertas de los fuertes), aplicar (daño, controles, muertes), entorno (caída,
-##                  volúmenes letales, y < -100), reapariciones y publicar la vida; los ENTITY_EVENT
-##                  salen aquí
+## combate          CombatDirector.process_tick(), pasos 2 a 9 de docs/habilidades.md, sección 4.1:
+##                  congelar (golpe activo, compromiso y muro de cada uno), efectos propios de quien
+##                  compromete una habilidad (los proyectiles nuevos, H3b), resolver los golpes de
+##                  ataques y habilidades (también contra las puertas de los fuertes), aplicar (daño,
+##                  bloqueo, controles, efectos al objetivo, interrupciones, muertes), efectos de estado
+##                  (pulsos y caducidades), el derribado (H3c), entorno (caída, volúmenes letales,
+##                  y < -100), reapariciones y publicar la vida; los ENTITY_EVENT salen aquí
 ## fuertes          FortressController.step() (paso 4b): presencia en el círculo, avance del estado de
 ##                  cada fortaleza, capas de la puerta (valen desde s + 1), avisos WAR y OBJECT_STATE;
 ##                  /atascado; cuerpos que se quedan tras una baja en combate
@@ -1423,7 +1426,7 @@ func _remove_player(entity: NetEntity, s: int, reason: int) -> void:
 	_npcs.erase(net_id)
 	_lingering.erase(net_id)
 	_scores.forget(net_id)
-	_combat.remove(net_id)
+	_combat.remove(net_id, s)
 	_history.forget(net_id)
 	_substituted_now.erase(net_id)
 	var character: PlayerCharacter = entity.get_character()
@@ -1511,8 +1514,11 @@ func _record_history(s: int) -> void:
 			yaw = character.yaw
 			if character.grounded:
 				flags |= EntityRecord.FLAG_GROUNDED
-			# Banderas defensivas (bloqueo, parada, invulnerable, muerto) para el rebobinado.
-			flags |= ActionMachine.defense_flags(character.combat, s)
+			# Banderas defensivas (bloqueo, parada, invulnerable, muerto, bloqueo ancho) para el
+			# rebobinado, sobre los bits 0-2 del registro: el bit 3 del registro (ranura 2, que aquí no se
+			# escribe) nunca entra, porque en el historial es DEFENSE_BLOCKING (docs/habilidades.md, 3.6).
+			flags = (flags & EntityRecord.HISTORY_FLAGS_MASK) \
+					| ActionMachine.defense_flags(character.combat, s)
 		else:
 			flags |= EntityRecord.FLAG_GROUNDED
 			if is_instance_valid(entity.node):
@@ -1609,8 +1615,9 @@ func _social_send(peer_id: int, bytes: PackedByteArray) -> void:
 
 # Un evento de combate: ENTITY_EVENT (canal fiable) a los dueños de las entidades implicadas
 # (víctima, atacante, asesino y asistentes) y a quien tenga relevante a cualquiera de ellas. Los KILL
-# van a toda la zona (el registro de bajas lo ve todo el mundo, docs/fuerte.md sección 6). Antes de
-# enviarlo se apunta en el marcador y en el registro de batalla.
+# van a toda la zona (el registro de bajas lo ve todo el mundo, docs/fuerte.md sección 6). STATUS y HEAL
+# (docs/habilidades.md, sección 5.4) van a los dueños del afectado y del autor y a quien tenga relevante
+# al afectado (no al autor). Antes de enviarlo se apunta en el marcador y en el registro de batalla.
 func _on_combat_event(event: NetMessages.EntityEvent, involved: PackedInt32Array) -> void:
 	_track_battle(event)
 	if _transport == null or _world_peers.is_empty():
@@ -1618,10 +1625,14 @@ func _on_combat_event(event: NetMessages.EntityEvent, involved: PackedInt32Array
 	_metrics.begin_section(SECTION_COMBAT_EVENTS)
 	var bytes: PackedByteArray = event.encode()
 	var to_everyone: bool = event.event == NetMessages.EntityEvent.Kind.KILL
+	var seen_by: PackedInt32Array = involved
+	if event.event == NetMessages.EntityEvent.Kind.STATUS \
+			or event.event == NetMessages.EntityEvent.Kind.HEAL:
+		seen_by = PackedInt32Array([event.net_id])
 	for peer: ServerPeer in _world_peers:
 		var receives: bool = to_everyone or involved.has(peer.entity.net_id)
 		if not receives:
-			for net_id: int in involved:
+			for net_id: int in seen_by:
 				if peer.relevant.get(net_id, false):
 					receives = true
 					break
@@ -1772,6 +1783,10 @@ func _register_commands() -> void:
 			_net_set_weapon)
 	_commands.register(&"spawn_dummy", "spawn_dummy <x> <y> <z> [quieto|bloqueando|girando]",
 			_console_spawn_dummy, _net_spawn_dummy)
+	_commands.register(&"cooldowns_off", "cooldowns_off <jugador> [on|off]", _console_cooldowns_off,
+			_net_cooldowns_off)
+	_commands.register(&"apply_status", "apply_status <jugador> <efecto> [ticks]", _console_apply_status,
+			_net_apply_status)
 	_fortresses.register_commands(_commands, Callable(self, "_next_tick"))
 	if _npc_system != null:
 		_npc_system.register_commands(_commands)
@@ -1885,6 +1900,38 @@ func _net_set_weapon(ctx: CommandRegistry.Context) -> int:
 	if not _combat.set_weapon(combatant, weapon_id):
 		ctx.note = "arma %d inexistente" % weapon_id
 		return CommandRegistry.Result.BAD_ARGUMENTS
+	return CommandRegistry.Result.OK
+
+
+# 13 cooldowns_off (docs/habilidades.md, sección 5.1): u8 0 o 1, el bit 7 de combat_flags2.
+func _net_cooldowns_off(ctx: CommandRegistry.Context) -> int:
+	var combatant: Combatant = _combatant_of_peer(ctx)
+	if combatant == null:
+		return CommandRegistry.Result.REFUSED
+	if ctx.payload.size() != 1 or ctx.payload[0] > 1:
+		return CommandRegistry.Result.BAD_ARGUMENTS
+	var enabled: bool = ctx.payload[0] == 1
+	_combat.set_cooldowns_off(combatant, enabled)
+	ctx.note = "sin reutilizaciones" if enabled else "con reutilizaciones"
+	return CommandRegistry.Result.OK
+
+
+# 14 apply_status: u8 status_id y u16 ticks (0 = los del dato). Se lo aplica quien lo envía, sin autor, en
+# el tick que va a simular el servidor.
+func _net_apply_status(ctx: CommandRegistry.Context) -> int:
+	var combatant: Combatant = _combatant_of_peer(ctx)
+	if combatant == null:
+		return CommandRegistry.Result.REFUSED
+	if ctx.payload.size() != NetMessages.DebugCommand.APPLY_STATUS_PAYLOAD_SIZE:
+		return CommandRegistry.Result.BAD_ARGUMENTS
+	var status_id: int = ctx.payload.decode_u8(0)
+	var ticks: int = ctx.payload.decode_u16(1)
+	if CombatCatalog.status(status_id) == null:
+		ctx.note = "efecto %d inexistente" % status_id
+		return CommandRegistry.Result.BAD_ARGUMENTS
+	if not _combat.apply_status(combatant, status_id, _tick + 1, ticks):
+		return CommandRegistry.Result.REFUSED
+	ctx.note = "%s, %d ticks" % [CombatCatalog.status(status_id).name, ticks]
 	return CommandRegistry.Result.OK
 
 
@@ -2006,6 +2053,49 @@ func _console_set_weapon(ctx: CommandRegistry.Context) -> String:
 	if not _combat.set_weapon(combatant, weapon_id):
 		return "No existe el arma «%s»" % ctx.args[1]
 	return "%s lleva ahora %s" % [combatant.entity.display_name, ctx.args[1]]
+
+
+func _console_cooldowns_off(ctx: CommandRegistry.Context) -> String:
+	if ctx.args.is_empty() or ctx.args.size() > 2:
+		return "Uso: cooldowns_off <jugador> [on|off]"
+	var combatant: Combatant = _combatant_by_name(ctx.args[0])
+	if combatant == null:
+		return "No hay ningún jugador «%s»" % ctx.args[0]
+	var enabled: bool = (combatant.get_character().combat.combat_flags2
+			& CombatState.FLAG2_NO_COOLDOWNS) == 0
+	if ctx.args.size() == 2:
+		match ctx.args[1].to_lower():
+			"on", "1", "si", "sí":
+				enabled = true
+			"off", "0", "no":
+				enabled = false
+			_:
+				return "Uso: cooldowns_off <jugador> [on|off]"
+	_combat.set_cooldowns_off(combatant, enabled)
+	return "%s para %s" % ["Sin reutilizaciones" if enabled else "Con reutilizaciones",
+			combatant.entity.display_name]
+
+
+func _console_apply_status(ctx: CommandRegistry.Context) -> String:
+	if ctx.args.size() < 2 or ctx.args.size() > 3:
+		return "Uso: apply_status <jugador> <efecto> [ticks]"
+	var combatant: Combatant = _combatant_by_name(ctx.args[0])
+	if combatant == null:
+		return "No hay ningún jugador «%s»" % ctx.args[0]
+	var status_id: int = CombatCatalog.status_id(StringName(ctx.args[1]))
+	if status_id == 0 and ctx.args[1].is_valid_int():
+		status_id = ctx.args[1].to_int()
+	if CombatCatalog.status(status_id) == null:
+		return "No existe el efecto «%s»" % ctx.args[1]
+	var ticks: int = 0
+	if ctx.args.size() == 3:
+		if not ctx.args[2].is_valid_int() or ctx.args[2].to_int() < 0 \
+				or ctx.args[2].to_int() > 0xFFFF:
+			return "Uso: apply_status <jugador> <efecto> [ticks]"
+		ticks = ctx.args[2].to_int()
+	if not _combat.apply_status(combatant, status_id, _tick + 1, ticks):
+		return "%s está muerto" % combatant.entity.display_name
+	return "%s aplicado a %s" % [CombatCatalog.status(status_id).name, combatant.entity.display_name]
 
 
 func _console_spawn_dummy(ctx: CommandRegistry.Context) -> String:
@@ -3018,6 +3108,9 @@ func _combat_report() -> Dictionary:
 	if _combat != null:
 		for stat: StringName in _combat.stats:
 			report[String(stat)] = _combat.stats[stat]
+		# Los efectos de estado (docs/habilidades.md, 4.3): aplicados, quitados, pulsos y vida curada.
+		for stat: StringName in _combat.status.stats:
+			report[String(stat)] = _combat.status.stats[stat]
 	report["events_sent"] = _events_sent
 	report["event_bytes_sent"] = _event_bytes_sent
 	report["dummies"] = get_dummy_count() if _combat != null else 0

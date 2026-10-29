@@ -409,10 +409,19 @@ Para cada atacante en golpe activo en `s`:
      atacante veía. Sin esto, un aturdido que bloqueaba hace 20 ticks «bloqueaba» el ligero de un
      segundo atacante con rebobinado: con 0 de resistencia eso es una rotura de guardia que le
      alargaba el aturdimiento.
+     **Fase 4** ([habilidades.md 4.2](habilidades.md#42-habilidades), paquete H3a): la regla pasa a
+     ser «no cuenta si la acción en `s` no es BLOCK y su `action_tick > view_tick`, **sea NONE o
+     no**». NONE conserva el `action_tick` de lo que acaba (`_to_none` e `impose_interrupt`): soltar
+     el escudo sin más sigue contando, pero volver a NONE tras beber, una poción interrumpida o un
+     REVIVE soltado (empezados después de `view_tick`) ya no. El muro de escudos (bit 7 del historial,
+     `DEFENSE_WIDE_BLOCK`) bloquea con el cono de `ability_block_angle_deg` en la muestra que lo
+     lleve.
    - Si nada aplica: **impacto**.
 
 `StateHistory` añade a sus banderas por tick: bit 3 bloqueando, bit 4 ventana de parada, bit 5
-invulnerable, bit 6 muerto (`ActionMachine.defense_flags`).
+invulnerable, bit 6 muerto (`ActionMachine.defense_flags`); en la fase 4, bit 7 bloqueo ancho (el muro
+de escudos). Los bits 0–2 son los del registro (`EntityRecord.HISTORY_FLAGS_MASK`): su bit 3 (ranura de
+arma 2) no entra nunca ([habilidades.md 3.6](habilidades.md#36-consultas)).
 
 ### 4.4 Daño (`scripts/shared/combat/damage_formula.gd`)
 

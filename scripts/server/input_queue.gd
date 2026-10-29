@@ -166,6 +166,24 @@ func take(tick: int) -> PlayerInput:
 	return input
 
 
+## La entrada que se aplicó en el tick [param tick] con [method take]: la real o la sustituida (con
+## [constant PlayerInput.SUBSTITUTED]; si la real llegó después, tarde, sigue siendo la sustituta, que es
+## la que se simuló). null si ese tick aún no se ha consumido o ya no está en el anillo
+## ([constant CAPACITY] ticks). La usan la puntería de los proyectiles (docs/habilidades.md, sección
+## 4.4: yaw, pitch y [constant PlayerInput.AIM_LEFT] del disparo) y el derribado (H3b, H3c). No hay que
+## modificarla: es la misma que se simuló.
+func get_applied(tick: int) -> PlayerInput:
+	if tick > _last_consumed:
+		return null
+	var slot: Slot = _slot(tick)
+	if slot.tick != tick:
+		return null
+	match slot.state:
+		SlotState.CONSUMED_REAL, SlotState.SUBSTITUTED, SlotState.LATE_SEEN:
+			return slot.input
+	return null
+
+
 ## Valor de [code]input_ack_tick[/code] del snapshot: el mayor tick contiguo recibido a partir
 ## del último consumido o, si no hay ninguno, el último consumido. Nunca se atasca tras una
 ## entrada sustituida.

@@ -256,6 +256,42 @@ func test_encode_spawn_of_another_player_hides_the_private_combat_state() -> voi
 	assert_eq(combat.stamina, 137, "la copia enviada no altera el personaje")
 
 
+## H3a (docs/habilidades.md, 5.2): el SPAWN ajeno enseña también la otra arma y la ranura activa (las armas
+## se ven), pero no las reutilizaciones, las cargas, el consumible, las ranuras de movimiento ni los botones
+## mantenidos o el bit «sin reutilizaciones» de combat_flags2.
+func test_encode_spawn_of_another_player_shows_both_weapons_and_hides_the_ability_state() -> void:
+	var entity: NetEntity = _make_player()
+	var combat: CombatState = entity.get_character().combat
+	var sword: int = CombatCatalog.weapon_id(&"sword_shield")
+	var bow: int = CombatCatalog.weapon_id(&"bow")
+	combat.weapon_id = sword
+	combat.alt_weapon_id = bow
+	combat.combat_flags2 = CombatState.FLAG2_SECOND_SLOT | CombatState.FLAG2_ABILITY_1_HELD \
+			| CombatState.FLAG2_NO_COOLDOWNS
+	for index: int in 6:
+		combat.ability_ready[index] = 5000 + index
+	combat.consumable_ready_tick = 6000
+	combat.consumable_charges = CombatState.pack_charges(2, 3)
+	combat.move_effect_ids[0] = CombatCatalog.status_id(&"slowed")
+	combat.move_effect_until[0] = 7000
+	var others: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(entity.encode_spawn(40, false))
+	var mine: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(entity.encode_spawn(40, true))
+	if not assert_not_null(others) or not assert_not_null(mine):
+		return
+	var seen: CombatState = others.state.combat
+	assert_eq(seen.weapon_id, sword, "el arma activa")
+	assert_eq(seen.alt_weapon_id, bow, "la de la otra ranura")
+	assert_eq(seen.combat_flags2, CombatState.FLAG2_SECOND_SLOT, "solo el bit de la ranura activa")
+	assert_eq(seen.ability_ready, PackedInt64Array([0, 0, 0, 0, 0, 0]), "sin reutilizaciones")
+	assert_eq(seen.consumable_ready_tick, 0)
+	assert_eq(seen.consumable_charges, 0, "ni cargas")
+	assert_eq(seen.move_effect_ids, PackedInt32Array([0, 0]), "ni ranuras de movimiento")
+	assert_eq(seen.move_effect_until, PackedInt64Array([0, 0]))
+	assert_eq(mine.state.combat.ability_ready[5], 5005, "el propio lo lleva todo")
+	assert_eq(mine.state.combat.consumable_charges, CombatState.pack_charges(2, 3))
+	assert_eq(mine.state.combat.combat_flags2, combat.combat_flags2)
+
+
 func test_encode_spawn_for_the_owner_sets_the_flag() -> void:
 	var entity: NetEntity = _make_player()
 	var message: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(

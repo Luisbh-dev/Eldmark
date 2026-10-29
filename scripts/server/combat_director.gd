@@ -4,15 +4,23 @@ extends RefCounted
 ## [Combatant] por entidad con cuerpo y, una vez por tick, congela, resuelve, aplica y publica.
 ## [br][br]
 ## [method process_tick] es el paso «combate» del tick (red.md 8.1, tras simular a todas las
-## entidades y antes de las altas, el historial y los snapshots):
+## entidades y antes de las altas, el historial y los snapshots), con los pasos 2 a 9 del orden de
+## docs/habilidades.md, sección 4.1 (que completa docs/fuerte.md, 1.7):
 ## [codeblock]
-## congelar    la muestra del tick actual de cada entidad (Combatant.freeze)
-## resolver    CombatResolver.resolve: todos los golpes del tick contra lo congelado y el historial
-## aplicar     por net_id del atacante y del objetivo: daño, gasto de resistencia del bloqueo,
-##             controles (con cadena e inmunidad), paradas y muertes, con sus eventos
-## entorno     volúmenes letales, daño por caída, muerte bajo y = -100
-## reaparecer  las pedidas (RESPAWN_REQUEST) y las automáticas vencidas
-## publicar    protección, regeneración y lo que ven los snapshots (vida, estado, acción)
+## 2 congelar    la muestra del tick actual de cada entidad (Combatant.freeze): posición, giro, defensa,
+##               acción, golpe activo (ataque o habilidad), compromiso y caja del muro
+## 3 propios     quien está en su compromiso, por net_id: efecto propio (self_status) y curación propia
+##               (HEAL) de su habilidad; los proyectiles nuevos son de H3b
+## 4 resolver    CombatResolver.resolve: todos los golpes de ataques y habilidades del tick contra lo
+##               congelado y el historial, y las puertas (el vuelo de los proyectiles, H3b)
+## 5 aplicar     por net_id del atacante y del objetivo: daño (con los modificadores de los efectos),
+##               gasto de resistencia del bloqueo (el del muro es el de las reglas), controles (con cadena
+##               e inmunidad), efectos al objetivo, interrupciones, paradas y muertes, con sus eventos
+## 6 efectos     StatusSystem.step: pulsos (reunidos antes de aplicarlos) y caducidades
+## 7 derribado   (H3c)
+## 8 entorno     volúmenes letales, daño por caída, muerte bajo y = -100; reapariciones pedidas
+##               (RESPAWN_REQUEST) y automáticas vencidas (la recarga del campamento, H3c)
+## 9 publicar    protección, regeneración y lo que ven los snapshots (vida, estado, acción)
 ## [/codeblock]
 ## Todo estado de combate que impone el servidor pasa por
 ## [code]PlayerState.decode(PlayerState.encode())[/code] ([method commit_state]), el mismo redondeo
@@ -48,10 +56,14 @@ const _HIT_BLOCKED: int = NetMessages.EntityEvent.HIT_FLAG_BLOCKED
 const _HIT_PARRIED: int = NetMessages.EntityEvent.HIT_FLAG_PARRIED
 const _HIT_GUARD_BREAK: int = NetMessages.EntityEvent.HIT_FLAG_GUARD_BREAK
 const _HIT_LETHAL: int = NetMessages.EntityEvent.HIT_FLAG_LETHAL
+const _HIT_INTERRUPTED: int = NetMessages.EntityEvent.HIT_FLAG_INTERRUPTED
 
 ## Plazos en ticks (las pruebas los acortan).
 var timing: CombatTiming = CombatTiming.from_rules(CombatCatalog.rules())
 var resolver: CombatResolver
+## Efectos de estado de la zona (docs/habilidades.md, sección 4.3): sus eventos salen por
+## [signal event_emitted] y sus pulsos de daño los aplica el director.
+var status: StatusSystem = StatusSystem.new()
 ## Archivo del registro de combate ([code]--combat-log[/code]); null = ninguno.
 var combat_log: FileAccess = null
 ## Medidas del servidor (null = sin medir): el paso de combate mide aparte la resolución de los golpes
@@ -63,6 +75,7 @@ var stats: Dictionary[StringName, int] = {
 	&"criticals": 0, &"rewind_rejected": 0, &"damage": 0, &"deaths": 0, &"kills": 0,
 	&"respawns": 0, &"falls": 0, &"lethal_volumes": 0, &"voids": 0, &"events": 0,
 	&"hit_tests": 0, &"resolve_us": 0, &"resolve_busy_ticks": 0, &"gate_hits": 0, &"gate_damage": 0,
+	&"interrupts": 0, &"pulse_hits": 0, &"heals": 0,
 }
 ## [code]() -> Dictionary[/code]: los [FortressState] vivos por id de fortaleza, para decidir qué puntos
 ## de reaparición valen ([method RespawnRules.points_for]). Sin esto no hay fortalezas.
@@ -96,6 +109,8 @@ func _init(history: StateHistory, zone_id: StringName, world: Node3D, safe_areas
 	_place = place
 	_pick_spawn = pick_spawn
 	resolver = CombatResolver.new(history, zone_id, safe_areas)
+	status.event_emitted.connect(_emit)
+	status.pulse_damage.connect(_apply_pulse)
 
 
 ## Redondea el estado de [param character] como lo haría el cliente al reconciliar (pasa por
@@ -116,12 +131,17 @@ func add(entity: NetEntity, queue: InputQueue, peer: ServerPeer) -> Combatant:
 	return combatant
 
 
-## Da de baja a [param net_id] y borra su rastro de los registros de daño de los demás (su id puede
-## reutilizarse).
-func remove(net_id: int) -> void:
-	if not _combatants.erase(net_id):
+## Da de baja a [param net_id] en el tick [param tick] y borra su rastro de los registros de daño de los
+## demás (su id puede reutilizarse). Los efectos que puso a otros se quitan con STATUS 2 en ese tick
+## (docs/habilidades.md, sección 4.1); sus flechas en el aire, con H3b.
+func remove(net_id: int, tick: int) -> void:
+	var leaving: Combatant = _combatants.get(net_id)
+	if leaving == null:
 		return
+	_combatants.erase(net_id)
 	_sorted_dirty = true
+	leaving.effects.clear()
+	status.forget_author(net_id, tick, get_sorted())
 	for other: Combatant in _combatants.values():
 		other.ledger.forget_attacker(net_id)
 		if other.last_enemy_id == net_id:
@@ -160,15 +180,24 @@ func size() -> int:
 
 # --- El tick ----------------------------------------------------------------------------------
 
-## El paso de combate del tick [param s]: congela, resuelve, aplica, entorno, reapariciones y
+## El paso de combate del tick [param s] (pasos 2 a 9 de docs/habilidades.md, sección 4.1): congela,
+## efectos propios del compromiso, resuelve, aplica, efectos de estado, entorno, reapariciones y
 ## publicación. [param space] es el espacio de física del mundo (línea de visión).
 func process_tick(s: int, space: PhysicsDirectSpaceState3D) -> void:
 	var list: Array[Combatant] = get_sorted()
 	if list.is_empty():
 		return
+	# Paso 2: congelar.
+	var committing: Array[Combatant] = []
 	for combatant: Combatant in list:
 		combatant.freeze(s)
 		_count_swing(combatant)
+		if combatant.frozen.commit:
+			committing.append(combatant)
+	# Paso 3: disparos y efectos propios de quien está en su compromiso (los proyectiles, H3b).
+	if not committing.is_empty():
+		_process_commits(s, committing)
+	# Paso 4: resolver (el vuelo de los proyectiles, H3b).
 	if metrics != null:
 		metrics.begin_section(SECTION_RESOLVE)
 	var tests_before: int = resolver.tests
@@ -181,14 +210,20 @@ func process_tick(s: int, space: PhysicsDirectSpaceState3D) -> void:
 	if metrics != null:
 		metrics.end_section(SECTION_RESOLVE)
 	stats[&"hit_tests"] = resolver.tests
+	# Paso 5: aplicar, por net_id del atacante y del objetivo.
 	for hit: CombatResolver.Hit in hits:
 		_apply_hit(hit, s)
+	# Paso 6: efectos de estado (pulsos y caducidades).
+	status.step(s, list)
+	# Paso 7: derribado (H3c).
+	# Paso 8: entorno y reapariciones (la recarga de consumibles en el campamento, H3c).
 	_process_environment(s, list)
 	_process_respawns(s, list)
+	# Paso 9: publicar.
 	var regen: int = CombatCatalog.rules().health_regen_per_s
 	for combatant: Combatant in list:
 		if combatant.is_protected(s) and _started_attack(combatant):
-			# Atacar pierde la protección de reaparición.
+			# Atacar (o lanzar una habilidad) pierde la protección de reaparición.
 			combatant.protected_until = s
 		combatant.regenerate(s, regen)
 		combatant.publish(s)
@@ -218,6 +253,26 @@ func set_infinite_stamina(combatant: Combatant, enabled: bool) -> void:
 	else:
 		character.combat.combat_flags &= ~CombatState.FLAG_INFINITE_STAMINA
 	commit_state(character)
+
+
+## Quita o devuelve las reutilizaciones y el gasto de cargas de [param combatant] (comando 13
+## [code]cooldowns_off[/code]: bit 7 de [member CombatState.combat_flags2]).
+func set_cooldowns_off(combatant: Combatant, enabled: bool) -> void:
+	var character: PlayerCharacter = combatant.get_character()
+	if enabled:
+		character.combat.combat_flags2 |= CombatState.FLAG2_NO_COOLDOWNS
+	else:
+		character.combat.combat_flags2 &= ~CombatState.FLAG2_NO_COOLDOWNS
+	commit_state(character)
+
+
+## Aplica a [param combatant] el efecto [param status_id] del catálogo en el tick [param tick], sin autor,
+## durante [param duration_ticks] ticks (0 = los del dato): el comando 14 [code]apply_status[/code].
+## Devuelve false si el efecto no existe o está muerto.
+func apply_status(combatant: Combatant, status_id: int, tick: int, duration_ticks: int = 0) -> bool:
+	if CombatCatalog.status(status_id) == null or combatant.is_dead():
+		return false
+	return status.apply(combatant, status_id, 0, tick, duration_ticks)
 
 
 ## Cambia el arma equipada de [param combatant] (comando de depuración) por la del catálogo
@@ -354,7 +409,8 @@ func _apply_parry(hit: CombatResolver.Hit, s: int) -> void:
 	_log_hit(s, hit, "parried", 0)
 
 
-# Impacto, con o sin bloqueo.
+# Impacto, con o sin bloqueo. El golpe de una habilidad ([member AbilityTicks.hit]) sigue el mismo
+# camino que un ataque (docs/habilidades.md, sección 4.2): su id es la fuente de la habilidad.
 func _apply_impact(hit: CombatResolver.Hit, s: int) -> void:
 	var attacker: Combatant = hit.attacker
 	var victim: Combatant = hit.victim
@@ -363,12 +419,18 @@ func _apply_impact(hit: CombatResolver.Hit, s: int) -> void:
 	var blocked: bool = hit.outcome == CombatResolver.Outcome.BLOCKED
 	var victim_character: PlayerCharacter = victim.get_character()
 	var weapon: WeaponTicks = CombatCatalog.weapon(victim.frozen.weapon_id)
+	var mitigation: float = 0.0
+	var stamina_per_damage: float = 0.0
+	if blocked:
+		mitigation = weapon.block_mitigation if weapon != null else 1.0
+		# El muro de escudos gasta lo de las reglas, no lo del arma.
+		stamina_per_damage = rules.ability_block_stamina_per_damage if hit.wide_block \
+				else weapon.block_stamina_per_damage
 	var result: DamageFormula.Result = DamageFormula.compute(attack.base_damage,
 			attacker.frozen.charge_ticks, attack.charge_min_ticks, attack.charge_max_ticks,
-			attack.charge_damage_scale, hit.critical, blocked,
-			weapon.block_mitigation if blocked else 0.0,
-			weapon.block_stamina_per_damage if blocked else 0.0,
-			victim_character.combat.stamina, 0, rules.crit_multiplier)
+			attack.charge_damage_scale, hit.critical, blocked, mitigation, stamina_per_damage,
+			victim_character.combat.stamina, 0, rules.crit_multiplier,
+			status.damage_scale(attacker), status.mitigation_penalty(victim))
 	var applied: int = victim.take_damage(result.damage, s)
 	victim.ledger.record(s, attacker.get_id(), applied)
 	victim.note_enemy_hit(attacker.get_id(), attack.id, s)
@@ -398,33 +460,126 @@ func _apply_impact(hit: CombatResolver.Hit, s: int) -> void:
 		flags |= _HIT_LETHAL
 	# Un maniquí inmortal anuncia el daño completo (el medidor de DPS lo cuenta entero).
 	var amount: int = result.damage if victim.immortal else applied
+	# Interrupción (docs/habilidades.md, sección 4.2): un impacto con daño de un hostil corta beber, un
+	# lanzamiento marcado, levantar o rematar, si el golpe no ha impuesto ya un control.
+	if not lethal and not changed and hit.outcome == CombatResolver.Outcome.IMPACT and amount > 0 \
+			and _interrupt(victim_character.combat, s):
+		flags |= _HIT_INTERRUPTED
+		changed = true
 	_emit(NetMessages.EntityEvent.hit(victim.get_id(), s, attacker.get_id(), amount,
 			attack.damage_type, flags, attack.id), _ids([victim.get_id(), attacker.get_id()]))
 	_log_hit(s, hit, "guard_break" if (flags & _HIT_GUARD_BREAK) != 0
 			else ("blocked" if blocked else "hit"), amount)
 	if lethal:
 		_die(victim, s, attacker.get_id(), attack.id)
-	elif changed:
+		return
+	if changed:
 		commit_state(victim_character)
+	# El efecto del golpe al objetivo, solo en un impacto.
+	if hit.outcome == CombatResolver.Outcome.IMPACT and attack.on_hit_status_id != 0:
+		status.apply(victim, attack.on_hit_status_id, attacker.get_id(), s)
 
 
-# Tambaleo y empuje del golpe, salvo con entereza en el golpe activo y respetando la cadena. Devuelve
-# true si ha impuesto el control (y hay que pasar el estado por encode/decode).
+# Control del golpe, salvo con entereza en el golpe activo y respetando la cadena: aturdimiento si el
+# golpe lo lleva ([member AttackTicks.stun_ticks], el golpe de escudo) y, si no, tambaleo y empuje
+# radial. Devuelve true si ha impuesto el control (y hay que pasar el estado por encode/decode).
 func _apply_hit_controls(hit: CombatResolver.Hit, s: int) -> bool:
 	var victim: Combatant = hit.victim
 	var attack: AttackTicks = hit.attack
-	if attack.stagger_ticks <= 0 or victim.is_dead() or victim.frozen.hyper_armor:
+	if attack.stagger_ticks <= 0 and attack.stun_ticks <= 0:
+		return false
+	if victim.is_dead() or victim.frozen.hyper_armor:
 		return false
 	if not victim.try_control(s):
 		return false
+	var combat: CombatState = victim.get_character().combat
+	if attack.stun_ticks > 0:
+		ActionMachine.impose_stun(combat, s, s + attack.stun_ticks)
+		return true
 	var away := Vector2(victim.frozen.position.x - hit.attacker.frozen.position.x,
 			victim.frozen.position.z - hit.attacker.frozen.position.z)
 	var knockback := Vector2.ZERO
 	if attack.knockback_speed > 0.0 and away.length() > 0.0001:
 		knockback = away.normalized() * attack.knockback_speed
-	ActionMachine.impose_stagger(victim.get_character().combat, s, s + attack.stagger_ticks,
-			knockback)
+	ActionMachine.impose_stagger(combat, s, s + attack.stagger_ticks, knockback)
 	return true
+
+
+# Corta lo que [param combat] hace en [param s] si un impacto lo interrumpe: la fase 0 (el lanzamiento,
+# [code][0, cast)[/code]) de un consumible o de una habilidad con [member AbilityTicks.interrupt_on_damage],
+# REVIVE o EXECUTE. Tras el compromiso ya no: la carga y la curación ya están puestas. Devuelve true si
+# ha interrumpido.
+func _interrupt(combat: CombatState, s: int) -> bool:
+	if not is_interruptible(combat, s):
+		return false
+	ActionMachine.impose_interrupt(combat, s)
+	stats[&"interrupts"] += 1
+	return true
+
+
+## true si un impacto con daño de un hostil cortaría lo que hace [param combat] en [param tick]
+## (docs/habilidades.md, sección 4.2): el lanzamiento de un consumible o de una habilidad con
+## [member AbilityTicks.interrupt_on_damage], levantar o rematar.
+static func is_interruptible(combat: CombatState, tick: int) -> bool:
+	match combat.action:
+		CombatState.Action.REVIVE, CombatState.Action.EXECUTE:
+			return true
+		CombatState.Action.ABILITY:
+			var ability: AbilityTicks = CombatCatalog.ability(combat.action_id)
+			return ability != null and (ability.is_consumable() or ability.interrupt_on_damage) \
+					and tick - combat.action_tick < ability.cast_ticks
+	return false
+
+
+# --- Efectos de estado ------------------------------------------------------------------------
+
+# Paso 3, sobre quien está en su compromiso ([param list], por net_id): el de una habilidad (el primer
+# tick activo) se pone su efecto propio ([member AbilityTicks.self_status_id], la curación de la poción) y
+# se cura [member AbilityTicks.self_heal]. Una vez: el compromiso cae en un solo tick.
+func _process_commits(s: int, list: Array[Combatant]) -> void:
+	for combatant: Combatant in list:
+		var frame: Combatant.Frozen = combatant.frozen
+		if not frame.commit or frame.action != CombatState.Action.ABILITY or combatant.is_dead():
+			continue
+		var ability: AbilityTicks = CombatCatalog.ability(frame.action_id)
+		if ability == null:
+			continue
+		if ability.self_status_id != 0:
+			status.apply(combatant, ability.self_status_id, combatant.get_id(), s)
+		if ability.self_heal > 0:
+			if status.heal(combatant, combatant.get_id(), ability.self_heal,
+					CombatSource.make(CombatSource.Kind.ABILITY, ability.id), s) > 0:
+				stats[&"heals"] += 1
+
+
+# Un pulso de daño en el tiempo ([signal StatusSystem.pulse_damage]): HIT con la fuente del efecto y el
+# autor del efecto como atacante, sin bloqueo ni crítico, con el más daño del autor. Puede matar (H3c:
+# derribar); no interrumpe ni impone controles.
+func _apply_pulse(target: Combatant, author_id: int, effect: StatusTicks, amount: int, s: int) -> void:
+	if target.is_dead():
+		return
+	var author: Combatant = _combatants.get(author_id) if author_id > 0 else null
+	var rules: CombatRules = CombatCatalog.rules()
+	var result: DamageFormula.Result = DamageFormula.compute(amount, 0, 0, 0, 1.0, false, false, 0.0,
+			0.0, 0, 0, rules.crit_multiplier, status.damage_scale(author), 0.0)
+	var applied: int = target.take_damage(result.damage, s)
+	var source: int = CombatSource.make(CombatSource.Kind.STATUS, effect.id)
+	var attacker_id: int = author.get_id() if author != null else 0
+	target.mark_combat(s)
+	if author != null and author != target:
+		author.mark_combat(s)
+		target.ledger.record(s, attacker_id, applied)
+		target.note_enemy_hit(attacker_id, source, s)
+	stats[&"pulse_hits"] += 1
+	stats[&"damage"] += applied
+	var lethal: bool = target.is_dead()
+	var shown: int = result.damage if target.immortal else applied
+	_emit(NetMessages.EntityEvent.hit(target.get_id(), s, attacker_id, shown, effect.damage_type,
+			_HIT_LETHAL if lethal else 0, source), _ids([target.get_id(), attacker_id]))
+	_log_line(s, attacker_id, target.get_id(), CombatSource.name_of(source), float(s), 0.0, "pulse",
+			shown)
+	if lethal:
+		_die(target, s, attacker_id, source)
 
 
 # --- Muerte -----------------------------------------------------------------------------------
@@ -437,6 +592,8 @@ func _die(victim: Combatant, s: int, killer_id: int, attack_id: int) -> void:
 	victim.mark_dead(s, killer_id, attack_id)
 	var character: PlayerCharacter = victim.get_character()
 	ActionMachine.impose_death(character.combat, s)
+	# Al morir se quitan todos sus efectos, sin STATUS: DEATH los borra en el cliente.
+	status.clear(victim)
 	commit_state(character)
 	stats[&"deaths"] += 1
 	var victim_id: int = victim.get_id()
@@ -499,6 +656,7 @@ func _die_in_the_void(combatant: Combatant, s: int) -> void:
 	var character: PlayerCharacter = combatant.get_character()
 	combatant.mark_dead(s, killer, 0)
 	ActionMachine.impose_death(character.combat, s)
+	status.clear(combatant)
 	stats[&"deaths"] += 1
 	var spawn: Transform3D = _pick_spawn.call(combatant.get_realm())
 	_place.call(combatant.entity, spawn.origin, _yaw_of(spawn))
@@ -572,6 +730,8 @@ func _respawn(combatant: Combatant, point_index: int, s: int) -> void:
 	var first: int = combat.alt_weapon_id if combat.is_second_slot() else combat.weapon_id
 	var second: int = combat.weapon_id if combat.is_second_slot() else combat.alt_weapon_id
 	ActionMachine.reset_for_respawn(combat, s, first, second, combat.consumable_charges)
+	# Ya no debería quedar ninguno (se quitan al morir), pero reaparecer empieza siempre limpio.
+	status.clear(combatant)
 	combatant.mark_respawned(s)
 	# _place pasa el estado (con el combate ya reiniciado) por encode/decode.
 	_place.call(combatant.entity, position, yaw)
@@ -590,14 +750,19 @@ static func _first_camp_point(valid: PackedInt32Array, points: Array[Node3D]) ->
 
 # --- Utilidades -------------------------------------------------------------------------------
 
-# Cuenta como ataque lanzado el tick en que empieza un ligero o un fuerte.
+# Cuenta como ataque lanzado el tick en que empieza un ligero, un fuerte o una habilidad que golpea
+# (con forma o proyectil): sus aciertos también cuentan en _note_landed.
 func _count_swing(combatant: Combatant) -> void:
 	var frame: Combatant.Frozen = combatant.frozen
-	if combatant.peer == null:
+	if combatant.peer == null or frame.action_tick != frame.tick:
 		return
-	if (frame.action == CombatState.Action.LIGHT or frame.action == CombatState.Action.HEAVY) \
-			and frame.action_tick == frame.tick:
-		combatant.peer.swings += 1
+	match frame.action:
+		CombatState.Action.LIGHT, CombatState.Action.HEAVY:
+			combatant.peer.swings += 1
+		CombatState.Action.ABILITY:
+			var ability: AbilityTicks = CombatCatalog.ability(frame.action_id)
+			if ability != null and (ability.hit.shape != null or ability.projectile_id != 0):
+				combatant.peer.swings += 1
 
 
 # Un ataque (o su carga) ha acertado, fallado o sido parado: cuenta como acierto del peer una vez
@@ -608,10 +773,17 @@ func _note_landed(attacker: Combatant) -> void:
 	attacker.swing_landed = true
 
 
+# Lo que quita la protección de reaparición: un ataque (o su carga) y una habilidad que no sea un
+# consumible (docs/habilidades.md, sección 4.2). Beber, SWAP, REVIVE y EXECUTE no la quitan.
 func _started_attack(combatant: Combatant) -> bool:
-	var action: int = combatant.frozen.action
-	return action == CombatState.Action.LIGHT or action == CombatState.Action.HEAVY \
-			or action == CombatState.Action.CHARGE
+	var frame: Combatant.Frozen = combatant.frozen
+	match frame.action:
+		CombatState.Action.LIGHT, CombatState.Action.HEAVY, CombatState.Action.CHARGE:
+			return true
+		CombatState.Action.ABILITY:
+			var ability: AbilityTicks = CombatCatalog.ability(frame.action_id)
+			return ability != null and not ability.is_consumable()
+	return false
 
 
 func _emit(event: NetMessages.EntityEvent, involved: PackedInt32Array) -> void:
@@ -633,8 +805,8 @@ static func _yaw_of(transform: Transform3D) -> float:
 	return atan2(-forward.x, -forward.z)
 
 
-# Una línea del registro de combate: tick, atacante, objetivo, ataque, view_tick, rebobinado,
-# resultado y daño.
+# Una línea del registro de combate de un golpe resuelto: tick, atacante, objetivo, fuente (el nombre del
+# ataque o de la habilidad), view_tick, rebobinado, resultado y daño.
 func _log_hit(s: int, hit: CombatResolver.Hit, result: String, damage: int) -> void:
 	if combat_log == null:
 		return
@@ -643,6 +815,17 @@ func _log_hit(s: int, hit: CombatResolver.Hit, result: String, damage: int) -> v
 		target_id = hit.victim.get_id()
 	elif hit.structure != null:
 		target_id = hit.structure.net_id
-	combat_log.store_line("%d,%d,%d,%s,%.2f,%.2f,%s,%d" % [s, hit.attacker.get_id(),
-			target_id, hit.attack.name, hit.view_tick,
-			hit.rewind, result, damage])
+	_log_line(s, hit.attacker.get_id(), target_id, String(hit.attack.name), hit.view_tick, hit.rewind,
+			result, damage)
+
+
+# Una línea del registro de combate ([code]--combat-log[/code]): la columna «ataque» lleva el nombre de la
+# fuente ([method CombatSource.name_of]: ataque, habilidad, efecto…). Resultados de la fase 4: pulse (un
+# pulso de daño de un efecto); arrow_hit, arrow_blocked, wall_blocked (H3b) y downed, executed, bled_out
+# y revived (H3c).
+func _log_line(s: int, attacker_id: int, target_id: int, source_name: String, view_tick: float,
+		rewind: float, result: String, damage: int) -> void:
+	if combat_log == null:
+		return
+	combat_log.store_line("%d,%d,%d,%s,%.2f,%.2f,%s,%d" % [s, attacker_id, target_id, source_name,
+			view_tick, rewind, result, damage])

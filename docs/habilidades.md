@@ -1429,3 +1429,154 @@ LOADOUT_SELECT en `ZoneServer` (limitador de fiables, LOADING e IN_WORLD), LOADO
 `HIT_FLAG_DOWNED`, `STATUS_DOWNED` en `Combatant.status_bits` y los comandos 15 y 16. H4:
 `ProjectileWorld` conectado a las señales de `NetClient`, las explicaciones de `_note_imposed_state`, el
 selector que manda LOADOUT_SELECT y las teclas que ponen los bits 9 a 12.
+
+### 11.4 H3a · habilidades y efectos en el servidor
+
+**Hecho.**
+
+- **Orden del tick** (§4.1) dentro de `CombatDirector.process_tick`, con los pasos numerados en el código
+  y en la cabecera de `ZoneServer`: 2 congelar, 3 efectos propios del compromiso, 4 resolver, 5 aplicar,
+  6 efectos de estado, 7 derribado (vacío hasta H3c), 8 entorno y reapariciones (la recarga del
+  campamento, vacía hasta H3c), 9 publicar. Los disparos del paso 3 y el vuelo del paso 4 son de H3b.
+  Nota en fuerte.md §1.7.
+- **Golpe sintetizado.** `Combatant.Frozen` gana `hit` (`ActionMachine.active_hit`: el ataque activo o el
+  golpe sintetizado de la habilidad), `commit` (`is_commit_tick`), `wall` y `wall_half_extents` (la caja
+  del muro de escudos mientras bloquea; un `Transform3D` no puede ser nulo, así que la caja vale si los
+  semiejes no son cero). `attack_active` es `hit != null` y `hyper_armor` sale del golpe (la entereza de la
+  embestida en su activo). `CombatResolver.resolve` prueba `frozen.hit` en vez de buscar el ataque por
+  `action_id`: rebobinado fijado en el primer tick activo, candidatos, forma, línea de visión, defensas
+  y puertas, igual que un ataque; su `id` es la fuente de la habilidad, así que HIT, DEATH y KILL ya la
+  llevan sin código propio, y el registro de combate escribe su nombre.
+- **Controles del golpe.** `_apply_hit_controls` aturde si el golpe lleva `stun_ticks` (el golpe de escudo)
+  y, si no, tambalea y empuja (radial desde el atacante, como hoy), con la entereza y la cadena de
+  controles de siempre. `unblockable` ya saltaba parada y bloqueo.
+- **`StatusSystem`** (`scripts/server/status_system.gd`, §4.3): `ActiveEffect` (`status_id`,
+  `source_id`, `anchor_tick`, `until_tick`, `stacks`) en `Combatant.effects`, hasta 8 por entidad y
+  ordenados por id; `apply` (REFRESH, STACK, STRONGEST; SLOW y ROOT escriben su ranura de movimiento con
+  `impose_move_effect` y pasan el estado por `encode/decode`), `step` (pulsos exactos reunidos antes de
+  aplicarlos; los de daño los aplica el director como un HIT con la fuente del efecto y los de curación
+  curan sin pasar del máximo con HEAL; después, las caducidades con STATUS 2), `clear` (al morir y al
+  reaparecer, sin eventos, vaciando sus ranuras de movimiento), `forget_author` (al darse de baja una
+  entidad, STATUS 2 de lo que puso a otros, con `CombatDirector.remove(net_id, tick)`), `heal`, `find` y
+  los modificadores `damage_scale` (1 + Σ DAMAGE_UP del atacante) y `mitigation_penalty` (Σ
+  MITIGATION_DOWN de la víctima) que `_apply_impact` y los pulsos pasan a `DamageFormula.compute`. Cada
+  `Combatant` guarda en `effects_due` el primer tick en que le pasa algo (un pulso o una caducidad) y el
+  sistema el menor de todos: un tick sin sucesos no recorre a nadie, y uno con sucesos salta a quien no
+  tiene nada. Cada efecto guarda su `StatusTicks` (no se busca en el catálogo).
+- **Efectos propios y al objetivo.** Paso 3: quien está en el compromiso de una habilidad se pone su
+  `self_status` (la curación de la poción de vida, con él como autor) y su `self_heal` (HEAL con la fuente
+  de la habilidad). Paso 5: el `target_status` de una habilidad y el `on_hit_status` de un ataque se
+  aplican en un IMPACT (no en un bloqueo ni una parada) a quien sigue vivo.
+- **Interrupciones** (§4.2): un IMPACT con daño > 0 de un atacante hostil (el resolutor solo da golpes de
+  hostiles; los pulsos y el entorno no pasan por aquí) a quien está en el lanzamiento de un consumible o
+  de una habilidad con `interrupt_on_damage`, o en REVIVE o EXECUTE, impone `impose_interrupt` y marca el
+  bit 5 del HIT, si el golpe no ha impuesto ya un control. `CombatDirector.is_interruptible` es pública
+  (H3b la usa con las flechas y H3c con levantar y rematar).
+- **Muro de escudos cuerpo a cuerpo.** El resolutor elige el cono por muestra: con
+  `DEFENSE_WIDE_BLOCK`, `ability_block_angle_deg` (180°); si no, el del arma. `Hit.wide_block` dice al
+  director que cobre `ability_block_stamina_per_damage` (0,6) en vez del coste del arma; la mitigación es
+  la del arma (1 en la espada y escudo). Sin resistencia, la rotura de guardia aturde y corta la
+  canalización con su reutilización (`_leave_imposed` de H1b).
+- **Protección de reaparición**: la quita también una ABILITY que no sea un consumible
+  (`_started_attack`); beber, SWAP, REVIVE y EXECUTE no.
+- **Muestra antigua** (§4.2): `_dropped_guard_after` descarta la muestra de `view_tick` si la acción
+  congelada no es BLOCK y su `action_tick > view_tick`, sea NONE o no. Nota en combate.md §4.3.
+- **`HitShapes.is_ray_clear`** con `hit_from_inside = true`: desde el vano de la puerta cerrada ni se
+  golpea hacia fuera ni se es golpeado.
+- **Byte del historial** (§3.6): `ZoneServer._record_history`, `Combatant.freeze` y
+  `CombatFixture.record` componen `(flags del registro & EntityRecord.HISTORY_FLAGS_MASK) |
+  defense_flags`; lo dicen los comentarios de `StateHistory`, `ActionMachine` y `ZoneServer`.
+- **`NetEntity._hide_private_state`**: el SPAWN ajeno lleva `alt_weapon_id` y el bit 0 de
+  `combat_flags2`; reutilizaciones, cargas, consumible, ranuras de movimiento y el resto de
+  `combat_flags2`, a sus valores iniciales.
+- **Publicación del bit 3**: ya la hizo H2 al escribir el registro desde el personaje; H3a la comprueba en
+  un servidor (registro con el bit, historial sin él).
+- **`InputQueue.get_applied(tick)`**: la entrada que se simuló en ese tick (real, o la sustituta aunque
+  la real llegara después, tarde); null si aún no se ha consumido o ya salió del anillo.
+- **Comandos 13 y 14** en `ZoneServer`, por la red y por la consola: `cooldowns_off <jugador> [on|off]`
+  (`CombatDirector.set_cooldowns_off`, bit 7 de `combat_flags2`) y `apply_status <jugador> <efecto>
+  [ticks]` (`CombatDirector.apply_status`: sin autor, en el tick que va a simular el servidor, con la
+  duración pedida o la del dato). `missing_network_commands()` ya solo da `down` y `refill`.
+- **Registro de combate**: `CombatDirector._log_line` escribe la columna «ataque» con el nombre de la
+  fuente (`CombatSource.name_of`); resultado nuevo `pulse` (un pulso de daño). `arrow_hit`,
+  `arrow_blocked` y `wall_blocked` son de H3b; `downed`, `executed`, `bled_out` y `revived`, de H3c.
+- **Informe**: contadores nuevos del director (`interrupts`, `pulse_hits`, `heals`) y del `StatusSystem`
+  (`status_applied`, `status_removed`, `pulses`, `healed`).
+
+**Pruebas.** Nuevas: `test_ability_server` (9: el golpe de escudo aturde 48 ticks de frente aunque el
+objetivo tenga el escudo en alto, no da al de detrás y da una vez por acción; la embestida recorre 6 m en
+su ventana de avance y empuja con 6 m/s radiales y su tambaleo; el muro bloquea a 85° y no a 95°, cobra 0,6
+por punto y un bloqueo normal no para lo de 85°; la rotura del muro aturde y fija su reutilización; un bot
+que pulsa el golpe de escudo un tick de cada dos compromete exactamente cada `cooldown + cast` = 738 ticks
+y da un golpe por compromiso, y con el comando 13 vuelve a salir enseguida; una habilidad quita la
+protección y beber o cambiar de arma no; un golpe interrumpe beber antes del compromiso (bit 5, sin gastar
+carga ni reutilización, conservando el `action_tick`), no después, corta levantar y no se marca si ya
+impone un control; la muestra antigua no cuenta tras un REVIVE soltado ni tras una poción interrumpida y sí
+al soltar el escudo sin más; la ranura 2 activa sale en el registro y no en el historial, y el SPAWN ajeno
+enseña las dos armas; desde el vano de una puerta cerrada no se golpea ni se recibe, y rota sí) y
+`test_status_effects` (10: un sangrado hace exactamente 6 pulsos en `anchor + 60k` con STATUS 1 y 2 y su
+`until_tick`, el último pulso antes que la caducidad; acumulación, renovación y el más fuerte con la
+ranura de movimiento; la curación no pasa del máximo; un pulso no interrumpe; un pulso que mata a mitad de
+la lista no cambia lo que se recorre; limpieza al morir y al reaparecer sin STATUS; STATUS 2 al irse el
+autor; las ranuras de movimiento y el noveno efecto; más daño y menos mitigación; el pulso en el registro
+de combate). Ampliadas: `test_combat_server` (+1: comandos 13 y 14 por la red y la consola, y el
+sangrado sin autor que pulsa en `anchor + 60`; la lista de comandos sin manejador), `test_hfsm_brain`
+(la lista de comandos sin manejador), `test_input_queue` (+1: `get_applied`), `test_net_entity` (+1: el
+SPAWN ajeno con las dos armas y sin el estado de las habilidades) y `test_hit_shapes` (+1: un rayo que
+empieza dentro de un cuerpo no está libre).
+
+**Desvíos y decisiones.**
+
+- **Un efecto por id y entidad.** Renovarlo no crea otro: `source_id` pasa a ser el último que lo renueva
+  (REFRESH y STACK) y STRONGEST no cambia de autor. Un mismo efecto siempre es igual de fuerte (sus datos
+  no cambian), así que STRONGEST se queda con el fin más tardío. El fin nunca retrocede (`max`, también en
+  REFRESH y STACK): solo podría con la duración del comando 14, y así la ranura de movimiento (que también
+  se queda con el máximo) acaba en el mismo tick que el efecto.
+- **STATUS 2** sale al caducar, al irse el autor y cuando el noveno efecto sustituye al que acaba antes,
+  con 0 acumulaciones y `until_tick` = el tick en que se quita. HEAL solo sale si cura algo (un pulso con
+  la vida llena no manda nada); `healer` es 0 si se cura a sí mismo.
+- **Destinatarios de STATUS y HEAL** (§5.4): `ZoneServer._on_combat_event` los manda a los dueños del
+  afectado y del autor y a quien tenga relevante **al afectado** (no al autor, como los demás eventos).
+- **Pulsos de daño**: `DamageFormula` con el más daño del autor (sin bloqueo, crítico ni armadura); el
+  atacante del HIT es el autor (0 si no tiene: el comando 14), que entra «en combate» y en el registro de
+  daño de la víctima si es otro. Un pulso de un efecto sin autor que mata da DEATH sin KILL.
+- **Al morir** se quitan los efectos y sus ranuras de movimiento (`ActionMachine.remove_move_effect`,
+  nueva) antes del `commit_state`: la acción DEAD no se mueve, pero el estado queda limpio para la
+  reaparición. Un efecto no se aplica a un muerto. Lo del derribado (no aplicar a un derribado, saltarlo
+  en los pulsos, `clear` al caer y el descarte de golpes con `downed_tick == s`) lo pone H3c.
+- **Interrupción**: se decide con el estado vivo al aplicar (tras los golpes anteriores del mismo tick) y
+  con el daño del HIT (el completo en un maniquí inmortal). Un golpe mortal no interrumpe (mata).
+- **Golpes de las habilidades como «ataques» del peer**: una habilidad que golpea (con forma o proyectil)
+  cuenta en `ServerPeer.swings` el tick en que empieza, porque sus aciertos ya contaban en
+  `swings_landed`.
+- **`Combatant.restore_health(amount)`** (nueva) cura sin pasar del máximo; la usan HEAL y `self_heal`.
+- **`is_ray_clear` desde dentro** vale para todo quien lo usa: la línea de visión de los golpes y de los
+  PNJ (`NpcWorld`) y la de las placas del cliente. Un rayo que empieza dentro de un cuerpo del mundo o de
+  una estructura choca en su origen; los pechos de los personajes nunca quedan dentro del mundo (la
+  cápsula los separa) salvo en el vano de la puerta del propio fuerte, que es justo el caso que se quería.
+- **`CombatDirector.remove(net_id, tick)`** pide el tick para los STATUS 2 (lo da `_remove_player`).
+- **Ayudas de más**: `CombatDirector.set_cooldowns_off`, `apply_status`, `is_interruptible` y `_log_line`;
+  `StatusSystem.find`, `heal`, `forget_author` y `stats`; `ActiveEffect.status` y `next_event_after`;
+  `Combatant.effects_due`. El paso 3 solo recorre a quien está en su compromiso (se reúnen al congelar).
+
+**Medido** (orientativo, máquina compartida con otros trabajos). La embestida recorre **6,000 m** en su
+ventana de avance y **7,75 m** hasta pararse: al acabar el avance va a 15 m/s y frena a 60 m/s²
+(`ground_deceleration`) durante la recuperación, 1,75 m más. §2.3 habla de «6 m en el activo» y así queda;
+si se quieren 6 m en total, la curva puede caer al final (decisión de equilibrio para H5, combate.md §12).
+`CombatDirector.process_tick` con 64 combatientes quietos (sonda sin subir, 600 ticks): 0,49–0,59 ms antes
+y después de H3a (el ruido de la máquina es mayor que la diferencia); con tres efectos cada uno (192:
+sangrado, curación y ralentización con los pulsos sincronizados, el peor caso) +10–20 µs de media, y
+`StatusSystem.step` solo 42–45 µs de media, 0 en los ticks sin sucesos. Antes de guardar `effects_due`
+el mismo `step` costaba 306 µs por tick (recorría los 192 efectos y los buscaba en el catálogo). Las
+pruebas nuevas tardan ~9 s por archivo con el arranque del motor; la de la reutilización avanza 1720
+ticks del servidor en ~0,6 s.
+
+**Para los paquetes siguientes.** H3b: `ProjectileSystem.fire` en el paso 3 (`_process_commits`, también
+con el compromiso de un LIGHT o HEAVY con proyectil) con `InputQueue.get_applied(s)`, el vuelo en el paso
+4, la caja del muro de `Combatant.frozen.wall`/`wall_half_extents`, `Hit.projectile_id`, el
+`target_status` de la flecha lastrante con `status.apply`, la interrupción con
+`CombatDirector.is_interruptible`, los resultados `arrow_hit`, `arrow_blocked` y `wall_blocked` del
+registro y el DESPAWN 5 de las flechas en `CombatDirector.remove` (junto a `forget_author`). H3c:
+`DownedSystem` en el paso 7, el descarte con `downed_tick == s` en `_apply_hit`, `StatusSystem` sin
+derribados (`_takes_pulses`, `apply`) y `status.clear` al caer, el corte de levantar y rematar con un
+impacto que interrumpe, la recarga del paso 8 y los comandos 15 y 16.

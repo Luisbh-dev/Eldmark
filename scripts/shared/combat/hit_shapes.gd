@@ -240,9 +240,16 @@ static func has_line_of_sight(space: PhysicsDirectSpaceState3D, attacker_feet: V
 ## true si el rayo de [param from] a [param to] no choca con el mundo ni con las estructuras
 ## ([constant LINE_OF_SIGHT_MASK]). Base de [method has_line_of_sight] con los puntos ya
 ## calculados.
+## [br][br]
+## Con [code]hit_from_inside[/code] (docs/habilidades.md, sección 4.4): un rayo que [b]empieza dentro[/b]
+## de un cuerpo choca en su origen. Sin eso, el dueño de un fuerte con los pies en el vano de su puerta
+## cerrada (el pecho queda dentro de la caja de vista de 0,5 m) golpearía desde dentro a quien está fuera,
+## porque el rayo que empieza dentro de una caja la ignora; así, desde el vano ni se golpea ni se es
+## golpeado.
 static func is_ray_clear(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3) -> bool:
 	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(from, to,
 			LINE_OF_SIGHT_MASK)
+	query.hit_from_inside = true
 	return space.intersect_ray(query).is_empty()
 
 

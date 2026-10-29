@@ -12,10 +12,13 @@ extends RefCounted
 ## compruebe los golpes contra donde el atacante veía a su objetivo. Nunca se mueven cuerpos hacia
 ## atrás: se calcula con las muestras.
 ## [br][br]
-## [b]Banderas.[/b] Los flags de cada hueco son los del registro de red (bit 0 suelo, bits 1-2
-## contador de teletransporte) más las banderas defensivas de [method ActionMachine.defense_flags]
-## (bit 3 bloqueando, bit 4 ventana de parada, bit 5 invulnerable, bit 6 muerto), que usa el
-## [CombatResolver] para decidir si un golpe rebobinado se bloquea, se para o se esquiva.
+## [b]Banderas.[/b] Los flags de cada hueco son los bits 0-2 del registro de red (bit 0 suelo, bits 1-2
+## contador de teletransporte; [constant EntityRecord.HISTORY_FLAGS_MASK]) más las banderas defensivas de
+## [method ActionMachine.defense_flags] (bit 3 bloqueando, bit 4 ventana de parada, bit 5 invulnerable,
+## bit 6 muerto, bit 7 bloqueo ancho del muro de escudos), que usa el [CombatResolver] para decidir si un
+## golpe rebobinado se bloquea, se para o se esquiva. El bit 3 del registro de red (ranura de arma 2,
+## docs/habilidades.md, sección 5.2) [b]no[/b] entra nunca: aquí el bit 3 es
+## [constant ActionMachine.DEFENSE_BLOCKING]; quien graba enmascara los flags del registro.
 
 ## Ticks que recuerda cada pista. Potencia de 2 para indexar con una máscara.
 const LENGTH_TICKS: int = 64
@@ -28,7 +31,8 @@ var _tracks: Dictionary[int, Track] = {}
 class Sample:
 	var position: Vector3
 	var yaw: float
-	## Los flags del registro de red: bit 0 grounded; bits 1-2 contador de teletransporte.
+	## Bits 0-2 del registro de red (bit 0 grounded; bits 1-2 contador de teletransporte) y bits 3-7
+	## defensivos ([method ActionMachine.defense_flags]).
 	var flags: int
 
 
