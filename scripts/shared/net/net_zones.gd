@@ -12,6 +12,9 @@ const _REALM_ARG_PREFIX: String = "--realm="
 
 
 ## Id de la zona que sirve o carga un proceso sin [code]--zone[/code].
+## Grupo de los puntos de reaparición (el de [Zones]), para quien no puede nombrar [Zones].
+const RESPAWN_GROUP: StringName = Zones.RESPAWN_GROUP
+
 static func default_zone_id() -> String:
 	return String(Zones.DEFAULT_ZONE)
 
@@ -83,14 +86,17 @@ static func get_spawn_points(zone: Node, realm: int = NetProtocol.Realm.NONE) ->
 
 
 ## Puntos de reaparición del reino [param realm] en la zona [param zone] (que debe estar en el
-## árbol), en el orden de la escena ([method Zones.get_respawn_points]). Con un código que no es un
-## reino jugable, la lista está vacía.
+## árbol), en el orden de la escena ([method Zones.get_respawn_points]). Si el reino no tiene puntos
+## propios (o el código no es un reino jugable), todos los de la zona. Es la lista común del servidor
+## y del cliente: el índice del RESPAWN_REQUEST va sobre ella.
 static func get_respawn_points(zone: Node, realm: int) -> Array[Node3D]:
 	var realm_id: StringName = realm_name(realm)
-	var empty: Array[Node3D] = []
-	if realm_id.is_empty():
-		return empty
-	return Zones.get_respawn_points(zone, realm_id)
+	if not realm_id.is_empty():
+		var own: Array[Node3D] = Zones.get_respawn_points(zone, realm_id)
+		if not own.is_empty():
+			return own
+	# Sin puntos del reino (o sin reino): todos los de la zona, como hace SpawnPicker al aparecer.
+	return Zones.get_respawn_points(zone, &"")
 
 
 ## Zonas seguras de la zona [param zone] (grupo [constant Zones.SAFE_AREA_GROUP]).

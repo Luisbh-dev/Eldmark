@@ -632,3 +632,38 @@ Huecos del documento que se cerraron al implementar (K1a, K1b, K2):
   `Combatant`, `NetEntity.set_health_view()` anuncia 1000/1000.
 - **Coste medido** de `simulate()` (microbanco, un mundo): sin acción +4–5 µs respecto a la fase 2
   (16,9 µs quieto, 37,9 µs corriendo); bloqueando 48 µs; combate mixto 44 µs.
+
+Cerrado durante K3 (servidor) y K4 (cliente):
+
+- **Clases del servidor**: `CombatDirector` (el paso de combate del tick: congelar, resolver,
+  aplicar, entorno, reapariciones, publicar), `CombatResolver` (solo calcula: devuelve impactos),
+  `CombatTiming` (plazos en ticks), `Combatant`, `DamageLedger`, `SafeAreas`, `CommandRegistry`,
+  `ServerConsole` y `NpcBrain` (extiende `BotBrain`).
+- **RESPAWN_REQUEST**: el índice va sobre `NetZones.get_respawn_points(zona, reino)`, la misma lista
+  en servidor y cliente (`RespawnPointList` la usa tal cual). Un índice que ya no vale usa el
+  primer punto, sin aviso. Una petición hasta 12 ticks antes de `respawn_tick` queda pendiente;
+  antes de eso, o estando vivo, es aviso. La automática llega a los 30 s **desde la muerte**.
+- **Cadena de controles**: cuenta todos los controles (también el tambaleo de la parada y la
+  rotura de guardia). `hyper_armor` solo anula el tambaleo y el empuje de los impactos.
+- **«En combate»**: también lo ponen un bloqueo, una parada y la caída. La protección de
+  reaparición se pierde también al empezar una carga.
+- **Maniquí**: PNJ neutral «Maniquí», modos quieto, bloqueando y girando, tope de 16; `ServerMain`
+  pone uno en cada `dummy_points` (`--no-dummies` lo evita). Su HIT lleva el daño completo
+  calculado aunque la vida se quede en 1, para que el medidor de DPS cuente entero.
+- **Caída y muertes del entorno**: HIT con atacante 0 y tipo contundente; DEATH con `attack_id` 0 y
+  autor el último enemigo en 10 s; KILL solo si hay autor.
+- **Zonas seguras del Vado Gris**: en (0, 6,25, ±138), radio 24; maniquíes en (0, ±108). Añadidos a
+  mano al `.tscn` y al generador (que no se ha ejecutado aquí).
+- **Comandos**: los de red actúan sobre quien los envía; datos mal formados = aviso, imposible =
+  rechazado sin aviso; todo queda auditado. Consola por stdin **solo con `--console`**; en Linux,
+  con la entrada abierta, el proceso no termina tras cerrar hasta recibir una línea o Ctrl+D.
+- **`--combat-log`**: cabecera `tick,atacante,objetivo,ataque,view_tick,rebobinado,resultado,daño`
+  y resultados `hit`, `blocked`, `guard_break`, `parried`, `invulnerable`, `rewind_rejected`.
+- **Cliente**: los eventos son propios según los ids; los ajenos esperan en `CombatEventQueue`
+  (tope 512) hasta su `render_tick`. Un snapshot atrasado con «muerto» posterior a un RESPAWN no
+  reabre la pantalla de muerte. La cuenta atrás usa un tick del servidor estimado (conservador). El
+  bit de «sin resistencia» se lee en `_physics_process` y parpadea 0,6 s. La animación es una
+  función pura de `(action, action_id, action_tick, tick)`; los remotos cuentan el tiempo de cada
+  fase desde que la ven entrar. La vida, la resistencia y el DPS están en el panel F3 del HUD.
+- **Coste medido** del paso de combate con refriegas de jugadores falsos (test_world): 32 →
+  combate p50 0,44 ms / p99 2,8 ms; 64 → 0,64 / 6,1; 128 → 1,3 / 4,3 (domina `simulate()`).
