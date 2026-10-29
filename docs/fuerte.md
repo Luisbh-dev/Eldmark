@@ -1,35 +1,42 @@
 # Eldmark · Fase 4: diseño del fuerte capturable
 
 Diseño del paso 4 de la [hoja de ruta](vision.md#hoja-de-ruta): el primer objetivo jugable, el
-fuerte del Vado Gris disputado entre Vardheim y Solmarch ([mundo.md](mundo.md), [zona](zonas/vado_gris.md)).
-Se apoya en la red ([red.md](red.md)) y el combate ([combate.md](combate.md)).
+fuerte del Vado Gris disputado entre Vardheim y Solmarch ([mundo.md](mundo.md),
+[zona](zonas/vado_gris.md)). Se apoya en la red ([red.md](red.md)) y el combate
+([combate.md](combate.md)).
 
-Esta fase tiene dos bloques:
+Versión 2, tras una revisión escéptica que comprobó en Godot 4.7.2 y Terrain3D 1.0.2 los supuestos
+técnicos (navegación, capas de colisión, mapa sin GPU) y cerró los huecos de las reglas de captura,
+el protocolo y los contratos.
 
-1. **El bucle del fuerte** (este documento): estado de la fortaleza, captura, puerta, defensores
-   PNJ con IA, avisos, reaparición en el fuerte, mapa y HUD de captura, y bots que asedian.
-2. **La ampliación del combate** (§9): habilidades, arco y proyectiles, cambio de arma, efectos de
-   estado y derribado. Tiene su propio diseño corto antes de implementarse.
+Dos bloques:
+
+1. **El bucle del fuerte** (este documento): estado, captura, puerta, defensores PNJ con IA,
+   avisos, reaparición en el fuerte, mapa y HUD de captura, y bots que asedian.
+2. **La ampliación del combate** (§10): habilidades, arco, cambio de arma, efectos de estado y
+   derribado, con su propio diseño corto (`docs/habilidades.md`).
 
 ---
 
 ## 0. Decisiones
 
-De las recomendaciones de [backlog.md](backlog.md#decisiones-pendientes) (provisionales, tomadas de
-noche):
+Provisionales, tomadas de noche, de las recomendaciones de [backlog.md](backlog.md#decisiones-pendientes):
 
 | Pregunta | Decisión |
 |---|---|
-| Círculo vacío | El progreso decae a un tercio de la velocidad de captura tras 5 s vacío. |
+| Círculo vacío | Tras 5 s sin nadie dentro, el progreso decae a un tercio de la velocidad base. |
 | Recaptura inmediata | No: 2 min de consolidación (círculo inactivo, puerta dañable) hasta que llega la guarnición. |
-| Arquitectura de IA | Máquina de estados jerárquica propia en GDScript, parámetros en `NpcDefinition`. |
-| Modelo de los Huecos | Plan B: cuerpo base con traje sencillo, material de hueso y ojos emisivos (lo compone el usuario; de momento, el humanoide con un material gris). |
-| Campamento | Zona segura (fase 3) y dos Guardianes de la Puerta PNJ. |
-| Estructura de partida | En pruebas, el fuerte vuelve a neutral cada 30 min con un resumen. |
-| Minimapa | Imagen cenital horneada por una herramienta desde el terreno; enemigos solo si se revelan. |
-| Recurso de las habilidades | Solo reutilización (armas físicas). |
+| Arquitectura de IA | Máquina de estados jerárquica propia, parámetros en `NpcDefinition`. |
+| Modelo de los Huecos | Plan B (cuerpo base, material de hueso); de momento, el humanoide con un material gris. |
+| Campamento | Zona segura solo para su reino (combate.md §5) y dos Guardianes de la Puerta. |
+| Estructura de partida | En pruebas, el fuerte vuelve a neutral cada 30 min. |
+| Minimapa | Imagen cenital horneada sin GPU; enemigos solo si se revelan. |
+| Méritos y puntos de reino | Dos contadores con el mismo evento (PRG-09); en la fase 4 solo se cuentan para el marcador. |
+| Recurso de las habilidades | Solo reutilización en las armas físicas. |
 | Proyectiles | Rayo de cámara canónico desde yaw, pitch y un bit de hombro. |
-| Derribado | Sí en PvP; muerte directa en PvE en solitario. |
+| Derribado | En PvP; muerte directa en PvE en solitario. |
+| Colisión entre personajes | Sigue sin haber; el vano de la puerta rota no se puede taponar con el cuerpo. Se revisa con la telemetría de GUE-17. |
+| Oleadas de reaparición | Cada 10 s (GUE-14). |
 
 ---
 
@@ -37,115 +44,165 @@ noche):
 
 ### 1.1 Definición (GUE-07)
 
-`FortressDefinition` (`scripts/shared/war/fortress_definition.gd`, datos en
-`data/fortresses/vado_gris.tres`):
+`FortressDefinition` (`scripts/shared/war/fortress_definition.gd`, `data/fortresses/vado_gris.tres`):
 
-| Campo | Valor del Vado Gris |
+| Campo | Vado Gris |
 |---|---|
 | `id` | `&"vado_gris_fort"` |
-| `capture_s` | 30 (con un aliado) |
-| `capture_speed_max` | ×2 (con 4 o más) |
-| `decay_after_empty_s` / `decay_rate` | 5 s / un tercio de la velocidad base |
-| `circle_radius_m` / `circle_height_m` | 5 / 4 (cilindro sobre `CaptureCircle`) |
+| `capture_s` | 30 (con un atacante) |
+| `decay_after_empty_s` | 5 |
+| `circle_height_m` | 4 |
 | `gate_health` | 9000 |
 | `consolidation_s` | 120 |
-| `guard_respawn_s` | 180 |
-| `under_attack_s` | 30 (ventana de «en combate» del fuerte) |
-| `reset_to_neutral_s` | 1800 (solo en pruebas, 0 = nunca) |
+| `captain_respawn_s` / `guard_respawn_s` | 300 / 180 |
+| `under_attack_s` | 30 |
+| `gate_repair_after_s` | 300 |
+| `reset_to_neutral_s` | 1800 (solo en pruebas; 0 = nunca) |
 
-### 1.2 Estado (puro, en ticks)
+El radio del círculo sale **solo** del metadato `radius` del marcador `CaptureCircle` (5 m).
+
+### 1.2 Presencia en el círculo
+
+Un jugador **está presente** si: vivo, no derribado, no desconectado (GUE-41), con una entrada real
+en los últimos 60 s, y con los pies en el cilindro: distancia horizontal al centro ≤ radio y
+`feet.y ∈ [centro.y − 1, centro.y + 4)` (el marcador está a ras de suelo; comprobado en la escena).
+Los PNJ **no** cuentan. `presence` es un `PackedInt32Array` de 4 posiciones (reinos 0–3) con el
+número de presentes.
+
+### 1.3 Progreso en enteros
+
+Progreso máximo `P = capture_ticks · 12` (30 s → 1800 ticks → 21 600). Velocidades en unidades por
+tick, todas enteras: 1 atacante **12**, 2 **16**, 3 **20**, 4 o más **24**; decaimiento por vacío
+**−4**; decaimiento cuando dentro solo hay no-captores **−24**. La captura viaja como fórmula
+`progress(t) = clamp(p0 + rate · (t − t0), 0, P)`.
+
+### 1.4 Estado (puro, en ticks)
 
 `FortressState` (`scripts/shared/war/fortress_state.gd`, RefCounted, sin nodos):
 
-| Campo | Qué es |
-|---|---|
-| `owner` | código de reino (0 = neutral, los Huecos) |
-| `phase` | `GARRISONED`, `VULNERABLE`, `CAPTURING`, `CONSOLIDATING` |
-| `phase_tick` | tick en que empezó la fase |
-| `captain_alive`, `guards_alive` | defensores |
-| `gate_health`, `gate_max` | vida de la puerta (0 = rota) |
-| `capture_realm` | reino que captura (0 = nadie) |
-| `capture_start_tick`, `capture_rate`, `capture_progress_at_start` | la captura como fórmula: `progress(t) = clamp(p0 + rate · (t − t0), 0, 10000)`; `rate` en diezmilésimas por tick, con signo (negativo al decaer) |
-| `contested` | hay un enemigo vivo dentro: la fórmula se congela (`rate = 0`) |
-| `under_attack_until_tick` | último daño enemigo a la puerta o a los defensores + 30 s |
+`owner` (0 = neutral, Huecos), `phase` (`GARRISONED`, `VULNERABLE`, `CAPTURING`,
+`CONSOLIDATING`), `phase_tick`, `captain_alive`, `captain_respawn_tick`, `guards_alive`,
+`guards_respawn_tick`, `gate_health`, `gate_max`, `gate_last_damage_tick`, `capture_realm`,
+`capture_start_tick`, `capture_rate`, `capture_progress_at_start`, `contested`, `empty_since_tick`,
+`under_attack_until_tick`, `last_attack_notice_tick`, `last_contested_notice_tick`, `presence`
+(los 4 recuentos, para la interfaz).
 
-Transiciones:
+### 1.5 Tabla de decisión
 
-```
-GARRISONED ──(muere el capitán)──▶ VULNERABLE ──(entra un reino ≠ dueño)──▶ CAPTURING
-CAPTURING ──(progreso 10000)──▶ CONSOLIDATING (dueño = capture_realm, puerta reparada)
-CAPTURING ──(progreso 0 y nadie dentro)──▶ VULNERABLE
-CONSOLIDATING ──(120 s)──▶ GARRISONED (aparece la guarnición del dueño)
-```
+Sea `A` el conjunto de reinos presentes distintos del dueño (atacantes) y `D` si hay presentes del
+dueño (con un fuerte neutral, `D` es falso).
 
-- Al empezar la zona: `owner = 0`, `GARRISONED` con los Huecos y el Capitán del Vado.
-- Velocidad: `rate = base · min(1 + (n − 1) / 3, 2)` con `n` atacantes vivos dentro (×2 con 4).
-  Si hay a la vez dentro alguien del dueño o de otro reino atacante, `contested`.
-- Círculo vacío: tras 5 s sin atacantes dentro, `rate = −base / 3` hasta 0.
-- Si el fuerte es de un reino y entran **sus** jugadores con progreso de otro reino a medias, el
-  progreso decae al doble de la velocidad base (defender limpia el círculo).
-- Toda transición se calcula con funciones puras `FortressState.advance(def, tick, counts) ->
-  Array[int]` (devuelve los eventos de guerra del tick). La prueba exige que la fórmula dé el
-  mismo progreso que simular tick a tick.
+| Fase | Situación | Resultado |
+|---|---|---|
+| `GARRISONED` | muere el capitán (dueño o Huecos) | `VULNERABLE` |
+| `VULNERABLE` | `A` = un reino y no `D` | `CAPTURING` con `capture_realm` = ese reino, `rate` según su número |
+| `VULNERABLE` | `A` ≥ 2 reinos, o `A` y `D` | sigue `VULNERABLE`, `contested` |
+| `VULNERABLE` | pasa `captain_respawn_s` sin captura | reaparece el capitán: `GARRISONED` |
+| `CAPTURING` | solo el captor | `rate` = velocidad de su número |
+| `CAPTURING` | captor y alguien más (dueño u otro reino) | `contested`, `rate = 0` |
+| `CAPTURING` | sin el captor, con no-captores | `rate = −24` |
+| `CAPTURING` | nadie, más de 5 s | `rate = −4` |
+| `CAPTURING` | progreso 0 y un único reino no dueño presente | ese reino pasa a ser el captor |
+| `CAPTURING` | progreso 0 y ningún atacante | `VULNERABLE`, `capture_realm = 0` |
+| `CAPTURING` | progreso `P` | `CONSOLIDATING`, `owner = capture_realm`, puerta reparada, PNJ del dueño anterior retirados |
+| `CONSOLIDATING` | pasa `consolidation_s` | `GARRISONED` con la guarnición y el capitán del nuevo dueño |
+| cualquiera | `reset_to_neutral_s` o comando `fort_reset` | `GARRISONED` neutral: Huecos y Capitán del Vado, puerta llena, progreso 0; los jugadores dentro no se mueven |
 
-### 1.3 Controlador en el servidor (GUE-08, GUE-12)
+- Los guardias muertos reaparecen a los `guard_respawn_s` en `GARRISONED` y `VULNERABLE`.
+- La «reaparición completa» de los Huecos (MUN-10) incluye al Capitán.
+- `advance()` corre **cada tick** (las transiciones caen en ticks exactos); la presencia se recuenta
+  cada 6 ticks (`s % 6 == 0`) y se mantiene entre recuentos.
 
-`FortressController` (`scripts/server/war/fortress_controller.gd`) crea al arrancar una
-`NetEntity` de tipo `STRUCTURE` con `ALWAYS_RELEVANT` por cada fortaleza de la escena (nodo con el
-grupo `fortresses` y el metadato `definition`), y corre en el paso de PNJ del tick (tras resolver
-el combate, combate.md §4.2):
+### 1.6 Controlador (GUE-08, GUE-12)
 
-- Cada 6 ticks cuenta los jugadores **vivos y activos** de cada reino dentro del cilindro. No cuenta
-  quien lleva 60 s sin enviar entradas reales (`InputQueue`: último tick real).
-- Llama a `advance()`, aplica los efectos (dueño, estandartes, puerta, guarnición) y emite los
-  OBJECT_STATE de los campos que cambian y los avisos de guerra.
-- Al cambiar de dueño: estandartes de la escena (`Estandarte`, `EstandartePuerta`) al
-  `faction_color` del reino en el servidor y, por OBJECT_STATE, en el cliente; puerta reparada;
-  Huecos retirados; consolidación.
-- Comandos (`CommandRegistry`, solo con `--debug-commands`): `fort_reset`, `fort_owner <reino>`,
-  `fort_kill_captain`, `fort_capture_speed <×>`.
+`FortressController` (`scripts/server/war/fortress_controller.gd`) crea una `NetEntity`
+`STRUCTURE` con `ALWAYS_RELEVANT` por cada nodo del grupo `fortresses` con metadato `definition`
+(lo añade el generador, §8 F0), y en el paso 4b del tick (§1.7):
+
+- recuenta la presencia, llama a `advance()`, aplica sus efectos (dueño, colisión de la puerta,
+  retirada y aparición de PNJ) y emite OBJECT_STATE y avisos;
+- los estandartes (`Estandarte`, `EstandartePuertaN`, `EstandartePuertaS`) se recolorean **solo
+  en el cliente** (`FortressView`): el servidor no tiene mallas;
+- comandos con ids fijos (`--debug-commands`): 8 `fort_reset`, 9 `fort_owner <reino>`, 10
+  `fort_kill_captain`, 11 `fort_capture_speed <×>`.
+
+### 1.7 Orden del tick (completa combate.md §4.2)
+
+0. **Cerebros de PNJ**: con el estado tras `s − 1`, cada `NpcBrain` empuja su entrada de `s` a su
+   `InputQueue` (piensan cada 6 ticks; entre medias repiten su plan).
+1. Simular a todos por `net_id` (jugadores, falsos y PNJ).
+2. Congelar. 3. Resolver golpes (también contra las puertas, §3). 4. Aplicar resultados.
+4b. `FortressController.step(s)`: presencia, `advance`, efectos. Los cambios de colisión de la
+   puerta valen **desde `s + 1`** en el servidor y en el cliente.
+5. Altas de jugadores y de PNJ, historial, snapshots, OBJECT_STATE y eventos.
 
 ---
 
 ## 2. Replicación con estado: OBJECT_STATE (GUE-09)
 
-Ocupa el tipo reservado `0x22` de red.md §5.6 y sube **`PROTOCOL_VERSION` a 3**:
+Ocupa el tipo `0x22` reservado en red.md §5.6 y sube **`PROTOCOL_VERSION` a 3**.
 
-`u8 type`, `u16 net_id`, `u32 tick`, `u8 field_count` y, por campo, `u8 field_id`, `u8 value_type`
-(1 u8, 2 u16, 3 u32, 4 s32) y el valor. Canal fiable 3. Genérico: lo reutilizarán puertas, cofres,
-nodos de recurso y clima.
-
-- **ENTITY_SPAWN** de un `STRUCTURE`: payload `u8 def_len`, el id de la definición (ASCII) y un
-  OBJECT_STATE completo embebido (todos los campos).
+- **Formato**: `u8 type`, `u16 net_id`, `u32 tick` (el tick del servidor tras el que vale el
+  estado), `u8 field_count` (1–32) y, por campo, `u8 field_id`, `u8 value_type` (1 u8, 2 u16, 3 u32,
+  4 s32) y el valor. Canal fiable 3.
+- **Validación** (como red.md §5.7): `null` si el tamaño no cuadra, `value_type` desconocido,
+  `field_count` fuera de rango o un campo repetido. Un `field_id` desconocido con tipo válido se
+  salta (compatibilidad hacia delante).
+- **Ritmo**: como mucho un OBJECT_STATE por fortaleza cada 6 ticks, con los campos cambiados en
+  ese intervalo; `under_attack_until_tick` solo se envía si avanza al menos 60 ticks.
+- **ENTITY_SPAWN de STRUCTURE**: payload `u8 def_len`, id de la definición (ASCII), `u8
+  field_count` y los campos completos (sin repetir type, net_id ni tick). El `realm` de la cabecera
+  es 0: manda el campo `owner`.
+- **ENTITY_SPAWN de NPC**: tras el `PlayerState` y el nombre, `u16 npc_def_id` (catálogo
+  `NpcCatalog`, ids alfabéticos 1..n) para que el cliente elija modelo, tabardo y barra de jefe.
 - El snapshot **no** lleva registros de `STRUCTURE`.
-- Campos del fuerte (`FortressFields`, compartido): 1 owner, 2 phase, 3 phase_tick, 4
+- **Campos del fuerte** (`FortressFields`, compartido): 1 owner, 2 phase, 3 phase_tick, 4
   captain_alive, 5 guards_alive, 6 gate_health, 7 gate_max, 8 capture_realm, 9
   capture_start_tick, 10 capture_rate, 11 capture_progress_at_start, 12 contested, 13
-  under_attack_until_tick.
-- **Cliente**: `FortressView` (`scripts/client/war/fortress_view.gd`) aplica cada OBJECT_STATE
-  cuando su `render_tick` alcanza `tick` (como los eventos de los remotos), calcula el progreso
-  con la fórmula en `render_tick` y emite señales para la interfaz (`owner_changed`,
-  `phase_changed`, `progress_changed`, `gate_changed`).
+  under_attack_until_tick, 14–17 presencia por reino (u8).
+- **Cliente**: `FortressView` (`scripts/client/war/fortress_view.gd`) guarda la historia de
+  cambios. La **interfaz** y los estandartes los aplican cuando `render_tick` alcanza `tick`; la
+  **colisión** de la puerta, no (§3).
 
 ---
 
 ## 3. La puerta (GUE-10)
 
-- **Vida** en `FortressState` (9000). Golpes contra una **caja orientada** (`HitShapes.
-  sector_hits_box`, matemática pura) en su posición actual, sin rebobinado: es estática.
-- La dañan los enemigos del dueño (todos si es neutral). Multiplicadores por tipo de daño contra
-  estructuras (`CombatRules`): cortante ×0,35, perforante ×0,2, contundente ×1,0, elemental ×0,6.
-  Con el combo de espada (156 DPS × 0,35) tres atacantes la rompen en ~55 s.
-- **Colisión por reino.** La puerta debe parar a los enemigos y dejar pasar al dueño. Se reservan
-  las capas de física 5, 6 y 7 para Vardheim, Solmarch y Askarra: cada `PlayerCharacter` añade a su
-  máscara la capa de su reino, y la puerta pone en su `collision_layer` las capas de todos los
-  reinos salvo el dueño (las tres si es neutral). Es determinista en los dos lados: el cliente
-  conoce el dueño por OBJECT_STATE y la predicción usa la misma regla.
-- **Rota** (vida 0): hojas caídas (visual) y sin colisión para nadie. Se repara al cambiar de dueño
-  o tras 5 min sin daño. Queda **cerrada por defecto** (corrige `docs/zonas/vado_gris.md`).
-- Los cambios de colisión de la puerta se aplican en el servidor en el tick del cambio y en el
-  cliente al recibir el OBJECT_STATE; si un cliente predijo contra la puerta vieja, la
-  reconciliación lo absorbe.
+### 3.1 Dos cuerpos
+
+Sacar la puerta de la capa 1 rompería la línea de visión de los golpes, la cámara y el horneado
+(comprobado). Por eso la puerta tiene dos cuerpos:
+
+- **Movimiento**: `collision_layer` = capas de los reinos que **no** son el dueño (capas 5, 6 y 7
+  para Vardheim, Solmarch y Askarra; las tres si es neutral). Cada `PlayerCharacter` añade a su
+  máscara la capa de su reino con `PlayerCharacter.set_realm_collision(code)`, llamado **después**
+  de `_ready()` (que reescribe la máscara).
+- **Vista**: capa nueva 4, «estructuras», que entra en `HitShapes.LINE_OF_SIGHT_MASK`, en la
+  máscara del `SpringArm3D` de la cámara y en el horneado de la navegación.
+
+Rota (vida 0): los dos cuerpos sin capas. `FortGate.layers_for(owner: int, broken: bool) -> int`
+(estática, compartida) da la capa de movimiento.
+
+### 3.2 Predicción exacta
+
+Un cambio de la puerta con `tick = s` vale desde `s + 1`. En el cliente, `ClientPrediction` gana
+un gancho `before_simulate(t: int)` que `FortressView` usa para poner la capa de la puerta según su
+historia de cambios **para el tick `t` que se simula**, también durante las repeticiones. Jolt
+aplica un cambio de `collision_layer` en el siguiente `move_and_slide` del mismo tick
+(comprobado), así que cliente y servidor simulan cada tick con la misma puerta.
+
+### 3.3 Vida y reglas
+
+- 9000 de vida, dañable por los enemigos del dueño (todos si es neutral). Multiplicadores contra
+  estructuras (`CombatRules`, solo servidor): cortante ×0,35, perforante ×0,2, contundente ×1,0,
+  elemental ×0,6. Con el combo de espada, tres atacantes la rompen en ~55 s.
+- **Blanco**: `HitShapes.sector_hits_box(origin, yaw, shape, box: Transform3D, half_extents:
+  Vector3) -> bool`, en su posición actual, sin rebobinado ni críticos. El HIT lleva el `net_id` de
+  la fortaleza. La línea de visión no cuenta la propia puerta. Golpearla pone «en combate» y
+  actualiza `gate_last_damage_tick` y `under_attack_until_tick`.
+- **Reparación** al cambiar de dueño, con `fort_reset` o tras 5 min sin daño, pero **no mientras
+  un personaje solape el vano**: se aplaza tick a tick hasta que quede libre.
+- Queda **cerrada por defecto** (corrige `docs/zonas/vado_gris.md`).
 
 ---
 
@@ -153,134 +210,201 @@ nodos de recurso y clima.
 
 ### 4.1 Navegación (MUN-06)
 
-- `tools/bake_navmesh.gd` hornea una `NavigationMesh` desde la capa de juego (Terrain3D con
-  `generate_nav_mesh_source_geometry`, colisiones estáticas, rampas, pasarela, puentes y vado;
-  agua profunda excluida) con celda de 0,5 m y la guarda como `.tres` de texto junto a la zona.
-- `NpcNavigation` (servidor) registra la malla en un mapa propio de `NavigationServer3D` y da
-  rutas (`get_path(from, to) -> PackedVector3Array`). La puerta del fuerte es un
-  `NavigationLink3D` que se activa según el dueño y la vida de la puerta.
+`tools/bake_navmesh.gd` hornea con la puerta **cerrada**:
+
+- geometría de Terrain3D con `generate_nav_mesh_source_geometry(aabb, false)` (con `true`, el valor
+  por defecto, devuelve 0 caras porque no hay navegación pintada; comprobado);
+- colisiones de las capas 1 | 3 | 4 (la 3 cierra el lecho profundo del río: con solo la 1 hay ruta
+  por el lecho; comprobado);
+- celda de 0,25 m y radio 0,4 (con celda de 0,5 el radio se redondea a 0,5 y la pasarela de 2 m
+  deja 1 m útil);
+- resultado en `scenes/world/zones/vado_gris/vado_gris_navmesh.tres` (texto).
+
+`NpcNavigation` (servidor) crea un mapa propio de `NavigationServer3D` con **iteraciones
+síncronas**, registra la región y un enlace por la puerta por RID (no desde la escena), y no da
+rutas hasta `map_get_iteration_id(map) > 0`. El enlace de la puerta está siempre activo, en la capa
+de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D`) filtra con
+`navigation_layers` del reino del agente (inmediato, sin esperar iteraciones). API:
+`get_path(from: Vector3, to: Vector3, realm: int) -> PackedVector3Array`.
 
 ### 4.2 IA (MUN-07, MUN-08)
 
-- `NpcDefinition` (`data/npcs/*.tres`): vida, arma (un `WeaponDefinition` propio con
-  anticipaciones largas), velocidades, radios de percepción y de alerta, cono, correa, puntos de
-  patrulla, si es inmortal, nivel de amenaza.
-- `NpcBrain` (`scripts/server/ai/npc_brain.gd`): máquina de estados jerárquica **REPOSO →
-  PATRULLA → ALERTA → COMBATE → REGRESO**, que piensa cada 6 ticks y produce cada tick una
-  `PlayerInput` sintética (movimiento hacia el siguiente punto de la ruta, mirada al objetivo,
-  botones de ataque, bloqueo y esquiva). El cuerpo es un `PlayerCharacter` con la misma máquina de
-  acciones que los jugadores (combate.md §7). Con RNG con semilla por PNJ: dos ejecuciones con las
-  mismas entradas dan la misma secuencia de estados.
-- **Percepción**: radio, cono y línea de visión (`HitShapes.has_line_of_sight`). **Amenaza**: daño
-  recibido más proximidad. **Correa**: si se aleja más de `leash_m` de su puesto, REGRESO con
-  vida regenerada e inmune mientras vuelve.
-- **Ataques legibles**: anticipación ≥ 0,45 s en los ligeros y ≥ 0,70 s en los fuertes (absorben
-  RTT y retardo de interpolación). **Fichas**: como mucho 2 PNJ atacan a la vez al mismo jugador;
-  los demás lo rodean a 3–4 m.
-- **Depuración** (`--debug-commands`): el comando `npc_debug` hace que el servidor envíe al que lo
-  pide, por NOTICE informativo cada segundo, el estado, el objetivo y la ruta de los PNJ cercanos;
-  el overlay F3 lo muestra.
+- `NpcDefinition` (`scripts/shared/ai/npc_definition.gd`, datos en `data/npcs/*.tres`; compartido
+  porque los nodos de la zona lo referencian): vida, `weapon_id` (las armas de los PNJ son
+  `data/combat/npc_*.tres`, en el catálogo de combate: cambian los ids y el `sim_hash`, lo que va
+  con la versión 3), velocidades, percepción (radio, cono), radio de alerta de grupo, correa,
+  inmortal, `ignores_safe_area`, `is_boss`.
+- `NpcBrain` (`scripts/server/ai/npc_brain.gd`): **REPOSO → PATRULLA → ALERTA → COMBATE →
+  REGRESO**; RNG con semilla por PNJ; produce `PlayerInput` sintéticas (§1.7 paso 0). Dos
+  ejecuciones con las mismas entradas dan la misma secuencia de estados.
+- Percepción por radio, cono y `HitShapes.has_line_of_sight`; amenaza por daño y proximidad;
+  correa con regreso regenerado e inmune.
+- Ataques legibles: armas de PNJ con anticipación ≥ 0,45 s (ligeros) y ≥ 0,70 s (fuertes).
+  **Fichas**: como mucho 2 PNJ atacan a la vez al mismo jugador; el resto lo rodea a 3–4 m.
+- Depuración: comando 12 `npc_debug` escribe estado, objetivo y ruta de los PNJ cercanos en el
+  registro del servidor cada segundo (sin mensaje de red en la fase 4).
 
 ### 4.3 Generadores y defensores (MUN-09 … MUN-12, GUE-11)
 
-- `NpcSpawner` (nodo de la capa de juego, `scripts/world/npc_spawner.gd`, sin lógica: solo datos)
-  y `NpcSpawnerSystem` (servidor): marcador, `NpcDefinition`, máximo vivos, reaparición en ticks,
-  grupo de alerta y condición (`always`, `fort_neutral`, `fort_owner:<reino>`).
-- **Huecos** (MUN-10): 4 en los `GuardSpawn` (2 en la explanada, 2 patrullando la pasarela),
-  alerta en grupo a 25 m, correa a la meseta, reaparición completa si el fuerte sigue neutral sin
-  jugadores a 40 m durante 2 min.
-- **Capitán del Vado** (MUN-11): barrido amplio bloqueable, golpe imbloqueable con aviso en el
-  suelo (`AttackDefinition.unblockable`, solo servidor, y evento `TELEGRAPH` con posición y
-  radio), grito que alerta a los Huecos vivos y 2 Huecos de refuerzo al 50 % si quedan Huecos. Al
-  morir, el controlador pasa a VULNERABLE. Solo con el fuerte neutral.
-- **Guarnición del reino** (GUE-11): al acabar la consolidación, 4 guardias y un capitán del reino
-  dueño (tabardo con `faction_color`) en los mismos marcadores; su capitán abre el círculo al
-  morir, como el de los Huecos.
-- **Guardianes de la Puerta** (MUN-12): dos por campamento, de daño alto y alcance largo, que solo
-  atacan a enemigos dentro de la zona segura (un intruso muere en menos de 10 s).
+- `NpcSpawner` (`scripts/world/npc_spawner.gd`, solo datos: marcador, `NpcDefinition`, máximo vivos,
+  reaparición, grupo de alerta, condición `always` / `fort_neutral` / `fort_owner`) y
+  `NpcSpawnerSystem` (servidor), que lee las condiciones de `FortressController`
+  (`get_fortress_state(id) -> FortressState`) y avisa con la señal `npc_died(net_id, spawner,
+  killer)`.
+- **Huecos** (MUN-10): 4, en los `GuardSpawn` del patio; dos patrullan del patio a la pasarela
+  (marcadores de patrulla nuevos en el generador). Alerta en grupo a 25 m, correa a la meseta,
+  reaparición completa (con el Capitán) si el fuerte sigue neutral sin jugadores a 40 m durante
+  2 min.
+- **Capitán del Vado** (MUN-11): `CaptainSpawn` (dentro del círculo: no cuenta, los PNJ no cuentan).
+  Barrido amplio bloqueable; golpe imbloqueable (`AttackDefinition.unblockable`, solo servidor)
+  con aviso TELEGRAPH; grito que alerta a los Huecos vivos; 2 Huecos de refuerzo al 50 % si
+  quedan Huecos. Al morir: `on_captain_died`.
+- **Guarnición del reino** (GUE-11): 4 guardias y un capitán del dueño en los mismos marcadores al
+  pasar a `GARRISONED`.
+- **Guardianes de la Puerta** (MUN-12): 2 por campamento, `ignores_safe_area`, daño alto y alcance
+  largo; atacan solo a enemigos dentro de la zona segura (un intruso muere en menos de 10 s).
 
 ---
 
-## 5. Avisos, reaparición y salida (GUE-13, GUE-14, GUE-41, MUN-41)
+## 5. Avisos, reaparición, salida y /atascado
 
-- **Avisos de guerra**: ENTITY_EVENT `5 WAR` (`u8 war_event`, `u8 realm`, `u16 fortress`) a toda
-  la zona, aplicado en el tick de dibujo: fuerte atacado (como mucho 1 cada 60 s por fortaleza),
-  capitán caído, captura iniciada, captura disputada, puerta rota, fuerte capturado, fuerte
-  reiniciado. Textos en español en `WarEvents` (compartido).
-- **Reaparición** (amplía combate.md §5): puntos válidos = el campamento del reino (siempre) y los
-  marcadores `respawn_points` con metadato `fortress` de las fortalezas propias que no estén
-  `under_attack`. El cliente calcula la misma lista con el estado replicado. Oleadas: se reaparece
-  en el primer múltiplo de 10 s (600 ticks) tras `respawn_tick`. El servidor valida el índice.
-- **Salida en combate** (GUE-41): un CLIENT_LEAVE o una desconexión «en combate» dejan el cuerpo 15
-  s quieto y atacable antes del DESPAWN; fuera de combate, inmediato.
-- **/atascado** (MUN-41): comando de chat cuando exista el chat; mientras tanto, `DEBUG_COMMAND`
-  7 `unstuck` sin `--debug-commands`: canalización de 10 s que el daño interrumpe, fuera de
-  combate, 5 min de reutilización, teletransporte al punto de aparición más cercano del reino y
-  registro de zona y posición.
+- **ENTITY_EVENT `5 WAR`**: `net_id` = fortaleza, datos `u8 war_event`, `u8 realm` (11 B). Eventos
+  fijos: 1 fuerte atacado (realm = atacante; 1 cada 60 s por fortaleza), 2 capitán caído (realm =
+  quien lo mató), 3 captura iniciada (captor), 4 captura disputada (como mucho 1 cada 10 s), 5
+  puerta rota (quien la rompió), 6 fuerte capturado (nuevo dueño), 7 fuerte reiniciado (0). A toda
+  la zona, aplicados en el tick de dibujo. Textos en español en `WarEvents` (compartido).
+- **ENTITY_EVENT `6 TELEGRAPH`**: `net_id` = PNJ, datos `u16 attack_id`, `u8 shape` (0 círculo, 1
+  sector), `u64 posición` (20 bits por eje, como el registro), `u16 yaw`, `u16 radius_cm`, `u16
+  impact_in_ticks`. Se aplica al llegar (es un aviso, debe verse cuanto antes).
+- **Reaparición** (amplía combate.md §5):
+  - Índice **estático** sobre todos los marcadores `respawn_points` de la escena, en orden de
+    escena (campamentos incluidos: el generador añade los de cada campamento). Metadatos `realm` o
+    `fortress`.
+  - Válido para un jugador: su campamento, o un marcador de una fortaleza de su reino en
+    `GARRISONED` con `s ≥ under_attack_until_tick`. El cliente calcula lo mismo con
+    `RespawnRules.points_for(realm, fortresses, tick) -> PackedInt32Array` (compartido).
+  - Si el punto pedido ya no vale, el servidor usa el campamento, sin aviso.
+  - Oleadas: `respawn_tick` = primer múltiplo de 600 ticks ≥ muerte + `respawn_s`.
+  - Los marcadores del fuerte, fuera del cilindro del círculo.
+- **Salida en combate** (GUE-41): CLIENT_LEAVE o desconexión «en combate» dejan el cuerpo 15 s
+  desde la baja (CLIENT_LEAVE o timeout de ENet) con entradas **neutras de verdad** (sin botones):
+  quieto, sin bloquear, atacable, sin contar en el círculo. El nombre queda reservado esos 15 s
+  (REJECT NAME). El menú del cliente muestra la cuenta atrás antes de salir.
+- **/atascado** (MUN-41): mensaje propio `0x06 UNSTUCK_REQUEST` (C→S, canal 3, 1 B), válido sin
+  `--debug-commands`: canalización de 10 s que el daño interrumpe, fuera de combate, 5 min de
+  reutilización, teletransporte al punto de aparición más cercano del reino y registro.
 
 ---
 
 ## 6. Interfaz (UI-18 … UI-21, UI-41, UI-42)
 
-- **HUD de captura** (UI-18): arriba al centro, el estado del fuerte (dueño con su color y
-  emblema, fase, barra de progreso con el color del reino que captura, «disputado», vida de la
-  puerta) cuando se está a menos de 80 m o se combate por él; banners de los avisos de guerra.
-- **Brújula y marcadores** (UI-19): brújula arriba con el fuerte, los campamentos y los pasos;
-  marcador en pantalla del fuerte con distancia.
-- **Mapa** (UI-20, UI-21): `tools/bake_zone_map.gd` genera, sin GPU, una imagen cenital de la
-  zona (sombreado del mapa de alturas de Terrain3D, agua, caminos y contornos de la escena) en
-  `assets/maps/<zona>.png` con su metadato de escala; minimapa circular con iconos (fuerte con
-  color del dueño, aliados de grupo cuando existan, jugador) y mapa a pantalla completa con la
-  elección de reaparición.
-- **Registro de bajas y marcador** (UI-41, Tab): de los KILL y de las cifras del servidor.
-- **Pistas** (UI-42): una vez por jugador (`user://`), con los glifos reales.
+- **HUD de captura** (UI-18): dueño (color y emblema), fase, barra de progreso con el color del
+  captor, «disputado», presentes de cada bando y vida de la puerta, a menos de 80 m o al combatir
+  por él; banners de los WAR; barra de jefe para los PNJ con `is_boss`.
+- **Brújula y marcadores** (UI-19): fuerte, campamentos y pasos.
+- **Mapa** (UI-20, UI-21): `tools/bake_zone_map.gd` (sin GPU, comprobado): sombreado de
+  `Terrain3D.get_height`, agua de los vértices de su malla, contornos de las colisiones y de
+  `BakedMultiMesh.instance_transforms` (las MultiMesh devuelven identidad en headless), guardado
+  como `assets/maps/vado_gris.png` (por LFS) con su escala en un `.tres`. Minimapa circular y
+  mapa a pantalla completa con la elección de reaparición.
+- **Marcador** (UI-41, Tab): mensaje nuevo `0x32 SCOREBOARD` (S→C, canal 3, cada 2 s a toda la
+  zona): por jugador `u16 net_id, u16 bajas, u16 muertes, u16 asistencias, u32 daño a la puerta,
+  u16 s en el círculo, u32 méritos`. El registro de bajas sale de los KILL, que en la fase 4 van a
+  toda la zona.
+- **Pistas** (UI-42): una vez por jugador, en `user://`, con opción para desactivarlas.
 
 ---
 
 ## 7. Bots que asedian (GUE-15, GUE-16, GUE-42)
 
-- `BotBrain` gana el patrón `SIEGE` con un objetivo por reino: ir al fuerte por el puente o por el
-  vado, golpear la puerta, entrar en el círculo, defender la pasarela y atacar al enemigo más
-  cercano. Para `--bots`, `--bot` y `--fake-players`.
+- **Rutas como datos**: `data/routes/vado_gris.tres` (puntos de las rutas del puente y del vado
+  por reino, sacados de `verify_vado_gris_routes.gd`), compartido.
+- **`SiegeView`** (compartido, puro): dueño, fase, captor, vida de la puerta y posiciones de la
+  puerta y el círculo. La llena el servidor para `--fake-players` y el cliente (`FortressView` o,
+  en `SwarmBot`, decodificando OBJECT_STATE) para `--bot` y `--bots`.
+- `BotBrain` gana el patrón `SIEGE`: seguir la ruta de su reino hasta el fuerte, golpear la puerta
+  si está cerrada, entrar en el círculo, defender la pasarela si es el dueño y atacar al enemigo
+  más cercano. Los `SwarmBot`, que no simulan, siguen las rutas en línea recta entre puntos.
 - Criterio: `--bots=20` por bando capturan y recapturan sin intervención.
 - **Carga** (GUE-16): escenario de `load_test` con 32 contra 32 y 64 contra 64 en la puerta y el
   círculo durante 120 s.
-- **Equilibrio** (GUE-42): `--max-realm-diff=N` rechaza entrar en el reino que va N por delante
-  (REJECT FULL con texto), y los jugadores falsos rellenan el bando corto.
+- **Equilibrio** (GUE-42): `--max-realm-diff=N`; un REJECT nuevo, **9 IMBALANCE**, con texto propio.
+  El recuento por reino para RealmSelect llega en el WELCOME (`u8 × 3` al final; sube la versión
+  con el resto). Los jugadores falsos de `--fake-players` rellenan el bando corto y se retiran al
+  entrar personas.
+- **Telemetría** (GUE-17): eventos de guerra y muertes en JSON Lines (`--battle-log`) y
+  `tools/war/summarize_battle.gd` con el tiempo hasta la captura, las muertes por ruta y el tiempo
+  hasta romper la puerta.
 
 ---
 
-## 8. Paquetes
+## 8. Paquetes y contratos
+
+### 8.1 Paquetes
 
 | Paquete | Contenido | Depende de |
 |---|---|---|
-| **F1 · fortaleza pura** | `FortressDefinition`, `FortressState`, `FortressFields`, `WarEvents`, datos del Vado Gris, pruebas de todas las transiciones y de la fórmula | fase 3 |
-| **F2 · protocolo v3** | OBJECT_STATE, SPAWN de STRUCTURE, ENTITY_EVENT WAR y TELEGRAPH, DEBUG 7 `unstuck` | F1 |
-| **F3 · servidor del fuerte** | `FortressController`, conteo del círculo con inactividad, puerta con caja y multiplicadores, capas de colisión por reino, estandartes, consolidación, comandos | F1, F2 |
-| **F4 · PNJ** | navmesh horneada, `NpcNavigation`, `NpcDefinition`, `NpcBrain`, fichas, `NpcSpawner`, Huecos, Capitán, guarnición, Guardianes | fase 3 (K3) |
-| **F5 · cliente** | `FortressView`, HUD de captura, banners, brújula, mapa horneado y minimapa, mapa con reaparición, registro de bajas, pistas | F2 |
-| **F6 · bots y carga** | `SIEGE`, `--max-realm-diff`, escenarios de carga, prueba de extremo a extremo neutral → Vardheim → Solmarch | F3, F4, F5 |
+| **F0 · escena y generador** | En el generador del Vado Gris (y en el `.tscn`): nodo de fortaleza (grupo `fortresses`, metadato `definition`), puerta cerrada con los dos cuerpos, `respawn_points` de campamentos y fuerte, marcadores de patrulla, `NpcSpawner` de Huecos, Capitán y Guardianes, `dummy_points`; horneado de la navmesh; rutas en `data/routes/` | fase 3 |
+| **F1 · fortaleza pura** | `FortressDefinition`, `FortressState`, `FortressFields`, `WarEvents`, `RespawnRules`, `SiegeView`, `FortGate.layers_for`, `PlayerCharacter.set_realm_collision`; pruebas de toda la tabla de §1.5 y de la fórmula | fase 3 |
+| **F2 · protocolo v3** | OBJECT_STATE, SPAWN de STRUCTURE y de NPC, WAR, TELEGRAPH, UNSTUCK_REQUEST, SCOREBOARD, REJECT 9, recuento en el WELCOME, ids de comandos 7–12 | F1 |
+| **F3 · servidor del fuerte** | `FortressController`, presencia, puerta (blanco, multiplicadores, capas, reparación), orden del tick, comandos, reaparición en el fuerte, GUE-41, /atascado, SCOREBOARD, `--battle-log` | F0, F1, F2, K3 |
+| **F4 · PNJ** | `NpcNavigation`, `NpcDefinition`, `NpcCatalog`, `NpcBrain`, fichas, `NpcSpawnerSystem`, armas de PNJ, Huecos, Capitán, guarnición, Guardianes | F0, F1 (`FortressState`, señales), K3 |
+| **F5 · cliente** | `FortressView` y su gancho en `ClientPrediction`, HUD de captura, banners, barra de jefe, brújula, mapa horneado y minimapa, mapa con reaparición, marcador, pistas | F1, F2 |
+| **F6 · bots, carga y extremo a extremo** | `SIEGE`, `SwarmBot` con rutas, `--max-realm-diff`, carga, prueba neutral → Vardheim → Solmarch con jugadores falsos | F3, F4, F5 |
 
-F1 y F4 pueden empezar a la vez; F2 tras F1; F3 y F5 en paralelo; F6 al final.
+F0 y F1 en paralelo; luego F2; luego F3, F4 y F5 (con cuidado en `zone_server.gd`, que tocan F3 y
+F4); F6 al final.
+
+### 8.2 Contratos
+
+```gdscript
+# scripts/shared/war/fortress_state.gd
+class_name FortressState extends RefCounted
+enum Phase { GARRISONED, VULNERABLE, CAPTURING, CONSOLIDATING }
+static func initial(def: FortressDefinition, tick: int) -> FortressState
+## Avanza al tick dado con la presencia actual; devuelve los WarEvents (ids) emitidos.
+func advance(def: FortressDefinition, tick: int, presence: PackedInt32Array) -> PackedInt32Array
+func on_captain_died(tick: int, killer_realm: int) -> PackedInt32Array
+func on_gate_damaged(tick: int, amount: int, attacker_realm: int) -> PackedInt32Array
+func on_defender_damaged(tick: int, attacker_realm: int) -> void
+func set_guards_alive(count: int) -> void
+func reset_to_neutral(def: FortressDefinition, tick: int) -> PackedInt32Array
+func progress_at(tick: float) -> int
+func changed_fields_since(other: FortressState) -> PackedInt32Array   # para OBJECT_STATE
+
+# scripts/shared/war/respawn_rules.gd
+class_name RespawnRules extends RefCounted
+static func points_for(realm: int, points: Array[Node3D], fortresses: Dictionary, tick: int) -> PackedInt32Array
+
+# scripts/world/fort_gate.gd (amplía)
+static func layers_for(owner_realm: int, broken: bool) -> int
+func set_state(owner_realm: int, broken: bool) -> void       # capas de los dos cuerpos y visual
+
+# scripts/shared/player_character.gd (amplía)
+const STRUCTURE_LAYER: int = 1 << 3
+const REALM_LAYER_BASE: int = 4                                # capa 5 = Vardheim
+func set_realm_collision(realm_code: int) -> void
+
+# scripts/client/client_prediction.gd (amplía)
+var before_simulate: Callable                                  # (tick: int) -> void
+```
 
 ---
 
-## 9. Ampliación del combate (otro diseño corto)
+## 9. Riesgos
+
+- **Coste de los PNJ**: 5–10 PNJ más con `simulate()` y su cerebro; se mide en F6.
+- **Generador de la zona**: `vado_gris.tscn` sale de un script con assets que podrían no estar
+  todos en el repo; si no se puede regenerar aquí, F0 edita el `.tscn` a mano (texto) y deja el
+  generador al día, y se anota.
+- **Arte**: Huecos, Capitán, tabardos, estandartes y efectos de la puerta definitivos son del
+  usuario (ART-15, ART-16, ART-17); de momento, provisionales.
+
+---
+
+## 10. Ampliación del combate (otro diseño corto)
 
 CMB-19 (habilidades con reutilización), CMB-21 (habilidades de espada y escudo), CMB-20 (efectos
 de estado), CMB-22/23 (proyectiles con rebobinado y arco), CMB-24 (cambio de arma), CMB-28
 (derribado), UI-11 (barra de acciones) y UI-45 (iconos de estados). Se diseña en
-`docs/habilidades.md` cuando esté el bucle del fuerte, porque toca la máquina de acciones y el
-estado predicho (`CombatState`).
-
----
-
-## 10. Riesgos
-
-- **Navegación en headless**: hay que comprobar que `NavigationServer3D` funciona sin ventana y
-  que Terrain3D genera la geometría de origen sin cámara. Si no, la malla se hornea en el editor.
-- **Coste de los PNJ**: 5–10 PNJ más con `simulate()` y su cerebro; se mide en F6.
-- **Puerta con colisión por reino**: si la predicción contra la puerta da muchas correcciones al
-  cambiar de dueño, se adelanta el cambio de capa al tick del OBJECT_STATE en el cliente.
-- **Arte**: Huecos, Capitán, tabardos y estandartes definitivos son del usuario (ART-15, ART-16,
-  ART-17); de momento, materiales y mallas provisionales.
+`docs/habilidades.md` cuando el bucle del fuerte funcione, porque toca `CombatState`.

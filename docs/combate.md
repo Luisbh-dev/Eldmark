@@ -34,7 +34,7 @@ tomadas de noche; están en «Decisiones tomadas» del backlog):
 | Vida del enemigo | En su placa al apuntarle o tras dañarlo en los últimos 5 s; barra de jefe para capitanes (fase 4). |
 | PNJ humanoides | `PlayerCharacter` con entrada sintética (como `BotBrain`). |
 | Colisión entre personajes | Ninguna, como en la fase 2. |
-| Reaparición | 10 s fijos en la fase 3, con botón; oleadas de 15 s en el Vado Gris con GUE-14 (fase 4). |
+| Reaparición | 10 s fijos en la fase 3, con botón; oleadas cada 10 s en el Vado Gris con GUE-14 (fase 4). |
 | Entereza acumulada | No en la fase 3: solo `hyper_armor` por ataque y una cadena de controles con inmunidad. |
 
 ---
@@ -333,8 +333,9 @@ Para cada atacante en golpe activo en `s`:
    interpolación entre la pista de `s − 1` y lo congelado de `s`; si es `s`, lo congelado. Una
    muestra nula (apareció después) descarta al candidato.
 4. **Candidatos**: hostiles según `FactionRules`, vivos ahora (`Combatant.health > 0`) y sin el
-   bit «muerto» en `view_tick`, sin protección de reaparición en `s`, y ni atacante ni víctima
-   dentro de una zona segura en `s`. Un objetivo ya golpeado (o bloqueado o parado) por esta
+   bit «muerto» en `view_tick`, sin protección de reaparición en `s`, y sin zona segura de por
+   medio en `s` (§5: ni la víctima dentro de la zona segura de su propio reino, ni el atacante
+   dentro de la de su propio reino). Un objetivo ya golpeado (o bloqueado o parado) por esta
    acción no se vuelve a probar.
 5. **Forma** con la muestra de la víctima y **línea de visión** contra el mundo actual.
 6. **Defensa**, por este orden de precedencia:
@@ -415,8 +416,9 @@ ninguno debe hacer daño de más.
   sin fuego amigo, Huecos (código 0 con bando neutral) hostiles a todos, reinos enemigos solo en
   zonas RVR. `Zones.get_pvp_mode(zone_id) -> PvpMode` (SAFE o RVR; Vado Gris y test_world RVR).
   **Zonas seguras**: `Marker3D` del grupo `safe_areas` con metadatos `realm` y `radius` (24 m) en
-  cada campamento del Vado Gris: dentro no se hace ni se recibe daño. El daño de la guarnición
-  contra intrusos llega con los PNJ de la fase 4.
+  cada campamento del Vado Gris. **Solo protege a su reino**: un jugador de ese reino dentro no
+  recibe daño ni lo hace (no se puede atacar a salvo desde dentro); un intruso enemigo dentro sí
+  es dañable, por los Guardianes de la Puerta de la fase 4 (PNJ con `ignores_safe_area`).
 
 ---
 
