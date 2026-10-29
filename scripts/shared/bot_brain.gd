@@ -278,6 +278,11 @@ func has_siege() -> bool:
 	return _siege != null
 
 
+## El [SiegeView] del patrón [constant SIEGE] (null si no se le ha dado).
+func get_siege_view() -> SiegeView:
+	return _siege
+
+
 ## Ruta que sigue un bot de [constant SIEGE] ([constant ApproachRoutes.BRIDGE] o
 ## [constant ApproachRoutes.FORD]); vacía mientras no ha elegido ninguna o si no hay rutas.
 func get_siege_route() -> StringName:

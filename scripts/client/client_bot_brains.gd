@@ -6,6 +6,10 @@ extends RefCounted
 ## ([method BotCheater.make_brain]), que ve también a los PNJ (los maniquíes) como enemigos;
 ## [br]- con [code]--bot-brain=combat[/code]: [constant BotBrain.Pattern.COMBAT], que busca al enemigo
 ## más cercano que dibuja su [RemoteWorld] ([BotEnemySight]), se acerca, ataca, bloquea y esquiva;
+## [br]- con [code]--bot-brain=siege[/code] (GUE-15): [constant BotBrain.Pattern.SIEGE]. Asedia o defiende el fuerte
+## de la zona: el [SiegeView] lo llena [FortressView] (lo que el cliente dibuja de la fortaleza) y, de
+## respaldo, las posiciones de [code]data/routes/<zona>.tres[/code]; los enemigos son los remotos que dibuja su
+## [RemoteWorld], también los PNJ de guerra ([BotEnemySight]);
 ## [br]- si no, [constant BotBrain.Pattern.WANDER]: pasea alrededor de su punto de aparición.
 
 
@@ -17,9 +21,50 @@ static func make(client: NetClient, config: ClientConfig, home: Vector3, radius:
 		var cheat_sight := BotEnemySight.new(client, true)
 		return cheater.make_brain(func(position: Vector3) -> Variant: return cheat_sight.find(position),
 				home, radius)
+	if config.bot_brain == ClientConfig.BOT_BRAIN_SIEGE:
+		return _make_siege(client, config, home, radius)
 	if config.bot_brain == ClientConfig.BOT_BRAIN_COMBAT:
 		var sight := BotEnemySight.new(client)
 		var brain := BotBrain.new(config.bot_seed, BotBrain.Pattern.COMBAT, home, radius)
 		brain.set_enemy_finder(func(position: Vector3) -> Variant: return sight.find(position))
 		return brain
 	return BotBrain.new(config.bot_seed, BotBrain.Pattern.WANDER, home, radius)
+
+
+# El cerebro de asedio de un bot del cliente: su reino es el del WELCOME, las rutas las de la zona y el
+# SiegeView se pone al día cada vez que FortressView muestra un estado nuevo.
+static func _make_siege(client: NetClient, config: ClientConfig, home: Vector3, radius: float) -> BotBrain:
+	var welcome: NetMessages.Welcome = client.get_welcome()
+	var realm: int = welcome.realm if welcome != null else config.realm
+	var routes: ApproachRoutes = null
+	if welcome != null:
+		var path: String = "res://data/routes/%s.tres" % welcome.zone_id
+		if ResourceLoader.exists(path):
+			routes = load(path) as ApproachRoutes
+	var view := SiegeView.new()
+	view.set_places_from_routes(routes)
+	var fortress_view: FortressView = client.get_fortress_view()
+	_refresh_siege_view(view, fortress_view)
+	fortress_view.state_changed.connect(func(_net_id: int, _state: FortressState,
+			_previous: FortressState) -> void: _refresh_siege_view(view, fortress_view))
+	var sight := BotEnemySight.new(client, false, true)
+	var brain := BotBrain.new(config.bot_seed, BotBrain.Pattern.SIEGE, home, radius)
+	brain.set_enemy_finder(func(position: Vector3) -> Variant: return sight.find(position))
+	brain.set_siege(view, routes, realm)
+	return brain
+
+
+# Copia a [param view] el estado que dibuja [param fortress_view] de su primera fortaleza y, si la escena está
+# enlazada, las posiciones reales de la puerta y el círculo.
+static func _refresh_siege_view(view: SiegeView, fortress_view: FortressView) -> void:
+	var net_id: int = fortress_view.get_primary_id()
+	if net_id == 0:
+		return
+	var state: FortressState = fortress_view.get_displayed_state(net_id)
+	if state != null:
+		view.update_from_state(state)
+	var gate: Vector3 = fortress_view.get_gate_position(net_id)
+	var circle: Vector3 = fortress_view.get_circle_center(net_id)
+	var circle_radius: float = fortress_view.get_circle_radius(net_id)
+	if gate.is_finite() and circle.is_finite() and circle_radius > 0.0:
+		view.set_places(gate, circle, circle_radius)

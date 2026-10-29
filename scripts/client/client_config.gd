@@ -7,7 +7,7 @@ extends RefCounted
 ## [codeblock]
 ## --connect=<host>[:<puerto>]  --local  --bot  --bots=N  --realm=<reino>  --name=<nombre>
 ## --port=<puerto>  --net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1  --bot-seed=N
-## --bot-cheat=<modo>  --bot-brain=<wander|combat>  --quit-after-ticks=N  --report=<ruta.json>
+## --bot-cheat=<modo>  --bot-brain=<wander|combat|siege>  --quit-after-ticks=N  --report=<ruta.json>
 ## --state-log=<ruta.csv>  --dev-lock-path=<ruta.json>
 ## [/codeblock]
 ## [br]El modo ([enum Mode]) sale de ellos con esta prioridad: [code]--bots[/code] ([constant SWARM])
@@ -34,10 +34,12 @@ enum Mode {
 	SWARM,
 }
 
-## Cerebros de los bots ([member bot_brain], [code]--bot-brain[/code]): pasear (por defecto) o pelear.
+## Cerebros de los bots ([member bot_brain], [code]--bot-brain[/code]): pasear (por defecto), pelear o
+## asediar un fuerte. Valen para [code]--bot[/code] y para [code]--bots[/code].
 const BOT_BRAIN_WANDER: String = "wander"
 const BOT_BRAIN_COMBAT: String = "combat"
-const BOT_BRAINS: Array[String] = [BOT_BRAIN_WANDER, BOT_BRAIN_COMBAT]
+const BOT_BRAIN_SIEGE: String = "siege"
+const BOT_BRAINS: Array[String] = [BOT_BRAIN_WANDER, BOT_BRAIN_COMBAT, BOT_BRAIN_SIEGE]
 ## Prefijo de los nombres por defecto: «Jugadorabcd» (ver [method NameRules.default_name]).
 const DEFAULT_NAME_PREFIX: String = NameRules.DEFAULT_PREFIX
 ## Máximo de ticks, bots y semilla que se aceptan.
@@ -56,7 +58,9 @@ var bot_seed: int = 1
 var bot_count: int = 0
 var bot_cheat: String = ""
 ## Cerebro de los bots ([constant BOT_BRAINS]): vacío o [constant BOT_BRAIN_WANDER] pasea;
-## [constant BOT_BRAIN_COMBAT] busca al enemigo más cercano y pelea ([constant BotBrain.Pattern.COMBAT]).
+## [constant BOT_BRAIN_COMBAT] busca al enemigo más cercano y pelea ([constant BotBrain.Pattern.COMBAT]);
+## [constant BOT_BRAIN_SIEGE] sigue la ruta de su reino hasta el fuerte, rompe la puerta, captura el círculo y
+## lo defiende ([constant BotBrain.Pattern.SIEGE]).
 var bot_brain: String = ""
 var quit_after_ticks: int = 0
 var report_path: String = ""

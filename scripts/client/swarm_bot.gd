@@ -27,6 +27,15 @@ extends Node
 ## [code]view_offset_q[/code] que mandaría un cliente (su tick menos el de dibujo), así que el servidor
 ## hace el rebobinado de verdad, y al morir pide reaparecer en cuanto puede (RESPAWN_REQUEST).
 ## [br][br]
+## [b]Cerebro de asedio[/b] ([code]--bot-brain=siege[/code], GUE-15): como el de combate (enemigos por los
+## ENTITY_SPAWN, también los PNJ de guerra, y posiciones por los snapshots), pero con
+## [constant BotBrain.Pattern.SIEGE]: sigue la ruta de su reino (los puntos de [code]data/routes/<zona>.tres[/code],
+## en línea recta de uno al siguiente: el servidor simula el movimiento y pone el suelo), golpea la puerta del
+## fuerte, entra en el círculo y pelea con el enemigo más cercano. El [SiegeView] lo llena a mano con los campos
+## del ENTITY_SPAWN de la fortaleza y de cada OBJECT_STATE ([method SiegeView.update_from_fields]), sin
+## [FortressView] ni escena; las posiciones de la puerta y el círculo salen de las rutas
+## ([method SiegeView.set_places_from_routes]).
+## [br][br]
 ## [b]Estadísticas[/b] ([method get_stats]): bytes de subida y de bajada de ENet desde que apareció
 ## (con las cabeceras de ENet, sin las de UDP/IP), snapshots recibidos y su tamaño medio, registros por
 ## snapshot, y lo que [BotSwarm] vuelca en su informe.
@@ -82,6 +91,12 @@ var _tick_sync: TickSync = TickSync.new()
 var _interp_clock: InterpolationClock = InterpolationClock.new()
 var _brain: BotBrain = null
 var _combat: bool = false
+# Cerebro de asedio: lo que sabe del fuerte (campos de OBJECT_STATE), las rutas de la zona y la fortaleza que sigue.
+var _siege_mode: bool = false
+var _siege_view: SiegeView = null
+var _siege_routes: ApproachRoutes = null
+var _fortress_net_id: int = 0
+var _object_states_applied: int = 0
 var _local_tick: int = 0
 var _hello_tick: int = 0
 var _ready_tick: int = 0
@@ -156,7 +171,10 @@ func setup(index: int, config: ClientConfig) -> void:
 		return
 	_index = index
 	_config = config
-	_combat = config.bot_brain == ClientConfig.BOT_BRAIN_COMBAT
+	_siege_mode = config.bot_brain == ClientConfig.BOT_BRAIN_SIEGE
+	_combat = config.bot_brain == ClientConfig.BOT_BRAIN_COMBAT or _siege_mode
+	if _siege_mode:
+		_siege_view = SiegeView.new()
 	_display_name = NameRules.bot_name(config.bot_seed + index)
 	_realm = config.realm if config.realm != NetProtocol.Realm.NONE \
 			else DEFAULT_REALMS[index % DEFAULT_REALMS.size()]
@@ -225,6 +243,16 @@ func get_position() -> Vector3:
 	return _position
 
 
+## El [SiegeView] que llena con los OBJECT_STATE (null si no usa el cerebro de asedio).
+func get_siege_view() -> SiegeView:
+	return _siege_view
+
+
+## El cerebro del bot (null hasta que aparece).
+func get_brain() -> BotBrain:
+	return _brain
+
+
 func get_tick_sync() -> TickSync:
 	return _tick_sync
 
@@ -267,7 +295,7 @@ func get_stats() -> Dictionary:
 	var end_tick: int = _closed_local_tick if _closed_local_tick >= 0 else _local_tick
 	var world_ticks: int = maxi(end_tick - _joined_local_tick, 0) if _joined_local_tick >= 0 else 0
 	var seconds: float = float(world_ticks) / float(Engine.physics_ticks_per_second)
-	return {
+	var stats: Dictionary = {
 		"index": _index,
 		"name": _display_name,
 		"realm": NetProtocol.realm_display_name(_realm),
@@ -316,7 +344,14 @@ func get_stats() -> Dictionary:
 		"delay_ticks": _interp_clock.get_delay_ticks(),
 		"jitter_ticks": _interp_clock.get_jitter_ticks(),
 		"malformed_packets": _malformed_packets,
+		"siege": _siege_mode,
 	}
+	if _siege_mode:
+		stats["siege_task"] = BotBrain.SiegeTask.keys()[_brain.get_siege_task()] if _brain != null else "NONE"
+		stats["siege_route"] = String(_brain.get_siege_route()) if _brain != null else ""
+		stats["fortress_known"] = _siege_view.known
+		stats["object_states_applied"] = _object_states_applied
+	return stats
 
 
 # --- Bucle del tick ---------------------------------------------------------------------------
@@ -428,6 +463,8 @@ func _on_auth_received(peer_id: int, bytes: PackedByteArray) -> void:
 		return
 	_rtt_hello_ticks = maxi(_local_tick - _hello_tick, 0)
 	_welcome = welcome
+	if _siege_mode:
+		_load_siege_data(welcome.zone_id)
 	if _transport.complete_auth(SERVER_PEER_ID) != OK:
 		_close(TEXT_CONNECTION_LOST)
 
@@ -508,9 +545,11 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 			else:
 				_last_notice_text = notice.text
 		NetProtocol.MSG_OBJECT_STATE:
-			# TODO(F6): los bots que asedian leen aquí el estado de la fortaleza (SiegeView).
-			if NetMessages.ObjectState.decode(bytes) == null:
+			var object_state: NetMessages.ObjectState = NetMessages.ObjectState.decode(bytes)
+			if object_state == null:
 				_malformed_packets += 1
+			elif _siege_mode:
+				_apply_fortress_fields(object_state)
 		NetProtocol.MSG_SCOREBOARD:
 			if NetMessages.Scoreboard.decode(bytes) == null:
 				_malformed_packets += 1
@@ -664,8 +703,13 @@ func _on_spawn(bytes: PackedByteArray) -> void:
 		return
 	if not spawn.is_yours:
 		_spawns_seen += 1
-		if _combat and spawn.kind == NetProtocol.EntityKind.PLAYER and spawn.state != null \
-				and FactionRules.can_damage(_realm, spawn.realm, StringName(_welcome.zone_id)):
+		if spawn.kind == NetProtocol.EntityKind.STRUCTURE:
+			# La fortaleza: el alta lleva sus campos completos (como un OBJECT_STATE).
+			if _siege_mode and _fortress_net_id == 0:
+				_fortress_net_id = spawn.net_id
+				_apply_fortress_fields(spawn.to_object_state())
+			return
+		if _combat and _is_enemy_spawn(spawn):
 			_enemy_positions[spawn.net_id] = spawn.state.position
 			_enemies_known_max = maxi(_enemies_known_max, _enemy_positions.size())
 			_enemy_alive[spawn.net_id] = true
@@ -680,7 +724,11 @@ func _on_spawn(bytes: PackedByteArray) -> void:
 	_position = spawn.state.position
 	_yaw = spawn.state.yaw
 	_last_own_tick = spawn.spawn_tick
-	if _combat:
+	if _siege_mode:
+		_brain = BotBrain.new(_config.bot_seed + _index, BotBrain.Pattern.SIEGE, _position, BOT_RADIUS)
+		_brain.set_enemy_finder(_find_enemy)
+		_brain.set_siege(_siege_view, _siege_routes, _realm)
+	elif _combat:
 		_brain = BotBrain.new(_config.bot_seed + _index, BotBrain.Pattern.COMBAT, _position, BOT_RADIUS)
 		_brain.set_enemy_finder(_find_enemy)
 	else:
@@ -688,6 +736,38 @@ func _on_spawn(bytes: PackedByteArray) -> void:
 	_joined_local_tick = _local_tick
 	_bytes_at_join = _byte_counters()
 	_state = State.IN_WORLD
+
+
+# --- Asedio -------------------------------------------------------------------------------------
+
+# true si el alta [param spawn] es de alguien a quien este bot puede atacar: un jugador de otro reino y, con el
+# cerebro de asedio, también un PNJ de guerra (los Huecos y los defensores tienen id de definición; los
+# maniquíes no).
+func _is_enemy_spawn(spawn: NetMessages.EntitySpawn) -> bool:
+	if spawn.state == null:
+		return false
+	var attackable_kind: bool = spawn.kind == NetProtocol.EntityKind.PLAYER \
+			or (_siege_mode and spawn.kind == NetProtocol.EntityKind.NPC and spawn.npc_def_id > 0)
+	return attackable_kind and FactionRules.can_damage(_realm, spawn.realm, StringName(_welcome.zone_id))
+
+
+# Las rutas de la zona del WELCOME y, con ellas, dónde están la puerta y el círculo del fuerte.
+func _load_siege_data(zone_id: String) -> void:
+	var path: String = "res://data/routes/%s.tres" % zone_id
+	if ResourceLoader.exists(path):
+		_siege_routes = load(path) as ApproachRoutes
+	_siege_view.set_places_from_routes(_siege_routes)
+
+
+# Pasa los campos de un OBJECT_STATE (o del alta) de la fortaleza al SiegeView, sin pasar por FortressView.
+func _apply_fortress_fields(object_state: NetMessages.ObjectState) -> void:
+	if object_state == null or (_fortress_net_id != 0 and object_state.net_id != _fortress_net_id):
+		return
+	var values: Dictionary = {}
+	for field: NetMessages.ObjectField in object_state.fields:
+		values[field.field_id] = field.value
+	_siege_view.update_from_fields(values)
+	_object_states_applied += 1
 
 
 # --- Auxiliares -------------------------------------------------------------------------------

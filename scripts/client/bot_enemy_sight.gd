@@ -6,17 +6,21 @@ extends RefCounted
 ## Un remoto es enemigo si el servidor dejaría que el bot lo dañase en esta zona
 ## ([method FactionRules.can_damage] con el reino del bot y el del remoto, y la zona del WELCOME), si
 ## está dibujado y no está muerto ([method RemotePlayerView.get_drawn_health_q] mayor que 0). Los PNJ
-## (maniquíes) solo cuentan con [code]include_npcs[/code]. No conoce las zonas seguras ni la protección de
+## (maniquíes) solo cuentan con [code]include_npcs[/code]; con [code]include_war_npcs[/code] cuentan los PNJ de
+## guerra (los que tienen un id de definición, [method RemotePlayerView.get_npc_def_id]: Huecos, capitanes,
+## guarniciones), no los maniquíes. No conoce las zonas seguras ni la protección de
 ## reaparición (eso lo sabe el servidor): un bot que persigue a alguien en su campamento no le hace
 ## daño, y los jugadores falsos del servidor sí lo evitan.
 
 var _client: NetClient
 var _include_npcs: bool = false
+var _include_war_npcs: bool = false
 
 
-func _init(client: NetClient, include_npcs: bool = false) -> void:
+func _init(client: NetClient, include_npcs: bool = false, include_war_npcs: bool = false) -> void:
 	_client = client
 	_include_npcs = include_npcs
+	_include_war_npcs = include_war_npcs
 
 
 ## Posición dibujada (un [Vector3]) del enemigo más cercano a [param position], o null si no hay
@@ -33,7 +37,9 @@ func find(position: Vector3) -> Variant:
 	for view: RemotePlayerView in world.get_views():
 		if not view.is_drawn() or view.get_drawn_health_q() == EntityRecord.HEALTH_Q_DEAD:
 			continue
-		if view.get_kind() != NetProtocol.EntityKind.PLAYER and not _include_npcs:
+		if view.get_kind() != NetProtocol.EntityKind.PLAYER and not _include_npcs \
+				and not (_include_war_npcs and view.get_kind() == NetProtocol.EntityKind.NPC \
+				and view.get_npc_def_id() > 0):
 			continue
 		if not FactionRules.can_damage(config.realm, view.get_realm(), zone_id):
 			continue
