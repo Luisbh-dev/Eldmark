@@ -13,6 +13,8 @@ extends Control
 ## y así vive y muere con esta interfaz sin colgar nada de la zona.
 ## [br]- [Compass] y [WorldMarkers] (UI-19): la brújula y los iconos del fuerte, los campamentos y los
 ## pasos, con el mapa horneado de la zona ([ZoneMapDefinition]) para los lugares fijos.
+## [br]- [KillFeed] (UI-41): el registro de bajas de la zona, arriba a la derecha. La tabla del marcador
+## ([ScoreboardPanel], Tab) la monta el [HUD] por encima de la pantalla de muerte.
 ## [br]- [Minimap] (UI-20): el minimapa circular, abajo a la derecha. El mapa a pantalla completa
 ## ([WorldMap]) lo monta el [HUD], por encima de la pantalla de muerte, con el mismo mapa horneado
 ## ([method get_map]).
@@ -26,6 +28,7 @@ var _boss_bar: BossBar = null
 var _telegraph_marks: TelegraphMarks = null
 var _compass: Compass = null
 var _minimap: Minimap = null
+var _kill_feed: KillFeed = null
 var _world_markers: WorldMarkers = null
 var _camera_rig: CameraRig = null
 var _map: ZoneMapDefinition = null
@@ -68,6 +71,10 @@ func bind(client: NetClient, camera_rig: CameraRig = null) -> void:
 	_compass = Compass.new()
 	_compass.name = "Compass"
 	add_child(_compass)
+	_kill_feed = KillFeed.new()
+	_kill_feed.name = "KillFeed"
+	add_child(_kill_feed)
+	_kill_feed.bind(client)
 	_minimap = Minimap.new()
 	_minimap.name = "Minimap"
 	add_child(_minimap)
@@ -103,6 +110,10 @@ func get_world_markers() -> WorldMarkers:
 
 func get_minimap() -> Minimap:
 	return _minimap
+
+
+func get_kill_feed() -> KillFeed:
+	return _kill_feed
 
 
 ## Mapa horneado de la zona (null si no tiene).

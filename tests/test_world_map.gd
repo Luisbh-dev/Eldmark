@@ -551,8 +551,7 @@ func test_the_hud_mounts_the_minimap_and_the_map_above_the_death_screen() -> voi
 	var world_map: WorldMap = h.hud.get_world_map()
 	if not assert_not_null(world_map, "y el mapa del HUD"):
 		return
-	assert_eq(world_map.get_index(), h.hud.get_child_count() - 1, "el último hijo: por encima de la pantalla de muerte")
-	assert_true(world_map.get_index() > h.hud.get_death_screen().get_index())
+	assert_true(world_map.get_index() > h.hud.get_death_screen().get_index(), "por encima de la pantalla de muerte")
 	assert_false(world_map.visible, "cerrado al empezar")
 	var hints: String = h.hud.get_node(^"HintLabel").get_plain_text()
 	assert_true(hints.contains("Mapa") and hints.contains("Marcador"), "la línea de ayuda dice las teclas nuevas: %s" % hints)

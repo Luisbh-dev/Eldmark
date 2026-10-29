@@ -14,11 +14,13 @@ const MAX_ENTRIES: int = 1024
 var _names: Dictionary[int, String] = {}
 var _realms: Dictionary[int, int] = {}
 var _kinds: Dictionary[int, int] = {}
+var _npc_defs: Dictionary[int, int] = {}
 var _order: Array[int] = []
 
 
 ## Apunta (o actualiza) a la entidad [param net_id].
-func remember(net_id: int, display_name: String, realm: int, kind: int = NetProtocol.EntityKind.PLAYER) -> void:
+func remember(net_id: int, display_name: String, realm: int, kind: int = NetProtocol.EntityKind.PLAYER,
+		npc_def_id: int = 0) -> void:
 	if net_id == 0:
 		return
 	if not _names.has(net_id):
@@ -28,15 +30,17 @@ func remember(net_id: int, display_name: String, realm: int, kind: int = NetProt
 			_names.erase(oldest)
 			_realms.erase(oldest)
 			_kinds.erase(oldest)
+			_npc_defs.erase(oldest)
 	_names[net_id] = display_name
 	_realms[net_id] = realm
 	_kinds[net_id] = kind
+	_npc_defs[net_id] = npc_def_id
 
 
 ## Apunta al emisor de un ENTITY_SPAWN.
 func remember_spawn(spawn: NetMessages.EntitySpawn) -> void:
 	if spawn != null:
-		remember(spawn.net_id, spawn.display_name, spawn.realm, spawn.kind)
+		remember(spawn.net_id, spawn.display_name, spawn.realm, spawn.kind, spawn.npc_def_id)
 
 
 ## true si se conoce a [param net_id].
@@ -60,6 +64,12 @@ func kind_of(net_id: int) -> int:
 	return _kinds.get(net_id, NetProtocol.EntityKind.PLAYER)
 
 
+## Id de la definición de PNJ ([code]npc_def_id[/code] del SPAWN) de [param net_id]; 0 si es un jugador o
+## no se conoce.
+func npc_def_of(net_id: int) -> int:
+	return _npc_defs.get(net_id, 0)
+
+
 func size() -> int:
 	return _names.size()
 
@@ -68,4 +78,5 @@ func clear() -> void:
 	_names.clear()
 	_realms.clear()
 	_kinds.clear()
+	_npc_defs.clear()
 	_order.clear()

@@ -23,6 +23,9 @@ extends CanvasLayer
 ## está abierta (el fuerte puede cambiar de manos) y cada opción envía el índice de su marcador entre todos
 ## los de la zona (docs/fuerte.md, sección 5). «Elegir en el mapa» (o M con la pantalla abierta) abre el
 ## [WorldMap] en modo de reaparición por encima de ella: pulsar un punto válido lo deja elegido en la lista.
+## [br][br]
+## [b]Marcador (UI-41).[/b] Mientras se mantiene Tab, el [ScoreboardPanel] (el último hijo, por encima de todo)
+## enseña la tabla de la zona; el registro de bajas ([KillFeed]) vive en la interfaz de guerra.
 
 ## Cada cuánto se refresca el texto del panel de depuración, en segundos.
 ## Refrescarlo cada frame hace que las cifras parpadeen y sean ilegibles.
@@ -50,8 +53,9 @@ var _respawn_event_tick: int = 0
 var _dimmed: bool = false
 # Interfaz de guerra del cliente en red (fuerte, avisos, jefe...); null en el sandbox.
 var _war_hud: WarHud = null
-# Mapa a pantalla completa (por encima de la pantalla de muerte); null en el sandbox.
+# Mapa a pantalla completa y marcador (por encima de la pantalla de muerte); null en el sandbox.
 var _world_map: WorldMap = null
+var _scoreboard: ScoreboardPanel = null
 # Lo que enseña ahora la lista de reaparición de la pantalla de muerte (para saber si cambió).
 var _death_signature: String = ""
 
@@ -116,6 +120,7 @@ func bind_net(client: NetClient, world: Node) -> void:
 		_nameplates.setup(_client.get_remote_world(), _camera_rig, _client.get_config().realm)
 		_setup_war_hud()
 		_setup_world_map()
+		_setup_scoreboard()
 		var hints: Array[Dictionary] = UIHintBar.DEFAULT_HINTS.duplicate()
 		hints.append_array(NET_HINTS_EXTRA)
 		_hint.set_hints(hints)
@@ -203,6 +208,11 @@ func get_world_map() -> WorldMap:
 	return _world_map
 
 
+## Marcador de la zona, Tab (null sin red).
+func get_scoreboard() -> ScoreboardPanel:
+	return _scoreboard
+
+
 ## Reparto de la sensación de combate (null hasta [method bind]).
 func get_feedback() -> CombatFeedback:
 	return _feedback
@@ -254,6 +264,17 @@ func _setup_world_map() -> void:
 			_war_hud.get_map() if is_instance_valid(_war_hud) else null, _world)
 	_world_map.opened.connect(_on_map_opened)
 	_world_map.respawn_option_chosen.connect(_on_map_option_chosen)
+
+
+# Crea (de nuevo, si ya había uno) el marcador de la zona: el último hijo, por encima de todo lo demás.
+func _setup_scoreboard() -> void:
+	if is_instance_valid(_scoreboard):
+		remove_child(_scoreboard)
+		_scoreboard.free()
+	_scoreboard = ScoreboardPanel.new()
+	_scoreboard.name = "Scoreboard"
+	add_child(_scoreboard)
+	_scoreboard.bind(_client)
 
 
 # --- Vida y resistencia -----------------------------------------------------------------------
