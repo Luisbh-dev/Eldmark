@@ -35,17 +35,24 @@ extends CanvasLayer
 ## por teclado) y los marcos de los miembros del grupo; atiende los comandos [code]/invitar[/code],
 ## [code]/salir[/code], [code]/expulsar[/code] y [code]/lider[/code] de la caja de chat y avisa a las placas de nombre de
 ## quién es del grupo.
+## [br][br]
+## [b]Menú social (SOC-07).[/b] La tecla [code]social_menu[/code] abre el [SocialMenu] sobre el jugador al que apunta la
+## retícula a 20 m o menos ([method open_social_menu]): invitar al grupo y susurrar.
 
 ## Cada cuánto se refresca el texto del panel de depuración, en segundos.
 ## Refrescarlo cada frame hace que las cifras parpadeen y sean ilegibles.
 const DEBUG_REFRESH_INTERVAL: float = 0.1
 ## Opacidad a la que se atenúa la interfaz de juego con la pantalla de muerte abierta.
 const DEAD_DIM_ALPHA: float = 0.3
+## Avisos del menú social (SOC-07) cuando no hay a quién ofrecérselo.
+const TEXT_NO_SOCIAL_TARGET: String = "Apunta a un jugador (a 20 m o menos) para ver sus acciones."
+const TEXT_NO_SOCIAL_ACTIONS: String = "No hay acciones sociales disponibles con ese jugador."
 ## Pistas de la línea de ayuda del cliente en red: las de siempre y, tras la depuración, el mapa y el marcador.
 const NET_HINTS_EXTRA: Array[Dictionary] = [
 	{"action": &"open_map", "text": "Mapa"},
 	{"action": &"scoreboard", "text": "Marcador"},
 	{"action": &"chat_open", "text": "Chat"},
+	{"action": &"social_menu", "text": "Jugador"},
 ]
 
 var _character: PlayerCharacter = null
@@ -70,6 +77,8 @@ var _scoreboard: ScoreboardPanel = null
 var _chat: ChatBox = null
 # Interfaz de grupo (SOC-08): invitación y marcos; null en el sandbox.
 var _party_hud: PartyHud = null
+# Menú social sobre el jugador bajo el punto de mira (SOC-07); null en el sandbox.
+var _social_menu: SocialMenu = null
 # Lo que enseña ahora la lista de reaparición de la pantalla de muerte (para saber si cambió).
 var _death_signature: String = ""
 
@@ -138,6 +147,7 @@ func bind_net(client: NetClient, world: Node) -> void:
 		_setup_scoreboard()
 		_setup_chat()
 		_setup_party()
+		_setup_social_menu()
 		var hints: Array[Dictionary] = UIHintBar.DEFAULT_HINTS.duplicate()
 		hints.append_array(NET_HINTS_EXTRA)
 		_hint.set_hints(hints)
@@ -172,6 +182,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_debug_refresh_left = 0.0
 			_refresh_debug_text()
 		get_viewport().set_input_as_handled()
+	elif InputMap.has_action(&"social_menu") and event.is_action_pressed(&"social_menu"):
+		if open_social_menu():
+			get_viewport().set_input_as_handled()
 
 
 ## Muestra u oculta el panel de depuración sin esperar a F3. El cliente en red lo empieza oculto y
@@ -238,6 +251,36 @@ func get_chat() -> ChatBox:
 ## Interfaz de grupo: aviso de invitación y marcos de los miembros (null sin red).
 func get_party_hud() -> PartyHud:
 	return _party_hud
+
+
+## Menú social del jugador bajo el punto de mira (null sin red).
+func get_social_menu() -> SocialMenu:
+	return _social_menu
+
+
+## Abre el menú social sobre el jugador al que apunta la retícula, a 20 m o menos (SOC-07): invitar al grupo y
+## susurrar. Devuelve false, sin abrir nada, si hay otra ventana o la línea del chat abierta, no se apunta a
+## nadie (se avisa en el chat) o el jugador apuntado no admite acciones, como un enemigo (también se avisa).
+func open_social_menu() -> bool:
+	if not is_instance_valid(_social_menu) or not is_instance_valid(_client) \
+			or not is_instance_valid(_camera_rig) or _death.is_open():
+		return false
+	if _camera_rig.is_ui_holding_cursor() or (is_instance_valid(_chat) and _chat.is_open()):
+		return false
+	var character: PlayerCharacter = _client.get_character()
+	if character == null or not is_instance_valid(character) or not character.is_inside_tree():
+		return false
+	var view: RemotePlayerView = SocialTarget.find(_client.get_remote_world(), _camera_rig.get_aim_ray(),
+			character.global_position)
+	if view == null:
+		if is_instance_valid(_chat):
+			_chat.add_system_text(TEXT_NO_SOCIAL_TARGET)
+		return false
+	if not _social_menu.open_for(view):
+		if is_instance_valid(_chat):
+			_chat.add_system_text(TEXT_NO_SOCIAL_ACTIONS)
+		return false
+	return true
 
 
 ## Reparto de la sensación de combate (null hasta [method bind]).
@@ -331,6 +374,17 @@ func _setup_party() -> void:
 	if is_instance_valid(_chat):
 		_chat.party_handler = Callable(_party_hud, "handle_command")
 	_nameplates.set_party(_client.get_party())
+
+
+# Crea (de nuevo, si ya había uno) el menú social: el último hijo, por encima de lo demás.
+func _setup_social_menu() -> void:
+	if is_instance_valid(_social_menu):
+		remove_child(_social_menu)
+		_social_menu.free()
+	_social_menu = SocialMenu.new()
+	_social_menu.name = "MenuSocial"
+	add_child(_social_menu)
+	_social_menu.setup(_client, _chat, _camera_rig)
 
 
 # --- Vida y resistencia -----------------------------------------------------------------------

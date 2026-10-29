@@ -488,3 +488,28 @@ provisionales (pendiente del usuario, igual que las medidas y los colores de los
 La demo del backlog (cuatro bots agrupados con el jugador local) está en `test_party_hud`
 (`test_a_party_of_five_shows_the_right_frames`): comprueba nombres, orden, corona única, vida, resistencia,
 distancia, atenuado por lejos, por muerte y por falta de datos, y que los marcos siguen a la lista.
+
+### 12.6 Menú social sobre el jugador bajo el punto de mira (SOC-07)
+
+Solo el primer origen de las acciones: la tecla `social_menu` (T) lanza un rayo desde la cámara contra la
+cápsula de cada jugador remoto que se está dibujando (como el de las placas de nombre) y toma al más cercano a
+lo largo del rayo a **20 m o menos del jugador local** (no de la cámara, que va detrás). Con él se abre una
+ventana pequeña (`SocialMenu`, una `UIWindow`: libera el cursor, se maneja con teclado o ratón y Esc la cierra)
+con las acciones que aplican:
+
+| Objetivo | Opciones |
+|---|---|
+| Aliado | Invitar al grupo (si no es ya del grupo y el grupo no está completo) y Susurrar |
+| Miembro del grupo, o grupo completo | Solo Susurrar |
+| Enemigo | Ninguna: el menú no se abre y el chat avisa («No hay acciones sociales disponibles con ese jugador.») |
+| Nadie | No se abre y el chat avisa («Apunta a un jugador (a 20 m o menos) para ver sus acciones.») |
+
+**Invitar** manda PARTY_INVITE; **susurrar** cierra el menú y abre la línea del chat con `/s nombre ` ya escrito.
+Cuando existan inspeccionar, añadir amigo, ignorar y reportar, saldrán de `SocialTarget.options_for` (una función
+pura) sin mostrar con un enemigo las que no apliquen.
+
+**Pendiente de SOC-07:** el segundo origen, un nombre pulsado en el chat con el cursor libre (los nombres de las
+líneas del chat no son todavía pulsables), y las opciones que dependen de fases posteriores.
+
+**Pruebas.** `test_social_menu`: el rayo (20 m desde el jugador y no desde la cámara, PNJ ignorados, el más
+cercano gana), las opciones, el menú con un aliado y con un enemigo, y la tecla del HUD.

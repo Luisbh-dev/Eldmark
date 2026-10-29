@@ -54,6 +54,7 @@ static func ensure_defaults() -> void:
 	_ensure_keys(&"chat_open", [KEY_ENTER, KEY_KP_ENTER])
 	_ensure_key(&"party_accept", KEY_Y)
 	_ensure_key(&"party_decline", KEY_N)
+	_ensure_key(&"social_menu", KEY_T)
 
 
 static func _ensure_key(action: StringName, physical_keycode: Key) -> void:
