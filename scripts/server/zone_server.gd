@@ -85,6 +85,11 @@ var log_enabled: bool = true
 ## Ticks que un peer puede estar cargando la zona sin enviar CLIENT_READY antes de que se le
 ## expulse ([constant LOADING_TIMEOUT_TICKS] por defecto; las pruebas lo acortan).
 var loading_timeout_ticks: int = LOADING_TIMEOUT_TICKS
+## Solo pruebas: si es válido, se le pasa [code](peer_id: int, address: String) -> String[/code] y
+## devuelve la dirección con la que se trata al peer. Sirve para fingir que unos clientes de
+## loopback vienen de una IP externa y así probar el tope de conexiones por IP, del que el loopback
+## está exento.
+var remote_address_override: Callable = Callable()
 
 var _run_state: _RunState = _RunState.IDLE
 var _config: ServerConfig
@@ -875,6 +880,8 @@ func _on_peer_authenticating(peer_id: int) -> void:
 		return
 	var peer := ServerPeer.new(peer_id)
 	peer.remote_address = _transport.get_remote_address(peer_id)
+	if remote_address_override.is_valid():
+		peer.remote_address = str(remote_address_override.call(peer_id, peer.remote_address))
 	_peers[peer_id] = peer
 
 

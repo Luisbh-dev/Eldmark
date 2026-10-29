@@ -765,3 +765,192 @@ func test_stop_notifies_the_clients_and_closes_the_transport() -> void:
 	assert_true(stopped, "el servidor termina de cerrarse")
 	assert_false(_server_transport.is_server(), "y cierra el transporte")
 	assert_eq(_server.get_player_count(), 0)
+
+
+# --- Seguridad (docs/red.md, sección 12): los limitadores, el tope por IP y los avisos -----------
+
+## Avisos del informe por motivo: {motivo: veces}.
+func _strike_reasons() -> Dictionary:
+	var report: Dictionary = _read_report()
+	return (report.get("strikes", {}) as Dictionary).get("by_reason", {})
+
+
+func test_input_flood_trips_the_unreliable_limiter() -> void:
+	await _start_server()
+	var client: RawClient = await _join("Ana")
+	if client == null:
+		return
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	assert_eq(peer.strikes_total, 0, "un cliente educado no suma avisos")
+	# 40 lotes válidos en el mismo tick: la ráfaga de no fiables admite 30 (más lo que recupera,
+	# 2 por tick); el resto se descarta y cada uno suma un aviso.
+	var next_tick: int = _server.get_tick() + 5
+	for i: int in 40:
+		client.send_inputs(next_tick + i % 20, 1, Vector2(0.0, 1.0), 0.0)
+	await _run_frames(5)
+	assert_true(peer.strikes_total >= 6 and peer.strikes_total <= 12,
+			"se descartan los lotes que pasan de la ráfaga (%d avisos)" % peer.strikes_total)
+	assert_eq(_strike_reasons().get("exceso de ritmo", 0), peer.strikes_total,
+			"y todos los avisos son por exceso de ritmo")
+	assert_eq(peer.state, ServerPeer.State.IN_WORLD, "sin llegar a la expulsión")
+	assert_true(client.notices.is_empty(), "ni aviso al cliente")
+	# Con calma, en cambio, el ritmo normal (un lote por tick) no cuesta ningún aviso.
+	var strikes_before: int = peer.strikes_total
+	for _i: int in 90:
+		client.send_inputs(_server.get_tick() + 6, 4, Vector2.ZERO, 0.0)
+		await _run_frames(1)
+	assert_eq(peer.strikes_total, strikes_before, "un lote por tick no es exceso de ritmo")
+
+
+func test_reliable_flood_trips_the_reliable_limiter() -> void:
+	await _start_server(func(config: ServerConfig) -> void: config.debug_commands = true)
+	var client: RawClient = await _join("Ana")
+	if client == null:
+		return
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	# 30 teletransportes válidos a la vez: los fiables admiten una ráfaga de 20 (el CLIENT_READY
+	# del alta ya gastó una ficha) más 1 cada 6 ticks, así que el resto se descarta con un aviso
+	# cada uno.
+	for i: int in 30:
+		client.send_raw(NetProtocol.CH_RELIABLE,
+				NetMessages.DebugCommand.teleport(Vector3(float(i), 0.5, 0.0)).encode())
+	await _run_frames(8)
+	assert_true(peer.strikes_total >= 8 and peer.strikes_total <= 11,
+			"los fiables que pasan de la ráfaga suman avisos (%d)" % peer.strikes_total)
+	assert_eq(_strike_reasons().get("exceso de ritmo", 0), peer.strikes_total,
+			"por exceso de ritmo")
+	var teleports: int = int(_read_report().get("teleports", 0))
+	assert_true(teleports >= 19 and teleports <= 21,
+			"se aplican los que caben en la ráfaga, que ya gastó el CLIENT_READY (%d)" % teleports)
+	assert_eq(peer.state, ServerPeer.State.IN_WORLD, "y no hay expulsión con menos de 50 avisos")
+
+
+func test_bytes_limiter_drops_big_packets_even_below_the_packet_rate() -> void:
+	await _start_server()
+	var client: RawClient = await _join("Ana")
+	if client == null:
+		return
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	# 5 paquetes de 1000 B (el tipo de un lote, mal formados): 4 KB de ráfaga de bytes dan para 4.
+	var big: PackedByteArray = PackedByteArray()
+	big.resize(1000)
+	big[0] = NetProtocol.MSG_INPUT_BATCH
+	for _i: int in 5:
+		client.send_raw(NetProtocol.CH_INPUT, big)
+	await _run_frames(5)
+	var reasons: Dictionary = _strike_reasons()
+	assert_eq(reasons.get("lote de entradas mal formado", 0), 4, "los 4 primeros llegan a decodificarse")
+	assert_eq(reasons.get("exceso de ritmo", 0), 1, "el quinto lo descarta el limitador de bytes")
+	assert_eq(peer.strikes_total, 5)
+	# Un paquete mayor que la ráfaga entera no se concede nunca, por mucho que se espere.
+	var huge: PackedByteArray = PackedByteArray()
+	huge.resize(5000)
+	huge[0] = NetProtocol.MSG_CLIENT_LEAVE
+	client.send_raw(NetProtocol.CH_RELIABLE, huge)
+	await _run_frames(5)
+	assert_eq(_strike_reasons().get("exceso de ritmo", 0), 2, "un paquete de 5 KB tampoco pasa")
+	assert_eq(peer.state, ServerPeer.State.IN_WORLD, "y su CLIENT_LEAVE no se ejecutó")
+
+
+func test_ip_cap_rejects_the_extra_connection_but_not_loopback() -> void:
+	await _start_server(func(config: ServerConfig) -> void: config.max_connections_per_ip = 2)
+	# Desde loopback no hay tope: entran 4 clientes con un tope de 2.
+	var loopback: Array[RawClient] = []
+	for player_name: String in ["Ana", "Bruno", "Carla", "Diana"]:
+		var client: RawClient = await _join(player_name)
+		if client == null:
+			return
+		loopback.append(client)
+	assert_eq(_server.get_player_count(), 4, "cuatro jugadores de loopback con un tope de 2")
+	# Se finge que los siguientes vienen de una IP externa: ahora sí cuenta el tope.
+	_server.remote_address_override = func(_peer_id: int, _address: String) -> String:
+		return "203.0.113.7"
+	var first: RawClient = await _join("Elena")
+	var second: RawClient = await _join("Fabio")
+	if first == null or second == null:
+		return
+	var third: RawClient = _connect_client(_hello(VARDHEIM, "Gloria"))
+	var rejected: bool = await _run_until(func() -> bool: return third.reject != null)
+	if not assert_true(rejected, "la tercera conexión de la misma IP recibe un REJECT"):
+		return
+	assert_eq(third.reject.result, NetProtocol.Result.TOO_MANY_CONNECTIONS, "por exceso de conexiones")
+	assert_eq(third.reject.text, NetProtocol.result_text(NetProtocol.Result.TOO_MANY_CONNECTIONS))
+	assert_null(third.welcome, "sin WELCOME")
+	assert_eq(_server.get_player_count(), 6, "y no ocupa sitio")
+	# Cuando una de las dos se va, vuelve a haber sitio para esa IP.
+	first.transport.close()
+	var gone: bool = await _run_until(func() -> bool: return _server.get_player_count() == 5)
+	assert_true(gone, "la baja libera una conexión de esa IP")
+	var fourth: RawClient = await _join("Hilda")
+	assert_not_null(fourth, "y entra otra")
+	assert_eq(_server.get_player_count(), 6)
+
+
+func test_unexpected_messages_for_the_session_state_are_strikes() -> void:
+	await _start_server(func(config: ServerConfig) -> void: config.debug_commands = true)
+	# Cargando la zona: un comando de depuración antes de entrar en el mundo.
+	var loading: RawClient = _connect_client(_hello(VARDHEIM, "Ana"), false)
+	var connected: bool = await _run_until(func() -> bool: return loading.connected)
+	if not assert_true(connected, "el cliente se conecta"):
+		return
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	loading.send_raw(NetProtocol.CH_RELIABLE,
+			NetMessages.DebugCommand.teleport(Vector3(1.0, 0.5, 1.0)).encode())
+	await _run_frames(3)
+	assert_eq(peer.strikes_total, 1, "DEBUG_COMMAND cargando la zona es un aviso")
+	assert_eq(peer.state, ServerPeer.State.LOADING, "y no cambia su estado")
+	# Un segundo HELLO de quien ya está autenticado.
+	_server_transport.auth_received.emit(peer.peer_id, _hello(VARDHEIM, "Ana"))
+	assert_eq(peer.strikes_total, 2, "un HELLO repetido es un aviso")
+	# Un paquete de aplicación de un peer que aún se autentica (no debería poder llegar).
+	_server_transport.peer_authenticating.emit(9999)
+	var stranger: ServerPeer = _server.get_peer(9999)
+	if assert_not_null(stranger, "el servidor da de alta al peer que se autentica"):
+		_server_transport.packet_received.emit(9999, NetMessages.ClientReady.new().encode())
+		assert_eq(stranger.strikes_total, 1, "un mensaje antes de autenticarse es un aviso")
+	# Un CLIENT_LEAVE mal formado cuenta; uno bueno es una salida limpia.
+	loading.send_raw(NetProtocol.CH_RELIABLE, PackedByteArray([NetProtocol.MSG_CLIENT_LEAVE, 0, 0]))
+	await _run_frames(3)
+	assert_eq(peer.strikes_total, 3, "CLIENT_LEAVE mal formado")
+	assert_eq(peer.state, ServerPeer.State.LOADING)
+	loading.send_raw(NetProtocol.CH_RELIABLE, NetMessages.ClientLeave.new().encode())
+	var left: bool = await _run_until(func() -> bool: return _server.get_peer(peer.peer_id) == null)
+	assert_true(left, "y el bueno da de baja al peer sin más avisos")
+	assert_eq(peer.strikes_total, 3)
+
+
+func test_random_garbage_gets_the_sender_kicked_and_leaves_the_others_untouched() -> void:
+	await _start_server()
+	var honest: RawClient = await _join("Ana")
+	var cheater: RawClient = await _join("Bruno")
+	if honest == null or cheater == null:
+		return
+	var honest_peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	var cheater_peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[1])
+	var cheater_id: int = cheater.own_spawn.net_id
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 77
+	# Bytes al azar, de cualquier tamaño y tipo, por los tres canales: nada puede romper al servidor.
+	var channels: Array[int] = [NetProtocol.CH_INPUT, NetProtocol.CH_RELIABLE]
+	var sent: int = 0
+	while sent < 400 and cheater_peer.state != ServerPeer.State.LEAVING:
+		var garbage := PackedByteArray()
+		garbage.resize(rng.randi_range(1, 160))
+		for i: int in garbage.size():
+			garbage[i] = rng.randi_range(0, 255)
+		cheater.send_raw(channels[sent % channels.size()], garbage)
+		sent += 1
+		if sent % 4 == 0:
+			await _run_frames(1)
+	var kicked: bool = await _run_until(func() -> bool:
+		return cheater.notice_with_code(NetProtocol.NoticeCode.KICK) != null)
+	assert_true(kicked, "el que manda basura recibe el NOTICE de expulsión")
+	var gone: bool = await _run_until(func() -> bool: return _server.get_peer(cheater_peer.peer_id) == null)
+	assert_true(gone, "y el servidor lo da de baja")
+	assert_null(_server.get_registry().get_entity(cheater_id), "con su personaje")
+	assert_eq(honest_peer.strikes_total, 0, "el otro cliente no suma ningún aviso")
+	assert_eq(honest_peer.state, ServerPeer.State.IN_WORLD, "y sigue en el mundo")
+	var snapshots_before: int = honest.snapshots.size()
+	await _run_frames(30)
+	assert_true(honest.snapshots.size() > snapshots_before + 5, "y recibiendo snapshots")
+	assert_eq(_server.get_player_count(), 1, "queda un jugador")
