@@ -13,6 +13,13 @@ extends RefCounted
 ## corrige de golpe y la diferencia visible la reparte [CorrectionSmoother]; si el error pasa de
 ## [constant SNAP_DISTANCE] o hay un teletransporte, se salta directamente.
 ## [br][br]
+## [br][br]
+## [b]Gancho antes de simular.[/b] [member before_simulate] se llama con el tick que se va a simular
+## justo antes de cada [method PlayerCharacter.simulate]: en la aparición, en cada paso, y también en
+## cada tick de las repeticiones. Es donde [FortressView] pone la capa de la puerta del fuerte que tenía
+## ese tick (docs/fuerte.md, sección 3.2), para que cliente y servidor simulen cada tick con el mismo
+## mundo aunque la reconciliación repita ticks pasados.
+## [br][br]
 ## Todo lo que simula debe llamarse dentro del tick de física y con
 ## [code]delta = 1 / Engine.physics_ticks_per_second[/code] ([method PlayerCharacter.simulate]).
 
@@ -35,6 +42,10 @@ const HISTORY_SIZE: int = 256
 const SNAP_DISTANCE: float = 3.0
 ## Las correcciones menores que esto (m) no se cuentan en las estadísticas.
 const CORRECTION_REPORT_DISTANCE: float = 0.001
+
+## Gancho que se llama con el tick (int) que se va a simular, antes de cada simulate() (también en las
+## repeticiones). Vacío = ninguno.
+var before_simulate: Callable = Callable()
 
 var _character: PlayerCharacter = null
 var _controller: LocalPlayerController = null
@@ -109,6 +120,7 @@ func start(spawn_tick: int, spawn_state: PlayerState, first_real_tick: int) -> v
 	for tick: int in range(spawn_tick + 1, first_real_tick):
 		var input: PlayerInput = neutral.duplicate_input()
 		input.tick = tick
+		_notify_before_simulate(tick)
 		_character.simulate(input, _dt)
 		_store(tick, input, _character.get_state())
 		_predicted_tick = tick
@@ -129,6 +141,7 @@ func step() -> PlayerInput:
 		return null
 	var tick: int = _predicted_tick + 1
 	var input: PlayerInput = _controller.build_input(tick)
+	_notify_before_simulate(tick)
 	_character.simulate(input, _dt)
 	_store(tick, input, _character.get_state())
 	_predicted_tick = tick
@@ -251,6 +264,7 @@ func _replay_from(from_tick: int) -> void:
 	_character.events_enabled = false
 	_begin_substitution(from_tick)
 	for tick: int in range(from_tick + 1, _predicted_tick + 1):
+		_notify_before_simulate(tick)
 		_character.simulate(_input_or_substitute(tick), _dt)
 		_store_state(tick, _character.get_state())
 	_character.events_enabled = events_were_enabled
@@ -291,6 +305,12 @@ func _input_or_substitute(tick: int) -> PlayerInput:
 		input.move = Vector2.ZERO
 	_sub_last_applied = input
 	return input
+
+
+# Avisa a before_simulate del tick que se va a simular.
+func _notify_before_simulate(tick: int) -> void:
+	if before_simulate.is_valid():
+		before_simulate.call(tick)
 
 
 func _record_correction(distance: float) -> void:

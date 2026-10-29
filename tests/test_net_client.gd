@@ -608,6 +608,101 @@ func test_protocol_3_messages_are_accepted_and_not_counted_as_malformed() -> voi
 	assert_eq(_client.get_stats()["malformed_packets"], 2, "un OBJECT_STATE sin campos y un marcador sin páginas")
 
 
+func test_the_fortress_flows_to_the_view_and_the_prediction_asks_for_the_gate() -> void:
+	await _start()
+	assert_true(await _wait_until(_in_world))
+	var def: FortressDefinition = load("res://data/fortresses/vado_gris.tres") as FortressDefinition
+	var view: FortressView = _client.get_fortress_view()
+	assert_false(view.has_fortress(900), "antes del SPAWN no hay fortaleza")
+	var hook_calls: int = int(_client.get_stats()["fortress_hook_calls"])
+	assert_true(hook_calls > 0, "la predicción ya pregunta por la puerta en cada tick simulado (%d)" % hook_calls)
+	var spawn_tick: int = _fake.tick
+	_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE,
+			NetMessages.EntitySpawn.for_fortress(900, spawn_tick, "vado_gris_fort",
+			FortressState.initial(def, spawn_tick)).encode())
+	assert_true(await _wait_until(func() -> bool: return view.has_fortress(900)), "el SPAWN crea la fortaleza")
+	assert_eq(view.get_definition_id(900), "vado_gris_fort")
+	# Un cambio de dueño con un tick algo por delante: se anota ya, pero se muestra al alcanzarlo.
+	var change_tick: int = _fake.tick + 40
+	var change := NetMessages.ObjectState.new()
+	change.net_id = 900
+	change.tick = change_tick
+	change.add_field(FortressFields.OWNER, NetMessages.ObjectField.ValueType.U8, 2)
+	_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, change.encode())
+	assert_true(await _wait_until(func() -> bool:
+		return view.get_latest_state(900) != null and view.get_latest_state(900).owner == 2),
+			"el cambio se anota al llegar")
+	var clock: InterpolationClock = _client.get_interpolation_clock()
+	assert_true(clock.get_render_tick() < float(change_tick), "pero el tick de dibujo aún no lo ha alcanzado")
+	assert_true(view.get_displayed_state(900) == null or view.get_displayed_state(900).owner == 0,
+			"y la interfaz sigue mostrando el estado de antes")
+	assert_true(await _wait_until(func() -> bool:
+		return view.get_displayed_state(900) != null and view.get_displayed_state(900).owner == 2),
+			"cuando el tick de dibujo lo alcanza, se muestra")
+	assert_true(clock.get_render_tick() >= float(change_tick), "y no antes (render_tick %.1f)" % clock.get_render_tick())
+	assert_eq(_client.get_stats()["malformed_packets"], 0)
+
+
+func test_war_events_wait_for_the_draw_tick_and_telegraphs_arrive_at_once() -> void:
+	await _start()
+	assert_true(await _wait_until(_in_world))
+	var wars: Array[NetMessages.EntityEvent] = []
+	var telegraphs: Array[NetMessages.EntityEvent] = []
+	_client.war_event.connect(func(event: NetMessages.EntityEvent) -> void: wars.append(event))
+	_client.telegraph_received.connect(func(event: NetMessages.EntityEvent) -> void: telegraphs.append(event))
+	var war_tick: int = _fake.tick + 40
+	_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE,
+			NetMessages.EntityEvent.war(900, war_tick, WarEvents.FORT_CAPTURED, 2).encode())
+	_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE,
+			NetMessages.EntityEvent.telegraph(901, war_tick, 3, NetMessages.EntityEvent.SHAPE_CIRCLE,
+			Vector3(1.0, 0.0, 2.0), 0.0, 250, 30).encode())
+	assert_true(await _wait_until(func() -> bool: return telegraphs.size() == 1),
+			"el TELEGRAPH se entrega al llegar")
+	assert_eq(telegraphs[0].impact_in_ticks, 30)
+	assert_true(wars.is_empty(), "el aviso de guerra espera a su tick de dibujo")
+	assert_eq(_client.get_stats()["war_events_pending"], 1)
+	var clock: InterpolationClock = _client.get_interpolation_clock()
+	assert_true(await _wait_until(func() -> bool: return wars.size() == 1), "y luego se entrega")
+	assert_true(clock.get_render_tick() >= float(war_tick), "no antes de su tick")
+	assert_eq(wars[0].war_event, WarEvents.FORT_CAPTURED)
+	assert_eq(wars[0].war_realm, 2)
+	await wait_physics_frames(20)
+	assert_eq(wars.size(), 1, "una sola vez")
+	assert_eq(_client.get_stats()["war_events_pending"], 0)
+	assert_eq(_client.get_stats()["combat_events"], 0, "no son eventos de combate")
+
+
+func test_scoreboard_pages_are_joined_and_names_come_from_the_spawns() -> void:
+	await _start()
+	assert_true(await _wait_until(_in_world))
+	var boards: Array[int] = []
+	_client.scoreboard_updated.connect(func(board: ScoreboardState) -> void: boards.append(board.get_row_count()))
+	var other := NetMessages.EntitySpawn.new()
+	other.net_id = 77
+	other.spawn_tick = _fake.tick
+	other.realm = NetProtocol.Realm.SOLMARCH
+	other.state = PlayerState.new()
+	other.display_name = "Brenna"
+	_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, other.encode())
+	var all_rows: Array[NetMessages.ScoreRow] = []
+	for i: int in 70:
+		all_rows.append(NetMessages.ScoreRow.make(100 + i, i, 1, 2, 3, 4, 5))
+	var pages: Array[NetMessages.Scoreboard] = NetMessages.Scoreboard.split(all_rows)
+	assert_eq(pages.size(), 2, "70 jugadores caben en dos páginas")
+	_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, pages[0].encode())
+	await wait_physics_frames(10)
+	assert_true(boards.is_empty(), "con una página sola el marcador no está completo")
+	_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, pages[1].encode())
+	assert_true(await _wait_until(func() -> bool: return boards.size() == 1), "con la segunda se publica")
+	assert_eq(boards[0], 70)
+	assert_eq(_client.get_scoreboard().get_row(150).kills, 50)
+	assert_true(await _wait_until(func() -> bool: return _client.get_directory().knows(77)))
+	assert_eq(_client.get_directory().name_of(77), "Brenna")
+	assert_eq(_client.get_directory().realm_of(77), NetProtocol.Realm.SOLMARCH)
+	assert_eq(_client.get_directory().name_of(5), _client.get_config().display_name, "el propio nombre de la configuración")
+	assert_eq(_client.get_directory().name_of(4242), "Jugador 4242", "quien no se ha visto")
+
+
 func test_remote_entities_flow_to_the_remote_world() -> void:
 	await _start()
 	assert_true(await _wait_until(_in_world))

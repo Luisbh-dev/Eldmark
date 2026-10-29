@@ -42,6 +42,15 @@ extends Node
 ## reacción visual de un remoto (destello, animación) coincida con lo que se ve. [method
 ## send_respawn_request] pide la reaparición tras morir.
 ## [br][br]
+## [b]Fuerte[/b] (docs/fuerte.md, secciones 2, 3.2, 5 y 6; protocolo 4): el ENTITY_SPAWN de una estructura
+## y los OBJECT_STATE los guarda [FortressView] (historia de cambios), que aplica la interfaz y los
+## estandartes cuando el tick de dibujo alcanza el del mensaje y da la capa de la puerta de cada tick
+## simulado por el gancho [member ClientPrediction.before_simulate], también en las repeticiones. Los
+## avisos de guerra (WAR) esperan en su propia cola a su tick de dibujo ([signal war_event]); los
+## TELEGRAPH se entregan al llegar ([signal telegraph_received]). El SCOREBOARD se junta por páginas en un
+## [ScoreboardState] ([signal scoreboard_updated]) y [PlayerDirectory] recuerda nombre y reino de cada
+## entidad vista, porque el marcador y los KILL de toda la zona solo llevan ids.
+## [br][br]
 ## [b]Bot tramposo[/b] ([member ClientConfig.bot_cheat], solo en modo BOT): un [BotCheater] falsea
 ## el HELLO ([code]version[/code]), envía tráfico de más tras el lote honrado de cada tick
 ## ([code]future[/code], [code]dupes[/code], [code]garbage[/code], [code]flood[/code]) o falsea la vista
@@ -65,6 +74,14 @@ signal notice_received(code: int, text: String)
 ## víctima, asesino o asistente) y se entrega al llegar; si no, cuando el tick de dibujo alcanza
 ## [code]event.tick[/code].
 signal combat_event(event: NetMessages.EntityEvent, is_own: bool)
+## Un aviso de guerra (WAR) de una fortaleza, ya en su tick de dibujo (docs/fuerte.md, sección 5). El
+## texto sale de [method WarEvents.text] con [member NetMessages.EntityEvent.war_event] y
+## [member NetMessages.EntityEvent.war_realm].
+signal war_event(event: NetMessages.EntityEvent)
+## Un TELEGRAPH (el PNJ [code]event.net_id[/code] prepara un ataque): se entrega al llegar, es un aviso.
+signal telegraph_received(event: NetMessages.EntityEvent)
+## Se ha publicado un marcador completo (todas sus páginas): ver [method get_scoreboard].
+signal scoreboard_updated(scoreboard: ScoreboardState)
 
 enum State {
 	## Sin [method start].
@@ -186,7 +203,12 @@ var _events_received: int = 0
 var _events_own: int = 0
 var _respawn_requests: int = 0
 
-# Mensajes de la fase 4 que el cliente solo acepta por ahora (F5 los aplicará).
+# Fuerte (fase 4): vista de las fortalezas, avisos de guerra a la espera de su tick de dibujo, marcador y
+# memoria de quién es cada id.
+var _fortress_view: FortressView = FortressView.new()
+var _war_queue: CombatEventQueue = CombatEventQueue.new()
+var _scoreboard: ScoreboardState = ScoreboardState.new()
+var _directory: PlayerDirectory = PlayerDirectory.new()
 var _structure_spawns_received: int = 0
 var _object_states_received: int = 0
 var _scoreboards_received: int = 0
@@ -232,9 +254,14 @@ func _init() -> void:
 	_view_offsets_q.resize(ClientPrediction.HISTORY_SIZE)
 	_view_offsets_q.fill(0)
 	_remote_world.setup(_interp_clock)
+	_fortress_view.setup(_interp_clock)
+	# La puerta del fuerte que tenía cada tick simulado, también en las repeticiones (fuerte.md, 3.2).
+	_prediction.before_simulate = _fortress_view.before_simulate
 
 
 func _ready() -> void:
+	if _fortress_view.get_parent() == null:
+		add_child(_fortress_view)
 	# No hay nada que hacer hasta start().
 	set_physics_process(_state != State.IDLE and _state != State.CLOSED)
 
@@ -249,6 +276,8 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE:
 		if is_instance_valid(_remote_world) and _remote_world.get_parent() == null:
 			_remote_world.free()
+		if is_instance_valid(_fortress_view) and _fortress_view.get_parent() == null:
+			_fortress_view.free()
 
 
 # --- API pública ------------------------------------------------------------------------------
@@ -439,6 +468,21 @@ func get_remote_world() -> RemoteWorld:
 	return _remote_world
 
 
+## Vista de las fortalezas (estado replicado, estandartes y la puerta de la predicción).
+func get_fortress_view() -> FortressView:
+	return _fortress_view
+
+
+## Marcador de la zona (el último completo).
+func get_scoreboard() -> ScoreboardState:
+	return _scoreboard
+
+
+## Nombre y reino de cada entidad vista (el marcador y los KILL solo llevan ids).
+func get_directory() -> PlayerDirectory:
+	return _directory
+
+
 func get_tick_sync() -> TickSync:
 	return _tick_sync
 
@@ -529,8 +573,9 @@ func get_last_notice_text() -> String:
 ## [code]combat_events_pending[/code] (esperando a su tick de dibujo), [code]respawn_requests[/code],
 ## [code]health[/code] y [code]max_health[/code].
 ## [br]- [code]structure_spawns[/code], [code]object_states[/code], [code]scoreboards[/code],
-## [code]war_events[/code] y [code]telegraphs[/code]: mensajes del protocolo 3 recibidos (todavía sin
-## efecto, F5).
+## [code]war_events[/code] y [code]telegraphs[/code]: mensajes del protocolo 4 recibidos;
+## [code]war_events_pending[/code] (avisos de guerra esperando a su tick de dibujo) y
+## [code]fortress_hook_calls[/code] (veces que la predicción preguntó por la puerta).
 func get_stats() -> Dictionary:
 	var prediction_stats: Dictionary = _prediction.get_stats()
 	# Las diferencias que aún esperan su evento cuentan ya, según lo que se sepa ahora.
@@ -596,6 +641,8 @@ func get_stats() -> Dictionary:
 		"scoreboards": _scoreboards_received,
 		"war_events": _war_events_received,
 		"telegraphs": _telegraphs_received,
+		"war_events_pending": _war_queue.size(),
+		"fortress_hook_calls": int(_fortress_view.get_stats()["hook_calls"]),
 		"health": _health,
 		"max_health": _max_health,
 	}
@@ -648,6 +695,7 @@ func _physics_process(_delta: float) -> void:
 		_send_input_batch()
 	_settle_pending_diffs()
 	_interp_clock.advance(_local_tick)
+	_fortress_view.advance(_interp_clock.get_render_tick())
 	_deliver_due_events()
 	_smoother.physics_step()
 	_transport.flush()
@@ -699,6 +747,9 @@ func _apply_extra_block(snapshot: NetMessages.Snapshot) -> void:
 
 # Entrega los eventos ajenos cuyo tick ya alcanzó el tick de dibujo.
 func _deliver_due_events() -> void:
+	if _war_queue.size() > 0:
+		for war: NetMessages.EntityEvent in _war_queue.pop_due(_interp_clock.get_render_tick()):
+			war_event.emit(war)
 	if _event_queue.size() == 0:
 		return
 	for event: NetMessages.EntityEvent in _event_queue.pop_due(_interp_clock.get_render_tick()):
@@ -969,6 +1020,7 @@ func _close_session(text: String) -> void:
 	_state = State.CLOSED
 	_last_disconnect_text = text
 	_event_queue.clear()
+	_war_queue.clear()
 	if is_instance_valid(_transport):
 		_transport.close()
 	set_physics_process(false)
@@ -1027,24 +1079,26 @@ func _on_snapshot(bytes: PackedByteArray) -> void:
 		_latest = snapshot
 
 
-# OBJECT_STATE (protocolo v3): se acepta y se cuenta. TODO(F5): FortressView guarda la historia de
-# cambios y aplica el estado cuando el tick de dibujo alcanza object_state.tick (docs/fuerte.md,
-# sección 2).
+# OBJECT_STATE: FortressView guarda el cambio con su tick y lo aplica cuando el tick de dibujo lo
+# alcanza (docs/fuerte.md, sección 2).
 func _on_object_state(bytes: PackedByteArray) -> void:
 	var object_state: NetMessages.ObjectState = NetMessages.ObjectState.decode(bytes)
 	if object_state == null:
 		_malformed_packets += 1
 		return
 	_object_states_received += 1
+	_fortress_view.on_object_state(object_state)
 
 
-# SCOREBOARD (protocolo v3): se acepta y se cuenta. TODO(F5): marcador de la zona (Tab).
+# SCOREBOARD: se junta por páginas y, completo, se publica.
 func _on_scoreboard(bytes: PackedByteArray) -> void:
 	var scoreboard: NetMessages.Scoreboard = NetMessages.Scoreboard.decode(bytes)
 	if scoreboard == null:
 		_malformed_packets += 1
 		return
 	_scoreboards_received += 1
+	if _scoreboard.apply(scoreboard):
+		scoreboard_updated.emit(_scoreboard)
 
 
 # ENTITY_EVENT: los propios se entregan ya; los ajenos esperan a su tick de dibujo.
@@ -1054,13 +1108,14 @@ func _on_entity_event(bytes: PackedByteArray) -> void:
 		_malformed_packets += 1
 		return
 	# Los avisos de guerra y de ataques de PNJ (protocolo v3) no son eventos de combate de nadie: se
-	# aceptan y se cuentan aparte. TODO(F5): banners de WarEvents en el tick de dibujo y zonas de
-	# peligro de TELEGRAPH al llegar.
+	# cuentan aparte. El WAR espera a su tick de dibujo; el TELEGRAPH es un aviso y se entrega al llegar.
 	if event.event == NetMessages.EntityEvent.Kind.WAR:
 		_war_events_received += 1
+		_war_queue.push(event)
 		return
 	if event.event == NetMessages.EntityEvent.Kind.TELEGRAPH:
 		_telegraphs_received += 1
+		telegraph_received.emit(event)
 		return
 	_events_received += 1
 	if is_own_event(event):
@@ -1079,10 +1134,11 @@ func _on_spawn(bytes: PackedByteArray) -> void:
 	if spawn.is_yours:
 		_on_own_spawn(spawn)
 	elif spawn.kind == NetProtocol.EntityKind.STRUCTURE:
-		# Estructura (protocolo v3): se acepta y se cuenta. TODO(F5): FortressView crea la fortaleza
-		# con los campos completos del SPAWN (spawn.to_object_state()).
+		# Estructura: FortressView crea la fortaleza con los campos completos del SPAWN.
 		_structure_spawns_received += 1
+		_fortress_view.on_spawn(spawn)
 	else:
+		_directory.remember_spawn(spawn)
 		_remote_world.on_spawn(spawn)
 
 
@@ -1102,6 +1158,8 @@ func _on_own_spawn(spawn: NetMessages.EntitySpawn) -> void:
 		_close_session(TEXT_CONNECTION_LOST)
 		return
 	character.name = "LocalPlayer"
+	_directory.remember(spawn.net_id, _config.display_name if _config != null else spawn.display_name,
+			spawn.realm, spawn.kind)
 	_world_root.add_child(character)
 	# Después de _ready() (que reescribe la máscara) y con el mismo reino que el servidor: las
 	# puertas cerradas de los fuertes paran a los enemigos de su dueño. Los remotos no colisionan.

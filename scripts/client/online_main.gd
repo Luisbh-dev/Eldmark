@@ -376,6 +376,8 @@ func _enter_zone(path: String) -> void:
 		_client.leave()
 		return
 	add_child(_world)
+	# Las fortalezas de la escena (estandartes y puerta) las encuentra FortressView en esta zona.
+	_client.get_fortress_view().set_zone(_world)
 	_force_full_terrain_collision(_world)
 	if _is_bot() and DisplayServer.get_name() == "headless":
 		var zone_root: ZoneRoot = _world as ZoneRoot
