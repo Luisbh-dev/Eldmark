@@ -2,34 +2,40 @@
 
 Diseño del paso 3 de la [hoja de ruta](vision.md#hoja-de-ruta): ataques ligeros y fuertes,
 bloqueo, esquiva, resistencia, compensación de latencia, muerte y reaparición, en red y con el
-servidor como autoridad. Se apoya en la red de la fase 2 ([red.md](red.md), sobre todo §6.7, §10 y
-§15) y cubre los elementos de la fase 3 del [backlog](backlog.md).
+servidor como autoridad. Se apoya en la red de la fase 2 ([red.md](red.md), sobre todo §6.7, §8,
+§10 y §15).
 
-Primer y único kit de la fase: **espada y escudo**. El resto de armas y las habilidades con
+Primer y único kit de la fase: **espada y escudo**. Las demás armas y las habilidades con
 reutilización llegan en la fase 4 (CMB-19 y siguientes) sobre las mismas piezas.
+
+Revisado con dos lentes (netcode y diseño) antes de implementarlo; la versión 2 incorpora sus
+arreglos (entradas sustituidas, estado completo, orden del tick, rebobinado del tick actual,
+precedencias, contratos entre paquetes).
 
 ---
 
 ## 0. Decisiones
 
 Tomadas de las recomendaciones de [backlog.md](backlog.md#decisiones-pendientes) (provisionales,
-tomadas de noche, y movidas a «Decisiones tomadas»):
+tomadas de noche; están en «Decisiones tomadas» del backlog):
 
 | Pregunta | Decisión |
 |---|---|
 | Clases | Sin clases: el rol lo dan las armas equipadas. |
-| Armas equipadas | Dos ranuras con cambio rápido (CMB-24, fase 4). En la fase 3 solo hay una: espada y escudo. |
-| Números | **Enteros** para vida, resistencia y daño. Nada de floats en lo que se compara o se guarda. |
-| Duraciones en los datos | **Segundos** en los `.tres`, convertidos a ticks al cargar con `roundi(s · 60)`. Lo que entra en el `sim_hash` es el catálogo ya convertido. |
-| Críticos | **Posicionales, sin azar**: un golpe cuerpo a cuerpo por la espalda (más de 120° respecto a la mirada de la víctima) hace ×1,5. |
+| Armas equipadas | Dos ranuras con cambio rápido (CMB-24, fase 4). En la fase 3 solo hay espada y escudo. |
+| Números | **Enteros** para vida, resistencia y daño. |
+| Duraciones en los datos | **Segundos** en los `.tres`, convertidos a ticks al cargar con `roundi(s · 60)`. Al `sim_hash` entra el catálogo ya convertido. |
+| Críticos | **Posicionales, sin azar**: cuerpo a cuerpo por la espalda (más de 120° respecto al yaw del cuerpo de la víctima) hace ×1,5. |
 | Fuego amigo | No. Los golpes atraviesan a los aliados. |
-| Estado defensivo con rebobinado | Protege si el defensor se defendía **en el tick rebobinado o en el actual**. |
-| Parada | Ventana de 6 ticks (100 ms) al empezar a bloquear, solo contra cuerpo a cuerpo. |
+| Estado defensivo con rebobinado | Protege si el defensor se defendía en el tick rebobinado o en el actual, con las precisiones de §4.3. |
+| Parada | Ventana de 6 ticks (100 ms) al pulsar bloquear, solo contra cuerpo a cuerpo y con enfriamiento. |
 | Esprint y resistencia | El esprint no gasta resistencia. |
 | Impacto propio | Mixto: barrido, estela y sonido del arma al predecir; marcador, chispas y número al confirmar (ENTITY_EVENT). Los números nunca se predicen. |
-| Vida del enemigo | En su placa al apuntarle o tras dañarlo en los últimos 5 s; barra de jefe para capitanes. |
+| Vida del enemigo | En su placa al apuntarle o tras dañarlo en los últimos 5 s; barra de jefe para capitanes (fase 4). |
 | PNJ humanoides | `PlayerCharacter` con entrada sintética (como `BotBrain`). |
 | Colisión entre personajes | Ninguna, como en la fase 2. |
+| Reaparición | 10 s fijos en la fase 3, con botón; oleadas de 15 s en el Vado Gris con GUE-14 (fase 4). |
+| Entereza acumulada | No en la fase 3: solo `hyper_armor` por ataque y una cadena de controles con inmunidad. |
 
 ---
 
@@ -37,158 +43,247 @@ tomadas de noche, y movidas a «Decisiones tomadas»):
 
 | Dato | Dónde vive | Predicho | Viaja en |
 |---|---|---|---|
-| Acción actual, su fase y su tick de inicio, combo, carga, búfer | `PlayerState` | Sí | estado propio del snapshot |
-| Resistencia y agotamiento | `PlayerState` | Sí | estado propio |
-| Desplazamiento de esquiva y avance de los golpes | `PlayerState` (velocidad) | Sí | estado propio |
-| Controles (tambaleo, aturdimiento, empuje), rotura de guardia, muerte | `PlayerState`, **impuestos por el servidor** | No: el cliente los adopta al reconciliar | estado propio |
-| Coste de resistencia de un golpe bloqueado | `PlayerState`, impuesto por el servidor | No | estado propio |
-| Vida | `Combatant` en el servidor | No | bloque extra del snapshot (propia) y `health_q` del registro (ajenos) |
+| Acción, fase, tick de inicio, combo, pulsación, carga, búfer, dirección de esquiva | `CombatState` dentro de `PlayerState` | Sí | estado propio del snapshot |
+| Resistencia y agotamiento | `CombatState` | Sí | estado propio |
+| Controles (tambaleo, aturdimiento, empuje), rotura de guardia, muerte | `CombatState`, **impuestos por el servidor** | No: el cliente los adopta al reconciliar | estado propio |
+| Gasto de resistencia de un golpe bloqueado | `CombatState`, impuesto por el servidor | No | estado propio |
+| Vida, «en combate», protección, cadena de controles | `Combatant` en el servidor | No | bloque extra del snapshot (propia) y `health_q` del registro (ajenos) |
 | Golpes, daño, críticos, bajas | `CombatResolver` en el servidor | No | ENTITY_EVENT |
 
-Regla de red.md §6.7: todo lo que solo decide el servidor y cambia la simulación entra en
-`PlayerState`, así que la reconciliación lo absorbe sin cambios. La vida no cambia la simulación
-(salvo al morir, que es una acción) y por eso no está en `PlayerState`.
+Regla de red.md §6.7: todo lo que decide el servidor y cambia la simulación entra en
+`PlayerState`, así que la reconciliación lo absorbe. La vida no cambia la simulación (salvo al
+morir, que es una acción) y por eso no está en `PlayerState`.
 
 ---
 
 ## 2. Catálogo de combate (CMB-02)
 
-`scripts/shared/combat/`, datos en `data/combat/` (`.tres` en texto).
+`scripts/shared/combat/`, datos en `data/combat/` (`.tres` en texto). Todos los tiempos son
+**segundos desde el inicio de la acción** salvo que se diga otra cosa; al convertir, cada ventana
+es un intervalo de ticks `[desde, hasta)` contado desde `action_tick`.
 
 ```gdscript
-class_name AttackDefinition extends Resource
-@export var id: StringName                 # p. ej. &"sword_light_1"
-@export var windup_s: float                # anticipación
-@export var active_s: float                # golpe activo (se prueba la forma en cada tick)
-@export var recovery_s: float              # recuperación
-@export var combo_window_s: float          # al final de la recuperación: enlaza el siguiente
-@export var cancel_to_dodge_from_s: float  # desde aquí (dentro de la recuperación) se puede esquivar
-@export var stamina_cost: int              # 0–1000
-@export var lunge_speed: float             # m/s de avance durante la anticipación y el golpe activo
-@export var turn_rate: float               # rad/s de giro permitido durante la acción
-@export var move_speed_scale: float        # velocidad de carrera permitida (0 = clavado)
-@export var shape: HitShape                # sector: alcance, ángulo, alturas
-@export var base_damage: int
-@export var damage_type: int               # CombatRules.DamageType
-@export var poise_damage: int              # contra la entereza
-@export var hyper_armor: bool              # entereza durante el golpe activo
-@export var stagger_s: float               # tambaleo que causa (0 = ninguno)
-@export var knockback_speed: float         # empuje que causa (m/s, 0 = ninguno)
-@export var charge_min_s: float            # solo fuertes: carga mínima y máxima
-@export var charge_max_s: float
-@export var charge_damage_scale: float     # multiplicador a carga máxima (lineal desde 1)
+class_name HitShape extends Resource
+@export var range_m: float = 2.6
+@export var inner_m: float = 0.0
+@export var angle_deg: float = 100.0
+@export var height_min: float = 0.2          # relativas a los pies del atacante
+@export var height_max: float = 2.0
 
-class_name WeaponDefinition extends Resource
+class_name AttackDefinition extends Resource
 @export var id: StringName
-@export var light_combo: Array[AttackDefinition]   # 3 golpes
-@export var heavy: AttackDefinition
-@export var block_angle_deg: float                 # cono frontal
-@export var block_mitigation: float                # 1,0 = para todo el daño físico frontal
-@export var block_move_scale: float
-@export var block_stamina_per_damage: float        # resistencia por punto de daño absorbido
-@export var dodge: DodgeDefinition
+@export var heavy: bool = false
+@export var windup_s: float                  # anticipación (en el fuerte: tras soltar)
+@export var active_s: float                  # golpe activo: se prueba la forma en cada tick
+@export var recovery_s: float
+@export var combo_window_s: float            # últimos s de la recuperación: enlaza el siguiente ligero
+@export var cancel_to_dodge_from_s: float    # desde el inicio de la acción
+@export var stamina_cost: int                # 0–1000
+@export var lunge_speed: float               # m/s hacia delante en anticipación y golpe activo
+@export var turn_rate: float                 # rad/s de giro hacia la cámara en anticipación y activo
+@export var move_speed_scale: float          # fracción de run_speed permitida
+@export var shape: HitShape
+@export var base_damage: int
+@export var damage_type: int                 # DamageFormula.DamageType
+@export var hyper_armor: bool                # en el golpe activo, inmune a tambaleo y empuje
+@export var stagger_s: float                 # tambaleo que causa (0 = ninguno)
+@export var knockback_speed: float           # empuje que causa (m/s, 0 = ninguno)
+@export var charge_min_s: float              # solo fuertes, contados desde la pulsación
+@export var charge_max_s: float
+@export var charge_damage_scale: float       # multiplicador a carga máxima (lineal desde ×1 en charge_min)
+@export var charge_move_scale: float
+@export var charge_turn_rate: float
 
 class_name DodgeDefinition extends Resource
 @export var duration_s: float
 @export var invulnerable_from_s: float
 @export var invulnerable_to_s: float
-@export var distance_m: float                      # recorrido total (perfil de velocidad fijo)
+@export var distance_m: float
+@export var speed_curve: Curve               # forma del perfil; se normaliza a distance_m
 @export var stamina_cost: int
 @export var cancel_to_attack_from_s: float
 
-class_name HitShape extends Resource
-@export var range_m: float
-@export var inner_m: float
-@export var angle_deg: float
-@export var height_min: float                      # relativas a los pies del atacante
-@export var height_max: float
+class_name WeaponDefinition extends Resource
+@export var id: StringName
+@export var light_combo: Array[AttackDefinition]   # 3 golpes
+@export var heavy_attack: AttackDefinition
+@export var block_angle_deg: float                 # cono frontal total
+@export var block_mitigation: float                # 1,0 = para todo el daño físico frontal
+@export var block_move_scale: float
+@export var block_turn_rate: float
+@export var block_stamina_per_damage: float
+@export var dodge: DodgeDefinition
+
+class_name CombatRules extends Resource            # data/combat/combat_rules.tres
+# Predichas (entran en prediction_hash):
+@export var stamina_max: int = 1000
+@export var stamina_regen_per_tick: int = 3          # 180/s
+@export var stamina_regen_delay_s: float = 0.6
+@export var exhausted_regen_per_tick: int = 1        # 60/s
+@export var exhausted_exit_threshold: int = 300
+@export var hold_to_heavy_ticks: int = 8
+@export var input_buffer_ticks: int = 8
+@export var parry_window_ticks: int = 6
+@export var parry_cooldown_ticks: int = 30
+# Solo del servidor (no entran):
+@export var health_max: int = 1000
+@export var health_regen_per_s: int = 20             # fuera de combate
+@export var in_combat_s: float = 10.0
+@export var respawn_s: float = 10.0
+@export var respawn_protection_s: float = 3.0
+@export var cc_chain_window_s: float = 3.0
+@export var cc_immunity_s: float = 2.0
+@export var fall_damage_threshold: float = 15.0      # m/s
+@export var fall_damage_per_mps: int = 70
+@export var parry_stagger_s: float = 0.6
+@export var guard_break_stun_s: float = 1.0
+@export var backstab_angle_deg: float = 120.0
+@export var crit_multiplier: float = 1.5
 ```
 
-**`CombatCatalog`** (RefCounted, estático): carga los `.tres` de `data/combat/`, asigna IDs u16
-estables (orden alfabético de `id`; un `id` repetido es un error), convierte las duraciones a ticks
-(`roundi(s · 60)`, como mínimo 1 en las fases activas) y expone tablas en ticks:
-`attack(id_u16) -> AttackTicks`, `weapon(id_u16)`. `CombatCatalog.prediction_hash()` hace el
-SHA-256 de lo que afecta a la predicción (fases, movimiento, costes de resistencia, ventanas,
-cancelaciones, esquiva) y entra en `NetProtocol.compute_sim_hash`. Daño, mitigación y críticos no
-entran: los decide el servidor.
+**`CombatCatalog`** (RefCounted, estático, carga perezosa): lee `data/combat/`, asigna IDs u16
+por tipo (ataques y armas tienen espacios separados, **1..n por orden alfabético de `id`, 0 =
+ninguno**; un `id` repetido es un error), convierte a ticks y hornea la curva de la esquiva en una
+tabla de velocidades por tick (`PlayerState.to_f32`) que suma `distance_m`. Expone
+`attack(id) -> AttackTicks`, `weapon(id) -> WeaponTicks`, `rules() -> CombatRules` y
+`prediction_hash() -> int`: SHA-256 de todo lo predicho (ventanas, movimiento, costes, curva
+horneada, cancelaciones, bloqueo, campos predichos de `CombatRules`). Entra en
+`NetProtocol.compute_sim_hash`. Daño, mitigación, críticos, controles, vida y reaparición no
+entran.
 
-**`CombatRules`** (`data/combat/combat_rules.tres`): resistencia máxima 1000, regeneración (por tick
-y retardo), umbral de salida del agotamiento, regeneración en agotamiento, protección al reaparecer
-(3 s), tiempo de reaparición (10 s en PvP), duración de «en combate» (10 s), vida máxima base
-(1000), regeneración fuera de combate, umbral y escala del daño por caída, inmunidad tras controles.
+Valores iniciales de espada y escudo (`data/combat/sword_shield.tres`, se ajustan en CMB-29):
 
-Valores iniciales de espada y escudo (en `data/combat/sword_shield.tres`, ajustables en CMB-29):
+| Ataque | Anticip. | Activo | Recup. | Ventana combo | A esquiva desde | Resist. | Daño | Avance | Movim. | Control |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Ligero 1 | 0,20 | 0,10 | 0,30 | 0,15 | 0,40 | 0 | 90 | 1,5 m/s | ×0,3 | — |
+| Ligero 2 | 0,18 | 0,10 | 0,30 | 0,15 | 0,38 | 0 | 90 | 1,5 | ×0,3 | — |
+| Ligero 3 | 0,25 | 0,10 | 0,45 | — | 0,50 | 0 | 130 | 2,0 | ×0,2 | tambaleo 0,3 s |
+| Fuerte (carga 0,35–1,2 s desde la pulsación, ×1–×1,7) | 0,40 tras soltar | 0,12 | 0,55 | — | 0,70 | 150 | 180 | 2,5 | ×0,2 (carga ×0,4) | tambaleo 0,5 s, empuje 4 m/s, `hyper_armor` |
 
-| Ataque | Anticipación | Activo | Recuperación | Resistencia | Daño |
-|---|---|---|---|---|---|
-| Ligero 1 / 2 / 3 | 0,20 / 0,18 / 0,25 s | 0,10 s | 0,30 / 0,30 / 0,45 s | 0 | 90 / 90 / 130 |
-| Fuerte (carga 0,35–1,2 s) | carga + 0,15 s | 0,12 s | 0,55 s | 150 | 180 → 300 |
-| Esquiva | 0,45 s (invulnerable 0,05–0,30 s), 4,5 m | | | 300 | |
-| Bloqueo | cono de 120°, para el 100 % frontal, movimiento ×0,5, 1,0 de resistencia por punto | | | | |
+Forma de todos: alcance 2,6 m, 100°, alturas 0,2–2,0 m; giro 6 rad/s (carga 4). Esquiva: 0,45 s,
+invulnerable [0,05, 0,30), 4,5 m, curva de salida rápida, 300 de resistencia, a ataque desde 0,30
+s. Bloqueo: cono de 120°, para el 100 % del daño físico frontal, movimiento ×0,5, giro 8 rad/s,
+1,0 de resistencia por punto absorbido.
+
+Los ligeros (12 ticks de anticipación) no se pueden reaccionar en red con 150 ms; la parada y la
+esquiva reactivas se diseñan contra los fuertes, cuya anticipación tras soltar (0,40 s) se ve.
 
 ---
 
 ## 3. Máquina de acciones (CMB-03, CMB-04, CMB-06, CMB-13, CMB-14)
 
-`scripts/shared/combat/action_machine.gd`: función determinista que `PlayerCharacter.simulate()`
-llama **antes** del movimiento. Lee la entrada, el estado y el catálogo; escribe el estado de
-acción y devuelve cómo se limita el movimiento en este tick (escala de velocidad, giro permitido,
-velocidad impuesta).
+### 3.1 `CombatState` (en `PlayerState`, entra en `encode()`)
 
-### 3.1 Estado nuevo en `PlayerState` (entra en `encode()`)
+`PlayerState` gana `var combat: CombatState`; `PlayerCharacter` también, y `get_state()`/
+`set_state()` lo copian. `PlayerState.ENCODED_SIZE` pasa de 35 a **69 B**:
 
-| Campo | Tipo | Qué es |
-|---|---|---|
-| `action` | u8 | `NONE`, `ATTACK`, `CHARGE`, `BLOCK`, `DODGE`, `STAGGER`, `STUN`, `DEAD` |
-| `action_id` | u16 | ataque del catálogo (o 0) |
-| `action_tick` | u32 | tick en que empezó la acción |
-| `combo_step` | u8 | golpe del combo (0–2) |
-| `stamina` | u16 | 0–1000 |
-| `stamina_regen_tick` | u32 | primer tick en que vuelve a regenerar |
-| `combat_flags` | u8 | bit0 agotado, bit1 PRIMARY pendiente (pulsado sin decidir ligero/fuerte), bit2 golpe enlazado en el búfer |
-| `buffered` | u8 | acción guardada en el búfer y ticks que le quedan (4 + 4 bits) |
-| `primary_down_tick` | u32 | tick de la pulsación de PRIMARY pendiente |
-| `cc_until_tick` | u32 | fin del control actual (tambaleo, aturdimiento) |
-| `cc_immune_until_tick` | u32 | fin de la inmunidad tras controles |
-| `weapon_id` | u16 | arma equipada |
+| Offset | Tipo | Campo | Qué es |
+|---|---|---|---|
+| 35 | u8 | `action` | `Action`: 0 NONE, 1 LIGHT, 2 HEAVY, 3 CHARGE, 4 BLOCK, 5 DODGE, 6 STAGGER, 7 STUN, 8 DEAD |
+| 36 | u16 | `action_id` | ataque del catálogo (0 si no es un ataque) |
+| 38 | u32 | `action_tick` | tick en que empezó la acción |
+| 42 | u8 | `combo_step` | 0–2: siguiente ligero del combo |
+| 43 | u8 | `primary_held` | ticks reales que PRIMARY lleva pulsado desde su flanco (0 = sin pulsación viva; satura en 255) |
+| 44 | u8 | `charge_ticks` | ticks de carga al lanzar el fuerte (lo lee el servidor para el daño) |
+| 45 | u8 | `buffered` | bits 0–1 tipo (0 nada, 1 PRIMARY, 2 DODGE), bits 2–5 ticks que le quedan |
+| 46 | u16 | `stamina` | 0–`stamina_max` |
+| 48 | u32 | `stamina_regen_tick` | primer tick en que vuelve a regenerar |
+| 52 | u8 | `combat_flags` | bit0 agotado, bit1 último intento sin resistencia (para la interfaz), bit2 resistencia infinita (comando) |
+| 53 | u16 | `action_dir` | yaw cuantizado (como `look_yaw`) de la esquiva |
+| 55 | u32 | `cc_until_tick` | fin del control actual (exclusivo) |
+| 59 | s16 × 2 | `knockback` | empuje horizontal (x, z) en cm/s |
+| 63 | u32 | `parry_ready_tick` | primer tick en que puede abrirse otra ventana de parada |
+| 67 | u16 | `weapon_id` | arma equipada |
 
-`PlayerState.ENCODED_SIZE` pasa de 35 a 65 B y `PROTOCOL_VERSION` a 2. Los ticks absolutos
-(en vez de contadores) hacen que el estado se pueda restaurar en cualquier tick sin ambigüedad.
+`PROTOCOL_VERSION` pasa a 2. Los ticks absolutos hacen que el estado se restaure sin ambigüedad.
 
-### 3.2 Reglas
+### 3.2 Entradas sustituidas (cierra la nota de red.md §8.2)
 
-- **Fases de un ataque** (desde `action_tick`): anticipación, activo y recuperación según el
-  catálogo. Durante la anticipación y el golpe activo hay avance (`lunge_speed`) en la dirección
-  del personaje y giro limitado a `turn_rate`.
-- **Ligero o fuerte.** Al pulsar PRIMARY queda pendiente. Si se suelta antes de 8 ticks, empieza el
-  ligero en ese tick. Si se mantiene 8 ticks, empieza la carga (`CHARGE`): soltar entre
-  `charge_min` y `charge_max`, o llegar a `charge_max`, lanza el fuerte con el daño escalado.
-  Soltar antes de `charge_min` lanza el fuerte con carga mínima.
-- **Combo.** Pulsar PRIMARY en la ventana de enlace (final de la recuperación) encadena el
-  siguiente ligero en cuanto termina la recuperación; fuera de la ventana el combo vuelve a 0.
-- **Búfer.** Una pulsación de ataque o esquiva que llega cuando la acción actual no se puede
-  cancelar se guarda hasta 8 ticks y se ejecuta en cuanto se pueda.
-- **Cancelaciones.** Un ataque solo se cancela con esquiva desde `cancel_to_dodge_from`. La
-  esquiva se cancela con un ataque desde `cancel_to_attack_from`. El bloqueo se cancela al soltar
-  BLOCK o con esquiva. Los controles y la muerte no se cancelan.
-- **Bloqueo.** BLOCK mantenido sin otra acción: `BLOCK`, movimiento ×`block_move_scale`. Los
-  primeros 6 ticks son ventana de parada.
-- **Esquiva.** Flanco de DODGE con resistencia ≥ coste y sin agotamiento: dirección según `move`
-  relativa a `look_yaw` (hacia atrás sin entrada), perfil de velocidad fijo que recorre
-  `distance_m` con `move_and_slide` (respeta muros y bloqueos del puente). Invulnerable entre
-  `invulnerable_from` e `invulnerable_to`.
-- **Resistencia.** Costes al empezar la acción. Regenera `regen_per_tick` desde
-  `stamina_regen_tick` (retardo tras cada gasto). Al llegar a 0 se activa el agotamiento: ni
-  esquiva ni bloqueo hasta superar el umbral, y regeneración más lenta.
-- **Controles impuestos.** `STAGGER` y `STUN` ignoran las entradas de acción hasta
-  `cc_until_tick`; el movimiento queda a 0 salvo el empuje, que el servidor impone como velocidad.
-  `DEAD` ignora todas las entradas.
-- **Sin aleatoriedad, sin reloj**, enteros donde se compara. El estado completo se restaura con
-  `set_state()`.
+`PlayerInput.SUBSTITUTED = 1 << 15`, fuera de `VALID_BUTTONS` (el cliente no puede ponerlo: el
+servidor aplica la máscara al decodificar). Lo ponen `InputQueue.take()` y
+`ClientPrediction._input_or_substitute()` en la entrada sustituta, que sigue repitiendo todos los
+botones. Con ese bit, la máquina de acciones:
 
-Constantes del byte `action` del registro de entidad (para animar a los remotos): bits 0–3 la
-acción, bits 4–5 la fase (0 anticipación o carga, 1 activo, 2 recuperación), bits 6–7 el paso del
-combo.
+- no suma a `primary_held`, no convierte un ligero en carga ni lanza el fuerte al llegar a la
+  carga máxima (la carga se congela hasta la siguiente entrada real);
+- no abre ventanas de parada;
+- calcula los flancos sin el bit (`prev_buttons` nunca lo guarda).
+
+Así ninguna pérdida inventa un fuerte ni una parada. Quien se desconecta con BLOCK pulsado sigue
+bloqueando hasta el timeout de ENet (3–8 s): se acepta.
+
+### 3.3 Reglas por tick
+
+`ActionMachine.step()` corre al principio de `simulate()`, antes del movimiento, con
+`t = input.tick`. Orden fijo:
+
+1. **Fin de acciones.** Si la acción tiene duración y `t ≥ fin`, vuelve a NONE (o encadena el
+   ligero enlazado, o el contenido del búfer). STAGGER/STUN terminan en `cc_until_tick`.
+2. **Resistencia.** Si `t ≥ stamina_regen_tick` y la acción no es BLOCK, CHARGE ni DODGE, regenera
+   (`exhausted_regen` si está agotado). El agotamiento se activa al llegar a 0 y se quita al
+   superar `exhausted_exit_threshold`. Todo gasto (también el que impone el servidor) pone
+   `stamina_regen_tick = t + retardo`.
+3. **Entradas** (flancos sin el bit SUBSTITUTED; prioridad DODGE > PRIMARY > BLOCK):
+   - **DODGE** (flanco): si la acción actual lo permite (NONE, BLOCK, LIGHT/HEAVY desde
+     `cancel_to_dodge_from`, CHARGE), en el suelo, con `stamina ≥ coste` y sin agotamiento: DODGE
+     con `action_dir` = dirección de `move` relativa a `look_yaw` (hacia atrás sin entrada). Si no
+     se puede por la acción, va al búfer; si es por resistencia, se pone el bit1.
+   - **PRIMARY** (flanco): `primary_held = 1`. Si se puede atacar (NONE, BLOCK, DODGE desde
+     `cancel_to_attack_from`) y está en el suelo: empieza el ligero `combo_step` con
+     `action_tick = t`. Si hay un ligero en curso y `t` está en su ventana de combo (o hasta
+     `input_buffer_ticks` antes): se enlaza el siguiente, que empieza al acabar la recuperación.
+     En cualquier otro caso, al búfer.
+   - **PRIMARY mantenido** (real): `primary_held += 1`. Si llega a `hold_to_heavy_ticks` y la
+     acción es un ligero en anticipación empezado por esta pulsación (o enlazado por ella): si hay
+     resistencia ≥ coste del fuerte y no está agotado, pasa a CHARGE con el mismo `action_tick`
+     (aún no ha golpeado: 12 ticks de anticipación > 8); si no, sigue el ligero y se pone el bit1.
+   - **PRIMARY soltado**: `primary_held = 0`. En CHARGE: si la carga (ticks desde `action_tick`)
+     es menor que `charge_min`, se lanza al llegar a `charge_min`; si no, se lanza ya.
+     **Lanzar** = HEAVY con `action_tick = t`, `charge_ticks` = carga, gasto de resistencia.
+   - **CHARGE** que llega a `charge_max` con entrada real: se lanza.
+   - **BLOCK** (a nivel): desde NONE (o al acabar una acción con BLOCK pulsado) entra en BLOCK,
+     sin agotamiento. Si además es un **flanco real** y `t ≥ parry_ready_tick`, abre una ventana
+     de parada `[t, t + parry_window)` y pone `parry_ready_tick = t + parry_cooldown`. Soltar BLOCK
+     sale de BLOCK.
+   - **Búfer**: guarda la última pulsación de PRIMARY o DODGE no ejecutada durante
+     `input_buffer_ticks`; se ejecuta en el primer tick en que se pueda, con prioridad sobre las
+     entradas nuevas de ese tick. `primary_held` sigue contando mientras tanto.
+   - Tras el ligero 3, `combo_step` vuelve a 0. Si se acaba una recuperación sin enlace, también.
+4. **Movimiento permitido** (lo usa `simulate()`):
+
+| Acción | Velocidad horizontal objetivo | Giro | Salto | Esprint |
+|---|---|---|---|---|
+| NONE | la de siempre | el de siempre | sí | sí |
+| LIGHT/HEAVY anticipación y activo | `forward · lunge + wish · run_speed · move_scale` | hacia `look_yaw` a `turn_rate` aunque esté quieto; en el primer tick, el yaw salta a `look_yaw` | no | no |
+| LIGHT/HEAVY recuperación | `wish · run_speed · move_scale` | ninguno | no | no |
+| CHARGE | `wish · run_speed · charge_move_scale` | hacia `look_yaw` a `charge_turn_rate`; en el primer tick de la acción (ligero que se convierte), salta | no | no |
+| BLOCK | `wish · run_speed · block_move_scale` | hacia `look_yaw` a `block_turn_rate` | sí (sale de BLOCK) | no |
+| DODGE | **impuesta**: `dir(action_dir) · curva[t − action_tick]`, sin aceleración | ninguno (el cuerpo conserva su yaw) | no | no |
+| STAGGER | **impuesta**: `knockback · (fin − t) / (fin − inicio)` si hay empuje; si no, frena | ninguno | no | no |
+| STUN | frena | ninguno | no | no |
+| DEAD | frena; la gravedad sigue | ninguno | no | no |
+
+La gravedad y `move_and_slide` se aplican siempre, así que la esquiva y el empuje respetan muros
+y bloqueos del puente. Ni ataques, ni esquiva, ni bloqueo en el aire: un PRIMARY o DODGE en el
+aire va al búfer.
+
+### 3.4 Lo que impone el servidor
+
+API de `ActionMachine` (estática, sobre `CombatState`), siempre seguida de redondeo por
+`PlayerState.decode(encode())`. Todas borran el búfer, `primary_held` y `combo_step`:
+
+- `impose_stagger(c, t, until, knockback: Vector2)`, `impose_stun(c, t, until)`: STAGGER o STUN
+  con `action_tick = t`, `cc_until_tick = until`.
+- `impose_death(c, t)`: DEAD.
+- `reset_for_respawn(c, t, rules)`: todo a los valores iniciales (resistencia llena) salvo el
+  arma.
+- `drain_stamina(c, amount, t)`: resta, pone el retardo y, si llega a 0, el agotamiento.
+
+Consultas (las usan el servidor y el animador): `phase(c, t)` (0 anticipación o carga, 1 activo,
+2 recuperación, 3 sin fases), `is_attack_active(c, t)`, `is_blocking(c, t)`,
+`is_parry_window(c, t)`, `is_invulnerable(c, t)`, `defense_flags(c, t) -> int` (bits de
+`StateHistory`) y `action_byte(c, t) -> int`: bits 0–3 la acción, 4–5 la fase, 6–7 el paso del
+combo del ligero en curso.
 
 ---
 
@@ -198,153 +293,291 @@ combo.
 
 Matemática pura, sin cuerpos de física:
 
-- **Sector anular con altura** contra cápsula vertical: distancia horizontal del eje de la cápsula
-  al atacante en `[inner − radio, range + radio]`, ángulo respecto al yaw del atacante dentro de
-  `angle/2` (ampliado por el radio a esa distancia) y solapamiento vertical de
-  `[height_min, height_max]` con la cápsula.
-- **Barrido**: se prueba en cada tick activo con la posición y el yaw del atacante de ese tick, así
-  que un golpe rápido no se salta un objetivo.
-- **Línea de visión**: un rayo contra la capa del mundo (1) desde el pecho del atacante (1,4 m) al
-  centro de la cápsula de la víctima. Bloqueado = sin golpe.
-- Cada objetivo recibe como mucho un impacto por acción (`action_tick` + objetivo), en orden por
-  `net_id`.
+- **Sector anular con altura** contra cápsula vertical (radio 0,4, altura 1,8 desde los pies):
+  distancia horizontal al eje en `[inner − r, range + r]`, ángulo respecto al yaw del atacante
+  dentro de `angle/2 + asin(r / d)`, y solapamiento de `[height_min, height_max]` con
+  `[0, 1,8]` sobre los pies de cada uno.
+- **Segmento contra cápsula** (proyectiles, fase 4) y **caja orientada** (estructuras, fase 4).
+- **Línea de visión**: rayo contra la capa del mundo (1) desde el pecho del atacante (1,4 m) al
+  centro de la cápsula de la víctima (0,9 m).
 
-### 4.2 Rebobinado (`CombatResolver`, `scripts/server/combat_resolver.gd`)
+### 4.2 Orden del tick del servidor
 
-Corre en el paso de acciones del tick ([red.md §8.1](red.md#81-orden-del-tick)), después de
-simular a todos:
+Sustituye el comentario «Fase 3: acciones validadas contra StateHistory» de red.md §8.1:
 
-1. Para cada combatiente con un ataque en fase activa en el tick `s`: `T = s`,
-   `view_offset_q = input_queue.get_view_offset_q(s)` (si la entrada se sustituyó, el último valor
-   real), y el `view_tick` y el tope de [red.md §10](red.md#10-historial-para-la-compensación-de-latencia).
-2. El atacante se toma en su estado del tick `s` (el actual). Cada candidato (entidades hostiles
-   según `FactionRules`, vivas, sin protección de reaparición) se toma de `StateHistory.sample(id,
-   view_tick)`: posición, yaw y banderas defensivas.
-3. Forma y línea de visión (contra el mundo actual). Nunca se mueven cuerpos.
-4. **Defensa**: el golpe se bloquea si el defensor bloqueaba (y el atacante estaba en su cono
-   frontal) **en el `view_tick` o en el tick actual**; se para si estaba en ventana de parada en
-   alguno de los dos; no hace nada si era invulnerable en alguno de los dos.
-5. Resultado → `CombatEvents` (daño, controles, eventos).
+1. Simular a **todas** las entidades con cuerpo (jugadores, falsos y PNJ) por `net_id`.
+2. **Congelar**: guardar, para cada entidad, su estado tras `s` (posición, yaw, `defense_flags`,
+   acción). Es la «muestra del tick actual».
+3. **Resolver** todos los ataques activos en `s` contra lo congelado y `StateHistory` (§4.3), sin
+   tocar ningún estado: todos los golpes de un tick son simultáneos.
+4. **Aplicar** los resultados por `net_id` del atacante y luego del objetivo: daño, gasto de
+   resistencia del bloqueo, controles, muertes; después, volúmenes letales, caída, muertes por
+   y < −100 y reapariciones vencidas o pedidas.
+5. Altas, `_record_history(s)` (ya con lo impuesto), snapshots y eventos.
 
-`StateHistory` amplía sus banderas por tick: bit 3 bloqueando, bit 4 ventana de parada, bit 5
-invulnerable, bit 6 muerto.
+Así un intercambio de golpes del mismo tick resuelve los dos, y el snapshot de `s` ya lleva lo
+impuesto: el cliente reconcilia desde `s`.
 
-### 4.3 Daño (`scripts/shared/combat/damage_formula.gd`)
+### 4.3 Rebobinado (`CombatResolver`, `scripts/server/combat_resolver.gd`)
+
+Para cada atacante en golpe activo en `s`:
+
+1. **Parámetros.** `InputQueue.get_rewind_params(s) -> Vector2i(view_offset_q, lead)`: los de la
+   entrada real de `s` o, si se sustituyó, los de la última real. Los jugadores falsos y los PNJ
+   usan `view_tick = s`.
+2. **Tope.** `allowed` de red.md §10. Si `view_offset_q / 16 > allowed + 1`, el golpe **no se
+   prueba**: suma a la puntuación de sospecha y va al `--combat-log`. Si no,
+   `view_tick = clamp(s − view_offset_q / 16, s − allowed, s)`.
+3. **Muestras.** El atacante, siempre en su estado congelado de `s`. Cada candidato: si
+   `view_tick ≤ s − 1`, `StateHistory.sample(id, view_tick)`; si está entre `s − 1` y `s`,
+   interpolación entre la pista de `s − 1` y lo congelado de `s`; si es `s`, lo congelado. Una
+   muestra nula (apareció después) descarta al candidato.
+4. **Candidatos**: hostiles según `FactionRules`, vivos ahora (`Combatant.health > 0`) y sin el
+   bit «muerto» en `view_tick`, sin protección de reaparición en `s`, y ni atacante ni víctima
+   dentro de una zona segura en `s`. Un objetivo ya golpeado (o bloqueado o parado) por esta
+   acción no se vuelve a probar.
+5. **Forma** con la muestra de la víctima y **línea de visión** contra el mundo actual.
+6. **Defensa**, por este orden de precedencia:
+   - **Invulnerable** en algún tick de `[floor(view_tick), s]`: sin efecto y **no** consume el
+     golpe (puede entrar en un tick activo posterior).
+   - **Parada**: ventana de parada en la muestra de `view_tick` o en la de `s`, con el atacante
+     dentro del cono frontal del defensor en esa muestra (yaw del cuerpo), solo cuerpo a cuerpo:
+     sin daño, tambaleo de `parry_stagger_s` al atacante. Consume el golpe.
+   - **Bloqueo**: bloqueando en la muestra de `view_tick` o en la de `s`, con el cono: mitigación y
+     gasto de resistencia. Consume el golpe.
+   - La muestra de `view_tick` solo cuenta para parada y bloqueo si el defensor **no** ha empezado
+     después una acción ofensiva o una esquiva (`action_tick > view_tick` con LIGHT, HEAVY,
+     CHARGE o DODGE en `s`): quien suelta el escudo para atacar deja de estar protegido.
+   - Si nada aplica: **impacto**.
+
+`StateHistory` añade a sus banderas por tick: bit 3 bloqueando, bit 4 ventana de parada, bit 5
+invulnerable, bit 6 muerto (`ActionMachine.defense_flags`).
+
+### 4.4 Daño (`scripts/shared/combat/damage_formula.gd`)
 
 ```
-daño = base × carga × crítico × (1 − mitigación_bloqueo) × (1 − armadura / (armadura + 1000))
+bruto   = base × carga × crítico
+mitig.  = bruto × block_mitigation          (solo si se bloquea)
+final   = roundi((bruto − mitig.) × 1000 / (1000 + armadura)),  mínimo 1 si queda algo
 ```
 
-Todo con enteros al final (`roundi`), mínimo 1 si no se bloquea por completo. Tipos de daño:
-cortante, perforante, contundente, elemental (resistencias por tipo; en la fase 3, todas 0).
-Crítico ×1,5 si el atacante está a más de 120° de la mirada de la víctima. Parada: sin daño,
-tambaleo de 0,6 s al atacante. Bloqueo: daño × (1 − mitigación) y resistencia del defensor
-`−= daño_absorbido × block_stamina_per_damage`; si llega a 0, **rotura de guardia** (aturdimiento
-de 1 s).
+- `carga = lerp(1, charge_damage_scale, (charge_ticks − charge_min) / (charge_max − charge_min))`
+  en los fuertes; 1 en los ligeros.
+- Crítico ×1,5 si el atacante está a más de 120° del yaw del cuerpo de la víctima (de su
+  muestra).
+- Tipos de daño cortante, perforante, contundente, elemental, con resistencias por tipo (0 en la
+  fase 3). Armadura 0 en la fase 3.
+- **Bloqueo**: el defensor gasta `roundi(mitig. × block_stamina_per_damage)`. Si no le alcanza, se
+  absorbe solo la parte proporcional, el resto pasa como daño y hay **rotura de guardia**
+  (aturdimiento de `guard_break_stun_s`).
+- **Controles del golpe**: tambaleo y empuje del ataque, salvo si la víctima está en golpe activo
+  de un ataque con `hyper_armor` (la parada y la rotura de guardia sí entran siempre). Cadena:
+  `Combatant.cc_chain` cuenta los controles en `cc_chain_window_s`; el tercero no entra y abre
+  `cc_immunity_s` de inmunidad. CHARGE se puede interrumpir.
 
-### 4.4 Antitrampas (TEC-14)
+### 4.5 Antitrampas (TEC-14)
 
-El cliente solo manda botones. El servidor comprueba resistencia, fases y ritmo con su propia
-simulación, así que un cliente modificado no puede atacar más rápido ni sin resistencia. Lo que
-queda por vigilar es el rebobinado: `view_offset_q` acotado por el RTT medido (red.md §10) y una
-**puntuación de sospecha** por peer (golpes con rebobinado en el tope, ratio de acierto por encima
-de lo humano) que solo se registra en el log en la fase 3.
+El cliente solo manda botones; el servidor comprueba fases, resistencia y ritmo con su propia
+simulación, así que un cliente modificado no ataca más rápido ni sin resistencia. Se vigila el
+rebobinado (§4.3, paso 2) con una **puntuación de sospecha** por peer (golpes fuera de tope,
+ratio de acierto anómalo) que en la fase 3 solo se registra. Modos nuevos del bot tramposo:
+`rewind` (view_offset_q de 40 ticks), `reach` (ataca desde 5 m) y `rate` (PRIMARY cada tick):
+ninguno debe hacer daño de más.
 
 ---
 
 ## 5. Vida, eventos, muerte y reaparición (CMB-10, CMB-15, CMB-41, GUE-03, GUE-05)
 
-- **`Combatant`** (servidor, uno por entidad que puede recibir daño): vida y máxima, fin del estado
-  «en combate», fin de la protección de reaparición, tick de muerte, `DamageLedger` (900 ticks).
+- **`Combatant`** (servidor, uno por entidad que recibe daño): vida y máxima, `in_combat_until`,
+  `protected_until`, `death_tick`, `respawn_tick`, `cc_chain`, `DamageLedger` (900 ticks),
+  `last_enemy_hit` (para acreditar caídas), y si es inmortal (maniquí).
 - **Regeneración de vida** fuera de combate. «En combate» dura 10 s tras dar o recibir daño.
-- **Muerte**: vida 0 → el servidor impone `action = DEAD` en el estado, emite DEATH (víctima,
-  autor, arma) y KILL (asesino, asistentes con ≥ 10 % del daño en 900 ticks).
-- **Reaparición**: a los `respawn_s` (10 s) el servidor teletransporta (contador de teletransporte)
-  a un punto de su reino, con vida y resistencia llenas, `action = NONE` y protección de 3 s que se
-  pierde al atacar. Las oleadas y la elección de punto son de la fase 4 (GUE-14, UI-14).
-- **Caída**: `PlayerCharacter` expone `last_landing_speed` (velocidad vertical al aterrizar). El
-  servidor aplica daño por encima de 13 m/s (≈ 4 m de caída): la pasarela de 3 m no hace daño y la
-  torre de 12 m sí. Bajo y = −100 se muere (en vez de reaparecer sin más) y la baja se acredita al
-  último enemigo que golpeó en los últimos 10 s.
-- **`FactionRules`** (`scripts/shared/war/faction_rules.gd`): `can_damage(atacante, víctima,
-  zona)`: sin fuego amigo, Huecos hostiles a todos, reinos enemigos solo en zonas RVR (Vado Gris,
-  Eldrun). `Zones` gana el modo PvP de cada zona (SAFE o RVR). **Zonas seguras**: nodos del grupo
-  `safe_areas` (Marker3D con metadatos `realm` y `radius`, 24 m) en cada campamento del Vado Gris:
-  dentro no se recibe daño. El daño creciente de la guarnición contra intrusos llega con los PNJ
-  (fase 4).
+- **Muerte**: vida 0 → `impose_death`, `death_tick`, `respawn_tick = s + respawn_s`, una sola
+  DEATH (víctima, autor, ataque) y un KILL (asesino, ataque, asistentes con ≥ 10 % del daño en 900
+  ticks; no cuentan aliados ni autolesiones).
+- **Reaparición**: desde `respawn_tick` el cliente puede pedirla con **RESPAWN_REQUEST**
+  (`point_index`); a los 30 s sin pedirla, automática en el primer punto. Puntos: nodos del grupo
+  `respawn_points` (o, si la zona no tiene, `spawn_points`) con metadato `realm`, en el orden de la
+  escena, que el cliente conoce porque carga la misma zona; en la fase 4 se añade la condición (el
+  fuerte propio). Al reaparecer: teletransporte (contador), `reset_for_respawn`, vida llena,
+  `protected_until = s + 3 s` (se pierde al empezar un ataque), evento RESPAWN.
+- **Caída**: `PlayerCharacter.last_landing_speed = −velocity.y` medido **antes** de
+  `move_and_slide()` en el tick en que `grounded` pasa a true (0 en los demás). Daño
+  `(v − 15) × 70` por encima de 15 m/s: saltar desde la pasarela de 3 m (14,0 m/s) no hace daño; la
+  torre de 12 m (23 m/s) quita 560. Se acredita al último enemigo que golpeó en 10 s.
+- **Volúmenes letales**: `Area3D` del grupo `lethal_volumes` (máscara de la capa 2) que el
+  servidor comprueba cada tick; matan.
+- **Bajo y = −100**: muerte y el cuerpo se lleva a su punto de aparición (contador) con velocidad
+  0 mientras está DEAD; `_check_motion` no actúa sobre entidades DEAD; una sola DEATH por
+  `death_tick`.
+- **`FactionRules`** (`scripts/shared/war/faction_rules.gd`):
+  `static func can_damage(attacker_realm: int, victim_realm: int, zone_id: StringName) -> bool`:
+  sin fuego amigo, Huecos (código 0 con bando neutral) hostiles a todos, reinos enemigos solo en
+  zonas RVR. `Zones.get_pvp_mode(zone_id) -> PvpMode` (SAFE o RVR; Vado Gris y test_world RVR).
+  **Zonas seguras**: `Marker3D` del grupo `safe_areas` con metadatos `realm` y `radius` (24 m) en
+  cada campamento del Vado Gris: dentro no se hace ni se recibe daño. El daño de la guarnición
+  contra intrusos llega con los PNJ de la fase 4.
 
 ---
 
 ## 6. Protocolo (TEC-13): `PROTOCOL_VERSION = 2`
 
-- **`PlayerState`** de 65 B (ver 3.1). El estado propio del snapshot crece en consecuencia.
-- **Bloque extra propio** tras el estado propio cuando `flags` bit 3: `u16 health`, `u16
-  max_health`, `u8 combat_flags` (bit0 en combate, bit1 protegido), `u32 respawn_tick` (0 si vivo).
-  9 B.
-- **Registro de entidad** de 21 B: se añade `u8 health_q` (vida / máxima × 255, redondeado; 0 =
-  muerto) al final. Caben ⌊(1200 − 90) / 21⌋ = 52 registros con estado propio y bloque extra.
-- **ENTITY_EVENT** (`0x23`, canal 3): `u8 type`, `u32 tick`, `u8 event`, `u8 len` y los datos:
-  - `HIT`: `u16 attacker`, `u16 target`, `u16 amount`, `u8 damage_type`, `u8 flags` (bit0 crítico,
-    bit1 bloqueado, bit2 parado, bit3 rotura de guardia, bit4 mortal), `u16 attack_id`;
-  - `DEATH`: `u16 victim`, `u16 killer` (0 = entorno), `u16 attack_id`;
-  - `KILL`: `u16 killer`, `u16 victim`, `u8 n` y `n × u16` asistentes.
-  Se envía a quien tiene relevantes al atacante o a la víctima. El cliente aplica los eventos de
-  los remotos cuando su `render_tick` alcanza `tick`, y los propios al llegar.
-- **DEBUG_COMMAND** ampliado (TEC-19): un registro de comandos del servidor (`CommandRegistry`) en
-  el que cada sistema registra los suyos con nombre, argumentos y si exige `--debug-commands`; se
-  invocan por red (`command` = id del registro) o por la consola del servidor (stdin). Comandos de
-  la fase 3: `teleport`, `heal`, `kill`, `stamina_inf`, `reset_cooldowns`, `set_weapon`,
-  `spawn_dummy`, `announce`, `kick`, `shutdown <s>`. Cada uso queda en el log.
+- **`PlayerState`** de 69 B (§3.1).
+- **Bloque extra propio**, en **todo** snapshot con estado propio (bit 3 de `flags` ⇔ bit 0;
+  `decode` rechaza bit 3 sin bit 0), tras el estado propio: `u16 health`, `u16 max_health`, `u8
+  status` (bit0 en combate, bit1 protegido, bit2 muerto), `u32 respawn_tick` (0 si vivo). 9 B.
+- **Registro de entidad de 21 B**: `u8 health_q` al final, `0` si muerto y si no
+  `clampi((health · 255 + max − 1) / max, 1, 255)`. `EntityRecord.encode_character(bytes, offset,
+  net_id, character, teleport_counter, action, health_q)`. Cabecera con estado propio y bloque:
+  13 + 69 + 9 + 1 = 92 B; con una sección (2 B), ⌊(1200 − 94) / 21⌋ = **52 registros**.
+- **ENTITY_EVENT** (`0x23`, canal 3), formato reservado en red.md §5.6: `u8 type`, `u16 net_id`
+  (la entidad a la que se ata: víctima o entidad que reaparece), `u32 tick`, `u8 event`, `u8 len`,
+  datos:
+  - `1 HIT`: `u16 attacker`, `u16 amount`, `u8 damage_type`, `u8 flags` (bit0 crítico, bit1
+    bloqueado, bit2 parado, bit3 rotura de guardia, bit4 mortal), `u16 attack_id`. 17 B.
+  - `2 DEATH`: `u16 killer` (0 = entorno), `u16 attack_id`. 13 B.
+  - `3 KILL`: `u16 killer`, `u16 attack_id`, `u8 n`, `n × u16` asistentes. 14 + 2n B.
+  - `4 RESPAWN`: `u8 point`. 10 B.
+  - **Destinatarios**: los dueños del atacante y de la víctima (y de asesino y asistentes en
+    KILL) y quien tenga relevante a cualquiera de ellos.
+  - **Temporización**: un evento es **propio** si el jugador local es atacante, víctima, asesino
+    o asistente; su marcador, número y HUD se aplican al llegar. La reacción visual de un remoto
+    (destello, sacudida, animación) se aplica cuando su `render_tick` alcanza `tick`.
+- **RESPAWN_REQUEST** (`0x05`, C→S, canal 3): `u8 type`, `u8 point_index`. Fuera de plazo o con un
+  índice inválido cuenta un aviso.
+- **DEBUG_COMMAND** (TEC-19) con ids fijos en `NetProtocol`: 1 `teleport` (sin cambios), 2 `heal`,
+  3 `kill`, 4 `stamina_inf` (bit2 de `combat_flags`: la máquina no gasta), 5 `set_weapon`, 6
+  `spawn_dummy`. Solo con `--debug-commands`. `announce`, `kick` y `shutdown <s>` son **solo de
+  consola** (stdin del servidor) hasta los roles de GM (TEC-23). `CommandRegistry` (servidor)
+  comprueba al registrar que cada comando de red tiene su id en la tabla; cada uso queda en el log.
 - `sim_hash` incluye `CombatCatalog.prediction_hash()`.
+- **Ancho de banda**: bajada = (94 + n · 21 + 40) B × 30/s (10 visibles: ~10,3 KB/s; tope desde 52
+  visibles: ~37 KB/s) más los ENTITY_EVENT (~27 B por destinatario y golpe). Hay que actualizar
+  red.md §5.5, §5.6, §9.3, §14 y `test_snapshot_builder`.
 
 ---
 
 ## 7. PNJ y maniquí (MUN-02, CMB-11)
 
-- Tipo `NPC` en `NetEntity`, con el mismo registro de 21 B. Su cuerpo es un `PlayerCharacter`
-  simulado por el servidor con entrada sintética (`NpcBrain`); se graba en `StateHistory` y los
-  golpes rebobinados le alcanzan igual.
-- **Maniquí de entrenamiento**: NPC fijo con vida que se reinicia a los 5 s sin daño, con modos
-  quieto, bloqueando y girando (comando `spawn_dummy`). Uno en `test_world` y uno junto a cada
-  campamento del Vado Gris (marcadores del grupo `dummy_points`).
+- Tipo `NPC` en `NetEntity` con el registro de 21 B. Su cuerpo es un `PlayerCharacter` simulado
+  por el servidor en el mismo bucle que los jugadores (por `net_id`) con entradas de un `NpcBrain`
+  que entran en su `InputQueue` como las de los jugadores falsos; se graba en `StateHistory`.
+- **Maniquí de entrenamiento**: NPC fijo, **inmortal** (la vida no baja de 1, no emite DEATH ni
+  KILL) que se cura del todo a los 5 s sin daño, con modos quieto, bloqueando y girando (comando
+  `spawn_dummy`). Uno en `test_world` y uno junto a cada campamento del Vado Gris (marcadores del
+  grupo `dummy_points`).
 - **Registro de combate** (`--combat-log=<csv>`): `tick, atacante, objetivo, ataque, view_tick,
   rebobinado, resultado, daño`.
+- **Medidor de DPS** en el panel F3: suma los `amount` de los HIT propios en una ventana de 30 s.
 
 ---
 
-## 8. Cliente (UI-10, UI-12, UI-13, UI-14, ART-06, ART-08, ART-09)
+## 8. Cliente (UI-07, UI-10, UI-12, UI-13, UI-14, ART-06, ART-08, ART-09)
 
-- **`CombatFeedback`** (cliente): recibe los ENTITY_EVENT ya temporizados y reparte: marcador de
-  impacto y número de daño (UI-12), destello y sacudida (ART-09), sonidos (ART-11), registro.
-- **HUD** (UI-10): vida (autoritativa, del bloque extra) y resistencia (predicha, del estado
-  local) abajo al centro, tramo fantasma, parpadeo al fallar por falta de resistencia, arcos de
-  dirección del daño.
-- **Placas** (UI-07 y UI-13): nombre, color de reino y, para enemigos apuntados o dañados en los
-  últimos 5 s y para aliados, barra de vida desde `health_q`.
-- **Muerte** (UI-14): HUD atenuado, quién te derrotó, cuenta atrás hasta `respawn_tick`.
-- **Animación** (ART-08): capa de combate sobre la locomoción en `CharacterAnimator`, que lee
-  `action`/fase/combo del estado local o del byte `action` de los remotos. Clips de UAL1/UAL2
-  (`Sword_Attack`, `Roll`, `Hit_Chest`, `Death01`...) reescalados a la duración de cada fase. El
-  ajuste fino de los clips y la composición visual quedan para el usuario (ver el informe).
-- **Armas** (ART-06): de momento, mallas provisionales (caja para la espada, cilindro aplanado para
-  el escudo) colgadas de los huesos de las manos con `BoneAttachment3D`, hasta que lleguen los
-  modelos.
+- **Detección de acciones sin señales**: `CombatFeedback` y `CharacterAnimator` comparan, tras
+  cada tick de física, `(action, action_id, action_tick)` del estado mostrado con el último que
+  vieron, y lanzan o cortan barrido, estela y clip desde ahí. Ninguna señal de combate dentro de
+  `simulate()`: las repeticiones no duplican ni pierden efectos.
+- **`CombatFeedback`**: recibe los ENTITY_EVENT ya temporizados y reparte marcador de impacto y
+  número de daño (UI-12), destello y sacudida (ART-09), ganchos de sonido (ART-11) y el medidor de
+  DPS.
+- **HUD** (UI-10): vida (del bloque extra) y resistencia (del estado local) abajo al centro, tramo
+  fantasma, parpadeo con el bit1, arcos de dirección del daño.
+- **Placas** (UI-07, UI-13): nombre y color de reino; barra de vida desde `health_q` para enemigos
+  bajo la retícula o dañados en los últimos 5 s, y para aliados siempre.
+- **Muerte** (UI-14): HUD atenuado, quién te derrotó y con qué, cuenta atrás hasta `respawn_tick`,
+  botón Reaparecer y lista de puntos de su reino.
+- **Animación** (ART-08): capa de combate sobre la locomoción, leyendo `action_byte` del estado
+  local o del registro de los remotos; clips de UAL1/UAL2 (`Sword_Attack`, `Roll`, `Hit_Chest`,
+  `Death01`...) reescalados a cada fase. El ajuste fino queda para el usuario.
+- **Armas** (ART-06): mallas provisionales (caja para la espada, cilindro aplanado para el escudo)
+  en `BoneAttachment3D` de las manos hasta que lleguen los modelos.
 
 ---
 
-## 9. Plan de archivos y paquetes
+## 9. Paquetes y contratos
+
+### 9.1 Paquetes
 
 | Paquete | Contenido | Depende de |
 |---|---|---|
-| **K1 · datos y simulación** | `AttackDefinition`, `WeaponDefinition`, `DodgeDefinition`, `HitShape`, `CombatCatalog`, `CombatRules`, `data/combat/*.tres`; `PlayerState` ampliado; `ActionMachine` y su llamada desde `simulate()`; `hit_shapes.gd`, `damage_formula.gd`, `FactionRules`, modo PvP en `Zones`; `last_landing_speed`; `sim_hash` con el catálogo | fase 2 |
-| **K2 · protocolo** | `PROTOCOL_VERSION = 2`, registro de 21 B, bloque extra, ENTITY_EVENT, `CommandRegistry` y DEBUG_COMMAND ampliado | K1 |
-| **K3 · servidor** | `Combatant`, `CombatResolver` con rebobinado, banderas defensivas en `StateHistory`, `DamageLedger`, muerte, reaparición, daño por caída, zonas seguras, NPC y maniquí, `--combat-log`, comandos | K1, K2 |
-| **K4 · cliente** | aplicación de eventos por `render_tick`, `CombatFeedback`, HUD de vida y resistencia, marcador y números, placas con nombre y vida, pantalla de muerte, capa de animación de combate, armas provisionales | K1, K2 |
-| **K5 · integración** | loopback con NetSim (95 % de acierto con rtt=150 contra un objetivo que se mueve en lateral, rechazo por encima de 24 ticks), `BotBrain` de combate, carga con refriegas de 32/64 bots, demo del sandbox con el combo | K3, K4 |
+| **K1a · simulación** | `CombatState`, `HitShape`, `AttackDefinition`, `DodgeDefinition`, `WeaponDefinition`, `CombatRules`, `CombatCatalog`, `data/combat/*.tres`; `PlayerState`/`PlayerCharacter` con `combat`, `ActionMachine` (§3) y su llamada en `simulate()`; `last_landing_speed`; bit SUBSTITUTED en `PlayerInput`, `InputQueue.take()` y `ClientPrediction`; `sim_hash` con el catálogo | fase 2 |
+| **K1b · reglas puras** | `hit_shapes.gd`, `damage_formula.gd`, `FactionRules`, `Zones.get_pvp_mode` | fase 2 |
+| **K2 · protocolo** | `PROTOCOL_VERSION = 2`, registro de 21 B, bloque extra, ENTITY_EVENT, RESPAWN_REQUEST, ids de comandos, red.md actualizado | fase 2 (usa `PlayerState.encode()` sea cual sea su tamaño) |
+| **K3 · servidor** | `Combatant`, orden del tick (§4.2), `CombatResolver` (§4.3), `InputQueue.get_rewind_params`, banderas en `StateHistory`, muerte, reaparición y RESPAWN_REQUEST, caída, volúmenes letales, zonas seguras, NPC y maniquí, `CommandRegistry` y consola, `--combat-log`, puntuación de sospecha | K1a, K1b, K2 |
+| **K4 · cliente** | eventos por `render_tick`, `CombatFeedback`, HUD de vida y resistencia, marcador y números, placas con vida, pantalla de muerte con reaparición, capa de animación, armas provisionales, DPS en F3 | K1a, K2 |
+| **K5 · integración** | loopback con NetSim rtt=150 (≥ 95 % de acierto contra un objetivo que se mueve en lateral; 0 impactos con `view_offset_q` de 30 ticks contra un objetivo quieto), bot tramposo `rewind`/`reach`/`rate`, `BotBrain` de combate, reconciliación con rtt=120 y 5 % de pérdida, carga con refriegas de 32, 64 y 128 bots, límite de jugadores anotado en red.md, demo del sandbox con el combo | K3, K4 |
 
-Pruebas mínimas por paquete: repetición determinista con acciones a medias (K1), ida y vuelta de
-todos los mensajes nuevos con sus tamaños (K2), matriz de bloqueo/parada/esquiva con rebobinado y
-muerte/reaparición (K3), eventos aplicados en su tick de dibujo (K4) y las de integración (K5).
+K1a, K1b y K2 van en paralelo; después K3 y K4 en paralelo; al final K5.
+
+Fuera de K1–K5, en otro carril de la misma fase: ART-10 (infraestructura de audio, sin sonidos
+hasta que lleguen los packs), UI-02, UI-09, UI-16, SOC-02, TEC-12. Quedan para el usuario: ART-04
+(compra de UAL1 Pro), ART-06 y ART-07 definitivos (modelos y recorte de clips), ART-09 y ART-11
+con assets reales. `AbilityDefinition` pasa a CMB-19 (fase 4).
+
+### 9.2 Contratos
+
+```gdscript
+# scripts/shared/combat/combat_state.gd
+class_name CombatState extends RefCounted
+enum Action { NONE, LIGHT, HEAVY, CHARGE, BLOCK, DODGE, STAGGER, STUN, DEAD }
+const ENCODED_SIZE: int = 34
+var action: int; var action_id: int; var action_tick: int; var combo_step: int
+var primary_held: int; var charge_ticks: int; var buffered: int; var stamina: int
+var stamina_regen_tick: int; var combat_flags: int; var action_dir: int; var cc_until_tick: int
+var knockback: Vector2; var parry_ready_tick: int; var weapon_id: int
+func encode_into(bytes: PackedByteArray, offset: int) -> void
+static func decode_from(bytes: PackedByteArray, offset: int) -> CombatState
+func duplicate_state() -> CombatState
+static func initial(rules: CombatRules, weapon_id: int) -> CombatState
+
+# scripts/shared/combat/action_machine.gd
+class_name ActionMachine extends RefCounted
+class Output:
+	var move_scale: float = 1.0; var lunge_speed: float = 0.0
+	var turn_rate: float = -1.0           # -1 = giro normal de simulate()
+	var snap_yaw: bool = false            # el yaw salta a look_yaw este tick
+	var forced_velocity: bool = false; var velocity: Vector3 = Vector3.ZERO
+	var allow_jump: bool = true; var allow_sprint: bool = true
+static func step(c: CombatState, input: PlayerInput, grounded: bool) -> ActionMachine.Output
+static func phase(c: CombatState, tick: int) -> int
+static func is_attack_active(c: CombatState, tick: int) -> bool
+static func is_blocking(c: CombatState, tick: int) -> bool
+static func is_parry_window(c: CombatState, tick: int) -> bool
+static func is_invulnerable(c: CombatState, tick: int) -> bool
+static func defense_flags(c: CombatState, tick: int) -> int
+static func action_byte(c: CombatState, tick: int) -> int
+static func impose_stagger(c: CombatState, tick: int, until_tick: int, knockback: Vector2) -> void
+static func impose_stun(c: CombatState, tick: int, until_tick: int) -> void
+static func impose_death(c: CombatState, tick: int) -> void
+static func reset_for_respawn(c: CombatState, tick: int) -> void
+static func drain_stamina(c: CombatState, amount: int, tick: int) -> void
+
+# scripts/shared/combat/hit_shapes.gd
+class_name HitShapes extends RefCounted
+static func sector_hits_capsule(origin: Vector3, yaw: float, shape: HitShape,
+		capsule_feet: Vector3, radius: float, height: float) -> bool
+static func segment_hits_capsule(a: Vector3, b: Vector3, capsule_feet: Vector3, radius: float,
+		height: float) -> bool
+static func has_line_of_sight(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3) -> bool
+static func is_in_front(defender_pos: Vector3, defender_yaw: float, attacker_pos: Vector3,
+		cone_deg: float) -> bool
+
+# scripts/shared/combat/damage_formula.gd
+class_name DamageFormula extends RefCounted
+enum DamageType { SLASH, PIERCE, BLUNT, ELEMENTAL }
+class Result:
+	var damage: int; var absorbed: int; var stamina_cost: int; var critical: bool
+	var guard_break: bool
+static func compute(attack: AttackTicks, charge_ticks: int, critical: bool, blocked: bool,
+		block_mitigation: float, block_stamina_per_damage: float, defender_stamina: int,
+		armor: int) -> DamageFormula.Result
+static func is_backstab(attacker_pos: Vector3, victim_pos: Vector3, victim_yaw: float) -> bool
+
+# scripts/shared/war/faction_rules.gd
+class_name FactionRules extends RefCounted
+static func can_damage(attacker_realm: int, victim_realm: int, zone_id: StringName) -> bool
+```
 
 ---
 
@@ -354,7 +587,9 @@ muerte/reaparición (K3), eventos aplicados en su tick de dibujo (K4) y las de i
   contra los ~100 µs de la fase 2.
 - **Parada con latencia**: 6 ticks de ventana con 150 ms de RTT puede ser una lotería. Se mide en
   CMB-29; si no funciona, pasa a habilidad del escudo.
+- **Ligeros imposibles de reaccionar en red** (12 ticks): es intencionado; la defensa reactiva es
+  contra los fuertes.
 - **Animación**: los clips gratuitos no cubren impacto en bloqueo ni esquiva lateral (arte.md). Se
   usan sustitutos y se anota.
-- **Tamaño del estado**: 65 B de estado propio por snapshot (30 más) a 30 Hz: ~1 KB/s más por
-  cliente, asumible.
+- **Ancho de banda**: +34 B de estado, +9 B de bloque y +1 B por registro por snapshot (~2,7 KB/s
+  más al tope) y 52 registros por snapshot en vez de 57.
