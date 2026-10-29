@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="NpcDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/ai/npc_definition.gd" id="1_npcdef"]
+
+[resource]
+script = ExtResource("1_npcdef")
+id = &"gate_guardian"
+display_name = "Guardián de la Puerta"
+max_health = 2500
+weapon_id = &"npc_guardian"
+ignores_safe_area = true
+patrol_speed_scale = 0.4
+chase_speed_scale = 1.0
+can_sprint = true
+perception_radius = 26.0
+perception_cone_deg = 360.0
+awareness_radius = 26.0
+lose_radius = 30.0
+alert_radius = 30.0
+leash_radius = 28.0
+heavy_chance = 0.0
+block_chance = 0.0
+attack_gap_s = Vector2(0.3, 0.7)

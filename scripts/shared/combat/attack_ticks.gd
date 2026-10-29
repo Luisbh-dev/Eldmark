@@ -36,6 +36,7 @@ var shape: HitShape = null
 var base_damage: int = 0
 var damage_type: int = 0
 var hyper_armor: bool = false
+var unblockable: bool = false
 var stagger_ticks: int = 0
 var knockback_speed: float = 0.0
 var charge_damage_scale: float = 1.0

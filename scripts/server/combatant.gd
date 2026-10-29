@@ -44,6 +44,9 @@ var health: int = 0
 var max_health: int = 0
 ## Un maniquí: la vida no baja de 1, no muere y se cura del todo tras [member CombatTiming.dummy_heal].
 var immortal: bool = false
+## Un Guardián de la Puerta: puede atacar desde la zona segura de su propio reino y ataca a los enemigos que
+## hay dentro (docs/combate.md, sección 5). Lo pone quien crea el PNJ, según su [code]NpcDefinition[/code].
+var ignores_safe_area: bool = false
 var in_combat_until: int = 0
 var protected_until: int = 0
 ## Tick de la muerte (-1 si está vivo) y primer tick en que puede reaparecer.

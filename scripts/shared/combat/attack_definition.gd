@@ -37,6 +37,9 @@ extends Resource
 @export var damage_type: int = 0
 ## true: en el golpe activo es inmune a tambaleo y empuje (solo servidor).
 @export var hyper_armor: bool = false
+## true: el golpe no se puede bloquear ni parar (solo se evita esquivándolo): el bloqueo y la parada del
+## defensor no lo detienen y recibe el daño completo (solo servidor; es el golpe del Capitán del Vado).
+@export var unblockable: bool = false
 ## Tambaleo que causa (s; 0 = ninguno; solo servidor).
 @export var stagger_s: float = 0.0
 ## Empuje que causa (m/s; 0 = ninguno; solo servidor).

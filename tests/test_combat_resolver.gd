@@ -842,3 +842,71 @@ func test_safe_area_of_another_realm_does_not_protect() -> void:
 	_fighter(2, ASKARRA, Vector3(10.0, 0.0, -1.5), PI_YAW)
 	CombatFixture.start_light_active(attacker, S)
 	assert_eq(_resolve().size(), 1, "la zona segura solo protege a su reino")
+
+
+# --- Golpe imbloqueable y Guardianes de la Puerta (fase 4) ------------------------------------
+
+## Pone al atacante con el arma del Capitán, en el golpe activo de su ataque fuerte imbloqueable.
+func _captain_crush(attacker: Combatant) -> void:
+	attacker.get_character().combat.weapon_id = CombatCatalog.weapon_id(&"npc_captain")
+	CombatFixture.start_heavy_active(attacker, S)
+	assert_true(CombatCatalog.attack(attacker.get_character().combat.action_id).unblockable,
+			"el fuerte del Capitán es imbloqueable")
+
+
+func test_an_unblockable_swing_goes_through_a_block() -> void:
+	var duel: Array[Combatant] = _duel(1.5)
+	_captain_crush(duel[0])
+	CombatFixture.start_block(duel[1], S - 30)
+	var hits: Array[CombatResolver.Hit] = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "el escudo no lo detiene")
+
+
+func test_an_unblockable_swing_goes_through_a_parry_window_too() -> void:
+	var duel: Array[Combatant] = _duel(1.5)
+	_captain_crush(duel[0])
+	CombatFixture.start_block(duel[1], S, true)
+	var hits: Array[CombatResolver.Hit] = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "la parada tampoco")
+
+
+func test_an_unblockable_swing_is_still_dodged_by_an_invulnerable_dodge() -> void:
+	var duel: Array[Combatant] = _duel(1.5)
+	_captain_crush(duel[0])
+	CombatFixture.start_dodge(duel[1], S - 10)
+	var hits: Array[CombatResolver.Hit] = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.INVULNERABLE, "esquivarlo sí funciona")
+
+
+func test_a_normal_swing_of_the_same_weapon_is_still_blocked() -> void:
+	var duel: Array[Combatant] = _duel(1.5)
+	duel[0].get_character().combat.weapon_id = CombatCatalog.weapon_id(&"npc_captain")
+	CombatFixture.start_light_active(duel[0], S)
+	CombatFixture.start_block(duel[1], S - 30)
+	var hits: Array[CombatResolver.Hit] = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.BLOCKED, "el barrido del Capitán sí se bloquea")
+
+
+func test_a_gate_guardian_attacks_from_inside_the_safe_area_of_its_realm() -> void:
+	_safe_area_resolver()
+	var guardian: Combatant = _fighter(1, VARDHEIM, Vector3(10.0, 0.0, 0.0), 0.0)
+	_fighter(2, SOLMARCH, Vector3(10.0, 0.0, -1.5), PI_YAW)
+	CombatFixture.start_light_active(guardian, S)
+	assert_eq(_resolve().size(), 0, "sin la bandera, desde dentro de su zona segura no ataca")
+	guardian.ignores_safe_area = true
+	var hits: Array[CombatResolver.Hit] = _resolve()
+	if assert_eq(hits.size(), 1, "con ignores_safe_area sí"):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT)
+
+
+func test_a_gate_guardian_still_cannot_hit_a_victim_inside_its_own_safe_area() -> void:
+	_safe_area_resolver()
+	var guardian: Combatant = _fighter(1, SOLMARCH, Vector3(10.0, 0.0, 0.0), 0.0)
+	guardian.ignores_safe_area = true
+	_fighter(2, VARDHEIM, Vector3(10.0, 0.0, -1.5), PI_YAW)
+	CombatFixture.start_light_active(guardian, S)
+	assert_eq(_resolve().size(), 0, "quien está a salvo en su zona segura sigue sin recibir daño")

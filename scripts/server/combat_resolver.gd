@@ -261,7 +261,8 @@ func _reject(attacker: Combatant, attack: AttackTicks, s: int, hits: Array[Hit])
 	hits.append(hit)
 
 
-# Candidato por reglas: hostil, vivo, sin protección y sin zona segura de por medio.
+# Candidato por reglas: hostil, vivo, sin protección y sin zona segura de por medio (un atacante con
+# ignores_safe_area no queda frenado por la de su propio reino).
 func _is_candidate(attacker: Combatant, victim: Combatant, s: int) -> bool:
 	if victim.is_dead() or victim.is_protected(s):
 		return false
@@ -269,7 +270,9 @@ func _is_candidate(attacker: Combatant, victim: Combatant, s: int) -> bool:
 		return false
 	if _safe_areas.contains_own(victim.get_realm(), victim.frozen.position):
 		return false
-	if _safe_areas.contains_own(attacker.get_realm(), attacker.frozen.position):
+	# Un Guardián de la Puerta (ignores_safe_area) sí ataca desde la zona segura de su reino.
+	if not attacker.ignores_safe_area \
+			and _safe_areas.contains_own(attacker.get_realm(), attacker.frozen.position):
 		return false
 	return true
 
@@ -321,7 +324,9 @@ func _defense(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_
 		return Outcome.INVULNERABLE
 	var victim_frame: Combatant.Frozen = victim.frozen
 	var weapon: WeaponTicks = CombatCatalog.weapon(victim_frame.weapon_id)
-	if weapon == null:
+	# Un golpe imbloqueable (el del Capitán del Vado) solo se evita esquivándolo: ni la parada ni el
+	# bloqueo lo detienen.
+	if weapon == null or attack.unblockable:
 		return Outcome.IMPACT
 	var attacker_position: Vector3 = attacker.frozen.position
 	var cone: float = weapon.block_angle_deg

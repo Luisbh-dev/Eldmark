@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="NpcDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/ai/npc_definition.gd" id="1_npcdef"]
+
+[resource]
+script = ExtResource("1_npcdef")
+id = &"realm_captain"
+display_name = "Capitán del reino"
+max_health = 5000
+weapon_id = &"npc_captain"
+is_boss = true
+patrol_speed_scale = 0.4
+chase_speed_scale = 0.9
+perception_radius = 22.0
+perception_cone_deg = 160.0
+awareness_radius = 6.0
+lose_radius = 34.0
+leash_radius = 36.0
+heavy_chance = 0.0
+block_chance = 0.0
+attack_gap_s = Vector2(0.4, 0.9)
+special_every = 3
+circle_distance = 4.0
+shouts = true

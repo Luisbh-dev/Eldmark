@@ -17,8 +17,12 @@ func test_data_directory_loads_without_errors() -> void:
 	var tables: CombatTables = CombatCatalog.build_from_directory(DATA_DIR)
 	assert_eq(tables.errors, PackedStringArray(), "los datos de data/combat/ son válidos")
 	assert_true(tables.is_valid(), "is_valid()")
-	assert_eq(tables.attacks.size(), 4, "4 ataques: fuerte y tres ligeros")
-	assert_eq(tables.weapons.size(), 1, "un arma: espada y escudo")
+	assert_eq(_names_starting_with(tables.attack_ids, "sword_").size(), 4, "4 ataques de espada: fuerte y tres ligeros")
+	assert_eq(_names_starting_with(tables.weapon_ids, "sword_").size(), 1, "un arma de jugador: espada y escudo")
+	assert_eq(_names_starting_with(tables.attack_ids, "npc_").size(), 8, "8 ataques de PNJ (ligero y fuerte de 4 armas)")
+	assert_eq(_names_starting_with(tables.weapon_ids, "npc_").size(), 4, "4 armas de PNJ")
+	assert_eq(tables.attacks.size(), 12, "12 ataques en total")
+	assert_eq(tables.weapons.size(), 5, "5 armas en total")
 	assert_not_null(tables.rules, "hay reglas")
 
 
@@ -35,24 +39,36 @@ func test_global_catalog_matches_the_directory() -> void:
 
 func test_ids_are_alphabetical_from_one() -> void:
 	var tables: CombatTables = CombatCatalog.build_from_directory(DATA_DIR)
-	assert_eq(tables.attack_ids[&"sword_heavy"], 1, "sword_heavy es el primero por orden alfabético")
-	assert_eq(tables.attack_ids[&"sword_light_1"], 2, "sword_light_1")
-	assert_eq(tables.attack_ids[&"sword_light_2"], 3, "sword_light_2")
-	assert_eq(tables.attack_ids[&"sword_light_3"], 4, "sword_light_3")
-	assert_eq(tables.weapon_ids[&"sword_shield"], 1, "el arma tiene el ID 1 (espacio propio)")
+	# Los IDs salen del orden alfabético de los nombres: nada puede depender de un número fijo (los ataques y
+	# las armas de PNJ, que empiezan por npc_, van antes que los de la espada).
+	var attack_names: Array[String] = _sorted_names(tables.attack_ids)
+	for i: int in attack_names.size():
+		assert_eq(tables.attack_ids[StringName(attack_names[i])], i + 1,
+				"%s es el ataque número %d" % [attack_names[i], i + 1])
+	var weapon_names: Array[String] = _sorted_names(tables.weapon_ids)
+	for i: int in weapon_names.size():
+		assert_eq(tables.weapon_ids[StringName(weapon_names[i])], i + 1,
+				"%s es el arma número %d" % [weapon_names[i], i + 1])
+	assert_true(tables.attack_ids[&"npc_captain_crush"] < tables.attack_ids[&"sword_heavy"],
+			"los ataques de PNJ van antes que los de la espada")
+	assert_eq(tables.attack_ids[&"sword_light_2"], tables.attack_ids[&"sword_light_1"] + 1, "sword_light_2")
+	assert_eq(tables.attack_ids[&"sword_light_3"], tables.attack_ids[&"sword_light_2"] + 1, "sword_light_3")
+	assert_eq(tables.attack_ids[&"sword_heavy"], tables.attack_ids[&"sword_light_1"] - 1, "sword_heavy va antes")
 	assert_null(tables.attack(0), "el ID 0 es «ninguno» en los ataques")
 	assert_null(tables.weapon(0), "y en las armas")
-	assert_null(tables.attack(5), "un ID que no existe")
-	assert_null(tables.weapon(2), "un arma que no existe")
+	assert_null(tables.attack(tables.attacks.size() + 1), "un ID que no existe")
+	assert_null(tables.weapon(tables.weapons.size() + 1), "un arma que no existe")
 	assert_null(tables.attack(-1), "un ID negativo")
 	for i: int in tables.attacks.size():
 		assert_eq(tables.attacks[i].id, i + 1, "el ataque en el índice %d lleva el ID %d" % [i, i + 1])
 		assert_eq(tables.attack(i + 1), tables.attacks[i], "attack(%d)" % (i + 1))
-	assert_eq(tables.attack(2).name, &"sword_light_1", "el nombre se conserva")
-	assert_eq(CombatCatalog.attack_id(&"sword_light_2"), 3, "attack_id() por nombre")
-	assert_eq(CombatCatalog.weapon_id(&"sword_shield"), 1, "weapon_id() por nombre")
+	var light_one: int = tables.attack_ids[&"sword_light_1"]
+	assert_eq(tables.attack(light_one).name, &"sword_light_1", "el nombre se conserva")
+	assert_eq(CombatCatalog.attack_id(&"sword_light_2"), light_one + 1, "attack_id() por nombre")
+	assert_eq(CombatCatalog.weapon_id(&"sword_shield"), tables.weapon_ids[&"sword_shield"], "weapon_id() por nombre")
 	assert_eq(CombatCatalog.attack_id(&"no_existe"), 0, "un nombre que no existe da 0")
-	assert_eq(CombatCatalog.default_weapon_id(), 1, "el arma por defecto es la espada y escudo")
+	assert_eq(CombatCatalog.default_weapon_id(), tables.weapon_ids[&"sword_shield"],
+			"el arma por defecto es la espada y escudo")
 
 
 func test_ids_do_not_depend_on_the_order_the_resources_come_in() -> void:
@@ -315,12 +331,14 @@ func test_attack_ticks_for_the_sword() -> void:
 
 func test_weapon_ticks_for_sword_and_shield() -> void:
 	var tables: CombatTables = CombatCatalog.build_from_directory(DATA_DIR)
-	var weapon: WeaponTicks = tables.weapon(1)
+	var weapon: WeaponTicks = tables.weapon(tables.weapon_ids[&"sword_shield"])
 	assert_eq(weapon.name, &"sword_shield", "nombre")
-	assert_eq(weapon.light_ids, PackedInt32Array([2, 3, 4]), "combo: ligeros 1, 2 y 3 en orden")
-	assert_eq(weapon.heavy_id, 1, "fuerte")
-	assert_eq(weapon.light_index(3), 1, "light_index() del segundo ligero")
-	assert_eq(weapon.light_index(1), -1, "el fuerte no es un ligero")
+	var light_one: int = tables.attack_ids[&"sword_light_1"]
+	assert_eq(weapon.light_ids, PackedInt32Array([light_one, light_one + 1, light_one + 2]),
+			"combo: ligeros 1, 2 y 3 en orden")
+	assert_eq(weapon.heavy_id, tables.attack_ids[&"sword_heavy"], "fuerte")
+	assert_eq(weapon.light_index(light_one + 1), 1, "light_index() del segundo ligero")
+	assert_eq(weapon.light_index(weapon.heavy_id), -1, "el fuerte no es un ligero")
 	assert_near(weapon.block_move_scale, 0.5, 1e-9, "movimiento al bloquear ×0,5")
 	assert_near(weapon.block_turn_rate, 8.0, 1e-9, "giro al bloquear 8 rad/s")
 	assert_near(weapon.block_angle_deg, 120.0, 1e-9, "cono de 120 grados")
@@ -336,7 +354,7 @@ func test_weapon_ticks_for_sword_and_shield() -> void:
 
 func test_dodge_curve_is_baked_to_the_distance() -> void:
 	var tables: CombatTables = CombatCatalog.build_from_directory(DATA_DIR)
-	var dodge: DodgeTicks = tables.weapon(1).dodge
+	var dodge: DodgeTicks = tables.weapon(tables.weapon_ids[&"sword_shield"]).dodge
 	assert_eq(dodge.speeds.size(), dodge.duration_ticks, "una velocidad por tick")
 	var distance: float = 0.0
 	for speed: float in dodge.speeds:
@@ -440,6 +458,24 @@ func test_sim_hash_includes_the_combat_hash() -> void:
 
 
 # --- Utilidades -------------------------------------------------------------------------------
+
+## Nombres (ordenados) de [param ids] (nombre -> ID).
+func _sorted_names(ids: Dictionary) -> Array[String]:
+	var names: Array[String] = []
+	for key: StringName in ids:
+		names.append(String(key))
+	names.sort()
+	return names
+
+
+## Los nombres de [param ids] que empiezan por [param prefix].
+func _names_starting_with(ids: Dictionary, prefix: String) -> Array[String]:
+	var names: Array[String] = []
+	for name: String in _sorted_names(ids):
+		if name.begins_with(prefix):
+			names.append(name)
+	return names
+
 
 func _attack(attack_id: StringName) -> AttackDefinition:
 	var attack := AttackDefinition.new()

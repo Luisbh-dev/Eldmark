@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="NpcDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/ai/npc_definition.gd" id="1_npcdef"]
+
+[resource]
+script = ExtResource("1_npcdef")
+id = &"hollow"
+display_name = "Hueco"
+max_health = 1200
+weapon_id = &"npc_hollow"
+garrison_id = &"realm_guard"

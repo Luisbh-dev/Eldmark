@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="AttackDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/combat/attack_definition.gd" id="1_attack"]
+[ext_resource type="Resource" path="res://data/combat/npc_shape_guard.tres" id="2_shape"]
+
+[resource]
+script = ExtResource("1_attack")
+id = &"npc_guard_bash"
+heavy = true
+windup_s = 0.7
+active_s = 0.12
+recovery_s = 0.9
+combo_window_s = 0.0
+cancel_to_dodge_from_s = 1.7
+stamina_cost = 150
+lunge_speed = 1.5
+turn_rate = 4.0
+move_speed_scale = 0.2
+shape = ExtResource("2_shape")
+base_damage = 170
+damage_type = 2
+hyper_armor = true
+unblockable = false
+stagger_s = 0.5
+knockback_speed = 3.0
+charge_min_s = 0.35
+charge_max_s = 0.6
+charge_damage_scale = 1.0
+charge_move_scale = 0.3
+charge_turn_rate = 5.0

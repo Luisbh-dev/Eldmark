@@ -871,7 +871,7 @@ func test_dodge_direction_is_relative_to_the_camera_and_saved() -> void:
 func test_dodge_velocity_follows_the_baked_curve() -> void:
 	var d := Driver.new()
 	d.move = Vector2(0.0, 1.0)
-	var curve: PackedFloat32Array = _data.weapon(1).dodge.speeds
+	var curve: PackedFloat32Array = _data.weapon(_data.weapon_ids[&"sword_shield"]).dodge.speeds
 	var start: int = d.tick + 1
 	for rel: int in 27:
 		var out: ActionMachine.Output = d.step(DODGE if rel == 0 else 0)
@@ -1738,11 +1738,11 @@ func test_replay_from_mid_action_in_the_same_world() -> void:
 # --- Utilidades -------------------------------------------------------------------------------
 
 func _light_id(index: int) -> int:
-	return _data.weapon(1).light_ids[index]
+	return _data.weapon(_data.weapon_ids[&"sword_shield"]).light_ids[index]
 
 
 func _heavy_id() -> int:
-	return _data.weapon(1).heavy_id
+	return _data.weapon(_data.weapon_ids[&"sword_shield"]).heavy_id
 
 
 func assert_ne_int(actual: int, unexpected: int, message: String = "") -> bool:

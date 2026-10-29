@@ -276,6 +276,7 @@ static func _convert_attack(definition: AttackDefinition, id: int,
 	ticks.base_damage = definition.base_damage
 	ticks.damage_type = definition.damage_type
 	ticks.hyper_armor = definition.hyper_armor
+	ticks.unblockable = definition.unblockable
 	ticks.stagger_ticks = seconds_to_ticks(definition.stagger_s)
 	ticks.knockback_speed = definition.knockback_speed
 	ticks.charge_damage_scale = definition.charge_damage_scale
