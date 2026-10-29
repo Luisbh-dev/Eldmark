@@ -34,8 +34,10 @@ extends Node
 ## [method get_stats]. Con [member ClientConfig.state_log_path] se escribe
 ## [code]server_tick,hex(predicho),hex(servidor)[/code] por cada snapshot con estado propio.
 ## [br][br]
-## [b]Pendiente[/b] ([member ClientConfig.bot_cheat]): el bot tramposo es del paquete F2; aquí solo
-## se avisa de que no está implementado.
+## [b]Bot tramposo[/b] ([member ClientConfig.bot_cheat], solo en modo BOT): un [BotCheater] falsea
+## el HELLO ([code]version[/code]) o envía tráfico de más tras el lote honrado de cada tick
+## ([code]future[/code], [code]dupes[/code], [code]garbage[/code], [code]flood[/code]). El bot
+## sigue prediciendo con sus entradas honradas; lo que se comprueba es que el servidor no se deja.
 
 ## Se emite al completar la autenticación en los dos lados: es el momento de cargar la zona
 ## [code]welcome.zone_id[/code] y llamar a [method notify_zone_ready].
@@ -103,6 +105,8 @@ var connect_timeout_ms: int = CONNECT_TIMEOUT_MS
 
 var _state: State = State.IDLE
 var _config: ClientConfig = null
+var _cheater: BotCheater = null
+var _cheat_packets_sent: int = 0
 var _transport: NetTransport = null
 var _controller: LocalPlayerController = null
 var _prediction: ClientPrediction = ClientPrediction.new()
@@ -211,10 +215,7 @@ func start(config: ClientConfig, transport: NetTransport,
 	_controller = controller
 	_controller.auto_step = false
 	_sim_hash = _compute_sim_hash()
-	if not config.bot_cheat.is_empty():
-		# TODO(TEC-46): el bot tramposo (--bot-cheat) es del paquete F2.
-		push_warning("[Eldmark] --bot-cheat=%s todavía no está implementado; el bot juega limpio"
-				% config.bot_cheat)
+	_cheater = _make_cheater(config)
 	_connect_transport()
 	_transport.set_net_sim_spec(config.net_sim_spec)
 	var error: Error = _transport.connect_to(config.address, config.port, connect_timeout_ms)
@@ -367,7 +368,8 @@ func get_last_notice_text() -> String:
 ## [br]- [code]substitutions[/code] (contador del servidor), [code]substitution_rises[/code] y
 ## [code]substitutions_total[/code].
 ## [br]- [code]delay_ticks[/code], [code]jitter_ticks[/code], [code]render_tick[/code],
-## [code]batches_sent[/code], [code]remote_views[/code].
+## [code]batches_sent[/code], [code]cheat_packets[/code] (paquetes de más del bot tramposo),
+## [code]remote_views[/code].
 func get_stats() -> Dictionary:
 	var prediction_stats: Dictionary = _prediction.get_stats()
 	return {
@@ -410,6 +412,7 @@ func get_stats() -> Dictionary:
 		"jitter_ticks": _interp_clock.get_jitter_ticks(),
 		"render_tick": _interp_clock.get_render_tick(),
 		"batches_sent": _batches_sent,
+		"cheat_packets": _cheat_packets_sent,
 		"remote_views": _remote_world.get_view_count(),
 	}
 
@@ -417,7 +420,8 @@ func get_stats() -> Dictionary:
 ## Escribe el informe JSON de la sesión en [param path] (los directorios que falten se crean). Sus
 ## claves son las de [method get_stats] más: [code]version[/code], [code]name[/code],
 ## [code]realm[/code], [code]mode[/code], [code]address[/code], [code]port[/code],
-## [code]net_sim[/code], [code]seed[/code], [code]zone[/code], [code]net_id[/code],
+## [code]net_sim[/code], [code]seed[/code], [code]cheat[/code] (modo del bot tramposo, o ""),
+## [code]zone[/code], [code]net_id[/code],
 ## [code]state[/code], [code]rejected[/code] (con [code]reject_result[/code] y
 ## [code]reject_text[/code] si el servidor rechazó la conexión), [code]disconnect_text[/code] y
 ## [code]final[/code]: [code]{predicted_tick,
@@ -571,6 +575,10 @@ func _send_input_batch() -> void:
 		return
 	if _transport.send(SERVER_PEER_ID, NetProtocol.CH_INPUT, bytes) == OK:
 		_batches_sent += 1
+	if _cheater != null:
+		for extra: BotCheater.Extra in _cheater.extra_packets(batch):
+			if _transport.send(SERVER_PEER_ID, extra.channel, extra.bytes) == OK:
+				_cheat_packets_sent += 1
 
 
 # true si hay que enviar con R = 8: subieron las sustituciones hace poco o ENet mide pérdida.
@@ -630,6 +638,8 @@ func _on_peer_authenticating(peer_id: int) -> void:
 	if _config.mode == ClientConfig.Mode.BOT:
 		hello.flags |= NetMessages.Hello.FLAG_BOT
 	hello.display_name = _config.display_name
+	if _cheater != null:
+		_cheater.tamper_hello(hello)
 	if hello_hook.is_valid():
 		hello_hook.call(hello)
 	_hello_local_tick = _local_tick
@@ -811,6 +821,22 @@ func _instantiate_character() -> PlayerCharacter:
 	return scene.instantiate() as PlayerCharacter
 
 
+# El bot tramposo de [param config], o null si no hay trampa que hacer. Solo los bots hacen trampa;
+# un modo desconocido se avisa y el bot juega limpio.
+func _make_cheater(config: ClientConfig) -> BotCheater:
+	if config.bot_cheat.is_empty():
+		return null
+	if config.mode != ClientConfig.Mode.BOT:
+		push_warning("[Eldmark] --bot-cheat solo tiene efecto junto con --bot; se juega limpio")
+		return null
+	if not BotCheater.is_valid_mode(config.bot_cheat):
+		push_warning("[Eldmark] Modo de --bot-cheat desconocido '%s' (hay: %s); se juega limpio"
+				% [config.bot_cheat, ", ".join(BotCheater.MODES)])
+		return null
+	print("[Eldmark] Bot tramposo: modo '%s'" % config.bot_cheat)
+	return BotCheater.new(config.bot_cheat, config.bot_seed)
+
+
 # Huella de la simulación (sección 3), calculada sobre una instancia dentro del árbol después de
 # _ready().
 func _compute_sim_hash() -> int:
@@ -868,6 +894,7 @@ func _build_report() -> Dictionary:
 	report["zone"] = _welcome.zone_id if _welcome != null else ""
 	report["net_id"] = _net_id
 	report["state"] = State.keys()[_state]
+	report["cheat"] = _cheater.get_mode() if _cheater != null else ""
 	report["rejected"] = _rejected
 	report["reject_result"] = _reject_result
 	report["reject_text"] = _reject_text

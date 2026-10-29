@@ -92,7 +92,8 @@ static func start_server(viewport: SubViewport, config: ServerConfig) -> ZoneSer
 
 ## Arranca un bot ([NetClient] en modo [constant ClientConfig.Mode.BOT]) dentro de [param viewport]
 ## que conecta con 127.0.0.1:[param port] como [param realm], con la semilla [param bot_seed] y,
-## si se indica, el simulador de red [param net_sim_spec]. Hace lo mismo que [OnlineMain] en modo
+## si se indica, el simulador de red [param net_sim_spec] y el modo de trampa [param bot_cheat]
+## ([BotCheater.MODES], [code]--bot-cheat[/code]). Hace lo mismo que [OnlineMain] en modo
 ## bot: carga la zona (la del viewport, sin lo visual), avisa en cuanto se autentica y, al aparecer,
 ## le pone a su controlador un [BotBrain] que pasea alrededor del punto de aparición.
 ## [br][br]
@@ -100,7 +101,7 @@ static func start_server(viewport: SubViewport, config: ServerConfig) -> ZoneSer
 ## [code]transport[/code] ([NetTransport]), [code]entities[/code] (el nodo que recibe al personaje
 ## local y al [RemoteWorld]) y, tras aparecer, [code]bot_brain[/code] ([BotBrain]).
 static func start_bot(viewport: SubViewport, port: int, realm: int, bot_seed: int,
-		net_sim_spec: String = "") -> NetClient:
+		net_sim_spec: String = "", bot_cheat: String = "") -> NetClient:
 	var zone_root: ZoneRoot = get_world(viewport) as ZoneRoot
 	if zone_root != null:
 		zone_root.strip_for_server()
@@ -127,6 +128,7 @@ static func start_bot(viewport: SubViewport, port: int, realm: int, bot_seed: in
 	config.display_name = NameRules.bot_name(bot_seed)
 	config.bot_seed = bot_seed
 	config.net_sim_spec = net_sim_spec
+	config.bot_cheat = bot_cheat
 	client.welcomed.connect(func(_welcome: NetMessages.Welcome) -> void:
 		client.notify_zone_ready(entities))
 	client.local_spawned.connect(func(character: PlayerCharacter) -> void:
