@@ -7,6 +7,10 @@ extends TestCase
 ## deja de ser determinista. También se recorre el árbol de dependencias de cada escena de zona:
 ## no puede arrastrar scripts del cliente, animaciones ni visuales de personaje.
 ## [br][br]
+## Además, [code]scripts/server/[/code] y [code]scripts/client/[/code] no dependen el uno del otro
+## (docs/red.md, sección 16), y [code]scripts/shared/[/code] tampoco depende del servidor: ni
+## rutas ni clases ([code]class_name[/code]) del otro lado.
+## [br][br]
 ## Se analiza el texto de los scripts sin los comentarios (la documentación puede mencionar
 ## Input o Camera3D); las cadenas sí cuentan, porque un
 ## [code]preload("res://scripts/client/...")[/code] es una dependencia real.
@@ -15,6 +19,7 @@ const SHARED_DIR: String = "res://scripts/shared"
 ## Carpetas que carga el servidor (la simulación compartida y los scripts de las zonas).
 const SERVER_DIRS: Array[String] = ["res://scripts/shared", "res://scripts/world"]
 const CLIENT_DIR: String = "res://scripts/client"
+const SERVER_DIR: String = "res://scripts/server"
 ## Rutas que ninguna escena de zona puede arrastrar (las carga el servidor dedicado).
 const ZONE_FORBIDDEN_DEPENDENCIES: Array[String] = [
 	"res://scripts/client/", "res://assets/animations/", "res://scenes/characters/visuals/",
@@ -27,6 +32,14 @@ const REQUIRED_SHARED_SCRIPTS: Array[String] = [
 	"player_input.gd", "player_state.gd", "player_character.gd", "bot_brain.gd",
 	"net/net_protocol.gd", "net/net_zones.gd", "net/net_math.gd", "net/entity_record.gd",
 	"net/net_messages.gd",
+]
+
+## Scripts del servidor que deben existir (si no, las reglas de dependencias no comprobarían nada).
+const REQUIRED_SERVER_SCRIPTS: Array[String] = [
+	"server_config.gd", "server_peer.gd", "server_auth.gd", "auth_provider.gd",
+	"dev_auth_provider.gd", "rate_limiter.gd", "input_queue.gd", "net_entity.gd",
+	"net_entity_registry.gd", "spawn_picker.gd", "snapshot_builder.gd", "interest_policy.gd",
+	"state_history.gd", "server_metrics.gd",
 ]
 
 ## Referencias prohibidas en scripts/shared: [descripción, expresión regular].
@@ -154,6 +167,80 @@ func test_shared_does_not_use_global_randomness() -> void:
 			fail("%s usa %s; la simulación compartida debe ser determinista" % [path, found])
 
 
+func test_server_scripts_exist() -> void:
+	var files: PackedStringArray = _list_scripts(SERVER_DIR)
+	for required: String in REQUIRED_SERVER_SCRIPTS:
+		assert_true(files.has(SERVER_DIR.path_join(required)),
+				"falta %s/%s" % [SERVER_DIR, required])
+
+
+## scripts/server no usa rutas ni clases de scripts/client.
+func test_server_does_not_depend_on_client() -> void:
+	var server_scripts: PackedStringArray = _list_scripts(SERVER_DIR)
+	assert_false(server_scripts.is_empty(), "no se encontró ningún script en %s" % SERVER_DIR)
+	var patterns: Array[Array] = [["scripts/client", "scripts/client"]]
+	patterns.append_array(_class_patterns(CLIENT_DIR))
+	if not _list_scripts(CLIENT_DIR).is_empty():
+		assert_true(patterns.size() > 1, "los scripts de %s declaran class_name" % CLIENT_DIR)
+	for path: String in server_scripts:
+		for found: String in _find_matches(_read_text(path), patterns):
+			fail("%s depende del cliente: %s" % [path, found])
+
+
+## scripts/client no usa rutas ni clases de scripts/server.
+func test_client_does_not_depend_on_server() -> void:
+	var client_scripts: PackedStringArray = _list_scripts(CLIENT_DIR)
+	assert_false(client_scripts.is_empty(), "no se encontró ningún script en %s" % CLIENT_DIR)
+	var patterns: Array[Array] = [["scripts/server", "scripts/server"]]
+	var server_patterns: Array[Array] = _class_patterns(SERVER_DIR)
+	assert_false(server_patterns.is_empty(), "los scripts de %s declaran class_name" % SERVER_DIR)
+	patterns.append_array(server_patterns)
+	for path: String in client_scripts:
+		for found: String in _find_matches(_read_text(path), patterns):
+			fail("%s depende del servidor: %s" % [path, found])
+
+
+## scripts/shared (y scripts/world, que también carga el servidor) no usan rutas ni clases de
+## scripts/server: lo compartido no puede depender de quien lo usa.
+func test_shared_does_not_depend_on_server() -> void:
+	var patterns: Array[Array] = [["scripts/server", "scripts/server"]]
+	var server_patterns: Array[Array] = _class_patterns(SERVER_DIR)
+	assert_false(server_patterns.is_empty(), "los scripts de %s declaran class_name" % SERVER_DIR)
+	patterns.append_array(server_patterns)
+	var files: PackedStringArray = _list_server_scripts()
+	assert_false(files.is_empty(), "no se encontró ningún script en %s" % [SERVER_DIRS])
+	for path: String in files:
+		for found: String in _find_matches(_read_text(path), patterns):
+			fail("%s depende del servidor: %s" % [path, found])
+
+
+func test_dependency_scanner_detects_cross_references() -> void:
+	# Comprueba el analizador de dependencias entre carpetas con texto sintético.
+	var server_patterns: Array[Array] = [["scripts/server", "scripts/server"]]
+	server_patterns.append_array(_class_patterns(SERVER_DIR))
+	var offending: Array[String] = [
+		"const Queue = preload(\"res://scripts/server/input_queue.gd\")",
+		"var queue: InputQueue = InputQueue.new()",
+		"func f(peer: ServerPeer) -> void:",
+		"var builder := SnapshotBuilder.new(null)",
+	]
+	for line: String in offending:
+		assert_false(_find_matches(line, server_patterns).is_empty(), "debe detectar: %s" % line)
+	var harmless: String = "\n".join([
+		"# usa InputQueue y scripts/server solo en un comentario",
+		"## Documentación sobre SnapshotBuilder.",
+		"var my_input_queue_size: int = 0",
+		"var text: String = \"#\" # StateHistory tras un # dentro de una cadena",
+		"var name_of_peer: String = \"ServerPeerless\"",
+	])
+	assert_eq(_find_matches(harmless, server_patterns), PackedStringArray(),
+			"comentarios, documentación e identificadores parecidos no son dependencias")
+	var client_patterns: Array[Array] = [["scripts/client", "scripts/client"]]
+	client_patterns.append_array(_class_patterns(CLIENT_DIR))
+	assert_false(_find_matches("var rig: CameraRig", client_patterns).is_empty(),
+			"y la dirección contraria detecta las clases del cliente")
+
+
 # --- Utilidades -------------------------------------------------------------------------------
 
 ## Scripts de todas las carpetas de [constant SERVER_DIRS].
@@ -162,6 +249,16 @@ func _list_server_scripts() -> PackedStringArray:
 	for dir: String in SERVER_DIRS:
 		files.append_array(_list_scripts(dir))
 	return files
+
+
+## Patrones [descripción, regex] de las clases ([code]class_name[/code]) de los scripts de
+## [param dir].
+func _class_patterns(dir: String) -> Array[Array]:
+	var patterns: Array[Array] = []
+	for path: String in _list_scripts(dir):
+		for declared: String in _extract_class_names(_read_text(path)):
+			patterns.append([declared, "\\b%s\\b" % declared])
+	return patterns
 
 
 ## Rutas res:// de las que depende [param path], recursivamente (en [param visited]).
