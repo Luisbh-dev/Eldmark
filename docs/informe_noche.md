@@ -11,7 +11,7 @@ backlog).
 |---|---|---|
 | Backlog (`docs/backlog.md`) | `main` | Hecho y subido |
 | Fase 2: red | `fase2-red` | Implementada (594 pruebas en verde, CI de GitHub en verde); revisión adversarial hecha y sus 19 hallazgos corregidos, cada uno con su prueba (656 pruebas en verde) |
-| Fase 3: combate | `fase3-combate` (desde `fase2-red`, que está fusionada dentro) | Diseño revisado (`docs/combate.md`); K1–K5 y el carril de audio, tema, ajustes, documento social y exportación integrados revisión adversarial hecha y sus 18 hallazgos corregidos con prueba (1262 pruebas en verde) |
+| Fase 3: combate | `fase3-combate` (desde `fase2-red`, que está fusionada dentro) | Diseño revisado (`docs/combate.md`); K1–K5 y el carril de audio, tema, ajustes, documento social y exportación integrados; revisión adversarial hecha y sus 18 hallazgos corregidos con prueba (1262 pruebas en verde) |
 | Fase 4: fuerte | `fase4-fuerte` (desde `fase3-combate`) | Diseño v2 revisado (`docs/fuerte.md`); F0 (escena, capas, navmesh, rutas), F1 (fortaleza pura) y F2 (protocolo 4) integrados; F3 (servidor) y F5 (cliente) en marcha |
 
 ## Entorno (Linux)
