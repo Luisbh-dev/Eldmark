@@ -15,10 +15,12 @@ extends RefCounted
 ## [code]local_tick + max_offset - retardo[/code] a ritmo de 1 tick por tick de física, con una
 ## corrección de como mucho 0,05 ticks por tick (o con un salto, si el error pasa de 10 ticks).
 ## [br][br]
-## [b]Sesgo de un tick.[/b] El pseudocódigo normativo compara el objetivo de este tick con el tick de
-## dibujo del anterior (antes de sumarle 1), así que la corrección proporcional converge a un tick de
-## dibujo 1 tick por delante del objetivo: el retardo efectivo es el retardo menos 1 tick. Se ha
-## dejado tal cual (ver las pruebas); quien dibuje debe usar siempre [method get_render_tick].
+## [b]Sin sesgo.[/b] El pseudocódigo de la sección 4.3 comparaba el objetivo de este tick con el
+## tick de dibujo del anterior (antes de sumarle 1), y la corrección convergía a un tick de dibujo 1
+## tick por delante del objetivo: el retardo efectivo era el retardo menos 1 tick, y con el mínimo
+## de 4 ticks se extrapolaba más a menudo. Aquí se avanza primero 1 tick y se corrige después, así
+## que el tick de dibujo converge justo al objetivo (decisión tomada de noche, ver
+## docs/informe_noche.md).
 ## [br][br]
 ## Los remotos se dibujan en [code]_process[/code] en el instante
 ## [code]render_tick + Engine.get_physics_interpolation_fraction()[/code].
@@ -79,7 +81,8 @@ func advance(local_tick: int) -> float:
 		_render_tick = target
 		_started = true
 	else:
-		_render_tick += 1.0 + clampf((target - _render_tick) * CORRECTION_GAIN,
+		var advanced: float = _render_tick + 1.0
+		_render_tick = advanced + clampf((target - advanced) * CORRECTION_GAIN,
 				-MAX_CORRECTION_PER_TICK, MAX_CORRECTION_PER_TICK)
 	return _render_tick
 

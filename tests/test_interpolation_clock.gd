@@ -7,13 +7,11 @@ extends TestCase
 ## [code]server_tick = local_tick + base_offset - lateness[/code]: el offset máximo de la ventana
 ## es [code]base_offset[/code] y el jitter, la media de [code]lateness[/code].
 ## [br][br]
-## [b]Régimen estable.[/b] El pseudocódigo de la sección 4.3 compara el objetivo de este tick con el
-## tick de dibujo del anterior (antes de sumarle 1), así que la corrección proporcional converge a
-## un tick de dibujo [constant STEADY_LEAD] tick por delante del objetivo y no justo sobre él. Las
-## pruebas lo tienen en cuenta.
+## [b]Régimen estable.[/b] El tick de dibujo converge justo al objetivo (sin el sesgo de un tick
+## del pseudocódigo original de la sección 4.3).
 
-## Tick de dibujo menos objetivo una vez estabilizado el reloj (ver arriba).
-const STEADY_LEAD: float = 1.0
+## Tick de dibujo menos objetivo una vez estabilizado el reloj.
+const STEADY_LEAD: float = 0.0
 
 
 func test_does_not_start_before_the_first_snapshot() -> void:

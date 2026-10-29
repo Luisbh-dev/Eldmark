@@ -453,9 +453,14 @@ func advance(local_tick: int) -> float:          # una vez por tick de física
 		_render_tick = target
 		_started = true
 	else:
-		_render_tick += 1.0 + clampf((target - _render_tick) * 0.1, -0.05, 0.05)
+		var advanced: float = _render_tick + 1.0         # primero avanza, después corrige
+		_render_tick = advanced + clampf((target - advanced) * 0.1, -0.05, 0.05)
 	return _render_tick
 ```
+
+Corregir contra el valor ya avanzado evita un sesgo de un tick: la primera versión comparaba el
+objetivo con el tick de dibujo anterior y convergía 1 tick por delante, con un retardo efectivo de
+3 ticks en vez de 4 (corregido durante la implementación).
 
 Los remotos se dibujan en `_process`, en el instante
 `render_tick + Engine.get_physics_interpolation_fraction()`. Así cada fotograma usa su tiempo
