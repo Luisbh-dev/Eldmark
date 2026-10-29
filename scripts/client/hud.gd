@@ -376,7 +376,8 @@ func _setup_party() -> void:
 	_nameplates.set_party(_client.get_party())
 
 
-# Crea (de nuevo, si ya había uno) el menú social: el último hijo, por encima de lo demás.
+# Crea (de nuevo, si ya había uno) el menú social: por encima del chat y del grupo, y por debajo de la pantalla
+# de muerte y del marcador, que sigue siendo el último hijo.
 func _setup_social_menu() -> void:
 	if is_instance_valid(_social_menu):
 		remove_child(_social_menu)
@@ -384,6 +385,7 @@ func _setup_social_menu() -> void:
 	_social_menu = SocialMenu.new()
 	_social_menu.name = "MenuSocial"
 	add_child(_social_menu)
+	move_child(_social_menu, _death.get_index())
 	_social_menu.setup(_client, _chat, _camera_rig)
 
 

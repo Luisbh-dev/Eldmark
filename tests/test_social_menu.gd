@@ -312,6 +312,8 @@ func test_the_hud_opens_the_menu_on_the_player_under_the_crosshair() -> void:
 	var menu: SocialMenu = hud.get_social_menu()
 	if not assert_not_null(menu, "el HUD en red tiene menú social"):
 		return
+	assert_true(menu.get_index() < hud.get_death_screen().get_index(), "por debajo de la pantalla de muerte")
+	assert_true(menu.get_index() < hud.get_scoreboard().get_index(), "y del marcador, que sigue siendo el último")
 	var bare := HUD.new()
 	assert_null(bare.get_social_menu(), "el sandbox no tiene menú social")
 	bare.free()
