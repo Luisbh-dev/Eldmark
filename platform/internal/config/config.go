@@ -124,8 +124,8 @@ type Config struct {
 
 	Argon2 Argon2
 	// MinProtocol es el protocolo mínimo del cliente (por debajo, 426). 0 en dev y test sin la
-	// variable: entonces vale el protocol_version de progression_rules.json, que lee quien
-	// monte la API pública (plataforma.md P2) con [Config.ResolveMinProtocol].
+	// variable: entonces vale el protocol_version de progression_rules.json (internal/gamedata),
+	// que serve resuelve con [Config.ResolveMinProtocol].
 	MinProtocol int
 
 	OpenRealms           []Realm

@@ -1,9 +1,13 @@
 extends TestCase
 ## Pruebas de las reglas de nombres de personaje ([NameRules], SOC-01): nombres válidos e
 ## inválidos con su motivo, textos, reservados, clave de comparación (colisiones por tildes y
-## mayúsculas) y nombre por defecto.
+## mayúsculas) y nombre por defecto. Los casos de [code]tests/fixtures/names/[/code] los lee también
+## la plataforma en Go ([code]internal/names[/code], docs/plataforma.md §4.4): las dos implementaciones
+## tienen que dar lo mismo.
 
 const OK: int = NameRules.Reason.OK
+## Casos compartidos con Go: [code][{name, reason, key}][/code], con el motivo en su código de la API.
+const SHARED_CASES_PATH: String = "res://tests/fixtures/names/name_rules_cases.json"
 
 
 func test_valid_names() -> void:
@@ -170,3 +174,37 @@ func test_default_name() -> void:
 		assert_false(seen.has(display_name), "semillas distintas, nombres distintos (%d)" % seed_value)
 		seen[display_name] = true
 
+
+func test_shared_cases_with_the_platform() -> void:
+	var json: JSON = JSON.new()
+	assert_eq(json.parse(FileAccess.get_file_as_string(SHARED_CASES_PATH)), OK, "los casos son JSON válido")
+	var cases: Array = json.data
+	assert_true(cases.size() >= 100, "hay casos de todos los motivos (%d)" % cases.size())
+	var reasons_seen: Dictionary = {}
+	var names_seen: Dictionary = {}
+	for case: Dictionary in cases:
+		var display_name: String = case["name"]
+		var label: String = "'%s'" % display_name.c_escape()
+		assert_false(names_seen.has(display_name), "%s no se repite" % label)
+		names_seen[display_name] = true
+		assert_eq(NameRules.reason_code(NameRules.validate(display_name)), case["reason"], "motivo de %s" % label)
+		assert_eq(NameRules.normalize_key(display_name), case["key"], "clave de %s" % label)
+		reasons_seen[case["reason"]] = true
+	for reason: int in NameRules.Reason.values():
+		if reason != NameRules.Reason.TAKEN:
+			assert_true(reasons_seen.has(NameRules.reason_code(reason)),
+					"hay casos de %s" % NameRules.reason_code(reason))
+
+
+func test_reason_codes() -> void:
+	var seen: Dictionary = {}
+	for reason: int in NameRules.Reason.values():
+		var code: String = NameRules.reason_code(reason)
+		assert_false(code.is_empty(), "el motivo %d tiene código" % reason)
+		assert_false(seen.has(code), "el código %s es único" % code)
+		seen[code] = true
+		assert_eq(NameRules.reason_from_code(code), reason, "ida y vuelta de %s" % code)
+	assert_eq(NameRules.reason_code(NameRules.Reason.TOO_SHORT), "too_short", "too_short")
+	assert_eq(NameRules.reason_code(NameRules.Reason.INVALID_CHARACTER), "invalid_character", "invalid_character")
+	assert_eq(NameRules.reason_code(99), "", "un motivo desconocido no tiene código")
+	assert_eq(NameRules.reason_from_code("no_existe"), -1, "un código desconocido")

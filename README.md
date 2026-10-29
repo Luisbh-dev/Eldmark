@@ -216,6 +216,18 @@ En desarrollo (`ELDMARK_MAIL=log`, por defecto) los correos de las cuentas no sa
 Los textos legales que se aceptan al registrarse son los borradores de `platform/legal/`, que van dentro del
 binario (`ELDMARK_LEGAL_DIR` los cambia por los de otra carpeta).
 
+Los personajes (`/v1/worlds/{w}/characters`, `POST /v1/characters/{id}/enter`) guardan su progreso, hasta que
+llegue el almacén de `docs/progresion.md` P7, en memoria: se pierde al reiniciar, y por eso `serve` no arranca
+en `staging` ni en `production`. `enter` solo da billete si hay una instancia de zona viva que admite el reino.
+Las reglas de los nombres y el protocolo mínimo por defecto salen de
+`platform/internal/gamedata/progression_rules.json`, que se genera desde Godot (la prueba
+`test_progression_rules_export.gd` avisa si se ha quedado viejo):
+
+```bash
+godot --headless --path . -s res://tools/progression/export_rules.gd             # lo escribe
+godot --headless --path . -s res://tools/progression/export_rules.gd -- --check  # solo lo compara
+```
+
 ## Exportación (cliente Windows y servidor Linux)
 
 `export_presets.cfg` (en texto, versionado) define dos destinos, y `tools/export.sh` (Linux y macOS) o

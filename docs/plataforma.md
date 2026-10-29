@@ -2134,3 +2134,132 @@ lo de arriba); los límites de comprobar nombres y de entrar (P2); la orden `adm
 crearán la primera cuenta `admin` y las de prueba (`dev.sh`, P9b); el mantenimiento programado y las noticias
 de `/v1/status` (TEC-28; hoy `status` solo mira `worlds.status`); las retenciones horarias (P9a); el progreso
 en la exportación (P9a); y el cliente (P8).
+
+### 19.3 P2 · personajes (TEC-24, SOC-13, PRG-41)
+
+**Qué hay.** Los personajes y la entrada al mundo de §4.4 y §4.5, montados en `serve`, y lo que comparten Go y
+Godot (reglas exportadas, casos de nombres y vectores del billete):
+
+| Pieza | Contenido |
+|---|---|
+| `internal/gamedata` | `progression_rules.json` con `//go:embed`. `Load` y `MustLoad` leen y comprueban `protocol_version` y `names`; las demás secciones no se miran aquí (son de progresion.md) y `Raw` da el archivo entero para `progress.LoadRules` |
+| `internal/names` | `NameRules` en Go (§14.2): `Validate` (con los valores de `NameRules.Reason` y su código de la API, `too_short`…), `NormalizeKey`, `IsReserved` y `ReasonText`, todo leído de la sección `names`; `names.Validate` y `names.NormalizeKey` usan las reglas incrustadas |
+| `internal/tickets` | El billete de §5.1: `Ticket`, `ZoneKey`, `Sign`, `Parse` (comprueba, en este orden, tamaño, versión, clave y firma: `ErrSize`, `ErrVersion`, `ErrKey`, `ErrMAC`), `NewID` (de 1 a 2^63 − 1) y `Lifetime` (10 s) |
+| `internal/persistence` | `progress.go`, la frontera de §7.5 con las firmas de progresion.md §13.2 (`ProgressStore`, `CreateParams`, `SaveKey`, `Summary`, `Querier`, `InvalidSaveError`, `ErrNotFound`, `CreateValidator`, `ValidationError`) y `ProvisionalValidator` (§4.4 paso 5); `memory.go`, el falso: `MemoryProgressStore` |
+| `internal/characters` | El servicio y sus rutas (`List`, `NameCheck`, `Create`, `Delete`, `Restore`, `Rename`, `Enter`) y la purga de personajes (`Purger`: `PurgeExpired`, el trabajo horario, y `PurgeAccountCharacters`, el `accounts.CharacterPurger` de P1) |
+| `internal/accounts` | `Service.Event` (la fila de `auth_events` en la transacción de quien llama) y `ErrCharactersBusy`, que la purga de cuentas registra como aviso |
+| `cmd/eldmark-platform` | `serve` resuelve el protocolo mínimo con `progression_rules.json`, elige el almacén del progreso y la validación (`progressStore`, §7.5), monta los personajes y añade el trabajo `characters_purge` (cada hora) |
+| Godot | `ProgressionRulesExport` (`scripts/shared/progression/`, secciones `protocol_version` y `names`), `tools/progression/export_rules.gd` (con `-- --check` no escribe) y `tests/test_progression_rules_export.gd`. En `NameRules`, `FOLDED` (antes `_FOLDED`, privada), `REASON_CODES`, `reason_code` y `reason_from_code` |
+| Datos de prueba | `tests/fixtures/names/name_rules_cases.json` (119 casos `{name, reason, key}`, con el motivo en su código de la API), que leen `test_name_rules.gd` e `internal/names`; `tests/fixtures/tickets/handoff_ticket_vectors.json`, para `HandoffTicket` (P4) |
+
+Rutas: las de §4.4 tal cual, todas con la regla del 426 y `RequireSession(false)` (una cuenta sancionada recibe
+403 con el motivo). Cuerpos que §4.4 no fijaba: crear (201), restaurar y renombrar responden `{character}`;
+borrar, `{restore_until}`; la lista, `{realm, unlock_at, slots, used, characters}` con `realm` null si la cuenta
+aún no tiene reino en ese mundo. Un personaje trae `race_id`, `appearance` (base64) y `last_zone_id` a null
+(y el nivel a 1) si el almacén no lo tiene. `name-check` da `code` y `reason` vacíos cuando no aplican. En los
+errores, `name_invalid` lleva `reason`; `realm_locked`, `realm` y `unlock_at`; `terms_required`, `documents`;
+`account_pending_deletion`, `deletion_at`; y `maintenance`, `until` (null hasta TEC-28). Las fechas, en Unix.
+
+**Para los paquetes siguientes.**
+
+- **P3** tiene la interfaz y el falso: `MemoryProgressStore.SetApplyHook` decide el resultado de `Apply` (un
+  `*InvalidSaveError`, un error de la base…), `Load` devuelve lo último aplicado sin `ops` y con los campos de
+  solo lectura, y `Apply` saca del cuerpo el nivel, el tiempo jugado y la última zona del resumen. El billete
+  queda en `enter_tickets` con `session_id`, `zone_instance_id` y `expires_at` (emisión + 10 s, con el reloj de
+  Go). `characters.last_entered_at` no se escribe: puede ponerlo la reclamación.
+- **P4** comprueba `HandoffTicket` con los vectores compartidos (ids en cadena, `String.to_int()`).
+- **progresion.md P3** añade sus secciones a `ProgressionRulesExport.build()` (una función por sección, como
+  `_names`) y comprueba las suyas en la misma prueba; **P7** implementa `ProgressStore` y `CreateValidator`
+  (`*progress.Rules`) y cambia solo `progressStore()` de `cmd/eldmark-platform/services.go`, que dejará de
+  negarse en `staging` y `production`.
+- **P7a**: `admin names block|unblock` escribe `name_blacklist` con `names.NormalizeKey`; la sanción `rename`
+  pone `characters.must_rename`, y P2 ya responde `rename_required` en `enter` y deja renombrar.
+- **P9a** tiene ya la purga de personajes (abajo); le quedan `reapply-purges`, la retención del libro con
+  `PurgeRetention` y el borrado de las lápidas vacías, y el progreso en la exportación.
+
+**Desviaciones y decisiones de la implementación:**
+
+- **Crear no es serializable** (§4.4 lo pedía): bloquea primero la fila de la cuenta, como borrar y restaurar,
+  y eso pone en serie todo lo que es de la cuenta (reino, huecos y límite diario); el nombre lo decide la clave
+  primaria de `character_names` con `insert … on conflict do update … where` la fila está reservada y vencida.
+  **Medido:** con serializable, 8 cuentas creando a la vez personajes de nombres distintos recibían 503 en 4 de
+  20 ejecuciones de la prueba (SSI con bloqueos de predicado sobre tablas pequeñas, que agotaban los 4 intentos
+  de `db.InTx`); con la fila de la cuenta, en ninguna de 25, y las dos creaciones del mismo nombre siguen dando
+  una sola fila y `name_taken` a las demás (25 de 25).
+- **El falso en `serve`.** Hasta progresion.md P7, `serve` usa `MemoryProgressStore` y `ProvisionalValidator` en
+  `dev` y `test`, con un aviso en el registro: el progreso (raza, apariencia, nivel…) se pierde al reiniciar. En
+  `staging` y `production` no arranca («el almacén del progreso (docs/progresion.md P7) aún no existe…»).
+- **La purga de personajes llega ya en P2** (§14.1 la ponía en P9a): la de §11.2 en sus dos caminos de ahora
+  (plazo vencido, en el trabajo horario, y con la cuenta, en la purga de P1), con los bloqueos del arrendamiento
+  y de la fila del personaje, la lápida, `purge_log` y `ProgressStore.Purge`, y sin purgar con un arrendamiento
+  vivo (la vuelta siguiente lo reintenta; con la cuenta, `accounts.ErrCharactersBusy` y la cuenta tampoco se
+  purga). Con la cuenta, el nombre de un personaje vivo queda reservado 30 días; el de uno borrado conserva su
+  reserva. Sin ella, la purga de P1 dejaba sin purgar toda cuenta con personajes.
+- **Restaurar** un personaje que no está borrado lo devuelve tal cual (200); fuera de plazo o purgado, 404.
+  **Borrar** uno ya borrado, 404.
+- **Renombrar** sin `must_rename` da 409 `rename_not_required` (código nuevo); con el personaje en el mundo,
+  `character_busy`; al mismo nombre con otras mayúsculas o tildes, `name_taken`.
+- **Validación provisional:** una raza de otro reino es `wrong_realm` y una que no existe, `unknown`; una
+  apariencia que no es base64 de 8 B o un reino desconocido son 400 `validation` (`appearance` o `realm:
+  invalid`) antes de abrir la transacción, como un campo que falta (`required`).
+- **`enter`.** El mantenimiento (`worlds.status = 'maintenance'`, 503 `maintenance` salvo para `admin`) se mira
+  después de las sanciones, que ya mira `RequireSession`, y no antes como en §4.5. `worlds.status = 'locked'`
+  no hace nada todavía. La última zona vale si tiene un canal vivo que admite el reino **y con sitio**; si todos
+  están llenos, la de entrada (§4.5 no lo decía). No se ofrece una instancia con un canal fuera de 0–255 (el
+  billete lo lleva en un u8). No mira el latido: dar por perdida una instancia es del trabajo de P3. Un
+  `ticket_id` que choca con la clave primaria se cambia por otro (hasta tres intentos).
+- **Límites:** `name-check`, 30 por minuto y sesión, y `enter`, 10 por minuto y cuenta, en memoria; crear y
+  borrar, 5 al día con `auth_events`. El 429 de crear y borrar lleva lo que falta para que salga de las 24 h la
+  más vieja de las 5.
+- **`NormalizeKey`** pasa cada carácter a minúscula con `unicode.ToLower`, como `String.to_lower()`; los 119
+  casos compartidos (con invisibles, combinantes, cirílico y anchura completa) dan lo mismo en los dos lados.
+- **`progression_rules.json`** lo crea este paquete (§4.4: «quien llegue antes»), con `protocol_version` 5, la de
+  main (la sube P4), y `names`. Una prueba de Go comprueba que su `protocol_version` es el de
+  `net_protocol.gd`. En `dev` y `test` sin `ELDMARK_MIN_PROTOCOL`, el mínimo pasa de 0 (P1) a ese número.
+- **Vectores del billete:** `handoff_ticket_vectors.json` lo genera la prueba de Go (`go test ./internal/tickets
+  -run TestSharedVectors -update`) y la prueba falla si el archivo no coincide. Lleva las dos claves en
+  hexadecimal, cinco huellas de zona, el vector de §5.1 (también en el base64 de §4.5), uno con `ticket_id` 2^63
+  − 1 y `character_id` 2^53 + 1, uno de traspaso (mundo 513, canal 255, fechas al final del u32) y 9 inválidos
+  con el error que toca (`mac`, `key`, `version` o `size`).
+
+**Pruebas** (`internal/characters`, con la base efímera, el reloj falso y el falso del progreso; 26): todas las
+de §15 P2 (casos de nombres en Go y en Godot; dos creaciones simultáneas del mismo nombre, en tres rondas de 8
+cuentas; «Anéira» frente a «ANEIRA» y «Aneira»; reino bloqueado; huecos con un borrado en plazo; el sexto
+personaje del día; crear y borrar enseguida libera el nombre en `restore_until`; raza y plantilla que no valen;
+borrar, restaurar y nombre reservado; `enter` sin zona viva; `enter` elige la última zona; el vector del
+billete), y además: creaciones simultáneas de cuentas distintas, lista negra, reino que se libera a los 30 días
+y se cambia, derechos de huecos (también revocados), un borrado fuera de plazo que deja de ocupar, campos que
+faltan o sobran, cuenta con el borrado pedido y cuenta suspendida (403 en todas las rutas), límite de
+`name-check`, confirmación del borrado, borrar con el personaje en el mundo y el límite de borrados, personajes
+de otra cuenta (404), renombrado forzado (también en el mundo), el billete de `enter` leído con `tickets.Parse`
+y su fila en `enter_tickets`, DTLS, la elección de zona y canal (último canal, lleno, reino que no admite,
+parada), las comprobaciones de `enter` en orden (correo, textos, borrado pendiente, mantenimiento y `admin`,
+borrado, límite), un solo personaje de la cuenta en el mundo, la purga horaria (con arrendamiento vivo, lápida,
+nombre reservado, repetida), una restauración que gana a la purga y la purga de una cuenta con personajes.
+Además: `names` (casos compartidos, reglas de otros datos, UTF-8 roto), `tickets` (vector, errores, 1000 idas y
+vueltas, `NewID`, vectores compartidos), `persistence` (errores, validación provisional, el falso), `gamedata`
+y `serve` (personajes montados, protocolo mínimo de las reglas, y se niega con el falso en `staging` y
+`production`). En Godot: `test_progression_rules_export.gd` (5) y dos pruebas nuevas en `test_name_rules.gd`.
+
+**Medido** (esta máquina, 4 núcleos, Go 1.24.7, PostgreSQL 16.15):
+
+| Qué | Tiempo |
+|---|---|
+| `go test -p 2 -count=1 ./...` con la caché de compilación caliente | 14 s; `internal/characters`, 3 s (26 pruebas) |
+| `go test -race` de los paquetes nuevos y de `accounts` | 20 s, sin carreras |
+| Las dos pruebas de concurrencia, 25 veces seguidas | 14 s, sin fallos |
+| Binario | 19,8 MB (19,6 MB en P1) |
+
+Godot: `--import` da los mismos avisos y errores con y sin los cambios (las fugas al salir de siempre), y la suite
+entera pasa (1924 pruebas en 1048 s). Un script de GDScript desechable leyó los vectores del billete con
+`JSON.new().parse`: las huellas (`sha256_buffer().decode_u32(0)`), las firmas con la clave 1 (`HMACContext`) y el
+`ticket_id` de más de 2^53 (`String.to_int()`) dan lo mismo que en Go.
+
+**Sin comprobar:** `enter` contra una zona de verdad (la reclamación es de P3; el billete en la zona, de P4; los
+dos juntos, de P10); `NormalizeKey` con caracteres cuyo paso a minúsculas difiera entre las tablas Unicode de Go
+y de Godot (ninguno de los casos lo hace).
+
+**Queda para después:** la reclamación que consume el billete y `last_entered_at` (P3); `HandoffTicket` con los
+vectores (P4); `admin names block|unblock` y la sanción `rename` (P7a); el cliente (P8); `reapply-purges`, la
+retención del libro, el borrado de las lápidas vacías y el progreso en la exportación (P9a); las secciones de
+progresion.md en las reglas exportadas y `*progress.Rules` con el almacén de verdad (progresion.md P3 y P7).

@@ -66,8 +66,9 @@ const (
 )
 
 // CharacterPurger purga los personajes de una cuenta dentro de la transacción de su purga
-// (plataforma.md §11.2: lápida, ProgressStore.Purge…). Lo aportan los personajes (P2) y la
-// privacidad (P9a); sin él, una cuenta con personajes sin purgar no se purga y se registra.
+// (plataforma.md §11.2: lápida, ProgressStore.Purge…). Lo aporta characters.Purger (P2); sin él,
+// una cuenta con personajes sin purgar no se purga y se registra. Con un personaje en el mundo
+// devuelve un error que envuelve [ErrCharactersBusy] y no purga nada.
 type CharacterPurger interface {
 	PurgeAccountCharacters(ctx context.Context, tx pgx.Tx, accountID int64, at time.Time) error
 }
@@ -80,7 +81,7 @@ type Options struct {
 	Mail       mail.Sender
 	Clock      clock.Clock // por defecto, el del sistema
 	Legal      *legal.Set
-	Characters CharacterPurger // nil hasta P2/P9a
+	Characters CharacterPurger // characters.Purger (P2); nil: las cuentas con personajes no se purgan
 	// MinProtocol es el protocolo mínimo del cliente para la regla del 426 (ya resuelto con
 	// config.ResolveMinProtocol; 0 mientras no haya progression_rules.json: basta la cabecera).
 	MinProtocol int
@@ -318,6 +319,12 @@ func (s *Service) event(ctx context.Context, q execer, accountID int64, kind str
 	_, err := q.Exec(ctx, `insert into auth_events (account_id, kind, ip, user_agent, at) values ($1, $2, $3, $4, $5)`,
 		nullID(accountID), kind, nullIP(meta.IP), nullString(cleanUserAgent(meta.UserAgent)), at)
 	return err
+}
+
+// Event escribe una fila en auth_events dentro de la transacción de quien llama: los personajes
+// (P2) anotan así character_create y character_delete, que cuentan en sus límites diarios (§4.2).
+func (s *Service) Event(ctx context.Context, tx pgx.Tx, accountID int64, kind string, meta ClientMeta, at time.Time) error {
+	return s.event(ctx, tx, accountID, kind, meta, at)
 }
 
 // eventLogged escribe la fila fuera de la transacción de la petición; un fallo solo se registra.

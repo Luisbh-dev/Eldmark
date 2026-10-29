@@ -1683,3 +1683,35 @@ documento está cada regla. Lo que las filas de arriba nombran y ya no existe (`
 `characters.level`, `world_id` en las tablas del progreso, `CharacterRecord`, tablas de solo añadir sin
 clave ajena, reglas de posición y vida en plataforma.md, `ServerMain` que no arranca, la herramienta de
 plataforma.md, la plantilla en la primera entrada) es anterior a la conciliación.
+
+## 19. Implementación
+
+Lo que hizo cada paquete, en qué se aparta de este documento y lo que se midió. Cada paquete añade su
+apartado al terminar.
+
+### 19.1 Lo que adelantó plataforma.md P2
+
+plataforma.md P2 (su §19.3) llegó antes que P3 de aquí, así que creó lo que §13.4 da a «quien llegue antes»:
+
+- **Reglas exportadas.** `ProgressionRulesExport` (`scripts/shared/progression/progression_rules_export.gd`)
+  con `build()` y `to_json()` (claves ordenadas, tabuladores y un salto de línea al final) y las dos secciones de
+  plataforma.md, `protocol_version` y `names`; `tools/progression/export_rules.gd`, que escribe
+  `platform/internal/gamedata/progression_rules.json` (con `-- --check` solo compara); y la única prueba,
+  `tests/test_progression_rules_export.gd`: `build()` determinista, el archivo al día, claves ordenadas y las
+  secciones de plataforma.md. En Go, `internal/gamedata` lo incrusta y da `Raw()` entero.
+- **La frontera de §13.2** en `platform/internal/persistence/progress.go`, con las firmas tal cual
+  (`ProgressStore`, `Querier`, `CreateParams`, `SaveKey`, `Summary`, `InvalidSaveError`, `ErrNotFound`,
+  `CreateValidator` y `ValidationError`), la validación provisional (`ProvisionalValidator`) y el falso
+  (`MemoryProgressStore`, en `memory.go`), que `serve` usa en `dev` y `test` hasta tener P7 (en `staging` y
+  `production` no arranca con él).
+
+**Para P3 de aquí:** cada sección nueva (`races`, `appearance`, `starter_templates`, `items`, `level_curve`,
+`currencies`, `reasons`, `containers` y `combat`) entra en `build()` con su propia función, como `_names`, y sus
+comprobaciones van en la misma prueba; después se vuelve a exportar el archivo y se sube con el cambio.
+`gamedata` no mira las claves que no son de plataforma.md, así que nada de Go se rompe al añadirlas.
+**Para P7:** `progress.LoadRules(gamedata.Raw())`; `*progress.Rules` implementa `persistence.CreateValidator` y
+el almacén `persistence.ProgressStore`; `serve` los elige cambiando solo `progressStore()` de
+`platform/cmd/eldmark-platform/services.go`. La plataforma ya usa `Summaries` así: `LastZoneID` vacío es «nunca ha
+entrado», y un personaje que el almacén no devuelve sale en la lista con raza, apariencia y última zona a null y
+nivel 1. `Purge` ya se llama desde la purga de personajes de plataforma.md (§11.2), dentro de su transacción y con
+el arrendamiento y la fila del personaje bloqueados.

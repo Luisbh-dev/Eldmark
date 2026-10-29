@@ -18,8 +18,13 @@ const (
 )
 
 // ErrHasCharacters es la causa de una purga que no se hace porque la cuenta tiene personajes sin
-// purgar y no hay [CharacterPurger] (hasta P2/P9a).
+// purgar y no hay [CharacterPurger].
 var ErrHasCharacters = errors.New("accounts: la cuenta tiene personajes sin purgar")
+
+// ErrCharactersBusy es la causa (errors.Is) de una purga que no se hace porque algún personaje de
+// la cuenta tiene un arrendamiento vivo (§11.2, paso 3): el [CharacterPurger] la devuelve y la
+// purga horaria lo vuelve a intentar en la vuelta siguiente.
+var ErrCharactersBusy = errors.New("accounts: un personaje de la cuenta está en el mundo")
 
 // Motivos de una purga: qué condición se vuelve a mirar con la fila bloqueada.
 type purgeReason int
@@ -83,6 +88,9 @@ func (s *Service) PurgeDue(ctx context.Context) error {
 		case errors.Is(err, ErrHasCharacters):
 			s.log.Warn("cuenta sin purgar: tiene personajes y aún no hay quien los purgue", "account", d.id,
 				"reason", d.reason.String())
+		case errors.Is(err, ErrCharactersBusy):
+			s.log.Warn("cuenta sin purgar: un personaje está en el mundo; se reintenta en la vuelta siguiente",
+				"account", d.id, "reason", d.reason.String())
 		case err != nil:
 			errs = append(errs, fmt.Errorf("cuenta %d: %w", d.id, err))
 		case done:
