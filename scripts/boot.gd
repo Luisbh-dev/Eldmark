@@ -3,7 +3,8 @@ extends Node
 ##
 ## Lee los argumentos de usuario de la línea de comandos (los que van después
 ## de [code]--[/code]) y decide en qué modo arranca el juego:
-## [br]- [code]--server[/code]: servidor dedicado (pendiente, fase 2).
+## [br]- [code]--server[/code]: servidor dedicado de una zona ([ServerMain], siempre con
+## [code]--headless[/code]; opciones en [ServerConfig]). Tiene prioridad sobre el resto.
 ## [br]- [code]--zone=<id>[/code]: zona que se carga ([code]vado_gris[/code] por defecto,
 ## [code]test_world[/code] para el circuito de la fase 1). Ver [Zones].
 ## [br]- [code]--realm=<reino>[/code]: reino del jugador ([code]vardheim[/code] por defecto o
@@ -18,19 +19,26 @@ extends Node
 ## [code]godot --path . -- --zone=vado_gris --realm=solmarch --demo --shots=C:/ruta/capturas --quit-after-demo[/code]
 
 const CLIENT_MAIN_SCENE: String = "res://scenes/client/client_main.tscn"
+const SERVER_MAIN_SCENE: String = "res://scenes/server/server_main.tscn"
 const SERVER_ARG: String = "--server"
 const DEMO_ARG: String = "--demo"
 const SHOTS_ARG_PREFIX: String = "--shots="
 const QUIT_AFTER_DEMO_ARG: String = "--quit-after-demo"
 const ZONE_ARG_PREFIX: String = "--zone="
 const REALM_ARG_PREFIX: String = "--realm="
+## Argumentos de los modos en red (docs/red.md, sección 1.2) que el sandbox ignora sin avisar: los
+## interpretan [ServerConfig] y los modos de cliente en red, no [method parse_client_options].
+const NETWORK_ARGS: Array[String] = ["--local", "--bot"]
+const NETWORK_ARG_PREFIXES: Array[String] = [
+	"--connect=", "--bots=", "--name=", "--port=", "--net-sim=", "--quit-after-ticks=",
+	"--report=", "--state-log=", "--bot-seed=", "--bot-cheat=",
+]
 
 
 func _ready() -> void:
 	var args: PackedStringArray = OS.get_cmdline_user_args()
 	if args.has(SERVER_ARG):
-		print("[Eldmark] Modo servidor: pendiente (fase 2)")
-		get_tree().quit()
+		_start_server(args)
 		return
 	_start_client(args)
 
@@ -71,6 +79,8 @@ static func parse_client_options(args: PackedStringArray) -> Dictionary:
 			else:
 				warnings.append("Reino desconocido '%s' (hay: %s); se usa %s" % [realm,
 						", ".join(Zones.REALMS), Zones.DEFAULT_REALM])
+		elif _is_network_arg(arg):
+			continue
 		else:
 			warnings.append("Argumento desconocido: %s" % arg)
 
@@ -83,6 +93,23 @@ static func parse_client_options(args: PackedStringArray) -> Dictionary:
 
 	options["warnings"] = warnings
 	return options
+
+
+## true si [param arg] es un argumento de los modos en red (ver [constant NETWORK_ARGS]).
+static func _is_network_arg(arg: String) -> bool:
+	if NETWORK_ARGS.has(arg):
+		return true
+	for prefix: String in NETWORK_ARG_PREFIXES:
+		if arg.begins_with(prefix):
+			return true
+	return false
+
+
+## Rellena [member ServerMain.config] con los argumentos de usuario y cambia a la escena del
+## servidor dedicado.
+func _start_server(args: PackedStringArray) -> void:
+	ServerMain.config = ServerConfig.from_args(args)
+	get_tree().change_scene_to_file.call_deferred(SERVER_MAIN_SCENE)
 
 
 ## Pasa las opciones a [ClientMain] mediante sus variables estáticas y cambia
