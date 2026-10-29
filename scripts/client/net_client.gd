@@ -113,6 +113,10 @@ const TEXT_BAD_TICK_RATE: String = "El servidor simula a %d ticks por segundo y 
 ## enviarlo y puede modificarlo (versión, huella, reino...). Debe estar puesto antes de que el
 ## transporte empiece a autenticar, es decir, justo después de [method start].
 var hello_hook: Callable = Callable()
+## Gancho de pruebas: se llama con el [NetMessages.InputBatch] de cada tick justo antes de codificarlo y
+## puede modificarlo (por ejemplo, falsear los [code]view_offsets_q[/code] del rebobinado). Lo mismo que
+## hace el modo [code]rewind[/code] del bot tramposo ([BotCheater]), pero a medida para una prueba.
+var batch_hook: Callable = Callable()
 ## Tiempo de espera de ENet al conectar (ms). [constant CONNECT_TIMEOUT_MS] salvo que quien llama a
 ## [method start] ponga otro antes (el modo [code]--local[/code] usa uno corto para reintentar).
 var connect_timeout_ms: int = CONNECT_TIMEOUT_MS
@@ -717,6 +721,8 @@ func _send_input_batch() -> void:
 		batch.view_offsets_q.append(_view_offsets_q[tick % ClientPrediction.HISTORY_SIZE])
 	if batch.inputs.is_empty():
 		return
+	if batch_hook.is_valid():
+		batch_hook.call(batch)
 	var bytes: PackedByteArray = batch.encode()
 	if bytes.is_empty():
 		return

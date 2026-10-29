@@ -1292,14 +1292,26 @@ O(entidades); por cliente solo hay copias de memoria.
     24 ticks de rebobinado. El `--net-sim` del servidor sí cuenta (es retardo real para él); el del
     cliente no: en producción equivaldría a fingir lag, así que para probar con lag simulado se usa
     el del servidor.
-  - **`lead(T)`** es la antelación medida de esa entrada.
+  - **Con jitter, el mínimo no basta (K5).** La vista de un jugador honrado va atrás
+    `lead + RTT de ese momento + edad del snapshot + interpolación`; el mínimo de la ventana se queda
+    por debajo del viaje de un tick cualquiera (con `rtt=150,jitter=30` el mínimo medido es 7 ticks y
+    el máximo 13-14), así que con el mínimo solo el tope rechazaba un 20 % de los ticks activos de un
+    bot honrado (y le sumaba sospecha). Por eso el tope usa `rtt = max(mínimo, máximo)` de la misma
+    ventana, **con la misma cota independiente** (`ServerPeer.rtt_peak_ticks`): atrasar los acks no da
+    más que `PEER_ROUND_TRIP_TIME + retardo del NetSim + 3`, con mínimo o con máximo.
+  - **`lead(T)`** es la antelación medida de esa entrada (se cancela con la del cliente: la entrada que
+    llega tarde por la red cuenta con menos antelación y con más viaje).
   - **`interp_delay_q`** no pasa de 96 (12 ticks × 8, el máximo del `InterpolationClock`): el
     servidor lo limita y suma un aviso a quien envíe más (`NetProtocol.MAX_INTERP_DELAY_Q`). La
     fórmula ya lo acota con `clamp(…, 4, 12)`.
   - **Fingir lag no da más rebobinado.**
   - **Por qué 24 ticks.** El rebobinado real es RTT + margen + retardo de interpolación, unos 20
     ticks con 200 ms de RTT. El tope de 24 ticks (400 ms) cubre hasta ~250 ms de RTT con el
-    retardo normal.
+    retardo normal. **Medido en K5:** con 150 ms de RTT y 30 ms de jitter los bots piden de 20 a
+    22,5 ticks (antelación 5-8, interpolación 6-7, viaje 9-11), de modo que el tope de 24 cubre
+    como mucho unos 170-180 ms de RTT con el margen de `TickSync` y el retardo de interpolación de
+    hoy, no 250 ms: con 200 ms de RTT un jugador honrado ya choca con el tope (decisión de diseño
+    pendiente: subir `MAX_REWIND_TICKS` o reducir el margen de `TickSync`).
   - **Prueba del golpe.** La cápsula se reconstruye a partir de la muestra y se prueba con
     matemática (cápsula contra arco y rayo contra cápsula), o con `intersect_shape` sobre una
     forma suelta. Nunca se mueven cuerpos hacia atrás.

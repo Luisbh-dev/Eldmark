@@ -324,10 +324,11 @@ class _PlayerRecord:
 		}
 
 
-## Mínimo del RTT en ticks de los últimos 90-120 ticks, en cuatro huecos de 30 ticks.
+## Mínimo y máximo del RTT en ticks de los últimos 90-120 ticks, en cuatro huecos de 30 ticks.
 class _RttWindow:
 	var _ids: PackedInt32Array = PackedInt32Array()
 	var _mins: PackedInt32Array = PackedInt32Array()
+	var _maxs: PackedInt32Array = PackedInt32Array()
 
 
 	func _init() -> void:
@@ -335,6 +336,8 @@ class _RttWindow:
 		_ids.fill(-1)
 		_mins.resize(_RTT_BUCKETS)
 		_mins.fill(_INT_MAX)
+		_maxs.resize(_RTT_BUCKETS)
+		_maxs.fill(-1)
 
 
 	func add(now_tick: int, sample: int) -> void:
@@ -343,7 +346,9 @@ class _RttWindow:
 		if _ids[slot] != bucket_id:
 			_ids[slot] = bucket_id
 			_mins[slot] = _INT_MAX
+			_maxs[slot] = -1
 		_mins[slot] = mini(_mins[slot], sample)
+		_maxs[slot] = maxi(_maxs[slot], sample)
 
 
 	# Mínimo de la ventana, o -1 si no hay muestras en ella.
@@ -354,6 +359,16 @@ class _RttWindow:
 			if _ids[slot] > current - _RTT_BUCKETS and _ids[slot] <= current:
 				best = mini(best, _mins[slot])
 		return best if best != _INT_MAX else -1
+
+
+	# Máximo de la ventana, o -1 si no hay muestras en ella.
+	func get_max(now_tick: int) -> int:
+		var current: int = now_tick / _RTT_BUCKET_TICKS
+		var best: int = -1
+		for slot: int in _RTT_BUCKETS:
+			if _ids[slot] > current - _RTT_BUCKETS and _ids[slot] <= current:
+				best = maxi(best, _maxs[slot])
+		return best
 
 
 func _init() -> void:
@@ -1875,7 +1890,9 @@ func _handle_input_batch(peer: ServerPeer, bytes: PackedByteArray) -> void:
 			_rtt[peer.peer_id] = window
 		var next_tick: int = _tick + 1
 		window.add(next_tick, next_tick - batch.ack_snapshot_tick)
-		peer.rtt_ticks = mini(maxi(window.get_min(next_tick), 0), _max_plausible_rtt_ticks(peer))
+		var plausible: int = _max_plausible_rtt_ticks(peer)
+		peer.rtt_ticks = mini(maxi(window.get_min(next_tick), 0), plausible)
+		peer.rtt_peak_ticks = mini(maxi(window.get_max(next_tick), peer.rtt_ticks), plausible)
 	for i: int in batch.inputs.size():
 		peer.input_queue.push(batch.inputs[i], batch.view_offsets_q[i], _tick + 1)
 

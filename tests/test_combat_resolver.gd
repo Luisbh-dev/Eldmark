@@ -432,6 +432,33 @@ func test_rewind_beyond_the_cap_is_rejected_and_counts_suspicion() -> void:
 	assert_eq(peer.suspicion_score, 2)
 
 
+## Con jitter, el mínimo del RTT de la ventana se queda por debajo del viaje de un tick cualquiera: un
+## jugador honrado cuya vista va más atrás de lo que cubre el mínimo no debe ser rechazado ni
+## sospechoso. El tope usa el mayor de los dos (el máximo ya viene acotado por una fuente que el cliente
+## no controla).
+func test_the_cap_covers_the_worst_round_trips_of_the_window_not_only_the_best() -> void:
+	var peer: ServerPeer = _lagged_peer()
+	peer.rtt_peak_ticks = 10
+	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
+	_fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
+	CombatFixture.start_light_active(attacker, S)
+	for tick: int in range(S - 30, S):
+		for fighter: Combatant in _fighters:
+			CombatFixture.record(_history, fighter, tick)
+	# Con el mínimo (4) el tope sería 12 y 17 ticks se rechazarían; con el máximo (10) es 18.
+	assert_eq(CombatResolver.allowed_rewind(peer.rtt_ticks, 0, peer.interp_delay_q), 12)
+	_set_view_offset(attacker, 17 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	var hits: Array[CombatResolver.Hit] = _resolve()
+	if assert_eq(hits.size(), 1, "una vista de 17 ticks entra"):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT)
+		assert_near(hits[0].view_tick, float(S - 17), 1e-4, "sin recortar")
+	assert_eq(peer.suspicion_score, 0, "y no suma sospecha")
+	# El tope sigue siendo un tope: 20 ticks pasan del máximo (18 + 1).
+	_set_view_offset(attacker, 20 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	assert_eq(_outcomes(_resolve()), [CombatResolver.Outcome.REWIND_REJECTED], "20 ticks, no")
+	assert_eq(peer.suspicion_score, 1)
+
+
 func test_substituted_input_uses_the_last_real_rewind() -> void:
 	var peer: ServerPeer = _lagged_peer()
 	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)

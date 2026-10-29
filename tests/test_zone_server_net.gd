@@ -768,6 +768,11 @@ func test_a_client_cannot_fake_lag_with_late_acks() -> void:
 	assert_true(peer.rtt_ticks <= bound,
 			"el RTT medido (%d ticks) no pasa del que permite ENet (%d)" % [peer.rtt_ticks, bound])
 	assert_true(peer.rtt_ticks <= 6, "en loopback es de pocos ticks (%d)" % peer.rtt_ticks)
+	# El máximo de la ventana, que usa el tope del rebobinado, también lo acota la fuente independiente:
+	# atrasar los acks no da más que el RTT de ENet más el margen.
+	assert_true(peer.rtt_peak_ticks >= peer.rtt_ticks and peer.rtt_peak_ticks <= bound,
+			"el máximo del RTT (%d ticks) tampoco pasa de lo que permite ENet (%d)"
+			% [peer.rtt_peak_ticks, bound])
 	assert_eq(peer.strikes_total, 0, "sin avisos: fingir lag no es un paquete ilegal")
 
 
@@ -785,6 +790,8 @@ func test_the_server_side_net_sim_still_raises_the_measured_rtt() -> void:
 	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
 	assert_true(peer.rtt_ticks >= 10,
 			"con 200 ms de retardo simulado (12 ticks) el RTT medido lo refleja (%d)" % peer.rtt_ticks)
+	assert_true(peer.rtt_peak_ticks >= peer.rtt_ticks, "y el máximo de la ventana nunca baja del mínimo (%d)"
+			% peer.rtt_peak_ticks)
 
 
 ## interp_delay_q no puede pasar del máximo del reloj de interpolación del cliente (12 ticks × 8):

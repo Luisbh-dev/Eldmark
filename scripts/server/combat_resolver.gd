@@ -11,7 +11,9 @@ extends RefCounted
 ## [br][br]
 ## Para cada atacante:
 ## [br]1. [b]Rebobinado.[/b] [method InputQueue.get_rewind_params] da [code]view_offset_q[/code] y
-## la antelación de su entrada; el tope [method allowed_rewind] sale de red.md, sección 10. Con más
+## la antelación de su entrada; el tope [method allowed_rewind] sale de red.md, sección 10 (con el mayor de
+## [member ServerPeer.rtt_ticks] y [member ServerPeer.rtt_peak_ticks]: con jitter el mínimo se queda
+## corto para un jugador honrado). Con más
 ## de [code]allowed + 1[/code] ticks el golpe no se prueba (puntuación de sospecha del peer y
 ## línea en el registro). Si no, [code]view_tick = clamp(s − view_offset_q / 16, s − allowed, s)[/code].
 ## Los jugadores falsos y los PNJ no rebobinan ([code]view_tick = s[/code]).
@@ -145,8 +147,8 @@ func _view_tick_of(attacker: Combatant, s: int) -> float:
 	if attacker.peer == null or attacker.queue == null:
 		return float(s)
 	var params: Vector2i = attacker.queue.get_rewind_params(s)
-	var allowed: int = allowed_rewind(attacker.peer.rtt_ticks, params.y,
-			attacker.peer.interp_delay_q)
+	var allowed: int = allowed_rewind(maxi(attacker.peer.rtt_ticks, attacker.peer.rtt_peak_ticks),
+			params.y, attacker.peer.interp_delay_q)
 	if params.x > (allowed + 1) * VIEW_OFFSET_Q_SCALE:
 		return NAN
 	return clampf(float(s) - float(params.x) / float(VIEW_OFFSET_Q_SCALE),

@@ -44,6 +44,11 @@ var ack_snapshot_tick: int = 0
 var interp_delay_q: int = 0
 ## Mínimo de (s - ack_snapshot_tick) en los últimos 120 ticks.
 var rtt_ticks: int = 0
+## Máximo de (s - ack_snapshot_tick) en los mismos 120 ticks, acotado igual que [member rtt_ticks] por
+## fuentes que el cliente no controla. Con jitter el mínimo se queda por debajo del viaje de ida y
+## vuelta de un tick cualquiera, y el tope del rebobinado (docs/red.md, sección 10) tiene que cubrir
+## también los viajes malos de un jugador honrado: el [CombatResolver] usa el mayor de los dos.
+var rtt_peak_ticks: int = 0
 ## Tick en el que conectó y empezó a autenticarse (para el plazo del HELLO).
 var connected_tick: int = 0
 ## Tick en el que empezó la carga de la zona (para el límite de CLIENT_READY).
