@@ -20,6 +20,8 @@ const OUTPUT_PATH: String = "res://data/routes/vado_gris.tres"
 const GATE_POINT: Vector2 = Vector2(-20.0, 0.0)
 const CIRCLE_POINT: Vector2 = Vector2(-8.5, 0.0)
 const CIRCLE_RADIUS: float = 5.0
+## El recinto de la empalizada (40 x 40 m, docs/zonas/vado_gris.md), medido desde la puerta: profundidad y ancho.
+const ENCLOSURE_SIZE: Vector2 = Vector2(40.0, 40.0)
 
 ## Rutas desde el punto de aparición del norte (Vardheim): (x, z).
 const VARDHEIM_ROUTES: Dictionary = {
@@ -41,6 +43,7 @@ func _initialize() -> void:
 	routes.gate_point = GATE_POINT
 	routes.circle_point = CIRCLE_POINT
 	routes.circle_radius = CIRCLE_RADIUS
+	routes.enclosure_size = ENCLOSURE_SIZE
 	for route: StringName in VARDHEIM_ROUTES:
 		var north := PackedVector2Array()
 		var south := PackedVector2Array()

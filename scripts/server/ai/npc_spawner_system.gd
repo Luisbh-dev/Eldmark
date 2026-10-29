@@ -114,6 +114,8 @@ var _removed_total: int = 0
 var _reinforcements_total: int = 0
 var _full_respawns: int = 0
 var _debug_enabled: bool = false
+# Definiciones que sustituyen a las del catálogo en este servidor (pruebas): id -> definición.
+var _overrides: Dictionary[StringName, NpcDefinition] = {}
 var _debug_entity: NetEntity = null
 ## [code](line: String) -> void[/code]: el registro del servidor, para la depuración.
 var log_sink: Callable = Callable()
@@ -161,6 +163,22 @@ func dispose() -> void:
 
 
 # --- Consultas --------------------------------------------------------------------------------
+
+## Sustituye en este servidor la definición [param id] del catálogo por [param definition] (null quita la
+## sustitución) para los PNJ que se creen desde ahora: lo usan las pruebas que necesitan PNJ más débiles sin tocar
+## [code]data/npcs/[/code] ni el catálogo, que comparte todo el proceso. [param definition] conserva el id y el número del
+## catálogo (el [code]npc_def_id[/code] del SPAWN sale de [member NpcDefinition.id]).
+func set_definition_override(id: StringName, definition: NpcDefinition) -> void:
+	if definition == null:
+		_overrides.erase(id)
+	else:
+		_overrides[id] = definition
+
+
+## La definición [param id] que usa este servidor: la sustituta, si la hay, o la del catálogo.
+func get_definition(id: StringName) -> NpcDefinition:
+	return _definition_of(id)
+
 
 ## El mundo que ven los cerebros (fichas, grupos, navegación).
 func get_world() -> NpcWorld:
@@ -307,7 +325,7 @@ func _collect_slots() -> void:
 		if fortress_id.is_empty() or owner_spawner_fortresses.has(fortress_id):
 			continue
 		for spawner: NpcSpawner in neutral_by_fortress[fortress_id]:
-			var base: NpcDefinition = NpcCatalog.get_definition(spawner.npc_id)
+			var base: NpcDefinition = _definition_of(spawner.npc_id)
 			if base != null and base.garrison_id != &"":
 				_add_slot(spawner, fortress_id, true)
 
@@ -345,7 +363,7 @@ func _desired(slot: Slot) -> Dictionary:
 	var realm: int = RealmCatalog.code_of(spawner.realm) if spawner.realm != &"" else RealmCatalog.NEUTRAL_CODE
 	var active: bool = false
 	if slot.mirror:
-		var base: NpcDefinition = NpcCatalog.get_definition(spawner.npc_id)
+		var base: NpcDefinition = _definition_of(spawner.npc_id)
 		if state != null and base != null and state.owner != RealmCatalog.NEUTRAL_CODE \
 				and state.phase != FortressState.Phase.CONSOLIDATING:
 			active = true
@@ -410,7 +428,7 @@ func _fill_slot(slot: Slot, tick: int) -> void:
 
 func _spawn(slot: Slot, tick: int) -> Member:
 	var wanted: Dictionary = slot.wanted if not slot.wanted.is_empty() else _desired(slot)
-	var definition: NpcDefinition = NpcCatalog.get_definition(wanted["definition"])
+	var definition: NpcDefinition = _definition_of(wanted["definition"])
 	if definition == null:
 		push_warning("[Eldmark] El generador '%s' pide la definición de PNJ '%s', que no existe"
 				% [slot.marker.name, wanted["definition"]])
@@ -572,7 +590,7 @@ func _process_requests(tick: int) -> void:
 
 # true si el puesto es el del capitán (su definición es un jefe).
 func _is_captain_slot(slot: Slot) -> bool:
-	var definition: NpcDefinition = NpcCatalog.get_definition(_desired(slot)["definition"])
+	var definition: NpcDefinition = _definition_of(_desired(slot)["definition"])
 	return definition != null and definition.is_boss
 
 
@@ -647,7 +665,7 @@ func _full_respawn(fortress_id: StringName, state: FortressState, tick: int) -> 
 # Crea [param count] PNJ de [param definition_id] alrededor de [param caller], ya en alerta con su objetivo. Devuelve
 # cuántos ha creado.
 func _spawn_reinforcements(caller: HfsmBrain, definition_id: StringName, count: int) -> int:
-	var definition: NpcDefinition = NpcCatalog.get_definition(definition_id)
+	var definition: NpcDefinition = _definition_of(definition_id)
 	if definition == null:
 		return 0
 	var origin: Vector3 = caller.get_position()
@@ -665,6 +683,11 @@ func _spawn_reinforcements(caller: HfsmBrain, definition_id: StringName, count: 
 		created += 1
 		member.brain.receive_alert(caller.get_target_id(), _world.tick)
 	return created
+
+
+func _definition_of(id: StringName) -> NpcDefinition:
+	var override: NpcDefinition = _overrides.get(id)
+	return override if override != null else NpcCatalog.get_definition(id)
 
 
 func _member_fortress(brain: HfsmBrain) -> StringName:

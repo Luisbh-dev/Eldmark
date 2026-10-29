@@ -7,9 +7,11 @@ extends Node
 ## imprime el informe) y [code]tests/test_siege_zone.gd[/code] (una versión corta dentro de la suite).
 ## [br][br]
 ## Apunta lo que hace falta para medir: cuándo llega cada bot a la puerta y por qué ruta, los avisos de guerra y
-## las muertes de jugadores. El servidor no tiene PNJ en este paquete: [method kill_captain] da por muerto al
-## capitán como el comando [code]fort_kill_captain[/code], y [method spawn_captain_double] pone un PNJ mortal en
-## su sitio para que los bots lo maten ellos.
+## las muertes de jugadores y de PNJ. Sin PNJ (el asedio de F6a), [method kill_captain] da por muerto al capitán como
+## el comando [code]fort_kill_captain[/code] y [method spawn_captain_double] pone un PNJ mortal en su sitio para que
+## los bots lo maten ellos. Con ellos ([code]with_npcs[/code] en [method start], F6b) defienden el fuerte los
+## Huecos, el Capitán del Vado y la guarnición del dueño de verdad, y [method set_npc_health] los debilita para las
+## pruebas cortas sin tocar [code]data/npcs/[/code].
 
 ## Zona del asedio.
 const ZONE_ID: String = "vado_gris"
@@ -27,9 +29,11 @@ var ticks_per_frame: int = DEFAULT_TICKS_PER_FRAME
 ## El servidor de la zona (null antes de [method start]).
 var server: ZoneServer = null
 var world: Node3D = null
-## Avisos de guerra en el orden en que salieron (cada uno con su tick) y muertes de jugadores.
+## Avisos de guerra en el orden en que salieron (cada uno con su tick), muertes de jugadores y muertes de PNJ
+## ([code]{tick, net_id, npc}[/code], con el id de su definición).
 var war_events: Array[NetMessages.EntityEvent] = []
 var deaths: Array[Dictionary] = []
+var npc_deaths: Array[Dictionary] = []
 ## net_id -> {realm, route, tick} de cada bot que ha llegado a la puerta.
 var arrivals: Dictionary[int, Dictionary] = {}
 ## net_id -> realm de los jugadores falsos de asedio.
@@ -105,6 +109,21 @@ func add_siege_bots(realm: int, count: int, seed_base: int) -> Array[int]:
 	return ids
 
 
+## Los PNJ de la definición [param npc_id] que aparezcan desde ahora tendrán [param health] de vida (una copia de la
+## definición con otra vida, solo en este servidor: [method NpcSpawnerSystem.set_definition_override]). Hay que
+## llamarlo justo después de [method start], antes de avanzar, para que valga ya para los primeros. Devuelve false si
+## el servidor no tiene PNJ o la definición no existe.
+func set_npc_health(npc_id: StringName, health: int) -> bool:
+	var system: NpcSpawnerSystem = server.get_npc_system()
+	var base: NpcDefinition = NpcCatalog.get_definition(npc_id)
+	if system == null or base == null or health <= 0:
+		return false
+	var weaker: NpcDefinition = base.duplicate() as NpcDefinition
+	weaker.max_health = health
+	system.set_definition_override(npc_id, weaker)
+	return true
+
+
 ## Pone en el sitio del capitán un PNJ mortal y quieto, registrado como capitán (ver
 ## [method ZoneServer.spawn_captain_double]). Devuelve su net_id.
 func spawn_captain_double() -> int:
@@ -167,12 +186,26 @@ func war_ids() -> Array[int]:
 	return ids
 
 
-## Tick del primer aviso de guerra [param war_event] (-1 si no ha salido).
-func tick_of_war(war_event: int) -> int:
+## Tick del primer aviso de guerra [param war_event] desde el tick [param from_tick] (-1 si no ha salido).
+func tick_of_war(war_event: int, from_tick: int = 0) -> int:
 	for event: NetMessages.EntityEvent in war_events:
-		if event.war_event == war_event:
+		if event.war_event == war_event and event.tick >= from_tick:
 			return event.tick
 	return -1
+
+
+## Cuántas veces ha salido el aviso de guerra [param war_event] desde el tick [param from_tick].
+func count_war(war_event: int, from_tick: int = 0) -> int:
+	var count: int = 0
+	for event: NetMessages.EntityEvent in war_events:
+		if event.war_event == war_event and event.tick >= from_tick:
+			count += 1
+	return count
+
+
+## El cerebro del bot de asedio [param net_id] (null si no es uno de los suyos).
+func get_brain(net_id: int) -> BotBrain:
+	return _brains.get(net_id)
 
 
 ## Cuántos bots de [param realm] siguen vivos.
@@ -201,11 +234,16 @@ func _physics_process(delta: float) -> void:
 	_remaining -= count
 
 
-# Anota las muertes de jugadores (con el reino de la víctima y su sitio).
+# Anota las muertes de jugadores (con el reino de la víctima y su sitio) y de PNJ de guerra (con su definición).
 func _on_combat_event(event: NetMessages.EntityEvent, _involved: PackedInt32Array) -> void:
 	if event.event != NetMessages.EntityEvent.Kind.DEATH:
 		return
 	var victim: NetEntity = server.get_registry().get_entity(event.net_id)
+	if victim != null and victim.kind == NetProtocol.EntityKind.NPC and victim.npc_def_id > 0:
+		var definition: NpcDefinition = NpcCatalog.get_by_number(victim.npc_def_id)
+		npc_deaths.append({"tick": event.tick, "net_id": event.net_id,
+				"npc": definition.id if definition != null else &""})
+		return
 	if victim == null or victim.kind != NetProtocol.EntityKind.PLAYER:
 		return
 	deaths.append({"tick": event.tick, "net_id": event.net_id, "realm": victim.realm,

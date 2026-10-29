@@ -31,6 +31,11 @@ const FORD: StringName = &"ford"
 @export var gate_point: Vector2 = Vector2.ZERO
 @export var circle_point: Vector2 = Vector2.ZERO
 @export var circle_radius: float = 0.0
+## Tamaño del recinto del fuerte (F6b), medido desde la puerta: [code]x[/code] es la profundidad (de la puerta a la
+## pared de enfrente, por el eje de la puerta hacia el círculo) y [code]y[/code] el ancho (la puerta en medio de su
+## pared). Con él un bot sabe si está dentro de la empalizada o pegado a ella por fuera
+## ([method SiegeView.is_inside_enclosure]). (0, 0) = no se sabe.
+@export var enclosure_size: Vector2 = Vector2.ZERO
 ## Puntos de paso (x, z) de cada ruta y reino, con la clave [code]"<ruta>/<reino>"[/code] (por
 ## ejemplo [code]"bridge/vardheim"[/code]); ver [method key_for].
 @export var points: Dictionary[String, PackedVector2Array] = {}

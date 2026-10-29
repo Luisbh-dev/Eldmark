@@ -6,7 +6,7 @@
 script = ExtResource("1_npcdef")
 id = &"realm_captain"
 display_name = "Capitán del reino"
-max_health = 15000
+max_health = 7500
 weapon_id = &"npc_captain"
 is_boss = true
 patrol_speed_scale = 0.4

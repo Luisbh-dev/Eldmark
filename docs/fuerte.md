@@ -339,16 +339,21 @@ de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D
 
 - **Rutas como datos**: `data/routes/vado_gris.tres` (puntos de las rutas del puente y del vado
   por reino, sacados de `verify_vado_gris_routes.gd`, y, desde F6a, dónde están la puerta y el círculo del
-  fuerte para los bots que no cargan la zona), compartido.
+  fuerte para los bots que no cargan la zona; desde F6b, también el tamaño del recinto, `enclosure_size`), compartido.
 - **`SiegeView`** (compartido, puro): dueño, fase, captor, vida de la puerta y posiciones de la
   puerta y el círculo. La llena el servidor para `--fake-players` y el cliente (`FortressView` o,
   en `SwarmBot`, decodificando OBJECT_STATE) para `--bot` y `--bots`.
 - `BotBrain` gana el patrón `SIEGE`: seguir la ruta de su reino hasta el fuerte, golpear la puerta
   si está cerrada, entrar en el círculo, defender el círculo si es el dueño (la pasarela, que pide
   navegación, queda para los PNJ de F4) y atacar al enemigo más cercano. Los `SwarmBot`, que no simulan,
-  siguen las rutas en línea recta entre puntos. Hecho en F6a (detalle en 8.3).
+  siguen las rutas en línea recta entre puntos. Hecho en F6a (detalle en 8.3). En F6b pelea con los PNJ de verdad:
+  busca primero a los PNJ que guardan el fuerte mientras el capitán vive, sale de la zona de los golpes avisados
+  (TELEGRAPH) con una esquiva, deja las persecuciones que no le acercan y rodea la empalizada si se queda fuera a
+  un lado (detalle en 8.3, F6b).
 - Criterio: `--bots=20` por bando capturan y recapturan sin intervención. F6a lo cumple con jugadores falsos
-  y la orden `fort_kill_captain` en lugar del capitán; sin intervención de verdad, con los PNJ, es F6b.
+  y la orden `fort_kill_captain` en lugar del capitán. En F6b, con los PNJ de verdad y sin ninguna orden: capturan el neutral
+  siempre (86–88 s) y recapturan dentro del ciclo de 30 min con el capitán del reino en 7500 (de 6,7 a 27,6 min según la semilla);
+  lo que alarga la recaptura es el círculo frente a los defensores (GUE-44), no los PNJ (8.3, F6b).
 - **Carga** (GUE-16): escenario de `load_test` con 32 contra 32 y 64 contra 64 en la puerta y el
   círculo durante 120 s (`--siege`; resultados en 8.3).
 - **Equilibrio** (GUE-42, hecho en F6a): `--max-realm-diff=N` (por defecto 0 = sin límite); un REJECT nuevo,
@@ -445,7 +450,8 @@ var before_simulate: Callable                                  # (tick: int) -> 
 ### 8.3 Lo que han dejado F0, F1 y F2 (añadidos al contrato y decisiones)
 
 F0 (escena, capas, malla y rutas), F1 (fortaleza pura), F2 (protocolo 3), F3 (servidor del fuerte), F4 (PNJ), F5 (cliente) y la
-primera mitad de F6 (F6a: bots que asedian, equilibrio de reinos y carga) están hechos; falta F6b (extremo a extremo con los PNJ). Además
+primera mitad de F6 (F6a: bots que asedian, equilibrio de reinos y carga) están hechos; F6b (extremo a extremo con los PNJ) va por paquetes
+(hechos: GUE-43 y los bots contra los PNJ; faltan GUE-44, GUE-45 y la carga con PNJ). Además
 de lo de 8.2, quien siga con F6b (y con lo que toque a los PNJ) encontrará esto:
 
 **F0**
@@ -689,7 +695,7 @@ de lo de 8.2, quien siga con F6b (y con lo que toque a los PNJ) encontrará esto
   (barrido de 170°, 0,60 s → 110, bloqueable) y `npc_captain_crush` (fuerte **imbloqueable**, 1,00 s → 300, alcance 3,5 m);
   Guardián `npc_guardian_halberd` (0,50 s → 260, alcance 3,6 m) y `npc_guardian_thrust` (no se usa). El combo de tres ligeros repite el
   mismo ataque (sin ventana de enlace: cada ataque es una decisión del cerebro). Vida: Hueco, guardia del reino y Guardián 2500,
-  Capitán del Vado 30 000 y capitán del reino 15 000. El `CombatResolver` salta la parada y el bloqueo con `unblockable` (la esquiva
+  Capitán del Vado 30 000 y capitán del reino 15 000 (7500 desde F6b, provisional: ver F6b). El `CombatResolver` salta la parada y el bloqueo con `unblockable` (la esquiva
   invulnerable sigue valiendo) y no frena a un atacante con `ignores_safe_area` en la zona segura de su propio reino.
 - **Cerebro** (`HfsmBrain`): piensa cada 6 ticks, escalonado por `net_id` (`THINK_INTERVAL_TICKS`), y en el paso 0 del tick (antes de
   simular a nadie). Percepción: radio, cono y rayo de línea de visión (más el «oído» de `awareness_radius`, que también necesita
@@ -942,6 +948,100 @@ paquetes, y cada uno se anota aquí)
     un falso que no es de relleno sigue ocupando su plaza; quien se va mientras carga recupera el falso.
   - `test_server_main` (el proceso real de GUE-42 arranca ahora con `--max-players=6` y seis falsos). Antes del cambio, las tres personas
     del enjambre recibían «Servidor lleno».
+
+**F6b, paquete B: los bots contra los PNJ de verdad y GUE-15 de extremo a extremo** (pruebas nuevas en `test_siege_npcs` y
+`test_bot_threat_sight`, y ampliaciones de `test_bot_brain_siege`, `test_fort_gate_collision`, `test_npc_system`, `test_siege_view` y
+`test_siege_zone`)
+
+- **Lo que ya estaba**: el buscador de enemigos de los falsos incluía a los PNJ no inmortales, así que 20 bots de Vardheim ya rompían la
+  puerta, mataban a los Huecos y al Capitán del Vado y capturaban el fuerte neutral sin ninguna orden desde la primera batalla con
+  `--npcs` (puerta a los 40 s, capitán a los 65 s, captura a los 80 s). Lo que no salía era la recaptura: en 20 min, ninguna.
+- **Cerebro (`BotBrain`, patrón SIEGE)**. Todo determinista (sin el generador del bot, salvo lo que ya lo usaba); COMBAT y WANDER no
+  cambian (la prueba de las huellas sigue igual):
+  - *Golpes avisados.* `BotBrain.Threat` (origen, giro y alcance de un TELEGRAPH) y `set_threat_finder`. Si está en la zona (el semiplano de
+    delante hasta el alcance, con 1 m de margen: el aviso no dice el ángulo y el del Capitán es de 120°), sale de ella en línea recta
+    desde quien golpea, con una **esquiva** al empezar (4,5 m en 0,45 s, con invulnerabilidad) y esprintando, sin bloquear ni acabar
+    lo que hacía; si sigue dentro, otra esquiva cada 15 ticks. Tarea nueva `EVADE`, al final del enum. Medido en la captura del
+    neutral con 20 bots (semilla 1000): **sin salir de la zona, 14 golpes imbloqueables dan a alguien (4475 de daño) y mueren 7 bots; con
+    la esquiva, ninguno y ninguna muerte**, a cambio de 5 s más para matar al Capitán (72,9 s frente a 67,7 s). Solo esprintando, sin la
+    esquiva, salían tarde (11 de 16 golpes en una versión intermedia, todos a bots que estaban saliendo: a mitad de un ataque apenas se
+    mueven). Se evitan todos los fuertes avisados de los PNJ (el aviso es igual para todos), no solo el imbloqueable.
+  - *Los defensores primero.* `set_defender_finder`: mientras el círculo no está activo (el capitán vive), el PNJ enemigo más cercano a
+    tiro va antes que cualquier jugador. Sin esto, en la recaptura los atacantes peleaban con los 20 defensores y casi nunca con el
+    capitán. Con el círculo activo, el más cercano de todos.
+  - *Persecuciones sin progreso.* Si persiguiendo a alguien a más de 3 m no se acerca 1 m en 180 ticks (un guardia tras un muro o en la
+    pasarela), deja de perseguir a nadie que no esté a menos de 3 m durante 600 ticks. Antes «pelear» nunca era estar atascado y nueve
+    bots se quedaron un minuto contra una pared persiguiendo a un guardia de patrulla al que no podían llegar.
+  - *El recinto.* `ApproachRoutes.enclosure_size` (40 x 40 m en el Vado Gris; lo escribe el exportador), `SiegeView.enclosure_size` e
+    `is_inside_enclosure()`. «Dentro del fuerte» era «al otro lado de la pared de la puerta y a menos de 30 m del círculo», que incluye
+    las franjas de fuera de las paredes laterales y del fondo: un bot que una pelea dejaba pegado a la pared sur por fuera iba derecho al
+    círculo contra la empalizada (seis de los veinte de Solmarch, durante más de un minuto, en una recaptura con PNJ). Ahora, fuera del
+    recinto y a un lado o detrás, rodea la empalizada por sus esquinas (a 6 m) hasta la pared de la puerta; y pegado a la pared de la
+    puerta pero fuera del vano (más de 1,6 m de su eje), vuelve primero delante de la puerta en lugar de cruzar en diagonal.
+- **Servidor**: `ZoneServer` da a cada falso SIEGE el buscador de golpes (`_find_threats`: los fuertes en curso de los PNJ de un reino
+  hostil, desde que empiezan hasta el final de su ventana activa, con la posición y el giro del PNJ en ese tick, porque gira mientras
+  carga; se reúnen una vez por tick) y el de defensores (`_find_enemy_position(..., npcs_only)`). La vista de asedio toma el recinto de las
+  rutas.
+- **Clientes**: `BotThreatSight` (cliente) guarda los TELEGRAPH como amenazas hasta su impacto más 12 ticks (el tick con el que se
+  pregunta es el de la entrada que se decide); `SwarmBot` (`--bots`) lo llena con los ENTITY_EVENT y busca los defensores entre los PNJ
+  de sus altas; `ClientBotBrains` (`--bot`) con `NetClient.telegraph_received` y `BotEnemySight(..., war_npcs_only)`.
+- **PNJ más débiles solo para una prueba**: `NpcSpawnerSystem.set_definition_override(id, definición)` / `get_definition(id)` sustituyen una
+  definición en ese servidor (el catálogo, que comparte todo el proceso, no cambia; el `npc_def_id` sigue siendo el del catálogo).
+  `SiegeRunner.set_npc_health(id, vida)` y `siege_battle.gd --npc-health=<id>:<vida>` lo usan.
+- **Herramientas**: `SiegeRunner` apunta las muertes de PNJ (`npc_deaths`), da el cerebro de cada bot (`get_brain`) y los avisos desde un
+  tick (`tick_of_war(..., desde)`, `count_war`). `siege_battle.gd` gana `--npcs` (con los PNJ y sin ninguna ayuda), `--npc-health`,
+  `--verbose` (estado cada 10 s de juego) y los hitos de cada fase en el informe (primer golpe, puerta rota y cuántas veces, capitán
+  caído y captura, contados desde que salen los bots de la fase).
+- **Hallazgo y arreglo: se golpeaba desde dentro de la puerta cerrada.** El dueño cruza su puerta cerrada, y quien se quedaba con el pecho
+  dentro de la caja de vista golpeaba hacia fuera sin que los de fuera pudieran golpearle a él: el rayo de la línea de visión que *empieza*
+  dentro de una caja no la ve. En la primera recaptura con PNJ, los defensores apiñados en el vano mataron a los 20 atacantes en la
+  explanada sin perder a nadie (y a 112 contra 4 en 6 min). `HitShapes.is_ray_clear` usa ahora `hit_from_inside`: dentro de la puerta
+  cerrada ni se golpea ni te golpean (las mallas cóncavas y el terreno no cambian). `test_fort_gate_collision` lo comprueba y falla sin el
+  cambio. Afecta también a la percepción de los PNJ y a las placas de nombre del cliente, que usan el mismo rayo.
+- Pruebas:
+  - `test_siege_npcs` (la versión corta de GUE-15 con PNJ): 12 bots de Vardheim delante de la puerta (la marcha ya la prueba
+    `test_siege_zone`), captura x30 y, solo en ese servidor, el Capitán con 9000 de vida y los Huecos con 1000. Rompen la puerta, matan a los
+    Huecos y al Capitán ellos solos (el aviso «capitán caído» es de Vardheim) y capturan; el Capitán avisa sus golpes, alguno sale de su
+    zona y a ninguno de los que salían le da el imbloqueable. Puerta a los 17 s, capitán a los 35–38 s, captura medio segundo después; la
+    fase de la prueba tarda de 8 a 12 s (con la máquina cargada).
+  - `test_bot_brain_siege` (seis nuevas): la zona de un golpe; sale con una esquiva sin bloquear y antes del impacto; el PNJ antes que el
+    jugador más cercano, y no el de tras la puerta; deja una persecución que no le acerca y vuelve a perseguir pasado el plazo; rodea el
+    recinto en lugar de atravesar la empalizada (falla sin el cambio); determinismo con los dos buscadores nuevos.
+  - `test_bot_threat_sight` (tres), `test_npc_system` (la sustitución solo cambia ese servidor), `test_siege_view` (el recinto, también
+    con la puerta en otra pared) y `test_siege_zone` (la vista del servidor lleva el recinto de los datos).
+
+**Medido en F6b (paquete B)** con `siege_battle.gd --npcs --per-side=20 --minutes=28` (20 de Vardheim capturan el fuerte neutral y, en cuanto
+es suyo, salen 20 de Solmarch que lo recapturan mientras los de Vardheim lo defienden; nadie da órdenes). Tiempos de juego, así que no dependen
+de la máquina (4 núcleos compartidos con otras suites: cada batalla tardó de 5 a 15 min de reloj); cambian con la semilla de los cerebros. Los
+tiempos de la recaptura cuentan desde que salen los de Solmarch:
+
+| Semilla, capitán del reino | Neutral → Vardheim: puerta rota / Capitán del Vado / captura | Recaptura: puerta rota / capitán del reino / captura | Muertes de jugadores (S / V) |
+|---|---|---|---|
+| 1000, 15 000 de vida | 40,2 / 72,9 / **87,9 s** | 181,5 / 300,9 / **404,8 s (6,7 min)** | 111 / 39 |
+| 2000, 15 000 | 42,4 / 71,3 / 86,3 s | 111,8 / 978,9 s / **no en 28 min** (la puerta cae 3 veces) | 490 / 140 |
+| 3000, 15 000 | 42,3 / 71,3 / 86,3 s | 233,1 / 960,9 s / **no en 28 min** (el capitán cae 2 veces) | 453 / 114 |
+| 1000, **7500** | igual | 181,5 / 278,3 / **399,4 s (6,7 min)** | 117 / 33 |
+| 2000, **7500** | igual | 111,8 / 441,9 / **1654,8 s (27,6 min)** (el capitán cae 3 veces) | 433 / 149 |
+| 3000, **7500** | igual | 233,1 / 357,3 / **1471,8 s (24,5 min)** (el capitán cae 2 veces) | 406 / 127 |
+
+- **La captura del neutral es firme**: con las tres semillas, puerta a los 40–42 s (la explanada se alcanza a los 25 s por el puente y a los
+  37 s por el vado), los cuatro Huecos (y los refuerzos que llama el Capitán) y el Capitán del Vado (30 000) muertos a los 71–73 s y captura a los
+  86–88 s, **sin ninguna muerte de Vardheim** en las tres. Es la medida de bots de MUN-10 y MUN-11, no la de personas.
+- **La recaptura es lo difícil, y no por los PNJ.** El capitán del reino con 15 000 de vida bajaba hasta un 20 % y, al caer la oleada de
+  atacantes, volvía a su puesto regenerado (lo que hace un jefe cuando pierde a todos sus enemigos); con 15 000, una recaptura de tres en el
+  ciclo de 30 min del Vado Gris (`reset_to_neutral_s`). Con 7500, las tres, pero dos tardan 25–28 min: el capitán cae enseguida y lo que cuesta
+  es quedarse solo en el círculo frente a los 20 defensores, que ganan las peleas 3 a 1 en muertes porque los atacantes llegan por partes (30 s
+  de reaparición en oleadas de 10 s más 25–37 s de marcha) y entran de uno en uno por un vano de 4 m. Es GUE-44, que decide si el atacante
+  espera a los suyos o si es un efecto deseado; hasta entonces no se tocan los tiempos de `vado_gris.tres`.
+- **Ajuste provisional (F6b)**: `data/npcs/realm_captain.tres`, vida **15 000 → 7500** (la mitad; un cuarto de la del Capitán del Vado). Es el
+  único cambio de datos: con él la recaptura cabe en el ciclo de 30 min con las tres semillas, y sin él no. Las filas de 7500 se midieron con
+  `--npc-health=realm_captain:7500`; la batalla con el dato ya cambiado da exactamente lo mismo (semilla 1000: Solmarch captura en el tick
+  29 250). Se revisa con GUE-44 y, sobre todo, con personas (MUN-11 y GUE-11 piden 3–5 jugadores contra un capitán).
+- **Golpes avisados en la batalla larga**: con la esquiva, ningún golpe imbloqueable dio a un bot en la captura del neutral (14 sin salir
+  de la zona, ver arriba); la versión corta de la suite comprueba que a ninguno de los que estaban saliendo le da.
+- **Lo que no hace este paquete**: GUE-44 (los refuerzos se juntan antes de salir), GUE-45 (la pasarela), la carga con PNJ (GUE-16) y la
+  batalla con telemetría completa. La batalla larga usa los jugadores falsos del servidor (el mismo `BotBrain` que `--bots` y `--bot`, con sus
+  buscadores del servidor); con `SwarmBot` por ENet y PNJ solo hay pruebas unitarias de lo nuevo (`BotThreatSight`) y las de F6a sin PNJ.
 
 ---
 

@@ -121,3 +121,28 @@ func test_places_can_come_from_the_approach_routes() -> void:
 	assert_eq(view.circle_radius, 5.0)
 	var shipped: ApproachRoutes = load("res://data/routes/vado_gris.tres") as ApproachRoutes
 	assert_true(shipped.has_places(), "las rutas del Vado Gris traen el fuerte")
+	assert_eq(shipped.enclosure_size, Vector2(40.0, 40.0), "y su recinto de 40 x 40 m (F6b)")
+
+
+func test_the_enclosure_says_whether_a_point_is_inside_the_palisade() -> void:
+	var view := SiegeView.new()
+	view.set_places(Vector3(-20.0, 10.2, 0.0), Vector3(-8.5, 10.2, 0.0), 5.0)
+	assert_eq(view.is_inside_enclosure(Vector3(-8.5, 10.2, 0.0)), -1, "sin el tamaño del recinto no se sabe")
+	var routes := ApproachRoutes.new()
+	routes.gate_point = Vector2(-20.0, 0.0)
+	routes.circle_point = Vector2(-8.5, 0.0)
+	routes.circle_radius = 5.0
+	routes.enclosure_size = Vector2(40.0, 40.0)
+	assert_true(view.set_places_from_routes(routes, 10.2))
+	assert_eq(view.enclosure_size, Vector2(40.0, 40.0), "las rutas traen el recinto")
+	assert_eq(view.is_inside_enclosure(Vector3(-8.5, 0.0, 0.0)), 1, "el círculo, dentro")
+	assert_eq(view.is_inside_enclosure(Vector3(19.0, 0.0, -19.0)), 1, "una esquina del fondo, dentro")
+	assert_eq(view.is_inside_enclosure(Vector3(-22.0, 0.0, 0.0)), 0, "la explanada, fuera")
+	assert_eq(view.is_inside_enclosure(Vector3(-7.0, 0.0, 20.7)), 0, "pegado a la pared sur por fuera")
+	assert_eq(view.is_inside_enclosure(Vector3(21.0, 0.0, 0.0)), 0, "detrás de la pared del fondo")
+	assert_eq(view.is_inside_enclosure(Vector3(-7.0, 0.0, 19.8), 0.5), 0, "con holgura, el borde de dentro no cuenta")
+	# Con la puerta en otra pared (al sur, mirando hacia -Z) el recinto gira con ella.
+	view.set_places(Vector3(0.0, 0.0, 20.0), Vector3(0.0, 0.0, 8.5), 5.0)
+	assert_eq(view.is_inside_enclosure(Vector3(19.0, 0.0, -19.0)), 1)
+	assert_eq(view.is_inside_enclosure(Vector3(0.0, 0.0, 22.0)), 0)
+	assert_eq(view.is_inside_enclosure(Vector3(21.0, 0.0, 0.0)), 0)

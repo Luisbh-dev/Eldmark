@@ -33,6 +33,9 @@ var contested: bool = false
 var gate_position: Vector3 = Vector3.ZERO
 var circle_center: Vector3 = Vector3.ZERO
 var circle_radius: float = 0.0
+## Tamaño del recinto medido desde la puerta (profundidad hacia el círculo, ancho), como
+## [member ApproachRoutes.enclosure_size]; (0, 0) = no se sabe.
+var enclosure_size: Vector2 = Vector2.ZERO
 
 
 ## Dónde están la puerta y el círculo (de los marcadores de la escena).
@@ -50,7 +53,25 @@ func set_places_from_routes(routes: ApproachRoutes, ground_height: float = 0.0) 
 		return false
 	set_places(Vector3(routes.gate_point.x, ground_height, routes.gate_point.y),
 			Vector3(routes.circle_point.x, ground_height, routes.circle_point.y), routes.circle_radius)
+	enclosure_size = routes.enclosure_size
 	return true
+
+
+## Si [param position] está dentro del recinto (con [param margin] metros de holgura hacia dentro de cada pared):
+## 1 sí, 0 no y -1 si no se sabe (sin [member enclosure_size] o sin posiciones de la puerta y el círculo). El recinto
+## es el rectángulo que empieza en la pared de la puerta, se adentra hacia el círculo [code]enclosure_size.x[/code]
+## metros y tiene [code]enclosure_size.y[/code] de ancho con la puerta en medio.
+func is_inside_enclosure(position: Vector3, margin: float = 0.0) -> int:
+	var inward := Vector3(circle_center.x - gate_position.x, 0.0, circle_center.z - gate_position.z)
+	if enclosure_size.x <= 0.0 or enclosure_size.y <= 0.0 or inward.length_squared() < 0.0001:
+		return -1
+	inward = inward.normalized()
+	var offset := Vector3(position.x - gate_position.x, 0.0, position.z - gate_position.z)
+	var along: float = offset.dot(inward)
+	var lateral: float = absf(offset.dot(Vector3(-inward.z, 0.0, inward.x)))
+	var inside: bool = along > margin and along < enclosure_size.x - margin \
+			and lateral < enclosure_size.y * 0.5 - margin
+	return 1 if inside else 0
 
 
 ## Copia del estado de la fortaleza lo que le interesa a un bot.

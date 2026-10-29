@@ -26,7 +26,11 @@ extends RefCounted
 ## [b]Asedio ([constant SIEGE]).[/b] En cada tick elige, por este orden:
 ## [br]1. Si un enemigo (el que da [method set_enemy_finder], como en [constant COMBAT]) está a menos de
 ## [constant SIEGE_FIGHT_RANGE] y se puede alcanzar (no está tras una puerta que cierra el paso a su reino),
-## pelea con él igual que [constant COMBAT].
+## pelea con él igual que [constant COMBAT]. Mientras el círculo no está activo, antes que a nadie busca a los PNJ
+## que guardan el fuerte (los Huecos, el Capitán y la guarnición del dueño; [method set_defender_finder], F6b): el
+## capitán tiene que caer para abrir el círculo. Si persiguiendo a alguien que está a más de
+## [constant COMBAT_ENGAGE_DISTANCE] no se le acerca en [constant SIEGE_STUCK_TICKS] ticks (un muro, la pasarela),
+## deja de perseguir durante [constant SIEGE_CHASE_GIVE_UP_TICKS] ticks y sigue con su plan.
 ## [br]2. [b]Marcha[/b]: sigue la ruta de su reino, [constant ApproachRoutes.BRIDGE] o
 ## [constant ApproachRoutes.FORD] (la elige con su generador al empezar y tras cada reaparición), hasta la
 ## explanada delante de la puerta, esprintando por los tramos largos si no hay enemigos cerca.
@@ -38,12 +42,18 @@ extends RefCounted
 ## [br]Si no avanza durante [constant SIEGE_STUCK_TICKS] mientras camina, primero prueba un salto y, si sigue
 ## igual, un desvío lateral. Un salto de posición de más de [constant SIEGE_TELEPORT_DISTANCE] metros en un
 ## tick (reaparición) reinicia la ruta.
+## [br][b]Golpes avisados[/b] (F6b): antes que todo lo anterior, si está en la zona de un golpe avisado con
+## TELEGRAPH (el imbloqueable del Capitán del Vado y los fuertes de los demás PNJ; los da
+## [method set_threat_finder]), sale de ella en línea recta desde quien golpea, con una esquiva al empezar y
+## esprintando, sin bloquear ([constant SiegeTask.EVADE]). Bloquear no frena el imbloqueable y salir es lo más simple
+## que funciona con todos; no usa el generador, así que sigue siendo determinista.
 
 ## [constant SIEGE] va al final para no mover los valores de los demás patrones.
 enum Pattern { WANDER, CIRCLE, IDLE, JUMPY, COMBAT, SIEGE }
 
-## Qué hace un bot de [constant SIEGE] en este tick ([method get_siege_task]).
-enum SiegeTask { NONE, FIGHT, MARCH, ASSAULT, HOLD }
+## Qué hace un bot de [constant SIEGE] en este tick ([method get_siege_task]). [constant EVADE] (F6b, al final
+## para no mover los demás): sale de la zona de un golpe avisado.
+enum SiegeTask { NONE, FIGHT, MARCH, ASSAULT, HOLD, EVADE }
 
 ## Duración mínima de un tramo de paseo (ticks).
 const SEGMENT_MIN_TICKS: int = 60
@@ -102,6 +112,9 @@ const SIEGE_CIRCLE_HOLD_FRACTION: float = 0.5
 ## [constant SIEGE_GATE_EXIT_DISTANCE] dentro. Sin esto, al llegar al último punto de la ruta, que está de
 ## lado, el bot tiraba derecho al círculo y se estrellaba contra la empalizada.
 const SIEGE_GATE_AXIS_TOLERANCE: float = 1.0
+## [constant SIEGE]: medio ancho (m) del vano por el que cabe el bot (el vano mide 4 m; menos su radio). Pegado a la
+## pared de la puerta pero más a un lado que esto, primero vuelve delante de la puerta.
+const SIEGE_GATE_OPENING_HALF_WIDTH: float = 1.6
 const SIEGE_GATE_FRONT_DISTANCE: float = 4.5
 const SIEGE_GATE_EXIT_DISTANCE: float = 2.5
 ## [constant SIEGE]: radio (m) que usa si el [SiegeView] no sabe el del círculo.
@@ -114,8 +127,14 @@ const SIEGE_TELEPORT_DISTANCE: float = 5.0
 ## [constant SIEGE]: si está a más de esta distancia (m) del punto que persigue, busca el más cercano.
 const SIEGE_LOST_DISTANCE: float = 70.0
 ## [constant SIEGE]: a menos de estos metros del círculo, y al otro lado de la puerta, ya está dentro del
-## fuerte y no necesita la ruta.
+## fuerte y no necesita la ruta (si el [SiegeView] no sabe el tamaño del recinto; si lo sabe, cuenta el recinto con
+## [constant SIEGE_ENCLOSURE_MARGIN] de holgura: pegado a la empalizada por fuera no está dentro).
 const SIEGE_INSIDE_RADIUS: float = 30.0
+const SIEGE_ENCLOSURE_MARGIN: float = 0.5
+## [constant SIEGE]: fuera del recinto pero a su lado o detrás (una persecución le sacó de la ruta), rodea la
+## empalizada por sus esquinas, a esta distancia (m) de las paredes, hasta la pared de la puerta; da una esquina por
+## alcanzada a [constant SIEGE_WAYPOINT_RADIUS].
+const SIEGE_CORNER_MARGIN: float = 6.0
 ## [constant SIEGE]: ticks sin avanzar [constant SIEGE_STUCK_MIN_PROGRESS] metros tras los que se
 ## considera atascado; ticks que dura un salto o un desvío para desatascarse; cada cuántos ticks se pulsa
 ## el salto; y ángulo (rad) del desvío.
@@ -125,9 +144,47 @@ const SIEGE_JUMP_WINDOW_TICKS: int = 40
 const SIEGE_JUMP_PULSE_TICKS: int = 20
 const SIEGE_DETOUR_TICKS: int = 60
 const SIEGE_DETOUR_ANGLE: float = 1.2
+## [constant SIEGE]: margen (m) que añade al alcance de un golpe avisado y al borde de su semiplano para darse por
+## dentro de su zona (el radio de la cápsula, 0,4 m, y algo más para no quedarse en el filo).
+const SIEGE_THREAT_MARGIN: float = 1.0
+## [constant SIEGE]: mientras sigue en la zona de un golpe avisado, cada cuántos ticks pulsa la esquiva (la primera,
+## nada más verlo: 4,5 m en 0,45 s, que lo sacan del alcance del golpe del Capitán antes del impacto).
+const SIEGE_EVADE_DODGE_TICKS: int = 15
+## [constant SIEGE]: si persiguiendo a alguien que está a más de [constant COMBAT_ENGAGE_DISTANCE] no se acerca
+## [constant SIEGE_STUCK_MIN_PROGRESS] metros en [constant SIEGE_STUCK_TICKS] ticks (está tras un muro, en la pasarela
+## o huye más rápido), deja de perseguir a nadie que no esté a esa distancia durante estos ticks y sigue con su plan.
+const SIEGE_CHASE_GIVE_UP_TICKS: int = 600
 
 # Cómo se desatasca un bot de asedio.
 enum _Unstick { NONE, JUMP, DETOUR }
+
+
+## Un golpe avisado (TELEGRAPH, docs/fuerte.md sección 5) que un bot de [constant SIEGE] evita: un sector de
+## alcance [member radius] con el vértice en [member origin] (los pies de quien golpea) y orientado según
+## [member yaw] (la convención de [PlayerInput]: el yaw 0 mira hacia -Z). El aviso no dice el ángulo del sector, así
+## que se toma el semiplano de delante: cubre de sobra los 120° del golpe del Capitán.
+class Threat:
+	extends RefCounted
+
+	var origin: Vector3 = Vector3.ZERO
+	var yaw: float = 0.0
+	var radius: float = 0.0
+
+
+	func _init(new_origin: Vector3 = Vector3.ZERO, new_yaw: float = 0.0, new_radius: float = 0.0) -> void:
+		origin = new_origin
+		yaw = new_yaw
+		radius = new_radius
+
+
+	## true si [param position] está en la zona de peligro con [param margin] metros de más: a menos del alcance
+	## más el margen (en horizontal) y no más de [param margin] por detrás de quien golpea.
+	func covers(position: Vector3, margin: float) -> bool:
+		var offset := Vector3(position.x - origin.x, 0.0, position.z - origin.z)
+		if offset.length() > radius + margin:
+			return false
+		var forward := Vector3(-sin(yaw), 0.0, -cos(yaw))
+		return offset.dot(forward) >= -margin
 
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _pattern: Pattern = Pattern.WANDER
@@ -174,6 +231,17 @@ var _siege_unstick_until: int = -1
 var _detour_sign: float = 1.0
 # SIEGE: el botón mantenido apunta a la puerta (y no a un enemigo).
 var _hold_aims_gate: bool = false
+# SIEGE: quién da los golpes avisados que hay que evitar, y desde qué tick está saliendo de uno (-1 = no lo está).
+var _siege_threat_finder: Callable = Callable()
+var _siege_evade_since: int = -1
+# SIEGE: quién da el PNJ defensor más cercano, el último visto y cuándo se miró.
+var _siege_defender_finder: Callable = Callable()
+var _siege_defender_position: Variant = null
+var _siege_defender_checked_tick: int = -1000
+# SIEGE: la persecución en curso (distancia y tick de referencia; -1 = ninguna) y hasta cuándo no persigue.
+var _siege_chase_ref_distance: float = 0.0
+var _siege_chase_ref_tick: int = -1
+var _siege_chase_blocked_until: int = -1
 
 
 ## [param rng_seed] fija la secuencia. [param home] y [param radius] delimitan la zona por la
@@ -271,6 +339,34 @@ func set_siege(view: SiegeView, routes: ApproachRoutes, realm: int) -> void:
 	_siege_routes = routes
 	_siege_realm = realm
 	_reset_route()
+
+
+## Función con la que el patrón [constant SIEGE] se entera de los golpes avisados (TELEGRAPH) que hay que evitar:
+## [code](position: Vector3) -> Array[/code] devuelve los [BotBrain.Threat] activos de quienes le pueden dañar
+## (puede devolver también los lejanos: el cerebro mira si está dentro de cada uno). Sin ella no evita nada.
+func set_threat_finder(finder: Callable) -> void:
+	_siege_threat_finder = finder
+
+
+## Función con la que el patrón [constant SIEGE] busca primero a los PNJ que defienden el fuerte (los Huecos, el
+## Capitán y la guarnición del dueño): [code](position: Vector3) -> Variant[/code] devuelve la posición del PNJ enemigo
+## vivo más cercano, o null. Mientras el círculo no está activo (el capitán vive), si hay uno a tiro pelea con él antes
+## que con el enemigo de [method set_enemy_finder] (un jugador que le pegue no le aparta de él), y como el buscador da
+## siempre el más cercano, sigue con el mismo hasta que muere o se aleja. Con el círculo activo, o sin ella, pelea con
+## el más cercano de todos.
+func set_defender_finder(finder: Callable) -> void:
+	_siege_defender_finder = finder
+	_siege_defender_checked_tick = -1000
+
+
+## true si el patrón [constant SIEGE] ya tiene quién le busque los PNJ defensores.
+func has_defender_finder() -> bool:
+	return _siege_defender_finder.is_valid()
+
+
+## true si el patrón [constant SIEGE] ya tiene quién le avise de los golpes.
+func has_threat_finder() -> bool:
+	return _siege_threat_finder.is_valid()
 
 
 ## true si el patrón [constant SIEGE] ya sabe qué fuerte asedia.
@@ -390,23 +486,37 @@ func _start_light_attack(tick: int) -> void:
 # Entrada del patrón SIEGE (siempre hay una).
 func _siege_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 	_note_siege_position(position)
+	# 0. Fuera de la zona de un golpe avisado, sin bloquear ni acabar lo que tuviera entre manos.
+	var threat: Threat = _siege_threat_covering(position)
+	if threat != null:
+		if _siege_task != SiegeTask.EVADE:
+			_siege_evade_since = tick
+		_siege_task = SiegeTask.EVADE
+		_hold_until = -1
+		_hold_aims_gate = false
+		_reset_stuck(tick, position)
+		return _siege_evade_input(tick, position, yaw, threat)
 	# Un ataque a la puerta ya empezado (un toque o un fuerte cargado) se acaba.
 	if _hold_aims_gate and tick < _hold_until:
 		_siege_task = SiegeTask.ASSAULT
 		return _gate_hold_input(tick, position, yaw)
 	_hold_aims_gate = false
 
-	# 1. Un enemigo a tiro que se pueda alcanzar.
+	# 1. Un PNJ defensor a tiro que se pueda alcanzar (lo que guarda el fuerte mientras el círculo no está activo) y,
+	# si no hay, un enemigo cualquiera.
+	if _siege_defender_finder.is_valid() and not _siege.is_circle_active():
+		if tick - _siege_defender_checked_tick >= COMBAT_RETARGET_TICKS:
+			_siege_defender_checked_tick = tick
+			_siege_defender_position = _siege_defender_finder.call(position)
+		var fighting_defender: PlayerInput = _siege_fight_if_in_range(tick, position, yaw,
+				_siege_defender_position)
+		if fighting_defender != null:
+			return fighting_defender
 	if _enemy_finder.is_valid():
 		_refresh_enemy(tick, position)
-		if _enemy_position is Vector3:
-			var to_enemy: Vector3 = (_enemy_position as Vector3) - position
-			to_enemy.y = 0.0
-			var distance: float = to_enemy.length()
-			if distance <= SIEGE_FIGHT_RANGE and _can_reach(position, _enemy_position as Vector3):
-				_siege_task = SiegeTask.FIGHT
-				_reset_stuck(tick, position)
-				return _fight_input(tick, to_enemy, distance, yaw)
+		var fighting: PlayerInput = _siege_fight_if_in_range(tick, position, yaw, _enemy_position)
+		if fighting != null:
+			return fighting
 	_hold_until = -1
 
 	# 2. El plan: marchar, asaltar la puerta o quedarse en el círculo.
@@ -416,11 +526,55 @@ func _siege_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 	if _siege_route_index < _siege_route_points.size():
 		_siege_task = SiegeTask.MARCH
 		return _march_input(tick, position, yaw)
+	var corner: Variant = _siege_around_enclosure(position)
+	if corner is Vector3:
+		_siege_task = SiegeTask.MARCH
+		var to_corner: Vector3 = (corner as Vector3) - position
+		to_corner.y = 0.0
+		return _walk_input(tick, position, yaw, to_corner, to_corner.length())
 	if _siege.is_gate_closed_for(_siege_realm) and _siege_has_places():
 		_siege_task = SiegeTask.ASSAULT
 		return _assault_input(tick, position, yaw)
 	_siege_task = SiegeTask.HOLD
 	return _hold_circle_input(tick, position, yaw)
+
+
+# Pelea con quien está en [param target] (una posición, o null) si está a menos de SIEGE_FIGHT_RANGE y se puede
+# alcanzar; null si no. Persiguiendo sin acercarse (SIEGE_CHASE_GIVE_UP_TICKS), deja de perseguir un rato.
+func _siege_fight_if_in_range(tick: int, position: Vector3, yaw: float, target: Variant) -> PlayerInput:
+	if not target is Vector3:
+		return null
+	var to_enemy: Vector3 = (target as Vector3) - position
+	to_enemy.y = 0.0
+	var distance: float = to_enemy.length()
+	if distance > SIEGE_FIGHT_RANGE or not _can_reach(position, target as Vector3):
+		return null
+	if distance > COMBAT_ENGAGE_DISTANCE and not _siege_keeps_chasing(tick, distance):
+		return null
+	_siege_task = SiegeTask.FIGHT
+	_reset_stuck(tick, position)
+	return _fight_input(tick, to_enemy, distance, yaw)
+
+
+# Una persecución (alguien a [param distance] metros, más lejos que la distancia de pelea): false si hay que dejarla,
+# porque lleva SIEGE_STUCK_TICKS sin acercarse o porque la dejó hace poco.
+func _siege_keeps_chasing(tick: int, distance: float) -> bool:
+	if tick < _siege_chase_blocked_until:
+		return false
+	if _siege_chase_ref_tick < 0 or tick - _siege_chase_ref_tick > SIEGE_STUCK_TICKS + COMBAT_RETARGET_TICKS:
+		# Empieza (o vuelve a empezar tras un rato sin perseguir).
+		_siege_chase_ref_tick = tick
+		_siege_chase_ref_distance = distance
+		return true
+	if tick - _siege_chase_ref_tick < SIEGE_STUCK_TICKS:
+		return true
+	if _siege_chase_ref_distance - distance < SIEGE_STUCK_MIN_PROGRESS:
+		_siege_chase_blocked_until = tick + SIEGE_CHASE_GIVE_UP_TICKS
+		_siege_chase_ref_tick = -1
+		return false
+	_siege_chase_ref_tick = tick
+	_siege_chase_ref_distance = distance
+	return true
 
 
 # Anota la posición y, si ha dado un salto (reaparición), reinicia la ruta y lo que recordaba.
@@ -431,8 +585,49 @@ func _note_siege_position(position: Vector3) -> void:
 		_hold_aims_gate = false
 		_enemy_position = null
 		_enemy_checked_tick = -1000
+		_siege_defender_position = null
+		_siege_defender_checked_tick = -1000
+		_siege_chase_ref_tick = -1
+		_siege_chase_blocked_until = -1
 	_siege_has_position = true
 	_siege_last_position = position
+
+
+# El golpe avisado más cercano en cuya zona está [param position] (con [constant SIEGE_THREAT_MARGIN]), o null.
+func _siege_threat_covering(position: Vector3) -> Threat:
+	if not _siege_threat_finder.is_valid():
+		return null
+	var found: Variant = _siege_threat_finder.call(position)
+	if not found is Array:
+		return null
+	var best: Threat = null
+	var best_distance: float = INF
+	for item: Variant in found:
+		var candidate: Threat = item as Threat
+		if candidate == null or not candidate.covers(position, SIEGE_THREAT_MARGIN):
+			continue
+		var distance: float = Vector2(position.x - candidate.origin.x, position.z - candidate.origin.z).length()
+		if distance < best_distance:
+			best_distance = distance
+			best = candidate
+	return best
+
+
+# Salir de la zona de [param threat]: en línea recta desde quien golpea (hacia atrás de su golpe si está justo
+# encima), con una esquiva al empezar (y otra cada SIEGE_EVADE_DODGE_TICKS si sigue dentro) y esprintando entre
+# medias.
+func _siege_evade_input(tick: int, position: Vector3, yaw: float, threat: Threat) -> PlayerInput:
+	var away := Vector3(position.x - threat.origin.x, 0.0, position.z - threat.origin.z)
+	if away.length_squared() < 0.01:
+		away = Vector3(sin(threat.yaw), 0.0, cos(threat.yaw))
+	var input := PlayerInput.new()
+	input.tick = tick
+	input.look_yaw = _yaw_toward(away, yaw)
+	input.move = Vector2(0.0, 1.0)
+	input.buttons |= PlayerInput.SPRINT
+	if (tick - _siege_evade_since) % SIEGE_EVADE_DODGE_TICKS == 0:
+		input.buttons |= PlayerInput.DODGE
+	return input
 
 
 func _reset_route() -> void:
@@ -556,7 +751,7 @@ func _gate_waypoint(position: Vector3) -> Variant:
 	if along >= 0.5:
 		return null
 	var lateral: float = (from_gate - inward * along).length()
-	if lateral > SIEGE_GATE_AXIS_TOLERANCE and along < -2.0:
+	if lateral > SIEGE_GATE_AXIS_TOLERANCE and (along < -2.0 or lateral > SIEGE_GATE_OPENING_HALF_WIDTH):
 		return _siege.gate_position - inward * SIEGE_GATE_FRONT_DISTANCE
 	return _siege.gate_position + inward * SIEGE_GATE_EXIT_DISTANCE
 
@@ -637,14 +832,46 @@ func _siege_has_places() -> bool:
 			or _siege.gate_position != Vector3.ZERO
 
 
-# true si [param position] está dentro del fuerte: al otro lado de la puerta, mirando desde fuera, y cerca
-# del círculo.
+# Fuera del recinto, al lado de una pared que no es la de la puerta o detrás del fuerte: la esquina a la que ir para
+# rodearlo hacia la pared de la puerta (del lado en el que está), o null si está dentro, delante de la pared de la puerta
+# o no se sabe el tamaño del recinto. Sin esto iba derecho al círculo y se quedaba pegado a la empalizada.
+func _siege_around_enclosure(position: Vector3) -> Variant:
+	if _siege.is_inside_enclosure(position, SIEGE_ENCLOSURE_MARGIN) != 0:
+		return null
+	var inward: Vector3 = _siege_inward()
+	var across := Vector3(-inward.z, 0.0, inward.x)
+	var offset: Vector3 = position - _siege.gate_position
+	offset.y = 0.0
+	var along: float = offset.dot(inward)
+	var lateral: float = offset.dot(across)
+	var half_width: float = _siege.enclosure_size.y * 0.5
+	var beside: bool = absf(lateral) >= half_width - SIEGE_ENCLOSURE_MARGIN
+	var behind: bool = along >= _siege.enclosure_size.x - SIEGE_ENCLOSURE_MARGIN
+	if along < 0.0 or (not beside and not behind):
+		# Delante de la pared de la puerta, o en su vano: de eso se ocupan la ruta y la puerta.
+		return null
+	var side: float = 1.0 if lateral >= 0.0 else -1.0
+	var corner_lateral: float = side * (half_width + SIEGE_CORNER_MARGIN)
+	var corner_along: float = -SIEGE_CORNER_MARGIN
+	if along > _siege.enclosure_size.x and absf(lateral) < half_width + SIEGE_CORNER_MARGIN - SIEGE_WAYPOINT_RADIUS:
+		# Detrás de la pared del fondo: primero la esquina de atrás de su lado.
+		corner_along = _siege.enclosure_size.x + SIEGE_CORNER_MARGIN
+	var target: Vector3 = _siege.gate_position + inward * corner_along + across * corner_lateral
+	target.y = position.y
+	return target
+
+
+# true si [param position] está dentro del fuerte: dentro del recinto si el [SiegeView] sabe su tamaño y, si no, al
+# otro lado de la puerta, mirando desde fuera, y cerca del círculo.
 func _siege_inside_fort(position: Vector3) -> bool:
 	if not _siege_has_places():
 		return false
 	var inward: Vector3 = _siege_inward()
 	if inward == Vector3.ZERO:
 		return false
+	var enclosure: int = _siege.is_inside_enclosure(position, SIEGE_ENCLOSURE_MARGIN)
+	if enclosure >= 0:
+		return enclosure == 1
 	var from_gate: Vector3 = position - _siege.gate_position
 	from_gate.y = 0.0
 	var from_circle: Vector3 = position - _siege.circle_center

@@ -9,7 +9,8 @@ extends RefCounted
 ## [br]- con [code]--bot-brain=siege[/code] (GUE-15): [constant BotBrain.Pattern.SIEGE]. Asedia o defiende el fuerte
 ## de la zona: el [SiegeView] lo llena [FortressView] (lo que el cliente dibuja de la fortaleza) y, de
 ## respaldo, las posiciones de [code]data/routes/<zona>.tres[/code]; los enemigos son los remotos que dibuja su
-## [RemoteWorld], también los PNJ de guerra ([BotEnemySight]);
+## [RemoteWorld], también los PNJ de guerra ([BotEnemySight]), a los que busca primero, y los golpes avisados
+## (TELEGRAPH) que evita le llegan por [signal NetClient.telegraph_received] ([BotThreatSight]);
 ## [br]- si no, [constant BotBrain.Pattern.WANDER]: pasea alrededor de su punto de aparición.
 
 
@@ -48,8 +49,15 @@ static func _make_siege(client: NetClient, config: ClientConfig, home: Vector3, 
 	fortress_view.state_changed.connect(func(_net_id: int, _state: FortressState,
 			_previous: FortressState) -> void: _refresh_siege_view(view, fortress_view))
 	var sight := BotEnemySight.new(client, false, true)
+	var defenders := BotEnemySight.new(client, false, true, true)
+	var threats := BotThreatSight.new()
+	client.telegraph_received.connect(threats.note)
+	var prediction: ClientPrediction = client.get_prediction()
 	var brain := BotBrain.new(config.bot_seed, BotBrain.Pattern.SIEGE, home, radius)
 	brain.set_enemy_finder(func(position: Vector3) -> Variant: return sight.find(position))
+	brain.set_defender_finder(func(position: Vector3) -> Variant: return defenders.find(position))
+	brain.set_threat_finder(func(_position: Vector3) -> Array[BotBrain.Threat]:
+		return threats.find(prediction.get_predicted_tick()))
 	brain.set_siege(view, routes, realm)
 	return brain
 

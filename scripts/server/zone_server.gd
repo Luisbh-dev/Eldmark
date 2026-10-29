@@ -249,12 +249,19 @@ var _dummies_created: int = 0
 var _targets_tick: int = -1
 var _targets_by_realm: Dictionary = {}
 var _targets_ids_by_realm: Dictionary = {}
+# Por reino, 1 si el objetivo del mismo índice es un PNJ (lo que buscan primero los falsos SIEGE).
+var _targets_npc_by_realm: Dictionary = {}
 var _hostile_cache: Dictionary = {}
 # Asedio de los falsos con cerebro SIEGE (GUE-15): la vista de cada fortaleza, que comparten todos y se pone al
 # día en cada tick, y las rutas de aproximación de la zona (data/routes/<zona>.tres; null si no hay).
 var _siege_views: Dictionary[StringName, SiegeView] = {}
 var _siege_routes: ApproachRoutes = null
 var _siege_routes_loaded: bool = false
+# Golpes avisados (TELEGRAPH) que los falsos SIEGE evitan (F6b): tick de la lista, los golpes en curso de los PNJ y el
+# reino de cada PNJ que golpea.
+var _threats_tick: int = -1
+var _threats: Array[BotBrain.Threat] = []
+var _threat_realms: PackedInt32Array = PackedInt32Array()
 # peer_id -> medida del RTT en ticks.
 var _rtt: Dictionary[int, _RttWindow] = {}
 # Peers con CLIENT_READY recibido, en orden de llegada.
@@ -753,6 +760,10 @@ func add_fake_player(brain: BotBrain, realm: int) -> int:
 		brain.set_enemy_finder(_find_enemy_position.bind(entity.net_id))
 	if pattern == BotBrain.Pattern.SIEGE and not brain.has_siege():
 		brain.set_siege(get_siege_view(), get_approach_routes(), realm)
+	if pattern == BotBrain.Pattern.SIEGE and not brain.has_threat_finder():
+		brain.set_threat_finder(_find_threats.bind(entity.net_id))
+	if pattern == BotBrain.Pattern.SIEGE and not brain.has_defender_finder():
+		brain.set_defender_finder(_find_enemy_position.bind(entity.net_id, true))
 	var record: _PlayerRecord = _player_by_net[entity.net_id]
 	record.is_fake = true
 	_announce_arrival(entity, null, _tick)
@@ -780,6 +791,9 @@ func get_siege_view(fortress_id: StringName = &"") -> SiegeView:
 		var circle: Dictionary = _fortresses.get_circle(id)
 		view.set_places(gate.global_position if gate != null else circle["center"], circle["center"],
 				circle["radius"])
+		var routes: ApproachRoutes = get_approach_routes()
+		if routes != null:
+			view.enclosure_size = routes.enclosure_size
 		view.update_from_state(state)
 		_siege_views[id] = view
 	return view
@@ -1682,8 +1696,9 @@ func _pick_spawn_point(realm: int) -> Transform3D:
 # cerebro de combate de BotBrain), o null si no hay ninguno que pueda atacar o ser atacado: los
 # maniquíes, los protegidos y los que están en la zona segura de su reino no cuentan, y quien está en
 # la zona segura de su reino no ataca. Las posiciones objetivo se reúnen una vez por tick y por reino
-# (con muchos bots, cada uno recorre solo los candidatos de los reinos que le son hostiles).
-func _find_enemy_position(position: Vector3, net_id: int) -> Variant:
+# (con muchos bots, cada uno recorre solo los candidatos de los reinos que le son hostiles). Con
+# [param npcs_only], solo los PNJ (el buscador de defensores del cerebro SIEGE, F6b).
+func _find_enemy_position(position: Vector3, net_id: int, npcs_only: bool = false) -> Variant:
 	var me: Combatant = _combat.get_combatant(net_id)
 	if me == null or me.is_dead() or _safe_areas.contains_own(me.get_realm(), position):
 		return null
@@ -1695,8 +1710,9 @@ func _find_enemy_position(position: Vector3, net_id: int) -> Variant:
 		if not _is_hostile_realm(me.get_realm(), realm):
 			continue
 		var positions: PackedVector3Array = _targets_by_realm[realm]
+		var npc_flags: PackedByteArray = _targets_npc_by_realm[realm]
 		for index: int in positions.size():
-			if _targets_ids_by_realm[realm][index] == net_id:
+			if _targets_ids_by_realm[realm][index] == net_id or (npcs_only and npc_flags[index] == 0):
 				continue
 			var distance: float = position.distance_squared_to(positions[index])
 			if distance < best_distance:
@@ -1705,11 +1721,50 @@ func _find_enemy_position(position: Vector3, net_id: int) -> Variant:
 	return best
 
 
+# Los golpes avisados (TELEGRAPH) en curso que pueden dañar al jugador falso [param net_id] (el cerebro SIEGE, F6b):
+# los fuertes de los PNJ de un reino hostil desde que empiezan hasta que acaba su ventana activa, con la posición y el
+# rumbo del PNJ en este momento (gira y avanza un poco mientras carga) y el alcance del golpe. La lista se reúne una
+# vez por tick.
+func _find_threats(_position: Vector3, net_id: int) -> Array[BotBrain.Threat]:
+	var found: Array[BotBrain.Threat] = []
+	var me: Combatant = _combat.get_combatant(net_id)
+	if me == null or me.is_dead():
+		return found
+	if _threats_tick != _tick:
+		_rebuild_threats()
+	for index: int in _threats.size():
+		if _is_hostile_realm(_threat_realms[index], me.get_realm()):
+			found.append(_threats[index])
+	return found
+
+
+# Reúne los fuertes avisados de los PNJ que siguen en curso tras el último tick (los que avisa _emit_npc_telegraphs).
+func _rebuild_threats() -> void:
+	_threats_tick = _tick
+	_threats.clear()
+	_threat_realms.clear()
+	for net_id: int in _npcs:
+		var entity: NetEntity = _registry.get_entity(net_id)
+		var character: PlayerCharacter = entity.get_character() if entity != null else null
+		if character == null:
+			continue
+		var state: CombatState = character.combat
+		if state.action != CombatState.Action.HEAVY:
+			continue
+		var attack: AttackTicks = CombatCatalog.attack(state.action_id)
+		if attack == null or attack.shape == null \
+				or _tick - state.action_tick > attack.windup_ticks + attack.active_ticks:
+			continue
+		_threats.append(BotBrain.Threat.new(entity.get_position(), character.yaw, attack.shape.range_m))
+		_threat_realms.append(entity.realm)
+
+
 # Reúne, por reino, las posiciones de quien puede ser objetivo de un bot de combate en este tick.
 func _rebuild_target_cache() -> void:
 	_targets_tick = _tick
 	_targets_by_realm.clear()
 	_targets_ids_by_realm.clear()
+	_targets_npc_by_realm.clear()
 	for other: Combatant in _combat.get_sorted():
 		if other.is_dead() or other.immortal or other.is_protected(_tick):
 			continue
@@ -1720,8 +1775,10 @@ func _rebuild_target_cache() -> void:
 		if not _targets_by_realm.has(realm):
 			_targets_by_realm[realm] = PackedVector3Array()
 			_targets_ids_by_realm[realm] = PackedInt32Array()
+			_targets_npc_by_realm[realm] = PackedByteArray()
 		_targets_by_realm[realm].append(other_position)
 		_targets_ids_by_realm[realm].append(other.get_id())
+		_targets_npc_by_realm[realm].append(1 if _npcs.has(other.get_id()) else 0)
 
 
 # true si un bot de [param my_realm] puede dañar a uno de [param other_realm] en esta zona.

@@ -501,6 +501,28 @@ func test_without_the_npc_system_the_zone_has_no_npcs() -> void:
 	assert_eq(_rig.server.get_dummy_count(), 0)
 
 
+func test_a_definition_override_only_changes_the_npcs_of_this_server() -> void:
+	# F6b: las pruebas cortas del asedio necesitan PNJ más débiles sin tocar data/npcs/ ni el catálogo del proceso.
+	await _rig.start_flat(tree, func(world: Node3D) -> void:
+		NpcRig.add_spawner(world, "Solo", &"hollow", Vector3(0.0, 0.05, 0.0), 0.0, {&"respawn_s": 1.0}))
+	var weak: NpcDefinition = NpcCatalog.get_definition(&"hollow").duplicate() as NpcDefinition
+	weak.max_health = 700
+	_rig.npcs().set_definition_override(&"hollow", weak)
+	assert_eq(_rig.npcs().get_definition(&"hollow"), weak, "el sistema da la sustituta")
+	assert_true(await _rig.advance_until_populated(), "aparece el Hueco")
+	var hollow: int = _rig.alive_of(&"hollow")[0]
+	assert_eq(_rig.combatant(hollow).max_health, 700, "con la vida de la sustituta")
+	assert_eq(_rig.entity(hollow).npc_def_id, NpcCatalog.number_of(&"hollow"), "y el número del catálogo")
+	assert_eq(NpcCatalog.get_definition(&"hollow").max_health, 2500, "el catálogo no cambia")
+	# Sin la sustitución, el siguiente vuelve a ser el de los datos.
+	_rig.npcs().set_definition_override(&"hollow", null)
+	_kill(hollow)
+	await _rig.advance(120)
+	var again: Array[int] = _rig.alive_of(&"hollow")
+	if assert_eq(again.size(), 1, "reaparece"):
+		assert_eq(_rig.combatant(again[0]).max_health, 2500, "con la vida de data/npcs/")
+
+
 func test_the_report_counts_the_npcs() -> void:
 	await _start_fort_zone()
 	_kill(_rig.alive_of(&"hollow")[0])

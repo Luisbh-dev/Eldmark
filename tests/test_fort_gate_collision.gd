@@ -144,6 +144,27 @@ func test_line_of_sight_does_not_cross_a_gate() -> void:
 	assert_true(HitShapes.has_line_of_sight(space, outside, inside), "rota, se ve a su través")
 
 
+func test_whoever_stands_inside_a_closed_gate_neither_hits_out_nor_is_hit() -> void:
+	# F6b: el dueño cruza su puerta cerrada, y quien se queda dentro de ella (el pecho dentro de la caja de vista)
+	# golpeaba hacia fuera sin que los de fuera le pudieran golpear: el rayo que sale de dentro de una caja no la
+	# veía. Ahora la puerta para el rayo en los dos sentidos.
+	var space: PhysicsDirectSpaceState3D = _world.get_world_3d().direct_space_state
+	var in_the_gate: Vector3 = Vector3(0.1, 0.0, 0.5)
+	var outside: Vector3 = Vector3(-1.8, 0.0, 0.5)
+	var inside: Vector3 = Vector3(1.8, 0.0, 0.5)
+	for owner_realm: int in [0, VARDHEIM]:
+		_gate.set_state(owner_realm, false)
+		await wait_physics_frames(2)
+		assert_false(HitShapes.has_line_of_sight(space, in_the_gate, outside),
+				"dueño %d: desde dentro de la puerta no se golpea hacia fuera" % owner_realm)
+		assert_false(HitShapes.has_line_of_sight(space, in_the_gate, inside), "ni hacia dentro")
+		assert_false(HitShapes.has_line_of_sight(space, outside, in_the_gate), "ni le golpean desde fuera")
+	_gate.set_state(VARDHEIM, true)
+	await wait_physics_frames(2)
+	assert_true(HitShapes.has_line_of_sight(space, in_the_gate, outside), "rota, el vano está libre")
+	assert_true(HitShapes.has_line_of_sight(space, outside, in_the_gate))
+
+
 # --- Ayudantes --------------------------------------------------------------------------------
 
 ## Crea un personaje del reino [param realm] (-1 = sin llamar a set_realm_collision) a 6 m al oeste de
