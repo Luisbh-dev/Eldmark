@@ -623,6 +623,63 @@ func test_replaying_ticks_does_not_duplicate_action_effects() -> void:
 	assert_eq(changes.size(), 1, "repetir los ticks no repite el efecto: la clave es la misma")
 
 
+func test_a_correction_that_shifts_the_start_of_a_dodge_does_not_repeat_the_effects() -> void:
+	# T5: la entrada del flanco de la esquiva se pierde y el servidor la sustituye (repite los botones
+	# anteriores): esquiva un tick después. Al adoptar su estado el tick de inicio cambia de 1 tick, pero
+	# es la misma esquiva: un solo aviso y un solo sonido.
+	_floor()
+	_make_feedback(false)
+	await wait_physics_frames(3)
+	_feedback.observe_action()
+	var dodges: Array[int] = []
+	_feedback.action_changed.connect(func(action: int, _id: int, tick: int, _prev: int) -> void:
+		if action == CombatState.Action.DODGE:
+			dodges.append(tick))
+	# Unos ticks quietos para que el personaje aterrice antes de esquivar.
+	for i: int in 12:
+		await wait_physics_frames(1)
+		_character.simulate(_input(4980 + i, 0), _dt)
+	var saved: PlayerState = _character.get_state()
+	var first_tick: int = 5001
+	# El cliente predice: pulsa esquivar en el tick 5001 y la mantiene 4 ticks.
+	for i: int in 6:
+		await wait_physics_frames(1)
+		_character.simulate(_input(first_tick + i, PlayerInput.DODGE if i < 4 else 0), _dt)
+		_feedback.observe_action()
+	assert_eq(dodges, [first_tick] as Array[int], "la predicción empieza la esquiva en su tick")
+	assert_eq(_sounds.count(CombatFeedback.SOUND_DODGE), 1)
+	# El servidor no recibió la entrada del 5001 (la sustituta repite los botones previos: ninguno) y
+	# ve el flanco un tick después, con el botón aún pulsado. La reconciliación adopta ese estado.
+	await wait_physics_frames(1)
+	_character.set_state(saved)
+	for i: int in 6:
+		_character.simulate(_input(first_tick + i, PlayerInput.DODGE if i >= 1 and i < 5 else 0), _dt)
+	assert_eq(_character.combat.action_tick, first_tick + 1, "el servidor esquivó un tick más tarde")
+	_feedback.observe_action()
+	assert_eq(dodges, [first_tick] as Array[int], "no hay un segundo aviso de la misma esquiva")
+	assert_eq(_sounds.count(CombatFeedback.SOUND_DODGE), 1, "ni un segundo sonido")
+
+
+func test_two_dodges_chained_by_the_buffer_are_two_actions() -> void:
+	_floor()
+	_make_feedback(false)
+	await wait_physics_frames(3)
+	_feedback.observe_action()
+	var dodges: Array[int] = []
+	_feedback.action_changed.connect(func(action: int, _id: int, tick: int, _prev: int) -> void:
+		if action == CombatState.Action.DODGE:
+			dodges.append(tick))
+	var first_tick: int = 6001
+	# Esquivar y, durante ella, otra pulsación: la segunda sale del búfer al acabar la primera.
+	for i: int in 60:
+		await wait_physics_frames(1)
+		var pressed: bool = i < 2 or (i >= 21 and i < 23)
+		_character.simulate(_input(first_tick + i, PlayerInput.DODGE if pressed else 0), _dt)
+		_feedback.observe_action()
+	assert_eq(dodges.size(), 2, "dos esquivas, dos avisos")
+	assert_eq(_sounds.count(CombatFeedback.SOUND_DODGE), 2, "y dos sonidos")
+
+
 func test_a_new_attack_in_the_combo_is_a_new_action() -> void:
 	_floor()
 	_make_feedback(false)

@@ -27,7 +27,11 @@ extends Node
 ## compara [code](action, action_id, action_tick)[/code] del estado mostrado con el último visto:
 ## si cambia, empieza otra acción ([signal action_changed]); y se sigue el barrido del arma, activo
 ## mientras dura el golpe ([signal swing_active_changed], gancho para la estela). Una corrección que
-## repite ticks no cambia la clave, así que no duplica nada.
+## repite ticks no cambia la clave, así que no duplica nada; y una que solo desplaza unos ticks el
+## inicio de la misma acción (la entrada del flanco llegó tarde al servidor, que la sustituyó y empezó
+## la esquiva un tick después) tampoco es una acción nueva. El desplazamiento admitido es el tamaño del
+## búfer de entradas ([member CombatRules.input_buffer_ticks]), menos que la duración de la acción más
+## corta (la esquiva dura 27 ticks), así que una segunda acción encadenada sí se distingue.
 ## [br][br]
 ## Las opciones del jugador son [member hit_markers_enabled], [member damage_numbers_enabled],
 ## [member camera_shake_enabled] y [member flash_enabled].
@@ -460,9 +464,10 @@ func observe_action() -> void:
 	if key != _last_action_key:
 		var first: bool = _last_action_key == Vector3i(-1, -1, -1)
 		var previous: int = _last_action
+		var shifted: bool = not first and _is_shifted_start(key, _last_action_key)
 		_last_action_key = key
 		_last_action = state.action
-		if not first:
+		if not first and not shifted:
 			action_changed.emit(state.action, state.action_id, state.action_tick, previous)
 			if state.action == CombatState.Action.DODGE:
 				_request_sound(SOUND_DODGE, character.global_position)
@@ -472,6 +477,13 @@ func observe_action() -> void:
 		swing_active_changed.emit(active, state.action_id if active else 0)
 		if active:
 			_request_sound(SOUND_SWING, character.global_position)
+
+
+# true si [param key] es la misma acción que [param previous] con el inicio movido unos ticks (una
+# corrección de la reconciliación), no otra acción: mismo tipo y mismo ataque, distinto de NONE.
+func _is_shifted_start(key: Vector3i, previous: Vector3i) -> bool:
+	return key.x != CombatState.Action.NONE and key.x == previous.x and key.y == previous.y \
+			and absi(key.z - previous.z) <= CombatCatalog.rules().input_buffer_ticks
 
 
 ## true mientras el golpe del arma propia está activo.

@@ -540,7 +540,10 @@ ninguno debe hacer daño de más.
 - **Detección de acciones sin señales**: `CombatFeedback` y `CharacterAnimator` comparan, tras
   cada tick de física, `(action, action_id, action_tick)` del estado mostrado con el último que
   vieron, y lanzan o cortan barrido, estela y clip desde ahí. Ninguna señal de combate dentro de
-  `simulate()`: las repeticiones no duplican ni pierden efectos.
+  `simulate()`: las repeticiones no duplican ni pierden efectos. Una corrección que solo mueve el
+  inicio de la misma acción hasta `input_buffer_ticks` ticks (el servidor sustituyó la entrada del
+  flanco y esquivó un tick después) no es una acción nueva para `CombatFeedback`: no repite el
+  aviso ni el sonido. Dos esquivas encadenadas (27 ticks de diferencia) sí son dos.
 - **`CombatFeedback`**: recibe los ENTITY_EVENT ya temporizados y reparte marcador de impacto y
   número de daño (UI-12), destello y sacudida (ART-09), ganchos de sonido (ART-11) y el medidor de
   DPS.
