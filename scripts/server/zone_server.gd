@@ -53,6 +53,9 @@ const FALL_LIMIT_Y: float = -100.0
 const INTEREST_INTERVAL_TICKS: int = 6
 ## Ticks que un peer puede estar cargando la zona sin enviar CLIENT_READY (60 s).
 const LOADING_TIMEOUT_TICKS: int = 3600
+## Cada cuántos ticks se vuelca a disco el registro de estados (1 s): si matan al servidor, lo
+## anterior no se pierde.
+const STATE_LOG_FLUSH_TICKS: int = 60
 ## Cada cuántos ticks se escribe la línea de métricas en el registro (10 s).
 const METRICS_LOG_TICKS: int = 600
 ## Ticks que se espera, tras [method stop], a que los peers se vayan antes de cerrar el transporte.
@@ -790,6 +793,8 @@ func _record_history(s: int) -> void:
 			_state_log.store_line("%d,%d,%d,%s" % [s, entity.net_id,
 					_substituted_now.get(entity.net_id, 0),
 					character.get_state().encode().hex_encode()])
+	if _state_log != null and s % STATE_LOG_FLUSH_TICKS == 0:
+		_state_log.flush()
 	_substituted_now.clear()
 
 
