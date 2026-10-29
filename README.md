@@ -254,6 +254,18 @@ godot --headless --path . -s res://tools/load_test.gd -- --brawl
 godot --headless --path . -s res://tools/load_test.gd -- --scenario=brawl --fakes=54 --bots=10
 ```
 
+### Pasada de equilibrio del combate
+
+`tools/combat_balance.gd` (CMB-29) monta un servidor sin red sobre `test_world`, lo avanza a mano tick a
+tick y mide con él el DPS contra el maniquí, el tiempo de muerte (TTK) de un atacante perfecto, duelos
+entre bots de combate y combates de 2 contra 2 y de 5 contra 5, en unos 20 s y con el mismo resultado
+en cualquier máquina. Las cifras y las decisiones están en `docs/combate.md` §12.
+
+```bash
+godot --headless --path . -s res://tools/combat_balance.gd -- --duels=60 --seconds=30 --out=build/combat_balance.json
+```
+
+
 ### Todo en uno: `--local`
 
 ```bash

@@ -585,10 +585,11 @@ static func can_damage(attacker_realm: int, victim_realm: int, zone_id: StringNa
 
 ## 10. Riesgos
 
-- **Coste de `simulate()`**: la máquina de acciones añade trabajo por personaje. Se mide en K5
-  contra los ~100 µs de la fase 2.
+- **Coste de `simulate()`**: la máquina de acciones añade trabajo por personaje. Medido en K5: 69–72 µs
+  por personaje, frente a los 42–50 µs de la fase 2 (red.md 14); es el cuello de las refriegas.
 - **Parada con latencia**: 6 ticks de ventana con 150 ms de RTT puede ser una lotería. Se mide en
-  CMB-29; si no funciona, pasa a habilidad del escudo.
+  CMB-29 (12.7: la primera pasada solo la calcula; se decide con personas); si no funciona, pasa a
+  habilidad del escudo.
 - **Ligeros imposibles de reaccionar en red** (12 ticks): es intencionado; la defensa reactiva es
   contra los fuertes.
 - **Animación**: los clips gratuitos no cubren impacto en bloqueo ni esquiva lateral (arte.md). Se
@@ -722,3 +723,139 @@ Cerrado durante K5 (integración):
   sale una sola advertencia, «instance_reset_physics_interpolation() is deprecated», al añadir la zona al
   árbol (`client_main.gd`, `add_child`): la lanza código nativo (probablemente Terrain3D), ningún script del
   proyecto llama a esa función, y no afecta a la demo.
+
+---
+
+## 12. Primera pasada de equilibrio (CMB-29)
+
+Primera pasada con **espada y escudo**, el único kit de la fase 3. Se repite cuando lleguen las habilidades
+(CMB-21) y el arco (CMB-23); las dos partes que dependen de contenido que aún no existe, la puerta del
+fuerte (GUE-10) y el capitán (MUN-11), quedan pendientes (12.7). Las cifras salen de
+`tools/combat_balance.gd`, no de una cuenta a mano: monta un `ZoneServer` sin red sobre `test_world`
+(llano, sin terreno ni zonas seguras: el daño no depende de ellos), lo avanza tick a tick sin esperar
+al motor y lee los datos de `data/combat/`. **No usa reloj ni red, así que es determinista:** dos
+ejecuciones dan el mismo JSON byte a byte, en cualquier máquina. Se lanza con
+
+```
+godot --headless --path . -s res://tools/combat_balance.gd -- --duels=60 --seconds=30 --out=build/combat_balance.json
+```
+
+(unos 20 s; `tests/test_combat_balance.gd` lo lanza en pequeño y comprueba que el DPS medido es el que dicen
+los `.tres`).
+
+### 12.1 Hoja de acciones (lo que dicen los datos)
+
+Vida 1000 y resistencia 1000 para todos; 1 tick = 1/60 s. Estos datos están en `data/combat/`
+(`sword_light_*.tres`, `sword_heavy.tres`, `sword_dodge.tres`, `sword_shield.tres`, `combat_rules.tres`).
+
+| Acción | Duración | Daño | Resistencia | DPS contra el maniquí (medido) |
+|---|---|---|---|---|
+| Ligero 1 | 36 ticks (0,60 s), golpe al tick 12 | 90 | 0 | 150,0 si se repite sin enlazar |
+| Ligero 2 | 35 ticks (0,58 s), golpe al tick 11 | 90 | 0 | |
+| Ligero 3 | 48 ticks (0,80 s), golpe al tick 15 | 130, tambaleo de 0,3 s | 0 | |
+| **Combo de 3 ligeros** | 119 ticks (1,98 s) | 310 | 0 | **156,3** |
+| Fuerte, carga mínima | 85 ticks (1,42 s): 21 de carga, 24 de anticipación, 7 activos, 33 de recuperación | 180, tambaleo de 0,5 s, empuje de 4 m/s | 150 | 127,1 |
+| Fuerte, carga máxima | 136 ticks (2,27 s): 72 de carga | 306 (×1,7) | 150 | 135,0 |
+| Esquiva | 27 ticks (0,45 s), 4,5 m; invulnerable de 0,05 s a 0,30 s | | 300 | |
+| Bloqueo | 120 grados, mitigación del 100 % | | 1 por punto de daño bloqueado | |
+| Parada | ventana de 6 ticks al pulsar BLOCK, reutilización de 30 ticks | | 0 | |
+
+- **El DPS medido es igual al calculado con los datos** (156,3, 150,0, 127,1 y 135,0, con 45, 50, 21 y 13
+  golpes en 30 s, ciclos completos): la máquina de acciones, la ventana de enlace y la carga hacen
+  exactamente lo que dicen los `.tres`; no hay pérdidas de ticks al enlazar.
+- **TTK ideal calculado:** 1000 de vida entre 156,3 de DPS son 6,4 s de combo continuo, o 7,4 s con
+  fuertes cargados al máximo. Medido con un atacante perfecto (combo encadenado, del primer golpe a la
+  muerte): **5,95 s y 10 golpes contra alguien quieto** (el primer golpe va 12 ticks después de empezar).
+
+### 12.2 Coste de resistencia por acción
+
+- **Atacar es gratis; defender cuesta.** Los tres ligeros cuestan 0, el fuerte 150 (6 seguidos desde la
+  barra llena) y la esquiva 300 (**3 seguidas**, y quedan 100). El bloqueo cuesta 1 por punto de daño que
+  detiene: la barra entera aguanta 1000 de daño, es decir, algo más de 3 combos completos (310 cada uno).
+- **Regeneración:** 3 por tick (180/s) a partir de 0,6 s sin gastar; quien llega a 0 queda agotado y
+  regenera 1 por tick (60/s) hasta superar 300. Una barra con algo de resistencia tarda como mucho 5,6 s en
+  llenarse; una agotada, unos 9,5 s (0,6 s de espera, 5 s hasta 300 y 3,9 s más).
+- **Bloquear sin parar no es dominante ni inútil.** Un atacante perfecto rompe la guardia de quien bloquea
+  sin parar a los **5,95 s** (rotura: aturdimiento de 1 s) y lo mata a los **14,47 s**, con 23 golpes (13
+  bloqueados): 2,4 veces lo que tarda contra uno quieto. Bloquear compra unos 8,5 s, a costa de no atacar.
+- **El ligero repetido casi iguala al combo** (150,0 contra 156,3 de DPS, un 4 % menos): como los ligeros no
+  cuestan resistencia, no hay nada que premie enlazar los tres salvo el tambaleo del tercero y su
+  avance. Ver la propuesta P1.
+
+### 12.3 TTK entre iguales con bots
+
+60 duelos de dos bots de combate (`BotBrain` en modo `COMBAT`: ataca cada 26 a 34 ticks, de ellos un 14 %
+bloquea, un 10 % esquiva y un 12 % carga un fuerte; **no reacciona al ataque del rival**), de reinos
+enemigos, con las mismas armas, a 4 m de distancia, hasta que uno muere:
+
+| | Primer golpe a la muerte |
+|---|---|
+| Mínimo / p10 | 5,8 s / 7,3 s |
+| **Mediana** / media | **10,7 s** / 11,4 s |
+| p90 / máximo | 16,4 s / 20,7 s |
+
+- Por duelo: 15,0 golpes que hacen daño (1717 de daño entre los dos), 2,8 bloqueados, 0,1 paradas, 0,0
+  roturas de guardia y 1,4 esquivados. Ningún empate por tiempo; ganó el primero 27 veces y el segundo
+  33 (sin ventaja de lado). El ganador hace una mediana de 92,6 de DPS: el 59 % del combo ideal, porque un
+  bot que ataca a intervalos al azar no enlaza el combo cuando toca.
+- **Lectura:** el ideal contra alguien quieto (5,95 s) es el suelo; los bots, que no leen al rival, mueren
+  en la mitad baja de lo que se pretende entre iguales (12.5). Con jugadores que bloqueen, esquiven y
+  paren a tiempo el TTK sube; con armaduras y estadísticas (PRG-01, PRG-06) también. Por eso esta cifra
+  es una **cota baja**.
+
+### 12.4 Equipos de 2 contra 2 y de 5 contra 5
+
+20 combates de cada tamaño con bots de combate (Vardheim contra Solmarch, en fila, a 4 m), hasta que un
+bando se queda sin nadie en pie, con reapariciones de 10 s de por medio y un tope de 60 s:
+
+| | Primera baja (mediana, p10 / p90) | Un bando sin nadie en pie (mediana, p10 / p90) | Bajas por combate |
+|---|---|---|---|
+| 2 contra 2 | 5,0 s (3,8 / 7,0) | 8,4 s (6,1 / 13,8) | 2,5 |
+| 5 contra 5 | 3,0 s (2,4 / 5,3) | 8,6 s (5,6 / 11,1) | 6,8 |
+
+Ninguno de los 40 combates llegó al tope. Con 5 contra 5 sale una baja cada 3 s y el combate entero dura lo
+que un duelo: sin curación, sin armadura ni habilidades defensivas, una pelea pequeña se decide de
+inmediato. **No es una cifra para el fuerte** (docenas de combatientes, curaciones y puertas): se repite al
+llegar CMB-21 y GUE-15.
+
+### 12.5 Decisiones de esta pasada
+
+| Decisión | Motivo |
+|---|---|
+| **TTK objetivo entre iguales** con espada y escudo y sin armadura: mediana de 10 a 15 s por duelo, p10 no por debajo de 6 s y p90 no por encima de 25 s. | El ideal contra uno quieto es 6 s (suelo); los bots dan mediana 10,7 s, p10 7,3 s, p90 16,4 s: dentro del margen y cerca del suelo, que es lo que se espera de una cota baja. |
+| **No se cambia ningún `.tres`** (vida 1000, daños 90/90/130/180, costes 150/300, bloqueo 1:1, regeneración 180/s, parada de 6 ticks). | Todo el DPS medido coincide con el calculado, el TTK cae en el margen y las cifras que más pesan (armadura, habilidades, jugadores que reaccionan) aún no existen. Retocar a ciegas contra bots que no reaccionan sería ajustar al ruido. |
+| **El TTK se defiende con la vida y el daño base, no con el coste de resistencia.** Cuando entren armaduras (PRG-06) se mantiene el TTK objetivo escalando la mitigación, no el daño ni la vida. | Los ligeros no cuestan resistencia: no hay palanca de resistencia sobre el ataque. |
+| **La parada de 6 ticks se queda en el kit.** | No se ha podido medir con latencia (12.7). |
+
+### 12.6 Propuestas sin aplicar
+
+- **P1. Premiar el combo: `sword_light_3.base_damage` de 130 a 150.** Medido cambiando el dato solo en una
+  ejecución de la herramienta (y revirtiéndolo): el combo pasa de 310 a 330 de daño (**166,4 de DPS, un 11
+  % más que el ligero repetido** en lugar de un 4 %), el TTK ideal contra uno quieto no cambia (5,95 s y
+  10 golpes), contra uno que bloquea baja de 14,5 s a 13,1 s (21 golpes) y la mediana de los duelos de
+  bots de 10,7 s a 10,5 s (p10 7,0, p90 16,4). Es una mejora barata del valor de enlazar y no toca el TTK
+  objetivo, pero se deja para cuando se vea si los jugadores enlazan por gusto: lo medido son bots.
+- **P2. Fuerte.** Su DPS (127–135) queda un 14–19 % por debajo del combo y cuesta 150 de resistencia y
+  hasta 1,2 s de carga a la vista. Lo compensan la `hyper_armor` (no se tambalea ni se le empuja
+  mientras golpea), el empuje de 4 m/s, el tambaleo de 0,5 s y que un fuerte bloqueado cuesta al defensor
+  180–306 de resistencia de una vez (3,3 máximos rompen la guardia). Sin cambios mientras no haya datos de jugadores.
+- **P3. Cota baja del TTK de 5 contra 5.** Si con curaciones y armaduras la primera baja de un 5 contra 5
+  sigue por debajo de los 5 s, subir la vida base o bajar el daño base antes que tocar las duraciones.
+
+### 12.7 Pendiente de esta pasada (CMB-29 sigue abierto)
+
+- **Vida de la puerta y tiempos del fuerte:** dependen de GUE-10 (puerta destructible), GUE-15 (bots de
+  asedio) y GUE-08 (captura). Referencia para dimensionarlos: cada atacante de espada hace hasta 156
+  de DPS antes del multiplicador de estructuras; vida de la puerta = atacantes simultáneos × 156 ×
+  segundos que debe aguantar × (1 − fracción del tiempo que no golpean).
+- **Capitán del Vado (MUN-11)**: TTK del jefe contra grupos de 5; no hay jefe todavía.
+- **Parada con latencia** (riesgo de §10): los bots paran por casualidad (0,1 por duelo), así que no
+  prueban nada. Cuenta, no medida: con 150 ms de RTT el defensor ve empezar un ataque
+  entre 142 y 275 ms más tarde (75 ms de medio RTT más 4 a 12 ticks de interpolación) y su pulsación
+  tarda otros 75 ms en llegar, es decir, 13 a 21 ticks después del inicio. Un ligero golpea a los 12
+  ticks: solo se para por anticipación. Un fuerte golpea a los 45 ticks como mínimo (21 de carga y 24 de
+  anticipación), con lo que sobran de 24 a 32 ticks para reaccionar. La ventana de 6 ticks (100 ms) le
+  pide a un humano acertar el momento con unos ±50 ms. Se decide con personas en la prueba cerrada (si
+  no funciona, la parada pasa a habilidad del escudo).
+- **Personas:** todas las cifras son de bots que no reaccionan. Falta una sesión de 2 contra 2 y 5 contra 5
+  con jugadores en el Vado Gris para fijar el TTK real.
