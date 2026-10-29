@@ -197,7 +197,7 @@ aplica un cambio de `collision_layer` en el siguiente `move_and_slide` del mismo
 
 - 9000 de vida, dañable por los enemigos del dueño (todos si es neutral). Multiplicadores contra
   estructuras (`CombatRules`, solo servidor): cortante ×0,35, perforante ×0,2, contundente ×1,0,
-  elemental ×0,6. Con el combo de espada, tres atacantes la rompen en ~55 s.
+  elemental ×0,6. Con el combo de espada, tres atacantes la rompen en ~55 s (medido en F3: 54,8 s).
 - **Blanco**: `HitShapes.sector_hits_box(origin, yaw, shape, box: Transform3D, half_extents:
   Vector3) -> bool`, en su posición actual, sin rebobinado ni críticos. El HIT lleva el `net_id` de
   la fortaleza. La línea de visión no cuenta la propia puerta. Golpearla pone «en combate» y
@@ -504,7 +504,7 @@ F0 (escena, capas, malla y rutas), F1 (fortaleza pura) y F2 (protocolo 3) están
   total de páginas para poder exigir el tamaño exacto, con 66 filas como máximo.
 - `ZoneServer` acepta `UNSTUCK_REQUEST` (un aviso si llega antes de entrar en el mundo o mal formado)
   y no suma avisos por un comando de depuración con id fijo (7 a 12) y datos válidos aunque aún no
-  tenga manejador (F3 y F4 los registrarán; `test_combat_server` lista los pendientes). `NetClient`
+  tenga manejador (F3 registró del 7 al 11 y F4 registrará `npc_debug`; `test_combat_server` lista los pendientes). `NetClient`
   acepta `OBJECT_STATE`, `SCOREBOARD`, el SPAWN de estructuras y los eventos `WAR` y `TELEGRAPH` sin
   contarlos como malformados ni como eventos de combate, y los cuenta en `get_stats()`
   (`object_states`, `scoreboards`, `structure_spawns`, `war_events`, `telegraphs`); `SwarmBot`
@@ -514,6 +514,102 @@ F0 (escena, capas, malla y rutas), F1 (fortaleza pura) y F2 (protocolo 3) están
 - Cuidado con `String.to_ascii_buffer()`: con caracteres que no son ASCII registra un error del
   motor y los cambia por espacios. Los ids de definición se comprueban antes
   (`NetMessages.is_printable_ascii_text`).
+
+**F3** (el servidor del fuerte; pruebas en `test_fortress_controller`, `test_gate_target`, `test_hit_shapes_box`,
+`test_fortress_server`, `test_fortress_zone`, `test_fortress_net`, `test_battle_summary`, `test_score_keeper` y
+`test_unstuck_tracker`)
+
+- **Archivos**: `scripts/server/war/` (`FortressController`, `StructureTarget`, `ScoreKeeper`, `BattleLog`,
+  `BattleSummary`), `scripts/server/unstuck_tracker.gd` y `tools/war/summarize_battle.gd`. `ZoneServer` solo
+  cablea (`_setup_fortresses`, el paso 4b del tick y los manejadores de salida en combate, /atascado y
+  marcador); `CombatResolver`/`CombatDirector` ganan los blancos estáticos. `NetEntity` gana
+  `definition_id` y `fortress_state` (su SPAWN de STRUCTURE), `InputQueue.get_last_real_tick()` (la regla de
+  inactividad de 60 s), `NetZones.get_fortress_nodes`/`get_all_respawn_points` (el servidor no nombra `Zones`),
+  `FortGate.get_hit_box()`/`get_hit_half_extents()`/`get_body_rids()`, `HitShapes.sector_hits_box` y
+  `capsule_overlaps_box`, `CombatRules.structure_*_multiplier` y `FortressState.capture_rate_multiplier`.
+- **Interfaz con los PNJ (F4)**, en `FortressController` (`ZoneServer.get_fortresses()`):
+  `get_fortress_state(id)` (el estado **vivo**, no una copia), `on_captain_died(id, tick, reino)`,
+  `set_guards_alive(id, n)`, `register_captain(id, net_id)` y `register_defender(id, net_id)` (el controlador
+  se entera solo por los DEATH y HIT del combate: la muerte del capitán abre el círculo y un golpe a un
+  defensor marca el fuerte como atacado y da el aviso), y las señales `defenders_retired(id, tick)` (cambio de
+  dueño o reinicio: retirar los PNJ de antes), `garrison_due(id, dueño, tick, completa)` (vuelve a estar
+  GARRISONED: hacer aparecer la guarnición y el capitán del dueño, o los Huecos y el Capitán del Vado con
+  dueño 0; `completa` false si solo reaparece el capitán) y `guards_respawn_due(id, tick)` (reponer los
+  guardias que faltan y avisar con `set_guards_alive`). Al arrancar no hay señal: el fuerte es neutral y su
+  generador lee el estado. **Doble de pruebas**: `ZoneServer.spawn_captain_double(id)` crea un PNJ mortal y
+  quieto en el `CaptainSpawn`, del bando del dueño, ya registrado como capitán; se mata a golpes, con
+  `kill` o con `fort_kill_captain`.
+- **La puerta como blanco**: el golpe usa la caja de la puerta cerrada (`ColisionCerrada`), sin rebobinado
+  (se prueba antes que el rebobinado del atacante, así que un rebobinado rechazado no libra de golpear la
+  puerta pero sí se anota como sospechoso), sin crítico ni defensa, y la línea de visión desde el pecho hasta
+  el punto de la caja más cercano excluye los dos cuerpos de la puerta. Daño de la fórmula por el
+  multiplicador de su tipo, redondeado, mínimo 1, sin pasar de la vida que queda: **un ligero quita 31**
+  (90 × 0,35 = 31,499… en coma flotante), el tercero del combo 45 y un fuerte cargado al máximo 107. Los
+  números de §3.3 se cumplen: tres atacantes con el combo la rompen en **54,8 s** (`test_fortress_server`). El
+  HIT lleva el `net_id` de la fortaleza y solo se manda al atacante (y a quien lo tenga relevante), no a toda
+  la zona. Un atacante dentro de la zona segura de su reino no golpea la puerta.
+- **Reparación y vano libre**: cuando la reparación que hace el estado (captura, `fort_reset`, `fort_owner`)
+  o el plazo de 5 min cae con alguien solapando el vano, el controlador **deshace la reparación**: la puerta
+  conserva la vida rota (y la colisión abierta) en el estado y en el OBJECT_STATE, y se repara en el primer
+  tick con el vano libre (`is_repair_pending`). Así cliente y servidor siguen simulando lo mismo. Solo
+  cuentan personajes vivos (jugadores y PNJ) cuyos pies solapen la caja; quien pisa la pasarela de encima no
+  la retiene. Un cambio de dueño con la puerta entera cambia las capas sin esperar (nadie queda atrapado en
+  una puerta entera: solo cambia a quién para).
+- **OBJECT_STATE**: como mucho uno por fortaleza cada 6 ticks con los campos cambiados; **desviación**: si lo
+  que cambia es la colisión de la puerta (dueño o rotura), sale en ese mismo tick, para que la historia de
+  cambios del cliente tenga el tick exacto del cambio (con el estado agrupado, la puerta habría cambiado hasta
+  5 ticks antes en el servidor que en el cliente). `under_attack_until_tick` solo viaja si avanza 60 ticks o
+  más (o si retrocede por un reinicio). Todos van por el canal fiable a quien está dentro del mundo; quien
+  entra recibe el estado completo en el SPAWN.
+- **Reparto de los comandos**: los de red actúan sobre la fortaleza más cercana al que los envía (rechazados
+  sin aviso si no hay ninguna, o si `fort_kill_captain` no encuentra al capitán guardando el fuerte); los de
+  consola aceptan la fortaleza al final (`fort_owner vardheim test_fort`). `fort_owner` deja la fortaleza
+  GARRISONED con ese dueño (guarnición y capitán, puerta llena, captura a cero) y manda `FORT_CAPTURED` (o
+  `FORT_RESET` con 0). `fort_capture_speed` multiplica solo la velocidad positiva (`FortressState`
+  `capture_rate_multiplier`, que no viaja: el cliente ve la velocidad ya multiplicada). `unstuck` (id 7) también
+  está registrado y pasa por la misma canalización que el mensaje propio; `npc_debug` (12) es de F4.
+- **Reaparición**: `RESPAWN_REQUEST.point_index` y el `point` del evento RESPAWN son el índice de la lista
+  **estática** (`NetZones.get_all_respawn_points`: todos los marcadores `respawn_points` en el orden de la
+  escena, 12 en el Vado Gris; sin ninguno, los puntos de aparición). Vale lo que dice
+  `RespawnRules.points_for` con los estados vivos (`CombatDirector.get_valid_respawn_points`). Si el punto ya
+  no vale, el servidor usa el primer campamento válido de su reino, sin aviso, y si no hay ninguno, un punto
+  de aparición. **Oleadas**: en las zonas con alguna fortaleza (`CombatTiming.respawn_wave_ticks = 600`) el
+  `respawn_tick` es el primer múltiplo de 600 ≥ muerte + `respawn_s`; en las demás sigue siendo muerte +
+  `respawn_s`. El cliente (F5) debe construir su lista con la misma función: mientras use la lista del reino de
+  antes, Solmarch cae siempre en su primer campamento.
+- **GUE-41**: `CLIENT_LEAVE` o la desconexión de quien está «en combate» y vivo (`ZoneServer.linger_ticks`, 900
+  por defecto; las pruebas lo acortan) deja el cuerpo `linger_ticks` desde que se procesa la baja. El
+  `Combatant` sigue vivo y atacable, sin peer (no rebobina), sus entradas son las neutras de `NetProtocol`
+  (sin botones, quieto), no cuenta en el círculo (`connected = false`) y su nombre sigue en
+  `get_connected_names()`, así que un HELLO con él recibe `REJECT NAME`. Si lo matan, la muerte y el KILL se
+  acreditan como cualquier otra y el cuerpo se retira al tick siguiente; al vencer el plazo se retira con el
+  DESPAWN de siempre. Fuera de combate o muerto, la baja es inmediata.
+- **MUN-41**: `UnstuckTracker` (clave: el nombre normalizado, para que volver a entrar no salte la
+  reutilización): 600 ticks de canalización (`channel_ticks`), 18 000 de reutilización (`cooldown_ticks`, solo
+  tras completarla), rechazo en combate, muerto o ya canalizando, e interrupción si el jugador entra en
+  combate (dar o recibir daño) o muere. Cada respuesta es un NOTICE informativo. El destino es el punto de
+  reaparición **válido** más cercano de su reino (campamento o fuerte propio sin atacar); sin ninguno, un punto
+  de aparición. Cada uso queda en el registro del servidor y en `war.unstuck.log` del informe (zona, origen,
+  destino).
+- **Marcador**: `ScoreKeeper` (bajas, muertes, asistencias, daño a la puerta y segundos con el círculo
+  **activo**) y SCOREBOARD cada 120 ticks a todo el mundo, en páginas de 66 filas. **Méritos provisionales**
+  (PRG-09 los sustituirá con antifarmeo y reparto por daño): `bajas × 10 + asistencias × 5 + segundos en el
+  círculo`. Los PNJ no tienen fila. El KILL va a toda la zona (el DEATH sigue yendo a los implicados).
+- **`--battle-log=<ruta>`** (JSON Lines, `BattleLog`): `battle_start` (zona y, por fortaleza, posiciones del
+  fuerte, la puerta y el círculo), `war` (el aviso con su clave de `WarEvents`, el reino y el lugar),
+  `gate_damage_started` (el primer golpe a la puerta desde su última reparación) y `death` (víctima, asesino,
+  ataque y posición; `victim_kind` distingue jugadores de PNJ). `tools/war/summarize_battle.gd` (`godot
+  --headless --path . -s res://tools/war/summarize_battle.gd -- batalla.jsonl [--json] [--out=resumen.json]`)
+  saca el tiempo hasta la captura, la captura propiamente dicha, las muertes de jugadores por ruta (puente,
+  vado, pasarela del fuerte u otras, a partir de `data/routes/<zona>.tres` y la altura sobre el círculo) y el
+  tiempo desde el primer golpe a la puerta hasta romperla. El informe del servidor gana la sección `war`
+  (fortalezas, OBJECT_STATE y marcadores enviados, salidas en combate y /atascado) y las métricas, la sección
+  `war` del tick.
+- **Reinicio a neutral**: lo hace el propio `FortressState.advance` cada `reset_to_neutral_s` desde el último
+  reinicio; el controlador lo convierte en `FORT_RESET`, `defenders_retired` y `garrison_due`. El Vado Gris
+  (1800 s) lo trae activo.
+- Lo que **no** hace F3: nada del cliente (`FortressView`, HUD, mapa, `RespawnPointList`), ni PNJ reales (F4),
+  ni bots que asedian ni `--max-realm-diff` (F6).
 
 ---
 

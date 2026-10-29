@@ -451,8 +451,9 @@ ninguno debe hacer daño de más.
 - **Reaparición**: desde `respawn_tick` el cliente puede pedirla con **RESPAWN_REQUEST**
   (`point_index`); a los 30 s sin pedirla, automática en el primer punto. Puntos: nodos del grupo
   `respawn_points` (o, si la zona no tiene, `spawn_points`) con metadato `realm`, en el orden de la
-  escena, que el cliente conoce porque carga la misma zona; en la fase 4 se añade la condición (el
-  fuerte propio). Al reaparecer: teletransporte (contador), `reset_for_respawn`, vida llena,
+  escena, que el cliente conoce porque carga la misma zona; en la fase 4 el índice pasa a ser el de la
+  lista **estática** de todos los puntos y se añade la condición (el fuerte propio, sin atacar:
+  [fuerte.md 5](fuerte.md#5-avisos-reaparición-salida-y-atascado)). Al reaparecer: teletransporte (contador), `reset_for_respawn`, vida llena,
   `protected_until = s + 3 s` (se pierde al empezar un ataque), evento RESPAWN.
 - **Caída**: `PlayerCharacter.last_landing_speed = −velocity.y` medido **antes** de
   `move_and_slide()` en el tick en que `grounded` pasa a true (0 en los demás). Daño
@@ -717,6 +718,16 @@ Cerrado durante K3 (servidor) y K4 (cliente):
   en servidor y cliente (`RespawnPointList` la usa tal cual). Un índice que ya no vale usa el
   primer punto, sin aviso. Una petición hasta 12 ticks antes de `respawn_tick` queda pendiente;
   antes de eso, o estando vivo, es aviso. La automática llega a los 30 s **desde la muerte**.
+  *(Cambiado en F3, fase 4: el índice va sobre `NetZones.get_all_respawn_points(zona)`, la lista estática
+  de todos los puntos; el servidor valida con `RespawnRules.points_for` y, si no vale, usa el primer
+  campamento válido del reino; ver [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones).
+  `CombatDirector.get_respawn_points(reino)` ya no existe: son `get_all_respawn_points()` y
+  `get_valid_respawn_points(reino, tick)`.)*
+- **Blancos estáticos (F3)**: `CombatResolver.structure_targets` (las puertas de los fuertes,
+  `StructureTarget`) se prueba para cada ataque activo antes del rebobinado, con `Outcome.STRUCTURE`; el
+  director aplica el daño con los multiplicadores de `CombatRules` y avisa con `structure_hit`. El KILL
+  va a toda la zona. Con alguna fortaleza en la zona, `CombatTiming.respawn_wave_ticks = 600`: la
+  reaparición sale en oleadas de 10 s.
 - **Cadena de controles**: cuenta todos los controles (también el tambaleo de la parada y la
   rotura de guardia). `hyper_armor` solo anula el tambaleo y el empuje de los impactos.
 - **«En combate»**: también lo ponen un bloqueo, una parada y la caída. La protección de

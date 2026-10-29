@@ -315,7 +315,7 @@ cubre ±5,24 km, así que caben los 5 × 5 km de terreno de Eldrun.
 | sistema | interno de `SceneMultiplayer`, fiable | ambos | Autenticación: HELLO, WELCOME, REJECT |
 | 1 `CH_INPUT` | `TRANSFER_MODE_UNRELIABLE` (sin secuencia) | C→S | INPUT_BATCH. Sin secuencia a propósito: un paquete atrasado puede traer la única copia de una entrada |
 | 2 `CH_SNAPSHOT` | `TRANSFER_MODE_UNRELIABLE_ORDERED` (secuenciado) | S→C | SNAPSHOT. ENet descarta los atrasados |
-| 3 `CH_RELIABLE` | `TRANSFER_MODE_RELIABLE` | ambos | CLIENT_READY, CLIENT_LEAVE, DEBUG_COMMAND, RESPAWN_REQUEST, ENTITY_SPAWN, ENTITY_DESPAWN, ENTITY_EVENT y NOTICE; más adelante, OBJECT_STATE |
+| 3 `CH_RELIABLE` | `TRANSFER_MODE_RELIABLE` | ambos | CLIENT_READY, CLIENT_LEAVE, DEBUG_COMMAND, RESPAWN_REQUEST, ENTITY_SPAWN, ENTITY_DESPAWN, ENTITY_EVENT y NOTICE; desde la fase 4, también UNSTUCK_REQUEST, OBJECT_STATE y SCOREBOARD |
 
 Reglas:
 
@@ -724,7 +724,9 @@ inmediata sin esperar al timeout.
   (*strike*, ver [12](#12-seguridad-de-la-fase-2)).
 
 **RESPAWN_REQUEST** (`0x05`, canal 3): `u8 type`, `u8 point_index`. El jugador muerto pide
-reaparecer en el punto `point_index` de la lista de puntos de su reino
+reaparecer en el punto `point_index` de la lista de puntos de su reino (desde la fase 4, la lista
+estática de todos los puntos de la zona, `NetZones.get_all_respawn_points`; el servidor comprueba
+que valga para su reino, [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones))
 ([combate.md 5](combate.md#5-vida-eventos-muerte-y-reaparición-cmb-10-cmb-15-cmb-41-gue-03-gue-05)).
 Fuera de plazo o con un índice inválido, el servidor cuenta un aviso.
 

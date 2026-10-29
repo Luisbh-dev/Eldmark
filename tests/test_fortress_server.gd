@@ -283,6 +283,49 @@ func test_a_real_swing_takes_health_off_the_gate_and_announces_the_attack() -> v
 		assert_eq(last.get_value(FortressFields.GATE_HEALTH), 900 - _slash(90))
 
 
+func test_three_attackers_with_the_sword_combo_break_the_gate_in_about_55_seconds() -> void:
+	var definition: FortressDefinition = FortressFixture.make_definition()
+	definition.gate_health = 9000
+	await _start_server(true, definition)
+	# El combo de espada encadenado: la segunda y la tercera pulsación, 4 ticks antes de acabar el ligero anterior.
+	var weapon: WeaponTicks = CombatCatalog.weapon(CombatCatalog.weapon_id(CombatCatalog.DEFAULT_WEAPON))
+	var presses: Array[int] = [0]
+	var cycle: int = 0
+	for index: int in weapon.light_ids.size():
+		cycle += CombatCatalog.attack(weapon.light_ids[index]).total_ticks
+		if index < weapon.light_ids.size() - 1:
+			presses.append(cycle - 4)
+	var start: int = 40
+	for offset: float in [-1.2, 0.0, 1.2]:
+		var net_id: int = _server.add_fake_player(_brain(func(tick: int, _position: Vector3,
+				_yaw: float) -> PlayerInput:
+			var input := PlayerInput.new()
+			input.tick = tick
+			input.look_yaw = YAW_EAST
+			var phase: int = (tick - start) % cycle if tick >= start else -1
+			for press: int in presses:
+				if phase >= press and phase < press + 2:
+					input.buttons = PlayerInput.PRIMARY
+			return input), VARDHEIM)
+		_put(net_id, Vector3(77.5, 0.05, offset), YAW_EAST)
+	await _advance(75 * 60)
+	assert_true(_state().is_gate_broken(), "rota en menos de 75 s")
+	var first_hit: int = -1
+	var broken_tick: int = -1
+	for event: NetMessages.EntityEvent in _events_of(NetMessages.EntityEvent.Kind.HIT):
+		if event.net_id == _server.get_fortresses().get_net_id(FORTRESS):
+			if first_hit < 0:
+				first_hit = event.tick
+			if event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_LETHAL):
+				broken_tick = event.tick
+	assert_true(first_hit > 0 and broken_tick > first_hit)
+	var seconds: float = float(broken_tick - first_hit) / 60.0
+	assert_true(seconds > 50.0 and seconds < 60.0,
+			"tres atacantes la rompen en unos 55 s (han sido %.1f s)" % seconds)
+	assert_eq(_war_ids(), [WarEvents.UNDER_ATTACK, WarEvents.GATE_BROKEN] as Array[int],
+			"un solo aviso de ataque y el de rotura")
+
+
 func test_the_owner_does_not_damage_its_own_gate_but_its_enemies_do() -> void:
 	await _start_server()
 	_server.console_command("fort_owner vardheim")
