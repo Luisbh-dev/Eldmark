@@ -16,9 +16,13 @@ extends RefCounted
 ## Tamaño de la cabecera de un SNAPSHOT sin estado propio, con el byte de
 ## [code]section_count[/code].
 const SNAPSHOT_HEADER_SIZE: int = 14
-## Tamaño de la cabecera de un SNAPSHOT con estado propio, con el byte de
-## [code]section_count[/code].
-const SNAPSHOT_HEADER_SIZE_WITH_STATE: int = SNAPSHOT_HEADER_SIZE + PlayerState.ENCODED_SIZE
+## Tamaño del bloque extra propio de un SNAPSHOT (vida, vida máxima, estado y tick de
+## reaparición), que va tras el estado propio.
+const SNAPSHOT_EXTRA_SIZE: int = 9
+## Tamaño de la cabecera de un SNAPSHOT con estado propio, con el estado, el bloque extra (que
+## siempre acompaña al estado) y el byte de [code]section_count[/code].
+const SNAPSHOT_HEADER_SIZE_WITH_STATE: int = \
+		SNAPSHOT_HEADER_SIZE + PlayerState.ENCODED_SIZE + SNAPSHOT_EXTRA_SIZE
 ## Máximo de registros por sección (el contador es un u8).
 const MAX_SECTION_RECORDS: int = 255
 ## Máximo de bytes del texto de un NOTICE.
@@ -28,8 +32,16 @@ const MAX_REJECT_TEXT_BYTES: int = 255
 ## Máximo de bytes de datos de un DEBUG_COMMAND.
 const MAX_DEBUG_PAYLOAD_BYTES: int = 64
 
+## Bits de [code]status[/code] del bloque extra propio de un SNAPSHOT.
+const STATUS_IN_COMBAT: int = 1 << 0
+const STATUS_PROTECTED: int = 1 << 1
+const STATUS_DEAD: int = 1 << 2
+
 ## Bit 0 de los flags de un SNAPSHOT: trae el estado propio.
 const FLAG_OWN_STATE: int = 1 << 0
+## Bit 3 de los flags de un SNAPSHOT: trae el bloque extra propio. Va si y solo si va el estado
+## propio (bit 0).
+const FLAG_OWN_EXTRA: int = 1 << 3
 ## Desplazamiento y máscara del contador de teletransporte en los flags (2 bits).
 const TELEPORT_SHIFT: int = 1
 const TELEPORT_MASK: int = 0b11
@@ -474,16 +486,19 @@ class DebugCommand:
 		return debug_command
 
 
-## SNAPSHOT (S→C, canal 2): cabecera de 49 B con estado propio o de 14 B sin él (en los dos
-## casos, con el byte de [code]section_count[/code]) y secciones de registros de
-## [constant EntityRecord.SIZE] B.
+## SNAPSHOT (S→C, canal 2): cabecera de 14 B sin estado propio o, con él, de
+## [constant SNAPSHOT_HEADER_SIZE_WITH_STATE] B (en los dos casos, con el byte de
+## [code]section_count[/code]) y secciones de registros de [constant EntityRecord.SIZE] B.
 ## [br][br]
 ## Cabecera: [code]u8 type, u32 server_tick, u32 input_ack_tick, s8 input_margin,
 ## u16 substitutions, u8 flags[/code] (bit 0 = estado propio; bits 1-2 = contador de
-## teletransporte propio) y, si bit 0, el [PlayerState] sin cuantizar (35 B). Después,
-## [code]u8 section_count[/code] y, por sección, [code]u8 kind, u8 count[/code] y los registros.
-## Solo hay registros de jugador ([constant NetProtocol.EntityKind.PLAYER]) y de PNJ
-## ([constant NetProtocol.EntityKind.NPC]) en la fase 2.
+## teletransporte propio; bit 3 = bloque extra propio) y, si bit 0, el [PlayerState] sin
+## cuantizar ([constant PlayerState.ENCODED_SIZE] B) y el bloque extra propio de
+## [constant SNAPSHOT_EXTRA_SIZE] B: [code]u16 health, u16 max_health, u8 status, u32
+## respawn_tick[/code]. El bit 3 va si y solo si va el bit 0: [method decode] rechaza uno sin el
+## otro. Después, [code]u8 section_count[/code] y, por sección, [code]u8 kind, u8 count[/code] y
+## los registros. Solo hay registros de jugador ([constant NetProtocol.EntityKind.PLAYER]) y de
+## PNJ ([constant NetProtocol.EntityKind.NPC]).
 class Snapshot:
 	var server_tick: int = 0
 	var input_ack_tick: int = 0
@@ -496,20 +511,51 @@ class Snapshot:
 	var own_teleport: int = 0
 	## Estado propio del jugador, o null si el snapshot no lo trae.
 	var own_state: PlayerState = null
+	## Bloque extra propio (solo con [member own_state]): vida del jugador propio.
+	var health: int = 0
+	## Bloque extra propio: vida máxima.
+	var max_health: int = 0
+	## Bloque extra propio: bits [constant NetMessages.STATUS_IN_COMBAT],
+	## [constant NetMessages.STATUS_PROTECTED] y [constant NetMessages.STATUS_DEAD].
+	var status: int = 0
+	## Bloque extra propio: tick en el que se puede pedir la reaparición (0 si está vivo).
+	var respawn_tick: int = 0
 	## Registros de las demás entidades, agrupados por sección en el orden del mensaje.
 	var records: Array[EntityRecord] = []
 
 
+	## true si el jugador propio está en combate (bit del bloque extra).
+	func is_in_combat() -> bool:
+		return (status & NetMessages.STATUS_IN_COMBAT) != 0
+
+
+	## true si el jugador propio tiene la protección de reaparición.
+	func is_protected() -> bool:
+		return (status & NetMessages.STATUS_PROTECTED) != 0
+
+
+	## true si el jugador propio está muerto.
+	func is_dead() -> bool:
+		return (status & NetMessages.STATUS_DEAD) != 0
+
+
 	## Escribe la cabecera en [param bytes] sin crear ningún objeto y devuelve el offset donde
-	## empieza [code]section_count[/code] (13 sin estado propio, 48 con él). Amplía el búfer si
-	## es más corto que la cabecera y deja [code]section_count[/code] a 0: quien construye el
-	## snapshot lo rellena después. [param own_state_bytes] es [code]PlayerState.encode()[/code]
-	## ([constant PlayerState.ENCODED_SIZE] B) o un búfer vacío si no hay estado propio.
+	## empieza [code]section_count[/code] (13 sin estado propio; con él, 13 más el estado y el
+	## bloque extra). Amplía el búfer si es más corto que la cabecera y deja
+	## [code]section_count[/code] a 0: quien construye el snapshot lo rellena después.
+	## [param own_state_bytes] es [code]PlayerState.encode()[/code]
+	## ([constant PlayerState.ENCODED_SIZE] B) o un búfer vacío si no hay estado propio. Con
+	## estado propio se escribe también el bloque extra con [param health], [param max_health],
+	## [param status] y [param respawn_tick]; sin él, esos cuatro se ignoran.
 	static func write_header(bytes: PackedByteArray, server_tick: int, input_ack_tick: int,
 			input_margin: int, substitutions: int, own_teleport: int,
-			own_state_bytes: PackedByteArray) -> int:
+			own_state_bytes: PackedByteArray, health: int = 0, max_health: int = 0,
+			status: int = 0, respawn_tick: int = 0) -> int:
 		var has_state: bool = own_state_bytes.size() == PlayerState.ENCODED_SIZE
-		var section_offset: int = 13 + (PlayerState.ENCODED_SIZE if has_state else 0)
+		var extra_offset: int = 13 + PlayerState.ENCODED_SIZE
+		var section_offset: int = 13
+		if has_state:
+			section_offset = extra_offset + SNAPSHOT_EXTRA_SIZE
 		if bytes.size() < section_offset + 1:
 			bytes.resize(section_offset + 1)
 		bytes.encode_u8(0, NetProtocol.MSG_SNAPSHOT)
@@ -519,9 +565,13 @@ class Snapshot:
 		bytes.encode_u16(10, substitutions & 0xFFFF)
 		var flags: int = (own_teleport & TELEPORT_MASK) << TELEPORT_SHIFT
 		if has_state:
-			flags |= FLAG_OWN_STATE
+			flags |= FLAG_OWN_STATE | FLAG_OWN_EXTRA
 			for i: int in PlayerState.ENCODED_SIZE:
 				bytes[13 + i] = own_state_bytes[i]
+			bytes.encode_u16(extra_offset, clampi(health, 0, 0xFFFF))
+			bytes.encode_u16(extra_offset + 2, clampi(max_health, 0, 0xFFFF))
+			bytes.encode_u8(extra_offset + 4, status & 0xFF)
+			bytes.encode_u32(extra_offset + 5, respawn_tick & 0xFFFFFFFF)
 		bytes.encode_u8(12, flags)
 		bytes.encode_u8(section_offset, 0)
 		return section_offset
@@ -550,7 +600,8 @@ class Snapshot:
 		var bytes := PackedByteArray()
 		bytes.resize(total_size)
 		var offset: int = write_header(bytes, server_tick, input_ack_tick, input_margin,
-				substitutions, own_teleport, own_state_bytes)
+				substitutions, own_teleport, own_state_bytes, health, max_health, status,
+				respawn_tick)
 		bytes.encode_u8(offset, mini(section_count, 255))
 		offset += 1
 		for kind: int in by_kind:
@@ -568,21 +619,33 @@ class Snapshot:
 		return bytes
 
 
+	## Devuelve null si el tamaño no cuadra, si el bit 3 de los flags (bloque extra) no coincide
+	## con el bit 0 (estado propio) o si la vida es mayor que la máxima.
 	static func decode(bytes: PackedByteArray) -> Snapshot:
 		var size: int = bytes.size()
 		if size < SNAPSHOT_HEADER_SIZE or bytes[0] != NetProtocol.MSG_SNAPSHOT:
 			return null
 		var flags: int = bytes.decode_u8(12)
+		var has_state: bool = (flags & FLAG_OWN_STATE) != 0
+		if has_state != ((flags & FLAG_OWN_EXTRA) != 0):
+			return null
 		var offset: int = 13
 		var state: PlayerState = null
-		if (flags & FLAG_OWN_STATE) != 0:
+		var snapshot := Snapshot.new()
+		if has_state:
 			if size < SNAPSHOT_HEADER_SIZE_WITH_STATE:
 				return null
 			state = PlayerState.decode(bytes.slice(13, 13 + PlayerState.ENCODED_SIZE))
 			offset += PlayerState.ENCODED_SIZE
+			snapshot.health = bytes.decode_u16(offset)
+			snapshot.max_health = bytes.decode_u16(offset + 2)
+			snapshot.status = bytes.decode_u8(offset + 4)
+			snapshot.respawn_tick = bytes.decode_u32(offset + 5)
+			if snapshot.health > snapshot.max_health:
+				return null
+			offset += SNAPSHOT_EXTRA_SIZE
 		var section_count: int = bytes.decode_u8(offset)
 		offset += 1
-		var snapshot := Snapshot.new()
 		snapshot.server_tick = bytes.decode_u32(1)
 		snapshot.input_ack_tick = bytes.decode_u32(5)
 		snapshot.input_margin = bytes.decode_s8(9)
@@ -608,7 +671,7 @@ class Snapshot:
 
 
 ## ENTITY_SPAWN (S→C, canal 3): 10 B + datos. Para un jugador o un PNJ, los datos son su
-## [PlayerState] (35 B, el estado tras [member spawn_tick]), un `u8` con la longitud del nombre
+## [PlayerState] ([constant PlayerState.ENCODED_SIZE] B, el estado tras [member spawn_tick]), un `u8` con la longitud del nombre
 ## y el nombre (hasta 48 B).
 class EntitySpawn:
 	var net_id: int = 0
@@ -742,3 +805,232 @@ class Notice:
 		notice.code = bytes[1]
 		notice.text = NetMessages.read_text(bytes, 3, text_len)
 		return notice
+
+
+## ENTITY_EVENT (S→C, canal 3): 9 B + datos según el evento (docs/combate.md, sección 6).
+## [br][br]
+## [code]u8 type, u16 net_id, u32 tick, u8 event, u8 len[/code] y [code]len[/code] bytes de
+## datos. [member net_id] es la entidad a la que se ata el evento: la víctima en HIT, DEATH y
+## KILL, y la entidad que reaparece en RESPAWN. [member tick] es el tick del servidor en que
+## ocurrió.
+## [br]- [code]HIT[/code] (17 B): [code]u16 attacker, u16 amount, u8 damage_type, u8 flags,
+## u16 attack_id[/code]. Los flags son los [code]HIT_FLAG_*[/code].
+## [br]- [code]DEATH[/code] (13 B): [code]u16 killer, u16 attack_id[/code] (killer 0 = el
+## entorno).
+## [br]- [code]KILL[/code] (14 + 2n B): [code]u16 killer, u16 attack_id, u8 n[/code] y
+## [code]n × u16[/code] asistentes.
+## [br]- [code]RESPAWN[/code] (10 B): [code]u8 point[/code].
+## [br][br]
+## Con [method hit], [method death], [method kill] y [method respawn] se crean ya rellenos.
+class EntityEvent:
+	## Evento ([member event]).
+	enum Kind { HIT = 1, DEATH = 2, KILL = 3, RESPAWN = 4 }
+
+	## Bytes de la cabecera, antes de los datos.
+	const HEADER_SIZE: int = 9
+	const HIT_DATA_SIZE: int = 8
+	const DEATH_DATA_SIZE: int = 4
+	const KILL_MIN_DATA_SIZE: int = 5
+	const RESPAWN_DATA_SIZE: int = 1
+	## Máximo de asistentes de un KILL (cada uno hizo al menos el 10 % del daño, así que nunca
+	## son más de 10).
+	const MAX_ASSISTANTS: int = 16
+
+	## Bits de [member hit_flags] de un HIT.
+	const HIT_FLAG_CRITICAL: int = 1 << 0
+	const HIT_FLAG_BLOCKED: int = 1 << 1
+	const HIT_FLAG_PARRIED: int = 1 << 2
+	const HIT_FLAG_GUARD_BREAK: int = 1 << 3
+	const HIT_FLAG_LETHAL: int = 1 << 4
+
+	## Entidad a la que se ata el evento (la víctima, o quien reaparece).
+	var net_id: int = 0
+	## Tick del servidor en que ocurrió.
+	var tick: int = 0
+	## [enum Kind].
+	var event: int = Kind.HIT
+	## HIT: net_id del atacante.
+	var attacker: int = 0
+	## HIT: daño que llegó a la vida (ya con bloqueo y armadura).
+	var amount: int = 0
+	## HIT: [enum DamageFormula.DamageType].
+	var damage_type: int = 0
+	## HIT: combinación de los [code]HIT_FLAG_*[/code].
+	var hit_flags: int = 0
+	## HIT, DEATH y KILL: id del ataque del catálogo.
+	var attack_id: int = 0
+	## DEATH y KILL: net_id de quien dio el golpe de gracia (0 = el entorno).
+	var killer: int = 0
+	## KILL: net_id de los asistentes.
+	var assistants: PackedInt32Array = PackedInt32Array()
+	## RESPAWN: índice del punto de reaparición.
+	var point: int = 0
+
+
+	static func hit(victim_id: int, event_tick: int, attacker_id: int, damage: int,
+			type_of_damage: int, flags: int, id_of_attack: int) -> EntityEvent:
+		var created := EntityEvent.new()
+		created.event = Kind.HIT
+		created.net_id = victim_id
+		created.tick = event_tick
+		created.attacker = attacker_id
+		created.amount = damage
+		created.damage_type = type_of_damage
+		created.hit_flags = flags
+		created.attack_id = id_of_attack
+		return created
+
+
+	static func death(victim_id: int, event_tick: int, killer_id: int,
+			id_of_attack: int) -> EntityEvent:
+		var created := EntityEvent.new()
+		created.event = Kind.DEATH
+		created.net_id = victim_id
+		created.tick = event_tick
+		created.killer = killer_id
+		created.attack_id = id_of_attack
+		return created
+
+
+	static func kill(victim_id: int, event_tick: int, killer_id: int, id_of_attack: int,
+			assistant_ids: PackedInt32Array) -> EntityEvent:
+		var created := EntityEvent.new()
+		created.event = Kind.KILL
+		created.net_id = victim_id
+		created.tick = event_tick
+		created.killer = killer_id
+		created.attack_id = id_of_attack
+		created.assistants = assistant_ids
+		return created
+
+
+	static func respawn(entity_id: int, event_tick: int, point_index: int) -> EntityEvent:
+		var created := EntityEvent.new()
+		created.event = Kind.RESPAWN
+		created.net_id = entity_id
+		created.tick = event_tick
+		created.point = point_index
+		return created
+
+
+	## true si [member hit_flags] tiene el bit [param flag] (un [code]HIT_FLAG_*[/code]).
+	func has_hit_flag(flag: int) -> bool:
+		return (hit_flags & flag) != 0
+
+
+	## Bytes de datos que ocupa el evento, o -1 si [member event] no es un [enum Kind].
+	func data_size() -> int:
+		match event:
+			Kind.HIT:
+				return HIT_DATA_SIZE
+			Kind.DEATH:
+				return DEATH_DATA_SIZE
+			Kind.KILL:
+				return KILL_MIN_DATA_SIZE + 2 * mini(assistants.size(), MAX_ASSISTANTS)
+			Kind.RESPAWN:
+				return RESPAWN_DATA_SIZE
+		return -1
+
+
+	## Un búfer vacío si [member event] no es un [enum Kind]. Un KILL con más de
+	## [constant MAX_ASSISTANTS] asistentes se recorta.
+	func encode() -> PackedByteArray:
+		var size_of_data: int = data_size()
+		if size_of_data < 0:
+			return PackedByteArray()
+		var bytes := PackedByteArray()
+		bytes.resize(HEADER_SIZE + size_of_data)
+		bytes.encode_u8(0, NetProtocol.MSG_ENTITY_EVENT)
+		bytes.encode_u16(1, net_id & 0xFFFF)
+		bytes.encode_u32(3, tick & 0xFFFFFFFF)
+		bytes.encode_u8(7, event)
+		bytes.encode_u8(8, size_of_data)
+		match event:
+			Kind.HIT:
+				bytes.encode_u16(9, attacker & 0xFFFF)
+				bytes.encode_u16(11, clampi(amount, 0, 0xFFFF))
+				bytes.encode_u8(13, damage_type & 0xFF)
+				bytes.encode_u8(14, hit_flags & 0xFF)
+				bytes.encode_u16(15, attack_id & 0xFFFF)
+			Kind.DEATH:
+				bytes.encode_u16(9, killer & 0xFFFF)
+				bytes.encode_u16(11, attack_id & 0xFFFF)
+			Kind.KILL:
+				var count: int = mini(assistants.size(), MAX_ASSISTANTS)
+				bytes.encode_u16(9, killer & 0xFFFF)
+				bytes.encode_u16(11, attack_id & 0xFFFF)
+				bytes.encode_u8(13, count)
+				for i: int in count:
+					bytes.encode_u16(14 + 2 * i, assistants[i] & 0xFFFF)
+			Kind.RESPAWN:
+				bytes.encode_u8(9, point & 0xFF)
+		return bytes
+
+
+	## Devuelve null si el tipo, el evento, la longitud declarada o el tamaño total no cuadran
+	## (HIT 8 B de datos, DEATH 4, RESPAWN 1 y KILL 5 + 2n con el n declarado y n a lo sumo
+	## [constant MAX_ASSISTANTS]).
+	static func decode(bytes: PackedByteArray) -> EntityEvent:
+		var size: int = bytes.size()
+		if size < HEADER_SIZE or bytes[0] != NetProtocol.MSG_ENTITY_EVENT:
+			return null
+		var event_code: int = bytes[7]
+		var declared: int = bytes[8]
+		if size != HEADER_SIZE + declared:
+			return null
+		var parsed := EntityEvent.new()
+		parsed.net_id = bytes.decode_u16(1)
+		parsed.tick = bytes.decode_u32(3)
+		parsed.event = event_code
+		match event_code:
+			Kind.HIT:
+				if declared != HIT_DATA_SIZE:
+					return null
+				parsed.attacker = bytes.decode_u16(9)
+				parsed.amount = bytes.decode_u16(11)
+				parsed.damage_type = bytes.decode_u8(13)
+				parsed.hit_flags = bytes.decode_u8(14)
+				parsed.attack_id = bytes.decode_u16(15)
+			Kind.DEATH:
+				if declared != DEATH_DATA_SIZE:
+					return null
+				parsed.killer = bytes.decode_u16(9)
+				parsed.attack_id = bytes.decode_u16(11)
+			Kind.KILL:
+				if declared < KILL_MIN_DATA_SIZE:
+					return null
+				var count: int = bytes.decode_u8(13)
+				if count > MAX_ASSISTANTS or declared != KILL_MIN_DATA_SIZE + 2 * count:
+					return null
+				parsed.killer = bytes.decode_u16(9)
+				parsed.attack_id = bytes.decode_u16(11)
+				for i: int in count:
+					parsed.assistants.append(bytes.decode_u16(14 + 2 * i))
+			Kind.RESPAWN:
+				if declared != RESPAWN_DATA_SIZE:
+					return null
+				parsed.point = bytes.decode_u8(9)
+			_:
+				return null
+		return parsed
+
+
+## RESPAWN_REQUEST (C→S, canal 3): 2 B. El jugador muerto pide reaparecer en el punto
+## [member point_index] de la lista de puntos de su reino (docs/combate.md, sección 5). Fuera de
+## plazo o con un índice inválido el servidor cuenta un aviso.
+class RespawnRequest:
+	const SIZE: int = 2
+
+	var point_index: int = 0
+
+
+	func encode() -> PackedByteArray:
+		return PackedByteArray([NetProtocol.MSG_RESPAWN_REQUEST, point_index & 0xFF])
+
+
+	static func decode(bytes: PackedByteArray) -> RespawnRequest:
+		if bytes.size() != SIZE or bytes[0] != NetProtocol.MSG_RESPAWN_REQUEST:
+			return null
+		var request := RespawnRequest.new()
+		request.point_index = bytes[1]
+		return request

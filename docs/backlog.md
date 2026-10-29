@@ -415,7 +415,7 @@ Terminado cuando arranca el Vado Gris en headless, test_server_auth cubre cada m
 - cliente Windows x86_64;
 - servidor dedicado Linux x86_64 (Strip Visuals de modelos, texturas y audio; .so de Terrain3D incluido).
 El build id sale de git describe y se ve en el cliente y en el informe; un job de CI por tag publica los artefactos para la distribución elegida. Terminado cuando el servidor exportado carga el Vado Gris en Linux, un --bot de Windows converge y se mide con --state-log la frecuencia de las diferencias de último bit entre Linux y Windows. El job de CI por tag se añade cuando exista TEC-03. Depende de: TEC-09, TEC-10.
-- [ ] **TEC-13 Protocolo de combate y política de versiones** · F3 · imprescindible · M · compartido — PROTOCOL_VERSION 2:
+- [ ] **TEC-13 Protocolo de combate y política de versiones (en curso)** · F3 · imprescindible · M · compartido — PROTOCOL_VERSION 2:
 - ENTITY_EVENT (0x23) fiable para golpe, bloqueo, daño, muerte y reaparición;
 - bloque con la vida y la resistencia propias (bit 3 de flags);
 - byte action en EntityRecord y parámetros de combate dentro de sim_hash.

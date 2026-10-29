@@ -78,8 +78,9 @@ func test_encode_record_matches_the_shared_encoder() -> void:
 	var from_entity := PackedByteArray()
 	entity.encode_record(from_entity, 0)
 	var direct := PackedByteArray()
-	EntityRecord.encode_character(direct, 0, entity.net_id, entity.get_character(), 2, 0)
-	assert_eq(from_entity.size(), EntityRecord.SIZE, "20 B")
+	EntityRecord.encode_character(direct, 0, entity.net_id, entity.get_character(), 2, 0,
+			EntityRecord.HEALTH_Q_FULL)
+	assert_eq(from_entity.size(), EntityRecord.SIZE, "21 B")
 	assert_eq(from_entity, direct, "los mismos bytes que EntityRecord.encode_character")
 	var record: EntityRecord = EntityRecord.decode_from(from_entity, 0, PLAYER)
 	assert_eq(record.net_id, entity.net_id, "net_id")
@@ -94,13 +95,57 @@ func test_encode_record_at_an_offset_grows_the_buffer() -> void:
 	var bytes := PackedByteArray()
 	bytes.resize(4)
 	entity.encode_record(bytes, 40)
-	assert_eq(bytes.size(), 60, "el búfer crece hasta caber el registro")
+	assert_eq(bytes.size(), 40 + EntityRecord.SIZE, "el búfer crece hasta caber el registro")
 	assert_eq(bytes.decode_u16(40), entity.net_id, "net_id en el offset")
 	var other: NetEntity = _make_player(Vector3(1, 1, 1))
 	other.net_id = 777
-	other.encode_record(bytes, 20)
-	assert_eq(bytes.decode_u16(20), 777, "otro registro en otro offset")
+	other.encode_record(bytes, 10)
+	assert_eq(bytes.decode_u16(10), 777, "otro registro en otro offset")
 	assert_eq(bytes.decode_u16(40), entity.net_id, "sin pisar el anterior")
+
+
+func test_health_in_the_record_and_the_snapshot_block() -> void:
+	var entity: NetEntity = _make_player()
+	# Sin Combatant: sano y con la vida llena.
+	assert_eq(entity.health_q, EntityRecord.HEALTH_Q_FULL, "vida cuantizada llena por defecto")
+	assert_eq(entity.health, NetEntity.DEFAULT_HEALTH, "vida por defecto")
+	assert_eq(entity.max_health, NetEntity.DEFAULT_HEALTH, "vida máxima por defecto")
+	assert_eq(entity.status, 0, "sin estados")
+	assert_eq(entity.respawn_tick, 0, "sin reaparición pendiente")
+	var bytes := PackedByteArray()
+	entity.encode_record(bytes, 0)
+	assert_eq(EntityRecord.decode_from(bytes, 0, PLAYER).health_q, 255, "registro con health_q 255")
+
+	# set_health_view cuantiza la vida en el registro y guarda el bloque extra.
+	entity.set_health_view(250, 1000, NetMessages.STATUS_IN_COMBAT, 0)
+	assert_eq(entity.health_q, EntityRecord.quantize_health(250, 1000), "health_q cuantizada")
+	assert_eq(entity.health_q, 64, "250 de 1000: 63,75 hacia arriba = 64")
+	assert_eq(entity.health, 250, "vida")
+	assert_eq(entity.max_health, 1000, "vida máxima")
+	assert_eq(entity.status, NetMessages.STATUS_IN_COMBAT, "estado")
+	entity.encode_record(bytes, 0)
+	assert_eq(EntityRecord.decode_from(bytes, 0, PLAYER).health_q, 64, "el registro lleva la vida")
+	assert_eq(bytes.decode_u8(EntityRecord.SIZE - 1), 64, "health_q es el último byte del registro")
+
+	# Muerto: 0 en el registro y tick de reaparición en el bloque.
+	entity.set_health_view(0, 1000, NetMessages.STATUS_DEAD, 4321)
+	assert_eq(entity.health_q, EntityRecord.HEALTH_Q_DEAD, "muerto: health_q 0")
+	assert_eq(entity.respawn_tick, 4321, "tick de reaparición")
+	entity.encode_record(bytes, 0)
+	assert_eq(EntityRecord.decode_from(bytes, 0, PLAYER).health_q, 0, "el registro dice muerto")
+
+	# Una entidad sin personaje lleva también la vida.
+	var plain := Node3D.new()
+	_nodes.append(plain)
+	var npc := NetEntity.new()
+	npc.net_id = 9
+	npc.kind = NetProtocol.EntityKind.NPC
+	npc.node = plain
+	npc.set_health_view(500, 1000, 0, 0)
+	var npc_bytes := PackedByteArray()
+	npc.encode_record(npc_bytes, 0)
+	assert_eq(EntityRecord.decode_from(npc_bytes, 0, NetProtocol.EntityKind.NPC).health_q, 128,
+			"el PNJ lleva su vida: 127,5 hacia arriba = 128")
 
 
 func test_teleport_counter_wraps_modulo_four_in_the_record() -> void:

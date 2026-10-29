@@ -11,7 +11,7 @@ encontraron los jueces; el resumen está en el [anexo](#anexo-correcciones-respe
 Se apoya en el código de la fase 1:
 
 - `PlayerInput`: 12 B cuantizados.
-- `PlayerState`: 35 B.
+- `PlayerState`: 35 B (69 B con el estado de combate de la fase 3, [combate.md 3.1](combate.md#31-combatstate-en-playerstate-entra-en-encode); las cifras de este documento son las de la fase 3).
 - `PlayerCharacter.simulate()`: determinista, un tick de física por llamada.
 - `LocalPlayerController`.
 
@@ -242,7 +242,7 @@ cubre ±5,24 km, así que caben los 5 × 5 km de terreno de Eldrun.
 | sistema | interno de `SceneMultiplayer`, fiable | ambos | Autenticación: HELLO, WELCOME, REJECT |
 | 1 `CH_INPUT` | `TRANSFER_MODE_UNRELIABLE` (sin secuencia) | C→S | INPUT_BATCH. Sin secuencia a propósito: un paquete atrasado puede traer la única copia de una entrada |
 | 2 `CH_SNAPSHOT` | `TRANSFER_MODE_UNRELIABLE_ORDERED` (secuenciado) | S→C | SNAPSHOT. ENet descarta los atrasados |
-| 3 `CH_RELIABLE` | `TRANSFER_MODE_RELIABLE` | ambos | CLIENT_READY, CLIENT_LEAVE, DEBUG_COMMAND, ENTITY_SPAWN, ENTITY_DESPAWN y NOTICE; más adelante, OBJECT_STATE y ENTITY_EVENT |
+| 3 `CH_RELIABLE` | `TRANSFER_MODE_RELIABLE` | ambos | CLIENT_READY, CLIENT_LEAVE, DEBUG_COMMAND, RESPAWN_REQUEST, ENTITY_SPAWN, ENTITY_DESPAWN, ENTITY_EVENT y NOTICE; más adelante, OBJECT_STATE |
 
 Reglas:
 
@@ -498,11 +498,12 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 | `0x02` | CLIENT_READY | C→S | 3 | 2 B |
 | `0x03` | CLIENT_LEAVE | C→S | 3 | 2 B |
 | `0x04` | DEBUG_COMMAND | C→S | 3 | 2 B + datos |
-| `0x10` | SNAPSHOT | S→C | 2 | ≤ 1200 B |
+| `0x05` | RESPAWN_REQUEST | C→S | 3 | 2 B |
+| `0x10` | SNAPSHOT | S→C | 2 | ≤ 1200 B (cabecera de 14 B, o de 92 B con estado y bloque extra propios, + 2 B por sección + 21 B por registro) |
 | `0x20` | ENTITY_SPAWN | S→C | 3 | 10 B + datos |
 | `0x21` | ENTITY_DESPAWN | S→C | 3 | 8 B |
 | `0x22` | OBJECT_STATE (reservado, fase 4) | S→C | 3 | — |
-| `0x23` | ENTITY_EVENT (reservado, fase 3) | S→C | 3 | — |
+| `0x23` | ENTITY_EVENT | S→C | 3 | 9 B + datos (HIT 17 B, DEATH 13 B, RESPAWN 10 B, KILL 14 + 2·n B) |
 | `0x30` | NOTICE | S→C | 3 | 3 B + texto |
 | `0x31` | HANDOFF (reservado, fase 6) | S→C | 3 | — |
 
@@ -593,8 +594,19 @@ inmediata sin esperar al timeout.
 **DEBUG_COMMAND** (`0x04`, canal 3): `u8 type`, `u8 command`, datos.
 
 - `command` 1 = TELEPORT, con `f32 × 3` de posición (14 B en total).
+- **Ids fijos** (`NetProtocol.DEBUG_*`), que no se reutilizan ni se reordenan: 1 `teleport`,
+  2 `heal`, 3 `kill`, 4 `stamina_inf`, 5 `set_weapon`, 6 `spawn_dummy`. Los datos de 2 a 6 los
+  define el servidor ([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)); el
+  `decode` solo exige 64 B de datos como mucho. `NetProtocol.DEBUG_COMMAND_IDS` es la tabla
+  nombre → id con la que el registro de comandos del servidor comprueba que todo comando de red
+  tiene su id. `announce`, `kick` y `shutdown` son solo de consola.
 - Solo se acepta si el servidor arrancó con `--debug-commands`; si no, cuenta un aviso
   (*strike*, ver [12](#12-seguridad-de-la-fase-2)).
+
+**RESPAWN_REQUEST** (`0x05`, canal 3): `u8 type`, `u8 point_index`. El jugador muerto pide
+reaparecer en el punto `point_index` de la lista de puntos de su reino
+([combate.md 5](combate.md#5-vida-eventos-muerte-y-reaparición-cmb-10-cmb-15-cmb-41-gue-03-gue-05)).
+Fuera de plazo o con un índice inválido, el servidor cuenta un aviso.
 
 ### 5.5 Servidor → cliente
 
@@ -607,16 +619,29 @@ inmediata sin esperar al timeout.
 | 5 | u32 | input_ack_tick | `max(mayor tick contiguo recibido, último consumido)`. Nunca se atasca tras una entrada sustituida |
 | 9 | s8 | input_margin | ver [4.1](#41-tick-del-servidor-y-regla-de-aplicación); −128 = sin datos |
 | 10 | u16 | substitutions | total acumulado de entradas sustituidas de este jugador (mod 65536). Robusto a snapshots perdidos |
-| 12 | u8 | flags | bit0 = incluye el estado propio; bits 1–2 = contador de teletransporte propio (mod 4); resto, 0 |
-| 13 | 35 B | own_state | `PlayerState.encode()` sin cuantizar, si bit0. Base de la reconciliación |
-| 48 (o 13) | u8 | section_count | |
+| 12 | u8 | flags | bit0 = incluye el estado propio; bits 1–2 = contador de teletransporte propio (mod 4); bit3 = incluye el bloque extra propio; resto, 0 |
+| 13 | 69 B | own_state | `PlayerState.encode()` sin cuantizar, si bit0. Base de la reconciliación |
+| 82 | 9 B | own_extra | bloque extra propio, si bit3 (ver abajo) |
+| 91 (o 13) | u8 | section_count | |
 | … | | secciones | cada una: `u8 kind`, `u8 count` y `count` registros del tamaño fijo de ese `kind` |
 
-- **Capacidad.** Con estado propio, la cabecera ocupa 49 B. Con una sección de jugadores caben
-  ⌊(1200 − 49 − 2) / 20⌋ = **57 registros**.
+**Bloque extra propio** (9 B). Lleva lo que el servidor decide y no entra en `PlayerState`
+porque no cambia la simulación ([combate.md 1](combate.md#1-qué-se-predice-y-qué-decide-el-servidor)):
+
+| Offset | Tipo | Campo | Notas |
+|---|---|---|---|
+| +0 | u16 | health | vida actual |
+| +2 | u16 | max_health | vida máxima; `health ≤ max_health` |
+| +4 | u8 | status | bit0 en combate, bit1 protegido (reaparición), bit2 muerto |
+| +5 | u32 | respawn_tick | primer tick en que se puede pedir la reaparición; 0 si está vivo |
+
+- **El bit 3 va si y solo si va el bit 0.** `Snapshot.decode` devuelve `null` si uno falta sin el
+  otro, o si `health > max_health`.
+- **Capacidad.** Con estado propio y bloque extra, la cabecera (con `section_count`) ocupa 92 B.
+  Con una sección de jugadores caben ⌊(1200 − 92 − 2) / 21⌋ = **52 registros**.
 - **El propio jugador** nunca aparece entre los registros: para eso está su estado.
 
-**Registro de entidad** (`kind` 1 PLAYER; 2 NPC reutiliza el formato), 20 B:
+**Registro de entidad** (`kind` 1 PLAYER; 2 NPC reutiliza el formato), 21 B:
 
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
@@ -625,7 +650,8 @@ inmediata sin esperar al timeout.
 | 10 | u16 | yaw | [0, TAU) → 0..65535, igual que `PlayerInput.look_yaw` |
 | 12 | s16 × 3 | velocity | cm/s, saturado (±327 m/s) |
 | 18 | u8 | flags | bit0 = grounded; bits 1–2 = contador de teletransporte (mod 4); resto, 0 |
-| 19 | u8 | action | 0 en la fase 2; desde la fase 3, acción y fase (ataque, bloqueo, esquiva) |
+| 19 | u8 | action | acción y fase del combate (ataque, bloqueo, esquiva...; 0 = ninguna). Los bits los define `ActionMachine.action_byte` |
+| 20 | u8 | health_q | vida cuantizada: 0 si está muerto y, si no, `clampi((vida · 255 + máx − 1) / máx, 1, 255)` (hacia arriba, nunca 0 con vida). Las entidades sin vida anuncian 255 |
 
 - **Teletransporte.** El contador de 2 bits sustituye a un flag de un solo snapshot, que se
   perdería con ese snapshot. Si cambia entre dos muestras, no se interpola entre ellas.
@@ -641,7 +667,7 @@ inmediata sin esperar al timeout.
 | 4 | u32 | spawn_tick | tick del estado incluido |
 | 8 | u8 | realm | |
 | 9 | u8 | flags | bit0 = es tu personaje; bits 1–2 = contador de teletransporte |
-| 10 | … | payload | según `kind`. PLAYER: `PlayerState` (35 B, estado tras `spawn_tick`), `u8 name_len` y el nombre (≤ 48 B) |
+| 10 | … | payload | según `kind`. PLAYER: `PlayerState` (69 B, estado tras `spawn_tick`), `u8 name_len` y el nombre (≤ 48 B) |
 
 **ENTITY_DESPAWN** (`0x21`, canal 3)
 
@@ -652,6 +678,34 @@ inmediata sin esperar al timeout.
 | 3 | u32 | despawn_tick | el cliente lo quita cuando su `render_tick` llega aquí |
 | 7 | u8 | reason | 0 fuera de interés, 1 desconexión, 2 muerte, 3 traspaso |
 
+**ENTITY_EVENT** (`0x23`, canal 3). Hechos del combate que no caben en un registro de flujo
+([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)). Fiable y ordenado con los
+demás mensajes del canal 3.
+
+| Offset | Tipo | Campo | Notas |
+|---|---|---|---|
+| 0 | u8 | type | `0x23` |
+| 1 | u16 | net_id | la entidad a la que se ata: la víctima en HIT, DEATH y KILL; la que reaparece en RESPAWN |
+| 3 | u32 | tick | tick del servidor en que ocurrió |
+| 7 | u8 | event | 1 HIT, 2 DEATH, 3 KILL, 4 RESPAWN |
+| 8 | u8 | len | bytes de datos que siguen |
+| 9 | len B | datos | según `event` |
+
+| `event` | Datos | `len` | Total |
+|---|---|---|---|
+| 1 HIT | `u16 attacker`, `u16 amount`, `u8 damage_type`, `u8 flags`, `u16 attack_id` | 8 | 17 B |
+| 2 DEATH | `u16 killer` (0 = el entorno), `u16 attack_id` | 4 | 13 B |
+| 3 KILL | `u16 killer`, `u16 attack_id`, `u8 n`, `n × u16` asistentes | 5 + 2·n | 14 + 2·n B |
+| 4 RESPAWN | `u8 point` | 1 | 10 B |
+
+- **Flags de HIT:** bit0 crítico, bit1 bloqueado, bit2 parado, bit3 rotura de guardia, bit4
+  mortal.
+- **Validación.** `decode` devuelve `null` si el tipo no es `0x23`, el `event` es desconocido,
+  `len` no cuadra con el evento o con el tamaño real del mensaje, `n` no cuadra con `len` o
+  `n > 16` (los asistentes hacen al menos el 10 % del daño, así que nunca son más de 10).
+  `encode` recorta un KILL a 16 asistentes.
+- **Destinatarios y temporización:** ver [combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2).
+
 **NOTICE** (`0x30`, canal 3): `u8 type`, `u8 code`, `u8 len` y el texto en UTF-8 (≤ 200 B).
 
 - Códigos: 0 informativo, 1 expulsión, 2 servidor cerrándose.
@@ -661,11 +715,10 @@ inmediata sin esperar al timeout.
 
 - **OBJECT_STATE** (`0x22`, fase 4): `u8 type`, `u16 object_id`, `u32 tick`, `u8 field_count`
   y, por campo, `u8 field_id`, `u8 value_type` y el valor.
-- **ENTITY_EVENT** (`0x23`, fase 3): `u8 type`, `u16 net_id`, `u32 tick`, `u8 event`, `u8 len`
-  y los datos.
 - **HANDOFF** (`0x31`, fase 6): zona, canal, host, puerto y billete.
 
-Ocupar uno de estos tipos sube `PROTOCOL_VERSION`.
+Ocupar uno de estos tipos sube `PROTOCOL_VERSION`. ENTITY_EVENT (`0x23`) dejó de estar
+reservado en la fase 3: su formato está en [5.5](#55-servidor--cliente).
 
 ### 5.7 Validación
 
@@ -1018,6 +1071,11 @@ func get_ack_tick() -> int:                                  # max(contiguo reci
     venza el timeout de ENet.
   - Qué hace una acción mantenida durante una desconexión larga (un ataque cargado, por
     ejemplo) lo decide la fase 3, sin romper esta regla.
+  - **Entradas sustituidas en la fase 3.** Lo resuelve
+    [combate.md 3.2](combate.md#32-entradas-sustituidas-cierra-la-nota-de-redmd-82): la sustituta
+    lleva el bit `PlayerInput.SUBSTITUTED` (bit 15, fuera de `VALID_BUTTONS`) y, con él, la
+    máquina de acciones no cuenta la pulsación, no lanza el golpe fuerte al llegar a la carga
+    máxima ni abre ventanas de parada. Ninguna pérdida inventa un golpe ni una parada.
 - **Una entrada por tick.** Enviar más no hace correr más: no hay speedhack posible. El servidor
   nunca espera a una entrada.
 - **`pop_min_lead()`** devuelve la antelación mínima desde la llamada anterior (`NO_MARGIN` si
@@ -1036,7 +1094,11 @@ func get_ack_tick() -> int:                                  # max(contiguo reci
     (10 s) antes de reutilizarse;
   - `kind`, `realm`, `spawn_tick`, `owner_peer`, `display_name`, `flags`, el nodo y
     `teleport_counter`;
-  - flag `ALWAYS_RELEVANT`, para los objetos que ve toda la zona.
+  - flag `ALWAYS_RELEVANT`, para los objetos que ve toda la zona;
+  - su vida tal y como la ven los snapshots: `health_q` (el último byte del registro) y el bloque
+    extra propio (`health`, `max_health`, `status`, `respawn_tick`). Quien lleva la vida (el
+    `Combatant` de la fase 3) los actualiza cada tick con `set_health_view()`; sin él, la
+    entidad está sana (`health_q` 255, 1000 de 1000).
 - **Registros.** `NetEntity.encode_record()` escribe su registro directamente en un búfer, sin
   crear objetos.
 - **Orden de simulación.** `NetEntityRegistry.get_sorted()` devuelve las entidades por `net_id`
@@ -1071,7 +1133,8 @@ O(entidades); por cliente solo hay copias de memoria.
    - `input_ack_tick = queue.get_ack_tick()`;
    - `input_margin = queue.pop_min_lead()`;
    - `substitutions = queue.substitutions_total & 0xFFFF`;
-   - el estado propio (`character.get_state().encode()`) y su contador de teletransporte.
+   - el estado propio (`character.get_state().encode()`), su contador de teletransporte y el
+     bloque extra propio (vida, vida máxima, estado y tick de reaparición de su `NetEntity`).
 2. Reúne las candidatas: las entidades de `peer.relevant` salvo la propia. A cada una le suma
    `peer.priority[id] += interest_policy.priority_weight(observer, entity)` (en la fase 2, 1,0).
 3. Si caben todas en 1200 B, las escribe todas (el caso normal de la fase 2). Si no, elige las
@@ -1079,8 +1142,9 @@ O(entidades); por cliente solo hay copias de memoria.
    la fase 2, y cubos o C++ en Eldrun si la medida lo pide.
 4. Pone a 0 la prioridad de las escritas y agrupa los registros por `kind` en secciones.
 
-**Garantía:** con 63 jugadores visibles y 57 plazas, cada entidad sale al menos uno de cada dos
-snapshots. Lo comprueba `test_snapshot_builder`.
+**Garantía:** con N candidatas y C plazas, ninguna pasa más de ⌈N/C⌉ snapshots sin enviarse. Con
+63 jugadores visibles y 52 plazas (la capacidad de [5.5](#55-servidor--cliente) con el estado de
+69 B), cada entidad sale al menos uno de cada dos snapshots. Lo comprueba `test_snapshot_builder`.
 
 ### 9.4 Lado del cliente
 
@@ -1236,12 +1300,17 @@ Sobrecoste por paquete UDP: unos 40 B (IPv4 20, UDP 8, ENet ~12).
 |---|---|---|
 | Subida, normal (R = 4) | (11 + 4·10 + 40) B × 60/s | ~5,5 KB/s |
 | Subida, con pérdida (R = 8) | (11 + 8·10 + 40) B × 60/s | ~7,9 KB/s |
-| Bajada, 10 visibles | (51 + 10·20 + 40) B × 30/s | ~8,7 KB/s |
-| Bajada, 30 visibles | (51 + 30·20 + 40) B × 30/s | ~20,7 KB/s |
-| Bajada, ≥ 57 visibles (tope) | (1191 + 40) B × 30/s | ~37 KB/s (~300 kbit/s) |
+| Bajada, 10 visibles | (94 + 10·21 + 40) B × 30/s | ~10,3 KB/s |
+| Bajada, 30 visibles | (94 + 30·21 + 40) B × 30/s | ~22,9 KB/s |
+| Bajada, ≥ 52 visibles (tope) | (1186 + 40) B × 30/s | ~36,8 KB/s (~295 kbit/s) |
 | Salida del servidor, 64 jugadores y todos visibles | 64 × 37 KB/s | ~2,4 MB/s (~19 Mbit/s) |
 | Entrada del servidor, 64 jugadores | 64 × 5,5 KB/s | ~350 KB/s |
 | Eldrun, 300 jugadores sin más palancas | 300 × 37 KB/s | ~11 MB/s (~89 Mbit/s): demasiado |
+
+La bajada de esta tabla es la de la fase 3: 94 B son los 92 de la cabecera con estado y bloque
+extra propios más los 2 de la cabecera de la sección. A ella se suman los ENTITY_EVENT, unos 27 B
+por destinatario y golpe ([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)). Las
+medidas de abajo son de la fase 2 (registro de 20 B y estado de 35 B).
 
 **CPU (fase 2):** el p99 del tick debe quedar por debajo de 8 ms (la mitad de los 16,7 ms) con
 64 bots agrupados. Se mide por sección: red, simulación (µs por personaje), historial,
@@ -1311,7 +1380,7 @@ ms, p50 / p99 / máximo de los últimos 34 s de régimen:
   - `InputQueue.get_view_offset_q(T)` y `StateHistory.sample()`, con los topes de
     [10](#10-historial-para-la-compensación-de-latencia);
   - validación de resistencia, tiempo de reutilización, alcance y línea de visión en el servidor.
-- **Daño y muertes.** ENTITY_EVENT fiable.
+- **Daño y muertes.** ENTITY_EVENT fiable ([5.5](#55-servidor--cliente)).
   - Los eventos de los remotos se aplican cuando el `render_tick` alcanza su tick; los propios,
     al llegar.
   - La vida y la resistencia propias van en un bloque extra tras el estado propio (bit 3 de
@@ -1555,14 +1624,21 @@ const MSG_INPUT_BATCH: int = 0x01
 const MSG_CLIENT_READY: int = 0x02
 const MSG_CLIENT_LEAVE: int = 0x03
 const MSG_DEBUG_COMMAND: int = 0x04
+const MSG_RESPAWN_REQUEST: int = 0x05
 const MSG_SNAPSHOT: int = 0x10
 const MSG_ENTITY_SPAWN: int = 0x20
 const MSG_ENTITY_DESPAWN: int = 0x21
 const MSG_OBJECT_STATE: int = 0x22   # reservado (fase 4)
-const MSG_ENTITY_EVENT: int = 0x23   # reservado (fase 3)
+const MSG_ENTITY_EVENT: int = 0x23
 const MSG_NOTICE: int = 0x30
 const MSG_HANDOFF: int = 0x31        # reservado (fase 6)
 const DEBUG_TELEPORT: int = 1
+const DEBUG_HEAL: int = 2
+const DEBUG_KILL: int = 3
+const DEBUG_STAMINA_INF: int = 4
+const DEBUG_SET_WEAPON: int = 5
+const DEBUG_SPAWN_DUMMY: int = 6
+const DEBUG_COMMAND_IDS: Dictionary[StringName, int]   # nombre -> id de cada comando de red
 enum Realm { NONE = 0, VARDHEIM = 1, SOLMARCH = 2, ASKARRA = 3 }
 enum EntityKind { NONE = 0, PLAYER = 1, NPC = 2, PROJECTILE = 3, STRUCTURE = 4 }
 enum Result { OK = 0, VERSION = 1, SIM_HASH = 2, REALM = 3, FULL = 4, TICKET = 5, MALFORMED = 6,
@@ -1602,10 +1678,12 @@ static func dequantize_velocity(quantized: int) -> float
 
 # entity_record.gd
 class_name EntityRecord extends RefCounted
-const SIZE: int = 20
+const SIZE: int = 21
 const FLAG_GROUNDED: int = 1 << 0
 const TELEPORT_SHIFT: int = 1
 const TELEPORT_MASK: int = 0b11
+const HEALTH_Q_DEAD: int = 0
+const HEALTH_Q_FULL: int = 255
 var net_id: int = 0
 var kind: int = NetProtocol.EntityKind.PLAYER
 var position: Vector3 = Vector3.ZERO
@@ -1613,14 +1691,19 @@ var yaw: float = 0.0
 var velocity: Vector3 = Vector3.ZERO
 var flags: int = 0
 var action: int = 0
+var health_q: int = HEALTH_Q_FULL
 func is_grounded() -> bool
 func get_teleport_counter() -> int
+## 0 si no queda vida; si no, clampi((health · 255 + max − 1) / max, 1, 255).
+static func quantize_health(health: int, max_health: int) -> int
+static func health_fraction(quantized: int) -> float
 func encode_into(bytes: PackedByteArray, offset: int) -> void
 static func decode_from(bytes: PackedByteArray, offset: int, kind: int) -> EntityRecord
 ## Servidor: escribe el registro sin crear objetos.
 static func encode_character(bytes: PackedByteArray, offset: int, net_id: int,
-		character: PlayerCharacter, teleport_counter: int, action: int) -> void
-static func from_state(net_id: int, kind: int, state: PlayerState, teleport_counter: int) -> EntityRecord
+		character: PlayerCharacter, teleport_counter: int, action: int, health_q: int) -> void
+static func from_state(net_id: int, kind: int, state: PlayerState, teleport_counter: int,
+		health_q: int = HEALTH_Q_FULL) -> EntityRecord
 static func interpolate(a: EntityRecord, b: EntityRecord, t: float) -> EntityRecord
 
 # net_messages.gd: cada clase interna tiene encode() -> PackedByteArray y
@@ -1651,12 +1734,16 @@ class Snapshot:
 	var server_tick: int; var input_ack_tick: int; var input_margin: int
 	var substitutions: int; var own_teleport: int
 	var own_state: PlayerState              # null si no viene
+	var health: int; var max_health: int    # bloque extra propio (solo con own_state)
+	var status: int; var respawn_tick: int
 	var records: Array[EntityRecord]
+	func is_in_combat() -> bool; func is_protected() -> bool; func is_dead() -> bool
 	## Lo usa SnapshotBuilder para escribir la cabecera sin crear el objeto. Devuelve el
-	## offset donde empieza section_count.
+	## offset donde empieza section_count. Con estado propio escribe también el bloque extra.
 	static func write_header(bytes: PackedByteArray, server_tick: int, input_ack_tick: int,
 			input_margin: int, substitutions: int, own_teleport: int,
-			own_state_bytes: PackedByteArray) -> int
+			own_state_bytes: PackedByteArray, health: int = 0, max_health: int = 0,
+			status: int = 0, respawn_tick: int = 0) -> int
 class EntitySpawn:
 	var net_id: int; var kind: int; var spawn_tick: int; var realm: int
 	var is_yours: bool; var teleport_counter: int; var state: PlayerState; var display_name: String
@@ -1664,6 +1751,25 @@ class EntityDespawn:
 	var net_id: int; var despawn_tick: int; var reason: int
 class Notice:
 	var code: int; var text: String
+class EntityEvent:
+	enum Kind { HIT = 1, DEATH = 2, KILL = 3, RESPAWN = 4 }
+	const MAX_ASSISTANTS: int = 16
+	const HIT_FLAG_CRITICAL: int = 1 << 0; const HIT_FLAG_BLOCKED: int = 1 << 1
+	const HIT_FLAG_PARRIED: int = 1 << 2; const HIT_FLAG_GUARD_BREAK: int = 1 << 3
+	const HIT_FLAG_LETHAL: int = 1 << 4
+	var net_id: int; var tick: int; var event: int
+	var attacker: int; var amount: int; var damage_type: int; var hit_flags: int   # HIT
+	var attack_id: int                                                              # HIT, DEATH, KILL
+	var killer: int; var assistants: PackedInt32Array                               # DEATH, KILL
+	var point: int                                                                  # RESPAWN
+	static func hit(victim_id: int, event_tick: int, attacker_id: int, damage: int,
+			type_of_damage: int, flags: int, id_of_attack: int) -> EntityEvent
+	static func death(victim_id: int, event_tick: int, killer_id: int, id_of_attack: int) -> EntityEvent
+	static func kill(victim_id: int, event_tick: int, killer_id: int, id_of_attack: int,
+			assistant_ids: PackedInt32Array) -> EntityEvent
+	static func respawn(entity_id: int, event_tick: int, point_index: int) -> EntityEvent
+class RespawnRequest:
+	var point_index: int
 
 # net_sim.gd
 class_name NetSim extends RefCounted
@@ -1829,6 +1935,13 @@ var display_name: String
 var flags: int = 0
 var node: Node3D
 var teleport_counter: int = 0
+const DEFAULT_HEALTH: int = 1000
+var health_q: int = EntityRecord.HEALTH_Q_FULL     # último byte del registro
+var health: int = DEFAULT_HEALTH; var max_health: int = DEFAULT_HEALTH   # bloque extra propio
+var status: int = 0; var respawn_tick: int = 0
+## Lo llama quien lleva la vida (Combatant) cada tick; calcula health_q.
+func set_health_view(new_health: int, new_max_health: int, new_status: int,
+		new_respawn_tick: int) -> void
 func get_position() -> Vector3
 func get_character() -> PlayerCharacter            # null si no es un jugador
 func encode_record(bytes: PackedByteArray, offset: int) -> void
@@ -2158,7 +2271,7 @@ Los remotos reutilizan `scenes/characters/player_character.tscn`.
 
 | Problema detectado por los jueces | Corrección en este diseño |
 |---|---|
-| Snapshot de más de 1200 B con 64 jugadores visibles (A y C) | Presupuesto con acumulador de prioridad (57 registros por paquete); garantía de envío al menos cada ⌈N/57⌉ snapshots |
+| Snapshot de más de 1200 B con 64 jugadores visibles (A y C) | Presupuesto con acumulador de prioridad (57 registros por paquete en la fase 2, 52 desde la fase 3); garantía de envío al menos cada ⌈N/C⌉ snapshots |
 | `input_ack_tick` atascado tras una sustitución (A) | `max(contiguo recibido, último consumido)` |
 | Reconciliación con `is_close_to`, sin `prev_buttons` (A) | `equals_exact` sobre `encode()`, posible gracias al yaw en f32 |
 | Yaw en f64 frente a f32 en la red (B y C no lo veían) | Redondeo en el setter de `PlayerCharacter.yaw` |

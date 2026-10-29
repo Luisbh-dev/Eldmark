@@ -47,16 +47,39 @@ const MSG_INPUT_BATCH: int = 0x01
 const MSG_CLIENT_READY: int = 0x02
 const MSG_CLIENT_LEAVE: int = 0x03
 const MSG_DEBUG_COMMAND: int = 0x04
+const MSG_RESPAWN_REQUEST: int = 0x05
 const MSG_SNAPSHOT: int = 0x10
 const MSG_ENTITY_SPAWN: int = 0x20
 const MSG_ENTITY_DESPAWN: int = 0x21
 const MSG_OBJECT_STATE: int = 0x22   # reservado (fase 4)
-const MSG_ENTITY_EVENT: int = 0x23   # reservado (fase 3)
+const MSG_ENTITY_EVENT: int = 0x23
 const MSG_NOTICE: int = 0x30
 const MSG_HANDOFF: int = 0x31        # reservado (fase 6)
 
-## Comando de depuración: teletransportar al jugador (con [code]--debug-commands[/code]).
+# Comandos de depuración (byte 1 de un DEBUG_COMMAND, solo con --debug-commands). Los ids son
+# fijos: no se reutilizan ni se reordenan (docs/combate.md, sección 6).
+## Teletransportar al jugador (3 × f32 de posición).
 const DEBUG_TELEPORT: int = 1
+## Curar al jugador del todo.
+const DEBUG_HEAL: int = 2
+## Matar al jugador.
+const DEBUG_KILL: int = 3
+## Resistencia infinita (bit 2 de [code]combat_flags[/code]: la máquina de acciones no gasta).
+const DEBUG_STAMINA_INF: int = 4
+## Cambiar el arma equipada.
+const DEBUG_SET_WEAPON: int = 5
+## Crear un maniquí de entrenamiento.
+const DEBUG_SPAWN_DUMMY: int = 6
+## Nombre -> id de cada comando de depuración de red. El registro de comandos del servidor
+## comprueba contra esta tabla que todo comando de red tiene un id fijo.
+const DEBUG_COMMAND_IDS: Dictionary[StringName, int] = {
+	&"teleport": DEBUG_TELEPORT,
+	&"heal": DEBUG_HEAL,
+	&"kill": DEBUG_KILL,
+	&"stamina_inf": DEBUG_STAMINA_INF,
+	&"set_weapon": DEBUG_SET_WEAPON,
+	&"spawn_dummy": DEBUG_SPAWN_DUMMY,
+}
 
 ## Reino en la red (independiente de cómo lo represente [Zones]; ver [NetZones]).
 enum Realm { NONE = 0, VARDHEIM = 1, SOLMARCH = 2, ASKARRA = 3 }
@@ -71,14 +94,17 @@ enum NoticeCode { INFO = 0, KICK = 1, SHUTDOWN = 2 }
 const _COLLISION_NODE: NodePath = ^"Collision"
 
 
-## Canal por el que viaja un mensaje de tipo [param msg_type] (el byte 0). Los tipos desconocidos
-## o reservados van por el canal fiable.
+## Canal por el que viaja un mensaje de tipo [param msg_type] (el byte 0). Las entradas van por el
+## canal de entradas y los snapshots por el suyo; todo lo demás (incluidos ENTITY_EVENT y
+## RESPAWN_REQUEST) y los tipos desconocidos o reservados, por el canal fiable.
 static func channel_for_type(msg_type: int) -> int:
 	match msg_type:
 		MSG_INPUT_BATCH:
 			return CH_INPUT
 		MSG_SNAPSHOT:
 			return CH_SNAPSHOT
+		MSG_ENTITY_EVENT, MSG_RESPAWN_REQUEST:
+			return CH_RELIABLE
 	return CH_RELIABLE
 
 

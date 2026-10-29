@@ -7,9 +7,18 @@ extends RefCounted
 ## tipo, el reino, el tick de alta, el peer dueño, el nombre, los flags, su nodo y el contador de
 ## teletransporte. Sabe escribir su registro del snapshot sin crear objetos
 ## ([method encode_record]) y su mensaje ENTITY_SPAWN ([method encode_spawn]).
+## [br][br]
+## También guarda lo que se ve de su vida en los snapshots: la vida cuantizada del registro
+## ([member health_q]) y el bloque extra propio ([member health], [member max_health],
+## [member status] y [member respawn_tick]). Quien lleva la vida (el [code]Combatant[/code] del
+## combate) los actualiza cada tick con [method set_health_view]; mientras nadie lo haga, la
+## entidad está sana.
 
 ## La ven todos los jugadores de la zona, sin pasar por la [InterestPolicy] (fortalezas, puertas).
 const FLAG_ALWAYS_RELEVANT: int = 1 << 0
+## Vida (y vida máxima) que se anuncia mientras nadie la actualiza: la de
+## [code]CombatRules.health_max[/code].
+const DEFAULT_HEALTH: int = 1000
 
 ## Id de red (1..65535) que asigna [NetEntityRegistry].
 var net_id: int
@@ -28,6 +37,14 @@ var flags: int = 0
 var node: Node3D
 ## Sube (módulo 4) con cada teletransporte, para que el cliente no interpole el salto.
 var teleport_counter: int = 0
+## Vida cuantizada que lleva su registro del snapshot ([method EntityRecord.quantize_health]).
+var health_q: int = EntityRecord.HEALTH_Q_FULL
+## Vida, vida máxima, bits de estado ([constant NetMessages.STATUS_IN_COMBAT] y compañía) y tick
+## de reaparición del bloque extra del snapshot propio.
+var health: int = DEFAULT_HEALTH
+var max_health: int = DEFAULT_HEALTH
+var status: int = 0
+var respawn_tick: int = 0
 
 
 ## Posición global de la entidad (los pies, si es un jugador).
@@ -42,12 +59,25 @@ func get_character() -> PlayerCharacter:
 	return node as PlayerCharacter if is_instance_valid(node) else null
 
 
-## Escribe el registro de la entidad (20 B, [constant EntityRecord.SIZE]) en [param bytes] a
+## Actualiza lo que los snapshots muestran de la vida de la entidad: [param new_health] y
+## [param new_max_health] (la vida cuantizada del registro sale de ellas), los bits de
+## [param new_status] y el tick de reaparición ([param new_respawn_tick], 0 si está viva).
+func set_health_view(new_health: int, new_max_health: int, new_status: int,
+		new_respawn_tick: int) -> void:
+	health = new_health
+	max_health = new_max_health
+	status = new_status
+	respawn_tick = new_respawn_tick
+	health_q = EntityRecord.quantize_health(new_health, new_max_health)
+
+
+## Escribe el registro de la entidad (21 B, [constant EntityRecord.SIZE]) en [param bytes] a
 ## partir de [param offset], sin crear objetos si es un jugador. Amplía el búfer si hace falta.
 func encode_record(bytes: PackedByteArray, offset: int) -> void:
 	var character: PlayerCharacter = get_character()
 	if character != null:
-		EntityRecord.encode_character(bytes, offset, net_id, character, teleport_counter, 0)
+		EntityRecord.encode_character(bytes, offset, net_id, character, teleport_counter, 0,
+				health_q)
 		return
 	# Entidades sin personaje (PNJ simples): posición y giro del nodo, sin velocidad.
 	var record := EntityRecord.new()
@@ -57,6 +87,7 @@ func encode_record(bytes: PackedByteArray, offset: int) -> void:
 	record.yaw = node.rotation.y if is_instance_valid(node) else 0.0
 	var teleport_bits: int = teleport_counter & EntityRecord.TELEPORT_MASK
 	record.flags = (teleport_bits << EntityRecord.TELEPORT_SHIFT) | EntityRecord.FLAG_GROUNDED
+	record.health_q = health_q
 	record.encode_into(bytes, offset)
 
 

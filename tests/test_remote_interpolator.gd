@@ -136,6 +136,18 @@ func test_extrapolates_horizontally_up_to_six_ticks_then_stands_still() -> void:
 		assert_vec_near(stopped.velocity, Vector3.ZERO, 1e-6, "con velocidad 0 (%s ticks)" % ahead)
 
 
+func test_extrapolation_and_copies_keep_the_health_byte() -> void:
+	var interpolator := RemoteInterpolator.new()
+	var record: EntityRecord = _record(Vector3.ZERO, 0.0, Vector3(6.0, 0.0, 0.0))
+	record.health_q = 77
+	record.action = 5
+	interpolator.push(10, record)
+	assert_eq(interpolator.sample(10.0).health_q, 77, "en la muestra")
+	assert_eq(interpolator.sample(12.0).health_q, 77, "extrapolando")
+	assert_eq(interpolator.sample(12.0).action, 5, "y la acción también")
+	assert_eq(interpolator.sample(60.0).health_q, 77, "pasado el límite de extrapolación")
+
+
 func test_new_sample_after_extrapolating_takes_over() -> void:
 	var interpolator := RemoteInterpolator.new()
 	interpolator.push(10, _record(Vector3.ZERO, 0.0, Vector3(6.0, 0.0, 0.0)))

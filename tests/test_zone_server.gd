@@ -187,7 +187,10 @@ func test_snapshots_fit_in_the_packet_limit() -> void:
 			return
 		assert_eq(decoded.server_tick, tick, "lleva el tick del servidor")
 		assert_not_null(decoded.own_state, "lleva el estado propio")
-		assert_true(decoded.records.size() <= 57, "como mucho 57 registros (%d)" % decoded.records.size())
+		var capacity: int = floori((NetProtocol.MAX_PACKET_BYTES
+				- NetMessages.SNAPSHOT_HEADER_SIZE_WITH_STATE - 2) / float(EntityRecord.SIZE))
+		assert_true(decoded.records.size() <= capacity,
+				"como mucho %d registros (%d)" % [capacity, decoded.records.size()])
 		for record: EntityRecord in decoded.records:
 			assert_true(record.net_id != observer.net_id, "el propio jugador no está entre los registros")
 			seen[record.net_id] = true

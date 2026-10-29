@@ -106,6 +106,7 @@ var _max_snapshot_records: int = 0
 var _batches_sent: int = 0
 var _spawns_seen: int = 0
 var _despawns_seen: int = 0
+var _events_seen: int = 0
 var _malformed_packets: int = 0
 var _bytes_at_join: Dictionary = {}
 var _bytes_final: Dictionary = {}
@@ -270,6 +271,7 @@ func get_stats() -> Dictionary:
 		"substitutions": maxi(_server_substitutions, 0),
 		"spawns_seen": _spawns_seen,
 		"despawns_seen": _despawns_seen,
+		"events_seen": _events_seen,
 		"delay_ticks": _interp_clock.get_delay_ticks(),
 		"jitter_ticks": _interp_clock.get_jitter_ticks(),
 		"malformed_packets": _malformed_packets,
@@ -430,6 +432,12 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 			_on_spawn(bytes)
 		NetProtocol.MSG_ENTITY_DESPAWN:
 			_despawns_seen += 1
+		NetProtocol.MSG_ENTITY_EVENT:
+			# Los eventos de combate no hacen nada a un bot, pero tienen que estar bien formados.
+			if NetMessages.EntityEvent.decode(bytes) == null:
+				_malformed_packets += 1
+			else:
+				_events_seen += 1
 		NetProtocol.MSG_NOTICE:
 			var notice: NetMessages.Notice = NetMessages.Notice.decode(bytes)
 			if notice == null:
@@ -454,7 +462,8 @@ func _on_snapshot(bytes: PackedByteArray) -> void:
 		if size < NetMessages.SNAPSHOT_HEADER_SIZE_WITH_STATE:
 			_malformed_packets += 1
 			return
-		section_offset += PlayerState.ENCODED_SIZE
+		# El estado propio va seguido del bloque extra (vida), que siempre lo acompaña.
+		section_offset += PlayerState.ENCODED_SIZE + NetMessages.SNAPSHOT_EXTRA_SIZE
 	var server_tick: int = bytes.decode_u32(1)
 	_snapshots += 1
 	_snapshot_bytes += size

@@ -18,6 +18,9 @@ const POSITION_ERROR: float = 0.005 + 0.0003
 ## Error máximo del cuantizador en sí, en centímetros (medio paso).
 const QUANTIZER_HALF_STEP: float = 0.5 + 1e-9
 
+## Cabecera de un SNAPSHOT con estado propio: 13 B + estado + bloque extra + section_count.
+const HEADER_WITH_STATE: int = 13 + PlayerState.ENCODED_SIZE + NetMessages.SNAPSHOT_EXTRA_SIZE + 1
+
 var _world: Node3D
 var _character: PlayerCharacter
 var _dt: float = 1.0 / 60.0
@@ -279,6 +282,9 @@ func test_entity_record_roundtrip_and_layout() -> void:
 	record.velocity = Vector3(7.5, -12.34, 400.0)
 	record.flags = EntityRecord.FLAG_GROUNDED | (2 << EntityRecord.TELEPORT_SHIFT)
 	record.action = 9
+	assert_eq(record.health_q, EntityRecord.HEALTH_Q_FULL, "la vida cuantizada empieza llena")
+	record.health_q = 137
+	assert_eq(EntityRecord.SIZE, 21, "el registro es de 21 B")
 	assert_true(record.is_grounded(), "grounded")
 	assert_eq(record.get_teleport_counter(), 2, "contador de teletransporte")
 
@@ -289,7 +295,7 @@ func test_entity_record_roundtrip_and_layout() -> void:
 	record.encode_into(bytes, 7)
 	assert_eq(bytes.size(), 45, "no cambia el tamaño de un búfer que ya cabe")
 	assert_eq(bytes[6], 0xEE, "no escribe antes del offset")
-	assert_eq(bytes[27], 0xEE, "no escribe después de los 20 bytes")
+	assert_eq(bytes[28], 0xEE, "no escribe después de los 21 bytes")
 	assert_eq(bytes.decode_u16(7), 0xABCD, "u16 net_id en +0")
 	assert_eq(bytes.decode_u64(9), NetMath.pack_position(record.position), "u64 position en +2")
 	assert_eq(bytes.decode_u16(17), NetMath.quantize_yaw16(5.5), "u16 yaw en +10")
@@ -298,9 +304,10 @@ func test_entity_record_roundtrip_and_layout() -> void:
 	assert_eq(bytes.decode_s16(23), 32767, "s16 velocity.z en +16, saturado")
 	assert_eq(bytes.decode_u8(25), 0b101, "u8 flags en +18: grounded y contador 2")
 	assert_eq(bytes.decode_u8(26), 9, "u8 action en +19")
+	assert_eq(bytes.decode_u8(27), 137, "u8 health_q en +20")
 
 	var decoded: EntityRecord = EntityRecord.decode_from(bytes, 7, NetProtocol.EntityKind.NPC)
-	if not assert_not_null(decoded, "decode_from de 20 bytes"):
+	if not assert_not_null(decoded, "decode_from de 21 bytes"):
 		return
 	assert_eq(decoded.kind, NetProtocol.EntityKind.NPC, "el kind lo da quien decodifica")
 	assert_eq(decoded.net_id, 0xABCD, "net_id")
@@ -309,15 +316,51 @@ func test_entity_record_roundtrip_and_layout() -> void:
 	assert_vec_near(decoded.velocity, Vector3(7.5, -12.34, 327.67), 1e-9, "velocity saturada")
 	assert_eq(decoded.flags, record.flags, "flags")
 	assert_eq(decoded.action, 9, "action")
-	assert_null(EntityRecord.decode_from(bytes, 26, NetProtocol.EntityKind.PLAYER),
-			"decode_from con menos de 20 bytes disponibles")
+	assert_eq(decoded.health_q, 137, "health_q")
+	assert_null(EntityRecord.decode_from(bytes, 25, NetProtocol.EntityKind.PLAYER),
+			"decode_from con menos de 21 bytes disponibles")
 	assert_null(EntityRecord.decode_from(bytes, -1, NetProtocol.EntityKind.PLAYER),
 			"offset negativo")
 
 	# Un búfer vacío se amplía.
 	var grown := PackedByteArray()
 	record.encode_into(grown, 3)
-	assert_eq(grown.size(), 23, "encode_into amplía el búfer")
+	assert_eq(grown.size(), 24, "encode_into amplía el búfer")
+
+	# La vida cuantizada se limita a un byte al escribirla.
+	record.health_q = 999
+	record.encode_into(grown, 3)
+	assert_eq(grown.decode_u8(3 + 20), 255, "health_q > 255 se satura")
+	record.health_q = -4
+	record.encode_into(grown, 3)
+	assert_eq(grown.decode_u8(3 + 20), 0, "health_q < 0 se queda en 0")
+
+
+func test_quantize_health() -> void:
+	# 0 = muerto; si no, techo de health · 255 / max con mínimo 1.
+	assert_eq(EntityRecord.quantize_health(0, 1000), 0, "sin vida: 0")
+	assert_eq(EntityRecord.quantize_health(-30, 1000), 0, "vida negativa: 0")
+	assert_eq(EntityRecord.quantize_health(1000, 1000), 255, "vida llena: 255")
+	assert_eq(EntityRecord.quantize_health(1500, 1000), 255, "por encima del máximo: 255")
+	assert_eq(EntityRecord.quantize_health(1, 1000), 1, "con 1 de 1000 sigue vivo: 1")
+	assert_eq(EntityRecord.quantize_health(500, 1000), 128, "mitad: 127,5 hacia arriba = 128")
+	assert_eq(EntityRecord.quantize_health(100, 1000), 26, "10 %: 25,5 hacia arriba = 26")
+	assert_eq(EntityRecord.quantize_health(750, 1000), 192, "75 %: 191,25 hacia arriba = 192")
+	assert_eq(EntityRecord.quantize_health(997, 1000), 255, "997 de 1000: 254,2 hacia arriba = 255")
+	assert_eq(EntityRecord.quantize_health(996, 1000), 254, "996 de 1000: 253,98 hacia arriba = 254")
+	assert_eq(EntityRecord.quantize_health(255, 255), 255, "255 de 255")
+	assert_eq(EntityRecord.quantize_health(5, 0), 0, "sin vida máxima cuenta como muerto")
+	assert_eq(EntityRecord.quantize_health(65535, 65535), 255, "u16 máximo")
+	# Nunca 0 mientras quede vida, y monótona.
+	var previous: int = 0
+	for health: int in range(0, 1001):
+		var quantized: int = EntityRecord.quantize_health(health, 1000)
+		assert_true(quantized >= previous, "monótona en %d" % health)
+		assert_eq(quantized == 0, health == 0, "solo 0 cuando no queda vida (%d)" % health)
+		previous = quantized
+	assert_near(EntityRecord.health_fraction(255), 1.0, 1e-9, "fracción de 255")
+	assert_near(EntityRecord.health_fraction(0), 0.0, 1e-9, "fracción de 0")
+	assert_near(EntityRecord.health_fraction(51), 0.2, 1e-9, "fracción de 51")
 
 
 func test_entity_record_from_state_and_character() -> void:
@@ -340,18 +383,23 @@ func test_entity_record_from_state_and_character() -> void:
 	assert_eq(from_state.get_teleport_counter(), 3, "contador de teletransporte")
 	assert_eq(EntityRecord.from_state(1, 1, state, 7).get_teleport_counter(), 3,
 			"el contador es de 2 bits")
+	assert_eq(from_state.health_q, EntityRecord.HEALTH_Q_FULL, "por defecto, la vida llena")
+	assert_eq(EntityRecord.from_state(1, 1, state, 0, 77).health_q, 77, "from_state conserva health_q")
 
 	# encode_character escribe lo mismo que from_state(...).encode_into(...).
 	var expected := PackedByteArray()
 	from_state.action = 4
+	from_state.health_q = 200
 	from_state.encode_into(expected, 5)
 	var direct := PackedByteArray()
-	direct.resize(25)
-	EntityRecord.encode_character(direct, 5, 321, _character, 3, 4)
+	direct.resize(26)
+	EntityRecord.encode_character(direct, 5, 321, _character, 3, 4, 200)
 	assert_eq(direct, expected, "encode_character coincide con from_state + encode_into")
+	assert_eq(direct.decode_u8(5 + 20), 200, "health_q en +20")
 	_character.grounded = false
-	EntityRecord.encode_character(direct, 5, 321, _character, 6, 0)
+	EntityRecord.encode_character(direct, 5, 321, _character, 6, 0, 0)
 	assert_eq(direct.decode_u8(5 + 18), 0b100, "sin grounded y contador 6 mod 4 = 2")
+	assert_eq(direct.decode_u8(5 + 20), 0, "health_q 0 = muerto")
 
 
 func test_entity_record_interpolate() -> void:
@@ -361,12 +409,14 @@ func test_entity_record_interpolate() -> void:
 	a.velocity = Vector3(2.0, 0.0, 0.0)
 	a.yaw = PI - 0.1
 	a.flags = EntityRecord.FLAG_GROUNDED
+	a.health_q = 200
 	var b := EntityRecord.new()
 	b.net_id = 5
 	b.position = Vector3(10.0, 4.0, -2.0)
 	b.velocity = Vector3(4.0, 0.0, 0.0)
 	b.yaw = -PI + 0.1
 	b.flags = 0
+	b.health_q = 40
 	var middle: EntityRecord = EntityRecord.interpolate(a, b, 0.5)
 	assert_vec_near(middle.position, Vector3(5.0, 2.0, -1.0), 1e-9, "lerp de posición")
 	assert_vec_near(middle.velocity, Vector3(3.0, 0.0, 0.0), 1e-9, "lerp de velocidad")
@@ -374,6 +424,8 @@ func test_entity_record_interpolate() -> void:
 	assert_eq(middle.net_id, 5, "net_id")
 	assert_false(EntityRecord.interpolate(a, b, 0.75).is_grounded(), "flags del más cercano (b)")
 	assert_true(EntityRecord.interpolate(a, b, 0.25).is_grounded(), "flags del más cercano (a)")
+	assert_eq(EntityRecord.interpolate(a, b, 0.75).health_q, 40, "vida del más cercano (b)")
+	assert_eq(EntityRecord.interpolate(a, b, 0.25).health_q, 200, "vida del más cercano (a)")
 	assert_vec_near(EntityRecord.interpolate(a, b, 0.0).position, a.position, 1e-9, "t = 0")
 	assert_vec_near(EntityRecord.interpolate(a, b, 1.0).position, b.position, 1e-9, "t = 1")
 
@@ -1086,24 +1138,35 @@ func test_small_client_messages() -> void:
 
 
 func test_snapshot_roundtrip_and_layout_with_own_state() -> void:
+	var state_size: int = PlayerState.ENCODED_SIZE
+	var extra_offset: int = 13 + state_size
+	var section_offset: int = extra_offset + NetMessages.SNAPSHOT_EXTRA_SIZE
 	var snapshot: NetMessages.Snapshot = _sample_snapshot(true, 3)
 	var bytes: PackedByteArray = snapshot.encode()
-	# La cabecera con estado propio es 13 B + el estado (PlayerState.ENCODED_SIZE) + section_count.
-	var section_at: int = 13 + PlayerState.ENCODED_SIZE
-	assert_eq(bytes.size(), section_at + 1 + 2 + 3 * 20, "cabecera con estado propio + sección")
+	assert_eq(HEADER_WITH_STATE, section_offset + 1, "cabecera con estado propio y bloque extra")
+	assert_eq(HEADER_WITH_STATE, NetMessages.SNAPSHOT_HEADER_SIZE_WITH_STATE,
+			"la constante de NetMessages coincide")
+	assert_eq(bytes.size(), HEADER_WITH_STATE + 2 + 3 * EntityRecord.SIZE,
+			"cabecera con estado propio y bloque extra + sección")
 	assert_eq(bytes.decode_u8(0), 0x10, "u8 type en 0")
 	assert_eq(bytes.decode_u32(1), 90001, "u32 server_tick en 1")
 	assert_eq(bytes.decode_u32(5), 90000, "u32 input_ack_tick en 5")
 	assert_eq(bytes.decode_s8(9), -3, "s8 input_margin en 9")
 	assert_eq(bytes.decode_u16(10), 65535, "u16 substitutions en 10")
-	assert_eq(bytes.decode_u8(12), 0b101, "u8 flags en 12: bit 0 estado propio, contador 2")
-	assert_eq(bytes.slice(13, section_at), snapshot.own_state.encode(),
+	assert_eq(bytes.decode_u8(12), 0b1101,
+			"u8 flags en 12: bit 0 estado propio, contador 2 (bits 1-2) y bit 3 bloque extra")
+	assert_eq(bytes.slice(13, extra_offset), snapshot.own_state.encode(),
 			"estado propio sin cuantizar en 13")
-	assert_eq(bytes.decode_u8(section_at), 1, "u8 section_count tras el estado")
-	assert_eq(bytes.decode_u8(section_at + 1), NetProtocol.EntityKind.PLAYER, "u8 kind de la sección")
-	assert_eq(bytes.decode_u8(section_at + 2), 3, "u8 count de la sección")
+	assert_eq(bytes.decode_u16(extra_offset), 845, "u16 health tras el estado propio")
+	assert_eq(bytes.decode_u16(extra_offset + 2), 1000, "u16 max_health")
+	assert_eq(bytes.decode_u8(extra_offset + 4), 0b101, "u8 status")
+	assert_eq(bytes.decode_u32(extra_offset + 5), 123456, "u32 respawn_tick")
+	assert_eq(bytes.decode_u8(section_offset), 1, "u8 section_count tras el bloque extra")
+	assert_eq(bytes.decode_u8(section_offset + 1), NetProtocol.EntityKind.PLAYER,
+			"u8 kind de la sección")
+	assert_eq(bytes.decode_u8(section_offset + 2), 3, "u8 count de la sección")
 	for i: int in 3:
-		var offset: int = section_at + 3 + 20 * i
+		var offset: int = section_offset + 3 + EntityRecord.SIZE * i
 		var record: EntityRecord = snapshot.records[i]
 		assert_eq(bytes.decode_u16(offset), record.net_id, "u16 net_id en +0")
 		assert_eq(bytes.decode_u64(offset + 2), NetMath.pack_position(record.position),
@@ -1118,6 +1181,7 @@ func test_snapshot_roundtrip_and_layout_with_own_state() -> void:
 				"s16 vz en +16")
 		assert_eq(bytes.decode_u8(offset + 18), record.flags, "u8 flags en +18")
 		assert_eq(bytes.decode_u8(offset + 19), record.action, "u8 action en +19")
+		assert_eq(bytes.decode_u8(offset + 20), record.health_q, "u8 health_q en +20")
 
 	var decoded: NetMessages.Snapshot = NetMessages.Snapshot.decode(bytes)
 	if not assert_not_null(decoded, "decode del snapshot"):
@@ -1130,6 +1194,13 @@ func test_snapshot_roundtrip_and_layout_with_own_state() -> void:
 	if assert_not_null(decoded.own_state, "estado propio"):
 		assert_true(decoded.own_state.equals_exact(snapshot.own_state),
 				"el estado propio es exacto")
+	assert_eq(decoded.health, 845, "health")
+	assert_eq(decoded.max_health, 1000, "max_health")
+	assert_eq(decoded.status, 0b101, "status")
+	assert_eq(decoded.respawn_tick, 123456, "respawn_tick")
+	assert_true(decoded.is_in_combat(), "bit 0: en combate")
+	assert_false(decoded.is_protected(), "bit 1: sin protección")
+	assert_true(decoded.is_dead(), "bit 2: muerto")
 	assert_eq(decoded.records.size(), 3, "registros")
 	for i: int in 3:
 		var original: EntityRecord = snapshot.records[i]
@@ -1140,6 +1211,7 @@ func test_snapshot_roundtrip_and_layout_with_own_state() -> void:
 		assert_true(absf(angle_difference(back.yaw, original.yaw)) < 6e-5, "yaw %d" % i)
 		assert_eq(back.flags, original.flags, "flags %d" % i)
 		assert_eq(back.action, original.action, "action %d" % i)
+		assert_eq(back.health_q, original.health_q, "health_q %d" % i)
 		for axis: int in 3:
 			assert_near(back.velocity[axis], clampf(original.velocity[axis], -327.68, 327.67),
 					0.005 + 1e-9, "velocity %d.%d" % [i, axis])
@@ -1151,7 +1223,7 @@ func test_snapshot_without_own_state_and_mixed_sections() -> void:
 	snapshot.own_teleport = 0
 	var bytes: PackedByteArray = snapshot.encode()
 	assert_eq(bytes.size(), 14, "14 B de cabecera sin estado propio, con section_count")
-	assert_eq(bytes.decode_u8(12), 0, "flags a 0")
+	assert_eq(bytes.decode_u8(12), 0, "flags a 0: tampoco hay bloque extra")
 	assert_eq(bytes.decode_u8(13), 0, "u8 section_count en 13")
 	assert_eq(bytes.decode_s8(9), -128, "sin datos de margen: -128")
 	var decoded: NetMessages.Snapshot = NetMessages.Snapshot.decode(bytes)
@@ -1161,6 +1233,7 @@ func test_snapshot_without_own_state_and_mixed_sections() -> void:
 		assert_true(decoded.records.is_empty(), "sin registros")
 
 	# Dos secciones: jugadores y PNJ.
+	var record_size: int = EntityRecord.SIZE
 	var mixed := NetMessages.Snapshot.new()
 	mixed.server_tick = 5
 	for i: int in 3:
@@ -1168,20 +1241,23 @@ func test_snapshot_without_own_state_and_mixed_sections() -> void:
 		record.net_id = 10 + i
 		record.kind = NetProtocol.EntityKind.PLAYER if i < 2 else NetProtocol.EntityKind.NPC
 		record.position = Vector3(i, i, i)
+		record.health_q = 100 + i
 		mixed.records.append(record)
 	var mixed_bytes: PackedByteArray = mixed.encode()
-	assert_eq(mixed_bytes.size(), 14 + 2 + 40 + 2 + 20, "dos secciones")
+	assert_eq(mixed_bytes.size(), 14 + 2 + 2 * record_size + 2 + record_size, "dos secciones")
 	assert_eq(mixed_bytes.decode_u8(13), 2, "section_count")
 	assert_eq(mixed_bytes.decode_u8(14), NetProtocol.EntityKind.PLAYER,
 			"kind de la primera sección")
 	assert_eq(mixed_bytes.decode_u8(15), 2, "count de la primera sección")
-	assert_eq(mixed_bytes.decode_u8(14 + 2 + 40), NetProtocol.EntityKind.NPC, "kind de la segunda")
+	assert_eq(mixed_bytes.decode_u8(14 + 2 + 2 * record_size), NetProtocol.EntityKind.NPC,
+			"kind de la segunda")
 	var mixed_decoded: NetMessages.Snapshot = NetMessages.Snapshot.decode(mixed_bytes)
 	if assert_not_null(mixed_decoded, "decode del snapshot con dos secciones"):
 		assert_eq(mixed_decoded.records.size(), 3, "registros")
 		assert_eq(mixed_decoded.records[1].kind, NetProtocol.EntityKind.PLAYER, "kind del segundo")
 		assert_eq(mixed_decoded.records[2].kind, NetProtocol.EntityKind.NPC, "kind del tercero")
 		assert_eq(mixed_decoded.records[2].net_id, 12, "net_id del PNJ")
+		assert_eq(mixed_decoded.records[2].health_q, 102, "health_q del PNJ")
 
 	# input_margin saturado, ticks u32 y contadores módulo.
 	var wrap := NetMessages.Snapshot.new()
@@ -1208,18 +1284,30 @@ func test_snapshot_write_header_matches_encode() -> void:
 	var bytes := PackedByteArray()
 	var offset: int = NetMessages.Snapshot.write_header(bytes, snapshot.server_tick,
 			snapshot.input_ack_tick, snapshot.input_margin, snapshot.substitutions,
-			snapshot.own_teleport, snapshot.own_state.encode())
-	var section_at: int = 13 + PlayerState.ENCODED_SIZE
-	assert_eq(offset, section_at, "section_count empieza tras el estado propio")
-	assert_eq(bytes.size(), section_at + 1, "el búfer queda con la cabecera completa")
-	assert_eq(bytes, expected.slice(0, section_at) + PackedByteArray([0]),
+			snapshot.own_teleport, snapshot.own_state.encode(), snapshot.health,
+			snapshot.max_health, snapshot.status, snapshot.respawn_tick)
+	assert_eq(offset, HEADER_WITH_STATE - 1, "section_count empieza tras el estado y el bloque extra")
+	assert_eq(bytes.size(), HEADER_WITH_STATE, "el búfer queda con la cabecera completa")
+	assert_eq(bytes, expected.slice(0, HEADER_WITH_STATE - 1) + PackedByteArray([0]),
 			"misma cabecera que encode()")
+
+	# Sin los datos del bloque extra, se escribe a ceros (y es un snapshot válido).
+	var bare := PackedByteArray()
+	NetMessages.Snapshot.write_header(bare, 1, 2, 3, 4, 0, snapshot.own_state.encode())
+	assert_eq(bare.decode_u8(12) & NetMessages.FLAG_OWN_EXTRA, NetMessages.FLAG_OWN_EXTRA,
+			"el bloque extra acompaña siempre al estado propio")
+	var bare_decoded: NetMessages.Snapshot = NetMessages.Snapshot.decode(bare)
+	if assert_not_null(bare_decoded, "decode de la cabecera sin datos de vida"):
+		assert_eq(bare_decoded.health, 0, "vida 0 por defecto")
+		assert_eq(bare_decoded.max_health, 0, "vida máxima 0 por defecto")
+		assert_eq(bare_decoded.status, 0, "estado 0 por defecto")
+		assert_eq(bare_decoded.respawn_tick, 0, "reaparición 0 por defecto")
 
 	var plain := PackedByteArray()
 	var plain_offset: int = NetMessages.Snapshot.write_header(plain, 11, 22, -5, 33, 1,
-			PackedByteArray())
+			PackedByteArray(), 500, 1000, 7, 99)
 	assert_eq(plain_offset, 13, "section_count empieza en 13 sin estado propio")
-	assert_eq(plain.size(), 14, "cabecera de 14 B")
+	assert_eq(plain.size(), 14, "cabecera de 14 B (los datos del bloque extra se ignoran)")
 	assert_eq(plain.decode_u8(12), 0b010, "flags: solo el contador de teletransporte")
 
 	# En un búfer ya grande no cambia el tamaño; el constructor rellena el resto.
@@ -1234,20 +1322,27 @@ func test_snapshot_write_header_matches_encode() -> void:
 
 
 func test_snapshot_capacity_fits_in_one_packet() -> void:
+	# Capacidad con estado propio, bloque extra y una sección: floor((1200 - cabecera - 2) / 21).
+	var capacity: int = floori((NetProtocol.MAX_PACKET_BYTES - HEADER_WITH_STATE - 2)
+			/ float(EntityRecord.SIZE))
+	# Con el PlayerState de 69 B de la fase 3 (combate.md, 3.1): 13 + 69 + 9 + 1 = 92 B de cabecera
+	# y floor((1200 - 94) / 21) = 52 registros.
+	if PlayerState.ENCODED_SIZE == 69:
+		assert_eq(HEADER_WITH_STATE, 92, "cabecera de 92 B")
+		assert_eq(capacity, 52, "capacidad del documento: 52 registros")
 	var snapshot := NetMessages.Snapshot.new()
 	snapshot.own_state = PlayerState.new()
-	# Cabecera con estado propio (13 B + estado + section_count) y los 2 B de la sección.
-	var header_size: int = 13 + PlayerState.ENCODED_SIZE + 1 + 2
-	var capacity: int = floori((NetProtocol.MAX_PACKET_BYTES - header_size) / 20.0)
-	assert_eq(capacity, 55, "con el estado de 69 B caben 55 registros de 20 B")
 	for i: int in capacity:
 		var record := EntityRecord.new()
 		record.net_id = 100 + i
 		record.position = Vector3(i * 10.0, 1.0, -i * 3.0)
 		snapshot.records.append(record)
 	var bytes: PackedByteArray = snapshot.encode()
-	assert_eq(bytes.size(), header_size + capacity * 20, "%d registros" % capacity)
+	assert_eq(bytes.size(), HEADER_WITH_STATE + 2 + capacity * EntityRecord.SIZE,
+			"%d registros llenan el paquete" % capacity)
 	assert_true(bytes.size() <= NetProtocol.MAX_PACKET_BYTES, "cabe en 1200 B")
+	assert_true(bytes.size() + EntityRecord.SIZE > NetProtocol.MAX_PACKET_BYTES,
+			"un registro más ya no cabe")
 	var decoded: NetMessages.Snapshot = NetMessages.Snapshot.decode(bytes)
 	if assert_not_null(decoded, "decode del snapshot lleno"):
 		assert_eq(decoded.records.size(), capacity, "registros")
@@ -1262,6 +1357,58 @@ func test_snapshot_capacity_fits_in_one_packet() -> void:
 	var many_bytes: PackedByteArray = many.encode()
 	assert_eq(many_bytes.decode_u8(13), 2, "300 registros: dos secciones")
 	assert_eq(NetMessages.Snapshot.decode(many_bytes).records.size(), 300, "se decodifican los 300")
+
+
+func test_snapshot_extra_block_rules() -> void:
+	# Valores en los bordes del bloque extra.
+	var snapshot: NetMessages.Snapshot = _sample_snapshot(true, 0)
+	snapshot.health = 65535
+	snapshot.max_health = 65535
+	snapshot.status = 0xFF
+	snapshot.respawn_tick = 0xFFFFFFFF
+	var decoded: NetMessages.Snapshot = NetMessages.Snapshot.decode(snapshot.encode())
+	if assert_not_null(decoded, "decode con el bloque extra en su máximo"):
+		assert_eq(decoded.health, 65535, "u16 health máximo")
+		assert_eq(decoded.max_health, 65535, "u16 max_health máximo")
+		assert_eq(decoded.status, 0xFF, "u8 status máximo")
+		assert_eq(decoded.respawn_tick, 0xFFFFFFFF, "u32 respawn_tick máximo")
+	snapshot.health = 70000
+	snapshot.max_health = 70000
+	snapshot.respawn_tick = 0x1FFFFFFFF
+	var saturated: NetMessages.Snapshot = NetMessages.Snapshot.decode(snapshot.encode())
+	if assert_not_null(saturated, "decode con la vida fuera de rango"):
+		assert_eq(saturated.health, 65535, "la vida se satura a u16")
+		assert_eq(saturated.max_health, 65535, "la vida máxima se satura a u16")
+		assert_eq(saturated.respawn_tick, 0xFFFFFFFF, "el tick se recorta a u32")
+	snapshot.health = -5
+	snapshot.max_health = 1000
+	assert_eq(NetMessages.Snapshot.decode(snapshot.encode()).health, 0, "vida negativa = 0")
+
+	# El bit 3 de los flags va si y solo si va el bit 0.
+	var bytes: PackedByteArray = _sample_snapshot(true, 2).encode()
+	assert_not_null(NetMessages.Snapshot.decode(bytes), "con los dos bits, válido")
+	var extra_without_state: PackedByteArray = _sample_snapshot(false, 2).encode()
+	extra_without_state.encode_u8(12, NetMessages.FLAG_OWN_EXTRA)
+	assert_null(NetMessages.Snapshot.decode(extra_without_state),
+			"bit 3 (bloque extra) sin bit 0 (estado propio)")
+	var state_without_extra: PackedByteArray = bytes.duplicate()
+	state_without_extra.encode_u8(12, bytes.decode_u8(12) & ~NetMessages.FLAG_OWN_EXTRA)
+	assert_null(NetMessages.Snapshot.decode(state_without_extra),
+			"bit 0 (estado propio) sin bit 3 (bloque extra)")
+	# Con el bit 3 puesto y el estado propio sin bloque (cabecera de la fase 2), no cuadra.
+	var old_layout: PackedByteArray = bytes.slice(0, 13 + PlayerState.ENCODED_SIZE)
+	old_layout.append_array(bytes.slice(13 + PlayerState.ENCODED_SIZE
+			+ NetMessages.SNAPSHOT_EXTRA_SIZE))
+	assert_null(NetMessages.Snapshot.decode(old_layout), "sin los 9 B del bloque, no cuadra")
+
+	# La vida no puede ser mayor que la máxima.
+	var extra_offset: int = 13 + PlayerState.ENCODED_SIZE
+	var too_healthy: PackedByteArray = bytes.duplicate()
+	too_healthy.encode_u16(extra_offset, 1001)
+	too_healthy.encode_u16(extra_offset + 2, 1000)
+	assert_null(NetMessages.Snapshot.decode(too_healthy), "vida mayor que la máxima")
+	too_healthy.encode_u16(extra_offset, 1000)
+	assert_not_null(NetMessages.Snapshot.decode(too_healthy), "vida igual que la máxima")
 
 
 func test_snapshot_positions_roundtrip_within_five_millimeters() -> void:
@@ -1293,19 +1440,17 @@ func test_entity_spawn_roundtrip_and_layout() -> void:
 	var spawn: NetMessages.EntitySpawn = _sample_spawn()
 	var bytes: PackedByteArray = spawn.encode()
 	var name_bytes: PackedByteArray = spawn.display_name.to_utf8_buffer()
-	assert_eq(bytes.size(), 10 + PlayerState.ENCODED_SIZE + 1 + name_bytes.size(),
-			"tamaño: 10 B + estado + nombre")
+	var name_offset: int = 10 + PlayerState.ENCODED_SIZE
+	assert_eq(bytes.size(), name_offset + 1 + name_bytes.size(), "tamaño: 10 B + estado + nombre")
 	assert_eq(bytes.decode_u8(0), 0x20, "u8 type en 0")
 	assert_eq(bytes.decode_u16(1), 4242, "u16 net_id en 1")
 	assert_eq(bytes.decode_u8(3), NetProtocol.EntityKind.PLAYER, "u8 kind en 3")
 	assert_eq(bytes.decode_u32(4), 654321, "u32 spawn_tick en 4")
 	assert_eq(bytes.decode_u8(8), NetProtocol.Realm.VARDHEIM, "u8 realm en 8")
 	assert_eq(bytes.decode_u8(9), 0b011, "u8 flags en 9: tuyo y contador 1")
-	assert_eq(bytes.slice(10, 10 + PlayerState.ENCODED_SIZE), spawn.state.encode(),
-			"PlayerState (69 B) en 10")
-	var name_at: int = 10 + PlayerState.ENCODED_SIZE
-	assert_eq(bytes.decode_u8(name_at), name_bytes.size(), "u8 name_len tras el estado")
-	assert_eq(bytes.slice(name_at + 1), name_bytes, "nombre a continuación")
+	assert_eq(bytes.slice(10, name_offset), spawn.state.encode(), "PlayerState en 10")
+	assert_eq(bytes.decode_u8(name_offset), name_bytes.size(), "u8 name_len tras el estado")
+	assert_eq(bytes.slice(name_offset + 1), name_bytes, "nombre tras la longitud")
 
 	var decoded: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(bytes)
 	if not assert_not_null(decoded, "decode del SPAWN"):
@@ -1327,7 +1472,7 @@ func test_entity_spawn_roundtrip_and_layout() -> void:
 	if assert_not_null(plain, "decode de un SPAWN ajeno sin nombre"):
 		assert_false(plain.is_yours, "no es tuyo")
 		assert_eq(plain.teleport_counter, 2, "contador módulo 4")
-		assert_eq(spawn.encode().size(), 10 + PlayerState.ENCODED_SIZE + 1, "10 + estado + 1 B sin nombre")
+		assert_eq(spawn.encode().size(), name_offset + 1, "10 B + estado + 1 B sin nombre")
 	spawn.kind = NetProtocol.EntityKind.NPC
 	assert_not_null(NetMessages.EntitySpawn.decode(spawn.encode()), "un PNJ reutiliza el formato")
 	spawn.kind = NetProtocol.EntityKind.PROJECTILE
@@ -1372,6 +1517,220 @@ func test_entity_despawn_and_notice() -> void:
 	assert_eq(NetMessages.Notice.new().encode().size(), 3, "NOTICE sin texto: 3 B")
 
 
+func test_entity_event_hit_layout_and_roundtrip() -> void:
+	var hit: NetMessages.EntityEvent = _sample_hit()
+	var bytes: PackedByteArray = hit.encode()
+	assert_eq(bytes.size(), 17, "HIT: 17 B")
+	assert_eq(bytes.decode_u8(0), 0x23, "u8 type en 0")
+	assert_eq(bytes.decode_u16(1), 321, "u16 net_id (la víctima) en 1")
+	assert_eq(bytes.decode_u32(3), 123456, "u32 tick en 3")
+	assert_eq(bytes.decode_u8(7), 1, "u8 event en 7: HIT")
+	assert_eq(bytes.decode_u8(8), 8, "u8 len en 8")
+	assert_eq(bytes.decode_u16(9), 654, "u16 attacker en 9")
+	assert_eq(bytes.decode_u16(11), 243, "u16 amount en 11")
+	assert_eq(bytes.decode_u8(13), 2, "u8 damage_type en 13: contundente")
+	assert_eq(bytes.decode_u8(14), 0b10001, "u8 flags en 14: crítico y mortal")
+	assert_eq(bytes.decode_u16(15), 4, "u16 attack_id en 15")
+	var back: NetMessages.EntityEvent = NetMessages.EntityEvent.decode(bytes)
+	if not assert_not_null(back, "decode del HIT"):
+		return
+	assert_eq(back.event, NetMessages.EntityEvent.Kind.HIT, "event")
+	assert_eq(back.net_id, 321, "net_id")
+	assert_eq(back.tick, 123456, "tick")
+	assert_eq(back.attacker, 654, "attacker")
+	assert_eq(back.amount, 243, "amount")
+	assert_eq(back.damage_type, DamageFormula.DamageType.BLUNT, "damage_type")
+	assert_eq(back.attack_id, 4, "attack_id")
+	assert_true(back.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_CRITICAL), "crítico")
+	assert_true(back.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_LETHAL), "mortal")
+	assert_false(back.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_BLOCKED), "no bloqueado")
+	assert_false(back.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_PARRIED), "no parado")
+	assert_false(back.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_GUARD_BREAK), "sin rotura")
+	assert_eq(back.encode(), bytes, "recodificar da los mismos bytes")
+
+	# Bordes: ticks y daño u16 saturado.
+	var edge: NetMessages.EntityEvent = NetMessages.EntityEvent.hit(0xFFFF, 0xFFFFFFFF, 0xFFFF,
+			70000, 255, 0xFF, 0xFFFF)
+	var edge_back: NetMessages.EntityEvent = NetMessages.EntityEvent.decode(edge.encode())
+	if assert_not_null(edge_back, "decode de un HIT en los bordes"):
+		assert_eq(edge_back.net_id, 0xFFFF, "net_id máximo")
+		assert_eq(edge_back.tick, 0xFFFFFFFF, "tick máximo")
+		assert_eq(edge_back.amount, 0xFFFF, "el daño se satura a u16")
+		assert_eq(edge_back.damage_type, 255, "damage_type máximo")
+		assert_eq(edge_back.hit_flags, 0xFF, "flags")
+		assert_eq(edge_back.attack_id, 0xFFFF, "attack_id máximo")
+	var negative: NetMessages.EntityEvent = NetMessages.EntityEvent.hit(1, 1, 1, -5, 0, 0, 0)
+	assert_eq(NetMessages.EntityEvent.decode(negative.encode()).amount, 0, "daño negativo = 0")
+
+
+func test_entity_event_death_kill_respawn_layout_and_roundtrip() -> void:
+	var death: NetMessages.EntityEvent = _sample_death()
+	var death_bytes: PackedByteArray = death.encode()
+	assert_eq(death_bytes.size(), 13, "DEATH: 13 B")
+	assert_eq(death_bytes.decode_u8(7), 2, "u8 event en 7: DEATH")
+	assert_eq(death_bytes.decode_u8(8), 4, "u8 len en 8")
+	assert_eq(death_bytes.decode_u16(9), 654, "u16 killer en 9")
+	assert_eq(death_bytes.decode_u16(11), 4, "u16 attack_id en 11")
+	var death_back: NetMessages.EntityEvent = NetMessages.EntityEvent.decode(death_bytes)
+	if assert_not_null(death_back, "decode del DEATH"):
+		assert_eq(death_back.event, NetMessages.EntityEvent.Kind.DEATH, "event")
+		assert_eq(death_back.net_id, 321, "net_id")
+		assert_eq(death_back.tick, 123457, "tick")
+		assert_eq(death_back.killer, 654, "killer")
+		assert_eq(death_back.attack_id, 4, "attack_id")
+	var environment: NetMessages.EntityEvent = NetMessages.EntityEvent.death(9, 10, 0, 0)
+	assert_eq(NetMessages.EntityEvent.decode(environment.encode()).killer, 0,
+			"killer 0 = el entorno")
+
+	var kill: NetMessages.EntityEvent = _sample_kill()
+	var kill_bytes: PackedByteArray = kill.encode()
+	assert_eq(kill_bytes.size(), 14 + 2 * 2, "KILL con 2 asistentes: 14 + 2n B")
+	assert_eq(kill_bytes.decode_u8(7), 3, "u8 event en 7: KILL")
+	assert_eq(kill_bytes.decode_u8(8), 5 + 2 * 2, "u8 len en 8")
+	assert_eq(kill_bytes.decode_u16(9), 654, "u16 killer en 9")
+	assert_eq(kill_bytes.decode_u16(11), 4, "u16 attack_id en 11")
+	assert_eq(kill_bytes.decode_u8(13), 2, "u8 n en 13")
+	assert_eq(kill_bytes.decode_u16(14), 700, "primer asistente en 14")
+	assert_eq(kill_bytes.decode_u16(16), 701, "segundo asistente en 16")
+	var kill_back: NetMessages.EntityEvent = NetMessages.EntityEvent.decode(kill_bytes)
+	if assert_not_null(kill_back, "decode del KILL"):
+		assert_eq(kill_back.event, NetMessages.EntityEvent.Kind.KILL, "event")
+		assert_eq(kill_back.net_id, 321, "net_id (la víctima)")
+		assert_eq(kill_back.killer, 654, "killer")
+		assert_eq(kill_back.attack_id, 4, "attack_id")
+		assert_eq(kill_back.assistants, PackedInt32Array([700, 701]), "asistentes")
+	var lonely: NetMessages.EntityEvent = NetMessages.EntityEvent.kill(1, 2, 3, 4,
+			PackedInt32Array())
+	assert_eq(lonely.encode().size(), 14, "KILL sin asistentes: 14 B")
+	assert_true(NetMessages.EntityEvent.decode(lonely.encode()).assistants.is_empty(),
+			"sin asistentes")
+	var crowd := PackedInt32Array()
+	for i: int in 40:
+		crowd.append(1000 + i)
+	var crowd_event: NetMessages.EntityEvent = NetMessages.EntityEvent.kill(1, 2, 3, 4, crowd)
+	var crowd_back: NetMessages.EntityEvent = NetMessages.EntityEvent.decode(crowd_event.encode())
+	if assert_not_null(crowd_back, "decode de un KILL con demasiados asistentes"):
+		assert_eq(crowd_back.assistants.size(), NetMessages.EntityEvent.MAX_ASSISTANTS,
+				"se recorta a %d asistentes" % NetMessages.EntityEvent.MAX_ASSISTANTS)
+		assert_eq(crowd_back.assistants[0], 1000, "los primeros se conservan")
+
+	var respawn: NetMessages.EntityEvent = _sample_respawn()
+	var respawn_bytes: PackedByteArray = respawn.encode()
+	assert_eq(respawn_bytes.size(), 10, "RESPAWN: 10 B")
+	assert_eq(respawn_bytes.decode_u8(7), 4, "u8 event en 7: RESPAWN")
+	assert_eq(respawn_bytes.decode_u8(8), 1, "u8 len en 8")
+	assert_eq(respawn_bytes.decode_u8(9), 2, "u8 point en 9")
+	var respawn_back: NetMessages.EntityEvent = NetMessages.EntityEvent.decode(respawn_bytes)
+	if assert_not_null(respawn_back, "decode del RESPAWN"):
+		assert_eq(respawn_back.event, NetMessages.EntityEvent.Kind.RESPAWN, "event")
+		assert_eq(respawn_back.net_id, 321, "net_id (quien reaparece)")
+		assert_eq(respawn_back.tick, 124057, "tick")
+		assert_eq(respawn_back.point, 2, "point")
+
+	# Un evento que no existe no se codifica.
+	var unknown := NetMessages.EntityEvent.new()
+	unknown.event = 9
+	assert_true(unknown.encode().is_empty(), "un evento desconocido no tiene formato")
+
+
+func test_entity_event_rejects_inconsistent_lengths() -> void:
+	# La longitud declarada tiene que cuadrar con el evento y con el tamaño real.
+	for sample: NetMessages.EntityEvent in [_sample_hit(), _sample_death(), _sample_respawn()]:
+		var bytes: PackedByteArray = sample.encode()
+		for wrong_len: int in [0, bytes.decode_u8(8) - 1, bytes.decode_u8(8) + 1, 255]:
+			var tampered: PackedByteArray = bytes.duplicate()
+			tampered.encode_u8(8, wrong_len)
+			assert_null(NetMessages.EntityEvent.decode(tampered),
+					"evento %d con len %d declarado" % [sample.event, wrong_len])
+		var resized: PackedByteArray = bytes.duplicate()
+		resized.resize(bytes.size() + 1)
+		resized.encode_u8(8, bytes.decode_u8(8) + 1)
+		assert_null(NetMessages.EntityEvent.decode(resized),
+				"evento %d con len y tamaño coherentes pero más largo que su formato" % sample.event)
+	# KILL: n tiene que cuadrar con len.
+	var kill_bytes: PackedByteArray = _sample_kill().encode()
+	var bad_count: PackedByteArray = kill_bytes.duplicate()
+	bad_count.encode_u8(13, 3)
+	assert_null(NetMessages.EntityEvent.decode(bad_count), "n mayor que los asistentes que caben")
+	bad_count.encode_u8(13, 1)
+	assert_null(NetMessages.EntityEvent.decode(bad_count), "n menor que los asistentes")
+	var short_kill: PackedByteArray = kill_bytes.slice(0, 13)
+	short_kill.encode_u8(8, 4)
+	assert_null(NetMessages.EntityEvent.decode(short_kill), "KILL sin su campo n")
+	# Demasiados asistentes aunque cuadren las longitudes.
+	var too_many := PackedByteArray()
+	var too_many_count: int = NetMessages.EntityEvent.MAX_ASSISTANTS + 1
+	too_many.resize(14 + 2 * too_many_count)
+	too_many.encode_u8(0, NetProtocol.MSG_ENTITY_EVENT)
+	too_many.encode_u8(7, NetMessages.EntityEvent.Kind.KILL)
+	too_many.encode_u8(8, 5 + 2 * too_many_count)
+	too_many.encode_u8(13, too_many_count)
+	assert_null(NetMessages.EntityEvent.decode(too_many),
+			"más de %d asistentes" % NetMessages.EntityEvent.MAX_ASSISTANTS)
+	# Evento desconocido o cero.
+	for event_code: int in [0, 5, 255]:
+		var unknown_bytes: PackedByteArray = _sample_respawn().encode()
+		unknown_bytes.encode_u8(7, event_code)
+		assert_null(NetMessages.EntityEvent.decode(unknown_bytes), "evento %d" % event_code)
+
+
+func test_respawn_request_layout() -> void:
+	var request: NetMessages.RespawnRequest = _sample_respawn_request()
+	var bytes: PackedByteArray = request.encode()
+	assert_eq(bytes, PackedByteArray([0x05, 3]), "RESPAWN_REQUEST: type 0x05 y point_index")
+	var back: NetMessages.RespawnRequest = NetMessages.RespawnRequest.decode(bytes)
+	if assert_not_null(back, "decode del RESPAWN_REQUEST"):
+		assert_eq(back.point_index, 3, "point_index")
+	request.point_index = 300
+	assert_eq(request.encode()[1], 300 & 0xFF, "point_index módulo 256")
+	assert_null(NetMessages.RespawnRequest.decode(PackedByteArray([0x05])), "sin índice")
+	assert_null(NetMessages.RespawnRequest.decode(PackedByteArray([0x05, 1, 2])), "con un byte más")
+	assert_null(NetMessages.RespawnRequest.decode(PackedByteArray([0x02, 1])), "otro tipo")
+
+
+func test_new_message_channels_and_debug_command_ids() -> void:
+	assert_eq(NetProtocol.MSG_RESPAWN_REQUEST, 0x05, "RESPAWN_REQUEST es el tipo 0x05")
+	assert_eq(NetProtocol.MSG_ENTITY_EVENT, 0x23, "ENTITY_EVENT es el tipo 0x23")
+	assert_eq(NetProtocol.channel_for_type(NetProtocol.MSG_ENTITY_EVENT), NetProtocol.CH_RELIABLE,
+			"ENTITY_EVENT va por el canal fiable (3)")
+	assert_eq(NetProtocol.channel_for_type(NetProtocol.MSG_RESPAWN_REQUEST),
+			NetProtocol.CH_RELIABLE, "RESPAWN_REQUEST va por el canal fiable (3)")
+	assert_eq(NetProtocol.channel_for_type(NetProtocol.MSG_INPUT_BATCH), NetProtocol.CH_INPUT,
+			"las entradas no cambian")
+	assert_eq(NetProtocol.channel_for_type(NetProtocol.MSG_SNAPSHOT), NetProtocol.CH_SNAPSHOT,
+			"los snapshots no cambian")
+	for message_type: int in [NetProtocol.MSG_ENTITY_EVENT, NetProtocol.MSG_RESPAWN_REQUEST]:
+		assert_eq(NetProtocol.transfer_mode(NetProtocol.channel_for_type(message_type)),
+				MultiplayerPeer.TRANSFER_MODE_RELIABLE, "0x%02X es fiable" % message_type)
+		assert_false(NetProtocol.is_unreliable_channel(NetProtocol.channel_for_type(message_type)),
+				"0x%02X no pierde paquetes" % message_type)
+
+	# Ids fijos de los comandos de depuración (combate.md, sección 6).
+	assert_eq(NetProtocol.DEBUG_TELEPORT, 1, "teleport")
+	assert_eq(NetProtocol.DEBUG_HEAL, 2, "heal")
+	assert_eq(NetProtocol.DEBUG_KILL, 3, "kill")
+	assert_eq(NetProtocol.DEBUG_STAMINA_INF, 4, "stamina_inf")
+	assert_eq(NetProtocol.DEBUG_SET_WEAPON, 5, "set_weapon")
+	assert_eq(NetProtocol.DEBUG_SPAWN_DUMMY, 6, "spawn_dummy")
+	assert_eq(NetProtocol.DEBUG_COMMAND_IDS.size(), 6, "seis comandos")
+	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"set_weapon"], 5, "tabla: set_weapon")
+	var seen: Dictionary = {}
+	for command_name: StringName in NetProtocol.DEBUG_COMMAND_IDS:
+		var id: int = NetProtocol.DEBUG_COMMAND_IDS[command_name]
+		assert_false(seen.has(id), "el id %d no se repite" % id)
+		seen[id] = true
+	# Los comandos nuevos viajan en un DEBUG_COMMAND como cualquier otro.
+	for id: int in [NetProtocol.DEBUG_HEAL, NetProtocol.DEBUG_KILL, NetProtocol.DEBUG_STAMINA_INF,
+			NetProtocol.DEBUG_SET_WEAPON, NetProtocol.DEBUG_SPAWN_DUMMY]:
+		var command := NetMessages.DebugCommand.new()
+		command.command = id
+		command.payload = PackedByteArray([7])
+		var back: NetMessages.DebugCommand = NetMessages.DebugCommand.decode(command.encode())
+		if assert_not_null(back, "DEBUG_COMMAND %d" % id):
+			assert_eq(back.command, id, "command %d" % id)
+			assert_eq(back.payload, command.payload, "datos de %d" % id)
+
+
 # --- NetMessages: mensajes malformados --------------------------------------------------------
 
 func test_malformed_messages_return_null() -> void:
@@ -1401,7 +1760,13 @@ func test_malformed_messages_return_null() -> void:
 		for other: Array in samples:
 			if other[2] != decoder and decoder.call(other[1]) != null:
 				fail("%s decodificó bytes de %s" % [label, other[0]])
-	assert_eq(decoders.size(), samples.size(), "hay un decodificador por mensaje de ejemplo")
+	# Un decodificador por tipo de mensaje (ENTITY_EVENT tiene cuatro ejemplos, uno por evento).
+	var sample_decoders: Array[Callable] = []
+	for entry: Array in samples:
+		if not sample_decoders.has(entry[2]):
+			sample_decoders.append(entry[2])
+	assert_eq(decoders.size(), sample_decoders.size(),
+			"hay un decodificador por tipo de mensaje de ejemplo")
 	for decoder: Callable in decoders:
 		assert_null(decoder.call(PackedByteArray()), "búfer vacío")
 		assert_null(decoder.call(PackedByteArray([0])), "un solo byte nulo")
@@ -1501,16 +1866,18 @@ func test_malformed_lengths_and_counters_return_null() -> void:
 			"bit de estado propio sin el estado")
 	assert_null(NetMessages.Snapshot.decode(with_state.slice(0, 40)),
 			"truncado dentro del estado propio")
-	assert_null(NetMessages.Snapshot.decode(with_state.slice(0, 13 + PlayerState.ENCODED_SIZE)),
+	assert_null(NetMessages.Snapshot.decode(with_state.slice(0, 13 + PlayerState.ENCODED_SIZE + 4)),
+			"truncado dentro del bloque extra")
+	assert_null(NetMessages.Snapshot.decode(with_state.slice(0, HEADER_WITH_STATE - 1)),
 			"sin section_count")
 
 	# SPAWN.
 	var spawn_bytes: PackedByteArray = _sample_spawn().encode()
+	var spawn_name_offset: int = 10 + PlayerState.ENCODED_SIZE
 	var bad_spawn: PackedByteArray = spawn_bytes.duplicate()
-	var name_len_at: int = 10 + PlayerState.ENCODED_SIZE
-	bad_spawn.encode_u8(name_len_at, spawn_bytes.decode_u8(name_len_at) + 1)
+	bad_spawn.encode_u8(spawn_name_offset, spawn_bytes.decode_u8(spawn_name_offset) + 1)
 	assert_null(NetMessages.EntitySpawn.decode(bad_spawn), "name_len que no cuadra")
-	bad_spawn.encode_u8(name_len_at, 49)
+	bad_spawn.encode_u8(spawn_name_offset, 49)
 	assert_null(NetMessages.EntitySpawn.decode(bad_spawn), "name_len > 48")
 	bad_spawn = spawn_bytes.duplicate()
 	bad_spawn.encode_u8(3, NetProtocol.EntityKind.STRUCTURE)
@@ -1519,8 +1886,7 @@ func test_malformed_lengths_and_counters_return_null() -> void:
 	assert_null(NetMessages.EntitySpawn.decode(bad_spawn), "kind NONE")
 
 	# Tipos reservados: nadie los decodifica todavía.
-	for reserved: int in [NetProtocol.MSG_OBJECT_STATE, NetProtocol.MSG_ENTITY_EVENT,
-			NetProtocol.MSG_HANDOFF]:
+	for reserved: int in [NetProtocol.MSG_OBJECT_STATE, NetProtocol.MSG_HANDOFF]:
 		var bytes := PackedByteArray([reserved, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 		for decoder: Callable in _decoders():
 			assert_null(decoder.call(bytes), "tipo reservado 0x%02X" % reserved)
@@ -1533,7 +1899,8 @@ func test_fuzz_random_buffers_never_error() -> void:
 	var samples: Array = _sample_messages()
 	var type_bytes: Array[int] = [NetProtocol.MSG_INPUT_BATCH, NetProtocol.MSG_CLIENT_READY,
 			NetProtocol.MSG_CLIENT_LEAVE, NetProtocol.MSG_DEBUG_COMMAND, NetProtocol.MSG_SNAPSHOT,
-			NetProtocol.MSG_ENTITY_SPAWN, NetProtocol.MSG_ENTITY_DESPAWN, NetProtocol.MSG_NOTICE]
+			NetProtocol.MSG_ENTITY_SPAWN, NetProtocol.MSG_ENTITY_DESPAWN, NetProtocol.MSG_NOTICE,
+			NetProtocol.MSG_ENTITY_EVENT, NetProtocol.MSG_RESPAWN_REQUEST]
 	var decoded_count: int = 0
 	var mutated_decoded: int = 0
 	for i: int in FUZZ_BUFFERS:
@@ -1601,6 +1968,7 @@ func _decoders() -> Array[Callable]:
 		NetMessages.ClientLeave.decode, NetMessages.DebugCommand.decode,
 		NetMessages.Snapshot.decode, NetMessages.EntitySpawn.decode,
 		NetMessages.EntityDespawn.decode, NetMessages.Notice.decode,
+		NetMessages.EntityEvent.decode, NetMessages.RespawnRequest.decode,
 	]
 	return result
 
@@ -1625,6 +1993,12 @@ func _sample_messages() -> Array:
 		["ENTITY_SPAWN", _sample_spawn().encode(), NetMessages.EntitySpawn.decode],
 		["ENTITY_DESPAWN", despawn.encode(), NetMessages.EntityDespawn.decode],
 		["NOTICE", notice.encode(), NetMessages.Notice.decode],
+		["ENTITY_EVENT HIT", _sample_hit().encode(), NetMessages.EntityEvent.decode],
+		["ENTITY_EVENT DEATH", _sample_death().encode(), NetMessages.EntityEvent.decode],
+		["ENTITY_EVENT KILL", _sample_kill().encode(), NetMessages.EntityEvent.decode],
+		["ENTITY_EVENT RESPAWN", _sample_respawn().encode(), NetMessages.EntityEvent.decode],
+		["RESPAWN_REQUEST", _sample_respawn_request().encode(),
+				NetMessages.RespawnRequest.decode],
 	]
 
 
@@ -1685,6 +2059,10 @@ func _sample_snapshot(with_state: bool, record_count: int) -> NetMessages.Snapsh
 		state.coyote_ticks = 2
 		state.jump_buffer_ticks = 5
 		snapshot.own_state = state
+		snapshot.health = 845
+		snapshot.max_health = 1000
+		snapshot.status = NetMessages.STATUS_IN_COMBAT | NetMessages.STATUS_DEAD
+		snapshot.respawn_tick = 123456
 	var positions: Array[Vector3] = [
 		Vector3(-1234.567, 45.678, 4999.994), Vector3(0.0, 0.0, 0.0),
 		Vector3(5242.0, -5000.0, 17.77), Vector3(1.0, 2.0, 3.0),
@@ -1699,8 +2077,32 @@ func _sample_snapshot(with_state: bool, record_count: int) -> NetMessages.Snapsh
 		if i % 2 == 1:
 			record.flags = 3 << EntityRecord.TELEPORT_SHIFT
 		record.action = i
+		record.health_q = 255 - 40 * i
 		snapshot.records.append(record)
 	return snapshot
+
+
+func _sample_hit() -> NetMessages.EntityEvent:
+	return NetMessages.EntityEvent.hit(321, 123456, 654, 243, DamageFormula.DamageType.BLUNT,
+			NetMessages.EntityEvent.HIT_FLAG_CRITICAL | NetMessages.EntityEvent.HIT_FLAG_LETHAL, 4)
+
+
+func _sample_death() -> NetMessages.EntityEvent:
+	return NetMessages.EntityEvent.death(321, 123457, 654, 4)
+
+
+func _sample_kill() -> NetMessages.EntityEvent:
+	return NetMessages.EntityEvent.kill(321, 123457, 654, 4, PackedInt32Array([700, 701]))
+
+
+func _sample_respawn() -> NetMessages.EntityEvent:
+	return NetMessages.EntityEvent.respawn(321, 124057, 2)
+
+
+func _sample_respawn_request() -> NetMessages.RespawnRequest:
+	var request := NetMessages.RespawnRequest.new()
+	request.point_index = 3
+	return request
 
 
 func _sample_spawn() -> NetMessages.EntitySpawn:

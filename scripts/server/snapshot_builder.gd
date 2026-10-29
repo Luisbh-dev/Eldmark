@@ -6,8 +6,9 @@ extends RefCounted
 ## búfer compartido y guarda su offset por [code]net_id[/code]. Codificar es O(entidades); por
 ## cliente solo hay copias de memoria. [method build_for] arma el paquete de un peer:
 ## [codeblock]
-## cabecera  tick, input_ack_tick, input_margin, sustituciones, estado propio y su contador
-##           de teletransporte
+## cabecera  tick, input_ack_tick, input_margin, sustituciones, estado propio, su contador
+##           de teletransporte y el bloque extra propio (vida, vida máxima, estado y tick
+##           de reaparición, de NetEntity.health y compañía)
 ## candidatas  las entidades de peer.relevant menos la propia; a cada una se le suma
 ##             peer.priority[id] += policy.priority_weight(observador, entidad)
 ## selección   si caben todas en MAX_PACKET_BYTES se escriben todas; si no, las de mayor
@@ -88,8 +89,13 @@ func build_for(peer: ServerPeer) -> PackedByteArray:
 	var teleport_counter: int = observer.teleport_counter if observer != null else 0
 
 	var packet := PackedByteArray()
+	# El bloque extra propio sale de la propia entidad (NetEntity.set_health_view).
 	var section_offset: int = NetMessages.Snapshot.write_header(packet, _tick, input_ack_tick,
-			input_margin, substitutions, teleport_counter, own_state_bytes)
+			input_margin, substitutions, teleport_counter, own_state_bytes,
+			observer.health if observer != null else 0,
+			observer.max_health if observer != null else 0,
+			observer.status if observer != null else 0,
+			observer.respawn_tick if observer != null else 0)
 
 	# Candidatas y acumulador de prioridad.
 	var candidates := PackedInt32Array()

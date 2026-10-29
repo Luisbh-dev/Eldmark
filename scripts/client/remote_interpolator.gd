@@ -131,4 +131,5 @@ static func _copy(source: EntityRecord) -> EntityRecord:
 	record.velocity = source.velocity
 	record.flags = source.flags
 	record.action = source.action
+	record.health_q = source.health_q
 	return record
