@@ -238,7 +238,7 @@ func _enter_zone(path: String) -> void:
 		_client.leave()
 		return
 	add_child(_world)
-	move_child(_world, 0)
+	_force_full_terrain_collision(_world)
 	if _is_bot() and DisplayServer.get_name() == "headless":
 		var zone_root: ZoneRoot = _world as ZoneRoot
 		if zone_root != null:
@@ -250,6 +250,20 @@ func _enter_zone(path: String) -> void:
 		return
 	print("[Eldmark] Zona '%s' lista" % _zone_id)
 	_client.notify_zone_ready(_entities)
+
+
+# Terrain3D con la colisión completa, la misma que fija el servidor (docs/red.md, 1.3 y 19): el
+# modo dinámico depende de la cámara y podría cambiar el último bit de las consultas de Jolt. Se
+# accede por nombre para no depender de la extensión al cargar el script.
+func _force_full_terrain_collision(root: Node) -> void:
+	if not ClassDB.class_exists(&"Terrain3D"):
+		return
+	var full_game: int = 3
+	if ClassDB.class_exists(&"Terrain3DCollision"):
+		full_game = ClassDB.class_get_integer_constant(&"Terrain3DCollision", &"FULL_GAME")
+	for node: Node in root.find_children("*", "Terrain3D", true, false):
+		if int(node.get(&"collision_mode")) != full_game:
+			node.set(&"collision_mode", full_game)
 
 
 func _on_rejected(result: int, text: String) -> void:

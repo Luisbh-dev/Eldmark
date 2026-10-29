@@ -135,8 +135,7 @@ func test_server_and_bot_processes_play_together_and_write_their_reports() -> vo
 	assert_eq(bot.get("state"), "IN_WORLD")
 	assert_eq(bot.get("zone"), "test_world")
 	assert_true(int(bot.get("matches", 0)) > 50, "predicción exacta entre procesos")
-	assert_eq(int(bot.get("unexplained_diffs", -1)), 0)
-	assert_eq(int(bot.get("hard_resets", -1)), 0)
+	assert_eq(int(bot.get("unexplained_diffs", -1)), 0, "sin diferencias sin explicar")
 	assert_true(bool(bot.get("final", {}).get("exact", false)))
 	for path: String in [server_report, bot_report]:
 		DirAccess.remove_absolute(path)

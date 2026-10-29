@@ -18,7 +18,6 @@ class FakeClock extends InterpolationClock:
 
 var _world: RemoteWorld
 var _clock: FakeClock
-var _extra_nodes: Array[Node] = []
 
 
 func before_each() -> void:
@@ -30,10 +29,6 @@ func before_each() -> void:
 
 
 func after_each() -> void:
-	for node: Node in _extra_nodes:
-		if is_instance_valid(node):
-			node.free()
-	_extra_nodes.clear()
 	if is_instance_valid(_world):
 		tree.root.remove_child(_world)
 		_world.free()

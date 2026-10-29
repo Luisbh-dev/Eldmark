@@ -98,6 +98,7 @@ Opciones de arranque (van después de `--`):
   headless se omiten.
 - `--quit-after-demo`: cierra el juego al terminar la demo.
 - `--server`: servidor dedicado de una zona (ver «Servidor dedicado» más abajo).
+- `--connect=<host>[:<puerto>]` y `--bot`: cliente en red (ver «Cliente en red» más abajo).
 
 Las capturas y otros ficheros temporales pueden ir en `build/`, que Godot ignora.
 
@@ -122,6 +123,32 @@ para que `--local` reutilice el servidor), `--quit-after-ticks=N`, `--report=<ru
 expulsiones y, cada 10 s, la duración del tick y el ancho de banda. El código de salida es 0 en un
 cierre normal y 1 si no puede arrancar (zona desconocida, puerto ocupado).
 
+## Cliente en red
+
+Con un servidor ya arrancado, `--connect` conecta con él; la zona la dicta el servidor. Un bot es el
+mismo cliente sin cámara ni HUD, guiado por un `BotBrain` determinista (útil para pruebas y carga):
+
+```bash
+# Jugar contra un servidor local
+godot --path . -- --connect=127.0.0.1 --realm=solmarch --name=Ana
+
+# Un bot sin ventana: 25 s de juego, informe JSON al terminar y registro de estados
+godot --headless --path . -- --bot --connect=127.0.0.1:24600 --bot-seed=3 \
+    --quit-after-ticks=1500 --report=build/bot_3.json --state-log=build/bot_3.csv
+```
+
+Opciones (después de `--`): `--connect=<host>[:<puerto>]`, `--port=<puerto>` (gana al de
+`--connect`), `--realm=<reino>` (sin él entra como Vardheim, con un aviso: la pantalla de elección
+de reino llega con TEC-45), `--name=<nombre>` (por defecto `Jugador-NNNN`), `--bot`,
+`--bot-seed=N`, `--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1`, `--quit-after-ticks=N` (ticks de
+física locales desde que arranca la sesión, contando la conexión y la carga de la zona; los últimos
+ticks el bot se queda quieto), `--report=<ruta.json>` (coincidencias exactas, diferencias
+explicadas y sin explicar, reinicios y resincronizaciones, ajustes de TickSync y estado final) y
+`--state-log=<ruta.csv>` (`server_tick,predicho,servidor` en hexadecimal por snapshot). Con
+`--quit-after-ticks` el código de salida es 0 si el bot llegó a jugar y salió por su pie, y 1 si
+fue rechazado, se desconectó o no llegó a entrar en la zona. `--local` y `--bots=N` todavía no
+existen: avisan y cierran con código 1.
+
 ## Estructura
 
 ```
@@ -130,7 +157,7 @@ assets/        Modelos, animaciones, texturas, materiales y audio (binarios en G
 scenes/        Escenas de Godot (.tscn)
   boot.tscn    Escena principal: lee las opciones de arranque
   characters/  Personajes (PlayerCharacter) y su aspecto visual (solo cliente)
-  client/      Raíz del cliente y cámara de acción
+  client/      Raíces del cliente (sandbox y red) y cámara de acción
   ui/          Interfaz (HUD)
   world/       Zonas (zones/) y sus piezas (props/), y el circuito de pruebas
 scripts/
