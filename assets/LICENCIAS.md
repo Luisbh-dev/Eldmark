@@ -161,8 +161,9 @@ declara una licencia propia:
 - Shaders `assets/materials/shaders/` (`realm_surface`, `water`) y materiales de
   `assets/materials/{realms,vegetation,water}/`.
 - `assets/environments/vado_gris_frontier.tres` (ambiente).
-- `assets/models/environment/custom/stone_bridge.tres` (malla del puente generada por script con
-  texturas del Castle Wall Kit) y las piezas de `scenes/world/props/` (empalizada, tiendas...).
+- `assets/models/environment/custom/` (mallas generadas por script: el puente de piedra, con
+  texturas del Castle Wall Kit, la hoja de la puerta del fuerte, las piedras y los troncos de la
+  hoguera y los escombros) y las piezas de `scenes/world/props/` (empalizada, tiendas...).
 - Materiales de personaje `assets/models/characters/**/materials/*.tres` y
   `assets/animations/rig/ual_humanoid_bone_map.tres`.
 - Datos de terreno `scenes/world/zones/vado_gris/terrain/*.res`, generados por
