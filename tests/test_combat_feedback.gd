@@ -1,0 +1,531 @@
+extends TestCase
+## Pruebas de la sensación de combate del cliente (UI-12, ART-09 básico, CMB-11):
+## [DpsMeter], [HitMarker], [DamageNumbers] (agrupación en 0,3 s y pool limitado) y
+## [CombatFeedback] con eventos sintéticos: solo un golpe confirmado por el servidor produce
+## marcador y número, la sacudida y el destello van a quien corresponde, los ganchos de sonido
+## suenan, y la acción propia se detecta sin señales de la simulación (una corrección que repite
+## ticks no duplica efectos).
+
+const OWN_ID: int = 5
+const OTHER_ID: int = 21
+const THIRD_ID: int = 22
+const CHARACTER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn"
+const CAMERA_RIG_SCENE_PATH: String = "res://scenes/client/camera_rig.tscn"
+
+var _root: Node3D
+var _feedback: CombatFeedback
+var _marker: HitMarker
+var _numbers: DamageNumbers
+var _canvas: CanvasLayer
+var _rig: CameraRig
+var _character: PlayerCharacter
+var _sounds: Array[StringName] = []
+var _dt: float = 1.0 / 60.0
+
+
+func before_each() -> void:
+	_dt = 1.0 / float(Engine.physics_ticks_per_second)
+	_sounds.clear()
+	_root = Node3D.new()
+	_root.name = "CombatFeedbackTest"
+	tree.root.add_child(_root)
+
+
+func after_each() -> void:
+	if is_instance_valid(_root):
+		tree.root.remove_child(_root)
+		_root.free()
+	if is_instance_valid(_canvas):
+		tree.root.remove_child(_canvas)
+		_canvas.free()
+	_root = null
+	_canvas = null
+	_feedback = null
+	_marker = null
+	_numbers = null
+	_rig = null
+	_character = null
+	await wait_process_frames()
+
+
+# --- Ayudantes --------------------------------------------------------------------------------
+
+func _hit(victim: int, attacker: int, amount: int = 90, flags: int = 0, attack_id: int = 0,
+		tick: int = 100) -> NetMessages.EntityEvent:
+	return NetMessages.EntityEvent.hit(victim, tick, attacker, amount, 0, flags, attack_id)
+
+
+## Reparto con marcador, números, cámara y personaje local (sin cliente de red).
+func _make_feedback(with_rig: bool = true) -> void:
+	_canvas = CanvasLayer.new()
+	tree.root.add_child(_canvas)
+	_marker = HitMarker.new()
+	_canvas.add_child(_marker)
+	_numbers = DamageNumbers.new()
+	_canvas.add_child(_numbers)
+	_character = (load(CHARACTER_SCENE_PATH) as PackedScene).instantiate() as PlayerCharacter
+	_root.add_child(_character)
+	_character.position = Vector3(0.0, 0.0, 0.0)
+	var mesh := MeshInstance3D.new()
+	mesh.name = "Cuerpo"
+	mesh.mesh = CapsuleMesh.new()
+	_character.add_child(mesh)
+	if with_rig:
+		_rig = (load(CAMERA_RIG_SCENE_PATH) as PackedScene).instantiate() as CameraRig
+		_rig.set_scripted_look(true)
+		_root.add_child(_rig)
+	_feedback = CombatFeedback.new()
+	_root.add_child(_feedback)
+	_feedback.setup(null, _rig, _character, _marker, _numbers)
+	_feedback.set_own_net_id(OWN_ID)
+	# Sin cliente no hay vistas de remotos: todos están en el mismo sitio, delante del jugador.
+	_feedback.position_resolver = func(_net_id: int) -> Vector3: return Vector3(0.0, 0.0, -3.0)
+	_feedback.sound_requested.connect(func(sound: StringName, _at: Vector3) -> void:
+		_sounds.append(sound))
+
+
+# --- DpsMeter ---------------------------------------------------------------------------------
+
+func test_dps_meter_sums_the_window_and_divides_by_the_elapsed_time() -> void:
+	var meter := DpsMeter.new()
+	assert_eq(meter.get_dps(100), 0.0, "sin golpes no hay DPS")
+	meter.add_hit(60, 100)
+	assert_near(meter.get_dps(60), 100.0, 0.001, "un golpe: como poco 1 s")
+	meter.add_hit(120, 100)
+	meter.add_hit(180, 100)
+	assert_eq(meter.get_damage(180), 300)
+	assert_near(meter.get_dps(180), 150.0, 0.001, "300 de daño en 2 s")
+	assert_eq(meter.get_hit_count(180), 3)
+
+
+func test_dps_meter_over_a_full_window_matches_the_expected_figure() -> void:
+	# Un golpe de 90 por segundo durante 40 s: la ventana de 30 s da 90 de DPS.
+	var meter := DpsMeter.new()
+	for second: int in 40:
+		meter.add_hit(60 * (second + 1), 90)
+	var now: int = 60 * 40
+	assert_eq(meter.get_hit_count(now), 30, "solo caben los golpes de la ventana de 30 s")
+	assert_near(meter.get_dps(now), 90.0, 0.001, "tras 30 s seguidos, el daño de la ventana entre 30")
+	assert_eq(meter.get_total_damage(), 40 * 90, "el total desde el principio no se pierde")
+	assert_eq(meter.get_total_hits(), 40)
+
+
+func test_dps_meter_forgets_old_hits_and_ignores_zero_damage() -> void:
+	var meter := DpsMeter.new()
+	meter.add_hit(10, 500)
+	meter.add_hit(20, 0)
+	meter.add_hit(30, -5)
+	assert_eq(meter.get_hit_count(100), 1, "los golpes sin daño no cuentan")
+	assert_eq(meter.get_damage(10 + DpsMeter.WINDOW_TICKS - 1), 500, "dentro de la ventana")
+	assert_eq(meter.get_damage(10 + DpsMeter.WINDOW_TICKS), 0, "pasada la ventana se olvida")
+	assert_eq(meter.get_dps(10 + DpsMeter.WINDOW_TICKS), 0.0)
+	meter.add_hit(5000, 10)
+	meter.reset()
+	assert_eq(meter.get_total_damage(), 0)
+	assert_eq(meter.get_dps(5000), 0.0)
+
+
+# --- HitMarker --------------------------------------------------------------------------------
+
+func test_hit_marker_shows_each_variant_and_fades() -> void:
+	var marker := HitMarker.new()
+	_root.add_child(marker)
+	assert_false(marker.is_active())
+	assert_eq(marker.get_alpha(), 0.0)
+	for kind: int in [HitMarker.Kind.HIT, HitMarker.Kind.HEAVY, HitMarker.Kind.BLOCKED,
+			HitMarker.Kind.KILL]:
+		marker.show_marker(kind)
+		assert_true(marker.is_active())
+		assert_eq(marker.get_variant(), kind)
+		assert_eq(marker.get_alpha(), 1.0, "recién enseñado, opaco")
+		marker.advance(HitMarker.DURATIONS[kind] * 0.5)
+		assert_near(marker.get_alpha(), 0.5, 0.01, "a media vida, medio opaco")
+		marker.advance(HitMarker.DURATIONS[kind])
+		assert_false(marker.is_active(), "y desaparece")
+	assert_true(HitMarker.DURATIONS[HitMarker.Kind.KILL] > HitMarker.DURATIONS[HitMarker.Kind.HIT],
+			"el de muerte dura más")
+
+
+func test_hit_marker_can_be_disabled() -> void:
+	var marker := HitMarker.new()
+	_root.add_child(marker)
+	marker.enabled = false
+	marker.show_marker(HitMarker.Kind.HIT)
+	assert_false(marker.is_active(), "desactivado no enseña nada")
+	assert_eq(marker.get_shown_count(), 0)
+	marker.enabled = true
+	marker.show_marker(HitMarker.Kind.HIT)
+	assert_true(marker.is_active())
+	marker.enabled = false
+	assert_false(marker.is_active(), "y al desactivarlo se quita el que hubiera")
+
+
+# --- DamageNumbers ----------------------------------------------------------------------------
+
+func test_damage_numbers_group_hits_on_the_same_target_within_the_window() -> void:
+	var numbers := DamageNumbers.new()
+	_root.add_child(numbers)
+	var first: Label = numbers.add_number(OTHER_ID, Vector3.ZERO, 90)
+	numbers.advance(0.1)
+	var second: Label = numbers.add_number(OTHER_ID, Vector3.ZERO, 90)
+	assert_true(first == second, "el segundo golpe se suma al mismo número")
+	assert_eq(numbers.get_active_count(), 1)
+	assert_eq(numbers.get_number_amount(0), 180)
+	assert_eq(numbers.get_number_hits(0), 2)
+	assert_eq(numbers.get_number_text(0), "180")
+	numbers.advance(0.15)
+	numbers.add_number(OTHER_ID, Vector3.ZERO, 30)
+	assert_eq(numbers.get_active_count(), 1, "0,25 s después del primero aún se agrupa")
+	assert_eq(numbers.get_number_amount(0), 210)
+	numbers.advance(0.1)
+	numbers.add_number(OTHER_ID, Vector3.ZERO, 40)
+	assert_eq(numbers.get_active_count(), 2, "pasados 0,3 s del primero sale otro número")
+	assert_eq(numbers.get_number_amount(1), 40)
+	assert_eq(numbers.get_spawned_count(), 2)
+
+
+func test_damage_numbers_do_not_group_different_targets_or_directions() -> void:
+	var numbers := DamageNumbers.new()
+	_root.add_child(numbers)
+	numbers.add_number(OTHER_ID, Vector3.ZERO, 90)
+	numbers.add_number(THIRD_ID, Vector3.ZERO, 90)
+	numbers.add_number(OTHER_ID, Vector3.ZERO, 50, DamageNumbers.Kind.HIT, true)
+	assert_eq(numbers.get_active_count(), 3, "objetivos distintos y daño dado/recibido no se mezclan")
+
+
+func test_damage_numbers_pool_is_bounded_and_recycles_the_oldest() -> void:
+	var numbers := DamageNumbers.new()
+	_root.add_child(numbers)
+	for i: int in DamageNumbers.MAX_NUMBERS + 8:
+		numbers.add_number(100 + i, Vector3.ZERO, i + 1)
+	assert_eq(numbers.get_pool_size(), DamageNumbers.MAX_NUMBERS, "nunca más etiquetas que el tope")
+	assert_eq(numbers.get_active_count(), DamageNumbers.MAX_NUMBERS)
+	assert_eq(numbers.get_number_amount(0), 9, "se reciclaron los 8 más antiguos")
+	assert_eq(numbers.get_number_amount(DamageNumbers.MAX_NUMBERS - 1),
+			DamageNumbers.MAX_NUMBERS + 8)
+	var children: int = numbers.get_child_count()
+	numbers.advance(DamageNumbers.LIFETIME_SECONDS + 0.1)
+	assert_eq(numbers.get_active_count(), 0, "al acabar su vida vuelven al pool")
+	numbers.add_number(1, Vector3.ZERO, 5)
+	assert_eq(numbers.get_pool_size(), DamageNumbers.MAX_NUMBERS, "y se reutilizan")
+	assert_eq(numbers.get_child_count(), children, "sin crear nodos nuevos")
+
+
+func test_damage_numbers_can_be_disabled_and_show_custom_text() -> void:
+	var numbers := DamageNumbers.new()
+	_root.add_child(numbers)
+	var label: Label = numbers.add_number(OTHER_ID, Vector3.ZERO, 0, DamageNumbers.Kind.BLOCKED,
+			false, false, "Bloqueado")
+	assert_eq(label.text, "Bloqueado")
+	numbers.add_number(THIRD_ID, Vector3.ZERO, 120, DamageNumbers.Kind.HEAVY, false, true)
+	assert_eq(numbers.get_number_text(1), "120!", "un crítico lleva la exclamación")
+	numbers.enabled = false
+	assert_eq(numbers.get_active_count(), 0, "desactivar quita los que había")
+	assert_null(numbers.add_number(OTHER_ID, Vector3.ZERO, 10), "y no se crea ninguno")
+	assert_eq(numbers.get_active_count(), 0)
+
+
+# --- CombatFeedback: golpes -------------------------------------------------------------------
+
+func test_own_confirmed_hit_shows_marker_number_and_counts_dps() -> void:
+	_make_feedback()
+	var kills: Array[int] = []
+	_feedback.hit_confirmed.connect(func(kind: int, amount: int, _e: NetMessages.EntityEvent) -> void:
+		kills.append(kind * 1000 + amount))
+	_feedback.handle_event(_hit(OTHER_ID, OWN_ID, 90, 0, CombatCatalog.attack_id(&"sword_light_1")),
+			true)
+	assert_true(_marker.is_active(), "marcador al confirmarse el golpe")
+	assert_eq(_marker.get_variant(), HitMarker.Kind.HIT)
+	assert_eq(kills, [HitMarker.Kind.HIT * 1000 + 90] as Array[int])
+	assert_eq(_feedback.get_damage_in_window(), 90, "el DPS suma el daño")
+	assert_true(_sounds.has(CombatFeedback.SOUND_HIT_DEALT), "y suena el gancho del golpe")
+	assert_false(_rig.is_shaking(), "dar un golpe no sacude la cámara")
+
+
+func test_hit_variants_follow_the_flags_and_the_attack() -> void:
+	_make_feedback()
+	var heavy: int = CombatCatalog.attack_id(&"sword_heavy")
+	var light: int = CombatCatalog.attack_id(&"sword_light_1")
+	assert_eq(_feedback.kind_of(_hit(OTHER_ID, OWN_ID, 90, 0, light)), HitMarker.Kind.HIT)
+	assert_eq(_feedback.kind_of(_hit(OTHER_ID, OWN_ID, 200, 0, heavy)), HitMarker.Kind.HEAVY)
+	assert_eq(_feedback.kind_of(_hit(OTHER_ID, OWN_ID, 0, NetMessages.EntityEvent.HIT_FLAG_BLOCKED,
+			heavy)), HitMarker.Kind.BLOCKED, "bloqueado pesa más que fuerte")
+	assert_eq(_feedback.kind_of(_hit(OTHER_ID, OWN_ID, 0, NetMessages.EntityEvent.HIT_FLAG_PARRIED,
+			light)), HitMarker.Kind.BLOCKED)
+	assert_eq(_feedback.kind_of(_hit(OTHER_ID, OWN_ID, 90, NetMessages.EntityEvent.HIT_FLAG_LETHAL
+			| NetMessages.EntityEvent.HIT_FLAG_BLOCKED, light)), HitMarker.Kind.KILL,
+			"y matar pesa más que todo")
+	_feedback.handle_event(_hit(OTHER_ID, OWN_ID, 0, NetMessages.EntityEvent.HIT_FLAG_PARRIED), true)
+	assert_eq(_numbers.get_number_text(0), CombatFeedback.TEXT_PARRIED)
+	assert_true(_sounds.has(CombatFeedback.SOUND_PARRY))
+	_feedback.handle_event(_hit(THIRD_ID, OWN_ID, 0, NetMessages.EntityEvent.HIT_FLAG_BLOCKED), true)
+	assert_eq(_numbers.get_number_text(1), CombatFeedback.TEXT_BLOCKED)
+	assert_eq(_feedback.get_damage_in_window(), 0, "lo bloqueado y parado no suma DPS")
+
+
+func test_events_of_others_do_not_produce_marker_number_or_shake() -> void:
+	_make_feedback()
+	_feedback.handle_event(_hit(OTHER_ID, THIRD_ID, 90), false)
+	assert_false(_marker.is_active(), "un golpe entre otros no marca nada")
+	assert_eq(_numbers.get_active_count(), 0, "ni saca número")
+	assert_false(_rig.is_shaking(), "ni sacude la cámara")
+	assert_eq(_feedback.get_damage_in_window(), 0, "ni cuenta para el DPS")
+	assert_eq(_feedback.get_events_handled(), 1)
+
+
+func test_nothing_happens_without_a_confirmed_event() -> void:
+	_make_feedback()
+	await wait_physics_frames(5)
+	assert_false(_marker.is_active(), "sin evento no hay marcador")
+	assert_eq(_numbers.get_active_count(), 0, "ni número")
+	assert_eq(_feedback.get_dps(), 0.0)
+
+
+func test_damage_taken_shakes_the_camera_and_signals_the_attacker() -> void:
+	_make_feedback()
+	var taken: Array[Vector2i] = []
+	_feedback.damage_taken.connect(func(amount: int, attacker: int, _e: NetMessages.EntityEvent) -> void:
+		taken.append(Vector2i(amount, attacker)))
+	_feedback.handle_event(_hit(OWN_ID, OTHER_ID, 120), true)
+	assert_eq(taken, [Vector2i(120, OTHER_ID)] as Array[Vector2i])
+	assert_true(_rig.is_shaking(), "la cámara se sacude al recibir")
+	assert_false(_marker.is_active(), "y el marcador de impacto es de los golpes propios")
+	assert_eq(_numbers.get_active_count(), 1, "el daño recibido sale como número rojo")
+	assert_true(_sounds.has(CombatFeedback.SOUND_HIT_TAKEN))
+	assert_eq(_feedback.get_damage_in_window(), 0, "y no cuenta para el DPS")
+
+
+func test_camera_shake_decays_and_respects_the_option() -> void:
+	_make_feedback()
+	_rig.add_shake(0.1, 0.2)
+	await wait_process_frames(2)
+	assert_true(_rig.is_shaking())
+	assert_true(_rig.get_shake_offset().length() <= 0.1 + 0.0001, "no pasa de la amplitud pedida")
+	_rig.add_shake(5.0, 0.2)
+	await wait_process_frames(1)
+	assert_true(_rig.get_shake_offset().length() <= CameraRig.MAX_SHAKE_AMPLITUDE + 0.0001,
+			"y hay un tope")
+	var waited: int = 0
+	while _rig.is_shaking() and waited < 120:
+		await wait_process_frames(1)
+		waited += 1
+	assert_false(_rig.is_shaking(), "dura poco")
+	await wait_process_frames(1)
+	assert_eq(_rig.get_shake_offset(), Vector2.ZERO, "y vuelve a 0")
+	_feedback.camera_shake_enabled = false
+	_feedback.handle_event(_hit(OWN_ID, OTHER_ID, 120), true)
+	assert_false(_rig.is_shaking(), "con la opción apagada no se sacude")
+	_rig.shake_enabled = false
+	_rig.add_shake(0.1, 0.2)
+	assert_false(_rig.is_shaking(), "tampoco desde la propia cámara")
+
+
+func test_flash_tints_the_victim_briefly_and_cleans_up() -> void:
+	_make_feedback()
+	var mesh: MeshInstance3D = _character.get_node(^"Cuerpo") as MeshInstance3D
+	assert_null(mesh.material_overlay)
+	_feedback.handle_event(_hit(OWN_ID, OTHER_ID, 50), true)
+	assert_not_null(mesh.material_overlay, "la víctima destella")
+	assert_true(_feedback.get_flashing_count() >= 1, "con todas las mallas visibles de su cuerpo")
+	_feedback.advance_flashes(CombatFeedback.FLASH_SECONDS * 0.5)
+	assert_not_null(mesh.material_overlay, "a medias sigue")
+	_feedback.advance_flashes(CombatFeedback.FLASH_SECONDS)
+	assert_null(mesh.material_overlay, "y se quita al acabar")
+	assert_eq(_feedback.get_flashing_count(), 0)
+	for node: Node in _character.find_children("*", "MeshInstance3D", true, false):
+		assert_null((node as MeshInstance3D).material_overlay, "ninguna malla se queda teñida")
+	_feedback.flash_enabled = false
+	_feedback.handle_event(_hit(OWN_ID, OTHER_ID, 50), true)
+	assert_null(mesh.material_overlay, "sin destello si el jugador lo apaga")
+
+
+func test_entity_damaged_is_emitted_for_every_hit_with_damage() -> void:
+	_make_feedback()
+	var damaged: Array[int] = []
+	_feedback.entity_damaged.connect(func(net_id: int) -> void: damaged.append(net_id))
+	_feedback.handle_event(_hit(OTHER_ID, THIRD_ID, 40), false)
+	_feedback.handle_event(_hit(OWN_ID, THIRD_ID, 40), true)
+	_feedback.handle_event(_hit(OTHER_ID, THIRD_ID, 0, NetMessages.EntityEvent.HIT_FLAG_BLOCKED), false)
+	assert_eq(damaged, [OTHER_ID, OWN_ID] as Array[int], "lo bloqueado sin daño no cuenta")
+
+
+func test_death_kill_and_respawn_signals() -> void:
+	_make_feedback()
+	var deaths: Array[Vector2i] = []
+	var kills: Array[int] = []
+	var respawns: Array[int] = []
+	_feedback.local_died.connect(func(killer: int, attack: int) -> void:
+		deaths.append(Vector2i(killer, attack)))
+	_feedback.kill_confirmed.connect(func(victim: int, _e: NetMessages.EntityEvent) -> void:
+		kills.append(victim))
+	_feedback.local_respawned.connect(func(point: int) -> void: respawns.append(point))
+	_feedback.handle_event(NetMessages.EntityEvent.death(OTHER_ID, 100, THIRD_ID, 3), false)
+	assert_eq(deaths.size(), 0, "la muerte de otro no es la propia")
+	_feedback.handle_event(NetMessages.EntityEvent.death(OWN_ID, 100, OTHER_ID, 3), true)
+	assert_eq(deaths, [Vector2i(OTHER_ID, 3)] as Array[Vector2i])
+	_feedback.handle_event(NetMessages.EntityEvent.kill(OTHER_ID, 100, OWN_ID, 3,
+			PackedInt32Array()), true)
+	assert_eq(kills, [OTHER_ID] as Array[int])
+	_feedback.handle_event(NetMessages.EntityEvent.kill(OTHER_ID, 100, THIRD_ID, 3,
+			PackedInt32Array([OWN_ID])), true)
+	assert_eq(kills.size(), 1, "un asistente no es el asesino")
+	_feedback.handle_event(NetMessages.EntityEvent.respawn(THIRD_ID, 100, 0), false)
+	assert_eq(respawns.size(), 0)
+	_feedback.handle_event(NetMessages.EntityEvent.respawn(OWN_ID, 100, 2), true)
+	assert_eq(respawns, [2] as Array[int])
+	assert_true(_sounds.has(CombatFeedback.SOUND_DEATH))
+	assert_true(_sounds.has(CombatFeedback.SOUND_RESPAWN))
+	assert_true(_sounds.has(CombatFeedback.SOUND_KILL))
+
+
+func test_options_disable_marker_and_numbers() -> void:
+	_make_feedback()
+	_feedback.hit_markers_enabled = false
+	_feedback.damage_numbers_enabled = false
+	_feedback.handle_event(_hit(OTHER_ID, OWN_ID, 90), true)
+	assert_false(_marker.is_active())
+	assert_eq(_numbers.get_active_count(), 0)
+	assert_eq(_feedback.get_damage_in_window(), 90, "el DPS se mide igual")
+	_feedback.hit_markers_enabled = true
+	_feedback.damage_numbers_enabled = true
+	_feedback.handle_event(_hit(OTHER_ID, OWN_ID, 90), true)
+	assert_true(_marker.is_active())
+	assert_eq(_numbers.get_active_count(), 1)
+
+
+func test_dps_through_the_feedback_matches_the_expected_combo_figure() -> void:
+	_make_feedback()
+	var light: int = CombatCatalog.attack_id(&"sword_light_1")
+	# Un golpe de 90 cada 36 ticks (el ligero 1 sin enlazar) durante 30 s.
+	var tick: int = 100
+	var total: int = 0
+	while tick < 100 + DpsMeter.WINDOW_TICKS - 36:
+		_feedback.handle_event(_hit(OTHER_ID, OWN_ID, 90, 0, light, tick), true)
+		total += 90
+		tick += 36
+	assert_eq(_feedback.get_damage_in_window(), total)
+	assert_near(_feedback.get_dps_meter().get_dps(tick), float(total) / 30.0, 3.0,
+			"el DPS medido coincide con el calculado a partir de los datos")
+
+
+# --- CombatFeedback: acciones propias sin señales ---------------------------------------------
+
+func _floor() -> void:
+	var body := StaticBody3D.new()
+	body.collision_layer = PlayerCharacter.WORLD_COLLISION_LAYER
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(200.0, 1.0, 200.0)
+	shape.shape = box
+	shape.position = Vector3(0.0, -0.5, 0.0)
+	body.add_child(shape)
+	_root.add_child(body)
+
+
+func _input(tick: int, buttons: int) -> PlayerInput:
+	var input := PlayerInput.new()
+	input.tick = tick
+	input.buttons = buttons
+	return input.quantized()
+
+
+func test_own_actions_are_detected_without_simulation_signals() -> void:
+	_floor()
+	_make_feedback(false)
+	await wait_physics_frames(3)
+	_feedback.observe_action()
+	var changes: Array[int] = []
+	var swings: Array[bool] = []
+	_feedback.action_changed.connect(func(action: int, _id: int, _t: int, _prev: int) -> void:
+		changes.append(action))
+	_feedback.swing_active_changed.connect(func(active: bool, _id: int) -> void:
+		swings.append(active))
+	var light: AttackTicks = CombatCatalog.attack(CombatCatalog.attack_id(&"sword_light_1"))
+	var tick: int = 1000
+	for i: int in light.total_ticks + 4:
+		await wait_physics_frames(1)
+		tick += 1
+		_character.simulate(_input(tick, PlayerInput.PRIMARY if i < 3 else 0), _dt)
+		_feedback.observe_action()
+	assert_eq(changes, [CombatState.Action.LIGHT, CombatState.Action.NONE] as Array[int],
+			"empieza el ligero y acaba")
+	assert_eq(swings, [true, false] as Array[bool], "el barrido se lanza y se corta una vez")
+	assert_true(_sounds.has(CombatFeedback.SOUND_SWING))
+	assert_false(_feedback.is_swing_active())
+
+
+func test_swing_follows_the_active_window_exactly() -> void:
+	_floor()
+	_make_feedback(false)
+	await wait_physics_frames(3)
+	_feedback.observe_action()
+	var light: AttackTicks = CombatCatalog.attack(CombatCatalog.attack_id(&"sword_light_1"))
+	var active_ticks: Array[int] = []
+	var tick: int = 2000
+	# Unos ticks quietos para que el personaje pise el suelo (en el aire no se ataca).
+	for _i: int in 4:
+		await wait_physics_frames(1)
+		tick += 1
+		_character.simulate(_input(tick, 0), _dt)
+	for i: int in light.total_ticks + 2:
+		await wait_physics_frames(1)
+		tick += 1
+		_character.simulate(_input(tick, PlayerInput.PRIMARY if i < 3 else 0), _dt)
+		_feedback.observe_action()
+		if _feedback.is_swing_active():
+			active_ticks.append(i)
+	assert_eq(active_ticks.size(), light.active_ticks, "activo durante los ticks del golpe")
+	assert_eq(active_ticks[0], light.windup_ticks, "empieza justo al acabar la anticipación")
+
+
+func test_replaying_ticks_does_not_duplicate_action_effects() -> void:
+	_floor()
+	_make_feedback(false)
+	await wait_physics_frames(3)
+	_feedback.observe_action()
+	var changes: Array[int] = []
+	_feedback.action_changed.connect(func(action: int, _id: int, _t: int, _prev: int) -> void:
+		changes.append(action))
+	# Se juega hasta mitad del ligero y se anota el estado.
+	var tick: int = 3000
+	await wait_physics_frames(1)
+	var saved: PlayerState = _character.get_state()
+	var inputs: Array[PlayerInput] = []
+	for i: int in 8:
+		tick += 1
+		inputs.append(_input(tick, PlayerInput.PRIMARY if i < 3 else 0))
+	for input: PlayerInput in inputs:
+		await wait_physics_frames(1)
+		_character.simulate(input, _dt)
+	_feedback.observe_action()
+	assert_eq(changes.size(), 1, "una sola acción empezada")
+	# La reconciliación repite los mismos ticks desde el estado guardado, dentro de un mismo tick.
+	await wait_physics_frames(1)
+	_character.set_state(saved)
+	for input: PlayerInput in inputs:
+		_character.simulate(input, _dt)
+	_feedback.observe_action()
+	assert_eq(changes.size(), 1, "repetir los ticks no repite el efecto: la clave es la misma")
+
+
+func test_a_new_attack_in_the_combo_is_a_new_action() -> void:
+	_floor()
+	_make_feedback(false)
+	await wait_physics_frames(3)
+	_feedback.observe_action()
+	var ids: Array[int] = []
+	_feedback.action_changed.connect(func(action: int, id: int, _t: int, _prev: int) -> void:
+		if action == CombatState.Action.LIGHT:
+			ids.append(id))
+	var light1: AttackTicks = CombatCatalog.attack(CombatCatalog.attack_id(&"sword_light_1"))
+	var tick: int = 4000
+	# Primer ligero, y otra pulsación dentro de su ventana de enlace.
+	var link_press: int = light1.combo_window_from() + 2
+	for i: int in light1.total_ticks + 10:
+		await wait_physics_frames(1)
+		tick += 1
+		var pressed: bool = i < 3 or (i >= link_press and i < link_press + 3)
+		_character.simulate(_input(tick, PlayerInput.PRIMARY if pressed else 0), _dt)
+		_feedback.observe_action()
+	assert_eq(ids, [CombatCatalog.attack_id(&"sword_light_1"),
+			CombatCatalog.attack_id(&"sword_light_2")] as Array[int], "el combo encadena el segundo")
