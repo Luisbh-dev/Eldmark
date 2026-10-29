@@ -102,6 +102,16 @@ Opciones de arranque (van después de `--`):
 
 Las capturas y otros ficheros temporales pueden ir en `build/`, que Godot ignora.
 
+### Integración continua
+
+`.github/workflows/tests.yml` (GitHub Actions, `ubuntu-latest`) ejecuta la suite completa, red y
+procesos incluidos, en cada push y en cada pull request: descarga Godot 4.7.2-stable para Linux
+(con comprobación SHA-512 y en caché), baja los objetos de Git LFS (también en caché), importa el
+proyecto y lanza `tests/run_tests.gd`, con un plazo de 20 minutos. Si falla, sube `build/` (logs e
+informes) como artefacto `build-logs`. Para que una prueba rota bloquee el merge hay que marcar el
+trabajo «Suite completa» como comprobación obligatoria en la protección de la rama. Se puede
+lanzar a mano desde la pestaña Actions (`workflow_dispatch`).
+
 ## Servidor dedicado
 
 Un proceso del mismo proyecto, siempre con `--headless`, sirve una zona en un puerto UDP (diseño
