@@ -39,6 +39,9 @@ const FORWARDED_OPTION_PREFIXES: Array[String] = ["--zone=", "--fake-players=", 
 ## Opción que cambia el archivo de bloqueo (y, con él, el registro) del servidor local.
 const DEV_LOCK_PATH_OPTION: String = "--dev-lock-path="
 
+## Bytes como mucho que se leen de [code]/proc/<pid>/cmdline[/code].
+const COMMAND_LINE_MAX_BYTES: int = 65536
+
 var _pid: int = -1
 
 
@@ -104,11 +107,14 @@ static func read_lock(lock_path: String = LOCK_PATH) -> Dictionary:
 	return {"pid": int(data["pid"]), "port": int(data["port"])}
 
 
-## Puerto del servidor local que hay en marcha según [param lock_path] (su proceso sigue vivo), o -1
-## si no hay ninguno.
+## Puerto del servidor local que hay en marcha según [param lock_path] (su proceso sigue vivo y es un
+## servidor, [method is_dev_server_process]), o -1 si no hay ninguno.
 static func get_running_port(lock_path: String = LOCK_PATH) -> int:
 	var lock: Dictionary = read_lock(lock_path)
-	if lock.is_empty() or not is_process_alive(int(lock["pid"])):
+	if lock.is_empty():
+		return -1
+	var pid: int = int(lock["pid"])
+	if not is_process_alive(pid) or not is_dev_server_process(pid):
 		return -1
 	var port: int = int(lock["port"])
 	return port if port >= 1 and port <= 65535 else -1
@@ -139,6 +145,31 @@ static func is_process_alive(pid: int) -> bool:
 		_:
 			var output: Array = []
 			return OS.execute("kill", PackedStringArray(["-0", str(pid)]), output, true) == 0
+
+
+## true si [param args] (la línea de comandos de un proceso, un argumento por elemento) es la de un
+## servidor local: lleva [code]--server[/code] y [code]--dev-lock[/code] como argumentos enteros.
+static func command_line_is_dev_server(args: PackedStringArray) -> bool:
+	return args.has("--server") and args.has("--dev-lock")
+
+
+## true si se puede leer la línea de comandos de otro proceso ([code]/proc/<pid>/cmdline[/code]): solo
+## en Linux.
+static func can_check_command_line() -> bool:
+	return OS.get_name() == "Linux"
+
+
+## true si el proceso [param pid] parece un servidor lanzado con [code]--dev-lock[/code]. Un servidor
+## que muere por una señal ([code]SIGTERM[/code] de systemd o docker stop, Ctrl+C) no borra su bloqueo,
+## y si el sistema reutiliza su pid, el bloqueo apunta a un proceso vivo que no es el servidor: ahí
+## [code]--local[/code] se conectaría a la nada y perdería un intento. Se comprueba la línea de comandos
+## donde se puede ([method can_check_command_line]); en el resto, o si no se puede leer, no se descarta
+## nada y devuelve true.
+static func is_dev_server_process(pid: int) -> bool:
+	if not can_check_command_line():
+		return true
+	var args: PackedStringArray = _read_proc_command_line(pid)
+	return args.is_empty() or command_line_is_dev_server(args)
 
 
 ## Lanza el servidor local en [param port] con [method build_args] y devuelve su pid, o -1 si no
@@ -182,6 +213,30 @@ static func _lock_path_in(args: PackedStringArray) -> String:
 		if arg.begins_with(DEV_LOCK_PATH_OPTION):
 			return arg.trim_prefix(DEV_LOCK_PATH_OPTION)
 	return ""
+
+
+# Argumentos de la línea de comandos del proceso (/proc/<pid>/cmdline los separa con bytes nulos), o
+# un array vacío si no se pueden leer (el proceso ya no existe, es un zombi o es de otro usuario).
+static func _read_proc_command_line(pid: int) -> PackedStringArray:
+	var args := PackedStringArray()
+	var path: String = "/proc/%d/cmdline" % pid
+	if not FileAccess.file_exists(path):
+		return args
+	var file: FileAccess = FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return args
+	# Los archivos de /proc miden 0 bytes: se pide un tamaño máximo, no el del archivo.
+	var bytes: PackedByteArray = file.get_buffer(COMMAND_LINE_MAX_BYTES)
+	file.close()
+	var start: int = 0
+	for i: int in bytes.size():
+		if bytes[i] == 0:
+			if i > start:
+				args.append(bytes.slice(start, i).get_string_from_utf8())
+			start = i + 1
+	if start < bytes.size():
+		args.append(bytes.slice(start).get_string_from_utf8())
+	return args
 
 
 # En Windows: pregunta a tasklist por el pid (un proceso ya terminado no sale en la lista).

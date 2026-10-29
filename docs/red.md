@@ -176,6 +176,14 @@ $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Mi
 No se detecta un servidor intentando `bind` en el puerto: en Windows, la reutilización de
 direcciones UDP lo hace poco fiable.
 
+**Bloqueo huérfano.** El servidor solo borra su bloqueo en un cierre ordenado (`--quit-after-ticks`,
+`--idle-quit`, cerrar la ventana). Con `SIGTERM` (systemd, `docker stop`) o `SIGINT` (Ctrl+C) el
+proceso muere de golpe, sin avisar a los clientes, sin `--report` y sin borrar el bloqueo: GDScript no
+puede atrapar señales POSIX. Si el sistema reutiliza ese pid, el bloqueo apuntaría a un proceso vivo
+que no es el servidor. Por eso `get_running_port` exige, donde se puede (Linux), que
+`/proc/<pid>/cmdline` lleve `--server` y `--dev-lock` (`LocalServerLauncher.is_dev_server_process`);
+en Windows no se puede comprobar y vale cualquier proceso vivo con ese pid.
+
 `OS.is_process_running(pid)` solo conoce los procesos que lanzó el propio proceso (en Windows mira
 su tabla de procesos hijos, `process_map`; en Linux y macOS, con el pid de otra ventana registra además
 un error del motor): una segunda ventana `--local` nunca lanzó el servidor de la primera y obtendría

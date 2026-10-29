@@ -1,9 +1,13 @@
 extends TestCase
 ## Pruebas de [LocalServerLauncher] y del modo [code]--local[/code] (docs/red.md, 1.4 y 17.5).
 ## [br]- Argumentos con los que se lanza el servidor, dentro y fuera de una exportación.
-## [br]- Archivo de bloqueo: un bloqueo falso con el pid de este proceso cuenta como servidor
-## vivo y con un pid que no existe, no; se usa una ruta propia para no pisar el
-## [code]user://dev_server.json[/code] real.
+## [br]- Archivo de bloqueo: un bloqueo falso cuenta como servidor vivo si su pid es el de un proceso
+## con la línea de comandos de un servidor local ([code]--server --dev-lock[/code]: un proceso
+## auxiliar, [code]tests/process_probe.gd[/code]) y no cuenta con un pid que no existe ni con el de un
+## proceso vivo que no es un servidor (un bloqueo huérfano con el pid reutilizado); se usa una ruta
+## propia para no pisar el [code]user://dev_server.json[/code] real.
+## [br]- [method LocalServerLauncher.is_process_alive] con procesos que este no lanzó (un hijo mira al
+## ejecutor, un nieto que el ejecutor no lanzó) y la lectura de la salida de [code]tasklist[/code].
 ## [br]- [OnlineMain] en modo LOCAL reutiliza el servidor que dice el bloqueo (sin lanzar nada).
 ## [br]- Prueba de procesos: un cliente [code]--local[/code] headless lanza el servidor, conecta con él,
 ## juega unos ticks y se va sin cerrarlo.
@@ -131,9 +135,10 @@ func test_find_running_with_a_fake_lock() -> void:
 	assert_false(LocalServerLauncher.find_running(24600, _fake_lock), "sin archivo, no hay servidor")
 	assert_eq(LocalServerLauncher.get_running_port(_fake_lock), -1)
 
-	_write_lock(OS.get_process_id(), 24600)
+	var server_pid: int = await _launch_fake_server()
+	_write_lock(server_pid, 24600)
 	assert_true(LocalServerLauncher.find_running(24600, _fake_lock),
-			"el pid de este proceso está vivo")
+			"el pid de un servidor local vivo (--server --dev-lock)")
 	assert_eq(LocalServerLauncher.get_running_port(_fake_lock), 24600)
 	assert_false(LocalServerLauncher.find_running(24601, _fake_lock), "pero sirve en otro puerto")
 	assert_true(LocalServerLauncher.find_running(0, _fake_lock), "con puerto 0 vale cualquiera")
@@ -143,6 +148,40 @@ func test_find_running_with_a_fake_lock() -> void:
 	assert_false(LocalServerLauncher.find_running(0, _fake_lock))
 	assert_eq(LocalServerLauncher.get_running_port(_fake_lock), -1)
 	assert_true(FileAccess.file_exists(_fake_lock), "y comprobarlo no borra el archivo")
+
+
+## Un bloqueo huérfano cuyo pid se ha reutilizado (systemd, docker stop o Ctrl+C matan el servidor sin
+## que borre su bloqueo) no es un servidor: el proceso vivo no es uno lanzado con
+## [code]--server --dev-lock[/code]. Solo se puede comprobar donde se lee la línea de comandos (Linux).
+func test_a_live_process_that_is_not_a_dev_server_is_not_a_running_server() -> void:
+	_write_lock(OS.get_process_id(), 24600)
+	assert_true(LocalServerLauncher.is_process_alive(OS.get_process_id()), "el ejecutor está vivo")
+	if not LocalServerLauncher.can_check_command_line():
+		assert_true(LocalServerLauncher.is_dev_server_process(OS.get_process_id()),
+				"sin poder leer la línea de comandos, un proceso vivo vale")
+		return
+	assert_false(LocalServerLauncher.is_dev_server_process(OS.get_process_id()), "pero no es un servidor")
+	assert_false(LocalServerLauncher.find_running(24600, _fake_lock), "su pid en un bloqueo no cuenta")
+	assert_eq(LocalServerLauncher.get_running_port(_fake_lock), -1)
+	# Y un proceso ajeno que sí lleva las dos banderas, sí.
+	var server_pid: int = await _launch_fake_server()
+	assert_true(LocalServerLauncher.is_dev_server_process(server_pid))
+	_write_lock(server_pid, 24600)
+	assert_eq(LocalServerLauncher.get_running_port(_fake_lock), 24600)
+
+
+func test_command_line_is_a_dev_server_only_with_both_flags_as_whole_arguments() -> void:
+	var base := PackedStringArray(["godot", "--headless", "--path", "/p", "--log-file", "/l", "--"])
+	assert_true(LocalServerLauncher.command_line_is_dev_server(base + PackedStringArray(
+			["--server", "--port=24600", "--idle-quit=30", "--dev-lock"])))
+	assert_false(LocalServerLauncher.command_line_is_dev_server(base + PackedStringArray(["--server"])),
+			"un servidor sin --dev-lock no escribe bloqueo")
+	assert_false(LocalServerLauncher.command_line_is_dev_server(base + PackedStringArray(["--dev-lock"])))
+	assert_false(LocalServerLauncher.command_line_is_dev_server(base + PackedStringArray(
+			["--server", "--dev-lock-path=/x"])), "--dev-lock-path no es --dev-lock")
+	assert_false(LocalServerLauncher.command_line_is_dev_server(base + PackedStringArray(
+			["--filter=--server --dev-lock"])), "ni el texto dentro de otro argumento")
+	assert_false(LocalServerLauncher.command_line_is_dev_server(PackedStringArray()))
 
 
 func test_malformed_locks_are_not_a_running_server() -> void:
@@ -228,6 +267,20 @@ func test_a_grandchild_this_process_never_launched_is_seen_alive_until_it_dies()
 	assert_true(gone, "y deja de estarlo cuando muere")
 
 
+# Lanza un proceso auxiliar con la línea de comandos de un servidor local (--server --dev-lock) que
+# vive 25 s y hace de servidor de los bloqueos falsos. Devuelve su pid cuando ya se ve como tal (justo
+# tras lanzarlo, y antes del exec, Linux aún le muestra la línea de comandos de quien lo lanzó).
+func _launch_fake_server() -> int:
+	var pid: int = NetHarness.launch_script(PROBE_SCRIPT, PackedStringArray([
+			"--server", "--dev-lock", "--probe-sleep=25"]), "probe_fake_server")
+	_probe_pids.append(pid)
+	var started_msec: int = Time.get_ticks_msec()
+	while not LocalServerLauncher.is_dev_server_process(pid) \
+			and Time.get_ticks_msec() - started_msec < PROBE_TIMEOUT_MSEC:
+		await tree.create_timer(0.05).timeout
+	return pid
+
+
 # Espera a que el proceso auxiliar escriba su resultado y lo devuelve (vacío si no llega a tiempo).
 func _wait_for_probe_result(out_path: String) -> Dictionary:
 	var started_msec: int = Time.get_ticks_msec()
@@ -248,8 +301,9 @@ func test_local_mode_reuses_the_running_server_without_launching_another() -> vo
 	server_config.zone_id = "test_world"
 	_server = NetHarness.start_server(_server_viewport, server_config)
 	await wait_physics_frames(3)
-	# El bloqueo dice que el servidor del puerto está vivo (el pid es el de este proceso).
-	_write_lock(OS.get_process_id(), port)
+	# El bloqueo dice que el servidor del puerto está vivo (un proceso auxiliar con la línea de comandos
+	# de un servidor local; el servidor de verdad corre en este proceso).
+	_write_lock(await _launch_fake_server(), port)
 	OnlineMain.lock_path = _fake_lock
 
 	var config := ClientConfig.new()
