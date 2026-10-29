@@ -10,6 +10,12 @@ extends RefCounted
 ## muestra que menos se ha retrasado: un estimador robusto de la latencia mínima), y el jitter es
 ## la media exponencial (α = 0,1) de [code]max_offset - offset[/code].
 ## [br][br]
+## [b]Escalón hacia abajo.[/b] Ese estimador solo vale si el reloj del servidor no retrocede respecto
+## al del cliente. Si el servidor pierde ticks (un parón) o la latencia sube de forma sostenida, los
+## offsets bajan de golpe: el máximo de 2 s recordaría los viejos y el tick de dibujo iría por delante
+## de los datos. Cuando todo lo de los últimos [constant RECENT_TICKS] ticks queda más de
+## [constant STEP_DOWN_TICKS] ticks por debajo de ese máximo, se olvida lo anterior.
+## [br][br]
 ## [b]Retardo.[/b] [code]clamp(2 · SNAPSHOT_INTERVAL_TICKS + 2 · jitter, 4, 12)[/code] ticks, es
 ## decir, de 67 a 200 ms. [method advance] lleva el tick de dibujo hacia
 ## [code]local_tick + max_offset - retardo[/code] a ritmo de 1 tick por tick de física, con una
@@ -36,6 +42,14 @@ const JITTER_EPSILON: float = 0.001
 ## Retardo mínimo y máximo (ticks).
 const MIN_DELAY_TICKS: float = 4.0
 const MAX_DELAY_TICKS: float = 12.0
+## Escalón hacia abajo (hallazgo N3). Si el servidor pierde ticks, o la latencia sube de forma
+## sostenida, los offsets bajan de golpe y se quedan abajo; el máximo de 120 ticks recordaría los
+## viejos durante 2 s y el tick de dibujo iría por delante de los datos que existen (se
+## extrapolaría 6 ticks y el remoto se quedaría quieto). Por eso, si el máximo de la ventana
+## completa supera en más de [constant STEP_DOWN_TICKS] ticks al de los últimos
+## [constant RECENT_TICKS] ticks locales, se descartan las muestras anteriores a esos últimos.
+const RECENT_TICKS: int = 30
+const STEP_DOWN_TICKS: int = 4
 ## Si el tick de dibujo se aleja más de esto (ticks) del objetivo, salta a él.
 const SNAP_TICKS: float = 10.0
 ## Fracción del error que se corrige en cada tick, y límite de esa corrección (ticks por tick).
@@ -61,6 +75,7 @@ func on_snapshot(server_tick: int, local_tick: int) -> void:
 	_samples.append(Vector2i(local_tick, offset))
 	while _samples[0].x <= local_tick - WINDOW_TICKS:
 		_samples.pop_front()
+	_drop_samples_before_a_step_down(local_tick)
 	_max_offset = _samples[0].y
 
 	_jitter += JITTER_ALPHA * (float(_max_offset - offset) - _jitter)
@@ -68,6 +83,17 @@ func on_snapshot(server_tick: int, local_tick: int) -> void:
 		_jitter = 0.0
 	_delay = clampf(2.0 * NetProtocol.SNAPSHOT_INTERVAL_TICKS + 2.0 * _jitter,
 			MIN_DELAY_TICKS, MAX_DELAY_TICKS)
+
+
+# Si todo lo de los últimos RECENT_TICKS ticks está más de STEP_DOWN_TICKS por debajo del máximo de
+# la ventana, es un escalón sostenido y no un bache: se olvida lo anterior. La cola es monótona, así
+# que la primera muestra reciente es el máximo de las recientes.
+func _drop_samples_before_a_step_down(local_tick: int) -> void:
+	var recent: int = 0
+	while _samples[recent].x <= local_tick - RECENT_TICKS:
+		recent += 1
+	if recent > 0 and _samples[0].y - _samples[recent].y > STEP_DOWN_TICKS:
+		_samples = _samples.slice(recent)
 
 
 ## Avanza el reloj un tick de física ([param local_tick] es el tick local actual) y devuelve el

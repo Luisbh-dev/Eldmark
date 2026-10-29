@@ -682,3 +682,37 @@ func test_f_a_server_stall_does_not_leave_the_client_ahead_forever() -> void:
 			"el servidor ya no sustituye entradas")
 	assert_eq(stats["diffs"], diffs_before, "ni hay correcciones nuevas")
 	assert_eq(client.get_state(), NetClient.State.IN_WORLD)
+
+
+## Tras perder el servidor 20 ticks, los offsets de los snapshots bajan 20 de golpe. Los remotos no
+## pueden quedarse congelados (tick de dibujo más de MAX_EXTRAPOLATION_TICKS por delante del último
+## dato) hasta que caduque la ventana de 2 s del reloj de interpolación (hallazgo N3): se
+## congelaban unos 80 ticks después de volver los datos.
+func test_f_remotes_are_not_frozen_for_seconds_after_a_server_stall() -> void:
+	await _start_server()
+	var first: NetClient = _add_bot(VARDHEIM, 1)
+	var second: NetClient = _add_bot(VARDHEIM, 2)
+	assert_true(await _wait_until(_all_in_world), "entran los dos")
+	assert_true(await _wait_until(_all_see_the_others), "y se ven")
+	await wait_physics_frames(F_CALM_TICKS)
+
+	_server.set_physics_process(false)
+	await wait_physics_frames(20)
+	_server.set_physics_process(true)
+	var snapshots_at_resume: int = first.get_stats()["snapshots"]
+	var frozen_after_data: int = 0
+	var data_back: bool = false
+	for _i: int in 300:
+		await tree.physics_frame
+		if first.get_stats()["snapshots"] > snapshots_at_resume:
+			data_back = true
+		var view: RemotePlayerView = first.get_remote_world().get_view(second.get_net_id())
+		if not data_back or view == null:
+			continue
+		var ahead: float = first.get_interpolation_clock().get_render_tick() \
+				- float(view.get_interpolator().get_newest_tick())
+		if ahead > RemoteInterpolator.MAX_EXTRAPOLATION_TICKS:
+			frozen_after_data += 1
+	assert_true(data_back, "los snapshots vuelven")
+	assert_true(frozen_after_data < 15,
+			"el remoto no se congela tras volver los datos (%d ticks)" % frozen_after_data)

@@ -451,6 +451,17 @@ que no se pelean.
   cada tick, así que la resolución es de un tick.
 - `max_offset` es el máximo de los últimos 120 ticks locales (2 s): la muestra que menos se ha
   retrasado, un estimador robusto de la latencia mínima.
+- **Escalón hacia abajo.** El máximo de 120 ticks solo es un buen estimador si el reloj del
+  servidor no retrocede respecto al del cliente. Si el servidor pierde ticks (un parón de más de
+  8 ticks, o un servidor sobrecargado que pierde ticks sin parar) o la latencia sube de forma
+  sostenida, los offsets bajan de golpe y se quedan abajo. Con el máximo de 2 s, el objetivo
+  `local + max_offset − delay` iría `k` ticks por delante de los datos que existen: se
+  extrapolaría 6 ticks, el remoto se quedaría quieto y al caducar la muestra vieja saltaría hacia
+  atrás (hallazgo N3; medido: 98 ticks congelados tras un parón de 20, y 316 de 1201 con pérdida
+  continua). Por eso, si el máximo de la ventana completa supera en más de `STEP_DOWN_TICKS` (4)
+  ticks al de los últimos `RECENT_TICKS` (30) ticks locales, se descartan las muestras anteriores
+  a esos 30 ticks (`_drop_samples_before_a_step_down`). Un bache más corto que 30 ticks no es un
+  escalón y sigue contando como jitter. Los offsets que suben se adoptan al instante, como antes.
 - `jitter` es la media exponencial (α = 0,1) de `max_offset − offset`.
 - `delay = clamp(2 · SNAPSHOT_INTERVAL_TICKS + 2 · jitter, 4, 12)` ticks, es decir, de 67 a
   200 ms.
