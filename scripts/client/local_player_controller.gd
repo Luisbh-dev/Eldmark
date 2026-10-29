@@ -3,15 +3,18 @@ extends Node
 ## Controla el personaje del jugador local en el cliente.
 ##
 ## En cada tick de física lee teclado, ratón y cámara (o un [DemoInput]
-## guionizado), construye un [PlayerInput], lo cuantiza exactamente igual que
-## viajará por la red, lo guarda en el historial, emite
+## guionizado, o un [BotBrain]), construye un [PlayerInput], lo cuantiza
+## exactamente igual que viajará por la red, lo guarda en el historial, emite
 ## [signal input_generated] y llama a [method PlayerCharacter.simulate].
-## [br][br]Fase 2: [signal input_generated] enviará cada entrada al servidor y
-## el historial permitirá la reconciliación (restaurar el estado confirmado y
-## volver a simular las entradas aún no confirmadas). Como el cliente simula la
-## entrada ya cuantizada, su predicción usa los mismos datos que el servidor.
+## [br][br]Fase 2: con [member auto_step] en false el controlador no avanza solo.
+## [method ClientPrediction.step] llama a [method build_input] (que construye la
+## entrada del tick pedido sin simular) y simula el personaje él mismo, y las
+## repeticiones de la reconciliación vuelven a simular las entradas guardadas.
+## Como el cliente simula la entrada ya cuantizada, su predicción usa los mismos
+## datos que el servidor.
 
-## Se emite con cada entrada generada, ya cuantizada, justo antes de simularla.
+## Se emite con cada entrada generada, ya cuantizada. En el sandbox ([member auto_step] en true) se
+## emite justo antes de simularla.
 signal input_generated(input: PlayerInput)
 
 ## Entradas que guarda el historial (algo más de 4 s a 60 ticks/s).
@@ -33,11 +36,22 @@ const BUTTON_ACTIONS: Dictionary[StringName, int] = {
 	&"interact": PlayerInput.INTERACT,
 }
 
+## true (sandbox): el controlador avanza un tick por paso de física, como en la fase 1. false:
+## lo avanza [ClientPrediction] llamando a [method build_input], y [method _physics_process] no
+## hace nada.
+var auto_step: bool = true
+
 var _character: PlayerCharacter = null
 var _camera_rig: CameraRig = null
 var _demo: DemoInput = null
+var _bot: BotBrain = null
 var _tick: int = 0
+## Anillo de las últimas entradas generadas: la más antigua está en _history_start.
 var _history: Array[PlayerInput] = []
+var _history_start: int = 0
+## Botones pulsados en ticks sin paso (ver [method accumulate_presses]): se suman a la entrada
+## del siguiente [method build_input].
+var _pending_presses: int = 0
 ## Botones del ratón pulsados con el cursor libre: se ignoran hasta soltarlos,
 ## para que el clic que recaptura el ratón (o un clic en la interfaz) no ataque.
 var _suppressed_buttons: int = 0
@@ -65,12 +79,20 @@ func enable_demo(demo: DemoInput) -> void:
 		_camera_rig.set_scripted_look(true)
 
 
+## Modo bot: las entradas salen de [code]brain.next_input(tick, posición, yaw)[/code] en lugar del
+## teclado o de la demo. Con null vuelve al dispositivo (o a la demo, si está activada).
+func set_bot(brain: BotBrain) -> void:
+	_bot = brain
+
+
 ## Últimas entradas generadas (como mucho [constant HISTORY_SIZE]), de la más
 ## antigua a la más reciente. Es una copia: modificar el array no afecta al
 ## historial.
 func get_input_history() -> Array[PlayerInput]:
 	var copy: Array[PlayerInput] = []
-	copy.assign(_history)
+	copy.resize(_history.size())
+	for i: int in _history.size():
+		copy[i] = _history[(_history_start + i) % _history.size()]
 	return copy
 
 
@@ -80,18 +102,60 @@ func get_tick() -> int:
 
 
 func _physics_process(delta: float) -> void:
-	if not is_instance_valid(_character):
+	if not auto_step or not is_instance_valid(_character):
 		return
-	_tick += 1
-	var input: PlayerInput = _demo_input() if _demo != null else _device_input()
-	input = input.quantized()
-	_history.append(input)
-	if _history.size() > HISTORY_SIZE:
-		_history.pop_front()
-	input_generated.emit(input)
+	var input: PlayerInput = build_input(_tick + 1)
 	# delta es el paso fijo de física (1 / Engine.physics_ticks_per_second), el
 	# mismo que usa move_and_slide() por dentro.
 	_character.simulate(input, delta)
+
+
+## Construye la entrada del tick [param tick] a partir del bot, la demo o el dispositivo (en ese
+## orden de prioridad), le suma las pulsaciones que guardó [method accumulate_presses], la
+## cuantiza como viajará por la red, la guarda en el historial, emite [signal input_generated] y
+## la devuelve. No simula: lo hace quien llama ([ClientPrediction] o, en el sandbox,
+## [method _physics_process]).
+func build_input(tick: int) -> PlayerInput:
+	_tick = tick
+	var input: PlayerInput
+	if _bot != null:
+		input = _bot_input()
+	elif _demo != null:
+		input = _demo_input()
+	else:
+		input = _device_input()
+	input.buttons |= _pending_presses
+	_pending_presses = 0
+	input = input.quantized()
+	_store_in_history(input)
+	input_generated.emit(input)
+	return input
+
+
+## En los ticks sin paso de predicción (0 pasos): guarda las acciones pulsadas en este tick de
+## física para que el siguiente [method build_input] las sume y no se pierda ningún toque corto.
+## Con un bot o una demo no hace nada, porque su entrada no depende del dispositivo.
+func accumulate_presses() -> void:
+	if _bot != null or _demo != null:
+		return
+	var cursor_free: bool = _cursor_was_free
+	if is_instance_valid(_camera_rig):
+		cursor_free = cursor_free or _camera_rig.is_cursor_free()
+	for action: StringName in BUTTON_ACTIONS:
+		if Input.is_action_just_pressed(action):
+			var button: int = BUTTON_ACTIONS[action]
+			# Un clic con el cursor libre no ataca (ver _device_input).
+			if cursor_free and (button & CURSOR_BLOCKED_BUTTONS) != 0:
+				continue
+			_pending_presses |= button
+
+
+func _store_in_history(input: PlayerInput) -> void:
+	if _history.size() < HISTORY_SIZE:
+		_history.append(input)
+		return
+	_history[_history_start] = input
+	_history_start = (_history_start + 1) % HISTORY_SIZE
 
 
 func _device_input() -> PlayerInput:
@@ -104,7 +168,7 @@ func _device_input() -> PlayerInput:
 		input.look_yaw = _camera_rig.get_yaw()
 		input.look_pitch = _camera_rig.get_pitch()
 		cursor_free = _camera_rig.is_cursor_free()
-	else:
+	elif is_instance_valid(_character):
 		input.look_yaw = _character.yaw
 
 	var buttons: int = 0
@@ -128,5 +192,17 @@ func _demo_input() -> PlayerInput:
 	if is_instance_valid(_camera_rig):
 		_camera_rig.set_look(look.x, look.y)
 	var input: PlayerInput = _demo.next(_tick)
+	input.tick = _tick
+	return input
+
+
+func _bot_input() -> PlayerInput:
+	var position: Vector3 = Vector3.ZERO
+	var yaw: float = 0.0
+	if is_instance_valid(_character):
+		position = _character.global_position if _character.is_inside_tree() \
+				else _character.position
+		yaw = _character.yaw
+	var input: PlayerInput = _bot.next_input(_tick, position, yaw)
 	input.tick = _tick
 	return input
