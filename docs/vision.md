@@ -83,6 +83,15 @@ Cómo se hace en red sin que el servidor deje de mandar:
   calcular. Hay que medir pronto cuántos jugadores aguanta la zona de guerra
   y diseñar los asedios en función de eso.
 
+## Comunidad y comunicación
+
+Los reinos están en guerra, así que no hay diplomacia: del enemigo se ve el cuerpo, el bando y, al
+apuntarle, el nombre, pero nunca llega su voz. Chat, susurros, grupos y gremios son solo del mismo
+reino y el servidor filtra por reino antes de enviar; entre reinos cruzan las animaciones (también las
+burlas) y nada más. Dentro del reino hay canales por alcance (decir, zona, grupo, banda, gremio,
+reino), grupos de 5, bandas para las batallas grandes, pings y marcas tácticas en lugar de chat de voz,
+y una escala de sanciones. Todo el diseño, con cifras provisionales, está en [social.md](social.md).
+
 ## Primer objetivo jugable
 
 Antes de construir los reinos completos: un mapa de frontera pequeño con un
