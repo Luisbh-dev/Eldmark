@@ -11,7 +11,7 @@ backlog).
 |---|---|---|
 | Backlog (`docs/backlog.md`) | `main` | Hecho y subido |
 | Fase 2: red | `fase2-red` | Implementada (594 pruebas en verde, CI de GitHub en verde); revisión adversarial hecha y sus 19 hallazgos corregidos, cada uno con su prueba (656 pruebas en verde) |
-| Fase 3: combate | `fase3-combate` (desde `fase2-red`, que está fusionada dentro) | Diseño revisado (`docs/combate.md`); K1–K5 y el carril de audio, tema, ajustes, documento social y exportación integrados (1213 pruebas en verde); revisión adversarial en marcha |
+| Fase 3: combate | `fase3-combate` (desde `fase2-red`, que está fusionada dentro) | Diseño revisado (`docs/combate.md`); K1–K5 y el carril de audio, tema, ajustes, documento social y exportación integrados (1213 pruebas en verde); revisión adversarial hecha (18 de 19 hallazgos confirmados), arreglos en marcha |
 | Fase 4: fuerte | `fase4-fuerte` (desde `fase3-combate`) | Diseño v2 revisado (`docs/fuerte.md`); F0 (escena, capas, navmesh) y F1 (fortaleza pura) en marcha |
 
 ## Entorno (Linux)
@@ -204,6 +204,29 @@ cerebro de combate):
 - **Equilibrio** (bots que no reaccionan, cota baja): DPS medido = calculado (combo 156,3); muerte
   en 5,95 s contra uno quieto y 14,47 s contra uno que bloquea; mediana de 60 duelos de bots 10,7 s.
   No se ha cambiado ningún dato (propuesta: tercer ligero de 130 a 150, a decidir viendo jugar).
+
+### Revisión adversarial de la fase 3
+
+Tres lentes (combate frente al diseño; robustez, seguridad y trampas; arquitectura, pruebas y
+cliente), con verificadores que intentaron refutar cada hallazgo: 19 hallazgos, 18 confirmados
+(C2 y R3, y C3 y T6, son el mismo fallo visto dos veces) y 1 refutado (R5).
+
+| Id | Gravedad | Hallazgo |
+|---|---|---|
+| C1 | alta | Una sola entrada sustituida durante la pulsación hace que el servidor convierta un fuerte en ligero |
+| R1 | alta | El cliente controla el tope del rebobinado (antelación por entrada e `interp_delay_q`) y elige el tick a su favor |
+| C2/R3 | media | La muestra rebobinada de bloqueo sigue protegiendo a un defensor aturdido: cada golpe le vuelve a romper la guardia |
+| R2 | media | Quien deja de mandar entradas en plena carga mantiene un fuerte cargado indefinidamente |
+| R4 | media | El SPAWN de un enemigo lleva su `CombatState` entero (resistencia exacta, búfer...) |
+| T1 | media | Pantalla de muerte y ajustes se pisan el estado del cursor |
+| T2 | media | Los remotos no reproducen una segunda esquiva o tambaleo seguidos |
+| C3/T6 | baja | El destello de un remoto golpeado por el local sale antes de que se le dibuje en el tick del golpe |
+| C4 | baja | Un cadáver o un aturdido en el aire conserva la velocidad y se dirige |
+| C5 | baja | Si el enlace del combo no se ejecuta, el combo no vuelve a 0 |
+| T3 | baja | El servidor dedicado compila 56 de 69 scripts del cliente |
+| T4, T5 | baja | Pruebas de DPS y de reconciliación más débiles de lo que dicen |
+| T7 | baja | Casillas del backlog F3 marcadas sin cumplir del todo |
+| T8 | baja | Una parada perfecta enciende la viñeta de daño |
 
 **Decisiones abiertas que dejo para el usuario** (no bloquean):
 - El tope de rebobinado de 24 ticks no cubre a un honrado con 200 ms de RTT (11 de 20 golpes):
