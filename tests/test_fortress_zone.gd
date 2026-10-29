@@ -102,6 +102,23 @@ func test_the_server_builds_the_vado_gris_fortress_from_the_scene() -> void:
 	assert_eq(_server.get_registry().size(), 1, "solo la fortaleza")
 
 
+func test_the_vado_gris_definition_restarts_the_fort_every_thirty_minutes() -> void:
+	var definition: FortressDefinition = _server.get_fortresses().get_definition(DEFINITION_ID)
+	var thirty_minutes: int = 30 * 60 * CombatCatalog.TICK_RATE
+	assert_eq(definition.reset_to_neutral_ticks(), thirty_minutes, "1800 s en ticks")
+	assert_eq(_state().last_reset_tick, 0, "el reloj del reinicio arranca con el servidor")
+	# La misma definición, sin servidor: justo a los 30 min, y no un tick antes, vuelve a neutral.
+	var state: FortressState = FortressState.initial(definition, 0)
+	state.owner = SOLMARCH
+	var nobody := PackedInt32Array([0, 0, 0, 0])
+	assert_true(state.advance(definition, thirty_minutes - 1, nobody).is_empty(), "un tick antes, nada")
+	assert_eq(state.owner, SOLMARCH)
+	assert_eq(state.advance(definition, thirty_minutes, nobody),
+			PackedInt32Array([WarEvents.FORT_RESET]), "a los 30 min, el aviso de reinicio")
+	assert_eq(state.owner, 0)
+	assert_eq(state.last_reset_tick, thirty_minutes, "y el reloj vuelve a contar")
+
+
 func test_which_respawn_points_are_valid_depends_on_the_owner_of_the_fort() -> void:
 	var combat: CombatDirector = _server.get_combat()
 	assert_eq(combat.get_valid_respawn_points(VARDHEIM, 10), PackedInt32Array([0, 1, 2, 3]),

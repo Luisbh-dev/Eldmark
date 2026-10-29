@@ -119,6 +119,14 @@ class RawClient:
 			ids.append(event.war_event)
 		return ids
 
+	## Los reinos que acompañan a los avisos del tipo [param war_event], en el orden en que llegaron.
+	func war_realms_of(war_event: int) -> Array[int]:
+		var realms: Array[int] = []
+		for event: NetMessages.EntityEvent in events_of(NetMessages.EntityEvent.Kind.WAR):
+			if event.war_event == war_event:
+				realms.append(event.war_realm)
+		return realms
+
 	func has_notice_containing(text: String) -> bool:
 		for notice: NetMessages.Notice in notices:
 			if notice.text.contains(text):
@@ -257,6 +265,10 @@ func _join(player_name: String, realm: int = VARDHEIM) -> RawClient:
 
 func _state() -> FortressState:
 	return _server.get_fortresses().get_fortress_state(FORTRESS)
+
+
+func _gate() -> FortGate:
+	return _server.get_fortresses().get_gate(FORTRESS)
 
 
 func _combatant(net_id: int) -> Combatant:
@@ -653,3 +665,156 @@ func test_unstuck_does_not_need_debug_commands_and_a_malformed_request_is_a_stri
 	ana.send_raw(NetProtocol.CH_RELIABLE, PackedByteArray([NetProtocol.MSG_UNSTUCK_REQUEST, 1]))
 	await _run_frames(5)
 	assert_eq(peer.strikes_total, 1, "uno mal formado suma un aviso")
+
+
+# --- Un golpe de verdad a la puerta, visto por otro cliente --------------------------------------------
+
+func _brain_with(script: Callable) -> CombatFixture.ScriptBrain:
+	var brain := CombatFixture.ScriptBrain.new(1)
+	brain.script_fn = script
+	return brain
+
+
+func test_a_real_swing_at_the_gate_reaches_a_watching_client_as_hit_and_object_state() -> void:
+	await _start_server(null, func(config: ServerConfig) -> void: config.max_players = 8)
+	var ana: RawClient = await _join("Ana", SOLMARCH)
+	if ana == null:
+		return
+	_server.teleport(ana.own_spawn.net_id, Vector3(70.0, 0.05, 6.0))
+	var press_tick: int = _server.get_tick() + 15
+	var attacker: int = _server.add_fake_player(_brain_with(func(tick: int, _position: Vector3,
+			_yaw: float) -> PlayerInput:
+		var input := PlayerInput.new()
+		input.tick = tick
+		input.look_yaw = -PI * 0.5
+		if tick >= press_tick and tick < press_tick + 2:
+			input.buttons = PlayerInput.PRIMARY
+		return input), VARDHEIM)
+	_server.teleport(attacker, Vector3(77.5, 0.05, 0.0))
+	_server.get_registry().get_entity(attacker).get_character().yaw = -PI * 0.5
+	var gate_id: int = _server.get_fortresses().get_net_id(FORTRESS)
+	var seen: bool = await _run_until(func() -> bool:
+		return not ana.events_of(NetMessages.EntityEvent.Kind.HIT).is_empty(), 300)
+	if not assert_true(seen, "el HIT del golpe a la puerta llega a quien ve al atacante"):
+		return
+	var hit: NetMessages.EntityEvent = ana.events_of(NetMessages.EntityEvent.Kind.HIT)[0]
+	assert_eq(hit.net_id, gate_id, "con el net_id de la fortaleza")
+	assert_eq(hit.attacker, attacker)
+	assert_true(hit.amount > 0 and hit.amount < 90, "el ligero cortante, rebajado por el multiplicador")
+	var health_told: bool = await _run_until(func() -> bool:
+		return ana.object_states.any(func(o: NetMessages.ObjectState) -> bool:
+			return o.has_field(FortressFields.GATE_HEALTH)), 120)
+	assert_true(health_told, "y la vida nueva de la puerta llega como OBJECT_STATE")
+	var mirror: FortressState = FortressState.initial(FortressFixture.make_definition(), 0)
+	for object_state: NetMessages.ObjectState in ana.object_states:
+		object_state.apply_to_fortress(mirror)
+	assert_eq(mirror.gate_health, 900 - hit.amount, "la vida que ve el cliente es la del golpe")
+	assert_eq(ana.war_ids(), [WarEvents.UNDER_ATTACK] as Array[int])
+	assert_eq(ana.malformed, 0)
+
+
+# --- Comandos de depuración del fuerte por la red (ids 8 a 11) ----------------------------------------
+
+func _send_command(client: RawClient, command: NetMessages.DebugCommand) -> void:
+	client.send_raw(NetProtocol.CH_RELIABLE, command.encode())
+
+
+func test_the_fortress_debug_commands_act_over_the_network_with_debug_commands() -> void:
+	await _start_server(null, func(config: ServerConfig) -> void: config.debug_commands = true)
+	var ana: RawClient = await _join("Ana", VARDHEIM)
+	if ana == null:
+		return
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	_server.teleport(ana.own_spawn.net_id, FortressFixture.circle_center())
+	# 11 fort_capture_speed: la captura de 2 s dura unos ticks.
+	_send_command(ana, NetMessages.DebugCommand.fort_capture_speed(30))
+	var sped_up: bool = await _run_until(func() -> bool: return _state().capture_rate_multiplier == 30)
+	assert_true(sped_up, "fort_capture_speed 30")
+	# 10 fort_kill_captain: el capitán de los Huecos cae a manos del reino de quien lo manda y,
+	# con Ana en el círculo, el fuerte se captura.
+	_send_command(ana, NetMessages.DebugCommand.simple(NetProtocol.DEBUG_FORT_KILL_CAPTAIN))
+	var captured: bool = await _run_until(func() -> bool: return _state().owner == VARDHEIM)
+	assert_true(captured, "fort_kill_captain abre el círculo y Vardheim captura")
+	# 9 fort_owner: el fuerte pasa a Solmarch, con su guarnición y la puerta entera.
+	_send_command(ana, NetMessages.DebugCommand.fort_owner(SOLMARCH))
+	var given: bool = await _run_until(func() -> bool: return _state().owner == SOLMARCH)
+	assert_true(given, "fort_owner solmarch")
+	assert_eq(_state().phase, FortressState.Phase.GARRISONED)
+	assert_true(_state().captain_alive)
+	# 8 fort_reset: vuelve a neutral.
+	_send_command(ana, NetMessages.DebugCommand.simple(NetProtocol.DEBUG_FORT_RESET))
+	var reset: bool = await _run_until(func() -> bool: return _state().owner == 0)
+	assert_true(reset, "fort_reset")
+	await _run_frames(15)
+	assert_eq(peer.strikes_total, 0, "ninguno cuenta como aviso")
+	assert_true(_server.get_commands().audit_total >= 4, "los cuatro quedan auditados")
+	assert_eq(ana.war_ids(), [WarEvents.CAPTAIN_DOWN, WarEvents.CAPTURE_STARTED,
+			WarEvents.FORT_CAPTURED, WarEvents.FORT_CAPTURED, WarEvents.FORT_RESET] as Array[int],
+			"y la zona recibe los avisos en el orden en que ocurren")
+	assert_eq(ana.war_realms_of(WarEvents.CAPTAIN_DOWN), [VARDHEIM] as Array[int],
+			"el capitán lo mató el reino de quien mandó el comando")
+
+
+func test_the_fortress_debug_commands_are_refused_without_debug_commands() -> void:
+	await _start_server()
+	var ana: RawClient = await _join("Ana", VARDHEIM)
+	if ana == null:
+		return
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	_send_command(ana, NetMessages.DebugCommand.fort_owner(SOLMARCH))
+	_send_command(ana, NetMessages.DebugCommand.simple(NetProtocol.DEBUG_FORT_KILL_CAPTAIN))
+	await _run_frames(20)
+	assert_eq(_state().owner, 0, "el fuerte no cambia de manos")
+	assert_eq(_state().phase, FortressState.Phase.GARRISONED, "ni se mata al capitán")
+	assert_eq(peer.strikes_total, 2, "cada intento es un aviso")
+
+
+# --- Reinicio periódico a neutral (docs/fuerte.md, 1.5) -------------------------------------------------
+
+func test_the_periodic_reset_reaches_every_client_and_closes_the_gate_for_everybody() -> void:
+	await _start_server(FortressFixture.make_definition(2.0, 2.0, 4.0))
+	var ana: RawClient = await _join("Ana", VARDHEIM)
+	var bo: RawClient = await _join("Bob", SOLMARCH)
+	if ana == null or bo == null:
+		return
+	var gate_id: int = _server.get_fortresses().get_net_id(FORTRESS)
+	# El reloj del reinicio arranca con el dueño nuevo; Ana espera en el círculo.
+	_server.teleport(ana.own_spawn.net_id, FortressFixture.circle_center())
+	_server.console_command("fort_owner solmarch")
+	var owned: bool = await _run_until(func() -> bool: return _state().owner == SOLMARCH)
+	assert_true(owned)
+	# La orden de la consola entra antes del tick; las capas de la puerta cambian al final de ese tick.
+	await _run_frames(3)
+	var given_at: int = _state().last_reset_tick
+	assert_eq(_gate().collision_layer, FortGate.layers_for(SOLMARCH, false),
+			"la puerta frena a los enemigos de Solmarch")
+	var position: Vector3 = _server.get_registry().get_entity(ana.own_spawn.net_id).get_position()
+	var reset: bool = await _run_until(func() -> bool: return _state().owner == 0, 400)
+	if not assert_true(reset, "a los 4 s el fuerte vuelve a ser neutral"):
+		return
+	assert_eq(_state().last_reset_tick - given_at, 4 * 60, "justo a los 4 s del último reinicio")
+	assert_eq(_state().phase, FortressState.Phase.GARRISONED)
+	assert_true(_state().captain_alive, "con los Huecos y su Capitán")
+	assert_eq(_state().gate_health, 900)
+	assert_eq(_gate().collision_layer, FortGate.layers_for(0, false), "ahora frena a los tres reinos")
+	assert_vec_near(_server.get_registry().get_entity(ana.own_spawn.net_id).get_position(), position, 0.2,
+			"los jugadores que hay dentro no se mueven")
+	# Los dos clientes se enteran: aviso de «fuerte reiniciado» y el dueño nuevo en un OBJECT_STATE.
+	var told: bool = await _run_until(func() -> bool:
+		return ana.war_ids().has(WarEvents.FORT_RESET) and bo.war_ids().has(WarEvents.FORT_RESET), 120)
+	assert_true(told, "FORT_RESET a toda la zona")
+	assert_eq(ana.war_realms_of(WarEvents.FORT_RESET), [0] as Array[int], "sin reino")
+	for client: RawClient in [ana, bo]:
+		var mirror: FortressState = FortressState.initial(FortressFixture.make_definition(), 0)
+		for spawn: NetMessages.EntitySpawn in client.spawns:
+			if spawn.net_id == gate_id:
+				spawn.to_object_state().apply_to_fortress(mirror)
+		for object_state: NetMessages.ObjectState in client.object_states:
+			object_state.apply_to_fortress(mirror)
+		assert_eq(mirror.owner, 0, "el cliente ve el fuerte neutral")
+		assert_eq(mirror.phase, FortressState.Phase.GARRISONED)
+		assert_eq(client.malformed, 0)
+	# Y vuelve a repetirse cada 4 s desde el último reinicio.
+	var again: bool = await _run_until(func() -> bool:
+		return ana.war_ids().count(WarEvents.FORT_RESET) >= 2, 400)
+	assert_true(again, "el reinicio se repite")

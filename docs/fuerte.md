@@ -594,7 +594,10 @@ F0 (escena, capas, malla y rutas), F1 (fortaleza pura) y F2 (protocolo 3) están
 - **Marcador**: `ScoreKeeper` (bajas, muertes, asistencias, daño a la puerta y segundos con el círculo
   **activo**) y SCOREBOARD cada 120 ticks a todo el mundo, en páginas de 66 filas. **Méritos provisionales**
   (PRG-09 los sustituirá con antifarmeo y reparto por daño): `bajas × 10 + asistencias × 5 + segundos en el
-  círculo`. Los PNJ no tienen fila. El KILL va a toda la zona (el DEATH sigue yendo a los implicados).
+  círculo`. Los PNJ no tienen fila. El KILL va a toda la zona (el DEATH sigue yendo a los implicados). Una
+  baja o una asistencia es la de cualquier KILL cuyo asesino (o asistente) sea un jugador, también si la víctima
+  es un PNJ, para que el marcador cuadre con el registro de bajas del cliente (cada KILL, una vez); las muertes
+  son solo las de jugadores.
 - **`--battle-log=<ruta>`** (JSON Lines, `BattleLog`): `battle_start` (zona y, por fortaleza, posiciones del
   fuerte, la puerta y el círculo), `war` (el aviso con su clave de `WarEvents`, el reino y el lugar),
   `gate_damage_started` (el primer golpe a la puerta desde su última reparación) y `death` (víctima, asesino,
@@ -606,8 +609,22 @@ F0 (escena, capas, malla y rutas), F1 (fortaleza pura) y F2 (protocolo 3) están
   (fortalezas, OBJECT_STATE y marcadores enviados, salidas en combate y /atascado) y las métricas, la sección
   `war` del tick.
 - **Reinicio a neutral**: lo hace el propio `FortressState.advance` cada `reset_to_neutral_s` desde el último
-  reinicio; el controlador lo convierte en `FORT_RESET`, `defenders_retired` y `garrison_due`. El Vado Gris
-  (1800 s) lo trae activo.
+  reinicio (`last_reset_tick`: la creación de la fortaleza, un `fort_reset` o un `fort_owner` rearman el reloj);
+  el controlador lo convierte en `FORT_RESET` (aviso a toda la zona con reino 0), `defenders_retired` y
+  `garrison_due` (con el dueño 0 y `completa`: los Huecos y el Capitán del Vado vuelven enteros). Pasa en
+  cualquier fase, también con una captura a medias, y **no mueve a nadie**: quien está en el círculo sigue donde
+  estaba. La puerta se repara y las capas vuelven a las de neutral en ese mismo tick (valen desde `s + 1`), pero si
+  alguien solapa el vano la reparación se aplaza como en cualquier otro cambio de dueño. `reset_to_neutral_s = 0`
+  lo desactiva. El Vado Gris (1800 s = 108 000 ticks) lo trae activo
+  mientras sea un mapa de pruebas; `tools/war/summarize_battle.gd` empieza un ciclo nuevo en cada `fort_reset` del
+  registro, así que su resumen es el de cada partida de 30 min.
+- **Medido (F3)**: el paso 4b (`FortressController.step`) cuesta de media 522 µs en los ticks de recuento (cada 6)
+  y 50 µs en los demás con 64 jugadores falsos en el círculo, unos 130 µs por tick; en un proceso de verdad sobre el Vado
+  Gris con 16 falsos de combate en el círculo, el p99 del tick fue de 4,7 a 6 ms y la sección `war` de 0,5 a 0,6 ms.
+  Una sesión de humo con la consola (`fort_kill_captain` con los dos bandos dentro) dejó en el registro de batalla
+  «capitán caído», «captura disputada» y, al morir los de Vardheim, «captura iniciada» de Solmarch, y
+  `summarize_battle.gd` contó las 11 muertes por ruta. La sesión con bots que asedian, que da los números para
+  ajustar `vado_gris.tres` (GUE-17), llega con F6.
 - Lo que **no** hace F3: nada del cliente (`FortressView`, HUD, mapa, `RespawnPointList`), ni PNJ reales (F4),
   ni bots que asedian ni `--max-realm-diff` (F6).
 
