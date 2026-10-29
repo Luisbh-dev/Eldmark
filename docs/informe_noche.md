@@ -1,9 +1,10 @@
 # Informe de la sesión nocturna
 
-Sesión sin supervisión del 28 al 29 de octubre de 2026. Este archivo se actualiza en cada hito
-y está siempre en la rama más reciente (ahora `fase4-fuerte`; las ramas van encadenadas:
-`main` → `fase2-red` → `fase3-combate` → `fase4-fuerte`, y nada está fusionado en `main` salvo el
-backlog).
+Sesión sin supervisión del 28 al 29 de octubre de 2026, **cerrada a petición del usuario** el 29 por
+la tarde. Este archivo está en la rama más reciente (`fase5-cuentas`) y en `fase4-fuerte`. Las ramas
+van encadenadas: `main` → `fase2-red` → `fase3-combate` → `fase4-fuerte` → `fase5-cuentas`, y nada
+está fusionado en `main` salvo el backlog. Aparte, `fase4-chat-grupos` (sale de `fase4-fuerte` en
+a150b78) tiene el chat y los grupos **sin revisar ni fusionar**.
 
 ## Estado
 
@@ -12,7 +13,9 @@ backlog).
 | Backlog (`docs/backlog.md`) | `main` | Hecho y subido |
 | Fase 2: red | `fase2-red` | Implementada (594 pruebas en verde, CI de GitHub en verde); revisión adversarial hecha y sus 19 hallazgos corregidos, cada uno con su prueba (656 pruebas en verde) |
 | Fase 3: combate | `fase3-combate` (desde `fase2-red`, que está fusionada dentro) | Diseño revisado (`docs/combate.md`); K1–K5 y el carril de audio, tema, ajustes, documento social y exportación integrados; revisión adversarial hecha y sus 18 hallazgos corregidos con prueba (1262 pruebas en verde) |
-| Fase 4: fuerte | `fase4-fuerte` (desde `fase3-combate`) | Diseño v2 revisado (`docs/fuerte.md`); F0 (escena, capas, navmesh, rutas), F1 (fortaleza pura) y F2 (protocolo 4) integrados; F3 (servidor) y F5 (cliente) en marcha |
+| Fase 4: fuerte | `fase4-fuerte` (desde `fase3-combate`) | Diseño v2 revisado (`docs/fuerte.md`); F0 a F5 y F6a integrados (escena, fortaleza pura, protocolo 4, servidor del fuerte, PNJ, cliente, bots de asedio, equilibrio de reinos, carga). Suite completa en verde con F4 (1687 pruebas); con F6a, ver «Cierre». Diseño de habilidades revisado (`docs/habilidades.md`), sin implementar. Falta F6b, las habilidades (H1–H5) y la revisión adversarial de la fase 4 |
+| Fase 4: chat y grupos | `fase4-chat-grupos` (desde `fase4-fuerte` a150b78) | SOC-03 a SOC-08 implementados (protocolo 5, `ChatRouter`, caja de chat, `PartyManager`, marcos de grupo, menú social), con su suite; **sin la revisión adversarial y sin fusionar** (la sesión se cerró durante la revisión) |
+| Fase 5: diseño | `fase5-cuentas` (desde `fase4-fuerte`) | `docs/plataforma.md` y `docs/progresion.md` escritos y revisados por tres lentes cada uno (45 y 41 hallazgos); **falta conciliarlos entre sí** (cada uno lista en su sección de interfaz lo que pide al otro). Sin código |
 
 ## Entorno (Linux)
 
@@ -267,10 +270,10 @@ supuestos técnicos comprobados ejecutando Godot y Terrain3D).
 | F5 | Cliente del fuerte: `FortressView` con el gancho `before_simulate` (la puerta igual en cliente y servidor en cada tick), HUD de captura, banners, barra de jefe, marcas de TELEGRAPH, brújula, mapa horneado (`assets/maps/vado_gris.png`), minimapa, mapa completo con la reaparición, marcador (Tab) y registro de bajas, pistas, recuento por reino en la selección | Hecho |
 | F4 | PNJ: `NpcNavigation` (mapa propio, enlace de la puerta por reino), `NpcDefinition`/`NpcCatalog` (`data/npcs/`), armas de PNJ y golpe imbloqueable del Capitán con TELEGRAPH, `HfsmBrain` (reposo, patrulla, alerta, combate, regreso; fichas: nunca más de 2 atacan a la vez), `NpcSpawnerSystem` (Huecos, Capitán del Vado, guarnición del reino dueño, 2 Guardianes por campamento), `--no-npcs`, comando 12 `npc_debug` | Hecho (MUN-10 y MUN-11 siguen «en curso»: falta jugarlos con personas) |
 | F6a | Bots de asedio (`BotBrain` SIEGE, `--fake-brain=siege`, `--bot-brain=siege` para `--bot` y `--bots`), `--max-realm-diff` con REJECT 9 y recuento real en el WELCOME, falsos de relleno, `--run-at`, escenario `siege` de `load_test`, `tools/war/siege_runner.gd` y `siege_battle.gd` | Hecho (GUE-42; GUE-15/16/17 siguen «en curso» hasta F6b). Medido sin PNJ |
-| F6b | Prueba de extremo a extremo neutral → Vardheim → Solmarch con los PNJ de verdad, GUE-43/44/45, carga con PNJ | En marcha (implementación, verificación escéptica y arreglos) |
+| F6b | Prueba de extremo a extremo neutral → Vardheim → Solmarch con los PNJ de verdad, GUE-43/44/45, carga con PNJ | Pendiente (se cortó al cerrar la sesión, sin commits; el encargo está en «Cierre») |
 | Habilidades | Diseño corto `docs/habilidades.md` (CMB-19 a 24, CMB-28, PRG-04/07/08, UI-11, UI-45), revisado por tres lentes escépticas (41 hallazgos, 3 bloqueantes; 34 aplicados, 4 rechazados en parte con motivo en su sección «Revisión») | Diseño hecho; implementación tras fusionar F4 (paquetes H1 a H5) |
-| Social | Chat (SOC-03 a SOC-05) y grupos (SOC-06 a SOC-08): implementación, revisión adversarial por tres lentes con refutación y arreglos | En marcha |
-| Fase 5 (diseño) | `docs/plataforma.md` (servicio en Go + PostgreSQL, cuentas, billetes, guardado, RGPD, GM) y `docs/progresion.md` (objetos, inventario, monedas, niveles, razas): borrador, revisión escéptica y corrección | En marcha (solo documentos) |
+| Social | Chat (SOC-03 a SOC-05) y grupos (SOC-06 a SOC-08) | Implementado en la rama `fase4-chat-grupos`; la revisión adversarial (tres lentes con refutación) se cortó al cerrar: falta revisar y fusionar |
+| Fase 5 (diseño) | `docs/plataforma.md` (servicio en Go + PostgreSQL, cuentas, billetes, guardado, RGPD, GM) y `docs/progresion.md` (objetos, inventario, monedas, niveles, razas): borrador, revisión escéptica y corrección | Hecho en `fase5-cuentas`; la conciliación entre los dos se cortó al cerrar |
 
 ### Medidas de F6a (asedio sin PNJ; 4 núcleos con otra suite en marcha, `uptime` 0,87 → 1,66)
 
@@ -303,6 +306,52 @@ Los criterios finos de MUN-10 (60–90 s con 2–3 personas) y MUN-11 (60–120 
 personas: los bots no son buena medida. Vida y daño de los PNJ ajustados para que los criterios se
 puedan medir (provisionales; ver `docs/fuerte.md` §8.3).
 
+## Cierre de la sesión: qué queda y en qué orden
+
+La sesión se cerró a petición del usuario. Se pararon los trabajos en marcha y se subió todo lo que
+habían dejado; nada se ha perdido salvo F6b, que aún no tenía commits.
+
+1. **Suite completa de `fase4-fuerte` tras F6a** (ver el resultado al final de esta sección). Con F4
+   ya fusionado dio 1687 de 1687. Tras fusionar F6a pasaron las pruebas filtradas que tocan su código
+   (`siege` 35, `server_main` 15, `realm_balance` 18, `bot_brain` 27). La integración necesitó dos
+   arreglos (4bb0eab): `HfsmBrain` (F4) y `BotBrain` (F6a) declaraban los mismos miembros, y las
+   pruebas de F6a, escritas sin PNJ, ahora arrancan con `--no-npcs`.
+2. **Chat y grupos** (`fase4-chat-grupos`): falta la revisión adversarial (privacidad entre reinos,
+   servidor y protocolo, cliente) y fusionarla en `fase4-fuerte`. Toma `PROTOCOL_VERSION = 5`. Choca
+   con `zone_server.gd`, `hud.gd` e `input_bindings.gd` de F4/F6a: hay que resolver a mano y pasar la
+   suite. Lo implementado y lo pendiente está en `docs/social.md` §12.
+3. **F6b**, el encargo que se cortó:
+   - **Bots contra los PNJ.** Los SIEGE matan a los Huecos y al Capitán del Vado sin comandos.
+     Atacan al PNJ del dueño más cercano y respetan el golpe imbloqueable.
+   - **Criterio de GUE-15.** «`--bots=20` por bando capturan y recapturan sin intervención», con PNJ
+     reales: neutral → Vardheim → Solmarch.
+     - Una herramienta larga fuera de la suite.
+     - Una versión corta dentro, sin `fort_kill_captain`.
+     - Si no capturan, ajustes mínimos y provisionales anotados en `fuerte.md` §8.3.
+   - **GUE-43, GUE-44 y GUE-45.**
+     - GUE-43: el falso de relleno cede su plaza a una persona.
+     - GUE-44: los refuerzos se juntan antes de salir.
+     - GUE-45: los SIEGE del dueño defienden la pasarela.
+   - **Carga con PNJ.** `load_test.gd --siege` con 32 contra 32.
+   - **Batalla con telemetría.** Una batalla completa con `--battle-log` y su resumen.
+   - **Herramientas.** `SiegeRunner.start(..., with_npcs = true)` arranca con los PNJ.
+4. **Habilidades** (`docs/habilidades.md` §7). Se empieza con F4 y el chat fusionados.
+   - Dos carriles: H1a → H1b → H3a → H3b → H3c, y a la vez H2 → H4 → H5.
+   - Protocolo 6.
+5. **Revisión adversarial de la fase 4** entera (tres lentes con refutación, como las de las fases 2
+   y 3) y sus arreglos con prueba.
+6. **Fase 5**:
+   - Primero, conciliar `plataforma.md` y `progresion.md`. Cada uno lista en su sección de interfaz
+     lo que pide al otro: nombres de tablas, ids en JSON, quién es dueño de CMB-30, billete de 52 B.
+   - Fijar `PROTOCOL_VERSION = 7` (la 5 es del chat y la 6 de habilidades).
+   - Luego, implementar en `fase5-cuentas` siguiendo sus paquetes.
+   - En esta máquina hay Go 1.24 y PostgreSQL 16. Las pruebas del servicio usan un `initdb` efímero
+     con `runuser -u postgres`, comprobado.
+
+**Suite completa de `fase4-fuerte` tras F6a**: en marcha al cerrar (las 617 primeras, sin fallos).
+
+Lo que tiene que decidir el usuario está en «Decisiones abiertas» al final.
+
 ## Pendiente de probar mañana con ventana
 
 Nada de lo que sigue se ha podido ver: aquí no hay GPU ni ventana. Todo lo de red está probado sin
@@ -314,7 +363,7 @@ contiene):
 ```powershell
 $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Microsoft.Winget.Source_8wekyb3d8bbwe\Godot_v4.7.2-stable_win64_console.exe"
 & $godot --headless --path . --import
-& $godot --headless --path . -s res://tests/run_tests.gd        # ~7 min, 594 pruebas
+& $godot --headless --path . -s res://tests/run_tests.gd        # ~17 min en fase4-fuerte, unas 1720 pruebas
 ```
 
 1. **F5 sin argumentos** (o `& $godot --path .`): debe ser exactamente el sandbox de siempre en el
@@ -350,6 +399,36 @@ $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Mi
    `--headless -- --server --debug-commands`; 2 y 3: `-- --connect=127.0.0.1 --realm=vardheim` y
    `--realm=solmarch`).
 
+10. **El fuerte del Vado Gris** (rama `fase4-fuerte`). En tres terminales:
+    ```powershell
+    & $godot --headless --path . -- --server --zone=vado_gris --debug-commands
+    & $godot --path . -- --connect=127.0.0.1 --realm=vardheim --name=Ana
+    & $godot --path . -- --connect=127.0.0.1 --realm=solmarch --name=Bruno
+    ```
+    Mirar:
+    - el HUD de captura al acercarse (dueño, fase, progreso, «Disputado», vida de la puerta) y los
+      banners;
+    - la barra de jefe del Capitán del Vado y la marca en el suelo de su golpe imbloqueable;
+    - la brújula, el minimapa y el mapa (M), con la elección de reaparición al morir;
+    - el marcador (Tab), las pistas y los estandartes, que cambian de color al capturar;
+    - los Huecos patrullando y peleando; los Guardianes matando a un intruso en el campamento ajeno.
+
+    Comandos de la consola del servidor: `fort_kill_captain`, `fort_owner vardheim`, `fort_reset`,
+    `fort_capture_speed 20`, `npc_debug`.
+
+    Con bots de asedio contra tu cliente:
+    ```powershell
+    & $godot --headless --path . -- --server --zone=vado_gris --fake-players=40 --fake-brain=siege
+    & $godot --headless --path . -- --bots=20 --bot-brain=siege --connect=127.0.0.1
+    ```
+    Todo lo visual de la fase 4 es provisional y está sin ver: Huecos con el humanoide, estandartes,
+    efectos de la puerta, marcas en el suelo, mapa horneado, colores y tamaños del HUD.
+11. **Chat y grupos** (rama `fase4-chat-grupos`, con el servidor y los dos clientes del punto 2):
+    - Intro abre la línea y Esc la cierra.
+    - Probar `/d`, `/z`, `/s Bruno hola` (entre reinos debe decir «no está conectado») y `/r`.
+    - Invitar desde el menú social, apuntando a un aliado a menos de 20 m.
+    - Ver los marcos de grupo.
+
 - **Windows, sin probar en esta máquina (Linux):** la rama de Windows de
   `LocalServerLauncher.is_process_alive` (A1, `tasklist /FI "PID eq <pid>" /FO CSV /NH`) está escrita
   según el código de Godot 4.7.2 (`OS.is_process_running` solo conoce los procesos hijos propios). Sus
@@ -363,6 +442,38 @@ $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Mi
   Windows un bloqueo huérfano con el pid reutilizado seguiría engañando a `--local` durante un intento.
 
 ## Decisiones tomadas fuera del contrato
+
+- **Fase 4, integración**:
+  - `FortressView` acepta la definición de la fortaleza como recurso o como ruta, igual que el
+    servidor.
+  - La prueba de los tramposos en procesos deja 5,3 s de margen entre los bots y el servidor.
+  - Los miembros del patrón SIEGE en `BotBrain` llevan el prefijo `_siege_`, porque los PNJ heredan
+    de `BotBrain`.
+  - `SiegeRunner` arranca sin PNJ salvo que se le pida.
+- **F4**:
+  - Vida y daño de los PNJ ajustados para poder medir los criterios. Hueco, guardia y Guardián
+    tienen 2500 de vida, el Capitán del Vado 30 000 y el capitán del reino 15 000.
+  - La guarnición del reino sale de espejos de los puestos de los Huecos (`garrison_id`), sin tocar
+    la escena.
+  - TELEGRAPH para todo golpe fuerte de un PNJ.
+  - Opción nueva `--no-npcs`.
+- **F6a**:
+  - `--max-realm-diff` solo cuenta personas. Se rechaza entrar en el reino r si
+    `personas[r] + 1 − min(otros) > N`.
+  - Los falsos de relleno se retiran uno por cada persona que entra en el bando largo.
+  - Opción nueva `--run-at=<tick>:<orden>`.
+  - Clase de muerte `gate` en el resumen de batalla.
+  - «Defender la pasarela» se queda en defender el círculo (GUE-45).
+- **Versiones del protocolo repartidas**: 4 el fuerte, 5 el chat y los grupos, 6 las habilidades y 7
+  la fase 5. Si cambia el orden de fusión, se renumeran.
+- **Diseños de la fase 4 y la 5**: las decisiones pendientes que bloqueaban se tomaron con la
+  recomendación del backlog y están en «Decisiones tomadas» marcadas «provisional, tomada de noche».
+  - Habilidades: solo reutilización (maná en los bastones), rayo de cámara canónico con bit de
+    hombro, derribado solo en PvP y HUD de acción.
+  - Fase 5: Go + PostgreSQL, guardado con punto de control de 60 s más eventos críticos, un solo
+    mundo con `world_id`, DTLS si cabe, un reino por cuenta, ignorar por cuenta y chat 30 días.
+  - Progresión: un pueblo humano por reino, bolsa por ranuras, monedas por personaje, méritos y
+    puntos de reino separados, y XP por contribución.
 
 - Paquete A: `BotBrain._init(rng_seed, …)` en vez de `seed` (para no tapar la función global);
   `NetZones.allowed_realms` devuelve vacío (todos los reinos) porque `Zones` no registra reinos por
@@ -400,3 +511,24 @@ $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Mi
   zona se carga sin lo visual; el cliente también fuerza la colisión completa de Terrain3D.
 - Paquete C2: el `sim_hash` lo calcula `ZoneServer.start()`; un salto de más de 1,5 m en un tick
   se registra como aviso (no error) y en el contador `physics_errors` del informe.
+
+## Decisiones abiertas para el usuario
+
+- **Carga del fuerte**: con 32 contra 32 el p99 del tick es 19,1 ms, frente al criterio de 8 ms.
+  Domina `simulate()`, con 77 µs por personaje. El primer límite de batalla queda en 32 contra 32.
+  Para subirlo: `simulate()` en C++ (GDExtension) o un presupuesto por zona.
+- **Combate**: siguen abiertos `MAX_REWIND_TICKS` para un RTT de 200 ms y el equilibrio P1 de
+  `combate.md` §12.
+- **Fase 5**:
+  - el modelo de negocio (PRG-41);
+  - el proveedor y la región del VPS;
+  - el dominio;
+  - los textos legales y la revisión RGPD (edad mínima 16 provisional, retenciones);
+  - la subida de copias a S3.
+- **Arte**: lo visual de las fases 3 y 4 es provisional. Faltan:
+  - las fuentes OFL;
+  - las plantillas de exportación 4.7.2;
+  - los modelos de Huecos, guardias y Capitán (ART-15/16/17);
+  - el arco (ART-41).
+- **Criterios que necesitan personas**: MUN-10 (60–90 s para limpiar los Huecos con 2–3 personas) y
+  MUN-11 (60–120 s para el Capitán con 3–5).
