@@ -166,11 +166,15 @@ jobs:
             "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/${GODOT_WIN_FILE}.exe.zip"
           echo "${GODOT_WIN_SHA512}  $RUNNER_TEMP/godot.zip" | sha512sum --check -
           7z x -y -o"$HOME/godot" "$RUNNER_TEMP/godot.zip"
-          # El ejecutable de consola (el que escribe en la salida estándar) pasa a llamarse godot.exe.
-          cp "$HOME/godot/${GODOT_WIN_FILE}_console.exe" "$HOME/godot/godot.exe"
 
+      # El ejecutable de consola (el que escribe en la salida estándar) es un envoltorio que lanza el
+      # principal buscándolo por su propio nombre sin «_console»: renombrado, falla con «Invalid wrapper
+      # executable name». Un guion «godot» lo llama con su nombre original.
       - name: Godot en el PATH
-        run: cygpath -w "$HOME/godot" >> "$GITHUB_PATH"
+        run: |
+          printf '#!/usr/bin/env bash\nexec "%s/%s_console.exe" "$@"\n' "$HOME/godot" "$GODOT_WIN_FILE" > "$HOME/godot/godot"
+          chmod +x "$HOME/godot/godot"
+          cygpath -w "$HOME/godot" >> "$GITHUB_PATH"
 
       - name: Versión de Godot
         run: godot --headless --version
