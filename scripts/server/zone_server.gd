@@ -466,6 +466,7 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_auth = ServerAuth.new(config, _sim_hash, NetZones.allowed_realms(config.zone_id),
 			auth_provider)
 	_auth.set_connected_names_source(get_connected_names)
+	_auth.set_realm_counts_source(get_realm_counts)
 	_spawn_picker = SpawnPicker.new(world)
 	_safe_areas = SafeAreas.from_world(world)
 	_combat = CombatDirector.new(_history, StringName(config.zone_id), world, _safe_areas,
@@ -576,6 +577,22 @@ func get_player_count() -> int:
 		if peer.state == ServerPeer.State.LOADING or peer.state == ServerPeer.State.IN_WORLD:
 			count += 1
 	return count
+
+
+## Personas por reino (Vardheim, Solmarch, Askarra; ver [RealmBalance]): los clientes aceptados de verdad,
+## cargando la zona o ya dentro (con [param in_world_only], solo los que ya están dentro). Los jugadores falsos y
+## los cuerpos que quedan tras una baja en combate no cuentan. [param excluded] no se cuenta (el que acaba de
+## entrar, para su WELCOME). Es el recuento del WELCOME y el del REJECT 9 IMBALANCE.
+func get_realm_counts(in_world_only: bool = false, excluded: ServerPeer = null) -> PackedInt32Array:
+	var counts: PackedInt32Array = RealmBalance.empty_counts()
+	for peer: ServerPeer in _peers.values():
+		if peer == excluded:
+			continue
+		var counted: bool = peer.state == ServerPeer.State.IN_WORLD \
+				or (not in_world_only and peer.state == ServerPeer.State.LOADING)
+		if counted and peer.realm >= 1 and peer.realm <= RealmBalance.REALM_COUNT:
+			counts[peer.realm - 1] += 1
+	return counts
 
 
 ## Entradas del enfriamiento tras expulsiones (vigentes o aún sin purgar). Se purgan al apuntar la
@@ -2392,6 +2409,7 @@ func _on_auth_received(peer_id: int, bytes: PackedByteArray) -> void:
 	welcome.tick_rate = Engine.physics_ticks_per_second
 	welcome.realm = hello.realm
 	welcome.zone_id = _config.zone_id
+	welcome.realm_counts = get_realm_counts(false, peer)
 	var error: Error = _transport.send_auth(peer_id, welcome.encode())
 	if error == OK:
 		error = _transport.complete_auth(peer_id)

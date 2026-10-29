@@ -348,10 +348,29 @@ de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D
 - Criterio: `--bots=20` por bando capturan y recapturan sin intervención.
 - **Carga** (GUE-16): escenario de `load_test` con 32 contra 32 y 64 contra 64 en la puerta y el
   círculo durante 120 s.
-- **Equilibrio** (GUE-42): `--max-realm-diff=N`; un REJECT nuevo, **9 IMBALANCE**, con texto propio.
-  El recuento por reino para RealmSelect llega en el WELCOME (`u8 × 3` al final; sube la versión
-  con el resto; el formato ya está en F2 y el servidor lo rellena en F6, hasta entonces va a 0). Los jugadores falsos de `--fake-players` rellenan el bando corto y se retiran al
-  entrar personas.
+- **Equilibrio** (GUE-42, hecho en F6a): `--max-realm-diff=N` (por defecto 0 = sin límite); un REJECT nuevo,
+  **9 IMBALANCE**, con texto propio. El recuento por reino para RealmSelect llega en el WELCOME (`u8 × 3` al
+  final; lo rellena el servidor desde F6a). Regla exacta (`RealmBalance`, `FillerKeeper`, `ServerAuth`,
+  `ServerMain`):
+  - *Qué cuenta.* Solo **personas**: los clientes aceptados (cargando la zona o ya dentro). Los jugadores
+    falsos y los cuerpos que quedan tras una baja en combate (GUE-41) no cuentan. Se compara con los reinos
+    que la zona admite (`NetZones.allowed_realms`; el Vado Gris, Vardheim y Solmarch; una zona sin
+    restricción, los tres).
+  - *Rechazo.* Entrar en el reino *r* se rechaza si `personas[r] + 1 − min(personas[s])` es mayor que N, con
+    *s* cada uno de los otros reinos admitidos. Se comprueba después de las demás validaciones y del
+    proveedor de identidad, así que el orden es VERSION, SIM_HASH, REALM, NAME, FULL, TOO_MANY_CONNECTIONS,
+    TICKET, IMBALANCE. Con N = 1 en el Vado Gris entra la primera persona de un reino (1 contra 0) y se
+    rechaza la segunda hasta que haya alguien en el otro.
+  - *WELCOME.* `realm_counts` son las personas de cada reino en ese momento, **sin contar a quien entra**.
+  - *Relleno.* Con N > 0, los falsos de `--fake-players` de reino automático (todos salvo los de
+    `--fake-layout=cluster` con el cerebro de paseo, que van al primer reino) son de relleno. El servidor los
+    reparte al arrancar en el reino con menos total (personas más relleno; a igualdad, el de código más bajo:
+    el reparto por turnos de siempre). Después: **entra una persona** en el reino *r* y el total de *r* pasa a
+    ser mayor que el menor de los otros → se retira el falso de relleno más antiguo de *r* (uno por persona; si
+    *r* era el bando corto, la persona ocupa un hueco y no se retira a nadie); **sale una persona** de *r* y el
+    total de *r* queda por debajo del mayor de los otros, sin pasar del cupo de `--fake-players` → entra un
+    falso nuevo en *r*. Nada más retira ni añade falsos, y el relleno no cuenta para rechazar a nadie.
+    Sin `--max-realm-diff` los falsos no se tocan (las pruebas de carga miden lo de siempre).
 - **Telemetría** (GUE-17): eventos de guerra y muertes en JSON Lines (`--battle-log`) y
   `tools/war/summarize_battle.gd` con el tiempo hasta la captura, las muertes por ruta y el tiempo
   hasta romper la puerta.

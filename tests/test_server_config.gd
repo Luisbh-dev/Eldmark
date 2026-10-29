@@ -183,3 +183,16 @@ func test_fake_center_option() -> void:
 			"--fake-center=1e9,0", "--fake-center=inf,0"]:
 		var invalid: ServerConfig = ServerConfig.from_args(PackedStringArray([text]))
 		assert_false(invalid.has_fake_center(), "%s se ignora" % text)
+
+
+func test_max_realm_diff_option() -> void:
+	var defaults: ServerConfig = ServerConfig.from_args(PackedStringArray())
+	assert_eq(defaults.max_realm_diff, 0, "por defecto, sin límite")
+	var config: ServerConfig = ServerConfig.from_args(PackedStringArray(["--server", "--max-realm-diff=8"]))
+	assert_eq(config.max_realm_diff, 8)
+	assert_eq(ServerConfig.from_args(PackedStringArray(["--max-realm-diff=0"])).max_realm_diff, 0, "0 = sin límite")
+	assert_eq(ServerConfig.from_args(PackedStringArray(["--max-realm-diff=-2"])).max_realm_diff, 0, "un negativo se ignora")
+	assert_eq(ServerConfig.from_args(PackedStringArray(["--max-realm-diff=muchos"])).max_realm_diff, 0, "y un texto también")
+	assert_eq(ServerConfig.from_args(PackedStringArray(["--max-realm-diff=99999"])).max_realm_diff, 0, "y uno absurdo")
+	assert_eq(ServerConfig.from_args(PackedStringArray(["--max-realm-diff=3", "--max-realm-diff=9"])).max_realm_diff, 3,
+			"gana la primera")

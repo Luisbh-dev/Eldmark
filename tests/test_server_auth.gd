@@ -337,3 +337,55 @@ func test_every_reject_reason_has_a_spanish_text() -> void:
 		assert_false(text.is_empty(), "texto del motivo %d" % result)
 		assert_false(text == NetProtocol.result_text(-1),
 				"el motivo %d tiene un texto propio" % result)
+
+
+# --- Equilibrio de reinos (GUE-42) ------------------------------------------------------------------
+
+func _unbalanced_auth(max_diff: int, counts: PackedInt32Array, provider: AuthProvider = null) -> ServerAuth:
+	var config: ServerConfig = _make_config(16, 2)
+	config.max_realm_diff = max_diff
+	var auth: ServerAuth = _make_auth(provider, PackedInt32Array([NetProtocol.Realm.VARDHEIM,
+			NetProtocol.Realm.SOLMARCH]), config)
+	auth.set_realm_counts_source(func() -> PackedInt32Array: return counts)
+	return auth
+
+
+func test_reject_imbalance_when_the_realm_would_lead_by_more_than_the_limit() -> void:
+	var auth: ServerAuth = _unbalanced_auth(2, PackedInt32Array([3, 1, 0]))
+	var hello: NetMessages.Hello = _make_hello()
+	assert_eq(auth.validate(hello, REMOTE_ADDRESS, 4, 0), NetProtocol.Result.IMBALANCE,
+			"Vardheim pasaría a 4 contra 1: 3 de ventaja, más que 2")
+	hello.realm = NetProtocol.Realm.SOLMARCH
+	assert_eq(auth.validate(hello, REMOTE_ADDRESS, 4, 0), NetProtocol.Result.OK, "Solmarch, el corto, entra")
+	var edge: ServerAuth = _unbalanced_auth(2, PackedInt32Array([2, 1, 0]))
+	hello.realm = NetProtocol.Realm.VARDHEIM
+	assert_eq(edge.validate(hello, REMOTE_ADDRESS, 3, 0), NetProtocol.Result.OK, "3 contra 1: justo 2 de ventaja, vale")
+
+
+func test_the_imbalance_check_is_off_without_a_limit_or_a_source() -> void:
+	var hello: NetMessages.Hello = _make_hello()
+	assert_eq(_unbalanced_auth(0, PackedInt32Array([9, 0, 0])).validate(hello, REMOTE_ADDRESS, 9, 0),
+			NetProtocol.Result.OK, "con 0 no hay límite")
+	var config: ServerConfig = _make_config()
+	config.max_realm_diff = 1
+	var no_source: ServerAuth = _make_auth(null, PackedInt32Array(), config)
+	assert_eq(no_source.validate(hello, REMOTE_ADDRESS, 0, 0), NetProtocol.Result.OK, "sin recuento no se rechaza")
+
+
+func test_imbalance_comes_after_the_other_checks_and_the_provider() -> void:
+	var counts := PackedInt32Array([5, 0, 0])
+	var hello: NetMessages.Hello = _make_hello()
+	hello.display_name = "ab"
+	assert_eq(_unbalanced_auth(1, counts).validate(hello, REMOTE_ADDRESS, 5, 0), NetProtocol.Result.NAME,
+			"un nombre mal escrito se dice antes")
+	hello = _make_hello()
+	assert_eq(_unbalanced_auth(1, counts).validate(hello, REMOTE_ADDRESS, 4, 0), NetProtocol.Result.IMBALANCE)
+	var provider := CountingProvider.new()
+	provider.result = NetProtocol.Result.TICKET
+	assert_eq(_unbalanced_auth(1, counts, provider).validate(hello, REMOTE_ADDRESS, 4, 0), NetProtocol.Result.TICKET,
+			"un billete malo se dice antes que el desequilibrio")
+	provider = CountingProvider.new()
+	assert_eq(_unbalanced_auth(1, counts, provider).validate(hello, REMOTE_ADDRESS, 4, 0), NetProtocol.Result.IMBALANCE)
+	assert_eq(provider.calls, 1, "el proveedor se consulta igualmente")
+	assert_eq(_unbalanced_auth(1, counts).validate(hello, REMOTE_ADDRESS, 16, 0), NetProtocol.Result.FULL,
+			"y un servidor lleno, también antes")

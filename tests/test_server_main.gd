@@ -259,6 +259,70 @@ func test_fake_churn_replaces_the_oldest_player_every_interval() -> void:
 	assert_eq(_error_lines(log_path), PackedStringArray(), "sin errores en el registro")
 
 
+## Lanza un enjambre ([code]--bots[/code]) contra el servidor del puerto [param port].
+func _launch_swarm(user_args: PackedStringArray, log_path: String) -> int:
+	var args := PackedStringArray([
+		"--headless", "--path", ProjectSettings.globalize_path("res://"), "--log-file", log_path, "--",
+	])
+	args.append_array(user_args)
+	var pid: int = OS.create_process(OS.get_executable_path(), args)
+	if pid > 0:
+		_pids.append(pid)
+	return pid
+
+
+func test_max_realm_diff_rejects_people_and_makes_the_fake_fillers_leave() -> void:
+	var port: int = _find_free_port()
+	var log_path: String = _build_path("test_server_main_h.log")
+	var swarm_log: String = _build_path("test_server_main_h_swarm.log")
+	var report_path: String = _build_path("test_server_main_h.json")
+	DirAccess.remove_absolute(report_path)
+	# Zona de pruebas (tres reinos): seis falsos de relleno, dos por reino; hasta 1 persona de ventaja.
+	var pid: int = _launch(PackedStringArray([
+		"--port=%d" % port, "--zone=test_world", "--quit-after-ticks=840", "--fake-players=6",
+		"--max-realm-diff=1", "--report=%s" % report_path,
+	]), log_path)
+	if not assert_true(pid > 0, "el proceso del servidor se lanza"):
+		return
+	var started: bool = false
+	for _i: int in 200:
+		if FileAccess.get_file_as_string(log_path).contains("escuchando en el puerto"):
+			started = true
+			break
+		await tree.create_timer(0.1).timeout
+	if not assert_true(started, "el servidor escucha"):
+		return
+	# Tres personas de Vardheim: la primera entra (1 contra 0) y las otras dos se rechazan (2 contra 0).
+	var swarm_pid: int = _launch_swarm(PackedStringArray([
+		"--bots=3", "--connect=127.0.0.1:%d" % port, "--realm=vardheim", "--bot-seed=300",
+		"--quit-after-ticks=500",
+	]), swarm_log)
+	assert_true(swarm_pid > 0, "el enjambre se lanza")
+	assert_true(await _wait_for_exit(pid), "el servidor se cierra solo")
+	assert_eq(OS.get_process_exit_code(pid), 0, "código de salida 0")
+	var report: Dictionary = _read_report(report_path)
+	var rejects: Dictionary = report.get("rejects", {})
+	assert_eq(int(rejects.get(NetProtocol.result_text(NetProtocol.Result.IMBALANCE), 0)), 2,
+			"dos de los tres se rechazan por desequilibrio: %s" % [rejects])
+	var log_text: String = FileAccess.get_file_as_string(log_path)
+	assert_true(log_text.contains("Equilibrio de reinos: diferencia máxima de 1"), "el registro lo anuncia")
+	var retired: Array[String] = []
+	var added_back: Array[String] = []
+	for line: String in log_text.split("\n"):
+		if line.contains("Baja de Bot-") and line.contains("jugador falso"):
+			retired.append(line)
+		elif line.contains("Alta de Bot-07") and line.contains("jugador falso"):
+			added_back.append(line)
+	assert_eq(retired.size(), 1, "entra una persona en Vardheim y se retira un solo falso")
+	if not retired.is_empty():
+		assert_true(retired[0].contains("Baja de Bot-01"), "el más antiguo de Vardheim: %s" % retired[0])
+	assert_eq(added_back.size(), 1, "al irse la persona vuelve a entrar un falso")
+	if not added_back.is_empty():
+		assert_true(added_back[0].contains("Vardheim"), "en el reino que se ha quedado corto: %s" % added_back[0])
+	assert_true(log_text.contains("Alta de Bot-01 (jugador falso, net_id 1, Vardheim)"), "los falsos de relleno empiezan por Vardheim")
+	assert_eq(_error_lines(log_path), PackedStringArray(), "sin errores en el registro")
+
+
 func test_idle_quit_closes_a_server_without_players() -> void:
 	var log_path: String = _build_path("test_server_main_c.log")
 	var report_path: String = _build_path("test_server_main_c.json")

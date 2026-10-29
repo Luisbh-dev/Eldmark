@@ -7,7 +7,7 @@ extends RefCounted
 ## [codeblock]
 ## --server --port=24600 --zone=<id> --max-players=64 --max-per-ip=4 --idle-quit=<s>
 ## --fake-players=N --fake-layout=<cluster|spread> --fake-churn=<ticks> --fake-brain=combat
-## --fake-center=<x>,<z>
+## --fake-center=<x>,<z> --max-realm-diff=N
 ## --debug-commands --dev-lock --dev-lock-path=<ruta>
 ## --quit-after-ticks=N --report=<ruta.json> --state-log=<ruta.csv> --net-sim=rtt=120,jitter=20
 ## --stop-file=<ruta> --combat-log=<ruta.csv> --console --no-dummies --no-npcs --battle-log=<ruta.jsonl>
@@ -20,6 +20,10 @@ extends RefCounted
 ## [code]--no-npcs[/code] no crea los PNJ de sus generadores (Huecos, Capitán, guarnición y Guardianes; [NpcSpawnerSystem]).
 ## [code]--battle-log=<ruta>[/code] escribe los eventos de guerra y las muertes en JSON Lines
 ## ([BattleLog]; lo resume [code]tools/war/summarize_battle.gd[/code], GUE-17).
+## [code]--max-realm-diff=N[/code] (GUE-42) limita la diferencia de personas conectadas entre los reinos de la zona:
+## el HELLO de quien entraría en un reino y dejaría más de N personas de ventaja sobre el reino con menos
+## recibe un REJECT 9 (IMBALANCE); 0 = sin límite. Con N > 0 los jugadores falsos de reino automático
+## rellenan el bando corto y se retiran al entrar personas (ver [RealmBalance]).
 ## SIGTERM y SIGINT (Ctrl+C, [code]docker stop[/code], systemd) matan el proceso de Godot sin pasar
 ## por GDScript, así que no hay cierre ordenado. Para pararlo desde fuera con NOTICE de cierre,
 ## informe y borrado del bloqueo de [code]--dev-lock[/code] está [code]--stop-file=<ruta>[/code]: el
@@ -75,6 +79,9 @@ var fake_brain: String = ""
 ## en torno al que se juntan los falsos en lugar del campamento del primer reino (donde la zona segura
 ## les impide pelear). [constant NO_FAKE_CENTER] = ninguno ([method has_fake_center]).
 var fake_center: Vector2 = NO_FAKE_CENTER
+## Diferencia máxima de personas conectadas entre los reinos de la zona (GUE-42); 0 = sin límite. Los
+## jugadores falsos no cuentan para rechazar a una persona.
+var max_realm_diff: int = 0
 ## Lee los comandos de la consola de la entrada estándar (en un hilo, sin bloquear el tick).
 var console: bool = false
 ## No coloca los maniquíes de entrenamiento de los marcadores [code]dummy_points[/code] de la zona.
@@ -137,6 +144,8 @@ static func from_args(args: PackedStringArray) -> ServerConfig:
 				center_parts[1].strip_edges().to_float())
 		if center.is_finite() and absf(center.x) <= MAX_FAKE_CENTER and absf(center.y) <= MAX_FAKE_CENTER:
 			config.fake_center = center
+	config.max_realm_diff = _int_option(args, "--max-realm-diff=", config.max_realm_diff, 0,
+			_MAX_PLAYERS_LIMIT)
 	config.combat_log_path = _string_option(args, "--combat-log=").replace("\\", "/")
 	config.battle_log_path = _string_option(args, "--battle-log=").replace("\\", "/")
 	config.console = args.has("--console")

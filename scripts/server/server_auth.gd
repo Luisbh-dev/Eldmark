@@ -13,6 +13,8 @@ extends RefCounted
 ## servidor lleno               -> FULL
 ## demasiadas conexiones por IP -> TOO_MANY_CONNECTIONS (salvo loopback)
 ## el AuthProvider              -> OK o TICKET
+## el reino elegido              -> IMBALANCE (solo con --max-realm-diff, tras el proveedor: el reino lo puede
+##                                 decidir él; ver RealmBalance)
 ## [/codeblock]
 
 ## Direcciones de loopback exentas del tope por IP (para los bots y los clientes locales).
@@ -26,6 +28,7 @@ var _sim_hash: int
 var _allowed_realms: PackedInt32Array
 var _provider: AuthProvider
 var _connected_names: Callable = Callable()
+var _realm_counts: Callable = Callable()
 
 
 ## [param sim_hash] es la huella de la simulación del servidor
@@ -45,6 +48,14 @@ func _init(config: ServerConfig, sim_hash: int, allowed_realms: PackedInt32Array
 ## NAME, para que los susurros por nombre no sean ambiguos. Sin fuente no se comprueba.
 func set_connected_names_source(source: Callable) -> void:
 	_connected_names = source
+
+
+## Fuente de las personas conectadas en cada reino (GUE-42): un [Callable] sin argumentos que devuelve un
+## [PackedInt32Array] de tres posiciones (Vardheim, Solmarch, Askarra; ver [RealmBalance]). Se consulta en
+## cada HELLO aceptado cuando [member ServerConfig.max_realm_diff] es mayor que 0; sin fuente no se rechaza
+## nunca por desequilibrio.
+func set_realm_counts_source(source: Callable) -> void:
+	_realm_counts = source
 
 
 ## Devuelve un [enum NetProtocol.Result]: OK si hay que aceptar al cliente o el motivo del
@@ -70,7 +81,10 @@ func validate(hello: NetMessages.Hello, remote_address: String, player_count: in
 		return NetProtocol.Result.TOO_MANY_CONNECTIONS
 	if _provider == null:
 		return NetProtocol.Result.TICKET
-	return _provider.authenticate(hello)
+	var result: int = _provider.authenticate(hello)
+	if result == NetProtocol.Result.OK and _would_unbalance(hello.realm):
+		return NetProtocol.Result.IMBALANCE
+	return result
 
 
 ## true si [param remote_address] es loopback (127.0.0.1, ::1, localhost o cualquier 127.x), que
@@ -163,6 +177,14 @@ static func _fits_protocol(display_name: String) -> bool:
 	if display_name.length() > NetProtocol.MAX_NAME_CHARS:
 		return false
 	return display_name.to_utf8_buffer().size() <= NetProtocol.MAX_NAME_BYTES
+
+
+# true si entrar en [param realm] dejaría más de --max-realm-diff personas de ventaja sobre el reino con
+# menos de los que admite la zona. Los jugadores falsos no cuentan: el recuento es de personas.
+func _would_unbalance(realm: int) -> bool:
+	if _config.max_realm_diff <= 0 or not _realm_counts.is_valid():
+		return false
+	return RealmBalance.exceeds(_realm_counts.call(), _allowed_realms, realm, _config.max_realm_diff)
 
 
 func _is_realm_allowed(realm: int) -> bool:

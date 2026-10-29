@@ -437,6 +437,97 @@ func test_full_server_rejects_with_full() -> void:
 	assert_eq(_server.get_player_count(), 2, "siguen dos")
 
 
+func test_max_realm_diff_rejects_the_realm_that_would_lead_by_too_much() -> void:
+	await _start_server(func(config: ServerConfig) -> void: config.max_realm_diff = 1)
+	var first: RawClient = await _join("Ana", VARDHEIM)
+	if first == null:
+		return
+	# 2 contra 0 son 2 de ventaja con el límite en 1: la segunda persona de Vardheim se rechaza.
+	var second: RawClient = _connect_client(_hello(VARDHEIM, "Bruno"))
+	var rejected: bool = await _run_until(func() -> bool: return second.reject != null)
+	if not assert_true(rejected, "llega un REJECT"):
+		return
+	assert_eq(second.reject.result, NetProtocol.Result.IMBALANCE, "REJECT 9 IMBALANCE")
+	assert_eq(second.reject.text, NetProtocol.result_text(NetProtocol.Result.IMBALANCE), "con su texto propio")
+	assert_true(second.reject.text.contains("demasiados jugadores"), "que dice el motivo")
+	assert_null(second.welcome, "sin WELCOME")
+	# El mismo nombre en otro reino sí entra: el rechazo no deja rastro (ni enfriamiento).
+	var third: RawClient = await _join("Bruno", SOLMARCH)
+	if third == null:
+		return
+	# Con Askarra vacío (la zona de pruebas admite los tres reinos) Vardheim sigue 2 contra 0.
+	var fourth: RawClient = _connect_client(_hello(VARDHEIM, "Carlos"))
+	assert_true(await _run_until(func() -> bool: return fourth.reject != null))
+	assert_eq(fourth.reject.result, NetProtocol.Result.IMBALANCE, "Askarra sigue vacío")
+	var fifth: RawClient = await _join("Diego", NetProtocol.Realm.ASKARRA)
+	if fifth == null:
+		return
+	# 1 contra 1 contra 1: ya se puede entrar en cualquiera y empatar a dos no deja ventaja de más.
+	var sixth: RawClient = await _join("Elena", VARDHEIM)
+	assert_not_null(sixth, "con los tres reinos a 1, Vardheim admite a otra")
+	var report: Dictionary = _read_report()
+	var rejects: Dictionary = report.get("rejects", {})
+	assert_eq(int(rejects.get(NetProtocol.result_text(NetProtocol.Result.IMBALANCE), 0)), 2,
+			"el informe cuenta los dos rechazos por desequilibrio")
+
+
+func test_fake_players_do_not_count_to_reject_a_person() -> void:
+	await _start_server(func(config: ServerConfig) -> void: config.max_realm_diff = 1)
+	for i: int in 5:
+		_server.add_fake_player(BotBrain.new(1 + i, BotBrain.Pattern.IDLE), VARDHEIM)
+	assert_eq(_server.get_realm_counts(), PackedInt32Array([0, 0, 0]), "los falsos no son personas")
+	var person: RawClient = await _join("Ana", VARDHEIM)
+	assert_not_null(person, "la primera persona de Vardheim entra aunque haya cinco falsos")
+	_server.add_fake_player(BotBrain.new(9, BotBrain.Pattern.IDLE), SOLMARCH)
+	assert_eq(_server.get_realm_counts(), PackedInt32Array([1, 0, 0]), "solo cuenta la persona")
+
+
+func test_without_a_limit_any_realm_takes_everyone() -> void:
+	await _start_server()
+	for name_text: String in ["Ana", "Bruno", "Carlos", "Diego"]:
+		assert_not_null(await _join(name_text, VARDHEIM), "%s entra" % name_text)
+	assert_eq(_server.get_realm_counts(), PackedInt32Array([4, 0, 0]))
+
+
+func test_the_welcome_carries_the_real_count_per_realm() -> void:
+	await _start_server()
+	var first: RawClient = await _join("Ana", VARDHEIM)
+	if first == null:
+		return
+	assert_eq(first.welcome.realm_counts, PackedInt32Array([0, 0, 0]), "el primero no se cuenta a sí mismo")
+	var second: RawClient = await _join("Bruno", SOLMARCH)
+	if second == null:
+		return
+	assert_eq(second.welcome.realm_counts, PackedInt32Array([1, 0, 0]), "el segundo ve al primero")
+	var third: RawClient = await _join("Carlos", VARDHEIM)
+	if third == null:
+		return
+	assert_eq(third.welcome.realm_counts, PackedInt32Array([1, 1, 0]), "y el tercero, a los dos")
+	assert_eq(third.welcome.get_realm_count(VARDHEIM), 1)
+	assert_eq(_server.get_realm_counts(), PackedInt32Array([2, 1, 0]), "el servidor cuenta a las tres personas")
+	assert_eq(_server.get_realm_counts(true), PackedInt32Array([2, 1, 0]), "ya están todas dentro")
+	# Un falso no entra en el recuento, y quien se va deja de contar.
+	_server.add_fake_player(BotBrain.new(1, BotBrain.Pattern.IDLE), SOLMARCH)
+	var leave := NetMessages.ClientLeave.new()
+	first.send_raw(NetProtocol.CH_RELIABLE, leave.encode())
+	var gone: bool = await _run_until(func() -> bool: return _server.get_realm_counts() == PackedInt32Array([1, 1, 0]))
+	assert_true(gone, "al irse Ana, Vardheim baja a 1")
+	var fourth: RawClient = await _join("Diego", NetProtocol.Realm.ASKARRA)
+	if fourth != null:
+		assert_eq(fourth.welcome.realm_counts, PackedInt32Array([1, 1, 0]))
+
+
+func test_a_person_who_is_still_loading_counts_for_the_limit_but_not_for_the_world_count() -> void:
+	await _start_server(func(config: ServerConfig) -> void: config.max_realm_diff = 1)
+	var loading: RawClient = _connect_client(_hello(VARDHEIM, "Ana"), false)
+	assert_true(await _run_until(func() -> bool: return loading.connected), "Ana conecta y carga la zona")
+	assert_eq(_server.get_realm_counts(), PackedInt32Array([1, 0, 0]), "cargando ya cuenta para el límite")
+	assert_eq(_server.get_realm_counts(true), PackedInt32Array([0, 0, 0]), "pero aún no está en el mundo")
+	var second: RawClient = _connect_client(_hello(VARDHEIM, "Bruno"))
+	assert_true(await _run_until(func() -> bool: return second.reject != null))
+	assert_eq(second.reject.result, NetProtocol.Result.IMBALANCE, "dos a la vez no se cuelan por estar cargando")
+
+
 func test_duplicate_name_is_rejected_while_the_first_player_is_connected() -> void:
 	await _start_server()
 	var first: RawClient = await _join("Álvaro")

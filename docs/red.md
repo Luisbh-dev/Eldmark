@@ -652,7 +652,7 @@ El tamaño de un ENTITY_SPAWN depende de `kind` (ver 5.5).
 | 16 | u8 | channel | canal de la zona; 0 en la fase 2 |
 | 17 | u8 | zone_len | ≤ 32 |
 | 18 | z B | zone_id | id ASCII de `zones.gd` |
-| 18+z | u8 × 3 | realm_counts | jugadores de Vardheim, Solmarch y Askarra en la zona (saturan a 255), para que la selección de reino ofrezca el más corto ([fuerte.md 7](fuerte.md#7-bots-que-asedian-gue-15-gue-16-gue-42)). El servidor los rellena desde GUE-42 (F6); hasta entonces van a 0 |
+| 18+z | u8 × 3 | realm_counts | jugadores de Vardheim, Solmarch y Askarra en la zona (saturan a 255), para que la selección de reino ofrezca el más corto ([fuerte.md 7](fuerte.md#7-bots-que-asedian-gue-15-gue-16-gue-42)). Personas (no jugadores falsos) de cada reino en el momento del HELLO, sin contar a quien entra; el servidor los rellena desde GUE-42 (F6a) |
 
 El tamaño es exactamente `21 + z`: un WELCOME de la versión 2 (sin el recuento) ya no se decodifica.
 
@@ -661,7 +661,7 @@ El tamaño es exactamente `21 + z`: un WELCOME de la versión 2 (sin el recuento
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
 | 0 | u32 | magic | |
-| 4 | u8 | result | 1 VERSION, 2 SIM_HASH, 3 REALM, 4 FULL, 5 TICKET, 6 MALFORMED, 7 TOO_MANY_CONNECTIONS, 8 NAME, 9 IMBALANCE (v3: el reino elegido tiene demasiados jugadores, `--max-realm-diff`) |
+| 4 | u8 | result | 1 VERSION, 2 SIM_HASH, 3 REALM, 4 FULL, 5 TICKET, 6 MALFORMED, 7 TOO_MANY_CONNECTIONS, 8 NAME, 9 IMBALANCE (v3: el reino elegido tiene demasiados jugadores, `--max-realm-diff`; se comprueba después del proveedor de identidad) |
 | 5 | u8 | text_len | |
 | 6 | n B | text | UTF-8, en español (`NetProtocol.result_text`) |
 
