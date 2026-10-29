@@ -56,8 +56,10 @@ func _bot(seed_value: int, realm_name: String,
 
 
 ## Un proceso [code]--bots=N[/code] (enjambre de clientes ligeros) en lugar de un [code]--bot[/code].
-func _swarm(count: int, seed_value: int, realm_name: String = "vardheim") -> Dictionary:
-	return {"seed": seed_value, "realm": realm_name, "extra": PackedStringArray(), "swarm": count}
+## [param extra_args] son los argumentos de más ([code]--bot-brain=combat[/code]...).
+func _swarm(count: int, seed_value: int, realm_name: String = "vardheim",
+		extra_args: PackedStringArray = PackedStringArray()) -> Dictionary:
+	return {"seed": seed_value, "realm": realm_name, "extra": extra_args, "swarm": count}
 
 
 ## Lanza un servidor (con [param server_extra] de más) y los bots, espera a que terminen y recoge sus
@@ -450,3 +452,48 @@ func test_a_swarm_process_fills_the_server_with_light_clients() -> void:
 		assert_true(int(entry.get("bytes_down", 0)) > 1000 and int(entry.get("bytes_up", 0)) > 1000,
 				"%s: bytes de subida y de bajada" % entry.get("name"))
 		assert_true(float(entry.get("avg_snapshot_bytes", 0.0)) > 49.0, "y tamaño medio de snapshot")
+
+
+## Dos enjambres de combate ([code]--bots=3 --bot-brain=combat[/code], uno por reino) contra el servidor de
+## [code]test_world[/code]: los bots ligeros, que no simulan, se buscan por los ENTITY_SPAWN y los
+## snapshots, pelean con rebobinado de verdad (mandan su desfase de vista) y reciben los ENTITY_EVENT.
+func test_combat_swarms_fight_each_other_with_the_rewind_of_a_real_client() -> void:
+	var combat: PackedStringArray = PackedStringArray(["--bot-brain=combat"])
+	var scenario: Dictionary = await _run_scenario("swarm_combat", LIGHT_ZONE, 700, 560,
+			[_swarm(3, 100, "vardheim", combat), _swarm(3, 200, "solmarch", combat)])
+	if not assert_true(scenario["ok"], "el escenario termina"):
+		return
+	var server: Dictionary = scenario["server"]
+	assert_eq(server["exit"], 0, "el servidor sale con 0")
+	assert_eq(_error_lines(server["log"]), PackedStringArray(), "sin errores en el registro del servidor")
+	var data: Dictionary = server["data"]
+	var stats: Dictionary = data.get("combat", {})
+	print("[enjambres de combate] golpes %d, bloqueados %d, muertes %d, eventos enviados %d, rebobinados rechazados %d" % [
+			int(stats.get("hits", 0)), int(stats.get("blocked", 0)), int(stats.get("deaths", 0)),
+			int(stats.get("events_sent", 0)), int(stats.get("rewind_rejected", 0))])
+	assert_true(int(stats.get("hits", 0)) >= 8, "se pegan (%s golpes)" % stats.get("hits"))
+	assert_true(int(stats.get("deaths", 0)) >= 1, "y alguien muere (%s muertes)" % stats.get("deaths"))
+	assert_true(int(stats.get("events_sent", 0)) > int(stats.get("events", 0)),
+			"cada evento llega a varios clientes (%s enviados, %s emitidos)" % [stats.get("events_sent"),
+			stats.get("events")])
+	assert_eq(int(stats.get("rewind_rejected", -1)), 0, "ningún desfase de vista pasa del tope")
+	assert_eq((stats.get("suspicious", []) as Array).size(), 0, "y nadie levanta sospechas")
+	assert_eq(int((data.get("strikes", {}) as Dictionary).get("total", -1)), 0, "sin avisos")
+	assert_true((data.get("kicks", []) as Array).is_empty(), "ni expulsiones")
+	for index: int in 2:
+		var swarm: Dictionary = scenario["bots"][index]
+		assert_eq(swarm["exit"], 0, "el enjambre %d sale con 0: todos jugaban" % (index + 1))
+		assert_eq(_error_lines(swarm["log"]), PackedStringArray(), "sin errores en su registro")
+		var clients: Array = (swarm["data"] as Dictionary).get("clients", [])
+		assert_eq(clients.size(), 3)
+		var known: int = 0
+		for entry: Dictionary in clients:
+			known += int(entry.get("enemies_known", 0))
+			assert_true(bool(entry.get("combat", false)), "%s pelea" % entry.get("name"))
+			assert_true(int(entry.get("spawns_seen", 0)) >= 5, "%s ve a los demás (%s)" % [
+					entry.get("name"), entry.get("spawns_seen")])
+			assert_true(int(entry.get("hit_events_seen", 0)) > 0, "%s recibe eventos de golpe" % entry.get("name"))
+			assert_true(int(entry.get("event_bytes", 0)) > 0)
+			assert_eq(int(entry.get("malformed_packets", -1)), 0, "ni paquetes mal formados")
+		if index == 0:
+			assert_eq(known, 9, "el primer enjambre aún tenía a los 3 enemigos de cada bot al irse")

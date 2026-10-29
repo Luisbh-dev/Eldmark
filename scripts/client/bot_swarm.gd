@@ -10,7 +10,7 @@ extends Node
 ## que un proceso aguanta decenas de ellos.
 ## [br][br]
 ## Opciones ([ClientConfig]): [code]--bots=N --connect=<host>[:<puerto>] [--realm=<reino>]
-## [--bot-seed=N] [--net-sim=…] [--quit-after-ticks=N] [--report=<ruta.json>][/code]. El bot [i]i[/i]
+## [--bot-seed=N] [--bot-brain=combat] [--net-sim=…] [--quit-after-ticks=N] [--report=<ruta.json>][/code]. El bot [i]i[/i]
 ## se llama [code]NameRules.bot_name(bot_seed + i)[/code]: dos enjambres contra el mismo servidor
 ## necesitan semillas distintas (los nombres no se pueden repetir en una zona). Sin [code]--realm[/code]
 ## los bots se reparten entre Vardheim y Solmarch.

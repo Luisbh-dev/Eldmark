@@ -18,6 +18,15 @@ extends Node
 ## una simulación local. Cada bot tiene su propio [NetTransport] (y por tanto su propio
 ## [SceneMultiplayer], registrado por la ruta de su nodo).
 ## [br][br]
+## [b]Cerebro de combate[/b] ([code]--bot-brain=combat[/code], [member ClientConfig.bot_brain]): el bot
+## pelea con [constant BotBrain.Pattern.COMBAT] como un jugador de verdad, sin simular nada. Sabe quién
+## es enemigo por los ENTITY_SPAWN (reino y tipo; solo jugadores a los que el servidor dejaría dañar) y
+## dónde está por los snapshots, de los que solo decodifica una fracción de los registros en cada uno
+## ([constant ENEMY_SCAN_STRIDE]): con 128 bots, decodificarlos todos costaría más que el servidor, y a
+## un bot le basta con posiciones de hace unas décimas de segundo. Cada entrada lleva el
+## [code]view_offset_q[/code] que mandaría un cliente (su tick menos el de dibujo), así que el servidor
+## hace el rebobinado de verdad, y al morir pide reaparecer en cuanto puede (RESPAWN_REQUEST).
+## [br][br]
 ## [b]Estadísticas[/b] ([method get_stats]): bytes de subida y de bajada de ENet desde que apareció
 ## (con las cabeceras de ENet, sin las de UDP/IP), snapshots recibidos y su tamaño medio, registros por
 ## snapshot, y lo que [BotSwarm] vuelca en su informe.
@@ -48,8 +57,13 @@ const DEFAULT_REALMS: Array[int] = [NetProtocol.Realm.VARDHEIM, NetProtocol.Real
 const INPUT_RING_SIZE: int = 16
 ## Ticks, tras una subida de las sustituciones del servidor, en los que se envía con R = 8.
 const LOSSY_WINDOW_TICKS: int = 120
-## Escala del retardo de interpolación en el INPUT_BATCH (× 8).
+## Escala del retardo de interpolación en el INPUT_BATCH (× 8) y del desfase de vista (× 16).
 const INTERP_DELAY_SCALE: float = 8.0
+const VIEW_OFFSET_SCALE: float = 16.0
+## Cerebro de combate: de cada snapshot solo se decodifica uno de cada tantos registros (rotando).
+const ENEMY_SCAN_STRIDE: int = 6
+## Cerebro de combate: ticks mínimos entre dos peticiones de reaparición.
+const RESPAWN_RETRY_TICKS: int = 30
 const TEXT_CONNECT_FAILED: String = "No se pudo conectar con el servidor %s:%d"
 const TEXT_CONNECTION_LOST: String = "Se perdió la conexión con el servidor"
 const TEXT_LEFT: String = "Ha salido de la zona"
@@ -67,6 +81,7 @@ var _realm: int = NetProtocol.Realm.NONE
 var _tick_sync: TickSync = TickSync.new()
 var _interp_clock: InterpolationClock = InterpolationClock.new()
 var _brain: BotBrain = null
+var _combat: bool = false
 var _local_tick: int = 0
 var _hello_tick: int = 0
 var _ready_tick: int = 0
@@ -80,6 +95,7 @@ var _joined_local_tick: int = -1
 var _position: Vector3 = Vector3.ZERO
 var _yaw: float = 0.0
 var _inputs: Array[PlayerInput] = []
+var _view_offsets: PackedInt32Array = PackedInt32Array()
 var _newest_snapshot_tick: int = 0
 var _last_own_tick: int = 0
 var _input_ack_tick: int = 0
@@ -95,6 +111,12 @@ var _reject_text: String = ""
 var _disconnect_text: String = ""
 var _last_notice_text: String = ""
 
+# Cerebro de combate: los enemigos que conoce por los ENTITY_SPAWN (net_id -> última posición conocida)
+# y cuáles siguen vivos, y el desfase de la rotación con la que se decodifican los registros.
+var _enemy_positions: Dictionary[int, Vector3] = {}
+var _enemy_alive: Dictionary[int, bool] = {}
+var _scan_phase: int = 0
+
 # Estadísticas.
 var _snapshots: int = 0
 var _snapshots_late: int = 0
@@ -107,6 +129,11 @@ var _batches_sent: int = 0
 var _spawns_seen: int = 0
 var _despawns_seen: int = 0
 var _events_seen: int = 0
+var _event_bytes: int = 0
+var _hit_events_seen: int = 0
+var _respawn_requests: int = 0
+var _last_respawn_request_tick: int = -1000
+var _dead: bool = false
 var _malformed_packets: int = 0
 var _bytes_at_join: Dictionary = {}
 var _bytes_final: Dictionary = {}
@@ -115,6 +142,7 @@ var _closed_local_tick: int = -1
 
 func _init() -> void:
 	_inputs.resize(INPUT_RING_SIZE)
+	_view_offsets.resize(INPUT_RING_SIZE)
 
 
 ## Prepara el bot número [param index] del enjambre con [param config] y empieza a conectar. El nodo
@@ -126,6 +154,7 @@ func setup(index: int, config: ClientConfig) -> void:
 		return
 	_index = index
 	_config = config
+	_combat = config.bot_brain == ClientConfig.BOT_BRAIN_COMBAT
 	_display_name = NameRules.bot_name(config.bot_seed + index)
 	_realm = config.realm if config.realm != NetProtocol.Realm.NONE \
 			else DEFAULT_REALMS[index % DEFAULT_REALMS.size()]
@@ -223,6 +252,9 @@ func get_last_notice_text() -> String:
 ## [code]tick_sync_adjustments[/code], [code]resyncs[/code], [code]substitution_rises[/code],
 ## [code]substitutions[/code] (contador del servidor), [code]spawns_seen[/code], [code]despawns_seen[/code],
 ## [code]delay_ticks[/code], [code]jitter_ticks[/code], [code]malformed_packets[/code].
+## [br]- Del combate: [code]combat[/code] (si pelea), [code]events_seen[/code] y [code]event_bytes[/code]
+## (ENTITY_EVENT recibidos y su tamaño), [code]hit_events_seen[/code], [code]enemies_known[/code],
+## [code]dead[/code] y [code]respawn_requests[/code].
 func get_stats() -> Dictionary:
 	var counters: Dictionary = _byte_counters()
 	var up: int = int(counters.get("wire_out", 0)) - int(_bytes_at_join.get("wire_out", 0))
@@ -272,6 +304,12 @@ func get_stats() -> Dictionary:
 		"spawns_seen": _spawns_seen,
 		"despawns_seen": _despawns_seen,
 		"events_seen": _events_seen,
+		"event_bytes": _event_bytes,
+		"hit_events_seen": _hit_events_seen,
+		"combat": _combat,
+		"enemies_known": _enemy_positions.size(),
+		"dead": _dead,
+		"respawn_requests": _respawn_requests,
 		"delay_ticks": _interp_clock.get_delay_ticks(),
 		"jitter_ticks": _interp_clock.get_jitter_ticks(),
 		"malformed_packets": _malformed_packets,
@@ -302,6 +340,7 @@ func _play_tick() -> void:
 		if _predicted_tick >= _first_real_tick:
 			var input: PlayerInput = _brain.next_input(_predicted_tick, _position, _yaw).quantized()
 			_inputs[_predicted_tick % INPUT_RING_SIZE] = input
+			_view_offsets[_predicted_tick % INPUT_RING_SIZE] = _view_offset_q(_predicted_tick)
 	_send_input_batch()
 
 
@@ -327,12 +366,24 @@ func _send_input_batch() -> void:
 			batch.view_offsets_q.clear()
 			continue
 		batch.inputs.append(input)
-		batch.view_offsets_q.append(0)
+		batch.view_offsets_q.append(_view_offsets[tick % INPUT_RING_SIZE])
 	if batch.inputs.is_empty():
 		return
 	var bytes: PackedByteArray = batch.encode()
 	if not bytes.is_empty() and _transport.send(SERVER_PEER_ID, NetProtocol.CH_INPUT, bytes) == OK:
 		_batches_sent += 1
+
+
+# Desfase de la vista de la entrada del tick [param tick] ((tick - tick de dibujo) × 16): lo que mandaría
+# un cliente, para que el servidor haga el rebobinado de verdad. Solo con el cerebro de combate; sin él
+# (y antes de que arranque el reloj de interpolación) no hay vista que medir.
+func _view_offset_q(tick: int) -> int:
+	if not _combat:
+		return 0
+	var drawn: float = _interp_clock.get_render_tick()
+	if drawn <= 0.0:
+		return 0
+	return clampi(roundi((float(tick) - drawn) * VIEW_OFFSET_SCALE), 0, NetMessages.MAX_VIEW_OFFSET_Q)
 
 
 # --- Conexión ---------------------------------------------------------------------------------
@@ -432,12 +483,21 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 			_on_spawn(bytes)
 		NetProtocol.MSG_ENTITY_DESPAWN:
 			_despawns_seen += 1
+			if _combat:
+				var despawn: NetMessages.EntityDespawn = NetMessages.EntityDespawn.decode(bytes)
+				if despawn != null:
+					_enemy_positions.erase(despawn.net_id)
+					_enemy_alive.erase(despawn.net_id)
 		NetProtocol.MSG_ENTITY_EVENT:
 			# Los eventos de combate no hacen nada a un bot, pero tienen que estar bien formados.
-			if NetMessages.EntityEvent.decode(bytes) == null:
+			var event: NetMessages.EntityEvent = NetMessages.EntityEvent.decode(bytes)
+			if event == null:
 				_malformed_packets += 1
 			else:
 				_events_seen += 1
+				_event_bytes += bytes.size()
+				if event.event == NetMessages.EntityEvent.Kind.HIT:
+					_hit_events_seen += 1
 		NetProtocol.MSG_NOTICE:
 			var notice: NetMessages.Notice = NetMessages.Notice.decode(bytes)
 			if notice == null:
@@ -465,6 +525,8 @@ func _on_snapshot(bytes: PackedByteArray) -> void:
 		# El estado propio va seguido del bloque extra (vida), que siempre lo acompaña.
 		section_offset += PlayerState.ENCODED_SIZE + NetMessages.SNAPSHOT_EXTRA_SIZE
 	var server_tick: int = bytes.decode_u32(1)
+	if _combat and _state == State.IN_WORLD:
+		_scan_enemies(bytes, section_offset)
 	_snapshots += 1
 	_snapshot_bytes += size
 	_max_snapshot_bytes = maxi(_max_snapshot_bytes, size)
@@ -491,6 +553,70 @@ func _on_snapshot(bytes: PackedByteArray) -> void:
 		if state != null:
 			_position = state.position
 			_yaw = state.yaw
+		if _combat:
+			_note_extra_block(bytes, server_tick)
+
+
+# Cerebro de combate: decodifica la posición y la vida de uno de cada ENEMY_SCAN_STRIDE registros del
+# snapshot (rotando el desfase en cada snapshot) y actualiza solo a los enemigos que ya conoce.
+func _scan_enemies(bytes: PackedByteArray, section_offset: int) -> void:
+	if section_offset >= bytes.size() or _enemy_positions.is_empty():
+		return
+	var sections: int = bytes.decode_u8(section_offset)
+	var offset: int = section_offset + 1
+	var phase: int = _scan_phase
+	_scan_phase = (_scan_phase + 1) % ENEMY_SCAN_STRIDE
+	var running: int = 0
+	for _i: int in sections:
+		if offset + 2 > bytes.size():
+			break
+		var count: int = bytes[offset + 1]
+		offset += 2
+		var record: int = posmod(phase - running, ENEMY_SCAN_STRIDE)
+		while record < count:
+			var record_offset: int = offset + record * EntityRecord.SIZE
+			if record_offset + EntityRecord.SIZE > bytes.size():
+				break
+			var net_id: int = bytes.decode_u16(record_offset)
+			if _enemy_positions.has(net_id):
+				_enemy_positions[net_id] = NetMath.unpack_position(bytes.decode_u64(record_offset + 2))
+				_enemy_alive[net_id] = bytes[record_offset + 20] != EntityRecord.HEALTH_Q_DEAD
+			record += ENEMY_SCAN_STRIDE
+		running += count
+		offset += count * EntityRecord.SIZE
+
+
+# Cerebro de combate: lee el bloque extra del snapshot (vida, estado, tick de reaparición) y, estando
+# muerto, pide reaparecer en cuanto se puede.
+func _note_extra_block(bytes: PackedByteArray, server_tick: int) -> void:
+	var extra_offset: int = 13 + PlayerState.ENCODED_SIZE
+	var status: int = bytes.decode_u8(extra_offset + 4)
+	var respawn_tick: int = bytes.decode_u32(extra_offset + 5)
+	_dead = (status & NetMessages.STATUS_DEAD) != 0
+	if not _dead or server_tick < respawn_tick:
+		return
+	if _local_tick - _last_respawn_request_tick < RESPAWN_RETRY_TICKS:
+		return
+	_last_respawn_request_tick = _local_tick
+	var request := NetMessages.RespawnRequest.new()
+	if _transport.send(SERVER_PEER_ID, NetProtocol.CH_RELIABLE, request.encode()) == OK:
+		_respawn_requests += 1
+
+
+# Cerebro de combate: el enemigo vivo más cercano a [param position] (la última posición que se sabe de
+# él), o null.
+func _find_enemy(position: Vector3) -> Variant:
+	var best: Variant = null
+	var best_distance: float = INF
+	for net_id: int in _enemy_positions:
+		if not _enemy_alive[net_id]:
+			continue
+		var enemy_position: Vector3 = _enemy_positions[net_id]
+		var distance: float = position.distance_squared_to(enemy_position)
+		if distance < best_distance:
+			best_distance = distance
+			best = enemy_position
+	return best
 
 
 # Registros del snapshot, sumando los contadores de sus secciones sin decodificarlos.
@@ -528,6 +654,10 @@ func _on_spawn(bytes: PackedByteArray) -> void:
 		return
 	if not spawn.is_yours:
 		_spawns_seen += 1
+		if _combat and spawn.kind == NetProtocol.EntityKind.PLAYER and spawn.state != null \
+				and FactionRules.can_damage(_realm, spawn.realm, StringName(_welcome.zone_id)):
+			_enemy_positions[spawn.net_id] = spawn.state.position
+			_enemy_alive[spawn.net_id] = true
 		return
 	if _state != State.READY_SENT:
 		return
@@ -539,7 +669,11 @@ func _on_spawn(bytes: PackedByteArray) -> void:
 	_position = spawn.state.position
 	_yaw = spawn.state.yaw
 	_last_own_tick = spawn.spawn_tick
-	_brain = BotBrain.new(_config.bot_seed + _index, BotBrain.Pattern.WANDER, _position, BOT_RADIUS)
+	if _combat:
+		_brain = BotBrain.new(_config.bot_seed + _index, BotBrain.Pattern.COMBAT, _position, BOT_RADIUS)
+		_brain.set_enemy_finder(_find_enemy)
+	else:
+		_brain = BotBrain.new(_config.bot_seed + _index, BotBrain.Pattern.WANDER, _position, BOT_RADIUS)
 	_joined_local_tick = _local_tick
 	_bytes_at_join = _byte_counters()
 	_state = State.IN_WORLD

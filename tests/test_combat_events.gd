@@ -5,6 +5,9 @@ extends TestCase
 ## [br]- Un evento propio (atacante, víctima, asesino o asistente) se entrega al llegar.
 ## [br]- Uno ajeno espera a que el tick de dibujo alcance su tick, aunque llegue antes.
 ## [br]- RESPAWN_REQUEST sale con el índice elegido y solo dentro del mundo.
+## [br]- Una corrección de la predicción causada por lo que impone el servidor (un golpe recibido, su
+## golpe parado, su muerte o su reaparición) cuenta como explicada por el combate, llegue el evento antes
+## o después que el snapshot; sin evento (o con uno ajeno o muy anterior) sigue siendo un fallo.
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const WAIT_FRAMES: int = 600
@@ -391,3 +394,142 @@ func test_respawn_request_carries_the_chosen_index_and_only_works_in_the_world()
 	assert_true(_client.send_respawn_request(900), "un índice enorme se recorta al byte")
 	assert_true(await _wait_until(func() -> bool: return _fake.respawn_requests.size() >= 3))
 	assert_eq(_fake.respawn_requests[2], 255)
+
+
+# --- Correcciones explicadas por el combate ---------------------------------------------------
+# Sin servidor: se alimenta a un NetClient suelto con las llamadas internas que hace al reconciliar
+# (un snapshot corregido) y al recibir un evento.
+
+func _bare_client() -> NetClient:
+	var client := NetClient.new()
+	client._net_id = OWN_ID
+	return client
+
+
+## Una corrección del snapshot del servidor [param server_tick], sin sustitución ni teletransporte.
+func _correct(client: NetClient, server_tick: int) -> void:
+	client._last_snapshot_tick = server_tick
+	client._record_result(ClientPrediction.Result.CORRECTED, false, false)
+
+
+## El cliente recibe [param event] por el canal fiable.
+func _receive(client: NetClient, event: NetMessages.EntityEvent) -> void:
+	client._on_entity_event(event.encode())
+
+
+## Pasa [param ticks] ticks locales (el bucle del tick da por definitivas las diferencias viejas).
+func _advance(client: NetClient, ticks: int) -> void:
+	for _i: int in ticks:
+		client._local_tick += 1
+		client._settle_pending_diffs()
+
+
+func test_a_correction_after_a_hit_on_me_is_explained_by_combat() -> void:
+	var client: NetClient = _bare_client()
+	_receive(client, _hit(OWN_ID, OTHER_ID, 100))
+	_correct(client, 100)
+	var stats: Dictionary = client.get_stats()
+	assert_eq(stats["diffs"], 1)
+	assert_eq(stats["combat_diffs"], 1, "por el combate")
+	assert_eq(stats["explained_diffs"], 1)
+	assert_eq(stats["unexplained_diffs"], 0, "no es un fallo de la predicción")
+	# Sigue igual cuando pasa el plazo: el evento ya estaba.
+	_advance(client, NetClient.DIFF_SETTLE_TICKS + 10)
+	stats = client.get_stats()
+	assert_eq(stats["combat_diffs"], 1)
+	assert_eq(stats["explained_diffs"], 1)
+	assert_eq(stats["unexplained_diffs"], 0)
+	client.free()
+
+
+func test_the_snapshots_after_the_event_are_inside_the_window_and_later_ones_are_not() -> void:
+	var client: NetClient = _bare_client()
+	_receive(client, _hit(OWN_ID, OTHER_ID, 100))
+	_correct(client, 100 + NetClient.COMBAT_EXPLAIN_TICKS)
+	assert_eq(client.get_stats()["combat_diffs"], 1, "el último tick de la ventana")
+	_correct(client, 100 + NetClient.COMBAT_EXPLAIN_TICKS + 1)
+	assert_eq(client.get_stats()["unexplained_diffs"], 1, "uno más allá, no")
+	_correct(client, 99)
+	assert_eq(client.get_stats()["unexplained_diffs"], 2, "y uno anterior al golpe tampoco")
+	client.free()
+
+
+func test_the_event_may_arrive_after_the_snapshot_that_shows_the_change() -> void:
+	var client: NetClient = _bare_client()
+	_correct(client, 100)
+	assert_eq(client.get_stats()["unexplained_diffs"], 1, "mientras no hay evento, cuenta como fallo provisional")
+	_advance(client, 20)
+	_receive(client, _hit(OWN_ID, OTHER_ID, 100))
+	var stats: Dictionary = client.get_stats()
+	assert_eq(stats["unexplained_diffs"], 0, "al llegar el evento por el canal fiable queda explicada")
+	assert_eq(stats["combat_diffs"], 1)
+	assert_eq(stats["explained_diffs"], 1)
+	_advance(client, NetClient.DIFF_SETTLE_TICKS)
+	stats = client.get_stats()
+	assert_eq(stats["combat_diffs"], 1, "y sigue explicada cuando se da por definitiva")
+	assert_eq(stats["unexplained_diffs"], 0)
+	client.free()
+
+
+func test_without_a_combat_event_the_same_correction_is_a_prediction_failure() -> void:
+	var client: NetClient = _bare_client()
+	_correct(client, 100)
+	_advance(client, NetClient.DIFF_SETTLE_TICKS + 10)
+	var stats: Dictionary = client.get_stats()
+	assert_eq(stats["unexplained_diffs"], 1, "nada la explica")
+	assert_eq(stats["combat_diffs"], 0)
+	assert_eq(stats["explained_diffs"], 0)
+	assert_eq((stats["unexplained_ticks"] as Array).size(), 1, "y se recuerda el tick local en que se vio")
+	client.free()
+
+
+func test_events_of_others_and_far_away_events_do_not_explain_a_correction() -> void:
+	var client: NetClient = _bare_client()
+	_receive(client, _hit(THIRD_ID, OTHER_ID, 100))   # entre otros dos
+	_receive(client, _hit(OTHER_ID, OWN_ID, 100))     # mi golpe, que no fue parado
+	_receive(client, _hit(OWN_ID, OTHER_ID, 40))      # recibido mucho antes
+	_correct(client, 100)
+	_advance(client, NetClient.DIFF_SETTLE_TICKS + 10)
+	var stats: Dictionary = client.get_stats()
+	assert_eq(stats["unexplained_diffs"], 1, "ninguno de los tres la explica")
+	assert_eq(stats["combat_diffs"], 0)
+	client.free()
+
+
+func test_my_swing_being_parried_my_death_and_my_respawn_also_explain_a_correction() -> void:
+	var client: NetClient = _bare_client()
+	_receive(client, _hit(OTHER_ID, OWN_ID, 100, 0, NetMessages.EntityEvent.HIT_FLAG_PARRIED))
+	_receive(client, NetMessages.EntityEvent.death(OWN_ID, 200, OTHER_ID, 2))
+	_receive(client, NetMessages.EntityEvent.respawn(OWN_ID, 300, 0))
+	for server_tick: int in [100, 200, 300]:
+		_correct(client, server_tick)
+	var stats: Dictionary = client.get_stats()
+	assert_eq(stats["combat_diffs"], 3, "las tres, explicadas por el combate")
+	assert_eq(stats["unexplained_diffs"], 0)
+	client.free()
+
+
+func test_a_substitution_or_a_teleport_still_explain_a_correction_without_any_event() -> void:
+	var client: NetClient = _bare_client()
+	client._last_snapshot_tick = 100
+	client._record_result(ClientPrediction.Result.CORRECTED, true, false)
+	client._record_result(ClientPrediction.Result.CORRECTED, false, true)
+	var stats: Dictionary = client.get_stats()
+	assert_eq(stats["explained_diffs"], 2)
+	assert_eq(stats["combat_diffs"], 0, "no son del combate")
+	assert_eq(stats["unexplained_diffs"], 0)
+	client.free()
+
+
+func test_pending_diffs_and_remembered_events_are_bounded() -> void:
+	var client: NetClient = _bare_client()
+	for index: int in NetClient.MAX_TRACKED_DIFFS + 20:
+		_correct(client, 1000 + index * 100)
+	var stats: Dictionary = client.get_stats()
+	assert_eq(stats["diffs"], NetClient.MAX_TRACKED_DIFFS + 20)
+	assert_eq(stats["unexplained_diffs"], NetClient.MAX_TRACKED_DIFFS + 20, "ninguna se pierde de la cuenta")
+	assert_true(client._pending_diffs.size() <= NetClient.MAX_TRACKED_DIFFS)
+	for index: int in NetClient.MAX_TRACKED_DIFFS + 20:
+		_receive(client, _hit(OWN_ID, OTHER_ID, 50000 + index))
+	assert_true(client._imposed_ticks.size() <= NetClient.MAX_TRACKED_DIFFS)
+	client.free()

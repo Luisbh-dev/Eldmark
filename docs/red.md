@@ -87,7 +87,7 @@ que añade otro flujo de trabajo. Aquí se usan, no se redefinen (ver [1.5](#15-
 | `--connect=<host>[:<puerto>] [--realm=<reino>] [--name=<nombre>]` | Cliente en red | `scenes/client/online_main.tscn` |
 | `--local [--realm=…] [--name=…]` | Cliente contra un servidor local, que se lanza si no hay ninguno | `scenes/client/online_main.tscn` |
 | `--bot --connect=… [--bot-seed=N] [--bot-brain=wander\|combat] [--bot-cheat=<modo>]` | Un cliente que predice, sin cámara ni HUD, guiado por `BotBrain` (pasea, o pelea con el cerebro de combate) | `scenes/client/online_main.tscn` |
-| `--bots=N --connect=… [--bot-seed=N]` | Enjambre de N clientes ligeros que no simulan, para pruebas de carga | `scenes/client/bot_swarm.tscn` |
+| `--bots=N --connect=… [--bot-seed=N] [--bot-brain=combat]` | Enjambre de N clientes ligeros que no simulan, para pruebas de carga (con `combat`, pelean) | `scenes/client/bot_swarm.tscn` |
 | Comunes | `--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1`, `--quit-after-ticks=N`, `--report=<ruta.json>`, `--state-log=<ruta.csv>` | |
 
 - **`--zone` y `--realm`** se leen con las utilidades de `zones.gd`, a través de `NetZones`.
@@ -1749,7 +1749,10 @@ todas las copias del proyecto.
   Espera como mucho 25 s comprobando `OS.is_process_running`.
 - **Determinismo entre procesos.** Cada bot compara, en cada snapshot, su `predicted[S].encode()`
   con los bytes del estado propio del servidor. Sin `NetSim`: 0 diferencias sin explicar (las
-  que no coinciden con una subida de `substitutions`).
+  que no coinciden con una subida de `substitutions`, un teletransporte ni, desde la fase 3, un
+  evento de combate propio: lo que el servidor impone al jugador —tambaleo, aturdimiento, empuje,
+  resistencia gastada al bloquear, muerte, reaparición— y el cliente no predice; ver
+  [combate.md 11](combate.md#11-cambios-durante-la-implementación)).
 - **Segunda pasada con `--net-sim`** en los bots: convergencia final exacta (quietos los últimos
   60 ticks) y ninguna resincronización dura.
 - **Detección de interferencias.** También detecta si los cuerpos ajenos del servidor o la
@@ -2336,8 +2339,9 @@ func get_interpolation_clock() -> InterpolationClock
 func get_local_tick() -> int
 func get_last_server_state() -> PlayerState
 func get_stats() -> Dictionary
-## Bots: snapshots con estado, coincidencias exactas, diferencias explicadas y sin explicar,
-## resincronizaciones, ajustes de TickSync y estado final.
+## Bots: snapshots con estado, coincidencias exactas, diferencias explicadas (sustitución,
+## teletransporte o combate: combat_diffs) y sin explicar, resincronizaciones, ajustes de TickSync y
+## estado final.
 func write_report(path: String) -> Error
 
 # client_prediction.gd

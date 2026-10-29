@@ -161,6 +161,38 @@ func test_bot_has_no_camera_and_finishes_with_a_report_and_code_zero() -> void:
 			"el servidor da de baja al bot que se va")
 
 
+func test_the_bot_brain_follows_bot_brain_and_bot_cheat() -> void:
+	await _start_server()
+	_start_online(ClientConfig.Mode.BOT, func(config: ClientConfig) -> void:
+		config.bot_brain = ClientConfig.BOT_BRAIN_COMBAT)
+	assert_true(await _wait_until(_in_world))
+	var brain: BotBrain = _online.get_bot_brain()
+	if assert_not_null(brain, "con cerebro"):
+		assert_eq(brain.get_pattern(), BotBrain.Pattern.COMBAT, "--bot-brain=combat pelea")
+		assert_true(brain.has_enemy_finder(), "y sabe buscar enemigos")
+
+
+func test_a_combat_cheat_mode_gives_the_bot_the_cheaters_brain() -> void:
+	await _start_server()
+	_start_online(ClientConfig.Mode.BOT, func(config: ClientConfig) -> void:
+		config.bot_cheat = BotCheater.MODE_REACH)
+	assert_true(await _wait_until(_in_world))
+	var brain: BotBrain = _online.get_bot_brain()
+	if assert_not_null(brain):
+		assert_true(brain is BotCheatBrain, "--bot-cheat=reach usa el cerebro del tramposo")
+		assert_true(brain.has_enemy_finder())
+
+
+func test_the_default_bot_brain_wanders() -> void:
+	await _start_server()
+	_start_online(ClientConfig.Mode.BOT)
+	assert_true(await _wait_until(_in_world))
+	var brain: BotBrain = _online.get_bot_brain()
+	if assert_not_null(brain):
+		assert_eq(brain.get_pattern(), BotBrain.Pattern.WANDER)
+		assert_false(brain is BotCheatBrain)
+
+
 func test_rejection_ends_with_code_one_and_the_reason_in_the_report() -> void:
 	await _start_server()
 	_start_online(ClientConfig.Mode.BOT, func(config: ClientConfig) -> void:

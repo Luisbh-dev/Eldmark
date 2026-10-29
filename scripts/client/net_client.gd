@@ -101,6 +101,16 @@ const INTERP_DELAY_SCALE: float = 8.0
 const VIEW_OFFSET_SCALE: float = 16.0
 ## Resincronizaciones de TickSync (pasos de golpe) y reinicios que se recuerdan con su tick.
 const MAX_REMEMBERED_EVENTS: int = 64
+## Una corrección de la predicción se da por explicada por un evento de combate propio (un golpe recibido
+## o parado, una muerte, una reaparición: el servidor impone tambaleo, aturdimiento, empuje, resistencia
+## gastada...) si el snapshot que la causó es del tick del evento o de los [constant COMBAT_EXPLAIN_TICKS]
+## siguientes (los snapshots salen cada 2 ticks y alguno se pierde).
+const COMBAT_EXPLAIN_TICKS: int = 12
+## Ticks locales que se espera, antes de dar una diferencia por definitiva, a que llegue el evento que la
+## explique: el ENTITY_EVENT va por el canal fiable y puede llegar después del snapshot.
+const DIFF_SETTLE_TICKS: int = 90
+## Eventos propios y diferencias pendientes que se recuerdan como mucho.
+const MAX_TRACKED_DIFFS: int = 256
 ## Vida máxima que se supone mientras no ha llegado el bloque extra del snapshot.
 const DEFAULT_MAX_HEALTH: int = 1000
 ## Mensajes de [signal disconnected].
@@ -190,6 +200,7 @@ var _high_loss: bool = false
 var _diffs: int = 0
 var _explained_diffs: int = 0
 var _unexplained_diffs: int = 0
+var _combat_diffs: int = 0
 var _teleport_diffs: int = 0
 var _consecutive_matches: int = 0
 var _last_result: int = ClientPrediction.Result.IGNORED
@@ -197,6 +208,12 @@ var _resyncs: int = 0
 var _hard_reset_ticks: Array[int] = []
 var _resync_ticks: Array[int] = []
 var _unexplained_ticks: Array[int] = []
+# Diferencias que ni una sustitución ni un teletransporte explican, a la espera de que llegue el evento
+# de combate que las explique: (tick del servidor del snapshot, tick local en que se vio).
+var _pending_diffs: Array[Vector2i] = []
+# Ticks del servidor de los eventos de combate propios que imponen estado (golpe recibido, parada,
+# muerte, reaparición).
+var _imposed_ticks: PackedInt64Array = PackedInt64Array()
 
 var _state_log: FileAccess = null
 var _state_log_failed: bool = false
@@ -486,7 +503,9 @@ func get_last_notice_text() -> String:
 ## [code]snapshots_with_state[/code] (con estado propio reconciliado), [code]malformed_packets[/code].
 ## [br]- [code]matches[/code] (coincidencias exactas), [code]ignored[/code], [code]diffs[/code]
 ## (estados que no coincidían y se repitieron), [code]explained_diffs[/code] (con una subida de
-## [code]substitutions[/code] o un teletransporte), [code]unexplained_diffs[/code],
+## [code]substitutions[/code], un teletransporte o un evento de combate propio),
+## [code]combat_diffs[/code] (las explicadas por el combate: lo que impone el servidor y el cliente no
+## predice), [code]unexplained_diffs[/code] (las demás: fallos de la predicción),
 ## [code]teleport_diffs[/code], [code]corrections[/code] (las de más de 1 mm),
 ## [code]resimulated_ticks[/code], [code]last_correction[/code], [code]max_correction[/code],
 ## [code]consecutive_matches[/code] (racha actual), [code]last_result[/code].
@@ -504,6 +523,17 @@ func get_last_notice_text() -> String:
 ## [code]health[/code] y [code]max_health[/code].
 func get_stats() -> Dictionary:
 	var prediction_stats: Dictionary = _prediction.get_stats()
+	# Las diferencias que aún esperan su evento cuentan ya, según lo que se sepa ahora.
+	var provisional_combat: int = 0
+	var provisional_unexplained: int = 0
+	var unexplained_ticks: Array[int] = _unexplained_ticks.duplicate()
+	for pending: Vector2i in _pending_diffs:
+		if _is_imposed_at(pending.x):
+			provisional_combat += 1
+		else:
+			provisional_unexplained += 1
+			if unexplained_ticks.size() < MAX_REMEMBERED_EVENTS:
+				unexplained_ticks.append(pending.y)
 	return {
 		"local_ticks": _local_tick,
 		"spawn_tick": _spawn_tick,
@@ -519,8 +549,9 @@ func get_stats() -> Dictionary:
 		"matches": prediction_stats["matches"],
 		"ignored": prediction_stats["ignored"],
 		"diffs": _diffs,
-		"explained_diffs": _explained_diffs,
-		"unexplained_diffs": _unexplained_diffs,
+		"explained_diffs": _explained_diffs + provisional_combat,
+		"combat_diffs": _combat_diffs + provisional_combat,
+		"unexplained_diffs": _unexplained_diffs + provisional_unexplained,
 		"teleport_diffs": _teleport_diffs,
 		"corrections": prediction_stats["corrections"],
 		"resimulated_ticks": prediction_stats["resimulated_ticks"],
@@ -532,7 +563,7 @@ func get_stats() -> Dictionary:
 		"hard_reset_ticks": _hard_reset_ticks.duplicate(),
 		"resyncs": _resyncs,
 		"resync_ticks": _resync_ticks.duplicate(),
-		"unexplained_ticks": _unexplained_ticks.duplicate(),
+		"unexplained_ticks": unexplained_ticks,
 		"tick_sync_adjustments": _tick_sync.adjustments,
 		"target_margin": _tick_sync.get_target_margin(),
 		"window_min": _tick_sync.get_window_min(),
@@ -600,6 +631,7 @@ func _physics_process(_delta: float) -> void:
 			_view_offsets_q[tick % ClientPrediction.HISTORY_SIZE] = _view_offset_q(tick)
 			_prediction.step()
 		_send_input_batch()
+	_settle_pending_diffs()
 	_interp_clock.advance(_local_tick)
 	_deliver_due_events()
 	_smoother.physics_step()
@@ -675,8 +707,10 @@ func _record_result(result: int, substitutions_rose: bool, teleported: bool) -> 
 			elif substitutions_rose:
 				_explained_diffs += 1
 			else:
-				_unexplained_diffs += 1
-				_remember(_unexplained_ticks, _local_tick)
+				# Puede explicarla un evento de combate propio que aún no ha llegado.
+				_pending_diffs.append(Vector2i(_last_snapshot_tick, _local_tick))
+				if _pending_diffs.size() > MAX_TRACKED_DIFFS:
+					_settle_diff(_pending_diffs.pop_front())
 		ClientPrediction.Result.HARD_RESET:
 			_remember(_hard_reset_ticks, _local_tick)
 	_consecutive_matches = 0
@@ -697,6 +731,49 @@ func _note_substitutions(value: int) -> bool:
 	_substitutions_total += rise
 	_lossy_until_tick = _local_tick + LOSSY_WINDOW_TICKS
 	return true
+
+
+# Da por definitivas las diferencias pendientes que llevan DIFF_SETTLE_TICKS esperando su evento.
+func _settle_pending_diffs() -> void:
+	while not _pending_diffs.is_empty() and _local_tick - _pending_diffs[0].y >= DIFF_SETTLE_TICKS:
+		_settle_diff(_pending_diffs.pop_front())
+
+
+# Una diferencia definitiva: de combate si un evento propio la explica, y si no un fallo de predicción.
+func _settle_diff(pending: Vector2i) -> void:
+	if _is_imposed_at(pending.x):
+		_combat_diffs += 1
+		_explained_diffs += 1
+		return
+	_unexplained_diffs += 1
+	_remember(_unexplained_ticks, pending.y)
+
+
+# true si un evento de combate propio del tick del servidor [param server_tick] o de los
+# COMBAT_EXPLAIN_TICKS anteriores impuso estado al jugador local.
+func _is_imposed_at(server_tick: int) -> bool:
+	for imposed: int in _imposed_ticks:
+		if server_tick >= imposed and server_tick <= imposed + COMBAT_EXPLAIN_TICKS:
+			return true
+	return false
+
+
+# Anota los eventos propios con los que el servidor impone estado al jugador local, aunque el cliente no
+# lo prediga: un golpe recibido (tambaleo, aturdimiento, empuje, resistencia gastada al bloquear, vida),
+# su propio golpe parado (el atacante queda tambaleándose), su muerte y su reaparición.
+func _note_imposed_state(event: NetMessages.EntityEvent) -> void:
+	var imposed: bool = false
+	match event.event:
+		NetMessages.EntityEvent.Kind.HIT:
+			imposed = event.net_id == _net_id or (event.attacker == _net_id
+					and (event.hit_flags & NetMessages.EntityEvent.HIT_FLAG_PARRIED) != 0)
+		NetMessages.EntityEvent.Kind.DEATH, NetMessages.EntityEvent.Kind.RESPAWN:
+			imposed = event.net_id == _net_id
+	if not imposed:
+		return
+	_imposed_ticks.append(event.tick)
+	if _imposed_ticks.size() > MAX_TRACKED_DIFFS:
+		_imposed_ticks.remove_at(0)
 
 
 # --- Entradas ---------------------------------------------------------------------------------
@@ -940,6 +1017,7 @@ func _on_entity_event(bytes: PackedByteArray) -> void:
 	_events_received += 1
 	if is_own_event(event):
 		_events_own += 1
+		_note_imposed_state(event)
 		combat_event.emit(event, true)
 	else:
 		_event_queue.push(event)

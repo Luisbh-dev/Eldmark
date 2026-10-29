@@ -686,4 +686,20 @@ Cerrado durante K5 (integración):
   puntuar.
 - **Cerebro de combate del cliente**: `--bot-brain=combat` (`ClientBotBrains`, `BotEnemySight`): el
   enemigo más cercano que dibuja su `RemoteWorld` y que el servidor dejaría dañar; no ve a los
-  maniquíes (los modos tramposos sí) ni conoce las zonas seguras.
+  maniquíes (los modos tramposos sí) ni conoce las zonas seguras. Los bots ligeros de `--bots=N`
+  ([SwarmBot]) pelean igual sin simular: enemigos por los ENTITY_SPAWN, posiciones por una fracción
+  rotatoria de los registros de cada snapshot (1 de cada 6), `view_offset_q` real (su tick menos el
+  de dibujo) y RESPAWN_REQUEST al morir. Con `--fake-brain=combat` pelean los jugadores falsos del
+  servidor (K3).
+- **Correcciones explicadas por el combate** (cierra un hueco de §3.4 para las pruebas): lo que el
+  servidor impone (tambaleo, aturdimiento, empuje, resistencia gastada por un bloqueo, muerte,
+  reaparición) obliga al cliente que lo sufre a corregir su predicción, y eso no es un fallo.
+  `NetClient` anota los eventos propios que imponen estado (HIT con él de víctima o con su golpe
+  parado, DEATH, RESPAWN) y da por explicada la corrección cuyo snapshot cae en el tick del evento o
+  en los 12 siguientes (`COMBAT_EXPLAIN_TICKS`); el evento va por el canal fiable y puede llegar
+  después del snapshot, así que una diferencia espera 90 ticks (`DIFF_SETTLE_TICKS`) a su evento
+  antes de contar como fallo (mientras tanto `get_stats()` la cuenta según lo que sabe). Estadística
+  nueva: `combat_diffs`. Medido en una refriega de 6 bots de combate con rtt=120, jitter=20 y 5 % de
+  pérdida (`test_combat_reconciliation`): 40 golpes, 4 muertes, 2-4 correcciones por bot, todas
+  explicadas (sustitución o combate), ningún reinicio duro ni resincronización y convergencia exacta
+  al quedarse quietos.
