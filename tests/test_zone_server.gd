@@ -387,6 +387,69 @@ func test_remove_fake_player_frees_the_slot_and_counts_the_departure() -> void:
 	assert_true(report.has("snapshots"), "y el informe lleva las medidas de los snapshots")
 
 
+## Altas y bajas continuas (un cliente que entra y sale en bucle, --fake-churn) no pueden hacer
+## crecer la memoria sin límite (hallazgo S3): cada ficha del informe retenía su InputQueue, su
+## ServerPeer y su NetEntity para siempre (unos 70 objetos y 80 KB por ciclo). Al irse el jugador la
+## ficha suelta esas referencias, y el informe guarda solo las últimas fichas con los totales aparte.
+func test_player_churn_does_not_grow_memory_without_limit() -> void:
+	var config: ServerConfig = _make_config()
+	config.max_players = 40
+	await _start_server(config)
+	_server.max_logged_players = 100
+	var cycles: int = 0
+	var objects_after_warmup: int = 0
+	for round_index: int in 16:
+		var ids: Array[int] = []
+		for i: int in 40:
+			ids.append(_server.add_fake_player(BotBrain.new(cycles + i, BotBrain.Pattern.WANDER,
+					Vector3.ZERO, 5.0), VARDHEIM))
+		await wait_physics_frames(2)
+		for net_id: int in ids:
+			assert_true(_server.remove_fake_player(net_id), "se pide la baja")
+		await wait_physics_frames(2)
+		cycles += 40
+		if round_index == 5:
+			# Ya hay más de 100 altas: el anillo del informe está lleno.
+			objects_after_warmup = int(Performance.get_monitor(Performance.OBJECT_COUNT))
+	var objects_now: int = int(Performance.get_monitor(Performance.OBJECT_COUNT))
+	assert_eq(_server.get_player_count(), 0, "al final no queda nadie")
+	assert_true(objects_now - objects_after_warmup < 50,
+			"400 ciclos más no hacen crecer el número de objetos (de %d a %d)"
+			% [objects_after_warmup, objects_now])
+	assert_eq(_server.write_report(_report_path()), OK)
+	var report: Dictionary = _read_json(_report_path())
+	var players: Dictionary = report.get("players", {})
+	assert_eq((report.get("player_list", []) as Array).size(), 100,
+			"el informe guarda solo las últimas 100 fichas")
+	assert_eq(int(players.get("joined_total", 0)), cycles, "pero cuenta todas las altas")
+	assert_eq(int(players.get("left_total", 0)), cycles, "y todas las bajas")
+	assert_eq(int(players.get("fake", 0)), cycles, "y todos los jugadores falsos")
+	assert_eq(int(players.get("archived", 0)), cycles - 100, "las fichas que se salen se resumen")
+
+
+## Las fichas que se salen del anillo no pueden ser las de jugadores que siguen dentro.
+func test_the_report_ring_never_drops_a_player_who_is_still_in_the_world() -> void:
+	await _start_server()
+	_server.max_logged_players = 3
+	var stayer: int = _server.add_fake_player(BotBrain.new(1, BotBrain.Pattern.IDLE), VARDHEIM)
+	for i: int in 6:
+		var id: int = _server.add_fake_player(BotBrain.new(i + 2, BotBrain.Pattern.IDLE), SOLMARCH)
+		await wait_physics_frames(1)
+		_server.remove_fake_player(id)
+		await wait_physics_frames(2)
+	assert_eq(_server.write_report(_report_path()), OK)
+	var report: Dictionary = _read_json(_report_path())
+	var list: Array = report.get("player_list", [])
+	assert_eq(list.size(), 3, "el anillo tiene su tope")
+	var found: bool = false
+	for entry: Dictionary in list:
+		if int(entry.get("net_id", 0)) == stayer:
+			found = true
+			assert_eq(int(entry.get("left_tick", 0)), -1, "y sigue marcado como presente")
+	assert_true(found, "el jugador que sigue dentro conserva su ficha")
+	assert_eq(int((report.get("players", {}) as Dictionary).get("joined_total", 0)), 7)
+
+
 func test_stop_releases_the_players_but_keeps_the_report() -> void:
 	await _start_server()
 	for i: int in 3:

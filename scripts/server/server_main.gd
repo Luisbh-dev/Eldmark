@@ -17,16 +17,22 @@ extends Node
 ## [code]--fake-layout=cluster[/code] se agrupan todos en un mismo punto (a menos de 60 m unos de otros) y
 ## con [code]--fake-layout=spread[/code] se reparten por la zona; con [code]--fake-churn=<ticks>[/code]
 ## sale el más antiguo y entra uno nuevo cada tantos ticks (altas y bajas continuas).
-## [br]- Con [code]--dev-lock[/code] se escribe [code]user://dev_server.json[/code]
-## ([code]{pid, port}[/code]) para que [code]--local[/code] reutilice este servidor, y se borra al
+## [br]- Con [code]--dev-lock[/code] se escribe [code]user://dev_server.json[/code] (o la ruta de
+## [code]--dev-lock-path[/code]; [code]{pid, port}[/code]) para que [code]--local[/code] reutilice este servidor, y se borra al
 ## cerrar.
-## [br]- Se cierra con [code]--quit-after-ticks[/code] o [code]--idle-quit[/code]: NOTICE de cierre
-## a los clientes, [method ZoneServer.stop], informe si hay [code]--report[/code] y salida.
+## [br]- Se cierra con [code]--quit-after-ticks[/code], [code]--idle-quit[/code] o la aparición del
+## archivo de [code]--stop-file[/code] (se mira cada segundo): NOTICE de cierre a los clientes,
+## [method ZoneServer.stop], informe si hay [code]--report[/code] y salida.
+## [br]- [b]SIGTERM y SIGINT no cierran de forma ordenada[/b]: GDScript no puede atraparlas y el
+## proceso muere al instante (sin NOTICE, sin informe final, con el bloqueo de [code]--dev-lock[/code]
+## sin borrar). Por eso existe [code]--stop-file[/code] y, con [code]--report[/code], el informe se
+## reescribe cada [constant ZoneServer.METRICS_LOG_TICKS] ticks (10 s): si matan al servidor, queda
+## el de la última marca (con [code]"closed": false[/code]).
 ## [br][br]
 ## El código de salida es 0 en un cierre normal y 1 si no puede arrancar (zona desconocida, puerto
 ## ocupado...).
 
-## Archivo de bloqueo de [code]--dev-lock[/code].
+## Archivo de bloqueo de [code]--dev-lock[/code] si no se da [code]--dev-lock-path[/code].
 const DEV_LOCK_PATH: String = "user://dev_server.json"
 ## Fotogramas por segundo máximos del servidor (sección 1.3).
 const MAX_FPS: int = 120
@@ -54,6 +60,8 @@ const FAKE_PATTERNS: Array[BotBrain.Pattern] = [
 ]
 ## Texto del NOTICE de cierre.
 const SHUTDOWN_TEXT: String = "El servidor se está cerrando"
+## Cada cuántos ticks se mira si existe el archivo de [code]--stop-file[/code] (1 s).
+const STOP_FILE_CHECK_TICKS: int = 60
 
 ## Configuración del servidor. La rellena [code]boot.gd[/code]; si es null al arrancar, se lee de
 ## los argumentos de usuario.
@@ -72,6 +80,7 @@ var _fake_realms: Array[int] = []
 var _spread_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _shutting_down: bool = false
 var _lock_written: bool = false
+var _lock_path: String = DEV_LOCK_PATH
 
 
 func _ready() -> void:
@@ -130,14 +139,15 @@ func _ready() -> void:
 		print("[Eldmark] Comandos de depuración activados (--debug-commands)")
 
 	_spawn_fake_players()
+	_clear_stale_stop_file()
 	if config.dev_lock:
-		var lock_error: Error = write_dev_lock(DEV_LOCK_PATH, OS.get_process_id(), config.port)
+		_lock_path = config.dev_lock_path if not config.dev_lock_path.is_empty() else DEV_LOCK_PATH
+		var lock_error: Error = write_dev_lock(_lock_path, OS.get_process_id(), config.port)
 		if lock_error == OK:
 			_lock_written = true
-			print("[Eldmark] Archivo de bloqueo escrito: %s" % DEV_LOCK_PATH)
+			print("[Eldmark] Archivo de bloqueo escrito: %s" % _lock_path)
 		else:
-			push_warning("[Eldmark] No se pudo escribir %s (error %d)" % [DEV_LOCK_PATH,
-					lock_error])
+			push_warning("[Eldmark] No se pudo escribir %s (error %d)" % [_lock_path, lock_error])
 
 
 func _exit_tree() -> void:
@@ -181,8 +191,8 @@ func _remove_lock() -> void:
 	if not _lock_written:
 		return
 	_lock_written = false
-	if remove_dev_lock(DEV_LOCK_PATH, OS.get_process_id()):
-		print("[Eldmark] Archivo de bloqueo borrado: %s" % DEV_LOCK_PATH)
+	if remove_dev_lock(_lock_path, OS.get_process_id()):
+		print("[Eldmark] Archivo de bloqueo borrado: %s" % _lock_path)
 
 
 # --- Arranque ---------------------------------------------------------------------------------
@@ -302,6 +312,12 @@ func _on_tick_finished(tick: int) -> void:
 	if config.quit_after_ticks > 0 and tick >= config.quit_after_ticks:
 		_shutdown("se han simulado %d ticks (--quit-after-ticks)" % tick)
 		return
+	if tick % STOP_FILE_CHECK_TICKS == 0 and _stop_file_exists():
+		_shutdown("apareció el archivo de parada %s (--stop-file)" % config.stop_file_path)
+		return
+	if not config.report_path.is_empty() and tick % ZoneServer.METRICS_LOG_TICKS == 0:
+		# Si matan al servidor (SIGTERM, SIGINT) no hay informe final: queda este.
+		_zone_server.write_report(config.report_path)
 	_churn_fake_players(tick)
 	if config.idle_quit_seconds > 0:
 		if _zone_server.get_player_count() == 0:
@@ -310,6 +326,19 @@ func _on_tick_finished(tick: int) -> void:
 			_idle_ticks = 0
 		if _idle_ticks >= config.idle_quit_seconds * Engine.physics_ticks_per_second:
 			_shutdown("%d s sin jugadores (--idle-quit)" % config.idle_quit_seconds)
+
+
+func _stop_file_exists() -> bool:
+	return not config.stop_file_path.is_empty() and FileAccess.file_exists(config.stop_file_path)
+
+
+# Un archivo de parada que ya existe al arrancar es de una parada anterior: se borra, o el servidor
+# nuevo se cerraría en el primer segundo.
+func _clear_stale_stop_file() -> void:
+	if not _stop_file_exists():
+		return
+	DirAccess.remove_absolute(config.stop_file_path)
+	print("[Eldmark] Borrado el archivo de parada anterior: %s" % config.stop_file_path)
 
 
 # --fake-churn=<ticks>: en cada múltiplo sale el jugador falso más antiguo y, en el tick siguiente
@@ -342,5 +371,7 @@ func _shutdown(reason: String) -> void:
 			push_warning("[Eldmark] No se pudo escribir el informe '%s' (error %d)"
 					% [config.report_path, error])
 	_remove_lock()
+	if _stop_file_exists():
+		DirAccess.remove_absolute(config.stop_file_path)
 	print("[Eldmark] Servidor cerrado")
 	get_tree().quit(0)

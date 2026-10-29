@@ -44,6 +44,8 @@ class Endpoint:
 	var tick: int = 0
 	## En el servidor: contesta REJECT y corta, en lugar de WELCOME.
 	var reject: bool = false
+	## En el servidor: false = solo anota los mensajes de autenticación, sin contestar.
+	var respond_to_auth: bool = true
 	var authenticating: Array[int] = []
 	## get_remote_address() de cada peer en el momento de peer_authenticating.
 	var authenticating_addresses: Array[String] = []
@@ -51,6 +53,8 @@ class Endpoint:
 	var connected: Array[int] = []
 	var disconnected: Array[int] = []
 	var failed_count: int = 0
+	## Paquetes que el transporte ha descartado por no ser del protocolo (packets_discarded).
+	var discarded: int = 0
 	## Cada paquete recibido: [tick de llegada, peer_id, bytes].
 	var packets: Array[Array] = []
 	## Resultados de send() hechos antes de peer_connected (todos deben ser ERR_UNAVAILABLE).
@@ -67,6 +71,11 @@ class Endpoint:
 		transport.peer_disconnected.connect(_on_disconnected)
 		transport.packet_received.connect(_on_packet)
 		transport.connection_failed.connect(_on_connection_failed)
+		transport.packets_discarded.connect(_on_discarded)
+
+	func _on_discarded(_peer_id: int, count: int) -> void:
+		event_log.append("discarded")
+		discarded += count
 
 	func _on_authenticating(peer_id: int) -> void:
 		event_log.append("authenticating")
@@ -79,6 +88,8 @@ class Endpoint:
 	func _on_auth_received(peer_id: int, bytes: PackedByteArray) -> void:
 		event_log.append("auth")
 		auth_messages.append(bytes)
+		if not respond_to_auth:
+			return
 		if transport.is_server():
 			if reject:
 				transport.send_auth(peer_id, REJECT)
@@ -345,6 +356,28 @@ func test_delay_is_within_half_rtt_plus_minus_jitter() -> void:
 	idle.enqueue(instant, 7)
 	assert_eq(instant.due_tick, 7)
 	assert_eq(idle.pop_due(7).size(), 1)
+
+
+func test_max_delay_ticks_matches_the_worst_case_of_one_direction() -> void:
+	assert_eq(NetSim.from_arg("rtt=100,jitter=10").get_max_delay_ticks(), 4,
+			"rtt/2 + jitter = 60 ms = 3,6 ticks, redondeado a 4")
+	assert_eq(NetSim.from_arg("rtt=0,jitter=0,loss=5").get_max_delay_ticks(), 0, "sin retardo")
+	assert_eq(NetSim.from_arg("rtt=200").get_max_delay_ticks(), 6, "100 ms = 6 ticks")
+	# Ningún retardo sorteado pasa del máximo.
+	var sim: NetSim = NetSim.from_arg("rtt=120,jitter=40,seed=9")
+	for i: int in 200:
+		sim.enqueue(NetSim.Packet.new(1, NetProtocol.CH_RELIABLE, PackedByteArray([1]), false), 0)
+	for packet: NetSim.Packet in sim.pop_due(1000):
+		assert_true(packet.due_tick <= sim.get_max_delay_ticks(), "el retardo cabe en el máximo")
+
+
+func test_transport_reports_the_round_trip_its_simulators_add() -> void:
+	var transport: NetTransport = _make_transport("NetTransportSimRtt")
+	assert_eq(transport.get_sim_round_trip_ticks(), 0, "sin simulador no añade nada")
+	transport.set_net_sim_spec("rtt=100,jitter=10")
+	assert_eq(transport.get_sim_round_trip_ticks(), 8, "salida + entrada: 2 × 4 ticks")
+	transport.set_net_sim_spec("")
+	assert_eq(transport.get_sim_round_trip_ticks(), 0, "se quita con el texto vacío")
 
 
 func test_pop_due_returns_only_due_packets_in_order() -> void:
@@ -627,6 +660,193 @@ func test_connect_to_closed_port_fails() -> void:
 	# Tras el fallo se puede volver a intentar sin llamar antes a close().
 	assert_eq(client.transport.connect_to("127.0.0.1", port, 250), OK, "se puede reintentar")
 	client.transport.close()
+
+
+## connect_to promete avisar de que no hay servidor «como mucho al doble» de connect_timeout_ms.
+## ENet solo mira el plazo cuando vence una retransmisión del CONNECT (a 0,5, 1,5, 3,5 y 7,5 s) y
+## con un máximo del doble tardaba 3,5 s para 1000 ms y 7,5 s para 3000 ms (hallazgo S7).
+func test_connect_timeout_is_at_most_double_the_requested_one() -> void:
+	var port: int = _find_free_port()
+	if not assert_true(port > 0, "hay un puerto libre"):
+		return
+	for timeout_ms: int in [1000, 3000]:
+		var client: Endpoint = Endpoint.new(_make_transport("NetTransportTimeout%d" % timeout_ms))
+		assert_eq(client.transport.connect_to("127.0.0.1", port, timeout_ms), OK)
+		var one: Array[Endpoint] = [client]
+		var limit_ticks: int = 2 * timeout_ms * 60 / 1000 + 10
+		var failed: bool = await _run_until(one, func() -> bool:
+			return client.failed_count > 0, limit_ticks)
+		assert_true(failed, "con %d ms, connection_failed llega en menos de %d ticks (%d ms)"
+				% [timeout_ms, limit_ticks, limit_ticks * 1000 / 60])
+		client.transport.close()
+
+
+# --- Paquetes ajenos al protocolo (hallazgo S1) -----------------------------------------------
+
+## Un servidor y un cliente ENet en bruto, sin [SceneMultiplayer], conectados a nivel de ENet.
+func _make_attacker(server: Endpoint) -> RawEnetAttacker:
+	var attacker := RawEnetAttacker.new()
+	assert_eq(attacker.connect_to(_port), OK, "el atacante conecta")
+	var both: Array[Endpoint] = [server]
+	var connected: bool = await _run_until(both, func() -> bool:
+		attacker.poll()
+		return attacker.is_connected_to_server() and not server.authenticating.is_empty(), 300)
+	assert_true(connected, "el servidor ve al atacante autenticándose")
+	return attacker
+
+
+## Autentica al atacante contra el servidor del [Endpoint] (que contesta WELCOME y confirma):
+## HELLO, WELCOME y las dos confirmaciones.
+func _authenticate(server: Endpoint, attacker: RawEnetAttacker) -> bool:
+	attacker.send_auth(HELLO)
+	attacker.flush()
+	var both: Array[Endpoint] = [server]
+	var welcomed: bool = await _run_until(both, func() -> bool:
+		attacker.poll()
+		return attacker.server_confirmed and not attacker.auth_messages.is_empty(), 300)
+	if not assert_true(welcomed, "llegan el WELCOME y la confirmación del servidor"):
+		return false
+	attacker.send_confirmation()
+	attacker.flush()
+	var admitted: bool = await _run_until(both, func() -> bool:
+		attacker.poll()
+		return not server.connected.is_empty(), 300)
+	assert_true(admitted, "el servidor admite al atacante")
+	return admitted
+
+
+## Antes del HELLO, SceneMultiplayer solo admite mensajes de autenticación: cualquier otra cosa
+## registraba un error del motor por paquete (el ejecutor falla con cualquier error del motor, así
+## que esta prueba ya lo comprueba) y no pasaba por ningún limitador. Ahora el transporte la
+## descarta y la cuenta.
+func test_foreign_packets_before_the_hello_are_discarded_and_counted() -> void:
+	var server: Endpoint = _make_server()
+	var attacker: RawEnetAttacker = await _make_attacker(server)
+	for i: int in 200:
+		attacker.send(PackedByteArray([3, 1]), 1)
+	for i: int in 20:
+		# RPC, SIMPLIFY_PATH, SPAWN y órdenes de sistema que no son de autenticación.
+		attacker.send(PackedByteArray([0, 1, 2, 3, 4, 5]), 0)
+		attacker.send(PackedByteArray([1, 9, 9, 9, 9, 9, 9, 9, 9, 9]), 0)
+		attacker.send(PackedByteArray([4, 1, 2, 3, 4, 5, 6, 7]), 0)
+		attacker.send(PackedByteArray([7, 1, 2, 0, 0, 0]), 0)
+	attacker.send(PackedByteArray([]), 0)
+	attacker.flush()
+	var both: Array[Endpoint] = [server]
+	var all_seen: bool = await _run_until(both, func() -> bool:
+		attacker.poll()
+		return server.discarded >= 280, 300)
+	assert_true(all_seen, "se descartan los 280 paquetes (%d)" % server.discarded)
+	assert_eq(server.discarded, 280, "y se cuentan exactamente")
+	assert_true(server.packets.is_empty(), "ninguno llega a la aplicación")
+	assert_true(server.auth_messages.is_empty(), "ni cuenta como autenticación")
+	assert_eq(server.authenticating.size(), 1, "el peer sigue autenticándose")
+	assert_true(server.connected.is_empty(), "sin admitir")
+	attacker.close()
+
+
+## Ya autenticado, solo se admiten paquetes de aplicación (RAW): lo demás se descarta y se cuenta,
+## y los RAW de verdad siguen llegando a la aplicación.
+func test_foreign_packets_after_the_handshake_are_discarded_but_app_packets_pass() -> void:
+	var server: Endpoint = _make_server()
+	var attacker: RawEnetAttacker = await _make_attacker(server)
+	if not await _authenticate(server, attacker):
+		return
+	assert_eq(server.discarded, 0, "hasta aquí, nada descartado")
+	for i: int in 50:
+		attacker.send(PackedByteArray([1, 0, 0, 0, 0, 0, 0, 0, 0, 0]), 0)  # SIMPLIFY_PATH
+		attacker.send(PackedByteArray([0, 1, 2, 3, 4, 5, 6]), 0)  # RPC
+		attacker.send(PackedByteArray([4, 1, 2, 3, 4, 5, 6, 7, 8]), 0)  # SPAWN
+		attacker.send(PackedByteArray([7, 1, 2, 0, 0, 0]), 0)  # SYS ADD_PEER
+		attacker.send(PackedByteArray([7, 0, 9, 9]), 0)  # otra autenticación
+		attacker.send(PackedByteArray([7, 0]), 0)  # y otra confirmación
+	for i: int in 3:
+		attacker.send_app(PackedByteArray([TYPE_UP_RELIABLE, i]), NetProtocol.CH_RELIABLE)
+	attacker.flush()
+	var both: Array[Endpoint] = [server]
+	var done: bool = await _run_until(both, func() -> bool:
+		attacker.poll()
+		return server.discarded >= 300 and server.packets_of_type(TYPE_UP_RELIABLE).size() >= 3, 300)
+	assert_true(done, "se descartan 300 y llegan los 3 de aplicación (%d, %d)"
+			% [server.discarded, server.packets_of_type(TYPE_UP_RELIABLE).size()])
+	assert_eq(server.discarded, 300, "se cuentan exactamente")
+	assert_eq(server.packets.size(), 3, "y a la aplicación solo llegan los RAW")
+	assert_eq(server.disconnected.size(), 0, "el transporte no corta por su cuenta")
+	attacker.close()
+
+
+## La confirmación y un paquete de aplicación pueden llegar en el mismo poll si el servidor se
+## retrasa: el paquete no es ajeno y no se puede perder ni descartar (SceneMultiplayer los procesa
+## en orden y admite al peer con la confirmación).
+func test_a_packet_that_arrives_with_the_confirmation_is_delivered() -> void:
+	var server: Endpoint = _make_server()
+	var attacker: RawEnetAttacker = await _make_attacker(server)
+	attacker.send_auth(HELLO)
+	attacker.flush()
+	var both: Array[Endpoint] = [server]
+	var welcomed: bool = await _run_until(both, func() -> bool:
+		attacker.poll()
+		return attacker.server_confirmed and not attacker.auth_messages.is_empty(), 300)
+	if not assert_true(welcomed, "llegan el WELCOME y la confirmación del servidor"):
+		return
+	# Confirmación y paquete de aplicación en el mismo datagrama.
+	attacker.send_confirmation()
+	attacker.send_app(PackedByteArray([TYPE_UP_RELIABLE, 77]), NetProtocol.CH_RELIABLE)
+	attacker.flush()
+	var delivered: bool = await _run_until(both, func() -> bool:
+		attacker.poll()
+		return not server.packets_of_type(TYPE_UP_RELIABLE).is_empty(), 300)
+	assert_true(delivered, "el paquete llega a la aplicación")
+	assert_eq(server.discarded, 0, "y no se cuenta como ajeno")
+	assert_eq(server.connected.size(), 1, "con el peer admitido")
+	attacker.close()
+
+
+## Los mensajes de autenticación de un peer sin admitir están acotados: un HELLO (y la confirmación)
+## y poco más.
+func test_auth_messages_from_a_pending_peer_are_bounded() -> void:
+	var server: Endpoint = _make_server()
+	server.respond_to_auth = false
+	var attacker: RawEnetAttacker = await _make_attacker(server)
+	for i: int in 30:
+		attacker.send_auth(HELLO)
+	var huge := PackedByteArray()
+	huge.resize(GuardedEnetPeer.MAX_AUTH_BYTES + 1)
+	attacker.send_auth(huge)
+	for i: int in 10:
+		attacker.send_confirmation()
+	attacker.flush()
+	var both: Array[Endpoint] = [server]
+	var done: bool = await _run_until(both, func() -> bool:
+		attacker.poll()
+		return server.discarded >= 27 + 1 + 9, 300)
+	assert_true(done, "se descartan los HELLO de más, el enorme y las confirmaciones repetidas (%d)"
+			% server.discarded)
+	assert_eq(server.auth_messages.size(), GuardedEnetPeer.MAX_AUTH_PAYLOADS,
+			"llegan MAX_AUTH_PAYLOADS mensajes de autenticación")
+	attacker.close()
+
+
+## Un peer al que el servidor ya está cortando (disconnect_after_flush) se descarta sin contarlo: no
+## hay que sumarle más avisos ni procesar lo que siga mandando.
+func test_packets_from_a_peer_being_cut_are_dropped_without_counting() -> void:
+	var server: Endpoint = _make_server()
+	var attacker: RawEnetAttacker = await _make_attacker(server)
+	for i: int in 10:
+		attacker.send(PackedByteArray([3, 1]), 1)
+	attacker.flush()
+	var both: Array[Endpoint] = [server]
+	var counted: bool = await _run_until(both, func() -> bool:
+		attacker.poll()
+		return server.discarded >= 10, 300)
+	assert_true(counted, "los primeros 10 se cuentan")
+	server.transport.disconnect_after_flush(server.authenticating[0])
+	for i: int in 100:
+		attacker.send(PackedByteArray([3, 1]), 1)
+	attacker.flush()
+	await _run_ticks(both, 10, func(_t: int) -> void: attacker.poll())
+	assert_eq(server.discarded, 10, "lo que manda después de empezar el corte no se cuenta")
+	attacker.close()
 
 
 func test_net_sim_delays_packets_by_the_expected_ticks() -> void:

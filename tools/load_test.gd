@@ -8,7 +8,8 @@ extends SceneTree
 ## # Un escenario: 64 jugadores falsos agrupados y 10 clientes reales (--bots) durante 30 s de medida
 ## godot --headless --path . -s res://tools/load_test.gd -- --scenario=cluster --fakes=64 --bots=10
 ##
-## # La batería estándar de la fase 2 (agrupado con 2, 10 y 50 bots, disperso y altas/bajas con 10)
+## # La batería de la fase 2 (ver MATRIX): agrupado con 2, 10 y 50 bots, el criterio con 100 ms de RTT,
+## # disperso, altas y bajas, y 128 y 256 jugadores falsos; 120 s de medida cada escenario (unos 25 min)
 ## godot --headless --path . -s res://tools/load_test.gd -- --matrix
 ##
 ## # 128 y 256 jugadores: los clientes reales se reparten entre varios procesos de enjambre
@@ -29,8 +30,11 @@ extends SceneTree
 ## (por defecto 0).
 ## [br]- [code]--swarms=K[/code] procesos de enjambre entre los que se reparten los bots (por defecto 1; un proceso
 ## aguanta algunas decenas).
-## [br]- [code]--seconds=S[/code] segundos de medida con todos dentro (por defecto 30).
-## [br]- [code]--net-sim=rtt=100,jitter=10,loss=1[/code] simulador de red de los bots.
+## [br]- [code]--seconds=S[/code] segundos de medida con todos dentro (por defecto 30; 120 con
+## [code]--matrix[/code], como pide docs/red.md, 16).
+## [br]- [code]--net-sim=rtt=100,jitter=10,loss=1[/code] simulador de red de los bots. En [code]--matrix[/code]
+## lo fija cada escenario de [constant MATRIX] (el de 100 ms de RTT); la opción solo vale para los que no
+## llevan uno.
 ## [br]- [code]--zone=<id>[/code] zona del servidor (por defecto la de siempre, el Vado Gris).
 ## [br]- [code]--out=<carpeta>[/code] dónde van los informes y los registros (por defecto [code]build/load_test[/code]).
 ## [br]- [code]--check[/code] sale con código 1 si algún escenario incumple el criterio de la fase 2.
@@ -43,8 +47,16 @@ extends SceneTree
 ## ticks (34 s) de su ejecución, así que el servidor sigue unos segundos de más después de que los bots
 ## entren, para que la ventana sea solo de régimen.
 ## [br][br]
-## [b]Criterio de la fase 2[/b] (docs/red.md, 14 y 16), con 64 jugadores agrupados: p99 del tick por debajo de
-## 8 ms, como mucho 37 KB/s de bajada por cliente y menos de un 1 % de entradas sustituidas.
+## [b]Entradas sustituidas.[/b] El informe del servidor da el porcentaje de toda la sesión, con el arranque
+## dentro (cada bot pierde unas decenas de entradas mientras [TickSync] encuentra su antelación, más con
+## 100 ms de RTT). Se muestran las dos cifras: la de la sesión y la de la ventana de medida, que resta lo
+## acumulado al empezar ([LoadTestSummary]; sale de las líneas de métricas que el servidor escribe cada
+## 600 ticks, así que la ventana va de la primera tras entrar los bots a la última antes de que se
+## vayan). El criterio usa la de la ventana.
+## [br][br]
+## [b]Criterio de la fase 2[/b] (docs/red.md, 14 y 16), con 64 jugadores agrupados y 100 ms de RTT en los
+## bots: p99 del tick por debajo de 8 ms, como mucho 37 KB/s de bajada por cliente y menos de un 1 % de
+## entradas sustituidas. Con otros tamaños o escenarios se muestra como referencia.
 ## [br][br]
 ## Las cifras dependen de la máquina y de lo que más corra en ella: el servidor, el enjambre y quien lo lance
 ## comparten núcleos. Cada servidor usa un puerto distinto a partir del 25000.
@@ -68,14 +80,25 @@ const MAX_KB_PER_CLIENT: float = 37.0
 const MAX_SUBSTITUTED_PERCENT: float = 1.0
 ## Secciones del tick que se muestran.
 const SECTIONS: Array[String] = ["tick", "net", "sim", "history", "snapshot", "flush"]
-## Batería de [code]--matrix[/code]: [escenario, jugadores falsos, bots].
+## Batería de [code]--matrix[/code]: [escenario, jugadores falsos, bots, simulador de red de los bots].
+## Los tres primeros son los de siempre (sin retardo); el cuarto es el criterio de la fase 2 medido como
+## pide docs/red.md, 16 (64 agrupados y 100 ms de RTT); después disperso, altas y bajas y los tamaños
+## de 128 y 256 jugadores falsos.
 const MATRIX: Array[Array] = [
-	["cluster", 64, 2],
-	["cluster", 64, 10],
-	["cluster", 64, 50],
-	["spread", 64, 10],
-	["churn", 64, 10],
+	["cluster", 64, 2, ""],
+	["cluster", 64, 10, ""],
+	["cluster", 64, 50, ""],
+	["cluster", 64, 10, "rtt=100"],
+	["spread", 64, 10, ""],
+	["churn", 64, 10, ""],
+	["cluster", 128, 10, ""],
+	["cluster", 256, 10, ""],
+	["spread", 256, 10, ""],
 ]
+## Segundos de medida de cada escenario de [constant MATRIX] (docs/red.md, 16: 120 s cada uno).
+const MATRIX_SECONDS: int = 120
+## Segundos de medida de un escenario suelto.
+const DEFAULT_SECONDS: int = 30
 
 var _pids: Array[int] = []
 var _out_dir: String = ""
@@ -91,10 +114,10 @@ func _run() -> void:
 	var runs: Array[Dictionary] = []
 	if args.has("--matrix"):
 		for entry: Array in MATRIX:
-			runs.append(_make_run(args, entry[0], entry[1], entry[2]))
+			runs.append(_make_run(args, entry[0], entry[1], entry[2], entry[3], MATRIX_SECONDS))
 	else:
 		runs.append(_make_run(args, _option(args, "--scenario=", "cluster"),
-				_int_option(args, "--fakes=", 64), _int_option(args, "--bots=", 0)))
+				_int_option(args, "--fakes=", 64), _int_option(args, "--bots=", 0), "", DEFAULT_SECONDS))
 	_out_dir = _option(args, "--out=", "")
 	if _out_dir.is_empty():
 		_out_dir = ProjectSettings.globalize_path("res://build/load_test")
@@ -127,14 +150,16 @@ func _run() -> void:
 	quit(1 if (errors or (args.has("--check") and failed)) else 0)
 
 
-func _make_run(args: PackedStringArray, scenario: String, fakes: int, bots: int) -> Dictionary:
+# [param net_sim] es el del escenario (el de la batería); vacío = el de --net-sim.
+func _make_run(args: PackedStringArray, scenario: String, fakes: int, bots: int, net_sim: String,
+		default_seconds: int) -> Dictionary:
 	return {
 		"scenario": scenario,
 		"fakes": fakes,
 		"bots": bots,
 		"swarms": maxi(_int_option(args, "--swarms=", 1), 1),
-		"seconds": _int_option(args, "--seconds=", 30),
-		"net_sim": _option(args, "--net-sim=", ""),
+		"seconds": _int_option(args, "--seconds=", default_seconds),
+		"net_sim": net_sim if not net_sim.is_empty() else _option(args, "--net-sim=", ""),
 		"zone": _option(args, "--zone=", ""),
 	}
 
@@ -148,6 +173,8 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 	var bots: int = run["bots"]
 	var swarms: int = mini(run["swarms"], maxi(bots, 1))
 	var tag: String = "%s_%df_%db" % [scenario, fakes, bots]
+	if not str(run["net_sim"]).is_empty():
+		tag += "_" + String(run["net_sim"]).replace("=", "").replace(",", "_")
 	var port: int = _free_port()
 	var summary: Dictionary = {"tag": tag, "run": run, "port": port, "ok": false}
 	if port < 0:
@@ -233,6 +260,7 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 	for path: String in swarm_reports:
 		swarm_data.append(_read_json(path))
 	_summarise(summary, server_data, swarm_data, bots)
+	_summarise_window(summary, server_data, server_log, settle_ticks, swarm_ticks)
 	summary["ok"] = not summary.has("error")
 	return summary
 
@@ -309,12 +337,32 @@ func _summarise(summary: Dictionary, server: Dictionary, swarms: Array[Dictionar
 	if bots > 0 and played < bots:
 		summary["error"] = "solo jugaron %d de %d bots" % [played, bots]
 
-	# Criterio de la fase 2 (solo tiene sentido con clientes reales para los KB/s).
-	var p99_tick: int = int((section_table["tick"] as Dictionary)["p99"])
-	var met: bool = p99_tick < MAX_P99_TICK_US \
-			and float(summary["substituted_percent"]) < MAX_SUBSTITUTED_PERCENT
-	if measured > 0:
-		met = met and down_max <= MAX_KB_PER_CLIENT
+	_apply_criterion(summary)
+
+
+# Porcentaje de entradas sustituidas dentro de la ventana de medida (restando el arranque): de la
+# primera línea de métricas del servidor desde [param first_tick] a la última hasta [param last_tick].
+# Sin dos líneas en ese rango se queda la cifra de toda la sesión.
+func _summarise_window(summary: Dictionary, server: Dictionary, server_log: String, first_tick: int,
+		last_tick: int) -> void:
+	var cumulative: Dictionary = LoadTestSummary.parse_metrics_log(FileAccess.get_file_as_string(server_log))
+	var window: Dictionary = LoadTestSummary.window_substituted(cumulative, server.get("player_list", []),
+			first_tick, last_tick, int(server.get("ticks", 0)))
+	summary["substituted_window"] = window
+	summary["substituted_percent_window"] = float(window["percent"]) if not window.is_empty() \
+			else float(summary["substituted_percent"])
+	_apply_criterion(summary)
+
+
+# Criterio de la fase 2 (solo tiene sentido con clientes reales para los KB/s). Las entradas
+# sustituidas son las de la ventana de medida, si se ha podido calcular, y si no las de la sesión.
+func _apply_criterion(summary: Dictionary) -> void:
+	var sections: Dictionary = summary["sections_us"]
+	var p99_tick: int = int((sections["tick"] as Dictionary)["p99"])
+	var substituted: float = float(summary.get("substituted_percent_window", summary["substituted_percent"]))
+	var met: bool = p99_tick < MAX_P99_TICK_US and substituted < MAX_SUBSTITUTED_PERCENT
+	if int(summary["bots_measured"]) > 0:
+		met = met and float(summary["client_kb_down_per_s_max"]) <= MAX_KB_PER_CLIENT
 	summary["criterion_met"] = met
 
 
@@ -351,8 +399,17 @@ func _summary_lines(summary: Dictionary) -> PackedStringArray:
 		summary["simulate_us_per_character"], summary["sim_section_us_per_character"]])
 	lines.append("   Snapshot (servidor):        %.0f B de media, %d B como máximo, %.0f µs de construcción cada uno" % [
 		summary["snapshot_avg_bytes"], summary["snapshot_max_bytes"], summary["snapshot_build_avg_us"]])
-	lines.append("   Entradas sustituidas:       %.2f %%   avisos: %d   expulsiones: %d   errores de física: %d" % [
+	lines.append("   Entradas sustituidas:       %.2f %% de la sesión entera (con el arranque)   avisos: %d   expulsiones: %d   errores de física: %d" % [
 		summary["substituted_percent"], summary["strikes"], summary["kicks"], summary["physics_errors"]])
+	var window: Dictionary = summary.get("substituted_window", {})
+	if window.is_empty():
+		lines.append("   ... en la ventana de medida: sin calcular (no hay dos líneas de métricas del servidor en ella)")
+	else:
+		lines.append("   ... en la ventana de medida: %.2f %% (%d de %d entradas, ticks %d a %d)" % [
+			window["percent"], window["substituted"], window["inputs"], window["from_tick"], window["to_tick"]])
+	var run: Dictionary = summary["run"]
+	if not str(run["net_sim"]).is_empty():
+		lines.append("   Simulador de red de los bots: %s" % run["net_sim"])
 	if int(summary["bots_measured"]) > 0:
 		lines.append("   Por cliente (%d bots):       bajada %.1f KB/s de media (máx %.1f), subida %.1f KB/s, snapshot de %.0f B" % [
 			summary["bots_measured"], summary["client_kb_down_per_s_avg"],
@@ -360,9 +417,17 @@ func _summary_lines(summary: Dictionary) -> PackedStringArray:
 			summary["client_snapshot_avg_bytes"]])
 		lines.append("   Servidor, total:            salida %.1f KB/s, entrada %.1f KB/s" % [
 			summary["server_kb_out_per_s"], summary["server_kb_in_per_s"]])
-	lines.append("   Criterio de la fase 2 (p99 < 8 ms, <= 37 KB/s por cliente, < 1 %% sustituidas): %s" % [
-		"CUMPLIDO" if bool(summary["criterion_met"]) else "NO CUMPLIDO"])
+	lines.append("   Criterio de la fase 2 (p99 < 8 ms, <= 37 KB/s por cliente, < 1 %% sustituidas en la ventana): %s%s" % [
+		"CUMPLIDO" if bool(summary["criterion_met"]) else "NO CUMPLIDO",
+		"" if _is_reference_run(run) else " (solo como referencia: se define con 64 agrupados y 100 ms de RTT)"])
 	return lines
+
+
+# true si el escenario es aquel para el que se define el criterio de la fase 2 (docs/red.md, 16): 64
+# jugadores falsos agrupados, con bots y 100 ms de RTT.
+func _is_reference_run(run: Dictionary) -> bool:
+	return run["scenario"] == "cluster" and int(run["fakes"]) == 64 and int(run["bots"]) > 0 \
+			and str(run["net_sim"]).begins_with("rtt=100")
 
 
 # --- Procesos y ayudas ------------------------------------------------------------------------

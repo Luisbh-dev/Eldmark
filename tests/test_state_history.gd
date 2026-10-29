@@ -238,3 +238,24 @@ func test_random_fractional_samples_match_the_path() -> void:
 				return
 			checked += 1
 	assert_true(checked > 2000, "se comprobaron muchas muestras (%d)" % checked)
+
+
+## Los ticks del servidor son u32 (414 días a 60 Hz ya pasan de 2^31): las etiquetas de la pista no
+## pueden ser enteros de 32 bits con signo (hallazgo N5), o el historial queda inservible.
+func test_ticks_beyond_two_to_the_thirty_one_are_kept() -> void:
+	var history := StateHistory.new()
+	history.add_entity(1)
+	var big: int = 2147483648 + 5
+	history.record(big, 1, Vector3(1.0, 2.0, 3.0), 0.5, 1)
+	history.record(big + 1, 1, Vector3(3.0, 2.0, 3.0), 0.5, 1)
+	assert_true(history.has_tick(1, big), "el tick 2^31 + 5 está grabado")
+	assert_false(history.has_tick(1, big + 2), "y el siguiente aún no")
+	var exact: StateHistory.Sample = history.sample(1, float(big))
+	if assert_not_null(exact, "se puede muestrear"):
+		assert_vec_near(exact.position, Vector3(1.0, 2.0, 3.0), 1e-6)
+	var between: StateHistory.Sample = history.sample(1, float(big) + 0.5)
+	if assert_not_null(between, "también entre dos ticks"):
+		assert_vec_near(between.position, Vector3(2.0, 2.0, 3.0), 1e-6)
+	var max_tick: int = 4294967295
+	history.record(max_tick, 1, Vector3(9.0, 0.0, 0.0), 0.0, 1)
+	assert_true(history.has_tick(1, max_tick), "ni en el último tick del u32")

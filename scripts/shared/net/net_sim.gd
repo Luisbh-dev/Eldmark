@@ -183,6 +183,13 @@ func get_pending_count() -> int:
 	return _pending.size()
 
 
+## Retardo máximo (ticks) que añade a un paquete en un sentido: [code]rtt/2 + jitter[/code]
+## redondeado como lo hace el sorteo. Con el simulador en un solo extremo, el viaje de ida y vuelta
+## tarda como mucho el doble.
+func get_max_delay_ticks() -> int:
+	return maxi(roundi((float(_rtt_ms) * 0.5 + float(_jitter_ms)) / TICK_MS), 0)
+
+
 ## Descripción de la configuración, para el registro y el overlay de depuración.
 func describe() -> String:
 	return "rtt=%d ms, jitter=%d ms, pérdida=%s%%, duplicados=%s%%, semilla=%d" % [

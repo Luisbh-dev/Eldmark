@@ -1,0 +1,109 @@
+extends TestCase
+## Pruebas de las herramientas de carga ([code]tools/load_test.gd[/code], que se lanza a mano fuera del
+## ejecutor) y de [LoadTestSummary], la parte de su resumen que se puede probar sin lanzar procesos.
+## [br][br]
+## [b]Humo[/b]: el script de la herramienta se carga y se puede instanciar, así que un error de sintaxis
+## en él rompe la suite y no se descubre al lanzar la batería de varios minutos.
+## [br][br]
+## [b]Ventana de medida[/b]: el porcentaje de entradas sustituidas del informe del servidor es de toda
+## la sesión, con el arranque dentro (cada bot pierde unas decenas de entradas mientras [TickSync]
+## encuentra su antelación, más con 100 ms de RTT). El criterio de la fase 2 (red.md, 16) se mide en
+## régimen: [method LoadTestSummary.window_substituted] resta lo acumulado al empezar la ventana, a
+## partir de las líneas «Métricas (tick N)» que el servidor escribe cada 600 ticks.
+
+const LOAD_TEST_PATH: String = "res://tools/load_test.gd"
+
+const METRICS_LINE_600: String = "[Eldmark] Métricas (tick 600): 74 jugadores, tick p50 3200 µs / p99 5100 µs / máx 9000 µs (p99 por sección: tick 5100, net 300), entradas sustituidas 4.00 %, subida 85.5 KB/s, bajada 10.0 KB/s"
+const METRICS_LINE_1800: String = "[Eldmark] Métricas (tick 1800): 74 jugadores, tick p50 3300 µs / p99 5200 µs / máx 9100 µs (p99 por sección: tick 5200, net 310), entradas sustituidas 1.39 %, subida 86.0 KB/s, bajada 10.1 KB/s"
+
+
+# --- Humo ------------------------------------------------------------------------------------
+
+func test_load_test_script_loads_and_can_be_instantiated() -> void:
+	var script: GDScript = load(LOAD_TEST_PATH) as GDScript
+	if not assert_not_null(script, "%s se carga (un error de sintaxis lo dejaría en null)" % LOAD_TEST_PATH):
+		return
+	assert_true(script.can_instantiate(), "y se puede instanciar")
+	assert_true(script.get_script_method_list().any(
+			func(method: Dictionary) -> bool: return method["name"] == "_initialize"),
+			"es un script de línea de comandos (SceneTree._initialize)")
+
+
+func test_load_test_matrix_covers_the_scenarios_of_the_plan() -> void:
+	var script: GDScript = load(LOAD_TEST_PATH) as GDScript
+	if not assert_not_null(script):
+		return
+	var constants: Dictionary = script.get_script_constant_map()
+	var matrix: Array = constants.get("MATRIX", [])
+	var rtt_100_cluster_64: bool = false
+	var fakes: Dictionary = {}
+	for entry: Array in matrix:
+		fakes[int(entry[1])] = true
+		if entry[0] == "cluster" and int(entry[1]) == 64 and int(entry[2]) >= 10 \
+				and String(entry[3]).begins_with("rtt=100"):
+			rtt_100_cluster_64 = true
+	assert_true(rtt_100_cluster_64, "hay un escenario con 64 falsos agrupados, bots y 100 ms de RTT (el criterio de la fase 2)")
+	for count: int in [64, 128, 256]:
+		assert_true(fakes.has(count), "la batería incluye %d jugadores falsos" % count)
+	assert_eq(int(constants.get("MATRIX_SECONDS", 0)), 120, "120 s de medida por escenario en --matrix")
+
+
+# --- Líneas de métricas del servidor --------------------------------------------------------------
+
+func test_cumulative_substituted_percent_is_read_from_the_server_log() -> void:
+	var text: String = "\n".join([
+		"[Eldmark] Servidor de la zona 'vado_gris' escuchando en el puerto UDP 25000",
+		METRICS_LINE_600,
+		"[Eldmark] Alta de Bot-01 (net_id 5)",
+		METRICS_LINE_1800,
+		"[Eldmark] Métricas (tick 2400): sin porcentaje en esta línea",
+	])
+	assert_eq(LoadTestSummary.parse_metrics_log(text), {600: 4.0, 1800: 1.39},
+			"tick -> porcentaje acumulado, y solo de las líneas de métricas")
+	assert_eq(LoadTestSummary.parse_metrics_log(""), {})
+
+
+# --- Ventana de medida ------------------------------------------------------------------------
+
+## Diez bots que entraron en el tick 10 y siguen dentro, y un jugador falso (que no cuenta).
+func _players() -> Array:
+	var players: Array = []
+	for i: int in 10:
+		players.append({"fake": false, "joined_tick": 10, "left_tick": -1})
+	players.append({"fake": true, "joined_tick": 0, "left_tick": -1})
+	return players
+
+
+func test_consumed_inputs_count_every_tick_a_real_player_was_in() -> void:
+	var players: Array = _players()
+	assert_eq(LoadTestSummary.consumed_until(players, 600, 3000), 10 * 590, "10 bots desde el tick 10")
+	assert_eq(LoadTestSummary.consumed_until(players, 5, 3000), 0, "antes de entrar no consumen")
+	players.append({"fake": false, "joined_tick": 100, "left_tick": 400})
+	assert_eq(LoadTestSummary.consumed_until(players, 600, 3000), 10 * 590 + 300,
+			"uno que se fue en el 400 solo cuenta hasta entonces")
+	var unfinished: Array = [{"fake": false, "joined_tick": 10, "left_tick": -1}]
+	assert_eq(LoadTestSummary.consumed_until(unfinished, 5000, 1010), 1000,
+			"los que siguen dentro cuentan hasta el último tick del servidor")
+
+
+func test_window_percent_subtracts_what_was_accumulated_at_the_start() -> void:
+	var cumulative: Dictionary = {600: 4.0, 1200: 2.2, 1800: 1.39}
+	var window: Dictionary = LoadTestSummary.window_substituted(cumulative, _players(), 500, 1900, 2000)
+	assert_eq(int(window.get("from_tick", 0)), 600, "empieza en la primera línea de métricas tras el arranque")
+	assert_eq(int(window.get("to_tick", 0)), 1800, "y acaba en la última antes del final de los bots")
+	# 5900 entradas consumidas en el tick 600 (236 sustituidas) y 17900 en el 1800 (249).
+	assert_eq(int(window.get("inputs", 0)), 17900 - 5900)
+	assert_eq(int(window.get("substituted", -1)), 249 - 236)
+	assert_near(float(window["percent"]), 100.0 * 13.0 / 12000.0, 1e-9, "13 de 12000: 0,11 %")
+	assert_true(float(window["percent"]) < 1.0, "muy por debajo de la sesión entera (1,39 %)")
+
+
+func test_window_percent_is_unavailable_without_two_metric_lines_in_range() -> void:
+	var cumulative: Dictionary = {600: 4.0, 1800: 1.39}
+	assert_true(LoadTestSummary.window_substituted({}, _players(), 500, 1900, 2000).is_empty(), "sin líneas")
+	assert_true(LoadTestSummary.window_substituted({600: 4.0}, _players(), 500, 1900, 2000).is_empty(),
+			"con una sola")
+	assert_true(LoadTestSummary.window_substituted(cumulative, _players(), 700, 1700, 2000).is_empty(),
+			"o si el rango no contiene dos")
+	assert_true(LoadTestSummary.window_substituted(cumulative, [], 500, 1900, 2000).is_empty(),
+			"o si no hay jugadores de red")

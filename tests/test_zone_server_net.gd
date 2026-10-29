@@ -24,6 +24,8 @@ var _clients: Array[RawClient] = []
 var _hooks: Array[Callable] = []
 var _client_tick: int = 0
 var _next_client_index: int = 0
+var _raw_peers: Array[ENetMultiplayerPeer] = []
+var _raw_attackers: Array[RawEnetAttacker] = []
 
 
 ## Un cliente que habla el protocolo a mano: envía su HELLO al conectar, completa la
@@ -36,6 +38,10 @@ class RawClient:
 	var hello: PackedByteArray
 	var tick: int = 0
 	var auto_ready: bool = true
+	## Ticks que atrasa el ack de snapshot que declara en cada lote (fingir lag).
+	var ack_lag_ticks: int = 0
+	## Retardo de interpolación (×8) que declara en cada lote.
+	var interp_delay_q: int = 32
 	var welcome: NetMessages.Welcome = null
 	var reject: NetMessages.Reject = null
 	var connected: bool = false
@@ -112,8 +118,9 @@ class RawClient:
 	## mismo movimiento y la misma vista.
 	func send_inputs(newest_tick: int, count: int, move: Vector2, look_yaw: float) -> void:
 		var batch := NetMessages.InputBatch.new()
-		batch.ack_snapshot_tick = last_snapshot().server_tick if not snapshots.is_empty() else 0
-		batch.interp_delay_q = 32
+		if not snapshots.is_empty():
+			batch.ack_snapshot_tick = maxi(last_snapshot().server_tick - ack_lag_ticks, 1)
+		batch.interp_delay_q = interp_delay_q
 		batch.newest_tick = newest_tick
 		for i: int in count:
 			var input := PlayerInput.new()
@@ -162,6 +169,12 @@ class HidingPolicy:
 
 func after_each() -> void:
 	_hooks.clear()
+	for raw: ENetMultiplayerPeer in _raw_peers:
+		raw.close()
+	_raw_peers.clear()
+	for attacker: RawEnetAttacker in _raw_attackers:
+		attacker.close()
+	_raw_attackers.clear()
 	for client: RawClient in _clients:
 		if is_instance_valid(client.transport):
 			client.transport.free()
@@ -625,6 +638,260 @@ func test_flooding_gets_the_client_kicked_with_a_notice() -> void:
 			"y marca al jugador como expulsado")
 
 
+## Las expulsiones del informe son las últimas max_logged_kicks, pero se cuentan todas (hallazgo S3:
+## la lista crecía con cada expulsión, sin límite).
+func test_kick_list_in_the_report_is_bounded_but_counts_every_kick() -> void:
+	await _start_server()
+	_server.max_logged_kicks = 10
+	for i: int in 25:
+		var peer_id: int = 9000 + i
+		_server_transport.peer_authenticating.emit(peer_id)
+		# Mensajes antes de autenticarse: cada uno es un aviso y a los 50 se le expulsa.
+		for _j: int in 50:
+			_server_transport.packet_received.emit(peer_id, NetMessages.ClientReady.new().encode())
+	var report: Dictionary = _read_report()
+	var kicks: Array = report.get("kicks", [])
+	assert_eq(kicks.size(), 10, "el informe conserva las últimas 10 expulsiones")
+	assert_eq(int((report.get("strikes", {}) as Dictionary).get("kicks_total", 0)), 25,
+			"pero cuenta las 25")
+	assert_eq(int((kicks[kicks.size() - 1] as Dictionary).get("peer_id", 0)), 9024,
+			"la última es la más reciente")
+	assert_eq(int((kicks[0] as Dictionary).get("peer_id", 0)), 9015, "y la primera, la décima desde el final")
+
+
+## Expulsado un cliente (50 avisos), no puede volver en un RTT con los avisos a 0 y los cubos llenos
+## (hallazgo S6): durante el enfriamiento, su IP recibe un REJECT nada más conectar. Pasado el
+## enfriamiento, vuelve a entrar.
+func test_a_kicked_address_is_rejected_during_the_cooldown() -> void:
+	await _start_server()
+	_server.kick_cooldown_ticks = 240
+	var address: Array[String] = ["203.0.113.7"]
+	_server.remote_address_override = func(_peer_id: int, _address: String) -> String:
+		return address[0]
+	var abuser: RawClient = await _join("Ana")
+	if abuser == null:
+		return
+	for i: int in 120:
+		abuser.send_raw(NetProtocol.CH_RELIABLE, PackedByteArray([0x7F, i]))
+	var kicked: bool = await _run_until(func() -> bool:
+		return abuser.notice_with_code(NetProtocol.NoticeCode.KICK) != null)
+	if not assert_true(kicked, "el abusón es expulsado"):
+		return
+	await _run_until(func() -> bool: return _server.get_player_count() == 0)
+	assert_eq(_server.get_cooldown_count(), 1, "y su IP queda en enfriamiento")
+	# Vuelve al momento, con otro nombre: rechazado antes de autenticarse.
+	var again: RawClient = _connect_client(_hello(VARDHEIM, "Bruno"))
+	var rejected: bool = await _run_until(func() -> bool: return again.reject != null)
+	if assert_true(rejected, "la reconexión inmediata recibe un REJECT"):
+		assert_eq(again.reject.result, NetProtocol.Result.TOO_MANY_CONNECTIONS, "por exceso de conexiones")
+	assert_null(again.welcome, "sin WELCOME")
+	assert_eq(_server.get_player_count(), 0, "y no ocupa sitio")
+	# Otra IP no está afectada.
+	address[0] = "198.51.100.9"
+	var other: RawClient = await _join("Carla")
+	assert_not_null(other, "otra IP entra con normalidad")
+	# Pasado el enfriamiento, la IP del abusón vuelve a entrar.
+	address[0] = "203.0.113.7"
+	await _run_frames(260)
+	var back: RawClient = await _join("Diana")
+	assert_not_null(back, "pasado el enfriamiento, vuelve a entrar")
+	var rejects: Dictionary = _read_report().get("rejects", {})
+	assert_eq(int(rejects.get(NetProtocol.result_text(NetProtocol.Result.TOO_MANY_CONNECTIONS), 0)), 1,
+			"el informe cuenta el rechazo")
+
+
+## Desde loopback no hay tope por IP, así que el enfriamiento va por el nombre (sin mayúsculas ni
+## tildes, como el resto de la comprobación de nombres).
+func test_a_kicked_name_from_loopback_is_rejected_during_the_cooldown() -> void:
+	await _start_server()
+	_server.kick_cooldown_ticks = 240
+	var abuser: RawClient = await _join("Álvaro")
+	if abuser == null:
+		return
+	for i: int in 120:
+		abuser.send_raw(NetProtocol.CH_RELIABLE, PackedByteArray([0x7F, i]))
+	var kicked: bool = await _run_until(func() -> bool:
+		return abuser.notice_with_code(NetProtocol.NoticeCode.KICK) != null)
+	if not assert_true(kicked, "el abusón es expulsado"):
+		return
+	await _run_until(func() -> bool: return _server.get_player_count() == 0)
+	var again: RawClient = _connect_client(_hello(VARDHEIM, "ALVARO"))
+	var rejected: bool = await _run_until(func() -> bool: return again.reject != null)
+	if assert_true(rejected, "volver con el mismo nombre recibe un REJECT"):
+		assert_eq(again.reject.result, NetProtocol.Result.TOO_MANY_CONNECTIONS)
+	var other: RawClient = await _join("Bruno")
+	assert_not_null(other, "con otro nombre, desde loopback, se entra")
+	await _run_frames(260)
+	var back: RawClient = await _join("Alvaro")
+	assert_not_null(back, "pasado el enfriamiento, el nombre vuelve a estar libre")
+
+
+## Las entradas vencidas se purgan al siguiente alta de enfriamiento: el diccionario no crece sin
+## límite.
+func test_expired_cooldowns_are_purged() -> void:
+	await _start_server()
+	_server.kick_cooldown_ticks = 30
+	var address: Array[String] = ["203.0.113.1"]
+	_server.remote_address_override = func(_peer_id: int, _address: String) -> String:
+		return address[0]
+	for i: int in 4:
+		address[0] = "203.0.113.%d" % (1 + i)
+		_server_transport.peer_authenticating.emit(9100 + i)
+		for _j: int in 50:
+			_server_transport.packet_received.emit(9100 + i, NetMessages.ClientReady.new().encode())
+	assert_eq(_server.get_cooldown_count(), 4, "cuatro IP expulsadas")
+	await _run_frames(40)
+	address[0] = "203.0.113.50"
+	_server_transport.peer_authenticating.emit(9200)
+	for _j: int in 50:
+		_server_transport.packet_received.emit(9200, NetMessages.ClientReady.new().encode())
+	assert_eq(_server.get_cooldown_count(), 1, "las vencidas se purgan; solo queda la nueva")
+
+
+## El RTT en ticks que mide el servidor con el ack de snapshot lo decide el cliente: un tramposo
+## que atrase sus acks se haría pasar por alguien con lag y obtendría el rebobinado máximo de la
+## fase 3 (hallazgo S4). El servidor lo acota con una fuente independiente: el RTT de ENet más el
+## retardo del simulador del propio servidor, más un margen.
+func test_a_client_cannot_fake_lag_with_late_acks() -> void:
+	await _start_server()
+	var client: RawClient = await _join("Ana")
+	if client == null:
+		return
+	client.ack_lag_ticks = 20
+	client.interp_delay_q = NetProtocol.MAX_INTERP_DELAY_Q
+	_hooks.append(func(_tick: int) -> void:
+		client.send_inputs(_server.get_tick() + 2, 1, Vector2(0.0, 1.0), 0.0))
+	await _run_frames(300)
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	var bound: int = ceili(_server_transport.get_rtt_ms(peer.peer_id) * 60.0 / 1000.0) \
+			+ _server_transport.get_sim_round_trip_ticks() + ZoneServer.RTT_SLACK_TICKS
+	assert_true(peer.rtt_ticks <= bound,
+			"el RTT medido (%d ticks) no pasa del que permite ENet (%d)" % [peer.rtt_ticks, bound])
+	assert_true(peer.rtt_ticks <= 6, "en loopback es de pocos ticks (%d)" % peer.rtt_ticks)
+	assert_eq(peer.strikes_total, 0, "sin avisos: fingir lag no es un paquete ilegal")
+
+
+## El simulador de red del propio servidor sí cuenta: es retardo real para el servidor.
+func test_the_server_side_net_sim_still_raises_the_measured_rtt() -> void:
+	await _start_server(func(config: ServerConfig) -> void:
+		config.net_sim_spec = "rtt=200,jitter=0,loss=0,dup=0,seed=3")
+	var client: RawClient = _connect_client(_hello(VARDHEIM, "Ana"))
+	var joined: bool = await _run_until(func() -> bool: return client.own_spawn != null, 900)
+	if not assert_true(joined, "entra en el mundo"):
+		return
+	_hooks.append(func(_tick: int) -> void:
+		client.send_inputs(_server.get_tick() + 14, 4, Vector2(0.0, 1.0), 0.0))
+	await _run_frames(240)
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	assert_true(peer.rtt_ticks >= 10,
+			"con 200 ms de retardo simulado (12 ticks) el RTT medido lo refleja (%d)" % peer.rtt_ticks)
+
+
+## interp_delay_q no puede pasar del máximo del reloj de interpolación del cliente (12 ticks × 8):
+## el servidor lo limita y lo cuenta como aviso.
+func test_interp_delay_above_the_clients_maximum_is_clamped_and_costs_a_strike() -> void:
+	await _start_server()
+	var client: RawClient = await _join("Ana")
+	if client == null:
+		return
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	client.interp_delay_q = 255
+	client.send_inputs(_server.get_tick() + 2, 1, Vector2.ZERO, 0.0)
+	await _run_frames(5)
+	assert_eq(peer.interp_delay_q, NetProtocol.MAX_INTERP_DELAY_Q, "se limita al máximo del cliente")
+	assert_eq(peer.strikes_total, 1, "y suma un aviso")
+	assert_eq(_strike_reasons().get("retardo de interpolación fuera de rango", 0), 1, "con su motivo")
+	client.interp_delay_q = NetProtocol.MAX_INTERP_DELAY_Q
+	client.send_inputs(_server.get_tick() + 2, 1, Vector2.ZERO, 0.0)
+	await _run_frames(5)
+	assert_eq(peer.interp_delay_q, NetProtocol.MAX_INTERP_DELAY_Q, "el máximo legítimo se acepta")
+	assert_eq(peer.strikes_total, 1, "sin más avisos")
+
+
+## Un cliente ENet en bruto (sin SceneMultiplayer) que manda paquetes que no son del protocolo antes del
+## HELLO: antes registraban un error del motor por paquete (el ejecutor falla con cualquiera), se
+## saltaban los limitadores y los avisos, solo los cortaba el auth_timeout de 5 s y 2000 paquetes
+## llevaban el tick a 28 ms (hallazgo S1). Ahora cada uno suma un aviso, a los 50 se le expulsa y el
+## tick no pasa de su presupuesto de 16 ms.
+func test_foreign_packets_before_the_hello_get_the_sender_kicked() -> void:
+	await _start_server()
+	var attacker := RawEnetAttacker.new()
+	assert_eq(attacker.connect_to(_port), OK, "el atacante conecta")
+	_raw_attackers.append(attacker)
+	_hooks.append(func(_tick: int) -> void: attacker.poll())
+	var seen: bool = await _run_until(func() -> bool:
+		return attacker.is_connected_to_server() and _server.get_peer_ids().size() == 1, 300)
+	if not assert_true(seen, "el servidor ve al peer que se autentica"):
+		return
+	for _i: int in 2000:
+		attacker.send(PackedByteArray([3, 1]), 1)
+	attacker.flush()
+	var gone: bool = await _run_until(func() -> bool: return _server.get_peer_ids().is_empty(), 300)
+	assert_true(gone, "el peer se expulsa en cuanto suma 50 avisos, sin esperar a los 5 s")
+	var reasons: Dictionary = _strike_reasons()
+	assert_eq(int(reasons.get(ZoneServer.DISCARDED_REASON, 0)), ServerPeer.STRIKE_LIMIT,
+			"cada paquete ajeno es un aviso, hasta los 50")
+	var report: Dictionary = _read_report()
+	assert_eq((report.get("kicks", []) as Array).size(), 1, "una expulsión")
+	assert_eq(_server.get_player_count(), 0, "y nadie ocupa sitio")
+	var tick_max: int = _server.get_metrics().get_max_us(&"tick")
+	assert_true(tick_max < 16000, "el tick más largo no pasa de 16 ms (%d µs)" % tick_max)
+
+
+## Lo mismo con el peer ya autenticado y dentro del mundo: RPC, SIMPLIFY_PATH, SPAWN y órdenes de
+## sistema. Quien juega con normalidad no se entera.
+func test_foreign_packets_after_the_hello_get_the_sender_kicked_and_not_the_others() -> void:
+	await _start_server()
+	var honest: RawClient = await _join("Ana")
+	if honest == null:
+		return
+	var attacker := RawEnetAttacker.new()
+	assert_eq(attacker.connect_to(_port), OK, "el atacante conecta")
+	_raw_attackers.append(attacker)
+	_hooks.append(func(_tick: int) -> void: attacker.poll())
+	var connected: bool = await _run_until(func() -> bool: return attacker.is_connected_to_server(), 300)
+	if not assert_true(connected, "el atacante conecta"):
+		return
+	attacker.send_auth(_hello(VARDHEIM, "Malvado"))
+	attacker.flush()
+	var welcomed: bool = await _run_until(func() -> bool:
+		return attacker.server_confirmed and not attacker.auth_messages.is_empty(), 300)
+	if not assert_true(welcomed, "contesta WELCOME"):
+		return
+	assert_eq(NetMessages.peek_auth_result(attacker.auth_messages[0]), NetProtocol.Result.OK)
+	attacker.send_confirmation()
+	attacker.flush()
+	var is_loading: Callable = func() -> bool:
+		var peer: ServerPeer = _peer_named("Malvado")
+		return peer != null and peer.state == ServerPeer.State.LOADING
+	var admitted: bool = await _run_until(is_loading, 300)
+	if not assert_true(admitted, "y lo admite (cargando la zona)"):
+		return
+	var mallory: ServerPeer = _peer_named("Malvado")
+	var flood: int = 300
+	for i: int in flood:
+		attacker.send(PackedByteArray([1, 0, 0, 0, 0, 0, 0, 0, 0, 0]), 0)  # SIMPLIFY_PATH
+		attacker.send(PackedByteArray([0, 1, 2, 3, 4, 5, 6]), 0)  # RPC
+		attacker.send(PackedByteArray([4, 1, 2, 3, 4, 5, 6, 7, 8]), 0)  # SPAWN
+		attacker.send(PackedByteArray([7, 1, 2, 0, 0, 0]), 0)  # SYS ADD_PEER
+	attacker.flush()
+	var kicked: bool = await _run_until(func() -> bool: return _peer_named("Malvado") == null, 300)
+	assert_true(kicked, "el atacante acaba expulsado")
+	assert_true(mallory.strikes_total >= ServerPeer.STRIKE_LIMIT, "tras sumar 50 avisos (%d)"
+			% mallory.strikes_total)
+	assert_eq(int(_strike_reasons().get(ZoneServer.DISCARDED_REASON, 0)), ServerPeer.STRIKE_LIMIT,
+			"todos por paquetes ajenos")
+	# El otro jugador, a lo suyo.
+	var honest_peer: ServerPeer = _peer_of(honest.own_spawn.net_id)
+	assert_eq(honest_peer.strikes_total, 0, "el jugador honrado no suma avisos")
+	assert_eq(honest_peer.state, ServerPeer.State.IN_WORLD, "y sigue en el mundo")
+	var snapshots_before: int = honest.snapshots.size()
+	await _run_frames(30)
+	assert_true(honest.snapshots.size() > snapshots_before + 5, "recibiendo snapshots")
+	var tick_max: int = _server.get_metrics().get_max_us(&"tick")
+	assert_true(tick_max < 16000, "el tick más largo no pasa de 16 ms (%d µs)" % tick_max)
+
+
 func test_debug_commands_need_the_flag() -> void:
 	await _start_server()
 	var client: RawClient = await _join("Ana")
@@ -738,6 +1005,8 @@ func test_client_that_never_sends_ready_is_kicked_after_the_loading_timeout() ->
 
 func test_client_that_never_sends_hello_is_dropped_by_the_auth_timeout() -> void:
 	await _start_server()
+	# Se anula el plazo propio del servidor para el HELLO: aquí actúa el de NetTransport (5 s).
+	_server.hello_timeout_ticks = 100000
 	# Sin HELLO: el cliente conecta pero no envía nada en la autenticación.
 	var client: RawClient = _connect_client(PackedByteArray())
 	var seen: bool = await _run_until(func() -> bool: return _server.get_peer_ids().size() == 1, 120)
@@ -748,6 +1017,77 @@ func test_client_that_never_sends_hello_is_dropped_by_the_auth_timeout() -> void
 			int(NetTransport.AUTH_TIMEOUT_SECONDS * 60.0) + 240)
 	assert_true(dropped, "pasado el tiempo de autenticación (5 s) el peer se da de baja")
 	assert_true(client.failed or client.disconnected, "y el cliente ve que se corta")
+
+
+## Una IP no puede ocupar todas las plazas de ENet con conexiones que nunca mandan el HELLO
+## (hallazgo S2): el tope por IP se aplica al conectar, no solo al llegar el HELLO. Con
+## max_players = 2 hay 6 plazas; una IP con 6 conexiones ociosas dejaba al séptimo cliente, legítimo,
+## sin respuesta (ENet descarta su conexión en silencio). Las conexiones ociosas son ENet en bruto
+## (sin SceneMultiplayer), como las de un atacante.
+func test_idle_connections_cannot_exhaust_the_slots_of_one_ip() -> void:
+	await _start_server(func(config: ServerConfig) -> void: config.max_players = 2)
+	# Solo se prueba el tope por IP: el plazo del HELLO no debe cortar nada durante la prueba.
+	_server.hello_timeout_ticks = 100000
+	var opened: Array[int] = [0]
+	_server.remote_address_override = func(_peer_id: int, _address: String) -> String:
+		opened[0] += 1
+		return "203.0.113.7" if opened[0] <= 6 else "198.51.100.9"
+	var idle: Array[ENetMultiplayerPeer] = []
+	for _i: int in 6:
+		var raw := ENetMultiplayerPeer.new()
+		assert_eq(raw.create_client("127.0.0.1", _port, NetProtocol.CUSTOM_CHANNELS), OK)
+		idle.append(raw)
+		_raw_peers.append(raw)
+		await _run_frames(3)
+	_hooks.append(func(_tick: int) -> void:
+		for raw: ENetMultiplayerPeer in idle:
+			# Un peer que el servidor ha cortado queda inactivo y poll() registraría un error.
+			if raw.get_connection_status() != MultiplayerPeer.CONNECTION_DISCONNECTED:
+				raw.poll())
+	var connected_count: Callable = func() -> int:
+		var count: int = 0
+		for raw: ENetMultiplayerPeer in idle:
+			if raw.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
+				count += 1
+		return count
+	await _run_frames(60)
+	assert_eq(connected_count.call(), 4,
+			"el servidor corta lo que pasa del tope: quedan 4 conexiones de la IP")
+	var legit: RawClient = _connect_client(_hello(VARDHEIM, "Ana"))
+	var answered: bool = await _run_until(func() -> bool:
+		return legit.welcome != null or legit.reject != null, 120)
+	assert_true(answered, "el cliente legítimo recibe respuesta en menos de 120 ticks")
+	assert_not_null(legit.welcome, "y es un WELCOME: las plazas no están agotadas")
+	assert_eq(_strike_reasons().size(), 0, "sin avisos")
+	var rejects: Dictionary = _read_report().get("rejects", {})
+	assert_eq(int(rejects.get(NetProtocol.result_text(NetProtocol.Result.TOO_MANY_CONNECTIONS), 0)), 2,
+			"el informe cuenta los dos rechazos")
+
+
+## Un cliente que conecta y no manda el HELLO se corta en cuanto vence el plazo propio del servidor
+## (90 ticks), mucho antes que los 5 s de la autenticación de SceneMultiplayer.
+func test_a_connection_without_hello_is_dropped_after_the_hello_deadline() -> void:
+	await _start_server()
+	assert_eq(_server.hello_timeout_ticks, ZoneServer.HELLO_TIMEOUT_TICKS, "90 ticks por defecto")
+	var client: RawClient = _connect_client(PackedByteArray())
+	var seen: bool = await _run_until(func() -> bool: return _server.get_peer_ids().size() == 1, 120)
+	if not assert_true(seen, "el servidor ve al peer que se autentica"):
+		return
+	var seen_at: int = _server.get_tick()
+	var dropped: bool = await _run_until(func() -> bool: return _server.get_peer_ids().is_empty(),
+			ZoneServer.HELLO_TIMEOUT_TICKS + 90)
+	assert_true(dropped, "el peer sin HELLO se da de baja pasado el plazo")
+	assert_true(_server.get_tick() - seen_at >= ZoneServer.HELLO_TIMEOUT_TICKS - 10,
+			"no antes de tiempo (%d ticks)" % (_server.get_tick() - seen_at))
+	assert_true(_server.get_tick() - seen_at < int(NetTransport.AUTH_TIMEOUT_SECONDS * 60.0),
+			"y bastante antes de los 5 s de la autenticación")
+	var closed: bool = await _run_until(func() -> bool: return client.failed or client.disconnected, 120)
+	assert_true(closed, "el cliente ve que se corta")
+	var rejects: Dictionary = _read_report().get("rejects", {})
+	assert_eq(int(rejects.get(ZoneServer.HELLO_TIMEOUT_REASON, 0)), 1, "el informe lo cuenta")
+	# Un cliente que sí manda el HELLO a tiempo no se ve afectado.
+	var honest: RawClient = await _join("Ana")
+	assert_not_null(honest, "uno normal entra")
 
 
 func test_stop_notifies_the_clients_and_closes_the_transport() -> void:
@@ -773,6 +1113,15 @@ func test_stop_notifies_the_clients_and_closes_the_transport() -> void:
 func _strike_reasons() -> Dictionary:
 	var report: Dictionary = _read_report()
 	return (report.get("strikes", {}) as Dictionary).get("by_reason", {})
+
+
+## El peer con ese nombre (null si no hay ninguno).
+func _peer_named(player_name: String) -> ServerPeer:
+	for peer_id: int in _server.get_peer_ids():
+		var peer: ServerPeer = _server.get_peer(peer_id)
+		if peer.display_name == player_name:
+			return peer
+	return null
 
 
 ## El peer cuyo personaje es el de ese net_id (null si no hay ninguno).
@@ -809,6 +1158,33 @@ func test_input_flood_trips_the_unreliable_limiter() -> void:
 		client.send_inputs(_server.get_tick() + 6, 4, Vector2.ZERO, 0.0)
 		await _run_frames(1)
 	assert_eq(peer.strikes_total, strikes_before, "un lote por tick no es exceso de ritmo")
+
+
+## Un parón del servidor (el proceso se queda sin ejecutarse) hace que los lotes de entradas que el
+## cliente siguió mandando lleguen todos juntos en el primer poll posterior: no es exceso de ritmo
+## (hallazgo N2). Sin crédito por parón, el cubo no se recarga porque el tick no avanza y el cliente
+## honrado suma un aviso por lote y es expulsado.
+func test_a_server_stall_does_not_get_an_honest_client_kicked() -> void:
+	await _start_server()
+	var client: RawClient = await _join("Ana")
+	if client == null:
+		return
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	_hooks.append(func(_tick: int) -> void:
+		client.send_inputs(_server.get_tick() + 2, 4, Vector2(0.0, 1.0), 0.0))
+	await _run_frames(30)
+	assert_eq(peer.strikes_total, 0, "antes del parón, ningún aviso")
+	_server.set_physics_process(false)
+	await _run_frames(90)
+	_server.set_physics_process(true)
+	await _run_frames(30)
+	assert_eq(peer.strikes_total, 0, "tras un parón de 90 ticks, ningún aviso")
+	assert_eq(peer.state, ServerPeer.State.IN_WORLD, "el cliente sigue en el mundo")
+	assert_null(client.notice_with_code(NetProtocol.NoticeCode.KICK), "sin NOTICE de expulsión")
+	var report: Dictionary = _read_report()
+	assert_eq((report.get("kicks", []) as Array).size(), 0, "el informe no registra expulsiones")
+	assert_eq(int((report.get("strikes", {}) as Dictionary).get("total", 0)), 0,
+			"ni avisos")
 
 
 func test_reliable_flood_trips_the_reliable_limiter() -> void:

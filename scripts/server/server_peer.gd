@@ -44,6 +44,8 @@ var ack_snapshot_tick: int = 0
 var interp_delay_q: int = 0
 ## Mínimo de (s - ack_snapshot_tick) en los últimos 120 ticks.
 var rtt_ticks: int = 0
+## Tick en el que conectó y empezó a autenticarse (para el plazo del HELLO).
+var connected_tick: int = 0
 ## Tick en el que empezó la carga de la zona (para el límite de CLIENT_READY).
 var loading_since_tick: int = 0
 var limiter_unreliable: RateLimiter
@@ -54,8 +56,9 @@ var strikes_total: int = 0
 var last_strike_reason: String = ""
 
 # Anillo con los ticks de los últimos STRIKE_LIMIT avisos. El más antiguo de ellos está en
-# _strike_head, que es también el hueco que se sobrescribe con el siguiente.
-var _strike_ticks: PackedInt32Array = PackedInt32Array()
+# _strike_head, que es también el hueco que se sobrescribe con el siguiente. De 64 bits: los ticks
+# del servidor son u32 y pasan de 2^31 a los 414 días de proceso.
+var _strike_ticks: PackedInt64Array = PackedInt64Array()
 var _strike_head: int = 0
 
 
@@ -67,6 +70,19 @@ func _init(id: int = 0) -> void:
 	limiter_bytes = RateLimiter.new(BYTES_RATE_PER_TICK, BYTES_BURST)
 	_strike_ticks.resize(STRIKE_LIMIT)
 	_strike_ticks.fill(-STRIKE_WINDOW_TICKS - 1)
+
+
+## Da a los tres limitadores el crédito de [param missed_ticks] ticks que el servidor no ha
+## simulado (un parón del proceso) en el tick [param now_tick]: lo que el cliente siguió enviando
+## durante el parón llega junto y no debe contar como exceso de ritmo. El crédito dura hasta la
+## siguiente recarga (ver [method RateLimiter.grant]).
+func grant_stall_credit(now_tick: int, missed_ticks: int) -> void:
+	if missed_ticks <= 0:
+		return
+	var ticks: float = float(missed_ticks)
+	limiter_unreliable.grant(now_tick, UNRELIABLE_RATE_PER_TICK * ticks)
+	limiter_reliable.grant(now_tick, RELIABLE_RATE_PER_TICK * ticks)
+	limiter_bytes.grant(now_tick, BYTES_RATE_PER_TICK * ticks)
 
 
 ## Suma un aviso en el tick [param now_tick] por [param reason] (paquete malformado, tipo

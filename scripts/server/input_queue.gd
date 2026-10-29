@@ -99,12 +99,16 @@ func reset(spawn_tick: int, neutral: PlayerInput) -> void:
 ## [br][br]
 ## Gana la primera copia de cada tick aunque la segunda sea distinta. La antelación solo se mide
 ## con la primera copia ([code]input.tick - next_tick[/code]: 0 es justo a tiempo, negativo es
-## tarde). Limita los botones a [constant NetProtocol.VALID_BUTTONS] (sobre el propio
+## tarde); también la de las entradas demasiado tempranas, que se descartan pero cuentan para la
+## medida (saturada a 127). Limita los botones a [constant NetProtocol.VALID_BUTTONS] (sobre el propio
 ## [param input]).
 func push(input: PlayerInput, view_offset_q: int, next_tick: int) -> PushResult:
 	var t: int = input.tick
 	if t > next_tick + NetProtocol.MAX_INPUT_LEAD_TICKS or t > _last_consumed + CAPACITY:
 		too_early_count += 1
+		# La antelación también se anota (saturada a 127): si el servidor ha perdido ticks y el
+		# cliente va muy por delante, es la única forma de que TickSync se entere y se retrase.
+		_note_lead(t - next_tick)
 		return PushResult.TOO_EARLY
 	var slot: Slot = _slot(t)
 	if t <= _last_consumed:

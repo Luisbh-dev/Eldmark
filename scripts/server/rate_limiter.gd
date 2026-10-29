@@ -33,6 +33,17 @@ func try_consume(now_tick: int, cost: float = 1.0) -> bool:
 	return true
 
 
+## Concede [param extra] fichas más en el tick [param now_tick], por encima de la capacidad. Primero
+## recarga hasta [param now_tick] y después suma, así que el crédito no se pierde en la misma
+## recarga; la siguiente recarga (un tick después) vuelve a limitar el cubo a la capacidad. Sirve
+## para compensar a quien consulta cuando él mismo ha dejado de avanzar el tick (un parón del
+## servidor): lo que el cliente envió durante el parón llega junto y no es exceso de ritmo. Un
+## crédito negativo no hace nada.
+func grant(now_tick: int, extra: float) -> void:
+	_refill(now_tick)
+	_tokens += maxf(extra, 0.0)
+
+
 ## Fichas disponibles en el tick [param now_tick] (recarga incluida, sin gastar nada).
 func get_tokens(now_tick: int) -> float:
 	_refill(now_tick)

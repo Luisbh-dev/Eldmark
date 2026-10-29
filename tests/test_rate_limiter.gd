@@ -83,6 +83,35 @@ func test_same_seed_of_calls_gives_same_result() -> void:
 		assert_eq(a.try_consume(tick, cost), b.try_consume(tick, cost), "mismo resultado")
 
 
+func test_grant_adds_tokens_above_the_burst_until_the_next_refill() -> void:
+	var limiter := RateLimiter.new(1.0, 5.0)
+	for _i: int in 5:
+		limiter.try_consume(10)
+	limiter.grant(10, 20.0)
+	assert_near(limiter.get_tokens(10), 20.0, 1e-9, "el crédito se suma a lo que quedaba (0)")
+	var granted: int = 0
+	for _i: int in 30:
+		if limiter.try_consume(10):
+			granted += 1
+	assert_eq(granted, 20, "y permite gastarlo todo en el mismo tick, por encima de la ráfaga")
+	# Lo que no se gasta se pierde en la siguiente recarga: el tope vuelve a ser la ráfaga.
+	var spare := RateLimiter.new(1.0, 5.0)
+	spare.grant(10, 50.0)
+	assert_near(spare.get_tokens(10), 55.0, 1e-9, "5 de la ráfaga más 50 de crédito")
+	assert_near(spare.get_tokens(11), 5.0, 1e-9, "al pasar un tick se vuelve a limitar a la ráfaga")
+
+
+func test_grant_refills_first_so_the_credit_is_not_erased() -> void:
+	var limiter := RateLimiter.new(1.0, 5.0)
+	for _i: int in 5:
+		limiter.try_consume(10)
+	# Han pasado 3 ticks desde el último uso: se recargan 3 fichas y después se suma el crédito.
+	limiter.grant(13, 10.0)
+	assert_near(limiter.get_tokens(13), 13.0, 1e-9, "3 recargadas y 10 de crédito")
+	limiter.grant(13, -4.0)
+	assert_near(limiter.get_tokens(13), 13.0, 1e-9, "un crédito negativo no quita fichas")
+
+
 # --- Limitadores de ServerPeer ----------------------------------------------------------------
 
 func test_peer_unreliable_limiter_allows_two_per_tick() -> void:
@@ -150,6 +179,26 @@ func test_peer_bytes_limiter_is_16kb_per_second_with_burst_of_4kb() -> void:
 	assert_eq(denied, 0, "~8 KB/s caben")
 
 
+func test_peer_stall_credit_covers_the_ticks_the_server_missed() -> void:
+	# El servidor perdió 90 ticks: el cliente siguió mandando un lote por tick y llegan todos juntos.
+	var peer := ServerPeer.new(1)
+	peer.limiter_unreliable.try_consume(500)
+	peer.grant_stall_credit(500, 89)
+	var granted: int = 0
+	for _i: int in 90:
+		if peer.limiter_unreliable.try_consume(500) and peer.limiter_bytes.try_consume(500, 51.0):
+			granted += 1
+	assert_eq(granted, 90, "pasan los 90 lotes de 51 B (30 de ráfaga + 2 por tick perdido)")
+	# El crédito no es un tope nuevo: un tick después todo vuelve a la ráfaga normal.
+	assert_near(peer.limiter_unreliable.get_tokens(501), ServerPeer.UNRELIABLE_BURST, 1e-6,
+			"el crédito sobrante desaparece")
+	var late := ServerPeer.new(2)
+	late.grant_stall_credit(10, 0)
+	late.grant_stall_credit(10, -5)
+	assert_near(late.limiter_unreliable.get_tokens(10), ServerPeer.UNRELIABLE_BURST, 1e-6,
+			"sin ticks perdidos no hay crédito")
+
+
 # --- Avisos y expulsión -----------------------------------------------------------------------
 
 func test_fifty_strikes_in_the_same_tick_kick() -> void:
@@ -209,3 +258,28 @@ func test_new_peer_has_clean_state() -> void:
 	assert_not_null(peer.limiter_unreliable, "limitador de no fiables")
 	assert_not_null(peer.limiter_reliable, "limitador de fiables")
 	assert_not_null(peer.limiter_bytes, "limitador de bytes")
+
+
+## Los ticks del servidor son u32 (414 días a 60 Hz ya pasan de 2^31): la ventana de avisos no puede
+## guardarlos en enteros de 32 bits con signo (hallazgo N5), o la resta con el aviso más antiguo
+## desborda y nunca se expulsa.
+func test_strikes_beyond_two_to_the_thirty_one_ticks_still_kick() -> void:
+	var big: int = 2147483648 + 5
+	var peer := ServerPeer.new(1)
+	var kicked_at: int = -1
+	for i: int in 60:
+		if peer.add_strike(big + i, "prueba") and kicked_at < 0:
+			kicked_at = i
+	assert_eq(kicked_at, 49, "el aviso 50 expulsa también con ticks por encima de 2^31")
+	var spread := ServerPeer.new(2)
+	var kicks: int = 0
+	for i: int in 200:
+		# Un aviso cada 13 ticks: 46 por ventana de 600 ticks, nunca llega a 50.
+		if spread.add_strike(big + i * 13, "prueba"):
+			kicks += 1
+	assert_eq(kicks, 0, "y avisos espaciados no expulsan nunca")
+	var max_tick: int = 4294967295
+	var edge := ServerPeer.new(3)
+	for i: int in 49:
+		edge.add_strike(max_tick - 100 + i, "prueba")
+	assert_true(edge.add_strike(max_tick - 50, "prueba"), "ni en el último rango del u32")

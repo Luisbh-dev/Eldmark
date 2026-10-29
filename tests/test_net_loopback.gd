@@ -625,3 +625,94 @@ func test_d_an_outage_is_corrected_and_explained_by_substitutions() -> void:
 	assert_eq(stats["malformed_packets"], 0)
 	assert_eq(client.get_state(), NetClient.State.IN_WORLD)
 	_assert_converged(client, idle_tick)
+
+
+# --- f) Parones del servidor ------------------------------------------------------------------
+
+## Ticks que el servidor pierde en los parones de las pruebas (unos 0,67 s: más de lo que Godot
+## recupera de golpe, que son 8 ticks por fotograma).
+const F_STALL_TICKS: int = 40
+## Ticks de calma antes del parón y de recuperación después, y ventana final en la que se mide.
+const F_CALM_TICKS: int = 120
+const F_RECOVERY_TICKS: int = 360
+const F_FINAL_TICKS: int = 120
+
+
+## Para el bucle del servidor [param ticks] ticks de los clientes y lo reanuda: el servidor pierde
+## esos ticks respecto al reloj real, como en un parón del proceso o una pausa de la máquina
+## virtual (Godot solo recupera 8 ticks por fotograma). Los clientes siguen a su ritmo.
+func _stall_server(ticks: int) -> void:
+	_server.set_physics_process(false)
+	await wait_physics_frames(ticks)
+	_server.set_physics_process(true)
+
+
+## Tras perder el servidor 40 ticks, el cliente va muy por delante: sus entradas llegan como
+## demasiado tempranas. Aun así, el servidor tiene que anotar esa antelación (saturada) para que
+## [TickSync] se entere y se retrase poco a poco; si no, la ventana se queda vacía para siempre, el
+## servidor sustituye todas las entradas y el personaje queda quieto en el servidor (hallazgo N1).
+func test_f_a_server_stall_does_not_leave_the_client_ahead_forever() -> void:
+	await _start_server()
+	var client: NetClient = _add_bot(VARDHEIM, 1)
+	assert_true(await _wait_until(_all_in_world), "entra")
+	await wait_physics_frames(F_CALM_TICKS)
+	var queue: InputQueue = _server_queue(client)
+	if not assert_not_null(queue, "el servidor tiene su cola"):
+		return
+	assert_eq(queue.too_early_count, 0, "antes del parón, ninguna entrada demasiado adelantada")
+
+	await _stall_server(F_STALL_TICKS)
+	await wait_physics_frames(F_RECOVERY_TICKS)
+	var too_early_before: int = queue.too_early_count
+	var substitutions_before: int = queue.substitutions_total
+	var diffs_before: int = client.get_stats()["diffs"]
+	await wait_physics_frames(F_FINAL_TICKS)
+
+	var stats: Dictionary = client.get_stats()
+	assert_true(too_early_before > 0, "el parón sí provocó entradas demasiado adelantadas")
+	assert_eq(queue.too_early_count, too_early_before,
+			"a los %d ticks ya no llegan entradas demasiado adelantadas" % F_RECOVERY_TICKS)
+	assert_true(client.get_tick_sync().get_window_min() != NetProtocol.NO_MARGIN,
+			"TickSync vuelve a recibir muestras de margen")
+	var lead: int = stats["predicted_tick"] - _server.get_tick()
+	var bound: int = client.get_tick_sync().get_target_margin() + stats["rtt_ticks"] + 2
+	assert_true(lead <= bound, "la antelación vuelve a la normal (%d ticks, máximo %d)"
+			% [lead, bound])
+	assert_eq(queue.substitutions_total, substitutions_before,
+			"el servidor ya no sustituye entradas")
+	assert_eq(stats["diffs"], diffs_before, "ni hay correcciones nuevas")
+	assert_eq(client.get_state(), NetClient.State.IN_WORLD)
+
+
+## Tras perder el servidor 20 ticks, los offsets de los snapshots bajan 20 de golpe. Los remotos no
+## pueden quedarse congelados (tick de dibujo más de MAX_EXTRAPOLATION_TICKS por delante del último
+## dato) hasta que caduque la ventana de 2 s del reloj de interpolación (hallazgo N3): se
+## congelaban unos 80 ticks después de volver los datos.
+func test_f_remotes_are_not_frozen_for_seconds_after_a_server_stall() -> void:
+	await _start_server()
+	var first: NetClient = _add_bot(VARDHEIM, 1)
+	var second: NetClient = _add_bot(VARDHEIM, 2)
+	assert_true(await _wait_until(_all_in_world), "entran los dos")
+	assert_true(await _wait_until(_all_see_the_others), "y se ven")
+	await wait_physics_frames(F_CALM_TICKS)
+
+	_server.set_physics_process(false)
+	await wait_physics_frames(20)
+	_server.set_physics_process(true)
+	var snapshots_at_resume: int = first.get_stats()["snapshots"]
+	var frozen_after_data: int = 0
+	var data_back: bool = false
+	for _i: int in 300:
+		await tree.physics_frame
+		if first.get_stats()["snapshots"] > snapshots_at_resume:
+			data_back = true
+		var view: RemotePlayerView = first.get_remote_world().get_view(second.get_net_id())
+		if not data_back or view == null:
+			continue
+		var ahead: float = first.get_interpolation_clock().get_render_tick() \
+				- float(view.get_interpolator().get_newest_tick())
+		if ahead > RemoteInterpolator.MAX_EXTRAPOLATION_TICKS:
+			frozen_after_data += 1
+	assert_true(data_back, "los snapshots vuelven")
+	assert_true(frozen_after_data < 15,
+			"el remoto no se congela tras volver los datos (%d ticks)" % frozen_after_data)

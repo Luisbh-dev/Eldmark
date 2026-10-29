@@ -30,6 +30,12 @@ const INPUT_REDUNDANCY_LOSSY: int = 8
 const MAX_INPUT_LEAD_TICKS: int = 30
 ## Ticks que el servidor repite el movimiento de la última entrada real antes de ponerlo a 0.
 const REPEAT_MOVE_TICKS: int = 6
+## Retardo de interpolación del cliente en el INPUT_BATCH: ticks × [constant INTERP_DELAY_Q_SCALE].
+## Su máximo real es el del reloj de interpolación del cliente (12 ticks); el servidor limita lo
+## que llegue por encima y lo cuenta como aviso.
+const INTERP_DELAY_Q_SCALE: int = 8
+const MAX_INTERP_DELAY_TICKS: int = 12
+const MAX_INTERP_DELAY_Q: int = MAX_INTERP_DELAY_TICKS * INTERP_DELAY_Q_SCALE
 ## Tope de la compensación de latencia (ticks).
 const MAX_REWIND_TICKS: int = 24
 ## Valor de [code]input_margin[/code] cuando no hay datos.

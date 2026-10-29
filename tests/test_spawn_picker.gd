@@ -43,6 +43,26 @@ func _yaw_of(transform: Transform3D) -> float:
 	return atan2(-forward.x, -forward.z)
 
 
+## NetZones es el único contacto de la red con Zones: da los puntos de aparición (de un reino o de
+## todos) y el nombre del grupo que los marca, que es el de Zones.
+func test_net_zones_gives_the_spawn_points_and_their_group() -> void:
+	_make_world()
+	_add_point(_world, "V1", Vector3(0, 0, -10), "vardheim")
+	_add_point(_world, "S1", Vector3(0, 0, 10), "solmarch")
+	_add_point(_world, "V2", Vector3(5, 0, -10), "vardheim")
+	_add_point(_world, "Libre", Vector3(9, 0, 9))
+	assert_eq(NetZones.spawn_group(), Zones.SPAWN_GROUP)
+	assert_eq(NetZones.get_spawn_points(_world).size(), 4, "sin reino, todos los de la zona")
+	assert_eq(NetZones.get_spawn_points(_world, NetProtocol.Realm.NONE).size(), 4, "NONE es sin reino")
+	var vardheim: Array[Node3D] = NetZones.get_spawn_points(_world, VARDHEIM)
+	assert_eq(vardheim.size(), 2, "los de Vardheim")
+	assert_eq(vardheim[0].name, &"V1")
+	assert_eq(vardheim[1].name, &"V2", "en el orden de la escena")
+	assert_eq(NetZones.get_spawn_points(_world, SOLMARCH).size(), 1)
+	assert_true(NetZones.get_spawn_points(_world, ASKARRA).is_empty(), "un reino sin puntos, ninguno")
+	assert_true(NetZones.get_spawn_points(null, VARDHEIM).is_empty(), "sin zona, ninguno")
+
+
 func test_wheel_cycles_through_the_points_of_the_realm() -> void:
 	_make_world()
 	_add_point(_world, "V1", Vector3(0, 0, -10), "vardheim")

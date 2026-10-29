@@ -58,10 +58,30 @@ const LOADING_TIMEOUT_TICKS: int = 3600
 const STATE_LOG_FLUSH_TICKS: int = 60
 ## Cada cuántos ticks se escribe la línea de métricas en el registro (10 s).
 const METRICS_LOG_TICKS: int = 600
+## Ticks durante los que no puede volver a entrar quien ha sido expulsado (30 s): su IP o, desde
+## loopback, su nombre reciben un REJECT nada más conectar.
+const KICK_COOLDOWN_TICKS: int = 1800
+## Margen (ticks) que se suma al RTT de ENet y al retardo del simulador al acotar el RTT que declara
+## el cliente con sus acks: los snapshots salen cada 2 ticks y hay que procesarlos.
+const RTT_SLACK_TICKS: int = 3
+## Motivo del aviso por cada paquete que el transporte descarta por no ser del protocolo.
+const DISCARDED_REASON: String = "paquete ajeno al protocolo"
+## Ticks que un peer puede estar conectado sin enviar el HELLO (1,5 s). Mucho menos que los 5 s de
+## la autenticación de [SceneMultiplayer]: una conexión ociosa ocupa una de las plazas de ENet.
+const HELLO_TIMEOUT_TICKS: int = 90
+## Motivo con el que el informe cuenta (en [code]rejects[/code]) las conexiones cortadas por no
+## mandar el HELLO a tiempo.
+const HELLO_TIMEOUT_REASON: String = "sin HELLO a tiempo"
+## Cada cuántos ticks se comprueba el plazo del HELLO.
+const HELLO_CHECK_TICKS: int = 10
 ## Ticks que se espera, tras [method stop], a que los peers se vayan antes de cerrar el transporte.
 const STOP_DRAIN_TICKS: int = 30
 ## Secciones del tick que aparecen en la línea de métricas (las mismas que mide el bucle).
 const LOGGED_SECTIONS: Array[StringName] = [&"net", &"sim", &"history", &"snapshot", &"flush"]
+## Fichas de jugador y expulsiones que el informe conserva (las más recientes); lo anterior se resume
+## en totales. Sin tope, un cliente que entra y sale en bucle haría crecer la memoria sin límite.
+const MAX_LOGGED_PLAYERS: int = 1000
+const MAX_LOGGED_KICKS: int = 200
 ## Avisos de error de física que se escriben en el registro (el resto solo se cuenta).
 const MAX_LOGGED_PHYSICS_ERRORS: int = 10
 ## Coordenada máxima (en valor absoluto) que admite un teletransporte de depuración.
@@ -88,11 +108,21 @@ var log_enabled: bool = true
 ## Ticks que un peer puede estar cargando la zona sin enviar CLIENT_READY antes de que se le
 ## expulse ([constant LOADING_TIMEOUT_TICKS] por defecto; las pruebas lo acortan).
 var loading_timeout_ticks: int = LOADING_TIMEOUT_TICKS
+## Ticks que un peer puede estar conectado sin enviar el HELLO antes de que se le corte
+## ([constant HELLO_TIMEOUT_TICKS] por defecto; las pruebas lo cambian).
+var hello_timeout_ticks: int = HELLO_TIMEOUT_TICKS
+## Ticks de enfriamiento tras una expulsión ([constant KICK_COOLDOWN_TICKS] por defecto; las pruebas
+## lo cambian).
+var kick_cooldown_ticks: int = KICK_COOLDOWN_TICKS
 ## Solo pruebas: si es válido, se le pasa [code](peer_id: int, address: String) -> String[/code] y
 ## devuelve la dirección con la que se trata al peer. Sirve para fingir que unos clientes de
 ## loopback vienen de una IP externa y así probar el tope de conexiones por IP, del que el loopback
 ## está exento.
 var remote_address_override: Callable = Callable()
+## Fichas de jugador y expulsiones que conserva el informe ([constant MAX_LOGGED_PLAYERS] y
+## [constant MAX_LOGGED_KICKS] por defecto; las pruebas los acortan).
+var max_logged_players: int = MAX_LOGGED_PLAYERS
+var max_logged_kicks: int = MAX_LOGGED_KICKS
 
 var _run_state: _RunState = _RunState.IDLE
 var _config: ServerConfig
@@ -122,9 +152,16 @@ var _rtt: Dictionary[int, _RttWindow] = {}
 var _pending_ready: Array[int] = []
 # Peers que se van (bajas del tick siguiente).
 var _leaving: Array[int] = []
-# net_id -> ficha del jugador vivo; _player_log guarda todas, también las de los que se han ido.
+# net_id -> ficha del jugador vivo; _player_log guarda las últimas max_logged_players, también las de
+# los que se han ido (las más viejas de los que se fueron se resumen en _archived_*).
 var _player_by_net: Dictionary[int, _PlayerRecord] = {}
 var _player_log: Array[_PlayerRecord] = []
+var _archived_players: int = 0
+var _archived_fakes: int = 0
+var _archived_inputs: int = 0
+var _archived_substituted: int = 0
+var _archived_late: int = 0
+var _archived_too_early: int = 0
 var _fake_counter: int = 0
 var _peak_players: int = 0
 var _players_at_stop: int = 0
@@ -133,6 +170,9 @@ var _left_total: int = 0
 var _strikes_total: int = 0
 var _strike_reasons: Dictionary[String, int] = {}
 var _kicks: Array[Dictionary] = []
+var _kicks_total: int = 0
+# Clave («ip:<grupo>» o «name:<nombre normalizado>») -> tick hasta el que no puede volver a entrar.
+var _kick_until: Dictionary[String, int] = {}
 var _rejects: Dictionary[String, int] = {}
 var _physics_errors: int = 0
 var _teleports: int = 0
@@ -140,6 +180,10 @@ var _respawns: int = 0
 var _synced_wire_in: int = 0
 var _synced_wire_out: int = 0
 var _log_last_usec: int = 0
+# Reloj de ticks «reales» (a la cadencia nominal), para saber cuántos ticks ha perdido el servidor
+# entre dos polls. _clock_origin_usec es el instante de start().
+var _clock_origin_usec: int = 0
+var _last_poll_real_tick: int = 0
 var _log_last_wire_out: int = 0
 var _log_last_wire_in: int = 0
 var _state_log: FileAccess = null
@@ -190,6 +234,16 @@ class _PlayerRecord:
 			strikes = peer.strikes_total
 		if left_tick < 0 and entity != null and is_instance_valid(entity.node):
 			last_position = entity.get_position()
+
+
+	# El jugador se va en el tick [param tick]: copia los contadores y la posición y suelta la cola,
+	# el peer y la entidad, que si no se quedarían en memoria mientras la ficha siga en el informe.
+	func close(tick: int) -> void:
+		refresh()
+		left_tick = tick
+		queue = null
+		peer = null
+		entity = null
 
 
 	func to_dictionary() -> Dictionary:
@@ -302,6 +356,8 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_open_state_log()
 	_metrics.register_monitors()
 	_log_last_usec = Time.get_ticks_usec()
+	_clock_origin_usec = _log_last_usec
+	_last_poll_real_tick = 0
 	_run_state = _RunState.RUNNING
 	set_physics_process(true)
 	return OK
@@ -332,8 +388,7 @@ func stop(notice_text: String = "") -> void:
 			peer.state = ServerPeer.State.LEAVING
 		_transport.flush()
 	for record: _PlayerRecord in _player_by_net.values():
-		record.refresh()
-		record.left_tick = _tick
+		record.close(_tick)
 	_clear_players()
 	_pending_ready.clear()
 	_leaving.clear()
@@ -379,6 +434,13 @@ func get_player_count() -> int:
 		if peer.state == ServerPeer.State.LOADING or peer.state == ServerPeer.State.IN_WORLD:
 			count += 1
 	return count
+
+
+## Entradas del enfriamiento tras expulsiones (vigentes o aún sin purgar). Se purgan al apuntar la
+## siguiente expulsión, así que el diccionario no crece más que las expulsiones de los últimos
+## [constant KICK_COOLDOWN_TICKS] ticks.
+func get_cooldown_count() -> int:
+	return _kick_until.size()
 
 
 ## Nombres de los jugadores presentes en la zona: los peers aceptados (cargando o ya dentro) y los
@@ -463,17 +525,21 @@ func teleport(net_id: int, position: Vector3) -> void:
 ## Claves:
 ## [codeblock]
 ## version, zone, port, ticks, tick_rate, sim_hash
-## players   {current, fake, peak, joined_total, left_total}
+## closed    false mientras el servidor está en marcha (informe periódico), true tras stop()
+## players   {current, at_stop, fake, peak, joined_total, left_total, archived}
 ## inputs    {consumed, substituted, late, too_early, substituted_percent}  (solo jugadores de red)
 ## bytes     {wire_in, wire_out, app_in, app_out}  (acumulados; ver NetTransport.get_byte_counters)
-## strikes   {total, by_reason}      kicks [{tick, peer_id, net_id, name, reason}]
+## strikes   {total, by_reason, kicks_total}
+## kicks     [{tick, peer_id, net_id, name, reason}]  (las últimas max_logged_kicks)
 ## rejects   {motivo: veces}
 ## physics_errors, teleports, respawns
 ## simulate  {calls, total_us, avg_us, max_us}        µs de cada PlayerCharacter.simulate()
 ## snapshots {sent, bytes, avg_bytes, max_bytes, build_us, avg_build_us}   build_us: construir cada
 ##           snapshot y encolarlo (sin el cálculo del interés ni el envío real de ENet)
 ## metrics   ServerMetrics.summary() (p50/p99/máx de cada sección en µs, KB/s, jugadores...)
-## player_list  una ficha por jugador que ha pasado por el servidor (también los que se fueron)
+## player_list  una ficha por jugador que ha pasado por el servidor (también los que se fueron),
+##           las últimas max_logged_players; de las anteriores solo quedan los totales
+##           (players.archived cuenta las fichas resumidas)
 ## [/codeblock]
 func write_report(path: String) -> Error:
 	if path.is_empty():
@@ -503,6 +569,7 @@ func _physics_process(delta: float) -> void:
 
 	_metrics.begin_section(&"net")
 	if _transport != null:
+		_grant_stall_credit()
 		_transport.poll(_tick)
 	_metrics.end_section(&"net")
 
@@ -510,6 +577,7 @@ func _physics_process(delta: float) -> void:
 	var s: int = _tick
 
 	_check_loading_timeouts(s)
+	_check_hello_timeouts(s)
 	_process_departures(s)
 
 	_metrics.begin_section(&"sim")
@@ -535,6 +603,23 @@ func _physics_process(delta: float) -> void:
 	if s % METRICS_LOG_TICKS == 0:
 		_log_metrics(s)
 	tick_finished.emit(s)
+
+
+# Si el servidor ha perdido ticks respecto al reloj (un parón del proceso: Godot solo recupera 8 por
+# fotograma), los clientes siguieron enviando un lote por tick y todo llega junto en este poll, con
+# el tick del servidor sin avanzar: el cubo no se recargaría y lo más nuevo se descartaría como
+# exceso de ritmo. Se da a cada peer el crédito de los ticks perdidos (ver
+# ServerPeer.grant_stall_credit). Los ticks reales son un reloj entero, así que la suma de lo
+# concedido no pasa de los ticks que de verdad han transcurrido.
+func _grant_stall_credit() -> void:
+	var elapsed_usec: int = Time.get_ticks_usec() - _clock_origin_usec
+	var real_tick: int = elapsed_usec * Engine.physics_ticks_per_second / 1000000
+	var missed_ticks: int = real_tick - _last_poll_real_tick - 1
+	_last_poll_real_tick = real_tick
+	if missed_ticks <= 0:
+		return
+	for peer: ServerPeer in _peers.values():
+		peer.grant_stall_credit(_tick, missed_ticks)
 
 
 # Simula a todos los jugadores por net_id ascendente con la entrada de take(s).
@@ -627,7 +712,7 @@ func _process_arrivals(s: int) -> void:
 			continue
 		var entity: NetEntity = _create_player(peer.display_name, peer.realm, peer_id, s)
 		if entity == null:
-			_kick(peer, "no queda sitio en la zona")
+			_kick(peer, "no queda sitio en la zona", false)
 			continue
 		peer.entity = entity
 		peer.input_queue = _queues[entity.net_id]
@@ -681,10 +766,34 @@ func _create_player(display_name: String, realm: int, owner_peer: int, s: int) -
 	record.entity = entity
 	_player_by_net[entity.net_id] = record
 	_player_log.append(record)
+	_trim_player_log()
 	_joined_total += 1
 	_metrics.add_counter(ServerMetrics.COUNTER_PLAYERS, 1)
 	_peak_players = maxi(_peak_players, _metrics.get_counter(ServerMetrics.COUNTER_PLAYERS))
 	return entity
+
+
+# Mantiene el anillo del informe en max_logged_players fichas: saca la más antigua de las de quien ya
+# se ha ido (las de quien sigue dentro se quedan, aunque el anillo se pase) y la resume en totales.
+func _trim_player_log() -> void:
+	while _player_log.size() > max_logged_players:
+		var index: int = -1
+		for i: int in _player_log.size():
+			if _player_log[i].left_tick >= 0:
+				index = i
+				break
+		if index < 0:
+			return
+		var record: _PlayerRecord = _player_log[index]
+		_player_log.remove_at(index)
+		_archived_players += 1
+		if record.is_fake:
+			_archived_fakes += 1
+		else:
+			_archived_inputs += record.inputs
+			_archived_substituted += record.substituted
+			_archived_late += record.late
+			_archived_too_early += record.too_early
 
 
 # Mensajes de un alta (sección 3): el SPAWN propio, los de todo lo relevante para el recién
@@ -764,8 +873,7 @@ func _remove_player(entity: NetEntity, s: int, reason: int) -> void:
 		other.priority.erase(net_id)
 	var record: _PlayerRecord = _player_by_net.get(net_id)
 	if record != null:
-		record.refresh()
-		record.left_tick = s
+		record.close(s)
 		_player_by_net.erase(net_id)
 	_queues.erase(net_id)
 	_fakes.erase(net_id)
@@ -813,6 +921,22 @@ func _check_loading_timeouts(s: int) -> void:
 		if peer.state == ServerPeer.State.LOADING \
 				and s - peer.loading_since_tick >= loading_timeout_ticks:
 			_kick(peer, "se agotó el tiempo de carga de la zona")
+
+
+# Peers que llevan demasiado conectados sin mandar el HELLO: cada conexión ociosa ocupa una plaza de
+# ENet (max_players + 4) hasta que vence el plazo de 5 s de SceneMultiplayer, y reabrirla cuesta un
+# RTT. Se cortan con un plazo propio mucho más corto, sin REJECT (no hay nada a lo que contestar).
+func _check_hello_timeouts(s: int) -> void:
+	if s % HELLO_CHECK_TICKS != 0:
+		return
+	for peer: ServerPeer in _peers.values():
+		if peer.state == ServerPeer.State.AUTHENTICATING \
+				and s - peer.connected_tick >= hello_timeout_ticks:
+			_rejects[HELLO_TIMEOUT_REASON] = _rejects.get(HELLO_TIMEOUT_REASON, 0) + 1
+			_log("Conexión de %s (peer %d) cortada: %s" % [peer.remote_address, peer.peer_id,
+					HELLO_TIMEOUT_REASON])
+			_transport.disconnect_after_flush(peer.peer_id)
+			_mark_leaving(peer)
 
 
 # --- Historial, interés y snapshots -----------------------------------------------------------
@@ -914,6 +1038,7 @@ func _connect_transport() -> void:
 	_transport.peer_connected.connect(_on_peer_connected)
 	_transport.peer_disconnected.connect(_on_peer_disconnected)
 	_transport.packet_received.connect(_on_packet_received)
+	_transport.packets_discarded.connect(_on_packets_discarded)
 
 
 func _disconnect_transport() -> void:
@@ -929,6 +1054,8 @@ func _disconnect_transport() -> void:
 		_transport.peer_disconnected.disconnect(_on_peer_disconnected)
 	if _transport.packet_received.is_connected(_on_packet_received):
 		_transport.packet_received.disconnect(_on_packet_received)
+	if _transport.packets_discarded.is_connected(_on_packets_discarded):
+		_transport.packets_discarded.disconnect(_on_packets_discarded)
 
 
 # Un cliente ha conectado y empieza a autenticarse: se espera su HELLO.
@@ -939,7 +1066,20 @@ func _on_peer_authenticating(peer_id: int) -> void:
 	peer.remote_address = _transport.get_remote_address(peer_id)
 	if remote_address_override.is_valid():
 		peer.remote_address = str(remote_address_override.call(peer_id, peer.remote_address))
+	peer.connected_tick = _tick
 	_peers[peer_id] = peer
+	# Quien ha sido expulsado hace poco no vuelve a entrar en un RTT con los avisos a 0 y los cubos
+	# llenos: su IP recibe un REJECT nada más conectar (se reutiliza TOO_MANY_CONNECTIONS para no
+	# subir PROTOCOL_VERSION).
+	if _is_cooling_down(_cooldown_key_for_address(peer.remote_address)):
+		_reject(peer, NetProtocol.Result.TOO_MANY_CONNECTIONS)
+		return
+	# El tope por IP se aplica ya al conectar, no solo al llegar el HELLO: una IP que abre conexiones
+	# sin mandar nada ocuparía todas las plazas de ENet y los clientes legítimos quedarían sin
+	# respuesta. Las que pasan del tope reciben un REJECT y se cortan.
+	if _connections_from(peer) >= _config.max_connections_per_ip \
+			and not ServerAuth.is_loopback(peer.remote_address):
+		_reject(peer, NetProtocol.Result.TOO_MANY_CONNECTIONS)
 
 
 # HELLO: se valida y se contesta WELCOME (y complete_auth) o REJECT (y corte ordenado).
@@ -953,6 +1093,9 @@ func _on_auth_received(peer_id: int, bytes: PackedByteArray) -> void:
 	var hello: NetMessages.Hello = NetMessages.Hello.decode(bytes)
 	var result: int = NetProtocol.Result.MALFORMED
 	if hello != null:
+		if _is_cooling_down(_cooldown_key_for_name(peer.remote_address, hello.display_name)):
+			_reject(peer, NetProtocol.Result.TOO_MANY_CONNECTIONS)
+			return
 		result = _auth.validate(hello, peer.remote_address, get_player_count(),
 				_connections_from(peer))
 	if result != NetProtocol.Result.OK:
@@ -993,6 +1136,20 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	_mark_leaving(peer)
 
 
+# El transporte ha descartado [param count] paquetes de este peer por no ser del protocolo (SYS que no
+# es autenticación antes del HELLO; después, cualquier cosa que no sea un paquete de aplicación): un
+# cliente de verdad nunca los manda. Cada uno suma un aviso; a los 50 se le expulsa. Con más de 50
+# de golpe no hace falta contarlos todos.
+func _on_packets_discarded(peer_id: int, count: int) -> void:
+	var peer: ServerPeer = _peers.get(peer_id)
+	if peer == null or _run_state != _RunState.RUNNING or peer.state == ServerPeer.State.LEAVING:
+		return
+	for _i: int in mini(count, ServerPeer.STRIKE_LIMIT):
+		_add_strike(peer, DISCARDED_REASON)
+		if peer.state == ServerPeer.State.LEAVING:
+			return
+
+
 func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 	var peer: ServerPeer = _peers.get(peer_id)
 	if peer == null or _run_state != _RunState.RUNNING or bytes.is_empty():
@@ -1031,7 +1188,10 @@ func _handle_input_batch(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	if batch == null:
 		_add_strike(peer, "lote de entradas mal formado")
 		return
-	peer.interp_delay_q = batch.interp_delay_q
+	# El retardo de interpolación del cliente no pasa de 12 ticks (× 8): más es un cliente falso.
+	peer.interp_delay_q = mini(batch.interp_delay_q, NetProtocol.MAX_INTERP_DELAY_Q)
+	if batch.interp_delay_q > NetProtocol.MAX_INTERP_DELAY_Q:
+		_add_strike(peer, "retardo de interpolación fuera de rango")
 	# El ack no puede ir por delante del servidor ni retroceder; con él se mide el RTT en ticks.
 	if batch.ack_snapshot_tick > 0 and batch.ack_snapshot_tick <= _tick \
 			and batch.ack_snapshot_tick >= peer.ack_snapshot_tick:
@@ -1042,9 +1202,24 @@ func _handle_input_batch(peer: ServerPeer, bytes: PackedByteArray) -> void:
 			_rtt[peer.peer_id] = window
 		var next_tick: int = _tick + 1
 		window.add(next_tick, next_tick - batch.ack_snapshot_tick)
-		peer.rtt_ticks = maxi(window.get_min(next_tick), 0)
+		peer.rtt_ticks = mini(maxi(window.get_min(next_tick), 0), _max_plausible_rtt_ticks(peer))
 	for i: int in batch.inputs.size():
 		peer.input_queue.push(batch.inputs[i], batch.view_offsets_q[i], _tick + 1)
+
+
+# Cota del RTT en ticks que puede declarar un cliente con sus acks. El ack lo decide el cliente: uno
+# que atrasara sus acks se haría pasar por alguien con lag y obtendría el rebobinado máximo de la fase
+# 3. La cota sale de fuentes que no controla: el RTT de ENet, el retardo que añade el simulador de
+# red del propio servidor y un margen. (El --net-sim del cliente no cuenta: en producción sería
+# fingir lag; para probar con lag se usa el del servidor.)
+func _max_plausible_rtt_ticks(peer: ServerPeer) -> int:
+	var enet_ticks: int = 0
+	var sim_ticks: int = 0
+	if _transport != null:
+		enet_ticks = ceili(_transport.get_rtt_ms(peer.peer_id) \
+				* float(Engine.physics_ticks_per_second) / 1000.0)
+		sim_ticks = _transport.get_sim_round_trip_ticks()
+	return enet_ticks + sim_ticks + RTT_SLACK_TICKS
 
 
 func _handle_client_ready(peer: ServerPeer, bytes: PackedByteArray) -> void:
@@ -1096,10 +1271,13 @@ func _add_strike(peer: ServerPeer, reason: String) -> void:
 		_kick(peer, reason)
 
 
-# NOTICE de expulsión y corte ordenado. El motivo queda en el informe.
-func _kick(peer: ServerPeer, reason: String) -> void:
+# NOTICE de expulsión y corte ordenado. El motivo queda en el informe. Con [param cooldown], su IP (o,
+# desde loopback, su nombre) no puede volver a entrar durante kick_cooldown_ticks.
+func _kick(peer: ServerPeer, reason: String, cooldown: bool = true) -> void:
 	if peer.state == ServerPeer.State.LEAVING:
 		return
+	if cooldown:
+		_start_cooldown(peer)
 	var notice := NetMessages.Notice.new()
 	notice.code = NetProtocol.NoticeCode.KICK
 	notice.text = "Expulsado del servidor: %s" % reason
@@ -1110,12 +1288,47 @@ func _kick(peer: ServerPeer, reason: String) -> void:
 		"tick": _tick, "peer_id": peer.peer_id, "net_id": net_id, "name": peer.display_name,
 		"reason": reason,
 	})
+	_kicks_total += 1
+	while _kicks.size() > max_logged_kicks:
+		_kicks.pop_front()
 	var record: _PlayerRecord = _player_by_net.get(net_id)
 	if record != null:
 		record.kicked = true
 		record.kick_reason = reason
 	_log("Expulsión de %s (peer %d): %s" % [peer.display_name, peer.peer_id, reason])
 	_mark_leaving(peer)
+
+
+# Apunta el enfriamiento de un peer expulsado y purga los vencidos. Por IP (las IPv6, por /64) salvo
+# desde loopback, donde no hay tope por IP y se usa el nombre normalizado, si ya lo había dado.
+func _start_cooldown(peer: ServerPeer) -> void:
+	var key: String = _cooldown_key_for_address(peer.remote_address)
+	if key.is_empty():
+		key = _cooldown_key_for_name(peer.remote_address, peer.display_name)
+	if key.is_empty():
+		return
+	for old_key: String in _kick_until.keys():
+		if _kick_until[old_key] <= _tick:
+			_kick_until.erase(old_key)
+	_kick_until[key] = _tick + kick_cooldown_ticks
+
+
+# Clave de enfriamiento por dirección, o vacía si es loopback o no se conoce.
+func _cooldown_key_for_address(address: String) -> String:
+	if address.is_empty() or ServerAuth.is_loopback(address):
+		return ""
+	return "ip:" + ServerAuth.address_group(address)
+
+
+# Clave de enfriamiento por nombre: solo desde loopback, que no tiene tope por IP.
+func _cooldown_key_for_name(address: String, display_name: String) -> String:
+	if display_name.is_empty() or not ServerAuth.is_loopback(address):
+		return ""
+	return "name:" + NameRules.normalize_key(display_name)
+
+
+func _is_cooling_down(key: String) -> bool:
+	return not key.is_empty() and _kick_until.get(key, 0) > _tick
 
 
 func _mark_leaving(peer: ServerPeer) -> void:
@@ -1139,14 +1352,16 @@ func _reject(peer: ServerPeer, result: int) -> void:
 	_mark_leaving(peer)
 
 
-# Conexiones abiertas desde la misma IP que [param peer], sin contarlo a él.
+# Conexiones abiertas desde la misma IP que [param peer], sin contarlo a él (las IPv6 se cuentan por
+# prefijo /64, ver ServerAuth.address_group).
 func _connections_from(peer: ServerPeer) -> int:
 	if peer.remote_address.is_empty():
 		return 0
+	var group: String = ServerAuth.address_group(peer.remote_address)
 	var count: int = 0
 	for other: ServerPeer in _peers.values():
 		if other != peer and other.state != ServerPeer.State.LEAVING \
-				and other.remote_address == peer.remote_address:
+				and ServerAuth.address_group(other.remote_address) == group:
 			count += 1
 	return count
 
@@ -1281,10 +1496,10 @@ func _build_report() -> Dictionary:
 	if _transport != null and is_instance_valid(_transport):
 		network_bytes = _transport.get_byte_counters()
 	var player_list: Array[Dictionary] = []
-	var inputs: int = 0
-	var substituted: int = 0
-	var late: int = 0
-	var too_early: int = 0
+	var inputs: int = _archived_inputs
+	var substituted: int = _archived_substituted
+	var late: int = _archived_late
+	var too_early: int = _archived_too_early
 	for record: _PlayerRecord in _player_log:
 		player_list.append(record.to_dictionary())
 		if not record.is_fake:
@@ -1302,6 +1517,7 @@ func _build_report() -> Dictionary:
 		"ticks": _tick,
 		"tick_rate": Engine.physics_ticks_per_second,
 		"sim_hash": _sim_hash,
+		"closed": _run_state == _RunState.STOPPING or _run_state == _RunState.STOPPED,
 		"players": {
 			"current": get_player_count(),
 			"at_stop": _players_at_stop,
@@ -1309,6 +1525,7 @@ func _build_report() -> Dictionary:
 			"peak": _peak_players,
 			"joined_total": _joined_total,
 			"left_total": _left_total,
+			"archived": _archived_players,
 		},
 		"inputs": {
 			"consumed": inputs,
@@ -1318,7 +1535,8 @@ func _build_report() -> Dictionary:
 			"substituted_percent": substituted_percent,
 		},
 		"bytes": network_bytes,
-		"strikes": {"total": _strikes_total, "by_reason": _strike_reasons},
+		"strikes": {"total": _strikes_total, "by_reason": _strike_reasons,
+				"kicks_total": _kicks_total},
 		"kicks": _kicks,
 		"rejects": _rejects,
 		"physics_errors": _physics_errors,
@@ -1347,7 +1565,7 @@ func _build_report() -> Dictionary:
 
 
 func _count_fakes_in_log() -> int:
-	var count: int = 0
+	var count: int = _archived_fakes
 	for record: _PlayerRecord in _player_log:
 		if record.is_fake:
 			count += 1

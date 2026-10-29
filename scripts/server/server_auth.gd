@@ -85,6 +85,45 @@ static func is_loopback(remote_address: String) -> bool:
 	return false
 
 
+## Clave con la que el tope por IP cuenta las conexiones de [param remote_address]: una IPv4 tal
+## cual, una IPv6 mapeada ([code]::ffff:a.b.c.d[/code]) como su IPv4 y el resto de IPv6 por su
+## prefijo /64 (sus cuatro primeros grupos, ya expandidos y sin ceros a la izquierda), porque quien
+## tiene IPv6 suele tener un /64 entero y cada dirección suya sería otra IP. La zona de ámbito
+## ([code]%eth0[/code]) no cuenta. Lo que no se entiende se devuelve tal cual.
+static func address_group(remote_address: String) -> String:
+	var text: String = remote_address.strip_edges().to_lower()
+	var scope: int = text.find("%")
+	if scope >= 0:
+		text = text.substr(0, scope)
+	if not text.contains(":"):
+		return text
+	if text.begins_with("::ffff:") and text.substr(7).contains("."):
+		return text.substr(7)
+	var halves: PackedStringArray = text.split("::")
+	if halves.size() > 2:
+		return remote_address
+	var head: PackedStringArray = halves[0].split(":", false)
+	var tail: PackedStringArray = PackedStringArray()
+	var groups: PackedStringArray = head
+	if halves.size() == 2:
+		tail = halves[1].split(":", false)
+		var missing: int = 8 - head.size() - tail.size()
+		if missing < 1:
+			return remote_address
+		groups = head.duplicate()
+		for _i: int in missing:
+			groups.append("0")
+		groups.append_array(tail)
+	if groups.size() != 8:
+		return remote_address
+	var prefix := PackedStringArray()
+	for i: int in 4:
+		if not groups[i].is_valid_hex_number():
+			return remote_address
+		prefix.append("%x" % groups[i].hex_to_int())
+	return ":".join(prefix)
+
+
 ## true si [param display_name] cabe en el HELLO (como mucho [constant NetProtocol.MAX_NAME_CHARS]
 ## caracteres y [constant NetProtocol.MAX_NAME_BYTES] bytes en UTF-8) y cumple las reglas de
 ## [NameRules]. No mira los nombres de los conectados: para eso está [method check_name].

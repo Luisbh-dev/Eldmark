@@ -35,6 +35,12 @@ const STATE_INTERVAL_TICKS: int = 2
 const ROUTE_TICKS: int = 250
 ## Ticks de la ruta de combate.
 const COMBAT_ROUTE_TICKS: int = 300
+## Ticks que salta el hard reset hacia delante de la prueba de la regla de sustitución: más de
+## [constant NetProtocol.REPEAT_MOVE_TICKS], para ver cómo se repite el movimiento y cómo se anula.
+const GAP_TICKS: int = 12
+## Altura (m) del suelo que la ruta tiene que pisar para dar por subida la rampa: un salto en llano
+## llega a ~1,5 m, así que 2 m solo se alcanzan subiendo por ella.
+const MIN_RAMP_HEIGHT: float = 2.0
 
 var _server_viewport: SubViewport
 var _client_viewport: SubViewport
@@ -174,6 +180,7 @@ func test_prediction_matches_the_server_tick_by_tick() -> void:
 		return
 	var results: Array[Vector2i] = []
 	var peak_height: float = 0.0
+	var grounded_peak_height: float = 0.0
 	var yaw_wraps: int = 0
 	var previous_yaw: float = _model.states[SPAWN_TICK].yaw
 	for _frame: int in ROUTE_TICKS:
@@ -181,6 +188,8 @@ func test_prediction_matches_the_server_tick_by_tick() -> void:
 		_client_tick(results, [] as Array[int])
 		var state: PlayerState = _server_tick()
 		peak_height = maxf(peak_height, state.position.y)
+		if state.grounded:
+			grounded_peak_height = maxf(grounded_peak_height, state.position.y)
 		if absf(state.yaw - previous_yaw) > PI:
 			yaw_wraps += 1
 		previous_yaw = state.yaw
@@ -191,7 +200,12 @@ func test_prediction_matches_the_server_tick_by_tick() -> void:
 			fail("el estado predicho del tick %d difiere del del servidor.\n  predicho: %s\n  servidor: %s"
 					% [_model.tick, predicted, state])
 			return
-	assert_true(peak_height > 1.0, "la ruta sube por la rampa y salta (altura máxima %s)" % peak_height)
+	# Un salto en llano ya llega a ~1,5 m (8² / (2 · 22)): solo se está en la rampa si los pies, en el
+	# suelo, pasan de los 2 m (la ruta llega a unos 3,5 m).
+	assert_true(grounded_peak_height > MIN_RAMP_HEIGHT,
+			"la ruta sube por la rampa: pisa el suelo a más de %s m (máximo %.2f m)"
+			% [MIN_RAMP_HEIGHT, grounded_peak_height])
+	assert_true(peak_height > 1.0, "y salta (altura máxima %s)" % peak_height)
 	assert_true(yaw_wraps >= 1, "la ruta gira cruzando ±PI (%d cruces)" % yaw_wraps)
 	assert_true(_jumped_count >= 2, "la ruta salta (%d saltos)" % _jumped_count)
 	assert_true(_prediction.get_predicted_tick() > ClientPrediction.HISTORY_SIZE,
@@ -597,7 +611,13 @@ func test_a_state_ahead_of_the_prediction_is_a_hard_reset() -> void:
 			ClientPrediction.Result.IGNORED, "y ese estado ya está reconciliado")
 
 
-func test_hard_reset_to_an_old_tick_replays_with_the_server_substitution_rule() -> void:
+## Un estado de un tick que ya salió del anillo: el cliente ya no conoce la última entrada que el
+## servidor aplicó en él, así que sustituye con una neutra (con los botones del estado y sin
+## movimiento) hasta el primer tick que sigue en el anillo. Es una aproximación inevitable del cliente,
+## no la regla de [InputQueue] (que repetiría el movimiento de esa entrada 6 ticks): el oráculo
+## reimplementa la aproximación. La regla de verdad se comprueba contra [InputQueue] en
+## [method test_client_substitution_matches_the_real_input_queue_across_a_gap].
+func test_hard_reset_to_an_old_tick_replays_with_the_neutral_approximation_of_the_client() -> void:
 	if not await _begin_session(_route_input):
 		return
 	for _i: int in 300:
@@ -613,9 +633,9 @@ func test_hard_reset_to_an_old_tick_replays_with_the_server_substitution_rule() 
 	old_state.last_input_tick = old_tick
 	old_state = PlayerState.decode(old_state.encode())
 
-	# Oráculo: el servidor repite desde ese estado con la regla de sustitución (la última entrada
-	# aplicada es neutra con los botones del estado y, sin entradas reales, sin movimiento) hasta
-	# el primer tick que sigue en el anillo, y después con las entradas guardadas.
+	# Oráculo: se repite desde ese estado con la aproximación del cliente (la última entrada aplicada
+	# es neutra con los botones del estado y, sin entradas reales, sin movimiento) hasta el primer
+	# tick que sigue en el anillo, y después con las entradas guardadas.
 	var first_stored: int = last - ClientPrediction.HISTORY_SIZE + 1
 	_server.set_state(old_state)
 	var substituted: PlayerInput = NetProtocol.neutral_input(old_tick, old_state.yaw)
@@ -639,6 +659,63 @@ func test_hard_reset_to_an_old_tick_replays_with_the_server_substitution_rule() 
 			"y el anillo guarda el estado nuevo")
 	assert_eq(_prediction.get_stats()["resimulated_ticks"], last - old_tick, "ticks vueltos a simular")
 	assert_eq(_smoother.get_offset(), Vector3.ZERO, "un hard reset no suaviza")
+
+
+## La regla de sustitución está en [InputQueue.take] (el servidor), en
+## [code]ClientPrediction._input_or_substitute[/code] (el cliente, al repetir con huecos en el anillo)
+## y, a mano, en [ServerModel]. Aquí el cliente se compara con la [InputQueue] [b]real[/b]: un hueco en
+## el anillo (un [method ClientPrediction.hard_reset] hacia delante, que salta [constant GAP_TICKS]
+## ticks) seguido de una repetición desde el último tick con entrada conocida. El servidor recibe las
+## mismas entradas, sin las del hueco; sus estados y los que deja la repetición del cliente tienen que
+## ser idénticos bit a bit en cada tick. El hueco dura más de 6 ticks: el movimiento se repite los
+## primeros 6 y después se anula, con SPRINT y JUMP mantenidos en la última entrada conocida.
+func test_client_substitution_matches_the_real_input_queue_across_a_gap() -> void:
+	if not await _begin_session(_route_input):
+		return
+	var last_known: int = 100
+	while _prediction.get_predicted_tick() < last_known:
+		_prediction.step()
+	var known_input: PlayerInput = _prediction.get_input(last_known)
+	assert_true(known_input.move != Vector2.ZERO and (known_input.buttons & PlayerInput.SPRINT) != 0
+			and (known_input.buttons & PlayerInput.JUMP) != 0,
+			"la última entrada conocida se mueve, esprinta y tiene el salto pulsado")
+	var last_state: PlayerState = _prediction.get_predicted_state(last_known).duplicate_state()
+
+	# El hueco: el cliente salta GAP_TICKS ticks sin predecirlos y sigue con entradas reales.
+	var after_gap: int = last_known + GAP_TICKS
+	_prediction.hard_reset(after_gap, last_state)
+	var end_tick: int = after_gap + 20
+	while _prediction.get_predicted_tick() < end_tick:
+		_prediction.step()
+	assert_null(_prediction.get_input(last_known + 1), "el anillo tiene un hueco justo después")
+	assert_null(_prediction.get_input(after_gap), "hasta el tick del salto")
+	assert_not_null(_prediction.get_input(after_gap + 1), "y vuelve a tener entradas")
+
+	# El servidor de verdad: la misma cola, con las mismas entradas salvo las del hueco.
+	var queue := InputQueue.new()
+	queue.reset(SPAWN_TICK, NetProtocol.neutral_input(SPAWN_TICK, _spawn_state().yaw))
+	_server.set_state(_spawn_state())
+	var server_states: Dictionary = {}
+	for tick: int in range(SPAWN_TICK + 1, end_tick + 1):
+		var stored: PlayerInput = _prediction.get_input(tick)
+		if stored != null and tick >= FIRST_REAL_TICK:
+			queue.push(stored.duplicate_input(), 0, tick)
+		_server.simulate(queue.take(tick), _dt)
+		server_states[tick] = _server.get_state()
+	assert_eq(queue.substitutions_total, FIRST_REAL_TICK - SPAWN_TICK - 1 + GAP_TICKS,
+			"el servidor sustituyó el avance neutro y el hueco")
+
+	# El cliente repite desde el último tick conocido: sustituye los del hueco con su copia de la regla.
+	_prediction.hard_reset(last_known, last_state)
+	for tick: int in range(last_known, end_tick + 1):
+		var client_state: PlayerState = _prediction.get_predicted_state(tick)
+		if not assert_not_null(client_state, "el cliente guarda el tick %d" % tick):
+			return
+		if not client_state.equals_exact(server_states[tick]):
+			fail("el tick %d (%s del hueco) difiere de la InputQueue real.\n  cliente:  %s\n  servidor: %s"
+					% [tick, "dentro" if tick <= after_gap else "después", client_state, server_states[tick]])
+			return
+	assert_eq(_prediction.get_stats()["resimulated_ticks"], end_tick - last_known, "se repitió todo el hueco")
 
 
 # --- Suavizado -------------------------------------------------------------------------------

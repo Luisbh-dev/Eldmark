@@ -131,7 +131,8 @@ Opciones (después de `--`): `--server`, `--zone=<id>`, `--port=24600`, `--max-p
 (todos agrupados en un punto, a menos de 60 m, o repartidos por la zona) y `--fake-churn=<ticks>`
 (cada tantos ticks sale el más antiguo y entra uno nuevo: 60 = una alta y una baja por segundo),
 `--debug-commands` (admite el teletransporte de depuración de los clientes), `--dev-lock` (escribe
-`user://dev_server.json` para que `--local` reutilice el servidor), `--quit-after-ticks=N`,
+`user://dev_server.json` para que `--local` reutilice el servidor; `--dev-lock-path=<ruta>` lo escribe
+en otro sitio, y `--local --dev-lock-path=<ruta>` lo lee de ahí), `--quit-after-ticks=N`,
 `--report=<ruta.json>`, `--state-log=<ruta.txt>` (`tick,net_id,sustituida,estado` por tick y
 jugador; ver «Registros de estado») y `--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1`. El
 registro escribe las altas, las bajas, las expulsiones y, cada 10 s, la duración del tick y el
@@ -222,15 +223,17 @@ godot --headless --path . -s res://tools/compare_state_logs.gd -- build/servidor
 
 `tools/load_test.gd` lanza un servidor con jugadores falsos y procesos `--bots`, espera a que
 terminen y resume lo que mide el servidor: p50/p99/máximo del tick por sección, µs de `simulate()`
-por personaje, tamaño de los snapshots, KB/s por cliente y entradas sustituidas, con el criterio de
-la fase 2 (p99 del tick por debajo de 8 ms, 37 KB/s por cliente, menos de un 1 % sustituidas).
-Escenarios: `cluster` (agrupados en 60 m), `spread` (dispersos) y `churn` (altas y bajas a 1 por
-segundo). Está documentado en la cabecera del script:
+por personaje, tamaño de los snapshots, KB/s por cliente y entradas sustituidas (las de toda la
+sesión y las de la ventana de medida, sin el arranque), con el criterio de la fase 2 (con 64
+agrupados y 100 ms de RTT: p99 del tick por debajo de 8 ms, 37 KB/s por cliente, menos de un 1 %
+sustituidas en la ventana). Escenarios: `cluster` (agrupados en 60 m), `spread` (dispersos) y `churn`
+(altas y bajas a 1 por segundo). Está documentado en la cabecera del script:
 
 ```bash
 # Un escenario: 64 falsos agrupados y 10 clientes reales
 godot --headless --path . -s res://tools/load_test.gd -- --scenario=cluster --fakes=64 --bots=10
-# La batería estándar de la fase 2 (varios minutos)
+# La batería de la fase 2: 64, 128 y 256 jugadores falsos y el criterio con 100 ms de RTT, 120 s
+# de medida cada escenario (unos 25 minutos; con la máquina libre)
 godot --headless --path . -s res://tools/load_test.gd -- --matrix
 ```
 

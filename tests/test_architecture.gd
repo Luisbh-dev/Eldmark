@@ -4,8 +4,9 @@ extends TestCase
 ## El servidor dedicado (headless) carga [code]scripts/shared/[/code] y, a través de las escenas
 ## de zona, [code]scripts/world/[/code]; si algo de ahí usa Input, cámaras, UI, DisplayServer, el
 ## reloj o clases de [code]scripts/client/[/code], el servidor deja de funcionar o la simulación
-## deja de ser determinista. También se recorre el árbol de dependencias de cada escena de zona:
-## no puede arrastrar scripts del cliente, animaciones ni visuales de personaje.
+## deja de ser determinista. También se recorre el árbol de dependencias de cada escena de zona, de
+## la escena del personaje ([code]player_character.tscn[/code], que precarga el servidor) y de la
+## del propio servidor: no pueden arrastrar scripts del cliente, animaciones ni visuales de personaje.
 ## [br][br]
 ## Además, [code]scripts/server/[/code] y [code]scripts/client/[/code] no dependen el uno del otro
 ## (docs/red.md, sección 16), y [code]scripts/shared/[/code] tampoco depende del servidor: ni
@@ -20,6 +21,11 @@ const SHARED_DIR: String = "res://scripts/shared"
 const SERVER_DIRS: Array[String] = ["res://scripts/shared", "res://scripts/world"]
 const CLIENT_DIR: String = "res://scripts/client"
 const SERVER_DIR: String = "res://scripts/server"
+## Escenas, además de las de zona, que carga el servidor dedicado: el personaje (lo precarga
+## [code]ZoneServer[/code]) y la escena raíz del servidor. Tampoco pueden depender del cliente.
+const SERVER_SCENES: Array[String] = [
+	"res://scenes/characters/player_character.tscn", "res://scenes/server/server_main.tscn",
+]
 ## Rutas que ninguna escena de zona puede arrastrar (las carga el servidor dedicado).
 const ZONE_FORBIDDEN_DEPENDENCIES: Array[String] = [
 	"res://scripts/client/", "res://assets/animations/", "res://scenes/characters/visuals/",
@@ -50,6 +56,8 @@ const FORBIDDEN_REFERENCES: Array[Array] = [
 	["Camera3D", "\\bCamera3D\\b"],
 	["DisplayServer", "\\bDisplayServer\\b"],
 	["Time.get_", "\\bTime\\.get_"],
+	# Contadores de fotogramas del proceso: distintos en el cliente y en el servidor.
+	["Engine.get_*_frames", "\\bEngine\\.get_(?:physics|process)_frames\\b"],
 	# Mismo espíritu: eventos de entrada, otras cámaras y nodos de UI.
 	["InputEvent*", "\\bInputEvent\\w*"],
 	["Camera2D", "\\bCamera2D\\b"],
@@ -58,7 +66,10 @@ const FORBIDDEN_REFERENCES: Array[Array] = [
 ]
 
 ## Aleatoriedad global: rompe el determinismo entre cliente y servidor. Los métodos de un
-## RandomNumberGenerator propio (rng.randf()) sí se permiten.
+## RandomNumberGenerator propio (rng.randf()) sí se permiten, con su semilla fijada
+## ([method test_random_generators_are_seeded]); [code]rng.randomize()[/code] no, porque le da una
+## semilla distinta en cada proceso. [code]Array.pick_random()[/code] y [code]shuffle()[/code]
+## usan el generador global.
 const FORBIDDEN_RANDOMNESS: Array[Array] = [
 	["randf()", "(?<![\\w.])randf\\s*\\("],
 	["randi()", "(?<![\\w.])randi\\s*\\("],
@@ -66,7 +77,23 @@ const FORBIDDEN_RANDOMNESS: Array[Array] = [
 	["randi_range()", "(?<![\\w.])randi_range\\s*\\("],
 	["randfn()", "(?<![\\w.])randfn\\s*\\("],
 	["randomize()", "(?<![\\w.])randomize\\s*\\("],
+	[".randomize()", "\\.randomize\\s*\\("],
+	[".pick_random()", "\\.pick_random\\s*\\("],
+	[".shuffle()", "\\.shuffle\\s*\\("],
 ]
+
+## NetZones es el único contacto de la red con zones.gd (docs/red.md, 1.5 y 17.3): en estas carpetas
+## ningún otro script nombra [Zones]. Excepciones: [code]server_main.gd[/code] (la lista de zonas del
+## aviso de zona desconocida y los reinos con campamento de los jugadores falsos, sección 19) y
+## [code]client_main.gd[/code], el sandbox sin red de la fase 1, que es anterior a la red.
+const ZONES_CONTACT_DIRS: Array[String] = [
+	"res://scripts/server", "res://scripts/client", "res://scripts/shared/net",
+]
+const ZONES_CONTACT_EXCEPTIONS: Array[String] = [
+	"res://scripts/shared/net/net_zones.gd", "res://scripts/server/server_main.gd",
+	"res://scripts/client/client_main.gd",
+]
+const ZONES_PATTERN: Array[Array] = [["Zones.", "\\bZones\\."]]
 
 const CLASS_NAME_PATTERN: String = "(?m)^\\s*(?:@\\w+\\s+)*class_name\\s+([A-Za-z_]\\w*)"
 
@@ -87,6 +114,9 @@ func test_scanner_detects_forbidden_references() -> void:
 		"var hash_text: String = \"#\" # Input. tras un # dentro de una cadena",
 		"var controller: LocalPlayerControllerLike",
 		"var rng_value: float = rng.randf()",
+		"var camera: Camera = get_viewport().get_camera_3d()",
+		"var reshuffled: int = shuffle_count + pick_random_name.length()",
+		"var frames: int = Engine.get_frames_per_second()",
 	])
 	assert_eq(_find_matches(harmless, FORBIDDEN_REFERENCES), PackedStringArray(),
 			"PlayerInput, comentarios, documentación e identificadores parecidos no son "
@@ -109,6 +139,18 @@ func test_scanner_detects_forbidden_references() -> void:
 		assert_eq(_find_matches(line, FORBIDDEN_REFERENCES).size(), 1, "debe detectar: %s" % line)
 	assert_eq(_find_matches("var roll: float = randf()", FORBIDDEN_RANDOMNESS).size(), 1,
 			"debe detectar randf()")
+	for line: String in [
+		"var point: Node3D = points.pick_random()",
+		"points.shuffle()",
+		"rng.randomize()",
+		"randomize()",
+	]:
+		assert_eq(_find_matches(line, FORBIDDEN_RANDOMNESS).size(), 1, "debe detectar: %s" % line)
+	for line: String in [
+		"var frame: int = Engine.get_physics_frames()",
+		"var frame: int = Engine.get_process_frames()",
+	]:
+		assert_eq(_find_matches(line, FORBIDDEN_REFERENCES).size(), 1, "debe detectar: %s" % line)
 	assert_eq(_extract_class_names("@tool\nclass_name CameraRig\nextends Node3D\n"),
 			PackedStringArray(["CameraRig"]), "extrae el class_name de un script")
 
@@ -145,10 +187,9 @@ func test_zone_scenes_do_not_depend_on_client() -> void:
 		var visited: Dictionary = {}
 		_collect_dependencies(scene_path, visited)
 		assert_true(visited.has(scene_path), "%s: se recorre su escena" % zone_id)
+		for violation: String in _forbidden_dependencies(visited):
+			fail("%s depende de %s" % [zone_id, violation])
 		for path: String in visited:
-			for forbidden: String in ZONE_FORBIDDEN_DEPENDENCIES:
-				if path.begins_with(forbidden):
-					fail("%s depende de %s (prohibido: %s)" % [zone_id, path, forbidden])
 			if path.begins_with(REALM_MATERIALS_DIR):
 				used_materials[path] = true
 	for realm_dir: String in DirAccess.get_directories_at(REALM_MATERIALS_DIR):
@@ -159,12 +200,53 @@ func test_zone_scenes_do_not_depend_on_client() -> void:
 			assert_true(used_materials.has(path), "%s no lo usa ninguna zona" % path)
 
 
-func test_shared_does_not_use_global_randomness() -> void:
-	var files: PackedStringArray = _list_scripts(SHARED_DIR)
-	assert_false(files.is_empty(), "no se encontró ningún script en %s" % SHARED_DIR)
+## Lo que carga el servidor (scripts/shared y scripts/world): nada de aleatoriedad global.
+## El personaje (lo precarga el servidor) y la escena raíz del servidor tampoco arrastran nada del
+## cliente: el visual (HumanoidVisual, CharacterAnimator) lo cuelga el cliente en tiempo de ejecución.
+func test_server_scenes_do_not_depend_on_client() -> void:
+	for scene_path: String in SERVER_SCENES:
+		var visited: Dictionary = {}
+		_collect_dependencies(scene_path, visited)
+		assert_true(visited.has(scene_path), "%s: se recorre su escena" % scene_path)
+		assert_true(visited.size() > 1, "%s: tiene dependencias que recorrer" % scene_path)
+		for violation: String in _forbidden_dependencies(visited):
+			fail("%s depende de %s" % [scene_path, violation])
+	var synthetic: Dictionary = {
+		"res://scenes/characters/player_character.tscn": true,
+		"res://scripts/client/character_animator.gd": true,
+		"res://scenes/characters/visuals/humanoid.tscn": true,
+		"res://scripts/shared/player_character.gd": true,
+	}
+	assert_eq(_forbidden_dependencies(synthetic).size(), 2,
+			"el filtro de dependencias detecta un script del cliente y un visual de personaje")
+
+
+func test_shared_and_world_do_not_use_global_randomness() -> void:
+	var files: PackedStringArray = _list_server_scripts()
+	assert_false(files.is_empty(), "no se encontró ningún script en %s" % [SERVER_DIRS])
+	assert_true(files.has("res://scripts/world/zone_root.gd"), "también se analiza scripts/world")
 	for path: String in files:
 		for found: String in _find_matches(_read_text(path), FORBIDDEN_RANDOMNESS):
-			fail("%s usa %s; la simulación compartida debe ser determinista" % [path, found])
+			fail("%s usa %s; lo que carga el servidor debe ser determinista" % [path, found])
+
+
+## Un [RandomNumberGenerator] nuevo tiene una semilla distinta en cada proceso: el script que lo crea
+## tiene que fijársela.
+func test_random_generators_are_seeded() -> void:
+	var created: int = 0
+	for path: String in _list_server_scripts():
+		var text: String = _read_text(path)
+		if _creates_unseeded_generator(text):
+			fail("%s crea un RandomNumberGenerator y no le fija la semilla (.seed = ...)" % path)
+		if _strip_comments(text).contains("RandomNumberGenerator.new("):
+			created += 1
+	assert_true(created > 0, "hay generadores de números aleatorios que comprobar (BotBrain, NetSim)")
+	assert_true(_creates_unseeded_generator("var rng := RandomNumberGenerator.new()\nvar x: float = rng.randf()"),
+			"sin semilla, lo detecta")
+	assert_false(_creates_unseeded_generator("var rng := RandomNumberGenerator.new()\nfunc f() -> void:\n\trng.seed = 5"),
+			"con semilla, no")
+	assert_false(_creates_unseeded_generator("# RandomNumberGenerator.new() en un comentario"),
+			"un comentario no cuenta")
 
 
 func test_server_scripts_exist() -> void:
@@ -212,6 +294,26 @@ func test_shared_does_not_depend_on_server() -> void:
 	for path: String in files:
 		for found: String in _find_matches(_read_text(path), patterns):
 			fail("%s depende del servidor: %s" % [path, found])
+
+
+## Si zones.gd cambia (el grupo o el metadato de los puntos de aparición, una firma...), solo se
+## tocan NetZones y los pocos archivos de la excepción; no SpawnPicker ni nada de la red.
+func test_only_net_zones_talks_to_zones_in_the_network_code() -> void:
+	assert_eq(_find_matches("var p: Array = Zones.get_spawn_points(_world)\nZones.SPAWN_GROUP", ZONES_PATTERN).size(), 2,
+			"detecta las llamadas a Zones")
+	assert_eq(_find_matches("NetZones.scene_path(id)\nMyZones.x\n# Zones.x en un comentario", ZONES_PATTERN),
+			PackedStringArray(), "pero no NetZones, otros nombres ni los comentarios")
+	var checked: int = 0
+	for dir: String in ZONES_CONTACT_DIRS:
+		for path: String in _list_scripts(dir):
+			if ZONES_CONTACT_EXCEPTIONS.has(path):
+				continue
+			checked += 1
+			for found: String in _find_matches(_read_text(path), ZONES_PATTERN):
+				fail("%s nombra Zones (%s); la red habla con zones.gd solo a través de NetZones" % [path, found])
+	assert_true(checked > 20, "se revisan los scripts de la red (%d)" % checked)
+	for excepted: String in ZONES_CONTACT_EXCEPTIONS:
+		assert_true(FileAccess.file_exists(excepted), "existe la excepción %s" % excepted)
 
 
 func test_dependency_scanner_detects_cross_references() -> void:
@@ -273,6 +375,27 @@ func _collect_dependencies(path: String, visited: Dictionary) -> void:
 			dep_path = ResourceUID.get_id_path(ResourceUID.text_to_id(dep_path))
 		if dep_path.begins_with("res://"):
 			_collect_dependencies(dep_path, visited)
+
+
+## Dependencias de [param visited] ([method _collect_dependencies]) que empiezan por alguna ruta de
+## [constant ZONE_FORBIDDEN_DEPENDENCIES], con la regla que incumplen.
+func _forbidden_dependencies(visited: Dictionary) -> PackedStringArray:
+	var violations := PackedStringArray()
+	for path: String in visited:
+		for forbidden: String in ZONE_FORBIDDEN_DEPENDENCIES:
+			if path.begins_with(forbidden):
+				violations.append("%s (prohibido: %s)" % [path, forbidden])
+	return violations
+
+
+## true si [param text] crea un [RandomNumberGenerator] y no le asigna ninguna semilla.
+func _creates_unseeded_generator(text: String) -> bool:
+	var code: String = _strip_comments(text)
+	if not code.contains("RandomNumberGenerator.new("):
+		return false
+	var seeded := RegEx.new()
+	seeded.compile("\\.seed\\s*=|\\.set_seed\\s*\\(")
+	return seeded.search(code) == null
 
 
 ## Scripts .gd bajo [param dir], recursivamente, ordenados.

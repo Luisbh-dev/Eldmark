@@ -134,7 +134,11 @@ func test_jumps_when_the_error_exceeds_ten_ticks() -> void:
 	assert_true(jumped - before > 14.0, "el salto es de unos 15 ticks")
 
 
-func test_max_offset_window_expires_after_two_seconds() -> void:
+## Un servidor que pierde ticks (o una subida sostenida de la latencia) baja los offsets de golpe.
+## El máximo de la ventana de 2 s recordaría los viejos y el tick de dibujo iría por delante de los
+## datos que existen (se extrapolaría 6 ticks y después el remoto se quedaría quieto, hallazgo N3).
+## Un escalón sostenido de más de STEP_DOWN_TICKS se adopta en RECENT_TICKS ticks, no en 120.
+func test_a_sustained_step_down_of_the_offsets_is_adopted_in_half_a_second() -> void:
 	var clock := InterpolationClock.new()
 	var local_tick: int = 0
 	for _i: int in 200:
@@ -142,24 +146,103 @@ func test_max_offset_window_expires_after_two_seconds() -> void:
 		if local_tick % 2 == 0:
 			clock.on_snapshot(local_tick + 45, local_tick)
 		clock.advance(local_tick)
-	# La latencia mejora de golpe: los offsets bajan 15 ticks. El máximo de la ventana recuerda los
-	# anteriores durante WINDOW_TICKS ticks (mientras tanto parece jitter y el retardo sube) y solo
-	# entonces salta a la medida nueva.
+	# El servidor pierde 15 ticks: los offsets bajan de 45 a 30 y se quedan ahí.
 	var change_tick: int = local_tick
-	var previous: float = clock.get_render_tick()
-	var jump_tick: int = -1
-	for _i: int in 300:
+	var adopted_after: int = -1
+	var jitter_after_100: float = -1.0
+	for _i: int in 400:
 		local_tick += 1
 		if local_tick % 2 == 0:
 			clock.on_snapshot(local_tick + 30, local_tick)
 		var render_tick: float = clock.advance(local_tick)
-		if absf(render_tick - previous - 1.0) > 5.0 and jump_tick < 0:
-			jump_tick = local_tick
-			assert_near(render_tick, float(local_tick + 30) - clock.get_delay_ticks(), 1e-6,
-					"salta a la medida nueva")
+		var target: float = float(local_tick + 30) - clock.get_delay_ticks()
+		if adopted_after < 0 and absf(render_tick - target) <= 1.0:
+			adopted_after = local_tick - change_tick
+		if local_tick - change_tick == 100:
+			jitter_after_100 = clock.get_jitter_ticks()
+	assert_true(adopted_after > 0 and adopted_after <= 40,
+			"el tick de dibujo llega a local + 30 - retardo (±1) en 40 ticks o menos (%d)" % adopted_after)
+	assert_true(jitter_after_100 >= 0.0 and jitter_after_100 < 1.0,
+			"el jitter del escalón vuelve a ser pequeño en poco tiempo (%s)" % jitter_after_100)
+	# El retardo vuelve al mínimo y el tick de dibujo lo sigue a 0,05 ticks por tick.
+	assert_near(clock.get_delay_ticks(), 4.0, 0.05, "el retardo vuelve al mínimo")
+	assert_near(clock.get_render_tick(), float(local_tick + 30) - clock.get_delay_ticks(), 1.0,
+			"y el tick de dibujo acaba sobre la medida nueva")
+
+
+## Un servidor sobrecargado que pierde 1 de cada 12 ticks de forma continua baja los offsets sin parar.
+## El tick de dibujo no puede ir más de MAX_EXTRAPOLATION_TICKS por delante del último snapshot (el
+## remoto se congelaría), que con el máximo de 2 s sí pasaba de forma permanente.
+func test_a_server_that_keeps_losing_ticks_does_not_freeze_the_remotes() -> void:
+	var clock := InterpolationClock.new()
+	var local_tick: int = 0
+	var newest_server_tick: int = 0
+	var frozen: int = 0
+	var measured: int = 0
+	for _i: int in 1200:
+		local_tick += 1
+		if local_tick % 2 == 0:
+			newest_server_tick = local_tick + 30 - local_tick / 12
+			clock.on_snapshot(newest_server_tick, local_tick)
+		var render_tick: float = clock.advance(local_tick)
+		if local_tick > 240:
+			measured += 1
+			if render_tick - float(newest_server_tick) > float(RemoteInterpolator.MAX_EXTRAPOLATION_TICKS):
+				frozen += 1
+	assert_true(measured > 900, "se mide casi toda la ejecución")
+	assert_eq(frozen, 0, "ningún tick con el remoto más de 6 ticks por delante de su último dato")
+
+
+## Un bache más corto que RECENT_TICKS no es un escalón: los offsets viejos siguen mandando y el
+## tick de dibujo no se mueve de golpe ni durante el bache ni cuando se acaba.
+func test_a_short_dip_is_not_a_step() -> void:
+	var clock := InterpolationClock.new()
+	var local_tick: int = 0
+	var previous: float = 0.0
+	var max_jump: float = 0.0
+	for i: int in 400:
+		local_tick += 1
+		# Entre los ticks 201 y 220 (20 ticks, menos que RECENT_TICKS) los snapshots llegan con
+		# 15 ticks de retraso.
+		var offset: int = 30 if i >= 200 and i < 220 else 45
+		if local_tick % 2 == 0:
+			clock.on_snapshot(local_tick + offset, local_tick)
+		var render_tick: float = clock.advance(local_tick)
+		if i > 2:
+			max_jump = maxf(max_jump, absf(render_tick - previous - 1.0))
 		previous = render_tick
-	assert_true(jump_tick > 0, "acaba saltando")
-	var elapsed: int = jump_tick - change_tick
-	assert_true(elapsed >= InterpolationClock.WINDOW_TICKS - 4
-			and elapsed <= InterpolationClock.WINDOW_TICKS + 4,
-			"el salto llega al caducar la ventana (%d ticks después)" % elapsed)
+	assert_true(max_jump <= InterpolationClock.MAX_CORRECTION_PER_TICK + 1e-9,
+			"el tick de dibujo nunca salta (mayor salto %s)" % max_jump)
+	assert_near(previous, float(local_tick + 45) - clock.get_delay_ticks(), 1.0,
+			"y sigue la medida de siempre (45), no la del bache")
+
+
+## Una latencia que mejora (offsets que suben) se adopta al instante, como siempre.
+func test_offsets_that_go_up_are_adopted_immediately() -> void:
+	var clock := InterpolationClock.new()
+	var local_tick: int = 0
+	for _i: int in 200:
+		local_tick += 1
+		if local_tick % 2 == 0:
+			clock.on_snapshot(local_tick + 30, local_tick)
+		clock.advance(local_tick)
+	local_tick += 2
+	clock.on_snapshot(local_tick + 45, local_tick)
+	var render_tick: float = clock.advance(local_tick)
+	assert_near(render_tick, float(local_tick + 45) - clock.get_delay_ticks(), 1e-6,
+			"salta a la medida nueva en el mismo snapshot")
+
+
+## Con ticks de servidor por encima de 2^31 (el u32 de red.md 4.1 llega a 828 días) el reloj sigue
+## bien: las muestras no pueden ir en enteros de 32 bits (hallazgo N5).
+func test_server_ticks_beyond_two_to_the_thirty_one_do_not_overflow() -> void:
+	var clock := InterpolationClock.new()
+	var base: int = 2147483648 + 1000
+	var render_tick: float = 0.0
+	for local_tick: int in range(1, 301):
+		if local_tick % 2 == 0:
+			clock.on_snapshot(base + local_tick + 5, local_tick)
+		render_tick = clock.advance(local_tick)
+	assert_near(render_tick, float(base + 300 + 5) - 4.0, 0.5,
+			"el tick de dibujo es el del servidor menos el retardo, sin desbordar")
+	assert_true(render_tick > 0.0, "y positivo")
