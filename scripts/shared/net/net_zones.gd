@@ -52,6 +52,35 @@ static func parse_realm_arg(args: PackedStringArray) -> int:
 	return NetProtocol.Realm.NONE
 
 
+## Ruta de la malla de navegación horneada de la zona [param zone_id] (docs/fuerte.md, sección 4.1): el
+## archivo [code]<escena>_navmesh.tres[/code] junto a la escena de la zona, o una cadena vacía si la zona
+## no existe o no tiene malla (entonces los PNJ no usan la navegación).
+static func navmesh_path(zone_id: String) -> String:
+	var scene: String = scene_path(zone_id)
+	if scene.is_empty():
+		return ""
+	var path: String = scene.get_basename() + "_navmesh.tres"
+	return path if ResourceLoader.exists(path) else ""
+
+
+## Generadores de PNJ de la zona [param zone] (grupo [constant Zones.NPC_SPAWNER_GROUP], que debe estar
+## en el árbol), en el orden de la escena.
+static func get_npc_spawners(zone: Node) -> Array[Node3D]:
+	return Zones.get_group_nodes(zone, Zones.NPC_SPAWNER_GROUP)
+
+
+## Posiciones, en el orden de la escena, de los marcadores de la ruta de patrulla [param route] de la
+## zona [param zone] (grupo [constant Zones.PATROL_GROUP] con el metadato [constant Zones.PATROL_ROUTE_META]).
+static func get_patrol_route(zone: Node, route: StringName) -> PackedVector3Array:
+	var points := PackedVector3Array()
+	if route.is_empty():
+		return points
+	for marker: Node3D in Zones.get_group_nodes(zone, Zones.PATROL_GROUP):
+		if StringName(str(marker.get_meta(Zones.PATROL_ROUTE_META, &""))) == route:
+			points.append(marker.global_position)
+	return points
+
+
 ## Código de reino a partir de su nombre («vardheim», «Solmarch»...; sin distinguir mayúsculas
 ## ni espacios). [constant NetProtocol.Realm.NONE] si no es un reino.
 static func realm_from_name(text: String) -> int:
