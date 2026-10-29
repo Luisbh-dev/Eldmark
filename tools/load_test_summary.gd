@@ -15,6 +15,9 @@ extends RefCounted
 
 ## Línea de métricas del registro del servidor: tick y porcentaje acumulado de sustituidas.
 const METRICS_LINE_PATTERN: String = "Métricas \\(tick (\\d+)\\):.*entradas sustituidas (\\d+(?:\\.\\d+)?) %"
+## La misma línea, para el tick de cada marca: jugadores y p50, p99 y máximo del tick (µs) de los últimos
+## 2048 ticks (34 s) hasta esa marca.
+const TICK_LINE_PATTERN: String = "Métricas \\(tick (\\d+)\\): (\\d+) jugadores, tick p50 (\\d+) µs / p99 (\\d+) µs / máx (\\d+) µs"
 
 
 ## Porcentaje acumulado de entradas sustituidas de cada línea de métricas de [param log_text]
@@ -28,6 +31,48 @@ static func parse_metrics_log(log_text: String) -> Dictionary:
 		if found != null:
 			result[found.get_string(1).to_int()] = found.get_string(2).to_float()
 	return result
+
+
+## El tick del servidor en cada línea de métricas de [param log_text]: una lista de
+## [code]{tick, players, p50_us, p99_us, max_us}[/code] en el orden del registro. Cada línea resume los últimos
+## 2048 ticks (34 s) hasta su marca, así que la serie sirve para ver cómo evoluciona una batalla larga.
+static func parse_tick_timeline(log_text: String) -> Array[Dictionary]:
+	var regex := RegEx.new()
+	regex.compile(TICK_LINE_PATTERN)
+	var marks: Array[Dictionary] = []
+	for line: String in log_text.split("\n"):
+		var found: RegExMatch = regex.search(line)
+		if found != null:
+			marks.append({
+				"tick": found.get_string(1).to_int(), "players": found.get_string(2).to_int(),
+				"p50_us": found.get_string(3).to_int(), "p99_us": found.get_string(4).to_int(),
+				"max_us": found.get_string(5).to_int(),
+			})
+	return marks
+
+
+## Resume las marcas de [method parse_tick_timeline] entre [param first_tick] y [param last_tick] (ambos
+## incluidos): [code]{marks, p50_us, p99_us, worst_p99_us, max_us}[/code] con el número de marcas, la mediana de
+## sus p50 y de sus p99, el peor p99 y el mayor máximo. Vacío si no hay ninguna.
+static func timeline_window(marks: Array[Dictionary], first_tick: int, last_tick: int) -> Dictionary:
+	var p50s: Array[int] = []
+	var p99s: Array[int] = []
+	var worst_max: int = 0
+	for mark: Dictionary in marks:
+		var tick: int = int(mark["tick"])
+		if tick < first_tick or tick > last_tick:
+			continue
+		p50s.append(int(mark["p50_us"]))
+		p99s.append(int(mark["p99_us"]))
+		worst_max = maxi(worst_max, int(mark["max_us"]))
+	if p50s.is_empty():
+		return {}
+	p50s.sort()
+	p99s.sort()
+	return {
+		"marks": p50s.size(), "p50_us": p50s[p50s.size() / 2], "p99_us": p99s[p99s.size() / 2],
+		"worst_p99_us": p99s[p99s.size() - 1], "max_us": worst_max,
+	}
 
 
 ## Entradas que el servidor había consumido de los jugadores de red (no los falsos) hasta el tick

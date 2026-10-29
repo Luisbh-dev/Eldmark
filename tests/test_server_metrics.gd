@@ -38,7 +38,9 @@ func test_percentiles_of_the_tick() -> void:
 	for k: int in range(1, 101):
 		_tick(metrics, k, k)
 	assert_eq(metrics.get_percentile_us(TICK, 0.5), 50, "p50 de 1..100 µs")
+	assert_eq(metrics.get_percentile_us(TICK, 0.95), 95, "p95")
 	assert_eq(metrics.get_percentile_us(TICK, 0.99), 99, "p99")
+	assert_eq((metrics.summary()["sections"] as Dictionary)["tick"]["p95"], 95, "el resumen lleva el p95")
 	assert_eq(metrics.get_percentile_us(TICK, 1.0), 100, "p100")
 	assert_eq(metrics.get_percentile_us(TICK, 0.0), 1, "p0")
 	assert_eq(metrics.get_max_us(TICK), 100, "máximo")
@@ -156,6 +158,7 @@ func test_summary_rates_and_substitution_percentage() -> void:
 	assert_near(metrics.get_substituted_percent(), 2.5, 1e-6, "get_substituted_percent")
 	var tick_stats: Dictionary = summary["sections"]["tick"]
 	assert_eq(tick_stats["p50"], 16667, "p50 del tick")
+	assert_eq(tick_stats["p95"], 16667, "p95 del tick")
 	assert_eq(tick_stats["p99"], 16667, "p99 del tick")
 	assert_eq(tick_stats["max"], 16667, "máximo del tick")
 	assert_eq(tick_stats["samples"], 600, "muestras")

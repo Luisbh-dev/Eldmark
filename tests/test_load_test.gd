@@ -156,3 +156,43 @@ func test_combat_figures_of_a_quiet_server_do_not_divide_by_zero() -> void:
 		assert_eq(figures[key], 0)
 	for key: String in ["event_kb_per_s", "resolve_us_per_test", "resolve_share", "events_us_per_event"]:
 		assert_eq(float(figures[key]), 0.0, key)
+
+
+# --- Asedios (GUE-16) ----------------------------------------------------------------------------
+
+func test_siege_matrix_has_sieges_of_32_and_64_a_side() -> void:
+	var script: GDScript = load(LOAD_TEST_PATH) as GDScript
+	if not assert_not_null(script):
+		return
+	var constants: Dictionary = script.get_script_constant_map()
+	var sides: Array[int] = []
+	for entry: Array in constants.get("SIEGE_MATRIX", []):
+		assert_eq(entry[0], "siege", "todos son asedios")
+		assert_true(int(entry[2]) > 0, "con clientes reales que reciben el OBJECT_STATE del fuerte")
+		assert_eq((int(entry[1]) + int(entry[2])) % 2, 0, "los dos bandos, iguales")
+		sides.append((int(entry[1]) + int(entry[2])) / 2)
+	assert_eq(sides, [32, 64] as Array[int], "32 contra 32 y 64 contra 64")
+	assert_eq(int(constants.get("SIEGE_SECONDS", 0)), 120, "120 s de medida")
+	assert_true(float(constants.get("SIEGE_EXTRA_SETTLE_SECONDS", 0.0)) >= 40.0, "los bots tienen tiempo de llegar a la puerta")
+
+
+func test_the_tick_timeline_is_read_from_the_metric_lines() -> void:
+	var text: String = "\n".join([
+		METRICS_LINE_600,
+		"[Eldmark] Métricas (tick 1200): 74 jugadores, tick p50 3250 µs / p99 6000 µs / máx 9500 µs (p99 por sección: tick 6000)",
+		METRICS_LINE_1800,
+		"[Eldmark] Métricas (tick 2400): sin datos del tick",
+		"[Eldmark] Métricas (tick 3000): 80 jugadores, tick p50 9000 µs / p99 16000 µs / máx 30000 µs (p99 por sección: tick 16000)",
+	])
+	var marks: Array[Dictionary] = LoadTestSummary.parse_tick_timeline(text)
+	assert_eq(marks.size(), 4, "las líneas sin datos del tick no cuentan")
+	assert_eq(marks[0], {"tick": 600, "players": 74, "p50_us": 3200, "p99_us": 5100, "max_us": 9000})
+	assert_eq(marks[3]["players"], 80)
+	var window: Dictionary = LoadTestSummary.timeline_window(marks, 1000, 3000)
+	assert_eq(window["marks"], 3, "las marcas 1200, 1800 y 3000")
+	assert_eq(window["p50_us"], 3300, "mediana de los p50")
+	assert_eq(window["p99_us"], 6000, "mediana de los p99")
+	assert_eq(window["worst_p99_us"], 16000, "el peor p99")
+	assert_eq(window["max_us"], 30000, "el mayor máximo")
+	assert_true(LoadTestSummary.timeline_window(marks, 4000, 5000).is_empty(), "sin marcas en la ventana, nada")
+	assert_true(LoadTestSummary.parse_tick_timeline("").is_empty())

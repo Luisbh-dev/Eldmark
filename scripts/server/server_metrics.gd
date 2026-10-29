@@ -175,7 +175,7 @@ func get_max_us(section: StringName) -> int:
 ##   "ticks": int,                  # ticks medidos
 ##   "last_tick": int,
 ##   "seconds": float,              # tiempo real entre el primer begin_tick y el último end_tick
-##   "sections": { nombre: {"p50": µs, "p99": µs, "max": µs, "max_all": µs, "samples": int,
+##   "sections": { nombre: {"p50": µs, "p95": µs, "p99": µs, "max": µs, "max_all": µs, "samples": int,
 ##                          "total_us": µs de toda la ejecución, "pushed": medidas de toda la ejecución} },
 ##   "counters": { nombre: int },   # totales
 ##   "players": int,
@@ -189,6 +189,7 @@ func summary() -> Dictionary:
 		var series: Series = _sections[section]
 		sections[String(section)] = {
 			"p50": series.percentile(0.5),
+			"p95": series.percentile(0.95),
 			"p99": series.percentile(0.99),
 			"max": get_max_us(section),
 			"max_all": series.max_all,
