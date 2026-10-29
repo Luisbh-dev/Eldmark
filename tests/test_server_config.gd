@@ -111,3 +111,19 @@ func test_flags_need_exact_name() -> void:
 			PackedStringArray(["--debug-commands=1", "--dev-lockx"]))
 	assert_false(config.debug_commands, "--debug-commands=1 no es la bandera")
 	assert_false(config.dev_lock, "--dev-lockx no es la bandera")
+
+
+func test_fake_player_layout_and_churn_options() -> void:
+	var defaults: ServerConfig = ServerConfig.from_args(PackedStringArray())
+	assert_eq(defaults.fake_layout, "", "sin reparto: cada falso cerca del campamento de su reino")
+	assert_eq(defaults.fake_churn_ticks, 0, "sin altas ni bajas continuas")
+	var cluster: ServerConfig = ServerConfig.from_args(PackedStringArray([
+		"--fake-players=64", "--fake-layout=Cluster", "--fake-churn=60"]))
+	assert_eq(cluster.fake_layout, "cluster", "agrupados (sin distinguir mayúsculas)")
+	assert_eq(cluster.fake_churn_ticks, 60, "una alta y una baja por segundo")
+	var spread: ServerConfig = ServerConfig.from_args(PackedStringArray(["--fake-layout=spread"]))
+	assert_eq(spread.fake_layout, "spread", "repartidos")
+	var invalid: ServerConfig = ServerConfig.from_args(PackedStringArray([
+		"--fake-layout=circulo", "--fake-churn=-4"]))
+	assert_eq(invalid.fake_layout, "", "un reparto desconocido se ignora")
+	assert_eq(invalid.fake_churn_ticks, 0, "y un número negativo también")

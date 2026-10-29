@@ -356,6 +356,34 @@ func test_state_log_and_report() -> void:
 			and report.has("inputs"), "avisos, expulsiones, bytes y entradas")
 
 
+func test_remove_fake_player_frees_the_slot_and_counts_the_departure() -> void:
+	await _start_server()
+	var first: int = _server.add_fake_player(BotBrain.new(1, BotBrain.Pattern.IDLE), VARDHEIM)
+	var second: int = _server.add_fake_player(BotBrain.new(2, BotBrain.Pattern.IDLE), SOLMARCH)
+	await wait_physics_frames(5)
+	assert_eq(_server.get_player_count(), 2)
+	assert_false(_server.remove_fake_player(9999), "un id desconocido no es un jugador falso")
+	assert_true(_server.remove_fake_player(first), "se pide la baja del primero")
+	assert_false(_server.remove_fake_player(first), "y no se puede pedir dos veces")
+	await wait_physics_frames(2)
+	assert_eq(_server.get_player_count(), 1, "queda uno")
+	assert_null(_server.get_registry().get_entity(first), "el personaje del primero desapareció")
+	assert_not_null(_server.get_registry().get_entity(second), "el otro sigue")
+	assert_false(_server.remove_fake_player(first), "el primero ya no existe")
+	var third: int = _server.add_fake_player(BotBrain.new(3, BotBrain.Pattern.IDLE), VARDHEIM)
+	assert_true(third > 0 and third != first, "el id liberado queda en cuarentena (%d)" % third)
+	assert_eq(_server.write_report(_report_path()), OK)
+	var report: Dictionary = _read_json(_report_path())
+	var players: Dictionary = report.get("players", {})
+	assert_eq(int(players.get("joined_total", 0)), 3, "tres altas")
+	assert_eq(int(players.get("left_total", 0)), 1, "una baja")
+	assert_eq(int(players.get("peak", 0)), 2, "pico de dos")
+	var simulate: Dictionary = report.get("simulate", {})
+	assert_true(int(simulate.get("calls", 0)) >= 10, "se midió simulate() (%s llamadas)" % simulate.get("calls"))
+	assert_true(float(simulate.get("avg_us", 0.0)) > 0.0, "con una media en µs")
+	assert_true(report.has("snapshots"), "y el informe lleva las medidas de los snapshots")
+
+
 func test_stop_releases_the_players_but_keeps_the_report() -> void:
 	await _start_server()
 	for i: int in 3:

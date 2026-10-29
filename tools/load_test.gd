@@ -1,0 +1,421 @@
+extends SceneTree
+## Prueba de carga de la fase 2 (docs/red.md, secciones 14 y 16, «Carga»; TEC-11). Fuera del ejecutor de
+## pruebas: lanza un servidor y los clientes como procesos de Godot, los espera y resume lo que mide el
+## servidor (y el enjambre de bots) en un informe por escenario.
+## [br][br]
+## [b]Uso[/b], desde la raíz del proyecto (el [code]godot[/code] de consola):
+## [codeblock]
+## # Un escenario: 64 jugadores falsos agrupados y 10 clientes reales (--bots) durante 30 s de medida
+## godot --headless --path . -s res://tools/load_test.gd -- --scenario=cluster --fakes=64 --bots=10
+##
+## # La batería estándar de la fase 2 (agrupado con 2, 10 y 50 bots, disperso y altas/bajas con 10)
+## godot --headless --path . -s res://tools/load_test.gd -- --matrix
+##
+## # 128 y 256 jugadores: los clientes reales se reparten entre varios procesos de enjambre
+## godot --headless --path . -s res://tools/load_test.gd -- --fakes=128 --bots=100 --swarms=2
+## godot --headless --path . -s res://tools/load_test.gd -- --fakes=156 --bots=100 --swarms=2 --seconds=20
+## [/codeblock]
+## [b]Opciones[/b] (después de [code]--[/code]):
+## [br]- [code]--scenario=cluster|spread|churn[/code] (por defecto [code]cluster[/code]):
+## [br]  · [code]cluster[/code], agrupado: todos los jugadores falsos y todos los bots en torno al mismo punto
+## (el campamento de Vardheim; el servidor los coloca con [code]--fake-layout=cluster[/code]), a menos de unos
+## 60 m unos de otros.
+## [br]  · [code]spread[/code], disperso: los falsos repartidos por la zona ([code]--fake-layout=spread[/code]) y
+## los bots en los dos campamentos.
+## [br]  · [code]churn[/code], altas y bajas: como [code]cluster[/code], pero cada segundo sale el jugador falso
+## más antiguo y entra uno nuevo ([code]--fake-churn=60[/code]).
+## [br]- [code]--fakes=N[/code] jugadores falsos (entradas inyectadas en la cola, sin red; por defecto 64).
+## [br]- [code]--bots=N[/code] clientes reales: procesos [code]--bots=N[/code] ([BotSwarm]) que entran uno cada 5 ticks
+## (por defecto 0).
+## [br]- [code]--swarms=K[/code] procesos de enjambre entre los que se reparten los bots (por defecto 1; un proceso
+## aguanta algunas decenas).
+## [br]- [code]--seconds=S[/code] segundos de medida con todos dentro (por defecto 30).
+## [br]- [code]--net-sim=rtt=100,jitter=10,loss=1[/code] simulador de red de los bots.
+## [br]- [code]--zone=<id>[/code] zona del servidor (por defecto la de siempre, el Vado Gris).
+## [br]- [code]--out=<carpeta>[/code] dónde van los informes y los registros (por defecto [code]build/load_test[/code]).
+## [br]- [code]--check[/code] sale con código 1 si algún escenario incumple el criterio de la fase 2.
+## [br][br]
+## [b]Qué mide[/b] (del [code]--report[/code] del servidor, de [method ZoneServer.write_report], y del de cada
+## enjambre): el p50, el p99 y el máximo del tick y de cada una de sus secciones (red, simulación, historial,
+## snapshots, vaciado) en µs; los µs de [code]PlayerCharacter.simulate()[/code] por personaje; el tamaño de los
+## snapshots y los µs de construir cada uno; los KB/s de subida y de bajada por cliente; el porcentaje de
+## entradas sustituidas, los avisos y las expulsiones. Los percentiles del servidor son de los últimos 2048
+## ticks (34 s) de su ejecución, así que el servidor sigue unos segundos de más después de que los bots
+## entren, para que la ventana sea solo de régimen.
+## [br][br]
+## [b]Criterio de la fase 2[/b] (docs/red.md, 14 y 16), con 64 jugadores agrupados: p99 del tick por debajo de
+## 8 ms, como mucho 37 KB/s de bajada por cliente y menos de un 1 % de entradas sustituidas.
+## [br][br]
+## Las cifras dependen de la máquina y de lo que más corra en ella: el servidor, el enjambre y quien lo lance
+## comparten núcleos. Cada servidor usa un puerto distinto a partir del 25000.
+
+const FIRST_PORT: int = 25000
+const LAST_PORT: int = 26000
+## Segundos que se esperan, como mucho, a que el servidor empiece a escuchar.
+const LISTEN_TIMEOUT_SECONDS: float = 40.0
+## Segundos de más, sobre la duración prevista, que se espera a que terminen los procesos.
+const FINISH_MARGIN_SECONDS: float = 60.0
+## Segundos que se dejan, tras empezar a escuchar, para que arranquen los procesos y entren todos los bots
+## antes de la ventana de medida (se suman 5 ticks por bot de cada enjambre).
+const SETTLE_SECONDS: float = 8.0
+## Segundos que sigue el servidor después de que se vayan los bots (poco, para no ensuciar la ventana).
+const TAIL_SECONDS: float = 2.0
+## Ticks de margen entre el cierre del enjambre y el del servidor (arranque del proceso del enjambre).
+const SWARM_START_MARGIN_TICKS: int = 90
+## Criterio de la fase 2.
+const MAX_P99_TICK_US: int = 8000
+const MAX_KB_PER_CLIENT: float = 37.0
+const MAX_SUBSTITUTED_PERCENT: float = 1.0
+## Secciones del tick que se muestran.
+const SECTIONS: Array[String] = ["tick", "net", "sim", "history", "snapshot", "flush"]
+## Batería de [code]--matrix[/code]: [escenario, jugadores falsos, bots].
+const MATRIX: Array[Array] = [
+	["cluster", 64, 2],
+	["cluster", 64, 10],
+	["cluster", 64, 50],
+	["spread", 64, 10],
+	["churn", 64, 10],
+]
+
+var _pids: Array[int] = []
+var _out_dir: String = ""
+var _tick_rate: int = 60
+
+
+func _initialize() -> void:
+	_run()
+
+
+func _run() -> void:
+	var args: PackedStringArray = OS.get_cmdline_user_args()
+	var runs: Array[Dictionary] = []
+	if args.has("--matrix"):
+		for entry: Array in MATRIX:
+			runs.append(_make_run(args, entry[0], entry[1], entry[2]))
+	else:
+		runs.append(_make_run(args, _option(args, "--scenario=", "cluster"),
+				_int_option(args, "--fakes=", 64), _int_option(args, "--bots=", 0)))
+	_out_dir = _option(args, "--out=", "")
+	if _out_dir.is_empty():
+		_out_dir = ProjectSettings.globalize_path("res://build/load_test")
+	DirAccess.make_dir_recursive_absolute(_out_dir)
+	DirAccess.remove_absolute(_out_dir.path_join("summary.txt"))
+	_tick_rate = Engine.physics_ticks_per_second
+
+	print("Eldmark · prueba de carga (%d escenario%s, %d núcleos, informes en %s; resumen en summary.txt)" % [
+		runs.size(), "s" if runs.size() != 1 else "", OS.get_processor_count(), _out_dir])
+	var summaries: Array[Dictionary] = []
+	var failed: bool = false
+	for run: Dictionary in runs:
+		var summary: Dictionary = await _run_scenario(run)
+		summaries.append(summary)
+		_print_summary(summary)
+		if not bool(summary.get("ok", false)) or not bool(summary.get("criterion_met", true)):
+			failed = true
+	var file: FileAccess = FileAccess.open(_out_dir.path_join("summary.json"), FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(summaries, "\t"))
+		file.close()
+		print("Resumen JSON: %s" % _out_dir.path_join("summary.json"))
+	for pid: int in _pids:
+		if OS.is_process_running(pid):
+			OS.kill(pid)
+	var errors: bool = false
+	for summary: Dictionary in summaries:
+		if not bool(summary.get("ok", false)):
+			errors = true
+	quit(1 if (errors or (args.has("--check") and failed)) else 0)
+
+
+func _make_run(args: PackedStringArray, scenario: String, fakes: int, bots: int) -> Dictionary:
+	return {
+		"scenario": scenario,
+		"fakes": fakes,
+		"bots": bots,
+		"swarms": maxi(_int_option(args, "--swarms=", 1), 1),
+		"seconds": _int_option(args, "--seconds=", 30),
+		"net_sim": _option(args, "--net-sim=", ""),
+		"zone": _option(args, "--zone=", ""),
+	}
+
+
+# --- Un escenario -----------------------------------------------------------------------------
+
+# Lanza el servidor y los enjambres, espera a que terminen y devuelve el resumen de lo medido.
+func _run_scenario(run: Dictionary) -> Dictionary:
+	var scenario: String = run["scenario"]
+	var fakes: int = run["fakes"]
+	var bots: int = run["bots"]
+	var swarms: int = mini(run["swarms"], maxi(bots, 1))
+	var tag: String = "%s_%df_%db" % [scenario, fakes, bots]
+	var port: int = _free_port()
+	var summary: Dictionary = {"tag": tag, "run": run, "port": port, "ok": false}
+	if port < 0:
+		summary["error"] = "no hay ningún puerto UDP libre"
+		return summary
+
+	# Tiempos: el servidor escucha, arrancan los enjambres, entran todos y se mide `seconds` segundos.
+	var bots_per_swarm: int = ceili(float(bots) / float(swarms)) if bots > 0 else 0
+	var settle_ticks: int = ceili(SETTLE_SECONDS * _tick_rate) + 5 * bots_per_swarm
+	var measure_ticks: int = int(run["seconds"]) * _tick_rate
+	var server_ticks: int = settle_ticks + measure_ticks + ceili(TAIL_SECONDS * _tick_rate)
+	var swarm_ticks: int = server_ticks - ceili(TAIL_SECONDS * _tick_rate) - SWARM_START_MARGIN_TICKS
+
+	var server_report: String = _out_dir.path_join("%s_server.json" % tag)
+	var server_log: String = _out_dir.path_join("%s_server.log" % tag)
+	var server_args := PackedStringArray([
+		"--server", "--port=%d" % port, "--max-players=%d" % (fakes + bots + 8),
+		"--quit-after-ticks=%d" % server_ticks, "--report=%s" % server_report,
+	])
+	if not str(run["zone"]).is_empty():
+		server_args.append("--zone=%s" % run["zone"])
+	if fakes > 0:
+		server_args.append("--fake-players=%d" % fakes)
+		match scenario:
+			"cluster", "churn":
+				server_args.append("--fake-layout=cluster")
+			"spread":
+				server_args.append("--fake-layout=spread")
+		if scenario == "churn":
+			server_args.append("--fake-churn=%d" % _tick_rate)
+	DirAccess.remove_absolute(server_report)
+	DirAccess.remove_absolute(server_log)
+	print("\n== %s: %d falsos, %d bots en %d proceso(s), %d s de medida (servidor %d ticks, puerto %d) ==" % [
+		scenario, fakes, bots, swarms if bots > 0 else 0, run["seconds"], server_ticks, port])
+	var server_pid: int = _launch(server_args, server_log)
+	if server_pid <= 0:
+		summary["error"] = "no se pudo lanzar el servidor"
+		return summary
+	var all_pids: Array[int] = [server_pid]
+
+	if not await _wait_until(func() -> bool:
+		return FileAccess.get_file_as_string(server_log).contains("escuchando en el puerto") \
+				or not OS.is_process_running(server_pid), LISTEN_TIMEOUT_SECONDS):
+		summary["error"] = "el servidor no llegó a escuchar"
+		return summary
+	if not OS.is_process_running(server_pid):
+		summary["error"] = "el servidor se cerró al arrancar (mira %s)" % server_log
+		return summary
+
+	var swarm_reports: Array[String] = []
+	for k: int in (swarms if bots > 0 else 0):
+		var count: int = bots / swarms + (1 if k < bots % swarms else 0)
+		var report_path: String = _out_dir.path_join("%s_swarm%d.json" % [tag, k])
+		DirAccess.remove_absolute(report_path)
+		swarm_reports.append(report_path)
+		var swarm_args := PackedStringArray([
+			"--bots=%d" % count, "--connect=127.0.0.1:%d" % port, "--bot-seed=%d" % (1000 * (k + 1)),
+			"--quit-after-ticks=%d" % swarm_ticks, "--report=%s" % report_path,
+		])
+		if scenario != "spread":
+			swarm_args.append("--realm=vardheim")
+		if not str(run["net_sim"]).is_empty():
+			swarm_args.append("--net-sim=%s" % run["net_sim"])
+		var pid: int = _launch(swarm_args, _out_dir.path_join("%s_swarm%d.log" % [tag, k]))
+		if pid > 0:
+			all_pids.append(pid)
+
+	var finished: bool = await _wait_until(func() -> bool:
+		for pid: int in all_pids:
+			if OS.is_process_running(pid):
+				return false
+		return true, float(server_ticks) / float(_tick_rate) + FINISH_MARGIN_SECONDS)
+	if not finished:
+		for pid: int in all_pids:
+			if OS.is_process_running(pid):
+				OS.kill(pid)
+		summary["error"] = "los procesos no terminaron a tiempo (se mataron)"
+	var server_data: Dictionary = _read_json(server_report)
+	if server_data.is_empty():
+		summary["error"] = str(summary.get("error", "")) + " (el servidor no escribió su informe)"
+		return summary
+	var swarm_data: Array[Dictionary] = []
+	for path: String in swarm_reports:
+		swarm_data.append(_read_json(path))
+	_summarise(summary, server_data, swarm_data, bots)
+	summary["ok"] = not summary.has("error")
+	return summary
+
+
+# Cifras del resumen a partir de los informes.
+func _summarise(summary: Dictionary, server: Dictionary, swarms: Array[Dictionary], bots: int) -> void:
+	var metrics: Dictionary = server.get("metrics", {})
+	var sections: Dictionary = metrics.get("sections", {})
+	var players: Dictionary = server.get("players", {})
+	var sim: Dictionary = server.get("simulate", {})
+	var snapshots: Dictionary = server.get("snapshots", {})
+	var inputs: Dictionary = server.get("inputs", {})
+	var peak: int = int(players.get("peak", 0))
+	summary["players_peak"] = peak
+	summary["server_ticks"] = int(server.get("ticks", 0))
+	var section_table: Dictionary = {}
+	for section: String in SECTIONS:
+		var data: Dictionary = sections.get(section, {})
+		section_table[section] = {
+			"p50": int(data.get("p50", 0)), "p99": int(data.get("p99", 0)), "max": int(data.get("max", 0)),
+		}
+	summary["sections_us"] = section_table
+	summary["simulate_us_per_character"] = float(sim.get("avg_us", 0.0))
+	var sim_p50: int = int((section_table["sim"] as Dictionary)["p50"])
+	summary["sim_section_us_per_character"] = float(sim_p50) / float(maxi(peak, 1))
+	summary["snapshot_avg_bytes"] = float(snapshots.get("avg_bytes", 0.0))
+	summary["snapshot_max_bytes"] = int(snapshots.get("max_bytes", 0))
+	summary["snapshot_build_avg_us"] = float(snapshots.get("avg_build_us", 0.0))
+	summary["snapshots_sent"] = int(snapshots.get("sent", 0))
+	summary["substituted_percent"] = float(inputs.get("substituted_percent", 0.0))
+	summary["strikes"] = int((server.get("strikes", {}) as Dictionary).get("total", 0))
+	summary["kicks"] = (server.get("kicks", []) as Array).size()
+	summary["rejects"] = (server.get("rejects", {}) as Dictionary).size()
+	summary["physics_errors"] = int(server.get("physics_errors", 0))
+	summary["joined_total"] = int(players.get("joined_total", 0))
+	summary["left_total"] = int(players.get("left_total", 0))
+	summary["server_kb_out_per_s"] = float(metrics.get("kb_out_per_s", 0.0))
+	summary["server_kb_in_per_s"] = float(metrics.get("kb_in_per_s", 0.0))
+
+	# Lo que miden los propios bots.
+	var played: int = 0
+	var requested: int = 0
+	var down_sum: float = 0.0
+	var up_sum: float = 0.0
+	var down_max: float = 0.0
+	var measured: int = 0
+	var snapshot_bytes: int = 0
+	var snapshot_count: int = 0
+	var late: int = 0
+	for data: Dictionary in swarms:
+		var swarm_bots: Dictionary = data.get("bots", {})
+		played += int(swarm_bots.get("played", 0))
+		requested += int(swarm_bots.get("requested", 0))
+		for client: Dictionary in data.get("clients", []):
+			if int(client.get("world_ticks", 0)) < 300:
+				continue
+			measured += 1
+			down_sum += float(client.get("kb_down_per_s", 0.0))
+			up_sum += float(client.get("kb_up_per_s", 0.0))
+			down_max = maxf(down_max, float(client.get("kb_down_per_s", 0.0)))
+		var totals: Dictionary = data.get("totals", {})
+		snapshot_bytes += int(totals.get("snapshot_bytes", 0))
+		snapshot_count += int(totals.get("snapshots", 0))
+		late += int(totals.get("late_snapshots", 0))
+	summary["bots_requested"] = requested
+	summary["bots_played"] = played
+	summary["bots_measured"] = measured
+	summary["client_kb_down_per_s_avg"] = down_sum / float(measured) if measured > 0 else 0.0
+	summary["client_kb_down_per_s_max"] = down_max
+	summary["client_kb_up_per_s_avg"] = up_sum / float(measured) if measured > 0 else 0.0
+	summary["client_snapshot_avg_bytes"] = float(snapshot_bytes) / float(snapshot_count) \
+			if snapshot_count > 0 else 0.0
+	summary["client_late_snapshots"] = late
+	if bots > 0 and played < bots:
+		summary["error"] = "solo jugaron %d de %d bots" % [played, bots]
+
+	# Criterio de la fase 2 (solo tiene sentido con clientes reales para los KB/s).
+	var p99_tick: int = int((section_table["tick"] as Dictionary)["p99"])
+	var met: bool = p99_tick < MAX_P99_TICK_US \
+			and float(summary["substituted_percent"]) < MAX_SUBSTITUTED_PERCENT
+	if measured > 0:
+		met = met and down_max <= MAX_KB_PER_CLIENT
+	summary["criterion_met"] = met
+
+
+# Imprime el resumen de un escenario y lo añade a summary.txt.
+func _print_summary(summary: Dictionary) -> void:
+	var lines := PackedStringArray()
+	lines.append("== %s: %d falsos, %d bots ==" % [summary["tag"], (summary["run"] as Dictionary)["fakes"],
+			(summary["run"] as Dictionary)["bots"]])
+	if summary.has("error"):
+		lines.append("   ERROR: %s" % summary["error"])
+	if summary.has("sections_us"):
+		lines.append_array(_summary_lines(summary))
+	for line: String in lines:
+		print(line)
+	var file: FileAccess = FileAccess.open(_out_dir.path_join("summary.txt"),
+			FileAccess.READ_WRITE if FileAccess.file_exists(_out_dir.path_join("summary.txt"))
+			else FileAccess.WRITE)
+	if file != null:
+		file.seek_end()
+		file.store_string("\n".join(lines) + "\n\n")
+		file.close()
+
+
+func _summary_lines(summary: Dictionary) -> PackedStringArray:
+	var lines := PackedStringArray()
+	var sections: Dictionary = summary["sections_us"]
+	lines.append("   Jugadores (pico): %d   ticks del servidor: %d   altas/bajas: %d/%d" % [
+		summary["players_peak"], summary["server_ticks"], summary["joined_total"], summary["left_total"]])
+	lines.append("   Tick por sección, µs        p50      p99      máx")
+	for section: String in SECTIONS:
+		var data: Dictionary = sections[section]
+		lines.append("     %-24s %6d   %6d   %6d" % [section, data["p50"], data["p99"], data["max"]])
+	lines.append("   simulate() por personaje:   %.1f µs   (sección sim p50 / jugadores: %.1f µs)" % [
+		summary["simulate_us_per_character"], summary["sim_section_us_per_character"]])
+	lines.append("   Snapshot (servidor):        %.0f B de media, %d B como máximo, %.0f µs de construcción cada uno" % [
+		summary["snapshot_avg_bytes"], summary["snapshot_max_bytes"], summary["snapshot_build_avg_us"]])
+	lines.append("   Entradas sustituidas:       %.2f %%   avisos: %d   expulsiones: %d   errores de física: %d" % [
+		summary["substituted_percent"], summary["strikes"], summary["kicks"], summary["physics_errors"]])
+	if int(summary["bots_measured"]) > 0:
+		lines.append("   Por cliente (%d bots):       bajada %.1f KB/s de media (máx %.1f), subida %.1f KB/s, snapshot de %.0f B" % [
+			summary["bots_measured"], summary["client_kb_down_per_s_avg"],
+			summary["client_kb_down_per_s_max"], summary["client_kb_up_per_s_avg"],
+			summary["client_snapshot_avg_bytes"]])
+		lines.append("   Servidor, total:            salida %.1f KB/s, entrada %.1f KB/s" % [
+			summary["server_kb_out_per_s"], summary["server_kb_in_per_s"]])
+	lines.append("   Criterio de la fase 2 (p99 < 8 ms, <= 37 KB/s por cliente, < 1 %% sustituidas): %s" % [
+		"CUMPLIDO" if bool(summary["criterion_met"]) else "NO CUMPLIDO"])
+	return lines
+
+
+# --- Procesos y ayudas ------------------------------------------------------------------------
+
+# Lanza otro Godot sin ventana sobre este proyecto con [param user_args] y su registro en [param log_path].
+# Su salida estándar se mezcla con la de esta herramienta (--quiet también vaciaría el registro, que es
+# por donde se sabe que el servidor ya escucha); el resumen de cada escenario queda en summary.txt.
+func _launch(user_args: PackedStringArray, log_path: String) -> int:
+	var args := PackedStringArray(["--headless", "--path", ProjectSettings.globalize_path("res://"),
+			"--log-file", log_path, "--"])
+	args.append_array(user_args)
+	var pid: int = OS.create_process(OS.get_executable_path(), args)
+	if pid > 0:
+		_pids.append(pid)
+	return pid
+
+
+# Espera a que se cumpla [param condition] hasta [param timeout_seconds]. false si pasa el tiempo.
+func _wait_until(condition: Callable, timeout_seconds: float) -> bool:
+	var deadline: int = Time.get_ticks_msec() + int(timeout_seconds * 1000.0)
+	while not condition.call():
+		if Time.get_ticks_msec() > deadline:
+			return false
+		await create_timer(0.25).timeout
+	return true
+
+
+func _free_port() -> int:
+	for port: int in range(FIRST_PORT, LAST_PORT):
+		var probe := PacketPeerUDP.new()
+		var error: Error = probe.bind(port)
+		probe.close()
+		if error == OK:
+			return port
+	return -1
+
+
+func _read_json(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {}
+	var json := JSON.new()
+	if json.parse(FileAccess.get_file_as_string(path)) != OK:
+		return {}
+	return json.data if json.data is Dictionary else {}
+
+
+func _option(args: PackedStringArray, prefix: String, fallback: String) -> String:
+	for arg: String in args:
+		if arg.begins_with(prefix):
+			return arg.trim_prefix(prefix).strip_edges().trim_prefix("\"").trim_suffix("\"")
+	return fallback
+
+
+func _int_option(args: PackedStringArray, prefix: String, fallback: int) -> int:
+	var text: String = _option(args, prefix, "")
+	return text.to_int() if text.is_valid_int() else fallback

@@ -13,7 +13,10 @@ extends Node
 ## queda con la colisión completa y sin proceso propio, como fija
 ## [code]tests/test_terrain3d_headless.gd[/code].
 ## [br]- Se crea el [NetTransport] (con [member ServerConfig.net_sim_spec]) y el [ZoneServer], que
-## abre el puerto, y los jugadores falsos de [code]--fake-players=N[/code].
+## abre el puerto, y los jugadores falsos de [code]--fake-players=N[/code]. Con
+## [code]--fake-layout=cluster[/code] se agrupan todos en un mismo punto (a menos de 60 m unos de otros) y
+## con [code]--fake-layout=spread[/code] se reparten por la zona; con [code]--fake-churn=<ticks>[/code]
+## sale el más antiguo y entra uno nuevo cada tantos ticks (altas y bajas continuas).
 ## [br]- Con [code]--dev-lock[/code] se escribe [code]user://dev_server.json[/code]
 ## ([code]{pid, port}[/code]) para que [code]--local[/code] reutilice este servidor, y se borra al
 ## cerrar.
@@ -35,8 +38,15 @@ const WARMUP_PHYSICS_FRAMES: int = 3
 const SHUTDOWN_MAX_FRAMES: int = 90
 ## Semilla del primer jugador falso; cada uno suma su índice.
 const FAKE_SEED_BASE: int = 7000
-## Radio (m) por el que pasea cada jugador falso alrededor de su punto de aparición.
+## Radio (m) por el que pasea cada jugador falso alrededor de su punto de aparición. Con
+## [code]--fake-layout=cluster[/code] todos pasean alrededor del mismo punto, así que ninguno está a
+## más de 2 × FAKE_RADIUS = 50 m de otro.
 const FAKE_RADIUS: float = 25.0
+## Con [code]--fake-layout=spread[/code]: mitad del lado (m) del cuadrado, centrado en el origen, por
+## el que se reparten los jugadores falsos; altura desde la que se busca el suelo; y semilla.
+const FAKE_SPREAD_HALF_EXTENT: float = 900.0
+const FAKE_SPREAD_PROBE_HEIGHT: float = 400.0
+const FAKE_SPREAD_SEED: int = 4242
 ## Patrones de los jugadores falsos, repartidos en rueda.
 const FAKE_PATTERNS: Array[BotBrain.Pattern] = [
 	BotBrain.Pattern.WANDER, BotBrain.Pattern.WANDER, BotBrain.Pattern.JUMPY,
@@ -53,6 +63,13 @@ var _world: Node3D
 var _transport: NetTransport
 var _zone_server: ZoneServer
 var _idle_ticks: int = 0
+# Jugadores falsos vivos, del más antiguo al más nuevo (para las bajas de --fake-churn), cuántos se han
+# creado en total (fija la semilla de cada cerebro), reinos de la zona con campamento y el azar del
+# reparto --fake-layout=spread.
+var _fake_ids: Array[int] = []
+var _fake_created: int = 0
+var _fake_realms: Array[int] = []
+var _spread_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _shutting_down: bool = false
 var _lock_written: bool = false
 
@@ -194,23 +211,66 @@ func _prepare_terrain(root: Node) -> void:
 			node.set(&"collision_mode", full_game)
 
 
-# Jugadores falsos de --fake-players=N: reinos con puntos de aparición en la zona, en rueda;
-# patrones en rueda; semillas distintas; cada uno pasea alrededor del primer punto de su reino.
+# Jugadores falsos de --fake-players=N. Por defecto: reinos con puntos de aparición en la zona, en
+# rueda; patrones en rueda; semillas distintas; cada uno pasea alrededor del primer punto de su reino.
+# Con --fake-layout=cluster todos son del primer reino y pasean alrededor del mismo punto; con
+# --fake-layout=spread cada uno pasea alrededor de un punto al azar del cuadrado de la zona.
 func _spawn_fake_players() -> void:
 	if config.fake_players <= 0:
 		return
-	var realms: Array[int] = _fake_player_realms()
+	_fake_realms = _fake_player_realms()
+	_spread_rng.seed = FAKE_SPREAD_SEED
 	var created: int = 0
-	for i: int in config.fake_players:
-		var realm: int = realms[i % realms.size()]
-		var brain := BotBrain.new(FAKE_SEED_BASE + i, FAKE_PATTERNS[i % FAKE_PATTERNS.size()],
-				_home_of(realm), FAKE_RADIUS)
-		if _zone_server.add_fake_player(brain, realm) < 0:
+	for _i: int in config.fake_players:
+		if _add_fake_player() < 0:
 			push_warning("[Eldmark] Solo se han creado %d de %d jugadores falsos (tope de %d jugadores)"
 					% [created, config.fake_players, config.max_players])
 			break
 		created += 1
-	print("[Eldmark] Jugadores falsos creados: %d" % created)
+	print("[Eldmark] Jugadores falsos creados: %d%s" % [created,
+			" (%s)" % config.fake_layout if not config.fake_layout.is_empty() else ""])
+
+
+# Crea el siguiente jugador falso según --fake-layout. Devuelve su net_id, o -1 si no cabe.
+func _add_fake_player() -> int:
+	var index: int = _fake_created
+	var realm: int = _fake_realms[index % _fake_realms.size()]
+	var home: Vector3 = Vector3.ZERO
+	match config.fake_layout:
+		ServerConfig.LAYOUT_CLUSTER:
+			realm = _fake_realms[0]
+			home = _home_of(realm)
+		ServerConfig.LAYOUT_SPREAD:
+			home = _spread_point(_home_of(realm))
+		_:
+			home = _home_of(realm)
+	var brain := BotBrain.new(FAKE_SEED_BASE + index, FAKE_PATTERNS[index % FAKE_PATTERNS.size()],
+			home, FAKE_RADIUS)
+	var net_id: int = _zone_server.add_fake_player(brain, realm)
+	if net_id < 0:
+		return -1
+	_fake_created += 1
+	_fake_ids.append(net_id)
+	if config.fake_layout == ServerConfig.LAYOUT_SPREAD:
+		_zone_server.teleport(net_id, home)
+	return net_id
+
+
+# Punto del suelo, al azar, del cuadrado de la zona. Si el rayo no encuentra suelo, devuelve
+# [param fallback] (un punto de aparición).
+func _spread_point(fallback: Vector3) -> Vector3:
+	var x: float = _spread_rng.randf_range(-FAKE_SPREAD_HALF_EXTENT, FAKE_SPREAD_HALF_EXTENT)
+	var z: float = _spread_rng.randf_range(-FAKE_SPREAD_HALF_EXTENT, FAKE_SPREAD_HALF_EXTENT)
+	var space: PhysicsDirectSpaceState3D = _world.get_world_3d().direct_space_state
+	# Rayo ligeramente inclinado: los verticales pueden fallar contra HeightMapShape3D.
+	var from := Vector3(x, FAKE_SPREAD_PROBE_HEIGHT, z)
+	var query := PhysicsRayQueryParameters3D.create(from,
+			from + Vector3(0.001, -2.0 * FAKE_SPREAD_PROBE_HEIGHT, 0.0),
+			PlayerCharacter.WORLD_COLLISION_LAYER)
+	var hit: Dictionary = space.intersect_ray(query)
+	if hit.is_empty():
+		return fallback
+	return (hit["position"] as Vector3) + Vector3(0.0, 0.3, 0.0)
 
 
 # Reinos de la zona (los admitidos) que tienen algún punto de aparición; si ninguno lo tiene,
@@ -242,6 +302,7 @@ func _on_tick_finished(tick: int) -> void:
 	if config.quit_after_ticks > 0 and tick >= config.quit_after_ticks:
 		_shutdown("se han simulado %d ticks (--quit-after-ticks)" % tick)
 		return
+	_churn_fake_players(tick)
 	if config.idle_quit_seconds > 0:
 		if _zone_server.get_player_count() == 0:
 			_idle_ticks += 1
@@ -249,6 +310,17 @@ func _on_tick_finished(tick: int) -> void:
 			_idle_ticks = 0
 		if _idle_ticks >= config.idle_quit_seconds * Engine.physics_ticks_per_second:
 			_shutdown("%d s sin jugadores (--idle-quit)" % config.idle_quit_seconds)
+
+
+# --fake-churn=<ticks>: en cada múltiplo sale el jugador falso más antiguo y, en el tick siguiente
+# (cuando su baja ya se ha procesado y hay sitio), entra uno nuevo.
+func _churn_fake_players(tick: int) -> void:
+	if config.fake_churn_ticks <= 0 or _fake_realms.is_empty():
+		return
+	if tick % config.fake_churn_ticks == 0 and not _fake_ids.is_empty():
+		_zone_server.remove_fake_player(_fake_ids.pop_front())
+	elif tick % config.fake_churn_ticks == 1 and _fake_ids.size() < config.fake_players:
+		_add_fake_player()
 
 
 # NOTICE de cierre y corte ordenado de los clientes (ZoneServer.stop), informe, y salida.

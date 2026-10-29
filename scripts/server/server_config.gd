@@ -6,7 +6,7 @@ extends RefCounted
 ## [code]--[/code]):
 ## [codeblock]
 ## --server --port=24600 --zone=<id> --max-players=64 --max-per-ip=4 --idle-quit=<s>
-## --fake-players=N --debug-commands --dev-lock
+## --fake-players=N --fake-layout=<cluster|spread> --fake-churn=<ticks> --debug-commands --dev-lock
 ## --quit-after-ticks=N --report=<ruta.json> --state-log=<ruta.csv> --net-sim=rtt=120,jitter=20
 ## [/codeblock]
 ## Un valor que no es un número válido o está fuera de rango se ignora y se queda el valor por
@@ -34,11 +34,21 @@ var state_log_path: String = ""
 var net_sim_spec: String = ""
 ## Jugadores falsos (sin red) que se crean al arrancar.
 var fake_players: int = 0
+## Dónde se reparten los jugadores falsos (pruebas de carga): [constant LAYOUT_CLUSTER] (todos en un
+## mismo punto, a menos de 60 m unos de otros), [constant LAYOUT_SPREAD] (repartidos por la zona) o
+## vacío (cada uno cerca del campamento de su reino).
+var fake_layout: String = ""
+## Cada cuántos ticks sale el jugador falso más antiguo y entra uno nuevo, para medir altas y bajas
+## (60 = una alta y una baja por segundo). 0 = ninguna.
+var fake_churn_ticks: int = 0
 ## Admite los comandos de depuración del cliente (teletransporte).
 var debug_commands: bool = false
 ## Escribe [code]user://dev_server.json[/code] para que [code]--local[/code] reutilice el servidor.
 var dev_lock: bool = false
 
+## Valores de [member fake_layout].
+const LAYOUT_CLUSTER: String = "cluster"
+const LAYOUT_SPREAD: String = "spread"
 const _MAX_PORT: int = 65535
 ## Tope razonable de jugadores y de jugadores falsos (los ids de red son de 16 bits).
 const _MAX_PLAYERS_LIMIT: int = 4096
@@ -63,6 +73,11 @@ static func from_args(args: PackedStringArray) -> ServerConfig:
 			2147483647)
 	config.fake_players = _int_option(args, "--fake-players=", config.fake_players, 0,
 			_MAX_PLAYERS_LIMIT)
+	config.fake_churn_ticks = _int_option(args, "--fake-churn=", config.fake_churn_ticks, 0,
+			2147483647)
+	var layout: String = _string_option(args, "--fake-layout=").to_lower()
+	if layout == LAYOUT_CLUSTER or layout == LAYOUT_SPREAD:
+		config.fake_layout = layout
 	config.report_path = _string_option(args, "--report=")
 	config.state_log_path = _string_option(args, "--state-log=")
 	config.net_sim_spec = _string_option(args, "--net-sim=")

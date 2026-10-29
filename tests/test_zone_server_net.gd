@@ -775,6 +775,15 @@ func _strike_reasons() -> Dictionary:
 	return (report.get("strikes", {}) as Dictionary).get("by_reason", {})
 
 
+## El peer cuyo personaje es el de ese net_id (null si no hay ninguno).
+func _peer_of(net_id: int) -> ServerPeer:
+	for peer_id: int in _server.get_peer_ids():
+		var peer: ServerPeer = _server.get_peer(peer_id)
+		if peer.entity != null and peer.entity.net_id == net_id:
+			return peer
+	return null
+
+
 func test_input_flood_trips_the_unreliable_limiter() -> void:
 	await _start_server()
 	var client: RawClient = await _join("Ana")
@@ -925,8 +934,9 @@ func test_random_garbage_gets_the_sender_kicked_and_leaves_the_others_untouched(
 	var cheater: RawClient = await _join("Bruno")
 	if honest == null or cheater == null:
 		return
-	var honest_peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
-	var cheater_peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[1])
+	# Los ids de peer son aleatorios: cada peer se busca por el net_id de su personaje.
+	var honest_peer: ServerPeer = _peer_of(honest.own_spawn.net_id)
+	var cheater_peer: ServerPeer = _peer_of(cheater.own_spawn.net_id)
 	var cheater_id: int = cheater.own_spawn.net_id
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 77

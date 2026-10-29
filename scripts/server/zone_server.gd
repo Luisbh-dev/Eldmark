@@ -145,6 +145,16 @@ var _log_last_wire_in: int = 0
 var _state_log: FileAccess = null
 # net_id -> 1 si la entrada del tick se sustituyó (solo se rellena con --state-log).
 var _substituted_now: Dictionary[int, int] = {}
+# Jugadores falsos que se van en el siguiente tick (remove_fake_player).
+var _fake_leaving: Array[int] = []
+# Medidas de la carga (informe): µs de simulate() por llamada y de construir snapshots.
+var _simulate_calls: int = 0
+var _simulate_usec_total: int = 0
+var _simulate_usec_max: int = 0
+var _snapshots_sent: int = 0
+var _snapshot_bytes_total: int = 0
+var _snapshot_bytes_max: int = 0
+var _snapshot_build_usec: int = 0
 
 
 ## Ficha de un jugador para el informe: lo que se sabe de él mientras está y al irse.
@@ -327,6 +337,7 @@ func stop(notice_text: String = "") -> void:
 	_clear_players()
 	_pending_ready.clear()
 	_leaving.clear()
+	_fake_leaving.clear()
 	_sync_byte_counters()
 	_close_state_log()
 	_metrics.unregister_monitors()
@@ -426,6 +437,16 @@ func add_fake_player(brain: BotBrain, realm: int) -> int:
 	return entity.net_id
 
 
+## Da de baja al jugador falso [param net_id] al empezar el siguiente tick: DESPAWN (motivo 1) a quien
+## lo veía y el id en cuarentena, como si se hubiera desconectado. Devuelve false si no es un jugador
+## falso (o ya se va). Sirve para las altas y bajas de las pruebas de carga.
+func remove_fake_player(net_id: int) -> bool:
+	if _run_state != _RunState.RUNNING or not _fakes.has(net_id) or _fake_leaving.has(net_id):
+		return false
+	_fake_leaving.append(net_id)
+	return true
+
+
 ## Teletransporte autoritativo del jugador [param net_id] a [param position]: velocidad 0, estado
 ## redondeado por [code]encode/decode[/code] (el que reconstruirá el cliente) y contador de
 ## teletransporte +1 (módulo 4), para que los clientes no interpolen el salto. Conserva el yaw y
@@ -448,6 +469,9 @@ func teleport(net_id: int, position: Vector3) -> void:
 ## strikes   {total, by_reason}      kicks [{tick, peer_id, net_id, name, reason}]
 ## rejects   {motivo: veces}
 ## physics_errors, teleports, respawns
+## simulate  {calls, total_us, avg_us, max_us}        µs de cada PlayerCharacter.simulate()
+## snapshots {sent, bytes, avg_bytes, max_bytes, build_us, avg_build_us}   build_us: construir cada
+##           snapshot y encolarlo (sin el cálculo del interés ni el envío real de ENet)
 ## metrics   ServerMetrics.summary() (p50/p99/máx de cada sección en µs, KB/s, jugadores...)
 ## player_list  una ficha por jugador que ha pasado por el servidor (también los que se fueron)
 ## [/codeblock]
@@ -543,7 +567,12 @@ func _simulate_players(s: int, delta: float) -> void:
 				record.inputs += 1
 		if logging_states:
 			_substituted_now[entity.net_id] = 1 if was_substituted else 0
+		var simulate_start: int = Time.get_ticks_usec()
 		character.simulate(input, delta)
+		var simulate_usec: int = Time.get_ticks_usec() - simulate_start
+		_simulate_calls += 1
+		_simulate_usec_total += simulate_usec
+		_simulate_usec_max = maxi(_simulate_usec_max, simulate_usec)
 		_check_motion(entity, before)
 	if inputs_consumed > 0:
 		_metrics.add_counter(ServerMetrics.COUNTER_INPUTS, inputs_consumed)
@@ -681,6 +710,7 @@ func _announce_arrival(entity: NetEntity, peer: ServerPeer, s: int) -> void:
 # Cierra la sesión de los peers que se van: DESPAWN (motivo 1) a quien los tenía por relevantes, id
 # en cuarentena, personaje liberado y pista del historial borrada.
 func _process_departures(s: int) -> void:
+	_process_fake_departures(s)
 	if _leaving.is_empty():
 		return
 	var leaving: Array[int] = _leaving.duplicate()
@@ -700,6 +730,22 @@ func _process_departures(s: int) -> void:
 		player_left.emit(peer_id, entity.net_id)
 		_log("Baja de %s (peer %d, net_id %d); jugadores: %d" % [entity.display_name, peer_id,
 				entity.net_id, get_player_count()])
+
+
+# Bajas de los jugadores falsos pedidas con remove_fake_player().
+func _process_fake_departures(s: int) -> void:
+	if _fake_leaving.is_empty():
+		return
+	var leaving: Array[int] = _fake_leaving.duplicate()
+	_fake_leaving.clear()
+	for net_id: int in leaving:
+		var entity: NetEntity = _registry.get_entity(net_id)
+		if entity == null or not _fakes.has(net_id):
+			continue
+		_remove_player(entity, s, NetProtocol.DespawnReason.DISCONNECTED)
+		_left_total += 1
+		_log("Baja de %s (jugador falso, net_id %d); jugadores: %d" % [entity.display_name, net_id,
+				get_player_count()])
 
 
 # Quita al jugador del mundo: DESPAWN a quien lo veía, id en cuarentena y personaje liberado.
@@ -814,9 +860,15 @@ func _send_snapshots(s: int) -> void:
 			receivers.append(peer)
 	if receivers.is_empty():
 		return
+	var build_start: int = Time.get_ticks_usec()
 	_snapshot_builder.begin(s, entities)
 	for peer: ServerPeer in receivers:
-		_transport.send(peer.peer_id, NetProtocol.CH_SNAPSHOT, _snapshot_builder.build_for(peer))
+		var packet: PackedByteArray = _snapshot_builder.build_for(peer)
+		_snapshots_sent += 1
+		_snapshot_bytes_total += packet.size()
+		_snapshot_bytes_max = maxi(_snapshot_bytes_max, packet.size())
+		_transport.send(peer.peer_id, NetProtocol.CH_SNAPSHOT, packet)
+	_snapshot_build_usec += Time.get_ticks_usec() - build_start
 
 
 # Recalcula lo que ve [param peer]: cada cambio genera un SPAWN o un DESPAWN (motivo 0).
@@ -1272,6 +1324,23 @@ func _build_report() -> Dictionary:
 		"physics_errors": _physics_errors,
 		"teleports": _teleports,
 		"respawns": _respawns,
+		"simulate": {
+			"calls": _simulate_calls,
+			"total_us": _simulate_usec_total,
+			"avg_us": float(_simulate_usec_total) / float(_simulate_calls) \
+					if _simulate_calls > 0 else 0.0,
+			"max_us": _simulate_usec_max,
+		},
+		"snapshots": {
+			"sent": _snapshots_sent,
+			"bytes": _snapshot_bytes_total,
+			"avg_bytes": float(_snapshot_bytes_total) / float(_snapshots_sent) \
+					if _snapshots_sent > 0 else 0.0,
+			"max_bytes": _snapshot_bytes_max,
+			"build_us": _snapshot_build_usec,
+			"avg_build_us": float(_snapshot_build_usec) / float(_snapshots_sent) \
+					if _snapshots_sent > 0 else 0.0,
+		},
 		"metrics": _metrics.summary(),
 		"player_list": player_list,
 	}

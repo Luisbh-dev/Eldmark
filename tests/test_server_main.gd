@@ -179,6 +179,94 @@ func test_vado_gris_server_process_runs_and_closes_cleanly() -> void:
 	assert_eq(_error_lines(log_path), PackedStringArray(), "sin errores en el registro")
 
 
+## Distancia mayor (m) entre dos jugadores de la lista del informe.
+func _max_pairwise_distance(player_list: Array) -> float:
+	var farthest: float = 0.0
+	for a: Dictionary in player_list:
+		for b: Dictionary in player_list:
+			var pa: Array = a.get("position", [0.0, 0.0, 0.0])
+			var pb: Array = b.get("position", [0.0, 0.0, 0.0])
+			farthest = maxf(farthest, Vector3(pa[0], pa[1], pa[2]).distance_to(Vector3(pb[0], pb[1], pb[2])))
+	return farthest
+
+
+func test_fake_layout_cluster_keeps_every_player_within_60_m() -> void:
+	var log_path: String = _build_path("test_server_main_e.log")
+	var report_path: String = _build_path("test_server_main_e.json")
+	DirAccess.remove_absolute(report_path)
+	var pid: int = _launch(PackedStringArray([
+		"--port=%d" % _find_free_port(), "--quit-after-ticks=420", "--fake-players=12",
+		"--fake-layout=cluster", "--report=%s" % report_path,
+	]), log_path)
+	if not assert_true(pid > 0, "el proceso del servidor se lanza"):
+		return
+	if not assert_true(await _wait_for_exit(pid), "el servidor se cierra solo"):
+		return
+	assert_eq(OS.get_process_exit_code(pid), 0, "código de salida 0")
+	var report: Dictionary = _read_report(report_path)
+	var list: Array = report.get("player_list", [])
+	assert_eq(list.size(), 12, "doce jugadores falsos")
+	var realms: Dictionary = {}
+	for entry: Dictionary in list:
+		realms[entry.get("realm")] = true
+	assert_eq(realms.size(), 1, "todos del mismo reino: %s" % [realms.keys()])
+	var spread: float = _max_pairwise_distance(list)
+	assert_true(spread < 60.0, "ninguno a más de 60 m de otro (%.1f m)" % spread)
+	assert_eq(int(report.get("physics_errors", -1)), 0, "sin errores de física")
+	assert_eq(int(report.get("respawns", -1)), 0, "nadie cae fuera del mundo")
+	assert_eq(_error_lines(log_path), PackedStringArray(), "sin errores en el registro")
+
+
+func test_fake_layout_spread_scatters_the_players_over_the_terrain() -> void:
+	var log_path: String = _build_path("test_server_main_f.log")
+	var report_path: String = _build_path("test_server_main_f.json")
+	DirAccess.remove_absolute(report_path)
+	var pid: int = _launch(PackedStringArray([
+		"--port=%d" % _find_free_port(), "--quit-after-ticks=420", "--fake-players=12",
+		"--fake-layout=spread", "--report=%s" % report_path,
+	]), log_path)
+	if not assert_true(pid > 0, "el proceso del servidor se lanza"):
+		return
+	if not assert_true(await _wait_for_exit(pid), "el servidor se cierra solo"):
+		return
+	assert_eq(OS.get_process_exit_code(pid), 0, "código de salida 0")
+	var report: Dictionary = _read_report(report_path)
+	var list: Array = report.get("player_list", [])
+	assert_eq(list.size(), 12, "doce jugadores falsos")
+	var spread: float = _max_pairwise_distance(list)
+	assert_true(spread > 400.0, "repartidos por la zona (hasta %.0f m entre dos)" % spread)
+	for entry: Dictionary in list:
+		var position: Array = entry.get("position", [0.0, -999.0, 0.0])
+		assert_true(float(position[1]) > -5.0 and float(position[1]) < 80.0,
+				"%s sigue sobre el terreno (y = %.2f)" % [entry.get("name"), float(position[1])])
+	assert_eq(int(report.get("physics_errors", -1)), 0, "sin errores de física")
+	assert_eq(int(report.get("respawns", -1)), 0, "nadie cae fuera del mundo")
+	assert_eq(int(report.get("teleports", -1)), 12, "cada uno se coloca con un teletransporte")
+	assert_eq(_error_lines(log_path), PackedStringArray(), "sin errores en el registro")
+
+
+func test_fake_churn_replaces_the_oldest_player_every_interval() -> void:
+	var log_path: String = _build_path("test_server_main_g.log")
+	var report_path: String = _build_path("test_server_main_g.json")
+	DirAccess.remove_absolute(report_path)
+	var pid: int = _launch(PackedStringArray([
+		"--port=%d" % _find_free_port(), "--zone=test_world", "--quit-after-ticks=330",
+		"--fake-players=6", "--fake-churn=30", "--report=%s" % report_path,
+	]), log_path)
+	if not assert_true(pid > 0, "el proceso del servidor se lanza"):
+		return
+	if not assert_true(await _wait_for_exit(pid), "el servidor se cierra solo"):
+		return
+	assert_eq(OS.get_process_exit_code(pid), 0, "código de salida 0")
+	var report: Dictionary = _read_report(report_path)
+	var players: Dictionary = report.get("players", {})
+	assert_eq(int(players.get("joined_total", 0)), 16, "6 de entrada y una alta cada 30 ticks (10)")
+	assert_eq(int(players.get("left_total", 0)), 10, "y una baja cada 30 ticks")
+	assert_eq(int(players.get("at_stop", 0)), 6, "siempre hay 6 jugadores")
+	assert_eq(int(players.get("peak", 0)), 6, "sin pasar nunca de 6")
+	assert_eq(_error_lines(log_path), PackedStringArray(), "sin errores en el registro")
+
+
 func test_idle_quit_closes_a_server_without_players() -> void:
 	var log_path: String = _build_path("test_server_main_c.log")
 	var report_path: String = _build_path("test_server_main_c.json")
