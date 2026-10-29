@@ -270,7 +270,7 @@ supuestos técnicos comprobados ejecutando Godot y Terrain3D).
 | F5 | Cliente del fuerte: `FortressView` con el gancho `before_simulate` (la puerta igual en cliente y servidor en cada tick), HUD de captura, banners, barra de jefe, marcas de TELEGRAPH, brújula, mapa horneado (`assets/maps/vado_gris.png`), minimapa, mapa completo con la reaparición, marcador (Tab) y registro de bajas, pistas, recuento por reino en la selección | Hecho |
 | F4 | PNJ: `NpcNavigation` (mapa propio, enlace de la puerta por reino), `NpcDefinition`/`NpcCatalog` (`data/npcs/`), armas de PNJ y golpe imbloqueable del Capitán con TELEGRAPH, `HfsmBrain` (reposo, patrulla, alerta, combate, regreso; fichas: nunca más de 2 atacan a la vez), `NpcSpawnerSystem` (Huecos, Capitán del Vado, guarnición del reino dueño, 2 Guardianes por campamento), `--no-npcs`, comando 12 `npc_debug` | Hecho (MUN-10 y MUN-11 siguen «en curso»: falta jugarlos con personas) |
 | F6a | Bots de asedio (`BotBrain` SIEGE, `--fake-brain=siege`, `--bot-brain=siege` para `--bot` y `--bots`), `--max-realm-diff` con REJECT 9 y recuento real en el WELCOME, falsos de relleno, `--run-at`, escenario `siege` de `load_test`, `tools/war/siege_runner.gd` y `siege_battle.gd` | Hecho (GUE-42; GUE-15/16/17 siguen «en curso» hasta F6b). Medido sin PNJ |
-| F6b | Prueba de extremo a extremo neutral → Vardheim → Solmarch con los PNJ de verdad, GUE-43/44/45, carga con PNJ | En curso, por paquetes (el encargo está en «Cierre»; lo hecho, en fuerte.md 8.3): GUE-43 hecho; bots contra los PNJ y extremo a extremo hechos; GUE-44 hecho (reunión y formación: recaptura con mediana de 2,6 min, aún según la semilla) |
+| F6b | Prueba de extremo a extremo neutral → Vardheim → Solmarch con los PNJ de verdad, GUE-43/44/45, carga con PNJ | En curso, por paquetes (el encargo está en «Cierre»; lo hecho, en fuerte.md 8.3): GUE-43 hecho; bots contra los PNJ y extremo a extremo hechos; GUE-44 hecho (reunión y formación: recaptura con mediana de 2,6 min, aún según la semilla); GUE-45 hecho (una parte del dueño guarda la pasarela; con armas cuerpo a cuerpo no alcanza la puerta: pelea con quien sube) |
 | Habilidades | Diseño corto `docs/habilidades.md` (CMB-19 a 24, CMB-28, PRG-04/07/08, UI-11, UI-45), revisado por tres lentes escépticas (41 hallazgos, 3 bloqueantes; 34 aplicados, 4 rechazados en parte con motivo en su sección «Revisión») | Diseño hecho; implementación tras fusionar F4 (paquetes H1 a H5) |
 | Social | Chat (SOC-03 a SOC-05) y grupos (SOC-06 a SOC-08) | Implementado en la rama `fase4-chat-grupos`; la revisión adversarial (tres lentes con refutación) se cortó al cerrar: falta revisar y fusionar |
 | Fase 5 (diseño) | `docs/plataforma.md` (servicio en Go + PostgreSQL, cuentas, billetes, guardado, RGPD, GM) y `docs/progresion.md` (objetos, inventario, monedas, niveles, razas): borrador, revisión escéptica y corrección | Hecho en `fase5-cuentas`; la conciliación entre los dos se cortó al cerrar |
@@ -300,6 +300,7 @@ supuestos técnicos comprobados ejecutando Godot y Terrain3D).
 | Versión corta de la suite (`test_siege_npcs`, 12 bots, PNJ más débiles) | captura a los 35–38 s de juego; la fase tarda 8–12 s de reloj con la máquina cargada |
 | Recaptura con GUE-44 (reunión y formación; cinco semillas, capitán del reino 7500) | **2,4 / 2,4 / 4,8 / 2,6 / 12,8 min** (mediana 2,6); antes, con las mismas, 6,7 / 27,6 / 24,5 / 4,4 / 5,6. Muertes del atacante por cada una del defensor: 1,3 (antes 2,7) |
 | Lo mismo con el capitán del reino en 15 000 | 2,6 / 2,7 / 11,5 / 15,0 / 17,4 min: las cinco dentro del ciclo de 30 min |
+| Con GUE-45 (pasarela: la guarda un 25 % del dueño y la recorre un 12,5 % de los atacantes; cinco semillas) | recaptura 4,4 / 2,4 / 4,4 / 2,7 / 2,7 min (mediana 2,7); muertes en la pasarela en las cinco (2, 6, 3, 4 y 1) |
 
 Lo que alarga la recaptura no son los PNJ sino el círculo frente a los defensores (GUE-44). Hallazgo arreglado: quien estaba
 dentro de su puerta cerrada golpeaba hacia fuera sin que le golpearan. Con GUE-44 (paquete C) se vio la causa de fondo: los
@@ -350,7 +351,8 @@ habían dejado; nada se ha perdido salvo F6b, que aún no tenía commits.
      - GUE-43: el falso de relleno cede su plaza a una persona.
      - GUE-44: los refuerzos se juntan antes de salir. **Hecho** (fuerte.md 8.3, F6b, paquete C): reunión en la salida del
        campamento (8 de su reino, 3 ya peleando en el fuerte o el reloj de 30 s), misma ruta y formación.
-     - GUE-45: los SIEGE del dueño defienden la pasarela.
+     - GUE-45: los SIEGE del dueño defienden la pasarela. **Hecho** (fuerte.md 8.3, F6b, paquete D): con armas cuerpo a cuerpo
+       no se alcanza la puerta desde ella, así que la guardan y pelean con quien sube; muertes en la pasarela en las cinco batallas.
    - **Carga con PNJ.** `load_test.gd --siege` con 32 contra 32.
    - **Batalla con telemetría.** Una batalla completa con `--battle-log` y su resumen.
    - **Herramientas.** `SiegeRunner.start(..., with_npcs = true)` arranca con los PNJ. **Hecho** (y
@@ -478,6 +480,13 @@ $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Mi
     la escena.
   - TELEGRAPH para todo golpe fuerte de un PNJ.
   - Opción nueva `--no-npcs`.
+- **F6b, GUE-45**:
+  - Desde la pasarela no se golpea a los de la puerta (no llega el arma): los guardias la guardan y pelean con quien sube.
+  - La subida es una ruta precalculada en los datos de las rutas, comprobada con la malla de los PNJ, no `NpcNavigation` en cada
+    consulta (el cerebro también lo usan `--bots` y `--bot`, que no tienen la malla).
+  - Recorre la pasarela al atacar la mitad de los que la guardan (12,5 %): con el mismo 25 % la recaptura se doblaba.
+  - Los buscadores de enemigos de los bots pesan la altura por 4, y dentro del recinto un enemigo a más de 1,6 m de altura no es un
+    blanco.
 - **F6b, GUE-44**:
   - Los atacantes también se reúnen al empezar la batalla, no solo al reaparecer; el grupo va por la misma ruta, la de la vuelta del
     reloj en la que sale (antes cada uno elegía la suya con su generador).

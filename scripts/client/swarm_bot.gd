@@ -675,7 +675,7 @@ func _note_extra_block(bytes: PackedByteArray, server_tick: int) -> void:
 
 
 # Cerebro de combate: el enemigo vivo más cercano a [param position] (la última posición que se sabe de
-# él), o null.
+# él; con la altura pesada, BotBrain.target_distance_squared), o null.
 func _find_enemy(position: Vector3) -> Variant:
 	var best: Variant = null
 	var best_distance: float = INF
@@ -683,7 +683,7 @@ func _find_enemy(position: Vector3) -> Variant:
 		if not _enemy_alive[net_id]:
 			continue
 		var enemy_position: Vector3 = _enemy_positions[net_id]
-		var distance: float = position.distance_squared_to(enemy_position)
+		var distance: float = BotBrain.target_distance_squared(position, enemy_position)
 		if distance < best_distance:
 			best_distance = distance
 			best = enemy_position
@@ -698,7 +698,7 @@ func _find_defender(position: Vector3) -> Variant:
 		if not _enemy_alive.get(net_id, false):
 			continue
 		var enemy_position: Vector3 = _enemy_positions[net_id]
-		var distance: float = position.distance_squared_to(enemy_position)
+		var distance: float = BotBrain.target_distance_squared(position, enemy_position)
 		if distance < best_distance:
 			best_distance = distance
 			best = enemy_position

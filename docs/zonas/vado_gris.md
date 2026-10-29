@@ -218,6 +218,10 @@ puente y unos 37 s por el vado (docs/fuerte.md, 8.3).
   la orilla y luego 40 m al descubierto ante la puerta.
 - El mismo script comprueba que el río **no** se puede cruzar por otros sitios (brazos este y
   curvas noroeste y suroeste): el personaje se queda en la orilla.
+- Desde GUE-45 los mismos datos llevan la subida a la pasarela que siguen los bots de asedio (su altura, 13,55 m; su
+  eje, de la cima de la rampa norte a la de la sur por encima de la puerta, y las dos rampas desde el patio, por fuera
+  del círculo de captura). El script la recorre por las dos rampas: 93,0 m y 18,9 s desde la explanada hasta el puesto
+  encima de la puerta, a 3,36 m sobre la meseta, iguales por el norte y por el sur.
 
 Por qué es justo:
 

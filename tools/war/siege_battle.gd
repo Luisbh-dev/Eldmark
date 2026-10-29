@@ -15,6 +15,8 @@ extends SceneTree
 ## godot --headless --path . -s res://tools/war/siege_battle.gd -- --npcs --per-side=20 --minutes=30
 ## # Igual, con los bots como antes de GUE-44 (sin reunión ni formación), para comparar
 ## godot --headless --path . -s res://tools/war/siege_battle.gd -- --npcs --per-side=20 --minutes=30 --rally=0
+## # Igual, sin nadie en la pasarela (como antes de GUE-45), para comparar
+## godot --headless --path . -s res://tools/war/siege_battle.gd -- --npcs --per-side=20 --minutes=30 --walkway=0
 ## [/codeblock]
 ## [b]Opciones[/b] (después de [code]--[/code]):
 ## [br]- [code]--scenario=capture[/code] (por defecto): primero los de Vardheim, que capturan el fuerte neutral; cuando
@@ -34,9 +36,13 @@ extends SceneTree
 ## reunión (por defecto, [constant BotBrain.SIEGE_RALLY_GROUP_SIZE]); con 0 o 1 no esperan ni van en formación, como
 ## antes de GUE-44 (sirve para comparar). [code]--rally-period=S[/code]: segundos de cada vuelta del reloj de la reunión
 ## (por defecto 30).
+## [br]- [code]--walkway=F[/code] (GUE-45): la parte de los bots con el papel de la pasarela (por defecto
+## [constant BotBrain.SIEGE_WALKWAY_SHARE]; los del dueño la guardan y los atacantes la recorren una vez al entrar); con 0
+## nadie sube, como antes de GUE-45.
 ## [br][br]
 ## El informe da, por fase, los hitos desde que salen sus bots: primer golpe a la puerta, puerta rota (y cuántas
-## veces), capitán caído y captura, y, por reino, las salidas en grupo de la reunión (cuántas y de cuántos). Termina
+## veces), capitán caído y captura, y, por reino, las salidas en grupo de la reunión (cuántas y de cuántos), y dónde han
+## caído los muertos (con las clases del resumen de batalla: puente, vado, explanada y patio, pasarela). Termina
 ## con código 0 si el escenario [code]capture[/code] acaba con Solmarch como dueño y 1 si no.
 
 const CHECK_TICKS: int = 30
@@ -67,6 +73,7 @@ func _run() -> void:
 	_with_npcs = args.has("--npcs")
 	_verbose = args.has("--verbose")
 	var rally_size: int = _int_option(args, "--rally=", -1)
+	var walkway_text: String = _option(args, "--walkway=", "")
 	var rally_period_s: int = _int_option(args, "--rally-period=",
 			roundi(float(BotBrain.SIEGE_RALLY_PERIOD_TICKS) / float(SiegeRunner.TICK_RATE)))
 
@@ -91,6 +98,9 @@ func _run() -> void:
 		runner.set_capture_speed(capture_speed)
 	if rally_size >= 0:
 		runner.set_rally(rally_size, rally_period_s * SiegeRunner.TICK_RATE)
+	if walkway_text.is_valid_float():
+		runner.set_walkway_share(clampf(walkway_text.to_float(), 0.0, 1.0))
+		print("  pasarela: %.2f de los bots" % clampf(walkway_text.to_float(), 0.0, 1.0))
 	print("Asedio en el Vado Gris: %s, %d por bando, captura x%d, hasta %d min de juego (semilla %d), %s" % [
 		scenario, per_side, capture_speed, minutes, rng_seed,
 		"con los PNJ de verdad y sin ayudas" if _with_npcs else "sin PNJ (fort_kill_captain al romper la puerta)"])
@@ -234,12 +244,14 @@ func _report(runner: SiegeRunner, captures: Array[Dictionary], wall_seconds: flo
 		var realm_key: String = WarEvents.realm_label(int(death["realm"]))
 		deaths[realm_key] = int(deaths.get(realm_key, 0)) + 1
 	print("Muertes de jugadores: %d %s" % [runner.deaths.size(), deaths])
+	_report_places(runner, runner.deaths, "Dónde caen los jugadores")
 	if _with_npcs:
 		var npc_deaths: Dictionary = {}
 		for death: Dictionary in runner.npc_deaths:
 			var key: String = String(death["npc"])
 			npc_deaths[key] = int(npc_deaths.get(key, 0)) + 1
 		print("Muertes de PNJ: %d %s" % [runner.npc_deaths.size(), npc_deaths])
+		_report_places(runner, runner.npc_deaths, "Dónde caen los PNJ")
 	var state: FortressState = runner.state()
 	print("Estado final: dueño %s, fase %d, puerta %d/%d, presencia %s" % [WarEvents.realm_label(state.owner),
 			state.phase, state.gate_health, state.gate_max, state.presence])
@@ -247,6 +259,25 @@ func _report(runner: SiegeRunner, captures: Array[Dictionary], wall_seconds: flo
 	for war_id: int in runner.war_ids():
 		ids.append(String(WarEvents.key_of(war_id)))
 	print("Avisos de guerra: %s" % ", ".join(PackedStringArray(ids)))
+
+
+# Dónde han caído los muertos de [param list] (los de SiegeRunner, con su posición), con las clases del resumen de batalla
+# (GUE-17, GUE-45) y, en la pasarela, de qué reino o qué PNJ eran.
+func _report_places(runner: SiegeRunner, list: Array[Dictionary], title: String) -> void:
+	var labels: Dictionary = {"bridge": "puente", "ford": "vado", "gate": "explanada y patio", "walkway": "pasarela",
+			"other": "otros sitios"}
+	var counts: Dictionary = {}
+	var on_walkway: Dictionary = {}
+	for death: Dictionary in list:
+		var place: String = String(runner.place_of(death["position"]))
+		counts[place] = int(counts.get(place, 0)) + 1
+		if place == String(BattleSummary.WALKWAY):
+			var who: String = String(death["npc"]) if death.has("npc") else WarEvents.realm_label(int(death["realm"]))
+			on_walkway[who] = int(on_walkway.get(who, 0)) + 1
+	var parts := PackedStringArray()
+	for place: String in ["bridge", "ford", "gate", "walkway", "other"]:
+		parts.append("%s %d" % [labels[place], int(counts.get(place, 0))])
+	print("%s: %s%s" % [title, ", ".join(parts), "" if on_walkway.is_empty() else " (en la pasarela: %s)" % on_walkway])
 
 
 # Las salidas en grupo de la reunión (GUE-44), por reino: cuántos grupos, de cuántos y si alguno se partió entre rutas.

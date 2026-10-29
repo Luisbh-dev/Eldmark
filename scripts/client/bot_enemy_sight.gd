@@ -27,8 +27,8 @@ func _init(client: NetClient, include_npcs: bool = false, include_war_npcs: bool
 	_war_npcs_only = war_npcs_only
 
 
-## Posición dibujada (un [Vector3]) del enemigo más cercano a [param position], o null si no hay
-## ninguno.
+## Posición dibujada (un [Vector3]) del enemigo más cercano a [param position] (con la altura pesada:
+## [method BotBrain.target_distance_squared]), o null si no hay ninguno.
 func find(position: Vector3) -> Variant:
 	var world: RemoteWorld = _client.get_remote_world()
 	var config: ClientConfig = _client.get_config()
@@ -50,7 +50,7 @@ func find(position: Vector3) -> Variant:
 		if not FactionRules.can_damage(config.realm, view.get_realm(), zone_id):
 			continue
 		var feet: Vector3 = view.get_drawn_position()
-		var distance: float = position.distance_squared_to(feet)
+		var distance: float = BotBrain.target_distance_squared(position, feet)
 		if distance < best_distance:
 			best_distance = distance
 			best = feet

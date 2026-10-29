@@ -1704,7 +1704,8 @@ func _pick_spawn_point(realm: int) -> Transform3D:
 # maniquíes, los protegidos y los que están en la zona segura de su reino no cuentan, y quien está en
 # la zona segura de su reino no ataca. Las posiciones objetivo se reúnen una vez por tick y por reino
 # (con muchos bots, cada uno recorre solo los candidatos de los reinos que le son hostiles). Con
-# [param npcs_only], solo los PNJ (el buscador de defensores del cerebro SIEGE, F6b).
+# [param npcs_only], solo los PNJ (el buscador de defensores del cerebro SIEGE, F6b). «Más cercano» con la altura pesada
+# (BotBrain.target_distance_squared, GUE-45): el de su nivel antes que el de la pasarela.
 func _find_enemy_position(position: Vector3, net_id: int, npcs_only: bool = false) -> Variant:
 	var me: Combatant = _combat.get_combatant(net_id)
 	if me == null or me.is_dead() or _safe_areas.contains_own(me.get_realm(), position):
@@ -1721,7 +1722,7 @@ func _find_enemy_position(position: Vector3, net_id: int, npcs_only: bool = fals
 		for index: int in positions.size():
 			if _targets_ids_by_realm[realm][index] == net_id or (npcs_only and npc_flags[index] == 0):
 				continue
-			var distance: float = position.distance_squared_to(positions[index])
+			var distance: float = BotBrain.target_distance_squared(position, positions[index])
 			if distance < best_distance:
 				best_distance = distance
 				best = positions[index]

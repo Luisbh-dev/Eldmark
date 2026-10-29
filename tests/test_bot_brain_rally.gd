@@ -111,9 +111,12 @@ func before_each() -> void:
 	_view.gate_max = 9000
 
 
+## Un cerebro de asedio sin el papel de la pasarela (GUE-45): estos puntos no tienen altura y no pueden subir a ella;
+## la pasarela se prueba en test_bot_brain_walkway.
 func _brain(realm: int, rng_seed: int) -> BotBrain:
 	var brain := BotBrain.new(rng_seed, BotBrain.Pattern.SIEGE)
 	brain.set_siege(_view, _routes, realm)
+	brain.set_walkway_role(false)
 	return brain
 
 

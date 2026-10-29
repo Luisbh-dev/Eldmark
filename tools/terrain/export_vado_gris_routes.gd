@@ -9,8 +9,9 @@ extends SceneTree
 ## Los puntos son los de las rutas que recorre y verifica [code]verify_vado_gris_routes.gd[/code]
 ## desde el punto de aparición de Vardheim hasta la explanada delante de la puerta del fuerte
 ## (la misma ruta del puente que sigue la demo de [RouteDemoInput]); las de Solmarch son su
-## reflejo exacto (z -> -z), porque la zona es simétrica. Si cambia el trazado de la zona, se
-## cambian aquí los puntos, se vuelve a lanzar este script y se pasa la verificación.
+## reflejo exacto (z -> -z), porque la zona es simétrica. Desde GUE-45 escribe también la pasarela del fuerte (su
+## altura, su eje y las dos rampas por las que se sube). Si cambia el trazado de la zona, se cambian aquí los puntos,
+## se vuelve a lanzar este script y se pasa la verificación.
 
 const OUTPUT_PATH: String = "res://data/routes/vado_gris.tres"
 
@@ -22,6 +23,20 @@ const CIRCLE_POINT: Vector2 = Vector2(-8.5, 0.0)
 const CIRCLE_RADIUS: float = 5.0
 ## El recinto de la empalizada (40 x 40 m, docs/zonas/vado_gris.md), medido desde la puerta: profundidad y ancho.
 const ENCLOSURE_SIZE: Vector2 = Vector2(40.0, 40.0)
+## La pasarela (GUE-45; docs/zonas/vado_gris.md): su suelo está 3,35 m por encima de la meseta del fuerte (10,2 m: a 13,55 m) y su eje
+## a 18,77 m del centro (el medio lado de 20 m, menos el radio de los troncos y la mitad de sus 2 m de ancho). Los bots
+## andan por el eje desde la cima de la rampa norte hasta la de la sur pasando por encima de la puerta (cara oeste).
+const WALKWAY_HEIGHT: float = 13.55
+const WALKWAY_AXIS: float = 18.77
+const WALKWAY_PATH: Array[Vector2] = [
+	Vector2(7.0, -WALKWAY_AXIS), Vector2(-WALKWAY_AXIS, -WALKWAY_AXIS), Vector2(-WALKWAY_AXIS, WALKWAY_AXIS),
+	Vector2(7.0, WALKWAY_AXIS),
+]
+## Rampa norte desde el patio: un punto entre la puerta y la torre pero fuera del círculo de captura (a 9,6 m de su
+## centro: con los puntos que recorría antes verify_vado_gris_routes.gd, (-6, -6) y (7, -5), quien subía cruzaba el
+## borde del círculo y disputaba la captura al pasar, y la recaptura de los bots se alargaba), delante del pie de la
+## rampa (x = 7, sube hacia -Z desde z = -10,87) y su cima, en el eje de la pasarela. La del sur es su reflejo.
+const NORTH_RAMP: Array[Vector2] = [Vector2(-12.0, -9.0), Vector2(7.0, -8.0), Vector2(7.0, -WALKWAY_AXIS)]
 
 ## Rutas desde el punto de aparición del norte (Vardheim): (x, z).
 const VARDHEIM_ROUTES: Dictionary = {
@@ -44,6 +59,14 @@ func _initialize() -> void:
 	routes.circle_point = CIRCLE_POINT
 	routes.circle_radius = CIRCLE_RADIUS
 	routes.enclosure_size = ENCLOSURE_SIZE
+	routes.walkway_height = WALKWAY_HEIGHT
+	routes.walkway_path = PackedVector2Array(WALKWAY_PATH)
+	var north_ramp := PackedVector2Array(NORTH_RAMP)
+	var south_ramp := PackedVector2Array()
+	for point: Vector2 in NORTH_RAMP:
+		south_ramp.append(Vector2(point.x, -point.y))
+	var ramps: Array[PackedVector2Array] = [north_ramp, south_ramp]
+	routes.walkway_ramps = ramps
 	for route: StringName in VARDHEIM_ROUTES:
 		var north := PackedVector2Array()
 		var south := PackedVector2Array()
@@ -60,5 +83,7 @@ func _initialize() -> void:
 		return
 	for route: StringName in routes.get_route_ids():
 		print("%s: %.1f m" % [route, routes.get_length(route, RealmCatalog.VARDHEIM)])
+	print("pasarela: %.1f m a %.2f m de altura, puesto en %s" % [routes.walkway_length(), routes.walkway_height,
+			routes.walkway_post()])
 	print("Guardado %s" % OUTPUT_PATH)
 	quit(0)

@@ -37,8 +37,8 @@ extends RefCounted
 ## [br]3. [b]Asalto[/b]: llegado a la explanada, si la puerta cierra el paso a su reino
 ## ([method SiegeView.is_gate_closed_for]) se acerca a ella y la golpea (ligeros en combo y algún fuerte).
 ## [br]4. [b]Círculo[/b]: con la puerta abierta para su reino (rota, o suya) entra en el círculo de captura y
-## se queda dentro cerca del centro: los atacantes lo toman y el dueño lo defiende (la pasarela, que pide
-## navegación, queda para los PNJ).
+## se queda dentro cerca del centro: los atacantes lo toman y el dueño lo defiende (salvo los que tienen el papel de la
+## pasarela, GUE-45: ver abajo).
 ## [br]Si no avanza durante [constant SIEGE_STUCK_TICKS] mientras camina, primero prueba un salto y, si sigue
 ## igual, un desvío lateral. Un salto de posición de más de [constant SIEGE_TELEPORT_DISTANCE] metros en un
 ## tick (reaparición) reinicia la ruta.
@@ -61,14 +61,25 @@ extends RefCounted
 ## encima de otro, donde un golpe que barre les da a todos. En grupo (con contador de aliados y la reunión puesta) cada
 ## bot lleva su hueco ([method get_siege_slot]), que suma a donde va: de lado en la marcha, a lo largo de la puerta al
 ## golpearla, en el círculo y en el punto de reunión.
+## [br][b]Pasarela[/b] (GUE-45): una parte de los bots ([constant SIEGE_WALKWAY_SHARE], por su semilla:
+## [method is_walkway_seed]) tiene el papel de la pasarela, si las rutas la conocen ([method ApproachRoutes.has_walkway]).
+## Si su reino es el dueño, en lugar de quedarse en el círculo entra en el fuerte, sube por una rampa (una ruta de puntos
+## precalculada de los datos, comprobada con la malla de navegación de los PNJ) y guarda su puesto encima de la puerta
+## ([constant SiegeTask.WALKWAY]). Si es atacante, solo la mitad de ellos ([constant SIEGE_WALKWAY_SWEEP_SHARE],
+## [method is_walkway_sweeper]): al entrar en el fuerte recorre la pasarela una vez hasta ese puesto (la limpia) y luego
+## salta al patio y va al círculo. Desde la pasarela no se alcanza con el arma a nadie del suelo (el
+## sector llega de 0,2 a 2 m sobre los pies y la pasarela está a 3,35 m, tras la empalizada): dentro del recinto, quien
+## está más de [constant SIEGE_LEVEL_TOLERANCE] m más arriba o más abajo no es un blanco ni un golpe avisado que haya que
+## evitar, así que en la pasarela se pelea con quien sube, sin salirse del eje en las esquinas y sin esquivar de lado.
 
 ## [constant SIEGE] va al final para no mover los valores de los demás patrones.
 enum Pattern { WANDER, CIRCLE, IDLE, JUMPY, COMBAT, SIEGE }
 
 ## Qué hace un bot de [constant SIEGE] en este tick ([method get_siege_task]). [constant EVADE] (F6b, al final
 ## para no mover los demás): sale de la zona de un golpe avisado. [constant RALLY] (GUE-44, después): espera a los suyos
-## en el punto de reunión de su campamento.
-enum SiegeTask { NONE, FIGHT, MARCH, ASSAULT, HOLD, EVADE, RALLY }
+## en el punto de reunión de su campamento. [constant WALKWAY] (GUE-45, la última): sube a la pasarela, va por ella o
+## guarda su puesto.
+enum SiegeTask { NONE, FIGHT, MARCH, ASSAULT, HOLD, EVADE, RALLY, WALKWAY }
 
 ## Duración mínima de un tramo de paseo (ticks).
 const SEGMENT_MIN_TICKS: int = 60
@@ -199,6 +210,36 @@ const SIEGE_SLOT_REACHED: float = 0.5
 ## quedan repartidos por el disco ([method slot_for_seed]).
 const SLOT_STEP_ANGLE: float = 0.7548776662466927
 const SLOT_STEP_RADIUS: float = 0.5698402909980532
+## [constant SIEGE], pasarela (GUE-45): qué parte de los bots tiene el papel de la pasarela ([method is_walkway_seed]):
+## los del dueño que la guardan y, de ellos, los que la recorren cuando atacan. Con la misma parte para los atacantes
+## (cinco de veinte que dejan la pelea del patio y suben de uno en uno contra los cinco del dueño) la recaptura de
+## siege_battle.gd pasaba de una mediana de 2,6 a 5,3 min; con la mitad, 2,7 (docs/fuerte.md 8.3, F6b, paquete D).
+const SIEGE_WALKWAY_SHARE: float = 0.25
+const SIEGE_WALKWAY_SWEEP_SHARE: float = 0.125
+## Paso de la sucesión de Weyl con la que se reparte el papel por semillas (la inversa del número áureo): cualquier
+## serie de semillas seguidas, o de una en una cada N, da la misma proporción.
+const WALKWAY_SEED_STEP: float = 0.6180339887498949
+## [constant SIEGE], pasarela: hasta cuántos metros a cada lado del puesto (encima de la puerta, a lo largo de la
+## pasarela) se coloca cada uno según su hueco ([method get_siege_slot]).
+const SIEGE_WALKWAY_POST_SPREAD: float = 4.0
+## [constant SIEGE], pasarela: distancia (m) a la que da por alcanzado un punto de las rampas, una esquina de la pasarela
+## o su puesto. Menos que la holgura del eje (la pasarela mide 2 m y la cápsula 0,8): al cortar una esquina no se cae.
+const SIEGE_WALKWAY_REACHED: float = 0.5
+## [constant SIEGE], pasarela: está en ella si sus pies están a menos de [constant SIEGE_WALKWAY_LEVEL_MARGIN] m por
+## debajo de su suelo (o más arriba) y a menos de [constant SIEGE_WALKWAY_BAND] m de su eje en horizontal.
+const SIEGE_WALKWAY_LEVEL_MARGIN: float = 0.8
+const SIEGE_WALKWAY_BAND: float = 1.5
+## [constant SIEGE], pasarela: subiendo hacia la cima de una rampa, si se aparta de su eje más que esto (m), vuelve
+## primero al punto del patio que hay delante de su pie.
+const SIEGE_RAMP_AXIS_TOLERANCE: float = 1.0
+## [constant SIEGE]: dentro del recinto (el patio es llano), quien está más de estos metros más arriba o más abajo
+## (en la pasarela, o en el patio visto desde ella) no se alcanza: el sector del arma va de 0,2 a 2 m sobre los pies del
+## que golpea y la cápsula mide 1,8.
+const SIEGE_LEVEL_TOLERANCE: float = 1.6
+## Peso de la altura en la distancia con la que los buscadores de enemigos de los bots eligen el más cercano
+## ([method target_distance_squared]): con 4, la pasarela (3,35 m por encima) queda a más de 13 m, más lejos que el
+## alcance de pelea ([constant SIEGE_FIGHT_RANGE]), y cualquier enemigo a tiro en su mismo nivel va antes.
+const SIEGE_LEVEL_WEIGHT: float = 4.0
 
 # Cómo se desatasca un bot de asedio.
 enum _Unstick { NONE, JUMP, DETOUR }
@@ -298,6 +339,16 @@ var _siege_rally_until: int = -1
 var _siege_rally_left_tick: int = -1
 # SIEGE, formación: el hueco del bot (un punto del disco unidad, de su semilla).
 var _siege_slot: Vector2 = Vector2.ZERO
+# SIEGE, pasarela (GUE-45): la semilla (para repartir el papel), si tiene el papel, si ya la ha recorrido como atacante en
+# esta vida, la rampa por la que sube (-1 = ninguna) y el punto de ella al que va (-1 = aún no lo ha elegido), y si está
+# en la pasarela en este tick.
+var _siege_seed: int = 0
+var _siege_walkway_role: bool = false
+var _siege_walkway_sweeper: bool = false
+var _siege_walkway_swept: bool = false
+var _siege_climb_ramp: int = -1
+var _siege_climb_index: int = -1
+var _siege_on_walkway_now: bool = false
 
 
 ## [param rng_seed] fija la secuencia. [param home] y [param radius] delimitan la zona por la
@@ -310,6 +361,9 @@ func _init(rng_seed: int, pattern: Pattern = Pattern.WANDER, home: Vector3 = Vec
 	_radius = maxf(radius, 1.0)
 	_circle_sign = 1.0 if _rng.randi() % 2 == 0 else -1.0
 	_siege_slot = slot_for_seed(rng_seed)
+	_siege_seed = rng_seed
+	_siege_walkway_role = is_walkway_seed(rng_seed)
+	_siege_walkway_sweeper = is_walkway_seed(rng_seed, SIEGE_WALKWAY_SWEEP_SHARE)
 
 
 ## Entrada sin cuantizar para [param tick] (la cuantiza quien llama). [param position] y
@@ -481,6 +535,75 @@ func get_last_rally_departure() -> int:
 	return _siege_rally_left_tick
 
 
+## true si un bot con la semilla [param rng_seed] tiene el papel de la pasarela del patrón [constant SIEGE] (GUE-45): la
+## fracción [param share] de las semillas, repartidas con la sucesión de Weyl del número áureo, así que con 20 semillas
+## seguidas (o una de cada dos, las de un reino) son 5 con [constant SIEGE_WALKWAY_SHARE]. No usa el generador.
+static func is_walkway_seed(rng_seed: int, share: float = SIEGE_WALKWAY_SHARE) -> bool:
+	return fposmod(float(rng_seed) * WALKWAY_SEED_STEP, 1.0) < share
+
+
+## Da o quita el papel de la pasarela al bot: [param guard], guardarla cuando su reino es el dueño, y [param sweeper],
+## recorrerla cuando ataca (por defecto, lo mismo). Sin llamarlo, los tiene si [method is_walkway_seed] con su semilla y
+## [constant SIEGE_WALKWAY_SHARE] o [constant SIEGE_WALKWAY_SWEEP_SHARE]. Vale desde el tick siguiente.
+func set_walkway_role(guard: bool, sweeper: bool = guard) -> void:
+	_siege_walkway_role = guard
+	_siege_walkway_sweeper = sweeper
+	_siege_climb_ramp = -1
+
+
+## Reparte otra vez el papel de la pasarela con la fracción [param share] para los del dueño (0 = nadie sube, como antes
+## de GUE-45) y la misma proporción de antes para los atacantes (la mitad: [constant SIEGE_WALKWAY_SWEEP_SHARE] de
+## [constant SIEGE_WALKWAY_SHARE]), con [method is_walkway_seed] y su semilla. Lo usan las herramientas para comparar.
+func set_walkway_share(share: float) -> void:
+	set_walkway_role(is_walkway_seed(_siege_seed, share),
+			is_walkway_seed(_siege_seed, share * SIEGE_WALKWAY_SWEEP_SHARE / SIEGE_WALKWAY_SHARE))
+
+
+## true si el bot guarda la pasarela cuando su reino es el dueño (GUE-45).
+func has_walkway_role() -> bool:
+	return _siege_walkway_role
+
+
+## true si el bot recorre la pasarela cuando ataca (GUE-45).
+func is_walkway_sweeper() -> bool:
+	return _siege_walkway_sweeper
+
+
+## true si el bot atacante ya ha recorrido la pasarela en esta vida (vuelve a hacerlo tras reaparecer).
+func is_walkway_swept() -> bool:
+	return _siege_walkway_swept
+
+
+## El puesto de este bot en la pasarela (GUE-45): el punto de su eje encima de la puerta más su hueco a lo largo de ella,
+## a la altura de su suelo; null si no tiene fuerte o las rutas no conocen la pasarela.
+func get_walkway_post() -> Variant:
+	if _siege == null or _siege_routes == null or not _siege_routes.has_walkway() or not _siege_has_places():
+		return null
+	var point: Vector2 = _siege_routes.walkway_point(_siege_walkway_post_offset())
+	return Vector3(point.x, _siege_routes.walkway_height, point.y)
+
+
+## true si [param position] está en la pasarela del fuerte que asedia (con sus rutas): a su altura, con
+## [constant SIEGE_WALKWAY_LEVEL_MARGIN] de holgura, y a menos de [constant SIEGE_WALKWAY_BAND] m de su eje.
+func is_on_walkway(position: Vector3) -> bool:
+	if _siege_routes == null or not _siege_routes.has_walkway():
+		return false
+	if position.y < _siege_routes.walkway_height - SIEGE_WALKWAY_LEVEL_MARGIN:
+		return false
+	return _siege_routes.walkway_distance(Vector2(position.x, position.z)) <= SIEGE_WALKWAY_BAND
+
+
+## Distancia al cuadrado con la que los buscadores de enemigos de los bots ([method set_enemy_finder] y
+## [method set_defender_finder]: el servidor, [code]SwarmBot[/code] y [code]--bot[/code]) eligen el más cercano: la
+## horizontal más la vertical multiplicada por [constant SIEGE_LEVEL_WEIGHT]. Así el que está a su altura va antes que
+## el de la pasarela o el del patio visto desde ella, a los que no alcanza (GUE-45).
+static func target_distance_squared(from: Vector3, to: Vector3) -> float:
+	var dx: float = to.x - from.x
+	var dz: float = to.z - from.z
+	var dy: float = (to.y - from.y) * SIEGE_LEVEL_WEIGHT
+	return dx * dx + dz * dz + dy * dy
+
+
 ## El punto de reunión del patrón [constant SIEGE] (GUE-44): la salida del campamento de su reino, donde empiezan sus
 ## rutas (el primer punto de la primera, por orden de id; en el Vado Gris todas empiezan en el mismo), a ras de suelo.
 ## null si no tiene fuerte o sus rutas no tienen puntos para su reino.
@@ -607,6 +730,10 @@ func _decide_combat_action(tick: int) -> void:
 		_hold_until = tick + 1
 		_hold_move = Vector2(1.0 if _rng.randi() % 2 == 0 else -1.0, 0.0) if _rng.randf() < 0.7 \
 				else Vector2(0.0, -1.0)
+		if _siege_on_walkway_now:
+			# En la pasarela (sin barandilla por dentro) una esquiva de lado le tira al patio: hacia atrás, por el eje
+			# (pelea con quien tiene delante en él). El generador se usa igual.
+			_hold_move = Vector2(0.0, -1.0)
 		_next_decision_tick = tick + _rng.randi_range(COMBAT_ATTACK_GAP_TICKS.x,
 				COMBAT_ATTACK_GAP_TICKS.y)
 	elif roll < COMBAT_BLOCK_CHANCE + COMBAT_DODGE_CHANCE + COMBAT_HEAVY_CHANCE:
@@ -636,6 +763,7 @@ func _start_light_attack(tick: int) -> void:
 # Entrada del patrón SIEGE (siempre hay una).
 func _siege_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 	_note_siege_position(position)
+	_siege_on_walkway_now = is_on_walkway(position)
 	# 0. Fuera de la zona de un golpe avisado, sin bloquear ni acabar lo que tuviera entre manos.
 	var threat: Threat = _siege_threat_covering(position)
 	if threat != null:
@@ -694,6 +822,10 @@ func _siege_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 	if _siege.is_gate_closed_for(_siege_realm) and _siege_has_places():
 		_siege_task = SiegeTask.ASSAULT
 		return _assault_input(tick, position, yaw)
+	# 4. Con el papel de la pasarela (GUE-45): el dueño la guarda y el atacante la recorre una vez.
+	var walkway: PlayerInput = _siege_walkway_input(tick, position, yaw)
+	if walkway != null:
+		return walkway
 	_siege_task = SiegeTask.HOLD
 	return _hold_circle_input(tick, position, yaw)
 
@@ -712,6 +844,14 @@ func _siege_fight_if_in_range(tick: int, position: Vector3, yaw: float, target: 
 		return null
 	_siege_task = SiegeTask.FIGHT
 	_reset_stuck(tick, position)
+	if _siege_on_walkway_now and distance > COMBAT_ENGAGE_DISTANCE:
+		# En la pasarela, si hay una esquina entre los dos, primero la esquina: en línea recta se caería al patio.
+		var enemy_point := Vector2((target as Vector3).x, (target as Vector3).z)
+		var corner: Variant = _siege_walkway_corner(Vector2(position.x, position.z),
+				_siege_routes.walkway_offset(enemy_point))
+		if corner is Vector2:
+			var to_corner := Vector3((corner as Vector2).x - position.x, 0.0, (corner as Vector2).y - position.z)
+			return _walk_input(tick, position, yaw, to_corner, to_corner.length())
 	return _fight_input(tick, to_enemy, distance, yaw)
 
 
@@ -767,6 +907,9 @@ func _siege_threat_covering(position: Vector3) -> Threat:
 		var candidate: Threat = item as Threat
 		if candidate == null or not candidate.covers(position, SIEGE_THREAT_MARGIN):
 			continue
+		if not _siege_same_level(position, candidate.origin):
+			# Un golpe desde el patio no llega a la pasarela, ni al revés (GUE-45).
+			continue
 		var distance: float = Vector2(position.x - candidate.origin.x, position.z - candidate.origin.z).length()
 		if distance < best_distance:
 			best_distance = distance
@@ -800,6 +943,9 @@ func _reset_route() -> void:
 	_siege_unstick = _Unstick.NONE
 	_siege_unstick_until = -1
 	_siege_stuck_ref_tick = -1
+	_siege_walkway_swept = false
+	_siege_climb_ramp = -1
+	_siege_climb_index = -1
 
 
 # Elige la ruta (con el generador del bot) si aún no tiene ninguna, y por qué punto empieza.
@@ -1162,8 +1308,11 @@ func _siege_inward() -> Vector3:
 	return inward.normalized() if inward.length_squared() > 0.0001 else Vector3.ZERO
 
 
-# true si el bot puede llegar hasta [param target]: no está al otro lado de una puerta que le cierra el paso.
+# true si el bot puede llegar hasta [param target]: está a su nivel (GUE-45) y no al otro lado de una puerta que le
+# cierra el paso.
 func _can_reach(position: Vector3, target: Vector3) -> bool:
+	if not _siege_same_level(position, target):
+		return false
 	if not _siege.is_gate_closed_for(_siege_realm) or not _siege_has_places():
 		return true
 	var inward: Vector3 = _siege_inward()
@@ -1174,6 +1323,158 @@ func _can_reach(position: Vector3, target: Vector3) -> bool:
 	mine.y = 0.0
 	theirs.y = 0.0
 	return (mine.dot(inward) > 0.0) == (theirs.dot(inward) > 0.0)
+
+
+# --- Pasarela (GUE-45) --------------------------------------------------------------------------
+
+# true si [param a] y [param b] están a un nivel desde el que se alcanzan: a menos de SIEGE_LEVEL_TOLERANCE en vertical,
+# o los dos fuera del recinto (las laderas de fuera no son niveles: ahí no cambia nada). Sin recinto conocido, siempre.
+func _siege_same_level(a: Vector3, b: Vector3) -> bool:
+	if absf(a.y - b.y) <= SIEGE_LEVEL_TOLERANCE or not _siege_has_places():
+		return true
+	return _siege.is_inside_enclosure(a) != 1 and _siege.is_inside_enclosure(b) != 1
+
+
+# true si el bot tiene que ir a la pasarela: las rutas la conocen, y o es el dueño y la guarda, o es atacante y la
+# recorre, aún no lo ha hecho en esta vida y ya está dentro del fuerte (o en ella).
+func _siege_walkway_wanted(position: Vector3) -> bool:
+	if _siege_routes == null or not _siege_routes.has_walkway() or not _siege_has_places():
+		return false
+	if _siege.should_defend(_siege_realm):
+		return _siege_walkway_role
+	if not _siege_walkway_sweeper or _siege_walkway_swept:
+		return false
+	return _siege_on_walkway_now or _siege_inside_fort(position)
+
+
+# Metros a lo largo del eje de la pasarela de su puesto: encima de la puerta, más su hueco de lado.
+func _siege_walkway_post_offset() -> float:
+	var post: float = _siege_routes.walkway_offset(_siege_routes.walkway_post())
+	return clampf(post + _siege_slot.x * SIEGE_WALKWAY_POST_SPREAD, 0.0, _siege_routes.walkway_length())
+
+
+# La pasarela: entra en el fuerte si está fuera, sube por la rampa que le toca, va por el eje hasta su puesto y allí lo
+# guarda mirando afuera (el dueño) o da la pasarela por recorrida y sigue con su plan (el atacante, que salta al patio
+# camino del círculo). null si no tiene que ir.
+func _siege_walkway_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
+	if not _siege_walkway_wanted(position):
+		_siege_climb_ramp = -1
+		return null
+	var here := Vector2(position.x, position.z)
+	var post_offset: float = _siege_walkway_post_offset()
+	if _siege_on_walkway_now and _siege_climb_ramp >= 0:
+		# Lo alto de la rampa ya cuenta como pasarela, pero hasta la cima (en el eje) sigue subiendo: si girase antes,
+		# se saldría de la rampa por un lado.
+		var ramp: PackedVector2Array = _siege_routes.walkway_ramps[_siege_climb_ramp]
+		var top: Vector2 = ramp[ramp.size() - 1]
+		if _siege_climb_index >= ramp.size() - 1 and here.distance_to(top) > SIEGE_WALKWAY_REACHED:
+			_siege_task = SiegeTask.WALKWAY
+			var to_top := Vector3(top.x - position.x, 0.0, top.y - position.z)
+			return _walk_input(tick, position, yaw, to_top, to_top.length())
+		_siege_climb_ramp = -1
+	if _siege_on_walkway_now:
+		var axis: Vector2 = _siege_routes.walkway_point(_siege_routes.walkway_offset(here))
+		if here.distance_to(axis) > SIEGE_WALKWAY_REACHED:
+			# Apartado del eje (una pelea, una esquiva): primero vuelve a él, lejos del borde de dentro.
+			_siege_task = SiegeTask.WALKWAY
+			var to_axis := Vector3(axis.x - position.x, 0.0, axis.y - position.z)
+			return _walk_input(tick, position, yaw, to_axis, to_axis.length())
+		var post: Vector2 = _siege_routes.walkway_point(post_offset)
+		if here.distance_to(post) <= SIEGE_WALKWAY_REACHED:
+			if not _siege.should_defend(_siege_realm):
+				_siege_walkway_swept = true
+				return null
+			_siege_task = SiegeTask.WALKWAY
+			_reset_stuck(tick, position)
+			var holding := PlayerInput.new()
+			holding.tick = tick
+			holding.look_yaw = _yaw_toward(-_siege_inward(), yaw)
+			return holding
+		_siege_task = SiegeTask.WALKWAY
+		var next: Vector2 = _siege_walkway_next(here, post_offset)
+		var to_next := Vector3(next.x - position.x, 0.0, next.y - position.z)
+		return _walk_input(tick, position, yaw, to_next, to_next.length())
+	_siege_task = SiegeTask.WALKWAY
+	var waypoint: Variant = _gate_waypoint(position)
+	if waypoint is Vector3:
+		var to_waypoint: Vector3 = (waypoint as Vector3) - position
+		to_waypoint.y = 0.0
+		return _walk_input(tick, position, yaw, to_waypoint, to_waypoint.length())
+	var target: Vector2 = _siege_climb_target(here, post_offset)
+	var to_target := Vector3(target.x - position.x, 0.0, target.y - position.z)
+	return _walk_input(tick, position, yaw, to_target, to_target.length())
+
+
+# El punto de la rampa al que va: la rampa cuya cima queda más cerca de su puesto a lo largo de la pasarela (a igualdad,
+# la primera), empezando por el punto del patio más cercano; los alcanza a SIEGE_WALKWAY_REACHED. Si iba a la cima y se
+# ha apartado del eje de la rampa (lo han empujado o se ha caído), vuelve primero al punto de delante de su pie.
+func _siege_climb_target(here: Vector2, post_offset: float) -> Vector2:
+	var ramps: Array[PackedVector2Array] = _siege_routes.walkway_ramps
+	if _siege_climb_ramp < 0 or _siege_climb_ramp >= ramps.size():
+		_siege_climb_ramp = 0
+		var best_gap: float = INF
+		for index: int in ramps.size():
+			if ramps[index].is_empty():
+				continue
+			var top: Vector2 = ramps[index][ramps[index].size() - 1]
+			var gap: float = absf(_siege_routes.walkway_offset(top) - post_offset)
+			if gap < best_gap - 0.001:
+				best_gap = gap
+				_siege_climb_ramp = index
+		_siege_climb_index = -1
+	var points: PackedVector2Array = ramps[_siege_climb_ramp]
+	var last: int = points.size() - 1
+	if _siege_climb_index < 0:
+		_siege_climb_index = 0
+		var best: float = INF
+		for index: int in maxi(last, 1):
+			var distance: float = here.distance_to(points[index])
+			if distance < best:
+				best = distance
+				_siege_climb_index = index
+	if last > 0 and _siege_climb_index >= last and not _siege_on_ramp_axis(here, points[last - 1], points[last]):
+		_siege_climb_index = last - 1
+	if _siege_climb_index < last and here.distance_to(points[_siege_climb_index]) <= SIEGE_WALKWAY_REACHED:
+		_siege_climb_index += 1
+	return points[mini(_siege_climb_index, last)]
+
+
+# true si [param here] está en el eje de la rampa que va de [param foot] a [param top] (con SIEGE_RAMP_AXIS_TOLERANCE de
+# lado y un poco de holgura en sus extremos).
+func _siege_on_ramp_axis(here: Vector2, foot: Vector2, top: Vector2) -> bool:
+	var along: Vector2 = top - foot
+	var length: float = along.length()
+	if length < 0.001:
+		return here.distance_to(top) <= SIEGE_RAMP_AXIS_TOLERANCE
+	var direction: Vector2 = along / length
+	var offset: Vector2 = here - foot
+	var t: float = offset.dot(direction)
+	return t >= -SIEGE_RAMP_AXIS_TOLERANCE and t <= length + SIEGE_RAMP_AXIS_TOLERANCE \
+			and absf(offset.cross(direction)) <= SIEGE_RAMP_AXIS_TOLERANCE
+
+
+# Hacia dónde ir por la pasarela desde [param here] para llegar al punto de su eje que está a [param target_offset]
+# metros: la primera esquina que hay en medio o, si no hay ninguna, ese punto.
+func _siege_walkway_next(here: Vector2, target_offset: float) -> Vector2:
+	var corner: Variant = _siege_walkway_corner(here, target_offset)
+	return corner as Vector2 if corner is Vector2 else _siege_routes.walkway_point(target_offset)
+
+
+# La primera esquina (un punto del eje de la pasarela) entre [param here] y el punto del eje a [param target_offset]
+# metros, o null si no hay ninguna (las que están a menos de SIEGE_WALKWAY_REACHED se dan por pasadas).
+func _siege_walkway_corner(here: Vector2, target_offset: float) -> Variant:
+	var mine: float = _siege_routes.walkway_offset(here)
+	var offsets: PackedFloat32Array = _siege_routes.walkway_vertex_offsets()
+	var path: PackedVector2Array = _siege_routes.walkway_path
+	if target_offset > mine:
+		for index: int in offsets.size():
+			if offsets[index] > mine + SIEGE_WALKWAY_REACHED and offsets[index] < target_offset:
+				return path[index]
+	else:
+		for index: int in range(offsets.size() - 1, -1, -1):
+			if offsets[index] < mine - SIEGE_WALKWAY_REACHED and offsets[index] > target_offset:
+				return path[index]
+	return null
 
 
 # --- Paseo --------------------------------------------------------------------------------------

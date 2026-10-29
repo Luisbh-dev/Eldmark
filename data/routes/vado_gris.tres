@@ -15,3 +15,6 @@ points = Dictionary[String, PackedVector2Array]({
 "ford/solmarch": PackedVector2Array(-2.5, 132, -8, 114, -36, 100, -70, 74, -92, 40, -90, 10, -80, 0, -62, 0, -44, 0, -25, 0),
 "ford/vardheim": PackedVector2Array(-2.5, -132, -8, -114, -36, -100, -70, -74, -92, -40, -90, -10, -80, 0, -62, 0, -44, 0, -25, 0)
 })
+walkway_height = 13.55
+walkway_path = PackedVector2Array(7, -18.77, -18.77, -18.77, -18.77, 18.77, 7, 18.77)
+walkway_ramps = Array[PackedVector2Array]([PackedVector2Array(-12, -9, 7, -8, 7, -18.77), PackedVector2Array(-12, 9, 7, 8, 7, 18.77)])

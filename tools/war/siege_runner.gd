@@ -12,7 +12,8 @@ extends Node
 ## los bots lo maten ellos. Con ellos ([code]with_npcs[/code] en [method start], F6b) defienden el fuerte los
 ## Huecos, el Capitán del Vado y la guarnición del dueño de verdad, y [method set_npc_health] los debilita para las
 ## pruebas cortas sin tocar [code]data/npcs/[/code]. Los bots esperan a los suyos en su campamento y van en formación
-## (GUE-44); [method set_rally] lo cambia o lo quita, y [member rally_departures] apunta cada salida.
+## (GUE-44); [method set_rally] lo cambia o lo quita, y [member rally_departures] apunta cada salida. Una parte sube a la
+## pasarela (GUE-45); [method set_walkway_share] cambia qué parte, y [method place_of] dice dónde ha caído cada muerto.
 
 ## Zona del asedio.
 const ZONE_ID: String = "vado_gris"
@@ -30,8 +31,9 @@ var ticks_per_frame: int = DEFAULT_TICKS_PER_FRAME
 ## El servidor de la zona (null antes de [method start]).
 var server: ZoneServer = null
 var world: Node3D = null
-## Avisos de guerra en el orden en que salieron (cada uno con su tick), muertes de jugadores y muertes de PNJ
-## ([code]{tick, net_id, npc}[/code], con el id de su definición).
+## Avisos de guerra en el orden en que salieron (cada uno con su tick), muertes de jugadores
+## ([code]{tick, net_id, realm, position}[/code]) y muertes de PNJ ([code]{tick, net_id, npc, position}[/code], con el id
+## de su definición).
 var war_events: Array[NetMessages.EntityEvent] = []
 var deaths: Array[Dictionary] = []
 var npc_deaths: Array[Dictionary] = []
@@ -52,6 +54,8 @@ var _running: bool = false
 var _rally_size: int = -1
 var _rally_period: int = BotBrain.SIEGE_RALLY_PERIOD_TICKS
 var _rally_seen: Dictionary[int, int] = {}
+# La parte de los bots con el papel de la pasarela que se impone (set_walkway_share; -1 = la de BotBrain).
+var _walkway_share: float = -1.0
 
 
 ## Carga la zona, arranca el servidor y lo deja listo (sin avanzar). [param battle_log_path] activa el
@@ -112,6 +116,8 @@ func add_siege_bots(realm: int, count: int, seed_base: int) -> Array[int]:
 		var brain := BotBrain.new(seed_base + i, BotBrain.Pattern.SIEGE)
 		if _rally_size >= 0:
 			brain.set_rally(_rally_size, _rally_period)
+		if _walkway_share >= 0.0:
+			brain.set_walkway_share(_walkway_share)
 		var net_id: int = server.add_fake_player(brain, realm)
 		if net_id > 0:
 			bots[net_id] = realm
@@ -128,6 +134,24 @@ func set_rally(group_size: int, period_ticks: int = BotBrain.SIEGE_RALLY_PERIOD_
 	_rally_period = period_ticks
 	for net_id: int in _brains:
 		_brains[net_id].set_rally(group_size, period_ticks)
+
+
+## Cambia qué parte de los bots de asedio tiene el papel de la pasarela (GUE-45; [method BotBrain.set_walkway_share]),
+## los que ya hay y los que se añadan. Con 0 nadie sube (como antes de GUE-45).
+func set_walkway_share(share: float) -> void:
+	_walkway_share = share
+	for net_id: int in _brains:
+		_brains[net_id].set_walkway_share(share)
+
+
+## Dónde ha caído un muerto en [param position], con la clasificación del resumen de batalla
+## ([method BattleSummary.classify_route]: [code]walkway[/code], [code]gate[/code], [code]bridge[/code],
+## [code]ford[/code] u [code]other[/code]), con el círculo de la fortaleza y las rutas de la zona.
+func place_of(position: Vector3) -> StringName:
+	var circle: Dictionary = server.get_fortresses().get_circle(fortress_id())
+	var center: Vector3 = circle["center"]
+	var fortress: Dictionary = {"circle": [center.x, center.y, center.z]}
+	return BattleSummary.classify_route([position.x, position.y, position.z], fortress, server.get_approach_routes())
 
 
 ## Los PNJ de la definición [param npc_id] que aparezcan desde ahora tendrán [param health] de vida (una copia de la
@@ -263,7 +287,7 @@ func _on_combat_event(event: NetMessages.EntityEvent, _involved: PackedInt32Arra
 	if victim != null and victim.kind == NetProtocol.EntityKind.NPC and victim.npc_def_id > 0:
 		var definition: NpcDefinition = NpcCatalog.get_by_number(victim.npc_def_id)
 		npc_deaths.append({"tick": event.tick, "net_id": event.net_id,
-				"npc": definition.id if definition != null else &""})
+				"npc": definition.id if definition != null else &"", "position": victim.get_position()})
 		return
 	if victim == null or victim.kind != NetProtocol.EntityKind.PLAYER:
 		return

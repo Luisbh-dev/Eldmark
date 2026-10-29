@@ -339,13 +339,17 @@ de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D
 
 - **Rutas como datos**: `data/routes/vado_gris.tres` (puntos de las rutas del puente y del vado
   por reino, sacados de `verify_vado_gris_routes.gd`, y, desde F6a, dónde están la puerta y el círculo del
-  fuerte para los bots que no cargan la zona; desde F6b, también el tamaño del recinto, `enclosure_size`), compartido.
+  fuerte para los bots que no cargan la zona; desde F6b, también el tamaño del recinto, `enclosure_size`, y la
+  pasarela de GUE-45: su altura, su eje y sus dos rampas, `walkway_*`), compartido.
 - **`SiegeView`** (compartido, puro): dueño, fase, captor, vida de la puerta y posiciones de la
   puerta y el círculo. La llena el servidor para `--fake-players` y el cliente (`FortressView` o,
   en `SwarmBot`, decodificando OBJECT_STATE) para `--bot` y `--bots`.
 - `BotBrain` gana el patrón `SIEGE`: seguir la ruta de su reino hasta el fuerte, golpear la puerta
-  si está cerrada, entrar en el círculo, defender el círculo si es el dueño (la pasarela, que pide
-  navegación, queda para los PNJ de F4) y atacar al enemigo más cercano. Los `SwarmBot`, que no simulan,
+  si está cerrada, entrar en el círculo, defender el círculo si es el dueño y atacar al enemigo más cercano. La
+  pasarela (GUE-45, F6b, paquete D): una cuarta parte de los bots, por su semilla, tiene su papel; los del dueño suben
+  por una rampa (una ruta precalculada en `data/routes/vado_gris.tres`, comprobada con la malla de navegación de los
+  PNJ) y guardan su puesto encima de la puerta, y los atacantes la recorren una vez al entrar. Desde ella no se
+  alcanza con el arma a nadie del suelo, así que allí se pelea con quien sube (detalle en 8.3, F6b, paquete D). Los `SwarmBot`, que no simulan,
   siguen las rutas en línea recta entre puntos. Hecho en F6a (detalle en 8.3). En F6b pelea con los PNJ de verdad:
   busca primero a los PNJ que guardan el fuerte mientras el capitán vive, sale de la zona de los golpes avisados
   (TELEGRAPH) con una esquiva, deja las persecuciones que no le acercan y rodea la empalizada si se queda fuera a
@@ -398,7 +402,8 @@ de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D
     relleno que ceda, «lleno» como siempre.
 - **Telemetría** (GUE-17): eventos de guerra y muertes en JSON Lines (`--battle-log`) y
   `tools/war/summarize_battle.gd` con el tiempo hasta la captura, las muertes por ruta y el tiempo
-  hasta romper la puerta.
+  hasta romper la puerta. Desde GUE-45 las muertes de PNJ también salen por sitio, y la pasarela cuenta su eje entero
+  si las rutas la conocen.
 
 ---
 
@@ -896,7 +901,8 @@ pruebas en `test_realm_balance`, `test_bot_brain_siege`, `test_siege_zone`, `tes
 
 - **Defender la pasarela** (7) se queda en **defender el círculo**: la pasarela está a 3,35 m, se sube por rampas y pide navegación
   (`NpcNavigation`, F4); un bot con rutas planas no sabe subir. Los bots dueños se quedan en el círculo, donde ya cuentan en la presencia y
-  disputan la captura, y salen a por quien se acerca a menos de 12 m. Queda para F6b con la malla de navegación.
+  disputan la captura, y salen a por quien se acerca a menos de 12 m. Queda para F6b con la malla de navegación. Hecho en F6b
+  (paquete D, GUE-45, más abajo), con una ruta precalculada que la malla da por buena.
 - **Los bots que entran por la puerta tienen que alinearse con su eje**: el último punto de la ruta del puente está de lado
   (−25, −2) y tirar derecho al círculo desde ahí estrella al bot contra la empalizada (lo encontró la prueba de defensores). Con el eje
   de la puerta (`SIEGE_GATE_*`) entran todos.
@@ -1144,6 +1150,96 @@ batalla tardó de 1 a 7 min de reloj, y las de antes hasta 12):
   con PNJ (la reunión de `--bots` y `--bot` se prueba con sus contadores, no en una batalla larga). Los defensores no se reúnen: el dueño
   vuelve a su fuerte en cuanto reaparece.
 
+**F6b, paquete D: GUE-45, los bots dueños defienden la pasarela** (pruebas nuevas en `test_bot_brain_walkway`; ampliaciones de
+`test_approach_routes`, `test_navmesh`, `test_siege_zone` y `test_battle_summary`)
+
+- **Lo que se pedía y lo que se puede.** El encargo era que una parte del dueño subiese a la pasarela y golpease desde allí a los de la
+  puerta. **Con armas cuerpo a cuerpo no se puede**: el sector del arma va de 0,2 a 2 m sobre los pies de quien golpea y la cápsula del
+  blanco, de 0 a 1,8 m sobre los suyos, así que nadie alcanza a quien está más de 1,6 m por debajo o 2 m por encima; la pasarela está
+  3,35 m por encima del patio y de la explanada, y quien golpea la puerta está 2,3 m por fuera de ella y el eje de la pasarela 1,2 m por
+  dentro (unos 3,5 m en horizontal, con el parapeto en medio). Ni los de arriba alcanzan a los de abajo ni al revés. **Lo que hacen**:
+  los del dueño con el papel de la pasarela suben y la guardan encima de la puerta, sin hacer caso a los de abajo, y pelean con quien
+  sube; una parte de los atacantes la recorre al entrar en el fuerte (si no, nadie subiría y la telemetría no vería nunca una muerte
+  allí). Desde la pasarela solo se podrá atacar a la puerta con armas a distancia (el arco, CMB-23), que no hay.
+- **La subida, una ruta precalculada** (no `NpcNavigation` en cada consulta): el cerebro es compartido y lo usan los falsos del
+  servidor, `SwarmBot` (`--bots`) y `--bot`, y la malla de navegación solo existe en el servidor. `ApproachRoutes` gana
+  `walkway_height` (13,55 m: la meseta de 10,2 m más 3,35), `walkway_path` (el eje de la pasarela, de la cima de la rampa norte a la de
+  la sur pasando por las dos esquinas de la cara oeste y encima de la puerta) y `walkway_ramps` (cada rampa como ruta desde el patio:
+  un punto entre la puerta y la torre, el de delante de su pie y su cima, en el eje); los escribe `export_vado_gris_routes.gd`. Es
+  determinista y la malla de los PNJ (MUN-06) la da por buena: `test_navmesh` comprueba que cada tramo, del círculo al puesto por cada
+  rampa, tiene ruta en la malla y que esta no es más larga que el tramo recto por 1,2 más 1,5 m; `verify_vado_gris_routes.gd` la
+  recorre ahora con el personaje de verdad desde los datos (93,0 m en 18,9 s desde la explanada, iguales por las dos rampas; acaba a
+  3,36 m sobre la meseta).
+- **Hallazgo: la subida no puede cruzar el círculo.** La primera ruta usaba los puntos del interior que ya recorría la verificación,
+  (-6, ∓6) y (7, ∓5): el tramo desde la puerta pasaba a 4,7 m del centro del círculo, y los del dueño que volvían a subir tras
+  reaparecer disputaban la captura al pasar y peleaban allí. Con ella la recaptura de 20 contra 20 pasó de una mediana de 2,6 a 7,1
+  min (cinco de cinco semillas en el régimen lento). Ahora el primer punto es (-12, ∓9), a 9,6 m del centro (`test_approach_routes`
+  comprueba que ningún tramo de las rampas pasa a menos del radio más 1 m).
+- **El papel** (`BotBrain`, patrón SIEGE; determinista, sin generador). Lo da la semilla con la sucesión de Weyl del número áureo
+  (`is_walkway_seed`), que reparte igual semillas seguidas o una de cada N: **una cuarta parte guarda la pasarela cuando su reino es el
+  dueño** (`SIEGE_WALKWAY_SHARE`, 5 de cada 20) y **la mitad de esos la recorre cuando ataca** (`SIEGE_WALKWAY_SWEEP_SHARE`, 0,125: 2 o
+  3 de cada 20). `set_walkway_role(guardar, recorrer)` y `set_walkway_share(parte)` lo cambian (con 0, como antes de GUE-45); sin datos
+  de la pasarela en las rutas no hace nada.
+  - *El dueño* (tarea nueva `WALKWAY`, al final del enum): si está fuera entra por su puerta como siempre; en el patio va al punto más
+    cercano de la rampa de su lado y sube; en la pasarela va por su eje (en cada esquina, primero la esquina) hasta su puesto, encima de
+    la puerta más su hueco a lo largo de ella (±4 m), y allí se queda mirando afuera. Si una pelea le aparta más de 0,5 m del eje, vuelve
+    a él antes de seguir; si se cae o le empujan fuera de la rampa, vuelve al pie y sube otra vez.
+  - *El atacante que la recorre*: una vez por vida, al entrar en el fuerte (con la puerta abierta para él) sube igual hasta ese puesto,
+    peleando con quien encuentre, y luego salta al patio (3,35 m: sin daño, el daño por caída empieza a 15 m/s y son 12) y va al círculo.
+  - *Niveles*: dentro del recinto (el patio es llano), quien está más de 1,6 m más arriba o más abajo no es un blanco ni un golpe avisado
+    del que salir (`_siege_same_level`); fuera (las laderas) no cambia nada. Sin esto, un bot del patio que persiguiese a alguien de la
+    pasarela podía quedarse debajo golpeando al aire (la persecución sin progreso solo se deja a más de 3 m), y los de la pasarela
+    tirarse al patio detrás de los de abajo. En la pasarela no esquiva de lado
+    (le tiraría al patio): la esquiva es hacia atrás, por el eje, con el mismo uso del generador.
+  - *Más cercano con la altura pesada*: los buscadores de enemigos de los bots (el servidor, `SwarmBot` y `BotEnemySight`) eligen con
+    `BotBrain.target_distance_squared`, la distancia horizontal más la vertical por 4: la pasarela queda a más de 13 m, más lejos que el
+    alcance de pelea (12 m), así que el enemigo a tiro de su nivel va antes. Sin esto, el de la pasarela tapaba al del patio para quien
+    estaba debajo, y al revés. Con los bots sin papel (`--walkway=0`) las semillas 1000, 2000 y 4000 dan la misma recaptura que en el
+    paquete C (145,0, 142,5 y 157,2 s); la 3000 y la 5000 cambian (489,7 y 1243,3 s frente a 288,8 y 766,0): la batalla es caótica.
+- **Telemetría**: `BattleSummary` ya tenía la clase `walkway` (alta y a menos de 30 m del círculo); ahora, si las rutas conocen la
+  pasarela, también su eje entero (las esquinas del fondo quedan a más de 30 m), y cuenta las muertes de PNJ por sitio
+  (`npcs_by_route`, «PNJ: pasarela N» en el texto). `SiegeRunner` apunta la posición de las muertes de PNJ, da `place_of(posición)` y
+  `set_walkway_share`; `siege_battle.gd` gana `--walkway=F` y escribe dónde caen los jugadores y los PNJ, y de qué reino son los de la
+  pasarela.
+- **Pruebas**: `test_bot_brain_walkway` (catorce, sin física: un punto con alturas sencillas, el patio, las rampas y la pasarela sin
+  barandilla por dentro): el reparto del papel; el puesto; el dueño sube por la rampa de su lado sin caerse ni salirse del eje (13,5 s
+  desde el círculo) y guarda su puesto mirando afuera; desde fuera entra por el vano y sube; los que no tienen el papel siguen en el
+  círculo; en la pasarela no hace caso a los de abajo y pelea con el que sube; dobla una esquina peleando y nunca esquiva de lado;
+  el atacante la recorre una vez y salta al círculo, y otra vez tras reaparecer; sin papel o fuera no sube; desde el suelo el de la
+  pasarela no es un blanco (y en la ladera de fuera sí); un golpe avisado de otro nivel no se esquiva; empujado fuera de la rampa
+  vuelve a subir; la altura pesada; determinismo. `test_approach_routes` (los datos de la pasarela y sus cálculos), `test_navmesh` (la
+  ruta en la malla de los PNJ), `test_battle_summary` (las clases y los PNJ por sitio) y `test_siege_zone`, con la física de la zona:
+  de cuatro del dueño desde su campamento, dos en el círculo y **dos suben a su puesto de la pasarela** (a 13,55 m, a los 40,7 s de
+  juego) y una muerte en la pasarela entre un guardia y uno de Solmarch que entra por la puerta rota y sube (2,2 s de reloj por fase).
+  Las pruebas del cerebro sin altura (`test_bot_brain_siege`, `test_bot_brain_rally`) quitan el papel.
+- **Medido** con `siege_battle.gd --npcs --per-side=20 --minutes=28` y las cinco semillas de GUE-44 (tiempos de juego desde que salen los
+  de Solmarch; 4 núcleos compartidos con otras suites, de 1 a 7,5 min de reloj por batalla). La subida por fuera del círculo en todas
+  salvo la segunda fila:
+
+| Recaptura (s) y muertes en la pasarela | 1000 | 2000 | 3000 | 4000 | 5000 | Mediana |
+|---|---|---|---|---|---|---|
+| Sin nadie en la pasarela (`--walkway=0`) | 145,0 · 0 | 142,5 · 0 | 489,7 · 0 | 157,2 · 0 | 1243,3 · 0 | 157,2 (2,6 min) |
+| Subida cruzando el círculo; recorren un 25 % de los atacantes | 428,5 · 6 | 465,3 · 0 | 275,7 · 11 | 305,7 · 12 | 510,4 · 4 | 428,5 (7,1 min) |
+| Recorren un 25 % de los atacantes | 317,9 · 6 | 148,2 · 3 | 143,0 · 4 | 1139,1 · 11 | 325,9 · 9 | 317,9 (5,3 min) |
+| Recorren solo con el círculo activo | 144,2 · 0 | 144,8 · 0 | 165,2 · 1 | 147,6 · 0 | 524,4 · 0 | 147,6 (2,5 min) |
+| Recorren con el círculo activo o 6 de los suyos cerca de él | 468,4 · 6 | 148,2 · 3 | 143,0 · 4 | 415,0 · 4 | 259,6 · 1 | 259,6 (4,3 min) |
+| **GUE-45: recorren un 12,5 % de los atacantes** | **263,6 · 2** | **146,3 · 6** | **264,8 · 3** | **159,5 · 4** | **160,2 · 1** | **160,2 (2,7 min)** |
+
+- **Con GUE-45**: **muertes en la pasarela en las cinco batallas** (16 de jugadores: 11 de Solmarch, casi todos los que la recorren y
+  topan con los cinco guardias de Vardheim, y 5 de Vardheim, todos en la semilla 2000, donde ganan los que suben); ningún PNJ muere en
+  ella. Recaptura de 2,4 a 4,4 min (mediana 2,7, la misma que sin pasarela, 2,6) y sin las colas largas de 8,2 y 20,7 min; muertes de
+  jugadores Solmarch / Vardheim 51 / 44, 22 / 27, 65 / 43, 16 / 32 y 33 / 27. Captura del neutral a los 80–87 s, como antes. Las
+  cinco batallas repetidas con el código final y `--battle-log` dan exactamente lo mismo (es determinista) y el resumen del registro
+  (`summarize_battle.gd`) cuenta las mismas muertes en la pasarela.
+- **Decisión**: recorre la pasarela la mitad de los que la guardan. Que la recorra el mismo 25 % saca del patio a cinco atacantes que
+  suben de uno en uno contra los cinco guardias y mueren allí (la recaptura se dobla); que solo lo hagan con el círculo activo apenas
+  deja muertes en la pasarela (la captura acaba 15 s después) y no se cumpliría el criterio de GUE-45. Con armas cuerpo a cuerpo la
+  pasarela no defiende nada (los guardias ni alcanzan la puerta ni cuentan en el círculo), así que para la defensa es una plaza de
+  menos; se queda así, preparada para cuando haya arcos, y se revisa con personas.
+- **Lo que no hace este paquete**: golpear desde la pasarela a los de la puerta (no se alcanza; necesita el arco), que los guardias bajen
+  a disputar el círculo, la batalla de los `SwarmBot` por ENet con la pasarela (el mismo cerebro y los mismos datos, probado sin red y
+  con los falsos del servidor) y la carga con PNJ (GUE-16).
+
 ---
 
 ## 9. Riesgos
@@ -1158,6 +1254,10 @@ batalla tardó de 1 a 7 min de reloj, y las de antes hasta 12):
   GUE-44) y con cambios pequeños del cerebro. Un ajuste del fuerte o de los bots se mide con cinco semillas o más, nunca con una. Los
   bots se apilan porque los personajes no chocan entre sí: cualquier cerebro nuevo que lleve a muchos al mismo punto debe repartirlos
   (la formación de 8.3, F6b, paquete C).
+- **Alturas y pasarela** (F6b, GUE-45): dentro del recinto los bots solo distinguen dos niveles (el patio y la pasarela, a más de
+  1,6 m uno del otro) y suben por una ruta de puntos de los datos, no por la malla en cada consulta. Un fuerte o castillo con otra
+  geometría (F7) necesita sus datos de pasarela, y con más niveles, otra regla. Con armas cuerpo a cuerpo los guardias de la pasarela no
+  defienden nada (ni alcanzan la puerta ni cuentan en el círculo): el papel se revisa cuando haya arcos (CMB-23) y con personas.
 
 ---
 

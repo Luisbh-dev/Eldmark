@@ -37,14 +37,11 @@ const BLOCKED_CROSSINGS: Array[Array] = [
 ## Carriles de los puentes que deben cruzarse en los dos sentidos.
 const BRIDGE_LANES: Array[float] = [-1.5, 0.0, 1.5]
 ## Interior del fuerte (el personaje de la prueba no lleva capa de reino y cruza la puerta cerrada):
-## explanada, puerta, patio, rampa norte, pasarela norte y oeste hasta encima de la puerta. La del
-## sur es el reflejo. Los puntos van por el eje de la rampa y de la pasarela (que no tiene
-## barandilla por dentro): se recorre con un alcance de [constant FORT_REACH] m para no recortar
-## las esquinas y caerse al patio.
-const FORT_ROUTE: Array[Vector2] = [
-	Vector2(-26, 0), Vector2(-15, 0), Vector2(-6, -6), Vector2(7, -5), Vector2(7, -18.77),
-	Vector2(-18.77, -18.77), Vector2(-18.77, -1.0),
-]
+## explanada y puerta ([constant FORT_ENTRY]) y, desde GUE-45, la subida a la pasarela de los datos de las rutas, la que
+## siguen los bots de asedio: por cada rampa, sus puntos del patio, su cima y el eje de la pasarela hasta el puesto
+## encima de la puerta. Los puntos van por el eje de la rampa y de la pasarela (que no tiene barandilla por dentro): se
+## recorre con un alcance de [constant FORT_REACH] m para no recortar las esquinas y caerse al patio.
+const FORT_ENTRY: Array[Vector2] = [Vector2(-26, 0), Vector2(-15, 0)]
 const FORT_REACH: float = 0.5
 ## Altura mínima de la pasarela sobre la meseta al acabar la ruta del interior.
 const WALKWAY_MIN_HEIGHT: float = 3.0
@@ -118,10 +115,11 @@ func _run() -> void:
 					_fail("El carril x=%.1f del puente %s no se cruza" % [lane, "norte" if zs < 0.0 else "sur"])
 	var fort_seconds: Array[float] = []
 	var plateau: float = _ground_point(zone, Vector2(-8.5, 0.0)).y
-	for mirror: float in [1.0, -1.0]:
-		var waypoints: Array[Vector2] = []
-		for p: Vector2 in FORT_ROUTE:
-			waypoints.append(Vector2(p.x, p.y * mirror))
+	if not routes.has_walkway():
+		_fail("Las rutas no conocen la pasarela del fuerte")
+	for ramp_index: int in routes.walkway_ramps.size():
+		var mirror: float = 1.0 if routes.walkway_ramps[ramp_index][0].y < 0.0 else -1.0
+		var waypoints: Array[Vector2] = _walkway_route(routes, ramp_index)
 		var marker := Marker3D.new()
 		zone.add_child(marker)
 		marker.global_position = _ground_point(zone, waypoints[0])
@@ -130,7 +128,8 @@ func _run() -> void:
 		var result: Dictionary = await _walk(zone, marker, waypoints, FORT_REACH)
 		marker.queue_free()
 		var height: float = (result["where"] as Vector3).y - plateau
-		var ok: bool = result["ok"] and height > WALKWAY_MIN_HEIGHT
+		var ok: bool = result["ok"] and height > WALKWAY_MIN_HEIGHT \
+				and absf((result["where"] as Vector3).y - routes.walkway_height) < 0.1
 		print("interior del fuerte (rampa %s): %s, %.1f m en %.1f s, acaba a %.2f m sobre la meseta" % [
 				"norte" if mirror > 0.0 else "sur", "OK" if ok else "ATASCADO en " + str(result["where"]),
 				result["distance"], result["seconds"], height])
@@ -160,6 +159,29 @@ func _run() -> void:
 			_fail("Se puede cruzar el río por %s" % spec[0])
 	print("RESULTADO: %s" % ("FALLO" if _failed else "todas las rutas se recorren, son justas, los puentes se cruzan por cualquier carril, se llega a la pasarela y el río solo se cruza por el puente y el vado"))
 	quit(1 if _failed else 0)
+
+
+## La subida a la pasarela por la rampa [param ramp_index] de [param routes] (GUE-45), como la sigue un bot de asedio:
+## la entrada por la puerta, los puntos de la rampa y, por el eje de la pasarela, sus esquinas hasta el puesto.
+func _walkway_route(routes: ApproachRoutes, ramp_index: int) -> Array[Vector2]:
+	var waypoints: Array[Vector2] = []
+	waypoints.assign(FORT_ENTRY)
+	var ramp: PackedVector2Array = routes.walkway_ramps[ramp_index]
+	for point: Vector2 in ramp:
+		waypoints.append(point)
+	var post: Vector2 = routes.walkway_post()
+	var post_offset: float = routes.walkway_offset(post)
+	var top_offset: float = routes.walkway_offset(ramp[ramp.size() - 1])
+	var offsets: PackedFloat32Array = routes.walkway_vertex_offsets()
+	var corners: Array[Vector2] = []
+	for vertex: int in offsets.size():
+		if offsets[vertex] > minf(top_offset, post_offset) + 0.01 and offsets[vertex] < maxf(top_offset, post_offset) - 0.01:
+			corners.append(routes.walkway_path[vertex])
+	if top_offset > post_offset:
+		corners.reverse()
+	waypoints.append_array(corners)
+	waypoints.append(post)
+	return waypoints
 
 
 func _ground_point(zone: Node3D, p: Vector2) -> Vector3:
