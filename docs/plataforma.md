@@ -8,8 +8,8 @@ Se apoya en la red ([red.md](red.md): §3 conexión, §5.3 autenticación, §12 
 el combate ([combate.md](combate.md) §1 y §5), el fuerte ([fuerte.md](fuerte.md) §5) y lo social
 ([social.md](social.md) §8 a §11). Objetos, inventario, monedas, niveles, razas, apariencia y la configuración de
 combate que se guarda (CMB-30) son de `docs/progresion.md` (PRG-02, PRG-10 a PRG-16, CMB-30, ART-19, en marcha a la
-vez). Aquí están la frontera (§7.5) y lo que ese documento tiene que adoptar (§17). Revisado tras tres revisiones
-(§18).
+vez). Aquí está la frontera (§7.5); lo acordado con ese documento y dónde está cada regla, en §17. Revisado tras tres
+revisiones y conciliado después con progresion.md (§18).
 
 Lo que se da por comprobado se midió en esta máquina con sondas en `build/` (Go 1.24.7, PostgreSQL 16.15, Godot
 4.7.2 headless; las de la revisión, en `build/probe_rev/`, que no se sube). Lo que no, está marcado «sin comprobar»
@@ -28,13 +28,13 @@ Provisionales, **tomadas de noche** con la recomendación del backlog; están en
 | Cifrado cliente ↔ zona | **DTLS de ENet** si su coste medido (TEC-27) cabe; el certificado de la zona lo entrega la plataforma por HTTPS y el cliente lo ancla (§10.2). Sin DTLS no hay pruebas públicas: en `staging` y `production` la plataforma no registra una zona sin certificado |
 | Reinos por cuenta | **Un reino por cuenta y mundo.** El cambio de toda la cuenta con 30 días de espera llega más adelante; en la fase 5 el reino solo se libera 30 días después de borrar el último personaje |
 | Ignorar | **A la cuenta, en silencio** (social.md §10). El servidor filtra también los canales públicos (§9.3) |
-| Retención del chat | **30 días** todos los canales, susurros incluidos; **1 año** lo copiado a un reporte o una sanción. Revisión legal antes de las pruebas públicas |
+| Retención del chat | **30 días** todos los canales, susurros incluidos; **1 año** lo copiado a un reporte (`report_evidence`, §11.1). Revisión legal antes de las pruebas públicas |
 
 Decisiones de este documento que no estaban en el backlog (provisionales, de noche):
 
 | Pregunta | Decisión |
 |---|---|
-| Inicio de sesión | Correo y contraseña; una sesión de juego activa por cuenta (la nueva cierra la anterior y expulsa a su personaje) |
+| Inicio de sesión | Correo y contraseña; una sesión de juego activa por cuenta (la nueva cierra la anterior y expulsa a su personaje) y un solo personaje en el mundo por cuenta y mundo (§4.5, §5.3). Una cuenta suspendida o expulsada solo recibe, tras la contraseña, una sesión de privacidad para exportar o borrar sus datos (§4.2) |
 | Contraseñas | argon2id, m = 19 456 KiB, t = 2, p = 1 (59 ms aquí); cadena PHC |
 | Tokens | Opacos, aleatorios, guardados como SHA-256: acceso de 15 min y refresco que rota en la misma fila de `sessions`. La sesión dura 12 h desde el inicio de sesión: rotar no la alarga. El cliente los guarda solo en memoria |
 | Edad mínima | 16 años, declarada al crear la cuenta. **Revisión legal** |
@@ -47,10 +47,10 @@ Tomadas en la revisión (§18), **provisionales, tomadas de noche**:
 
 | Pregunta | Decisión |
 |---|---|
-| Frontera con progresion.md | **Una sola tubería.** La reclamación trae el `CharacterRecord` de progresion.md antes del WELCOME. `CharacterSaver` (TEC-25, aquí) decide cuándo se guarda; `ProgressService` (progresion.md) decide qué. Idempotencia por `(lease_id, seq)`, sin `save_id` ni `base_version` (§7.5, §17) |
-| Volver al mundo | **La regla de progresion.md §8**: el sitio guardado si es la misma zona y canal, hace menos de 15 min y sin combate; si no, el campamento. La vida se regenera con el tiempo pasado. Está también en «Decisiones tomadas» del backlog |
+| Frontera con progresion.md | **Una sola tubería.** La reclamación trae la sección `progress` (progresion.md §3.4) antes del WELCOME. `CharacterSaver` (TEC-25, aquí) decide cuándo se guarda; `ProgressService` (progresion.md) decide qué. Idempotencia por `(lease_id, seq)`, sin `save_id` ni `base_version` (§7.3, §7.5, §17) |
+| Volver al mundo | **La regla es la de progresion.md §8.** Está también en «Decisiones tomadas» del backlog |
 | Criterio de TEC-27 | **Relativo**: con 64 bots, DTLS no sube el p99 del tick más de un 10 % frente a la misma prueba sin DTLS, y la cifra absoluta se anota. El absoluto del backlog (8 ms) no se cumple ni sin DTLS (15,9 ms, red.md §14). **Pregunta para el usuario**; está en «Decisiones tomadas» del backlog |
-| Libro mayor tras borrar | El personaje purgado queda como **lápida** sin datos personales; su libro y sus eventos de objeto, 1 año más y luego se borran (§11.1). **Revisión legal** |
+| Libro mayor tras borrar | El personaje purgado queda como **lápida** sin nombre; su libro y sus eventos de objeto, 1 año más y luego se borran (§11.1). Mientras la cuenta exista siguen ligados a ella y se exportan; son seudónimos solo tras purgarla. **Revisión legal** |
 | `auth_timeout` | **10 s** en los dos lados (antes 5 s), en la subida de protocolo de la fase 5: deja sitio a la reclamación (§5.2) |
 | Instancia perdida que vuelve | Se cierra (expulsa con guardado final) y el orquestador la arranca de nuevo; no revive (§6.1) |
 
@@ -68,25 +68,25 @@ HTTP con la API interna (:24681, red privada); solo la plataforma toca PostgreSQ
 |---|---|---|
 | Identidad, contraseña y sesión | Plataforma | La zona nunca ve contraseñas ni tokens de sesión |
 | Reino y nombre | Plataforma, al crear el personaje | En la zona, `HELLO.realm` y `HELLO.name` se ignoran: mandan los de la reclamación |
-| Raza, apariencia y plantilla de inicio | progresion.md (qué valen); la plataforma las valida al crear (§4.4) | Con `progression_rules.json` |
-| A qué zona entra | Plataforma (`enter`) | La última (`character_progress.last_zone_id`) si tiene una instancia viva que admite su reino; si no, la de entrada |
+| Raza, apariencia y plantilla de inicio | progresion.md (qué valen); la plataforma las valida al crear (§4.4) | Con `progression_rules.json` y `persistence.CreateValidator`, que implementa `*progress.Rules` (§7.5, progresion.md §13.2) |
+| A qué zona entra | Plataforma (`enter`) | La última (`ProgressStore.Summaries`) si tiene una instancia viva que admite su reino; si no, la de entrada |
 | Si el billete vale | Zona (formato, firma, zona, caducidad) y plataforma (un solo uso, arrendamiento) | §5 |
-| Estado del personaje en juego | Zona | La plataforma aplica lo que le mandan con las comprobaciones S1–S9 de progresion.md (§7.3) |
+| Estado del personaje en juego | Zona | La plataforma aplica lo que le mandan con las comprobaciones S1–S8 de progresion.md §13.3 (§7.3) |
 | Cuándo se guarda, `seq`, reintentos | Zona: `CharacterSaver` (§7.2) | progresion.md da el contenido |
 | Sanciones y roles | Plataforma | Comprueba el rol del autor (§9.5); la zona las aplica al entrar, con el latido y en `ChatRouter` |
 | Estado de las fortalezas | Zona | La plataforma lo guarda y lo devuelve al arrancar (§8) |
-| Esquema y migraciones | Plataforma (también las del progreso, P3b) | Las zonas no tienen credenciales de la base |
+| Esquema y migraciones | El marco, aquí (§2.4); las del progreso, progresion.md P7 | Las zonas no tienen credenciales de la base |
 
 ```
 Cliente                         Plataforma                            Zona
-                                 ◀── registro (starting), fortalezas ── antes de abrir el puerto
+                                 ◀── registro, fortalezas, bloque ───── antes de abrir el puerto
                                  ◀── …/live ─────────────────────────── puerto abierto
 POST /v1/sessions ─────────────▶ sesión
 POST /v1/characters/42/enter ──▶ sin arrendamiento vivo: billete
 ◀── host, puerto, billete (52 B), certificado DTLS
 HELLO (character_id, billete) ────────────────────────────────────────▶ firma, zona, caducidad (VERIFYING)
                                 ◀── POST /internal/v1/claims ──────────
-                                consume el billete, arrendamiento ────▶ lease_id, cuenta y CharacterRecord
+                                consume el billete, arrendamiento ────▶ lease_id, cuenta, personaje y progress
 ◀──────────────────────────────────────────────────────────── WELCOME (reino del personaje)
 carga la zona, CLIENT_READY ──────────────────────────────────────────▶ alta con el registro (progresion.md §9.1)
                                 ◀── PUT …/state (lease_id, seq): cada 60 s, críticos, al salir
@@ -99,8 +99,7 @@ platform/            go.mod: module eldmark/platform, go 1.24.0, toolchain go1.2
   cmd/eldmark-platform/   subcomandos serve, migrate, admin
   internal/  config logx db httpx (enrutador, errores, límites) jsonx (enteros e ids del JSON, §4.1) migrate
              (+ migrations/*.sql con embed) testdb passwords accounts names gamedata (progression_rules.json, §4.4)
-             characters tickets zones persistence progress (P3b: tablas y S3–S9 de progresion.md) war social
-             privacy mail
+             characters tickets zones persistence progress (progresion.md P7) war social privacy mail
   e2e/  legal/ (terms-1.md, privacy-1.md, rules-1.md)  deploy/ (Dockerfile, docker-compose.yml, Caddyfile,
         journald-eldmark.conf, *.env.example, secrets/ (ignorada), dev.sh, backup.sh, restore_check.sh, pitr_check.sh)
 ```
@@ -143,14 +142,18 @@ petición, también en `X-Request-Id`), `route`, `status`, `ms`, y `account` y `
 (`a***@example.org`).
 
 ### 2.4 Migraciones
-- `internal/migrate/migrations/NNNN_nombre.up.sql` y `.down.sql`, embebidos. **0001 a 0009 son de este documento**
-  (0001–0006 en §3; 0007–0009 reservadas). **0010 a 0019 son el progreso** (P3b: el DDL de §3 que traduce
-  progresion.md §3.3). Después, por orden de llegada. Un número nunca se reutiliza.
+- `internal/migrate/migrations/NNNN_nombre.up.sql` y `.down.sql`, embebidos. En la fase 5, **0001–0006 son de este
+  documento** (§3) y **0010_progress, del progreso** (progresion.md §3.3, su P7, con su `.down.sql` y su semilla);
+  0007–0009 quedan sin usar. Después, cada migración nueva, sea de quien sea, toma el siguiente número libre por
+  encima de la mayor del repositorio. Un número nunca se reutiliza.
 - Tabla `schema_migrations (version int primary key, name text not null, checksum bytea not null, applied_at
-  timestamptz not null default now())`. El ejecutor toma `pg_advisory_lock(4815162342)`, aplica cada archivo en su
-  transacción y se niega a seguir si el SHA-256 de uno aplicado ha cambiado.
-- `eldmark-platform migrate up|down N|status`. `serve` no migra: si la base no está en la última versión, no arranca
-  y `/ready` dice por qué.
+  timestamptz not null default now())`. El ejecutor toma `pg_advisory_lock(4815162342)`, aplica los pendientes en
+  orden de número, cada uno en su transacción, y se niega a seguir si el SHA-256 de uno aplicado ha cambiado o si
+  hay uno pendiente por debajo del mayor aplicado («La migración NNNN está pendiente por debajo de la MMMM ya
+  aplicada: renumérala»). `down N` deshace las N mayores aplicadas, en orden inverso.
+- `eldmark-platform migrate up|down N|status`. `serve` no migra: si falta por aplicar alguno de sus archivos
+  embebidos, no arranca y `/ready` dice por qué. Una base con migraciones posteriores sí vale (expandir y contraer,
+  abajo).
 - **Expandir y luego contraer.** El binario N funciona con el esquema N + 1: lo nuevo entra con valor por defecto o
   nulo, y nada se borra ni se renombra en la misma versión que deja de usarlo. Así volver al tag anterior no pide
   `down`.
@@ -167,8 +170,9 @@ petición, también en `X-Request-Id`), `route`, `status`, `ms`, y `account` y `
 - Al arrancar, `serve` da 30 s de gracia: `last_heartbeat_at = greatest(…, now())` en las instancias `starting` y
   `live`, y `expires_at = greatest(expires_at, now() + TTL)` en los arrendamientos. Una plataforma que vuelve tras
   caerse no da por muertas a las zonas que no pudieron latir.
-- Trabajos periódicos en el mismo proceso (`time.Ticker` y `pg_try_advisory_lock`): zonas perdidas (5 s),
-  retenciones y purgas (1 h).
+- Trabajos periódicos en el mismo proceso (`time.Ticker` y `pg_try_advisory_lock`): zonas perdidas (cada
+  `min(5 s, HEARTBEAT_S)`),
+  retenciones y purgas (1 h; la del libro, `ProgressStore.PurgeRetention`, progresion.md §3.5).
 
 ### 2.6 Pruebas con una base de datos real efímera
 Paquete `internal/testdb`. **No hace falta Docker** (aquí su demonio no corre). Comprobado:
@@ -186,9 +190,9 @@ Paquete `internal/testdb`. **No hace falta Docker** (aquí su demonio no corre).
   immediate` y se borra la carpeta. Sin binarios, `t.Skip`, salvo con `ELDMARK_REQUIRE_PG=1` (la CI), que falla;
   `ELDMARK_TEST_DATABASE_URL` usa un servidor ya levantado. La primera compilación con pgx tarda ~18 s: los < 30 s
   por paquete son con la caché caliente.
-- El esquema entero de §3 (0001–0006 y 0010) se aplicó así en la revisión: el intercambio de ranuras con la
-  restricción diferida, la lápida, el disparador de solo añadir y la retención con `set local` funcionan
-  (`build/probe_rev/pg/`).
+- Los esquemas de §3 (0001–0006) y del progreso (progresion.md §3.3) se aplicaron así en las revisiones: el
+  intercambio de ranuras con la restricción diferida, la lápida, el disparador de solo añadir y la retención con
+  `set local` funcionan (`build/probe_rev/pg/`).
 - **CI:** trabajo «Plataforma» en `.github/workflows/tests.yml`: `actions/setup-go` con `go-version-file:
   platform/go.mod`, `GOTOOLCHAIN=local`, `ELDMARK_REQUIRE_PG=1` y, en `platform/`, `go vet ./...` y `go test -p 2
   ./...` con el PostgreSQL de `ubuntu-latest` (sin comprobar; si falta, `apt-get install postgresql-16`). El mismo
@@ -196,22 +200,18 @@ Paquete `internal/testdb`. **No hace falta Docker** (aquí su demonio no corre).
 
 ## 3. Esquema SQL
 
-Las tablas del juego llevan `world_id`; las de la cuenta, no. Reinos en `smallint` con los códigos de
-`NetProtocol.Realm` (1 Vardheim, 2 Solmarch, 3 Askarra); en JSON, su id de texto (`"vardheim"`). `ts` abrevia aquí
-`timestamptz` y `now_ts` `timestamptz not null default now()`; en los archivos van escritos enteros. Este DDL se
-aplicó entero en PostgreSQL 16 (§2.6).
+Las tablas del juego llevan `world_id` (`id_blocks` y las del progreso lo toman de `zone_instances` y de
+`characters`); las de la cuenta, no. Reinos en `smallint` con los códigos de `NetProtocol.Realm` (1 Vardheim, 2
+Solmarch, 3 Askarra); en JSON, la regla de §4.1 (texto en la API pública, código en la interna). `ts` abrevia aquí `timestamptz` y `now_ts`
+`timestamptz not null default now()`; en los archivos van escritos enteros. Este DDL se aplicó entero en PostgreSQL
+16 (§2.6), salvo `sessions.scope`, `chat_messages.zone_channel` y el índice `(target_account_id, command, at)` de
+`audit_log`, añadidos después (sin comprobar).
 
-**Quién guarda qué** (igual en progresion.md, §17):
-
-| Dato | Tabla | Dueño |
-|---|---|---|
-| Identidad: nombre, reino, cuenta, borrado, renombrado, lápida | `characters` | Este documento |
-| Raza, apariencia, plantilla, nivel, XP, puntos de reino, tiempo jugado, vida, arma activa, última zona, posición, `saved_at`, `save_version` | `character_progress` | progresion.md (columnas) · P3b (DDL) |
-| Inventario, monedas, operaciones, libro, eventos de objeto, habilidades, temporizadores | Las demás tablas de 0010 | progresion.md · P3b |
-| Estadísticas PvP (GUE-19) | `character_pvp_stats` | Este documento |
-| `lease_id`, `seq`, hash del último guardado | `character_leases` | Este documento |
-
-No hay columnas JSON de estado del personaje: lo que no tenga columna llega con una migración.
+**Quién guarda qué:** la tabla única, con todos los campos del personaje y su dueño, está en progresion.md §3.1. De
+este documento son la identidad (`characters`), las estadísticas PvP (`character_pvp_stats`, GUE-19), el
+arrendamiento (`character_leases`: `lease_id`, `seq`, hash y `save_version` del último guardado) y los bloques de ids (`id_blocks`);
+de progresion.md, `character_progress` y el resto de `0010_progress` (su §3.3). No hay columnas JSON de estado del
+personaje: lo que no tenga columna llega con una migración.
 
 ```sql
 -- 0001_accounts
@@ -225,6 +225,7 @@ create table accounts (account_id bigint generated always as identity primary ke
 create table sessions (session_id bigint generated always as identity primary key, account_id bigint not null references accounts on delete cascade,
   access_hash bytea not null unique, access_expires_at ts not null, refresh_hash bytea not null unique, prev_refresh_hash bytea unique,
   refresh_expires_at ts not null,                                               -- inicio de sesión + 12 h; rotar no lo alarga
+  scope text not null default 'game' check (scope in ('game','privacy')),          -- privacy: cuenta sancionada (§4.2)
   ip inet, user_agent text, client_protocol int, created_at now_ts, rotated_at ts, revoked_at ts,
   revoke_reason text check (revoke_reason in ('logout','replaced','password_changed','email_changed','email_reverted',
     'refresh_reuse','role_changed','deletion','admin')));
@@ -285,8 +286,12 @@ create table character_leases (character_id bigint primary key references charac
   claimed_by uuid not null,                                                     -- la instancia que reclamó; no cambia al liberar
   session_id bigint references sessions on delete set null,                     -- la del billete: revocarla expulsa
   expires_at ts, last_seq bigint not null default 0, last_save_hash bytea,      -- SHA-256 del último cuerpo aplicado (§7.3)
+  last_save_version bigint not null default 0,                                  -- el save_version que devolvió Apply (§7.3)
   claimed_at now_ts, released_at ts);
 create index on character_leases (zone_instance_id) where zone_instance_id is not null;
+create sequence uid_block_seq start 1 increment 1024;                          -- uid y op_id (progresion.md §4.5)
+create table id_blocks (first_id bigint primary key,                           -- [first_id, first_id + 1023]
+  zone_instance_id uuid not null references zone_instances on delete cascade, granted_at now_ts);  -- cae con la retención de §11.1
 
 -- 0004_war
 create table fortresses (world_id smallint not null references worlds, fortress_id text not null, zone_id text not null,
@@ -300,7 +305,8 @@ create table realm_resources (world_id smallint not null references worlds, real
 
 -- 0005_social
 create table chat_messages (id bigint generated always as identity primary key, world_id smallint not null references worlds,
-  zone_id text not null, channel smallint not null, sender_character_id bigint not null, sender_account_id bigint not null,
+  zone_id text not null, zone_channel smallint not null,                        -- la copia: el channel de la instancia
+  channel smallint not null, sender_character_id bigint not null, sender_account_id bigint not null,
   target_character_id bigint, text text not null check (length(text) <= 255), sent_at ts not null, message_key text not null unique);
 create index on chat_messages (sent_at); create index on chat_messages (sender_character_id, sent_at);
 create table ignores (account_id bigint not null references accounts on delete cascade,
@@ -328,96 +334,46 @@ create table audit_log (id bigint generated always as identity primary key, worl
   zone_id text, command text not null, target_account_id bigint, target_character_id bigint, args jsonb not null default '{}',
   at now_ts, event_key text unique);
 create index on audit_log (at); create index on audit_log (target_character_id, at);
+create index on audit_log (target_account_id, command, at);                    -- S2: el set-role de §9.1
 
 -- 0006_privacy
 create table purge_log (kind text not null check (kind in ('account','character')), id bigint not null, purged_at now_ts,
   primary key (kind, id));                                                      -- sin datos personales (§11.2)
 create table sanctioned_email_hashes (hmac bytea primary key, until ts not null);  -- HMAC-SHA256 del correo (§11.2)
-
--- 0010_progress (P3b): progresion.md §3.3 con sus nombres; sin last_save_id (lo sustituye seq, §7.3)
-create table character_progress (character_id bigint primary key references characters on delete cascade,
-  race_id text not null, appearance bytea not null check (length(appearance) = 8),
-  level smallint not null default 1 check (level between 1 and 40), xp_total bigint not null default 0 check (xp_total >= 0),
-  realm_points bigint not null default 0 check (realm_points >= 0), played_seconds bigint not null default 0 check (played_seconds >= 0),
-  bag_slots smallint not null default 30 check (bag_slots between 1 and 120), starter_template_id text not null,
-  starter_granted boolean not null default false, health int check (health >= 0),                     -- null: llena
-  active_weapon_slot smallint not null default 0 check (active_weapon_slot between 0 and 1), consumable_def_id text,
-  last_zone_id text, last_channel smallint, pos_x real, pos_y real, pos_z real, yaw real,
-  last_in_combat boolean not null default false, saved_at ts, save_version bigint not null default 0);
-create table character_wallets (character_id bigint not null references characters on delete cascade,
-  currency smallint not null check (currency in (1, 2)), balance bigint not null default 0 check (balance between 0 and 1000000000),
-  last_seq bigint not null default 0, primary key (character_id, currency));
-create table economy_ops (op_id bigint primary key check (op_id > 0), character_id bigint not null references characters,  -- sin cascada
-  kind smallint not null check (kind between 1 and 8), actor_account_id bigint, ref_op_id bigint, zone_id text not null, created_at now_ts);
-create table ledger_entries (entry_id bigint generated always as identity primary key, character_id bigint not null references characters,
-  currency smallint not null check (currency in (1, 2)), seq bigint not null, op_id bigint not null references economy_ops,
-  delta bigint not null check (delta <> 0), balance_after bigint not null check (balance_after >= 0), reason smallint not null,
-  ref_kind smallint not null default 0, ref_id bigint not null default 0, created_at now_ts,
-  unique (character_id, currency, seq), unique (op_id, character_id, currency));
-create table item_instances (uid bigint primary key check (uid > 0), character_id bigint not null references characters on delete cascade,
-  container smallint not null check (container between 0 and 3), slot smallint not null check (slot >= 0), def_id text not null,
-  count int not null check (count between 1 and 999), durability smallint check (durability between 0 and 1000),
-  rarity smallint not null default 0 check (rarity between 0 and 4), bound boolean not null default false,
-  seed bigint not null default 0, affixes smallint[] not null default '{}' check (cardinality(affixes) <= 6), created_op bigint not null,
-  constraint item_slot_unique unique (character_id, container, slot) deferrable initially deferred);
-create table item_events (event_id bigint generated always as identity primary key, op_id bigint not null references economy_ops,
-  character_id bigint not null references characters, uid bigint not null, def_id text not null,
-  event smallint not null check (event between 1 and 3), count_delta int not null, reason smallint not null, created_at now_ts);
-create index on item_events (uid); create index on item_events (character_id, event_id);
-create table op_reversals (op_id bigint primary key references economy_ops, reversal_op_id bigint not null unique references economy_ops);
-create table character_ability_slots (character_id bigint not null references characters on delete cascade, weapon_id text not null,
-  slot smallint not null check (slot between 0 and 2), ability_id text not null, primary key (character_id, weapon_id, slot));
-create table character_timers (character_id bigint not null references characters on delete cascade, key text not null,
-  ends_at ts not null, stacks smallint not null default 1, primary key (character_id, key));
-create table character_attributes (character_id bigint not null references characters on delete cascade, attribute smallint not null,
-  spent smallint not null check (spent >= 0), primary key (character_id, attribute));
-create table character_masteries (character_id bigint not null references characters on delete cascade, weapon_family text not null,
-  level smallint not null, xp bigint not null default 0, primary key (character_id, weapon_family));
-create sequence uid_block_seq start 1 increment 1024;                          -- uid y op_id (progresion.md §4.5)
-create table id_blocks (first_id bigint primary key, zone_instance_id uuid not null, granted_at now_ts);  -- [first_id, first_id + 1023]
-create function eldmark_append_only() returns trigger language plpgsql as $$
-begin
-  if tg_op = 'DELETE' and coalesce(current_setting('eldmark.retention_purge', true), '') = 'on' then
-    return old;                                                                 -- solo la retención de §11.1
-  end if;
-  raise exception '% es de solo añadir', tg_table_name;
-end $$;
-create trigger append_only before update or delete on economy_ops for each row execute function eldmark_append_only();
-create trigger append_only before update or delete on ledger_entries for each row execute function eldmark_append_only();
-create trigger append_only before update or delete on item_events for each row execute function eldmark_append_only();
-create trigger append_only before update or delete on op_reversals for each row execute function eldmark_append_only();
-create function progress_purge_character(p_character_id bigint) returns void language sql as $$
-  delete from item_instances where character_id = p_character_id;
-  delete from character_wallets where character_id = p_character_id;
-  delete from character_ability_slots where character_id = p_character_id;
-  delete from character_timers where character_id = p_character_id;
-  delete from character_attributes where character_id = p_character_id;
-  delete from character_masteries where character_id = p_character_id;
-  delete from character_progress where character_id = p_character_id;
-$$;
 ```
 
+- `0010_progress` es de progresion.md: su DDL está solo en su §3.3 y lo escribe su P7, con el `.down.sql` y la
+  semilla de conservación. Las migraciones posteriores del progreso toman el siguiente número libre (§2.4).
 - Cada `.down.sql` deshace su `.up.sql` en orden inverso.
-- **Las cuatro tablas de solo añadir** (`economy_ops`, `ledger_entries`, `item_events`, `op_reversals`) no tienen
-  cascada: un `delete from characters` con apuntes falla por la clave ajena, nunca a medias. Por eso el personaje no
-  se borra al purgarlo: queda como lápida (§11.2). La marca `eldmark.retention_purge` no es una barrera de
-  seguridad (cualquier rol puede ponerla): solo evita borrados por error. Se pone con `set local` y no sobrevive a
-  la transacción (comprobado).
+- **Las tablas de solo añadir del progreso** llegan a `characters` por `op_participants`, con clave ajena **sin
+  cascada** (progresion.md §3.3): un `delete from characters` con apuntes falla, nunca a medias. Por eso el
+  personaje no se borra al purgarlo: queda como lápida (§11.2) hasta que la retención vacía su libro. La marca
+  `eldmark.retention_purge` del disparador `eldmark_append_only` no es una barrera de seguridad (cualquier rol puede
+  ponerla): solo evita borrados por error. Se pone con `set local` y no sobrevive a la transacción (comprobado).
 
 ## 4. API pública (cliente ↔ plataforma)
 ### 4.1 Convenciones
 - HTTPS y JSON en UTF-8, prefijo `/v1`, cuerpo de 16 KB como mucho (413). Campos desconocidos: 400.
 - Cabeceras: `Authorization: Bearer <acceso>`, `X-Eldmark-Protocol: <PROTOCOL_VERSION>`, `X-Eldmark-Build: <build
   id>`. Sin protocolo o por debajo de `ELDMARK_MIN_PROTOCOL`: 426.
-- **Todo id `bigint` viaja como cadena decimal**, en las dos API (pública e interna): `character_id`, `account_id`,
-  `ticket_id`, `uid`, `op_id`, `seed`, `ref_id`, `report_id`, `sanction_id`… `JSON.parse_string` de Godot lee
-  todo número como `float` y corrompe sin avisar lo que pasa de 2^53 (comprobado: `8152839359930207727` →
-  `8152839359930208256.0`). Los enteros pequeños (`world_id`, reinos, cantidades, `seq`, fechas Unix) van como
-  número. Billete y apariencia, en base64 estándar.
+- **Todo id `bigint` viaja como cadena decimal**, en las dos API (pública e interna), también en la reclamación y
+  en el guardado: `character_id`, `account_id`, `actor_account_id`, `ignored_account_ids`, `ticket_id`, `uid`,
+  `op_id`, `ref_op_id`, `ref_id`, `seed`, `entry_id`, `report_id`, `sanction_id` y el `first` de un bloque de ids.
+  `JSON.parse_string` de Godot lee todo número como `float` y corrompe sin avisar lo que pasa de 2^53 (comprobado:
+  `8152839359930207727` → `8152839359930208256.0`). Van como número las cantidades, saldos, XP, puntos de reino,
+  nivel, `seq`, `currency`, `reason`, `kind`, `world_id` y fechas Unix (todos < 2^53). Billete y apariencia, en
+  base64 estándar. Así un error falla en voz alta en lugar de corromper en silencio.
+- **Reinos.** En la API pública (`/v1`: cuerpos, respuestas y errores como `realm_locked`), el id de texto
+  (`"vardheim"`, como en `ELDMARK_OPEN_REALMS`); en la interna (registro, reclamación, lotes), el código numérico de
+  `NetProtocol.Realm` (1–3). La plataforma convierte en la frontera; dentro (`ValidateCreate`, la base) es el código.
 - **Enteros que manda Godot.** Al volver a serializar lo que leyó, Godot escribe `820.0` (comprobado). En Go, todo
   campo entero usa `jsonx.Int` (acepta `4` y `4.0`; rechaza `4.5` y lo que pasa de 2^53) y todo id `jsonx.ID`
-  (cadena decimal > 0; un número sin comillas es 400). Comprobado con Go 1.24.7 y `DisallowUnknownFields`. En GDScript,
-  quien lee un cuerpo convierte con `int()` cada entero y con `String.to_int()` cada id.
+  (cadena decimal de 0 a 2^63 − 1; un número sin comillas es 400). Comprobado con Go 1.24.7 y
+  `DisallowUnknownFields`. En una cadena no se pierde precisión: Go la lee con `strconv.ParseInt` y Godot con
+  `String.to_int()` (int64), así que el `ticket_id` de 63 bits (§5.1) viaja entero. El tope de 2^53 − 1 de los ids
+  del progreso es una regla de progresion.md (§3.4, S1), no de `jsonx`. En GDScript, quien escribe un cuerpo pone
+  cada id con `str()`, y quien lo lee exige cadena (`is_valid_int()`), la convierte con `String.to_int()` y
+  convierte con `int()` cada entero.
 - Error: `{"error": {"code": "name_taken", "message": "Ese nombre ya está en uso", "retry_after_s": 0, "fields":
   {"name": "taken"}}}`. El cliente traduce por `code` (UI-04) y, si no lo conoce, muestra `message`. Con 429 y 503
   va también `Retry-After`.
@@ -429,7 +385,7 @@ $$;
 | 400 | `bad_request`, `validation` | JSON roto; campos que faltan o no valen (`fields`) | «Datos no válidos» |
 | 401 | `unauthorized` | Token ausente, caducado o revocado: el cliente refresca una vez y, si no, vuelve al título | «Tu sesión ha caducado» |
 | 401 | `invalid_credentials` | Correo o contraseña mal (no se dice cuál ni si la cuenta existe) | «Correo o contraseña incorrectos» |
-| 403 | `account_suspended`, `account_banned` | Sanción (`until`, `reason`). En el inicio de sesión, **solo tras una contraseña correcta** | «Cuenta suspendida hasta el …: motivo» |
+| 403 | `account_suspended`, `account_banned` | Sanción (`until`, `reason`), en `enter` y en toda ruta que no admite la sesión de privacidad. El inicio de sesión no lo da: tras una contraseña correcta abre esa sesión (§4.2) | «Cuenta suspendida hasta el …: motivo» |
 | 403 | `email_unverified`, `account_pending_deletion` | Entrar al mundo sin verificar (si se exige) o con el borrado pedido (el inicio de sesión sí funciona, para poder cancelarlo) | «Verifica tu correo para entrar» · «Tu cuenta se borrará el …» |
 | 403 | `terms_required` | Versiones nuevas por aceptar (`documents`) | Pantalla de aceptación |
 | 404 | `not_found` | No existe o no es de la cuenta | «No encontrado» |
@@ -451,7 +407,7 @@ No hay `email_taken` ni `account_locked`: los dos delataban qué correos tienen 
 | `GET /v1/status` (sin token) | — | `{status: "ok"\|"maintenance", message, maintenance_at, min_protocol, worlds: [{world_id, name, status, load: "low"\|"medium"\|"high"}], news: [{title, body, date}]}` |
 | `GET /v1/legal` · `GET /v1/legal/{kind}` (sin token) | — | `{terms: {version, sha256}, privacy, rules}` · el texto Markdown vigente |
 | `POST /v1/accounts` | `{email, password, age_confirmed: true, accept: {terms, privacy, rules}, consents: {crash_reports, analytics}}` | **Siempre 202 `{}`** si el cuerpo vale (ver abajo) |
-| `POST /v1/sessions` | `{email, password}` | `{access_token, access_expires_in, refresh_token, refresh_expires_in, account}` |
+| `POST /v1/sessions` | `{email, password}` | `{access_token, access_expires_in, refresh_token, refresh_expires_in, scope, restriction, account}`; `scope` `"game"` o `"privacy"`, y `restriction` null o `{code, until, reason}` (abajo) |
 | `POST /v1/sessions/refresh` · `DELETE /v1/sessions/current` | `{refresh_token}` · — | Un par nuevo (el viejo deja de valer) · 204 |
 | `GET /v1/account` | — | `{account_id, email, email_verified, role, realms: {"1": "vardheim"}, slots, consents, pending: {terms_required, deletion_at}}` |
 | `POST /v1/account/accept` · `PUT /v1/account/consents` | `{terms, privacy, rules}` (versiones) · `{crash_reports, analytics}` | 204 |
@@ -472,11 +428,13 @@ No hay `email_taken` ni `account_locked`: los dos delataban qué correos tienen 
   dice `needsRehash` si los parámetros de la cadena PHC no son los actuales, y el inicio de sesión la reescribe.
   Como mucho `runtime.NumCPU()` cálculos a la vez (19 MiB cada uno). Con un correo inexistente se calcula un hash de
   relleno: el tiempo no delata cuentas.
-- **Una sola función comprueba contraseñas:** `accounts.CheckPassword(ctx, accountID, password, ip) (ok bool, err
-  error)`, con `accountID` 0 para un correo inexistente. La usan el inicio de sesión y las rutas con sesión que
-  piden contraseña (`/v1/account/password`, `/email`, `/deletion`, `/export`), con los mismos contadores.
+- **Una sola función comprueba contraseñas:** `accounts.CheckPassword(ctx, accountID, email, password, ip) (ok
+  bool, err error)`, con `accountID` 0 para un correo inexistente y `email` el normalizado. La usan el inicio de
+  sesión y las rutas con sesión que piden contraseña (`/v1/account/password`, `/email`, `/deletion`, `/export`, que
+  pasan el correo actual de la cuenta), con los mismos contadores.
 - **Fallos de contraseña** (en memoria; una sola instancia en la fase 5; LRU de 100 000 claves). La clave de cuenta
-  es el `account_id` o, si el correo no existe, su SHA-256:
+  la calcula `CheckPassword`: el `account_id` si no es 0 o, si el correo no existe, el SHA-256 del correo
+  normalizado. Así cada correo inexistente tiene su propio contador y frenar uno no delata a los demás:
 
 | Clave | Regla |
 |---|---|
@@ -488,10 +446,15 @@ No hay `email_taken` ni `account_locked`: los dos delataban qué correos tienen 
 
   Así 5 intentos desde una IP no dejan sin entrar al dueño desde la suya (TEC-23: el bloqueo temporal es por
   cuenta y grupo de IP).
-- **Estado de la cuenta:** `account_suspended` y `account_banned` solo salen **tras una contraseña correcta**; con
-  una mala, `invalid_credentials`. Una cuenta `purged` responde como un correo inexistente.
+- **Estado de la cuenta:** con una contraseña mala, `invalid_credentials`, esté o no sancionada la cuenta; una cuenta
+  `purged` responde como un correo inexistente. Con una buena, una cuenta suspendida o expulsada recibe una **sesión
+  de privacidad** (`scope: "privacy"`, en la respuesta y en `sessions.scope`, con `restriction: {code:
+  "account_suspended"|"account_banned", until, reason}`). Solo admite `GET /v1/account`, `POST /v1/account/export`,
+  `POST` y `DELETE /v1/account/deletion`, `POST /v1/sessions/refresh` y `DELETE /v1/sessions/current`; cualquier
+  otra ruta, `enter` incluido, da 403 con ese `code`, y sin `enter` no hay billete ni reclamación. Así exportar y pedir
+  la supresión (§11.2) no dependen de no estar sancionado. El refresco conserva el `scope`.
 - **Sesión única de juego:** iniciar sesión revoca las demás de la cuenta (`revoke_reason = 'replaced'`) y el latido
-  expulsa a su personaje (§6).
+  expulsa a su personaje (§6). Además, solo un personaje de la cuenta puede estar en el mundo (§4.5, §5.3).
 - **Tokens:** 32 B de `crypto/rand` en base64url sin relleno (43 caracteres); en la base, su SHA-256. Una fila de
   `sessions` por inicio de sesión, con `refresh_expires_at` = inicio + 12 h, **absoluto**. Acceso de 15 min, sin
   pasar de `refresh_expires_at`.
@@ -558,7 +521,7 @@ No hay `email_taken` ni `account_locked`: los dos delataban qué correos tienen 
 ### 4.4 Personajes y nombres (TEC-24, SOC-13)
 | Ruta | Cuerpo | Respuesta |
 |---|---|---|
-| `GET /v1/worlds/{w}/characters` | — | `{realm, unlock_at, slots, used, characters: [{character_id, name, realm, race_id, appearance, level, last_zone_id, played_seconds, created_at, deleted_at, restore_until, must_rename}]}`; de `characters` con `character_progress` |
+| `GET /v1/worlds/{w}/characters` | — | `{realm, unlock_at, slots, used, characters: [{character_id, name, realm, race_id, appearance, level, last_zone_id, played_seconds, created_at, deleted_at, restore_until, must_rename}]}`; de `characters` y, para raza, apariencia, nivel, última zona y tiempo jugado, `ProgressStore.Summaries` |
 | `GET /v1/worlds/{w}/name-check?name=…` | — | `{available, code, reason}` |
 | `POST /v1/worlds/{w}/characters` | `{name, realm, race_id, appearance, starter_template_id}` | 201 `{character}` |
 | `DELETE /v1/characters/{id}` | `{confirm_name}` | `{restore_until}`; `confirm_name` con la misma clave de NameRules que el nombre |
@@ -566,15 +529,19 @@ No hay `email_taken` ni `account_locked`: los dos delataban qué correos tienen 
 | `POST /v1/characters/{id}/rename` | `{name}` | Solo con `must_rename`; el viejo queda reservado 30 días |
 | `POST /v1/characters/{id}/enter` | — | §4.5 |
 
-**Datos del juego: un solo archivo.** `platform/internal/gamedata/progression_rules.json`, generado por
-`tools/progression/export_rules.gd` (progresion.md P3), versionado y leído con `//go:embed` (que no lee fuera de
-`platform/`). Secciones: `protocol_version` (`NetProtocol.PROTOCOL_VERSION`), `names` (`{min_length, max_length,
-upper_letters, lower_letters, folded, reserved}` de `NameRules`; la añade P2 de este documento) y las de
-progresion.md §13 #6 (razas, límites de apariencia, plantillas de inicio, curva, topes, rangos de motivos). Lo crea
-el primero de los dos paquetes que llegue; el otro añade su sección. `tests/test_progression_rules_export.gd` lo
-regenera en memoria y falla si difiere. `internal/names` es `NameRules` en Go (`Validate`, `NormalizeKey`,
-reservados). Los casos de los dos lados salen de `tests/data/name_rules_cases.json` (`[{name, reason, key}]`), que
-leen `test_name_rules.gd` e `internal/names` (con `../tests/data/…`).
+**Datos del juego: un solo archivo**, `platform/internal/gamedata/progression_rules.json`, con las reglas de
+progresion.md §13.4: lo genera `ProgressionRulesExport.build()`, lo escribe `tools/progression/export_rules.gd`, lo
+comprueba una sola prueba (`tests/test_progression_rules_export.gd`) y se lee con `//go:embed` (que no lee fuera de
+`platform/`). De este documento son dos secciones: `protocol_version` (`NetProtocol.PROTOCOL_VERSION`) y `names`
+(`{min_length, max_length, upper_letters, lower_letters, folded, reserved}` de `NameRules`; la añade P2); las demás
+(`races`, `appearance`, `starter_templates`, `items`, `level_curve`, `currencies`, `reasons`, `containers` y
+`combat`), de progresion.md. Quien llegue antes (P2 de aquí o progresion.md P3) crea `build()`, la herramienta, la
+prueba y el archivo; el otro añade sus secciones. `internal/names` lee `names` y es `NameRules` en Go (`Validate`,
+`NormalizeKey`, reservados); `progress.LoadRules` lee el resto. Los casos de nombres de los dos lados salen de
+`tests/fixtures/names/name_rules_cases.json` (`[{name, reason, key}]`), que leen `test_name_rules.gd` e
+`internal/names` (con `os.ReadFile("../../../tests/fixtures/names/…")`: las pruebas de Go corren en el directorio del
+paquete). Todos los datos de prueba que comparten Godot y Go van bajo `tests/fixtures/` (los del progreso, en
+`tests/fixtures/progression/`, progresion.md §13.2).
 
 **Crear**, en una transacción `serializable` (reintento ante 40001):
 
@@ -584,30 +551,43 @@ leen `test_name_rules.gd` e `internal/names` (con `../tests/data/…`).
    tiene otro, `realm_locked`.
 3. Huecos: 6 + `quantity` de los `character_slots` vigentes. **Ocupan hueco los vivos y los borrados en plazo** (los
    que aún se pueden restaurar).
-4. Nombre: `names.Validate` (422), lista negra (422 `reserved`; la edita `admin names block|unblock <nombre>`) e
+4. Nombre: `names.Validate` (422), lista negra (422 `reserved`; la edita `admin --actor <correo> names
+   block|unblock <nombre>`, §9.1) e
    `insert into character_names` con `status 'active'`. Una fila `reserved` vigente da `name_taken`; vencida, se
    reutiliza. Dos creaciones a la vez con el mismo nombre: una falla con 23505 en `character_names_pkey`
    (comprobado en una sonda con la misma clave) → `name_taken`.
-5. Raza, apariencia y plantilla, con `progression_rules.json`: `race_id` de su reino (`race_vardheim`…), apariencia
-   de **8 B** que pasa `progress.ValidateAppearance` (la regla de `CharacterAppearance.validate`, progresion.md §7.2)
-   y `starter_template_id` de la lista de plantillas. Mientras falten esas secciones (PRG-14, ART-19, PRG-07):
-   `race_id = "race_" + reino`, 8 B cualesquiera y plantilla que cumple `^[a-z0-9_]{1,32}$`.
+5. Raza, apariencia y plantilla: `persistence.CreateValidator.ValidateCreate(realm, race_id, appearance,
+   starter_template_id)` (§7.5; la regla, progresion.md §13.2): `race_id` de su reino (`race_vardheim`…),
+   apariencia de **8 B** válida para su raza (la regla de `CharacterAppearance.validate`, progresion.md §7.2) y
+   `starter_template_id` de `starter_templates` (las plantillas `selectable`). Si no, devuelve
+   `*persistence.ValidationError` y la respuesta es 400 `validation` con sus `fields` (`{"race_id":
+   "wrong_realm"}`, `{"appearance": "invalid"}`, `{"starter_template_id": "not_selectable"}`). `serve` elige la
+   implementación: hasta tener progresion.md P3 y P7, la provisional de P2 (`race_id = "race_" + reino`, 8 B
+   cualesquiera y plantilla que cumple `^[a-z0-9_]{1,32}$`; la zona corrige al cargar una apariencia que no valga,
+   progresion.md §7.2); después, `*progress.Rules`.
 6. `insert` en `characters` y `character_pvp_stats`, y `ProgressStore.Create` (§7.5) con la raza, la apariencia y
    la plantilla; `auth_events` `character_create`.
 
-**Borrar:** con arrendamiento vivo, `character_busy`; 5 `character_delete` en 24 h, 429. `deleted_at = now()`,
+**Borrar**, en una transacción que bloquea primero la fila de la cuenta (`select … from accounts where account_id =
+$1 for no key update`, el orden de la reclamación, §5.3, y de la purga de la cuenta): con arrendamiento vivo,
+`character_busy`; 5 `character_delete` en 24 h, 429. Así el borrado y la reclamación de ese personaje van en serie:
+queda borrado y sin arrendamiento o vivo y con él, nunca borrado y en el mundo. `deleted_at = now()`,
 `restore_until = now() + 7 d` y el nombre `reserved` hasta `restore_until + 30 d`. **Excepción:** un personaje con
-menos de 24 h de vida y menos de 1 h jugada (`played_seconds < 3600`) reserva el nombre solo hasta `restore_until`.
-Al vencer `restore_until`, la purga horaria lo deja como lápida (§11.2); el nombre sigue reservado lo que toque. Si
-era el último vivo, `unlock_at = now() + 30 d`.
+menos de 24 h de vida y menos de 1 h jugada (`PlayedSeconds < 3600` de `Summaries`) reserva el nombre solo hasta
+`restore_until`. Al vencer `restore_until`, la purga horaria lo deja como lápida (§11.2); el nombre sigue reservado lo
+que toque. Si era el último vivo, `unlock_at = now() + 30 d`.
+
+**Restaurar**, igual, bloquea la fila de la cuenta y después la de `characters` (`for no key update`, como la purga)
+y vuelve a mirar `restore_until > now()` y `purged_at` nulo: una restauración en el límite y la purga horaria no se cruzan (§11.2).
 
 ### 4.5 Entrar al mundo
 `POST /v1/characters/{id}/enter`, sin cuerpo. Comprueba en orden: sesión, mantenimiento (503), sanciones (403),
 borrado pendiente (403), textos por aceptar (403), correo verificado si se exige (403), personaje vivo de la cuenta
-(404), `must_rename` (409), arrendamiento vivo (409). Elige la zona: la de `character_progress.last_zone_id` si
-tiene una instancia `live` cuyo `realms` incluye el reino del personaje (en su `last_channel` si está vivo y con
-sitio); si no, la de entrada de su reino. Dentro de la zona, el canal con menos jugadores bajo `max_players`; si no
-hay ninguno vivo, 503 `zone_unavailable`. Inserta el billete en `enter_tickets` (10 s) y responde:
+(404), `must_rename` (409), arrendamiento vivo de ese personaje **o de otro de la cuenta en ese mundo** (409
+`character_busy`: un solo personaje en el mundo por cuenta; la reclamación lo vuelve a mirar, §5.3). Elige la zona: la última (`LastZoneID` de
+`ProgressStore.Summaries`) si tiene una instancia `live` cuyo `realms` incluye el reino del personaje (en su
+`LastChannel` si está vivo y con sitio); si no, la de entrada de su reino. Dentro de la zona, el canal con menos
+jugadores bajo `max_players`; si no hay ninguno vivo, 503 `zone_unavailable`. Inserta el billete en `enter_tickets` (10 s) y responde:
 
 ```json
 {"zone": {"zone_id": "vado_gris", "channel": 0, "host": "203.0.113.5", "port": 24600,
@@ -622,14 +602,15 @@ caduca, pide otro.
 ## 5. Billete y entrada en la zona (TEC-24)
 ### 5.1 Formato del billete (52 B, little-endian)
 Sustituye al de 47 B de red.md §12: añade el mundo y cambia la zona en texto por una huella de 4 B. Va en el campo
-`ticket` del HELLO (≤ 256 B).
+`ticket` del HELLO (≤ 256 B). Solo lleva identidad: en un traspaso (fase 6), lo demás (CMB-30 incluido) llega con el
+guardado final del origen y la reclamación en el destino (progresion.md §8).
 
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
 | 0 | u8 | version | 1 |
 | 1 | u8 | key_id | clave de `ELDMARK_TICKET_KEYS` (1–255) |
 | 2 | u16 | world_id | |
-| 4 | u64 | ticket_id | aleatorio, bit 63 a 0; clave de `enter_tickets` |
+| 4 | u64 | ticket_id | aleatorio, bit 63 a 0; clave de `enter_tickets`; en JSON, cadena de hasta 2^63 − 1 (§4.1) |
 | 12 | u64 | character_id | igual que `HELLO.character_id` |
 | 20 | u32 | zone_key | los 4 primeros bytes, como u32 LE, del SHA-256 del id ASCII de la zona |
 | 24 | u8 | channel | |
@@ -682,24 +663,40 @@ El resultado se aplica en el paso «poll» del tick (§14.3):
 
 | Reclamación | La zona |
 |---|---|
-| 200 | Si la zona admite el reino del personaje y cabe, WELCOME con ese reino, `complete_auth` y `LOADING`; si no, `REALM` o `FULL` y `release` |
+| 200 | En orden: (1) la zona admite `claimed.realm` (si no, `REALM`); (2) cabe bajo `max_players` (si no, `FULL`); (3) `ProgressService.prepare(peer_id, claimed)` (progresion.md §9.1: decodifica, valida la apariencia y crea el `PlayerProgress`) y, si devuelve false, `UNAVAILABLE` con «No se ha podido cargar el personaje» (`AuthOutcome.text`) y una alerta en el registro; si falla alguno, `release(character_id, lease_id)`. (4) WELCOME con `claimed.realm`, `complete_auth` y `LOADING` |
 | 409 `ticket_invalid` (consumido, caducado, de otra instancia o de una sesión revocada) | REJECT `TICKET` |
 | 409 `character_busy` | REJECT `BUSY` |
-| 403 `account_blocked` (suspendida, expulsada, borrado pendiente) | REJECT `BANNED` con el texto de la plataforma |
-| 409 `instance_*` | REJECT `UNAVAILABLE` y el cierre de §6.1 |
-| 5xx, sin conexión o 7 s desde la conexión sin respuesta | REJECT `UNAVAILABLE`; si la reclamación llega después, se libera |
+| 403 `account_blocked` (suspendida, expulsada, borrado pendiente) | REJECT `BANNED` con el `message` del cuerpo (§6.1) |
+| 409 `instance_lost`, `instance_replaced` o `instance_stopped` | REJECT `UNAVAILABLE` y el cierre de §6.1 |
+| Cualquier otra (409 `instance_not_live`, otro 4xx, 5xx), sin conexión o 7 s desde la conexión sin respuesta | REJECT `UNAVAILABLE` (un 4xx, con alerta en el registro); si la reclamación llega después, se libera |
+
+**Baja en `LOADING`.** Entre el WELCOME y CLIENT_READY el personaje tiene arrendamiento y un `PlayerProgress`
+preparado, pero no cuerpo ni entrada en `CharacterSaver`. Si el peer sale de `LOADING` sin llegar al mundo
+(CLIENT_LEAVE, desconexión, el plazo de CLIENT_READY, una expulsión o un `revoked` del latido), la zona llama a
+`ZonePlatform.release(character_id, lease_id)` sin guardar y a `ProgressService.cancel_prepared(peer_id)`
+(progresion.md §9.1); un `revoked` expulsa con su NOTICE y sin guardado final, que aquí no existe.
 
 ### 5.3 Arrendamiento
-La reclamación, en una transacción: comprueba la cuenta (sanción o borrado → 403 `account_blocked`), consume el
-billete y toma el arrendamiento. Comprobado en PostgreSQL 16:
+La reclamación, en una transacción: bloquea la fila de la cuenta y la comprueba (sanción o borrado → 403
+`account_blocked`), comprueba el personaje (`deleted_at` y `purged_at` nulos; si no, 409 `ticket_invalid`), consume
+el billete, mira que ningún otro personaje de la cuenta esté en el mundo, toma el arrendamiento y, tras el `insert …
+on conflict`, lee la sección `progress` con `ProgressStore.Load` en la misma transacción (con la fila del
+arrendamiento bloqueada, ningún guardado se cruza). El orden de bloqueos es cuenta → billete → arrendamiento; la
+purga de una cuenta también bloquea antes su fila (§11.2). Comprobado en PostgreSQL 16, salvo los pasos 0 y 2:
 
 ```sql
+-- 0. La cuenta del personaje ($8): serializa las reclamaciones de una misma cuenta
+select status from accounts where account_id = $8 for no key update;   -- con sus sanciones: 403 account_blocked
 -- 1. El billete: de esta instancia, sin usar, sin caducar y de una sesión sin revocar
 update enter_tickets t set consumed_at = now() from sessions s
 where t.ticket_id = $1 and t.character_id = $2 and t.zone_instance_id = $3 and t.consumed_at is null
   and t.expires_at > now() - interval '5 s' and s.session_id = t.session_id and s.revoked_at is null
 returning t.session_id;                     -- sin fila: ticket_invalid y rollback
--- 2. El arrendamiento ($5 = session_id, $6 = lease_id nuevo de crypto/rand, $7 = TTL)
+-- 2. Un solo personaje en el mundo por cuenta y mundo
+select 1 from character_leases l join characters c using (character_id)
+where c.account_id = $8 and c.world_id = $4 and l.character_id <> $2
+  and l.zone_instance_id is not null and l.expires_at > now();   -- con fila: character_busy y rollback
+-- 3. El arrendamiento ($5 = session_id, $6 = lease_id nuevo de crypto/rand, $7 = TTL)
 insert into character_leases (character_id, world_id, lease_id, zone_instance_id, claimed_by, session_id, expires_at)
 values ($2, $4, $6, $3, $3, $5, now() + $7)
 on conflict (character_id) do update set lease_id = excluded.lease_id, zone_instance_id = excluded.zone_instance_id,
@@ -709,9 +706,12 @@ where character_leases.zone_instance_id is null or character_leases.expires_at <
 returning lease_id;                         -- sin fila: character_busy y rollback (el billete no queda consumido)
 ```
 
-- **Latido** cada 5 s, con su propia plaza (§6): `characters: [{character_id, lease_id}]` de los personajes en
-  `VERIFYING`, `LOADING`, en el mundo, con el cuerpo tras una salida en combate o con el guardado final pendiente.
-  Renueva solo lo que casa:
+- **Latido** cada 5 s, con su propia plaza (§6): `characters: [{character_id, lease_id}]`, el conjunto que mantiene
+  `ZonePlatform` (§14.3). Un personaje entra con el 200 de su reclamación, cambia de `lease_id` con otra reclamación
+  suya y sale con `release()` o con la respuesta definitiva (200 o definitivo) de un guardado con `release_lease`, si
+  sigue siendo ese `lease_id`. Así cubre `LOADING`, el mundo, el cuerpo tras una salida en combate y el guardado
+  final pendiente, y deja de latir por quien ya se fue. Los de `VERIFYING` no van: aún no tienen `lease_id`. Renueva
+  solo lo que casa:
 
   ```sql
   update character_leases l set expires_at = now() + $4
@@ -720,19 +720,25 @@ returning lease_id;                         -- sin fila: character_busy y rollba
   returning l.character_id;                 -- los que faltan vuelven en revoked con reason lease_lost
   ```
 
-  Los que no van en la lista caducan solos (TTL 30 s).
+  Los que no van en la lista caducan solos (TTL 30 s). Cada entrada de `revoked` lleva su `lease_id` (§6).
 - **Cercado.** Sin un latido aceptado en 2 × `HEARTBEAT_S` (10 s), la zona está cercada hasta el siguiente: no
-  admite HELLO (REJECT `UNAVAILABLE`) ni operaciones que piden guardado crítico (comandos de GM que dan o quitan, y
-  en la fase 6 comercio y correo: «El servicio de cuentas no responde; inténtalo más tarde»). No expulsa a nadie:
-  el juego sigue y §7.4 vale.
+  admite HELLO (REJECT `UNAVAILABLE`) ni operaciones que piden guardado crítico (los comandos de GM que cambian
+  algo, progresion.md §10, y en la fase 6 comercio y correo: «El servicio de cuentas no responde; inténtalo más
+  tarde»). No expulsa a nadie: el juego sigue y §7.4 vale.
 - **Instancia perdida:** 15 s (3 × `HEARTBEAT_S`) sin latido → `lost` y sus arrendamientos libres
   (`zone_instance_id = null`; `lease_id` y `claimed_by` se quedan). Tras un `kill -9`, el personaje vuelve a entrar
   en 15 s como mucho. Si la instancia vuelve, §6.1.
 - **Instancia nueva de la misma zona y canal.** Si la vieja latió hace menos de 3 × `HEARTBEAT_S`, el registro da 409
   `instance_alive` salvo con `"replace": true` (`--replace`), que deja una fila en `audit_log`. La zona sin
-  `--replace` reintenta cada 2 s durante 60 s y luego sale con código 1. Al sustituir, la vieja pasa a `replaced` y
-  sus arrendamientos se liberan; si seguía viva, hace el cierre de §6.1, y **sus guardados finales sí valen** si
-  nadie ha reclamado a esos personajes (§7.3).
+  `--replace` reintenta cada 2 s durante 60 s y luego sale con código 1. Si la vieja lleva 3 × `HEARTBEAT_S` o
+  más sin latir pero sigue `starting` o `live` (el trabajo de perdidas aún no ha pasado), el registro, en su
+  transacción, la pasa a `lost` y libera sus arrendamientos como el trabajo, y después inserta la nueva: nunca
+  choca con el índice único parcial. Al sustituir, la vieja pasa a `replaced` y **sus arrendamientos no se liberan
+  en ese momento**: los libera el guardado final de cada uno (`release_lease`) o caducan con el TTL, porque la vieja
+  ya no los renueva (su latido da `instance_replaced`). Si seguía viva, hace el cierre de §6.1 y **sus guardados
+  finales valen** (§7.3); mientras, quien intenta volver a entrar recibe `character_busy` y el cliente reintenta,
+  así que carga el final y no el guardado anterior. Una instancia `lost` sí los libera al instante (puede estar
+  muerta); por eso el cierre de §6.1 expulsa solo después de mandar los finales.
 - **Salida en combate** (GUE-41): el arrendamiento dura hasta que el cuerpo se va y el guardado final llega. Entrar
   en esos 15 s da `character_busy` y el cliente reintenta solo cada 3 s durante 30 s: reconectar no acorta la salida
   en combate.
@@ -742,26 +748,28 @@ returning lease_id;                         -- sin fila: character_busy y rollba
 ### 5.4 Cambios en el protocolo
 | Pieza | Cambio |
 |---|---|
-| `PROTOCOL_VERSION` | **Una sola subida para toda la fase 5**, compartida con progresion.md (el P4 de los dos documentos): la siguiente libre al integrar. Hoy el código de `fase4-fuerte` está en 4, el chat usa la 5 en su rama y habilidades.md fija la 6: **7** si esos dos llegan antes. Una línea en `net_protocol.gd`: «N: la fase 5 (docs/plataforma.md y docs/progresion.md): REJECT 10 a 12, billete de 52 B, auth_timeout de 10 s, bit GM del ENTITY_SPAWN y lo de progresion.md §12» |
-| `NetTransport` | `AUTH_TIMEOUT_SECONDS` = 10.0 (antes 5.0), en los dos lados (§5.2) |
+| `PROTOCOL_VERSION` | **7**, una sola subida para toda la fase 5, compartida con progresion.md (4 el fuerte, 5 el chat y los grupos, 6 habilidades.md). El reparto es fijo: la 5 ya está en main y P4 de aquí espera a que habilidades.md suba la 6 (§14.1). La sube P4, que va antes que progresion.md P4 en el orden de §14.1, con la línea completa en `net_protocol.gd`: «7: la fase 5 (docs/plataforma.md y docs/progresion.md): REJECT 10–12, billete de 52 B, `auth_timeout` de 10 s, bit 3 del `flags` de la cabecera del ENTITY_SPAWN (personal del juego), +9 B del SPAWN de PLAYER (nivel y apariencia), mensajes 0x50–0x55, ENTITY_EVENT 16 LEVEL_UP, DEBUG_COMMAND 40–43 e `ItemDatabase` en el `sim_hash`». **En red.md, cada P4 documenta lo que añade su código**, con sus filas y su marca «v7»: P4 de aquí, «= 7» y §5.3 (REJECT 10–12, billete de 52 B, `auth_timeout` de 10 s) y el bit 3 de §5.5; progresion.md P4, §3 (`sim_hash` con `ItemDatabase` y el texto nuevo del REJECT `SIM_HASH`), §5.2 (0x50–0x55), §5.4 (DEBUG_COMMAND 40–43) y lo suyo de §5.5 (+9 B del PLAYER, que no cambian el payload de NPC; LEVEL_UP), como dice progresion.md §12. progresion.md P4 añade su parte del código sin subir la versión |
+| `NetTransport` | `AUTH_TIMEOUT_SECONDS` = 10.0 (antes 5.0), en los dos lados (§5.2), en la misma subida |
 | HELLO | **Sin cambios de bytes.** Con billete van `character_id` y `ticket`; el cliente pone en `realm` y `name` los de su personaje y la zona los ignora |
 | WELCOME | Sin cambios de bytes; `realm` es el del personaje |
-| REJECT | `Result` añade `BUSY = 10`, `UNAVAILABLE = 11` y `BANNED = 12` (libres en todas las ramas; si otra ocupa alguno, los siguientes). `result_text`: «Tu personaje sigue en el mundo: espera unos segundos», «El servicio de cuentas no responde: inténtalo más tarde», «Tu cuenta está suspendida». El texto lo compone la zona (con la fecha de fin en `BANNED`) |
+| REJECT | `Result` añade `BUSY = 10`, `UNAVAILABLE = 11` y `BANNED = 12` (libres en todas las ramas; si otra ocupa alguno, los siguientes). `result_text`: «Tu personaje sigue en el mundo: espera unos segundos», «El servicio de cuentas no responde: inténtalo más tarde» y, en `BANNED`, el `message` del 403 `account_blocked`, que compone la plataforma (§6.1); «Tu cuenta está suspendida» solo si falta |
 | ENTITY_SPAWN | Bit 3 del `flags` de la **cabecera** (offset 9; hoy bit0 «tuyo» y bits 1–2 teletransporte) = personal del juego (moderador o más), para la etiqueta (SOC-14). No es el `flags` del registro del snapshot, cuyo bit 3 usa habilidades.md |
 | NOTICE | Sin códigos nuevos: «Has iniciado sesión desde otro lugar» o «Tu cuenta ha sido suspendida» van con el 1 (expulsión) |
 
 Con `--platform`, `--max-realm-diff` (REJECT `IMBALANCE`) no se aplica: el reino ya no se elige al conectar (el
 equilibrio de población es de GUE-36). El enfriamiento tras una expulsión usa la clave `character:<id>` en lugar del
-nombre del HELLO.
+nombre del HELLO. Con billete (`uses_tickets()`), `ServerAuth` no compara el nombre del HELLO con los conectados, así
+que no hay `REJECT NAME`: el HELLO deja de delatar si un nombre está en la zona (la limitación de la fase 4 de
+social.md 12.7; prueba en P4).
 
 ### 5.5 Modos de arranque
 | Modo | Fase 5 |
 |---|---|
 | F5 en el editor sin argumentos | Sandbox de la fase 1, igual (`OS.has_feature("editor")`) |
 | Sin argumentos en una exportación · `--title [--platform=<url>]` | Pantalla de título (UI-22) contra `eldmark/platform/url` · lo mismo desde el editor |
-| `--server` sin `--platform` | `DevAuthProvider` como hoy: reino y nombre del HELLO; guardado solo con `--progress-file` (progresion.md §9.4) |
+| `--server` sin `--platform` | `DevAuthProvider` como hoy: reino y nombre del HELLO; personajes efímeros, nada se guarda (progresion.md §9.4) |
 | `--server --platform=<url interna>` | `TicketAuthProvider`; un HELLO sin billete recibe `TICKET` («Entra desde el menú con tu cuenta»). `--debug-commands`, `--fake-players`, `--fake-churn`, `--battle-log`, `--combat-log` y `--state-log` solo si el `env` del registro es `dev` o `test`; si no, la zona sale con código 1 y «Esa opción no se admite con la plataforma en staging/production» |
-| `--fake-players`, `--fake-churn` | Nunca tocan la plataforma ni se guardan; se llaman `Bot-NN`, que no es un nombre válido y no choca con ningún personaje |
+| `--fake-players`, `--fake-churn` | Nunca tocan la plataforma ni se guardan; se llaman `Bot-NN`, que no es un nombre válido y no choca con ningún personaje. Con plataforma, la zona no da recompensas persistentes (progresion.md §6.2) |
 | `--connect`, `--local`, `--bot --connect` · con `--dtls-cert=<pem> --dtls-name=<cn>` | Igual, contra zonas sin plataforma; `RealmSelect` queda para desarrollo · con DTLS (§10.2) |
 | `--bot --platform=<url> --login=<correo> --password-file=<ruta> [--character=<nombre>] [--realm=…]` | `AccountFlow` (§13.3): inicia sesión, crea el personaje si falta (`--character` o `NameRules.bot_name(semilla)`), pide `enter` y conecta. Sin `--login` o `--password-file`, sale con código 1 y un error claro |
 | `--bots=N [--dtls-cert=<pem> --dtls-name=<cn>]` | Solo contra zonas sin plataforma (carga, y la medida de TEC-27 con DTLS); con `--platform`, sale con un error claro |
@@ -775,7 +783,12 @@ HTTP y JSON en `ELDMARK_INTERNAL_ADDR` (127.0.0.1 en desarrollo; red privada de 
   `subtle.ConstantTimeCompare` con cada entrada de `ELDMARK_ZONE_TOKENS`; la que casa da su alcance (mundo, zona,
   canal). Sin entrada: 401 `bad_token`. El registro solo admite ese alcance y un `public_host` de
   `ELDMARK_ZONE_HOSTS` (si no, 403 `forbidden`). Toda otra petición lleva `zone_instance_id` (en el cuerpo, la
-  ruta o la consulta), que tiene que ser una instancia de ese alcance (si no, 403 `forbidden`).
+  ruta o la consulta), que tiene que ser una instancia de ese alcance (si no, 403 `forbidden`). En la zona lo pone
+  `ZonePlatform` (§14.3) en la reclamación, la liberación, el latido, los bloques de ids, las fortalezas, los lotes y
+  `request`, no quien arma la petición. El guardado es la excepción: su sobre entero, `zone_instance_id` incluido, lo
+  arma `CharacterSaver` antes de serializarlo (§7.3).
+- **Cuerpo de 1 MB como mucho** en toda la API interna (413), también guardados y reclamaciones: sobra para 120
+  ranuras, el equipo y el diario de un minuto. Ids en cadena, enteros y reinos (código) como en §4.1.
 - **En `staging` y `production`** el registro sin `dtls_cert_pem` da 400 `validation`.
 - Registro y latido traen `now_unix`: la zona guarda `offset = now_unix − su reloj` (`ZonePlatform.now_unix()`) y
   avisa si pasa de 2 s.
@@ -786,8 +799,8 @@ paso «poll», nunca a mitad de tick:
 
 | Prioridad | Peticiones | Reintento |
 |---|---|---|
-| 0 control | Registro, `live`, GET de fortalezas al arrancar, latido, baja | Registro, `live` y GET: 1, 2, 4… s hasta 60 s, luego la zona sale (§8). Latido: no (el siguiente sale a su hora; nunca dos en cola) |
-| 1 entrada | Reclamación, liberación | Reclamación: **no** (la corta el plazo de §5.2). Liberación: como los guardados |
+| 0 control | Registro, `live`, GET de fortalezas y primer bloque de ids al arrancar, latido, baja | Registro, `live`, GET y primer bloque: 1, 2, 4… s hasta 60 s, luego la zona sale (§8). Latido: no (el siguiente sale a su hora; nunca dos en cola) |
+| 1 entrada | Reclamación, liberación | Reclamación: **no** (la corta el plazo de §5.2). Liberación: como los guardados, hasta una respuesta definitiva (un 4xx lo es, §7.3) |
 | 2 jugador | Guardados, bloques de ids, operación y libro, reportes, ignorados, sanciones | Guardados y bloques: el mismo cuerpo a 1, 2, 4, 8 y 15 s, luego cada 15 s mientras la zona viva. Los demás: no (el jugador o el GM ve «El servicio de cuentas no responde») |
 | 3 fortaleza | PUT de fortaleza (una en vuelo por fortaleza) | A los 2 s, siempre con el registro más reciente |
 | 4 lotes | Chat, auditoría, guerra | El mismo lote a 2, 4, 8 y 16 s, luego cada 30 s. Pasadas 20 000 entradas en cola se descarta el chat más viejo (con aviso); auditoría y guerra nunca, y van también al registro de la zona |
@@ -801,36 +814,65 @@ cuerpo hasta tener una definitiva (§7.3).
 |---|---|---|
 | `POST /internal/v1/zone-instances` | `{world_id, zone_id, channel, public_host, public_port, realms: [1, 2], build_id, protocol_version, record_format, max_players, dtls_cert_pem, dtls_name, replace}` | `{zone_instance_id, env, heartbeat_s, lease_ttl_s, now_unix}`; la instancia queda en `starting` |
 | `POST /internal/v1/zone-instances/{id}/live` | — | 204; pasa a `live` y `enter` ya la ofrece |
-| `POST /internal/v1/zone-instances/{id}/heartbeat` | `{players, characters: [{character_id, lease_id}]}` | `{now_unix, revoked: [{character_id, reason, text}], mutes: [{account_id, until_unix}], maintenance: {at_unix, message} \| null}` |
+| `POST /internal/v1/zone-instances/{id}/heartbeat` | `{players, characters: [{character_id, lease_id}]}` | `{now_unix, revoked: [{character_id, lease_id, reason, text}], mutes: [{account_id, until_unix}], maintenance: {at_unix, message} \| null}` |
 | `DELETE /internal/v1/zone-instances/{id}` | — | 204; `stopped` y libera lo que quede |
-| `POST /internal/v1/claims` | `{zone_instance_id, ticket_id, character_id}` | `{lease_id, instance_status, account: {account_id, role, muted_until_unix, ignored_account_ids}, record, pvp}`: `record` es el `CharacterRecord` de progresion.md §3.4 (`record_format` 1) y `pvp` los totales de §8 |
+| `POST /internal/v1/claims` | `{zone_instance_id, ticket_id, character_id}` | `{lease_id, instance_status, account: {account_id, role, muted_until_unix, ignored_account_ids}, character: {character_id, world_id, realm, name}, progress, pvp}`: `realm` es el código (§4.1), `progress` el `ProgressRecord` completo de progresion.md §3.4 (`ProgressStore.Load`, `progress_format` 1) y `pvp` los totales de §8 |
 | `PUT /internal/v1/characters/{id}/state` | §7.3 | `{applied, duplicate, save_version, instance_status}` |
 | `POST /internal/v1/saves` | `{zone_instance_id, saves: [§7.3]}` | Todos o ninguno (comercio y correo, fase 6): todos nuevos o todos repetidos; mezcla → 409 `seq_conflict` |
-| `POST /internal/v1/characters/{id}/release` | `{zone_instance_id, lease_id}` | 204, sin guardar (el cliente no llegó a aparecer, o tras un `invalid_save`) |
-| `POST /internal/v1/id-blocks` | `{zone_instance_id}` | `{"first": "1025", "count": 1024}`: `nextval('uid_block_seq')` y una fila en `id_blocks` |
-| `GET /internal/v1/ops/{op_id}?zone_instance_id=` | — | `{op, ledger, items}` (progresion.md §13 #5, para `op_show` y la reversión) |
-| `GET /internal/v1/characters/{id}/ledger?zone_instance_id=&limit=&before_entry_id=` | — | `{entries: [...]}`; `limit` ≤ 200 (para `ledger_show`) |
-| `GET /internal/v1/fortresses?zone_instance_id=` · `PUT /internal/v1/fortresses/{id}` | — · `{zone_instance_id, expected_version, record}` | `{fortresses: [{fortress_id, record, version}]}` (lista vacía: sin registros) · `{version}`, o 409 `version_conflict` con `{version}` |
-| `POST /internal/v1/war-events` · `…/chat` · `…/audit` | `{zone_instance_id, events\|messages\|entries: [{key, …}]}` (§8, §9) | 204 |
-| `POST /internal/v1/reports` | `{zone_instance_id, world_id, …}` (§9.4) | `{report_id}` o 429 |
-| `POST` · `DELETE /internal/v1/ignores` | `{zone_instance_id, world_id, character_id, target_name}` | `{ignored_account_id, name}` · 204 |
-| `POST /internal/v1/sanctions` | `{zone_instance_id, world_id, author_character_id, target_name, kind, minutes, reason, report_ids}` | `{sanction_id, ends_at_unix}` o 403 `forbidden` (§9.5) |
+| `POST /internal/v1/characters/{id}/release` | `{zone_instance_id, lease_id}` | 204, sin guardar (el cliente no llegó a aparecer: tras el 200 de la reclamación o en `LOADING`, §5.2; o tras un `invalid_save`) |
+| `POST /internal/v1/id-blocks` | `{zone_instance_id}` | `{"first": "1025", "count": 1024}`: `nextval('uid_block_seq')` y una fila en `id_blocks`; en `starting` y en `live`. `uid` y `op_id` salen de los mismos bloques y son únicos en todos los mundos |
+| `GET /internal/v1/ops/{op_id}?zone_instance_id=` | — | `ProgressStore.Op(…, opID, instance)`; respuesta de progresion.md §13.2 (para `op_show` y la reversión), o 404 (también si ningún participante tiene arrendamiento en la instancia) |
+| `GET /internal/v1/characters/{id}/ledger?zone_instance_id=&limit=&before_entry_id=` | — | `ProgressStore.Ledger`; respuesta de progresion.md §13.2; `limit` de 1 a 100 (20 por defecto), más recientes primero (para `ledger_show`); 404 si el personaje no tiene arrendamiento en la instancia |
+| `GET /internal/v1/fortresses?zone_instance_id=` · `PUT /internal/v1/fortresses/{id}` | — · `{zone_instance_id, expected_version, record}` | `{fortresses: [{fortress_id, record, version}]}`, solo las de la zona de la instancia (lista vacía: sin registros) · `{version}`, 409 `version_conflict` con `{version}` o 403 `forbidden` (fortaleza de otra zona, abajo) |
+| `POST /internal/v1/war-events` · `…/chat` · `…/audit` | `{zone_instance_id, events\|messages\|entries: [{key, …}]}` (§8, §9) | 204; si alguna entrada no vale, 200 `{rejected: [key…]}` y las demás se insertan |
+| `POST /internal/v1/reports` | `{zone_instance_id, …}` (§9.4) | `{report_id}` o 429 |
+| `POST` · `DELETE /internal/v1/ignores` | `{zone_instance_id, character_id, target_name}` | `{ignored_account_id, name}` · 204 |
+| `POST /internal/v1/sanctions` | `{zone_instance_id, author_character_id, target_name, kind, minutes, reason, report_ids}` | `{sanction_id, ends_at_unix}` o 403 `forbidden` (§9.5) |
 
-- **Lotes** (chat, auditoría, guerra): cada 2 s o 200 entradas, 1 MB como mucho. Cada entrada lleva `key =
-  "<zone_instance_id>:<secuencia>"` y se inserta con `on conflict do nothing`: reenviar un lote no duplica nada.
-- **`revoked`** del latido:
+- **Operación y libro:** las registra el enrutador interno de este documento, con las comprobaciones de §6.1
+  (token, alcance, instancia `live` y arrendamiento); el mundo sale de la instancia. Como las demás rutas de la
+  zona, exigen arrendamiento en esa instancia (`character_leases.zone_instance_id` igual a la instancia): el libro,
+  del personaje (lo mira el enrutador en `character_leases`); una operación, de alguno de sus participantes, que lo
+  mira `ProgressStore.Op` con la instancia en su propia consulta (un `join` de `op_participants` con
+  `character_leases`), así que la plataforma no lee tablas del progreso. Si no, 404: una zona no lee el libro de
+  quien no tiene dentro (progresion.md §10). Los cuerpos son los de progresion.md §13.2, con `participants`,
+  `reversed_by` e `instances` (las filas retiradas que necesita `op_revert`).
+- **El mundo lo pone la instancia.** Reportes, ignorados y sanciones resuelven `target_name` en el `world_id` de
+  `zone_instance_id`, como los lotes: los cuerpos no lo traen (un `world_id` en el cuerpo es un campo desconocido,
+  400) y una zona no alcanza a nadie de otro mundo.
+- **Fortalezas de una zona.** El primer PUT de un `fortress_id` crea su fila con el `zone_id` de la instancia. Un PUT
+  de una fortaleza que ya existe con otro `zone_id` da 403 `forbidden`, un evento de guerra de esa fortaleza va a
+  `rejected` y el GET solo devuelve las de la zona de la instancia: una zona no puede pisar el registro ni el
+  historial de otra.
+- **Lotes** (chat, auditoría, guerra): cada 2 s o 200 entradas, 1 MB como mucho. Cada entrada lleva su `key`
+  (`ZonePlatform.enqueue_batch` pone `"<zone_instance_id>:<secuencia>"` si la entrada no trae una; la auditoría de
+  un comando que crea una operación trae `op:<op_id>`, §9.1) y se inserta con `on conflict do nothing`: reenviar un
+  lote no duplica nada. `world_id` y `zone_id` los pone la plataforma desde la instancia, y en el chat también
+  `zone_channel` (el `channel` de la instancia) y `sender_account_id`, desde `characters`. **Cada entrada se valida
+  por separado y contra la instancia que la manda.** Se rechaza la que no trae un campo; la de `key`
+  `"<uuid>:<n>"` cuyo uuid no es el `zone_instance_id` del lote; la de `key` `op:<op_id>` cuyo `op_id` no cae en un
+  bloque de `id_blocks` dado a esa instancia; y, en la auditoría, la de `source` distinto de `zone` y `console`
+  (las filas `cli` y `platform` solo las escribe la plataforma) o con un `command` de la CLI o de la plataforma
+  (`set-role`, `sanction_denied`). Lo rechazado se registra, las demás se insertan y la respuesta lista las
+  claves rechazadas, que la zona no reintenta. Así una zona no escribe en nombre de otra instancia ni de la CLI,
+  y un error de la zona no bloquea la cola de auditoría, que nunca se descarta.
+- **`revoked`** del latido. Cada entrada lleva el `lease_id` (el del latido en `lease_lost`; el del arrendamiento
+  en las demás) y la zona ignora la que no casa con el arrendamiento actual de ese personaje: un latido construido
+  antes de una salida y una nueva entrada en la misma instancia no expulsa al que acaba de entrar. Un personaje en
+  `LOADING` no tiene guardado final: se libera sin guardar (§5.2).
 
 | `reason` | Cuándo | La zona |
 |---|---|---|
-| `lease_lost` | El `(character_id, lease_id)` del latido no casa con un arrendamiento de esta instancia | Expulsa sin guardar y descarta el estado en memoria |
+| `lease_lost` | El `(character_id, lease_id)` del latido no casa con un arrendamiento de esta instancia | La baja sin guardado de §7.2, sin `release` (en `LOADING`, la baja de §5.2) |
 | `session_revoked` | La sesión del arrendamiento está revocada (`replaced`, `password_changed`, `email_changed`, `email_reverted`, `refresh_reuse`, `role_changed`, `logout`, `deletion`, `admin`) | Guardado final y expulsión con NOTICE («Has iniciado sesión desde otro lugar», «Tu cuenta ha cambiado: vuelve a entrar») |
 | `suspended`, `banned`, `pending_deletion` | Sanción vigente o borrado pedido | Guardado final y expulsión con el motivo y la fecha |
 
 ### 6.1 Estados de la instancia y orden de las comprobaciones
 Cada petición interna se comprueba **en este orden**, y el primer fallo da la respuesta: (1) token → 401
 `bad_token`; (2) alcance de la instancia → 403 `forbidden`; (3) estado de la instancia (tabla); (4) arrendamiento
-(`lease_id` y `claimed_by`) → 409 `lease_lost`; (5) `seq` → `duplicate`, 409 `stale_seq` o 409 `seq_conflict`; (6)
-contenido (S3–S9) → 400 `invalid_save`.
+(`lease_id` y `claimed_by`) → 409 `lease_lost`; en operación y libro, arrendamiento en la instancia → 404; (5)
+`seq` → `duplicate`, 409 `stale_seq` o 409 `seq_conflict`; (6) contenido (S1–S8 de progresion.md §13.3) y errores
+de la base, con la regla de §7.3.
 
 | Petición | `starting` | `live` | `lost` | `replaced` | `stopped` |
 |---|---|---|---|---|---|
@@ -838,16 +880,21 @@ contenido (S3–S9) → 400 `invalid_save`.
 | Latido | 200 | 200 | 409 `instance_lost` | 409 `instance_replaced` | 409 `instance_stopped` |
 | Reclamación | 409 `instance_not_live` | 200 o sus errores | 409 `instance_lost` | 409 `instance_replaced` | 409 `instance_stopped` |
 | Guardado y liberación | §7.3 (no tiene arrendamientos: `lease_lost`) | §7.3 | §7.3: valen si `lease_id` y `claimed_by` casan (guardados finales) | ídem | ídem |
-| Bloques de ids, operación y libro | 409 `instance_not_live` | 200 | 409 `instance_lost` | 409 `instance_replaced` | 409 `instance_stopped` |
+| Bloques de ids | 200 (el primero es del arranque, §8) | 200 | 409 `instance_lost` | 409 `instance_replaced` | 409 `instance_stopped` |
+| Operación y libro | 409 `instance_not_live` | 200 o 404 | 409 `instance_lost` | 409 `instance_replaced` | 409 `instance_stopped` |
 | GET de fortalezas | 200 | 200 | 409 `instance_lost` | 409 `instance_replaced` | 409 `instance_stopped` |
 | PUT de fortaleza | 409 `instance_not_live` | 200 o 409 `version_conflict` | 409 `instance_lost` | 409 `instance_replaced` | 409 `instance_stopped` |
-| Lotes | 204 | 204 | 204 | 204 | 204 |
+| Lotes | 204 (o 200 con `rejected`, §6) | ídem | ídem | ídem | ídem |
 | Reportes, ignorados y sanciones | 409 `instance_not_live` | 200, o 403 `forbidden` | 409 `instance_lost` | 409 `instance_replaced` | 409 `instance_stopped` |
 
 La respuesta de un guardado lleva `instance_status`: así la zona se entera aunque su latido vaya por detrás.
 **Cierre por `instance_lost`, `instance_replaced` o `instance_stopped`** (en cualquier petición o en
-`instance_status`): NOTICE de expulsión «El servidor de la zona se ha reiniciado: vuelve a entrar» a todos, guardado
-final de todos (§7.2), `begin_flush` con 10 s como mucho y salida con código 3. El orquestador (compose, `restart:
+`instance_status`; `ZonePlatform` lo convierte en el evento `instance_closed`, que atiende `ServerMain`, §14.3):
+primero el guardado final de todos (`finish`, §7.2) y la liberación de los de `LOADING`, sin echar a nadie: la
+zona deja de leer sus entradas y de dar recompensas. Después `begin_flush` y espera a `is_flushed()`, con 10 s como
+mucho. **Solo entonces** NOTICE de expulsión «El servidor de la zona se ha reiniciado: vuelve a entrar» a todos,
+desconexión y salida con código 3. Así quien vuelve a entrar enseguida (sus arrendamientos pueden estar ya libres
+tras un `lost`) carga su guardado final y no el anterior. El orquestador (compose, `restart:
 unless-stopped`) arranca una instancia nueva; en desarrollo el proceso sale con ese mensaje. `instance_not_live` es
 un error de orden de la zona: se registra.
 
@@ -855,84 +902,161 @@ un error de orden de la zona: se registra.
 `instance_alive`, `instance_lost`, `instance_replaced`, `instance_stopped`, `lease_lost`, `stale_seq`,
 `seq_conflict`, `ticket_invalid`, `character_busy`, `version_conflict`, `schema_mismatch` (solo en el registro: el
 `record_format` o el `protocol_version` no los admite esta plataforma; la zona sale con código 1); 400
-`bad_request`, `validation`, `invalid_save` (con `detail`: la comprobación y el campo). Cuerpo como en §4.1.
+`bad_request`, `validation`, `invalid_save` (con `fields: {check: "S4", detail: "…"}`: la comprobación de
+progresion.md §13.3 y lo que falló, de `*persistence.InvalidSaveError`, `envelope` para un error del sobre o un
+error de la base que no es pasajero, §7.3); 404 `not_found` (`persistence.ErrNotFound`, y operación o libro sin arrendamiento); 503 `db_unavailable` (la
+base no responde o la transacción chocó con otra más veces de las que se reintenta, §7.3). Cuerpo como en §4.1.
+
+**`account_blocked`** añade al cuerpo de §4.1 el tipo, el fin y el motivo: `{"error": {"code": "account_blocked",
+"message": "…", "kind": "suspension"|"ban"|"pending_deletion", "until_unix": 1800000000, "reason": "…"}}`
+(`until_unix` null en una expulsión permanente; en `pending_deletion`, el `purge_after`). **El texto para el
+jugador lo compone la plataforma**, igual que el `text` de `revoked` en el latido: `message` según `kind` («Tu
+cuenta está suspendida hasta el 3/11/2026 18:00 UTC: motivo», «Tu cuenta está expulsada: motivo», «Tu cuenta se
+borrará el …»), cortado en un carácter entero a 255 B (el `text_len` del REJECT). La zona lo pone tal cual en
+`AuthOutcome.text`; `kind`, `until_unix` y `reason` van a su registro.
 
 ## 7. Persistencia del personaje (TEC-25)
 ### 7.1 Qué se guarda
-La tabla «quién guarda qué» está en §3. En el guardado viajan:
+La tabla «quién guarda qué» está en progresion.md §3.1. El cuerpo del guardado (§7.3) lleva una clave por sección
+registrada en `CharacterSaver`, con su nombre:
 
-| Parte | Qué | Quién la construye |
+| Sección | Qué | Quién la construye |
 |---|---|---|
-| `record` | El `CharacterRecord` de progresion.md §3.4 sin `character_id`, `realm`, `name`, `race_id` ni `appearance`: progreso, vida, arma activa, habilidades, temporizadores (CMB-30), `location` (zona, canal, posición, giro, en combate, `saved_at`), inventario y saldos | `ProgressService` (progresion.md) |
-| `ops` | Las operaciones del diario aún no enviadas, con sus apuntes y eventos de objeto (progresion.md §9.3) | `ProgressService` |
+| `progress` | La sección de progresion.md §3.4 y §9.3: el `ProgressRecord` sin los campos de solo lectura, con `ops` (las operaciones del diario aún no incluidas en ningún cuerpo, progresion.md §9.2, con sus apuntes y eventos de objeto) | `ProgressService` (progresion.md) |
 | `pvp` | Totales de GUE-19 `{kills, deaths, assists, captures, gate_damage, defend_s}` | `ScoreKeeper` (§8) |
 | **Nunca** | `PlayerState`, `CombatState` y lo que se predice por tick, la cola de entradas, el combate en curso, los avisos | — |
 
-**Volver al mundo** (provisional, tomada de noche): la regla es la de progresion.md §8 y solo está allí. Posición:
-el sitio guardado si es la misma zona y canal, `saved_at` tiene menos de 15 min, no estaba en combate ni muerto, pisa
-suelo y no está en la zona segura de otro reino; si no, el punto de aparición del reino. Vida: la guardada más la
-regeneración del tiempo pasado; muerto, llena en el campamento.
+**Volver al mundo** (provisional, tomada de noche): la regla es la de progresion.md §8. **CMB-30** (las dos armas, el
+arma activa, la vida y las reutilizaciones largas) también es de progresion.md §8 y viaja dentro de `progress`: aquí
+no tiene sección propia.
 
-`record_format` y `save_format` son los de progresion.md (1). La zona declara el suyo al registrarse; si la
-plataforma no lo admite, 409 `schema_mismatch` y la zona no arranca. Las filas son columnas: un formato nuevo es
-código nuevo en P3b y, si hace falta, una migración (§2.4), no una conversión al leer.
+**Formatos.** `save_format` (1) versiona el sobre de §7.3 y es de este documento. `progress.progress_format` (1)
+versiona la sección y es el `record_format` que la zona declara al registrarse: `ZonePlatform.RECORD_FORMAT` (1),
+que existe desde P4 aunque `ProgressRecord` llegue en progresion.md P5a; `ProgressRecord.FORMAT` (progresion.md
+§3.4) vale lo mismo y una prueba de P5a lo exige. La compatibilidad se decide solo en el registro: si la plataforma no admite ese
+`record_format`, 409 `schema_mismatch` y la zona sale con código 1 (§8). En un guardado, un `progress_format`
+distinto es un error nuestro: 400 `invalid_save` (S1). Las filas son columnas: un formato nuevo es código nuevo en
+`internal/progress` (progresion.md P7) y, si hace falta, una migración (§2.4), no una conversión al leer.
 
 ### 7.2 Cuándo se guarda
 | Momento | Cómo |
 |---|---|
-| Punto de control | Cada 60 s (`--save-interval=<s>`) si alguna sección está sucia (moverse y la vida cuentan). Cada personaje en su fase (`tick % interval == character_id % interval`): 64 jugadores dan ~1 guardado por segundo |
-| Evento crítico | Los de progresion.md §9.2 (kit de inicio, subida de nivel, comandos de GM que dan o quitan, reversiones; desde la fase 6, comercio, correo y botín raro) y el renombrado: `CharacterSaver.mark_critical(net_id)`; sale en cuanto no haya otro en vuelo |
-| Salida | Al irse el cuerpo (CLIENT_LEAVE, desconexión o fin de los 15 s en combate): `finish(net_id, LOGOUT)` con `release_lease`, **antes** de `ScoreKeeper.forget` y de soltar el estado de progresion.md |
-| Cierre ordenado | Los cinco disparadores: `--stop-file`, `--quit-after-ticks`, `--idle-quit`, `shutdown` de la consola y el mantenimiento de la plataforma. Todos pasan por `ServerMain._shutdown` → `ZoneServer.stop`: `finish` de todos, `begin_flush` y espera hasta que `pending_count()` sea 0 y `is_flushed()`, con un tope de 600 ticks (10 s) |
+| Punto de control | Cada 60 s (`--save-interval=<s>`) si alguna sección está sucia (su `is_dirty`; en `progress`, moverse y la vida cuentan). Cada personaje en su fase (`tick % interval == character_id % interval`): 64 jugadores dan ~1 guardado por segundo |
+| Evento crítico | Los de progresion.md §9.2, que es quien mantiene la lista: `CharacterSaver.mark_critical(net_id, reason)`; sale en cuanto no haya otro en vuelo |
+| Salida | Al irse el cuerpo (CLIENT_LEAVE, desconexión o fin de los 15 s en combate), en este orden: `CharacterSaver.finish(net_id, LOGOUT)` con `release_lease` → `ScoreKeeper.forget` → `ProgressService.on_departure(net_id)` |
+| Baja sin guardado | Un definitivo antes de `finish` (`save_rejected`, §7.3) o un `revoked` `lease_lost` de alguien en el mundo, en este orden: (1) `CharacterSaver.drop(net_id, code)`, que desata la entrada, descarta el final que esperase y llama a `release` salvo en `lease_lost`; (2) NOTICE y expulsión con el cuerpo fuera **en el acto** (`_remove_player`, sin `_should_linger`: la salida en combate no vale aquí, porque el arrendamiento ya no es de la zona o se acaba de liberar); (3) `ScoreKeeper.forget` y `ProgressService.on_departure(net_id)`. No pasa por la «Salida»: `finish` sobre un `net_id` sin entrada no hace nada |
+| Cierre ordenado | Los cinco disparadores: `--stop-file`, `--quit-after-ticks`, `--idle-quit`, `shutdown` de la consola y el mantenimiento de la plataforma (`maintenance` del latido: NOTICE a los 10, 5 y 1 min, a los 30 s y a los 10 s, y cierre a su `at_unix`, §12). Todos pasan por `ServerMain._shutdown` → `ZoneServer.stop`: `release` de los peers en `LOADING` y `auth_provider.cancel` de los de `VERIFYING`, `finish` de todos los del mundo antes de `_clear_players()`, `begin_flush` y espera hasta que `pending_count()` sea 0 y `is_flushed()`, con un tope de 600 ticks (10 s) |
 | Expulsión de la plataforma | `revoked` del latido (§6) |
 | Cierre de la instancia | §6.1 |
 
 - **Una escritura en vuelo por personaje.** Mientras vuela, los cambios solo marcan la sección; al llegar la
   respuesta definitiva se construye el siguiente. La foto se toma **dentro del tick**, tras «altas».
 - **El final se construye en el momento** (`finish`): el jugador ya no cambia, así que espera detrás del que vuela
-  sin rehacerse. Como mucho uno en vuelo y un final esperando.
-- **Un cuerpo enviado no cambia.** `CharacterSaver` guarda los bytes (`JSON.stringify` una vez) y los reintentos
-  van byte a byte. `JSON.stringify` y el envío no bloquean el tick.
-- **Cercado** (§5.3): los guardados siguen saliendo; las operaciones que piden guardado crítico se rechazan.
+  sin rehacerse. Como mucho uno en vuelo y un final esperando. Lleva solo las operaciones que aún no iban en ningún
+  cuerpo (progresion.md §9.2): si el que vuela se aplica, el final no repite nada; si el que vuela recibe un
+  definitivo, el final se descarta con él.
+- **Una sección que devuelve `{}`** no puede construirse ahora (la de `progress`, sin id para cerrar lo agregado,
+  algo que su reserva evita: progresion.md §4.5). Ese guardado no sale ni gasta `seq`: un punto de control o un
+  crítico se vuelve a intentar en el `step` siguiente. Un final no puede esperar, porque tras `finish` el estado
+  del jugador ya no existe: alerta en el registro y `release` sin guardar, como tras un definitivo.
+- **Entradas por `lease_id`.** `CharacterSaver` guarda sus entradas por `lease_id`, que es único por reclamación,
+  con dos índices aparte: `character_id` → `lease_id` actual y, hasta `finish` o `drop`, `net_id` → `lease_id`. El
+  `net_id` se reutiliza a los 600 ticks (red.md §9.1) y el mismo personaje puede volver a esta instancia con otra
+  reclamación mientras su final se sigue reintentando minutos. Cada respuesta se asocia por el `lease_id` y el `seq`
+  de su propia petición (el `context` de `ZonePlatform.save`), nunca por `character_id` ni por `net_id`; un `track`
+  con otro `lease_id` no toca la entrada vieja.
+- **Tras `finish` (o `drop`), la entrada ya no es del `net_id`.** Las respuestas del que volaba y del final no llaman
+  a `acknowledge` ni a `is_dirty` de las secciones (su estado ya no existe) ni emiten `save_rejected`: un 200 cierra
+  la entrada; un definitivo solo se registra (y, si no es `lease_lost`, `CharacterSaver` llama a `release` de ese
+  `lease_id`), sin expulsar a nadie ni volver a llamar a `on_departure`. Si el personaje ya volvió a entrar, el
+  `release` del arrendamiento viejo da `lease_lost` en la plataforma y no toca el nuevo.
+- **Baja en `LOADING`:** no pasa por `CharacterSaver` (§5.2).
+- **Un cuerpo enviado no cambia.** `CharacterSaver` arma el sobre entero de §7.3 (también `zone_instance_id`),
+  guarda los bytes (`JSON.stringify` una vez) y los reintentos van byte a byte. `JSON.stringify` y el envío no
+  bloquean el tick.
+- **Cercado** (§5.3): los guardados siguen saliendo; las operaciones que piden guardado crítico (comandos de GM que
+  cambian algo; en la fase 6, comercio y correo) se rechazan. Los críticos del juego (kit, subida de nivel, captura)
+  no: se marcan y salen en cuanto se pueda.
 
 ### 7.3 Versiones e idempotencia
 ```json
 {"save_format": 1, "character_id": "41", "zone_instance_id": "…", "lease_id": "…", "seq": 17, "reason": 1,
  "release_lease": false,
- "record": {"…": "CharacterRecord de progresion.md §3.4 sin character_id, realm, name, race_id ni appearance"},
- "ops": [{"op_id": "5120", "kind": 6, "…": "progresion.md §9.3"}],
+ "progress": {"progress_format": 1, "level": 7, "…": "ProgressRecord de progresion.md §3.4 sin los campos de solo lectura",
+              "ops": [{"op_id": "5120", "kind": 2, "…": "progresion.md §9.3"}]},
  "pvp": {"kills": 3, "deaths": 1, "assists": 0, "captures": 1, "gate_damage": 450, "defend_s": 120}}
 ```
 
-`seq` empieza en 1 con cada arrendamiento y sube 1 en cada guardado; `reason`: 1 punto de control, 2 crítico, 3
-salida, 4 cierre del servidor, 5 expulsión. La clave de idempotencia es **`(lease_id, seq)`**. La plataforma, en una
-transacción:
+Es el cuerpo de `PUT /internal/v1/characters/{id}/state`: el sobre (`save_format` 1) con una clave por sección
+registrada en `CharacterSaver` (§7.1). **Lo arma entero `CharacterSaver`**, con `zone_instance_id =
+platform.instance_id()`, `lease_id` y `character_id` en cadena, antes del único `JSON.stringify`; `ZonePlatform.save`
+manda esos bytes sin tocarlos (§14.3). La sección `progress` no lleva zona: la del guardado es la de la instancia
+`claimed_by` (`SaveKey.ZoneID`). `seq` empieza en 1 con cada arrendamiento y sube 1 en cada guardado; `reason`: 1
+punto de control, 2 crítico, 3 salida, 4 cierre del servidor, 5 expulsión. La clave de idempotencia es **`(lease_id,
+seq)`**, y solo ella.
 
-1. `select … from character_leases where character_id = $1 for update` (y la fila de `character_progress`).
-2. Otro `lease_id`, o `claimed_by` distinto de `zone_instance_id` → 409 `lease_lost`.
+**Secciones.** `progress` es obligatoria. `pvp` es opcional: sin ella, `character_pvp_stats` no cambia; con ella,
+cada total se lee con `jsonx.Int` ≥ 0 y se escribe con `greatest(columna, nuevo)`, sin error: los totales no bajan.
+**El sobre** se decodifica estricto (`DisallowUnknownFields`, `jsonx`): `save_format` = 1, `character_id` igual al
+`{id}` de la ruta, ids y `seq` válidos, `reason` 1–5 y `progress` presente. Cualquier fallo es 400 `invalid_save` con
+`check = "envelope"`, antes de tocar la base. Después, la plataforma, en una transacción:
+
+1. `select … from character_leases where character_id = $1 for update`.
+2. Sin fila (el personaje se purgó, §11.2), otro `lease_id`, o `claimed_by` distinto de `zone_instance_id` → 409
+   `lease_lost`.
 3. `seq = last_seq`: si el SHA-256 del cuerpo es `last_save_hash`, 200 `{applied: false, duplicate: true,
-   save_version}`; si no, 409 `seq_conflict`. `seq < last_seq` → 409 `stale_seq`.
-4. `ProgressStore.Apply` (S3–S9 de progresion.md §13 y los bloques de ids de §7.5) y `character_pvp_stats` (los
-   totales no bajan); `last_seq = seq`, `last_save_hash`, `save_version += 1`; con `release_lease`,
-   `zone_instance_id = null` y `released_at`. Si algo falla, **no se escribe nada** y 400 `invalid_save`.
+   save_version}` con el `last_save_version` del arrendamiento (el de cuando se aplicó: la plataforma no lee
+   `character_progress`); si no, 409 `seq_conflict`. `seq < last_seq` → 409 `stale_seq`.
+4. `ProgressStore.Apply(ctx, tx, key, progress)` con las comprobaciones S1–S8 de progresion.md §13.3 (los bloques de
+   ids de la instancia incluidos), que escribe `saved_at = now()` y `save_version + 1` en `character_progress` (S8) y
+   devuelve el `save_version` nuevo; `character_pvp_stats` con `greatest`, si llega `pvp`; `last_seq = seq`,
+   `last_save_hash`, `last_save_version`; con `release_lease`, `zone_instance_id = null` y `released_at`. Si algo
+   falla, **no se escribe nada** y la respuesta sale de la regla de abajo.
+
+**Errores del guardado** (la única regla; progresion.md §13.3 la cita):
+
+| Error, en el sobre, en `Apply` o en el COMMIT | Respuesta |
+|---|---|
+| Error del sobre (arriba) | 400 `invalid_save` con `check = "envelope"` |
+| `*persistence.InvalidSaveError` (S1–S7) | 400 `invalid_save` con su `check` y su `detail` |
+| SQLSTATE de clase 23 (clave primaria, único, clave ajena, CHECK, también los diferidos que salta el COMMIT, como el de ranuras) o `P0001` (el disparador de solo añadir) | 400 `invalid_save` con `check = "S8"` y en `detail` el SQLSTATE y la restricción: es un error determinista, reintentarlo no lo arregla |
+| `40001` o `40P01` | Se reintenta la transacción entera dentro de la plataforma (tres veces, como al crear personajes); después, 503 `db_unavailable` |
+| Sin conexión con la base, plazo de sentencia vencido | 503 `db_unavailable` |
+| Cualquier otro | 500 `internal` |
+
+La zona reintenta el mismo cuerpo ante un 5xx o un 401 y da por definitivo cualquier otro 4xx (tabla de abajo), así
+que un fallo pasajero nunca expulsa y uno determinista nunca se reintenta para siempre.
+
+`save_version` es un contador monótono por personaje que **no interviene en la idempotencia**: va en la respuesta
+`{applied, duplicate, save_version, instance_status}` y solo lo usan registros, métricas y pruebas; las secciones
+confirman por `seq`.
 
 | Respuesta | La zona |
 |---|---|
-| 200 `applied` o `duplicate` | Aplicado (un `duplicate` es un guardado que llegó y cuya respuesta se perdió): las secciones lo confirman y las `ops` enviadas salen del diario; si hay otro marcado o un final esperando, sale |
-| 409 `lease_lost` | Definitivo: expulsa con NOTICE «Tu personaje ha entrado en otro servidor» si sigue, descarta el estado en memoria y el final que esperase; no libera |
-| 409 `stale_seq` o `seq_conflict` · 400 `invalid_save` | Definitivo y error nuestro: registro de error, NOTICE «No se ha podido guardar tu personaje; vuelve a entrar», descarta el estado y llama a `release` sin guardar, para que el personaje no quede bloqueado |
-| 409 `instance_*` | El cierre de §6.1 |
+| 200 `applied` o `duplicate` | Aplicado (un `duplicate` es un guardado que llegó y cuya respuesta se perdió): antes de `finish`, cada sección recibe `acknowledge(net_id, seq)` (en `progress`, las `ops` de ese cuerpo y anteriores salen del diario); si hay otro marcado o un final esperando, sale |
+| 409 `lease_lost` | Definitivo: la baja sin guardado de §7.2, sin `release`, con NOTICE «Tu personaje ha entrado en otro servidor» |
+| 409 `stale_seq` o `seq_conflict` · 400 `invalid_save` | Definitivo y error nuestro: alerta en el registro (con `check` y `detail` en un `invalid_save`) y la baja sin guardado de §7.2, con `release` para que el personaje no quede bloqueado y NOTICE «No se ha podido guardar tu personaje; vuelve a entrar» |
+| 409 `instance_lost`, `instance_replaced` o `instance_stopped` | El cierre de §6.1, con guardados finales de todos (los de una instancia sustituida valen si nadie ha reclamado al personaje, §5.3) |
+| Cualquier otro 4xx (400 `bad_request` o `validation`, 403, 404, 413, un 409 desconocido) | Definitivo, como `invalid_save`: alerta, NOTICE y la baja sin guardado con `release`. Vale también para la respuesta de una liberación, que entonces no se repite |
 | 5xx, 401, sin conexión, plazo vencido | Reintento del **mismo** cuerpo (§6). No sale `seq + 1` hasta tener una de las respuestas de arriba |
+
+Antes de `finish`, los definitivos llegan a la zona con `CharacterSaver.save_rejected(net_id, character_id, code)`:
+la zona hace la baja sin guardado de §7.2 (progresion.md §9.2). Después de `finish`, la regla de §7.2: solo se
+registran. Esta tabla es la única: progresion.md la cita.
+
+**Tamaño.** Con la plataforma caída, el guardado en vuelo se reintenta y nada más sale, así que el diario solo crece
+con las operaciones sueltas; las de GM se rechazan con la zona cercada (§5.3) y DESTROY responde NOT_NOW con 256
+operaciones o más sin confirmar (progresion.md §4.2). Así ningún cuerpo llega al 1 MB de §6.
 
 Ejemplo: un guardado vence su plazo de 3 s pero la plataforma lo aplica tarde. El reintento lleva el mismo `seq` y
 los mismos bytes: `duplicate`, que la zona trata como aplicado. El siguiente lleva `seq + 1` y solo las `ops`
-nuevas, así que S3 («ningún `op_id` existe ya») pasa.
+nuevas, así que S2 de progresion.md (un `op_id` que ya está en `economy_ops` falla) pasa.
 
 El arrendamiento hace a la zona la única escritora. Fuera de la zona nadie escribe el progreso en la fase 5 (la
 edición sin conexión es de SOC-37, fase 8); quien lo haga en el futuro cambiará antes `lease_id`. **Regla de los
 objetos:** toda operación que mueve objetos o monedas entre dos personajes se guarda en un solo `POST
-/internal/v1/saves` con los dos; así un `uid` nunca está en dos filas (la clave primaria de `item_instances` lo
-impide) y nada se duplica.
+/internal/v1/saves` con los dos (una sola operación con dos participantes, `op_participants` de progresion.md §3.3);
+así un `uid` nunca está en dos filas (la clave primaria de `item_instances` lo impide) y nada se duplica.
 
 ### 7.4 Si algo se cae
 | Cae | Qué pasa | Se pierde |
@@ -946,43 +1070,41 @@ Deseable (no bloquea TEC-25): un cierre ordenado sin plataforma escribe lo pendi
 y lo reenvía al arrancar; vale porque `lease_id` no cambia al liberar y `seq` lo ordena.
 
 ### 7.5 Frontera con `docs/progresion.md`
-**En Go** (P3 define la interfaz y la usa con un falso; P3b la implementa en `internal/progress`):
+**En Go.** La interfaz `persistence.ProgressStore` (`internal/persistence/progress.go`) la define P2 de este documento
+con un falso, **junto con sus errores** (`*persistence.InvalidSaveError` → 400 `invalid_save`;
+`persistence.ErrNotFound` → 404): así P2, P3 y el falso los usan antes de que exista `internal/progress`, que los
+devuelve e importa `persistence` (nunca al revés: no hay ciclo). La implementa `internal/progress` (progresion.md
+P7). Sus tipos, errores y firmas (`CreateParams`, `SaveKey`, `Summary`, `InvalidSaveError`, `ErrNotFound`, `Create`,
+`Load`, `Apply`, `Summaries`, `Purge`, `PurgeRetention`, `Export`, `Op` y `Ledger`) están en progresion.md §13.2 y no
+se repiten aquí. En la frontera viaja JSON crudo; dentro, `internal/progress` decodifica estricto (`jsonx.Int`,
+`jsonx.ID`, `DisallowUnknownFields`).
 
-```go
-// internal/persistence/progress.go. Todo va dentro de la transacción de quien llama.
-type CreateParams struct { RaceID string; Appearance [8]byte; StarterTemplateID string }
-type SaveKey struct { CharacterID int64; InstanceID [16]byte }   // instancia que reclamó: dueña de los bloques de ids
-type ProgressStore interface {
-	Create(ctx context.Context, tx pgx.Tx, worldID int16, characterID int64, p CreateParams) error  // personaje nuevo
-	Load(ctx context.Context, tx pgx.Tx, characterID int64) (progress.Record, error)              // «record» de la reclamación
-	// S3–S9 y bloques; *progress.InvalidError → 400 invalid_save. Devuelve el save_version nuevo.
-	Apply(ctx context.Context, tx pgx.Tx, key SaveKey, body progress.SaveBody) (int64, error)
-	Purge(ctx context.Context, tx pgx.Tx, characterID int64) error                                // progress_purge_character
-	Op(ctx context.Context, tx pgx.Tx, opID int64) (progress.OpView, error)
-	Ledger(ctx context.Context, tx pgx.Tx, characterID int64, limit int, beforeEntryID int64) ([]progress.LedgerEntry, error)
-}
-```
+- **Validación de la creación.** En el mismo archivo, P2 define `persistence.CreateValidator` y
+  `*persistence.ValidationError` (firmas en progresion.md §13.2; el manejador de personajes pasa sus `Fields` tal
+  cual a los `fields` del 400 `validation`), con la implementación provisional de §4.4 paso 5. `*progress.Rules` la
+  implementa y `serve` elige cuál usar: progresion.md P7 no toca el manejador de personajes.
 
-`progress.Record`, `progress.SaveBody{Record, Ops}` y `progress.Op` son los tipos de progresion.md §3.4 y §9.3,
-con `jsonx.Int` y `jsonx.ID`; no hay JSON opaco. S1 (arrendamiento) y S2 (`seq`) los hace `persistence.Store.Save`
-antes de llamar a `Apply`. **Bloques de ids:** cada `op_id` y cada `uid` nuevo cae en un bloque de `id_blocks` dado a
-`claimed_by`; si no, 400 `invalid_save` (una zona no puede inventar ids de otra).
+- **La plataforma no lee columnas del progreso** con SQL propio: la lista de personajes, `enter` y la excepción de la
+  reserva del nombre usan `Summaries` (P2 llega antes que la migración 0010); el `save_version` de un `duplicate`
+  sale de `character_leases` (§7.3) y las lápidas que ya puede borrar, de `PurgeRetention` (§11.1).
+- Arrendamiento y `seq` (pasos 2 y 3 de §7.3) los hace `persistence.Store.Save` antes de llamar a `Apply`.
+- **Bloques de ids:** cada `op_id` del cuerpo y cada `uid` nuevo cae en un bloque de `id_blocks` dado a `claimed_by`
+  (`SaveKey.InstanceID`); si no, 400 `invalid_save` (S2 y S5: una zona no puede inventar ids de otra).
 
 **En la zona** (GDScript):
 
 | Pieza | Documento | Hace |
 |---|---|---|
-| `ZonePlatform`, `PlatformClient` | Este (P4) | HTTP, colas, latido, reclamaciones, eventos |
-| `ClaimedCharacter` | Este (P4) | Lo que trae la reclamación; `record` va tal cual a progresion.md |
-| `CharacterSaver` | Este (P5) | Cuándo, `seq`, una en vuelo, final, respuestas de §7.3 |
-| `PlatformProgressRepository extends ProgressRepository` | Este (P5) | `load_character` devuelve en el `poll` siguiente el `record` de la reclamación (sin HTTP); `save_character` → `ZonePlatform.save`; `request_id_block` → `POST /internal/v1/id-blocks` |
-| `ProgressRepository`, `MemoryProgressRepository`, `FileProgressRepository` | progresion.md | La interfaz y los repositorios sin plataforma (pruebas y `--progress-file`), con la misma regla de `seq` |
-| `ProgressService`, `PlayerProgress`, `CharacterRecord` | progresion.md | La carga y el alta (§9.1), las operaciones y la sección `progress` del guardado |
+| `ZonePlatform`, `PlatformClient` | Este (P4) | HTTP, colas, latido, reclamaciones, bloques de ids, eventos |
+| `ClaimedCharacter`, `AuthOutcome` | Este (P4) | Lo que trae la reclamación; `progress` va tal cual a `ProgressRecord.from_dictionary` |
+| `CharacterSaver` | Este (P5) | Cuándo, `seq`, una en vuelo, final, el sobre entero, respuestas de §7.3 y la baja sin guardado (`drop`); llama directamente a `ZonePlatform.save` |
+| `ProgressService`, `PlayerProgress`, `ProgressRecord` | progresion.md | La carga (`prepare`, §5.2) y el alta (`on_arrival`), las operaciones y la sección `progress` |
 
-`CharacterSaver` habla siempre con un `ProgressRepository`: con plataforma, `PlatformProgressRepository`; sin
-ella, los de progresion.md. Así hay **un solo** cauce de guardado. Las secciones: `&"progress"` (de
-`ProgressService`: `record` y `ops`) y `&"pvp"` (de `ScoreKeeper`). Los cambios que esto pide en progresion.md están
-en §17.
+`CharacterSaver` solo existe con `--platform`: sin plataforma nada se guarda, todo jugador es efímero y
+`ProgressService.setup(zone, null, null, commands)` (progresion.md §9.4). Las secciones son `&"progress"`
+(`ProgressService.setup`) y `&"pvp"` (`ScoreKeeper`, P6), con la API de §14.3. Las pruebas usan `FakeZonePlatform`,
+que hace la ida y vuelta por JSON igual que `PlatformClient` (§14.3) y devuelve en la reclamación siguiente lo último
+aplicado (§14.1). Lo acordado con progresion.md está en §17.
 
 ## 8. Guerra persistente (GUE-19)
 
@@ -1002,6 +1124,8 @@ Registro de una fortaleza (`fortresses.record`, esquema 1), escrito por `Fortres
   3. `GET /internal/v1/fortresses` con reintentos (1, 2, 4, 8… s; a los 60 s sin respuesta, sale con código 1).
      **Sin respuesta no es «sin registro»:** solo una lista vacía lo es (primer arranque: el estado inicial de cada
      definición, sin aviso). Un registro con otro `schema`: el estado inicial con un aviso.
+  3b. `POST /internal/v1/id-blocks`: el primer bloque de ids (progresion.md §4.5), con los mismos reintentos.
+     `startup_finished` espera a tenerlo y el bloque llega a `ProgressService` como evento `id_block`.
   4. `ZoneServer.start(…, platform)` aplica las fortalezas cargadas y **después** abre el puerto
      (`NetTransport.host`).
   5. `POST …/live`: desde aquí `enter` manda jugadores. Los latidos empiezan tras el paso 1.
@@ -1009,10 +1133,11 @@ Registro de una fortaleza (`fortresses.record`, esquema 1), escrito por `Fortres
   su progreso (el círculo está vacío y decae); los guardias no se guardan (los repone el generador). Sin plataforma,
   como hoy.
 - **Guardar:** en cada cambio de dueño o de fase y, si cambió algo (la vida de la puerta), cada 60 s. Un tick futuro
-  `t` se escribe como `now_unix + ceil((t − tick) / 60)`. Una petición en vuelo por fortaleza, siempre con el
-  registro más reciente y con `expected_version` (la última que devolvió la plataforma). 409 `version_conflict`: la
-  zona toma la `version` del error y reenvía su registro (la instancia viva manda). Solo escribe la instancia
-  `live` de esa zona.
+  `t` se escribe como `now_unix + ceili((t - tick) / 60.0)` (en GDScript, `(t - tick) / 60` entre enteros trunca
+  antes de redondear y `ceil` devuelve `float`). Una petición en vuelo por fortaleza, siempre con el registro más
+  reciente y con `expected_version` (la última que devolvió la plataforma). 409 `version_conflict`: la zona toma la
+  `version` del error y reenvía su registro (la instancia viva manda). Solo escribe la instancia `live` de esa zona,
+  y la plataforma no deja escribir una fortaleza de otra zona (§6).
 - El reinicio a neutral cada 30 min cuenta desde `last_reset_at_unix` (reiniciar el proceso no reinicia el ciclo).
 - **Historial:** los `WarEvents` 3 (captura iniciada), 6 (capturado) y 7 (reiniciado) van al lote de `war-events`
   (`{key, fortress_id, event, realm, at_unix}`) → `fortress_events`.
@@ -1021,7 +1146,7 @@ Registro de una fortaleza (`fortresses.record`, esquema 1), escrito por `Fortres
 
 | Contador | Lo suma | Cuándo |
 |---|---|---|
-| `captures` | `FortressController`, al aplicar el cambio de dueño | A cada jugador del reino captor presente, vivo y conectado en el círculo en el tick de la captura |
+| `captures` | `FortressController`, al aplicar el cambio de dueño | A cada jugador del reino captor presente, vivo y conectado en el círculo en el tick de la captura, sin GM invisibles ni personajes marcados por un comando de GM (`gm_forced`, progresion.md §6.2). La lista se calcula una vez y la misma va a `ProgressService.on_capture` (la recompensa de progresion.md §6.2). Una captura forzada por un comando del fuerte no suma ni paga (progresion.md §6.2) |
 | `defend_ticks` | `FortressController._recount` | A cada jugador del reino **dueño** presente con el círculo activo (`circle_ticks` sigue contando a todos, para los méritos) |
 
   La sección `pvp` de `CharacterSaver` manda los totales cargados (`ClaimedCharacter.pvp`) más los de la sesión
@@ -1033,43 +1158,80 @@ Registro de una fortaleza (`fortresses.record`, esquema 1), escrito por `Fortres
 | Rol | Comandos | Sanciones que puede crear |
 |---|---|---|
 | `player` | Nada de moderación | — |
-| `moderator` | `/gm silenciar`, `/gm aviso`, `/gm expulsar`; los de lectura de progresion.md §10 (`inv_show`, `ledger_show`, `op_show`); etiqueta visible | `warning`; `mute` hasta 7 días |
-| `gm` | Lo anterior, `/gm suspender`, `/gm renombrar`, `/gm teleport`, `/gm invisible` y `/gm visible`, PRG-16 que cambia algo y los comandos del fuerte | Lo anterior; `suspension` hasta 7 días; `rename` |
+| `moderator` | `/gm silenciar`, `/gm aviso`, `/gm expulsar`; etiqueta visible | `warning`; `mute` hasta 7 días |
+| `gm` | Lo anterior, `/gm suspender`, `/gm renombrar`, `/gm teleport`, `/gm invisible` y `/gm visible`, los de progresion.md §10 (PRG-16, también las consultas `inv_show`, `ledger_show` y `op_show`) y los comandos del fuerte (con plataforma, lo que provocan no paga nada persistente a nadie, tampoco al GM, y `/gm teleport` y `/gm visible` marcan al personaje que mueven o muestran, que no cobra hasta reaparecer: progresion.md §6.2) | Lo anterior; `suspension` hasta 7 días; `rename` |
 | `admin` | Todo, también `/gm banear`, `/gm anuncio` y `/gm apagar` | Lo anterior; `suspension` de más de 7 días; `ban` |
 
-- **El rol** lo pone `admin set-role <correo> <rol>` (auditado) y llega en la reclamación. `set-role` **revoca las
-  sesiones de la cuenta** (`role_changed`): el latido expulsa al personaje en 5 s como mucho y vuelve a entrar con
-  el rol nuevo. Bajar de rol a un GM conectado le quita el poder enseguida.
+- **El rol** lo pone `admin --actor <correo> set-role <correo> <rol>` y llega en la reclamación. `set-role` **revoca
+  las sesiones de la cuenta** (`role_changed`): el latido expulsa al personaje en 5 s como mucho y vuelve a entrar
+  con el rol nuevo. Bajar de rol a un GM conectado le quita el poder enseguida. **Su fila de `audit_log` es fija,
+  porque S2 la busca:** `source = 'cli'`, `command = 'set-role'`, `actor_account_id` la del `--actor`,
+  `target_account_id` la cuenta, `args = {"from": "gm", "to": "player", "os_user": "…"}` y `at = now()`. Con ella,
+  S2 da por bueno el actor de una operación que el GM creó antes de perder el rol y que aún se está guardando
+  (progresion.md §13.3). S2 solo lee filas `cli`, que una zona no puede escribir (§6, «Lotes»); el índice
+  `(target_account_id, command, at)` de 0005 la encuentra.
 - **Permiso por comando.** Cada comando del `CommandRegistry` declara su `min_role`; sin permiso o desconocido:
   «Comando desconocido. Escribe /ayuda.». Sin plataforma, como hoy (consola, y DEBUG_COMMAND con
   `--debug-commands`).
 - **DEBUG_COMMAND con plataforma** (solo en `dev` y `test`, §5.5) exige además el `min_role` del comando: `gm` para
-  todos los de red (teletransporte, vida, fuerte, 40–43 de progresion.md). Sin el rol, suma un aviso como hoy y no
-  se ejecuta ni se guarda nada.
-- **Sobre los propios personajes.** `item_give`, `item_take`, `currency_add`, `level_set`, `xp_add` y `op_revert`
-  sobre un personaje de la propia cuenta responden «No puedes usarlo sobre tus personajes», salvo con rol `admin` o
-  con `env` `dev` o `test`. La auditoría guarda siempre `target_account_id`.
+  los de red (teletransporte, vida, fuerte); `admin` para los que crean o conservan valor de un personaje persistente
+  o se saltan su equipo: los 40–43 y el 5, el 13 y el 16 (la lista es de progresion.md §10). Sin el rol, suma un
+  aviso como hoy y no se ejecuta ni se guarda nada.
+- **Sobre los propios personajes.** Todo comando de progresion.md §10 que cambia algo (`item_give`, `item_take`,
+  `currency_add`, `level_set`, `xp_add`, `op_revert`, también por DEBUG_COMMAND) sobre un personaje de la propia
+  cuenta exige `admin`, sin excepción por entorno; si no, «No puedes usarlo sobre tus personajes». La regla es de
+  progresion.md §10 y S2 la repite en Go, en las operaciones GM y en la REVERSAL de `op_revert`. La auditoría guarda
+  siempre `target_account_id`.
 - **Invisible.** La entidad del GM no entra en el interés de los demás (`InterestPolicy`), su `Combatant` no hace
   ni recibe daño (`CombatResolver` lo salta), no cuenta en `_presence_candidates` (círculo), ni en `ScoreKeeper`, ni
-  en las recompensas de progresion.md (méritos, XP, oro). `/gm visible` lo deshace; los dos van auditados.
+  en las recompensas de progresion.md (méritos, XP, oro, captura; su §6.2). `/gm visible` lo deshace; los dos van
+  auditados.
 - **Auditoría:** todo comando de GM, de consola o de depuración con plataforma va al lote de `audit` (`{key,
-  actor_character_id, command, target_character_id, target_account_id, args, at_unix, source}`) y al registro de la
-  zona; los de la CLI y las sanciones, directos a `audit_log`. **Las lecturas también:** `inv_show`, `ledger_show`
-  y `op_show` (lote de la zona), y `admin reports list|show`, `admin audit` y `admin chat` (social.md §8: «registro
-  de cada consulta»).
+  actor_account_id, actor_character_id, command, target_character_id, target_account_id, args, at_unix, source}`)
+  y al registro de la zona; los de la CLI y las sanciones, directos a `audit_log`. En la entrada:
+  `actor_account_id`, la cuenta del GM (la de su reclamación; null desde la consola); `source`, con el vocabulario
+  de `audit_log`: `console` desde la consola y `zone` en lo demás (`/gm` y DEBUG_COMMAND), la misma regla que S8;
+  `args`, los argumentos con el objetivo por `character_id` en cadena (progresion.md §10); `at_unix`, la hora de la
+  zona (`ZonePlatform.now_unix()`). `world_id` y `zone_id` los pone la plataforma desde la instancia (§6). **Las
+  lecturas también:** `inv_show`, `ledger_show` y `op_show` (lote de la zona), y `admin reports list|show`, `admin
+  audit` y `admin chat` (social.md §8: «registro de cada consulta»).
+- **Sin datos personales en la auditoría.** Una regla para toda fila de `audit_log`, sea de la zona, la consola, la
+  CLI o la plataforma: el objetivo va en `target_account_id` y `target_character_id`, y `args` nunca lleva un correo
+  ni el nombre de un personaje (salvo el término de `names block|unblock`, que ya vive en `name_blacklist`). La CLI
+  resuelve correos y nombres a ids antes de escribir (`set-role`, `purge-now`, `chat --character`, `audit
+  --target`…) y `sanction_denied` guarda el id resuelto, no el `target_name`. Así la purga (§11.2) no deja correos
+  ni nombres en la auditoría ni en las copias.
+- **Dos vías, una fila.** La entrada del lote lleva `key = "<zone_instance_id>:<secuencia>"`, salvo la de un comando
+  que crea una operación (progresion.md §10: una GM, o la REVERSAL de `op_revert`), que lleva `key = "op:<op_id>"`:
+  el guardado escribe la misma fila en su transacción (S8 de progresion.md §13.3) y las dos van con `on conflict
+  (event_key) do nothing`, así que, llegue antes una u otra, ni se duplica ni se pierde. Para que coincidan, las dos
+  llevan los mismos campos con los mismos valores: S8 los saca de la operación (`world_id` y `zone_id` de la
+  instancia, `SaveKey`; `source` con la regla de arriba; `command`, `args`, `actor_character_id` y `at_unix` de
+  `detail`; `actor_account_id`, `target_character_id` y `target_account_id`) y la zona los pone igual en el lote.
+  `audit_log.at` es `to_timestamp(detail.at_unix)` en las dos: la hora en que la zona creó la operación, no la de
+  aplicarla, que con reintentos puede llegar minutos después.
 - **La CLI tiene identidad.** Toda orden `admin` exige `--actor <correo>` de una cuenta `admin` (o `moderator` para
-  las de lectura: `reports list|show`, `audit`, `chat`); sin él, o con otra cuenta, no se ejecuta (código 2). Rellena
-  `audit_log.actor_account_id` y guarda en `args.os_user` el valor de `$SUDO_USER` o `$USER`. Consulta: `admin
+  las de lectura: `reports list|show`, `audit`, `chat`); sin él, o con otra cuenta, no se ejecuta (código 2). Sus
+  filas llevan `source = 'cli'`, en `command` el nombre de la orden (`set-role`, `purge-now`, `reports show`…) y en
+  `actor_account_id` la cuenta del `--actor`, y guardan en `args.os_user` el valor de `$SUDO_USER` o `$USER`. Consulta: `admin
   --actor <correo> audit --since 2026-11-01 [--actor-name <nombre>] [--target <nombre>]`.
 
 ### 9.2 Registro del chat (SOC-15)
 `ChatRouter` (SOC-04) pone cada mensaje ya saneado en el lote de `chat` (`{key, channel, sender_character_id,
-target_character_id, text, sent_at_unix}`). Retención de 30 días (§11.1). Consulta: `admin --actor <correo> chat
---character <nombre> --from … --to …`, que queda auditada.
+target_character_id, text, sent_at_unix}`); la plataforma rellena `world_id`, `zone_id` y `zone_channel` (la copia
+de la zona, el `channel` de la instancia) desde la instancia y `sender_account_id` desde `characters` (§6). Así se
+sabe el alcance de «zona» (esa zona y esa copia, social.md §2) y el destinatario de un susurro; el de «grupo» (qué
+grupo) no se guarda: en la fase 5 un grupo no tiene identidad persistente. Retención de 30 días (§11.1). Consulta:
+`admin --actor <correo> chat --character <nombre> --from … --to …`, que queda auditada (con el personaje por id).
+
+**Ritmos del chat por personaje.** Con plataforma, `ChatRouter` guarda el `ChatPeerState` (cubos, último texto,
+descartes y destinatarios recientes; social.md 12.7) por `character_id`, no por conexión: al irse el personaje lo
+conserva `KNOWN_RECIPIENT_TICKS` (5 min) y, si vuelve a entrar en esta instancia, se lo reengancha. Así salir y
+volver a entrar no rellena las ráfagas. Sin plataforma, por conexión, como en la fase 4.
 
 ### 9.3 Ignorados (SOC-16)
 - `/ignorar nombre` → zona → `POST /internal/v1/ignores` con el `character_id` de quien ignora: la plataforma
-  comprueba que tiene arrendamiento en esa instancia, resuelve la cuenta del nombre (en ese `world_id`) y guarda
+  comprueba que tiene arrendamiento en esa instancia, resuelve la cuenta del nombre (en el mundo de la instancia, §6) y guarda
   `(cuenta, cuenta ignorada, personaje nombrado, nombre)`. Hasta 100. La lista que ve el jugador solo enseña los
   nombres que él escribió.
 - La zona tiene, por jugador, las cuentas que ignora (llegan en la reclamación) y la cuenta de cada personaje. **El
@@ -1080,7 +1242,7 @@ target_character_id, text, sent_at_unix}`). Retención de 30 días (§11.1). Con
 ### 9.4 Reportes (SOC-17)
 `/reportar nombre categoría [comentario]` o el menú social. La zona adjunta los últimos 20 mensajes de ese personaje
 que **recibió** quien reporta en 10 min (un anillo por receptor en `ChatRouter`), zona, posición y tick, y manda
-`{zone_instance_id, world_id, reporter_character_id, target_name, category, comment, context, evidence:
+`{zone_instance_id, reporter_character_id, target_name, category, comment, context, evidence:
 [{sender_name, channel, text, sent_at_unix}]}`. La plataforma comprueba que quien reporta tiene arrendamiento en esa
 instancia, impone 1 por objetivo cada 10 min y 10 por hora por cuenta (429), copia la prueba a `report_evidence` y la
 zona contesta «Reporte enviado. Gracias.». Revisión: `admin --actor <correo> reports list|show|close` (auditadas).
@@ -1090,7 +1252,7 @@ zona contesta «Reporte enviado. Gracias.». Revisión: `admin --actor <correo> 
 |---|---|
 | Aviso | Al entrar, NOTICE con el motivo |
 | Silencio | `ChatRouter` descarta y contesta «Estás silenciado N min más»; llega en la reclamación y en `mutes` del latido |
-| Suspensión, expulsión permanente | Inicio de sesión (tras la contraseña) y `enter` (403 con fin y motivo), reclamación (`BANNED`) y latido (`revoked`: guardado final y expulsión) |
+| Suspensión, expulsión permanente | Inicio de sesión (tras la contraseña, solo la sesión de privacidad de §4.2) y `enter` (403 con fin y motivo), reclamación (`BANNED`) y latido (`revoked`: guardado final y expulsión) |
 | Renombrado forzado | `characters.must_rename`: `enter` → 409 `rename_required` |
 
 Toda sanción lleva motivo, autor, `ends_at` y sus reportes, con la escala de social.md §9. La crean `/gm …` (por
@@ -1099,9 +1261,10 @@ de la sanción:
 
 1. El autor (`author_character_id`) tiene arrendamiento en esa instancia (`zone_instance_id`).
 2. Su cuenta tiene el rol mínimo de la tabla de §9.1 para ese `kind` y esa duración.
-3. La cuenta objetivo (el `target_name` en ese `world_id`) tiene un rol **menor** que el del autor.
+3. La cuenta objetivo (el `target_name` en el mundo de la instancia) tiene un rol **menor** que el del autor.
 
-Si falla alguna: 403 `forbidden` y una fila en `audit_log` con `command = 'sanction_denied'`. La CLI pasa las mismas
+Si falla alguna: 403 `forbidden` y una fila en `audit_log` con `command = 'sanction_denied'` (el objetivo, por id;
+§9.1). La CLI pasa las mismas
 comprobaciones con la cuenta de `--actor`. Un fallo de `CommandRegistry` o una zona comprometida no pueden sancionar
 por su cuenta. Las normas se aceptan al crear la cuenta (§11.4).
 
@@ -1152,7 +1315,7 @@ por su cuenta. Las normas se aceptan al crear la cuenta (§11.4).
   ve con `ps`. El compose los monta desde `platform/deploy/secrets/<nombre>` como secretos de Docker.
 - **Nada entra en git.** Hoy `.gitignore` solo ignora `.env` (comprobado con `git check-ignore --no-index`:
   `platform/deploy/staging.env`, `secrets/ticket_keys` y `zone.key` no se ignoran). P0 añade `*.env`,
-  `!*.env.example`, `platform/deploy/secrets/`, `*.pem`, `*.key` y `!tests/data/**/*.pem` (comprobado en un
+  `!*.env.example`, `platform/deploy/secrets/`, `*.pem`, `*.key` y `!tests/fixtures/**/*.pem` (comprobado en un
   repositorio de prueba: ignora los reales y deja los ejemplos y los PEM de prueba).
 - **CI** (trabajo «Plataforma»): falla si `git ls-files` lista algún `*.env`, algo bajo `secrets/` o un `*.pem` o
   `*.key` fuera de `tests/`, o si `grep -rE
@@ -1168,14 +1331,15 @@ auditoría. Ni nombre real, ni dirección, ni pagos (si los hay, son del proveed
 | Dato | Se conserva | Cómo |
 |---|---|---|
 | `chat_messages` | 30 días | Trabajo horario, lotes de 10 000 |
-| `report_evidence`, reportes cerrados, `audit_log` | 1 año (desde el cierre en los reportes) | Trabajo horario |
+| `report_evidence`, reportes cerrados, `audit_log` | 1 año (desde el cierre en los reportes) | Trabajo horario. Un reporte sin cerrar al año de crearse pasa a `dismissed` (`closed_at = now()`, `resolution = 'caducado'`) y cuenta desde ahí |
 | `auth_events`; IP y agente de `sessions` | 30 días | Trabajo horario (la IP de la sesión pasa a null) |
 | `sessions` y `account_tokens` caducados · `enter_tickets` · `zone_instances` paradas · `outbound_mail` | 7 días · 1 día · 30 días · 7 días | Trabajo horario |
 | Cuenta sin verificar (`staging`, `production`) | 7 días | Purga (§11.2) |
 | Personaje borrado | 7 días restaurable; luego lápida; el nombre, 30 días más (o nada, §4.4) | Purga horaria |
-| Libro, operaciones y eventos de objeto de un personaje purgado | **1 año** desde la purga, sin datos personales (la lápida no tiene nombre) | Retención horaria con `set local eldmark.retention_purge = 'on'`; luego se borra la lápida. **Revisión legal** |
+| Libro, operaciones y eventos de objeto de un personaje vivo, también el `actor_account_id`, la `note` y el `detail` de las operaciones GM y REVERSAL (una segunda huella de esos comandos de GM, aparte de `audit_log`) | Mientras exista el personaje; tras su purga, la fila de abajo | Ninguno: son de solo añadir (progresion.md §3.5). La exportación los da sin los datos del personal (§11.2). **Revisión legal** (también de `note` y de que no tenga plazo) |
+| Libro, operaciones y eventos de objeto de un personaje purgado | **1 año** desde la purga. Sin nombres: la lápida no lo tiene y `detail.args` nombra al objetivo por id (progresion.md §10). Mientras la cuenta exista, ligados a ella y exportables (§11.2); seudónimos solo tras purgarla. La `note` de las operaciones GM y REVERSAL se conserva como dato de moderación | Retención horaria: `ProgressStore.PurgeRetention` (progresion.md §3.5), con `set local eldmark.retention_purge = 'on'`; luego se borran las lápidas que devuelve vacías. **Revisión legal** (también de `note`) |
 | Cuenta borrada | 14 días de gracia | Purga (§11.2) |
-| Sanciones | Mientras exista la cuenta; tras la purga, 1 año sin datos personales | **Revisión legal** |
+| Sanciones | Mientras exista la cuenta; al purgarla, sin motivo, y 1 año más | La purga vacía `reason`; el trabajo horario borra las de las cuentas con `purged_at` de hace más de 1 año. **Revisión legal** |
 | `sanctioned_email_hashes` | Hasta el fin de la sanción, o 90 días tras ella; 1 año como mucho | Trabajo horario. **Revisión legal** |
 | Copias diarias y semanales, WAL | 35 días; al restaurar se vuelven a aplicar las purgas (§12) | `backup.sh` y WAL-G |
 | Registros de los contenedores (zona, plataforma) | 30 días: la zona escribe nombre e IP en cada conexión y rechazo | journald (`MaxRetentionSec=30day`, §12) |
@@ -1185,33 +1349,63 @@ En `staging` y `production` con `--platform`, la zona no admite `--battle-log`, 
 (escriben nombres sin plazo; §5.5).
 
 ### 11.2 Exportación y supresión
-**Exportar:** `POST /v1/account/export {password}` (1 al día) da `eldmark-datos-<fecha>.json`: cuenta (sin el
-hash), aceptaciones, consentimientos, sesiones y accesos de 30 días, derechos, personajes con progreso, inventario,
-libro y estadísticas, ignorados (por nombre), sanciones propias, reportes **hechos** y chat enviado por sus
-personajes en plazo. No da reportes recibidos ni notas de moderación (de terceros: **revisión legal**).
+**Exportar:** `POST /v1/account/export {password}` (1 al día; también con la sesión de privacidad de una cuenta
+sancionada, §4.2) da `eldmark-datos-<fecha>.json`: cuenta (sin el
+hash), aceptaciones, consentimientos, sesiones y accesos de 30 días, derechos, personajes con su progreso (por cada
+personaje no purgado, `ProgressStore.Export` bajo `characters[i].progress`: registro, operaciones, apuntes y eventos
+propios; y por cada lápida de la cuenta con libro retenido, lo mismo sin registro; progresion.md §3.5) y
+estadísticas, ignorados (por nombre), sanciones propias, reportes **hechos** y chat enviado por sus personajes en
+plazo. No da reportes recibidos ni notas de moderación (de terceros: **revisión legal**): de las operaciones GM y
+REVERSAL da el tipo, la fecha, los apuntes y los eventos, sin `actor_account_id`, `note` ni `detail`.
 
-**Purgar un personaje** (al vencer `restore_until`, o con la cuenta), en una transacción:
-`progress_purge_character(id)`, `delete from character_pvp_stats`, `character_leases` y `enter_tickets` de ese
-personaje, `character_names.character_id = null`, `update characters set name = null, name_key = null, purged_at =
-now()` y `insert into purge_log ('character', id)`. Queda la **lápida** (id, mundo, reino, cuenta y fechas) y lo de
-solo añadir, que la retención de §11.1 borra al año. Comprobado: borrar la fila del personaje con apuntes falla
-(clave ajena) y la lápida va bien.
+**Purgar un personaje** (al vencer `restore_until`, con la cuenta, o en `reapply-purges`), en una transacción:
 
-**Suprimir la cuenta:** `POST /v1/account/deletion` → 14 días → purga en una transacción: sus personajes (como
-arriba; nombres reservados 30 días), ignorados en los dos sentidos, sesiones, tokens, consentimientos, aceptaciones,
-derechos y el chat de sus personajes no copiado a un reporte. La fila de `accounts` queda como lápida (`email` y
-`password_hash` a null, `status = 'purged'`) para que auditoría y sanciones no apunten a nada; `purge_log
-('account', id)`. `admin --actor <correo> purge-now <correo>` hace lo mismo sin esperar (petición expresa).
+1. `select … from character_leases where character_id = $1 for update`, si hay fila.
+2. `select … from characters where character_id = $1 for no key update`, y vuelve a mirar si toca, según el
+   camino. **Al vencer `restore_until`**: `deleted_at` no nulo, `restore_until ≤ now()` y `purged_at` nulo (si lo
+   han restaurado o ya está purgado, no hace nada). **Con la cuenta y en `reapply-purges`**: solo `purged_at`
+   nulo, porque manda la cuenta o `purge_log`: los personajes vivos de una cuenta que se purga nunca se borraron, y
+   una copia anterior al borrado los trae con `deleted_at` nulo.
+3. Con un arrendamiento vivo (`zone_instance_id` no nulo y `expires_at > now()`), no purga (ni la cuenta que lo
+   incluye): la purga horaria lo vuelve a intentar en la hora siguiente. No vale en `reapply-purges`, que corre sin
+   arrendamientos (abajo).
+4. `ProgressStore.Purge(ctx, tx, id)` (progresion.md §3.5: borra el estado del progreso y deja lo de solo añadir),
+   `delete from character_pvp_stats`, `character_leases` y `enter_tickets` de ese personaje,
+   `character_names.character_id = null`, `update characters set name = null, name_key = null, purged_at = $t` e
+   `insert into purge_log ('character', id, $t)`, con `$t = now()` (en `reapply-purges`, el de `purges.txt`).
+
+El orden de los bloqueos es el de `persistence.Store.Save` (primero el arrendamiento; la fila de `characters` el
+guardado solo la toca con la clave ajena de `op_participants`, que `for no key update` no bloquea): no hay
+interbloqueo, la purga ve todo lo que un guardado confirmó antes, y un guardado que llega después no encuentra
+arrendamiento (409 `lease_lost`, §7.3). Restaurar bloquea la cuenta y la misma fila de `characters` (§4.4) y la reclamación
+exige `deleted_at` y `purged_at` nulos (§5.3). Queda la **lápida** (id, mundo, reino, cuenta y fechas) y lo de solo
+añadir, que la retención de §11.1 borra al año; después se borra la fila de `characters`. Es la única lápida del
+personaje (no hay otra en el progreso). Comprobado: borrar la fila del personaje con apuntes falla (clave ajena) y la
+lápida va bien.
+
+**Suprimir la cuenta:** `POST /v1/account/deletion` (también con la sesión de privacidad) → 14 días → purga en una
+transacción, que bloquea primero la fila de `accounts` (cuenta → arrendamientos → personajes, el orden de la
+reclamación, §5.3): sus personajes (como arriba; nombres reservados 30 días), ignorados en los dos sentidos, sesiones, tokens, consentimientos, aceptaciones,
+derechos, el `reason` de sus sanciones y el chat de sus personajes no copiado a un reporte. La fila de `accounts`
+queda como lápida (`email` y `password_hash` a null, `status = 'purged'`, `purged_at`) para que auditoría y sanciones
+no apunten a nada; `purge_log ('account', id)`. `admin --actor <correo> purge-now <correo>` hace lo mismo sin esperar
+(petición expresa): antes revoca las sesiones (`deletion`), espera hasta 30 s a que se liberen los arrendamientos
+(el latido expulsa con guardado final) y, si alguno sigue vivo, responde `character_busy` y no purga nada.
 
 **Correos sancionados.** Si la cuenta tiene una suspensión o una expulsión vigente, o una sanción de los últimos 90
 días, la purga guarda `HMAC-SHA256(ELDMARK_EMAIL_HMAC_KEY, correo normalizado)` en `sanctioned_email_hashes` con
-`until` = fin de la sanción (o + 90 días), 1 año como mucho. El registro lo consulta (§4.2): la escala de social.md §9
-sigue contando aunque el jugador pida la supresión y vuelva. **Revisión legal**; va también en `privacy-1.md`.
+`until` = fin de la sanción (o + 90 días), 1 año como mucho desde la purga. El registro lo consulta (§4.2): la escala
+de social.md §9 sigue contando aunque el jugador pida la supresión y vuelva. **Revisión legal**; va también en
+`privacy-1.md`.
 
-**Copias.** `backup.sh` copia `purge_log` a `purges.txt` junto a cada copia y conserva siempre el más reciente.
-Restaurar es siempre `pg_restore` y luego `eldmark-platform admin --actor <correo> reapply-purges purges.txt` con el
-`purges.txt` **más reciente** (no el de la copia): vuelve a purgar cuentas y personajes, y es idempotente.
-`restore_check.sh` lo hace también.
+**Copias.** `backup.sh` copia `purge_log` (con `purged_at`) a `purges.txt` junto a cada copia y conserva siempre el
+más reciente. Restaurar es siempre `pg_restore` y luego `eldmark-platform admin --actor <correo> reapply-purges
+purges.txt` con el `purges.txt` **más reciente** (no el de la copia): vuelve a purgar cuentas y personajes con el
+`purged_at` de `purge_log`, no con `now()`, y de él salen el año del libro, el de las sanciones y el tope de
+`sanctioned_email_hashes`: restaurar no alarga ninguna retención. Corre con las zonas paradas y **antes de
+arrancar `serve`** (la gracia de §2.5 alargaría los arrendamientos restaurados): primero borra todos los
+`character_leases` y `enter_tickets` de la copia, que ya no son de nadie, y después purga. Es idempotente y sale con
+código distinto de 0 si algún id de `purges.txt` queda sin purgar. `restore_check.sh` lo hace también.
 
 ### 11.3 Derechos de cuenta (PRG-41)
 `entitlements` vale para compra única, suscripción o gratuito con tienda: huecos (`character_slots`), expansiones
@@ -1238,7 +1432,7 @@ vision.md.
 | Vuelta atrás | `down` solo en desarrollo y CI; migraciones de expandir y contraer (§2.4) | **Restaurar la copia previa** (con `reapply-purges`) o arreglar hacia delante; el tag anterior funciona con el esquema nuevo |
 | Copias | `backup.sh`: `pg_dump -Fc` con 7 diarias y 4 semanales en un directorio, y `purges.txt` (§11.2) | Subirlas a S3 compatible (rclone o WAL-G) y el cron |
 | WAL y recuperación a un instante | `pitr_check.sh`: clúster efímero con `archive_command`, `pg_basebackup`, `recovery_target_time` y `recovery.signal`: recupera las filas de antes de un borrado (comprobado en segundos) | `archive_command` a S3 con WAL-G; retención de 35 días |
-| Restauración semanal | `restore_check.sh <copia> <purges.txt>`: clúster efímero, `pg_restore` (comprobado: 1000 filas en 188 ms), `reapply-purges`, `migrate status` al día y consultas de integridad (personajes sin cuenta, arrendamientos de instancias inexistentes, ids de `purge_log` con datos personales: 0) | Ejecutarlo cada semana y alertar si falla (TEC-31) |
+| Restauración semanal | `restore_check.sh <copia> <purges.txt>`: clúster efímero, `pg_restore` (comprobado: 1000 filas en 188 ms), `reapply-purges`, `migrate status` al día y consultas de integridad (personajes sin cuenta, arrendamientos de instancias inexistentes, ids de `purge_log` con datos personales: 0; y ninguna fila de `audit_log` cuyo `args` contenga el correo de una cuenta de `purges.txt`, que lee de la copia antes de `reapply-purges`) | Ejecutarlo cada semana y alertar si falla (TEC-31) |
 
 ## 13. Cliente (UI-22, UI-23, UI-24)
 ### 13.1 Flujo
@@ -1261,8 +1455,9 @@ la música son de ART-21.
 | Título (UI-22) | Fondo provisional (captura fija del Vado Gris), «Eldmark» con la fuente de títulos, estado («En línea · Eld», «En mantenimiento hasta las 18:00», «Sin conexión con el servidor») y noticias de `/v1/status`; correo, contraseña, «Recordar correo» (`user://settings.cfg`, sección `account`; nunca la contraseña), Entrar, Crear cuenta, ¿Has olvidado la contraseña?, Ajustes, Salir | Intro entra; Tab recorre; Esc cierra el panel |
 | Crear cuenta | Correo, contraseña dos veces (mínimo 10), «Tengo 16 años o más», tres casillas con enlace a cada texto (panel con desplazamiento) y los dos consentimientos opcionales. Al enviar: «Te hemos enviado un correo» (en `dev` y `test`, inicia sesión con lo escrito) | |
 | Recuperar · aceptar textos | Correo → «Si existe una cuenta, te hemos enviado un enlace» · qué ha cambiado, Aceptar o Cerrar sesión | |
-| Selección (UI-23) | Lista a la izquierda (nombre, emblema del reino, nivel, última zona; los borrados en gris con «Restaurar» y su fecha límite), vista 3D del elegido (`HumanoidVisual` con su apariencia y los colores de su reino), huecos libres («Los borrados que aún puedes restaurar ocupan hueco»), Entrar, Crear, Borrar (confirmación escribiendo el nombre), Cerrar sesión | Flechas eligen, Intro entra, Supr borra |
-| Creación (UI-24) | 1) Reino: tarjetas con lore, emblema y capital; fijado al de la cuenta; Askarra «Próximamente». 2) Cuerpo y apariencia (cuerpo, cabeza, pelo, colores, aleatorio, cámara orbital con el ratón) con lo que haya de ART-19 y ART-20; sin ello, el humanoide con los colores del reino. 3) **Plantilla de inicio** (tarjetas de las plantillas de PRG-07: armas y estilo; progresion.md §2.5). 4) Nombre validado con `NameRules` al escribir y con `name-check` tras 500 ms quieto. Crear | Esc vuelve un paso |
+| Cuenta sancionada | Con la sesión de privacidad (§4.2): el motivo y la fecha de fin, y solo Descargar mis datos, Borrar la cuenta y Cerrar sesión | Esc cierra sesión |
+| Selección (UI-23) | Lista a la izquierda (nombre, emblema del reino, nivel, última zona; los borrados en gris con «Restaurar» y su fecha límite), vista 3D del elegido (`HumanoidVisual` con su apariencia, `CharacterAppearance.decode` y `AppearanceApplier.apply` de progresion.md P3 y P6, y los colores de su reino; mientras falten, el humanoide con esos colores), huecos libres («Los borrados que aún puedes restaurar ocupan hueco»), Entrar, Crear, Borrar (confirmación escribiendo el nombre), Cerrar sesión | Flechas eligen, Intro entra, Supr borra |
+| Creación (UI-24) | 1) Reino: tarjetas con lore, emblema y capital; fijado al de la cuenta; Askarra «Próximamente». 2) Cuerpo y apariencia (cuerpo, cabeza, pelo, colores, aleatorio con `CharacterAppearance.random`, cámara orbital con el ratón) con lo que haya de ART-19 y ART-20 (`AppearanceApplier.apply`); sin ello, el humanoide con los colores del reino. 3) **Plantilla de inicio** (tarjetas de las plantillas de `starter_templates`, las `selectable` de PRG-07: armas y estilo; es el kit de la primera entrada, progresion.md §2.5). 4) Nombre validado con `NameRules` al escribir y con `name-check` tras 500 ms quieto. Crear | Esc vuelve un paso |
 | Renombrar · ocupado | Diálogo de nombre al recibir `rename_required` · «Tu personaje está saliendo del mundo…» con cuenta atrás; reintenta cada 3 s durante 30 s | |
 
 Errores: el texto de §4.1 bajo el formulario; sin conexión o fallo de TLS, «No se puede conectar con el servidor de
@@ -1279,7 +1474,8 @@ cuentas». Los REJECT nuevos vuelven a la selección con su texto.
 **`AccountFlow`** (`scripts/client/platform/account_flow.gd`, sin interfaz) hace el camino de la cuenta: `login`,
 `ensure_character` y `enter`, que devuelve el `ClientConfig` con billete. Lo usan `FrontMain` y `OnlineMain` en modo
 `BOT` cuando `config.platform_url` no está vacío: el bot lee la contraseña de `--password-file`, inicia sesión, crea
-el personaje si no existe (con la primera plantilla y la apariencia por defecto de su raza) y conecta. Un fallo
+el personaje si no existe (con la primera plantilla por `id` de las reglas y `CharacterAppearance.default_for(catalog,
+raza)`) y conecta. Un fallo
 (credenciales, `character_busy` tras 30 s, `zone_unavailable`) sale con código 1 y el `code` en el informe. Sin
 plataforma, el bot conecta como hoy a `--connect` (o a 127.0.0.1:24600).
 
@@ -1294,23 +1490,27 @@ Nuevos: `scripts/client/platform/` (`platform_api.gd`, `api_result.gd`, `account
 | Paquete | Contenido | Depende de |
 |---|---|---|
 | **P0 · esqueleto** (TEC-22) | `platform/`, config, `logx`, `db`, `jsonx`, `migrate` y 0001–0006, `testdb`, `/health`, `/ready`, `serve`/`migrate`, `.gdignore`, filtro de exportación, `.gitignore` (§10.3), trabajo de CI con la comprobación de secretos | TEC-03 |
-| **P1 · cuentas** (TEC-23, TEC-41, aceptación de TEC-43) | `passwords`, `accounts` (`CheckPassword`, fallos por cuenta y grupo), sesiones con rotación en la fila, límites, ciclo de vida, `revert_email`, `mail`, páginas `/verify`, `/reset`, `/revert`, `/v1/status`, `/v1/legal`, purga de cuentas sin verificar | P0 |
-| **P2 · personajes** (TEC-24, SOC-13, PRG-41) | `names`, `gamedata` (sección `names` de `progression_rules.json` y su embed), personajes, reinos, huecos, límites de crear y borrar, `enter`, `tickets` | P1; progresion.md P3 para validar raza, apariencia y plantilla (sin él, §4.4 paso 5) |
-| **P3 · API interna** (TEC-24, TEC-25) | `zones` (tokens por despliegue, registro, `live`, latido, perdidas, sustitución, estados de §6.1), reclamación, guardado (S1–S2, `seq`, hash), liberación, lotes, rutas de bloques, fortalezas; `ProgressStore` con un falso en las pruebas | P2 |
-| **P3b · progreso en el servicio** (PRG-10, PRG-12, TEC-25) | 0010_progress (§3), `internal/progress` (Create, Load, Apply con S3–S9 y bloques, Purge, Op, Ledger), rutas de operación y libro | P3; los casos de `tests/fixtures/progression/` (progresion.md P5) cuando existan |
-| **P4 · billete en la zona** (TEC-24) | `HandoffTicket`, `TicketAuthProvider`, `AuthProvider` y `ServerAuth` ampliados, `VERIFYING` (cupo y plazo), REJECT 10–12, `PROTOCOL_VERSION` y `AUTH_TIMEOUT_SECONDS` (una subida con progresion.md P4), bit GM, `ZonePlatform`, `PlatformClient` (prioridades), `ClaimedCharacter`, `AuthOutcome`, `tests/fake_zone_platform.gd`, `tests/support/fake_http_server.gd`, opciones de `ServerConfig`, arranque de §8 (registro, `env`, `live`), cercado | Los contratos de P3 (no su código: usa los falsos) |
-| **P5 · guardado en la zona** (TEC-25; ganchos de CMB-30 y GUE-19) | `CharacterSaver`, `PlatformProgressRepository`, salida en combate, cierre ordenado (`begin_flush`, `_drain_stop` ampliado, `SHUTDOWN_MAX_FRAMES`), `revoked`, cierre de §6.1 | P4; la interfaz `ProgressRepository` y la sección `progress` de progresion.md P5 (sin ella, una sección falsa) |
-| **P6 · guerra** (GUE-19) | `FortressPersistence`, carga al arrancar, `expected_version`, eventos, `ScoreKeeper.captures` y `defend_ticks`, sección `pvp` | P3, P5 |
-| **P7a · moderación en Go** (SOC-14 a SOC-18) | Roles, `set-role` que revoca, auditoría (también de lecturas), chat, ignorados, reportes, sanciones con autorización, CLI `admin` con `--actor` | P3 |
-| **P7b · moderación en la zona** (SOC-14 a SOC-18) | `min_role` en `CommandRegistry`, DEBUG_COMMAND con rol, `/gm`, invisible, regla de los propios personajes, filtrado de ignorados, anillo de reportes, silencios, lotes de chat y auditoría | P5, P7a; SOC-03, SOC-04 |
-| **P8 · cliente** (UI-22 a UI-24) | `ClientConfig`, `PlatformApi` (un refresco a la vez), `AccountSession`, `AccountFlow`, `FrontMain`, pantallas, `NetClient` y `OnlineMain` con billete, bot con cuenta | Contratos de P1 y P2 (con `request_hook` hasta tenerlos); ART-19 y ART-20 para la creación completa |
-| **P9a · privacidad** (TEC-43) | Exportación, purgas (lápidas, `purge_log`), retenciones, `sanctioned_email_hashes`, `reapply-purges`, borradores legales | P1–P3b |
+| **P1 · cuentas** (TEC-23, TEC-41, aceptación de TEC-43) | `passwords`, `accounts` (`CheckPassword`, fallos por cuenta y grupo), sesiones con rotación en la fila, límites, ciclo de vida, `revert_email`, `mail`, páginas `/verify`, `/reset`, `/revert`, `/v1/status`, `/v1/legal`, purga de cuentas sin verificar, sesión de privacidad de las cuentas sancionadas (`sessions.scope`, §4.2) | P0 |
+| **P2 · personajes** (TEC-24, SOC-13, PRG-41) | `names` y `tests/fixtures/names/`, `gamedata` (sección `names` de `progression_rules.json` y su embed), la interfaz `ProgressStore` con sus errores (`InvalidSaveError`, `ErrNotFound`) y su falso, `CreateValidator` con `ValidationError` y la validación provisional (§4.4 paso 5, §7.5), personajes, reinos, huecos, límites de crear y borrar, borrar y restaurar con el bloqueo de la cuenta (§4.4), `enter` (un personaje en el mundo por cuenta), `tickets` | P1 (progresion.md P7 aporta `*progress.Rules` y el almacén con `Summaries`; `serve` los elige sin tocar los manejadores) |
+| **P3 · API interna** (TEC-24, TEC-25) | `zones` (tokens por despliegue, registro, `live`, latido, perdidas, sustitución, estados de §6.1), reclamación (bloqueo de la cuenta y un personaje en el mundo por cuenta, §5.3), guardado (sobre estricto, arrendamiento, `seq`, hash, `last_save_version`, `pvp` con `greatest`, errores de §7.3), liberación, lotes (con rechazo por entrada y `zone_channel` en el chat), `uid_block_seq` e `id_blocks`, rutas de bloques, operación y libro (con arrendamiento) sobre la interfaz `ProgressStore`, fortalezas (solo las de la zona de la instancia, §6); el falso de `ProgressStore` en las pruebas | P2 |
+| **P4 · billete en la zona** (TEC-24) | `HandoffTicket`, `TicketAuthProvider`, `AuthProvider` y `ServerAuth` ampliados, `VERIFYING` (cupo y plazo), baja en `LOADING` (§5.2), REJECT 10–12, `PROTOCOL_VERSION` 7 y `AUTH_TIMEOUT_SECONDS` (la subida de toda la fase 5; progresion.md P4 añade lo suyo sin subirla, §5.4), bit GM, red.md (lo de aquí de la v7, §5.4), `ZonePlatform` (con `RECORD_FORMAT`, el conjunto del latido, `save` con `lease_id` y `release_lease`, y los `kind` de `PlatformEvent`, §14.3), `PlatformClient` (prioridades), `ClaimedCharacter`, `AuthOutcome`, `tests/fake_zone_platform.gd` con su API de pruebas (§14.3; guarda por personaje lo último aplicado de cada sección y lo devuelve en la reclamación siguiente: `pvp` aquí; `progress` sin `ops`, con los campos de solo lectura de la reclamación anterior y `location.saved_at_unix` puesto, lo añade progresion.md P5a), `tests/support/fake_http_server.gd`, opciones de `ServerConfig`, arranque de §8 (registro, `env`, `live`), cercado, sin `REJECT NAME` con billete (§5.4) | habilidades.md fusionado: H2 (protocolo 6) y H3c (lo último de habilidades.md en `zone_server.gd`). Los contratos de P3 (no su código: usa los falsos) |
+| **P5 · guardado en la zona** (TEC-25; ganchos de CMB-30 y GUE-19) | `CharacterSaver` (secciones, sobre entero, entradas por `lease_id`, `track` al crear la entidad, `on_platform_event`, `save_rejected`, `drop`), salida en combate, baja sin guardado (§7.2), cierre ordenado (`begin_flush`, `_drain_stop` ampliado, `SHUTDOWN_MAX_FRAMES`, liberación de `LOADING` y `VERIFYING`), cuenta atrás del mantenimiento, `revoked`, cierre de §6.1 (`instance_closed` en `ServerMain`) | P4 (se prueba con una sección falsa; la de `progress` es de progresion.md P5a) |
+| **P6 · guerra** (GUE-19) | `FortressPersistence`, carga al arrancar, `expected_version`, eventos, `ScoreKeeper.captures` (sin las forzadas por un comando ni los personajes con `gm_forced`, progresion.md §6.2) y `defend_ticks`, la marca de cambio forzado en `FortressController`, el campo `NetEntity.gm_forced` (falso por defecto; la reaparición lo quita), sección `pvp` | P3, P5 |
+| **P7a · moderación en Go** (SOC-14 a SOC-18) | Roles, `set-role` que revoca (con su fila fija de §9.1), auditoría (también de lecturas, sin correos ni nombres, §9.1), chat, ignorados, reportes, sanciones con autorización, CLI `admin` con `--actor` | P3 |
+| **P7b · moderación en la zona** (SOC-14 a SOC-18) | `min_role` en `CommandRegistry` y DEBUG_COMMAND con rol (probados con comandos de red y de moderación; los 40–43, el `admin` del 5, el 13 y el 16 y la regla de los propios personajes son de progresion.md P5d), `/gm`, invisible, poner `gm_forced` con `/gm teleport`, `/gm visible` y los DEBUG_COMMAND 1, 2 y 4 (progresion.md §6.2), filtrado de ignorados, anillo de reportes, silencios, lotes de chat y auditoría, respuestas de `ignore`, `report` y `sanction`, `ChatPeerState` por `character_id`, conservado `KNOWN_RECIPIENT_TICKS` tras la baja y reenganchado al entrar (§9.2) | P5, P7a; SOC-03, SOC-04 |
+| **P8 · cliente** (UI-22 a UI-24) | `ClientConfig`, `PlatformApi` (un refresco a la vez), `AccountSession`, `AccountFlow`, `FrontMain`, pantallas, `NetClient` y `OnlineMain` con billete, pantalla de cuenta sancionada (sesión de privacidad), bot con cuenta | Contratos de P1 y P2 (con `request_hook` hasta tenerlos); progresion.md P3 y P6 (apariencia), ART-19 y ART-20 para la creación completa |
+| **P9a · privacidad** (TEC-43) | Exportación (también las lápidas con libro), purgas (bloqueos, lápidas, `purge_log`), retenciones (reportes sin cerrar, sanciones de cuentas purgadas), `sanctioned_email_hashes`, `reapply-purges` con el `purged_at` original, borradores legales | P1–P3; progresion.md P7 (`Purge`, `PurgeRetention`, `Export`) |
 | **P9b · operación** (TEC-28) | Caddy, compose (journald, secretos), `dev.sh`, `backup.sh` con `purges.txt`, `restore_check`, `pitr_check` | P9a; TEC-20 para las imágenes de las zonas |
 | **P9c · DTLS** (TEC-27) | `NetTransport.host`/`connect_to` con `TLSOptions`, `--dtls-*` en `ServerConfig` y `ClientConfig`, `SwarmBot`, campaña de medida y su anotación en red.md §14 | P4 |
-| **P10 · extremo a extremo** | `platform/e2e` y su trabajo de CI (§15) | P3, P3b, P4, P5, P8 |
+| **P10 · extremo a extremo** | `platform/e2e` y su trabajo de CI (§15) | P3, P4, P5, P8; progresion.md P7 |
 
-P0 primero; P1 y P4 a la vez (P4 contra los falsos); luego P2, P3, P3b y P8; luego P5, P6, P7a y P7b; P9a, P9b, P9c
-y P10 al final. `zone_server.gd` lo tocan P4, P5, P6 y P7b, en ese orden.
+P0 primero; luego P1 y, en cuanto habilidades.md esté fusionado, P4 (contra los falsos); luego P2, P3 y P8; luego P5,
+P6, P7a y P7b; P9a, P9b, P9c y P10 al final. El almacén del progreso (0010, `internal/progress`) es progresion.md P7,
+con las dependencias de su §14.1 (entre ellas, los casos de progresion.md P5a, que llega después de P4 y P5 de aquí);
+P9a y P10 lo esperan. P4 de aquí sube el protocolo a 7, sobre la 6 de habilidades.md, y progresion.md P4 añade lo
+suyo (§5.4). **`zone_server.gd`**, con los tres documentos, en este orden: habilidades.md H3c → P4 → progresion.md P4
+→ P5 → progresion.md P5a → progresion.md P5b → P6 → progresion.md P5c → P7b → progresion.md P5d. Entre documentos se
+cita siempre con el nombre delante («plataforma.md P4»).
 
 ### 14.2 Contratos en Go
 ```go
@@ -1326,9 +1526,11 @@ type Params struct { MemoryKiB, Time uint32; Threads uint8 }
 func Hash(password string, p Params) (string, error)                 // $argon2id$v=19$m=…,t=…,p=…$sal$hash
 func Verify(password, phc string, current Params) (ok, needsRehash bool, err error)
 // internal/accounts
-func (s *Service) CheckPassword(ctx context.Context, accountID int64, password string, ip netip.Addr) (bool, error)  // ErrThrottled → 429
-// internal/jsonx: type Int int64 (acepta 4 y 4.0); type ID int64 (cadena decimal > 0)
+func (s *Service) CheckPassword(ctx context.Context, accountID int64, email string, password string,
+	ip netip.Addr) (bool, error)  // ErrThrottled → 429; clave: accountID si ≠ 0, si no SHA-256(email normalizado)
+// internal/jsonx: type Int int64 (acepta 4 y 4.0); type ID int64 (cadena decimal de 0 a 2^63 − 1; sin comillas, error)
 // internal/names: func Validate(name string) Reason (valores de NameRules.Reason); func NormalizeKey(name string) string
+//   casos: os.ReadFile("../../../tests/fixtures/names/name_rules_cases.json")
 // internal/testdb: func Main(m *testing.M) int (en TestMain); func New(t testing.TB) *pgxpool.Pool (base nueva)
 // internal/zones
 type Scope struct { WorldID int16; ZoneID string; Channel int16 }
@@ -1338,7 +1540,9 @@ func (s *Store) Claim(ctx context.Context, instance [16]byte, ticketID, characte
 func (s *Store) Save(ctx context.Context, characterID int64, raw []byte, req SaveRequest) (SaveResult, error)  // raw: para el hash
 func (s *Store) SaveMany(ctx context.Context, instance [16]byte, raws [][]byte, reqs []SaveRequest) ([]SaveResult, error)  // todo o nada
 func (s *Store) Release(ctx context.Context, characterID int64, instance, leaseID [16]byte) error
-// internal/persistence/progress.go: ProgressStore (§7.5); internal/progress la implementa (P3b)
+// internal/persistence/progress.go (P2): ProgressStore, InvalidSaveError, ErrNotFound, CreateValidator y
+//   ValidationError (progresion.md §13.2), con el falso del almacén y la validación provisional (§4.4 paso 5);
+//   los implementa internal/progress (progresion.md P7), que importa persistence
 ```
 
 ### 14.3 Contratos en GDScript (zona)
@@ -1346,9 +1550,9 @@ func (s *Store) Release(ctx context.Context, characterID int64, instance, leaseI
 # scripts/server/auth_provider.gd (amplía; DevAuthProvider: OK al instante, uses_tickets() false y on_platform_event false)
 const PENDING: int = -1
 func authenticate(peer_id: int, hello: NetMessages.Hello) -> int  # OK, PENDING o motivo de REJECT
-func on_platform_event(event: PlatformEvent) -> bool  # true si era suyo (reclamaciones y liberaciones)
+func on_platform_event(event: PlatformEvent) -> bool  # true si era suyo (kind claim)
 func take_completed() -> Array[AuthOutcome]     # los PENDING resueltos, en orden de llegada
-func cancel(peer_id: int) -> void               # el peer se fue esperando: libera si llegó a reclamar
+func cancel(peer_id: int) -> void               # el peer se fue en VERIFYING: libera si llegó a reclamar
 func uses_tickets() -> bool                     # true: ServerAuth no mira reino ni nombre del HELLO
 # scripts/server/platform/auth_outcome.gd
 class_name AuthOutcome extends RefCounted
@@ -1364,53 +1568,107 @@ func sign(key: PackedByteArray) -> PackedByteArray                # pruebas y el
 class_name ClaimedCharacter extends RefCounted
 var character_id: int; var account_id: int; var world_id: int; var realm: int; var display_name: String
 var role: StringName; var lease_id: String; var muted_until_unix: int; var ignored_accounts: PackedInt64Array
-var record: Dictionary        # el CharacterRecord de progresion.md §3.4 tal cual; lo lee CharacterRecord.from_dictionary
+var progress: Dictionary      # la sección progress tal cual llega; la lee ProgressRecord.from_dictionary (progresion.md §14.2)
 var pvp: Dictionary           # {kills, deaths, assists, captures, gate_damage, defend_s} ya con int()
 static func from_claim(body: Dictionary) -> ClaimedCharacter      # null si falta algo; ids con to_int() y enteros con int()
 # scripts/server/platform/zone_platform.gd (tests/fake_zone_platform.gd: class_name FakeZonePlatform extends ZonePlatform)
 class_name ZonePlatform extends Node
-signal startup_finished(ok: bool, error: String)                  # tras el registro y las fortalezas (§8)
+signal startup_finished(ok: bool, error: String)                  # tras el registro, las fortalezas y el primer bloque (§8)
+const RECORD_FORMAT: int = 1                                      # record_format del registro (§7.1) = ProgressRecord.FORMAT
 var timeout_s: float = 3.0
-func start(config: ServerConfig, secrets: Dictionary) -> void     # registro (starting), latidos, GET de fortalezas
+func start(config: ServerConfig, secrets: Dictionary) -> void     # registro (starting), latidos, fortalezas, primer bloque
 func fortress_records() -> Array[Dictionary]                      # las cargadas en start
 func env() -> StringName                                          # &"dev", &"test", &"staging" o &"production"
+func instance_id() -> String                                      # zone_instance_id; "" antes del registro
 func go_live() -> void                                            # POST …/live, tras abrir el puerto
+## Conjunto del latido {character_id: lease_id} (§5.3): entra con el 200 de claim, cambia con otro claim del mismo
+## personaje y sale con release() o con la respuesta definitiva de un save con release_lease, si sigue siendo ese lease_id.
 func claim(peer_id: int, ticket: HandoffTicket) -> void
 func claimed(character_id: int) -> ClaimedCharacter               # la última reclamación de ese personaje
-func release(character_id: int, lease_id: String) -> void
-func save(character_id: int, body: PackedByteArray, context: Variant) -> void   # el mismo cuerpo hasta una respuesta definitiva
-func request_id_block() -> void
+func release(character_id: int, lease_id: String) -> void         # pendientes por lease_id; un 4xx es definitivo (§7.3)
+func save(character_id: int, lease_id: String, body: PackedByteArray, release_lease: bool,
+		context: Variant) -> void   # body: el sobre entero de CharacterSaver, que se manda sin tocar hasta una definitiva
+func request_id_block() -> void                                   # el resultado, evento id_block para ProgressService
 func put_fortress(fortress_id: StringName, record: Dictionary) -> void  # una en vuelo por fortaleza; la más reciente
-func enqueue_batch(kind: StringName, entry: Dictionary) -> void   # &"chat", &"audit", &"war"
+func enqueue_batch(kind: StringName, entry: Dictionary) -> void   # &"chat", &"audit", &"war"; pone key si la entrada no
+		# trae una ("<zone_instance_id>:<n>"); la que la trae (op:<op_id>) la conserva
 func request(kind: StringName, method: HTTPClient.Method, path: String, body: Dictionary, priority: int,
-		context: Variant) -> void
-func take_events() -> Array[PlatformEvent]                        # en el paso «poll»
+		context: Variant) -> void                                 # pone zone_instance_id: en la consulta de un GET, en
+		# el cuerpo de los demás; quien llama no lo pone. kind: &"progress_op", &"progress_ledger", &"ignore",
+		# &"report" o &"sanction"
+func take_events() -> Array[PlatformEvent]                        # en el paso «poll»; los kind de abajo
 func begin_flush() -> void                                        # cierre: lotes y guardados pendientes salen ya
 func is_flushed() -> bool                                         # nada en cola ni en vuelo
 func is_fenced() -> bool                                          # sin latido aceptado en 2 × heartbeat_s
 func is_live() -> bool
 func now_unix() -> int                                            # reloj corregido
+# tests/fake_zone_platform.gd (P4): sin red; ida y vuelta por JSON como PlatformClient y respuestas en el «poll»
+# siguiente (o tras delay_s). Es la única API de pruebas: la usan las de los dos documentos.
+class_name FakeZonePlatform extends ZonePlatform
+var fake_env: StringName = &"test"                                # el env del registro falso
+var next_block_first: int = 1025                                  # cada bloque (uno dentro de start, antes de
+		# startup_finished, y uno por request_id_block) sale como evento id_block {first, count: 1024} y sube 1024
+func add_character(character_id: int, account_id: int, role: StringName, realm: int, progress: Dictionary,
+		pvp: Dictionary = {}) -> void   # lo que devuelve su reclamación (lease_id nuevo en cada una); sin él, 409 ticket_invalid
+func script_next(kind: StringName, status: int, body: Variant, delay_s: float = 0.0) -> void
+		# la siguiente petición de ese kind (claim, save, release, heartbeat, id_block, progress_op, progress_ledger,
+		# ignore, report, sanction…) recibe esa respuesta, una vez; status 0 = sin conexión (transport_ok false)
+func set_fenced(fenced: bool) -> void                             # is_fenced() lo devuelve hasta cambiarlo
+func applied(character_id: int) -> Dictionary                     # el último cuerpo aplicado; {} si ninguno
+func sent(kind: StringName) -> Array[Dictionary]                  # los cuerpos recibidos de ese kind, en orden
+## Por defecto: claim → 200 con lo de add_character y, si hubo guardados, lo último aplicado de cada sección (§14.1);
+## save → 200 applied con save_version que sube; release → 204; heartbeat → 200 sin revoked; progress_op y
+## progress_ledger → 404; lotes → 204. progresion.md P5a añade solo la parte progress de la reclamación siguiente y
+## static func claim_progress(race_id: StringName, appearance: PackedByteArray, starter_template_id: StringName)
+## -> Dictionary, que la construye con ProgressRecord.new_character() y to_claim_dictionary(now_unix()).
 # scripts/server/platform/character_saver.gd (P5)
 class_name CharacterSaver extends RefCounted
 enum Reason { CHECKPOINT = 1, CRITICAL = 2, LOGOUT = 3, SHUTDOWN = 4, KICK = 5 }
-signal save_rejected(net_id: int, character_id: int, code: String)   # lease_lost, invalid_save…: la zona expulsa
-func _init(repository: ProgressRepository, interval_ticks: int = 3600) -> void
-## build(net_id) -> Variant (la parte del cuerpo); acknowledge(net_id, save_version) -> void; is_dirty(net_id) -> bool
+signal save_rejected(net_id: int, character_id: int, code: String)   # lease_lost, invalid_save…: la zona expulsa.
+		# Solo antes de finish: después, el definitivo solo se registra (§7.2)
+func _init(platform: ZonePlatform, interval_ticks: int = 3600) -> void   # solo con --platform
+## Entradas por lease_id, con los índices character_id → lease_id actual y, hasta finish o drop, net_id → lease_id;
+## cada respuesta se asocia por el lease_id y el seq de su context (§7.2). Arma el sobre entero de §7.3.
+## build(net_id: int, seq: int) -> Dictionary: una vez por seq; el cuerpo serializado se guarda y se reenvía byte a byte;
+##   {} = no se puede construir ahora (§7.2)
+## acknowledge(net_id: int, seq: int) -> void: tras 200 applied o duplicate, solo antes de finish
+## is_dirty(net_id: int) -> bool: si hay algo que guardar en el punto de control; solo antes de finish
 func register_section(section: StringName, build: Callable, acknowledge: Callable, is_dirty: Callable) -> void
-func track(net_id: int, character_id: int, lease_id: String, tick: int) -> void   # tras el alta
-func mark_critical(net_id: int) -> void
+func track(net_id: int, character_id: int, lease_id: String, tick: int) -> void   # al crear la entidad, antes de on_arrival
+func mark_critical(net_id: int, reason: StringName) -> void           # reason: solo registro y métricas (progresion.md §9.2)
 func step(tick: int) -> void                                          # tras «altas»
-func finish(net_id: int, reason: int) -> void                         # foto en el momento, con release_lease
-func drop(net_id: int) -> void                                        # sin guardar (lease_lost, invalid_save)
+func finish(net_id: int, reason: int) -> void                         # foto en el momento, con release_lease; desata el
+		# net_id. Sobre un net_id sin entrada (ya pasó por drop), nada
+func drop(net_id: int, code: String) -> void                         # baja sin guardado (§7.2): desata, descarta el final
+		# que esperase y llama a release salvo con code lease_lost. Sobre un net_id sin entrada, nada
+func on_platform_event(event: PlatformEvent) -> bool                  # true si era la respuesta de un guardado
 func pending_count() -> int
-# scripts/server/platform/platform_progress_repository.gd (P5)
-class_name PlatformProgressRepository extends ProgressRepository      # §7.5
-func _init(platform: ZonePlatform) -> void
-func on_platform_event(event: PlatformEvent) -> bool                  # guardados y bloques
 ```
 
 - `PlatformEvent` (`kind`, `context`, `transport_ok`, `status`, `body`, `error_code`) es el resultado de una
-  petición, con `body` ya leído (ids con `to_int()`, enteros con `int()`).
+  petición, con `body` ya leído: `null` si el cuerpo está vacío o el estado es 204; si no, `JSON.new().parse(texto)`
+  y, si falla, `body = null` y `error_code = "bad_json"`. Nunca `JSON.parse_string`, que escribe un ERROR del motor
+  ante un cuerpo vacío o roto (`battle_summary.gd` ya lo evita así) y el ejecutor lo cuenta como fallo.
+  `FakeZonePlatform` lee igual. Cada lector convierte lo suyo (ids con `to_int()`, enteros con `int()`):
+  `ClaimedCharacter.from_claim` la cuenta, el personaje y `pvp`; la sección `progress` llega tal cual a
+  `ProgressRecord.from_dictionary`, que hace lo mismo (progresion.md §3.4).
+- **`PlatformEvent.kind`** es uno de estos, y cada uno tiene un solo consumidor:
+
+  | `kind` | Qué | Lo atiende |
+  |---|---|---|
+  | `&"claim"` | Respuesta de una reclamación | `auth_provider` (P4) |
+  | `&"save"` | Respuesta de un guardado | `CharacterSaver` (P5) |
+  | `&"heartbeat"` | Respuesta del latido: `revoked`, `mutes` y `maintenance` | `ZoneServer` (P5: expulsiones y la cuenta atrás del mantenimiento de §7.2; P7b: silencios) |
+  | `&"id_block"`, `&"progress_op"`, `&"progress_ledger"` | Bloques de ids, operación y libro | `ProgressService` (progresion.md P5a y P5d) |
+  | `&"fortress"` | Respuesta de un PUT de fortaleza | `FortressPersistence` (P6) |
+  | `&"ignore"`, `&"report"`, `&"sanction"` | Respuestas de `/ignorar`, `/reportar` y `/gm` | `ChatRouter` y la moderación (P7b) |
+  | `&"instance_closed"` | `instance_lost`, `instance_replaced` o `instance_stopped` en cualquier respuesta o en `instance_status` (una vez) | `ServerMain`: el cierre de §6.1 (P5) |
+
+  Las respuestas de la liberación y de los lotes no salen de `ZonePlatform`: reintenta hasta una definitiva y
+  registra los rechazos. Las respuestas del registro y del GET de fortalezas acaban en `startup_finished`. La
+  del primer bloque también, y además sale como evento `id_block` para `ProgressService` (§8). La de `live`
+  solo se registra y, si se agotan sus reintentos, la zona sale (§6). Un `instance_not_live` solo se registra
+  (§6.1).
 - `ServerConfig` añade `--platform=<url interna>`, `--world=<id>` (1), `--channel=<n>` (0),
   `--public-address=<host>[:<puerto>]` (127.0.0.1 y su puerto), `--save-interval=<s>` (60), `--replace`,
   `--dtls-cert=` y `--dtls-key=`.
@@ -1422,10 +1680,17 @@ func on_platform_event(event: PlatformEvent) -> bool                  # guardado
   `saver.pending_count() > 0` o `not platform.is_flushed()`, con un tope de 600 ticks; `ServerMain.SHUTDOWN_MAX_FRAMES`
   pasa de 90 a 720. `HTTPRequest` avanza con el bucle principal, que sigue vivo mientras `ServerMain` espera con
   `await get_tree().physics_frame`: no hay esperas síncronas.
-- **Orden del tick** (amplía zone_server.gd): en `poll`, tras el transporte, `platform.take_events()` se reparte
-  (`auth_provider.on_platform_event`, luego `repository.on_platform_event`, `revoked` y silencios a la zona,
-  fortalezas a `FortressPersistence`) y luego `auth_provider.take_completed()`; en cada tick, los `VERIFYING`
-  vencidos (7 s en tiempo real); tras `altas`, `CharacterSaver.step(s)`.
+- **Orden del tick** (amplía zone_server.gd): en `poll`, tras el transporte, `platform.take_events()` se reparte por
+  `kind` (tabla de arriba), en el orden en que llegaron; `instance_closed` se atiende al final del reparto. Después,
+  `auth_provider.take_completed()` y, para cada 200, los pasos de §5.2 (`ProgressService.prepare` incluido). En cada
+  tick, los `VERIFYING` vencidos (7 s en tiempo real); tras `altas`, `CharacterSaver.step(s)`. Las peticiones del progreso salen por
+  `ZonePlatform.request_id_block()` y `ZonePlatform.request(kind, …)`.
+- **Altas y bajas.** `_process_arrivals` llama a `saver.track(net_id, character_id, lease_id, s)` en cuanto crea la
+  entidad y antes de `progress.on_arrival` (que da el kit de inicio y lo marca crítico, progresion.md §2.5): así ese
+  crítico sale al instante. Una baja en `VERIFYING` llama a `auth_provider.cancel(peer_id)`; una en `LOADING`, a
+  `platform.release(character_id, lease_id)` y `progress.cancel_prepared(peer_id)` (§5.2); una en el mundo, a la
+  salida de §7.2, y una por `save_rejected` o `revoked` `lease_lost`, a la baja sin guardado de §7.2.
+  `ZoneServer.stop` hace lo de §7.2 («Cierre ordenado») antes de `begin_flush`.
 
 ### 14.4 Contratos en GDScript (cliente)
 ```gdscript
@@ -1460,31 +1725,38 @@ para los plazos.
 
 | Paquete | Pruebas |
 |---|---|
-| P0 | `migrate`: up, down hasta la irreversible y up con el esquema igual; una irreversible no baja; conservación con las semillas; suma alterada → error; dos ejecutores a la vez (bloqueo). `config`: variable que falta → no arranca; clave de billete de 31 B → no arranca; la del vector fuera de `test` → no arranca; `MIN_PROTOCOL` ausente en `production` → no arranca. `/ready` con la base parada → 503. `jsonx`: `4.0` vale, `4.5` y un id sin comillas no |
-| P1 | Contraseña buena, mala y correo inexistente (mismo código y cuerpo); 5 fallos desde la IP B → 429 en B y el dueño entra desde A; los fallos por `/v1/account/password` cuentan igual (el sexto → 429); suspendida con contraseña mala → `invalid_credentials`, con buena → `account_suspended`; 11 intentos por IP → 429; el registro con un correo existente, uno sancionado y uno nuevo da el mismo cuerpo (y su correo en `outbound_mail`); acceso caducado → 401 y refresco; reutilizar el refresco anterior → sesión revocada; uno de hace dos rotaciones → 401 sin revocar; los 12 h no se alargan al rotar; segunda sesión revoca la primera; enlaces caducados y usados; tras cambiar la contraseña o el correo, el enlace de recuperación anterior falla y el `revert_email` sigue valiendo; `revert_email` devuelve el correo y obliga a recuperar; exportar sin contraseña → 400; un correo con `\r\nBcc:` → 400 `validation`; `X-Forwarded-For: 1.2.3.4` y `X-Real-IP` desde un origen no fiable no cambian la IP del límite; el formulario de `/verify` enviado como un navegador (`application/x-www-form-urlencoded`, sin cabeceras de `/v1`) verifica; `/verify?token=<script>` no lo repite; borrado y cancelación en plazo; cuenta sin verificar purgada a los 7 días (reloj); `needsRehash` |
-| P2 | `names` con `tests/data/name_rules_cases.json` y `test_progression_rules_export.gd` (Godot); dos creaciones simultáneas del mismo nombre (una `name_taken`); «Anéira» frente a «ANEIRA» y «Aneira» (`name_taken` por tildes y mayúsculas); reino bloqueado; huecos (un borrado en plazo ocupa); el sexto personaje creado en un día → 429; crear y borrar enseguida libera el nombre en `restore_until`; plantilla y raza de otro reino → 400; borrar, restaurar y nombre reservado; `enter` sin zona viva → 503; `enter` elige la última zona si admite el reino; vector del billete de §5.1 |
-| P3 | El token de `1:vado_gris:0` no registra `vado_gris:1` ni un host fuera de la lista, ni late por otra instancia (403); registro sin `replace` con la vieja latiendo → 409 `instance_alive`; con `replace` → `replaced` y fila en la auditoría; la sustituida manda su guardado final y vale; instancia `lost` que late → 409 `instance_lost`; latido con un `lease_id` viejo → `revoked` `lease_lost` y sin renovar; reclamación a una `starting` → `instance_not_live`; billete consumido, caducado, de otra instancia y de sesión revocada (no queda consumido); `character_busy` no consume el billete; refrescar la sesión con el personaje arrendado no lo pone en `revoked`; dos zonas a la vez (una gana); libre a los 15 s sin latido (plazos cortos); `seq`: plazo vencido con el commit tardío y reintento → `duplicate`, y el siguiente se aplica sin fallar S3; mismo `seq` con otro cuerpo → `seq_conflict`; `seq` menor → `stale_seq`; ajeno → `lease_lost`; tardío tras liberar (vale) y tras otra reclamación (no vale); `invalid_save` del falso → nada escrito; un guardado con `"kills": 4.0` se aplica; registro sin certificado en `staging` → 400; PUT de fortaleza con `expected_version` viejo → `version_conflict`; 100 guardados concurrentes del mismo personaje: `save_version` = aplicados |
-| P3b | S1–S9 con los casos de `tests/fixtures/progression/`; crear, guardar, recargar y comparar campo a campo; **dos guardados a la vez de dos personajes con el mismo `uid`: uno falla y nada se duplica**; un `uid` u `op_id` fuera de los bloques de la instancia → 400; intercambio de ranuras con la restricción diferida; purga de un personaje con kit de inicio y apuntes → lápida, sin objetos y con el libro; la retención al año (reloj) borra libro, operaciones y lápida; un `delete` del libro sin la marca falla; rutas de operación y libro |
-| P4 | `test_handoff_ticket.gd`: vector, firma alterada, clave desconocida, otra zona, caducado, desfase de 5 s, reutilizado; `test_net_messages`: REJECT 10–12 y bit GM; `test_zone_server_platform.gd` con `FakeZonePlatform` y ENet real: billete → `VERIFYING` → WELCOME; sin billete → `TICKET`; **cupo de 4 con 5 en `VERIFYING` → `FULL`**; HELLO retrasado 1,4 s con `GuardedEnetPeer` y reclamación a 5 s → WELCOME (`auth_timeout` de 10 s); plataforma muda → `UNAVAILABLE` a los 7 s (reloj real); zona cercada → `UNAVAILABLE`; peer que se va en `VERIFYING` → liberación; `BUSY` y `BANNED` con su texto; `--platform --debug-commands` con `env = production` → la zona sale; `ClaimedCharacter.from_claim` con un `ticket_id` y un `character_id` > 2^53 en ida y vuelta. `test_platform_client.gd` con `FakeHttpServer` (TCPServer en el mismo proceso, respuestas y retrasos guionizados): plazo vencido y reintento con los mismos bytes; la reclamación no se reintenta; **un latido no espera detrás de 4 guardados lentos**; una reclamación sale aunque haya 4 guardados en vuelo; orden por prioridad |
-| P5 | Con el falso (que hace `JSON.stringify` y `parse_string` de ida y vuelta): punto de control (intervalo de prueba de 120 ticks), fases repartidas, crítico al instante, una escritura en vuelo, el final espera detrás de la que vuela, `duplicate` cuenta como aplicado, `invalid_save` expulsa y libera sin guardar, `lease_lost` expulsa sin liberar, `instance_lost` cierra la zona con guardados finales, salida en combate guarda al irse el cuerpo, muerto se guarda para reaparecer, **el cierre ordenado espera** con el falso contestando a los 2 s (con cada uno de los cinco disparadores), cercado rechaza un `item_give`; la reconexión conserva `pvp` |
-| P6 | Ida y vuelta de `FortressPersistence` (ticks ↔ Unix con reloj fijo); arrancar con `CONSOLIDATING` a medias conserva dueño y plazo; `CAPTURING` vuelve como `VULNERABLE`; **plataforma caída al arrancar: el puerto no se abre y el dueño guardado no se pisa**; lista vacía → estado inicial sin aviso; `version_conflict` → reenvío con la versión nueva; capturas y `defend_ticks` (solo el dueño); el final se construye antes de `ScoreKeeper.forget`; lote de eventos reenviado sin duplicar |
-| P7a | Un moderador que pide `ban` → 403 y fila `sanction_denied`; un GM no sanciona a un admin; sancionar sin arrendamiento en la instancia → 403; caducidad de cada tipo de sanción (aviso, silencio, suspensión, expulsión, renombrado) con el reloj inyectado; `set-role` revoca las sesiones y el latido expulsa (≤ 5 s); `admin reports show` sin `--actor` → error, y con él, fila en la auditoría; `admin chat` entre dos fechas y lo caducado desaparece |
-| P7b | Sin rol → «Comando desconocido»; DEBUG_COMMAND 40 sin rol → aviso, ni objeto ni guardado; un GM invisible no hace daño, no lo recibe y no cuenta en el círculo ni en el marcador; `item_give` sobre un personaje propio → rechazado en `production`; un ignorado no susurra, no invita ni llega a su canal de zona; reporte con prueba y límite de 1 cada 10 min; silencio con su tiempo restante; renombrado forzado |
+| P0 | `migrate`: up, down hasta la irreversible y up con el esquema igual; una irreversible no baja; conservación con las semillas; suma alterada → error; dos ejecutores a la vez (bloqueo). `config`: variable que falta → no arranca; clave de billete de 31 B → no arranca; la del vector fuera de `test` → no arranca; `MIN_PROTOCOL` ausente en `production` → no arranca. `/ready` con la base parada → 503. `jsonx`: `4.0` vale, `4.5` y un id sin comillas no; un id de 2^63 − 1 en cadena vale y uno mayor no. `migrate`: una pendiente por debajo de la mayor aplicada → se niega; `serve` con una migración posterior a las suyas arranca |
+| P1 | Contraseña buena, mala y correo inexistente (mismo código y cuerpo); 5 fallos desde la IP B → 429 en B y el dueño entra desde A; 5 fallos con el correo inexistente A desde el grupo X, y después el inexistente B y el existente C desde X (contraseña mala) reciben lo mismo (`invalid_credentials`, no 429); los fallos por `/v1/account/password` cuentan igual (el sexto → 429); suspendida con contraseña mala → `invalid_credentials`, con buena → sesión `privacy` con el motivo; con la de una cuenta expulsada, la supresión y cerrar sesión valen y las demás rutas (también `enter`) dan 403 `account_banned`; 11 intentos por IP → 429; el registro con un correo existente, uno sancionado y uno nuevo da el mismo cuerpo (y su correo en `outbound_mail`); acceso caducado → 401 y refresco; reutilizar el refresco anterior → sesión revocada; uno de hace dos rotaciones → 401 sin revocar; los 12 h no se alargan al rotar; segunda sesión revoca la primera; enlaces caducados y usados; tras cambiar la contraseña o el correo, el enlace de recuperación anterior falla y el `revert_email` sigue valiendo; `revert_email` devuelve el correo y obliga a recuperar; exportar sin contraseña → 400; un correo con `\r\nBcc:` → 400 `validation`; `X-Forwarded-For: 1.2.3.4` y `X-Real-IP` desde un origen no fiable no cambian la IP del límite; el formulario de `/verify` enviado como un navegador (`application/x-www-form-urlencoded`, sin cabeceras de `/v1`) verifica; `/verify?token=<script>` no lo repite; borrado y cancelación en plazo; cuenta sin verificar purgada a los 7 días (reloj); `needsRehash` |
+| P2 | `names` con `tests/fixtures/names/name_rules_cases.json` y `test_progression_rules_export.gd` (Godot); dos creaciones simultáneas del mismo nombre (una `name_taken`); «Anéira» frente a «ANEIRA» y «Aneira» (`name_taken` por tildes y mayúsculas); reino bloqueado; huecos (un borrado en plazo ocupa); el sexto personaje creado en un día → 429; crear y borrar enseguida libera el nombre en `restore_until`; plantilla y raza de otro reino → 400; borrar, restaurar y nombre reservado; `enter` sin zona viva → 503; `enter` elige la última zona si admite el reino; vector del billete de §5.1 |
+| P3 | El token de `1:vado_gris:0` no registra `vado_gris:1` ni un host fuera de la lista, ni late por otra instancia (403); registro sin `replace` con la vieja latiendo → 409 `instance_alive`; con la vieja aún `live` pero sin latir desde hace 3 × `HEARTBEAT_S` → la pasa a `lost`, libera sus arrendamientos y registra la nueva (sin 500); con `replace` → `replaced` y fila en la auditoría; la sustituida manda su guardado final y vale; tras `replace`, reclamar un personaje de la vieja da `character_busy` hasta su final con `release_lease` (o hasta el TTL) y después la reclamación trae ese final; instancia `lost` que late → 409 `instance_lost`; latido con un `lease_id` viejo → `revoked` `lease_lost` y sin renovar; reclamación a una `starting` → `instance_not_live`; billete consumido, caducado, de otra instancia y de sesión revocada (no queda consumido); `character_busy` no consume el billete; refrescar la sesión con el personaje arrendado no lo pone en `revoked`; dos zonas a la vez (una gana); libre a los 15 s sin latido (plazos cortos); `seq`: plazo vencido con el commit tardío y reintento → `duplicate`, y el siguiente se aplica sin fallar S2 (progresion.md §13.3); mismo `seq` con otro cuerpo → `seq_conflict`; `seq` menor → `stale_seq`; ajeno → `lease_lost`; sin fila de arrendamiento (purgado) → `lease_lost`; un `duplicate` devuelve el `save_version` de cuando se aplicó; tardío tras liberar (vale) y tras otra reclamación (no vale); `invalid_save` del falso (`*persistence.InvalidSaveError`) → nada escrito; un 23505 en el COMMIT (la restricción diferida de ranuras) → `invalid_save`; un 40001 que se repite → 503 `db_unavailable` y nada escrito; un guardado con `"kills": 4.0` se aplica; una reclamación con un `ticket_id` > 2^53 vale; reclamar un personaje borrado → `ticket_invalid`; con la cuenta suspendida, expulsada o con el borrado pedido → 403 `account_blocked` con su `kind`, `until_unix`, `reason` y un `message` de 255 B como mucho (con un motivo largo); un DELETE y una reclamación del mismo personaje a la vez dejan o un borrado sin arrendamiento o un vivo con él; dos reclamaciones simultáneas de dos personajes de la misma cuenta: solo una gana y la otra da `character_busy` (y `enter` del segundo con el primero en el mundo, también); sobre con un campo desconocido, `save_format` 2 o un `character_id` distinto del de la ruta → `invalid_save` `envelope`; un guardado sin `pvp` no cambia `character_pvp_stats` y uno con `kills` menor no lo baja; el latido no lleva los de `VERIFYING` y `revoked` trae el `lease_id`; libro de un personaje sin arrendamiento en la instancia y operación sin participantes en ella → 404; un lote de auditoría con una entrada mala inserta las demás y devuelve su clave; una entrada con `source = 'cli'`, con la `key` `<uuid>:<n>` de otra instancia o con un `op:<op_id>` de un bloque de otra instancia, en `rejected`; registro sin certificado en `staging` → 400; PUT de fortaleza con `expected_version` viejo → `version_conflict`; PUT de una fortaleza de otra zona → 403 y su evento de guerra, en `rejected`; el GET solo da las de la zona; un reporte, un ignorado o una sanción con `world_id` en el cuerpo → 400, y sin él resuelven el nombre en el mundo de la instancia; 100 guardados concurrentes del mismo personaje: `save_version` = aplicados |
+| P4 | `test_handoff_ticket.gd`: vector, firma alterada, clave desconocida, otra zona, caducado, desfase de 5 s, reutilizado; `test_net_messages`: REJECT 10–12 y bit GM; `test_zone_server_platform.gd` con `FakeZonePlatform` y ENet real: billete → `VERIFYING` → WELCOME; sin billete → `TICKET`; **cupo de 4 con 5 en `VERIFYING` → `FULL`**; HELLO retrasado 1,4 s con `GuardedEnetPeer` y reclamación a 5 s → WELCOME (`auth_timeout` de 10 s); plataforma muda → `UNAVAILABLE` a los 7 s (reloj real); zona cercada → `UNAVAILABLE`; peer que se va en `VERIFYING` → liberación; peer que se va en `LOADING` (y `revoked` en `LOADING`) → liberación sin guardar; un `revoked` con un `lease_id` viejo no expulsa; `BUSY` con su texto y `BANNED` con el `message` del 403 (§6.1) en suspensión, expulsión y borrado pendiente; `test_hello_cannot_probe_an_enemy_name` (con ENet, un HELLO con billete de otro personaje y el nombre de un enemigo conectado no recibe `NAME`; social.md 12.7); `--platform --debug-commands` con `env = production` → la zona sale; `ticket_id` > 2^53 en el cuerpo de la reclamación (Go y `FakeZonePlatform`) y `character_id` > 2^53 en `from_claim`. `test_platform_client.gd` con `FakeHttpServer` (TCPServer en el mismo proceso, respuestas y retrasos guionizados): plazo vencido y reintento con los mismos bytes; la reclamación no se reintenta; **un latido no espera detrás de 4 guardados lentos**; una reclamación sale aunque haya 4 guardados en vuelo; orden por prioridad; un 204, un cuerpo vacío y uno roto → `body` null (`bad_json` en el roto) sin errores del motor; `request` pone `zone_instance_id` y `enqueue_batch` la `key` que falta sin tocar `op:<op_id>`; `save` manda los bytes sin tocarlos; el conjunto del latido: entra con la reclamación, cambia con otra del mismo personaje y sale con `release` o con la respuesta definitiva del final, no con la de un guardado sin `release_lease`; un `instance_lost` en la respuesta de un bloque de ids da un solo `instance_closed`; una liberación con 403 no se repite |
+| P5 | Con el falso (que hace la ida y vuelta por JSON como `PlatformClient`): punto de control (intervalo de prueba de 120 ticks), fases repartidas, crítico al instante, una escritura en vuelo, el final espera detrás de la que vuela, `duplicate` cuenta como aplicado, `invalid_save` expulsa y libera sin guardar, `lease_lost` expulsa sin liberar, `instance_lost` cierra la zona con guardados finales y la NOTICE de expulsión sale después de ellos (un jugador echado por `instance_lost` o `instance_replaced` que vuelve a entrar enseguida carga su final), salida en combate guarda al irse el cuerpo, **la baja sin guardado** (un `invalid_save` con el jugador en combate: el cuerpo sale en el acto, se libera una vez, la «Salida» no manda nada y ningún gancho de `ProgressService` falla; un `revoked` `lease_lost`, igual sin liberar), un 403 o un 413 del guardado es definitivo, **el cierre ordenado espera** con el falso contestando a los 2 s (con cada uno de los cinco disparadores) y libera a los de `LOADING` y `VERIFYING`; el `maintenance` del latido avisa a los 10, 5 y 1 min, 30 s y 10 s y cierra; la reconexión devuelve lo último aplicado de la sección falsa; un crítico marcado justo tras `track` sale al instante; **un `net_id` reutilizado con el final del anterior aún en vuelo**: el nuevo no recibe `acknowledge` ni `save_rejected` del viejo, y un `invalid_save` tardío del viejo solo se registra y libera; **el mismo personaje vuelve a esta instancia mientras su final, ya aplicado, se reintenta**: la entrada vieja recibe `lease_lost` y solo se registra, y la nueva no se expulsa |
+| P6 | Ida y vuelta de `FortressPersistence` (ticks ↔ Unix con reloj fijo); arrancar con `CONSOLIDATING` a medias conserva dueño y plazo; `CAPTURING` vuelve como `VULNERABLE`; **plataforma caída al arrancar: el puerto no se abre y el dueño guardado no se pisa**; lista vacía → estado inicial sin aviso; `version_conflict` → reenvío con la versión nueva; capturas y `defend_ticks` (solo el dueño); una captura forzada por un comando no suma; la reconexión conserva `pvp`; el final se construye antes de `ScoreKeeper.forget`; lote de eventos reenviado sin duplicar |
+| P7a | Un moderador que pide `ban` → 403 y fila `sanction_denied`; un GM no sanciona a un admin; sancionar sin arrendamiento en la instancia → 403; caducidad de cada tipo de sanción (aviso, silencio, suspensión, expulsión, renombrado) con el reloj inyectado; `set-role` revoca las sesiones y el latido expulsa (≤ 5 s); `admin reports show` sin `--actor` → error, y con él, fila en la auditoría; `admin chat` entre dos fechas (con `zone_channel`) y lo caducado desaparece; ninguna fila de `audit_log` de la CLI (`set-role`, `purge-now`, `chat --character`) ni un `sanction_denied` lleva un correo o un nombre de personaje en `args`; `set-role` deja la fila de §9.1 (`source = 'cli'`, `command = 'set-role'`, `target_account_id` y `args` con `from`, `to` y `os_user`); un lote de auditoría con una entrada `source = 'cli'` o `command = 'set-role'` la rechaza y S2 no la ve |
+| P7b | Sin rol → «Comando desconocido»; DEBUG_COMMAND 1 (`teleport`) sin rol → aviso y no se mueve; `/gm silenciar` de un `player` → «Comando desconocido» y de un `moderator`, aplicado; un GM invisible no hace daño, no lo recibe y no cuenta en el círculo ni en el marcador; `/gm teleport` y `/gm visible` ponen `gm_forced` al personaje que mueven o muestran, y la reaparición lo quita; la entrada de auditoría lleva `actor_account_id` y `source` `zone`; un ignorado no susurra, no invita ni llega a su canal de zona; reporte con prueba y límite de 1 cada 10 min; silencio con su tiempo restante; renombrado forzado; salir y volver a entrar en 5 min no rellena las ráfagas del chat (`ChatPeerState` por personaje) y pasados 5 min sí |
 | P8 | `test_client_config`: modos y prioridad, `--dtls-*`; `PlatformApi` con `request_hook` (refresco ante 401; dos llamadas que caducan a la vez hacen un solo refresco; mapa de errores); `AccountFlow` con `request_hook` (login, crear si falta, enter → `ClientConfig` con billete); `--bot --platform` sin `--login` → código 1; pantallas con datos falsos (nombre, borrado escribiendo el nombre, Entrar desactivado sin personaje, plantilla); `NetClient` pone el billete en el HELLO |
-| P9a | Exportación con todas las secciones; la purga deja las lápidas; las retenciones borran lo caducado y nada más; una copia tomada antes de purgar, restaurada y con `reapply-purges`, deja la lápida; purgar una cuenta suspendida y registrar el mismo correo → no se crea la cuenta |
+| P9a | Exportación con todas las secciones, también el libro de una lápida, y las operaciones GM sin `note` ni actor; la purga deja las lápidas; con un arrendamiento vivo no purga y `purge-now` responde `character_busy`; una restauración en el límite y la purga horaria a la vez: gana una y el personaje queda entero o purgado; las retenciones borran lo caducado y nada más (también un reporte abierto al año y las sanciones de una cuenta purgada hace más de un año); una copia tomada antes de purgar, restaurada y con `reapply-purges`, deja la lápida con el `purged_at` original; una tomada antes de borrar un personaje y antes de un `purge-now` de su cuenta deja, tras `reapply-purges`, todos sus personajes como lápida (también los que nunca se borraron), sin arrendamientos ni billetes restaurados, y `reapply-purges` sale con error si un id de `purges.txt` queda sin purgar; purgar una cuenta deja como lápida a sus personajes vivos; purgar una cuenta suspendida y registrar el mismo correo → no se crea la cuenta; una cuenta expulsada exporta y pide la supresión con su sesión de privacidad, y se purga; tras `purge-now`, ninguna fila de `audit_log` tiene su correo, y `restore_check.sh` falla si alguna lo tiene |
 | P9b | `restore_check.sh` sobre una copia de la base de prueba con `purges.txt`; `docker compose config -q`; la comprobación de secretos de la CI con un `staging.env` de prueba en el índice → falla |
 | P9c | Loopback con DTLS y `GuardedEnetPeer` (servidor y cliente en un proceso, cierre limpio sin errores del motor); `SwarmBot` con certificado |
 | P10 | Abajo |
+
+Las del almacén del progreso (S1–S8 con sus casos, dos guardados con el mismo `uid`, ids fuera de los bloques de la
+instancia, intercambio diferido, purga con lápida, retención al año, `delete` del libro sin la marca, `Summaries`,
+`Export`, operación y libro) son de progresion.md §15 P7. DEBUG_COMMAND 40–43, la regla de los propios personajes
+(id 40 sin rol, `item_give` propio sin `admin`) y el cercado con `item_give` son de progresion.md P5d.
 
 **P10, extremo a extremo** (`go test -tags e2e ./e2e`):
 
 - **Arnés.** `ELDMARK_GODOT` (ruta del ejecutable de Godot 4.7.2; si falta, `t.Skip`). `TestMain` hace una vez
   `godot --headless --path .. --import` (con LFS ya bajado). Plataforma en el proceso de la prueba, PostgreSQL
-  efímero (§2.6), `ELDMARK_HEARTBEAT_S=1` y `ELDMARK_LEASE_TTL_S=6`.
+  efímero (§2.6), `ELDMARK_HEARTBEAT_S=1`, `ELDMARK_LEASE_TTL_S=6`, el token `1:test_world:0` en
+  `ELDMARK_ZONE_TOKENS` y `ELDMARK_ENTRY_ZONES=vardheim=test_world,solmarch=test_world` (un personaje nuevo entra
+  en la de su reino, y las pruebas solo arrancan `test_world`). progresion.md P8 usa el mismo arnés.
 - **`TestEnterAndSave`:** `test_world` con `--platform`, un `--bot` con cuenta: entra, guarda, sale; `save_version
   > 0` y `character_progress.saved_at` puesto.
 - **`TestZoneCrash`:** `--save-interval=5`; se espera a un `saved_at`, se apunta la hora y `kill -9` a la zona. Se
-  arranca otra instancia (se registra cuando la vieja pasa a `lost`, a los 3 s) y **un segundo proceso `--bot`** con
+  arranca otra instancia (su registro da 409 `instance_alive` y reintenta cada 2 s hasta que la vieja lleva 3 s sin
+  latir; entonces la pasa a `lost` él mismo, §5.3) y **un segundo proceso `--bot`** con
   la misma cuenta entra en ella. Comprueba: `kill − saved_at < 5 s + 1 s de margen` y que el personaje está en la
   instancia nueva. El primer bot no hace falta que reconecte.
 - **CI:** trabajo «Plataforma e2e» en `tests.yml`, que reutiliza la caché de Godot y de LFS del trabajo de Godot y
@@ -1509,48 +1781,80 @@ con su texto.
 | DTLS con `GuardedEnetPeer` y `SceneMultiplayer`, y su coste, sin comprobar | P9c lo prueba en un proceso; TEC-27 lo mide con el criterio relativo de §10.2; sin DTLS no hay pruebas públicas (la plataforma lo impone) |
 | Versiones de Go y PostgreSQL de la CI (`ubuntu-latest`, sin comprobar) | Versiones fijas y `GOTOOLCHAIN=local` (§2.2); `ELDMARK_REQUIRE_PG=1` hace evidente que falta PostgreSQL |
 | Una sola instancia de la plataforma (punto único de fallo; límites y fallos de contraseña en memoria) | Vale para pruebas cerradas; quien juega sigue si cae (§7.4); reiniciar la plataforma reinicia los contadores. Varias instancias con TEC-38 |
-| progresion.md y este documento se escriben a la vez | Frontera única (§7.5) y lista de cambios para progresion.md (§17); migraciones de P3b; si allí se elige otro nombre, se cambia aquí y en las pruebas al integrar |
-| Una zona comprometida (Godot recibe UDP de Internet) | Token con alcance, `public_host` de una lista, autorización de sanciones en la plataforma, ids solo de sus bloques, S1–S9 en Go |
+| Una zona comprometida (Godot recibe UDP de Internet) | Token con alcance, `public_host` de una lista, autorización de sanciones en la plataforma, lotes validados contra la instancia (§6), ids solo de sus bloques, S1–S8 en Go (progresion.md §13.3). **Riesgo que queda:** S1–S8 acotan la forma, los topes, los ids y el actor de las GM, no las cantidades; son la red contra una zona con un error, no contra una comprometida, que aún puede acuñar oro, méritos y XP con GAMEPLAY o con `source = console` sobre los personajes que tiene dentro. Lo detectan PRG-30 y PRG-39 |
 | Textos legales, edad, retenciones (libro, correos sancionados) y exportación | Borradores marcados; revisión humana antes de cualquier prueba pública |
-| `zone_server.gd` lo tocan P4, P5, P6 y P7b (y la fase 4 aún lo cambia) | Orden fijo y pasos del tick con nombre (§14.3) |
+| `zone_server.gd` lo tocan nueve paquetes de los dos documentos (y antes habilidades.md) | Orden conjunto fijo, que empieza tras habilidades.md H3c (§14.1), y pasos del tick con nombre (§14.3) |
 | P10 puede pasar de 30 s | Se mide; si pasa, tope explícito de 60 s (§15) |
 
-## 17. Interfaz con progresion.md
+## 17. Interfaz con progresion.md (conciliada)
 
-Lo que progresion.md tiene que adoptar para que haya una sola tubería. Hasta que lo haga, manda esta tabla; los
-nombres de allí que no se citan aquí se quedan como están.
+Lo acordado con progresion.md tras conciliar los dos documentos. Cada regla está escrita una sola vez, en el
+documento dueño; el otro la cita. La misma tabla está en progresion.md §13.1.
 
-| # | progresion.md | Cambio | Hallazgo (§18) |
+| Tema | Acordado | Dueño | Lo cita |
 |---|---|---|---|
-| 1 | §3.2 I12, §3.3 (`last_save_id`), §9.2, §9.3, §13 S2 | Idempotencia por `(lease_id, seq)` (§7.3): fuera `save_id`, `base_version`, `last_save_id` y `VERSION_CONFLICT`. `save_version` sigue como contador que devuelve la plataforma. Un guardado enviado se reintenta byte a byte; `duplicate` = aplicado. S2 pasa a ser el paso 3 de §7.3 | PL-SEG1, PL-COH1, PL-IMP1, PL-IMP2 |
-| 2 | §9.1 | El registro llega en la reclamación, antes del WELCOME, y el WELCOME lleva el reino del personaje (no el del billete). `begin_load(peer_id, character_id, lease_id)`: `lease_token` pasa a `lease_id`; con plataforma, `PlatformProgressRepository` lo entrega en el `poll` siguiente | PL-COH1, PL-IMP1 |
-| 3 | §9.2 | Cuándo se guarda lo decide `CharacterSaver` (§7.2): fuera `next_checkpoint_tick`, «32 por zona» y los reintentos de 30 s. `ProgressService` llama a `CharacterSaver.mark_critical` en sus críticos y da la sección `&"progress"` (`build`: `{record, ops}` con las `ops` no enviadas; `acknowledge(net_id, save_version)` las saca del diario; `is_dirty`, que cuenta moverse y la vida). `on_departure` no guarda: lo hace `finish` | PL-COH1, PL-IMP1 |
-| 4 | §9.3 | El cuerpo es el de §7.3: añade `zone_instance_id`, `lease_id`, `seq` y `pvp`; `reason` 5 = expulsión; `release_lease` igual | PL-COH1 |
-| 5 | §9.4, §14.2 `ProgressRepository` | `save_character(character_id: int, body: PackedByteArray) -> int` (cuerpo ya serializado); `Result` sin `VERSION_CONFLICT`; `character_saved(request_id, result, save_version)` da `OK` también con `duplicate`. `PlatformProgressRepository` lo hace P5 de este documento; Memory y File aplican la misma regla de `seq` | PL-COH1, PL-IMP1 |
-| 6 | §14.2 `CharacterRecord.from_dictionary` | Convierte con `int()` cada entero y con `String.to_int()` cada id en cadena: Godot lee todo número como `float` y lo reescribe como `820.0` | PL-IMP3 |
-| 7 | §3.4, §0 | Ids como cadena en las dos API, también `account_id` y `actor_account_id` (§4.1) | PL-COH14 |
-| 8 | §4.5, §13 #4 | Bloques: `POST /internal/v1/id-blocks` → `{"first": "1025", "count": 1024}` de `uid_block_seq`; la plataforma apunta el bloque en `id_blocks` y rechaza ids nuevos fuera de los bloques de la instancia (400) | PL-SEG1, PL-COH2 |
-| 9 | §13 #1, §14.1 P7 | Las tablas las escribe P3b de este documento (0010_progress, §3): sin `last_save_id`; `economy_ops`, `ledger_entries`, `item_events` y `op_reversals` sin cascada y con `eldmark_append_only`, que solo deja borrar con `eldmark.retention_purge`; `progress_purge_character`. Su P7 es P3b | PL-COH2, PL-COH3, PL-IMP2 |
-| 10 | §13 #8 | Retención: el personaje purgado queda como lápida y el libro y los eventos de objeto, 1 año tras la purga; luego se borran (§11.1, revisión legal) | PL-COH3 |
-| 11 | §13 #6, §14.1 P3 | Un solo archivo de datos: `platform/internal/gamedata/progression_rules.json` (no `data/generated/`: `go:embed` no lee fuera de `platform/`), con las secciones `protocol_version` y `names` además de las suyas; lo crea el primero de los dos paquetes que llegue | PL-COH6, PL-IMP2 |
-| 12 | §1, §8 | CMB-30 es suyo (habilidades.md lo deja fuera, §9 de ese documento). Su regla de posición y vida es la única; aquí se cita (§7.1) | PL-COH4, PL-COH5 |
-| 13 | §8 «Traspasos» | El billete tiene 52 B (§5.1) | PL-COH12 |
-| 14 | §10 | DEBUG_COMMAND 40–43 con plataforma solo en `dev` y `test` y con rol `gm`; los comandos que cambian algo no valen sobre personajes de la propia cuenta salvo `admin`; `inv_show`, `ledger_show` y `op_show` se auditan (§9.1) | PL-SEG2, PL-SEG11 |
-| 15 | §6.2 y recompensas | El GM invisible no recibe méritos, XP ni oro (§9.1) | PL-SEG11 |
-| 16 | §12 | Una sola subida de `PROTOCOL_VERSION` para la fase 5, compartida, que incluye `AUTH_TIMEOUT_SECONDS` = 10 (§5.4) | PL-COH13, PL-IMP4 |
-| 17 | §14.1 P8 | «`PlatformProgressRepository` con TEC-25» pasa a P5 de este documento; la prueba de duplicados con PostgreSQL es de P3b | PL-IMP9, PL-IMP13 |
+| Idempotencia del guardado | Solo `(lease_id, seq)`: mismo `seq` y mismo SHA-256 → `duplicate` (aplicado, con el `save_version` guardado en `character_leases`); otro cuerpo → `seq_conflict`; menor → `stale_seq`. `save_version` es un contador que no interviene; `saved_at` y `save_version` los escribe `Apply` (S8) | plataforma.md §7.3 | progresion.md §5.4, §13.3 |
+| Cuerpo del guardado | Sobre `save_format` 1 con una clave por sección: `progress` (el registro sin los campos de solo lectura, con `ops`) y `pvp`. Sin `zone_id`: la zona es la de `claimed_by` | plataforma.md §7.1, §7.3 | progresion.md §9.3 |
+| Diario en el guardado | Cada cuerpo lleva solo las operaciones con `save_seq = 0`, que `build` marca con su `seq`; `acknowledge(seq)` quita las de `save_seq ≤ seq`. Un final construido con otro en vuelo no repite nada | progresion.md §9.2 | plataforma.md §7.1, §7.2 |
+| Formatos | `progress.progress_format` es el `record_format` del registro de la zona (`ZonePlatform.RECORD_FORMAT`, de plataforma.md P4; `ProgressRecord.FORMAT` vale lo mismo y lo prueba progresion.md P5a): la compatibilidad se decide al registrarse (409 `schema_mismatch`); en un guardado, otro formato es 400 `invalid_save` | plataforma.md §7.1 | progresion.md §3.4 |
+| Secciones de `CharacterSaver` | `register_section(section, build, acknowledge, is_dirty)` con `build(net_id, seq)`, `acknowledge(net_id, seq)` e `is_dirty(net_id)`; sin `restore`. `track(net_id, character_id, lease_id, tick)` al crear la entidad, antes de `on_arrival`; `mark_critical(net_id, reason)`, `on_platform_event`, `save_rejected`, `drop(net_id, code)`. `CharacterSaver` arma el sobre entero (`zone_instance_id` incluido); un `build` que devuelve `{}` aplaza ese guardado (el final no espera: alerta y `release`). Entradas por `lease_id`, y cada respuesta, por el `lease_id` y el `seq` de su petición: tras `finish` o `drop`, ni `acknowledge`, ni `is_dirty`, ni `save_rejected` | plataforma.md §7.2, §14.3 | progresion.md §9.1, §9.2 |
+| Eventos críticos | Kit de inicio, subida de nivel, captura y todo comando de GM que cambia algo (`op_revert` incluido); desde la fase 6, comercio, correo y botín raro. El renombrado no es crítico | progresion.md §9.2 | plataforma.md §7.2 |
+| Cuándo se guarda | Cada 60 s con alguna sección sucia, en fases; una escritura en vuelo; el final en `finish`. Salida: `finish` → `ScoreKeeper.forget` → `ProgressService.on_departure`; al parar, `release` de `LOADING`, `cancel` de `VERIFYING` y `finish` de todos antes de `_clear_players()` | plataforma.md §7.2 | progresion.md §9.2 |
+| Baja sin guardado | Un definitivo antes de `finish` o un `revoked` `lease_lost`: `CharacterSaver.drop(net_id, code)` (con `release` salvo en `lease_lost`), expulsión con el cuerpo fuera en el acto (sin salida en combate), `ScoreKeeper.forget` y `ProgressService.on_departure`. Todo gancho de `ProgressService` por `net_id` sin `PlayerProgress` no hace nada | plataforma.md §7.2 | progresion.md §9.2, §14.2 |
+| Baja en `LOADING` | Sin guardado: `ZonePlatform.release(character_id, lease_id)` y `ProgressService.cancel_prepared(peer_id)`, también con un `revoked` | plataforma.md §5.2, §14.3 | progresion.md §9.1, §14.2 |
+| Respuestas del guardado | Una tabla y una regla de errores. Contenido o base que no es pasajero (`*persistence.InvalidSaveError`, SQLSTATE de clase 23 o `P0001`, también en el COMMIT): 400 `invalid_save` con `fields.check` y `fields.detail`. `40001` y `40P01` tras reintentar, sin conexión o plazo: 503. Un error del sobre: `invalid_save` con `check = "envelope"`. No hay `invalid_progress` ni `progress.ErrFormat`. `instance_*`: cierre con guardados finales. Cualquier otro 4xx es definitivo, como `invalid_save`, también en la liberación. `progress` es obligatoria y `pvp`, opcional y sin bajar | plataforma.md §6.1, §7.3 | progresion.md §9.2, §13.3 |
+| Sin plataforma | Nada se guarda: personajes efímeros; no hay `--progress-file` ni repositorios de progreso. `CharacterSaver` solo existe con `--platform` y llama a `ZonePlatform.save` | progresion.md §0, §9.4 | plataforma.md §5.5, §7.5 |
+| Reclamación | `{lease_id, instance_status, account, character, progress, pvp}`, solo de un personaje no borrado, con la cuenta bloqueada, sin otro personaje de la cuenta en el mundo y con `Load` en su transacción; en la zona, `AuthOutcome.claimed: ClaimedCharacter` con `progress: Dictionary`. No hay clase `CharacterRecord` | plataforma.md §5.3, §6, §14.3 | progresion.md §3.4, §9.1 |
+| Antes del WELCOME | Reino → cupo → `ProgressService.prepare(peer_id, claimed)` → WELCOME con el reino del personaje; si algo falla, REJECT (`REALM`, `FULL` o `UNAVAILABLE`) y `release`. El WELCOME no cambia de bytes | plataforma.md §5.2 | progresion.md §9.1 |
+| Contenido del registro | Un solo `ProgressRecord`, con raza, apariencia, `played_seconds`, `health` y `location`. Solo en la reclamación: `race_id`, `appearance`, `starter_template_id` y `location.saved_at_unix` (`to_claim_dictionary` los pone). No hay `characters.state` ni JSON de estado | progresion.md §3.4 | plataforma.md §7.1 |
+| Falso de la plataforma | `FakeZonePlatform` devuelve en la reclamación siguiente lo último aplicado: `pvp` (plataforma.md P4) y `progress` sin `ops`, con los campos de solo lectura de la reclamación anterior y `location.saved_at_unix` (progresion.md P5a, con `claim_progress`). Su API de pruebas (`add_character`, `script_next`, `set_fenced`, `next_block_first`, `applied`, `sent`) es una sola, de plataforma.md P4 | plataforma.md §14.1, §14.3 | progresion.md §14.1 |
+| Volver al mundo | Zonas RVR (todas en la fase 5): el campamento del reino. Zonas SAFE (fase 6): el sitio guardado si es la misma instancia, hace menos de 15 min, sin combate y vivo. Vida regenerada con el tiempo pasado | progresion.md §8 | plataforma.md §0, §7.1 |
+| Quién guarda qué | Una tabla con todos los campos y su dueño; `characters` solo identidad (no gana `level` ni `state`) | progresion.md §3.1 | plataforma.md §3 |
+| Tablas del progreso | DDL de `0010_progress` solo en progresion.md, sin `world_id`; las de solo añadir, con clave ajena sin cascada a `characters` por `op_participants`; disparador en las cinco; `actor_account_id` en las GM y REVERSAL | progresion.md §3.3 | plataforma.md §3 |
+| Migraciones | En la fase 5, 0001–0006 de la plataforma y 0010_progress (progresion.md P7, con `.down.sql` y semilla); después, el siguiente número libre, sea de quien sea. El ejecutor aplica en orden y se niega ante una pendiente por debajo de la mayor aplicada. No hay P3b | plataforma.md §2.4 | progresion.md §3.3 |
+| Bloques de ids | `POST /internal/v1/id-blocks {zone_instance_id}` → `{first, count: 1024}`, en `starting` y `live`; `uid_block_seq` e `id_blocks` en 0003_zones; el primer bloque, en el arranque; `Apply` rechaza ids fuera de los bloques de `claimed_by` | plataforma.md §3, §6, §8 | progresion.md §4.5, §13.3 |
+| Purga y retención | La lápida es la fila de `characters`. La purga bloquea el arrendamiento y la fila del personaje, y no purga con un arrendamiento vivo; con la cuenta y en `reapply-purges` (que corre antes de `serve` y borra los arrendamientos restaurados) basta `purged_at` nulo; `ProgressStore.Purge` borra el estado del progreso; `PurgeRetention` vacía el libro al año y devuelve las lápidas vacías, que la plataforma borra; `reapply-purges` conserva el `purged_at` | plataforma.md §11.1, §11.2 | progresion.md §3.5 |
+| Exportación | `ProgressStore.Export` de cada personaje no purgado y de cada lápida de la cuenta con libro (sin registro), bajo `characters[i].progress`; de las operaciones GM y REVERSAL, sin actor, `note` ni `detail`. El libro de una lápida es seudónimo solo tras purgar la cuenta | plataforma.md §11.2 | progresion.md §3.5 |
+| `ProgressStore` en Go | `Create`, `Load`, `Apply`, `Summaries`, `Purge`, `PurgeRetention` (con las lápidas vacías), `Export`, `Op` (con la instancia) y `Ledger`, con JSON crudo en la frontera; sus errores (`InvalidSaveError`, `ErrNotFound`) y la validación de la creación (`CreateValidator`, `*ValidationError`) en `internal/persistence`, de plataforma.md P2, que `*progress.Rules` implementa. La plataforma no lee columnas del progreso | progresion.md §13.2 | plataforma.md §7.5 |
+| Operación y libro | Rutas `?zone_instance_id=` del enrutador interno de la plataforma (comprobaciones de su §6.1), solo con arrendamiento en la instancia (el del personaje, que mira el enrutador; o el de algún participante, que mira `Op` en su propia consulta); si no, 404. Cuerpos de progresion.md; `limit` de 1 a 100 | plataforma.md §6 | progresion.md §13.2 |
+| Ids en JSON | Cadena decimal para todo id `bigint`, también en la reclamación y en el guardado (`jsonx.ID`, hasta 2^63 − 1; los del progreso, hasta 2^53 − 1 por S1); número para cantidades, saldos, nivel, `seq`, códigos y fechas. Reinos: id de texto en la API pública y código en la interna | plataforma.md §4.1 | progresion.md §0, §3.4 |
+| Comprobaciones del guardado | S1–S8 de progresion.md; arrendamiento y `seq` son los pasos 2 y 3 del guardado, sin número S. S2 admite de las zonas los tipos 1–5 con sus motivos, rechaza un `op_id` ya guardado y comprueba el actor de GM y REVERSAL con el rol que tenía en `detail.at_unix` (la fila `set-role` de la CLI, plataforma.md §9.1). S7 admite fechas pasadas | progresion.md §13.3 | plataforma.md §6.1, §7.3 |
+| Nivel | Solo `character_progress.level`; la lista de personajes lo lee con `Summaries` | progresion.md §3.1 | plataforma.md §4.4 |
+| Raza y apariencia | `race_vardheim`, `race_solmarch` y `race_askarra`; 8 B en `character_progress`, con el byte 0 de `race_id`; valida la plataforma al crear (`ValidateCreate` o la provisional) y la zona al cargar (`default_for`), con las mismas reglas exportadas (piezas con sus `bodies`, `allows_no_hair`, `allows_no_beard`) y los mismos casos (`appearance_cases.json`); el reino, en el código de `NetProtocol.Realm` en `validate`, `ValidateCreate`, las reglas y los casos | progresion.md §7.2 | plataforma.md §4.4 |
+| Plantilla de inicio | Se elige al crear (`starter_template_id`, UI-24) entre las `selectable`; es el kit de la primera entrada; con plataforma, LOADOUT_SELECT no cambia nada | progresion.md §2.5 | plataforma.md §4.4, §13.2 |
+| Reglas exportadas | Un archivo (`platform/internal/gamedata/progression_rules.json`), una herramienta (`tools/progression/export_rules.gd`) y una prueba (`test_progression_rules_export.gd`); `protocol_version` y `names` son de plataforma.md. Los datos de prueba compartidos con Go, bajo `tests/fixtures/` | progresion.md §13.4 | plataforma.md §4.4 |
+| Protocolo | `PROTOCOL_VERSION = 7` para toda la fase 5, con `AUTH_TIMEOUT_SECONDS = 10.0`; reparto fijo (5 chat y grupos, 6 habilidades.md); lo sube plataforma.md P4, tras habilidades.md, con la línea completa en `net_protocol.gd`; progresion.md P4 añade lo suyo sin subirla. En red.md cada P4 escribe las filas y la marca «v7» de lo que añade su código | plataforma.md §5.4 | progresion.md §12 |
+| CMB-30 | Es de progresion.md; la plataforma guarda la sección `progress` | progresion.md §8 | plataforma.md §7.1 |
+| Billete y traspasos | 52 B, solo identidad; lo de CMB-30 llega con el guardado final y la reclamación en el destino (fase 6) | plataforma.md §5.1 | progresion.md §8 |
+| DEBUG_COMMAND con plataforma | El `min_role` de cada comando; declaran `admin` los 40–43 y el 5, el 13 y el 16 | progresion.md §10 | plataforma.md §9.1 |
+| Guardia de entorno | Manda el `env` del registro: con `staging` o `production`, las opciones de desarrollo hacen salir a la zona | plataforma.md §5.5 | progresion.md §10 |
+| Sobre los propios personajes | Todo comando que cambia algo (`op_revert` incluido) exige `admin`, sin excepción por entorno; S2 lo repite en las GM y las REVERSAL | progresion.md §10 | plataforma.md §9.1 |
+| Consultas de GM | `inv_show`, `ledger_show` y `op_show` piden `gm` y se auditan | progresion.md §10 | plataforma.md §9.1 |
+| Auditoría | Un comando que crea una operación (una GM, o la REVERSAL de `op_revert`) va con `key = "op:<op_id>"` en el lote y en S8, con `on conflict do nothing` y los mismos campos: `actor_account_id`, `source` (`zone` o `console`), `args` con el objetivo por id y `at` = `detail.at_unix`; `world_id` y `zone_id`, de la instancia. Cada entrada del lote se valida por separado y contra la instancia que la manda: ni otra instancia, ni filas `cli` o `platform`, ni `op_id` de otros bloques (plataforma.md §6). Ninguna fila de `audit_log` lleva correos ni nombres en `args` | plataforma.md §9.1 | progresion.md §10, §13.3 |
+| GM invisible | Ni méritos, ni XP, ni oro, ni recompensa de captura | plataforma.md §9.1 | progresion.md §6.2 |
+| Zona cercada | Los comandos que cambian algo se rechazan sin crear la operación; los críticos del juego se marcan y salen después | plataforma.md §5.3 | progresion.md §10 |
+| Jugadores falsos | Opciones y guardia, plataforma.md; con plataforma y falsos, ninguna recompensa persistente | progresion.md §6.2 | plataforma.md §5.5 |
+| Comandos del fuerte y de GM | Con plataforma, lo que provoca un comando del fuerte (`fort_owner`, `fort_reset`, `fort_kill_captain`, una captura con `fort_capture_speed`) no paga nada persistente ni suma en `ScoreKeeper`; `/gm teleport`, `/gm visible` y los DEBUG_COMMAND 1, 2 y 4 marcan al personaje (`gm_forced`) hasta su reaparición: ni capturas, ni méritos, ni PNJ | progresion.md §6.2 | plataforma.md §8, §9.1 |
+| Eventos en la zona | `take_events()` se reparte por `kind`, con un consumidor cada uno: `claim` (`auth_provider`), `save` (`saver`), `heartbeat` (la zona), `id_block`, `progress_op` y `progress_ledger` (`progress`), `fortress`, `ignore`, `report`, `sanction` e `instance_closed` (`ServerMain`); después `take_completed` y `prepare` | plataforma.md §14.3 | progresion.md §14.2 |
+| Peticiones de la zona | `ZonePlatform.request` pone `zone_instance_id` (el guardado lo lleva en el sobre de `CharacterSaver`, y `save(character_id, lease_id, body, release_lease, context)` manda los bytes sin tocarlos); `enqueue_batch`, la `key` que falta; ningún cuerpo lleva `world_id` (lo pone la plataforma desde la instancia); `body` leído con `JSON.new().parse` (nunca `parse_string`) | plataforma.md §14.3 | progresion.md §13.2 |
+| Capturas | Una lista de `FortressController` (captor, presentes, vivos, conectados, sin invisibles ni marcados con `gm_forced`) para `ScoreKeeper.captures` y `ProgressService.on_capture`; una captura forzada no va a ninguno | plataforma.md §8 | progresion.md §6.2 |
+| Huella u32 | `HandoffTicket.zone_key_of` para el `zone_key` del billete y los `ref_id` de PNJ y fortaleza | plataforma.md §5.1 | progresion.md §5.2 |
+| Reloj y tamaño | `ZonePlatform.now_unix()` para los temporizadores; cuerpo de 1 MB como mucho en la API interna | plataforma.md §6 | progresion.md §8, §17 |
+| Paquetes | El almacén del progreso es progresion.md P7, con las dependencias de su §14.1; la interfaz `ProgressStore`, `CreateValidator` y sus errores, plataforma.md P2; los dos documentos esperan a habilidades.md; progresion.md P5c, a plataforma.md P6 (lista de capturas); un orden conjunto para `zone_server.gd` | plataforma.md §14.1 | progresion.md §14.1 |
+| Pruebas | Las del almacén, en progresion.md P7; DEBUG_COMMAND 40–43, la regla de los propios personajes y el cercado con `item_give`, en progresion.md P5d (plataforma.md P7b prueba `min_role` con comandos de red y de moderación); las de extremo a extremo, con el arnés de plataforma.md P10 | progresion.md §15 | plataforma.md §15 |
+| Cliente | UI-23, UI-24 y el bot usan `CharacterAppearance` y `AppearanceApplier` | plataforma.md §13.2, §13.3 | progresion.md §7.2, §7.4 |
 
 ## 18. Revisión
 
 Tres revisores (seguridad, coherencia e implementabilidad) presentaron 45 hallazgos sobre la versión 0f6781b.
 Comprobados en el código y en los documentos, todos se sostienen; las sondas de la revisión están en
 `build/probe_rev/` (Godot: `auth_timeout` con `GuardedEnetPeer` y JSON; Go: `jsonx`; PostgreSQL: el esquema entero,
-la lápida, el disparador, la reclamación y el latido; git: el `.gitignore`). Lo que pide cambios en progresion.md
-está en §17.
+la lápida, el disparador, la reclamación y el latido; git: el `.gitignore`). Las filas son la historia de la
+revisión; lo que cambió después, al conciliar con progresion.md, está en las cuatro últimas filas y en §17.
 
 | Id | Gravedad | Qué era | Qué se hizo |
 |---|---|---|---|
-| PL-SEG1 | bloqueante | Dos contratos de idempotencia incompatibles (`(lease_id, seq)` aquí, `save_id` + `base_version` allí); `duplicate`, 400 y reintentos sin definir; dos fuentes de ids | Un contrato (§7.3): cuerpo inmutable reintentado byte a byte, `duplicate` = aplicado, `stale_seq`, `seq_conflict` con hash, `invalid_save` definitivo con `release`; bloques de la secuencia de 1024 con `first` en cadena (§6); prueba en P3. progresion.md, §17 #1 y #8 |
+| PL-SEG1 | bloqueante | Dos contratos de idempotencia incompatibles (`(lease_id, seq)` aquí, `save_id` + `base_version` allí); `duplicate`, 400 y reintentos sin definir; dos fuentes de ids | Un contrato (§7.3): cuerpo inmutable reintentado byte a byte, `duplicate` = aplicado, `stale_seq`, `seq_conflict` con hash, `invalid_save` definitivo con `release`; bloques de la secuencia de 1024 con `first` en cadena (§6); prueba en P3. progresion.md, §17 |
 | PL-SEG2 | importante | Con plataforma se podían usar `--debug-commands`, `--fake-players` y sin DTLS; DEBUG_COMMAND sin rol; clave de prueba válida | `env` en el registro y salida de la zona fuera de `dev`/`test` (§5.5); DEBUG_COMMAND con `min_role` (§9.1); registro sin certificado → 400 en staging y producción (§6); claves de < 32 B y la del vector rechazadas (§2.3); pruebas en P0 y P4 |
 | PL-SEG3 | importante | Un token común abría toda la API interna; registro de cualquier zona y host; la sustituida «sin guardar» contradecía §5.3 | Token por despliegue con alcance y hashes, `ELDMARK_ZONE_HOSTS`, `zone_instance_id` comprobado, `claimed_by`, `replace` con auditoría, guardados finales de la sustituida (§5.3, §6, §6.1); pruebas en P3 |
 | PL-SEG4 | importante | Sin definir qué pasa con una instancia `lost` que vuelve; latido sin filtro por `lease_id`; latido en la cola común | Latido con `(character_id, lease_id)` y SQL (§5.3, comprobado), `instance_lost` y cierre (§6.1), cercado a los 10 s, plaza propia del latido (§6). Matiz: el cercado rechaza las operaciones que piden guardado crítico, no los guardados, que siguen saliendo |
@@ -1560,38 +1864,47 @@ está en §17.
 | PL-SEG8 | importante | `email_taken` y `account_locked` delataban cuentas; el bloqueo por cuenta era un arma; sanciones antes de la contraseña; cuentas sin verificar eternas | Registro y cambio de correo siempre 202; fallos por cuenta y grupo de IP con freno en las demás y 429; estados solo tras una contraseña buena; correo de aviso; purga a los 7 días sin verificar (§4.1–§4.3, §11.1); pruebas en P1 |
 | PL-SEG9 | importante | Copias, WAL y registros guardaban datos purgados sin plazo | `purge_log`, `purges.txt` y `reapply-purges` (§11.2, §12); filas de copias, WAL y registros en §11.1; journald a 30 días; Caddy sin registro de accesos; sin `--battle-log` y similares en staging y producción; prueba en P9a |
 | PL-SEG10 | importante | El `.gitignore` solo ignoraba `.env` (comprobado) | Patrones nuevos en P0 (comprobados en un repositorio de prueba), secretos desde `secrets/` y comprobación en la CI (§10.3); prueba en P9b |
-| PL-SEG11 | importante | GM invisible que pegaba y capturaba; comandos sobre los propios personajes; CLI sin identidad; lecturas sin auditar | Invisible sin daño, sin círculo, sin marcador ni recompensas; regla de los propios personajes; `--actor` obligatorio; lecturas auditadas (§9.1); pruebas en P7a y P7b. progresion.md, §17 #14 y #15 |
+| PL-SEG11 | importante | GM invisible que pegaba y capturaba; comandos sobre los propios personajes; CLI sin identidad; lecturas sin auditar | Invisible sin daño, sin círculo, sin marcador ni recompensas; regla de los propios personajes; `--actor` obligatorio; lecturas auditadas (§9.1); pruebas en P7a y P7b. progresion.md, §17 |
 | PL-SEG12 | importante | Reservar nombres sin límite creando y borrando | 5 creaciones y 5 borrados por cuenta y día, los borrados en plazo ocupan hueco y los personajes de prueba no reservan 30 días más (§4.2, §4.4); pruebas en P2 |
 | PL-SEG13 | menor | `X-Forwarded-For` sin regla clara | Solo `X-Real-IP` desde `ELDMARK_TRUSTED_PROXIES`, puesto por Caddy (§4.2, §10.1); prueba en P1 |
 | PL-SEG14 | menor | Correo con CR/LF (inyección de cabeceras) y páginas con el token sin escapar ni cabeceras | Validación estricta y `mime.QEncoding` (§4.2); `html/template`, token validado y cuatro cabeceras (§4.3); pruebas en P1 |
 | PL-SEG15 | menor | La supresión borraba la reincidencia | `sanctioned_email_hashes` con HMAC y clave propia, consultada en el registro, con revisión legal (§2.3, §3, §11.1, §11.2); prueba en P9a |
-| PL-COH1 | bloqueante | Dos tuberías de carga y guardado, y dos `class_name CharacterRecord` | Una tubería: la reclamación trae el registro, `CharacterSaver` con secciones sobre `ProgressRepository`, `ClaimedCharacter` aquí, una tabla de errores (§6.1, §7.3, §7.5); `PlatformProgressRepository` pasa a P5. progresion.md, §17 #1–#5 |
-| PL-COH2 | bloqueante | El mismo dato en dos esquemas; dos fuentes de `uid`; nadie escribía las migraciones del progreso | Tabla «quién guarda qué» (§3); `characters` solo identidad, sin JSON de estado; una sola fuente de ids (§6); P3b con 0010_progress (DDL comprobado), S3–S9 y las rutas de operación y libro (§14.1). progresion.md, §17 #8 y #9 |
-| PL-COH3 | bloqueante | La purga en cascada chocaba con el disparador del libro (comprobado por el revisor) | Lápida sin cascada en las tablas de solo añadir, disparador con `set local eldmark.retention_purge`, retención de 1 año y `progress_purge_character` (§3, §11.1, §11.2; comprobado); prueba en P3b. progresion.md, §17 #10 |
+| PL-COH1 | bloqueante | Dos tuberías de carga y guardado, y dos `class_name CharacterRecord` | Una tubería: la reclamación trae el registro, `CharacterSaver` con secciones sobre `ProgressRepository`, `ClaimedCharacter` aquí, una tabla de errores (§6.1, §7.3, §7.5); `PlatformProgressRepository` pasa a P5. progresion.md, §17 |
+| PL-COH2 | bloqueante | El mismo dato en dos esquemas; dos fuentes de `uid`; nadie escribía las migraciones del progreso | Tabla «quién guarda qué» (§3); `characters` solo identidad, sin JSON de estado; una sola fuente de ids (§6); P3b con 0010_progress (DDL comprobado), S3–S9 y las rutas de operación y libro (§14.1). progresion.md, §17 |
+| PL-COH3 | bloqueante | La purga en cascada chocaba con el disparador del libro (comprobado por el revisor) | Lápida sin cascada en las tablas de solo añadir, disparador con `set local eldmark.retention_purge`, retención de 1 año y `progress_purge_character` (§3, §11.1, §11.2; comprobado); prueba en P3b. progresion.md, §17 |
 | PL-COH4 | importante | CMB-30 asignado a habilidades.md, que lo deja fuera | Quitados `state.combat` y la frontera con habilidades.md; CMB-30 es de progresion.md §8 (introducción, §7.1, §16) |
 | PL-COH5 | importante | Dos reglas de volver al mundo y dos campos de última zona | La de progresion.md §8, citada en §7.1 y marcada provisional (§0); `enter` lee `character_progress.last_zone_id` (§4.5) |
-| PL-COH6 | importante | Creación incompatible: id de raza, dos generadores, sin plantilla, `Create` sin datos | Ids `race_<reino>`, un solo archivo y una herramienta, `starter_template_id` en la ruta y en UI-24, `CreateParams`, apariencia de 8 B (§4.4, §7.5, §13.2). progresion.md, §17 #11 |
+| PL-COH6 | importante | Creación incompatible: id de raza, dos generadores, sin plantilla, `Create` sin datos | Ids `race_<reino>`, un solo archivo y una herramienta, `starter_template_id` en la ruta y en UI-24, `CreateParams`, apariencia de 8 B (§4.4, §7.5, §13.2). progresion.md, §17 |
 | PL-COH7 | importante | Rotación del refresco contra el arrendamiento atado a la sesión | Igual que PL-SEG5 (la sesión no cambia de fila); prueba en P3 |
 | PL-COH8 | importante | `VERIFYING` fuera del cupo; reclamaciones detrás de los guardados; `auth_timeout` contado desde la conexión | `VERIFYING` cuenta y `FULL` se mira al 200; plazas para la entrada; `auth_timeout` de 10 s y plazo de 7 s en tiempo real (§5.2, §6; comprobado); pruebas en P4 |
 | PL-COH9 | importante | Arranque sin plataforma que pisaba el dueño; registro antes del puerto; reinos sin guardar | Orden fijo con `starting` y `live`, GET con reintentos que distingue vacío de mudo, `expected_version`, `realms` en el registro (§3, §6, §8); prueba en P6 |
 | PL-COH10 | importante | `flush_and_wait` síncrono imposible; el cierre de hoy no espera; disparadores incompletos | `begin_flush` e `is_flushed`, `_drain_stop` hasta 600 ticks y `SHUTDOWN_MAX_FRAMES` 720, los cinco disparadores (§7.2, §14.3); prueba en P5 |
 | PL-COH11 | importante | Nadie hacía el inicio de sesión del bot con cuenta | `AccountFlow` sin interfaz, que usan `FrontMain` y el bot; `--bot --platform` sin `--login` sale con código 1 (§5.5, §13.3, §14.4); pruebas en P8 |
-| PL-COH12 | importante | Criterios y reglas de otros documentos sin tocar | backlog: TEC-24 (reino del personaje), TEC-27 (criterio provisional), SOC-16 (filtro en el servidor) y «pendiente del usuario»; red.md §12 y §17 (billete de 52 B, `PENDING`); social.md §0, §8 y §10. progresion.md, §17 #2 y #13 |
-| PL-COH13 | menor | La versión 5 ya era del chat (y la 6 de habilidades.md); dos subidas en la fase 5 | Una sola subida compartida, la siguiente libre (hoy 7) (§5.4); `ELDMARK_MIN_PROTOCOL` obligatoria en staging y producción (§2.3). progresion.md, §17 #16 |
-| PL-COH14 | menor | `ticket_id` de 63 bits como número JSON | Todo id `bigint` como cadena en las dos API (§4.1; comprobado en Godot); prueba de ida y vuelta en P4. progresion.md, §17 #7 |
+| PL-COH12 | importante | Criterios y reglas de otros documentos sin tocar | backlog: TEC-24 (reino del personaje), TEC-27 (criterio provisional), SOC-16 (filtro en el servidor) y «pendiente del usuario»; red.md §12 y §17 (billete de 52 B, `PENDING`); social.md §0, §8 y §10. progresion.md, §17 |
+| PL-COH13 | menor | La versión 5 ya era del chat (y la 6 de habilidades.md); dos subidas en la fase 5 | Una sola subida compartida, la siguiente libre (hoy 7) (§5.4); `ELDMARK_MIN_PROTOCOL` obligatoria en staging y producción (§2.3). progresion.md, §17 |
+| PL-COH14 | menor | `ticket_id` de 63 bits como número JSON | Todo id `bigint` como cadena en las dos API (§4.1; comprobado en Godot); prueba de ida y vuelta en P4. progresion.md, §17 |
 | PL-COH15 | menor | `ScoreKeeper` no tenía capturas ni tiempo defendiendo; orden frente a `forget` | `captures` y `defend_ticks` con quién y cuándo, sección `pvp`, `finish` antes de `forget` (§8); pruebas en P6 |
 | PL-IMP1 | bloqueante | El mismo tramo de la zona definido dos veces (clase, carga, guardado, CMB-30) | Igual que PL-COH1 y PL-COH4: frontera de §7.5 y §17 |
 | PL-IMP2 | bloqueante | Contrato Go y esquema que no casaban; migraciones sin dueño; purga imposible | Igual que PL-SEG1, PL-COH2, PL-COH3, PL-COH6 y PL-COH14: `CreateParams`, `Apply` con tipos de progresion.md, una fuente de ids, cadenas, un generador, lápida y P3b (§3, §7.5, §14.1) |
-| PL-IMP3 | importante | Godot reescribe `820.0` y Go lo rechaza en un `int` (comprobado) | `jsonx.Int` y `jsonx.ID` en Go; `int()` y `to_int()` al leer en GDScript; el falso hace ida y vuelta por JSON (§4.1, §14.3); pruebas en P0, P3 y P5. progresion.md, §17 #6 |
+| PL-IMP3 | importante | Godot reescribe `820.0` y Go lo rechaza en un `int` (comprobado) | `jsonx.Int` y `jsonx.ID` en Go; `int()` y `to_int()` al leer en GDScript; el falso hace ida y vuelta por JSON (§4.1, §14.3); pruebas en P0, P3 y P5. progresion.md, §17 |
 | PL-IMP4 | importante | El plazo de 240 ticks no cabía en el `auth_timeout` contado desde la conexión | Comprobado con `GuardedEnetPeer`: 10 s en los dos lados y plazo de 7 s en tiempo real (§5.2, §5.4); prueba con el HELLO a 1,4 s en P4 |
 | PL-IMP5 | importante | Cola de `PlatformClient` sin prioridades ni reglas; PUT de fortaleza sin versión; arranque mudo; sin prueba del HTTP real | Tabla de prioridades y reintentos (§6), una en vuelo por fortaleza con `expected_version` y arranque de §8; `FakeHttpServer` en P4 |
 | PL-IMP6 | importante | Igual que PL-SEG5 y PL-COH7 | Igual que PL-SEG5 |
 | PL-IMP7 | importante | Máquina de estados de la instancia incompleta | Orden fijo de comprobaciones y tabla por estado y petición (§6.1); `lost` que vuelve se cierra; pruebas en P3 |
 | PL-IMP8 | importante | `AuthProvider` sin entrada para la reclamación; cupo; falso sin herencia; cómo llega `ZonePlatform`; clase en otro paquete | `on_platform_event`, `get_player_count` con `VERIFYING`, `FakeZonePlatform extends ZonePlatform`, `ZoneServer.start(…, platform)`, `ClaimedCharacter` en P4 (§14.1, §14.3) |
-| PL-IMP9 | importante | Pruebas que no demostraban su criterio | Duplicados en P3b con tablas reales; `saved_at` para medir la pérdida; «ANEIRA» y «Aneira»; reconexión con `pvp` en P5 y caducidad de cada sanción en P7a (§15). progresion.md, §17 #17 |
+| PL-IMP9 | importante | Pruebas que no demostraban su criterio | Duplicados en P3b con tablas reales; `saved_at` para medir la pérdida; «ANEIRA» y «Aneira»; reconexión con `pvp` en P5 y caducidad de cada sanción en P7a (§15). progresion.md, §17 |
 | PL-IMP10 | importante | `TestZoneCrash` no se podía ejecutar | Arnés con `ELDMARK_GODOT` e importación en `TestMain`, trabajo de CI, segundo proceso `--bot`, `saved_at` frente a la hora del `kill`, tope de tiempo explícito si pasa de 30 s (§15) |
 | PL-IMP11 | importante | TEC-27 no se podía medir; `NetTransport` sin contrato DTLS; criterio cambiado sin marcarlo | `host` y `connect_to` con `TLSOptions`, `--dtls-*` en `--connect`, `--bot` y `--bots` (§10.2, §13.3); criterio provisional con pregunta al usuario en §0 y en el backlog; P9c |
 | PL-IMP12 | importante | Vuelta atrás con `down` que borraba datos | `down` solo en desarrollo y CI, irreversibles marcadas, expandir y contraer, prueba de conservación (§2.4, §12) |
 | PL-IMP13 | importante | Dependencias que faltaban y paquetes demasiado grandes | `ClaimedCharacter` en P4; P6 y P7b dependen de P5; P7 en P7a y P7b; P9 en P9a, P9b y P9c (P9c sin TEC-20); P3b nuevo (§14.1) |
 | PL-IMP14 | menor | Los formularios de los correos no podían usar `/v1` | `GET` y `POST` urlencoded en `/verify`, `/reset` y `/revert`, fuera de `/v1` y sin el 426 (§4.1, §4.3); prueba en P1 |
 | PL-IMP15 | menor | Faltaban pendientes del usuario | SMTP y DNS, revisión visual de UI-22 a UI-24 con lista y criterio de TEC-27 en §0 y en el backlog; lista de comprobación en §15 |
+| Conciliación | bloqueante | Tras las revisiones, este documento (§17) y progresion.md (§13.1) seguían con dos listas de peticiones que no casaban: idempotencia y `save_version`, cuerpo del guardado, API de secciones, `CharacterRecord`, repositorios y `--progress-file`, tablas y migraciones del progreso, bloques de ids, lápida, formato de los ids, plantilla de inicio, reglas exportadas, roles y auditoría | Interfaz conciliada (§17): una regla por tema, en el documento dueño, y la cita en el otro. Aquí: el DDL de 0010 y P3b pasan a progresion.md (§3.3, P7); `save_version` queda como contador (§7.3); el cuerpo lleva la sección `progress` (§7.1, §7.3); `CharacterSaver` sin repositorios ni `restore` (§7.5, §14.3); la reclamación trae `character` y `progress` y `prepare` corre antes del WELCOME (§5.2, §6); `id_blocks` en 0003 y el primer bloque en el arranque (§3, §8); la lápida es solo la fila de `characters`, con `ProgressStore.Purge` y `PurgeRetention` (§11); S1–S8; `Summaries` y `ValidateCreate` (§4.4, §4.5); propios personajes sin excepción de entorno y consultas para `gm` (§9.1); auditoría `op:<op_id>` (§9.1); protocolo 7 (§5.4); orden conjunto de paquetes (§14.1) |
+| Revisión de la conciliación | bloqueante | Revisores sobre los dos documentos ya conciliados (43 hallazgos, varios repetidos; todos se sostienen): `ticket_id` de 63 bits contra `jsonx.ID` de 2^53; el final repetía las operaciones del guardado en vuelo; errores del progreso en un paquete que llegaba tarde y con ciclo; respuestas del final por un `net_id` reutilizable; baja en `LOADING` sin liberar; reinos en JSON con dos reglas; latido con `lease_id` de `VERIFYING`; auditoría por lote sin actor ni `source` fijo; rutas de operación y libro sin arrendamiento; errores de la base sin clasificar; purga sin orden de bloqueos; retenciones sin mecanismo; libro retenido sin exportar; franjas de migraciones; piezas y pruebas de P7b que eran de progresion.md P5d | `jsonx.ID` hasta 2^63 − 1 y reinos por API (§4.1); baja en `LOADING` y claim con personaje no borrado y `Load` en su transacción (§5.2, §5.3); latido y `revoked` con `lease_id` (§5.3, §6); lotes con rechazo por entrada y campos de S8 (§6, §9.1, §9.2); operación y libro con arrendamiento (§6, §6.1); entradas de `CharacterSaver` por `character_id` tras `finish` y `track` antes de `on_arrival` (§7.2, §14.3); regla de errores del guardado y `last_save_version` (§3, §7.3); errores en `internal/persistence` (§7.5); purga con bloqueos, lápidas en la exportación, reportes y sanciones con plazo, `reapply-purges` con el `purged_at` original (§11); migraciones con el siguiente número libre (§2.4); P4 sube el protocolo y P7b sin lo de P5d (§5.4, §14.1, §15); `body` sin `parse_string`, `instance_id()`, `world_id()` y `key` en `enqueue_batch` (§14.3); casos bajo `tests/fixtures/` (§4.4); social.md §8, red.md §15, habilidades.md §4.6 y backlog. Tabla de §17 al día |
+| Segunda revisión de la conciliación | bloqueante | 30 hallazgos sobre los dos documentos (varios repetidos; todos se sostienen, y en cuatro la solución difiere en parte de la propuesta). Aquí: P4 subía a 7 sin esperar a la 6; promesas de la fase 5 de social.md y red.md sin paquete; la expulsión tras un definitivo dejaba el cuerpo 15 s y mandaba un final tras `drop`; quién pone `zone_instance_id` en el guardado; el latido sin conjunto definido; entradas por `character_id` que chocaban al volver a la misma instancia; respuestas 4xx sin clasificar; `ValidateCreate` sin costura; eventos sin `kind` ni consumidor; la ruta de operación sin participantes; secciones ausentes y `pvp` que baja; dependencias entre documentos; `^` y `ceil` en GDScript; varios personajes de una cuenta en el mundo; comandos del fuerte que pagaban al GM; cuentas sancionadas sin exportar; correos y nombres en la auditoría; fortalezas de otra zona; hora de la auditoría; alcance del chat | P4 tras habilidades.md y reparto fijo (§5.4, §14.1); `ChatPeerState` por personaje y sin `REJECT NAME` con billete (§5.4, §9.2); baja sin guardado con el cuerpo fuera en el acto y `drop(net_id, code)` (§7.2, §14.3); el sobre lo arma `CharacterSaver` (§6, §7.3); conjunto del latido en `ZonePlatform` y `save` con `lease_id` y `release_lease` (§5.3, §14.3); entradas por `lease_id` (§7.2); sobre estricto (`envelope`), otro 4xx definitivo y tope de DESTROY (§7.3); `CreateValidator` (§4.4, §7.5); `PlatformEvent.kind` con un consumidor cada uno, `instance_closed` y la cuenta atrás del mantenimiento (§7.2, §14.3); `Op` con la instancia (§6); `progress` obligatoria y `pvp` con `greatest` (§7.3); `RECORD_FORMAT` (§7.1); `ceili` (§8); un personaje en el mundo por cuenta (§4.5, §5.3); sesión de privacidad (§4.2); auditoría sin datos personales y con `at_unix` (§9.1); `zone_channel` (§3, §9.2); fortalezas por zona (§6); pruebas de P5 en P6 y progresion.md P5b (§15). progresion.md, §13.1 |
+| Tercera revisión de la conciliación | bloqueante | 25 hallazgos sobre los dos documentos, 23 distintos: 22 se arreglan (en tres, en parte o de otra forma) y uno no es del texto. Aquí: respuestas del arranque sin el evento `id_block`; las marcas «v7» de red.md, reclamadas por los dos P4; la fila de `set-role` sin `command` ni `source`; `FakeZonePlatform` sin API de pruebas; `CheckPassword` sin el correo (oráculo de cuentas); arnés de P10 sin zona de entrada y registro sobre una instancia `live` sin latido; quién compone el texto de `BANNED`; lotes sin atar a la instancia; borrar sin bloqueo frente a la reclamación; la purga de una cuenta y `reapply-purges` que se saltaban a los personajes no borrados; el cierre de §6.1, que echaba antes de mandar los finales con los arrendamientos ya libres; el `world_id` de la zona en reportes, ignorados y sanciones; el riesgo que queda con una zona comprometida; el libro de un personaje vivo sin fila de retención; `/gm teleport` y `/gm visible` que pagaban; un guardado sin ids | Respuestas del arranque y API de `FakeZonePlatform` (§14.3); cada P4 escribe en red.md lo suyo (§5.4); fila fija de `set-role` y `source` y `command` de la CLI (§9.1), con índice en 0005 (§3); `CheckPassword` con el correo (§4.2, §14.2); el registro pasa a `lost` una instancia sin latido, trabajo de perdidas a `min(5 s, HEARTBEAT_S)` y arnés con `test_world` (§2.5, §5.3, §15); cuerpo de `account_blocked` (§6.1; **de otra forma**: el texto lo compone la plataforma, como el `text` de `revoked`, no la zona); lotes validados contra la instancia y el mundo, de la instancia, sin `world_id()` (§6, §14.3); borrar y restaurar bloquean la cuenta (§4.4); la purga mira lo que toca según el camino y `reapply-purges` corre antes de `serve` y sin arrendamientos (§11.2); el cierre de §6.1 expulsa tras los finales y `replace` ya no libera los arrendamientos de la vieja (§5.3, §6.1; **en parte**: se echa a todos a la vez tras `begin_flush`, no a cada uno tras su final); riesgo que queda (§16); retención del libro de un personaje vivo (§11.1, social.md §8); una sección que devuelve `{}` (§7.2; **en parte**: el final no espera al siguiente bloque, porque su estado ya no existe; lo evita la reserva de progresion.md §4.5); `gm_forced` (§8, §9.1); backlog TEC-25. **No es del texto:** social.md 12.7, `ChatPeerState`, `KNOWN_RECIPIENT_TICKS` y «la 5 ya está en main» existen en la línea principal (protocolo 5), de la que este trabajo va por detrás; cuadran al rebasar sobre ella |
+
+La interfaz con progresion.md quedó conciliada después de las tres revisiones: §17 dice qué se acordó y en qué
+documento está cada regla. Lo que las filas de arriba nombran y ya no existe (P3b, S3–S9, `progress_purge_character`,
+`ProgressRepository`, `PlatformProgressRepository`, el `world_id` de los cuerpos de reportes, ignorados y sanciones y
+`ZonePlatform.world_id()`) es anterior a la conciliación o a su última revisión.
