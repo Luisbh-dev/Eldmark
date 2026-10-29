@@ -9,8 +9,9 @@ extends RefCounted
 ## [br]- con [code]--bot-brain=siege[/code] (GUE-15): [constant BotBrain.Pattern.SIEGE]. Asedia o defiende el fuerte
 ## de la zona: el [SiegeView] lo llena [FortressView] (lo que el cliente dibuja de la fortaleza) y, de
 ## respaldo, las posiciones de [code]data/routes/<zona>.tres[/code]; los enemigos son los remotos que dibuja su
-## [RemoteWorld], también los PNJ de guerra ([BotEnemySight]), a los que busca primero, y los golpes avisados
-## (TELEGRAPH) que evita le llegan por [signal NetClient.telegraph_received] ([BotThreatSight]);
+## [RemoteWorld], también los PNJ de guerra ([BotEnemySight]), a los que busca primero, los golpes avisados
+## (TELEGRAPH) que evita le llegan por [signal NetClient.telegraph_received] ([BotThreatSight]) y a los suyos los cuenta
+## en el punto de reunión de su campamento con [BotAllySight] (GUE-44);
 ## [br]- si no, [constant BotBrain.Pattern.WANDER]: pasea alrededor de su punto de aparición.
 
 
@@ -58,6 +59,8 @@ static func _make_siege(client: NetClient, config: ClientConfig, home: Vector3, 
 	brain.set_defender_finder(func(position: Vector3) -> Variant: return defenders.find(position))
 	brain.set_threat_finder(func(_position: Vector3) -> Array[BotBrain.Threat]:
 		return threats.find(prediction.get_predicted_tick()))
+	var allies := BotAllySight.new(client)
+	brain.set_ally_counter(func(center: Vector3, radius: float) -> int: return allies.count(center, radius))
 	brain.set_siege(view, routes, realm)
 	return brain
 

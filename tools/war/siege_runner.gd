@@ -11,7 +11,8 @@ extends Node
 ## el comando [code]fort_kill_captain[/code] y [method spawn_captain_double] pone un PNJ mortal en su sitio para que
 ## los bots lo maten ellos. Con ellos ([code]with_npcs[/code] en [method start], F6b) defienden el fuerte los
 ## Huecos, el Capitán del Vado y la guarnición del dueño de verdad, y [method set_npc_health] los debilita para las
-## pruebas cortas sin tocar [code]data/npcs/[/code].
+## pruebas cortas sin tocar [code]data/npcs/[/code]. Los bots esperan a los suyos en su campamento y van en formación
+## (GUE-44); [method set_rally] lo cambia o lo quita, y [member rally_departures] apunta cada salida.
 
 ## Zona del asedio.
 const ZONE_ID: String = "vado_gris"
@@ -38,11 +39,19 @@ var npc_deaths: Array[Dictionary] = []
 var arrivals: Dictionary[int, Dictionary] = {}
 ## net_id -> realm de los jugadores falsos de asedio.
 var bots: Dictionary[int, int] = {}
+## Salidas de la reunión (GUE-44), en el orden en que pasan: [code]{tick, net_id, realm, route}[/code] de cada bot que
+## sale del punto de reunión de su campamento con los suyos (también si no tuvo que esperar porque ya eran bastantes).
+var rally_departures: Array[Dictionary] = []
 
 # net_id -> cerebro de cada bot de asedio (para saber qué ruta sigue).
 var _brains: Dictionary[int, BotBrain] = {}
 var _remaining: int = 0
 var _running: bool = false
+# La reunión que se impone a los bots (set_rally; -1 = la de BotBrain) y la última salida de la reunión que se ha
+# apuntado de cada bot.
+var _rally_size: int = -1
+var _rally_period: int = BotBrain.SIEGE_RALLY_PERIOD_TICKS
+var _rally_seen: Dictionary[int, int] = {}
 
 
 ## Carga la zona, arranca el servidor y lo deja listo (sin avanzar). [param battle_log_path] activa el
@@ -101,12 +110,24 @@ func add_siege_bots(realm: int, count: int, seed_base: int) -> Array[int]:
 	var ids: Array[int] = []
 	for i: int in count:
 		var brain := BotBrain.new(seed_base + i, BotBrain.Pattern.SIEGE)
+		if _rally_size >= 0:
+			brain.set_rally(_rally_size, _rally_period)
 		var net_id: int = server.add_fake_player(brain, realm)
 		if net_id > 0:
 			bots[net_id] = realm
 			_brains[net_id] = brain
 			ids.append(net_id)
 	return ids
+
+
+## Cambia la reunión de los bots de asedio (GUE-44; [method BotBrain.set_rally]), los que ya hay y los que se añadan:
+## salen de su campamento cuando hay [param group_size] de su reino o en la siguiente salida del reloj, que da una vuelta
+## cada [param period_ticks] ticks. Con [param group_size] 1 o menos no esperan (como antes de GUE-44).
+func set_rally(group_size: int, period_ticks: int = BotBrain.SIEGE_RALLY_PERIOD_TICKS) -> void:
+	_rally_size = group_size
+	_rally_period = period_ticks
+	for net_id: int in _brains:
+		_brains[net_id].set_rally(group_size, period_ticks)
 
 
 ## Los PNJ de la definición [param npc_id] que aparezcan desde ahora tendrán [param health] de vida (una copia de la
@@ -250,8 +271,9 @@ func _on_combat_event(event: NetMessages.EntityEvent, _involved: PackedInt32Arra
 			"position": victim.get_position()})
 
 
-# Al terminar cada tick, anota quién acaba de llegar a la puerta y por qué ruta.
+# Al terminar cada tick, anota quién sale de la reunión y quién acaba de llegar a la puerta y por qué ruta.
 func _on_tick_finished(tick_now: int) -> void:
+	_note_rally_departures()
 	var gate: FortGate = server.get_fortresses().get_gate(fortress_id())
 	if gate == null:
 		return
@@ -265,6 +287,16 @@ func _on_tick_finished(tick_now: int) -> void:
 		var position: Vector3 = entity.get_position()
 		if Vector2(position.x, position.z).distance_to(gate_point) <= ARRIVAL_DISTANCE:
 			arrivals[net_id] = {"realm": bots[net_id], "route": _route_of(net_id), "tick": tick_now}
+
+
+# Los bots que acaban de salir del punto de reunión (GUE-44).
+func _note_rally_departures() -> void:
+	for net_id: int in _brains:
+		var left: int = _brains[net_id].get_last_rally_departure()
+		if left >= 0 and left != _rally_seen.get(net_id, -1):
+			_rally_seen[net_id] = left
+			rally_departures.append({"tick": left, "net_id": net_id, "realm": bots.get(net_id, 0),
+					"route": _route_of(net_id)})
 
 
 # La ruta que sigue el bot [param net_id] (el cerebro la elige al empezar).

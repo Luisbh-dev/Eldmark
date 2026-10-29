@@ -262,6 +262,11 @@ var _siege_routes_loaded: bool = false
 var _threats_tick: int = -1
 var _threats: Array[BotBrain.Threat] = []
 var _threat_realms: PackedInt32Array = PackedInt32Array()
+# Jugadores vivos por reino (posiciones e ids) con los que los falsos SIEGE cuentan a los suyos en el punto de reunión
+# (GUE-44), y el tick de la lista.
+var _allies_tick: int = -1
+var _allies_by_realm: Dictionary[int, PackedVector3Array] = {}
+var _ally_ids_by_realm: Dictionary[int, PackedInt32Array] = {}
 # peer_id -> medida del RTT en ticks.
 var _rtt: Dictionary[int, _RttWindow] = {}
 # Peers con CLIENT_READY recibido, en orden de llegada.
@@ -764,6 +769,8 @@ func add_fake_player(brain: BotBrain, realm: int) -> int:
 		brain.set_threat_finder(_find_threats.bind(entity.net_id))
 	if pattern == BotBrain.Pattern.SIEGE and not brain.has_defender_finder():
 		brain.set_defender_finder(_find_enemy_position.bind(entity.net_id, true))
+	if pattern == BotBrain.Pattern.SIEGE and not brain.has_ally_counter():
+		brain.set_ally_counter(_count_allies.bind(entity.net_id))
 	var record: _PlayerRecord = _player_by_net[entity.net_id]
 	record.is_fake = true
 	_announce_arrival(entity, null, _tick)
@@ -1736,6 +1743,49 @@ func _find_threats(_position: Vector3, net_id: int) -> Array[BotBrain.Threat]:
 		if _is_hostile_realm(_threat_realms[index], me.get_realm()):
 			found.append(_threats[index])
 	return found
+
+
+# Cuántos jugadores vivos del reino del jugador falso [param net_id], sin contarle a él, están a menos de [param radius]
+# metros en horizontal de [param center] (el contador de aliados del cerebro SIEGE para la reunión, GUE-44). Cuentan
+# personas y falsos, no los PNJ ni los cuerpos de quien salió en combate. Las posiciones se reúnen una vez por tick, así
+# que todos los que esperan en el mismo tick ven el mismo recuento y salen a la vez.
+func _count_allies(center: Vector3, radius: float, net_id: int) -> int:
+	var me: Combatant = _combat.get_combatant(net_id)
+	if me == null:
+		return 0
+	if _allies_tick != _tick:
+		_rebuild_ally_cache()
+	var realm: int = me.get_realm()
+	if not _allies_by_realm.has(realm):
+		return 0
+	var positions: PackedVector3Array = _allies_by_realm[realm]
+	var ids: PackedInt32Array = _ally_ids_by_realm[realm]
+	var limit: float = radius * radius
+	var count: int = 0
+	for index: int in positions.size():
+		if ids[index] == net_id:
+			continue
+		var dx: float = positions[index].x - center.x
+		var dz: float = positions[index].z - center.z
+		if dx * dx + dz * dz <= limit:
+			count += 1
+	return count
+
+
+# Reúne, por reino, las posiciones de los jugadores vivos (personas y falsos) en este tick.
+func _rebuild_ally_cache() -> void:
+	_allies_tick = _tick
+	_allies_by_realm.clear()
+	_ally_ids_by_realm.clear()
+	for other: Combatant in _combat.get_sorted():
+		if other.is_dead() or other.entity.kind != NetProtocol.EntityKind.PLAYER or _lingering.has(other.get_id()):
+			continue
+		var realm: int = other.get_realm()
+		if not _allies_by_realm.has(realm):
+			_allies_by_realm[realm] = PackedVector3Array()
+			_ally_ids_by_realm[realm] = PackedInt32Array()
+		_allies_by_realm[realm].append(other.entity.get_position())
+		_ally_ids_by_realm[realm].append(other.get_id())
 
 
 # Reúne los fuertes avisados de los PNJ que siguen en curso tras el último tick (los que avisa _emit_npc_telegraphs).

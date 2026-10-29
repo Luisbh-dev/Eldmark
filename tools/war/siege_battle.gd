@@ -13,6 +13,8 @@ extends SceneTree
 ## godot --headless --path . -s res://tools/war/siege_battle.gd -- --scenario=war --per-side=20 --minutes=8
 ## # Lo mismo que la primera, pero con los PNJ de verdad (Huecos, Capitán del Vado y guarnición) y sin ayudas (F6b)
 ## godot --headless --path . -s res://tools/war/siege_battle.gd -- --npcs --per-side=20 --minutes=30
+## # Igual, con los bots como antes de GUE-44 (sin reunión ni formación), para comparar
+## godot --headless --path . -s res://tools/war/siege_battle.gd -- --npcs --per-side=20 --minutes=30 --rally=0
 ## [/codeblock]
 ## [b]Opciones[/b] (después de [code]--[/code]):
 ## [br]- [code]--scenario=capture[/code] (por defecto): primero los de Vardheim, que capturan el fuerte neutral; cuando
@@ -28,10 +30,14 @@ extends SceneTree
 ## ([code]fort_kill_captain[/code], como haría la consola). [code]--npc-health=<id>:<vida>[/code] (repetible, con
 ## [code]--npcs[/code]) cambia la vida de una definición de [code]data/npcs/[/code] solo en esta batalla, para
 ## probar ajustes sin tocar los datos. [code]--verbose[/code] escribe el estado cada 10 s de juego.
+## [br]- [code]--rally=N[/code] (GUE-44): los atacantes salen de su campamento cuando hay N de su reino en el punto de
+## reunión (por defecto, [constant BotBrain.SIEGE_RALLY_GROUP_SIZE]); con 0 o 1 no esperan ni van en formación, como
+## antes de GUE-44 (sirve para comparar). [code]--rally-period=S[/code]: segundos de cada vuelta del reloj de la reunión
+## (por defecto 30).
 ## [br][br]
 ## El informe da, por fase, los hitos desde que salen sus bots: primer golpe a la puerta, puerta rota (y cuántas
-## veces), capitán caído y captura. Termina con código 0 si el escenario [code]capture[/code] acaba con Solmarch
-## como dueño y 1 si no.
+## veces), capitán caído y captura, y, por reino, las salidas en grupo de la reunión (cuántas y de cuántos). Termina
+## con código 0 si el escenario [code]capture[/code] acaba con Solmarch como dueño y 1 si no.
 
 const CHECK_TICKS: int = 30
 ## Cada cuántos ticks escribe el estado con [code]--verbose[/code].
@@ -60,6 +66,9 @@ func _run() -> void:
 		battle_log = ProjectSettings.globalize_path(battle_log) if battle_log.begins_with("res://") else battle_log
 	_with_npcs = args.has("--npcs")
 	_verbose = args.has("--verbose")
+	var rally_size: int = _int_option(args, "--rally=", -1)
+	var rally_period_s: int = _int_option(args, "--rally-period=",
+			roundi(float(BotBrain.SIEGE_RALLY_PERIOD_TICKS) / float(SiegeRunner.TICK_RATE)))
 
 	var runner := SiegeRunner.new()
 	root.add_child(runner)
@@ -80,6 +89,8 @@ func _run() -> void:
 		print("  %s con %s de vida (solo en esta batalla)" % [parts[0], parts[1]])
 	if capture_speed > 1:
 		runner.set_capture_speed(capture_speed)
+	if rally_size >= 0:
+		runner.set_rally(rally_size, rally_period_s * SiegeRunner.TICK_RATE)
 	print("Asedio en el Vado Gris: %s, %d por bando, captura x%d, hasta %d min de juego (semilla %d), %s" % [
 		scenario, per_side, capture_speed, minutes, rng_seed,
 		"con los PNJ de verdad y sin ayudas" if _with_npcs else "sin PNJ (fort_kill_captain al romper la puerta)"])
@@ -156,18 +167,21 @@ func _print_progress(runner: SiegeRunner) -> void:
 func _report_phases(runner: SiegeRunner) -> void:
 	for index: int in _phases.size():
 		var phase: Dictionary = _phases[index]
+		# Los avisos de una fase son los de después del tick en que salen sus bots (se añaden entre dos ticks) hasta el de
+		# la fase siguiente incluido: la captura que la acaba puede caer justo en ese tick (GUE-44: con la semilla 4000,
+		# la captura del neutral salía en la recaptura, a los 0 s).
 		var from_tick: int = int(phase["tick"])
-		var to_tick: int = int(_phases[index + 1]["tick"]) if index + 1 < _phases.size() else runner.tick() + 1
+		var to_tick: int = int(_phases[index + 1]["tick"]) if index + 1 < _phases.size() else runner.tick()
 		var parts := PackedStringArray()
 		for milestone: Array in [[WarEvents.UNDER_ATTACK, "primer golpe"], [WarEvents.GATE_BROKEN, "puerta rota"],
 				[WarEvents.CAPTAIN_DOWN, "capitán caído"], [WarEvents.FORT_CAPTURED, "captura"]]:
-			var tick_of: int = runner.tick_of_war(int(milestone[0]), from_tick)
-			if tick_of >= 0 and tick_of < to_tick:
+			var tick_of: int = runner.tick_of_war(int(milestone[0]), from_tick + 1)
+			if tick_of >= 0 and tick_of <= to_tick:
 				parts.append("%s a los %.1f s" % [milestone[1], SiegeRunner.seconds(tick_of - from_tick)])
 			else:
 				parts.append("%s: no" % milestone[1])
-		var broken: int = runner.count_war(WarEvents.GATE_BROKEN, from_tick) \
-				- runner.count_war(WarEvents.GATE_BROKEN, to_tick)
+		var broken: int = runner.count_war(WarEvents.GATE_BROKEN, from_tick + 1) \
+				- runner.count_war(WarEvents.GATE_BROKEN, to_tick + 1)
 		print("%s (%s, desde el tick %d): %s; la puerta se rompe %d %s" % [phase["name"],
 				WarEvents.realm_label(int(phase["realm"])), from_tick, ", ".join(parts), broken,
 				"vez" if broken == 1 else "veces"])
@@ -210,6 +224,7 @@ func _report(runner: SiegeRunner, captures: Array[Dictionary], wall_seconds: flo
 			SiegeRunner.seconds(gate_hit), SiegeRunner.seconds(gate_broken),
 			SiegeRunner.seconds(gate_broken - gate_hit)])
 	_report_phases(runner)
+	_report_rally(runner)
 	print("Capturas: %d" % captures.size())
 	for capture: Dictionary in captures:
 		print("  %s en el tick %d (%.0f s)" % [WarEvents.realm_label(int(capture["owner"])), int(capture["tick"]),
@@ -232,6 +247,46 @@ func _report(runner: SiegeRunner, captures: Array[Dictionary], wall_seconds: flo
 	for war_id: int in runner.war_ids():
 		ids.append(String(WarEvents.key_of(war_id)))
 	print("Avisos de guerra: %s" % ", ".join(PackedStringArray(ids)))
+
+
+# Las salidas en grupo de la reunión (GUE-44), por reino: cuántos grupos, de cuántos y si alguno se partió entre rutas.
+func _report_rally(runner: SiegeRunner) -> void:
+	for realm: int in [NetProtocol.Realm.VARDHEIM, NetProtocol.Realm.SOLMARCH]:
+		# Un grupo: las salidas que caen a menos de 1 s de la anterior (los que llegan mientras sale el grupo, que aún
+		# está en el punto de reunión, salen un tick después).
+		var groups: Dictionary = {}
+		var key: int = -1000
+		var last_tick: int = -1000
+		var departures: Array[Dictionary] = runner.rally_departures.duplicate()
+		departures.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a["tick"]) < int(b["tick"]))
+		for departure: Dictionary in departures:
+			if int(departure["realm"]) != realm:
+				continue
+			var tick_of: int = int(departure["tick"])
+			if tick_of - last_tick > SiegeRunner.TICK_RATE:
+				key = tick_of
+				groups[key] = {"size": 0, "routes": {}}
+			last_tick = tick_of
+			groups[key]["size"] = int(groups[key]["size"]) + 1
+			groups[key]["routes"][String(departure["route"])] = true
+		if groups.is_empty():
+			continue
+		var sizes := PackedStringArray()
+		var total: int = 0
+		var smallest: int = 1 << 30
+		var largest: int = 0
+		var mixed: int = 0
+		for group_key: int in groups:
+			var size: int = int(groups[group_key]["size"])
+			sizes.append("%d" % size)
+			total += size
+			smallest = mini(smallest, size)
+			largest = maxi(largest, size)
+			if (groups[group_key]["routes"] as Dictionary).size() > 1:
+				mixed += 1
+		print("Reunión de %s: %d salidas en grupo de %d a %d (media %.1f; %d con más de una ruta): %s" % [
+				WarEvents.realm_label(realm), groups.size(), smallest, largest, float(total) / float(groups.size()),
+				mixed, " ".join(sizes)])
 
 
 func _print_battle_summary(path: String) -> void:

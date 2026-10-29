@@ -1749,6 +1749,12 @@ servidor no sostiene el tiempo real (la mitad de las entradas de los clientes se
 **El primer límite de jugadores por batalla en el fuerte sigue siendo 64 (32 contra 32)**. El coste de las fortalezas (la sección `war`)
 es de 0,1 ms de mediana: el cuello es `simulate()` (palanca 6).
 
+Desde GUE-44 (F6b) los bots de asedio esperan a los suyos en la salida de su campamento y van en formación (fuerte.md 8.3, F6b,
+paquete C). Para la carga cambia poco: el servidor cuenta a los aliados con una lista por reino que reúne una vez por tick, solo
+mientras alguien espera, y cada `SwarmBot` decodifica también los registros de los de su reino (los mismos que ya leía por turnos).
+Pero los `SwarmBot` que entran cuando los falsos ya han salido pueden esperar hasta 30 s en el campamento: la repetición con PNJ
+(GUE-16, F6b) tiene que comprobar que llegan a la puerta antes de la ventana de medida. Las medidas de arriba son de antes.
+
 **Palancas para Eldrun, por orden,** decididas con las medidas del final de la fase 2:
 
 1. Interés por rejilla.

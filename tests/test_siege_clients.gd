@@ -116,6 +116,14 @@ func test_swarm_bots_read_the_fort_from_object_states_break_the_gate_and_capture
 		assert_true(view.circle_radius > 0.0, "y sabe dónde está (las rutas de la zona)")
 		assert_eq(bot.get_brain().get_pattern(), BotBrain.Pattern.SIEGE)
 		assert_true(bot.get_brain().has_siege())
+		assert_true(bot.get_brain().has_ally_counter(), "con quien le cuente a los suyos (GUE-44)")
+	# Cada uno ve a los otros dos de su reino por sus altas y los snapshots (los cuenta en la reunión, GUE-44).
+	var counted: bool = await _wait_until(func() -> bool:
+		for bot: SwarmBot in bots:
+			if bot._count_allies(bot.get_position(), 60.0) != 2:
+				return false
+		return true)
+	assert_true(counted, "cada bot cuenta a los otros dos (%d)" % bots[0]._count_allies(bots[0].get_position(), 60.0))
 	# La puerta se queda en 600 de vida (llega como OBJECT_STATE) y los bots empiezan en la explanada.
 	_state().gate_health = 600
 	var ground: float = _server.get_fortresses().get_gate(_server.get_fortresses().get_fortress_ids()[0]).global_position.y

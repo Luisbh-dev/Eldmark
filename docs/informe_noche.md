@@ -270,7 +270,7 @@ supuestos técnicos comprobados ejecutando Godot y Terrain3D).
 | F5 | Cliente del fuerte: `FortressView` con el gancho `before_simulate` (la puerta igual en cliente y servidor en cada tick), HUD de captura, banners, barra de jefe, marcas de TELEGRAPH, brújula, mapa horneado (`assets/maps/vado_gris.png`), minimapa, mapa completo con la reaparición, marcador (Tab) y registro de bajas, pistas, recuento por reino en la selección | Hecho |
 | F4 | PNJ: `NpcNavigation` (mapa propio, enlace de la puerta por reino), `NpcDefinition`/`NpcCatalog` (`data/npcs/`), armas de PNJ y golpe imbloqueable del Capitán con TELEGRAPH, `HfsmBrain` (reposo, patrulla, alerta, combate, regreso; fichas: nunca más de 2 atacan a la vez), `NpcSpawnerSystem` (Huecos, Capitán del Vado, guarnición del reino dueño, 2 Guardianes por campamento), `--no-npcs`, comando 12 `npc_debug` | Hecho (MUN-10 y MUN-11 siguen «en curso»: falta jugarlos con personas) |
 | F6a | Bots de asedio (`BotBrain` SIEGE, `--fake-brain=siege`, `--bot-brain=siege` para `--bot` y `--bots`), `--max-realm-diff` con REJECT 9 y recuento real en el WELCOME, falsos de relleno, `--run-at`, escenario `siege` de `load_test`, `tools/war/siege_runner.gd` y `siege_battle.gd` | Hecho (GUE-42; GUE-15/16/17 siguen «en curso» hasta F6b). Medido sin PNJ |
-| F6b | Prueba de extremo a extremo neutral → Vardheim → Solmarch con los PNJ de verdad, GUE-43/44/45, carga con PNJ | En curso, por paquetes (el encargo está en «Cierre»; lo hecho, en fuerte.md 8.3): GUE-43 hecho; bots contra los PNJ y extremo a extremo hechos (la recaptura depende de la semilla hasta GUE-44) |
+| F6b | Prueba de extremo a extremo neutral → Vardheim → Solmarch con los PNJ de verdad, GUE-43/44/45, carga con PNJ | En curso, por paquetes (el encargo está en «Cierre»; lo hecho, en fuerte.md 8.3): GUE-43 hecho; bots contra los PNJ y extremo a extremo hechos; GUE-44 hecho (reunión y formación: recaptura con mediana de 2,6 min, aún según la semilla) |
 | Habilidades | Diseño corto `docs/habilidades.md` (CMB-19 a 24, CMB-28, PRG-04/07/08, UI-11, UI-45), revisado por tres lentes escépticas (41 hallazgos, 3 bloqueantes; 34 aplicados, 4 rechazados en parte con motivo en su sección «Revisión») | Diseño hecho; implementación tras fusionar F4 (paquetes H1 a H5) |
 | Social | Chat (SOC-03 a SOC-05) y grupos (SOC-06 a SOC-08) | Implementado en la rama `fase4-chat-grupos`; la revisión adversarial (tres lentes con refutación) se cortó al cerrar: falta revisar y fusionar |
 | Fase 5 (diseño) | `docs/plataforma.md` (servicio en Go + PostgreSQL, cuentas, billetes, guardado, RGPD, GM) y `docs/progresion.md` (objetos, inventario, monedas, niveles, razas): borrador, revisión escéptica y corrección | Hecho en `fase5-cuentas`; la conciliación entre los dos se cortó al cerrar |
@@ -298,9 +298,13 @@ supuestos técnicos comprobados ejecutando Godot y Terrain3D).
 | Golpe imbloqueable del Capitán (20 bots) | sin salir de la zona, 14 golpes y 7 muertes; con la esquiva, 0 y 0 (el Capitán cae 5 s más tarde) |
 | Recaptura por Solmarch contra 20 defensores y su guarnición | capitán del reino 15 000: una de tres en 30 min (6,7 min); **7500 (provisional): 6,7, 24,5 y 27,6 min** |
 | Versión corta de la suite (`test_siege_npcs`, 12 bots, PNJ más débiles) | captura a los 35–38 s de juego; la fase tarda 8–12 s de reloj con la máquina cargada |
+| Recaptura con GUE-44 (reunión y formación; cinco semillas, capitán del reino 7500) | **2,4 / 2,4 / 4,8 / 2,6 / 12,8 min** (mediana 2,6); antes, con las mismas, 6,7 / 27,6 / 24,5 / 4,4 / 5,6. Muertes del atacante por cada una del defensor: 1,3 (antes 2,7) |
+| Lo mismo con el capitán del reino en 15 000 | 2,6 / 2,7 / 11,5 / 15,0 / 17,4 min: las cinco dentro del ciclo de 30 min |
 
 Lo que alarga la recaptura no son los PNJ sino el círculo frente a los defensores (GUE-44). Hallazgo arreglado: quien estaba
-dentro de su puerta cerrada golpeaba hacia fuera sin que le golpearan.
+dentro de su puerta cerrada golpeaba hacia fuera sin que le golpearan. Con GUE-44 (paquete C) se vio la causa de fondo: los
+personajes no chocan entre sí y los bots que siguen los mismos puntos se apilan, y un golpe que barre da a toda la pila (20 atacantes
+muertos en 1,2 s sin matar a nadie). Ahora los atacantes se reúnen en su campamento antes de salir y cada bot va en su hueco.
 
 ### Medidas de F4 (máquina compartida con otras suites: cotas altas)
 
@@ -341,10 +345,11 @@ habían dejado; nada se ha perdido salvo F6b, que aún no tenía commits.
      - Una versión corta dentro, sin `fort_kill_captain`.
      - Si no capturan, ajustes mínimos y provisionales anotados en `fuerte.md` §8.3.
      - **Hecho**: `siege_battle.gd --npcs` y `test_siege_npcs`; capitán del reino a 7500 (provisional). La recaptura aún
-       depende de la semilla (GUE-44).
+       depende de la semilla (GUE-44); con GUE-44, de 2,4 a 12,8 min con cinco semillas.
    - **GUE-43, GUE-44 y GUE-45.**
      - GUE-43: el falso de relleno cede su plaza a una persona.
-     - GUE-44: los refuerzos se juntan antes de salir.
+     - GUE-44: los refuerzos se juntan antes de salir. **Hecho** (fuerte.md 8.3, F6b, paquete C): reunión en la salida del
+       campamento (8 de su reino, 3 ya peleando en el fuerte o el reloj de 30 s), misma ruta y formación.
      - GUE-45: los SIEGE del dueño defienden la pasarela.
    - **Carga con PNJ.** `load_test.gd --siege` con 32 contra 32.
    - **Batalla con telemetría.** Una batalla completa con `--battle-log` y su resumen.
@@ -473,6 +478,14 @@ $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Mi
     la escena.
   - TELEGRAPH para todo golpe fuerte de un PNJ.
   - Opción nueva `--no-npcs`.
+- **F6b, GUE-44**:
+  - Los atacantes también se reúnen al empezar la batalla, no solo al reaparecer; el grupo va por la misma ruta, la de la vuelta del
+    reloj en la que sale (antes cada uno elegía la suya con su generador).
+  - Formación: cada bot de asedio en grupo suma a sus destinos un hueco que sale de su semilla. No estaba en el encargo; sin ella la
+    reunión apenas mejoraba la recaptura, porque los bots se apilan.
+  - Regla de «ir a ayudar»: no espera si ya hay 3 de los suyos peleando en el fuerte (esperar siempre dejaba curarse al capitán).
+  - La prueba de las dos rutas de `test_siege_zone` quita la reunión (`set_rally(0)`) para seguir midiendo las dos rutas.
+  - El capitán del reino sigue en 7500: con GUE-44 también cabría 15 000, pero se decide con personas.
 - **F6a**:
   - `--max-realm-diff` solo cuenta personas. Se rechaza entrar en el reino r si
     `personas[r] + 1 − min(otros) > N`.

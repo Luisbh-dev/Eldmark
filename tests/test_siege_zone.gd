@@ -4,7 +4,9 @@ extends TestCase
 ## la rompen, matan al capitán (el doble de pruebas de [method ZoneServer.spawn_captain_double] o la orden
 ## [code]fort_kill_captain[/code]), capturan el fuerte neutral y luego los de otro reino lo recapturan. Es el
 ## [SiegeRunner] de [code]tools/war/siege_runner.gd[/code] con pocos bots y la captura acelerada (orden 11);
-## la batalla larga, con muchos, es la herramienta [code]tools/war/siege_battle.gd[/code].
+## la batalla larga, con muchos, es la herramienta [code]tools/war/siege_battle.gd[/code]. Desde GUE-44 los atacantes
+## esperan a los suyos en la salida del campamento y salen en grupo por la misma ruta (la prueba de las dos rutas la
+## quita para medirlas, y otra comprueba la reunión con el contador de aliados del servidor).
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
@@ -77,6 +79,8 @@ func test_bots_from_the_camp_reach_the_gate_by_both_routes_and_break_it() -> voi
 	var ford_seeds: Array[int] = _seeds_for(ApproachRoutes.FORD, 3)
 	assert_eq(bridge_seeds.size(), 3, "hay semillas que van por el puente")
 	assert_eq(ford_seeds.size(), 3, "y otras por el vado")
+	# Sin la reunión (GUE-44), que mandaría a los seis por la misma ruta: cada uno va por la de su semilla.
+	_runner.set_rally(0)
 	var ids: Array[int] = []
 	for rng_seed: int in bridge_seeds + ford_seeds:
 		ids.append_array(_runner.add_siege_bots(VARDHEIM, 1, rng_seed))
@@ -211,6 +215,44 @@ func test_the_bots_of_the_owner_walk_into_their_own_fort_and_hold_the_circle() -
 	assert_true(inside >= 0, "los tres defensores entran en el círculo (%d)" % state.presence[VARDHEIM])
 	assert_eq(state.gate_health, state.gate_max, "sin tocar la puerta de su fuerte")
 	assert_eq(defenders.size(), 3)
+
+
+func test_attackers_wait_for_each_other_at_the_camp_and_leave_together() -> void:
+	# GUE-44: con el fuerte de Vardheim, los de Solmarch esperan a los suyos en la salida de su campamento; el servidor
+	# los cuenta (_count_allies) y salen en cuanto son tres, todos en el mismo tick y por la misma ruta.
+	_runner.server.console_command("fort_owner vardheim")
+	await _runner.advance(10)
+	_runner.set_rally(3)
+	var first: Array[int] = _runner.add_siege_bots(SOLMARCH, 2, 600)
+	await _runner.advance(120)
+	var rally: Vector3 = _runner.get_brain(first[0]).get_siege_rally_point()
+	var deadline: int = _runner.get_brain(first[0]).get_rally_deadline()
+	assert_true(deadline > _runner.tick(), "el reloj aún no ha salido (tick %d, salida %d)" % [_runner.tick(), deadline])
+	for net_id: int in first:
+		var brain: BotBrain = _runner.get_brain(net_id)
+		assert_true(brain.is_rallying(), "dos de tres: esperan")
+		assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.RALLY)
+		var position: Vector3 = _runner.server.get_registry().get_entity(net_id).get_position()
+		assert_true(Vector2(position.x - rally.x, position.z - rally.z).length() < BotBrain.SIEGE_RALLY_RADIUS,
+				"en el punto de reunión (%s)" % position)
+	# Un bot de Vardheim (el dueño) no espera ni cuenta para los de Solmarch.
+	var owner: Array[int] = _runner.add_siege_bots(VARDHEIM, 1, 650)
+	await _runner.advance(30)
+	assert_false(_runner.get_brain(owner[0]).is_rallying(), "el dueño no espera")
+	assert_true(_runner.get_brain(first[0]).is_rallying(), "y no cuenta como de Solmarch")
+	var third: Array[int] = _runner.add_siege_bots(SOLMARCH, 1, 602)
+	await _runner.advance(30)
+	var departures: Dictionary = {}
+	var routes: Dictionary = {}
+	for net_id: int in first + third:
+		var brain: BotBrain = _runner.get_brain(net_id)
+		assert_false(brain.is_rallying(), "con el tercero salen")
+		departures[brain.get_last_rally_departure()] = true
+		routes[brain.get_siege_route()] = true
+	assert_eq(departures.size(), 1, "los tres en el mismo tick: %s" % [departures.keys()])
+	assert_true(int(departures.keys()[0]) < deadline, "antes del reloj")
+	assert_eq(routes.size(), 1, "por la misma ruta: %s" % [routes.keys()])
+	assert_eq(_runner.rally_departures.size(), 3, "y el SiegeRunner apunta las tres salidas")
 
 
 func test_the_long_battle_tool_loads() -> void:

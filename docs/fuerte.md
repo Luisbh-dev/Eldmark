@@ -349,11 +349,17 @@ de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D
   siguen las rutas en línea recta entre puntos. Hecho en F6a (detalle en 8.3). En F6b pelea con los PNJ de verdad:
   busca primero a los PNJ que guardan el fuerte mientras el capitán vive, sale de la zona de los golpes avisados
   (TELEGRAPH) con una esquiva, deja las persecuciones que no le acercan y rodea la empalizada si se queda fuera a
-  un lado (detalle en 8.3, F6b).
+  un lado (detalle en 8.3, F6b). Desde GUE-44 (F6b, paquete C) el atacante no sale solo de su campamento: espera a los
+  suyos en la salida (8 de su reino, o 3 ya peleando en el fuerte, o como mucho la siguiente salida de un reloj común
+  de 30 s) y el grupo va por la misma ruta; y en grupo cada bot lleva su hueco (formación), porque los personajes no
+  chocan entre sí y los bots se apilaban en el mismo punto (detalle en 8.3, F6b, paquete C).
 - Criterio: `--bots=20` por bando capturan y recapturan sin intervención. F6a lo cumple con jugadores falsos
   y la orden `fort_kill_captain` en lugar del capitán. En F6b, con los PNJ de verdad y sin ninguna orden: capturan el neutral
   siempre (86–88 s) y recapturan dentro del ciclo de 30 min con el capitán del reino en 7500 (de 6,7 a 27,6 min según la semilla);
-  lo que alarga la recaptura es el círculo frente a los defensores (GUE-44), no los PNJ (8.3, F6b).
+  lo que alarga la recaptura es el círculo frente a los defensores (GUE-44), no los PNJ (8.3, F6b). Con la reunión y la formación
+  de GUE-44, y cinco semillas: captura del neutral a los 80–89 s y **recaptura en 2,4 / 2,4 / 4,8 / 2,6 / 12,8 min** (mediana
+  2,6 min; antes, con las mismas semillas, 6,7 / 27,6 / 24,5 / 4,4 / 5,6); con el capitán del reino en 15 000, también las cinco
+  dentro del ciclo (de 2,6 a 17,4 min). Sigue dependiendo de la semilla (8.3, F6b, paquete C).
 - **Carga** (GUE-16): escenario de `load_test` con 32 contra 32 y 64 contra 64 en la puerta y el
   círculo durante 120 s (`--siege`; resultados en 8.3).
 - **Equilibrio** (GUE-42, hecho en F6a): `--max-realm-diff=N` (por defecto 0 = sin límite); un REJECT nuevo,
@@ -451,7 +457,7 @@ var before_simulate: Callable                                  # (tick: int) -> 
 
 F0 (escena, capas, malla y rutas), F1 (fortaleza pura), F2 (protocolo 3), F3 (servidor del fuerte), F4 (PNJ), F5 (cliente) y la
 primera mitad de F6 (F6a: bots que asedian, equilibrio de reinos y carga) están hechos; F6b (extremo a extremo con los PNJ) va por paquetes
-(hechos: GUE-43 y los bots contra los PNJ; faltan GUE-44, GUE-45 y la carga con PNJ). Además
+(hechos: GUE-43, los bots contra los PNJ y GUE-44; faltan GUE-45 y la carga con PNJ). Además
 de lo de 8.2, quien siga con F6b (y con lo que toque a los PNJ) encontrará esto:
 
 **F0**
@@ -896,7 +902,8 @@ pruebas en `test_realm_balance`, `test_bot_brain_siege`, `test_siege_zone`, `tes
   de la puerta (`SIEGE_GATE_*`) entran todos.
 - **Refuerzos a cuentagotas**: hoy cada bot sale solo cuando reaparece, y los defensores derrotan a los atacantes por partes
   (3,4 muertes del atacante por cada una del defensor en el 20 contra 20). Antes de ajustar `vado_gris.tres` con PNJ conviene decidir si el
-  atacante espera a sus compañeros en la explanada o si es un efecto deseado (backlog GUE-44).
+  atacante espera a sus compañeros en la explanada o si es un efecto deseado (backlog GUE-44). Decidido en F6b (paquete C, más abajo): se
+  reúnen en su campamento y van en formación; la causa de fondo era que los bots se apilan.
 - **Los falsos de relleno ocupan plazas** (`FULL` cuenta todos los jugadores): con `--max-players` igual a `--fake-players` el servidor
   rechaza con «lleno» a la persona que debería sustituir a un falso (backlog GUE-43). Las pruebas dejan sitio. Resuelto en F6b (más
   abajo).
@@ -1036,12 +1043,106 @@ tiempos de la recaptura cuentan desde que salen los de Solmarch:
 - **Ajuste provisional (F6b)**: `data/npcs/realm_captain.tres`, vida **15 000 → 7500** (la mitad; un cuarto de la del Capitán del Vado). Es el
   único cambio de datos: con él la recaptura cabe en el ciclo de 30 min con las tres semillas, y sin él no. Las filas de 7500 se midieron con
   `--npc-health=realm_captain:7500`; la batalla con el dato ya cambiado da exactamente lo mismo (semilla 1000: Solmarch captura en el tick
-  29 250). Se revisa con GUE-44 y, sobre todo, con personas (MUN-11 y GUE-11 piden 3–5 jugadores contra un capitán).
+  29 250). Se revisa con GUE-44 y, sobre todo, con personas (MUN-11 y GUE-11 piden 3–5 jugadores contra un capitán). Revisado en el
+  paquete C: con GUE-44 los bots recapturan dentro del ciclo también con 15 000, así que el ajuste ya no hace falta para ellos; se deja en
+  7500 hasta probarlo con personas.
 - **Golpes avisados en la batalla larga**: con la esquiva, ningún golpe imbloqueable dio a un bot en la captura del neutral (14 sin salir
   de la zona, ver arriba); la versión corta de la suite comprueba que a ninguno de los que estaban saliendo le da.
 - **Lo que no hace este paquete**: GUE-44 (los refuerzos se juntan antes de salir), GUE-45 (la pasarela), la carga con PNJ (GUE-16) y la
   batalla con telemetría completa. La batalla larga usa los jugadores falsos del servidor (el mismo `BotBrain` que `--bots` y `--bot`, con sus
   buscadores del servidor); con `SwarmBot` por ENet y PNJ solo hay pruebas unitarias de lo nuevo (`BotThreatSight`) y las de F6a sin PNJ.
+
+**F6b, paquete C: GUE-44, la reunión y la formación de los bots de asedio** (pruebas nuevas en `test_bot_brain_rally`; ampliaciones de
+`test_siege_zone` y `test_siege_clients`)
+
+- **Decisión**: los refuerzos a cuentagotas **no** son un efecto deseado. Un atacante que empieza o reaparece en su campamento espera a
+  los suyos y sale en grupo, y en grupo cada uno va en su hueco. Las dos cosas hacen falta: cada una por separado mejora poco o nada
+  (tabla de abajo).
+- **Hallazgo: los bots se apilan.** Los personajes no chocan entre sí (su máscara de colisión no lleva la capa de personajes), y los bots que
+  siguen los mismos puntos (los cuatro puntos de reaparición del campamento, la ruta, el sitio desde el que golpean la puerta, el círculo)
+  acaban exactamente en el mismo sitio. Un golpe que barre (el sector del arma) da a todo el montón a la vez. Con la reunión y sin
+  huecos (semilla 2000), el primer grupo de Solmarch (20 bots en cuatro pilas de cinco, una por punto de reaparición, que delante de la
+  puerta eran casi una sola) murió entero en 1,2 s sin matar a nadie: cada golpe de los defensores que salían daba a 19 a la vez (en esos
+  40 s, 194 golpes de Vardheim contra 48). Esto, y no el círculo, es lo que
+  daba a los defensores su 3 a 1: también ellos esperan apilados en el círculo, y quien golpea primero a la pila gana. Una persona no se
+  apila; los bots sí, por eso la formación va en el cerebro y no en la simulación.
+- **Reunión** (`BotBrain`, patrón SIEGE; determinista, sin generador). Al empezar y tras cada reaparición (un salto de más de 5 m), si es
+  atacante (el fuerte no es suyo) y está a menos de 15 m del **punto de reunión** (la salida del campamento: el primer punto de sus
+  rutas, `get_siege_rally_point()`; los cuatro puntos de reaparición quedan dentro), espera allí (tarea nueva `RALLY`, al final del enum)
+  hasta que se cumple una de tres:
+  - hay **8 de su reino** a menos de 15 m del punto (él incluido; `SIEGE_RALLY_GROUP_SIZE`);
+  - hay **3 de los suyos a menos de 25 m del círculo** (`SIEGE_RALLY_JOIN_COUNT`, `SIEGE_RALLY_FORT_RADIUS`): un asalto en marcha no se
+    deja sin refuerzos, porque entre una oleada y la siguiente el capitán se cura y la puerta se repara;
+  - llega la siguiente **salida del reloj común**: una cada 30 s de partida (`SIEGE_RALLY_PERIOD_TICKS`), 5 s después de una oleada de
+    reaparición (`SIEGE_RALLY_OFFSET_TICKS`; las oleadas caen en múltiplos de 600 ticks). El tick es común a todos los bots, así que los
+    que esperan salen juntos sin hablarse (`next_rally_departure`).
+  Todo el grupo va por **la misma ruta**: la de la vuelta del reloj en la que sale (`rally_route_index`, alternan), no la del generador de
+  cada uno; las salidas del reloj caen a mitad de vuelta, así que unos ticks de diferencia entre clientes no la cambian. El dueño no espera
+  (defiende en cuanto puede) y deja de esperar si su reino pasa a ser el dueño. Mientras espera pelea con quien se le acerque, como en
+  la marcha. Los cuenta quien da `set_ally_counter(center, radius) -> int` (los jugadores vivos de su reino a esa distancia, sin él);
+  **sin contador, o con `set_rally(1)` o menos, no espera ni va en formación: el comportamiento de F6a y del paquete B**, que es el de las
+  pruebas del cerebro que no lo ponen.
+- **Formación**: en grupo (con contador y reunión), cada bot tiene un hueco, un punto del disco unidad que sale de su semilla por la
+  sucesión R2 (`slot_for_seed`; veinte semillas seguidas quedan a 0,18 o más unas de otras), y lo suma a donde va: ±1 m de lado en la
+  marcha, ±1,6 m a lo largo de la puerta al golpearla (mirándola de frente), hasta 2 m alrededor del centro del círculo y hasta 4 m
+  alrededor del punto de reunión. Un intento de dar también a cada uno su carril del vano al cruzar la puerta salió peor (con la reunión
+  de 8, semillas 1000 y 2000: 743 y 725 s frente a 145 y 143) y se quitó.
+- **Contadores de aliados**: el servidor (`ZoneServer._count_allies`, con la lista de jugadores vivos por reino reunida una vez por tick,
+  así que todos los que esperan en un tick ven el mismo recuento; personas y falsos, sin PNJ ni los cuerpos de GUE-41), `SwarmBot`
+  (`--bots`: sigue a los jugadores de su reino por sus altas y los mismos registros de los snapshots que ya decodificaba para los
+  enemigos) y `BotAllySight` (`--bot`: los remotos de su reino que dibuja su `RemoteWorld`). Un `SwarmBot` no ve lo que queda fuera de
+  su interés: si no ve a los del fuerte, espera al grupo o al reloj.
+- **Herramientas**: `SiegeRunner.set_rally(tamaño, vuelta)` y `rally_departures` (cada salida de la reunión); `siege_battle.gd --rally=N`
+  (0 o 1: sin reunión ni formación, para comparar), `--rally-period=S` y, en el informe, las salidas en grupo de cada reino. Arreglado
+  de paso en el informe: la captura que acaba una fase podía caer justo en el tick en que empieza la siguiente y salía en ella («captura
+  a los 0,0 s» de la recaptura, con la semilla 4000).
+- **Pruebas**: `test_bot_brain_rally` (quince, sin física: el punto de reunión; el reloj común y la ruta del grupo; sin contador sale ya;
+  solo, espera al reloj; cuatro que llegan de uno en uno salen en el tick del cuarto por la misma ruta; tres que llegan en momentos
+  distintos salen juntos con el reloj; vuelve a esperar al reaparecer; ni el que aparece lejos del campamento ni el dueño esperan; no
+  espera si los suyos ya pelean en el fuerte; deja de esperar si su reino gana el fuerte; el grupo a 1 no espera; pelea mientras espera;
+  determinismo; los huecos; en grupo golpean la puerta y guardan el círculo cada uno en su sitio). `test_siege_zone`: una nueva con el
+  servidor de verdad (dos de Solmarch esperan, un tercero llega y salen los tres en el mismo tick y por la misma ruta; un bot del dueño
+  ni espera ni cuenta), y la de las dos rutas quita la reunión (`set_rally(0)`) porque mide las dos rutas y la reunión manda a todos
+  por la misma. `test_siege_clients`: cada `SwarmBot` cuenta a los otros dos de su reino.
+- **Consecuencias**: con la reunión, `test_siege_zone` y `test_server_main` (cuatro falsos, dos por reino) salen a los 5 s (la primera
+  salida del reloj) en lugar de en el primer tick. En `load_test.gd --siege` los falsos salen a la vez (son más de 8 por reino), pero los
+  `SwarmBot` que entran después pueden esperar en el campamento hasta 30 s si no ven a los del fuerte: al repetir la carga con PNJ
+  (GUE-16) hay que mirar que lleguen antes de la ventana de medida.
+
+**Medido en F6b (paquete C)** con `siege_battle.gd --npcs --per-side=20 --minutes=28` y cinco semillas (las tres del paquete B y dos más),
+el capitán del reino en 7500; tiempos de juego desde que salen los de Solmarch, en segundos (4 núcleos compartidos con otras suites: cada
+batalla tardó de 1 a 7 min de reloj, y las de antes hasta 12):
+
+| Recaptura (s) | 1000 | 2000 | 3000 | 4000 | 5000 | Mediana |
+|---|---|---|---|---|---|---|
+| Antes (`--rally=0`: sin reunión ni formación) | 399,4 | 1654,8 | 1471,8 | 266,0 | 334,4 | 399 (6,7 min) |
+| Solo la reunión (8 o el reloj de 30 s), sin huecos | | 772,5 | | | | |
+| Solo la formación, sin reunión | 419,1 | 472,7 | 610,4 | 538,1 | 748,5 | 538 (9,0 min) |
+| Reunión (8 o el reloj) y formación, sin «ir a ayudar» | 145,0 | 142,5 | 1521,5 | 157,2 | no en 28 min | |
+| Reunión de 12 y formación | 156,1 | 161,8 | 637,4 | 795,2 | 926,8 | 637 |
+| Reunión de 20 (casi solo el reloj) y formación | no en 28 min | no en 28 min | no en 28 min | | | |
+| Reunión solo al empezar (los refuerzos no esperan) y formación | 337,7 | 144,1 | 274,4 | 772,0 | 777,5 | 337 |
+| **GUE-44 (reunión de 8, «ir a ayudar» con 3, reloj de 30 s, formación)** | **145,0** | **142,5** | **288,8** | **157,2** | **766,0** | **157 (2,6 min)** |
+| Lo mismo con el capitán del reino en 15 000 | 153,8 | 162,1 | 691,4 | 897,8 | 1045,4 | 691 (11,5 min) |
+
+- **Con GUE-44**: muertes de jugadores Solmarch / Vardheim 29 / 31, 29 / 33, 61 / 75, 37 / 38 y 194 / 93 (antes 117 / 33, 433 / 149,
+  406 / 127, 59 / 56 y 93 / 45): de 2,7 a 1,3 muertes del atacante por cada una del defensor. Captura del neutral a los 84,7 / 89,0 /
+  87,2 / 80,5 / 82,4 s, sin muertes de Vardheim (antes 86–88 s). La batalla de la semilla 4000 con el código final y `--battle-log` da lo
+  mismo que la de la tabla (capturas a los 80,5 y 157,2 s del ciclo) y su resumen: 75 muertes de jugadores, 71 en la explanada y el
+  patio, 4 en el vado, ninguna en el puente ni en la pasarela; la puerta se rompe 12,0 y 12,8 s después del primer golpe.
+- **Dos regímenes**: o el primer grupo de 20 (que sale entero y por la misma ruta) gana la pelea de la puerta durante la consolidación de
+  Vardheim, espera a que aparezca la guarnición y la mata enseguida (**2,4–2,6 min**: el suelo lo ponen los 120 s de consolidación), o la
+  pierde y empieza un tira y afloja de oleadas (4,8 y 12,8 min). La batalla es caótica: un cambio pequeño (los carriles, el tamaño del
+  grupo) cambia qué semillas caen en cada régimen, así que solo se comparan configuraciones con las cinco semillas.
+- **Lo que no funciona**: esperar más. Con grupos de 12 o de 20 los refuerzos tardan más en volver que los del dueño (que reaparecen y
+  vuelven sin esperar) y, entre oleada y oleada, el capitán se cura y la puerta se repara; con 20, ninguna de tres recaptura en 28 min. Por
+  eso la regla de «ir a ayudar» y un grupo de 8. La reunión sin huecos tampoco basta (772,5 s con la semilla 2000), y los huecos sin
+  reunión dan recapturas regulares pero lentas (7–12,5 min): el primer grupo sale partido entre las dos rutas.
+- **El capitán del reino**: con GUE-44, en 15 000 los bots recapturan dentro del ciclo de 30 min las cinco veces (de 2,6 a 17,4 min); el
+  ajuste provisional a 7500 del paquete B ya no hace falta para los bots, pero se deja hasta probarlo con personas (MUN-11, GUE-11).
+- **Lo que no hace este paquete**: la defensa de la pasarela (GUE-45), la carga con PNJ (GUE-16) y la batalla de los `SwarmBot` por ENet
+  con PNJ (la reunión de `--bots` y `--bot` se prueba con sus contadores, no en una batalla larga). Los defensores no se reúnen: el dueño
+  vuelve a su fuerte en cuanto reaparece.
 
 ---
 
@@ -1053,6 +1154,10 @@ tiempos de la recaptura cuentan desde que salen los de Solmarch:
   necesita sí están en el repo, así que se regenera (no se edita a mano); ver 8.3.
 - **Arte**: Huecos, Capitán, tabardos, estandartes y efectos de la puerta definitivos son del
   usuario (ART-15, ART-16, ART-17); de momento, provisionales.
+- **Batallas de bots caóticas** (F6b, GUE-44): la recaptura de 20 contra 20 cambia mucho con la semilla (de 2,4 a 12,8 min con
+  GUE-44) y con cambios pequeños del cerebro. Un ajuste del fuerte o de los bots se mide con cinco semillas o más, nunca con una. Los
+  bots se apilan porque los personajes no chocan entre sí: cualquier cerebro nuevo que lleve a muchos al mismo punto debe repartirlos
+  (la formación de 8.3, F6b, paquete C).
 
 ---
 

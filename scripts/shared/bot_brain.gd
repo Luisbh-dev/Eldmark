@@ -47,13 +47,28 @@ extends RefCounted
 ## [method set_threat_finder]), sale de ella en línea recta desde quien golpea, con una esquiva al empezar y
 ## esprintando, sin bloquear ([constant SiegeTask.EVADE]). Bloquear no frena el imbloqueable y salir es lo más simple
 ## que funciona con todos; no usa el generador, así que sigue siendo determinista.
+## [br][b]Reunión[/b] (GUE-44): un atacante que empieza o reaparece en su campamento no sale solo. Espera a los suyos
+## en el punto de reunión (la salida del campamento, el primer punto de sus rutas: [method get_siege_rally_point];
+## [constant SiegeTask.RALLY]) y sale cuando hay [constant SIEGE_RALLY_GROUP_SIZE] de su reino a menos de
+## [constant SIEGE_RALLY_RADIUS] (él incluido; los cuenta quien da [method set_ally_counter]), cuando ya hay
+## [constant SIEGE_RALLY_JOIN_COUNT] de los suyos peleando en el fuerte (va a ayudarlos: un asalto en marcha no se deja
+## sin refuerzos, y sin atacantes el capitán se cura) o, como mucho, en la siguiente salida del reloj común (cada
+## [constant SIEGE_RALLY_PERIOD_TICKS] ticks de partida, [method next_rally_departure]). Todo el grupo va por la misma
+## ruta, que sale del tick de salida ([method rally_route_index]) y no del generador de cada uno, así que los que salen
+## juntos llegan juntos. Sin contador de aliados, o con el grupo a 1 o menos ([method set_rally]), no espera nunca. El
+## dueño no espera: defiende en cuanto puede.
+## [br][b]Formación[/b] (GUE-44): los personajes no chocan entre sí y los bots que siguen los mismos puntos acaban uno
+## encima de otro, donde un golpe que barre les da a todos. En grupo (con contador de aliados y la reunión puesta) cada
+## bot lleva su hueco ([method get_siege_slot]), que suma a donde va: de lado en la marcha, a lo largo de la puerta al
+## golpearla, en el círculo y en el punto de reunión.
 
 ## [constant SIEGE] va al final para no mover los valores de los demás patrones.
 enum Pattern { WANDER, CIRCLE, IDLE, JUMPY, COMBAT, SIEGE }
 
 ## Qué hace un bot de [constant SIEGE] en este tick ([method get_siege_task]). [constant EVADE] (F6b, al final
-## para no mover los demás): sale de la zona de un golpe avisado.
-enum SiegeTask { NONE, FIGHT, MARCH, ASSAULT, HOLD, EVADE }
+## para no mover los demás): sale de la zona de un golpe avisado. [constant RALLY] (GUE-44, después): espera a los suyos
+## en el punto de reunión de su campamento.
+enum SiegeTask { NONE, FIGHT, MARCH, ASSAULT, HOLD, EVADE, RALLY }
 
 ## Duración mínima de un tramo de paseo (ticks).
 const SEGMENT_MIN_TICKS: int = 60
@@ -154,6 +169,36 @@ const SIEGE_EVADE_DODGE_TICKS: int = 15
 ## [constant SIEGE_STUCK_MIN_PROGRESS] metros en [constant SIEGE_STUCK_TICKS] ticks (está tras un muro, en la pasarela
 ## o huye más rápido), deja de perseguir a nadie que no esté a esa distancia durante estos ticks y sigue con su plan.
 const SIEGE_CHASE_GIVE_UP_TICKS: int = 600
+## [constant SIEGE], reunión (GUE-44): cuántos de su reino (él incluido) tiene que haber en el punto de reunión para salir
+## sin esperar al reloj.
+const SIEGE_RALLY_GROUP_SIZE: int = 8
+## [constant SIEGE], reunión: cada cuántos ticks de partida sale el reloj común (lo más que espera un atacante), y a qué
+## tick dentro de cada vuelta: 5 s después de una oleada de reaparición ([code]CombatTiming.WAVE_TICKS[/code], múltiplos
+## de 600), para que los que reaparecen en ella lleguen a tiempo.
+const SIEGE_RALLY_PERIOD_TICKS: int = 1800
+const SIEGE_RALLY_OFFSET_TICKS: int = 300
+## [constant SIEGE], reunión: radio (m) del punto de reunión en el que se cuenta a los suyos (los cuatro puntos de
+## reaparición del campamento quedan dentro); espera en su hueco ([constant SIEGE_SLOT_RALLY_SPREAD]).
+const SIEGE_RALLY_RADIUS: float = 15.0
+## [constant SIEGE], reunión: si ya hay al menos [constant SIEGE_RALLY_JOIN_COUNT] de los suyos a menos de
+## [constant SIEGE_RALLY_FORT_RADIUS] metros del círculo (peleando en el fuerte o en su explanada), no espera: va a
+## ayudarlos.
+const SIEGE_RALLY_JOIN_COUNT: int = 3
+const SIEGE_RALLY_FORT_RADIUS: float = 25.0
+## [constant SIEGE], formación (GUE-44): los personajes no chocan entre sí, así que los bots que siguen los mismos puntos
+## acaban uno encima de otro, y un golpe que barre (el sector del arma) da a todo el montón a la vez. Un bot que va en
+## grupo ([method set_ally_counter]) lleva su hueco ([method get_siege_slot], sale de su semilla) y lo suma a donde va:
+## de lado en la marcha, a lo largo de la puerta al golpearla, dentro del círculo y en el punto de reunión. Metros de
+## cada uno, y distancia a la que da su sitio por alcanzado.
+const SIEGE_SLOT_MARCH_SPREAD: float = 1.0
+const SIEGE_SLOT_GATE_SPREAD: float = 1.6
+const SIEGE_SLOT_CIRCLE_SPREAD: float = 2.0
+const SIEGE_SLOT_RALLY_SPREAD: float = 4.0
+const SIEGE_SLOT_REACHED: float = 0.5
+## Los dos pasos de la sucesión R2 (las inversas del número plástico y de su cuadrado): los huecos de semillas seguidas
+## quedan repartidos por el disco ([method slot_for_seed]).
+const SLOT_STEP_ANGLE: float = 0.7548776662466927
+const SLOT_STEP_RADIUS: float = 0.5698402909980532
 
 # Cómo se desatasca un bot de asedio.
 enum _Unstick { NONE, JUMP, DETOUR }
@@ -242,6 +287,17 @@ var _siege_defender_checked_tick: int = -1000
 var _siege_chase_ref_distance: float = 0.0
 var _siege_chase_ref_tick: int = -1
 var _siege_chase_blocked_until: int = -1
+# SIEGE, reunión (GUE-44): quién cuenta a los suyos, el tamaño del grupo y la vuelta del reloj; si toca mirar si espera
+# (al empezar y tras reaparecer) y, mientras espera, hasta qué tick como mucho (-1 = no espera).
+var _siege_ally_counter: Callable = Callable()
+var _siege_rally_size: int = SIEGE_RALLY_GROUP_SIZE
+var _siege_rally_period: int = SIEGE_RALLY_PERIOD_TICKS
+var _siege_rally_pending: bool = true
+var _siege_rally_until: int = -1
+# SIEGE, reunión: tick de la última salida del punto de reunión (-1 = nunca ha salido de una).
+var _siege_rally_left_tick: int = -1
+# SIEGE, formación: el hueco del bot (un punto del disco unidad, de su semilla).
+var _siege_slot: Vector2 = Vector2.ZERO
 
 
 ## [param rng_seed] fija la secuencia. [param home] y [param radius] delimitan la zona por la
@@ -253,6 +309,7 @@ func _init(rng_seed: int, pattern: Pattern = Pattern.WANDER, home: Vector3 = Vec
 	_home = home
 	_radius = maxf(radius, 1.0)
 	_circle_sign = 1.0 if _rng.randi() % 2 == 0 else -1.0
+	_siege_slot = slot_for_seed(rng_seed)
 
 
 ## Entrada sin cuantizar para [param tick] (la cuantiza quien llama). [param position] y
@@ -362,6 +419,99 @@ func set_defender_finder(finder: Callable) -> void:
 ## true si el patrón [constant SIEGE] ya tiene quién le busque los PNJ defensores.
 func has_defender_finder() -> bool:
 	return _siege_defender_finder.is_valid()
+
+
+## Función con la que el patrón [constant SIEGE] cuenta a los suyos en el punto de reunión (GUE-44):
+## [code](center: Vector3, radius: float) -> int[/code] devuelve cuántos jugadores vivos de su reino, sin contarle a
+## él, están a menos de [param radius] metros (en horizontal) de [param center]. Sin ella no espera a nadie y sale solo,
+## como antes de GUE-44.
+func set_ally_counter(counter: Callable) -> void:
+	_siege_ally_counter = counter
+
+
+## true si el patrón [constant SIEGE] ya tiene quién le cuente a los suyos.
+func has_ally_counter() -> bool:
+	return _siege_ally_counter.is_valid()
+
+
+## Cambia la reunión del patrón [constant SIEGE] (GUE-44): sale cuando hay [param group_size] de su reino en el punto
+## de reunión (él incluido) o en la siguiente salida del reloj, que da una vuelta cada [param period_ticks] ticks. Con
+## [param group_size] 1 o menos no espera nunca (como antes de GUE-44). Lo usan las herramientas para comparar; por
+## defecto, [constant SIEGE_RALLY_GROUP_SIZE] y [constant SIEGE_RALLY_PERIOD_TICKS]. Vale para la próxima espera; si
+## estaba esperando y el grupo pasa a 1 o menos, deja de esperar.
+func set_rally(group_size: int, period_ticks: int = SIEGE_RALLY_PERIOD_TICKS) -> void:
+	_siege_rally_size = group_size
+	_siege_rally_period = maxi(period_ticks, 1)
+	if group_size <= 1:
+		_siege_rally_until = -1
+
+
+## Tamaño del grupo con el que sale de la reunión (1 o menos: no espera).
+func get_rally_group_size() -> int:
+	return _siege_rally_size
+
+
+## true si el bot de [constant SIEGE] está esperando a los suyos en el punto de reunión.
+func is_rallying() -> bool:
+	return _siege_rally_until >= 0
+
+
+## Tick de la salida del reloj a la que, como mucho, sale el bot que espera (-1 si no espera).
+func get_rally_deadline() -> int:
+	return _siege_rally_until
+
+
+## El hueco de un bot con la semilla [param rng_seed] en la formación del patrón [constant SIEGE] (GUE-44): un punto del
+## disco de radio 1 (x de lado, y hacia delante) sacado de la sucesión R2, que reparte bien semillas seguidas (los bots
+## de un mismo grupo: con veinte, ninguno a menos de 0,18 del otro). No usa el generador.
+static func slot_for_seed(rng_seed: int) -> Vector2:
+	var angle: float = TAU * fposmod(float(rng_seed) * SLOT_STEP_ANGLE, 1.0)
+	var reach: float = sqrt(fposmod(float(rng_seed) * SLOT_STEP_RADIUS, 1.0))
+	return Vector2(cos(angle), sin(angle)) * reach
+
+
+## El hueco de este bot en la formación ([method slot_for_seed]).
+func get_siege_slot() -> Vector2:
+	return _siege_slot
+
+
+## Tick en el que salió por última vez del punto de reunión con los suyos, también si no tuvo que esperar porque ya
+## eran bastantes (-1 si nunca ha salido de una reunión).
+func get_last_rally_departure() -> int:
+	return _siege_rally_left_tick
+
+
+## El punto de reunión del patrón [constant SIEGE] (GUE-44): la salida del campamento de su reino, donde empiezan sus
+## rutas (el primer punto de la primera, por orden de id; en el Vado Gris todas empiezan en el mismo), a ras de suelo.
+## null si no tiene fuerte o sus rutas no tienen puntos para su reino.
+func get_siege_rally_point() -> Variant:
+	if _siege_routes == null:
+		return null
+	var realm_id: StringName = RealmCatalog.id_of_code(_siege_realm)
+	for route: StringName in _siege_routes.get_route_ids():
+		var points: PackedVector2Array = _siege_routes.get_points(route, realm_id)
+		if not points.is_empty():
+			return Vector3(points[0].x, 0.0, points[0].y)
+	return null
+
+
+## Primer tick posterior a [param tick] en el que sale el reloj común de la reunión, que da una vuelta cada
+## [param period_ticks] ticks y sale [constant SIEGE_RALLY_OFFSET_TICKS] ticks después del principio de cada una. Es
+## el mismo para todos los bots (el tick de la partida es común), así que los que esperan salen juntos.
+static func next_rally_departure(tick: int, period_ticks: int = SIEGE_RALLY_PERIOD_TICKS) -> int:
+	var period: int = maxi(period_ticks, 1)
+	return tick + period - posmod(tick - SIEGE_RALLY_OFFSET_TICKS, period)
+
+
+## Índice (entre [param route_count] rutas, en el orden de [method ApproachRoutes.get_route_ids]) de la ruta del grupo
+## que sale de la reunión en [param tick]: van alternando, una por cada vuelta del reloj. Lo calcula igual cada bot del
+## grupo, sin hablar con los demás. Las salidas del reloj caen a mitad de vuelta, así que unos ticks de diferencia
+## entre los clientes no cambian la ruta.
+static func rally_route_index(tick: int, route_count: int, period_ticks: int = SIEGE_RALLY_PERIOD_TICKS) -> int:
+	if route_count <= 0:
+		return -1
+	@warning_ignore("integer_division")
+	return posmod(maxi(tick, 0) / maxi(period_ticks, 1), route_count)
 
 
 ## true si el patrón [constant SIEGE] ya tiene quién le avise de los golpes.
@@ -519,7 +669,16 @@ func _siege_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 			return fighting
 	_hold_until = -1
 
-	# 2. El plan: marchar, asaltar la puerta o quedarse en el círculo.
+	# 2. Al empezar o tras reaparecer en su campamento, un atacante espera a los suyos (GUE-44).
+	if _siege_rally_pending:
+		_siege_rally_pending = false
+		_siege_start_rally(tick, position)
+	if _siege_rally_until >= 0:
+		var waiting: PlayerInput = _siege_rally_input(tick, position, yaw)
+		if waiting != null:
+			return waiting
+
+	# 3. El plan: marchar, asaltar la puerta o quedarse en el círculo.
 	_ensure_route(position)
 	if _siege_inside_fort(position):
 		_siege_route_index = _siege_route_points.size()
@@ -589,6 +748,8 @@ func _note_siege_position(position: Vector3) -> void:
 		_siege_defender_checked_tick = -1000
 		_siege_chase_ref_tick = -1
 		_siege_chase_blocked_until = -1
+		_siege_rally_until = -1
+		_siege_rally_pending = true
 	_siege_has_position = true
 	_siege_last_position = position
 
@@ -646,19 +807,103 @@ func _ensure_route(position: Vector3) -> void:
 	if _siege_route_chosen:
 		return
 	_siege_route_chosen = true
-	if _siege_routes == null:
+	var candidates: Array[StringName] = _siege_route_candidates()
+	if candidates.is_empty():
 		return
-	var realm_id: StringName = RealmCatalog.id_of_code(_siege_realm)
+	_siege_set_route(candidates[_rng.randi() % candidates.size()], position)
+
+
+# Las rutas que hay para su reino, en el orden de ApproachRoutes.get_route_ids (vacío sin rutas).
+func _siege_route_candidates() -> Array[StringName]:
 	var candidates: Array[StringName] = []
+	if _siege_routes == null:
+		return candidates
+	var realm_id: StringName = RealmCatalog.id_of_code(_siege_realm)
 	for route: StringName in _siege_routes.get_route_ids():
 		if _siege_routes.has_route(route, realm_id):
 			candidates.append(route)
+	return candidates
+
+
+# Sigue la ruta [param route] de su reino desde el punto más cercano a [param position].
+func _siege_set_route(route: StringName, position: Vector3) -> void:
+	var realm_id: StringName = RealmCatalog.id_of_code(_siege_realm)
+	_siege_route_id = route
+	_siege_route_points = _siege_routes.get_points(route, realm_id)
+	_siege_route_index = maxi(_siege_routes.get_nearest_index(route, realm_id, Vector2(position.x, position.z)), 0)
+
+
+# --- Reunión (GUE-44) ---------------------------------------------------------------------------
+
+# true si espera a los suyos al empezar o al reaparecer: tiene quién se los cuente y un grupo de más de uno.
+func _siege_rally_enabled() -> bool:
+	return _siege_rally_size > 1 and _siege_ally_counter.is_valid()
+
+
+# true si va en grupo y, por tanto, cada uno en su hueco (la formación va con la reunión).
+func _siege_in_formation() -> bool:
+	return _siege_rally_enabled()
+
+
+# Al empezar o al reaparecer: si es atacante y está en su campamento (a menos de SIEGE_RALLY_RADIUS del punto de
+# reunión), espera a los suyos como mucho hasta la siguiente salida del reloj.
+func _siege_start_rally(tick: int, position: Vector3) -> void:
+	if not _siege_rally_enabled() or _siege.owner == _siege_realm:
+		return
+	var point: Variant = get_siege_rally_point()
+	if not point is Vector3:
+		return
+	var rally: Vector3 = point
+	if Vector2(position.x - rally.x, position.z - rally.z).length() > SIEGE_RALLY_RADIUS:
+		return
+	_siege_rally_until = next_rally_departure(tick, _siege_rally_period)
+
+
+# Espera en el punto de reunión: va a su hueco en él y allí se queda quieto mirando al fuerte.
+# null si deja de esperar (ya son bastantes, sale el reloj, o ahora es el dueño y le toca defender); entonces toma la
+# ruta del grupo y sigue con su plan.
+func _siege_rally_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
+	var point: Variant = get_siege_rally_point()
+	if _siege.owner == _siege_realm or not point is Vector3 or not _siege_rally_enabled():
+		_siege_rally_until = -1
+		return null
+	var rally: Vector3 = point
+	var counted: Variant = _siege_ally_counter.call(rally, SIEGE_RALLY_RADIUS)
+	var gathered: int = 1 + (maxi(int(counted), 0) if counted is int else 0)
+	var fighting: int = 0
+	if _siege_has_places():
+		var at_fort: Variant = _siege_ally_counter.call(_siege.circle_center, SIEGE_RALLY_FORT_RADIUS)
+		fighting = maxi(int(at_fort), 0) if at_fort is int else 0
+	if gathered >= _siege_rally_size or fighting >= SIEGE_RALLY_JOIN_COUNT or tick >= _siege_rally_until:
+		_siege_rally_until = -1
+		_siege_rally_left_tick = tick
+		_siege_take_group_route(tick, position)
+		return null
+	_siege_task = SiegeTask.RALLY
+	var spot: Vector3 = rally + Vector3(_siege_slot.x, 0.0, _siege_slot.y) * SIEGE_SLOT_RALLY_SPREAD
+	var to_spot := Vector3(spot.x - position.x, 0.0, spot.z - position.z)
+	var distance: float = to_spot.length()
+	if distance > SIEGE_SLOT_REACHED:
+		return _walk_input(tick, position, yaw, to_spot, distance)
+	_reset_stuck(tick, position)
+	var input := PlayerInput.new()
+	input.tick = tick
+	input.look_yaw = yaw
+	if _siege_has_places():
+		var to_gate: Vector3 = _siege.gate_position - position
+		to_gate.y = 0.0
+		input.look_yaw = _yaw_toward(to_gate, yaw)
+	return input
+
+
+# Al salir de la reunión, la ruta del grupo (la de la vuelta del reloj en la que sale, rally_route_index), sin el
+# generador: todos los que salen en el mismo tick van por la misma.
+func _siege_take_group_route(tick: int, position: Vector3) -> void:
+	_siege_route_chosen = true
+	var candidates: Array[StringName] = _siege_route_candidates()
 	if candidates.is_empty():
 		return
-	_siege_route_id = candidates[_rng.randi() % candidates.size()]
-	_siege_route_points = _siege_routes.get_points(_siege_route_id, realm_id)
-	_siege_route_index = maxi(_siege_routes.get_nearest_index(_siege_route_id, realm_id,
-			Vector2(position.x, position.z)), 0)
+	_siege_set_route(candidates[rally_route_index(tick, candidates.size(), _siege_rally_period)], position)
 
 
 # Marcha: hacia el punto de la ruta que toca, esprintando si queda lejos y no hay enemigos cerca.
@@ -673,22 +918,41 @@ func _march_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 		target = _siege_route_points[_siege_route_index]
 		to_target = Vector3(target.x - position.x, 0.0, target.y - position.z)
 		distance = to_target.length()
+	if _siege_in_formation():
+		# De lado respecto del tramo que lleva a este punto (o de la dirección hacia él, en el primero).
+		var along := Vector2(to_target.x, to_target.z)
+		if _siege_route_index > 0:
+			along = target - _siege_route_points[_siege_route_index - 1]
+		if along.length_squared() > 0.0001:
+			var side: Vector2 = Vector2(-along.y, along.x).normalized() * _siege_slot.x * SIEGE_SLOT_MARCH_SPREAD
+			to_target += Vector3(side.x, 0.0, side.y)
+			distance = to_target.length()
 	if distance <= SIEGE_WAYPOINT_RADIUS:
 		_siege_route_index += 1
 	return _walk_input(tick, position, yaw, to_target, distance)
 
 
-# Asalto: se acerca a la puerta y la golpea.
+# Asalto: se acerca a la puerta y la golpea. En formación, desde su sitio a lo largo de la puerta y mirando de frente.
 func _assault_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 	var to_gate: Vector3 = _siege.gate_position - position
 	to_gate.y = 0.0
 	var distance: float = to_gate.length()
-	if distance > SIEGE_GATE_ATTACK_DISTANCE:
+	var facing: Vector3 = to_gate
+	var inward: Vector3 = _siege_inward()
+	if _siege_in_formation() and inward != Vector3.ZERO:
+		var across := Vector3(-inward.z, 0.0, inward.x)
+		var spot: Vector3 = _siege.gate_position - inward * SIEGE_GATE_ATTACK_DISTANCE \
+				+ across * (_siege_slot.x * SIEGE_SLOT_GATE_SPREAD)
+		var to_spot := Vector3(spot.x - position.x, 0.0, spot.z - position.z)
+		if to_spot.length() > SIEGE_SLOT_REACHED and distance > SIEGE_GATE_ATTACK_DISTANCE * 0.5:
+			return _walk_input(tick, position, yaw, to_spot, to_spot.length())
+		facing = inward
+	elif distance > SIEGE_GATE_ATTACK_DISTANCE:
 		return _walk_input(tick, position, yaw, to_gate, distance)
 	_reset_stuck(tick, position)
 	var input := PlayerInput.new()
 	input.tick = tick
-	input.look_yaw = _yaw_toward(to_gate, yaw)
+	input.look_yaw = _yaw_toward(facing, yaw)
 	if tick >= _next_decision_tick:
 		_hold_aims_gate = true
 		if _rng.randf() < COMBAT_HEAVY_CHANCE:
@@ -699,10 +963,13 @@ func _assault_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 	return input
 
 
-# Un ataque a la puerta que sigue: PRIMARY pulsado mirando a la puerta.
+# Un ataque a la puerta que sigue: PRIMARY pulsado mirando a la puerta (en formación, de frente, como al empezarlo).
 func _gate_hold_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 	var to_gate: Vector3 = _siege.gate_position - position
 	to_gate.y = 0.0
+	var inward: Vector3 = _siege_inward()
+	if _siege_in_formation() and inward != Vector3.ZERO:
+		to_gate = inward
 	var input := PlayerInput.new()
 	input.tick = tick
 	input.look_yaw = _yaw_toward(to_gate, yaw)
@@ -728,7 +995,16 @@ func _hold_circle_input(tick: int, position: Vector3, yaw: float) -> PlayerInput
 	var distance: float = to_center.length()
 	var circle_radius: float = _siege.circle_radius if _siege.circle_radius > 0.0 \
 			else SIEGE_DEFAULT_CIRCLE_RADIUS
-	if distance > circle_radius * SIEGE_CIRCLE_HOLD_FRACTION:
+	var inward: Vector3 = _siege_inward()
+	if _siege_in_formation() and inward != Vector3.ZERO:
+		# Su sitio en el círculo: el centro más su hueco (de lado y en profundidad).
+		var across := Vector3(-inward.z, 0.0, inward.x)
+		var spread: float = minf(SIEGE_SLOT_CIRCLE_SPREAD, circle_radius * SIEGE_CIRCLE_HOLD_FRACTION)
+		var spot: Vector3 = _siege.circle_center + (across * _siege_slot.x + inward * _siege_slot.y) * spread
+		var to_spot := Vector3(spot.x - position.x, 0.0, spot.z - position.z)
+		if to_spot.length() > SIEGE_SLOT_REACHED:
+			return _walk_input(tick, position, yaw, to_spot, to_spot.length())
+	elif distance > circle_radius * SIEGE_CIRCLE_HOLD_FRACTION:
 		return _walk_input(tick, position, yaw, to_center, distance)
 	_reset_stuck(tick, position)
 	var input := PlayerInput.new()
