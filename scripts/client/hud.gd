@@ -55,6 +55,9 @@ func _ready() -> void:
 	# Los controles no se mueven, pero así el HUD nunca se ve afectado por la
 	# interpolación de físicas.
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	# Después de que la simulación (controlador local o predicción de red) haya dado el tick: el
+	# bit «sin resistencia» de combat_flags dura un solo tick y hay que leerlo ya puesto.
+	process_physics_priority = 100
 	_vitals.set_health_visible(_client != null)
 	_death.respawn_requested.connect(_on_respawn_requested)
 	_death.opened.connect(_on_death_opened)

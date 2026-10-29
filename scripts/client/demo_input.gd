@@ -18,10 +18,13 @@ extends RefCounted
 ## [br]4. Dos saltos en el sitio.
 ## [br]5. Desplazarse de lado a la derecha 1 s.
 ## [br]6. Girar hacia +X y correr hacia la zona de rampas.
-## [br]7. Quieto mientras la cámara da una vuelta completa (360°) en 2 s.
+## [br]7. Combate en el sitio ([CombatDemoScript]: combo de 3 golpes ligeros, un fuerte cargado, un
+## bloqueo y una esquiva) mientras la cámara da una vuelta completa (360°) alrededor del personaje.
+## Dura unos 5 s (el combo y la espera entre golpes salen de los datos de combate) en lugar de los 2 s
+## de la vuelta de cámara sola de antes: el guion pasa de unos 10,5 s a unos 13,5 s.
 ## [br][br]Recorrido aproximado (x, z): (0, -9.8) al acabar de correr,
 ## (-2.9, -20.4) al acabar el sprint, (0.6, -22.9) tras el paso lateral y
-## (8.7, -24.4) al final.
+## (8.7, -24.4) al empezar el combate.
 
 ## Último tick (incluido) de cada fase.
 const IDLE_END: int = 30
@@ -30,7 +33,8 @@ const SPRINT_END: int = 240
 const JUMPS_END: int = 340
 const STRAFE_END: int = 400
 const APPROACH_END: int = 510
-const ORBIT_END: int = 630
+## Primer tick del combate (el último de la aproximación).
+const COMBAT_START: int = APPROACH_END
 
 ## Ticks en los que se empieza a pulsar el salto y cuánto se mantiene.
 const JUMP_1_START: int = 246
@@ -45,6 +49,9 @@ const APPROACH_YAW_DEGREES: float = -90.0
 const ORBIT_PITCH_DEGREES: float = -20.0
 ## Ticks que tarda la cámara en girar hacia las rampas al empezar la fase 6.
 const APPROACH_TURN_TICKS: int = 30
+
+## Guion del combate de la fase 7.
+var _combat: CombatDemoScript = CombatDemoScript.new()
 
 
 ## Entrada del tick [param tick]. Más allá del final devuelve una entrada en
@@ -70,13 +77,16 @@ func next(tick: int) -> PlayerInput:
 		input.move = Vector2(1.0, 0.0)
 	elif tick <= APPROACH_END:
 		input.move = Vector2(0.0, 1.0)
+	else:
+		# Combate en el sitio: los ticks del guion empiezan en 0 con el primero tras la aproximación.
+		input.buttons |= _combat.buttons_at(tick - COMBAT_START - 1)
 	return input
 
 
 ## Vista de la cámara en el tick [param tick]: x = yaw, y = pitch (radianes,
 ## mismas convenciones que [PlayerInput]). El yaw se devuelve en [-PI, PI].
 func look_for(tick: int) -> Vector2:
-	var t: int = clampi(tick, 0, ORBIT_END)
+	var t: int = clampi(tick, 0, get_length())
 	var yaw_degrees: float = 0.0
 	var pitch_degrees: float = BASE_PITCH_DEGREES
 
@@ -95,7 +105,7 @@ func look_for(tick: int) -> Vector2:
 	else:
 		# Órbita completa a velocidad constante; el pitch baja al principio para
 		# ver el personaje algo desde arriba.
-		var k: float = _progress(t, APPROACH_END, ORBIT_END)
+		var k: float = _progress(t, APPROACH_END, get_length())
 		yaw_degrees = APPROACH_YAW_DEGREES + 360.0 * k
 		var pitch_k: float = smoothstep(0.0, 1.0, minf(k * 4.0, 1.0))
 		pitch_degrees = lerpf(BASE_PITCH_DEGREES, ORBIT_PITCH_DEGREES, pitch_k)
@@ -111,7 +121,7 @@ func bind(_character: PlayerCharacter) -> void:
 
 ## Número total de ticks del guion.
 func get_length() -> int:
-	return ORBIT_END
+	return COMBAT_START + _combat.get_length()
 
 
 ## true cuando ya se ha ejecutado el último tick del guion.

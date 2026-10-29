@@ -16,13 +16,13 @@ extends RefCounted
 ## [br]4. Esquiva: DODGE sin dirección (hacia atrás).
 
 ## Ticks que se mantiene PRIMARY tras la carga mínima del fuerte.
-const HEAVY_EXTRA_HOLD_TICKS: int = 28
+const HEAVY_EXTRA_HOLD_TICKS: int = 12
 ## Ticks de bloqueo.
-const BLOCK_HOLD_TICKS: int = 40
+const BLOCK_HOLD_TICKS: int = 30
 ## Ticks que dura cada pulsación de PRIMARY del combo (menos que la carga: no la convierte).
 const TAP_TICKS: int = 3
 ## Ticks de espera entre un tramo y el siguiente.
-const GAP_TICKS: int = 8
+const GAP_TICKS: int = 5
 
 # Tramos [desde, hasta) -> botones.
 var _spans: Array[Vector3i] = []
