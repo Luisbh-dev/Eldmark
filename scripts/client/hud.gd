@@ -217,8 +217,11 @@ func _update_vitals() -> void:
 
 
 func _on_damage_taken(amount: int, attacker_id: int, _event: NetMessages.EntityEvent) -> void:
+	# La viñeta roja avisa de daño: una parada o un bloqueo completo (amount 0) no la enciende.
+	if amount <= 0:
+		return
 	_vignette.flash()
-	if amount <= 0 or not is_instance_valid(_character) or _feedback == null:
+	if not is_instance_valid(_character) or _feedback == null:
 		return
 	if attacker_id == 0 or not _feedback.knows_entity(attacker_id):
 		return

@@ -544,6 +544,32 @@ func test_damage_indicator_points_at_the_attacker_relative_to_the_camera() -> vo
 	assert_eq(indicator.get_arc_count(), 1, "sin posición del atacante no hay arco")
 
 
+func test_a_parry_or_a_full_block_without_damage_does_not_flash_the_red_vignette() -> void:
+	# T8: la viñeta roja avisa de daño; una parada o un bloqueo completo (amount 0) no lo es.
+	var h: HudRig = _make_hud()
+	var feedback: CombatFeedback = h.hud.get_feedback()
+	feedback.position_resolver = func(_net_id: int) -> Vector3:
+		return Vector3.ZERO
+	_step(h)
+	var vignette: LowHealthVignette = h.hud.get_vignette()
+	var flags: Array[int] = [
+		NetMessages.EntityEvent.HIT_FLAG_PARRIED,
+		NetMessages.EntityEvent.HIT_FLAG_BLOCKED,
+	]
+	for flag: int in flags:
+		feedback.handle_event(NetMessages.EntityEvent.hit(OWN_ID, 10, OTHER_ID, 0, 0, flag, 2), true)
+		vignette.advance(0.0)
+		assert_eq(vignette.get_alpha(), 0.0, "sin daño (flags %d) no hay viñeta" % flag)
+		assert_false(vignette.visible, "y sigue oculta (flags %d)" % flag)
+	# Control: un golpe con daño sí la enciende, conozca o no al atacante.
+	feedback.handle_event(NetMessages.EntityEvent.hit(OWN_ID, 11, OTHER_ID, 90, 0, 0, 2), true)
+	assert_true(vignette.get_alpha() > 0.3, "con 90 de daño destella")
+	vignette.advance(LowHealthVignette.FLASH_SECONDS + 0.1)
+	assert_eq(vignette.get_alpha(), 0.0)
+	feedback.handle_event(NetMessages.EntityEvent.hit(OWN_ID, 12, 0, 90, 0, 0, 2), true)
+	assert_true(vignette.get_alpha() > 0.3, "y también si el atacante no se conoce")
+
+
 func test_death_flow_opens_the_screen_frees_the_cursor_and_closes_on_respawn() -> void:
 	var h: HudRig = _make_hud()
 	var screen: DeathScreen = h.hud.get_death_screen()
