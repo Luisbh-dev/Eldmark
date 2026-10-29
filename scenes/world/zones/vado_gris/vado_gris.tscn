@@ -41,6 +41,7 @@
 [ext_resource type="Material" path="res://assets/materials/realms/eldrun/ruin_trim.tres" id="39_4lx3e"]
 [ext_resource type="ArrayMesh" path="res://assets/models/environment/custom/rubble.tres" id="40_w73vr"]
 [ext_resource type="Material" path="res://assets/materials/realms/eldrun/palisade_log.tres" id="41_vgvjk"]
+[ext_resource type="Script" path="res://scripts/world/npc_spawner.gd" id="42_1ynel"]
 
 [sub_resource type="Gradient" id="Gradient_iopxp"]
 offsets = PackedFloat32Array(0.2, 1)
@@ -1461,8 +1462,9 @@ material_override = ExtResource("4_e7vuj")
 cast_shadow = 0
 mesh = ExtResource("5_bdshr")
 
-[node name="Fuerte" type="Node3D" parent="." unique_id=1092285114 instance=ExtResource("6_usafl")]
+[node name="Fuerte" type="Node3D" parent="." unique_id=1092285114 groups=["fortresses"] instance=ExtResource("6_usafl")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 10.2, 0)
+metadata/definition = "res://data/fortresses/vado_gris.tres"
 
 [node name="Puentes" type="Node3D" parent="." unique_id=1606629197]
 
@@ -3848,6 +3850,110 @@ metadata/realm = "solmarch"
 [node name="Solmarch4" type="Marker3D" parent="SpawnPoints" unique_id=770505996 groups=["spawn_points"]]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.5, 6.25, 138)
 metadata/realm = "solmarch"
+
+[node name="RespawnPoints" type="Node3D" parent="." unique_id=1503200096]
+
+[node name="CampamentoVardheim1" type="Marker3D" parent="RespawnPoints" unique_id=1821265801 groups=["respawn_points"]]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -7.5, 6.25, -138)
+metadata/realm = "vardheim"
+
+[node name="CampamentoVardheim2" type="Marker3D" parent="RespawnPoints" unique_id=1003252742 groups=["respawn_points"]]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -2.5, 6.25, -138)
+metadata/realm = "vardheim"
+
+[node name="CampamentoVardheim3" type="Marker3D" parent="RespawnPoints" unique_id=1432309717 groups=["respawn_points"]]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 2.5, 6.25, -138)
+metadata/realm = "vardheim"
+
+[node name="CampamentoVardheim4" type="Marker3D" parent="RespawnPoints" unique_id=455510288 groups=["respawn_points"]]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 7.5, 6.25, -138)
+metadata/realm = "vardheim"
+
+[node name="CampamentoSolmarch1" type="Marker3D" parent="RespawnPoints" unique_id=455119955 groups=["respawn_points"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.5, 6.25, 138)
+metadata/realm = "solmarch"
+
+[node name="CampamentoSolmarch2" type="Marker3D" parent="RespawnPoints" unique_id=679812023 groups=["respawn_points"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.5, 6.25, 138)
+metadata/realm = "solmarch"
+
+[node name="CampamentoSolmarch3" type="Marker3D" parent="RespawnPoints" unique_id=694295378 groups=["respawn_points"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 6.25, 138)
+metadata/realm = "solmarch"
+
+[node name="CampamentoSolmarch4" type="Marker3D" parent="RespawnPoints" unique_id=1498244121 groups=["respawn_points"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.5, 6.25, 138)
+metadata/realm = "solmarch"
+
+[node name="FuerteVadoGris1" type="Marker3D" parent="RespawnPoints" unique_id=849019552 groups=["respawn_points"]]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 11, 10.25, -6)
+metadata/fortress = &"vado_gris_fort"
+
+[node name="FuerteVadoGris2" type="Marker3D" parent="RespawnPoints" unique_id=386936430 groups=["respawn_points"]]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 11, 10.25, -2)
+metadata/fortress = &"vado_gris_fort"
+
+[node name="FuerteVadoGris3" type="Marker3D" parent="RespawnPoints" unique_id=721630079 groups=["respawn_points"]]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 11, 10.25, 2)
+metadata/fortress = &"vado_gris_fort"
+
+[node name="FuerteVadoGris4" type="Marker3D" parent="RespawnPoints" unique_id=1175291862 groups=["respawn_points"]]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 11, 10.25, 6)
+metadata/fortress = &"vado_gris_fort"
+
+[node name="SafeAreas" type="Node3D" parent="." unique_id=1706012101]
+
+[node name="CampamentoVardheim" type="Marker3D" parent="SafeAreas" unique_id=1706012102 groups=["safe_areas"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.25, -138)
+metadata/realm = "vardheim"
+metadata/radius = 24.0
+
+[node name="CampamentoSolmarch" type="Marker3D" parent="SafeAreas" unique_id=1706012103 groups=["safe_areas"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.25, 138)
+metadata/realm = "solmarch"
+metadata/radius = 24.0
+
+[node name="DummyPoints" type="Node3D" parent="." unique_id=1706012104]
+
+[node name="MunecoVardheim" type="Marker3D" parent="DummyPoints" unique_id=1706012105 groups=["dummy_points"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.1535935, -108)
+
+[node name="MunecoSolmarch" type="Marker3D" parent="DummyPoints" unique_id=1706012106 groups=["dummy_points"]]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 6.1535935, 108)
+
+[node name="NpcSpawners" type="Node3D" parent="." unique_id=103886949]
+
+[node name="GateGuardianVardheim1" type="Marker3D" parent="NpcSpawners" unique_id=894412921 groups=["npc_spawners"]]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -11, 6.2501926, -142.5)
+script = ExtResource("42_1ynel")
+npc_id = &"gate_guardian"
+respawn_s = 30.0
+alert_group = &"camp_vardheim"
+realm = &"vardheim"
+
+[node name="GateGuardianVardheim2" type="Marker3D" parent="NpcSpawners" unique_id=1267670394 groups=["npc_spawners"]]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 11, 6.2501545, -142.5)
+script = ExtResource("42_1ynel")
+npc_id = &"gate_guardian"
+respawn_s = 30.0
+alert_group = &"camp_vardheim"
+realm = &"vardheim"
+
+[node name="GateGuardianSolmarch1" type="Marker3D" parent="NpcSpawners" unique_id=1886334437 groups=["npc_spawners"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -11, 6.250169, 142.5)
+script = ExtResource("42_1ynel")
+npc_id = &"gate_guardian"
+respawn_s = 30.0
+alert_group = &"camp_solmarch"
+realm = &"solmarch"
+
+[node name="GateGuardianSolmarch2" type="Marker3D" parent="NpcSpawners" unique_id=1891574873 groups=["npc_spawners"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11, 6.2501335, 142.5)
+script = ExtResource("42_1ynel")
+npc_id = &"gate_guardian"
+respawn_s = 30.0
+alert_group = &"camp_solmarch"
+realm = &"solmarch"
 
 [node name="ScreenshotPoints" type="Node3D" parent="." unique_id=1194357539]
 

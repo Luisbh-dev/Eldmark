@@ -38,9 +38,19 @@ extends Node3D
 const AUTO_SWAP_CLEAR_RATIO: float = 0.9
 ## Metros de histéresis al volver a mostrar el nodo oculto por cercanía.
 const HIDE_HYSTERESIS: float = 0.15
+## Grupo en el que está toda cámara de acción: los ajustes ([ClientSettings]) lo usan para aplicarles
+## sensibilidad, invertir Y, campo de visión y hombro por defecto en vivo.
+const GROUP: StringName = &"camera_rig"
+## Radianes por píxel con la sensibilidad del ratón a 1 en los ajustes.
+const DEFAULT_MOUSE_SENSITIVITY: float = 0.0025
+## Frecuencia (rad/s) de las dos ondas que forman la sacudida de impacto.
+const SHAKE_FREQUENCY_X: float = 61.0
+const SHAKE_FREQUENCY_Y: float = 47.0
+## Amplitud máxima (m) de una sacudida, por muy fuerte que sea el golpe.
+const MAX_SHAKE_AMPLITUDE: float = 0.25
 
 ## Radianes de giro por píxel de movimiento del ratón.
-@export var mouse_sensitivity: float = 0.0025
+@export var mouse_sensitivity: float = DEFAULT_MOUSE_SENSITIVITY
 ## Invierte el eje vertical del ratón.
 @export var invert_y: bool = false
 
@@ -70,6 +80,10 @@ const HIDE_HYSTERESIS: float = 0.15
 @export var max_distance: float = 6.0
 ## Rapidez (1/s) con la que la distancia alcanza el zoom pedido.
 @export var zoom_sharpness: float = 12.0
+
+@export_group("Sacudida")
+## Si es false, [method add_shake] no mueve la cámara (opción del jugador).
+@export var shake_enabled: bool = true
 
 @export_group("Hombro y colisión")
 ## Rapidez (1/s) del cambio de hombro.
@@ -101,6 +115,10 @@ var _free_toggled: bool = false
 var _free_held: bool = false
 ## La vista la controla un guion (demo): no se captura ni se lee el ratón.
 var _scripted_look: bool = false
+## Quién de la interfaz (la pantalla de muerte, una ventana, un diálogo) pide el cursor libre
+## mientras está abierto: id de instancia del solicitante -> true. Varios pueden pedirlo a la vez y
+## el ratón solo se recaptura cuando ya no queda ninguno.
+var _ui_cursor_holders: Dictionary = {}
 
 var _zoom_target: float = 3.5
 var _zoom_distance: float = 3.5
@@ -119,6 +137,16 @@ var _hide_node: Node3D = null
 var _distance_pull: float = 0.0
 var _offset_pull: float = 0.0
 
+## Sacudida de impacto: amplitud inicial (m), duración y tiempo que le queda (s), reloj de sus
+## ondas y desplazamiento (x = horizontal, y = vertical) que se suma a la cámara.
+var _shake_amplitude: float = 0.0
+var _shake_duration: float = 0.0
+var _shake_time_left: float = 0.0
+var _shake_clock: float = 0.0
+var _shake_offset: Vector2 = Vector2.ZERO
+## Desplazamiento vertical de la cámara de la escena (sin sacudida).
+var _base_v_offset: float = 0.0
+
 var _exclude: Array[RID] = []
 var _query: PhysicsShapeQueryParameters3D = PhysicsShapeQueryParameters3D.new()
 var _fallback_shape: SphereShape3D = null
@@ -131,6 +159,7 @@ var _fallback_shape: SphereShape3D = null
 
 func _ready() -> void:
 	InputBindings.ensure_defaults()
+	add_to_group(GROUP)
 	# Se mueve en _process con la posición ya interpolada: no debe volver a
 	# interpolarse. Los hijos (brazo y cámara) heredan el modo.
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
@@ -144,6 +173,7 @@ func _ready() -> void:
 	_zoom_target = clampf(_arm.spring_length, min_distance, max_distance)
 	_zoom_distance = _zoom_target
 	_shoulder_offset = absf(_camera.h_offset)
+	_base_v_offset = _camera.v_offset
 	_shoulder_side = -1.0 if _camera.h_offset < 0.0 else 1.0
 	_shoulder_blend = _shoulder_side
 
@@ -152,12 +182,15 @@ func _ready() -> void:
 
 	_apply_look()
 	_refresh_mouse_mode()
+	# Lo que el jugador tiene guardado en los ajustes (solo lo que ha cambiado él).
+	ClientSettings.current().apply_to_camera(self, true)
 
 
 func _process(delta: float) -> void:
 	_poll_free_cursor()
 	_update_follow(delta)
 	_zoom_distance = lerpf(_zoom_distance, _zoom_target, _smoothing(zoom_sharpness, delta))
+	_update_shake(delta)
 	_update_collision(delta)
 
 
@@ -245,6 +278,28 @@ func get_pitch() -> float:
 	return _pitch
 
 
+## Campo de visión vertical de la cámara, en grados.
+func get_fov() -> float:
+	return _camera.fov
+
+
+## Fija el campo de visión vertical de la cámara, en grados (ajustes del jugador).
+func set_fov(degrees: float) -> void:
+	_camera.fov = degrees
+
+
+## Hombro elegido: 1 derecho, -1 izquierdo (sin contar el cambio temporal por una pared).
+func get_chosen_shoulder() -> int:
+	return -1 if _shoulder_side < 0.0 else 1
+
+
+## Elige el hombro por el que se mira, 1 derecho o -1 izquierdo (el valor por defecto de los
+## ajustes; la tecla de cambio de hombro lo alterna después). El cambio es suave.
+func set_default_shoulder(side: int) -> void:
+	_shoulder_side = -1.0 if side < 0 else 1.0
+	_shoulder_override = 0.0
+
+
 ## Fija la vista. El pitch se limita a [[member min_pitch_degrees],
 ## [member max_pitch_degrees]].
 func set_look(yaw: float, pitch: float) -> void:
@@ -258,7 +313,30 @@ func set_look(yaw: float, pitch: float) -> void:
 func is_cursor_free() -> bool:
 	if _scripted_look:
 		return false
-	return _free_toggled or _free_held
+	return _free_toggled or _free_held or _has_ui_cursor_holders()
+
+
+## Un elemento de la interfaz ([param holder]: la pantalla de muerte, una ventana, un diálogo) libera
+## el cursor mientras esté abierto: la cámara no gira, los clics son para él y el punto de mira se
+## oculta. Al cerrarlo ([param enabled] a false) deja de pedirlo, y el ratón se recaptura solo si no
+## queda ningún otro solicitante ni lo ha soltado el jugador a mano. Cada solicitante cuenta una
+## sola vez, pida cuantas veces pida.
+func set_ui_cursor_release(enabled: bool, holder: Object) -> void:
+	var key: int = holder.get_instance_id()
+	if enabled:
+		_ui_cursor_holders[key] = true
+	else:
+		_ui_cursor_holders.erase(key)
+	_refresh_mouse_mode()
+
+
+# true si algún solicitante vivo sigue pidiendo el cursor libre. Descarta a los que se han liberado
+# sin avisar (su id de instancia ya no apunta a nada).
+func _has_ui_cursor_holders() -> bool:
+	for key: int in _ui_cursor_holders.keys():
+		if not is_instance_id_valid(key):
+			_ui_cursor_holders.erase(key)
+	return not _ui_cursor_holders.is_empty()
 
 
 func get_camera() -> Camera3D:
@@ -287,6 +365,29 @@ func set_hide_when_close(node: Node3D) -> void:
 	if is_instance_valid(_hide_node) and _hide_node != node:
 		_hide_node.visible = true
 	_hide_node = node
+
+
+## Sacude la cámara un instante, por ejemplo al recibir un golpe (ART-09, básico). Mueve la vista
+## [param amplitude] metros (como mucho [constant MAX_SHAKE_AMPLITUDE]) con una oscilación rápida que
+## decae a cero en [param duration] segundos. Una sacudida nueva no apaga la que está en curso: se
+## queda con la más fuerte de las dos. No hace nada con [member shake_enabled] a false.
+func add_shake(amplitude: float, duration: float) -> void:
+	if not shake_enabled or amplitude <= 0.0 or duration <= 0.0:
+		return
+	var remaining: float = _current_shake_amplitude()
+	_shake_amplitude = maxf(remaining, minf(amplitude, MAX_SHAKE_AMPLITUDE))
+	_shake_duration = duration
+	_shake_time_left = duration
+
+
+## Desplazamiento (m) que la sacudida suma ahora a la cámara: x en horizontal, y en vertical.
+func get_shake_offset() -> Vector2:
+	return _shake_offset
+
+
+## true mientras dura una sacudida.
+func is_shaking() -> bool:
+	return _shake_time_left > 0.0
 
 
 ## Vista guionizada (demo y pruebas automáticas): la cámara no captura el ratón
@@ -350,6 +451,25 @@ func _is_target_airborne() -> bool:
 	return is_instance_valid(_target_body) and not _target_body.is_on_floor()
 
 
+## Avanza la sacudida de impacto y calcula su desplazamiento de este fotograma.
+func _update_shake(delta: float) -> void:
+	if _shake_time_left <= 0.0:
+		_shake_offset = Vector2.ZERO
+		return
+	_shake_time_left = maxf(_shake_time_left - delta, 0.0)
+	_shake_clock += delta
+	var amplitude: float = _current_shake_amplitude()
+	_shake_offset = Vector2(sin(_shake_clock * SHAKE_FREQUENCY_X),
+			cos(_shake_clock * SHAKE_FREQUENCY_Y)).limit_length(1.0) * amplitude
+
+
+# Amplitud de la sacudida ahora: decae linealmente hasta 0.
+func _current_shake_amplitude() -> float:
+	if _shake_time_left <= 0.0 or _shake_duration <= 0.0:
+		return 0.0
+	return _shake_amplitude * clampf(_shake_time_left / _shake_duration, 0.0, 1.0)
+
+
 ## Coloca la cámara a lo largo del brazo y en el hombro sin meterla en la
 ## geometría: primero barre hacia atrás desde el pivote y después, desde el
 ## extremo del brazo, hacia el lado del hombro. Todo el camino
@@ -383,7 +503,8 @@ func _update_collision(delta: float) -> void:
 	var offset: float = offset_side * maxf(offset_length - _offset_pull, 0.0)
 
 	_camera.position = Vector3(0.0, 0.0, distance)
-	_camera.h_offset = offset
+	_camera.h_offset = offset + _shake_offset.x
+	_camera.v_offset = _base_v_offset + _shake_offset.y
 	_eye_offset = back * distance + right * offset
 	_update_hidden_node()
 

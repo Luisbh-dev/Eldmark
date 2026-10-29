@@ -11,6 +11,7 @@ Tres reinos, cada uno con sus zonas, ciudades y una muralla que lo rodea, más u
 - Servidor autoritativo: el cliente envía intenciones (input, habilidades) y el servidor decide el resultado.
 - Combate de acción en red: predicción en el cliente para el jugador local, interpolación para los demás y compensación de latencia (rebobinado de hitboxes) en el servidor para comprobar golpes.
 - `scripts/shared/` no puede depender de nada de `scripts/client/` (cámara, UI, input) para que el servidor lo cargue sin problemas.
+- `scripts/shared/` tampoco depende de `scripts/server/`, y `scripts/server/` y `scripts/client/` no dependen el uno del otro (lo comprueba `tests/test_architecture.gd`).
 
 ## Convenciones
 

@@ -381,7 +381,7 @@ tools/import/                           # scripts EditorScenePostImport
 ```
 
 ### 4.7 Servidor dedicado
-- Al exportar, usar *Export as dedicated server* y marcar `assets/models`, `textures`, `vfx` y `audio` como *Strip Visuals*. **Nunca *Remove*** para nada que referencie una escena de zona (mallas de kit, `vado_gris_terrain_assets.tres`, materiales): las escenas de zona son compartidas y el servidor no podría cargarlas. El servidor necesita colisiones y escenas, no texturas.
+- Al exportar, usar *Export as dedicated server* y marcar `assets/models`, `textures`, `vfx` y `audio` como *Strip Visuals*. **Nunca *Remove*** para nada que referencie una escena de zona (mallas de kit, `vado_gris_terrain_assets.tres`, materiales): las escenas de zona son compartidas y el servidor no podría cargarlas. El servidor necesita colisiones y escenas, no texturas. El preset `Servidor Linux` de `export_presets.cfg` (TEC-12) recorta `assets/models`, `materials`, `audio` y `animations`; las texturas del terreno (`assets/textures/terrain`) **no** se recortan, porque Terrain3D valida el formato de cada textura de sus assets y registra un error por cada una recortada (el servidor funciona igual, pero con 28 líneas de error al arrancar), y por eso ese preset exporta texturas con S3TC.
 - Tras cargar la zona, el servidor llama a `ZoneRoot.strip_for_server()` (`scripts/world/zone_root.gd`): libera mallas, MultiMesh, luces y entorno y vacía el instanciador de Terrain3D, y conserva colisiones, terreno y marcadores. No se hace al detectar headless, porque las pruebas y el cliente sin ventana también corren headless.
 - Sky3D, los VFX, el audio y la hierba se instancian solo desde `scenes/client/`.
 

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+<title>Yunque de Askarra (emblema provisional)</title>
+<polygon points="34,34 112,34 112,52 34,52" fill="#C3242F"/>
+<polygon points="34,36 8,44 34,52" fill="#D25B63"/>
+<polygon points="46,52 100,52 90,78 56,78" fill="#79161D"/>
+<polygon points="38,78 108,78 118,96 28,96" fill="#C3242F"/>
+<polyline points="12,112 30,104 44,114 62,102 78,116 94,104 116,112" fill="none" stroke="#CD7F32" stroke-width="5" stroke-linejoin="miter" stroke-linecap="butt"/>
+<polygon points="28,118 36,104 44,118" fill="#CD7F32"/>
+<polygon points="70,120 80,104 90,120" fill="#CD7F32"/>
+</svg>

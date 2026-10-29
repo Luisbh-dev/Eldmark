@@ -54,16 +54,40 @@ Sobre una colina baja (meseta a 10,2 m, 6 m por encima del valle, laderas de 12�
   del vano de la puerta (sin pies derechos en el vano).
 - **Puerta de madera** de 4 m en la cara oeste, mirando al vado: dos hojas de tablones con flejes
   de hierro, cuadradas hasta el dintel. Es su propia escena (`FortGate`, grupo `fort_gate`, script
-  `scripts/world/fort_gate.gd`) para que en la fase 4 tenga vida y se rompa a golpes. Tiene
-  estado `open`: **ahora se guarda abierta** (las hojas giran hacia fuera, cada una con su
-  colisión fina) para poder probar el patio, las rampas, la pasarela y el círculo de captura.
+  `scripts/world/fort_gate.gd`) para que tenga vida y se rompa a golpes (docs/fuerte.md, §3).
+  **Se guarda cerrada** y con dos cuerpos: el propio nodo es el de **movimiento** (capas de reino
+  5 a 7: Vardheim, Solmarch y Askarra, menos la del dueño; neutral, las tres) y su hijo `Vista` es
+  el de **vista** (capa 4, «estructuras»), que ven la cámara, la línea de visión de los golpes y
+  el horneado de la navegación pero no el movimiento. Cada personaje de la simulación añade a su
+  máscara la capa de su reino con `PlayerCharacter.set_realm_collision()`, así que la puerta
+  cerrada para a los enemigos del dueño y deja pasar a los suyos; rota (`set_state(dueño, true)`),
+  los dos cuerpos se quedan sin capas y las hojas cuelgan abiertas. Un personaje sin capa de
+  reino (el modo sin red, `F5` sin argumentos) no la nota: sigue pudiendo entrar al patio, las
+  rampas, la pasarela y el círculo.
 - Patio: cajas de la vieja guarnición en espejo norte-sur (las dos pilas dan el mismo atajo a la
   pasarela) y una hoguera sobre el eje, al este de la torre. Dos estandartes neutrales flanquean la
   puerta por fuera.
 - **Torre central de piedra** de dos plantas (6 × 6 × 12 m, terraza almenada) con el mástil del
   estandarte neutral (gris hueso, `faction_color` por instancia).
-- Marcadores para la lógica de captura: `CaptureCircle` (radio 5 m, centro en x = -8,5, entre la
-  puerta y la torre, con el borde a 0,5 m de la torre), `CaptainSpawn` y cuatro `GuardSpawn`.
+- El nodo `Fuerte` es el **nodo de la fortaleza**: está en el grupo `fortresses` y lleva el metadato
+  `definition` con la ruta de `data/fortresses/vado_gris.tres` (`FortressDefinition`, id
+  `vado_gris_fort`). Sus hijos son los marcadores que lee el controlador del fuerte:
+  - `CaptureCircle` (grupo `capture_points`; metadato `radius` = 5 m, el único sitio de donde sale
+    el radio; centro en x = -8,5, entre la puerta y la torre, con el borde a 0,5 m de la torre),
+    `CaptainSpawn` (dentro del círculo) y cuatro `GuardSpawn` (patio, fuera del círculo).
+  - `FortGate` y los estandartes `Estandarte` (torre), `EstandartePuertaN` y `EstandartePuertaS`.
+  - Seis marcadores de **patrulla** (grupo `patrol_points`, metadato `route`, en orden de escena
+    dentro de cada ruta): `hollow_north` (`PatrolNorth1..3`) y `hollow_south` (`PatrolSouth1..3`),
+    del patio por la rampa norte o sur a la pasarela y por ella hacia la puerta.
+  - Cinco **generadores de PNJ** (`NpcSpawner`, `scripts/world/npc_spawner.gd`, grupo
+    `npc_spawners`, solo datos): `HollowSpawner1..4` en los `GuardSpawn` (id `hollow`, activos con
+    el fuerte neutral, grupo de alerta `vado_gris_hollows`; los dos del este, junto a las rampas,
+    patrullan por `hollow_north` y `hollow_south`) y `FordCaptainSpawner` en el `CaptainSpawn` (id
+    `ford_captain`, mismo grupo de alerta). No reaparecen uno a uno: los repone la fortaleza. La
+    guarnición del reino dueño no tiene generadores propios: sale de estos mismos cinco puestos con la
+    definición de PNJ que cada uno nombra en `garrison_id` (los Huecos dan guardias del reino y el
+    Capitán del Vado, el capitán del reino), con su ruta de patrulla y su grupo de alerta
+    (`NpcSpawnerSystem`, fuerte.md 8.3 F4).
 
 ### Murallas, puertas y campamentos
 
@@ -78,6 +102,28 @@ Sobre una colina baja (meseta a 10,2 m, 6 m por encima del valle, laderas de 12�
 - **Campamento** delante de cada puerta (radio 24 m, llano): tiendas, cajas, carro, vallas,
   hoguera y dos estandartes que marcan su borde. Los cuatro **puntos de aparición** de cada reino
   están en el campamento (x = ±2,5 y ±7,5, a 14 m de la muralla) y miran al fuerte.
+- **Puntos de reaparición** (`RespawnPoints`, grupo `respawn_points`): doce marcadores en un
+  **orden de escena que no se debe alterar** (es el índice que usan cliente y servidor):
+  `CampamentoVardheim1..4` y `CampamentoSolmarch1..4` (en el sitio de los puntos de aparición,
+  metadato `realm`) y después `FuerteVadoGris1..4` (patio del fuerte, a 11 m al este de la torre,
+  fuera del círculo y mirando a la puerta; metadato `fortress` = `vado_gris_fort` y sin `realm`,
+  porque valen para el reino que sea dueño del fuerte). Mientras la zona no pida más, la lista de
+  un reino son solo sus campamentos.
+- **Guardianes de la Puerta** (`NpcSpawners/GateGuardian<Reino>1..2`): dos generadores `NpcSpawner`
+  por campamento (id `gate_guardian`, siempre activos, reaparición de 30 s, grupo de alerta
+  `camp_<reino>`) a los lados de la puerta de su muralla (x = ±11, a 9,5 m de la muralla), dentro de
+  su zona segura. Atacan a los enemigos que entran en ella (no a los que están fuera) y matan a un
+  intruso en unos 5 s.
+- **Zona segura** de cada campamento (`SafeAreas/CampamentoVardheim` y `CampamentoSolmarch`, un
+  `Marker3D` del grupo `safe_areas` con los metadatos `realm` y `radius = 24`): centrada en el centro
+  de los cuatro puntos de aparición de su reino (x = 0, z = ∓138) y con el radio del campamento.
+  **Solo protege a su reino** (docs/combate.md, sección 5): dentro de ella un jugador de ese reino ni
+  recibe ni hace daño, y un intruso enemigo sí es dañable (lo lee el `CombatResolver`).
+- **Maniquí de entrenamiento** junto a cada campamento (`DummyPoints/MunecoVardheim` y
+  `MunecoSolmarch`, un `Marker3D` del grupo `dummy_points` a 30 m del centro de la zona segura, es
+  decir, fuera de ella, mirando al campamento): el servidor coloca en cada marcador un PNJ inmortal
+  del bando neutral que se cura a los 5 s sin daño (`ZoneServer.spawn_zone_dummies()`; en
+  `ServerMain`, salvo con `--no-dummies`). El mundo de pruebas lleva uno en `DummyPoints/Dummy1`.
 
 ### Ruinas del viejo Eld
 
@@ -153,7 +199,13 @@ el fuerte, de 40 × 40 m, sale ancho y bajo).
 ## Rutas, distancias y equidad
 
 Medido con `tools/terrain/verify_vado_gris_routes.gd`: un `PlayerCharacter` real corre (5 m/s,
-sin esprintar) desde un punto de aparición hasta la explanada de la puerta del fuerte.
+sin esprintar) desde un punto de aparición hasta la explanada de la puerta del fuerte. Los puntos de
+paso de cada ruta y reino son datos compartidos, `data/routes/vado_gris.tres` (`ApproachRoutes`,
+`scripts/shared/war/approach_routes.gd`), que escribe `tools/terrain/export_vado_gris_routes.gd` (las de
+Solmarch son el reflejo exacto de las de Vardheim; también guarda dónde están la puerta y el círculo del
+fuerte, para los bots que no cargan la zona) y que leen la verificación y los bots de asedio. Los bots de
+asedio (`BotBrain.Pattern.SIEGE`) esprintan por ellas: con esprint llegan a la puerta en unos 25 s por el
+puente y unos 37 s por el vado (docs/fuerte.md, 8.3).
 
 | Ruta | Recorrido | Vardheim | Solmarch | Diferencia |
 |---|---|---|---|---|
@@ -171,7 +223,8 @@ Por qué es justo:
 
 - **Simetría de espejo norte–sur** (z → -z) de todo lo que afecta al juego: alturas del área
   jugable (el ruido del relieve se suma con su reflejo, así que no hay costura en el eje), río,
-  puentes, calzadas, campamentos, puntos de aparición, ruinas y colisiones de árboles y rocas.
+  puentes, calzadas, campamentos, zonas seguras, maniquíes, puntos de aparición, ruinas y colisiones de
+  árboles y rocas.
   Solo cambian los modelos (pinos al norte, caducifolios al sur) y los materiales de cada reino.
 - Lo que no tiene pareja está **sobre el eje** y es común a los dos: el fuerte, su puerta, el
   vado, la calle de la aldea y la capilla.
@@ -187,8 +240,8 @@ Por qué es justo:
   cargar (sin cámara daría un error en el servidor) y, en el cliente, en cuanto hay cámara se la
   asigna al terreno y lo reactiva para que el clipmap la siga. También da
   `get_spawn_points(realm)`.
-- **Todas las colisiones están guardadas en la escena** (capa 1): terreno, empalizada, pasarela,
-  rampas, puerta, torre, puentes (forma cóncava del tablero y los pretiles), murallas, torres,
+- **Todas las colisiones están guardadas en la escena** (capa 1, salvo la puerta del fuerte, que
+  usa las capas 4 y 5 a 7): terreno, empalizada, pasarela, rampas, torre, puentes (forma cóncava del tablero y los pretiles), murallas, torres,
   tiendas, cajas, carros, vallas, hogueras, ruinas, postes del vado, troncos y rocas (cilindros),
   orillas profundas y límites invisibles. Nada se dispersa en tiempo de ejecución.
 - **Instancias repetidas solo visuales** (troncos de la empalizada, hiladas de las murallas,
@@ -277,8 +330,11 @@ godot --headless --path . --import
 godot --headless --path . -s res://tools/assets/extract_kit_meshes.gd        # mallas de kit a .tres
 godot --headless --path . -s res://tools/materials/build_realm_materials.gd  # materiales de reino y agua
 godot --headless --path . --import
-godot --headless --path . -s res://tools/props/build_vado_gris_props.gd      # scenes/world/props/
+godot --headless --path . -s res://tools/props/build_vado_gris_props.gd      # scenes/world/props/ (fuerte, puerta, marcadores de PNJ)
 godot --headless --path . -s res://tools/terrain/generate_vado_gris.gd       # terreno + vado_gris.tscn
+godot --headless --path . -s res://tools/bake_navmesh.gd                     # vado_gris_navmesh.tres (2 s)
+godot --headless --path . -s res://tools/bake_zone_map.gd                    # assets/maps/vado_gris.png y vado_gris_map.tres
+godot --headless --path . --import                                           # importa el PNG nuevo
 ```
 
 Comprobaciones:
@@ -289,12 +345,26 @@ godot --headless --path . --fixed-fps 60 -s res://tools/terrain/verify_vado_gris
 godot --path . -s res://tools/render/render_screenshot_points.gd -- --out=<ruta>/build/vado_gris
 ```
 
+- Hay que volver a hornear la malla de navegación de los PNJ (`tools/bake_navmesh.gd`, ver
+  docs/fuerte.md 4.1) cada vez que cambia la geometría de juego: rampas, pasarela, puerta, puentes,
+  murallas, bloqueos... `tests/test_navmesh.gd` lo recuerda con rutas rotas.
+- El mapa del minimapa y del mapa de pantalla completa (`assets/maps/vado_gris.png`, por LFS, y su escala y
+  lugares fijos en `vado_gris_map.tres`) se hornea sin GPU con `tools/bake_zone_map.gd`: relieve sombreado
+  de `Terrain3D.data.get_height`, agua de la malla del río y contornos de las colisiones y de los
+  `BakedMultiMesh`. Cubre el área jugable con 10 m de margen (320 x 320 m, 1024 px, 3,2 px/m, norte arriba)
+  y sale igual en cada ejecución (unos 8 s). Hay que repetirlo si cambian el relieve, el agua o las
+  colisiones, o los campamentos, el fuerte y los pasos que marca (`tests/test_zone_map.gd` lo recuerda).
 - Los dos primeros pasos solo hacen falta si cambian los assets. Para cambiar el trazado se edita
   `tools/terrain/vado_gris_layout.gd` (posiciones, río, calzadas, función de alturas) y se
   vuelve a lanzar el generador; la vegetación, la pintura y las escenas de piezas, en sus scripts.
-- Todo es determinista (semillas fijas): repetirlo deja los mismos datos de región, malla del agua
-  y assets del terreno, byte a byte. En las escenas `.tscn` solo cambian los `unique_id` que
-  Godot asigna a cada nodo al guardar.
+- Todo es determinista (semillas fijas): repetirlo en la misma máquina deja los mismos datos de
+  región, malla del agua y assets del terreno, byte a byte. En las escenas `.tscn` solo cambian los
+  `unique_id` que Godot asigna a cada nodo al guardar. Entre plataformas (se generó en Windows y se
+  ha repetido en Linux) hay ruido: los `.res` de región y la malla del agua salen con otros bytes y
+  las escenas con diferencias de la última cifra decimal en algunas transformaciones (seno y
+  coseno), además de los identificadores de recurso. Si el cambio no toca el terreno, se restauran
+  del repositorio los `.res` y la malla del agua, y de las escenas regeneradas se descartan los
+  identificadores y el ruido para que el diff solo lleve lo que cambió de verdad.
 - **No se edita `vado_gris.tscn` a mano:** el generador la reescribe entera.
 
 ## Pendientes
@@ -306,8 +376,8 @@ godot --path . -s res://tools/render/render_screenshot_points.gd -- --out=<ruta>
 - Piezas propias en Blender con las texturas del kit (mundo.md/arte.md): la empalizada y el puente
   son mallas propias generadas por script; la torre del fuerte y las murallas usan el Castle Wall
   Kit, y las tiendas son prismas. Cuando llegue la Source del Village MegaKit, sustituirlas.
-- La puerta del fuerte está abierta y sin vida: falta la lógica de la fase 4 (vida, estados de
-  rotura de las hojas y cierre).
+- La puerta del fuerte está cerrada pero aún sin vida: falta la lógica de la fase 4 (vida, golpes y
+  reparación, `FortressController`) y los estados de rotura de las hojas (ART-17).
 - Los estandartes son la bandera del Kenney Castle Kit (blockout) recoloreada.
 - Sin viento en la vegetación, sin LOD propio de los árboles (solo el automático) ni HLOD.
 - Los braseros de las calzadas (estado de las Líneas de Brasa) aún no existen.

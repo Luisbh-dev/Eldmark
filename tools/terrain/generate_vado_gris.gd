@@ -45,6 +45,23 @@ const WORLD_LAYER: int = PlayerCharacter.WORLD_COLLISION_LAYER
 ## del cauce. La cámara no la mira (no se pega a la cabeza junto a una orilla).
 const PLAYER_BLOCKER_LAYER: int = PlayerCharacter.PLAYER_BLOCKER_LAYER
 const SEED: int = 20261028
+## Definición de la fortaleza del Vado Gris (metadato `definition` del nodo del fuerte).
+const FORTRESS_DEFINITION_PATH: String = "res://data/fortresses/vado_gris.tres"
+## Id de la fortaleza (el `id` de su definición): metadato `fortress` de sus puntos de reaparición.
+const FORTRESS_ID: StringName = &"vado_gris_fort"
+## Puntos de reaparición del interior del fuerte, en coordenadas del fuerte (x al este, z al sur):
+## el patio al este de la hoguera y de la torre, fuera del cilindro del círculo de captura (centro
+## x = -8,5, radio 5 m), en espejo norte-sur y mirando a la puerta.
+const FORT_RESPAWN_LOCAL: Array[Vector2] = [
+	Vector2(11.0, -6.0), Vector2(11.0, -2.0), Vector2(11.0, 2.0), Vector2(11.0, 6.0),
+]
+## Posiciones (x, |z|) de los dos Guardianes de la Puerta de cada campamento: a los lados de las
+## torres de la puerta, dentro de la zona segura.
+const GUARDIAN_SPOTS: Array[Vector2] = [Vector2(-11.0, 142.5), Vector2(11.0, 142.5)]
+## Segundos que tarda en reaparecer un Guardián de la Puerta muerto.
+const GUARDIAN_RESPAWN_S: float = 30.0
+## Posiciones x de los cuatro puntos de aparición de cada campamento.
+const CAMP_SPAWN_XS: Array[float] = [-7.5, -2.5, 2.5, 7.5]
 ## Medio ancho exterior de los puentes (tablero + pretil): las orillas profundas acaban aquí.
 const BRIDGE_OUTER_HALF: float = Layout.BRIDGE_WIDTH * 0.5 + 0.4
 
@@ -791,6 +808,10 @@ func _assemble_scene() -> void:
 	_add_vegetation_colliders()
 	_add_boundaries()
 	_add_spawn_points()
+	_add_respawn_points()
+	_add_safe_areas()
+	_add_dummy_points()
+	_add_gate_guardians()
 	_add_screenshot_points()
 
 
@@ -953,10 +974,17 @@ func _add_water() -> void:
 	group.add_child(water)
 
 
+## El fuerte es el nodo de la fortaleza (docs/fuerte.md, sección 1.6): del grupo `fortresses` y con
+## el metadato `definition`. Sus hijos son los marcadores que usa el controlador: `CaptureCircle`
+## (con `radius`), `CaptainSpawn`, `GuardSpawn1`..4, `FortGate` y los estandartes `Estandarte`,
+## `EstandartePuertaN` y `EstandartePuertaS`, más los generadores de PNJ (`NpcSpawner`) y los
+## marcadores de patrulla de los Huecos.
 func _add_fort() -> void:
 	var fort: Node3D = _instance(PROPS + "fort/vado_gris_fort.tscn", _zone)
 	fort.name = "Fuerte"
 	fort.position = Vector3(Layout.FORT_CENTER.x, _ground(Layout.FORT_CENTER.x, Layout.FORT_CENTER.y), Layout.FORT_CENTER.y)
+	fort.add_to_group(&"fortresses", true)
+	fort.set_meta(&"definition", FORTRESS_DEFINITION_PATH)
 
 
 func _add_bridges() -> void:
@@ -1457,21 +1485,117 @@ func _bank_pieces(pa: Vector2, pb: Vector2) -> Array[Array]:
 	return pieces
 
 
+## Transformación de un punto de aparición del campamento de [param realm] en [param x]: a 14 m de
+## su muralla y mirando al fuerte (el norte mira a +Z, giro PI; el sur a -Z, giro 0).
+func _camp_spawn_transform(realm: String, x: float) -> Transform3D:
+	var side: float = -1.0 if realm == "vardheim" else 1.0
+	var z: float = side * 138.0
+	return Transform3D(Basis(Vector3.UP, PI if side < 0.0 else 0.0), Vector3(x, _ground(x, z) + 0.05, z))
+
+
 func _add_spawn_points() -> void:
 	var group := _group("SpawnPoints")
 	for realm: String in ["vardheim", "solmarch"]:
-		var side: float = -1.0 if realm == "vardheim" else 1.0
 		var index: int = 1
-		for x: float in [-7.5, -2.5, 2.5, 7.5]:
-			var z: float = side * 138.0
+		for x: float in CAMP_SPAWN_XS:
 			var marker := Marker3D.new()
 			marker.name = "%s%d" % [realm.capitalize(), index]
 			index += 1
-			# Mira hacia el fuerte: el norte mira a +Z (giro PI), el sur a -Z (giro 0).
-			marker.transform = Transform3D(Basis(Vector3.UP, PI if side < 0.0 else 0.0), Vector3(x, _ground(x, z) + 0.05, z))
+			marker.transform = _camp_spawn_transform(realm, x)
 			marker.set_meta(&"realm", realm)
 			marker.add_to_group(&"spawn_points", true)
 			group.add_child(marker)
+
+
+## Puntos de reaparición tras morir (docs/fuerte.md, sección 5), en el orden de la escena, que es
+## el índice que usan cliente y servidor: primero los de los dos campamentos (en el sitio de sus
+## puntos de aparición, con el metadato `realm`) y después los del interior del fuerte (con el
+## metadato `fortress`, el id de la fortaleza; sin `realm`, porque valen para el reino que sea
+## dueño del fuerte). Nunca se reordenan ni se insertan nodos delante de los últimos.
+func _add_respawn_points() -> void:
+	var group := _group("RespawnPoints")
+	for realm: String in ["vardheim", "solmarch"]:
+		var index: int = 1
+		for x: float in CAMP_SPAWN_XS:
+			var marker := Marker3D.new()
+			marker.name = "Campamento%s%d" % [realm.capitalize(), index]
+			index += 1
+			marker.transform = _camp_spawn_transform(realm, x)
+			marker.set_meta(&"realm", realm)
+			marker.add_to_group(&"respawn_points", true)
+			group.add_child(marker)
+	var fort: Node3D = _zone.get_node(^"Fuerte") as Node3D
+	var fort_index: int = 1
+	for local: Vector2 in FORT_RESPAWN_LOCAL:
+		var marker := Marker3D.new()
+		marker.name = "FuerteVadoGris%d" % fort_index
+		fort_index += 1
+		# Mira a la puerta (oeste, -X): giro de +90°.
+		marker.transform = Transform3D(Basis(Vector3.UP, PI * 0.5),
+				fort.position + Vector3(local.x, 0.05, local.y))
+		marker.set_meta(&"fortress", FORTRESS_ID)
+		marker.add_to_group(&"respawn_points", true)
+		group.add_child(marker)
+
+
+## Los dos Guardianes de la Puerta de cada campamento (docs/fuerte.md, sección 4.3): generadores
+## de PNJ (`NpcSpawner`, solo datos) del reino del campamento, siempre activos, que miran al
+## fuerte desde los lados de la puerta de su muralla.
+func _add_gate_guardians() -> void:
+	var group := _group("NpcSpawners")
+	for realm: String in ["vardheim", "solmarch"]:
+		var side: float = -1.0 if realm == "vardheim" else 1.0
+		var index: int = 1
+		for spot: Vector2 in GUARDIAN_SPOTS:
+			var z: float = side * spot.y
+			var spawner := NpcSpawner.new()
+			spawner.name = "GateGuardian%s%d" % [realm.capitalize(), index]
+			index += 1
+			spawner.transform = Transform3D(Basis(Vector3.UP, PI if side < 0.0 else 0.0),
+					Vector3(spot.x, _ground(spot.x, z) + 0.05, z))
+			spawner.npc_id = &"gate_guardian"
+			spawner.max_alive = 1
+			spawner.respawn_s = GUARDIAN_RESPAWN_S
+			spawner.alert_group = StringName("camp_" + realm)
+			spawner.condition = NpcSpawner.Condition.ALWAYS
+			spawner.realm = StringName(realm)
+			spawner.add_to_group(&"npc_spawners", true)
+			group.add_child(spawner)
+
+
+## Zonas seguras (docs/combate.md, sección 5): una por campamento, centrada en el centro de sus
+## puntos de aparición (x = 0, z = ±138) y con el radio del campamento (24 m). Solo protegen a su
+## reino (metadato [code]realm[/code]); las lee el servidor del grupo [code]safe_areas[/code].
+func _add_safe_areas() -> void:
+	var group := _group("SafeAreas")
+	for realm: String in ["vardheim", "solmarch"]:
+		var side: float = -1.0 if realm == "vardheim" else 1.0
+		var z: float = side * 138.0
+		var marker := Marker3D.new()
+		marker.name = "Campamento" + realm.capitalize()
+		marker.transform = Transform3D(Basis.IDENTITY, Vector3(0.0, _ground(0.0, z) + 0.05, z))
+		marker.set_meta(&"realm", realm)
+		marker.set_meta(&"radius", Layout.CAMP_RADIUS)
+		marker.add_to_group(&"safe_areas", true)
+		group.add_child(marker)
+
+
+## Maniquíes de entrenamiento: uno junto a cada campamento, fuera de su zona segura (a 30 m del
+## centro de los puntos de aparición, hacia el fuerte) y mirando al campamento, para que se pueda
+## golpear desde fuera. El servidor coloca un maniquí en cada marcador del grupo
+## [code]dummy_points[/code].
+func _add_dummy_points() -> void:
+	var group := _group("DummyPoints")
+	for realm: String in ["vardheim", "solmarch"]:
+		var side: float = -1.0 if realm == "vardheim" else 1.0
+		var z: float = side * 108.0
+		var marker := Marker3D.new()
+		marker.name = "Muneco" + realm.capitalize()
+		# Mira hacia el campamento: el norte mira a -Z (giro 0), el sur a +Z (giro PI).
+		marker.transform = Transform3D(Basis(Vector3.UP, 0.0 if side < 0.0 else PI),
+				Vector3(0.0, _ground(0.0, z) + 0.05, z))
+		marker.add_to_group(&"dummy_points", true)
+		group.add_child(marker)
 
 
 ## Cámaras de revisión: [nombre, posición (y = metros sobre el suelo), punto al que mira (y =

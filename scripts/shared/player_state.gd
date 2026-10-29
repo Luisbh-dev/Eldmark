@@ -14,10 +14,13 @@ extends RefCounted
 ## 28      u8       flags: bit 0 = grounded, bits 1-3 = coyote_ticks, bits 4-7 = jump_buffer_ticks
 ## 29      u16      prev_buttons
 ## 31      u32      last_input_tick
+## 35      34 B     combat (CombatState, ver docs/combate.md sección 3.1)
 ## [/codeblock]
 
 ## Tamaño en bytes de un estado codificado.
-const ENCODED_SIZE: int = 35
+const ENCODED_SIZE: int = 69
+## Offset del estado de combate dentro del estado codificado.
+const COMBAT_OFFSET: int = 35
 ## Valor máximo de [member coyote_ticks] (ocupa 3 bits de los flags).
 const MAX_COYOTE_TICKS: int = 7
 ## Valor máximo de [member jump_buffer_ticks] (ocupa 4 bits de los flags).
@@ -26,6 +29,9 @@ const MAX_JUMP_BUFFER_TICKS: int = 15
 const _FLAG_GROUNDED: int = 1 << 0
 const _COYOTE_SHIFT: int = 1
 const _JUMP_BUFFER_SHIFT: int = 4
+
+# Búfer de 4 bytes que usa to_f32() para no reservar memoria en cada llamada.
+static var _f32_scratch: PackedByteArray = PackedByteArray([0, 0, 0, 0])
 
 ## Posición global de los pies del personaje.
 var position: Vector3 = Vector3.ZERO
@@ -45,6 +51,19 @@ var coyote_ticks: int = 0
 ## Ticks que le quedan a una pulsación de salto guardada en el búfer (0 = ninguna pendiente).
 ## Entre 0 y [constant MAX_JUMP_BUFFER_TICKS].
 var jump_buffer_ticks: int = 0
+## Estado de combate: acción en curso, resistencia, controles impuestos por el servidor... Un
+## estado nuevo lleva el combate inicial del arma por defecto (resistencia llena, sin acción).
+var combat: CombatState = CombatState.initial(
+		CombatCatalog.rules(), CombatCatalog.default_weapon_id())
+
+
+## Redondea [param value] a float de 32 bits, la precisión con la que [method encode] guarda el
+## yaw y el resto de campos reales. [member PlayerCharacter.yaw] lo usa en su setter para que el
+## estado sobreviva exactamente a la ida y vuelta por la red (reconciliación de la fase 2).
+## Un NaN sigue siendo NaN y un valor que no cabe en f32 pasa a infinito.
+static func to_f32(value: float) -> float:
+	_f32_scratch.encode_float(0, value)
+	return _f32_scratch.decode_float(0)
 
 
 ## Serializa el estado en [constant ENCODED_SIZE] bytes little-endian.
@@ -64,6 +83,7 @@ func encode() -> PackedByteArray:
 	bytes.encode_u8(28, flags)
 	bytes.encode_u16(29, prev_buttons & 0xFFFF)
 	bytes.encode_u32(31, last_input_tick & 0xFFFFFFFF)
+	combat.encode_into(bytes, COMBAT_OFFSET)
 	return bytes
 
 
@@ -82,6 +102,7 @@ static func decode(bytes: PackedByteArray) -> PlayerState:
 	state.jump_buffer_ticks = (flags >> _JUMP_BUFFER_SHIFT) & MAX_JUMP_BUFFER_TICKS
 	state.prev_buttons = bytes.decode_u16(29)
 	state.last_input_tick = bytes.decode_u32(31)
+	state.combat = CombatState.decode_from(bytes, COMBAT_OFFSET)
 	return state
 
 
@@ -96,14 +117,25 @@ func duplicate_state() -> PlayerState:
 	copy.last_input_tick = last_input_tick
 	copy.coyote_ticks = coyote_ticks
 	copy.jump_buffer_ticks = jump_buffer_ticks
+	copy.combat = combat.duplicate_state()
 	return copy
+
+
+## Devuelve true si [method encode] es idéntico byte a byte en ambos estados. Es la comparación de
+## la reconciliación: detecta también las diferencias de [member prev_buttons],
+## [member last_input_tick], los contadores de salto y el [member combat], que
+## [method is_close_to] no tolera. Un [param other] null nunca es igual.
+func equals_exact(other: PlayerState) -> bool:
+	if other == null:
+		return false
+	return encode() == other.encode()
 
 
 ## Devuelve true si ambos estados coinciden dentro de la tolerancia: posición y velocidad
 ## (distancia <= pos_epsilon), yaw (diferencia angular <= pos_epsilon, teniendo en cuenta la
 ## vuelta completa), grounded y los contadores de salto ([member coyote_ticks] y
-## [member jump_buffer_ticks], que cambian lo que harán los ticks siguientes). Cualquier NaN
-## hace que devuelva false.
+## [member jump_buffer_ticks], que cambian lo que harán los ticks siguientes) y el estado de
+## combate, que se compara exacto (son enteros). Cualquier NaN hace que devuelva false.
 func is_close_to(other: PlayerState, pos_epsilon: float = 0.01) -> bool:
 	if other == null:
 		return false
@@ -116,13 +148,15 @@ func is_close_to(other: PlayerState, pos_epsilon: float = 0.01) -> bool:
 		return false
 	if coyote_ticks != other.coyote_ticks or jump_buffer_ticks != other.jump_buffer_ticks:
 		return false
+	if not combat.equals(other.combat):
+		return false
 	return grounded == other.grounded
 
 
 func _to_string() -> String:
 	var text: String = "PlayerState(pos=%s, vel=%s, yaw=%.5f, grounded=%s, prev_buttons=%d, "
-	text += "last_input_tick=%d, coyote=%d, jump_buffer=%d)"
+	text += "last_input_tick=%d, coyote=%d, jump_buffer=%d, %s)"
 	return text % [
 		position, velocity, yaw, grounded, prev_buttons, last_input_tick, coyote_ticks,
-		jump_buffer_ticks,
+		jump_buffer_ticks, combat,
 	]

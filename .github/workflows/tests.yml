@@ -1,0 +1,227 @@
+name: Pruebas
+
+# Suite completa de pruebas (también las de red y las de procesos) con Godot 4.7.2 headless en
+# Linux, en cada push y en cada pull request. Para que una prueba rota bloquee el merge hay que
+# marcar el trabajo «Suite completa» como comprobación obligatoria en la protección de la rama
+# (Settings > Branches): eso no se puede configurar desde este archivo.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Un push nuevo a la misma rama cancela la ejecución anterior que sigue en marcha.
+concurrency:
+  group: pruebas-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7.2-stable
+  GODOT_FILE: Godot_v4.7.2-stable_linux.x86_64
+  # Suma de comprobación SHA-512 del zip, de SHA512-SUMS.txt de la versión 4.7.2-stable.
+  GODOT_SHA512: 9aa00f7a605200940bce3027a567b782f49bd8e940dd06ae9e987bd65aee1b1467edd56ed84fcdcbdd44354bf613bdbb4e5d2913e925850368e150c59ed54c65
+
+jobs:
+  # La suite se reparte en cuatro partes que corren a la vez (run_tests.gd --shard=K/4): entera
+  # dura unos 18 min en una máquina de 4 núcleos y crece con cada fase.
+  tests:
+    name: Suite ${{ matrix.shard }}/4
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Sin lfs: el checkout deja los punteros LFS. Los objetos se bajan después de restaurar la
+      # caché, así solo se descargan los que faltan (con lfs: true el checkout los bajaría todos
+      # en cada ejecución, antes de poder consultar la caché).
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+
+      - name: Lista de objetos LFS
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
+
+      - name: Caché de objetos LFS
+        uses: actions/cache@v4
+        with:
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-assets-id') }}
+          restore-keys: |
+            lfs-
+
+      - name: Descargar objetos LFS
+        run: git lfs pull
+
+      - name: Caché de Godot
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/godot
+          key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_SHA512 }}
+
+      - name: Descargar Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/godot"
+          curl -fsSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/godot.zip" \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/${GODOT_FILE}.zip"
+          echo "${GODOT_SHA512}  $RUNNER_TEMP/godot.zip" | sha512sum --check -
+          unzip -q "$RUNNER_TEMP/godot.zip" -d "$HOME/godot"
+          chmod +x "$HOME/godot/${GODOT_FILE}"
+
+      - name: Godot en el PATH
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$HOME/godot/${GODOT_FILE}" "$HOME/.local/bin/godot"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Versión de Godot
+        run: godot --headless --version
+
+      - name: Importar el proyecto
+        run: |
+          mkdir -p build
+          godot --headless --path . --import > build/import.log 2>&1 || {
+            cat build/import.log
+            exit 1
+          }
+
+      # Las pruebas arrancan procesos de Godot propios (servidor y clientes). El plazo de este paso
+      # es menor que el del trabajo para que el paso de logs siga a tiempo si se cuelga.
+      - name: Pruebas
+        timeout-minutes: 15
+        run: |
+          set -o pipefail
+          godot --headless --path . -s res://tests/run_tests.gd -- --shard=${{ matrix.shard }}/4 2>&1 | tee build/tests.log
+
+      - name: Resumen
+        if: always()
+        run: |
+          if [ -f build/tests.log ]; then
+            grep -E "^(FAIL|Resumen)" build/tests.log | tee -a "$GITHUB_STEP_SUMMARY" || true
+          fi
+
+      - name: Subir logs e informes
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ matrix.shard }}
+          path: build/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Una sola comprobación con el nombre de siempre, para la protección de la rama: pasa solo si
+  # pasan las cuatro partes.
+  suite:
+    name: Suite completa
+    needs: tests
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resultado de las cuatro partes
+        run: test "${{ needs.tests.result }}" = "success"
+
+  # Windows es la plataforma de desarrollo y allí OS.is_process_running solo conoce los procesos
+  # hijos propios: este trabajo ejecuta las pruebas de LocalServerLauncher (con sus procesos
+  # auxiliares), no la suite completa, que se ejecuta a mano en Windows (docs/informe_noche.md).
+  tests-windows:
+    name: Windows (LocalServerLauncher)
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      GODOT_WIN_FILE: Godot_v4.7.2-stable_win64
+      # Suma de comprobación SHA-512 del zip, de SHA512-SUMS.txt de la versión 4.7.2-stable.
+      GODOT_WIN_SHA512: 83decd58fdf67b9d657958a1ae6bf1929c20785315a81effe245874cdc57acb709bf868e00778a96984338c1b29dafdb453c6847747694621c6ecf5da2259993
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+
+      - name: Lista de objetos LFS
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
+
+      - name: Caché de objetos LFS
+        uses: actions/cache@v4
+        with:
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-assets-id') }}
+          restore-keys: |
+            lfs-
+
+      - name: Descargar objetos LFS
+        run: git lfs pull
+
+      - name: Caché de Godot
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/godot
+          key: godot-win-${{ env.GODOT_VERSION }}-${{ env.GODOT_WIN_SHA512 }}
+
+      - name: Descargar Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/godot"
+          curl -fsSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/godot.zip" \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/${GODOT_WIN_FILE}.exe.zip"
+          echo "${GODOT_WIN_SHA512}  $RUNNER_TEMP/godot.zip" | sha512sum --check -
+          7z x -y -o"$HOME/godot" "$RUNNER_TEMP/godot.zip"
+
+      # El ejecutable de consola (el que escribe en la salida estándar) es un envoltorio que lanza el
+      # principal buscándolo por su propio nombre sin «_console»: renombrado, falla con «Invalid wrapper
+      # executable name». Un guion «godot» lo llama con su nombre original.
+      - name: Godot en el PATH
+        run: |
+          printf '#!/usr/bin/env bash\nexec "%s/%s_console.exe" "$@"\n' "$HOME/godot" "$GODOT_WIN_FILE" > "$HOME/godot/godot"
+          chmod +x "$HOME/godot/godot"
+          cygpath -w "$HOME/godot" >> "$GITHUB_PATH"
+
+      - name: Versión de Godot
+        run: godot --headless --version
+
+      - name: Importar el proyecto
+        run: |
+          mkdir -p build
+          godot --headless --path . --import > build/import.log 2>&1 || {
+            cat build/import.log
+            exit 1
+          }
+
+      - name: Pruebas de LocalServerLauncher
+        timeout-minutes: 15
+        run: |
+          set -o pipefail
+          godot --headless --path . -s res://tests/run_tests.gd -- --filter=test_local_server_launcher 2>&1 | tee build/tests.log
+
+      - name: Resumen
+        if: always()
+        run: |
+          if [ -f build/tests.log ]; then
+            grep -E "^(FAIL|Resumen)" build/tests.log | tee -a "$GITHUB_STEP_SUMMARY" || true
+          fi
+
+      - name: Subir logs e informes
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-windows
+          path: build/
+          if-no-files-found: ignore
+          retention-days: 14

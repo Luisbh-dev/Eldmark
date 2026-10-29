@@ -66,7 +66,7 @@ const REALMS: Dictionary = {
 		"ruin_brick": ["brick", Color("#8f8a82"), 0.65, {}],
 		"metal": ["metal", Color("#6e4a35"), 0.6, {"metal": 0.5, "rough": 0.6, "layer": 0.0}],
 		"door": ["door", Color("#5e5850"), 0.5, {"scissor": 0.5, "layer": 0.0}],
-		"banner": ["cloth", Color("#bdb6a6"), 1.0, {"faction": 1.0, "detail": 0.35, "layer": 0.0}],
+		"banner": ["cloth", RealmCatalog.HUECOS_COLOR, 1.0, {"faction": 1.0, "detail": 0.35, "layer": 0.0}],
 		"ember": ["cloth", Color("#3a2a20"), 1.0, {"emission": Color("#ff8a2a"), "energy": 3.0, "layer": 0.0, "closed": true}],
 	},
 	"vardheim": {
@@ -78,7 +78,7 @@ const REALMS: Dictionary = {
 		"door": ["door", Color("#3a2f28"), 0.55, {"scissor": 0.5, "layer": 0.0}],
 		"metal": ["metal", Color("#3f4448"), 0.7, {"metal": 0.6, "rough": 0.5, "layer": 0.0}],
 		"hide": ["cloth", Color("#7a5a3e"), 1.0, {"detail": 0.35, "layer": 0.5, "closed": true}],
-		"banner": ["cloth", Color("#7ec8e8"), 1.0, {"faction": 1.0, "detail": 0.35, "layer": 0.0}],
+		"banner": ["cloth", RealmCatalog.VARDHEIM_COLOR, 1.0, {"faction": 1.0, "detail": 0.35, "layer": 0.0}],
 	},
 	"solmarch": {
 		# Caliza clara de la paleta: detalle suave y algo de ganancia para que una cara iluminada
@@ -90,7 +90,7 @@ const REALMS: Dictionary = {
 		"door": ["door", Color("#8a6a4a"), 0.5, {"scissor": 0.5, "layer": 0.0}],
 		"metal": ["metal", Color("#c9a227"), 0.65, {"metal": 0.8, "rough": 0.35, "layer": 0.0}],
 		"cloth": ["cloth", Color("#f5f2e9"), 1.0, {"detail": 0.3, "layer": 0.0, "closed": true}],
-		"banner": ["cloth", Color("#e9c341"), 1.0, {"faction": 1.0, "detail": 0.35, "layer": 0.0}],
+		"banner": ["cloth", RealmCatalog.SOLMARCH_COLOR, 1.0, {"faction": 1.0, "detail": 0.35, "layer": 0.0}],
 	},
 }
 

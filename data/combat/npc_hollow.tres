@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="WeaponDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/combat/weapon_definition.gd" id="1_weapon"]
+[ext_resource type="Script" path="res://scripts/shared/combat/attack_definition.gd" id="2_attack"]
+[ext_resource type="Resource" path="res://data/combat/npc_hollow_swipe.tres" id="3_light"]
+[ext_resource type="Resource" path="res://data/combat/npc_hollow_slam.tres" id="4_heavy"]
+[ext_resource type="Resource" path="res://data/combat/sword_dodge.tres" id="5_dodge"]
+
+[resource]
+script = ExtResource("1_weapon")
+id = &"npc_hollow"
+light_combo = Array[ExtResource("2_attack")]([ExtResource("3_light"), ExtResource("3_light"), ExtResource("3_light")])
+heavy_attack = ExtResource("4_heavy")
+block_angle_deg = 120.0
+block_mitigation = 0.9
+block_move_scale = 0.5
+block_turn_rate = 8.0
+block_stamina_per_damage = 1.0
+dodge = ExtResource("5_dodge")

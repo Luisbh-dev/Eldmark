@@ -43,6 +43,14 @@ static func ensure_defaults() -> void:
 
 	# Depuración.
 	_ensure_key(&"toggle_debug", KEY_F3)
+	_ensure_key(&"toggle_net_ghost", KEY_F4)
+
+	# Interfaz.
+	_ensure_key(&"open_settings", KEY_F10)
+	_ensure_key(&"open_map", KEY_M)
+	_ensure_key(&"map_zoom_in", KEY_EQUAL)
+	_ensure_key(&"map_zoom_out", KEY_MINUS)
+	_ensure_key(&"scoreboard", KEY_TAB)
 
 
 static func _ensure_key(action: StringName, physical_keycode: Key) -> void:

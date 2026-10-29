@@ -1,0 +1,26 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/client/net_debug_overlay.gd" id="1_ndbg"]
+
+[node name="NetDebugOverlay" type="CanvasLayer"]
+layer = 10
+script = ExtResource("1_ndbg")
+
+[node name="Panel" type="PanelContainer" parent="."]
+visible = false
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -16.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = 40.0
+grow_horizontal = 0
+mouse_filter = 2
+theme_type_variation = &"DebugPanel"
+
+[node name="Label" type="Label" parent="Panel"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"DebugLabel"
+text = "RED"

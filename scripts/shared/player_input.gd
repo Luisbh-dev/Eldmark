@@ -27,6 +27,13 @@ const ABILITY_1: int = 1 << 5
 const ABILITY_2: int = 1 << 6
 const ABILITY_3: int = 1 << 7
 const INTERACT: int = 1 << 8
+## Marca de entrada sustituida (docs/combate.md, sección 3.2): no es un botón. La ponen la cola
+## de entradas del servidor y la predicción del cliente en la entrada que repite la última
+## aplicada cuando la real no ha llegado. Está fuera de
+## [constant NetProtocol.VALID_BUTTONS], así que el cliente no puede ponerla: el servidor la
+## descarta al decodificar. La máquina de acciones no cuenta ni lanza nada con ella, y
+## [member PlayerCharacter.prev_buttons] nunca la guarda.
+const SUBSTITUTED: int = 1 << 15
 
 ## Tamaño en bytes de una entrada codificada.
 const ENCODED_SIZE: int = 12

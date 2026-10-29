@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ApproachRoutes" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/war/approach_routes.gd" id="1_hhflu"]
+
+[resource]
+script = ExtResource("1_hhflu")
+zone_id = &"vado_gris"
+gate_point = Vector2(-20, 0)
+circle_point = Vector2(-8.5, 0)
+circle_radius = 5.0
+points = Dictionary[String, PackedVector2Array]({
+"bridge/solmarch": PackedVector2Array(-2.5, 132, 0, 116, 0, 78, 0, 62, 0, 47, -12, 35, -26, 26, -29, 10, -25, 2),
+"bridge/vardheim": PackedVector2Array(-2.5, -132, 0, -116, 0, -78, 0, -62, 0, -47, -12, -35, -26, -26, -29, -10, -25, -2),
+"ford/solmarch": PackedVector2Array(-2.5, 132, -8, 114, -36, 100, -70, 74, -92, 40, -90, 10, -80, 0, -62, 0, -44, 0, -25, 0),
+"ford/vardheim": PackedVector2Array(-2.5, -132, -8, -114, -36, -100, -70, -74, -92, -40, -90, -10, -80, 0, -62, 0, -44, 0, -25, 0)
+})

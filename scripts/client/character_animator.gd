@@ -32,6 +32,14 @@ extends Node
 ## directo a Jump_Loop. Al aterrizar se mezcla Jump_Land con una intensidad que depende de la
 ## velocidad de impacto y de si se sigue corriendo.
 
+## [br][br]
+## [b]Combate.[/b] Sobre la locomoción va la capa de animación de combate ([CombatAnimationLayer],
+## ART-08): ataques, bloqueo, tambaleo y aturdimiento en la parte superior del cuerpo; esquiva y
+## muerte en el cuerpo entero. La acción sale del [member PlayerCharacter.combat] del personaje (el
+## jugador local y el sandbox) o, en un remoto, del byte [code]action[/code] de su registro
+## ([method set_remote_source]). Cada clip se reescala a la duración de la fase en los datos de
+## combate; ver [CombatClipPlanner]. La pose la pone el [CombatPoseModifier] después del árbol.
+
 ## Ruta de los parámetros del árbol (ver humanoid_visual.tscn).
 const PARAM_LOCOMOTION_BLEND: StringName = &"parameters/locomotion/blend_position"
 const PARAM_LOCOMOTION_SCALE: StringName = &"parameters/locomotion_speed/scale"
@@ -52,6 +60,9 @@ enum AirState { GROUNDED, JUMPING, FALLING }
 @export var animation_tree: AnimationTree
 ## Nodo que se gira para orientar el modelo; su padre debe ser un Node3D que siga al personaje.
 @export var pivot: Node3D
+
+## Clips de las acciones de combate (recurso de texto en data/animation/).
+@export var clip_set: CombatClipSet
 
 @export_group("Locomoción")
 ## Velocidad sobre el suelo (m/s) de cada clip a velocidad de reproducción 1, medida sobre el
@@ -139,6 +150,11 @@ var _land_strength: float = 0.0
 var _locomotion_scale: float = 0.0
 var _move_weight: float = 0.0
 var _backpedal: bool = false
+var _combat_layer: CombatAnimationLayer = null
+var _combat_modifier: CombatPoseModifier = null
+## Origen del byte action de un remoto: devuelve el byte del registro dibujado. Si no es válido, la
+## acción sale del [member PlayerCharacter.combat] del personaje.
+var _remote_source: Callable = Callable()
 
 
 func _ready() -> void:
@@ -193,6 +209,35 @@ func set_spine_modifier(modifier: SpineTwistModifier) -> void:
 	_spine = modifier
 
 
+## Modificador que aplica la pose de combate al esqueleto (lo crea [HumanoidVisual] bajo el
+## esqueleto, antes del de la columna). Crea la capa de combate con [member clip_set].
+func set_combat_modifier(modifier: CombatPoseModifier) -> void:
+	_combat_modifier = modifier
+	if _combat_layer == null:
+		_combat_layer = CombatAnimationLayer.new(clip_set)
+	if _combat_modifier != null:
+		_combat_modifier.layer = _combat_layer
+
+
+## Hace que la acción de combate salga del byte [code]action[/code] que devuelve [param source]
+## (el registro dibujado de un remoto) en lugar del estado del personaje. Un [Callable] no válido
+## vuelve al estado del personaje.
+func set_remote_source(source: Callable) -> void:
+	_remote_source = source
+	if _combat_layer != null:
+		_combat_layer.reset()
+
+
+## Capa de animación de combate (null hasta [method set_combat_modifier]).
+func get_combat_layer() -> CombatAnimationLayer:
+	return _combat_layer
+
+
+## Modificador que pone la pose de combate (o null).
+func get_combat_modifier() -> CombatPoseModifier:
+	return _combat_modifier
+
+
 ## Estado interno para depuración y pruebas visuales.
 func get_debug_state() -> Dictionary:
 	return {
@@ -206,6 +251,7 @@ func get_debug_state() -> Dictionary:
 		"facing_offset_deg": rad_to_deg(pivot.rotation.y) if pivot != null else 0.0,
 		"backpedal": _backpedal,
 		"spine_twist_deg": rad_to_deg(_spine.twist) if _spine != null else 0.0,
+		"combat": _combat_debug(),
 	}
 
 
@@ -224,6 +270,38 @@ func _process(delta: float) -> void:
 	animation_tree.set(PARAM_AIR, _air_weight)
 	animation_tree.set(PARAM_AIR_PHASE, _fall_weight)
 	animation_tree.set(PARAM_LAND, _land_weight)
+
+	_update_combat(delta)
+
+
+# --- Combate -----------------------------------------------------------------------------------
+
+# Alimenta la capa de combate con la acción de este fotograma.
+func _update_combat(delta: float) -> void:
+	if _combat_layer == null:
+		return
+	if _remote_source.is_valid():
+		_combat_layer.update_remote(int(_remote_source.call()), delta)
+	else:
+		_combat_layer.update_local(_character.combat, _character.last_input_tick,
+				Engine.get_physics_interpolation_fraction(), delta)
+
+
+func _combat_debug() -> Dictionary:
+	if _combat_layer == null:
+		return {}
+	var current: CombatAnimationLayer.Slot = _combat_layer.get_current()
+	if current == null:
+		return {"active": false}
+	return {
+		"active": true,
+		"key": current.key,
+		"animation": current.animation_name,
+		"time": current.time_s,
+		"speed": current.speed,
+		"weight": current.weight,
+		"upper_body": current.upper_body,
+	}
 
 
 # --- Locomoción --------------------------------------------------------------------------------

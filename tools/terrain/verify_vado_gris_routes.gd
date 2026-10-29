@@ -4,8 +4,9 @@ extends SceneTree
 ## esprintar), por el puente y por el vado hasta la puerta del fuerte. Imprime metros y segundos
 ## de cada ruta y falla si el personaje se atasca o si las dos facciones difieren más de un 3 %.
 ## Además cruza cada puente por los carriles x = -1,5, 0 y 1,5 en los dos sentidos, recorre el
-## interior del fuerte (puerta abierta, rampa norte y sur, pasarela hasta encima de la puerta) y
-## comprueba que el cauce profundo no se puede recorrer desde el vado.
+## interior del fuerte (rampa norte y sur, pasarela hasta encima de la puerta; la puerta cerrada no
+## lo para porque el personaje no lleva capa de reino en la máscara) y comprueba que el cauce
+## profundo no se puede recorrer desde el vado.
 ##
 ## Uso (sin ventana; --fixed-fps hace que la física vaya tan rápido como pueda):
 ## [codeblock]
@@ -35,10 +36,11 @@ const BLOCKED_CROSSINGS: Array[Array] = [
 ]
 ## Carriles de los puentes que deben cruzarse en los dos sentidos.
 const BRIDGE_LANES: Array[float] = [-1.5, 0.0, 1.5]
-## Interior del fuerte (la puerta se guarda abierta): explanada, puerta, patio, rampa norte,
-## pasarela norte y oeste hasta encima de la puerta. La del sur es el reflejo. Los puntos van
-## por el eje de la rampa y de la pasarela (que no tiene barandilla por dentro): se recorre con
-## un alcance de [constant FORT_REACH] m para no recortar las esquinas y caerse al patio.
+## Interior del fuerte (el personaje de la prueba no lleva capa de reino y cruza la puerta cerrada):
+## explanada, puerta, patio, rampa norte, pasarela norte y oeste hasta encima de la puerta. La del
+## sur es el reflejo. Los puntos van por el eje de la rampa y de la pasarela (que no tiene
+## barandilla por dentro): se recorre con un alcance de [constant FORT_REACH] m para no recortar
+## las esquinas y caerse al patio.
 const FORT_ROUTE: Array[Vector2] = [
 	Vector2(-26, 0), Vector2(-15, 0), Vector2(-6, -6), Vector2(7, -5), Vector2(7, -18.77),
 	Vector2(-18.77, -18.77), Vector2(-18.77, -1.0),
@@ -47,19 +49,10 @@ const FORT_REACH: float = 0.5
 ## Altura mínima de la pasarela sobre la meseta al acabar la ruta del interior.
 const WALKWAY_MIN_HEIGHT: float = 3.0
 
-## Rutas desde el punto de aparición del norte (Vardheim). Las de Solmarch son su reflejo (z -> -z).
-## La meta es la explanada delante de la puerta del fuerte (cara oeste, x = -20).
-const ROUTES: Dictionary = {
-	"puente": [
-		Vector2(-2.5, -132), Vector2(0, -116), Vector2(0, -78), Vector2(0, -62), Vector2(0, -47),
-		Vector2(-12, -35), Vector2(-26, -26), Vector2(-29, -10), Vector2(-25, -2),
-	],
-	"vado": [
-		Vector2(-2.5, -132), Vector2(-8, -114), Vector2(-36, -100), Vector2(-70, -74),
-		Vector2(-92, -40), Vector2(-90, -10), Vector2(-80, 0), Vector2(-62, 0), Vector2(-44, 0),
-		Vector2(-25, 0),
-	],
-}
+## Rutas de aproximación al fuerte, como datos compartidos (las escribe export_vado_gris_routes.gd y
+## las siguen los bots de asedio): del punto de aparición de cada reino a la explanada delante de la
+## puerta del fuerte (cara oeste, x = -20). Las de Solmarch son el reflejo de las de Vardheim.
+const ROUTES_PATH: String = "res://data/routes/vado_gris.tres"
 
 var _failed: bool = false
 var _tick: int = 1
@@ -75,16 +68,23 @@ func _run() -> void:
 	root.add_child(zone)
 	await physics_frame
 	await physics_frame
+	var routes: ApproachRoutes = load(ROUTES_PATH) as ApproachRoutes
+	if routes == null or routes.get_route_ids().is_empty():
+		_fail("No se pudieron cargar las rutas de %s" % ROUTES_PATH)
+		quit(1)
+		return
 	var results: Dictionary = {}
-	for route_name: String in ROUTES:
+	for route_name: StringName in routes.get_route_ids():
 		for realm: String in ["vardheim", "solmarch"]:
 			var spawn: Marker3D = _first_spawn(zone, realm)
 			if spawn == null:
 				_fail("No hay punto de aparición de %s" % realm)
 				continue
 			var waypoints: Array[Vector2] = []
-			for p: Vector2 in ROUTES[route_name]:
-				waypoints.append(Vector2(p.x, p.y if realm == "vardheim" else -p.y))
+			waypoints.assign(routes.get_points(route_name, StringName(realm)))
+			if waypoints.is_empty():
+				_fail("La ruta %s no tiene puntos para %s" % [route_name, realm])
+				continue
 			var result: Dictionary = await _walk(zone, spawn, waypoints)
 			results["%s/%s" % [route_name, realm]] = result
 			print("%-8s %-9s %s: %.1f m en %.1f s (%d ticks)%s" % [route_name, realm,
@@ -92,7 +92,7 @@ func _run() -> void:
 					result["ticks"], "" if result["ok"] else " en " + str(result["where"])])
 			if not result["ok"]:
 				_fail("%s/%s no llega a la puerta del fuerte" % [route_name, realm])
-	for route_name: String in ROUTES:
+	for route_name: StringName in routes.get_route_ids():
 		var a: Dictionary = results.get("%s/vardheim" % route_name, {})
 		var b: Dictionary = results.get("%s/solmarch" % route_name, {})
 		if a.is_empty() or b.is_empty() or not a["ok"] or not b["ok"]:

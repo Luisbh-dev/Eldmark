@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="DodgeDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/combat/dodge_definition.gd" id="1_dodge"]
+
+[sub_resource type="Curve" id="Curve_dodge"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.4, 0.75), 0.0, 0.0, 0, 0, Vector2(1, 0.05), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[resource]
+script = ExtResource("1_dodge")
+duration_s = 0.45
+invulnerable_from_s = 0.05
+invulnerable_to_s = 0.3
+distance_m = 4.5
+speed_curve = SubResource("Curve_dodge")
+stamina_cost = 300
+cancel_to_attack_from_s = 0.3

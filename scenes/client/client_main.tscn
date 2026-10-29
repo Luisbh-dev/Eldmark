@@ -1,6 +1,10 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://scripts/client/client_main.gd" id="1_client"]
+[ext_resource type="Script" path="res://scripts/client/client_services.gd" id="2_svcs"]
 
 [node name="ClientMain" type="Node"]
 script = ExtResource("1_client")
+
+[node name="ClientServices" type="Node" parent="."]
+script = ExtResource("2_svcs")

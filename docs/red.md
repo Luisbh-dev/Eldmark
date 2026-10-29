@@ -11,7 +11,7 @@ encontraron los jueces; el resumen está en el [anexo](#anexo-correcciones-respe
 Se apoya en el código de la fase 1:
 
 - `PlayerInput`: 12 B cuantizados.
-- `PlayerState`: 35 B.
+- `PlayerState`: 35 B (69 B con el estado de combate de la fase 3, [combate.md 3.1](combate.md#31-combatstate-en-playerstate-entra-en-encode); las cifras de este documento son las de la fase 3).
 - `PlayerCharacter.simulate()`: determinista, un tick de física por llamada.
 - `LocalPlayerController`.
 
@@ -78,23 +78,30 @@ que añade otro flujo de trabajo. Aquí se usan, no se redefinen (ver [1.5](#15-
 ### 1.2 Modos de arranque
 
 `boot.gd` lee los argumentos de usuario (los que van tras `--`). Prioridad: `--server` >
-`--bots` > `--connect`/`--local`/`--bot` > sandbox.
+`--bots` > `--connect`/`--local`/`--bot` > sandbox. `boot.gd` solo decide entre servidor y cliente y
+**no nombra ninguna clase de `scripts/client/`** (la escena principal la ejecuta también el
+servidor dedicado, y cada referencia de clase arrastraría el script y, en cadena, la interfaz, los
+ajustes y el audio): para el cliente instancia por su ruta `scenes/client/client_launcher.tscn`
+(`ClientLauncher`), que aplica el resto de la prioridad y cambia a la escena del modo. Lo comprueba
+`test_architecture` arrancando un proceso con `--server` y mirando qué scripts del cliente ha cargado
+(ninguno).
 
 | Argumentos | Modo | Escena |
 |---|---|---|
 | ninguno, `--demo`, `--shots=`, `--quit-after-demo` | Sandbox sin red de la fase 1, sin cambios | `scenes/client/client_main.tscn` |
-| `--server [--port=24600] [--zone=<id>] [--max-players=64] [--max-per-ip=4] [--idle-quit=<s>] [--fake-players=N] [--debug-commands] [--dev-lock]` | Servidor dedicado (siempre con `--headless`) | `scenes/server/server_main.tscn` |
+| `--server [--port=24600] [--zone=<id>] [--max-players=64] [--max-per-ip=4] [--idle-quit=<s>] [--fake-players=N [--fake-layout=cluster\|spread] [--fake-churn=<ticks>]] [--debug-commands] [--dev-lock [--dev-lock-path=<ruta>]] [--stop-file=<ruta>]` | Servidor dedicado (siempre con `--headless`) | `scenes/server/server_main.tscn` |
 | `--connect=<host>[:<puerto>] [--realm=<reino>] [--name=<nombre>]` | Cliente en red | `scenes/client/online_main.tscn` |
 | `--local [--realm=…] [--name=…]` | Cliente contra un servidor local, que se lanza si no hay ninguno | `scenes/client/online_main.tscn` |
-| `--bot --connect=… [--bot-seed=N] [--bot-cheat=<modo>]` | Un cliente que predice, sin cámara ni HUD, guiado por `BotBrain` | `scenes/client/online_main.tscn` |
-| `--bots=N --connect=… [--bot-seed=N]` | Enjambre de N clientes ligeros que no simulan, para pruebas de carga | `scenes/client/bot_swarm.tscn` |
+| `--bot --connect=… [--bot-seed=N] [--bot-brain=wander\|combat] [--bot-cheat=<modo>]` | Un cliente que predice, sin cámara ni HUD, guiado por `BotBrain` (pasea, o pelea con el cerebro de combate) | `scenes/client/online_main.tscn` |
+| `--bots=N --connect=… [--bot-seed=N] [--bot-brain=combat]` | Enjambre de N clientes ligeros que no simulan, para pruebas de carga (con `combat`, pelean) | `scenes/client/bot_swarm.tscn` |
 | Comunes | `--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1`, `--quit-after-ticks=N`, `--report=<ruta.json>`, `--state-log=<ruta.csv>` | |
 
 - **`--zone` y `--realm`** se leen con las utilidades de `zones.gd`, a través de `NetZones`.
 - **Elección de reino.** Si un modo en red arranca sin `--realm`, `OnlineMain` muestra
   `RealmSelect`: tres botones (Vardheim, Solmarch, Askarra), el campo de dirección y «Entrar»,
   con los textos en español.
-- **Nombre.** Sin `--name`, el cliente usa `Jugador-NNNN`.
+- **Nombre.** Sin `--name`, el cliente usa `NameRules.default_name(semilla)`: «Jugador» más cuatro
+  letras (p. ej. `Jugadorabcd`), que es un nombre válido (SOC-01; el antiguo `Jugador-NNNN` ya no lo es).
 
 ### 1.3 Ajustes del servidor headless
 
@@ -122,6 +129,17 @@ que añade otro flujo de trabajo. Aquí se usan, no se redefinen (ver [1.5](#15-
   `Engine.time_scale` ni los ticks por segundo: cambian el delta que usa `move_and_slide()` y
   rompen el determinismo.
 - **Registro:** con la opción `--log-file <ruta>` de Godot.
+- **Cómo se para el servidor (hallazgo S5).** Hay cierre ordenado (NOTICE de cierre a los
+  clientes, `ZoneServer.stop`, informe de `--report` y borrado del bloqueo de `--dev-lock`) con
+  `--quit-after-ticks`, `--idle-quit` y `--stop-file=<ruta>`: el servidor mira cada segundo si ese
+  archivo existe (por ejemplo, un `ExecStop` de systemd que lo cree con `touch`), hace el mismo
+  cierre y lo borra; uno que ya existiera al arrancar es de una parada anterior y se borra.
+  **`SIGTERM` y `SIGINT` (Ctrl+C, `docker stop`, `kill`) no cierran de forma ordenada**: GDScript
+  no puede atraparlas y Godot termina el proceso al instante (código de salida 143 o 130), sin
+  NOTICE, sin informe final y con el bloqueo de `--dev-lock` sin borrar. Para limitar el daño, con
+  `--report` el informe se reescribe cada 10 s (`"closed": false`) además de al cerrar
+  (`"closed": true`), igual que el registro de estados se vuelca cada segundo; y quien lee el
+  bloqueo (`LocalServerLauncher`) no debe fiarse de que su pid siga siendo el servidor.
 
 ### 1.4 Flujo de trabajo local
 
@@ -147,7 +165,8 @@ $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Mi
 **`--local` (`LocalServerLauncher`):**
 
 1. Lee `user://dev_server.json` (`{pid, port}`), que escribe un servidor lanzado con
-   `--dev-lock`. Si `OS.is_process_running(pid)`, se conecta a ese servidor.
+   `--dev-lock` (o el archivo de `--dev-lock-path=<ruta>`). Si
+   `LocalServerLauncher.is_process_alive(pid)`, se conecta a ese servidor.
 2. Si no, lanza el servidor y se conecta con un timeout corto de ENet (1 s), reintentando
    durante 10 s. En una exportación (`OS.has_feature("template")`) se omite `--path`:
    ```
@@ -163,6 +182,23 @@ $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Mi
 No se detecta un servidor intentando `bind` en el puerto: en Windows, la reutilización de
 direcciones UDP lo hace poco fiable.
 
+**Bloqueo huérfano.** El servidor solo borra su bloqueo en un cierre ordenado (`--quit-after-ticks`,
+`--idle-quit`, cerrar la ventana). Con `SIGTERM` (systemd, `docker stop`) o `SIGINT` (Ctrl+C) el
+proceso muere de golpe, sin avisar a los clientes, sin `--report` y sin borrar el bloqueo: GDScript no
+puede atrapar señales POSIX. Si el sistema reutiliza ese pid, el bloqueo apuntaría a un proceso vivo
+que no es el servidor. Por eso `get_running_port` exige, donde se puede (Linux), que
+`/proc/<pid>/cmdline` lleve `--server` y `--dev-lock` (`LocalServerLauncher.is_dev_server_process`);
+en Windows no se puede comprobar y vale cualquier proceso vivo con ese pid.
+
+`OS.is_process_running(pid)` solo conoce los procesos que lanzó el propio proceso (en Windows mira
+su tabla de procesos hijos, `process_map`; en Linux y macOS, con el pid de otra ventana registra además
+un error del motor): una segunda ventana `--local` nunca lanzó el servidor de la primera y obtendría
+`false`. `LocalServerLauncher.is_process_alive` usa `/proc/<pid>/stat` (o `kill -0`) en Linux y macOS y,
+en Windows, `OS.is_process_running` para los hijos propios y `tasklist /FI "PID eq <pid>" /FO CSV /NH`
+para el resto (se lee la segunda columna de la fila, porque el aviso de «sin coincidencias» sale en el
+idioma del sistema). Cada intento de conexión fallido es una
+sesión nueva en `OnlineMain` (`NetClient.connect_timeout_ms` fija el tiempo de espera corto).
+
 **Desde el editor:** *Depurar ▸ Personalizar instancias de ejecución*.
 
 - Instancia 1: `--headless -- --server --debug-commands`.
@@ -176,10 +212,19 @@ direcciones UDP lo hace poco fiable.
 - el id de la zona por defecto;
 - la ruta de escena de cada zona;
 - los reinos admitidos en cada zona;
-- leer `--zone` y `--realm`.
+- leer `--zone` y `--realm`;
+- los puntos de aparición de una zona (`get_spawn_points`, `find_spawn_point`) y el grupo que los
+  marca (`spawn_group`).
 
-Si `zones.gd` no da alguno de esos datos (por ejemplo, los reinos admitidos), `NetZones` admite
-todos los reinos. Si al implementar todavía no existe, `NetZones` devuelve `test_world`. Ese
+`test_architecture` vigila esta frontera: en `scripts/server/`, `scripts/client/` y
+`scripts/shared/net/` solo `net_zones.gd` nombra `Zones.`, con tres excepciones: `server_main.gd`
+(la lista de zonas del aviso de zona desconocida y los reinos con campamento de los jugadores
+falsos, ver la sección 19), `client_main.gd` (el sandbox sin red de la fase 1) y, fuera de esas
+carpetas, `boot.gd` y `scripts/world/zone_root.gd`.
+
+Los reinos admitidos por zona y la correspondencia código de red <-> id de reino salen de
+`RealmCatalog` (`scripts/shared/war/realm_catalog.gd`, GUE-02); `NetZones` solo traduce. Si una zona
+no figura en el catálogo, `NetZones` admite todos los reinos. Si al implementar todavía no existe, `NetZones` devuelve `test_world`. Ese
 cambio se hace solo en este archivo.
 
 **Formato en la red:**
@@ -216,16 +261,52 @@ cubre ±5,24 km, así que caben los 5 × 5 km de terreno de Eldrun.
 **`SceneMultiplayer`:** uno propio por cada `NetTransport`.
 
 - Configuración: `server_relay = false`, `allow_object_decoding = false`, `auth_callback` en los
-  dos lados y `auth_timeout = 5.0`.
+  dos lados y `auth_timeout = 5.0` (10 s desde la subida de protocolo de la fase 5, plataforma.md
+  §5.4: cuenta desde la conexión y deja sitio a la reclamación del billete).
 - Se registra con `get_tree().set_multiplayer(mp, transport.get_path())`. Así caben varias
   instancias en un mismo proceso (pruebas y enjambre de bots).
+- **Filtro de paquetes en el servidor (`GuardedEnetPeer`, hallazgo S1).** `SceneMultiplayer`
+  procesa dentro de `poll()` todo lo que llega, y solo entrega a la aplicación los paquetes RAW
+  de los peers admitidos. Un cliente ENet sin `SceneMultiplayer` que mandase otra cosa, antes del
+  HELLO (`[3, 1]`, RPC, SIMPLIFY_PATH...) o después (RPC, SPAWN, órdenes SYS...), hacía que el
+  motor registrase un error por paquete con su traza de GDScript (2000 paquetes: 742 KB de
+  registro y un tick de 28–37 ms), que esos paquetes no pasasen por los limitadores ni sumaran
+  avisos, y antes del HELLO solo los cortaba el `auth_timeout` de 5 s (el atacante reconecta).
+  Por eso el `NetTransport` del servidor entrega a `SceneMultiplayer` un
+  `MultiplayerPeerExtension` (`scripts/shared/net/guarded_enet_peer.gd`) que envuelve al
+  `ENetMultiplayerPeer` y filtra antes de que el motor vea nada:
+  - a un peer sin admitir, solo mensajes de autenticación (`SYS` + `AUTH`: byte 0 & 7 = 7 y
+    byte 1 = 0) de como mucho 1200 B, 3 con contenido (el HELLO) y una confirmación de 2 B;
+  - a un peer admitido (los dos lados han confirmado: el envoltorio ve pasar la del otro lado y
+    la propia), solo paquetes RAW (byte 0 & 7 = 3);
+  - lo demás se descarta, sin error del motor, y al final de `poll()` se emite
+    `NetTransport.packets_discarded(peer_id, count)`. `ZoneServer` suma un aviso por paquete
+    (motivo «paquete ajeno al protocolo»; con 50 en 600 ticks, NOTICE de expulsión y corte);
+  - un peer al que el servidor ya está cortando (`disconnect_after_flush`) se silencia: lo que
+    siga mandando se descarta sin contarlo ni procesarlo;
+  - como mucho se procesan 4096 paquetes por `poll()` (lo demás se queda en la cola de ENet): la
+    inundación no puede alargar el tick sin límite. Medido: con 2000 paquetes en un tick, el
+    tick más largo pasa de 28–37 ms a ~1 ms.
+  - **Atajo para el camino caliente.** Los RAW de los peers que `SceneMultiplayer` ya ha admitido
+    de verdad (`NetTransport._mp_connected`) se entregan directamente a la aplicación, sin pasar
+    por la cola del motor. Los de un peer que se admite en ese mismo `poll()` van por la cola,
+    detrás de su confirmación, para no perder el orden. Medido con 64 clientes y 48 000 paquetes
+    (cinco repeticiones alternadas): 9,4 µs por paquete sin filtro, 9,9 µs con filtro y atajo
+    (+6 %, el nivel del ruido) y 11,3 µs con filtro y sin atajo (+25 %).
+  - **Acoplamiento.** El filtro conoce el formato interno de `SceneMultiplayer` (RAW = 3,
+    SYS = 7, AUTH = 0 y las confirmaciones de 2 B). Si una versión del motor lo cambiara, el
+    apretón de manos dejaría de completarse y `tests/test_net_sim.gd` lo detectaría enseguida. El
+    cliente no lleva filtro.
 
 **Timeouts:**
 
 - Tras conectar: `get_peer(id).set_timeout(32, 3000, 8000)`, de modo que una desconexión se
   detecta en 3–8 s.
-- Mientras el cliente conecta: `set_timeout(32, connect_timeout_ms, 2 × connect_timeout_ms)`,
-  para que `--local` detecte en ~1 s que no hay servidor.
+- Mientras el cliente conecta: `set_timeout(32, connect_timeout_ms, connect_timeout_ms)`, para que
+  `--local` detecte en ~1,5 s que no hay servidor. El mínimo y el máximo son iguales a propósito:
+  ENet solo comprueba el plazo cuando vence una retransmisión del CONNECT (a los 0,5, 1,5, 3,5 y
+  7,5 s), y con el máximo al doble `connection_failed` llegaba a los 3,5 s con 1000 ms y a los
+  7,5 s con 3000 ms (hallazgo S7). Ahora llega a los 1,5 s y a los 3,5 s.
 
 **Compresión:** sin compresión de ENet al principio, por CPU. Más adelante se prueba
 `COMPRESS_RANGE_CODER`, midiendo.
@@ -235,7 +316,7 @@ cubre ±5,24 km, así que caben los 5 × 5 km de terreno de Eldrun.
 | sistema | interno de `SceneMultiplayer`, fiable | ambos | Autenticación: HELLO, WELCOME, REJECT |
 | 1 `CH_INPUT` | `TRANSFER_MODE_UNRELIABLE` (sin secuencia) | C→S | INPUT_BATCH. Sin secuencia a propósito: un paquete atrasado puede traer la única copia de una entrada |
 | 2 `CH_SNAPSHOT` | `TRANSFER_MODE_UNRELIABLE_ORDERED` (secuenciado) | S→C | SNAPSHOT. ENet descarta los atrasados |
-| 3 `CH_RELIABLE` | `TRANSFER_MODE_RELIABLE` | ambos | CLIENT_READY, CLIENT_LEAVE, DEBUG_COMMAND, ENTITY_SPAWN, ENTITY_DESPAWN y NOTICE; más adelante, OBJECT_STATE y ENTITY_EVENT |
+| 3 `CH_RELIABLE` | `TRANSFER_MODE_RELIABLE` | ambos | CLIENT_READY, CLIENT_LEAVE, DEBUG_COMMAND, RESPAWN_REQUEST, ENTITY_SPAWN, ENTITY_DESPAWN, ENTITY_EVENT y NOTICE; desde la fase 4, también UNSTUCK_REQUEST, OBJECT_STATE y SCOREBOARD |
 
 Reglas:
 
@@ -282,9 +363,12 @@ Cliente                                         Servidor (tick S)
    - magic y versión;
    - `sim_hash`;
    - que el reino es válido y está admitido en la zona;
-   - que el nombre tiene de 3 a 24 caracteres;
+   - que el nombre cabe en el HELLO (24 caracteres y 48 B), cumple `NameRules` (3 a 16 letras,
+     sin espacios ni dígitos, mayúscula inicial, sin reservados) y no lo lleva ya un jugador conectado
+     en la zona (SOC-01; REJECT `NAME`);
    - que hay sitio;
-   - que no hay más de 4 conexiones desde la misma IP (salvo loopback);
+   - que no hay más de 4 conexiones desde la misma IP (salvo loopback). Este tope se aplica ya al
+     conectar (`peer_authenticating`), no solo al llegar el HELLO (ver la nota de debajo);
    - el `AuthProvider`. En la fase 2 es `DevAuthProvider`, que acepta el reino y el nombre que
      declara el cliente.
 
@@ -323,6 +407,23 @@ Cliente                                         Servidor (tick S)
 
    Y arranca la predicción ([6.3](#63-arranque)).
 
+**Conexiones ociosas (hallazgo S2).** Las plazas de ENet (`max_players + 4`) son limitadas, y una
+conexión que nunca manda el HELLO ocupaba una hasta los 5 s de `auth_timeout` (y se reabre en un
+RTT): una sola IP con unos 68 sockets dejaba la zona sin acceso, y los clientes legítimos no
+recibían ni un REJECT porque ENet descarta su conexión en silencio. Por eso:
+
+- **Tope por IP al conectar.** `ZoneServer._on_peer_authenticating` cuenta las conexiones de la
+  misma IP (las que se autentican también cuentan) y, si ya hay 4 y no es loopback, contesta
+  `REJECT TOO_MANY_CONNECTIONS` y corta, sin esperar al HELLO. Las IPv6 se cuentan por prefijo
+  /64 (`ServerAuth.address_group`): quien tiene IPv6 tiene un /64 entero, y cada dirección suya
+  sería otra IP.
+- **Plazo propio para el HELLO.** Un peer que sigue en `AUTHENTICATING` pasados 90 ticks (1,5 s;
+  `ZoneServer.HELLO_TIMEOUT_TICKS`, comprobado cada 10 ticks) se corta con
+  `disconnect_after_flush` y se cuenta en `rejects` como «sin HELLO a tiempo». Los 5 s de
+  `SceneMultiplayer` quedan como red de seguridad.
+- **Límite que queda.** Con varias IP distintas (una botnet) sigue siendo posible llenar las
+  plazas; eso se resuelve fuera del proceso (cortafuegos, DTLS en las fases 5 y 6).
+
 **`sim_hash`.** Rechaza a los clientes cuya simulación difiere de la del servidor, que
 predecirían mal todo el tiempo.
 
@@ -343,7 +444,12 @@ predecirían mal todo el tiempo.
 ### 4.1 Tick del servidor y regla de aplicación
 
 - **`server_tick`** empieza en 0 y sube 1 al empezar cada tick simulado. El primero es el 1; el
-  0 significa «ninguno». El u32 no da la vuelta en la práctica (828 días).
+  0 significa «ninguno». El u32 no da la vuelta en la práctica (828 días). Para que ese rango sea
+  real, los ticks se guardan siempre en enteros de 64 bits (`int`, `PackedInt64Array`): un
+  `PackedInt32Array` o un `Vector2i` con signo se desbordarían a los 414 días (2^31 ticks) y
+  dejarían inservibles el historial de rebobinado, la ventana de avisos y el reloj de
+  interpolación (hallazgo N5; `StateHistory.Track.ticks`, `ServerPeer._strike_ticks` e
+  `InterpolationClock` usan ya 64 bits).
 - **Regla:** la entrada con `tick = T` se aplica exactamente en el tick T del servidor. El
   snapshot del tick S lleva el estado tras simular S (`last_input_tick == S`).
 - **Antelación de cada entrada.** El servidor la mide al recibir la *primera copia aceptada*:
@@ -442,6 +548,17 @@ que no se pelean.
   cada tick, así que la resolución es de un tick.
 - `max_offset` es el máximo de los últimos 120 ticks locales (2 s): la muestra que menos se ha
   retrasado, un estimador robusto de la latencia mínima.
+- **Escalón hacia abajo.** El máximo de 120 ticks solo es un buen estimador si el reloj del
+  servidor no retrocede respecto al del cliente. Si el servidor pierde ticks (un parón de más de
+  8 ticks, o un servidor sobrecargado que pierde ticks sin parar) o la latencia sube de forma
+  sostenida, los offsets bajan de golpe y se quedan abajo. Con el máximo de 2 s, el objetivo
+  `local + max_offset − delay` iría `k` ticks por delante de los datos que existen: se
+  extrapolaría 6 ticks, el remoto se quedaría quieto y al caducar la muestra vieja saltaría hacia
+  atrás (hallazgo N3; medido: 98 ticks congelados tras un parón de 20, y 316 de 1201 con pérdida
+  continua). Por eso, si el máximo de la ventana completa supera en más de `STEP_DOWN_TICKS` (4)
+  ticks al de los últimos `RECENT_TICKS` (30) ticks locales, se descartan las muestras anteriores
+  a esos 30 ticks (`_drop_samples_before_a_step_down`). Un bache más corto que 30 ticks no es un
+  escalón y sigue contando como jitter. Los offsets que suben se adoptan al instante, como antes.
 - `jitter` es la media exponencial (α = 0,1) de `max_offset − offset`.
 - `delay = clamp(2 · SNAPSHOT_INTERVAL_TICKS + 2 · jitter, 4, 12)` ticks, es decir, de 67 a
   200 ms.
@@ -453,9 +570,14 @@ func advance(local_tick: int) -> float:          # una vez por tick de física
 		_render_tick = target
 		_started = true
 	else:
-		_render_tick += 1.0 + clampf((target - _render_tick) * 0.1, -0.05, 0.05)
+		var advanced: float = _render_tick + 1.0         # primero avanza, después corrige
+		_render_tick = advanced + clampf((target - advanced) * 0.1, -0.05, 0.05)
 	return _render_tick
 ```
+
+Corregir contra el valor ya avanzado evita un sesgo de un tick: la primera versión comparaba el
+objetivo con el tick de dibujo anterior y convergía 1 tick por delante, con un retardo efectivo de
+3 ticks en vez de 4 (corregido durante la implementación).
 
 Los remotos se dibujan en `_process`, en el instante
 `render_tick + Engine.get_physics_interpolation_fraction()`. Así cada fotograma usa su tiempo
@@ -478,19 +600,25 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 | Tipo | Mensaje | Sentido | Canal | Tamaño |
 |---|---|---|---|---|
 | — | HELLO | C→S | autenticación | 23 B + nombre + billete |
-| — | WELCOME | S→C | autenticación | 18 B + id de zona |
+| — | WELCOME | S→C | autenticación | 18 B + id de zona + 3 B (v3) |
 | — | REJECT | S→C | autenticación | 6 B + texto |
 | `0x01` | INPUT_BATCH | C→S | 1 | 11 + 10·n B (21–91) |
 | `0x02` | CLIENT_READY | C→S | 3 | 2 B |
 | `0x03` | CLIENT_LEAVE | C→S | 3 | 2 B |
 | `0x04` | DEBUG_COMMAND | C→S | 3 | 2 B + datos |
-| `0x10` | SNAPSHOT | S→C | 2 | ≤ 1200 B |
+| `0x05` | RESPAWN_REQUEST | C→S | 3 | 2 B |
+| `0x06` | UNSTUCK_REQUEST (v3) | C→S | 3 | 1 B |
+| `0x10` | SNAPSHOT | S→C | 2 | ≤ 1200 B (cabecera de 14 B, o de 92 B con estado y bloque extra propios, + 2 B por sección + 21 B por registro) |
 | `0x20` | ENTITY_SPAWN | S→C | 3 | 10 B + datos |
 | `0x21` | ENTITY_DESPAWN | S→C | 3 | 8 B |
-| `0x22` | OBJECT_STATE (reservado, fase 4) | S→C | 3 | — |
-| `0x23` | ENTITY_EVENT (reservado, fase 3) | S→C | 3 | — |
+| `0x22` | OBJECT_STATE (v3) | S→C | 3 | 8 B + campos (de 1 a 32; 3, 4 o 6 B cada uno: ≤ 200 B) |
+| `0x23` | ENTITY_EVENT | S→C | 3 | 9 B + datos (HIT 17 B, DEATH 13 B, RESPAWN 10 B, KILL 14 + 2·n B, WAR 11 B, TELEGRAPH 26 B) |
 | `0x30` | NOTICE | S→C | 3 | 3 B + texto |
 | `0x31` | HANDOFF (reservado, fase 6) | S→C | 3 | — |
+| `0x32` | SCOREBOARD (v3) | S→C | 3 | 4 B + 18 B por fila (hasta 66 filas por mensaje: ≤ 1192 B) |
+
+«v3» marca lo que añade el protocolo 3 (fase 4, [fuerte.md](fuerte.md#2-replicación-con-estado-object_state-gue-09)).
+El tamaño de un ENTITY_SPAWN depende de `kind` (ver 5.5).
 
 ### 5.3 Autenticación
 
@@ -499,7 +627,7 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
 | 0 | u32 | magic | `0x4D444C45` |
-| 4 | u16 | protocol_version | `NetProtocol.PROTOCOL_VERSION` (= 1) |
+| 4 | u16 | protocol_version | `NetProtocol.PROTOCOL_VERSION` (= 4: 2 combate, 3 su revisión, 4 el fuerte) |
 | 6 | u32 | sim_hash | ver [3](#3-conexión) |
 | 10 | u8 | realm | 0 ninguno (se rechaza), 1 Vardheim, 2 Solmarch, 3 Askarra |
 | 11 | u8 | flags | bit0 = bot; resto, 0 |
@@ -509,7 +637,7 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 | 21+n | u16 | ticket_len | 0 en la fase 2; ≤ 256 |
 | 23+n | t B | ticket | sesión o billete de traspaso (fases 5–6) |
 
-**WELCOME** (S→C)
+**WELCOME** (S→C): 18 B + id de zona + 3 B con el recuento por reino (v3).
 
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
@@ -525,13 +653,16 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 | 16 | u8 | channel | canal de la zona; 0 en la fase 2 |
 | 17 | u8 | zone_len | ≤ 32 |
 | 18 | z B | zone_id | id ASCII de `zones.gd` |
+| 18+z | u8 × 3 | realm_counts | jugadores de Vardheim, Solmarch y Askarra en la zona (saturan a 255), para que la selección de reino ofrezca el más corto ([fuerte.md 7](fuerte.md#7-bots-que-asedian-gue-15-gue-16-gue-42)). Personas (no jugadores falsos) de cada reino en el momento del HELLO, sin contar a quien entra; el servidor los rellena desde GUE-42 (F6a) |
+
+El tamaño es exactamente `21 + z`: un WELCOME de la versión 2 (sin el recuento) ya no se decodifica.
 
 **REJECT** (S→C)
 
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
 | 0 | u32 | magic | |
-| 4 | u8 | result | 1 VERSION, 2 SIM_HASH, 3 REALM, 4 FULL, 5 TICKET, 6 MALFORMED, 7 TOO_MANY_CONNECTIONS, 8 NAME |
+| 4 | u8 | result | 1 VERSION, 2 SIM_HASH, 3 REALM, 4 FULL, 5 TICKET, 6 MALFORMED, 7 TOO_MANY_CONNECTIONS, 8 NAME, 9 IMBALANCE (v3: el reino elegido tiene demasiados jugadores, `--max-realm-diff`; se comprueba después del proveedor de identidad) |
 | 5 | u8 | text_len | |
 | 6 | n B | text | UTF-8, en español (`NetProtocol.result_text`) |
 
@@ -544,7 +675,7 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 |---|---|---|---|
 | 0 | u8 | type | `0x01` |
 | 1 | u32 | ack_snapshot_tick | `server_tick` del snapshot más nuevo recibido (0 = ninguno). Sirve para medir el RTT en el servidor y, en el futuro, como base del delta |
-| 5 | u8 | interp_delay_q | retardo de interpolación actual × 8, en ticks. Acota el rebobinado de la fase 3 |
+| 5 | u8 | interp_delay_q | retardo de interpolación actual × 8, en ticks (como mucho 96 = 12 ticks: lo que pase es un aviso). Acota el rebobinado de la fase 3 |
 | 6 | u32 | newest_tick | tick de la entrada más nueva |
 | 10 | u8 | count | 1..8 |
 | 11 | count × 10 B | records | de la más antigua a la más nueva; el registro *i* es del tick `newest_tick − count + 1 + i` |
@@ -579,8 +710,31 @@ inmediata sin esperar al timeout.
 **DEBUG_COMMAND** (`0x04`, canal 3): `u8 type`, `u8 command`, datos.
 
 - `command` 1 = TELEPORT, con `f32 × 3` de posición (14 B en total).
+- **Ids fijos** (`NetProtocol.DEBUG_*`), que no se reutilizan ni se reordenan: 1 `teleport`,
+  2 `heal`, 3 `kill`, 4 `stamina_inf`, 5 `set_weapon`, 6 `spawn_dummy` y, desde la versión 4
+  ([fuerte.md 1.6](fuerte.md#16-controlador-gue-08-gue-12)), 7 `unstuck`, 8 `fort_reset`, 9
+  `fort_owner`, 10 `fort_kill_captain`, 11 `fort_capture_speed` y 12 `npc_debug`. Los datos de 2 a 6
+  los define el servidor ([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)); el
+  `decode` solo exige 64 B de datos como mucho. Los de 7 a 12 los valida el `decode`: 7, 8 y 10, sin
+  datos; 9, `u8` con el reino (0 a 3); 11, `u8` con el factor (1 a 255); 12, `u8` (0 apaga, 1
+  activa). Un id fijo cuyo manejador aún no existe en el servidor se acepta sin aviso y sin efecto
+  (los de 7 a 12 hasta que lleguen F3 y F4). `NetProtocol.DEBUG_COMMAND_IDS` es la tabla
+  nombre → id con la que el registro de comandos del servidor comprueba que todo comando de red
+  tiene su id. `announce`, `kick` y `shutdown` son solo de consola.
 - Solo se acepta si el servidor arrancó con `--debug-commands`; si no, cuenta un aviso
   (*strike*, ver [12](#12-seguridad-de-la-fase-2)).
+
+**RESPAWN_REQUEST** (`0x05`, canal 3): `u8 type`, `u8 point_index`. El jugador muerto pide
+reaparecer en el punto `point_index` de la lista de puntos de su reino (desde la fase 4, la lista
+estática de todos los puntos de la zona, `NetZones.get_all_respawn_points`; el servidor comprueba
+que valga para su reino, [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones))
+([combate.md 5](combate.md#5-vida-eventos-muerte-y-reaparición-cmb-10-cmb-15-cmb-41-gue-03-gue-05)).
+Fuera de plazo o con un índice inválido, el servidor cuenta un aviso.
+
+**UNSTUCK_REQUEST** (`0x06`, canal 3, v3): 1 B, solo `u8 type`. El jugador pide `/atascado`
+([fuerte.md 5](fuerte.md#5-avisos-reaparición-salida-y-atascado)). Vale sin `--debug-commands`. Antes
+de entrar en el mundo, o con algún byte más, cuenta un aviso; la canalización de 10 s, la
+reutilización y el teletransporte son de F3.
 
 ### 5.5 Servidor → cliente
 
@@ -593,16 +747,29 @@ inmediata sin esperar al timeout.
 | 5 | u32 | input_ack_tick | `max(mayor tick contiguo recibido, último consumido)`. Nunca se atasca tras una entrada sustituida |
 | 9 | s8 | input_margin | ver [4.1](#41-tick-del-servidor-y-regla-de-aplicación); −128 = sin datos |
 | 10 | u16 | substitutions | total acumulado de entradas sustituidas de este jugador (mod 65536). Robusto a snapshots perdidos |
-| 12 | u8 | flags | bit0 = incluye el estado propio; bits 1–2 = contador de teletransporte propio (mod 4); resto, 0 |
-| 13 | 35 B | own_state | `PlayerState.encode()` sin cuantizar, si bit0. Base de la reconciliación |
-| 48 (o 13) | u8 | section_count | |
+| 12 | u8 | flags | bit0 = incluye el estado propio; bits 1–2 = contador de teletransporte propio (mod 4); bit3 = incluye el bloque extra propio; resto, 0 |
+| 13 | 69 B | own_state | `PlayerState.encode()` sin cuantizar, si bit0. Base de la reconciliación |
+| 82 | 9 B | own_extra | bloque extra propio, si bit3 (ver abajo) |
+| 91 (o 13) | u8 | section_count | |
 | … | | secciones | cada una: `u8 kind`, `u8 count` y `count` registros del tamaño fijo de ese `kind` |
 
-- **Capacidad.** Con estado propio, la cabecera ocupa 49 B. Con una sección de jugadores caben
-  ⌊(1200 − 49 − 2) / 20⌋ = **57 registros**.
+**Bloque extra propio** (9 B). Lleva lo que el servidor decide y no entra en `PlayerState`
+porque no cambia la simulación ([combate.md 1](combate.md#1-qué-se-predice-y-qué-decide-el-servidor)):
+
+| Offset | Tipo | Campo | Notas |
+|---|---|---|---|
+| +0 | u16 | health | vida actual |
+| +2 | u16 | max_health | vida máxima; `health ≤ max_health` |
+| +4 | u8 | status | bit0 en combate, bit1 protegido (reaparición), bit2 muerto |
+| +5 | u32 | respawn_tick | primer tick en que se puede pedir la reaparición; 0 si está vivo |
+
+- **El bit 3 va si y solo si va el bit 0.** `Snapshot.decode` devuelve `null` si uno falta sin el
+  otro, o si `health > max_health`.
+- **Capacidad.** Con estado propio y bloque extra, la cabecera (con `section_count`) ocupa 92 B.
+  Con una sección de jugadores caben ⌊(1200 − 92 − 2) / 21⌋ = **52 registros**.
 - **El propio jugador** nunca aparece entre los registros: para eso está su estado.
 
-**Registro de entidad** (`kind` 1 PLAYER; 2 NPC reutiliza el formato), 20 B:
+**Registro de entidad** (`kind` 1 PLAYER; 2 NPC reutiliza el formato), 21 B:
 
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
@@ -611,7 +778,8 @@ inmediata sin esperar al timeout.
 | 10 | u16 | yaw | [0, TAU) → 0..65535, igual que `PlayerInput.look_yaw` |
 | 12 | s16 × 3 | velocity | cm/s, saturado (±327 m/s) |
 | 18 | u8 | flags | bit0 = grounded; bits 1–2 = contador de teletransporte (mod 4); resto, 0 |
-| 19 | u8 | action | 0 en la fase 2; desde la fase 3, acción y fase (ataque, bloqueo, esquiva) |
+| 19 | u8 | action | acción y fase del combate (ataque, bloqueo, esquiva...; 0 = ninguna). Los bits los define `ActionMachine.action_byte` |
+| 20 | u8 | health_q | vida cuantizada: 0 si está muerto y, si no, `clampi((vida · 255 + máx − 1) / máx, 1, 255)` (hacia arriba, nunca 0 con vida). Las entidades sin vida anuncian 255 |
 
 - **Teletransporte.** El contador de 2 bits sustituye a un flag de un solo snapshot, que se
   perdería con ese snapshot. Si cambia entre dos muestras, no se interpola entre ellas.
@@ -627,7 +795,31 @@ inmediata sin esperar al timeout.
 | 4 | u32 | spawn_tick | tick del estado incluido |
 | 8 | u8 | realm | |
 | 9 | u8 | flags | bit0 = es tu personaje; bits 1–2 = contador de teletransporte |
-| 10 | … | payload | según `kind`. PLAYER: `PlayerState` (35 B, estado tras `spawn_tick`), `u8 name_len` y el nombre (≤ 48 B) |
+| 10 | … | payload | según `kind` (abajo) |
+
+Payload según `kind`:
+
+- **PLAYER** (1): `PlayerState` (69 B, estado tras `spawn_tick`), `u8 name_len` y el nombre (≤ 48 B).
+- **NPC** (2): lo mismo que un jugador y, tras el nombre, `u16 npc_def_id` (v3): el id del catálogo
+  de PNJ (`NpcCatalog`, ids alfabéticos 1..n; 0 = sin definición) para que el cliente elija modelo,
+  tabardo y barra de jefe. Tamaño: 10 + 69 + 1 + n + 2 B.
+- **STRUCTURE** (4, v3): `u8 def_len` (1–32), el id de la definición en ASCII imprimible (por
+  ejemplo `vado_gris_fort`), `u8 field_count` (1–32) y los campos completos, cada uno `u8 field_id,
+  u8 value_type` y el valor, como en OBJECT_STATE (sin repetir type, net_id ni tick). No lleva
+  estado de jugador ni nombre. El `realm` de la cabecera es 0: manda el campo `owner`. Para una
+  fortaleza son 98 B con el id del Vado Gris (10 + 1 + 14 + 1 + 72).
+- **PROJECTILE** (3): sin formato todavía.
+
+`decode` devuelve `null` si el tamaño no cuadra con las longitudes, un texto no es válido, el `kind`
+no tiene formato o, en una estructura, el id de definición no es ASCII imprimible de 1 a 32 B, el
+contador no está entre 1 y 32, un campo trae un `value_type` desconocido o se repite un `field_id`.
+
+El `PlayerState` del SPAWN **propio** (bit0 = 1) va entero. El de una entidad **ajena** es público: lleva
+posición, velocidad, giro y suelo, y del combate solo la acción en curso (con su ataque y su tick de inicio)
+y el arma; el resto del `CombatState` (resistencia exacta, agotamiento, enfriamiento de la parada, búfer,
+paso del combo, controles, empuje), los botones del último tick y los contadores de salto vuelven a sus
+valores iniciales. Lo contrario volcaba a cualquiera que entrara en la zona el estado privado de cada
+enemigo (combate.md 6).
 
 **ENTITY_DESPAWN** (`0x21`, canal 3)
 
@@ -638,20 +830,94 @@ inmediata sin esperar al timeout.
 | 3 | u32 | despawn_tick | el cliente lo quita cuando su `render_tick` llega aquí |
 | 7 | u8 | reason | 0 fuera de interés, 1 desconexión, 2 muerte, 3 traspaso |
 
+**ENTITY_EVENT** (`0x23`, canal 3). Hechos del combate que no caben en un registro de flujo
+([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)). Fiable y ordenado con los
+demás mensajes del canal 3.
+
+| Offset | Tipo | Campo | Notas |
+|---|---|---|---|
+| 0 | u8 | type | `0x23` |
+| 1 | u16 | net_id | la entidad a la que se ata: la víctima en HIT, DEATH y KILL; la que reaparece en RESPAWN; la fortaleza en WAR; el PNJ en TELEGRAPH |
+| 3 | u32 | tick | tick del servidor en que ocurrió |
+| 7 | u8 | event | 1 HIT, 2 DEATH, 3 KILL, 4 RESPAWN, 5 WAR, 6 TELEGRAPH |
+| 8 | u8 | len | bytes de datos que siguen |
+| 9 | len B | datos | según `event` |
+
+| `event` | Datos | `len` | Total |
+|---|---|---|---|
+| 1 HIT | `u16 attacker`, `u16 amount`, `u8 damage_type`, `u8 flags`, `u16 attack_id` | 8 | 17 B |
+| 2 DEATH | `u16 killer` (0 = el entorno), `u16 attack_id` | 4 | 13 B |
+| 3 KILL | `u16 killer`, `u16 attack_id`, `u8 n`, `n × u16` asistentes | 5 + 2·n | 14 + 2·n B |
+| 4 RESPAWN | `u8 point` | 1 | 10 B |
+| 5 WAR (v3) | `u8 war_event` (1–7, `WarEvents`), `u8 realm` (0–3) | 2 | 11 B |
+| 6 TELEGRAPH (v3) | `u16 attack_id`, `u8 shape` (0 círculo, 1 sector), `u64 position`, `u16 yaw`, `u16 radius_cm`, `u16 impact_in_ticks` | 17 | 26 B |
+
+- **WAR**: el `net_id` es la fortaleza y el `realm` el reino que acompaña al aviso
+  (`FortressState.event_realm`). Va a toda la zona y se aplica en el tick de dibujo
+  ([fuerte.md 5](fuerte.md#5-avisos-reaparición-salida-y-atascado)).
+- **TELEGRAPH**: el `net_id` es el PNJ que prepara el ataque. `position` va empaquetada como en el
+  registro de entidad (20 bits por eje, 1 cm), `yaw` como en el registro (0..65535 sobre [0, TAU)),
+  `radius_cm` es el alcance y `impact_in_ticks` los ticks que faltan para el golpe. Se aplica al
+  llegar: es un aviso.
+
+- **Flags de HIT:** bit0 crítico, bit1 bloqueado, bit2 parado, bit3 rotura de guardia, bit4
+  mortal.
+- **Validación.** `decode` devuelve `null` si el tipo no es `0x23`, el `event` es desconocido,
+  `len` no cuadra con el evento o con el tamaño real del mensaje, `n` no cuadra con `len` o
+  `n > 16` (los asistentes hacen al menos el 10 % del daño, así que nunca son más de 10), un WAR trae
+  un aviso fuera de 1–7 o un reino mayor que 3, o un TELEGRAPH trae una forma que no es 0 ni 1.
+  `encode` recorta un KILL a 16 asistentes.
+- **Destinatarios y temporización:** ver [combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2).
+
 **NOTICE** (`0x30`, canal 3): `u8 type`, `u8 code`, `u8 len` y el texto en UTF-8 (≤ 200 B).
 
 - Códigos: 0 informativo, 1 expulsión, 2 servidor cerrándose.
 - Con el código 1, el servidor desconecta al peer después del `flush()`.
 
+**OBJECT_STATE** (`0x22`, canal 3, v3). El estado replicado de un objeto que no es un jugador ni un
+PNJ, hoy una fortaleza ([fuerte.md 2](fuerte.md#2-replicación-con-estado-object_state-gue-09)).
+
+| Offset | Tipo | Campo | Notas |
+|---|---|---|---|
+| 0 | u8 | type | `0x22` |
+| 1 | u16 | net_id | la estructura |
+| 3 | u32 | tick | tick del servidor tras el que vale el estado |
+| 7 | u8 | field_count | 1–32 |
+| 8 | … | campos | cada uno: `u8 field_id`, `u8 value_type` (1 u8, 2 u16, 3 u32, 4 s32) y el valor (1, 2, 4 o 4 B) |
+
+- Un mensaje trae solo los campos que han cambiado (como mucho uno por fortaleza cada 6 ticks); el
+  estado completo viaja en el ENTITY_SPAWN de la estructura. Los ids de campo de una fortaleza son
+  los de `FortressFields`.
+- **Validación.** `decode` devuelve `null` si el tamaño no cuadra, un `value_type` es desconocido,
+  `field_count` no está entre 1 y 32 o se repite un `field_id`. Un `field_id` desconocido con un tipo
+  válido se conserva y quien interpreta el objeto lo salta (compatibilidad hacia delante). Un campo
+  conocido con otro tipo de valor que el suyo no lo rechaza el `decode` (no sabe de qué objeto es):
+  `ObjectState.apply_to_fortress` lo salta e `is_valid_for_fortress` lo señala.
+
+**SCOREBOARD** (`0x32`, canal 3, v3). El marcador de la zona, cada 2 s a todos los jugadores
+([fuerte.md 6](fuerte.md#6-interfaz-ui-18-ui-21-ui-41-ui-42)).
+
+| Offset | Tipo | Campo | Notas |
+|---|---|---|---|
+| 0 | u8 | type | `0x32` |
+| 1 | u8 | page_index | desde 0 |
+| 2 | u8 | page_count | total de páginas, 1–255 |
+| 3 | u8 | row_count | 0–66 |
+| 4 | row_count × 18 B | filas | `u16 net_id`, `u16 bajas`, `u16 muertes`, `u16 asistencias`, `u32 daño a la puerta`, `u16 segundos en el círculo`, `u32 méritos` |
+
+- Una página no pasa de **66 filas** (4 + 66 · 18 = 1192 B ≤ `MAX_PACKET_BYTES`). Con más jugadores el
+  marcador se parte en varios mensajes (`Scoreboard.split`), que el cliente junta por `page_index`
+  de `page_count`; sin jugadores se manda una sola página vacía.
+- Los contadores saturan a su máximo al codificar. `decode` devuelve `null` si el tamaño no es
+  exactamente `4 + 18 · row_count`, `row_count > 66`, `page_count` es 0 o `page_index ≥ page_count`.
+
 ### 5.6 Reservados
 
-- **OBJECT_STATE** (`0x22`, fase 4): `u8 type`, `u16 object_id`, `u32 tick`, `u8 field_count`
-  y, por campo, `u8 field_id`, `u8 value_type` y el valor.
-- **ENTITY_EVENT** (`0x23`, fase 3): `u8 type`, `u16 net_id`, `u32 tick`, `u8 event`, `u8 len`
-  y los datos.
 - **HANDOFF** (`0x31`, fase 6): zona, canal, host, puerto y billete.
 
-Ocupar uno de estos tipos sube `PROTOCOL_VERSION`.
+Ocupar uno de estos tipos sube `PROTOCOL_VERSION`. ENTITY_EVENT (`0x23`) dejó de estar
+reservado en la fase 3 y OBJECT_STATE (`0x22`) en la fase 4 (protocolo 3): sus formatos están en
+[5.5](#55-servidor--cliente).
 
 ### 5.7 Validación
 
@@ -661,7 +927,9 @@ Ocupar uno de estos tipos sube `PROTOCOL_VERSION`.
 - **Lotes de entradas.** `count` debe estar entre 1 y 8, el tamaño debe ser exactamente
   `11 + 10 · count` y `newest_tick ≥ count`.
 - **Avisos.** Los paquetes malformados, los tipos inesperados para el estado de la sesión y los
-  excesos de ritmo cuentan avisos ([12](#12-seguridad-de-la-fase-2)).
+  excesos de ritmo cuentan avisos ([12](#12-seguridad-de-la-fase-2)). También los paquetes que no
+  son del protocolo de `SceneMultiplayer` (ver [2](#2-transporte-y-canales)): ya no llegan a
+  registrar errores del motor.
 
 ---
 
@@ -936,8 +1204,9 @@ func _physics_process(delta: float) -> void:
 - **Métricas.** Cada 10 s se registran la duración del tick (p50, p99 y máximo en µs, por
   sección), los bytes por segundo (`host.pop_statistic`), el número de jugadores y el
   porcentaje de entradas sustituidas.
-- **Cierre.** `--quit-after-ticks` y `--idle-quit` envían un NOTICE con el código 2, hacen
-  `flush()` y cierran.
+- **Cierre.** `--quit-after-ticks`, `--idle-quit` y `--stop-file` envían un NOTICE con el código 2,
+  hacen `flush()` y cierran. `SIGTERM` y `SIGINT` no llegan a GDScript y no cierran de forma
+  ordenada (ver [1.3](#13-ajustes-del-servidor-headless)).
 
 ### 8.2 Cola de entradas (`InputQueue`)
 
@@ -950,6 +1219,7 @@ func push(input: PlayerInput, view_offset_q: int, next_tick: int) -> PushResult:
 	var t: int = input.tick
 	if t > next_tick + MAX_LEAD_TICKS:                       # 30
 		too_early_count += 1
+		_note_lead(t - next_tick)                              # se descarta, pero la antelación cuenta
 		return PushResult.TOO_EARLY
 	var slot: Slot = _slot(t)
 	if t <= _last_consumed:
@@ -1004,10 +1274,20 @@ func get_ack_tick() -> int:                                  # max(contiguo reci
     venza el timeout de ENet.
   - Qué hace una acción mantenida durante una desconexión larga (un ataque cargado, por
     ejemplo) lo decide la fase 3, sin romper esta regla.
+  - **Entradas sustituidas en la fase 3.** Lo resuelve
+    [combate.md 3.2](combate.md#32-entradas-sustituidas-cierra-la-nota-de-redmd-82): la sustituta
+    lleva el bit `PlayerInput.SUBSTITUTED` (bit 15, fuera de `VALID_BUTTONS`) y, con él, la
+    máquina de acciones no cuenta la pulsación, no lanza el golpe fuerte al llegar a la carga
+    máxima ni abre ventanas de parada. Ninguna pérdida inventa un golpe ni una parada.
 - **Una entrada por tick.** Enviar más no hace correr más: no hay speedhack posible. El servidor
   nunca espera a una entrada.
 - **`pop_min_lead()`** devuelve la antelación mínima desde la llamada anterior (`NO_MARGIN` si
   no hay datos) y la reinicia. La usa el snapshot de cada cliente.
+- **Las entradas demasiado tempranas también dan margen.** Se descartan (`TOO_EARLY`), pero su
+  antelación (saturada a 127) se anota igual. Si el servidor pierde ticks (un parón del proceso:
+  Godot solo recupera 8 por fotograma), el cliente pasa a ir más de 30 ticks por delante; sin esta
+  medida `TickSync` no recibiría ninguna muestra, nunca se retrasaría y el servidor sustituiría
+  todas las entradas para siempre (hallazgo N1 de la revisión de la fase 2).
 - **`get_view_offset_q(tick)`** devuelve el `view_offset_q` de la entrada real de ese tick, o −1
   si fue sustituida. Lo usa la fase 3.
 
@@ -1022,7 +1302,11 @@ func get_ack_tick() -> int:                                  # max(contiguo reci
     (10 s) antes de reutilizarse;
   - `kind`, `realm`, `spawn_tick`, `owner_peer`, `display_name`, `flags`, el nodo y
     `teleport_counter`;
-  - flag `ALWAYS_RELEVANT`, para los objetos que ve toda la zona.
+  - flag `ALWAYS_RELEVANT`, para los objetos que ve toda la zona;
+  - su vida tal y como la ven los snapshots: `health_q` (el último byte del registro) y el bloque
+    extra propio (`health`, `max_health`, `status`, `respawn_tick`). Quien lleva la vida (el
+    `Combatant` de la fase 3) los actualiza cada tick con `set_health_view()`; sin él, la
+    entidad está sana (`health_q` 255, 1000 de 1000).
 - **Registros.** `NetEntity.encode_record()` escribe su registro directamente en un búfer, sin
   crear objetos.
 - **Orden de simulación.** `NetEntityRegistry.get_sorted()` devuelve las entidades por `net_id`
@@ -1057,7 +1341,8 @@ O(entidades); por cliente solo hay copias de memoria.
    - `input_ack_tick = queue.get_ack_tick()`;
    - `input_margin = queue.pop_min_lead()`;
    - `substitutions = queue.substitutions_total & 0xFFFF`;
-   - el estado propio (`character.get_state().encode()`) y su contador de teletransporte.
+   - el estado propio (`character.get_state().encode()`), su contador de teletransporte y el
+     bloque extra propio (vida, vida máxima, estado y tick de reaparición de su `NetEntity`).
 2. Reúne las candidatas: las entidades de `peer.relevant` salvo la propia. A cada una le suma
    `peer.priority[id] += interest_policy.priority_weight(observer, entity)` (en la fase 2, 1,0).
 3. Si caben todas en 1200 B, las escribe todas (el caso normal de la fase 2). Si no, elige las
@@ -1065,8 +1350,9 @@ O(entidades); por cliente solo hay copias de memoria.
    la fase 2, y cubos o C++ en Eldrun si la medida lo pide.
 4. Pone a 0 la prioridad de las escritas y agrupa los registros por `kind` en secciones.
 
-**Garantía:** con 63 jugadores visibles y 57 plazas, cada entidad sale al menos uno de cada dos
-snapshots. Lo comprueba `test_snapshot_builder`.
+**Garantía:** con N candidatas y C plazas, ninguna pasa más de ⌈N/C⌉ snapshots sin enviarse. Con
+63 jugadores visibles y 52 plazas (la capacidad de [5.5](#55-servidor--cliente) con el estado de
+69 B), cada entidad sale al menos uno de cada dos snapshots. Lo comprueba `test_snapshot_builder`.
 
 ### 9.4 Lado del cliente
 
@@ -1082,7 +1368,7 @@ snapshots. Lo comprueba `test_snapshot_builder`.
 
 - **`StateHistory`** (servidor) guarda, por entidad, una pista de 64 ticks (~1 s):
   - posición en `PackedVector3Array`, yaw en `PackedFloat32Array`, flags en `PackedByteArray` y
-    etiquetas de tick en `PackedInt32Array`;
+    etiquetas de tick en `PackedInt64Array` (los ticks son u32: ver [4.1](#41-tick-del-servidor-y-regla-de-aplicación));
   - indexada por `tick % 64`;
   - se crea al dar de alta la entidad y se escribe en el sitio cada tick, sin asignar memoria;
   - guarda valores sin cuantizar y se graba tras cada tick, haya interés o no.
@@ -1096,13 +1382,46 @@ snapshots. Lo comprueba `test_snapshot_builder`.
   view_tick = clamp(view_tick, T − allowed, T)
   ```
   - **`rtt_ticks`** lo mide el servidor sin reloj: es el mínimo, en los últimos 120 ticks, de
-    `s − ack_snapshot_tick` al llegar cada INPUT_BATCH. Incluye la latencia simulada por
-    `NetSim`, al revés que `PEER_ROUND_TRIP_TIME`.
-  - **`lead(T)`** es la antelación medida de esa entrada.
-  - **Fingir lag no da más rebobinado.**
+    `s − ack_snapshot_tick` al llegar cada INPUT_BATCH, **acotado por una fuente que el cliente no
+    controla** (hallazgo S4): `ceil(PEER_ROUND_TRIP_TIME · 60 / 1000) + retardo máximo del
+    `NetSim` del propio servidor + 3` (`ZoneServer.RTT_SLACK_TICKS`: los snapshots salen cada 2
+    ticks y hay que procesarlos). Sin la cota, un cliente que atrasara 20 ticks su
+    `ack_snapshot_tick` (sin lag real) se hacía pasar por alguien con 350 ms de RTT y obtenía los
+    24 ticks de rebobinado. El `--net-sim` del servidor sí cuenta (es retardo real para él); el del
+    cliente no: en producción equivaldría a fingir lag, así que para probar con lag simulado se usa
+    el del servidor.
+  - **Con jitter, el mínimo no basta (K5).** La vista de un jugador honrado va atrás
+    `lead + RTT de ese momento + edad del snapshot + interpolación`; el mínimo de la ventana se queda
+    por debajo del viaje de un tick cualquiera (con `rtt=150,jitter=30` el mínimo medido es 7 ticks y
+    el máximo 13-14), así que con el mínimo solo el tope rechazaba un 20 % de los ticks activos de un
+    bot honrado (y le sumaba sospecha). Por eso el tope usa `rtt = max(mínimo, máximo)` de la misma
+    ventana, **con la misma cota independiente** (`ServerPeer.rtt_peak_ticks`): atrasar los acks no da
+    más que `PEER_ROUND_TRIP_TIME + retardo del NetSim + 3`, con mínimo o con máximo.
+  - **`lead(T)`** es la antelación medida de esa entrada (se cancela con la del cliente: la entrada que
+    llega tarde por la red cuenta con menos antelación y con más viaje), **acotada** por la habitual del
+    cliente más 3 (`InputQueue.get_typical_lead`: la mediana de las antelaciones de primera copia de las
+    entradas reales de los últimos 60 ticks) y por 8. Sin cota, la antelación de cada entrada la escoge
+    el cliente: mandar solo las entradas de su golpe 14 ticks antes subía el tope de 12 a 24 con RTT de
+    LAN (revisión de la fase 3, R1).
+  - **El rebobinado se fija una vez por golpe** (primer tick activo) y avanza con el tick. Para la
+    defensa retroactiva (invulnerabilidad, parada, bloqueo) el servidor mira atrás al menos
+    `rtt_floor + 4 − 2` ticks (`rtt_floor` = el RTT de ENet, `ServerPeer.rtt_floor_ticks`), aunque el
+    cliente pida menos.
+  - **`interp_delay_q`** no pasa de 96 (12 ticks × 8, el máximo del `InterpolationClock`): el
+    servidor lo limita y suma un aviso a quien envíe más (`NetProtocol.MAX_INTERP_DELAY_Q`). La
+    fórmula ya lo acota con `clamp(…, 4, 12)`.
+  - **Fingir lag no da más rebobinado** más allá de lo que da lag de verdad: con acks atrasados (cota
+    del RTT), antelación (acotada por la habitual y por 8) o rebobinado por tick (fijado por golpe). Queda
+    la interpolación declarada (`interp_delay_q`, hasta 96 sin aviso), que el servidor no puede
+    comprobar: un tramposo con todas sus entradas adelantadas y esa declaración llega al tope de 24
+    ticks aunque su RTT sea de LAN. El tope es la cota del daño posible.
   - **Por qué 24 ticks.** El rebobinado real es RTT + margen + retardo de interpolación, unos 20
     ticks con 200 ms de RTT. El tope de 24 ticks (400 ms) cubre hasta ~250 ms de RTT con el
-    retardo normal.
+    retardo normal. **Medido en K5:** con 150 ms de RTT y 30 ms de jitter los bots piden de 20 a
+    22,5 ticks (antelación 5-8, interpolación 6-7, viaje 9-11), de modo que el tope de 24 cubre
+    como mucho unos 170-180 ms de RTT con el margen de `TickSync` y el retardo de interpolación de
+    hoy, no 250 ms: con 200 ms de RTT un jugador honrado ya choca con el tope (decisión de diseño
+    pendiente: subir `MAX_REWIND_TICKS` o reducir el margen de `TickSync`).
   - **Prueba del golpe.** La cápsula se reconstruye a partir de la muestra y se prueba con
     matemática (cápsula contra arco y rayo contra cápsula), o con `intersect_shape` sobre una
     forma suelta. Nunca se mueven cuerpos hacia atrás.
@@ -1143,22 +1462,61 @@ El servidor nunca acepta estado del cliente, y todo valor decodificado está aco
 | Una entrada por tick | No hay speedhack; las sustitutas nunca inventan acciones |
 | Botones | `buttons &= VALID_BUTTONS` (bits 0–8) |
 | Lotes | Ticks consecutivos por formato; `count` de 1 a 8 |
-| Limitador por peer (`RateLimiter`, en ticks) | No fiables: 2 por tick (120/s), ráfaga de 30. Fiables: 10/s, ráfaga de 20. Bytes: 16 KB/s, ráfaga de 4 KB. Lo que sobra se descarta y suma un aviso |
+| Limitador por peer (`RateLimiter`, en ticks) | No fiables: 2 por tick (120/s), ráfaga de 30. Fiables: 10/s, ráfaga de 20. Bytes: 16 KB/s, ráfaga de 4 KB. Lo que sobra se descarta y suma un aviso. Con crédito por parón (ver abajo) |
 | Avisos | Paquete malformado, tipo inesperado para el estado de la sesión o exceso de ritmo. 50 avisos en 600 ticks → NOTICE de expulsión y desconexión |
-| Conexiones por IP | 4 como mucho (`--max-per-ip`), salvo loopback, para que funcionen los bots locales |
-| Reino | Validado contra la zona. En la fase 2 lo declara el cliente (`DevAuthProvider`); desde la fase 5 sale del personaje o del billete, y el campo de HELLO se ignora |
-| Rebobinado | Acotado por lo medido ([10](#10-historial-para-la-compensación-de-latencia)) |
+| Enfriamiento tras una expulsión | 1800 ticks (30 s): su IP (las IPv6, por /64) o, desde loopback, su nombre normalizado reciben `REJECT TOO_MANY_CONNECTIONS` nada más conectar (o al llegar el HELLO, para el nombre) |
+| Conexiones por IP | 4 como mucho (`--max-per-ip`), salvo loopback, para que funcionen los bots locales. Se comprueba al conectar, no solo con el HELLO; las IPv6 cuentan por /64 ([3](#3-conexión)) |
+| HELLO a tiempo | 90 ticks desde que conecta; si no, se corta la conexión ([3](#3-conexión)) |
+| Paquetes ajenos al protocolo | Antes del HELLO solo se admite autenticación; después, solo RAW. Lo demás se descarta sin error del motor y cada paquete suma un aviso ([2](#2-transporte-y-canales)) |
+| Reino | Validado contra la zona. En la fase 2 lo declara el cliente (`DevAuthProvider`); desde la fase 5 sale del personaje (la reclamación de plataforma.md §5) y el campo de HELLO se ignora |
+| Rebobinado | Acotado por lo medido ([10](#10-historial-para-la-compensación-de-latencia)); el RTT que declara el cliente con sus acks se acota con el de ENet más el simulador del servidor + 3 ticks |
 | Comandos de depuración | Solo con `--debug-commands` |
+
+**Crédito por parón.** Los limitadores cuentan en ticks del servidor, y el tick no avanza mientras
+el proceso está parado. Si el servidor pierde `k` ticks (un parón, una pausa de la máquina virtual;
+Godot solo recupera 8 por fotograma), los clientes honrados siguen mandando un lote por tick y todo
+llega junto en el primer poll, con el tick sin avanzar: el cubo no se recargaría, solo pasarían los
+30 más antiguos y el resto (los más nuevos) sumaría avisos hasta expulsar al cliente (hallazgo N2).
+Por eso `ZoneServer` mide con un reloj entero de ticks reales (`Time.get_ticks_usec()`, solo en
+`scripts/server/`) cuántos ticks se han perdido entre dos polls y, antes de `poll()`, llama a
+`ServerPeer.grant_stall_credit(tick, perdidos)`: `RateLimiter.grant()` recarga primero y suma
+después `tasa × perdidos` sin tope, y la siguiente recarga vuelve a limitar el cubo a su ráfaga.
+Como el reloj es entero, lo concedido en total no supera los ticks que han transcurrido de verdad.
+Límites: el crédito cubre lo que cabe en un poll (ENet entrega todo lo pendiente del socket, pero
+un parón de varios segundos desborda de todos modos el búfer del sistema), y una ráfaga de red sin
+parón del servidor (un corte de Wi-Fi que entrega de golpe más de 30 lotes) sigue contando como
+exceso de ritmo.
+
+**Enfriamiento tras una expulsión (hallazgo S6).** Los avisos y los cubos viven en el `ServerPeer`,
+que se crea nuevo y lleno en cada conexión: un cliente expulsado volvía en un RTT con 0 avisos y las
+ráfagas llenas (medido: 10 expulsiones por segundo con el mismo nombre y la misma IP, sin ningún
+REJECT). Ahora `ZoneServer._kick` apunta una entrada `_kick_until` de 30 s:
+
+- **Clave.** `ip:<grupo>` (`ServerAuth.address_group`) si la IP no es loopback; si lo es (no hay tope
+  por IP), `name:<nombre normalizado>` con el nombre que ya había dado. Los kicks que no son culpa
+  del cliente («no queda sitio en la zona») no la apuntan.
+- **Dónde se comprueba.** La IP, en `peer_authenticating` (antes que el tope por IP); el nombre, al
+  llegar el HELLO. En los dos casos se contesta `REJECT TOO_MANY_CONNECTIONS` (un código que ya
+  existía: no sube `PROTOCOL_VERSION`).
+- **Purga.** Al apuntar una expulsión se borran las entradas vencidas, así que el diccionario no
+  crece más que las expulsiones de los últimos 30 s (`get_cooldown_count()`).
+- **Límite.** Es un freno, no un veto: el atacante con varias IP o con otro nombre desde loopback
+  sigue entrando, y quien comparte IP con el expulsado (una red con NAT) espera los mismos 30 s. El
+  veto por cuenta llega con las fases 5 y 6.
 
 **Fases 5 y 6:**
 
-- **`TicketAuthProvider`** con `HandoffTicket` de 47 B:
-  - campos: versión, `ticket_id`, `character_id`, reino, zona y canal de destino, punto de
-    llegada, emisión, caducidad (+10 s) y flags;
-  - firma HMAC-SHA256 truncada a 16 B con el secreto del clúster;
-  - verificación con `Crypto.constant_time_compare`, de un solo uso.
+- **`TicketAuthProvider`** con `HandoffTicket` de **52 B** (formato y vector de prueba en
+  [plataforma.md](plataforma.md) §5.1; sustituye al de 47 B que se preveía aquí):
+  - campos: versión, clave, mundo, `ticket_id`, `character_id`, huella de la zona, canal, reino
+    (informativo), punto de llegada, flags, emisión y caducidad (+10 s);
+  - firma HMAC-SHA256 truncada a 16 B con una clave con identificador (rotable);
+  - verificación con `Crypto.constant_time_compare`; el un solo uso lo garantiza la plataforma al
+    reclamar el billete (`authenticate` devuelve `PENDING` y el peer espera en `VERIFYING`), y el
+    reino sale del personaje, no del billete.
 - **DTLS** (`host.dtls_server_setup(TLSOptions.server(…))`), obligatorio antes de las pruebas
-  públicas.
+  públicas: en staging y producción la plataforma no registra una zona sin certificado
+  (plataforma.md §10.2).
 
 El hueco ya existe en HELLO y la interfaz `AuthProvider` ya está.
 
@@ -1192,13 +1550,25 @@ El hueco ya existe en HELLO y la interfaz `AuthProvider` ya está.
   - retardo de interpolación, jitter, entidades visibles y bytes medios por snapshot.
 - **F4:** fantasma translúcido en la posición del último estado propio del servidor y marcas en
   las muestras sin interpolar de los remotos.
+- **Junto al HUD.** En el cliente en red, F3 alterna a la vez este panel (a la derecha) y el panel de
+  depuración del HUD del sandbox (a la izquierda): `OnlineMain` los empieza ocultos y el overlay no
+  marca el evento como gestionado. El sandbox sin argumentos no cambia.
 
 **Servidor:**
 
 - `ServerMetrics` mide cada sección del tick con `Time.get_ticks_usec()` (en `scripts/server`
   está permitido).
 - `Performance.add_custom_monitor("eldmark/…")` para la depuración remota desde el editor.
-- `--report=<json>` al cerrar.
+- `--report=<json>` al cerrar y, mientras corre, cada 600 ticks (10 s): si matan al servidor
+  (`SIGTERM`, `SIGINT`) queda el de la última marca, con `"closed": false`. Construirlo cuesta
+  unos milisegundos con muchas fichas; la escritura va dentro del tick que cumple la marca.
+  - **Memoria acotada** (hallazgo S3). Cada alta dejaba para siempre su ficha en el informe con su
+    `InputQueue`, su `ServerPeer` y su `NetEntity` (unos 70 objetos y 80 KB por ciclo: ~3 GB/h con
+    un cliente que entra y sale en bucle). Ahora la ficha suelta esas referencias al irse el jugador,
+    `player_list` conserva solo las últimas 1000 fichas (`max_logged_players`) y `kicks`, las
+    últimas 200 expulsiones (`max_logged_kicks`). Lo anterior se resume en `players.archived`,
+    `strikes.kicks_total` y en los totales de `inputs`/`players.fake`. Nunca se saca del anillo la
+    ficha de quien sigue dentro.
 
 **`--state-log=<csv>`:**
 
@@ -1219,16 +1589,152 @@ Sobrecoste por paquete UDP: unos 40 B (IPv4 20, UDP 8, ENet ~12).
 |---|---|---|
 | Subida, normal (R = 4) | (11 + 4·10 + 40) B × 60/s | ~5,5 KB/s |
 | Subida, con pérdida (R = 8) | (11 + 8·10 + 40) B × 60/s | ~7,9 KB/s |
-| Bajada, 10 visibles | (51 + 10·20 + 40) B × 30/s | ~8,7 KB/s |
-| Bajada, 30 visibles | (51 + 30·20 + 40) B × 30/s | ~20,7 KB/s |
-| Bajada, ≥ 57 visibles (tope) | (1191 + 40) B × 30/s | ~37 KB/s (~300 kbit/s) |
+| Bajada, 10 visibles | (94 + 10·21 + 40) B × 30/s | ~10,3 KB/s |
+| Bajada, 30 visibles | (94 + 30·21 + 40) B × 30/s | ~22,9 KB/s |
+| Bajada, ≥ 52 visibles (tope) | (1186 + 40) B × 30/s | ~36,8 KB/s (~295 kbit/s) |
 | Salida del servidor, 64 jugadores y todos visibles | 64 × 37 KB/s | ~2,4 MB/s (~19 Mbit/s) |
 | Entrada del servidor, 64 jugadores | 64 × 5,5 KB/s | ~350 KB/s |
 | Eldrun, 300 jugadores sin más palancas | 300 × 37 KB/s | ~11 MB/s (~89 Mbit/s): demasiado |
 
+La bajada de esta tabla es la de la fase 3: 94 B son los 92 de la cabecera con estado y bloque
+extra propios más los 2 de la cabecera de la sección. A ella se suman los ENTITY_EVENT, unos 27 B
+por destinatario y golpe ([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)). Las
+medidas de abajo son de la fase 2 (registro de 20 B y estado de 35 B).
+
 **CPU (fase 2):** el p99 del tick debe quedar por debajo de 8 ms (la mitad de los 16,7 ms) con
 64 bots agrupados. Se mide por sección: red, simulación (µs por personaje), historial,
 snapshots. Ese dato es el primero del límite de jugadores por batalla que pide `vision.md`.
+
+**Medidas de la fase 2** (`tools/load_test.gd --matrix`, TEC-11, revisadas tras la revisión adversarial).
+Vado Gris con su Terrain3D, el servidor y el enjambre `--bots` en la misma máquina de 4 núcleos (sin más
+carga), GDScript sin optimizar, **120 s de medida por escenario**. Los falsos son `--fake-players`; los
+bots, clientes reales por ENet en loopback que reciben snapshots (el de «rtt=100» con el simulador de red
+`--net-sim=rtt=100`; los demás, sin retardo). Tick en ms, p50 / p99 / máximo de los últimos 34 s de
+régimen. Sustituidas: entradas de los bots que el servidor tuvo que sustituir, en toda la sesión y dentro
+de la ventana de medida (sin el arranque, ver más abajo):
+
+| Escenario | Jugadores | Tick | `sim` p50 | `snapshot` p50 | Bajada por cliente | Sustituidas (sesión / ventana) |
+|---|---|---|---|---|---|---|
+| agrupado, 64 falsos y 2 bots | 66 | 4,9 / 8,2 / 20,0 | 4,0 | 0,5 | 35,2 KB/s | 0,07 % / 0,00 % |
+| agrupado, 64 falsos y 10 bots | 74 | 6,2 / 9,7 / 17,2 | 4,3 | 1,2 | 35,3 KB/s | 0,03 % / 0,00 % |
+| agrupado, 64 falsos y 50 bots | 114 | 15,3 / 26,5 / 36,5 | 6,4 | 7,0 | 34,9 KB/s | 0,05 % / 0,00 % |
+| **agrupado, 64 falsos y 10 bots, rtt=100** | 74 | 6,5 / 10,6 / 21,6 | 4,5 | 1,3 | 35,3 KB/s | **0,36 % / 0,00 %** |
+| disperso, 64 falsos y 10 bots | 74 | 6,8 / 11,4 / 20,5 | 4,9 | 1,3 | 35,3 KB/s | 0,03 % / 0,00 % |
+| altas y bajas (1 por segundo), 64 falsos y 10 bots | 74 | 6,7 / 10,7 / 15,4 | 4,6 | 1,5 | 35,3 KB/s | 0,08 % / 0,00 % |
+| agrupado, 128 falsos y 10 bots | 138 | 11,3 / 19,7 / 24,2 | 8,3 | 2,1 | 35,2 KB/s | 0,03 % / 0,00 % |
+| agrupado, 256 falsos y 10 bots | 266 | 15,9 / 24,8 / 79,7 | 15,1 | 0,0 | 25,4 KB/s | 97,3 % / 100 % |
+| disperso, 256 falsos y 10 bots | 266 | 17,5 / 27,1 / 41,8 | 16,7 | 0,0 | 24,0 KB/s | 97,2 % / 100 % |
+
+- **Sustituidas, con 100 ms de RTT (el criterio de §16).** Con 64 falsos agrupados y 10 bots con
+  `rtt=100`: 277 de 76 012 entradas (**0,36 %** de la sesión, menos de un 1 %) y ninguna dentro de la
+  ventana de medida. Cada bot pierde unas 27 entradas (19–20 llegan tarde) en los primeros segundos,
+  mientras `TickSync` busca su antelación: es un coste fijo de arranque, así que el porcentaje de la
+  sesión depende de cuánto dure (con 30 s sale un 1,2 %, con 120 s un 0,36 %) y el de la ventana de medida
+  (de la primera línea de métricas tras entrar los bots a la última antes de que se vayan, restando lo
+  acumulado al empezar) es el que mide el régimen. **Criterio cumplido.** Sin retardo y hasta 138
+  jugadores, como mucho un 0,08 % en la sesión. Ningún escenario tuvo avisos, expulsiones ni errores de
+  física. (Los primeros resultados de esta sección, de 30 s y sin retardo, decían 0,09–0,16 %: no medían el
+  criterio, que pide 100 ms de RTT.) Pendiente de mirar: el arranque con 100 ms de RTT empieza con poca
+  antelación (19–20 tardías por bot).
+- **128 y 256 jugadores falsos.** Con 138 jugadores el tick de mediana ocupa 11,3 de los 16,7 ms y el p99
+  (19,7 ms) los rebasa en alguna ocasión, pero el servidor aguanta los 60 ticks/s (60,1) y no sustituye
+  entradas. **Con 266 el servidor no sostiene el tiempo real**: `simulate()` y su sección ocupan 15–17 ms de
+  mediana, el servidor va a 44–47 ticks/s y casi todas las entradas de los clientes reales (el 97 %) se
+  sustituyen; la mediana de `snapshot` y de `net` cae a unos microsegundos (probablemente porque el
+  servidor encadena ticks para recuperar el retraso; no se ha comprobado) y la bajada por cliente cae a
+  24–25 KB/s. Es un resultado de CPU del servidor, no de la red: 266 jugadores en un proceso de GDScript sin
+  optimizar quedan fuera de lo que esta fase promete.
+- **Ancho de banda.** Con 57 o más jugadores visibles cada snapshot llena el paquete (1191 B) y cada cliente
+  baja unos 35 KB/s (criterio: 37 KB/s como mucho) y sube de 2,3 a 3,7 KB/s (3,7 con 100 ms de RTT).
+  Dispersos o agrupados da igual: sin interés por rejilla todo el mundo ve a todo el
+  mundo.
+- **`simulate()` por personaje: 42 a 50 µs** (medido alrededor de cada llamada), por encima de los 25 µs que
+  marcan la palanca 6. La sección `sim` entera (cola de entradas, cerebro de los falsos, comprobación de
+  movimiento) sale a unos 57–66 µs por personaje: con 64 jugadores son ~4 ms de los 16,7 ms del tick.
+- **Construir un snapshot** de 57 registros cuesta de 250 a 730 µs (la codificación común de los registros
+  del tick se reparte entre los snapshots de ese tick, así que sale más caro con pocos clientes y con el
+  servidor saturado). Con N clientes reales se construyen N/2 por tick: con 50, la sección `snapshot` llega
+  a 7,0 ms de mediana y es lo que satura el tick (palancas 2 a 5).
+- **Criterio de CPU no cumplido.** El p99 del tick con 64 falsos y 2 bots (66 jugadores) es de 8,2 ms y con
+  64 falsos y 10 bots (74) de 9,7 ms (criterio: menos de 8 ms con 64 jugadores), con medianas de 4,9 y
+  6,2 ms; la serie anterior de 30 s, con exactamente 64 jugadores, daba 8,7 y 9,6 ms. Con 74 jugadores
+  pasa de 10 ms (hasta 11,4 ms dispersos) y con 114 (50 reales) el tick de mediana ya ocupa 15,3 ms de los
+  16,7: el servidor no aguanta 50 clientes reales más 64 falsos. El primer cuello es `simulate()` en GDScript
+  (palanca 6, ~44 µs por personaje frente a los 25 µs de umbral) y, con muchos clientes reales, el
+  `SnapshotBuilder`.
+
+**Medidas de la fase 3: refriegas de combate** (`tools/load_test.gd --brawl`, TEC-15, K5). Vado Gris con
+su Terrain3D, el servidor y un enjambre de 10 bots reales (`--bots=10 --bot-brain=combat`: reciben
+snapshots y ENTITY_EVENT y mandan su `view_offset_q`, así que el servidor rebobina de verdad) en la misma
+máquina de 4 núcleos, **en reposo** (carga media de 0,2 al empezar y ningún otro Godot en marcha). El resto
+de los combatientes son `--fake-players` con `--fake-brain=combat` en un corro en campo abierto a 18 m del
+campamento de Vardheim (`--fake-center=0,-96`; la zona segura del campamento les impediría pelear), la
+mitad de cada reino. **60 s de medida** tras 12 s de aproximación. Tick en ms, p50 / p99 / máximo; el resto
+de columnas, p50 de cada sección:
+
+| Combatientes | Tick | `sim` | `combat` | `combat_resolve` | `combat_events` | `snapshot` | Bajada por cliente | Sustituidas (ventana) | Rebobinados rechazados |
+|---|---|---|---|---|---|---|---|---|---|
+| 32 (22 falsos y 10 bots) | 4,9 / 8,9 / 17,2 | 3,1 | 0,35 | 0,016 | 0,18 | 0,84 | 23,6 KB/s | 0,00 % | 0 |
+| **64** (54 y 10) | 9,4 / 15,9 / 24,9 | 6,5 | 0,77 | 0,094 | 0,17 | 1,41 | 35,3 KB/s | 0,00 % | 0 |
+| 128 (118 y 10) | 17,5 / 30,0 / 36,3 | 13,3 | 1,41 | 0,067 | 0,19 | 2,16 | 31,4 KB/s | 0,10 % | **153 (los 10 bots)** |
+
+`combat_resolve` (golpes con rebobinado) y `combat_events` (armar y mandar los ENTITY_EVENT) cuelgan de
+`combat` y se miden aparte desde K5; `snapshot` sube a medida que hay más clientes reales que servir,
+pero aquí son siempre 10.
+
+- **Primer límite de jugadores por batalla con combate: 64.** Con 64 combatientes el tick de mediana ocupa
+  9,4 ms de los 16,7, el p99 (15,9 ms) todavía cabe en un tick, no se sustituye ni una entrada en régimen y
+  no se rechaza ningún rebobinado; cada cliente baja 35 KB/s (criterio: 37). Con 128 el servidor deja de
+  sostener el tiempo real: la mediana (17,5 ms) ya rebasa el tick, el p99 llega a 30 ms y los 10 bots
+  honrados reciben entre 12 y 18 rechazos de rebobinado cada uno (153 de 10 239 comprobaciones, con su
+  sospecha). Es un síntoma de la saturación (con 32 y 64 no hay ni uno): un servidor que no cumple sus
+  ticks estira el viaje de ida y vuelta que miden los clientes y su desfase de vista sale del tope. No se
+  ha investigado la causa exacta; la consecuencia práctica es que **no hay que dejar entrar a más de 64 en
+  una batalla**, porque pasado el límite el rebobinado empieza a fallar a los honrados. Interpolando entre
+  las tres medidas, la mediana del tick llega a los 16,7 ms hacia los 120 combatientes y el p99 a 16,7 ms
+  hacia los 66.
+- **El criterio de CPU de la fase 2 (p99 < 8 ms) no se cumple con combate más que hasta unos 28
+  combatientes** (32 ya sale a 8,9 ms): el objetivo de `vision.md` de 64 por bando sigue pendiente de las
+  palancas de abajo, igual que sin combate (la medida de la fase 2 con 66 jugadores daba un p99 de 8,2 ms
+  con una mediana de 4,9; con combate, 64 dan 15,9 y 9,4).
+- **El combate no es el cuello: lo es `simulate()`.** A 64 combatientes, `sim` ocupa 6,5 ms de los 9,4 de la
+  mediana (el 69 %) y `combat` más `combat_events` 0,9 (el 10 %). `simulate()` cuesta 69–72 µs por
+  personaje, frente a los 42–50 µs de la fase 2, y la sección `sim` entera 97–104 µs por jugador, frente a
+  57–66 µs: la máquina de acciones y el cerebro de combate de los falsos suman unos 25–40 µs por
+  personaje (el riesgo «Coste de `simulate()`» de combate.md §10; cifras de otra sesión y de otra
+  máquina, así que no son comparables al detalle). Todo el trabajo de combate crece de forma lineal con
+  los combatientes: unos 0,14 golpes por segundo y combatiente en las tres refriegas (260, 551 y 1044
+  golpes en 60 s), con 18, 50 y 96 muertes.
+- **Golpes con rebobinado: 76, 80 y 97 µs por comprobación** (797, 3756 y 10 239 comprobaciones de forma
+  y línea de visión; solo hay trabajo en 275, 945 y 1822 ticks de los 4970). La sección `combat_resolve`
+  es del 8 al 17 % de `combat` y su p99 no pasa de 0,69 ms: el rebobinado de 128 combatientes cabe en el
+  presupuesto con holgura.
+- **Eventos.** 319, 705 y 1329 eventos en 60 s (3,9, 8,5 y 16 por segundo), que llegan como 2602, 5181 y
+  8194 paquetes (un evento va a todos los que tienen relevante al atacante o a la víctima) y cuestan de
+  97 a 67 µs de envío por evento. En ancho de banda son **0,5, 1,0 y 1,6 KB/s en todo el servidor**, es
+  decir, 0,1–0,2 KB/s por cliente frente a los 31–35 KB/s de los snapshots: el canal de eventos no
+  cambia el presupuesto (el límite de 37 KB/s por cliente lo marca el snapshot, igual que en la fase 2).
+- **Palancas.** La primera sigue siendo la 6 (portar `simulate()`, ahora a ~70 µs por personaje, casi el
+  triple del umbral de 25 µs) y después la 4 (`build_for` en paralelo); el interés por rejilla (1) no
+  ayuda en una refriega, porque todos ven a todos. El p99 de 8 ms con 64 pide dejar `sim` por debajo de
+  unos 3 ms: la mitad del coste actual por personaje.
+
+**Medidas de la fase 4: asedios** (`tools/load_test.gd --siege`, GUE-16, F6a). El Vado Gris con su Terrain3D, 120 s de medida con
+todos los bots ya en la puerta y el círculo del fuerte (falsos con `--fake-brain=siege` y 10 bots reales `--bot-brain=siege`, mitad de
+cada reino), en la misma máquina de 4 núcleos **con otro agente ejecutando su suite a la vez** (`uptime` de 0,9 a 1,7). Sin PNJ.
+Tick en ms, p50 / p95 / p99 / máximo del último tramo de 34 s:
+
+| Asedio | Jugadores | Tick | `sim` p50 | Bajada por cliente | Sustituidas (ventana) | Rebobinados rechazados |
+|---|---|---|---|---|---|---|
+| 32 contra 32 | 64 | 10,6 / 15,3 / 19,1 / 27,8 | 6,8 | 36,1 KB/s | 0,00 % | 0 |
+| 64 contra 64 | 128 | 14,8 / 22,0 / 26,4 / 42,8 | 12,0 | 28,5 KB/s | 50,76 % | 25 (6 sospechosos) |
+
+Los resultados completos y lo que pasa en la batalla están en [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones). Con 64 jugadores
+el criterio de 8 ms de p99 **no se cumple** (19,1 ms, con la mediana ya en 10,6), igual que en la refriega de la fase 3 (15,9 ms con 64
+combatientes en una máquina en reposo), los KB/s por cliente se cumplen (36,1 de 37) y no se sustituye ni una entrada; con 128 el
+servidor no sostiene el tiempo real (la mitad de las entradas de los clientes se sustituye y el rebobinado falla a los honrados).
+**El primer límite de jugadores por batalla en el fuerte sigue siendo 64 (32 contra 32)**. El coste de las fortalezas (la sección `war`)
+es de 0,1 ms de mediana: el cuello es `simulate()` (palanca 6).
 
 **Palancas para Eldrun, por orden,** decididas con las medidas del final de la fase 2:
 
@@ -1261,7 +1767,7 @@ snapshots. Ese dato es el primero del límite de jugadores por batalla que pide 
   - `InputQueue.get_view_offset_q(T)` y `StateHistory.sample()`, con los topes de
     [10](#10-historial-para-la-compensación-de-latencia);
   - validación de resistencia, tiempo de reutilización, alcance y línea de visión en el servidor.
-- **Daño y muertes.** ENTITY_EVENT fiable.
+- **Daño y muertes.** ENTITY_EVENT fiable ([5.5](#55-servidor--cliente)).
   - Los eventos de los remotos se aplican cuando el `render_tick` alcanza su tick; los propios,
     al llegar.
   - La vida y la resistencia propias van en un bloque extra tras el estado propio (bit 3 de
@@ -1274,7 +1780,9 @@ snapshots. Ese dato es el primero del límite de jugadores por batalla que pide 
 - **El fuerte** es una `NetEntity` de tipo STRUCTURE con `ALWAYS_RELEVANT`. Se replica por
   OBJECT_STATE fiable:
   - estado completo en el SPAWN y después solo los cambios;
-  - captura como fórmula.
+  - captura como fórmula;
+  - formatos fijados en el protocolo 3 ([5.5](#55-servidor--cliente)): OBJECT_STATE, ENTITY_SPAWN de
+    STRUCTURE y los ENTITY_EVENT WAR y TELEGRAPH.
 - **Guardias PNJ:** entidades por flujo (tipo NPC, mismo registro), simuladas en el paso 4 de
   [8.1](#81-orden-del-tick) e interpoladas en el cliente.
 - **Avisos** («¡Vado Gris capturado!»): por NOTICE o ENTITY_EVENT, aplicados en el tick de
@@ -1307,6 +1815,14 @@ Todo corre con el ejecutor actual (`godot --headless --path . -s res://tests/run
 falla ante cualquier error del motor; cada prueba dura menos de 30 s. Los ayudantes van en
 `tests/net_harness.gd`.
 
+**Dos suites a la vez** (dos copias del proyecto, o dos ejecuciones en la misma carpeta) no se
+pisan: cada proceso de pruebas empieza a buscar puertos en su propia ranura según su pid
+(`NetHarness.first_port_for`), deja los informes y registros de los procesos que lanza en
+`build/<pid>/` (`NetHarness.build_path`; al empezar se borran las carpetas de procesos que ya no
+existen) y la prueba de procesos de `--local` usa un bloqueo propio (`--dev-lock-path=<ruta>`,
+junto a él va el registro del servidor) en vez del `user://dev_server.json` real, que comparten
+todas las copias del proyecto.
+
 ### Unitarias
 
 - **`test_net_messages`**:
@@ -1321,7 +1837,8 @@ falla ante cualquier error del motor; cada prueba dura menos de 30 s. Los ayudan
   - ventana de aceptación (tardías, demasiado adelantadas, duplicadas distintas: gana la
     primera);
   - `get_ack_tick()` con huecos y tras una sustitución;
-  - antelación solo con primeras copias, y con las tardías;
+  - antelación solo con primeras copias, con las tardías y con las demasiado tempranas
+    (saturada a 127);
   - movimiento a 0 tras 6 ticks.
   - **Sin flancos inventados:** con JUMP mantenido y entradas 15–17 perdidas, la entrada 18 con
     JUMP no hace saltar otra vez (con un `PlayerCharacter` real).
@@ -1331,19 +1848,24 @@ falla ante cualquier error del motor; cada prueba dura menos de 30 s. Los ayudan
   - resincronización hacia delante y nunca hacia atrás;
   - margen objetivo según el jitter.
 - **`test_interpolation_clock`**: converge al retardo con jitter sintético y salta con errores
-  de más de 10 ticks.
+  de más de 10 ticks; adopta en ≤ 40 ticks un escalón sostenido hacia abajo de los offsets, no
+  confunde un bache corto con un escalón y sigue bien con ticks por encima de 2^31.
 - **`test_remote_interpolator`**:
   - `lerp`, y `lerp_angle` al cruzar ±PI;
   - extrapolación de 6 ticks y parada;
   - contador de teletransporte;
   - visibilidad según `spawn_tick` y `despawn_tick`.
 - **`test_state_history`**: muestras fraccionarias, sobrescritura del anillo, teletransporte y
-  `forget`.
+  `forget`; ticks por encima de 2^31.
 - **`test_net_sim`**:
   - misma semilla → misma secuencia;
   - la pérdida no toca los canales fiables;
   - orden FIFO de los fiables;
-  - retardo dentro de `rtt/2 ± jitter`.
+  - retardo dentro de `rtt/2 ± jitter`;
+  - `NetTransport`: `connect_timeout_ms` (fallo de conexión en ≤ el doble) y el filtro de
+    paquetes ajenos al protocolo con un cliente ENet en bruto (`tests/raw_enet_attacker.gd`):
+    descartes antes y después del HELLO sin errores del motor, un RAW que llega junto a la
+    confirmación no se pierde, mensajes de autenticación acotados, peer silenciado.
 - **`test_snapshot_builder`** (prueba de propiedades): 200 entidades aleatorias durante 600
   ticks.
   - Ningún paquete pasa de 1200 B.
@@ -1351,14 +1873,23 @@ falla ante cualquier error del motor; cada prueba dura menos de 30 s. Los ayudan
   - El propio jugador nunca aparece entre los registros.
   - Lo que se construye se decodifica con `NetMessages.Snapshot.decode`.
 - **`test_rate_limiter`** y **`test_server_auth`**: cada motivo de REJECT y el tope por IP con
-  la excepción de loopback.
+  la excepción de loopback (y las IPv6 por /64); crédito por parón de los limitadores; avisos con
+  ticks por encima de 2^31.
+- **`test_zone_server`** / **`test_zone_server_net`** (seguridad y robustez): parón del servidor
+  sin expulsar a un cliente honrado; conexiones ociosas de una IP que no agotan las plazas y plazo
+  del HELLO; enfriamiento tras una expulsión; RTT acotado frente a un cliente que atrasa sus
+  acks; inundación de paquetes ajenos antes y después del HELLO (expulsión, tick < 16 ms); altas y
+  bajas continuas sin crecimiento de memoria.
 
 ### Integración en un proceso
 
 - **`test_prediction`** (sin red). Mundos de servidor y de cliente en dos `SubViewport` con
   `own_world_3d = true` (espacios de física separados), con un `PlayerCharacter` en cada uno.
   - Mismas entradas → `predicted[t].encode() == servidor[t].encode()` en cada tick, girando,
-    saltando y por la rampa.
+    saltando y por la rampa (los pies pisan el suelo a más de 2 m: un salto en llano llega a 1,5 m).
+  - La copia de la regla de sustitución del cliente (`_input_or_substitute`, al repetir con huecos
+    en el anillo tras un `hard_reset` hacia delante) deja, tick a tick, los mismos estados que la
+    `InputQueue` real con las mismas entradas y el mismo hueco (de más de 6 ticks).
   - El servidor sustituye la entrada del tick X y los estados llegan con 6 ticks de retraso → el
     cliente reconcilia y queda exactamente igual a partir de ahí.
   - Suavizado:
@@ -1377,12 +1908,26 @@ falla ante cualquier error del motor; cada prueba dura menos de 30 s. Los ayudan
     - cada bot dibuja a los otros dos a menos de 0,5 m de `StateHistory.sample()` en su
       `render_tick`.
   - **d)** Con `rtt=150, jitter=30, loss=10`:
-    - `input_margin` en [0, 6] en régimen;
+    - antelación en régimen: el **mínimo de la ventana de `TickSync`** (`get_window_min()`, lo que
+      regula el bucle de control) en [0, 6], que es `MAX_TARGET` (4) + `SLOW_DOWN_THRESHOLD` (2): la
+      media de cada bot en ese rango y al menos un 80 % de las muestras dentro. No se exige al
+      `input_margin` de cada snapshot suelto: es el mínimo de dos ticks de llegada y, con ±30 ms de
+      jitter, queda por diseño entre 2 y 4 ticks por encima del mínimo de la ventana (en las
+      mediciones, un 28–35 % de los snapshots de cada bot pasa de 6 y su media es ~6,1). Exigirlo
+      obligaría a bajar el objetivo de antelación y a aceptar más entradas tardías;
     - menos de un 2 % de entradas tardías;
     - cada corrección coincide con una subida de `substitutions`;
     - convergencia exacta tras 60 ticks quietos;
     - ninguna resincronización dura después del arranque.
   - **e)** `DEBUG_COMMAND teleport`: el cliente salta (sin suavizado) y queda exacto.
+  - **f)** Parones del servidor (40 ticks con un bot; 20 con dos): `TickSync` se recupera (la
+    antelación vuelve a la normal, sin sustituciones ni correcciones nuevas) y los remotos no
+    se congelan más de 15 ticks tras volver los datos.
+
+### Un proceso aparte (`test_server_main`)
+
+- El servidor como proceso: `--quit-after-ticks`, `--idle-quit`, informe, `--stop-file` (cierre
+  ordenado y archivo de parada viejo) y el informe periódico que queda si matan al proceso.
 
 ### Varios procesos (`test_net_processes`)
 
@@ -1393,7 +1938,10 @@ falla ante cualquier error del motor; cada prueba dura menos de 30 s. Los ayudan
   Espera como mucho 25 s comprobando `OS.is_process_running`.
 - **Determinismo entre procesos.** Cada bot compara, en cada snapshot, su `predicted[S].encode()`
   con los bytes del estado propio del servidor. Sin `NetSim`: 0 diferencias sin explicar (las
-  que no coinciden con una subida de `substitutions`).
+  que no coinciden con una subida de `substitutions`, un teletransporte ni, desde la fase 3, un
+  evento de combate propio: lo que el servidor impone al jugador —tambaleo, aturdimiento, empuje,
+  resistencia gastada al bloquear, muerte, reaparición— y el cliente no predice; ver
+  [combate.md 11](combate.md#11-cambios-durante-la-implementación)).
 - **Segunda pasada con `--net-sim`** en los bots: convergencia final exacta (quietos los últimos
   60 ticks) y ninguna resincronización dura.
 - **Detección de interferencias.** También detecta si los cuerpos ajenos del servidor o la
@@ -1401,6 +1949,12 @@ falla ante cualquier error del motor; cada prueba dura menos de 30 s. Los ayudan
 - **Bot tramposo** (`--bot-cheat=version|future|dupes|garbage|flood`, un método por modo):
   rechazado o expulsado, sin que el bot honrado tenga diferencias sin explicar ni el servidor
   registre errores.
+- **Bot tramposo de combate** (K5, TEC-14; `--bot-cheat=rewind|reach|rate`, los tres a la vez
+  contra el maniquí de `test_world`): `rewind` pelea con la vista falseada a 40 ticks y el servidor
+  no prueba ni un golpe (sospecha por golpe); `reach` ataca desde 5 m y no conecta; `rate` machaca
+  PRIMARY y pega solo al ritmo del combo. Ninguno hace daño de más. En un proceso con ENet real
+  están en `test_bot_cheat` (uno por modo, con un bot honrado de control) y en
+  `test_net_processes`.
 
 ### Carga (manual)
 
@@ -1409,16 +1963,31 @@ falla ante cualquier error del motor; cada prueba dura menos de 30 s. Los ayudan
 - Servidor con `--fake-players=N` (entradas inyectadas en la `InputQueue`, sin red) y procesos
   `--bots=50`.
 - 64, 128 y 256 jugadores; escenarios disperso, agrupado (todos en 60 m) y de altas y bajas a 1
-  por segundo; 120 s cada uno.
+  por segundo; 120 s cada uno. `--matrix` lo hace con 64 falsos (+ 2, 10 y 50 bots, dispersos y con
+  altas y bajas), 128 falsos agrupados y 256 falsos agrupados y dispersos (+ 10 bots), y los bots del
+  escenario del criterio con `--net-sim=rtt=100`.
 - Criterio de la fase 2, con 64 bots agrupados:
   - p99 del tick < 8 ms;
   - ≤ 37 KB/s por cliente;
-  - menos de un 1 % de entradas sustituidas con 100 ms de RTT.
+  - menos de un 1 % de entradas sustituidas con 100 ms de RTT, medido dentro de la ventana de medida
+    (sin el arranque); la herramienta muestra también el porcentaje de toda la sesión.
+- Refriegas de combate (TEC-15): `--brawl` (o `--scenario=brawl`) con 32, 64 y 128 combatientes, falsos con
+  `--fake-brain=combat` en un corro (`--fake-center`) más 10 bots reales de combate, 60 s de medida
+  cada una. Mide por sección (golpes con rebobinado, eventos, snapshots) y los KB/s con los ENTITY_EVENT;
+  resultados y primer límite de jugadores por batalla en 14.
+- Asedios de fuerte (GUE-16): `--siege` (o `--scenario=siege`) con 32 contra 32 y 64 contra 64, 120 s de medida con los bots ya en la
+  puerta y el círculo; los falsos llevan `--fake-brain=siege`, los bots reales `--bot-brain=siege` y el servidor abre el círculo con
+  `--run-at=<tick>:fort_kill_captain` y escribe un registro de batalla. Cifras en 14.
 
 ### Arquitectura (`test_architecture`, ampliado)
 
-- `scripts/shared/` (también `net/`, de forma recursiva) mantiene sus reglas: nada de `Time.get_`,
-  `Input`, UI ni clases del cliente.
+- `scripts/shared/` (también `net/`, de forma recursiva) y `scripts/world/` (lo que carga el
+  servidor) mantienen sus reglas: nada de `Time.get_`, `Input`, UI ni clases del cliente, ni
+  contadores de fotogramas (`Engine.get_physics_frames`), ni aleatoriedad global (`randf()`,
+  `Array.pick_random()`, `shuffle()`, `rng.randomize()`), y todo `RandomNumberGenerator` se crea con
+  su semilla.
+- Las escenas que carga el servidor (las de zona, `player_character.tscn` y `server_main.tscn`) no
+  arrastran scripts del cliente, animaciones ni visuales de personaje.
 - `scripts/server/` no referencia rutas ni clases de `scripts/client/`.
 - `scripts/client/` no referencia rutas ni clases de `scripts/server/`. `LocalServerLauncher`
   solo lanza un proceso.
@@ -1479,7 +2048,7 @@ func set_idle_from(tick: int) -> void
 ```gdscript
 # net_protocol.gd
 class_name NetProtocol extends RefCounted
-const PROTOCOL_VERSION: int = 1
+const PROTOCOL_VERSION: int = 3
 const MAGIC: int = 0x4D444C45
 const DEFAULT_PORT: int = 24600
 const CUSTOM_CHANNELS: int = 3
@@ -1494,6 +2063,9 @@ const INPUT_REDUNDANCY_LOSSY: int = 8
 const MAX_INPUT_LEAD_TICKS: int = 30
 const REPEAT_MOVE_TICKS: int = 6
 const MAX_REWIND_TICKS: int = 24
+const INTERP_DELAY_Q_SCALE: int = 8                  # interp_delay_q = retardo en ticks × 8
+const MAX_INTERP_DELAY_TICKS: int = 12
+const MAX_INTERP_DELAY_Q: int = 96                   # lo que pase es un aviso (S4)
 const NO_MARGIN: int = -128
 const VALID_BUTTONS: int = (1 << 9) - 1
 const MAX_NAME_BYTES: int = 48
@@ -1501,22 +2073,38 @@ const MIN_NAME_CHARS: int = 3
 const MAX_NAME_CHARS: int = 24
 const MAX_TICKET_BYTES: int = 256
 const MAX_ZONE_ID_BYTES: int = 32
+const MAX_DEFINITION_ID_BYTES: int = 32              # id ASCII de la definición de una estructura
 const MSG_INPUT_BATCH: int = 0x01
 const MSG_CLIENT_READY: int = 0x02
 const MSG_CLIENT_LEAVE: int = 0x03
 const MSG_DEBUG_COMMAND: int = 0x04
+const MSG_RESPAWN_REQUEST: int = 0x05
+const MSG_UNSTUCK_REQUEST: int = 0x06
 const MSG_SNAPSHOT: int = 0x10
 const MSG_ENTITY_SPAWN: int = 0x20
 const MSG_ENTITY_DESPAWN: int = 0x21
-const MSG_OBJECT_STATE: int = 0x22   # reservado (fase 4)
-const MSG_ENTITY_EVENT: int = 0x23   # reservado (fase 3)
+const MSG_OBJECT_STATE: int = 0x22
+const MSG_ENTITY_EVENT: int = 0x23
 const MSG_NOTICE: int = 0x30
 const MSG_HANDOFF: int = 0x31        # reservado (fase 6)
+const MSG_SCOREBOARD: int = 0x32
 const DEBUG_TELEPORT: int = 1
+const DEBUG_HEAL: int = 2
+const DEBUG_KILL: int = 3
+const DEBUG_STAMINA_INF: int = 4
+const DEBUG_SET_WEAPON: int = 5
+const DEBUG_SPAWN_DUMMY: int = 6
+const DEBUG_UNSTUCK: int = 7
+const DEBUG_FORT_RESET: int = 8
+const DEBUG_FORT_OWNER: int = 9
+const DEBUG_FORT_KILL_CAPTAIN: int = 10
+const DEBUG_FORT_CAPTURE_SPEED: int = 11
+const DEBUG_NPC_DEBUG: int = 12
+const DEBUG_COMMAND_IDS: Dictionary[StringName, int]   # nombre -> id de cada comando de red
 enum Realm { NONE = 0, VARDHEIM = 1, SOLMARCH = 2, ASKARRA = 3 }
 enum EntityKind { NONE = 0, PLAYER = 1, NPC = 2, PROJECTILE = 3, STRUCTURE = 4 }
 enum Result { OK = 0, VERSION = 1, SIM_HASH = 2, REALM = 3, FULL = 4, TICKET = 5, MALFORMED = 6,
-		TOO_MANY_CONNECTIONS = 7, NAME = 8 }
+		TOO_MANY_CONNECTIONS = 7, NAME = 8, IMBALANCE = 9 }
 enum DespawnReason { OUT_OF_INTEREST = 0, DISCONNECTED = 1, DEATH = 2, HANDOFF = 3 }
 enum NoticeCode { INFO = 0, KICK = 1, SHUTDOWN = 2 }
 static func channel_for_type(msg_type: int) -> int
@@ -1537,6 +2125,10 @@ static func allowed_realms(zone_id: String) -> PackedInt32Array    # códigos Re
 static func parse_zone_arg(args: PackedStringArray) -> String      # "" si no viene
 static func parse_realm_arg(args: PackedStringArray) -> int        # Realm.NONE si no viene
 static func realm_from_name(text: String) -> int
+static func realm_name(realm: int) -> StringName                   # id de RealmCatalog; "" si no es jugable
+static func find_spawn_point(zone: Node, realm: int) -> Node3D     # el del reino o el primero; null si no hay
+static func get_spawn_points(zone: Node, realm: int = NetProtocol.Realm.NONE) -> Array[Node3D]
+static func spawn_group() -> StringName
 
 # net_math.gd
 class_name NetMath extends RefCounted
@@ -1552,10 +2144,12 @@ static func dequantize_velocity(quantized: int) -> float
 
 # entity_record.gd
 class_name EntityRecord extends RefCounted
-const SIZE: int = 20
+const SIZE: int = 21
 const FLAG_GROUNDED: int = 1 << 0
 const TELEPORT_SHIFT: int = 1
 const TELEPORT_MASK: int = 0b11
+const HEALTH_Q_DEAD: int = 0
+const HEALTH_Q_FULL: int = 255
 var net_id: int = 0
 var kind: int = NetProtocol.EntityKind.PLAYER
 var position: Vector3 = Vector3.ZERO
@@ -1563,14 +2157,19 @@ var yaw: float = 0.0
 var velocity: Vector3 = Vector3.ZERO
 var flags: int = 0
 var action: int = 0
+var health_q: int = HEALTH_Q_FULL
 func is_grounded() -> bool
 func get_teleport_counter() -> int
+## 0 si no queda vida; si no, clampi((health · 255 + max − 1) / max, 1, 255).
+static func quantize_health(health: int, max_health: int) -> int
+static func health_fraction(quantized: int) -> float
 func encode_into(bytes: PackedByteArray, offset: int) -> void
 static func decode_from(bytes: PackedByteArray, offset: int, kind: int) -> EntityRecord
 ## Servidor: escribe el registro sin crear objetos.
 static func encode_character(bytes: PackedByteArray, offset: int, net_id: int,
-		character: PlayerCharacter, teleport_counter: int, action: int) -> void
-static func from_state(net_id: int, kind: int, state: PlayerState, teleport_counter: int) -> EntityRecord
+		character: PlayerCharacter, teleport_counter: int, action: int, health_q: int) -> void
+static func from_state(net_id: int, kind: int, state: PlayerState, teleport_counter: int,
+		health_q: int = HEALTH_Q_FULL) -> EntityRecord
 static func interpolate(a: EntityRecord, b: EntityRecord, t: float) -> EntityRecord
 
 # net_messages.gd: cada clase interna tiene encode() -> PackedByteArray y
@@ -1585,6 +2184,8 @@ class Welcome:
 	var protocol_version: int; var server_tick: int; var tick_rate: int
 	var snapshot_interval: int; var max_input_batch: int; var max_rewind_ticks: int
 	var realm: int; var channel: int; var zone_id: String
+	var realm_counts: PackedInt32Array      # 3 posiciones: Vardheim, Solmarch, Askarra (v3)
+	func get_realm_count(realm_code: int) -> int
 class Reject:
 	var result: int; var text: String
 class InputBatch:
@@ -1597,23 +2198,89 @@ class ClientLeave:
 	var reason: int
 class DebugCommand:
 	var command: int; var payload: PackedByteArray
+	## Valida los datos de los comandos 1 (12 B) y 7 a 12 (v3); el resto, hasta 64 B.
+	static func simple(command_id: int) -> DebugCommand
+	static func fort_owner(realm_code: int) -> DebugCommand
+	static func fort_capture_speed(factor: int) -> DebugCommand
+	static func npc_debug(enabled: bool) -> DebugCommand
 class Snapshot:
 	var server_tick: int; var input_ack_tick: int; var input_margin: int
 	var substitutions: int; var own_teleport: int
 	var own_state: PlayerState              # null si no viene
+	var health: int; var max_health: int    # bloque extra propio (solo con own_state)
+	var status: int; var respawn_tick: int
 	var records: Array[EntityRecord]
+	func is_in_combat() -> bool; func is_protected() -> bool; func is_dead() -> bool
 	## Lo usa SnapshotBuilder para escribir la cabecera sin crear el objeto. Devuelve el
-	## offset donde empieza section_count.
+	## offset donde empieza section_count. Con estado propio escribe también el bloque extra.
 	static func write_header(bytes: PackedByteArray, server_tick: int, input_ack_tick: int,
 			input_margin: int, substitutions: int, own_teleport: int,
-			own_state_bytes: PackedByteArray) -> int
+			own_state_bytes: PackedByteArray, health: int = 0, max_health: int = 0,
+			status: int = 0, respawn_tick: int = 0) -> int
 class EntitySpawn:
 	var net_id: int; var kind: int; var spawn_tick: int; var realm: int
 	var is_yours: bool; var teleport_counter: int; var state: PlayerState; var display_name: String
+	var npc_def_id: int                                  # NPC (v3): u16 tras el nombre
+	var definition_id: String; var fields: Array[ObjectField]   # STRUCTURE (v3)
+	static func for_fortress(net_id: int, spawn_tick: int, definition_id: String,
+			state: FortressState) -> EntitySpawn         # reino 0, los 17 campos
+	func to_object_state() -> ObjectState
+class ObjectField:                                       # u8 field_id, u8 value_type, valor
+	enum ValueType { U8 = 1, U16 = 2, U32 = 3, S32 = 4 }
+	var field_id: int; var value_type: int; var value: int
+	static func make(id: int, type: int, field_value: int) -> ObjectField
+	static func size_of_type(type: int) -> int           # 0 si no existe
+class ObjectState:                                       # OBJECT_STATE (v3)
+	var net_id: int; var tick: int; var fields: Array[ObjectField]
+	static func from_fortress(object_id: int, state_tick: int, state: FortressState) -> ObjectState
+	static func from_fortress_fields(object_id: int, state_tick: int, state: FortressState,
+			field_ids: PackedInt32Array) -> ObjectState
+	static func from_fortress_changes(object_id: int, state_tick: int, state: FortressState,
+			previous: FortressState) -> ObjectState       # fields vacío si nada cambió: no hay nada que mandar
+	func add_field(field_id: int, type: int, field_value: int) -> void
+	func get_field(field_id: int) -> ObjectField          # null si no está
+	func get_value(field_id: int, default: int = 0) -> int
+	func apply_to_fortress(state: FortressState) -> int   # campos aplicados; salta desconocidos y de otro tipo
+	func is_valid_for_fortress() -> bool
 class EntityDespawn:
 	var net_id: int; var despawn_tick: int; var reason: int
 class Notice:
 	var code: int; var text: String
+class EntityEvent:
+	enum Kind { HIT = 1, DEATH = 2, KILL = 3, RESPAWN = 4, WAR = 5, TELEGRAPH = 6 }
+	const SHAPE_CIRCLE: int = 0; const SHAPE_SECTOR: int = 1
+	const MAX_ASSISTANTS: int = 16
+	const HIT_FLAG_CRITICAL: int = 1 << 0; const HIT_FLAG_BLOCKED: int = 1 << 1
+	const HIT_FLAG_PARRIED: int = 1 << 2; const HIT_FLAG_GUARD_BREAK: int = 1 << 3
+	const HIT_FLAG_LETHAL: int = 1 << 4
+	var net_id: int; var tick: int; var event: int
+	var attacker: int; var amount: int; var damage_type: int; var hit_flags: int   # HIT
+	var attack_id: int                                                              # HIT, DEATH, KILL
+	var killer: int; var assistants: PackedInt32Array                               # DEATH, KILL
+	var point: int                                                                  # RESPAWN
+	var war_event: int; var war_realm: int                                          # WAR (v3)
+	var shape: int; var position: Vector3; var yaw: float                           # TELEGRAPH (v3),
+	var radius_cm: int; var impact_in_ticks: int                                    # con attack_id
+	static func hit(victim_id: int, event_tick: int, attacker_id: int, damage: int,
+			type_of_damage: int, flags: int, id_of_attack: int) -> EntityEvent
+	static func death(victim_id: int, event_tick: int, killer_id: int, id_of_attack: int) -> EntityEvent
+	static func kill(victim_id: int, event_tick: int, killer_id: int, id_of_attack: int,
+			assistant_ids: PackedInt32Array) -> EntityEvent
+	static func respawn(entity_id: int, event_tick: int, point_index: int) -> EntityEvent
+	static func war(fortress_id: int, event_tick: int, war_event_id: int, realm_code: int) -> EntityEvent
+	static func telegraph(npc_id: int, event_tick: int, id_of_attack: int, area_shape: int,
+			origin: Vector3, area_yaw: float, area_radius_cm: int, ticks_to_impact: int) -> EntityEvent
+class RespawnRequest:
+	var point_index: int
+class UnstuckRequest:                                    # UNSTUCK_REQUEST (v3), 1 B
+	pass
+class ScoreRow:                                          # 18 B
+	var net_id: int; var kills: int; var deaths: int; var assists: int
+	var gate_damage: int; var circle_seconds: int; var merits: int
+class Scoreboard:                                        # SCOREBOARD (v3)
+	const MAX_ROWS: int = 66
+	var page_index: int; var page_count: int; var rows: Array[ScoreRow]
+	static func split(all_rows: Array[ScoreRow]) -> Array[Scoreboard]
 
 # net_sim.gd
 class_name NetSim extends RefCounted
@@ -1625,6 +2292,8 @@ static func from_arg(spec: String, seed_offset: int = 0) -> NetSim
 func configure(rtt_ms: int, jitter_ms: int, loss_percent: float, duplicate_percent: float,
 		seed: int) -> void
 func is_enabled() -> bool
+## Retardo máximo de un sentido, en ticks: rtt/2 + jitter redondeado (S4).
+func get_max_delay_ticks() -> int
 func enqueue(packet: NetSim.Packet, now_tick: int) -> void
 func pop_due(now_tick: int) -> Array[NetSim.Packet]
 func describe() -> String
@@ -1637,6 +2306,8 @@ signal peer_connected(peer_id: int)          # autenticación completada en ambo
 signal peer_disconnected(peer_id: int)
 signal packet_received(peer_id: int, bytes: PackedByteArray)
 signal connection_failed()
+## Solo servidor (S1): paquetes de un peer descartados por no ser del protocolo (ver 2).
+signal packets_discarded(peer_id: int, count: int)
 ## Antes de host()/connect_to(). Vacío = sin simulador.
 func set_net_sim_spec(spec: String) -> void
 func host(port: int, max_peers: int) -> Error
@@ -1652,10 +2323,21 @@ func poll(now_tick: int) -> void
 func flush() -> void
 func close() -> void
 func get_rtt_ms(peer_id: int) -> float
+## Retardo máximo (ticks) que los simuladores de este transporte añaden a un viaje de ida y vuelta (S4).
+func get_sim_round_trip_ticks() -> int
 func get_packet_loss(peer_id: int) -> float
 func get_remote_address(peer_id: int) -> String
 ## {"app_in": int, "app_out": int, "wire_in": int, "wire_out": int} acumulados.
 func get_byte_counters() -> Dictionary
+
+# guarded_enet_peer.gd (S1): el peer que ve SceneMultiplayer en el servidor
+class_name GuardedEnetPeer extends MultiplayerPeerExtension
+signal packets_discarded(peer_id: int, count: int)     # al final de cada poll
+var admitted: Dictionary                               # peers admitidos por SceneMultiplayer (lo rellena el dueño)
+var raw_sink: Callable                                 # (peer_id, payload) -> void: atajo de los RAW
+func attach(inner: ENetMultiplayerPeer) -> void
+func mute_peer(peer_id: int) -> void                   # descarta sin contar
+func get_discarded_total() -> int
 ```
 
 ### 17.4 `scripts/server/` (servidor)
@@ -1671,6 +2353,7 @@ var idle_quit_seconds: int = 0
 var quit_after_ticks: int = 0
 var report_path: String = ""
 var state_log_path: String = ""
+var stop_file_path: String = ""     # S5: su existencia pide el cierre ordenado (se mira cada segundo)
 var net_sim_spec: String = ""
 var fake_players: int = 0
 var debug_commands: bool = false
@@ -1680,7 +2363,8 @@ static func from_args(args: PackedStringArray) -> ServerConfig
 # server_main.gd (+ scenes/server/server_main.tscn)
 ## Ajustes de 1.3, carga la zona con NetZones, prepara Terrain3D, crea NetTransport y
 ## ZoneServer, escribe y borra user://dev_server.json (con --dev-lock) y cierra con
-## --quit-after-ticks o --idle-quit.
+## --quit-after-ticks, --idle-quit o la aparición del archivo de --stop-file. Con --report reescribe
+## el informe cada 600 ticks (S5). SIGTERM y SIGINT no cierran de forma ordenada (ver 1.3).
 class_name ServerMain extends Node
 static var config: ServerConfig
 
@@ -1690,6 +2374,13 @@ signal tick_finished(tick: int)
 signal player_joined(peer_id: int, net_id: int)
 signal player_left(peer_id: int, net_id: int)
 var interest_policy: InterestPolicy = InterestPolicy.new()
+## Solo pruebas: plazos y topes que se acortan (valores por defecto: las constantes del mismo nombre).
+var loading_timeout_ticks: int = LOADING_TIMEOUT_TICKS
+var hello_timeout_ticks: int = HELLO_TIMEOUT_TICKS      # S2: 90
+var kick_cooldown_ticks: int = KICK_COOLDOWN_TICKS      # S6: 1800
+var max_logged_players: int = MAX_LOGGED_PLAYERS        # S3: 1000
+var max_logged_kicks: int = MAX_LOGGED_KICKS            # S3: 200
+const RTT_SLACK_TICKS: int = 3                          # S4
 func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 		auth_provider: AuthProvider) -> Error
 func stop(notice_text: String = "") -> void
@@ -1700,6 +2391,7 @@ func get_player_count() -> int
 func get_registry() -> NetEntityRegistry
 func get_history() -> StateHistory
 func get_metrics() -> ServerMetrics
+func get_cooldown_count() -> int                        # S6: enfriamientos tras expulsiones sin purgar
 ## Jugador sin red: sus entradas salen de brain y entran directamente en su InputQueue.
 func add_fake_player(brain: BotBrain, realm: int) -> int
 ## Teletransporte autoritativo: sube el contador de teletransporte.
@@ -1721,12 +2413,15 @@ var priority: Dictionary[int, float] = {}
 var ack_snapshot_tick: int = 0
 var interp_delay_q: int = 0
 var rtt_ticks: int = 0              # mín. de (s - ack_snapshot_tick) en los últimos 120 ticks
+var connected_tick: int = 0         # S2: para el plazo del HELLO
 var loading_since_tick: int = 0
 var limiter_unreliable: RateLimiter
 var limiter_reliable: RateLimiter
 var limiter_bytes: RateLimiter
 ## Suma un aviso; devuelve true si hay que expulsar (50 en 600 ticks).
 func add_strike(now_tick: int, reason: String) -> bool
+## N2: crédito de los ticks que el servidor no ha simulado (un parón) para los tres limitadores.
+func grant_stall_credit(now_tick: int, missed_ticks: int) -> void
 
 # server_auth.gd
 class_name ServerAuth extends RefCounted
@@ -1735,11 +2430,19 @@ func _init(config: ServerConfig, sim_hash: int, allowed_realms: PackedInt32Array
 ## Devuelve un NetProtocol.Result.
 func validate(hello: NetMessages.Hello, remote_address: String, player_count: int,
 		connections_from_address: int) -> int
+## SOC-01: fuente de los nombres ya conectados (Callable sin argumentos -> PackedStringArray).
+func set_connected_names_source(source: Callable) -> void
+func check_name(display_name: String) -> int   # NameRules.Reason (TAKEN si ya está conectado)
+## S2: clave con la que se cuentan las conexiones por IP (IPv6 por prefijo /64, IPv4 mapeada como IPv4).
+static func address_group(remote_address: String) -> String
 
 # auth_provider.gd
 class_name AuthProvider extends RefCounted
 ## Identidad y reino: OK o TICKET. Base de DevAuthProvider y del futuro TicketAuthProvider.
 func authenticate(hello: NetMessages.Hello) -> int
+## Desde la fase 5 (plataforma.md §14.3): authenticate(peer_id, hello) -> int (OK, PENDING = -1 o
+## motivo), on_platform_event(event) -> bool, take_completed() -> Array[AuthOutcome],
+## cancel(peer_id) y uses_tickets() -> bool.
 
 # dev_auth_provider.gd
 class_name DevAuthProvider extends AuthProvider   # acepta el reino y el nombre declarados
@@ -1748,6 +2451,8 @@ class_name DevAuthProvider extends AuthProvider   # acepta el reino y el nombre 
 class_name RateLimiter extends RefCounted
 func _init(rate_per_tick: float, burst: float) -> void
 func try_consume(now_tick: int, cost: float = 1.0) -> bool
+## N2: suma fichas por encima de la ráfaga hasta la siguiente recarga (primero recarga, después suma).
+func grant(now_tick: int, extra: float) -> void
 
 # input_queue.gd
 class_name InputQueue extends RefCounted
@@ -1776,6 +2481,13 @@ var display_name: String
 var flags: int = 0
 var node: Node3D
 var teleport_counter: int = 0
+const DEFAULT_HEALTH: int = 1000
+var health_q: int = EntityRecord.HEALTH_Q_FULL     # último byte del registro
+var health: int = DEFAULT_HEALTH; var max_health: int = DEFAULT_HEALTH   # bloque extra propio
+var status: int = 0; var respawn_tick: int = 0
+## Lo llama quien lleva la vida (Combatant) cada tick; calcula health_q.
+func set_health_view(new_health: int, new_max_health: int, new_status: int,
+		new_respawn_tick: int) -> void
 func get_position() -> Vector3
 func get_character() -> PlayerCharacter            # null si no es un jugador
 func encode_record(bytes: PackedByteArray, offset: int) -> void
@@ -1880,8 +2592,9 @@ func get_interpolation_clock() -> InterpolationClock
 func get_local_tick() -> int
 func get_last_server_state() -> PlayerState
 func get_stats() -> Dictionary
-## Bots: snapshots con estado, coincidencias exactas, diferencias explicadas y sin explicar,
-## resincronizaciones, ajustes de TickSync y estado final.
+## Bots: snapshots con estado, coincidencias exactas, diferencias explicadas (sustitución,
+## teletransporte o combate: combat_diffs) y sin explicar, resincronizaciones, ajustes de TickSync y
+## estado final.
 func write_report(path: String) -> Error
 
 # client_prediction.gd
@@ -2029,7 +2742,10 @@ Los remotos reutilizan `scenes/characters/player_character.tscn`.
   func set_bot(brain: BotBrain) -> void
   ```
 - **`scripts/boot.gd`:** los modos de [1.2](#12-modos-de-arranque). Rellena `ServerMain.config`
-  u `OnlineMain.config` con `from_args()` y cambia a la escena correspondiente.
+  con `from_args()` y cambia a la escena del servidor; para el cliente instancia
+  `scenes/client/client_launcher.tscn`, cuyo `ClientLauncher` (`scripts/client/client_launcher.gd`)
+  rellena `OnlineMain.config`, `BotSwarm.config` o las variables estáticas de `ClientMain` y cambia
+  a la escena correspondiente.
 - **`project.godot`:** `physics/common/physics_ticks_per_second=60` explícito. Lo toca también el
   flujo de arte: hay que fusionar, no sobrescribir.
 - **`tests/test_architecture.gd`:** las reglas de [16](#arquitectura-test_architecture-ampliado)
@@ -2048,13 +2764,23 @@ Los remotos reutilizan `scenes/characters/player_character.tscn`.
   		net_sim_spec: String = "") -> NetClient
   static func launch_process(user_args: PackedStringArray, log_name: String) -> int
   static func read_report(path: String) -> Dictionary
+  # Añadidos tras la revisión de la fase 2 (A1, A5, A7):
+  static func first_port_for(pid: int) -> int             # ranura de puertos de cada proceso de pruebas
+  static func get_build_dir() -> String                   # build/<pid>/, creada; borra las de procesos muertos
+  static func build_path(file_name: String) -> String     # un archivo dentro de build/<pid>/
+  static func clean_stale_build_dirs() -> int
+  static func launch_script(script_path: String, user_args: PackedStringArray, log_name: String) -> int
+  static func error_lines(log_path: String) -> PackedStringArray  # ERROR / SCRIPT ERROR de un registro
   ```
+  `tests/process_probe.gd` es el proceso auxiliar de `launch_script` (no es una prueba).
 - **Pruebas:** `test_net_messages.gd`, `test_input_queue.gd`, `test_tick_sync.gd`,
   `test_interpolation_clock.gd`, `test_remote_interpolator.gd`, `test_state_history.gd`,
   `test_net_sim.gd`, `test_snapshot_builder.gd`, `test_rate_limiter.gd`, `test_server_auth.gd`,
   `test_prediction.gd`, `test_net_loopback.gd` y `test_net_processes.gd`.
 - **Herramientas:** `tools/compare_state_logs.gd` y `tools/load_test.gd`, ambas scripts
-  `SceneTree`.
+  `SceneTree`. El cálculo del resumen de carga que no necesita procesos (la ventana de medida de las
+  entradas sustituidas) está en `tools/load_test_summary.gd` (`LoadTestSummary`), y
+  `tests/test_load_test.gd` carga la herramienta y lo prueba.
 
 ---
 
@@ -2105,7 +2831,7 @@ Los remotos reutilizan `scenes/characters/player_character.tscn`.
 
 | Problema detectado por los jueces | Corrección en este diseño |
 |---|---|
-| Snapshot de más de 1200 B con 64 jugadores visibles (A y C) | Presupuesto con acumulador de prioridad (57 registros por paquete); garantía de envío al menos cada ⌈N/57⌉ snapshots |
+| Snapshot de más de 1200 B con 64 jugadores visibles (A y C) | Presupuesto con acumulador de prioridad (57 registros por paquete en la fase 2, 52 desde la fase 3); garantía de envío al menos cada ⌈N/C⌉ snapshots |
 | `input_ack_tick` atascado tras una sustitución (A) | `max(contiguo recibido, último consumido)` |
 | Reconciliación con `is_close_to`, sin `prev_buttons` (A) | `equals_exact` sobre `encode()`, posible gracias al yaw en f32 |
 | Yaw en f64 frente a f32 en la red (B y C no lo veían) | Redondeo en el setter de `PlayerCharacter.yaw` |

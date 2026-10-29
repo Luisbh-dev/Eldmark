@@ -153,6 +153,25 @@ versión; se anota la fecha del archivo usado dentro del zip.
 | Carpeta en el repo | `assets/textures/terrain/watercolor/` |
 | Créditos | No obligatorios; si se acredita, el autor pide "Jonas Voland" |
 
+## Fuentes (pendientes: tarea del usuario)
+
+`assets/fonts/` está vacío: **faltan las fuentes OFL elegidas** para la interfaz (decisión del
+backlog, UI-02) y por ahora el tema usa la fuente por defecto del motor. No se han podido bajar con
+garantías de licencia desde el entorno de desarrollo, así que quedan pendientes de añadir a mano:
+
+| Uso | Fuente elegida | Licencia | Archivo esperado |
+|---|---|---|---|
+| Cuerpo de texto y números | Noto Sans (Google / Noto Project) | SIL OFL 1.1 | `assets/fonts/NotoSans-Regular.ttf` |
+| Títulos y pestañas | Cinzel (Natanael Gama) o Alegreya SC (Juan Pablo del Peral) | SIL OFL 1.1 | `assets/fonts/Cinzel-Regular.ttf` |
+
+Pasos: descargar cada familia de su origen oficial (Google Fonts o el repositorio del autor), copiar el
+`.ttf` con el nombre de la tabla (los `.ttf` van por Git LFS, ver `.gitattributes`) junto con su
+`OFL.txt`, anotar aquí autor, versión, fecha, URL y licencia (como en los demás packs), comprobar que
+la `ñ` y las tildes salen bien y ejecutar `godot --headless --path . -s res://tools/ui/build_theme.gd`
+para que el tema las cablee (`UIThemeBuilder` carga esas rutas si existen). Si se elige Alegreya SC,
+basta cambiar `UIThemeBuilder.TITLE_FONT_PATH`. La OFL pide conservar el aviso de copyright y la
+licencia de cada familia dentro del juego exportado.
+
 ## Contenido propio (no es de terceros)
 
 Hecho para Eldmark a partir de los packs anteriores o desde cero. Es del proyecto, que todavía no
@@ -161,12 +180,18 @@ declara una licencia propia:
 - Shaders `assets/materials/shaders/` (`realm_surface`, `water`) y materiales de
   `assets/materials/{realms,vegetation,water}/`.
 - `assets/environments/vado_gris_frontier.tres` (ambiente).
-- `assets/models/environment/custom/stone_bridge.tres` (malla del puente generada por script con
-  texturas del Castle Wall Kit) y las piezas de `scenes/world/props/` (empalizada, tiendas...).
+- `assets/models/environment/custom/` (mallas generadas por script: el puente de piedra, con
+  texturas del Castle Wall Kit, la hoja de la puerta del fuerte, las piedras y los troncos de la
+  hoguera y los escombros) y las piezas de `scenes/world/props/` (empalizada, tiendas...).
 - Materiales de personaje `assets/models/characters/**/materials/*.tres` y
   `assets/animations/rig/ual_humanoid_bone_map.tres`.
 - Datos de terreno `scenes/world/zones/vado_gris/terrain/*.res`, generados por
   `tools/terrain/generate_vado_gris.gd`.
+- Tema de interfaz `assets/ui/theme/eldmark_theme.tres` (generado por `tools/ui/build_theme.gd` a
+  partir de `UIPalette`).
+- Emblemas de bando `assets/emblems/*.svg` (lobo, sol partido, yunque y corona rota):
+  **provisionales**, formas geométricas hechas para Eldmark con `tools/assets/make_emblems.py`; los
+  sustituirá el arte final de ART-03 con los mismos nombres de archivo.
 
 ## Créditos de cortesía
 

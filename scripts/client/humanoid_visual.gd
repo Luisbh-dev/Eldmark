@@ -71,6 +71,22 @@ static func install(character: PlayerCharacter) -> HumanoidVisual:
 	return visual
 
 
+## Igual que [method install], pero además quita del nodo Visual las mallas provisionales (la cápsula
+## y el visor de [code]player_character.tscn[/code]), que se quedan ligeras para el servidor. Si el
+## visual no carga, devuelve null y la cápsula se queda para que se vea algo. Lo usan el sandbox
+## ([ClientMain]), el personaje local de [OnlineMain] y los remotos de [RemoteWorld].
+static func install_replacing_placeholder(character: PlayerCharacter) -> HumanoidVisual:
+	var visual: HumanoidVisual = install(character)
+	if visual == null:
+		return null
+	var visual_root: Node = visual.get_parent()
+	for child: Node in visual_root.get_children():
+		if child is MeshInstance3D:
+			visual_root.remove_child(child)
+			child.queue_free()
+	return visual
+
+
 func _ready() -> void:
 	_skeleton = _find_skeleton(_model)
 	if _skeleton == null:
@@ -80,6 +96,14 @@ func _ready() -> void:
 		_attach_part(scene)
 	_apply_hood()
 	_apply_shadow_casting()
+	# Armas provisionales en las manos (ART-06): hasta que lleguen los modelos definitivos.
+	WeaponProps.install(_skeleton)
+	# Pose de combate sobre la locomoción (ART-08). Va antes que el giro de la columna, que se
+	# aplica encima.
+	var combat := CombatPoseModifier.new()
+	combat.name = "CombatPose"
+	_skeleton.add_child(combat)
+	get_animator().set_combat_modifier(combat)
 	# Giro de la columna hacia el punto de mira (lo conduce el animador).
 	var spine := SpineTwistModifier.new()
 	spine.name = "SpineTwist"
@@ -88,7 +112,7 @@ func _ready() -> void:
 
 
 ## Esqueleto que anima todas las mallas (perfil humanoide de Godot: Hips, Head, RightHand...).
-## Sirve para colgar armas con un [BoneAttachment3D].
+## De él cuelgan las armas provisionales ([WeaponProps]) y los modificadores de pose.
 func get_skeleton() -> Skeleton3D:
 	return _skeleton
 

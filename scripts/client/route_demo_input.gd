@@ -10,15 +10,15 @@ extends DemoInput
 ## esquinas. Sigue siendo determinista: la entrada solo depende del tick y del estado simulado.
 ## [br][br]
 ## La ruta es una lista de pasos (quieto, ir a un punto, saltos, paso lateral, mirar a un punto,
-## órbita de la cámara) que se construye encadenando [method idle], [method go_to],
-## [method jumps], [method strafe], [method face] y [method orbit]. Con
+## órbita de la cámara, combate) que se construye encadenando [method idle], [method go_to],
+## [method jumps], [method strafe], [method face], [method orbit] y [method combat]. Con
 ## [code]mirror_z = true[/code] cada paso se refleja (z -> -z), que es como se pasa la ruta del
 ## norte (Vardheim) a la del sur (Solmarch) en una zona simétrica.
 ## [br][br]
 ## Hay que llamar a [method look_for] y [method next] una vez por tick y en orden (los dos con el
 ## mismo tick devuelven datos coherentes) y vincular el personaje con [method bind].
 
-enum Kind { IDLE, GOTO, JUMPS, STRAFE, FACE, ORBIT }
+enum Kind { IDLE, GOTO, JUMPS, STRAFE, FACE, ORBIT, COMBAT }
 
 ## Distancia (m) a la que se da por alcanzado un punto de paso.
 const REACH: float = 1.6
@@ -49,8 +49,10 @@ class Step:
 	var move: Vector2 = Vector2.ZERO
 	## GOTO: ticks desde el inicio del tramo en los que se pulsa saltar (-1: sin salto).
 	var jump_after: int = -1
-	## ORBIT: giro total de la vista (grados, positivo hacia la izquierda).
+	## ORBIT y COMBAT: giro total de la vista (grados, positivo hacia la izquierda).
 	var degrees: float = 0.0
+	## COMBAT: guion de botones que se pulsa durante el paso.
+	var combat: CombatDemoScript = null
 
 
 ## Refleja cada paso que se añade (z -> -z, lateral y órbita invertidos).
@@ -89,8 +91,9 @@ static func for_zone(zone_id: StringName, realm: StringName) -> DemoInput:
 
 ## Ruta del Vado Gris (ver docs/zonas/vado_gris.md): del campamento propio por la calzada, carrera
 ## con salto, cruce del puente propio, dos saltos en la ladera del fuerte, paso lateral, rodeo de
-## la esquina de la empalizada hasta la explanada de la puerta (frente al vado) y vuelta completa
-## de la cámara. Los puntos de paso son los de la ruta del puente de
+## la esquina de la empalizada hasta la explanada de la puerta (frente al vado) y, allí, el combate
+## ([CombatDemoScript]: combo de 3 ligeros, un fuerte cargado, un bloqueo y una esquiva) mientras la
+## cámara da una vuelta completa. Los puntos de paso son los de la ruta del puente de
 ## [code]verify_vado_gris_routes.gd[/code]; Solmarch recorre el reflejo de la de Vardheim.
 static func vado_gris(realm: StringName) -> RouteDemoInput:
 	var demo: RouteDemoInput = RouteDemoInput.new()
@@ -108,7 +111,7 @@ static func vado_gris(realm: StringName) -> RouteDemoInput:
 	demo.go_to(-29.0, -10.0, true, -1, "cara oeste de la empalizada")
 	demo.go_to(-25.0, -2.0, false, -1, "explanada de la puerta")
 	demo.face(-20.0, 0.0, 45, "mirar la puerta del fuerte")
-	demo.orbit(360.0, 210, "vuelta de cámara")
+	demo.combat(360.0, "combate con vuelta de cámara")
 	return demo
 
 
@@ -161,6 +164,15 @@ func orbit(degrees: float, ticks: int, label: String = "vuelta de cámara") -> R
 	var step: Step = _new_step(Kind.ORBIT, label)
 	step.degrees = -degrees if mirror_z else degrees
 	step.ticks = ticks
+	return self
+
+
+## Combate en el sitio ([CombatDemoScript]) mientras la cámara gira [param degrees] grados.
+func combat(degrees: float, label: String = "combate") -> RouteDemoInput:
+	var step: Step = _new_step(Kind.COMBAT, label)
+	step.combat = CombatDemoScript.new()
+	step.ticks = step.combat.get_length()
+	step.degrees = -degrees if mirror_z else degrees
 	return self
 
 
@@ -262,7 +274,7 @@ func _begin_step(step: Step, tick: int) -> void:
 		_goto_budget = ceili(distance / speed / dt * 1.5) + GOTO_EXTRA_TICKS
 		_best_distance = INF
 		_since_progress = 0
-	elif step.kind == Kind.ORBIT:
+	elif step.kind == Kind.ORBIT or step.kind == Kind.COMBAT:
 		_orbit_start_yaw = _look_yaw
 		_orbit_start_pitch = _look_pitch
 
@@ -323,6 +335,15 @@ func _run_step(step: Step, dt: float) -> bool:
 			_look_yaw = _orbit_start_yaw + deg_to_rad(step.degrees) * k
 			var pitch_k: float = smoothstep(0.0, 1.0, minf(k * 4.0, 1.0))
 			_look_pitch = lerpf(_orbit_start_pitch, deg_to_rad(ORBIT_PITCH_DEGREES), pitch_k)
+			return true
+		Kind.COMBAT:
+			if _step_tick >= step.ticks:
+				return false
+			_buttons |= step.combat.buttons_at(_step_tick)
+			var combat_k: float = float(_step_tick + 1) / float(step.ticks)
+			_look_yaw = _orbit_start_yaw + deg_to_rad(step.degrees) * combat_k
+			var combat_pitch_k: float = smoothstep(0.0, 1.0, minf(combat_k * 4.0, 1.0))
+			_look_pitch = lerpf(_orbit_start_pitch, deg_to_rad(ORBIT_PITCH_DEGREES), combat_pitch_k)
 			return true
 	return false
 

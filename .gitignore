@@ -29,3 +29,6 @@ override.cfg
 
 # Copias temporales de las librerías de GDExtension que crea el editor en Windows
 addons/*/bin/~*
+
+# Ajustes locales de Claude Code (permisos de esta máquina)
+.claude/settings.local.json

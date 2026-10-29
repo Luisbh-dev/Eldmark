@@ -17,6 +17,9 @@ extends SceneTree
 ## [br][br]
 ## [code]--filter=<texto>[/code] ejecuta solo las pruebas cuyo nombre
 ## ([code]archivo::método[/code]) contiene el texto.
+## [br][br]
+## [code]--shard=K/N[/code] ejecuta solo la parte K (de 1 a N) de los archivos de prueba, repartidos
+## por turnos en orden alfabético: la integración continua lanza las N partes a la vez.
 
 const TESTS_DIR: String = "res://tests"
 const TEST_FILE_PREFIX: String = "test_"
@@ -27,7 +30,7 @@ const STARTUP_FRAMES: int = 2
 ## Tiempo máximo de cada fase (before_each, la prueba, after_each).
 const PHASE_TIMEOUT_MSEC: int = 30000
 ## Temporizador de seguridad para toda la ejecución.
-const GLOBAL_TIMEOUT_SEC: float = 600.0
+const GLOBAL_TIMEOUT_SEC: float = 3600.0
 
 const TestCaseScript = preload("res://tests/test_case.gd")
 
@@ -85,6 +88,9 @@ class ErrorCatcher extends Logger:
 
 var _catcher: ErrorCatcher = ErrorCatcher.new()
 var _filter: String = ""
+## Parte que se ejecuta (de 1 a [member _shard_count]); con 1 de 1, todas.
+var _shard_index: int = 1
+var _shard_count: int = 1
 var _finished: bool = false
 var _passed: int = 0
 var _failed_names: PackedStringArray = PackedStringArray()
@@ -94,6 +100,16 @@ func _initialize() -> void:
 	for arg: String in OS.get_cmdline_user_args():
 		if arg.begins_with("--filter="):
 			_filter = arg.trim_prefix("--filter=")
+		elif arg.begins_with("--shard="):
+			var parts: PackedStringArray = arg.trim_prefix("--shard=").split("/")
+			var valid: bool = parts.size() == 2 and parts[0].is_valid_int() and parts[1].is_valid_int()
+			if valid:
+				_shard_index = parts[0].to_int()
+				_shard_count = parts[1].to_int()
+			if not valid or _shard_count < 1 or _shard_index < 1 or _shard_index > _shard_count:
+				push_error("--shard=K/N necesita 1 <= K <= N: '%s'" % arg)
+				_shard_index = 1
+				_shard_count = 0
 	create_timer(GLOBAL_TIMEOUT_SEC, true, false, true).timeout.connect(_on_global_timeout)
 	_run()
 
@@ -108,8 +124,10 @@ func _run() -> void:
 	])
 	if not _filter.is_empty():
 		print("Filtro: \"%s\"" % _filter)
+	if _shard_count != 1:
+		print("Parte %d de %d" % [_shard_index, _shard_count])
 
-	var files: PackedStringArray = _discover_test_files()
+	var files: PackedStringArray = _shard_of(_discover_test_files())
 	if files.is_empty():
 		_record_failure("(ejecutor)", PackedStringArray(["No se encontró ningún %s/%s*.gd" % [
 			TESTS_DIR, TEST_FILE_PREFIX,
@@ -146,6 +164,20 @@ func _discover_test_files() -> PackedStringArray:
 	for file_name: String in result:
 		paths.append(TESTS_DIR.path_join(file_name))
 	return paths
+
+
+## Los archivos de la parte pedida: el i-ésimo (en orden alfabético) va a la parte i % N + 1. Con
+## [code]--shard[/code] mal escrito no devuelve ninguno, y la ejecución falla.
+func _shard_of(files: PackedStringArray) -> PackedStringArray:
+	if _shard_count == 1:
+		return files
+	var result: PackedStringArray = PackedStringArray()
+	if _shard_count < 1:
+		return result
+	for i: int in files.size():
+		if i % _shard_count == _shard_index - 1:
+			result.append(files[i])
+	return result
 
 
 func _run_file(path: String) -> void:

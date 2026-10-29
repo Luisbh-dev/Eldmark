@@ -1,0 +1,235 @@
+class_name SiegeRunner
+extends Node
+## Un asedio con jugadores falsos sobre la zona de verdad (GUE-15, GUE-17; docs/fuerte.md, sección 7), en un
+## solo proceso y sin red: carga el Vado Gris con su Terrain3D, arranca un [ZoneServer] y lo avanza «a mano»,
+## muchos ticks por fotograma de física ([member ticks_per_frame]), para que una batalla de minutos de juego
+## dure segundos. Lo usan [code]tools/war/siege_battle.gd[/code] (la herramienta de línea de órdenes, que
+## imprime el informe) y [code]tests/test_siege_zone.gd[/code] (una versión corta dentro de la suite).
+## [br][br]
+## Apunta lo que hace falta para medir: cuándo llega cada bot a la puerta y por qué ruta, los avisos de guerra y
+## las muertes de jugadores. El servidor no tiene PNJ en este paquete: [method kill_captain] da por muerto al
+## capitán como el comando [code]fort_kill_captain[/code], y [method spawn_captain_double] pone un PNJ mortal en
+## su sitio para que los bots lo maten ellos.
+
+## Zona del asedio.
+const ZONE_ID: String = "vado_gris"
+## A esta distancia (m) de la puerta, en horizontal, se cuenta que un bot ha llegado.
+const ARRIVAL_DISTANCE: float = 3.0
+## Ticks que se avanzan por fotograma de física.
+const DEFAULT_TICKS_PER_FRAME: int = 40
+## Ticks entre dos comprobaciones de la condición de [method advance_until].
+const CHECK_TICKS: int = 30
+## Tick por segundo.
+const TICK_RATE: int = 60
+
+## Ticks que se avanzan por fotograma de física.
+var ticks_per_frame: int = DEFAULT_TICKS_PER_FRAME
+## El servidor de la zona (null antes de [method start]).
+var server: ZoneServer = null
+var world: Node3D = null
+## Avisos de guerra en el orden en que salieron (cada uno con su tick) y muertes de jugadores.
+var war_events: Array[NetMessages.EntityEvent] = []
+var deaths: Array[Dictionary] = []
+## net_id -> {realm, route, tick} de cada bot que ha llegado a la puerta.
+var arrivals: Dictionary[int, Dictionary] = {}
+## net_id -> realm de los jugadores falsos de asedio.
+var bots: Dictionary[int, int] = {}
+
+# net_id -> cerebro de cada bot de asedio (para saber qué ruta sigue).
+var _brains: Dictionary[int, BotBrain] = {}
+var _remaining: int = 0
+var _running: bool = false
+
+
+## Carga la zona, arranca el servidor y lo deja listo (sin avanzar). [param battle_log_path] activa el
+## [code]--battle-log[/code] del servidor. Sin [param with_npcs] el servidor arranca con
+## [code]--no-npcs[/code] (sin Huecos, Capitán ni Guardianes: el asedio de F6a, medido así); con él, los PNJ
+## de la zona (F4) defienden el fuerte (F6b). Devuelve false si no ha podido.
+func start(parent: Node, battle_log_path: String = "", max_players: int = 256, with_npcs: bool = false) -> bool:
+	var packed: PackedScene = load(NetZones.scene_path(ZONE_ID)) as PackedScene
+	if packed == null:
+		return false
+	world = packed.instantiate() as Node3D
+	parent.add_child(world)
+	var zone_root: ZoneRoot = world as ZoneRoot
+	if zone_root != null:
+		zone_root.strip_for_server()
+	server = ZoneServer.new()
+	server.name = "ZoneServer"
+	server.log_enabled = false
+	parent.add_child(server)
+	for _i: int in 4:
+		await get_tree().physics_frame
+	var config := ServerConfig.new()
+	config.zone_id = ZONE_ID
+	config.max_players = max_players
+	config.no_dummies = true
+	config.no_npcs = not with_npcs
+	config.battle_log_path = battle_log_path
+	if server.start(config, world, null, DevAuthProvider.new()) != OK:
+		return false
+	server.set_physics_process(false)
+	server.get_fortresses().war_event_emitted.connect(func(event: NetMessages.EntityEvent) -> void:
+		war_events.append(event))
+	server.get_combat().event_emitted.connect(_on_combat_event)
+	server.tick_finished.connect(_on_tick_finished)
+	return true
+
+
+## Cierra el servidor y libera la zona.
+func finish() -> void:
+	if is_instance_valid(server):
+		server.stop()
+		if server.get_parent() != null:
+			server.get_parent().remove_child(server)
+		server.free()
+	server = null
+	if is_instance_valid(world):
+		if world.get_parent() != null:
+			world.get_parent().remove_child(world)
+		world.queue_free()
+	world = null
+
+
+## Añade [param count] jugadores falsos de asedio de [param realm], con las semillas [param seed_base],
+## [param seed_base] + 1... Devuelve sus net_id.
+func add_siege_bots(realm: int, count: int, seed_base: int) -> Array[int]:
+	var ids: Array[int] = []
+	for i: int in count:
+		var brain := BotBrain.new(seed_base + i, BotBrain.Pattern.SIEGE)
+		var net_id: int = server.add_fake_player(brain, realm)
+		if net_id > 0:
+			bots[net_id] = realm
+			_brains[net_id] = brain
+			ids.append(net_id)
+	return ids
+
+
+## Pone en el sitio del capitán un PNJ mortal y quieto, registrado como capitán (ver
+## [method ZoneServer.spawn_captain_double]). Devuelve su net_id.
+func spawn_captain_double() -> int:
+	return server.spawn_captain_double(fortress_id())
+
+
+## Da por muerto al capitán con la orden de la consola [code]fort_kill_captain[/code]. Devuelve true si el
+## fuerte lo guardaba (fase GARRISONED con el capitán vivo).
+func kill_captain() -> bool:
+	return server.console_command("fort_kill_captain").contains("ha muerto")
+
+
+## Multiplica la velocidad de captura ([code]fort_capture_speed[/code]).
+func set_capture_speed(factor: int) -> void:
+	server.get_fortresses().set_capture_speed(fortress_id(), factor)
+
+
+## Id de la fortaleza de la zona.
+func fortress_id() -> StringName:
+	return server.get_fortresses().get_fortress_ids()[0]
+
+
+## Estado vivo de la fortaleza.
+func state() -> FortressState:
+	return server.get_fortresses().get_fortress_state(fortress_id())
+
+
+## Avanza [param ticks] ticks del servidor.
+func advance(ticks: int) -> void:
+	_remaining += ticks
+	_running = true
+	while _remaining > 0:
+		await get_tree().physics_frame
+	_running = false
+
+
+## Avanza hasta que [param condition] sea verdadera (se mira cada [constant CHECK_TICKS] ticks) o pasen
+## [param max_ticks]. Devuelve los ticks que ha avanzado, o -1 si no se cumplió.
+func advance_until(condition: Callable, max_ticks: int) -> int:
+	var advanced: int = 0
+	while advanced < max_ticks:
+		if bool(condition.call()):
+			return advanced
+		var chunk: int = mini(CHECK_TICKS, max_ticks - advanced)
+		await advance(chunk)
+		advanced += chunk
+	return advanced if bool(condition.call()) else -1
+
+
+## Tick del servidor.
+func tick() -> int:
+	return server.get_tick()
+
+
+## Los avisos de guerra (ids de [WarEvents]) en el orden en que salieron.
+func war_ids() -> Array[int]:
+	var ids: Array[int] = []
+	for event: NetMessages.EntityEvent in war_events:
+		ids.append(event.war_event)
+	return ids
+
+
+## Tick del primer aviso de guerra [param war_event] (-1 si no ha salido).
+func tick_of_war(war_event: int) -> int:
+	for event: NetMessages.EntityEvent in war_events:
+		if event.war_event == war_event:
+			return event.tick
+	return -1
+
+
+## Cuántos bots de [param realm] siguen vivos.
+func alive_bots(realm: int) -> int:
+	var count: int = 0
+	for net_id: int in bots:
+		if bots[net_id] != realm:
+			continue
+		var combatant: Combatant = server.get_combat().get_combatant(net_id)
+		if combatant != null and combatant.is_alive():
+			count += 1
+	return count
+
+
+## Segundos de juego que son [param ticks].
+static func seconds(ticks: int) -> float:
+	return float(ticks) / float(TICK_RATE)
+
+
+func _physics_process(delta: float) -> void:
+	if not _running or server == null:
+		return
+	var count: int = mini(_remaining, ticks_per_frame)
+	for _i: int in count:
+		server._physics_process(delta)
+	_remaining -= count
+
+
+# Anota las muertes de jugadores (con el reino de la víctima y su sitio).
+func _on_combat_event(event: NetMessages.EntityEvent, _involved: PackedInt32Array) -> void:
+	if event.event != NetMessages.EntityEvent.Kind.DEATH:
+		return
+	var victim: NetEntity = server.get_registry().get_entity(event.net_id)
+	if victim == null or victim.kind != NetProtocol.EntityKind.PLAYER:
+		return
+	deaths.append({"tick": event.tick, "net_id": event.net_id, "realm": victim.realm,
+			"position": victim.get_position()})
+
+
+# Al terminar cada tick, anota quién acaba de llegar a la puerta y por qué ruta.
+func _on_tick_finished(tick_now: int) -> void:
+	var gate: FortGate = server.get_fortresses().get_gate(fortress_id())
+	if gate == null:
+		return
+	var gate_point := Vector2(gate.global_position.x, gate.global_position.z)
+	for net_id: int in bots:
+		if arrivals.has(net_id):
+			continue
+		var entity: NetEntity = server.get_registry().get_entity(net_id)
+		if entity == null:
+			continue
+		var position: Vector3 = entity.get_position()
+		if Vector2(position.x, position.z).distance_to(gate_point) <= ARRIVAL_DISTANCE:
+			arrivals[net_id] = {"realm": bots[net_id], "route": _route_of(net_id), "tick": tick_now}
+
+
+# La ruta que sigue el bot [param net_id] (el cerebro la elige al empezar).
+func _route_of(net_id: int) -> StringName:
+	var brain: BotBrain = _brains.get(net_id)
+	return brain.get_siege_route() if brain != null else &""

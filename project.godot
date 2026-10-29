@@ -29,8 +29,13 @@ window/stretch/aspect="expand"
 
 enabled=PackedStringArray("res://addons/proton_scatter/plugin.cfg", "res://addons/terrain_3d/plugin.cfg")
 
+[gui]
+
+theme/custom="res://assets/ui/theme/eldmark_theme.tres"
+
 [physics]
 
+common/physics_ticks_per_second=60
 common/physics_jitter_fix=0.0
 3d/physics_engine="Jolt Physics"
 common/physics_interpolation=true
