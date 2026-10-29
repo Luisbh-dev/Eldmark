@@ -263,8 +263,8 @@ supuestos técnicos comprobados ejecutando Godot y Terrain3D).
 | F0 | Escena y generador del Vado Gris (ejecutado aquí): nodo de fortaleza, puerta cerrada con dos cuerpos (movimiento por capas de reino, vista en la capa de estructuras), `respawn_points`, patrullas, `NpcSpawner`; navmesh horneada (0,3 MB, celda 0,25 m, verificada: sin salida con la puerta cerrada y sin cruzar el lecho del río); rutas en `data/routes/vado_gris.tres` | Hecho |
 | F1 | `FortressState` con toda la tabla de captura, presencia, progreso en enteros, `WarEvents`, `RespawnRules`, `SiegeView` (44 pruebas de estado) | Hecho |
 | F2 | Protocolo 4: OBJECT_STATE, SPAWN de estructuras y PNJ, WAR, TELEGRAPH, /atascado, SCOREBOARD, REJECT de desequilibrio | Hecho |
-| F3 | Servidor del fuerte | En marcha |
-| F5 | Cliente del fuerte | En marcha |
+| F3 | Servidor del fuerte | En marcha (cortado por un segundo reinicio del contenedor y relanzado desde sus commits) |
+| F5 | Cliente del fuerte | En marcha (ídem) |
 | F4 | PNJ (navegación, IA, Huecos, Capitán, guarnición, Guardianes) | Pendiente |
 | F6 | Bots de asedio, carga y prueba de extremo a extremo | Pendiente |
 
