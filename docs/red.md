@@ -1294,7 +1294,8 @@ REJECT). Ahora `ZoneServer._kick` apunta una entrada `_kick_until` de 30 s:
 - **Purga.** Al apuntar una expulsión se borran las entradas vencidas, así que el diccionario no
   crece más que las expulsiones de los últimos 30 s (`get_cooldown_count()`).
 - **Límite.** Es un freno, no un veto: el atacante con varias IP o con otro nombre desde loopback
-  sigue entrando. El veto por cuenta llega con las fases 5 y 6.
+  sigue entrando, y quien comparte IP con el expulsado (una red con NAT) espera los mismos 30 s. El
+  veto por cuenta llega con las fases 5 y 6.
 
 **Fases 5 y 6:**
 
