@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="FortressDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/war/fortress_definition.gd" id="1_fortdef"]
+
+[resource]
+script = ExtResource("1_fortdef")
+id = &"vado_gris_fort"
+display_name = "Fuerte del Vado Gris"
+capture_s = 30.0
+decay_after_empty_s = 5.0
+circle_height_m = 4.0
+gate_health = 9000
+consolidation_s = 120.0
+captain_respawn_s = 300.0
+guard_respawn_s = 180.0
+under_attack_s = 30.0
+gate_repair_after_s = 300.0
+reset_to_neutral_s = 1800.0
