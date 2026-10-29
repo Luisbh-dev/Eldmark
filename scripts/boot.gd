@@ -5,9 +5,10 @@ extends Node
 ## de [code]--[/code]) y decide en qué modo arranca el juego:
 ## [br]- [code]--server[/code]: servidor dedicado de una zona ([ServerMain], siempre con
 ## [code]--headless[/code]; opciones en [ServerConfig]). Tiene prioridad sobre el resto.
+## [br]- [code]--bots=N[/code]: enjambre de N clientes ligeros para pruebas de carga ([BotSwarm]).
+## Tiene prioridad sobre el resto de modos de cliente.
 ## [br]- [code]--connect=<host>[:<puerto>][/code] o [code]--bot[/code]: cliente en red
-## ([OnlineMain], ver [ClientConfig]). Tiene prioridad sobre el sandbox. [code]--bots=N[/code]
-## todavía no existe: avisa y cierra con código 1.
+## ([OnlineMain], ver [ClientConfig]). Tiene prioridad sobre el sandbox.
 ## [br]- [code]--local[/code]: cliente en red contra un servidor local que se lanza solo si no hay
 ## ninguno ([LocalServerLauncher]); ver [method _start_local].
 ## [br]- [code]--zone=<id>[/code]: zona que se carga ([code]vado_gris[/code] por defecto,
@@ -48,16 +49,13 @@ func _ready() -> void:
 		return
 	# Prioridad de la sección 1.2: --server > --bots > --connect/--local/--bot > sandbox.
 	var config: ClientConfig = ClientConfig.from_args(args)
-	if config.mode == ClientConfig.Mode.SWARM:
-		_start_swarm(config)
-		return
 	match config.mode:
+		ClientConfig.Mode.SWARM:
+			_start_swarm(config)
 		ClientConfig.Mode.ONLINE, ClientConfig.Mode.BOT:
 			_start_online(config)
 		ClientConfig.Mode.LOCAL:
 			_start_local(config)
-		ClientConfig.Mode.SWARM:
-			_reject_unavailable_mode(config)
 		_:
 			_start_client(args)
 
@@ -135,16 +133,6 @@ func _start_server(args: PackedStringArray) -> void:
 func _start_online(config: ClientConfig) -> void:
 	OnlineMain.config = config
 	get_tree().change_scene_to_file.call_deferred(ONLINE_MAIN_SCENE)
-
-
-## [code]--local[/code] (servidor local que se lanza solo) y [code]--bots=N[/code] (enjambre de
-## clientes ligeros) todavía no están implementados (TEC-45 y TEC-11). En lugar de arrancar el
-## sandbox en silencio con unos argumentos que pedían otra cosa, avisa y cierra con código 1.
-func _reject_unavailable_mode(config: ClientConfig) -> void:
-	var option: String = "--local" if config.mode == ClientConfig.Mode.LOCAL else "--bots"
-	push_error("[Eldmark] %s todavía no está disponible. Usa --connect=<host>[:<puerto>] contra un "
-			% option + "servidor ya arrancado (--server), o --bot --connect=...")
-	get_tree().quit(1)
 
 
 ## [code]--local[/code]: igual que un cliente en red, pero [OnlineMain] primero reutiliza o lanza el

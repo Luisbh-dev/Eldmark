@@ -100,6 +100,7 @@ Opciones de arranque (van después de `--`):
 - `--server`: servidor dedicado de una zona (ver «Servidor dedicado» más abajo).
 - `--connect=<host>[:<puerto>]`, `--local` y `--bot`: cliente en red (ver «Cliente en red» más
   abajo).
+- `--bots=N`: enjambre de N clientes ligeros para pruebas de carga (ver «Enjambre de bots»).
 
 Las capturas y otros ficheros temporales pueden ir en `build/`, que Godot ignora.
 
@@ -126,13 +127,23 @@ godot --headless --path . --log-file build/servidor.log -- --server --zone=vado_
 
 Opciones (después de `--`): `--server`, `--zone=<id>`, `--port=24600`, `--max-players=64`,
 `--max-per-ip=4`, `--idle-quit=<s>` (se cierra tras esos segundos sin jugadores),
-`--fake-players=N` (jugadores sin red, para pruebas y carga), `--debug-commands` (admite el
-teletransporte de depuración de los clientes), `--dev-lock` (escribe `user://dev_server.json`
-para que `--local` reutilice el servidor), `--quit-after-ticks=N`, `--report=<ruta.json>`,
-`--state-log=<ruta.csv>` (`tick,net_id,sustituida,estado` por tick y jugador) y
-`--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1`. El registro escribe las altas, las bajas, las
-expulsiones y, cada 10 s, la duración del tick y el ancho de banda. El código de salida es 0 en un
-cierre normal y 1 si no puede arrancar (zona desconocida, puerto ocupado).
+`--fake-players=N` (jugadores sin red, para pruebas y carga) con `--fake-layout=cluster|spread`
+(todos agrupados en un punto, a menos de 60 m, o repartidos por la zona) y `--fake-churn=<ticks>`
+(cada tantos ticks sale el más antiguo y entra uno nuevo: 60 = una alta y una baja por segundo),
+`--debug-commands` (admite el teletransporte de depuración de los clientes), `--dev-lock` (escribe
+`user://dev_server.json` para que `--local` reutilice el servidor), `--quit-after-ticks=N`,
+`--report=<ruta.json>`, `--state-log=<ruta.txt>` (`tick,net_id,sustituida,estado` por tick y
+jugador; ver «Registros de estado») y `--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1`. El
+registro escribe las altas, las bajas, las expulsiones y, cada 10 s, la duración del tick y el
+ancho de banda. El informe lleva, además de los contadores, el p50/p99/máximo del tick y de cada
+sección, los µs de cada `simulate()` y el tamaño y el coste de construir los snapshots. El código
+de salida es 0 en un cierre normal y 1 si no puede arrancar (zona desconocida, puerto ocupado).
+
+El servidor se defiende de los clientes (docs/red.md, sección 12): limita los paquetes por tick y
+por segundo y los bytes de cada peer, cuenta un aviso por cada paquete mal formado, de un tipo
+inesperado para el estado de la sesión o por encima del ritmo, y expulsa con un NOTICE al que
+suma 50 avisos en 600 ticks; además admite como mucho `--max-per-ip` conexiones por IP (salvo
+desde loopback).
 
 ## Cliente en red
 
@@ -151,15 +162,80 @@ godot --headless --path . -- --bot --connect=127.0.0.1:24600 --bot-seed=3 \
 Opciones (después de `--`): `--connect=<host>[:<puerto>]`, `--port=<puerto>` (gana al de
 `--connect`), `--realm=<reino>` (sin él, un cliente con ventana muestra la pantalla de elección de
 reino; un bot o un cliente sin ventana entra como Vardheim, con un aviso), `--name=<nombre>` (por
-defecto «Jugador» y cuatro letras al azar), `--local`, `--bot`, `--bot-seed=N`,
+defecto «Jugador» y cuatro letras al azar), `--local`, `--bot`, `--bot-seed=N`, `--bot-cheat=version|future|dupes|garbage|flood` (bot
+tramposo, ver más abajo),
 `--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1`, `--quit-after-ticks=N` (ticks de física locales
 desde que arranca la sesión, contando la conexión y la carga de la zona; los últimos ticks el bot se
 queda quieto), `--report=<ruta.json>` (coincidencias exactas, diferencias explicadas y sin
 explicar, reinicios y resincronizaciones, ajustes de TickSync y estado final) y
-`--state-log=<ruta.csv>` (`server_tick,predicho,servidor` en hexadecimal por snapshot). Con
+`--state-log=<ruta.txt>` (`server_tick,predicho,servidor` en hexadecimal por snapshot). Con
 `--quit-after-ticks` el código de salida es 0 si el bot llegó a jugar y salió por su pie, y 1 si
-fue rechazado, se desconectó o no llegó a entrar en la zona. `--bots=N` todavía no existe: avisa y
-cierra con código 1.
+fue rechazado, se desconectó o no llegó a entrar en la zona.
+
+Las rutas de `--report` y `--state-log` pueden ir en `build/`, pero con `--state-log` dentro del
+proyecto usa la extensión `.txt`: el importador de Godot convierte los `.csv` en traducciones.
+
+### Enjambre de bots (`--bots=N`)
+
+`--bots=N` lanza un proceso con N clientes ligeros (`BotSwarm`/`SwarmBot`) que no cargan la zona ni
+simulan: entran uno cada 5 ticks, predicen con el `TickSync` de verdad, caminan guiados por su
+`BotBrain` y confirman los snapshots. Sirven para cargar el servidor sin que el generador de carga
+sea el cuello de botella:
+
+```bash
+godot --headless --path . -- --bots=32 --connect=127.0.0.1:24600 --realm=vardheim \
+    --bot-seed=1000 --quit-after-ticks=3600 --report=build/enjambre.json
+```
+
+Cada bot se llama `Bot` más cuatro letras según `--bot-seed` más su índice, así que dos enjambres
+contra el mismo servidor necesitan semillas distintas. Sin `--realm` se reparten entre Vardheim y
+Solmarch. El informe trae los bytes de subida y de bajada de cada cliente, los snapshots recibidos
+y su tamaño medio. Código de salida 0 si todos jugaban al terminar y 1 si alguno fue rechazado o se
+cayó.
+
+### Bot tramposo (`--bot-cheat`)
+
+Un `--bot` con `--bot-cheat=<modo>` hace trampa sin dejar de predecir con sus entradas honradas;
+sirve para comprobar que el servidor no se deja (docs/red.md, sección 12):
+
+| Modo | Qué hace | Qué debe pasar |
+|---|---|---|
+| `version` | HELLO con otra versión del protocolo | REJECT por versión |
+| `future` | lotes de entradas con ticks muy por delante de la ventana | se descartan y se cuentan; sin efecto ni ventaja |
+| `dupes` | copias distintas de las mismas entradas | gana la primera copia |
+| `garbage` | paquetes al azar por el canal de entradas y el fiable | avisos y expulsión |
+| `flood` | más paquetes por tick de los que admiten los limitadores | avisos por exceso de ritmo y expulsión |
+
+### Registros de estado y comparación
+
+Con `--state-log` el servidor escribe el estado de cada jugador en cada tick
+(`tick,net_id,sustituida,estado`) y el bot el estado que predijo y el que le llegó en cada snapshot
+(`server_tick,predicho,servidor`). `tools/compare_state_logs.gd` los cruza y clasifica cada
+snapshot del bot: coincide bit a bit, diferencia explicada (el servidor sustituyó una entrada) o
+diferencia sin explicar (un fallo de determinismo). Sale con código 1 si hay alguna sin explicar:
+
+```bash
+godot --headless --path . -s res://tools/compare_state_logs.gd -- build/servidor.txt build/bot.txt [net_id]
+```
+
+### Pruebas de carga
+
+`tools/load_test.gd` lanza un servidor con jugadores falsos y procesos `--bots`, espera a que
+terminen y resume lo que mide el servidor: p50/p99/máximo del tick por sección, µs de `simulate()`
+por personaje, tamaño de los snapshots, KB/s por cliente y entradas sustituidas, con el criterio de
+la fase 2 (p99 del tick por debajo de 8 ms, 37 KB/s por cliente, menos de un 1 % sustituidas).
+Escenarios: `cluster` (agrupados en 60 m), `spread` (dispersos) y `churn` (altas y bajas a 1 por
+segundo). Está documentado en la cabecera del script:
+
+```bash
+# Un escenario: 64 falsos agrupados y 10 clientes reales
+godot --headless --path . -s res://tools/load_test.gd -- --scenario=cluster --fakes=64 --bots=10
+# La batería estándar de la fase 2 (varios minutos)
+godot --headless --path . -s res://tools/load_test.gd -- --matrix
+```
+
+Los informes quedan en `build/load_test/` (`summary.txt` y `summary.json`).
+
 
 ### Todo en uno: `--local`
 
@@ -217,7 +293,8 @@ scripts/
   shared/      Compartido: datos, fórmulas, protocolo de red, simulación, registro de zonas
   world/       Nodos de las escenas de zona (ZoneRoot...), los cargan cliente y servidor
 tests/         Pruebas automáticas (run_tests.gd y test_*.gd)
-tools/         Scripts de generación (terreno, piezas, materiales, assets) y de revisión
+tools/         Scripts de generación (terreno, piezas, materiales, assets), de revisión, de
+               comparación de registros de estado (compare_state_logs.gd) y de carga (load_test.gd)
 docs/          Diseño y documentación técnica
 addons/        Plugins de terceros (Terrain3D, ProtonScatter)
 ```

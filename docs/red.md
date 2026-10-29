@@ -83,7 +83,7 @@ que añade otro flujo de trabajo. Aquí se usan, no se redefinen (ver [1.5](#15-
 | Argumentos | Modo | Escena |
 |---|---|---|
 | ninguno, `--demo`, `--shots=`, `--quit-after-demo` | Sandbox sin red de la fase 1, sin cambios | `scenes/client/client_main.tscn` |
-| `--server [--port=24600] [--zone=<id>] [--max-players=64] [--max-per-ip=4] [--idle-quit=<s>] [--fake-players=N] [--debug-commands] [--dev-lock]` | Servidor dedicado (siempre con `--headless`) | `scenes/server/server_main.tscn` |
+| `--server [--port=24600] [--zone=<id>] [--max-players=64] [--max-per-ip=4] [--idle-quit=<s>] [--fake-players=N [--fake-layout=cluster\|spread] [--fake-churn=<ticks>]] [--debug-commands] [--dev-lock]` | Servidor dedicado (siempre con `--headless`) | `scenes/server/server_main.tscn` |
 | `--connect=<host>[:<puerto>] [--realm=<reino>] [--name=<nombre>]` | Cliente en red | `scenes/client/online_main.tscn` |
 | `--local [--realm=…] [--name=…]` | Cliente contra un servidor local, que se lanza si no hay ninguno | `scenes/client/online_main.tscn` |
 | `--bot --connect=… [--bot-seed=N] [--bot-cheat=<modo>]` | Un cliente que predice, sin cámara ni HUD, guiado por `BotBrain` | `scenes/client/online_main.tscn` |
@@ -1246,6 +1246,39 @@ Sobrecoste por paquete UDP: unos 40 B (IPv4 20, UDP 8, ENet ~12).
 **CPU (fase 2):** el p99 del tick debe quedar por debajo de 8 ms (la mitad de los 16,7 ms) con
 64 bots agrupados. Se mide por sección: red, simulación (µs por personaje), historial,
 snapshots. Ese dato es el primero del límite de jugadores por batalla que pide `vision.md`.
+
+**Medidas de la fase 2** (`tools/load_test.gd --matrix`, TEC-11). Vado Gris con su Terrain3D, el servidor y
+el enjambre `--bots` en la misma máquina de 4 núcleos (con poca carga ajena), GDScript sin optimizar. Los
+falsos son `--fake-players`; los bots, clientes reales por ENet en loopback que reciben snapshots. Tick en
+ms, p50 / p99 / máximo de los últimos 34 s de régimen:
+
+| Escenario | Jugadores | Tick | `sim` p50 | `snapshot` p50 | Bajada por cliente |
+|---|---|---|---|---|---|
+| agrupado, 62 falsos y 2 bots | 64 | 4,8 / 8,7 / 14,1 | 3,9 | 0,5 | 35,3 KB/s |
+| agrupado, 54 falsos y 10 bots | 64 | 5,7 / 9,6 / 23,4 | 3,9 | 1,2 | 35,2 KB/s |
+| agrupado, 64 falsos y 2 bots | 66 | 4,8 / 8,0 / 12,1 | 4,0 | 0,5 | 35,3 KB/s |
+| agrupado, 64 falsos y 10 bots | 74 | 6,5 / 12,1 / 45,2 | 4,5 | 1,3 | 35,3 KB/s |
+| agrupado, 64 falsos y 50 bots | 114 | 15,3 / 26,9 / 49,6 | 6,4 | 6,9 | 34,3 KB/s |
+| disperso, 64 falsos y 10 bots | 74 | 6,7 / 11,2 / 19,2 | 4,8 | 1,3 | 35,3 KB/s |
+| altas y bajas (1 por segundo), 64 falsos y 10 bots | 74 | 6,4 / 11,0 / 41,6 | 4,5 | 1,3 | 35,3 KB/s |
+
+- **Sustituidas.** Entre 0,09 % y 0,16 % de las entradas (criterio: menos de un 1 %), sin avisos ni
+  expulsiones ni errores de física en ningún escenario.
+- **Ancho de banda.** Con 57 o más jugadores visibles cada snapshot llena el paquete (1191 B) y cada cliente
+  baja unos 35 KB/s (criterio: 37 KB/s como mucho) y sube unos 2,5 KB/s. Dispersos o agrupados da igual: sin
+  interés por rejilla todo el mundo ve a todo el mundo.
+- **`simulate()` por personaje: 44 a 50 µs** (medido alrededor de cada llamada), por encima de los 25 µs que
+  marcan la palanca 6. La sección `sim` entera (cola de entradas, cerebro de los falsos, comprobación de
+  movimiento) sale a unos 60 µs por personaje: con 64 jugadores son ~4 ms de los 16,7 ms del tick.
+- **Construir un snapshot** de 57 registros cuesta de 250 a 525 µs (la codificación común de los registros
+  del tick se reparte entre los snapshots de ese tick, así que sale más caro con pocos clientes). Con N
+  clientes reales se construyen N/2 por tick: con 50, la sección `snapshot` llega a 6,9 ms de mediana y es lo
+  que satura el tick (palancas 2 a 5).
+- **Criterio de CPU no cumplido.** El p99 del tick con 64 jugadores es de 8,7 a 9,6 ms (criterio: menos de
+  8 ms), con una mediana de 4,8 a 5,7 ms. Con 66 jugadores y 2 clientes queda justo en 8,0 ms. Con 74
+  jugadores pasa de 11 ms y con 114 (50 reales) el tick de mediana ya ocupa 15,3 ms de los 16,7: el servidor
+  no aguanta 50 clientes reales más 64 falsos. El primer cuello es `simulate()` en GDScript (palanca 6,
+  ~46 µs por personaje frente a los 25 µs de umbral) y, con muchos clientes reales, el `SnapshotBuilder`.
 
 **Palancas para Eldrun, por orden,** decididas con las medidas del final de la fase 2:
 
