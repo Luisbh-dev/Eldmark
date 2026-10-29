@@ -213,7 +213,7 @@ func _setup_war_hud() -> void:
 	_war_hud.name = "WarHud"
 	add_child(_war_hud)
 	move_child(_war_hud, _death.get_index())
-	_war_hud.bind(_client, _world)
+	_war_hud.bind(_client, _camera_rig)
 
 
 # --- Vida y resistencia -----------------------------------------------------------------------

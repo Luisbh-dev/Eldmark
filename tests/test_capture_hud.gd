@@ -517,7 +517,7 @@ func test_the_hud_mounts_the_war_interface_under_the_death_screen() -> void:
 	assert_not_null(war.get_banners())
 	assert_not_null(war.get_boss_bar())
 	assert_not_null(war.get_telegraph_marks())
-	assert_eq(war.get_telegraph_marks().get_parent(), world, "las marcas cuelgan de la zona")
+	assert_eq(war.get_telegraph_marks().get_parent(), war, "las marcas cuelgan de la interfaz, no de la zona")
 	assert_true(war.get_index() < hud.get_death_screen().get_index(), "por debajo de la pantalla de muerte")
 	# Un aviso del cliente sale como banner y un TELEGRAPH como marca.
 	client.war_event.emit(NetMessages.EntityEvent.war(NET_ID, 10, WarEvents.FORT_CAPTURED, SOLMARCH))
@@ -528,10 +528,6 @@ func test_the_hud_mounts_the_war_interface_under_the_death_screen() -> void:
 	# Una segunda llamada a bind_net rehace la interfaz sin duplicarla.
 	hud.bind_net(client, world)
 	assert_eq(hud.get_children().filter(func(child: Node) -> bool: return child is WarHud).size(), 1)
-	assert_eq(world.get_children().filter(func(child: Node) -> bool: return child is TelegraphMarks).size(), 1,
-			"ni las marcas del mundo")
-	# Quitar el HUD no deja marcas en la zona.
-	_nodes.erase(hud)
-	hud.get_parent().remove_child(hud)
-	hud.free()
-	assert_eq(world.get_children().filter(func(child: Node) -> bool: return child is TelegraphMarks).size(), 0)
+	assert_eq(hud.get_war_hud().find_children("*", "TelegraphMarks", true, false).size(), 1, "ni las marcas")
+	assert_eq(world.get_children().filter(func(child: Node) -> bool: return child is TelegraphMarks).size(), 0,
+			"la zona no se toca")

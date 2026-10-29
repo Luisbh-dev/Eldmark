@@ -11,7 +11,7 @@ extends Control
 ## Metros a los que se ve la barra de un jefe.
 const RANGE: float = 90.0
 const BAR_WIDTH: float = 520.0
-const TOP_OFFSET: float = 118.0
+const TOP_OFFSET: float = 200.0
 const FILL_COLOR: Color = Color(0.72, 0.1, 0.12, 1.0)
 
 var _client: NetClient = null

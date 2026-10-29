@@ -16,7 +16,7 @@ const BIG_SECONDS: float = 8.0
 const FADE_SECONDS: float = 1.0
 const NORMAL_FONT_SIZE: int = 22
 const BIG_FONT_SIZE: int = 32
-const TOP_OFFSET: float = 150.0
+const TOP_OFFSET: float = 262.0
 const WIDTH: float = 900.0
 ## Avisos que se muestran en grande.
 const BIG_EVENTS: Array[int] = [
