@@ -2345,13 +2345,23 @@ Los remotos reutilizan `scenes/characters/player_character.tscn`.
   		net_sim_spec: String = "") -> NetClient
   static func launch_process(user_args: PackedStringArray, log_name: String) -> int
   static func read_report(path: String) -> Dictionary
+  # Añadidos tras la revisión de la fase 2 (A1, A5, A7):
+  static func first_port_for(pid: int) -> int             # ranura de puertos de cada proceso de pruebas
+  static func get_build_dir() -> String                   # build/<pid>/, creada; borra las de procesos muertos
+  static func build_path(file_name: String) -> String     # un archivo dentro de build/<pid>/
+  static func clean_stale_build_dirs() -> int
+  static func launch_script(script_path: String, user_args: PackedStringArray, log_name: String) -> int
+  static func error_lines(log_path: String) -> PackedStringArray  # ERROR / SCRIPT ERROR de un registro
   ```
+  `tests/process_probe.gd` es el proceso auxiliar de `launch_script` (no es una prueba).
 - **Pruebas:** `test_net_messages.gd`, `test_input_queue.gd`, `test_tick_sync.gd`,
   `test_interpolation_clock.gd`, `test_remote_interpolator.gd`, `test_state_history.gd`,
   `test_net_sim.gd`, `test_snapshot_builder.gd`, `test_rate_limiter.gd`, `test_server_auth.gd`,
   `test_prediction.gd`, `test_net_loopback.gd` y `test_net_processes.gd`.
 - **Herramientas:** `tools/compare_state_logs.gd` y `tools/load_test.gd`, ambas scripts
-  `SceneTree`.
+  `SceneTree`. El cálculo del resumen de carga que no necesita procesos (la ventana de medida de las
+  entradas sustituidas) está en `tools/load_test_summary.gd` (`LoadTestSummary`), y
+  `tests/test_load_test.gd` carga la herramienta y lo prueba.
 
 ---
 
