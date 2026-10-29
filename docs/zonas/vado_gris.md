@@ -326,6 +326,8 @@ godot --headless --path . --import
 godot --headless --path . -s res://tools/props/build_vado_gris_props.gd      # scenes/world/props/ (fuerte, puerta, marcadores de PNJ)
 godot --headless --path . -s res://tools/terrain/generate_vado_gris.gd       # terreno + vado_gris.tscn
 godot --headless --path . -s res://tools/bake_navmesh.gd                     # vado_gris_navmesh.tres (2 s)
+godot --headless --path . -s res://tools/bake_zone_map.gd                    # assets/maps/vado_gris.png y vado_gris_map.tres
+godot --headless --path . --import                                           # importa el PNG nuevo
 ```
 
 Comprobaciones:
@@ -339,6 +341,12 @@ godot --path . -s res://tools/render/render_screenshot_points.gd -- --out=<ruta>
 - Hay que volver a hornear la malla de navegación de los PNJ (`tools/bake_navmesh.gd`, ver
   docs/fuerte.md 4.1) cada vez que cambia la geometría de juego: rampas, pasarela, puerta, puentes,
   murallas, bloqueos... `tests/test_navmesh.gd` lo recuerda con rutas rotas.
+- El mapa del minimapa y del mapa de pantalla completa (`assets/maps/vado_gris.png`, por LFS, y su escala y
+  lugares fijos en `vado_gris_map.tres`) se hornea sin GPU con `tools/bake_zone_map.gd`: relieve sombreado
+  de `Terrain3D.data.get_height`, agua de la malla del río y contornos de las colisiones y de los
+  `BakedMultiMesh`. Cubre el área jugable con 10 m de margen (320 x 320 m, 1024 px, 3,2 px/m, norte arriba)
+  y sale igual en cada ejecución (unos 8 s). Hay que repetirlo si cambian el relieve, el agua o las
+  colisiones, o los campamentos, el fuerte y los pasos que marca (`tests/test_zone_map.gd` lo recuerda).
 - Los dos primeros pasos solo hacen falta si cambian los assets. Para cambiar el trazado se edita
   `tools/terrain/vado_gris_layout.gd` (posiciones, río, calzadas, función de alturas) y se
   vuelve a lanzar el generador; la vegetación, la pintura y las escenas de piezas, en sus scripts.

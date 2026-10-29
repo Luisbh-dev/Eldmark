@@ -410,7 +410,7 @@ var before_simulate: Callable                                  # (tick: int) -> 
 
 ### 8.3 Lo que han dejado F0, F1 y F2 (añadidos al contrato y decisiones)
 
-F0 (escena, capas, malla y rutas), F1 (fortaleza pura) y F2 (protocolo 3) están hechos. Además de lo de
+F0 (escena, capas, malla y rutas), F1 (fortaleza pura) y F2 (protocolo 3) están hechos, y F5 (cliente) también. Además de lo de
 8.2, quien siga con F3 a F6 encontrará esto:
 
 **F0**
@@ -627,6 +627,46 @@ F0 (escena, capas, malla y rutas), F1 (fortaleza pura) y F2 (protocolo 3) están
   ajustar `vado_gris.tres` (GUE-17), llega con F6.
 - Lo que **no** hace F3: nada del cliente (`FortressView`, HUD, mapa, `RespawnPointList`), ni PNJ reales (F4),
   ni bots que asedian ni `--max-realm-diff` (F6).
+
+**F5** (cliente: todo en `scripts/client/`, `tools/` y `assets/maps/`; no toca `scripts/server` ni `scripts/shared`)
+
+- **`FortressView`** (`scripts/client/war/fortress_view.gd`, nodo hijo de `NetClient`) y **`FortressTimeline`** (la historia
+  de cambios, pura): guardan el SPAWN de la estructura y cada OBJECT_STATE con su tick y el estado acumulado
+  (`FortressState.initial` más los campos de `FortressFields`; lo que no viaja sale de la definición). `state_at(t)` da el estado
+  tras el tick `t`; `gate_layers_for_tick(t)` mira el estado tras `t − 1`, porque un cambio con `tick = s` vale desde `s + 1`.
+  `advance(render_tick)` (lo llama `NetClient` cada tick de física) aplica estandartes (`faction_color` de `Estandarte`,
+  `EstandartePuertaN` y `EstandartePuertaS`), la pose de la puerta y la señal `state_changed`; el progreso es la fórmula en el
+  instante de dibujo. `ClientPrediction.before_simulate` es el gancho de 8.2: se llama antes de **cada** `simulate()` (aparición,
+  paso y repeticiones). **Contrato con el servidor:** el dueño y la rotura de la puerta tienen que llegar con el tick en el que
+  cambiaron de verdad (el controlador de F3 manda los que ven los clientes). `OnlineMain` enlaza la vista con la zona (`set_zone`).
+- **Interfaz de guerra** (`WarHud`, hijo del `HUD` por debajo de la pantalla de muerte): `CapturePanel` (a menos de 80 m del
+  fuerte o combatiendo a menos de 200 m), `WarBanners` (los siete WAR), `BossBar` (jefes por `npc_def_id` del SPAWN de NPC: `BossInfo`
+  lee `data/npcs/*.tres` por orden alfabético, como `NpcCatalog`, y sin la carpeta no hay jefes), `TelegraphMarks` (malla plana provisional
+  que se llena hasta el impacto), `Compass` y `WorldMarkers` (`MarkerSource` junta fuerte, puerta, círculo, campamentos y pasos),
+  `Minimap`, `KillFeed` y `HintToasts`. El `HUD` monta además, por encima de la pantalla de muerte, `WorldMap` y `ScoreboardPanel`.
+- **Mapa** (`tools/bake_zone_map.gd` y `ZoneMapBaker`): `assets/maps/vado_gris.png` (1024 x 1024 px, 0,6 MB, por LFS) y
+  `vado_gris_map.tres` (`ZoneMapDefinition`: origen (−160, −160), 320 x 320 m y los lugares fijos); ver docs/zonas/vado_gris.md. El
+  minimapa va abajo a la derecha (la esquina de arriba es del panel de depuración F3) y se acerca y aleja con `map_zoom_in` y
+  `map_zoom_out`.
+- **Reaparición:** `RespawnPointList.options` agrupa los marcadores contiguos del mismo sitio (los cuatro de un campamento, los del patio)
+  en una opción y marca válidas las que da `RespawnRules`; la pantalla de muerte ofrece solo las válidas, se actualiza mientras está abierta
+  y envía el **índice del marcador entre todos los de la zona** (repartido por `net_id` entre los de un mismo sitio), como pide la
+  sección 5. «Elegir en el mapa» (o M con la pantalla abierta) abre `WorldMap` en modo de reaparición. Hasta que el servidor adopte el
+  índice estático (F3), el de este árbol lo interpreta sobre los puntos de su reino.
+- **Marcador y bajas:** `ScoreboardPanel` (Tab mantenida) pinta el último SCOREBOARD completo y `KillFeed` cada KILL (el evento llega a
+  toda la zona); el nombre y el reino de cada id salen de `PlayerDirectory`, que recuerda cada SPAWN visto. **Límite:** quien nunca estuvo
+  en el radio de interés sale como «Jugador N»; haría falta un mensaje con nombres.
+- **Pistas:** `HintCatalog` (siete, con las teclas reales de `UIKeyGlyph`), `HintLog` (`user://hints.cfg`) y el ajuste «Pistas del juego»
+  (`ClientSettings.HINTS`). El ejecutor de pruebas pone un `HintLog` en memoria para no escribir en `user://`.
+- **Selección de reino:** `RealmSelect` enseña el recuento por reino del último WELCOME (no hay otro antes de conectar), recomienda el
+  más corto y, tras un REJECT 9, deja el reino rechazado sin elegir y marcado, con el texto de `NetProtocol.result_text` y el reino corto
+  ofrecido. El servidor rellena el recuento en F6.
+- **Teclas nuevas** (`InputBindings`): `open_map` (M), `map_zoom_in` (+), `map_zoom_out` (−) y `scoreboard` (Tab).
+- **Pendiente del usuario:** todo lo visual de esta interfaz son constantes provisionales (tamaños, colores, posiciones, duraciones,
+  estilo del mapa, textos de pistas y banners, marca del TELEGRAPH, iconos de los marcadores); la dirección de arte es ART-12 y ART-17.
+- Pruebas: `test_fortress_view`, `test_fortress_prediction` (dos mundos de física con la puerta y el cambio de dueño a mitad),
+  `test_capture_hud`, `test_compass_markers`, `test_zone_map`, `test_world_map`, `test_scoreboard`, `test_hints`, y ampliaciones de
+  `test_net_client`, `test_realm_select`, `test_client_settings` y `test_hud_combat`.
 
 ---
 

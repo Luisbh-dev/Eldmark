@@ -13,7 +13,6 @@ extends RefCounted
 ## corrige de golpe y la diferencia visible la reparte [CorrectionSmoother]; si el error pasa de
 ## [constant SNAP_DISTANCE] o hay un teletransporte, se salta directamente.
 ## [br][br]
-## [br][br]
 ## [b]Gancho antes de simular.[/b] [member before_simulate] se llama con el tick que se va a simular
 ## justo antes de cada [method PlayerCharacter.simulate]: en la aparición, en cada paso, y también en
 ## cada tick de las repeticiones. Es donde [FortressView] pone la capa de la puerta del fuerte que tenía
