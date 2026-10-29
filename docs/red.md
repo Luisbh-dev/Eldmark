@@ -964,6 +964,7 @@ func push(input: PlayerInput, view_offset_q: int, next_tick: int) -> PushResult:
 	var t: int = input.tick
 	if t > next_tick + MAX_LEAD_TICKS:                       # 30
 		too_early_count += 1
+		_note_lead(t - next_tick)                              # se descarta, pero la antelación cuenta
 		return PushResult.TOO_EARLY
 	var slot: Slot = _slot(t)
 	if t <= _last_consumed:
@@ -1022,6 +1023,11 @@ func get_ack_tick() -> int:                                  # max(contiguo reci
   nunca espera a una entrada.
 - **`pop_min_lead()`** devuelve la antelación mínima desde la llamada anterior (`NO_MARGIN` si
   no hay datos) y la reinicia. La usa el snapshot de cada cliente.
+- **Las entradas demasiado tempranas también dan margen.** Se descartan (`TOO_EARLY`), pero su
+  antelación (saturada a 127) se anota igual. Si el servidor pierde ticks (un parón del proceso:
+  Godot solo recupera 8 por fotograma), el cliente pasa a ir más de 30 ticks por delante; sin esta
+  medida `TickSync` no recibiría ninguna muestra, nunca se retrasaría y el servidor sustituiría
+  todas las entradas para siempre (hallazgo N1 de la revisión de la fase 2).
 - **`get_view_offset_q(tick)`** devuelve el `view_offset_q` de la entrada real de ese tick, o −1
   si fue sustituida. Lo usa la fase 3.
 

@@ -81,6 +81,21 @@ func test_rejects_inputs_too_far_ahead() -> void:
 	assert_eq(queue.too_early_count, 2, "y no se vuelve a contar")
 
 
+func test_too_early_inputs_still_report_their_lead() -> void:
+	# Si el servidor pierde ticks, el cliente va muy por delante y todas sus entradas son demasiado
+	# tempranas: la antelación se anota igualmente (saturada), para que TickSync se entere y se
+	# retrase. Sin esto la ventana de márgenes se queda vacía para siempre.
+	var queue: InputQueue = _make_queue()
+	assert_eq(queue.push(_input(32), 0, 1), InputQueue.PushResult.TOO_EARLY, "31 por delante")
+	assert_eq(queue.pop_min_lead(), 31, "la antelación de una demasiado temprana cuenta")
+	assert_eq(queue.pop_min_lead(), NetProtocol.NO_MARGIN, "y se reinicia al leerla")
+	assert_eq(queue.push(_input(1000), 0, 1), InputQueue.PushResult.TOO_EARLY, "muy por delante")
+	assert_eq(queue.pop_min_lead(), 127, "se satura a 127")
+	queue.push(_input(40), 0, 1)
+	queue.push(_input(2), 0, 1)
+	assert_eq(queue.pop_min_lead(), 1, "y se mezcla con las aceptadas: gana la mínima")
+
+
 func test_window_never_wraps_the_ring_onto_unconsumed_inputs() -> void:
 	# Aunque quien llama pase un next_tick absurdo, un tick que comparte hueco con otro todavía
 	# sin consumir nunca se acepta.
