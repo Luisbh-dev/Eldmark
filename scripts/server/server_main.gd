@@ -22,6 +22,11 @@ extends Node
 ## de la zona se coloca un maniquí de entrenamiento (salvo con [code]--no-dummies[/code]) y con
 ## [code]--console[/code] el servidor lee comandos de la entrada estándar ([CommandRegistry]); la cuenta
 ## atrás de [code]shutdown <s>[/code] cierra el proceso como [code]--quit-after-ticks[/code].
+## [br]- Con [code]--fake-brain=siege[/code] (GUE-15) los falsos asedian y defienden el fuerte de la zona
+## ([constant BotBrain.Pattern.SIEGE]): salen de su campamento, siguen la ruta de su reino hasta la puerta, la
+## rompen, capturan el círculo y lo defienden; el reparto de reinos es el de siempre (por turnos). Con
+## [code]--run-at=<tick>:<orden>[/code] el servidor ejecuta órdenes de la consola en un tick dado (por ejemplo
+## [code]fort_kill_captain[/code], que abre el círculo mientras no hay capitán de verdad).
 ## [br]- Con [code]--max-realm-diff=N[/code] (N > 0, GUE-42) los falsos de reino automático (todos salvo los de
 ## [code]--fake-layout=cluster[/code] sin cerebro de combate, que van al primer reino) son de relleno
 ## ([FillerKeeper]): se reparten en el reino con menos total, se retiran cuando entran personas en el bando largo
@@ -94,6 +99,8 @@ var _spread_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 # Los falsos de relleno de --max-realm-diff (null sin equilibrio) y el reino de cada persona que ha entrado.
 var _fillers: FillerKeeper = null
 var _person_realms: Dictionary[int, int] = {}
+# Órdenes de --run-at que ya se han ejecutado (mismo orden que config.scheduled_commands).
+var _scheduled_done: Array[bool] = []
 var _shutting_down: bool = false
 var _lock_written: bool = false
 var _lock_path: String = DEV_LOCK_PATH
@@ -274,6 +281,7 @@ func _spawn_fake_players() -> void:
 func _add_fake_player(forced_realm: int = 0) -> int:
 	var index: int = _fake_created
 	var combat: bool = config.fake_brain == ServerConfig.FAKE_BRAIN_COMBAT
+	var siege: bool = config.fake_brain == ServerConfig.FAKE_BRAIN_SIEGE
 	var realm: int = _fake_realms[index % _fake_realms.size()]
 	if forced_realm > 0:
 		realm = forced_realm
@@ -296,6 +304,9 @@ func _add_fake_player(forced_realm: int = 0) -> int:
 				var ring: float = FAKE_COMBAT_RING_RADIUS + FAKE_COMBAT_RING_GROWTH * sqrt(float(index))
 				placed_at = home + Vector3(cos(float(index) * 2.4), 0.0,
 						sin(float(index) * 2.4)) * ring
+			elif siege:
+				# Los de asedio salen cada uno de su campamento: agruparlos en un solo punto no tendría sentido.
+				home = _home_of(realm)
 			else:
 				realm = _fake_realms[0]
 				home = _home_of(realm)
@@ -307,6 +318,9 @@ func _add_fake_player(forced_realm: int = 0) -> int:
 	var pattern: BotBrain.Pattern = FAKE_PATTERNS[index % FAKE_PATTERNS.size()]
 	if combat:
 		pattern = BotBrain.Pattern.COMBAT
+	elif siege:
+		# ZoneServer.add_fake_player le da el fuerte, las rutas y el buscador de enemigos.
+		pattern = BotBrain.Pattern.SIEGE
 	var brain := BotBrain.new(FAKE_SEED_BASE + index, pattern, home, FAKE_RADIUS)
 	var net_id: int = _zone_server.add_fake_player(brain, realm)
 	if net_id < 0:
@@ -378,8 +392,7 @@ func _home_of(realm: int) -> Vector3:
 # true si todos los falsos van al primer reino (--fake-layout=cluster con el cerebro de paseo): su reino no es
 # automático, así que no son de relleno.
 func _forces_first_realm() -> bool:
-	return config.fake_layout == ServerConfig.LAYOUT_CLUSTER \
-			and config.fake_brain != ServerConfig.FAKE_BRAIN_COMBAT
+	return config.fake_layout == ServerConfig.LAYOUT_CLUSTER and config.fake_brain.is_empty()
 
 
 # Con --max-realm-diff y falsos de reino automático, prepara a los de relleno y escucha las altas y bajas de
@@ -428,6 +441,7 @@ func _on_tick_finished(tick: int) -> void:
 	if not config.report_path.is_empty() and tick % ZoneServer.METRICS_LOG_TICKS == 0:
 		# Si matan al servidor (SIGTERM, SIGINT) no hay informe final: queda este.
 		_zone_server.write_report(config.report_path)
+	_run_scheduled_commands(tick)
 	_churn_fake_players(tick)
 	if config.idle_quit_seconds > 0:
 		if _zone_server.get_player_count() == 0:
@@ -449,6 +463,21 @@ func _clear_stale_stop_file() -> void:
 		return
 	DirAccess.remove_absolute(config.stop_file_path)
 	print("[Eldmark] Borrado el archivo de parada anterior: %s" % config.stop_file_path)
+
+
+# --run-at=<tick>:<orden>: ejecuta con la consola del servidor cada orden cuyo tick ya ha llegado (una vez).
+func _run_scheduled_commands(tick: int) -> void:
+	if config.scheduled_commands.is_empty():
+		return
+	if _scheduled_done.size() != config.scheduled_commands.size():
+		_scheduled_done.resize(config.scheduled_commands.size())
+	for i: int in config.scheduled_commands.size():
+		var entry: Dictionary = config.scheduled_commands[i]
+		if _scheduled_done[i] or tick < int(entry["tick"]):
+			continue
+		_scheduled_done[i] = true
+		var answer: String = _zone_server.console_command(String(entry["line"]))
+		print("[Eldmark] --run-at (tick %d): %s -> %s" % [tick, entry["line"], answer])
 
 
 # --fake-churn=<ticks>: en cada múltiplo sale el jugador falso más antiguo y, en el tick siguiente

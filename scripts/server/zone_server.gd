@@ -242,6 +242,11 @@ var _targets_tick: int = -1
 var _targets_by_realm: Dictionary = {}
 var _targets_ids_by_realm: Dictionary = {}
 var _hostile_cache: Dictionary = {}
+# Asedio de los falsos con cerebro SIEGE (GUE-15): la vista de cada fortaleza, que comparten todos y se pone al
+# día en cada tick, y las rutas de aproximación de la zona (data/routes/<zona>.tres; null si no hay).
+var _siege_views: Dictionary[StringName, SiegeView] = {}
+var _siege_routes: ApproachRoutes = null
+var _siege_routes_loaded: bool = false
 # peer_id -> medida del RTT en ticks.
 var _rtt: Dictionary[int, _RttWindow] = {}
 # Peers con CLIENT_READY recibido, en orden de llegada.
@@ -726,14 +731,52 @@ func add_fake_player(brain: BotBrain, realm: int) -> int:
 	if entity == null:
 		return -1
 	_fakes[entity.net_id] = brain
-	if brain.get_pattern() == BotBrain.Pattern.COMBAT and not brain.has_enemy_finder():
+	var pattern: BotBrain.Pattern = brain.get_pattern()
+	if (pattern == BotBrain.Pattern.COMBAT or pattern == BotBrain.Pattern.SIEGE) \
+			and not brain.has_enemy_finder():
 		brain.set_enemy_finder(_find_enemy_position.bind(entity.net_id))
+	if pattern == BotBrain.Pattern.SIEGE and not brain.has_siege():
+		brain.set_siege(get_siege_view(), get_approach_routes(), realm)
 	var record: _PlayerRecord = _player_by_net[entity.net_id]
 	record.is_fake = true
 	_announce_arrival(entity, null, _tick)
 	_log("Alta de %s (jugador falso, net_id %d, %s); jugadores: %d" % [entity.display_name,
 			entity.net_id, NetProtocol.realm_display_name(realm), get_player_count()])
 	return entity.net_id
+
+
+## La vista de asedio de la fortaleza [param fortress_id] (vacío = la primera de la zona) que usan los
+## jugadores falsos con el cerebro [constant BotBrain.Pattern.SIEGE]: se crea la primera vez que se pide, lleva
+## las posiciones de la puerta y el círculo y se pone al día en cada tick con el estado vivo de la fortaleza
+## ([method SiegeView.update_from_state]). null si la zona no tiene fortalezas.
+func get_siege_view(fortress_id: StringName = &"") -> SiegeView:
+	if _fortresses == null or not _fortresses.has_fortresses():
+		return null
+	var id: StringName = fortress_id if not fortress_id.is_empty() else _fortresses.get_fortress_ids()[0]
+	var state: FortressState = _fortresses.get_fortress_state(id)
+	if state == null:
+		return null
+	var view: SiegeView = _siege_views.get(id)
+	if view == null:
+		view = SiegeView.new()
+		view.fortress_id = id
+		var gate: FortGate = _fortresses.get_gate(id)
+		var circle: Dictionary = _fortresses.get_circle(id)
+		view.set_places(gate.global_position if gate != null else circle["center"], circle["center"],
+				circle["radius"])
+		view.update_from_state(state)
+		_siege_views[id] = view
+	return view
+
+
+## Las rutas de aproximación de la zona (data/routes/<zona>.tres), o null si no tiene.
+func get_approach_routes() -> ApproachRoutes:
+	if not _siege_routes_loaded:
+		_siege_routes_loaded = true
+		var path: String = "res://data/routes/%s.tres" % _config.zone_id
+		if ResourceLoader.exists(path):
+			_siege_routes = load(path) as ApproachRoutes
+	return _siege_routes
 
 
 ## Da de baja al jugador falso [param net_id] al empezar el siguiente tick: DESPAWN (motivo 1) a quien
@@ -947,6 +990,7 @@ func _physics_process(delta: float) -> void:
 	_metrics.end_section(SECTION_NPC_BRAINS)
 
 	_metrics.begin_section(&"sim")
+	_refresh_siege_views()
 	_simulate_players(s, delta)
 	_metrics.end_section(&"sim")
 
@@ -1048,6 +1092,15 @@ func _emit_npc_telegraphs(s: int) -> void:
 		_combat.emit_event(NetMessages.EntityEvent.telegraph(net_id, s, attack.id,
 				NetMessages.EntityEvent.SHAPE_SECTOR, entity.get_position(), character.yaw,
 				roundi(attack.shape.range_m * 100.0), attack.windup_ticks), PackedInt32Array([net_id]))
+
+
+# Pone al día las vistas de asedio con el estado vivo de las fortalezas (el de después del tick anterior, como los
+# cerebros de los PNJ): lo que ven los falsos con cerebro SIEGE al decidir su entrada del tick s.
+func _refresh_siege_views() -> void:
+	for fortress_id: StringName in _siege_views:
+		var state: FortressState = _fortresses.get_fortress_state(fortress_id)
+		if state != null:
+			_siege_views[fortress_id].update_from_state(state)
 
 
 # Simula a todas las entidades con cuerpo (jugadores, falsos y PNJ) por net_id ascendente con la

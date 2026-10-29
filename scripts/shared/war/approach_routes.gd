@@ -23,6 +23,14 @@ const FORD: StringName = &"ford"
 
 ## Zona a la que pertenecen las rutas.
 @export var zone_id: StringName = &""
+## Dónde está el fuerte al que llevan, en el plano horizontal (x, z): el centro de la vano de su puerta, el
+## centro de su círculo de captura y el radio de este. Los bots que no cargan la zona ([code]SwarmBot[/code])
+## no tienen otra manera de saberlo ([method SiegeView.set_places_from_routes]); los escribe el exportador
+## con las constantes de la zona y [code]test_siege_zone[/code] comprueba que coinciden con los marcadores de
+## la escena. (0, 0) y 0 = no se sabe.
+@export var gate_point: Vector2 = Vector2.ZERO
+@export var circle_point: Vector2 = Vector2.ZERO
+@export var circle_radius: float = 0.0
 ## Puntos de paso (x, z) de cada ruta y reino, con la clave [code]"<ruta>/<reino>"[/code] (por
 ## ejemplo [code]"bridge/vardheim"[/code]); ver [method key_for].
 @export var points: Dictionary[String, PackedVector2Array] = {}
@@ -47,6 +55,11 @@ func get_points(route: StringName, realm: StringName) -> PackedVector2Array:
 ## Igual que [method get_points] con el código de red del reino ([constant RealmCatalog.REALM_IDS]).
 func get_points_for_code(route: StringName, realm_code: int) -> PackedVector2Array:
 	return get_points(route, RealmCatalog.id_of_code(realm_code))
+
+
+## true si el recurso sabe dónde están la puerta y el círculo del fuerte.
+func has_places() -> bool:
+	return circle_radius > 0.0
 
 
 ## true si hay una ruta [param route] para [param realm].

@@ -102,3 +102,22 @@ func test_is_in_circle_is_horizontal() -> void:
 	assert_true(view.is_in_circle(Vector3(-8.5, 10.25, 0.0)))
 	assert_true(view.is_in_circle(Vector3(-13.5, 99.0, 0.0)), "la altura no cuenta aquí")
 	assert_false(view.is_in_circle(Vector3(-13.6, 10.25, 0.0)))
+
+
+func test_places_can_come_from_the_approach_routes() -> void:
+	var routes := ApproachRoutes.new()
+	var view := SiegeView.new()
+	assert_false(routes.has_places(), "unas rutas sin fuerte no dicen dónde está")
+	assert_false(view.set_places_from_routes(routes), "y no cambian nada")
+	assert_eq(view.circle_radius, 0.0)
+	assert_false(view.set_places_from_routes(null), "sin rutas tampoco")
+	routes.gate_point = Vector2(-20.0, 0.0)
+	routes.circle_point = Vector2(-8.5, 1.5)
+	routes.circle_radius = 5.0
+	assert_true(routes.has_places())
+	assert_true(view.set_places_from_routes(routes, 10.2))
+	assert_eq(view.gate_position, Vector3(-20.0, 10.2, 0.0), "la puerta, a la altura que se diga")
+	assert_eq(view.circle_center, Vector3(-8.5, 10.2, 1.5))
+	assert_eq(view.circle_radius, 5.0)
+	var shipped: ApproachRoutes = load("res://data/routes/vado_gris.tres") as ApproachRoutes
+	assert_true(shipped.has_places(), "las rutas del Vado Gris traen el fuerte")

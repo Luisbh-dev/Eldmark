@@ -171,6 +171,39 @@ func test_vado_gris_server_process_runs_and_closes_cleanly() -> void:
 	assert_eq(_error_lines(log_path), PackedStringArray(), "sin errores en el registro")
 
 
+func test_siege_fake_brain_marches_to_the_fort_and_run_at_opens_the_circle() -> void:
+	var log_path: String = _build_path("test_server_main_k.log")
+	var report_path: String = _build_path("test_server_main_k.json")
+	DirAccess.remove_absolute(report_path)
+	# El Vado Gris (por defecto): cuatro falsos de asedio, dos por reino, y la orden que mata al capitán en el tick 300.
+	var pid: int = _launch(PackedStringArray([
+		"--port=%d" % _find_free_port(), "--quit-after-ticks=900", "--fake-players=4", "--fake-brain=siege",
+		"--run-at=300:fort_kill_captain", "--report=%s" % report_path,
+	]), log_path)
+	if not assert_true(pid > 0, "el proceso del servidor se lanza"):
+		return
+	if not assert_true(await _wait_for_exit(pid), "el servidor se cierra solo"):
+		return
+	assert_eq(OS.get_process_exit_code(pid), 0, "código de salida 0")
+	var log_text: String = FileAccess.get_file_as_string(log_path)
+	assert_true(log_text.contains("--run-at (tick 300): fort_kill_captain -> El capitán de vado_gris_fort ha muerto"),
+			"la orden programada se ejecuta en su tick")
+	var report: Dictionary = _read_report(report_path)
+	var fortresses: Array = (report.get("war", {}) as Dictionary).get("fortresses", [])
+	if assert_eq(fortresses.size(), 1, "una fortaleza"):
+		assert_eq(int((fortresses[0] as Dictionary).get("phase", -1)), FortressState.Phase.VULNERABLE,
+				"sin capitán el círculo está abierto")
+	var list: Array = report.get("player_list", [])
+	assert_eq(list.size(), 4, "cuatro falsos")
+	for entry: Dictionary in list:
+		var position: Array = entry.get("position", [0.0, 0.0, 0.0])
+		var camp_z: float = -138.0 if entry.get("realm") == "Vardheim" else 138.0
+		# A los 15 s ya han salido del campamento (9 m al menos) y van hacia el fuerte.
+		assert_true(absf(float(position[2]) - camp_z) > 9.0 and absf(float(position[2])) < absf(camp_z),
+				"%s (%s) marcha hacia el fuerte (z = %.1f)" % [entry.get("name"), entry.get("realm"), float(position[2])])
+	assert_eq(_error_lines(log_path), PackedStringArray(), "sin errores en el registro")
+
+
 ## Distancia mayor (m) entre dos jugadores de la lista del informe.
 func _max_pairwise_distance(player_list: Array) -> float:
 	var farthest: float = 0.0

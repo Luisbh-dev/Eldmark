@@ -14,6 +14,13 @@ extends SceneTree
 
 const OUTPUT_PATH: String = "res://data/routes/vado_gris.tres"
 
+## Dónde está el fuerte (x, z): el centro del vano de la puerta (cara oeste del recinto), el centro del
+## círculo de captura (el marcador CaptureCircle) y su radio. Son los de vado_gris.tscn;
+## tests/test_siege_zone.gd comprueba que siguen coincidiendo con los de la escena.
+const GATE_POINT: Vector2 = Vector2(-20.0, 0.0)
+const CIRCLE_POINT: Vector2 = Vector2(-8.5, 0.0)
+const CIRCLE_RADIUS: float = 5.0
+
 ## Rutas desde el punto de aparición del norte (Vardheim): (x, z).
 const VARDHEIM_ROUTES: Dictionary = {
 	ApproachRoutes.BRIDGE: [
@@ -31,6 +38,9 @@ const VARDHEIM_ROUTES: Dictionary = {
 func _initialize() -> void:
 	var routes := ApproachRoutes.new()
 	routes.zone_id = &"vado_gris"
+	routes.gate_point = GATE_POINT
+	routes.circle_point = CIRCLE_POINT
+	routes.circle_radius = CIRCLE_RADIUS
 	for route: StringName in VARDHEIM_ROUTES:
 		var north := PackedVector2Array()
 		var south := PackedVector2Array()

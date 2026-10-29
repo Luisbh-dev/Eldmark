@@ -42,6 +42,17 @@ func set_places(p_gate_position: Vector3, p_circle_center: Vector3, p_circle_rad
 	circle_radius = p_circle_radius
 
 
+## Dónde están la puerta y el círculo según las rutas de la zona ([member ApproachRoutes.gate_point]...), para
+## los bots que no cargan la escena. Los puntos son horizontales: la altura se pone a [param ground_height].
+## Devuelve false (y no cambia nada) si las rutas no lo saben.
+func set_places_from_routes(routes: ApproachRoutes, ground_height: float = 0.0) -> bool:
+	if routes == null or not routes.has_places():
+		return false
+	set_places(Vector3(routes.gate_point.x, ground_height, routes.gate_point.y),
+			Vector3(routes.circle_point.x, ground_height, routes.circle_point.y), routes.circle_radius)
+	return true
+
+
 ## Copia del estado de la fortaleza lo que le interesa a un bot.
 func update_from_state(state: FortressState) -> void:
 	known = true

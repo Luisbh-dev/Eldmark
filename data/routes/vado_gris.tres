@@ -5,6 +5,9 @@
 [resource]
 script = ExtResource("1_hhflu")
 zone_id = &"vado_gris"
+gate_point = Vector2(-20, 0)
+circle_point = Vector2(-8.5, 0)
+circle_radius = 5.0
 points = Dictionary[String, PackedVector2Array]({
 "bridge/solmarch": PackedVector2Array(-2.5, 132, 0, 116, 0, 78, 0, 62, 0, 47, -12, 35, -26, 26, -29, 10, -25, 2),
 "bridge/vardheim": PackedVector2Array(-2.5, -132, 0, -116, 0, -78, 0, -62, 0, -47, -12, -35, -26, -26, -29, -10, -25, -2),

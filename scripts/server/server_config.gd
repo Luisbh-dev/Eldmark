@@ -6,8 +6,8 @@ extends RefCounted
 ## [code]--[/code]):
 ## [codeblock]
 ## --server --port=24600 --zone=<id> --max-players=64 --max-per-ip=4 --idle-quit=<s>
-## --fake-players=N --fake-layout=<cluster|spread> --fake-churn=<ticks> --fake-brain=combat
-## --fake-center=<x>,<z> --max-realm-diff=N
+## --fake-players=N --fake-layout=<cluster|spread> --fake-churn=<ticks> --fake-brain=<combat|siege>
+## --fake-center=<x>,<z> --max-realm-diff=N --run-at=<tick>:<orden>
 ## --debug-commands --dev-lock --dev-lock-path=<ruta>
 ## --quit-after-ticks=N --report=<ruta.json> --state-log=<ruta.csv> --net-sim=rtt=120,jitter=20
 ## --stop-file=<ruta> --combat-log=<ruta.csv> --console --no-dummies --no-npcs --battle-log=<ruta.jsonl>
@@ -24,6 +24,9 @@ extends RefCounted
 ## el HELLO de quien entraría en un reino y dejaría más de N personas de ventaja sobre el reino con menos
 ## recibe un REJECT 9 (IMBALANCE); 0 = sin límite. Con N > 0 los jugadores falsos de reino automático
 ## rellenan el bando corto y se retiran al entrar personas (ver [RealmBalance]).
+## [code]--run-at=<tick>:<orden>[/code] (repetible) ejecuta una orden de la consola ([CommandRegistry],
+## por ejemplo [code]fort_kill_captain[/code]) al terminar el tick dado: así una prueba de carga sin
+## entrada estándar puede abrir el círculo del fuerte.
 ## SIGTERM y SIGINT (Ctrl+C, [code]docker stop[/code], systemd) matan el proceso de Godot sin pasar
 ## por GDScript, así que no hay cierre ordenado. Para pararlo desde fuera con NOTICE de cierre,
 ## informe y borrado del bloqueo de [code]--dev-lock[/code] está [code]--stop-file=<ruta>[/code]: el
@@ -72,8 +75,9 @@ var debug_commands: bool = false
 var combat_log_path: String = ""
 ## Ruta del registro de batalla (JSON Lines: avisos de guerra y muertes). Vacío = ninguno.
 var battle_log_path: String = ""
-## Cerebro de los jugadores falsos: vacío = el de paseo y [constant FAKE_BRAIN_COMBAT] = el de combate
-## (buscan al enemigo más cercano, atacan, bloquean y esquivan).
+## Cerebro de los jugadores falsos: vacío = el de paseo, [constant FAKE_BRAIN_COMBAT] = el de combate
+## (buscan al enemigo más cercano, atacan, bloquean y esquivan) y [constant FAKE_BRAIN_SIEGE] = el de asedio
+## (siguen la ruta de su reino hasta el fuerte, rompen la puerta, capturan y defienden; GUE-15).
 var fake_brain: String = ""
 ## Con el cerebro de combate y [constant LAYOUT_CLUSTER]: punto (x, z) de la zona, a nivel del suelo,
 ## en torno al que se juntan los falsos en lugar del campamento del primer reino (donde la zona segura
@@ -82,6 +86,9 @@ var fake_center: Vector2 = NO_FAKE_CENTER
 ## Diferencia máxima de personas conectadas entre los reinos de la zona (GUE-42); 0 = sin límite. Los
 ## jugadores falsos no cuentan para rechazar a una persona.
 var max_realm_diff: int = 0
+## Órdenes de consola programadas ([code]--run-at=<tick>:<orden>[/code]): diccionarios con
+## [code]tick[/code] y [code]line[/code], en el orden en que se dieron.
+var scheduled_commands: Array[Dictionary] = []
 ## Lee los comandos de la consola de la entrada estándar (en un hilo, sin bloquear el tick).
 var console: bool = false
 ## No coloca los maniquíes de entrenamiento de los marcadores [code]dummy_points[/code] de la zona.
@@ -101,10 +108,14 @@ const LAYOUT_CLUSTER: String = "cluster"
 const LAYOUT_SPREAD: String = "spread"
 ## Valor de [member fake_brain] para el cerebro de combate.
 const FAKE_BRAIN_COMBAT: String = "combat"
+## Valor de [member fake_brain] para el cerebro de asedio ([constant BotBrain.Pattern.SIEGE]).
+const FAKE_BRAIN_SIEGE: String = "siege"
 ## Valor de [member fake_center] cuando no se indica.
 const NO_FAKE_CENTER: Vector2 = Vector2(INF, INF)
 ## Coordenada máxima (en valor absoluto, m) que admite [member fake_center].
 const MAX_FAKE_CENTER: float = 5000.0
+## Prefijo de la opción de las órdenes programadas.
+const RUN_AT_PREFIX: String = "--run-at="
 const _MAX_PORT: int = 65535
 ## Tope razonable de jugadores y de jugadores falsos (los ids de red son de 16 bits).
 const _MAX_PLAYERS_LIMIT: int = 4096
@@ -135,7 +146,7 @@ static func from_args(args: PackedStringArray) -> ServerConfig:
 	if layout == LAYOUT_CLUSTER or layout == LAYOUT_SPREAD:
 		config.fake_layout = layout
 	var brain: String = _string_option(args, "--fake-brain=").to_lower()
-	if brain == FAKE_BRAIN_COMBAT:
+	if brain == FAKE_BRAIN_COMBAT or brain == FAKE_BRAIN_SIEGE:
 		config.fake_brain = brain
 	var center_parts: PackedStringArray = _string_option(args, "--fake-center=").split(",")
 	if center_parts.size() == 2 and center_parts[0].strip_edges().is_valid_float() \
@@ -146,6 +157,7 @@ static func from_args(args: PackedStringArray) -> ServerConfig:
 			config.fake_center = center
 	config.max_realm_diff = _int_option(args, "--max-realm-diff=", config.max_realm_diff, 0,
 			_MAX_PLAYERS_LIMIT)
+	config.scheduled_commands = _scheduled_commands(args)
 	config.combat_log_path = _string_option(args, "--combat-log=").replace("\\", "/")
 	config.battle_log_path = _string_option(args, "--battle-log=").replace("\\", "/")
 	config.console = args.has("--console")
@@ -159,6 +171,26 @@ static func from_args(args: PackedStringArray) -> ServerConfig:
 	config.dev_lock = args.has("--dev-lock")
 	config.dev_lock_path = _string_option(args, "--dev-lock-path=").replace("\\", "/")
 	return config
+
+
+## Las órdenes programadas de [param args] ([code]--run-at=<tick>:<orden>[/code]): las que tienen un tick
+## entero no negativo y una orden no vacía, en el orden en que se dieron.
+static func _scheduled_commands(args: PackedStringArray) -> Array[Dictionary]:
+	var commands: Array[Dictionary] = []
+	for arg: String in args:
+		if not arg.begins_with(RUN_AT_PREFIX):
+			continue
+		var text: String = arg.trim_prefix(RUN_AT_PREFIX).strip_edges().trim_prefix("\"") \
+				.trim_suffix("\"").strip_edges()
+		var colon: int = text.find(":")
+		if colon <= 0:
+			continue
+		var tick_text: String = text.substr(0, colon).strip_edges()
+		var line: String = text.substr(colon + 1).strip_edges()
+		if not tick_text.is_valid_int() or tick_text.to_int() < 0 or line.is_empty():
+			continue
+		commands.append({"tick": tick_text.to_int(), "line": line})
+	return commands
 
 
 ## true si se indicó [member fake_center].

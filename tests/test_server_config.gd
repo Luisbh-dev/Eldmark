@@ -196,3 +196,23 @@ func test_max_realm_diff_option() -> void:
 	assert_eq(ServerConfig.from_args(PackedStringArray(["--max-realm-diff=99999"])).max_realm_diff, 0, "y uno absurdo")
 	assert_eq(ServerConfig.from_args(PackedStringArray(["--max-realm-diff=3", "--max-realm-diff=9"])).max_realm_diff, 3,
 			"gana la primera")
+
+
+func test_siege_fake_brain_option() -> void:
+	var config: ServerConfig = ServerConfig.from_args(PackedStringArray(["--fake-brain=Siege"]))
+	assert_eq(config.fake_brain, ServerConfig.FAKE_BRAIN_SIEGE, "cerebro de asedio (sin distinguir mayúsculas)")
+	assert_eq(ServerConfig.from_args(PackedStringArray(["--fake-brain=combat"])).fake_brain,
+			ServerConfig.FAKE_BRAIN_COMBAT, "el de combate sigue igual")
+
+
+func test_run_at_option_schedules_console_commands() -> void:
+	assert_true(ServerConfig.from_args(PackedStringArray()).scheduled_commands.is_empty(), "sin órdenes programadas")
+	var config: ServerConfig = ServerConfig.from_args(PackedStringArray([
+		"--run-at=900:fort_kill_captain", "--run-at=1800:fort_capture_speed 30",
+		"--run-at=\"60: announce hola\"",
+		"--run-at=nada", "--run-at=-5:heal", "--run-at=x:heal", "--run-at=30:", "--run-at=:heal",
+	]))
+	assert_eq(config.scheduled_commands.size(), 3, "solo las bien formadas")
+	assert_eq(config.scheduled_commands[0], {"tick": 900, "line": "fort_kill_captain"}, "tick y orden")
+	assert_eq(config.scheduled_commands[1], {"tick": 1800, "line": "fort_capture_speed 30"}, "con argumentos")
+	assert_eq(config.scheduled_commands[2], {"tick": 60, "line": "announce hola"}, "sin comillas ni espacios")
