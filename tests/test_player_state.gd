@@ -1,10 +1,11 @@
 extends TestCase
-## Pruebas de PlayerState: formato de red (35 bytes little-endian) y comparación con tolerancia.
+## Pruebas de PlayerState: formato de red (69 bytes little-endian: 35 de movimiento y 34 de combate)
+## y comparación con tolerancia. El formato del combate se prueba en test_combat_state.gd.
 ##
 ## En la fase 2 el servidor envía este estado y el cliente lo compara con su predicción
 ## ([method PlayerState.is_close_to]) para decidir si tiene que reconciliar.
 
-const ENCODED_SIZE: int = 35
+const ENCODED_SIZE: int = 69
 ## Error admitido al pasar por f32 (los valores de prueba son exactos en f32 salvo el yaw).
 const F32_EPSILON: float = 1e-5
 
@@ -26,6 +27,7 @@ func test_encode_size_and_layout() -> void:
 			"u8 flags en el byte 28 (bit 0 = grounded, contadores a 0)")
 	assert_eq(bytes.decode_u16(29), 0x1FF, "u16 prev_buttons en el byte 29")
 	assert_eq(bytes.decode_u32(31), 4000000000, "u32 last_input_tick en el byte 31")
+	assert_eq(bytes.slice(35), _initial_combat_bytes(), "el combate inicial va en los bytes 35-68")
 
 	state.grounded = false
 	assert_eq(state.encode().decode_u8(28), 0, "flags sin grounded")
@@ -53,7 +55,7 @@ func test_encode_decode_roundtrip() -> void:
 		state.coyote_ticks = 6 if grounded else 2
 		state.jump_buffer_ticks = 0 if grounded else 11
 		var decoded: PlayerState = PlayerState.decode(state.encode())
-		if not assert_not_null(decoded, "decode() de 35 bytes válidos"):
+		if not assert_not_null(decoded, "decode() de 69 bytes válidos"):
 			return
 		assert_vec_near(decoded.position, state.position, F32_EPSILON, "position")
 		assert_vec_near(decoded.velocity, state.velocity, F32_EPSILON, "velocity")
@@ -68,7 +70,7 @@ func test_encode_decode_roundtrip() -> void:
 
 
 func test_decode_wrong_size_returns_null() -> void:
-	for size: int in [0, 1, 34, 36, 70]:
+	for size: int in [0, 1, 34, 35, 68, 70]:
 		var bytes := PackedByteArray()
 		bytes.resize(size)
 		assert_null(PlayerState.decode(bytes), "decode() de %d bytes debe devolver null" % size)
@@ -91,6 +93,10 @@ func test_duplicate_state_is_independent_copy() -> void:
 	assert_eq(copy.last_input_tick, state.last_input_tick, "last_input_tick")
 	assert_eq(copy.coyote_ticks, 4, "coyote_ticks")
 	assert_eq(copy.jump_buffer_ticks, 7, "jump_buffer_ticks")
+	assert_true(copy.combat.equals(state.combat), "combat")
+	assert_false(is_same(copy.combat, state.combat), "combat es una copia, no el mismo objeto")
+	copy.combat.stamina = 3
+	copy.combat.action = CombatState.Action.DODGE
 	copy.position = Vector3.ZERO
 	copy.velocity = Vector3.ZERO
 	copy.yaw = 0.0
@@ -106,6 +112,7 @@ func test_duplicate_state_is_independent_copy() -> void:
 	assert_eq(state.last_input_tick, 99, "%s (last_input_tick)" % unchanged)
 	assert_eq(state.coyote_ticks, 4, "%s (coyote_ticks)" % unchanged)
 	assert_eq(state.jump_buffer_ticks, 7, "%s (jump_buffer_ticks)" % unchanged)
+	assert_eq(state.combat.stamina, 1000, "%s (combat)" % unchanged)
 
 
 func test_is_close_to_accepts_equal_and_nearby_states() -> void:
@@ -152,6 +159,14 @@ func test_is_close_to_detects_differences() -> void:
 	buffered.jump_buffer_ticks = 3
 	assert_false(base.is_close_to(buffered), "jump_buffer_ticks distinto")
 
+	# El combate cambia lo que harán los ticks siguientes: se compara exacto.
+	var attacking: PlayerState = base.duplicate_state()
+	attacking.combat.action = CombatState.Action.LIGHT
+	assert_false(base.is_close_to(attacking), "acción distinta")
+	var tired: PlayerState = base.duplicate_state()
+	tired.combat.stamina -= 1
+	assert_false(base.is_close_to(tired), "resistencia distinta")
+
 	var broken: PlayerState = base.duplicate_state()
 	broken.position = Vector3(NAN, 1.0, -3.0)
 	assert_false(base.is_close_to(broken), "una posición NaN nunca está cerca")
@@ -193,6 +208,13 @@ func test_is_close_to_respects_custom_epsilon() -> void:
 
 
 # --- Utilidades -------------------------------------------------------------------------------
+
+func _initial_combat_bytes() -> PackedByteArray:
+	var bytes := PackedByteArray()
+	bytes.resize(CombatState.ENCODED_SIZE)
+	CombatState.initial(CombatCatalog.rules(), CombatCatalog.default_weapon_id()).encode_into(bytes, 0)
+	return bytes
+
 
 func _make(position: Vector3, velocity: Vector3, yaw: float, grounded: bool, prev_buttons: int,
 		last_input_tick: int) -> PlayerState:

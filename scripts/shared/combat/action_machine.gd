@@ -83,7 +83,7 @@ const _DODGE_DROPPED: int = 2
 ## [param grounded] es si estaba en el suelo al empezar el tick.
 static func step(c: CombatState, input: PlayerInput, grounded: bool) -> ActionMachine.Output:
 	var out := Output.new()
-	var data: CombatCatalog.Tables = CombatCatalog.tables()
+	var data: CombatTables = CombatCatalog.tables()
 	var rules: CombatRules = data.rules
 	var weapon: WeaponTicks = data.weapon(c.weapon_id)
 	var t: int = input.tick
@@ -251,13 +251,13 @@ static func reset_for_respawn(c: CombatState, tick: int) -> void:
 ## Resta [param amount] de resistencia (sin bajar de 0), retrasa la regeneración y, si llega a 0,
 ## activa el agotamiento. No hace nada con la resistencia infinita.
 static func drain_stamina(c: CombatState, amount: int, tick: int) -> void:
-	_spend(c, amount, tick, CombatCatalog.rules())
+	_spend(c, amount, tick, CombatCatalog.tables())
 
 
 # --- Fin de acciones y resistencia ------------------------------------------------------------
 
 # Paso 1: las acciones con duración que ya han terminado vuelven a NONE.
-static func _finish_expired(c: CombatState, data: CombatCatalog.Tables, weapon: WeaponTicks,
+static func _finish_expired(c: CombatState, data: CombatTables, weapon: WeaponTicks,
 		t: int) -> void:
 	match c.action:
 		_LIGHT, _HEAVY:
@@ -292,11 +292,11 @@ static func _regenerate(c: CombatState, rules: CombatRules, t: int) -> void:
 		c.combat_flags &= ~CombatState.FLAG_EXHAUSTED
 
 
-static func _spend(c: CombatState, amount: int, t: int, rules: CombatRules) -> void:
+static func _spend(c: CombatState, amount: int, t: int, data: CombatTables) -> void:
 	if amount <= 0 or (c.combat_flags & CombatState.FLAG_INFINITE_STAMINA) != 0:
 		return
 	c.stamina = maxi(c.stamina - amount, 0)
-	c.stamina_regen_tick = t + rules.stamina_regen_delay_ticks()
+	c.stamina_regen_tick = t + data.regen_delay_ticks
 	if c.stamina == 0:
 		c.combat_flags |= CombatState.FLAG_EXHAUSTED
 
@@ -318,7 +318,7 @@ static func _can_pay(c: CombatState, cost: int) -> bool:
 
 # Paso 3: el búfer (con prioridad), DODGE, PRIMARY y BLOCK.
 static func _run_inputs(c: CombatState, out: Output, input: PlayerInput,
-		data: CombatCatalog.Tables, weapon: WeaponTicks, rules: CombatRules, grounded: bool,
+		data: CombatTables, weapon: WeaponTicks, rules: CombatRules, grounded: bool,
 		down: int, edges: int) -> void:
 	var t: int = input.tick
 	var real: bool = (input.buttons & PlayerInput.SUBSTITUTED) == 0
@@ -330,17 +330,17 @@ static func _run_inputs(c: CombatState, out: Output, input: PlayerInput,
 	_run_buffer(c, input, data, weapon, rules, grounded)
 
 	if (edges & PlayerInput.DODGE) != 0:
-		var result: int = _try_dodge(c, input, data, weapon, rules, grounded)
+		var result: int = _try_dodge(c, input, data, weapon, grounded)
 		if result == _DODGE_RETRY:
 			_store_buffer(c, rules, CombatState.BUFFER_DODGE)
 
 	_run_primary(c, out, t, data, weapon, rules, grounded, real, down, edges)
-	_run_charge(c, t, data, rules, real, down)
+	_run_charge(c, t, data, real, down)
 	_run_block(c, t, rules, grounded, real, down, edges)
 
 
 # Ejecuta lo que hubiera en el búfer en el primer tick en que se pueda; si no, le resta un tick.
-static func _run_buffer(c: CombatState, input: PlayerInput, data: CombatCatalog.Tables,
+static func _run_buffer(c: CombatState, input: PlayerInput, data: CombatTables,
 		weapon: WeaponTicks, rules: CombatRules, grounded: bool) -> void:
 	var kind: int = c.buffered & 3
 	if kind == CombatState.BUFFER_NONE:
@@ -348,9 +348,9 @@ static func _run_buffer(c: CombatState, input: PlayerInput, data: CombatCatalog.
 	var remaining: int = (c.buffered >> 2) & 15
 	var done: bool = false
 	if kind == CombatState.BUFFER_DODGE:
-		done = _try_dodge(c, input, data, weapon, rules, grounded) != _DODGE_RETRY
+		done = _try_dodge(c, input, data, weapon, grounded) != _DODGE_RETRY
 	else:
-		done = _try_start_light(c, input.tick, data, weapon, rules, grounded)
+		done = _try_start_light(c, input.tick, data, weapon, grounded)
 	if done:
 		c.buffered = 0
 		return
@@ -375,8 +375,8 @@ static func _store_buffer(c: CombatState, rules: CombatRules, kind: int) -> void
 # _DODGE_RETRY si ahora no se puede (por la acción en curso o por estar en el aire: va al búfer) y
 # _DODGE_DROPPED si falló por falta de resistencia o agotamiento (se descarta y se avisa a la
 # interfaz).
-static func _try_dodge(c: CombatState, input: PlayerInput, data: CombatCatalog.Tables,
-		weapon: WeaponTicks, rules: CombatRules, grounded: bool) -> int:
+static func _try_dodge(c: CombatState, input: PlayerInput, data: CombatTables,
+		weapon: WeaponTicks, grounded: bool) -> int:
 	var t: int = input.tick
 	var dodge: DodgeTicks = weapon.dodge
 	var allowed: bool = false
@@ -391,7 +391,7 @@ static func _try_dodge(c: CombatState, input: PlayerInput, data: CombatCatalog.T
 	if _is_blocked_by_exhaustion(c) or not _can_pay(c, dodge.stamina_cost):
 		c.combat_flags |= CombatState.FLAG_NO_STAMINA
 		return _DODGE_DROPPED
-	_spend(c, dodge.stamina_cost, t, rules)
+	_spend(c, dodge.stamina_cost, t, data)
 	_clear_link(c)
 	c.action = _DODGE
 	c.action_id = 0
@@ -423,8 +423,8 @@ static func _can_start_attack(c: CombatState, t: int, weapon: WeaponTicks,
 
 # Empieza el siguiente ligero del combo si se puede. Devuelve true si la pulsación queda
 # consumida (el ligero empezó o se descartó por falta de resistencia).
-static func _try_start_light(c: CombatState, t: int, data: CombatCatalog.Tables,
-		weapon: WeaponTicks, rules: CombatRules, grounded: bool) -> bool:
+static func _try_start_light(c: CombatState, t: int, data: CombatTables,
+		weapon: WeaponTicks, grounded: bool) -> bool:
 	if not _can_start_attack(c, t, weapon, grounded):
 		return false
 	var count: int = weapon.light_ids.size()
@@ -437,7 +437,7 @@ static func _try_start_light(c: CombatState, t: int, data: CombatCatalog.Tables,
 	if attack.stamina_cost > 0 and not _can_pay(c, attack.stamina_cost):
 		c.combat_flags |= CombatState.FLAG_NO_STAMINA
 		return true
-	_spend(c, attack.stamina_cost, t, rules)
+	_spend(c, attack.stamina_cost, t, data)
 	_clear_link(c)
 	c.action = _LIGHT
 	c.action_id = attack.id
@@ -448,7 +448,7 @@ static func _try_start_light(c: CombatState, t: int, data: CombatCatalog.Tables,
 
 
 # PRIMARY: flanco, mantenido y soltado.
-static func _run_primary(c: CombatState, out: Output, t: int, data: CombatCatalog.Tables,
+static func _run_primary(c: CombatState, out: Output, t: int, data: CombatTables,
 		weapon: WeaponTicks, rules: CombatRules, grounded: bool, real: bool, down: int,
 		edges: int) -> void:
 	if (down & PlayerInput.PRIMARY) == 0:
@@ -460,7 +460,7 @@ static func _run_primary(c: CombatState, out: Output, t: int, data: CombatCatalo
 		if c.action == _CHARGE:
 			return
 		c.primary_held = 1
-		if not _try_start_light(c, t, data, weapon, rules, grounded):
+		if not _try_start_light(c, t, data, weapon, grounded):
 			_buffer_primary(c, t, data, rules)
 		return
 	if not real or c.primary_held == 0:
@@ -473,7 +473,7 @@ static func _run_primary(c: CombatState, out: Output, t: int, data: CombatCatalo
 # Guarda una pulsación de PRIMARY que no se puede ejecutar ahora. Dentro de la ventana de combo de
 # un ligero (o hasta input_buffer_ticks antes) es un enlace, que espera a que acabe la
 # recuperación; en cualquier otro caso es una pulsación normal del búfer.
-static func _buffer_primary(c: CombatState, t: int, data: CombatCatalog.Tables,
+static func _buffer_primary(c: CombatState, t: int, data: CombatTables,
 		rules: CombatRules) -> void:
 	if c.action == _LIGHT:
 		var attack: AttackTicks = data.attack(c.action_id)
@@ -487,7 +487,7 @@ static func _buffer_primary(c: CombatState, t: int, data: CombatCatalog.Tables,
 
 # Convierte el ligero en carga del fuerte si todavía está en la anticipación, lo empezó esta
 # pulsación y hay resistencia.
-static func _try_charge(c: CombatState, out: Output, t: int, data: CombatCatalog.Tables,
+static func _try_charge(c: CombatState, out: Output, t: int, data: CombatTables,
 		weapon: WeaponTicks) -> void:
 	var attack: AttackTicks = data.attack(c.action_id)
 	if attack == null or t - c.action_tick >= attack.windup_ticks:
@@ -510,8 +510,8 @@ static func _try_charge(c: CombatState, out: Output, t: int, data: CombatCatalog
 
 
 # Carga: lanza el fuerte al soltar (esperando a la carga mínima) o al llegar a la máxima.
-static func _run_charge(c: CombatState, t: int, data: CombatCatalog.Tables, rules: CombatRules,
-		real: bool, down: int) -> void:
+static func _run_charge(c: CombatState, t: int, data: CombatTables, real: bool,
+		down: int) -> void:
 	if c.action != _CHARGE:
 		return
 	var heavy: AttackTicks = data.attack(c.action_id)
@@ -522,17 +522,17 @@ static func _run_charge(c: CombatState, t: int, data: CombatCatalog.Tables, rule
 	var live: bool = (down & PlayerInput.PRIMARY) != 0 and c.primary_held > 0
 	if live:
 		if real and charge >= heavy.charge_max_ticks:
-			_launch_heavy(c, t, heavy, rules)
+			_launch_heavy(c, t, heavy, data)
 	elif charge >= heavy.charge_min_ticks:
-		_launch_heavy(c, t, heavy, rules)
+		_launch_heavy(c, t, heavy, data)
 
 
-static func _launch_heavy(c: CombatState, t: int, heavy: AttackTicks, rules: CombatRules) -> void:
+static func _launch_heavy(c: CombatState, t: int, heavy: AttackTicks, data: CombatTables) -> void:
 	if not _can_pay(c, heavy.stamina_cost):
 		c.combat_flags |= CombatState.FLAG_NO_STAMINA
 		_to_none(c)
 		return
-	_spend(c, heavy.stamina_cost, t, rules)
+	_spend(c, heavy.stamina_cost, t, data)
 	c.charge_ticks = clampi(t - c.action_tick, 0, heavy.charge_max_ticks)
 	c.action = _HEAVY
 	c.action_id = heavy.id
@@ -564,7 +564,7 @@ static func _run_block(c: CombatState, t: int, rules: CombatRules, grounded: boo
 # --- Movimiento permitido ---------------------------------------------------------------------
 
 # Paso 4: la tabla de movimiento de la sección 3.3 para la acción en curso.
-static func _fill_output(c: CombatState, out: Output, data: CombatCatalog.Tables,
+static func _fill_output(c: CombatState, out: Output, data: CombatTables,
 		weapon: WeaponTicks, t: int) -> void:
 	match c.action:
 		_LIGHT, _HEAVY:

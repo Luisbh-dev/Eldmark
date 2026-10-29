@@ -56,7 +56,3 @@ extends Resource
 ## Multiplicador del daño por la espalda.
 @export var crit_multiplier: float = 1.5
 
-
-## Ticks de retardo de la regeneración de resistencia tras un gasto.
-func stamina_regen_delay_ticks() -> int:
-	return CombatCatalog.seconds_to_ticks(stamina_regen_delay_s)

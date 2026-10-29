@@ -33,6 +33,8 @@ const STATE_DELAY_FRAMES: int = 6
 const STATE_INTERVAL_TICKS: int = 2
 ## Ticks de la ruta guionizada.
 const ROUTE_TICKS: int = 250
+## Ticks de la ruta de combate.
+const COMBAT_ROUTE_TICKS: int = 300
 
 var _server_viewport: SubViewport
 var _client_viewport: SubViewport
@@ -119,6 +121,7 @@ class ServerModel:
 		else:
 			input = last_applied.duplicate_input()
 			input.tick = for_tick
+			input.buttons |= PlayerInput.SUBSTITUTED
 			if for_tick - last_real_tick > NetProtocol.REPEAT_MOVE_TICKS:
 				input.move = Vector2.ZERO
 			substitutions += 1
@@ -356,6 +359,110 @@ func test_a_long_loss_burst_is_reconciled_repeatedly_and_converges() -> void:
 	assert_eq(_smoother.get_offset(), Vector3.ZERO, "y el desfase acabó anulándose")
 
 
+# --- Combate: acciones a medias, pérdidas y entradas sustituidas ---------------------------------
+
+func test_combat_route_matches_the_server_tick_by_tick() -> void:
+	if not await _begin_session(_combat_route):
+		return
+	var results: Array[Vector2i] = []
+	var actions_seen: Dictionary[int, bool] = {}
+	for _frame: int in COMBAT_ROUTE_TICKS:
+		await tree.physics_frame
+		_client_tick(results, [] as Array[int])
+		var state: PlayerState = _server_tick()
+		actions_seen[state.combat.action] = true
+		var predicted: PlayerState = _prediction.get_predicted_state(_model.tick)
+		if not assert_not_null(predicted, "el anillo guarda el tick %d" % _model.tick):
+			return
+		if predicted.encode() != state.encode():
+			fail("el estado predicho del tick %d difiere del del servidor.\n  predicho: %s\n  servidor: %s"
+					% [_model.tick, predicted, state])
+			return
+	for action: int in [CombatState.Action.LIGHT, CombatState.Action.HEAVY,
+			CombatState.Action.CHARGE, CombatState.Action.BLOCK, CombatState.Action.DODGE]:
+		assert_true(actions_seen.has(action), "la ruta pasa por la acción %d" % action)
+	var stats: Dictionary = _prediction.get_stats()
+	assert_eq(stats["replays"], 0, "ninguna repetición")
+	assert_eq(stats["corrections"], 0, "ninguna corrección")
+	assert_true(stats["matches"] > 100, "llegaron estados que coincidieron (%d)" % stats["matches"])
+
+
+func test_a_lost_attack_press_is_reconciled_and_converges() -> void:
+	if not await _begin_session(_combat_route):
+		return
+	# La pulsación que empieza el primer ligero (tick 40) se pierde: el servidor no ataca.
+	var lost: Array[int] = [40]
+	var results: Array[Vector2i] = []
+	var diverged_in_combat: bool = false
+	for _frame: int in COMBAT_ROUTE_TICKS:
+		await tree.physics_frame
+		_client_tick(results, lost)
+		var state: PlayerState = _server_tick()
+		var predicted: PlayerState = _prediction.get_predicted_state(_model.tick)
+		if predicted != null and predicted.combat.action != state.combat.action:
+			diverged_in_combat = true
+	assert_true(diverged_in_combat, "el cliente y el servidor llegaron a tener acciones distintas")
+	var corrected: Array[Vector2i] = _results_with(results, ClientPrediction.Result.CORRECTED)
+	assert_true(corrected.size() >= 1, "se reconcilió con una acción a medias")
+	assert_true(_results_with(results, ClientPrediction.Result.HARD_RESET).is_empty(),
+			"sin hard reset")
+	var last_bad: int = _last_result_tick_not(results, ClientPrediction.Result.MATCH)
+	assert_true(last_bad > 0 and last_bad < 100, "el desacuerdo se resuelve pronto (%d)" % last_bad)
+	# La ruta es más larga que el anillo de 256 ticks: se comprueba el último tramo.
+	_assert_converged_since(maxi(last_bad, _model.tick - 150))
+	# Tras reconciliar, el resto de la ruta (esquiva, bloqueo, carga...) sale igual en los dos.
+	assert_eq(_prediction.get_predicted_state(_model.tick).combat.stamina,
+			(_model.states[_model.tick] as PlayerState).combat.stamina, "misma resistencia")
+
+
+func test_lost_inputs_in_the_middle_of_a_charge_are_reconciled_and_converge() -> void:
+	if not await _begin_session(_combat_route):
+		return
+	# Se pierden 6 ticks de la carga del fuerte (200-239 pulsado): el servidor repite el botón con
+	# la marca de entrada sustituida, así que no suma pulsación ni lanza al llegar a la máxima.
+	var lost: Array[int] = [212, 213, 214, 215, 216, 217]
+	var results: Array[Vector2i] = []
+	var server_held_froze: bool = false
+	for _frame: int in COMBAT_ROUTE_TICKS:
+		await tree.physics_frame
+		_client_tick(results, lost)
+		var state: PlayerState = _server_tick()
+		var predicted: PlayerState = _prediction.get_predicted_state(_model.tick)
+		if predicted != null and _model.tick == 217 and predicted.combat.primary_held \
+				> state.combat.primary_held:
+			server_held_froze = true
+	assert_true(server_held_froze, "las entradas sustituidas no suman a primary_held en el servidor")
+	assert_eq(_model.substitutions, FIRST_REAL_TICK - SPAWN_TICK - 1 + 6, "seis sustituciones")
+	assert_true(_results_with(results, ClientPrediction.Result.CORRECTED).size() >= 1,
+			"se reconcilia la diferencia")
+	var last_bad: int = _last_result_tick_not(results, ClientPrediction.Result.MATCH)
+	assert_true(last_bad > 0, "hubo diferencias")
+	_assert_converged_since(maxi(last_bad, _model.tick - 150))
+	assert_true(_prediction.get_stats()["max_correction"] < ClientPrediction.SNAP_DISTANCE,
+			"y se corrigió sin saltar")
+
+
+func test_replays_fill_gaps_with_substituted_inputs() -> void:
+	if not await _begin_session(_idle_route):
+		return
+	# Un hard reset muy atrasado obliga a repetir ticks cuya entrada ya salió del anillo: se
+	# sustituyen como lo haría el servidor, con la marca de entrada sustituida. Las neutras con las
+	# que arranca la predicción también la llevan, porque el servidor las sustituye.
+	var first_input: PlayerInput = _prediction.get_input(SPAWN_TICK + 1)
+	if assert_not_null(first_input, "la predicción guardó las entradas neutras del arranque"):
+		assert_eq(first_input.buttons & PlayerInput.SUBSTITUTED, PlayerInput.SUBSTITUTED,
+				"y llevan la marca de sustituida")
+	for _i: int in 20:
+		_prediction.step()
+	var real: PlayerInput = _prediction.get_input(_prediction.get_predicted_tick())
+	assert_eq(real.buttons & PlayerInput.SUBSTITUTED, 0, "las entradas generadas no la llevan")
+	_prediction._begin_substitution(_prediction.get_predicted_tick())
+	var substitute: PlayerInput = _prediction._input_or_substitute(
+			_prediction.get_predicted_tick() + 10)
+	assert_eq(substitute.buttons & PlayerInput.SUBSTITUTED, PlayerInput.SUBSTITUTED,
+			"la sustituta de una repetición lleva la marca")
+
+
 func test_replays_do_not_emit_jump_or_landing_events() -> void:
 	if not await _begin_session(_route_input):
 		return
@@ -409,7 +516,8 @@ func test_start_advances_with_neutral_input_and_without_events() -> void:
 			return
 		assert_eq(input.tick, tick, "con su tick")
 		assert_eq(input.move, Vector2.ZERO, "sin movimiento")
-		assert_eq(input.buttons, 0, "sin botones")
+		assert_eq(input.buttons, PlayerInput.SUBSTITUTED,
+				"sin botones y con la marca de sustituida (el servidor las sustituye)")
 		assert_near(input.look_yaw, neutral.look_yaw, 1e-9, "mirando al yaw cuantizado del alta")
 	assert_null(_prediction.get_input(FIRST_REAL_TICK), "todavía no hay entrada real")
 	var stepped: PlayerInput = _prediction.step()
@@ -1002,6 +1110,28 @@ func _route_input(tick: int) -> PlayerInput:
 			input.buttons |= PlayerInput.JUMP
 	else:
 		input.look_yaw = 3.0
+	return input
+
+
+## Ruta de combate: camina hacia delante y ataca (ligero enlazado con el siguiente), esquiva, bloquea y
+## carga el fuerte (200-239 pulsado, se suelta tras la carga mínima).
+func _combat_route(tick: int) -> PlayerInput:
+	var input := PlayerInput.new()
+	input.tick = tick
+	if tick < 31:
+		return input
+	input.move = Vector2(0.2, 1.0).limit_length(1.0)
+	input.look_yaw = 0.002 * float(tick)
+	if tick == 40 or tick == 70:
+		input.buttons |= PlayerInput.PRIMARY
+	if tick == 110:
+		input.buttons |= PlayerInput.DODGE
+	if tick >= 140 and tick <= 175:
+		input.buttons |= PlayerInput.BLOCK
+	if tick >= 200 and tick <= 239:
+		input.buttons |= PlayerInput.PRIMARY
+	if tick == 275:
+		input.buttons |= PlayerInput.PRIMARY
 	return input
 
 

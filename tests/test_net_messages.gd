@@ -381,7 +381,7 @@ func test_entity_record_interpolate() -> void:
 # --- NetProtocol ------------------------------------------------------------------------------
 
 func test_protocol_constants_and_helpers() -> void:
-	assert_eq(NetProtocol.PROTOCOL_VERSION, 1, "versión")
+	assert_eq(NetProtocol.PROTOCOL_VERSION, 2, "versión")
 	assert_eq(NetProtocol.MAGIC, 0x4D444C45, "magic")
 	assert_eq(PackedByteArray([0x45, 0x4C, 0x44, 0x4D]).decode_u32(0), NetProtocol.MAGIC,
 			"los bytes del magic leen «ELDM»")
@@ -734,7 +734,7 @@ func test_hello_roundtrip_and_layout() -> void:
 	assert_eq(bytes.size(), 23 + name_bytes.size() + ticket_size,
 			"tamaño: 23 B + nombre + billete")
 	assert_eq(bytes.decode_u32(0), 0x4D444C45, "u32 magic en 0")
-	assert_eq(bytes.decode_u16(4), 1, "u16 protocol_version en 4")
+	assert_eq(bytes.decode_u16(4), NetProtocol.PROTOCOL_VERSION, "u16 protocol_version en 4")
 	assert_eq(bytes.decode_u32(6), 0xDEADBEEF, "u32 sim_hash en 6")
 	assert_eq(bytes.decode_u8(10), NetProtocol.Realm.SOLMARCH, "u8 realm en 10")
 	assert_eq(bytes.decode_u8(11), 1, "u8 flags en 11 (bit 0 = bot)")
@@ -748,7 +748,7 @@ func test_hello_roundtrip_and_layout() -> void:
 	var decoded: NetMessages.Hello = NetMessages.Hello.decode(bytes)
 	if not assert_not_null(decoded, "decode del HELLO"):
 		return
-	assert_eq(decoded.protocol_version, 1, "protocol_version")
+	assert_eq(decoded.protocol_version, NetProtocol.PROTOCOL_VERSION, "protocol_version")
 	assert_eq(decoded.sim_hash, 0xDEADBEEF, "sim_hash")
 	assert_eq(decoded.realm, NetProtocol.Realm.SOLMARCH, "realm")
 	assert_eq(decoded.flags, 1, "flags")
@@ -787,7 +787,7 @@ func test_welcome_roundtrip_and_layout() -> void:
 	assert_eq(bytes.size(), 18 + "vado_gris".length(), "tamaño: 18 B + id de zona")
 	assert_eq(bytes.decode_u32(0), 0x4D444C45, "u32 magic en 0")
 	assert_eq(bytes.decode_u8(4), 0, "u8 result en 4 (0 = aceptado)")
-	assert_eq(bytes.decode_u16(5), 1, "u16 protocol_version en 5")
+	assert_eq(bytes.decode_u16(5), NetProtocol.PROTOCOL_VERSION, "u16 protocol_version en 5")
 	assert_eq(bytes.decode_u32(7), 123456, "u32 server_tick en 7")
 	assert_eq(bytes.decode_u8(11), 60, "u8 tick_rate en 11")
 	assert_eq(bytes.decode_u8(12), 2, "u8 snapshot_interval en 12")
@@ -801,7 +801,7 @@ func test_welcome_roundtrip_and_layout() -> void:
 	var decoded: NetMessages.Welcome = NetMessages.Welcome.decode(bytes)
 	if not assert_not_null(decoded, "decode del WELCOME"):
 		return
-	assert_eq(decoded.protocol_version, 1, "protocol_version")
+	assert_eq(decoded.protocol_version, NetProtocol.PROTOCOL_VERSION, "protocol_version")
 	assert_eq(decoded.server_tick, 123456, "server_tick")
 	assert_eq(decoded.tick_rate, 60, "tick_rate")
 	assert_eq(decoded.snapshot_interval, 2, "snapshot_interval")
@@ -1088,19 +1088,22 @@ func test_small_client_messages() -> void:
 func test_snapshot_roundtrip_and_layout_with_own_state() -> void:
 	var snapshot: NetMessages.Snapshot = _sample_snapshot(true, 3)
 	var bytes: PackedByteArray = snapshot.encode()
-	assert_eq(bytes.size(), 49 + 2 + 3 * 20, "49 B de cabecera con estado propio + sección")
+	# La cabecera con estado propio es 13 B + el estado (PlayerState.ENCODED_SIZE) + section_count.
+	var section_at: int = 13 + PlayerState.ENCODED_SIZE
+	assert_eq(bytes.size(), section_at + 1 + 2 + 3 * 20, "cabecera con estado propio + sección")
 	assert_eq(bytes.decode_u8(0), 0x10, "u8 type en 0")
 	assert_eq(bytes.decode_u32(1), 90001, "u32 server_tick en 1")
 	assert_eq(bytes.decode_u32(5), 90000, "u32 input_ack_tick en 5")
 	assert_eq(bytes.decode_s8(9), -3, "s8 input_margin en 9")
 	assert_eq(bytes.decode_u16(10), 65535, "u16 substitutions en 10")
 	assert_eq(bytes.decode_u8(12), 0b101, "u8 flags en 12: bit 0 estado propio, contador 2")
-	assert_eq(bytes.slice(13, 48), snapshot.own_state.encode(), "estado propio sin cuantizar en 13")
-	assert_eq(bytes.decode_u8(48), 1, "u8 section_count en 48")
-	assert_eq(bytes.decode_u8(49), NetProtocol.EntityKind.PLAYER, "u8 kind de la sección en 49")
-	assert_eq(bytes.decode_u8(50), 3, "u8 count de la sección en 50")
+	assert_eq(bytes.slice(13, section_at), snapshot.own_state.encode(),
+			"estado propio sin cuantizar en 13")
+	assert_eq(bytes.decode_u8(section_at), 1, "u8 section_count tras el estado")
+	assert_eq(bytes.decode_u8(section_at + 1), NetProtocol.EntityKind.PLAYER, "u8 kind de la sección")
+	assert_eq(bytes.decode_u8(section_at + 2), 3, "u8 count de la sección")
 	for i: int in 3:
-		var offset: int = 51 + 20 * i
+		var offset: int = section_at + 3 + 20 * i
 		var record: EntityRecord = snapshot.records[i]
 		assert_eq(bytes.decode_u16(offset), record.net_id, "u16 net_id en +0")
 		assert_eq(bytes.decode_u64(offset + 2), NetMath.pack_position(record.position),
@@ -1206,9 +1209,11 @@ func test_snapshot_write_header_matches_encode() -> void:
 	var offset: int = NetMessages.Snapshot.write_header(bytes, snapshot.server_tick,
 			snapshot.input_ack_tick, snapshot.input_margin, snapshot.substitutions,
 			snapshot.own_teleport, snapshot.own_state.encode())
-	assert_eq(offset, 48, "section_count empieza en 48 con estado propio")
-	assert_eq(bytes.size(), 49, "el búfer queda con la cabecera de 49 B")
-	assert_eq(bytes, expected.slice(0, 48) + PackedByteArray([0]), "misma cabecera que encode()")
+	var section_at: int = 13 + PlayerState.ENCODED_SIZE
+	assert_eq(offset, section_at, "section_count empieza tras el estado propio")
+	assert_eq(bytes.size(), section_at + 1, "el búfer queda con la cabecera completa")
+	assert_eq(bytes, expected.slice(0, section_at) + PackedByteArray([0]),
+			"misma cabecera que encode()")
 
 	var plain := PackedByteArray()
 	var plain_offset: int = NetMessages.Snapshot.write_header(plain, 11, 22, -5, 33, 1,
@@ -1231,20 +1236,22 @@ func test_snapshot_write_header_matches_encode() -> void:
 func test_snapshot_capacity_fits_in_one_packet() -> void:
 	var snapshot := NetMessages.Snapshot.new()
 	snapshot.own_state = PlayerState.new()
-	for i: int in 57:
+	# Cabecera con estado propio (13 B + estado + section_count) y los 2 B de la sección.
+	var header_size: int = 13 + PlayerState.ENCODED_SIZE + 1 + 2
+	var capacity: int = floori((NetProtocol.MAX_PACKET_BYTES - header_size) / 20.0)
+	assert_eq(capacity, 55, "con el estado de 69 B caben 55 registros de 20 B")
+	for i: int in capacity:
 		var record := EntityRecord.new()
 		record.net_id = 100 + i
 		record.position = Vector3(i * 10.0, 1.0, -i * 3.0)
 		snapshot.records.append(record)
 	var bytes: PackedByteArray = snapshot.encode()
-	assert_eq(bytes.size(), 49 + 2 + 57 * 20, "57 registros: 1191 B")
+	assert_eq(bytes.size(), header_size + capacity * 20, "%d registros" % capacity)
 	assert_true(bytes.size() <= NetProtocol.MAX_PACKET_BYTES, "cabe en 1200 B")
-	assert_eq(floori((NetProtocol.MAX_PACKET_BYTES - 49 - 2) / 20.0), 57,
-			"capacidad del documento: 57 registros")
 	var decoded: NetMessages.Snapshot = NetMessages.Snapshot.decode(bytes)
 	if assert_not_null(decoded, "decode del snapshot lleno"):
-		assert_eq(decoded.records.size(), 57, "registros")
-		assert_eq(decoded.records[56].net_id, 156, "último registro")
+		assert_eq(decoded.records.size(), capacity, "registros")
+		assert_eq(decoded.records[capacity - 1].net_id, 100 + capacity - 1, "último registro")
 
 	# Más de 255 registros de un tipo se reparten en varias secciones.
 	var many := NetMessages.Snapshot.new()
@@ -1286,16 +1293,19 @@ func test_entity_spawn_roundtrip_and_layout() -> void:
 	var spawn: NetMessages.EntitySpawn = _sample_spawn()
 	var bytes: PackedByteArray = spawn.encode()
 	var name_bytes: PackedByteArray = spawn.display_name.to_utf8_buffer()
-	assert_eq(bytes.size(), 10 + 35 + 1 + name_bytes.size(), "tamaño: 10 B + estado + nombre")
+	assert_eq(bytes.size(), 10 + PlayerState.ENCODED_SIZE + 1 + name_bytes.size(),
+			"tamaño: 10 B + estado + nombre")
 	assert_eq(bytes.decode_u8(0), 0x20, "u8 type en 0")
 	assert_eq(bytes.decode_u16(1), 4242, "u16 net_id en 1")
 	assert_eq(bytes.decode_u8(3), NetProtocol.EntityKind.PLAYER, "u8 kind en 3")
 	assert_eq(bytes.decode_u32(4), 654321, "u32 spawn_tick en 4")
 	assert_eq(bytes.decode_u8(8), NetProtocol.Realm.VARDHEIM, "u8 realm en 8")
 	assert_eq(bytes.decode_u8(9), 0b011, "u8 flags en 9: tuyo y contador 1")
-	assert_eq(bytes.slice(10, 45), spawn.state.encode(), "PlayerState de 35 B en 10")
-	assert_eq(bytes.decode_u8(45), name_bytes.size(), "u8 name_len en 45")
-	assert_eq(bytes.slice(46), name_bytes, "nombre en 46")
+	assert_eq(bytes.slice(10, 10 + PlayerState.ENCODED_SIZE), spawn.state.encode(),
+			"PlayerState (69 B) en 10")
+	var name_at: int = 10 + PlayerState.ENCODED_SIZE
+	assert_eq(bytes.decode_u8(name_at), name_bytes.size(), "u8 name_len tras el estado")
+	assert_eq(bytes.slice(name_at + 1), name_bytes, "nombre a continuación")
 
 	var decoded: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(bytes)
 	if not assert_not_null(decoded, "decode del SPAWN"):
@@ -1317,7 +1327,7 @@ func test_entity_spawn_roundtrip_and_layout() -> void:
 	if assert_not_null(plain, "decode de un SPAWN ajeno sin nombre"):
 		assert_false(plain.is_yours, "no es tuyo")
 		assert_eq(plain.teleport_counter, 2, "contador módulo 4")
-		assert_eq(spawn.encode().size(), 46, "10 + 35 + 1 B sin nombre")
+		assert_eq(spawn.encode().size(), 10 + PlayerState.ENCODED_SIZE + 1, "10 + estado + 1 B sin nombre")
 	spawn.kind = NetProtocol.EntityKind.NPC
 	assert_not_null(NetMessages.EntitySpawn.decode(spawn.encode()), "un PNJ reutiliza el formato")
 	spawn.kind = NetProtocol.EntityKind.PROJECTILE
@@ -1491,14 +1501,16 @@ func test_malformed_lengths_and_counters_return_null() -> void:
 			"bit de estado propio sin el estado")
 	assert_null(NetMessages.Snapshot.decode(with_state.slice(0, 40)),
 			"truncado dentro del estado propio")
-	assert_null(NetMessages.Snapshot.decode(with_state.slice(0, 48)), "sin section_count")
+	assert_null(NetMessages.Snapshot.decode(with_state.slice(0, 13 + PlayerState.ENCODED_SIZE)),
+			"sin section_count")
 
 	# SPAWN.
 	var spawn_bytes: PackedByteArray = _sample_spawn().encode()
 	var bad_spawn: PackedByteArray = spawn_bytes.duplicate()
-	bad_spawn.encode_u8(45, spawn_bytes.decode_u8(45) + 1)
+	var name_len_at: int = 10 + PlayerState.ENCODED_SIZE
+	bad_spawn.encode_u8(name_len_at, spawn_bytes.decode_u8(name_len_at) + 1)
 	assert_null(NetMessages.EntitySpawn.decode(bad_spawn), "name_len que no cuadra")
-	bad_spawn.encode_u8(45, 49)
+	bad_spawn.encode_u8(name_len_at, 49)
 	assert_null(NetMessages.EntitySpawn.decode(bad_spawn), "name_len > 48")
 	bad_spawn = spawn_bytes.duplicate()
 	bad_spawn.encode_u8(3, NetProtocol.EntityKind.STRUCTURE)

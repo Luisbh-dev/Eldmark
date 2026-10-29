@@ -11,6 +11,7 @@ const JUMP: int = PlayerInput.JUMP
 const SPRINT: int = PlayerInput.SPRINT
 const DODGE: int = PlayerInput.DODGE
 const PRIMARY: int = PlayerInput.PRIMARY
+const SUBSTITUTED: int = PlayerInput.SUBSTITUTED
 ## Ticks que se espera a que el personaje se asiente en el suelo antes de saltar.
 const SETTLE_TICKS: int = 5
 ## Tick en el que empieza a mantenerse el salto.
@@ -127,7 +128,7 @@ func test_late_input_is_counted_once_and_not_applied() -> void:
 	assert_eq(queue.push(_input(1, Vector2(1, 0), JUMP), 8, 2), InputQueue.PushResult.DUPLICATE,
 			"la segunda copia de la tardía ya es un duplicado")
 	assert_eq(queue.late_count, 1, "y no se vuelve a contar")
-	assert_eq(substitute.buttons, 0, "lo aplicado no cambia")
+	assert_eq(substitute.buttons, SUBSTITUTED, "lo aplicado no cambia (sin botones y sustituida)")
 	assert_eq(queue.get_view_offset_q(1), -1, "una tardía no aporta view_offset_q")
 	assert_eq(queue.substitutions_total, 1, "la sustitución sigue contada")
 
@@ -293,9 +294,25 @@ func test_substitute_repeats_the_whole_last_input() -> void:
 	assert_near(substitute.look_yaw, _input(1, Vector2.ZERO, 0, 2.0).look_yaw, 1e-6, "y el yaw")
 	assert_near(substitute.look_pitch, _input(1, Vector2.ZERO, 0, 0.0, 0.3).look_pitch, 1e-6,
 			"y el pitch")
-	assert_eq(substitute.buttons, JUMP | SPRINT | PRIMARY | DODGE,
-			"repite TODOS los botones: ni se quitan ni se inventan flancos")
+	assert_eq(substitute.buttons, JUMP | SPRINT | PRIMARY | DODGE | SUBSTITUTED,
+			"repite TODOS los botones (ni se quitan ni se inventan flancos) y lleva la marca de sustituida")
 	assert_eq(queue.substitutions_total, 1, "una sustitución")
+
+
+func test_only_substitutes_carry_the_substituted_bit() -> void:
+	var queue: InputQueue = _make_queue()
+	# Un cliente que intente poner el bit 15 no lo consigue: push() lo descarta.
+	var forged: PlayerInput = _input(1, Vector2(0, 1), PRIMARY | SUBSTITUTED)
+	assert_eq(forged.buttons & SUBSTITUTED, SUBSTITUTED, "la entrada de prueba lleva el bit")
+	queue.push(forged, 0, 1)
+	var real: PlayerInput = queue.take(1)
+	assert_eq(real.buttons, PRIMARY, "una entrada real nunca lleva la marca (se aplica VALID_BUTTONS)")
+	var substitute: PlayerInput = queue.take(2)
+	assert_eq(substitute.buttons, PRIMARY | SUBSTITUTED, "la sustituta repite PRIMARY y lleva la marca")
+	assert_eq(queue.take(3).buttons, PRIMARY | SUBSTITUTED, "y la siguiente también")
+	queue.push(_input(4, Vector2(0, 1), PRIMARY), 0, 4)
+	assert_eq(queue.take(4).buttons, PRIMARY, "la siguiente real vuelve a no llevarla")
+	assert_eq(SUBSTITUTED & NetProtocol.VALID_BUTTONS, 0, "fuera de los botones válidos")
 
 
 func test_substitute_stops_moving_after_six_ticks_without_real_inputs() -> void:
@@ -308,11 +325,11 @@ func test_substitute_stops_moving_after_six_ticks_without_real_inputs() -> void:
 				"tick %d: aún repite el movimiento (%d ticks tras la última real)" % [t, t - 1])
 	var stopped: PlayerInput = queue.take(8)
 	assert_vec_near(stopped.move, Vector2.ZERO, 1e-6, "al séptimo tick sin entradas, move = 0")
-	assert_eq(stopped.buttons, JUMP | SPRINT, "pero los botones se conservan")
+	assert_eq(stopped.buttons, JUMP | SPRINT | SUBSTITUTED, "pero los botones se conservan")
 	assert_near(stopped.look_yaw, _input(1, Vector2.ZERO, 0, 2.0).look_yaw, 1e-6, "y el yaw")
 	var still: PlayerInput = queue.take(9)
 	assert_vec_near(still.move, Vector2.ZERO, 1e-6, "y sigue quieto")
-	assert_eq(still.buttons, JUMP | SPRINT, "con los mismos botones")
+	assert_eq(still.buttons, JUMP | SPRINT | SUBSTITUTED, "con los mismos botones")
 	assert_eq(queue.substitutions_total, 8, "ocho ticks sustituidos (2 al 9)")
 
 
@@ -334,7 +351,7 @@ func test_a_press_that_starts_during_a_loss_enters_as_an_edge_in_the_next_real_i
 		queue.take(t)
 	assert_eq(queue.take(14).buttons, 0, "tick 14 real, sin botones")
 	for t: int in range(15, 18):
-		assert_eq(queue.take(t).buttons, 0, "15-17 perdidas: se repite «sin botones»")
+		assert_eq(queue.take(t).buttons, SUBSTITUTED, "15-17 perdidas: se repite «sin botones»")
 	queue.push(_input(18, Vector2.ZERO, JUMP), 0, 18)
 	assert_eq(queue.take(18).buttons, JUMP,
 			"la pulsación llega en la primera entrada real que la lleva")
@@ -348,7 +365,7 @@ func test_substitute_of_the_spawn_is_the_neutral_input() -> void:
 	var first: PlayerInput = queue.take(101)
 	assert_eq(first.tick, 101, "tick 101")
 	assert_vec_near(first.move, Vector2.ZERO, 1e-6, "sin movimiento")
-	assert_eq(first.buttons, 0, "sin botones")
+	assert_eq(first.buttons, SUBSTITUTED, "sin botones, y sustituida")
 	assert_near(first.look_yaw, neutral.look_yaw, 1e-6, "el yaw del alta")
 	assert_near(first.look_pitch, 0.0, 1e-6, "sin pitch")
 	assert_eq(queue.substitutions_total, 1, "cuenta como sustitución")

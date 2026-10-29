@@ -34,47 +34,14 @@ const _MAX_CHARGE_TICKS: int = 255
 const _MAX_DAMAGE_TYPE: int = 3
 
 # Tablas cargadas (null hasta el primer uso).
-static var _tables: Tables = null
-
-
-## Todo lo que el catálogo resuelve de un conjunto de recursos.
-class Tables:
-	## Reglas del combate (siempre hay unas: las de por defecto si faltan).
-	var rules: CombatRules = null
-	## Ataques por ID: el ID [code]n[/code] está en el índice [code]n - 1[/code].
-	var attacks: Array[AttackTicks] = []
-	## Armas por ID (índice [code]id - 1[/code]).
-	var weapons: Array[WeaponTicks] = []
-	var attack_ids: Dictionary[StringName, int] = {}
-	var weapon_ids: Dictionary[StringName, int] = {}
-	## Problemas encontrados al cargar y validar (vacío si todo está bien).
-	var errors: PackedStringArray = PackedStringArray()
-	## Huella de la parte predicha (u32).
-	var prediction_hash: int = 0
-
-
-	## El ataque con ese ID, o null si no existe.
-	func attack(id: int) -> AttackTicks:
-		if id < 1 or id > attacks.size():
-			return null
-		return attacks[id - 1]
-
-
-	## El arma con ese ID, o null si no existe.
-	func weapon(id: int) -> WeaponTicks:
-		if id < 1 or id > weapons.size():
-			return null
-		return weapons[id - 1]
-
-
-	## true si no hubo ningún problema al cargar.
-	func is_valid() -> bool:
-		return errors.is_empty()
+static var _tables: CombatTables = null
+# Búfer de 4 bytes para redondear a f32 sin reservar memoria en cada llamada.
+static var _f32_scratch: PackedByteArray = PackedByteArray([0, 0, 0, 0])
 
 
 ## Las tablas del catálogo de [constant DATA_DIR], cargadas la primera vez que se piden. Los
 ## problemas que encuentre se registran con [code]push_error[/code] una sola vez.
-static func tables() -> Tables:
+static func tables() -> CombatTables:
 	if _tables == null:
 		_tables = build_from_directory(DATA_DIR)
 		for message: String in _tables.errors:
@@ -129,7 +96,7 @@ static func seconds_to_ticks(seconds: float) -> int:
 
 ## Lee todos los [code].tres[/code] de [param dir_path] (sin entrar en subcarpetas) y construye las
 ## tablas. Un recurso que no se puede cargar cuenta como error.
-static func build_from_directory(dir_path: String) -> Tables:
+static func build_from_directory(dir_path: String) -> CombatTables:
 	var load_errors := PackedStringArray()
 	var resources: Array[Resource] = []
 	var files: PackedStringArray = DirAccess.get_files_at(dir_path)
@@ -147,7 +114,7 @@ static func build_from_directory(dir_path: String) -> Tables:
 			load_errors.append("no se pudo cargar %s" % path)
 		else:
 			resources.append(resource)
-	var result: Tables = build_from_resources(resources)
+	var result: CombatTables = build_from_resources(resources)
 	if not load_errors.is_empty():
 		var all_errors := PackedStringArray(load_errors)
 		all_errors.append_array(result.errors)
@@ -158,9 +125,9 @@ static func build_from_directory(dir_path: String) -> Tables:
 ## Construye las tablas a partir de recursos ya cargados: las [CombatRules], las
 ## [WeaponDefinition] y los [AttackDefinition] (sueltos o enlazados desde un arma; el mismo objeto
 ## nunca cuenta dos veces). Los demás recursos se ignoran. No registra errores en el motor: los
-## deja en [member Tables.errors].
-static func build_from_resources(resources: Array[Resource]) -> Tables:
-	var tables_out := Tables.new()
+## deja en [member CombatTables.errors].
+static func build_from_resources(resources: Array[Resource]) -> CombatTables:
+	var tables_out := CombatTables.new()
 	var errors := PackedStringArray()
 	var rules_list: Array[CombatRules] = []
 	var attack_defs: Array[AttackDefinition] = []
@@ -207,6 +174,7 @@ static func build_from_resources(resources: Array[Resource]) -> Tables:
 		tables_out.weapons.append(_convert_weapon(weapon_def, i + 1, attack_by_def,
 				tables_out.rules, errors))
 
+	tables_out.regen_delay_ticks = seconds_to_ticks(tables_out.rules.stamina_regen_delay_s)
 	tables_out.errors = errors
 	tables_out.prediction_hash = _compute_hash(tables_out)
 	return tables_out
@@ -443,8 +411,15 @@ static func _bake_dodge(definition: DodgeDefinition, label: String, rules_value:
 		errors.append("%s: la curva de la esquiva no tiene velocidad" % label)
 	ticks.speeds.resize(count)
 	for i: int in count:
-		ticks.speeds[i] = PlayerState.to_f32(raw[i] * scale)
+		ticks.speeds[i] = _to_f32(raw[i] * scale)
 	return ticks
+
+
+# Redondea a float de 32 bits, la precisión con la que viajan las magnitudes de la simulación
+# (igual que PlayerState.to_f32, sin depender de él).
+static func _to_f32(value: float) -> float:
+	_f32_scratch.encode_float(0, value)
+	return _f32_scratch.decode_float(0)
 
 
 # --- Huella -----------------------------------------------------------------------------------
@@ -452,13 +427,13 @@ static func _bake_dodge(definition: DodgeDefinition, label: String, rules_value:
 # SHA-256 de todo lo que cambia la simulación de cliente y servidor, en un orden fijo: los 4
 # primeros bytes como u32 (como NetProtocol.compute_sim_hash). Los valores solo del servidor
 # (daño, formas, mitigación, controles...) no entran.
-static func _compute_hash(tables_in: Tables) -> int:
+static func _compute_hash(tables_in: CombatTables) -> int:
 	var rules_value: CombatRules = tables_in.rules
 	var parts: Array = [
 		_HASH_FORMAT, TICK_RATE,
 		[
 			rules_value.stamina_max, rules_value.stamina_regen_per_tick,
-			rules_value.stamina_regen_delay_ticks(), rules_value.exhausted_regen_per_tick,
+			tables_in.regen_delay_ticks, rules_value.exhausted_regen_per_tick,
 			rules_value.exhausted_exit_threshold, rules_value.hold_to_heavy_ticks,
 			rules_value.input_buffer_ticks, rules_value.parry_window_ticks,
 			rules_value.parry_cooldown_ticks,
