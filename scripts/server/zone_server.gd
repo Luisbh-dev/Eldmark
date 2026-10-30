@@ -14,9 +14,9 @@ extends Node
 ##                  los grupos (SocialService), INVENTORY_REQUEST e INVENTORY_SYNC_REQUEST (RATE y a la cola
 ##                  del progreso, progresion.md §4.2); y las líneas de la consola. Con la plataforma
 ##                  (docs/plataforma.md §14.3), después: ZonePlatform.take_events() repartido por kind en
-##                  el orden de llegada (claim al AuthProvider, heartbeat a la zona, fortress a
-##                  FortressPersistence; instance_closed al final), AuthProvider.take_completed() (cada 200:
-##                  reino, cupo y WELCOME) y los
+##                  el orden de llegada (claim al AuthProvider, heartbeat a la zona y sus mutes a la
+##                  moderación, fortress a FortressPersistence, ignore, report y sanction a ModerationService;
+##                  instance_closed al final), AuthProvider.take_completed() (cada 200: reino, cupo y WELCOME) y los
 ##                  VERIFYING vencidos (7 s en tiempo real desde la conexión, REJECT UNAVAILABLE)
 ## tick += 1        s es el tick que se simula
 ## bajas            desconexión, LEAVE o expulsión -> SocialService.on_peer_left (sale de su grupo, el
@@ -106,6 +106,15 @@ extends Node
 ## un PNJ de su DEATH (a quien hizo al menos el 10 % del daño, salvo un defensor de una fortaleza en un ciclo forzado),
 ## y la de captura y los méritos de objetivo, de [FortressController]; subir de nivel manda LEVEL_UP al dueño y a los
 ## de su reino que lo tienen relevante. Con plataforma y [code]--fake-players[/code] no se paga nada.
+## [br][br]
+## [b]Moderación[/b] (docs/plataforma.md §9, [ModerationService], [method get_moderation]): el canal GM del chat lleva
+## [code]/gm[/code] (por el [CommandRegistry], con el rol de la reclamación), [code]/ignorar[/code],
+## [code]/designorar[/code] y [code]/reportar[/code]; con la plataforma, DEBUG_COMMAND exige además el rol mínimo de
+## cada comando. Un GM invisible ([method set_gm_invisible]) no entra en el interés de nadie, no hace ni recibe daño, no
+## es blanco de PNJ ni de bots y no cuenta en el círculo ni en el marcador. Los comandos que mueven, curan o muestran a
+## un personaje lo marcan con [member NetEntity.gm_forced] (con plataforma). El chat es por personaje
+## ([method SocialService.on_peer_joined]); los silencios, los ignorados y el anillo de reportes los aplica [ChatRouter];
+## la auditoría y los mensajes van a los lotes de la plataforma; los avisos de la moderación salen al entrar.
 ## [br][br]
 ## [b]Seguridad[/b] (sección 12): limitadores por peer, avisos con expulsión a los 50 en 600 ticks
 ## (NOTICE de expulsión y corte), tope de conexiones por IP, tipos de mensaje inesperados según el
@@ -351,6 +360,8 @@ var _battle_log: BattleLog = null
 var _unstuck: UnstuckTracker = UnstuckTracker.new()
 # Chat y grupos (SOC-04, SOC-06); se crea en start().
 var _social: SocialService = null
+## La moderación (docs/plataforma.md §9, P7b): /gm, ignorados, reportes, silencios, auditoría y lote de chat.
+var _moderation: ModerationService = null
 var _unstuck_log: Array[Dictionary] = []
 var _unstuck_uses: int = 0
 # net_id -> tick en el que se retira el cuerpo de quien salió en combate (GUE-41).
@@ -678,6 +689,11 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_register_commands()
 	_social = SocialService.new(Callable(self, "_social_peers"), Callable(self, "_social_send"),
 			Callable(self, "_add_strike"))
+	# La moderación (docs/plataforma.md §9): sus comandos de /gm, el canal GM del chat y, con la plataforma, los lotes
+	# de auditoría y de chat.
+	_moderation = ModerationService.new()
+	_moderation.log_sink = Callable(self, "_log")
+	_moderation.setup(self, _platform, _commands, _social)
 	if _transport != null:
 		_connect_transport()
 		if not _transport.is_server():
@@ -942,6 +958,59 @@ func get_fortress_persistence() -> FortressPersistence:
 ## El control del comando /atascado (canalizaciones y reutilizaciones).
 func get_social() -> SocialService:
 	return _social
+
+
+## La moderación (docs/plataforma.md §9, P7b); null antes de [method start].
+func get_moderation() -> ModerationService:
+	return _moderation
+
+
+## Los peers que están en el mundo con su personaje.
+func get_world_peers() -> Array[ServerPeer]:
+	return _world_peers
+
+
+## NOTICE informativo a [param peer] (solo si está en el mundo).
+func send_notice(peer: ServerPeer, text: String) -> void:
+	_send_notice(peer, text)
+
+
+## Expulsa a [param peer] con el NOTICE [param notice_text] y su guardado final (motivo 5, [code]KICK[/code]), con el
+## enfriamiento de siempre; [param reason] queda en el registro y en el informe (la moderación, P7b).
+func kick_peer(peer: ServerPeer, reason: String, notice_text: String) -> void:
+	if _transport == null:
+		peer.kicked = true
+		_mark_leaving(peer)
+		return
+	_kick(peer, reason, true, notice_text)
+
+
+## Hace invisible (o visible) a [param entity] (docs/plataforma.md §9.1, [code]/gm invisible[/code]): deja de entrar
+## en el interés de los demás, y cada peer recibe en el acto su ENTITY_DESPAWN (o su ENTITY_SPAWN al volver). No hace ni
+## recibe daño, no cuenta en el círculo ni en el marcador y no cobra ([member NetEntity.gm_invisible]).
+func set_gm_invisible(entity: NetEntity, invisible: bool) -> void:
+	if entity.gm_invisible == invisible:
+		return
+	entity.gm_invisible = invisible
+	_log("%s se hace %s (net_id %d)" % [entity.display_name, "invisible" if invisible else "visible", entity.net_id])
+	for peer: ServerPeer in _world_peers:
+		if peer.entity == null or peer.entity == entity:
+			continue
+		var was_relevant: bool = peer.relevant.get(entity.net_id, false)
+		var now_relevant: bool = _is_relevant(peer.entity, entity, was_relevant)
+		if now_relevant == was_relevant:
+			continue
+		if now_relevant:
+			peer.relevant[entity.net_id] = true
+			_send(peer, NetProtocol.CH_RELIABLE, entity.encode_spawn(_tick, false, peer.entity.realm))
+		else:
+			peer.relevant.erase(entity.net_id)
+			peer.priority.erase(entity.net_id)
+			var despawn := NetMessages.EntityDespawn.new()
+			despawn.net_id = entity.net_id
+			despawn.despawn_tick = _tick
+			despawn.reason = NetProtocol.DespawnReason.OUT_OF_INTEREST
+			_send(peer, NetProtocol.CH_RELIABLE, despawn.encode())
 
 
 func get_unstuck() -> UnstuckTracker:
@@ -1571,6 +1640,9 @@ func _process_arrivals(s: int) -> void:
 		var record: _PlayerRecord = _player_by_net[entity.net_id]
 		record.peer = peer
 		_world_peers.append(peer)
+		# Con la plataforma, el chat es por personaje: recupera el estado si salió hace poco, y toma de la reclamación su
+		# cuenta, las que ignora y su silencio (docs/plataforma.md §9.2).
+		_social.on_peer_joined(peer, s)
 		# Con inventario, su equipo; si no, la plantilla pendiente (LOADOUT_SELECT, también antes de CLIENT_READY) o
 		# la de por defecto: el SPAWN ya sale con sus armas y sus cargas, y el LOADOUT detrás.
 		var combatant: Combatant = _combat.get_combatant(entity.net_id)
@@ -1586,6 +1658,8 @@ func _process_arrivals(s: int) -> void:
 		# INVENTORY_FULL, WALLET_UPDATE y PROGRESS_UPDATE tras el SPAWN propio (progresion.md §9.1 paso 5).
 		if _progress != null:
 			_progress.after_spawn(entity, peer, s)
+		# Los avisos de la moderación que la cuenta no ha visto (docs/plataforma.md §9.5).
+		_moderation.on_arrival(peer)
 		player_joined.emit(peer_id, entity.net_id)
 		if _filler_keeper != null:
 			_filler_keeper.on_person_joined(peer.realm, peer_id)
@@ -1973,8 +2047,11 @@ func _refresh_interest(peer: ServerPeer, entities: Array[NetEntity], s: int) -> 
 			_send(peer, NetProtocol.CH_RELIABLE, despawn.encode())
 
 
-# Las entidades con ALWAYS_RELEVANT no pasan por la política.
+# Las entidades con ALWAYS_RELEVANT no pasan por la política. Un GM invisible no entra en el interés de nadie más
+# (docs/plataforma.md §9.1), con la política que sea.
 func _is_relevant(observer: NetEntity, entity: NetEntity, was_relevant: bool) -> bool:
+	if entity.gm_invisible and entity != observer:
+		return false
 	if (entity.flags & NetEntity.FLAG_ALWAYS_RELEVANT) != 0:
 		return true
 	return interest_policy.is_relevant(observer, entity, was_relevant)
@@ -2318,7 +2395,8 @@ func _rebuild_ally_cache() -> void:
 	_allies_by_realm.clear()
 	_ally_ids_by_realm.clear()
 	for other: Combatant in _combat.get_sorted():
-		if not other.is_alive() or other.entity.kind != NetProtocol.EntityKind.PLAYER or _lingering.has(other.get_id()):
+		if not other.is_alive() or other.entity.kind != NetProtocol.EntityKind.PLAYER or _lingering.has(other.get_id()) \
+				or other.is_gm_invisible():
 			continue
 		var realm: int = other.get_realm()
 		if not _allies_by_realm.has(realm):
@@ -2358,7 +2436,7 @@ func _rebuild_target_cache() -> void:
 	_targets_velocity_by_realm.clear()
 	_targets_downed_by_realm.clear()
 	for other: Combatant in _combat.get_sorted():
-		if other.is_dead() or other.immortal or other.is_protected(_tick):
+		if other.is_dead() or other.immortal or other.is_protected(_tick) or other.is_gm_invisible():
 			continue
 		var other_position: Vector3 = other.entity.get_position()
 		if _safe_areas.contains_own(other.get_realm(), other_position):
@@ -2429,9 +2507,14 @@ func _close_combat_log() -> void:
 
 # Registra los comandos de administración: los seis de red (ids fijos de NetProtocol) con su versión
 # de consola, y los que son solo de consola.
+# Cada comando con su rol mínimo para /gm y, con la plataforma, para DEBUG_COMMAND (docs/plataforma.md §9.1): gm por
+# defecto (los de red: teletransporte, vida, fuerte); kick, announce y shutdown, y sus nombres de /gm anuncio y apagar,
+# de admin (la expulsión de la zona de los moderadores es /gm expulsar, de ModerationService). El 5, el 13 y el 16
+# pasan a admin con progresion.md P5d.
 func _register_commands() -> void:
-	_commands.register(&"teleport", "teleport <jugador> <x> <y> <z>", _console_teleport,
-			_net_teleport)
+	var admin: StringName = CommandRegistry.ROLE_ADMIN
+	_commands.register(&"teleport", "teleport <jugador> <x> <y> <z> | teleport <jugador> <otro jugador>",
+			_console_teleport, _net_teleport)
 	_commands.register(&"heal", "heal <jugador>", _console_heal, _net_heal)
 	_commands.register(&"kill", "kill <jugador>", _console_kill, _net_kill)
 	_commands.register(&"stamina_inf", "stamina_inf <jugador> [on|off]", _console_stamina_inf,
@@ -2450,9 +2533,11 @@ func _register_commands() -> void:
 	if _npc_system != null:
 		_npc_system.register_commands(_commands)
 	_commands.register(&"unstuck", "unstuck <jugador>", _console_unstuck, _net_unstuck)
-	_commands.register(&"announce", "announce <texto>", _console_announce)
-	_commands.register(&"kick", "kick <jugador> [motivo]", _console_kick)
-	_commands.register(&"shutdown", "shutdown <segundos> | shutdown cancel", _console_shutdown)
+	_commands.register(&"announce", "announce <texto>", _console_announce, Callable(), admin)
+	_commands.register(&"anuncio", "anuncio <texto>", _console_announce, Callable(), admin)
+	_commands.register(&"kick", "kick <jugador> [motivo]", _console_kick, Callable(), admin)
+	_commands.register(&"shutdown", "shutdown <segundos> | shutdown cancel", _console_shutdown, Callable(), admin)
+	_commands.register(&"apagar", "apagar <segundos> | apagar cancelar", _console_shutdown, Callable(), admin)
 	_commands.register(&"players", "players", _console_players)
 
 
@@ -2500,6 +2585,20 @@ func _combatant_of_peer(ctx: CommandRegistry.Context) -> Combatant:
 	return _combat.get_combatant(ctx.peer.entity.net_id)
 
 
+# Con la plataforma, un comando de GM que mueve, cura o muestra a un personaje lo marca hasta su reaparición
+# (progresion.md §6.2; docs/plataforma.md §9.1): no entra en la lista de capturas ni cobra méritos ni PNJ.
+func _mark_gm_forced(entity: NetEntity) -> void:
+	if _platform != null and entity != null and entity.kind == NetProtocol.EntityKind.PLAYER:
+		entity.gm_forced = true
+
+
+# El jugador (o falso o PNJ) que nombra [param text] para un comando, apuntado como su objetivo en la auditoría.
+func _command_target(ctx: CommandRegistry.Context, text: String) -> NetEntity:
+	var entity: NetEntity = _find_entity(text)
+	ctx.target = entity
+	return entity
+
+
 # -- Comandos de red (actúan sobre quien los envía) --
 
 func _net_teleport(ctx: CommandRegistry.Context) -> int:
@@ -2511,7 +2610,9 @@ func _net_teleport(ctx: CommandRegistry.Context) -> int:
 		ctx.note = "destino fuera de rango"
 		return CommandRegistry.Result.BAD_ARGUMENTS
 	teleport(ctx.peer.entity.net_id, target)
+	_mark_gm_forced(ctx.peer.entity)
 	ctx.note = str(target)
+	ctx.audit_args = {"position": [target.x, target.y, target.z]}
 	return CommandRegistry.Result.OK
 
 
@@ -2520,6 +2621,7 @@ func _net_heal(ctx: CommandRegistry.Context) -> int:
 	if combatant == null or not combatant.is_alive():
 		return CommandRegistry.Result.REFUSED
 	_combat.heal(combatant)
+	_mark_gm_forced(combatant.entity)
 	return CommandRegistry.Result.OK
 
 
@@ -2545,6 +2647,7 @@ func _net_stamina_inf(ctx: CommandRegistry.Context) -> int:
 		_:
 			return CommandRegistry.Result.BAD_ARGUMENTS
 	_combat.set_infinite_stamina(combatant, enabled)
+	_mark_gm_forced(combatant.entity)
 	ctx.note = "activada" if enabled else "desactivada"
 	return CommandRegistry.Result.OK
 
@@ -2663,33 +2766,46 @@ func _net_unstuck(ctx: CommandRegistry.Context) -> int:
 func _console_unstuck(ctx: CommandRegistry.Context) -> String:
 	if ctx.args.size() != 1:
 		return "Uso: unstuck <jugador>"
-	var entity: NetEntity = _find_entity(ctx.args[0])
+	var entity: NetEntity = _command_target(ctx, ctx.args[0])
 	if entity == null or entity.kind != NetProtocol.EntityKind.PLAYER:
 		return "No hay ningún jugador «%s»" % ctx.args[0]
 	_teleport_unstuck(entity, _tick + 1)
+	_mark_gm_forced(entity)
 	return "%s llevado al punto seguro más cercano de su reino" % entity.display_name
 
 
+# teleport <jugador> <x> <y> <z>, o teleport <jugador> <otro> (junto al otro). Con la plataforma marca al que se
+# mueve (gm_forced, progresion.md §6.2).
 func _console_teleport(ctx: CommandRegistry.Context) -> String:
-	if ctx.args.size() != 4:
-		return "Uso: teleport <jugador> <x> <y> <z>"
-	var entity: NetEntity = _find_entity(ctx.args[0])
+	var usage: String = "Uso: teleport <jugador> <x> <y> <z> | teleport <jugador> <otro jugador>"
+	if ctx.args.size() != 4 and ctx.args.size() != 2:
+		return usage
+	var entity: NetEntity = _command_target(ctx, ctx.args[0])
 	if entity == null or entity.get_character() == null:
 		return "No hay ningún jugador «%s»" % ctx.args[0]
-	for i: int in range(1, 4):
-		if not ctx.args[i].is_valid_float():
-			return "Coordenada no válida: %s" % ctx.args[i]
-	var target := Vector3(ctx.args[1].to_float(), ctx.args[2].to_float(), ctx.args[3].to_float())
+	var target: Vector3
+	if ctx.args.size() == 2:
+		var other: NetEntity = _find_entity(ctx.args[1])
+		if other == null or other.get_character() == null or (other.gm_invisible and other != entity):
+			return "No hay ningún jugador «%s»" % ctx.args[1]
+		target = other.get_position()
+	else:
+		for i: int in range(1, 4):
+			if not ctx.args[i].is_valid_float():
+				return "Coordenada no válida: %s" % ctx.args[i]
+		target = Vector3(ctx.args[1].to_float(), ctx.args[2].to_float(), ctx.args[3].to_float())
 	if not _is_valid_teleport_target(target):
 		return "Destino fuera de rango"
 	teleport(entity.net_id, target)
+	_mark_gm_forced(entity)
+	ctx.audit_args = {"position": [target.x, target.y, target.z]}
 	return "%s teletransportado a %s" % [entity.display_name, target]
 
 
 func _console_heal(ctx: CommandRegistry.Context) -> String:
 	if ctx.args.size() != 1:
 		return "Uso: heal <jugador>"
-	var combatant: Combatant = _combatant_by_name(ctx.args[0])
+	var combatant: Combatant = _combatant_by_name(ctx.args[0], ctx)
 	if combatant == null:
 		return "No hay ningún jugador «%s»" % ctx.args[0]
 	if combatant.is_dead():
@@ -2697,13 +2813,14 @@ func _console_heal(ctx: CommandRegistry.Context) -> String:
 	if combatant.is_downed():
 		return "%s está derribado" % combatant.entity.display_name
 	_combat.heal(combatant)
+	_mark_gm_forced(combatant.entity)
 	return "%s curado" % combatant.entity.display_name
 
 
 func _console_kill(ctx: CommandRegistry.Context) -> String:
 	if ctx.args.size() != 1:
 		return "Uso: kill <jugador>"
-	var combatant: Combatant = _combatant_by_name(ctx.args[0])
+	var combatant: Combatant = _combatant_by_name(ctx.args[0], ctx)
 	if combatant == null:
 		return "No hay ningún jugador «%s»" % ctx.args[0]
 	if combatant.is_dead() or combatant.immortal:
@@ -2715,7 +2832,7 @@ func _console_kill(ctx: CommandRegistry.Context) -> String:
 func _console_stamina_inf(ctx: CommandRegistry.Context) -> String:
 	if ctx.args.is_empty() or ctx.args.size() > 2:
 		return "Uso: stamina_inf <jugador> [on|off]"
-	var combatant: Combatant = _combatant_by_name(ctx.args[0])
+	var combatant: Combatant = _combatant_by_name(ctx.args[0], ctx)
 	if combatant == null:
 		return "No hay ningún jugador «%s»" % ctx.args[0]
 	var enabled: bool = (combatant.get_character().combat.combat_flags
@@ -2729,6 +2846,7 @@ func _console_stamina_inf(ctx: CommandRegistry.Context) -> String:
 			_:
 				return "Uso: stamina_inf <jugador> [on|off]"
 	_combat.set_infinite_stamina(combatant, enabled)
+	_mark_gm_forced(combatant.entity)
 	return "Resistencia infinita %s para %s" % ["activada" if enabled else "desactivada",
 			combatant.entity.display_name]
 
@@ -2736,7 +2854,7 @@ func _console_stamina_inf(ctx: CommandRegistry.Context) -> String:
 func _console_set_weapon(ctx: CommandRegistry.Context) -> String:
 	if ctx.args.size() != 2:
 		return "Uso: set_weapon <jugador> <arma>"
-	var combatant: Combatant = _combatant_by_name(ctx.args[0])
+	var combatant: Combatant = _combatant_by_name(ctx.args[0], ctx)
 	if combatant == null:
 		return "No hay ningún jugador «%s»" % ctx.args[0]
 	var weapon_id: int = CombatCatalog.weapon_id(StringName(ctx.args[1]))
@@ -2752,7 +2870,7 @@ func _console_set_weapon(ctx: CommandRegistry.Context) -> String:
 func _console_cooldowns_off(ctx: CommandRegistry.Context) -> String:
 	if ctx.args.is_empty() or ctx.args.size() > 2:
 		return "Uso: cooldowns_off <jugador> [on|off]"
-	var combatant: Combatant = _combatant_by_name(ctx.args[0])
+	var combatant: Combatant = _combatant_by_name(ctx.args[0], ctx)
 	if combatant == null:
 		return "No hay ningún jugador «%s»" % ctx.args[0]
 	var enabled: bool = (combatant.get_character().combat.combat_flags2
@@ -2773,7 +2891,7 @@ func _console_cooldowns_off(ctx: CommandRegistry.Context) -> String:
 func _console_apply_status(ctx: CommandRegistry.Context) -> String:
 	if ctx.args.size() < 2 or ctx.args.size() > 3:
 		return "Uso: apply_status <jugador> <efecto> [ticks]"
-	var combatant: Combatant = _combatant_by_name(ctx.args[0])
+	var combatant: Combatant = _combatant_by_name(ctx.args[0], ctx)
 	if combatant == null:
 		return "No hay ningún jugador «%s»" % ctx.args[0]
 	var status_id: int = CombatCatalog.status_id(StringName(ctx.args[1]))
@@ -2795,7 +2913,7 @@ func _console_apply_status(ctx: CommandRegistry.Context) -> String:
 func _console_down(ctx: CommandRegistry.Context) -> String:
 	if ctx.args.size() != 1:
 		return "Uso: down <jugador>"
-	var combatant: Combatant = _combatant_by_name(ctx.args[0])
+	var combatant: Combatant = _combatant_by_name(ctx.args[0], ctx)
 	if combatant == null:
 		return "No hay ningún jugador «%s»" % ctx.args[0]
 	if not _combat.down(combatant, _tick + 1):
@@ -2806,7 +2924,7 @@ func _console_down(ctx: CommandRegistry.Context) -> String:
 func _console_refill(ctx: CommandRegistry.Context) -> String:
 	if ctx.args.size() != 1:
 		return "Uso: refill <jugador>"
-	var combatant: Combatant = _combatant_by_name(ctx.args[0])
+	var combatant: Combatant = _combatant_by_name(ctx.args[0], ctx)
 	if combatant == null:
 		return "No hay ningún jugador «%s»" % ctx.args[0]
 	if _progress.has_inventory(combatant.get_id()):
@@ -2851,7 +2969,7 @@ func _console_announce(ctx: CommandRegistry.Context) -> String:
 func _console_kick(ctx: CommandRegistry.Context) -> String:
 	if ctx.args.is_empty():
 		return "Uso: kick <jugador> [motivo]"
-	var entity: NetEntity = _find_entity(ctx.args[0])
+	var entity: NetEntity = _command_target(ctx, ctx.args[0])
 	if entity == null or entity.kind != NetProtocol.EntityKind.PLAYER:
 		return "No hay ningún jugador «%s»" % ctx.args[0]
 	var reason: String = "expulsado desde la consola"
@@ -2870,7 +2988,7 @@ func _console_kick(ctx: CommandRegistry.Context) -> String:
 func _console_shutdown(ctx: CommandRegistry.Context) -> String:
 	if ctx.args.size() != 1:
 		return "Uso: shutdown <segundos> | shutdown cancel"
-	if ctx.args[0].to_lower() == "cancel":
+	if ctx.args[0].to_lower() == "cancel" or ctx.args[0].to_lower() == "cancelar":
 		if _shutdown_tick < 0:
 			return "No hay ningún cierre pendiente"
 		_shutdown_tick = -1
@@ -2899,8 +3017,9 @@ func _console_players(_ctx: CommandRegistry.Context) -> String:
 	return "%d entidades: %s" % [lines.size(), "; ".join(lines)]
 
 
-func _combatant_by_name(text: String) -> Combatant:
-	var entity: NetEntity = _find_entity(text)
+# El combate de quien nombra [param text]; con [param ctx], queda como objetivo del comando en la auditoría.
+func _combatant_by_name(text: String, ctx: CommandRegistry.Context = null) -> Combatant:
+	var entity: NetEntity = _command_target(ctx, text) if ctx != null else _find_entity(text)
 	return _combat.get_combatant(entity.net_id) if entity != null else null
 
 
@@ -3038,11 +3157,12 @@ func _next_tick() -> int:
 
 
 # Los jugadores (de red y falsos, no los PNJ) que pueden contar en el círculo: vivos, con la última
-# entrada real que han mandado y sin ser el cuerpo que queda tras una baja.
+# entrada real que han mandado y sin ser el cuerpo que queda tras una baja. Los GM invisibles no están.
 func _presence_candidates(_tick_now: int) -> Array:
 	var candidates: Array = []
 	for entity: NetEntity in _registry.get_sorted():
-		if entity.kind != NetProtocol.EntityKind.PLAYER:
+		# Un GM invisible no cuenta en el círculo (docs/plataforma.md §9.1).
+		if entity.kind != NetProtocol.EntityKind.PLAYER or entity.gm_invisible:
 			continue
 		var combatant: Combatant = _combat.get_combatant(entity.net_id)
 		var queue: InputQueue = _queues.get(entity.net_id)
@@ -3063,7 +3183,7 @@ func _presence_candidates(_tick_now: int) -> Array:
 func _gate_blockers() -> PackedVector3Array:
 	var positions := PackedVector3Array()
 	for entity: NetEntity in _registry.get_sorted():
-		if entity.get_character() == null:
+		if entity.get_character() == null or entity.gm_invisible:
 			continue
 		var combatant: Combatant = _combat.get_combatant(entity.net_id)
 		if combatant != null and not combatant.is_dead():
@@ -3121,7 +3241,8 @@ func _send_scoreboard() -> void:
 		return
 	var ids: Array[int] = []
 	for entity: NetEntity in _registry.get_sorted():
-		if entity.kind == NetProtocol.EntityKind.PLAYER:
+		# Un GM invisible no sale en el marcador (docs/plataforma.md §9.1).
+		if entity.kind == NetProtocol.EntityKind.PLAYER and not entity.gm_invisible:
 			ids.append(entity.net_id)
 	var rows: Array[NetMessages.ScoreRow] = _scores.build_rows(ids)
 	for page: NetMessages.Scoreboard in NetMessages.Scoreboard.split(rows):
@@ -3438,9 +3559,9 @@ func _poll_platform() -> void:
 				PlatformEvent.KIND_FORTRESS:
 					if _fortress_persistence != null:
 						_fortress_persistence.on_platform_event(event)
-				_:
-					# ignore, report y sanction (P7b): sin consumidor todavía.
-					pass
+				PlatformEvent.KIND_IGNORE, PlatformEvent.KIND_REPORT, PlatformEvent.KIND_SANCTION:
+					if running:
+						_moderation.on_platform_event(event)
 		if not closed_code.is_empty():
 			_log("La plataforma ha cerrado esta instancia (%s)" % closed_code)
 			if running:
@@ -3506,11 +3627,12 @@ func _check_verify_timeouts() -> void:
 # Respuesta del latido: los revoked (§6) y el mantenimiento (§12). Cada revoked lleva el lease_id; el que no casa
 # con el arrendamiento actual del personaje en esta zona no expulsa a nadie. lease_lost es la baja sin guardado
 # (sin liberar: el arrendamiento ya no es de la zona); los demás expulsan con el texto de la plataforma y guardado
-# final al irse el cuerpo (en LOADING, liberación sin guardar). Los silencios son de P7b.
+# final al irse el cuerpo (en LOADING, liberación sin guardar). Los mutes van a la moderación (§9.5).
 func _on_heartbeat_event(event: PlatformEvent) -> void:
 	if not event.is_success():
 		return
 	_set_maintenance(event.body_dict().get("maintenance"))
+	_moderation.on_heartbeat(event)
 	for value: Variant in PlatformJson.array_in(event.body_dict(), "revoked"):
 		var revoked: Dictionary = value if value is Dictionary else {}
 		var character_id: int = PlatformJson.id_of(revoked.get("character_id"))
@@ -3742,8 +3864,15 @@ func _handle_debug_command(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	if command == null:
 		_add_strike(peer, "comando de depuración mal formado")
 		return
-	var result: int = _commands.execute_network(peer, command.command, command.payload)
+	# Con la plataforma, además de --debug-commands, el rol mínimo del comando (docs/plataforma.md §9.1) con el de la
+	# reclamación; sin él, un aviso y nada se ejecuta.
+	var role: StringName = &""
+	if _platform != null:
+		role = peer.claimed.role if peer.claimed != null else CommandRegistry.ROLE_PLAYER
+	var result: int = _commands.execute_network(peer, command.command, command.payload, role)
 	match result:
+		CommandRegistry.Result.FORBIDDEN:
+			_add_strike(peer, "comando de depuración sin permiso (%d)" % command.command)
 		CommandRegistry.Result.UNKNOWN:
 			# Un id fijo del protocolo cuyo manejador no existe en este servidor (el de un comando que se haya
 			# quitado, o el de npc_debug con --no-npcs) se acepta sin hacer nada: no es un cliente defectuoso.
@@ -4221,6 +4350,7 @@ func _build_report() -> Dictionary:
 		"war": _war_report(),
 		"npcs": _npc_report(),
 		"social": _social.get_stats() if _social != null else {},
+		"moderation": _moderation.get_stats() if _moderation != null else {},
 		"saves": _saver.get_stats() if _saver != null else {},
 		"simulate": {
 			"calls": _simulate_calls,

@@ -97,11 +97,32 @@ func test_party_commands() -> void:
 
 
 func test_unknown_commands() -> void:
-	for text: String in ["/xyz", "/", "/ hola", "/gm hola", "/banda hola", "/b hola", "/gremio x",
-			"/reino x", "/comercio x", "/amigo Ana", "/ignorar Ana", "//d hola", "/d2 hola"]:
+	for text: String in ["/xyz", "/", "/ hola", "/banda hola", "/b hola", "/gremio x",
+			"/reino x", "/comercio x", "/amigo Ana", "//d hola", "/d2 hola", "//gm hola", "/gmx hola"]:
 		var command: ChatCommandParser.Command = ChatCommandParser.parse(text)
 		assert_eq(command.kind, Kind.UNKNOWN, "«%s» es desconocido" % text)
 	assert_eq(ChatCommandParser.TEXT_UNKNOWN, "Comando desconocido. Escribe /ayuda.", "el texto del backlog")
+
+
+func test_server_commands_go_as_typed_and_gm_is_not_listed() -> void:
+	# docs/plataforma.md §9 (P7b): los atiende el servidor; /gm sin rol contesta «Comando desconocido» desde allí.
+	var gm: ChatCommandParser.Command = ChatCommandParser.parse("/GM silenciar Ana 30 insultos")
+	assert_eq(gm.kind, Kind.SERVER, "/gm va al servidor")
+	assert_eq(gm.text, "gm silenciar Ana 30 insultos", "la línea sin la barra, con el nombre en minúsculas")
+	assert_eq(ChatCommandParser.parse("/gm").text, "gm", "/gm solo (la ayuda la da el servidor)")
+	var ignore: ChatCommandParser.Command = ChatCommandParser.parse("/Ignorar  Bruno ")
+	assert_eq([ignore.kind, ignore.target, ignore.text], [Kind.SERVER, "Bruno", "ignorar Bruno"], "ignorar")
+	assert_eq(ChatCommandParser.parse("/designorar Bruno").text, "designorar Bruno", "designorar")
+	var report: ChatCommandParser.Command = ChatCommandParser.parse("/reportar Bruno acoso me insulta")
+	assert_eq([report.kind, report.text], [Kind.SERVER, "reportar Bruno acoso me insulta"], "reportar")
+	for text: String in ["/ignorar", "/designorar", "/reportar"]:
+		var missing: ChatCommandParser.Command = ChatCommandParser.parse(text)
+		assert_eq(missing.kind, Kind.INVALID, "%s sin nombre" % text)
+		assert_true(missing.error.begins_with("Uso: "), "%s explica el uso" % text)
+	assert_eq(ChatCommandParser.parse("/ignorar " + "x".repeat(20)).kind, Kind.INVALID, "nombre largo")
+	assert_true(ChatCommandParser.find_command("gm").is_empty(), "/gm no está en la tabla (ni en la ayuda)")
+	for line: String in ChatCommandParser.help_lines(""):
+		assert_false(line.contains("/gm"), "la ayuda no nombra /gm")
 
 
 func test_help() -> void:

@@ -646,9 +646,12 @@ func _send_heartbeat(now: int) -> void:
 		characters.append({"character_id": PlatformJson.id_text(character_id),
 				"lease_id": _heartbeat_set[character_id]})
 	var players: int = int(player_count_source.call()) if player_count_source.is_valid() else 0
+	# El contexto dice por quién y cuándo se latió: los mutes de la respuesta solo valen para esos personajes y no
+	# deshacen una sanción de la zona posterior (plataforma.md §9.5, P7b).
+	var context: Dictionary = {"characters": _heartbeat_set.duplicate(), "sent_msec": now}
 	_client.submit(_request(HTTPClient.METHOD_POST, "/internal/v1/zone-instances/%s/heartbeat" % _instance_id,
 			{"players": players, "characters": characters}, PlatformClient.PRIORITY_CONTROL,
-			PlatformEvent.KIND_HEARTBEAT, null, PlatformClient.Retry.NONE, _on_heartbeat))
+			PlatformEvent.KIND_HEARTBEAT, context, PlatformClient.Retry.NONE, _on_heartbeat))
 
 
 func _on_heartbeat(_request: PlatformClient.Request, event: PlatformEvent) -> void:

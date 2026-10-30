@@ -1646,7 +1646,9 @@ func applied(character_id: int) -> Dictionary                     # el último c
 func sent(kind: StringName) -> Array[Dictionary]                  # los cuerpos recibidos de ese kind, en orden
 ## Por defecto: claim → 200 con lo de add_character y, si hubo guardados, lo último aplicado de cada sección (§14.1);
 ## save → 200 applied con save_version que sube; release → 204; heartbeat → 200 sin revoked; progress_op y
-## progress_ledger → 404; lotes → 204. progresion.md P5a añade solo la parte progress de la reclamación siguiente y
+## progress_ledger → 404; lotes → 204; ignore, report y sanction resuelven target_name entre los personajes dados de
+## alta (P7b, §19.12: con set_account_state(character_id, muted_until_unix, ignored, warnings) y queued(kind)).
+## progresion.md P5a añade solo la parte progress de la reclamación siguiente y
 ## static func claim_progress(race_id: StringName, appearance: PackedByteArray, starter_template_id: StringName)
 ## -> Dictionary, que la construye con ProgressRecord.new_character() y to_claim_dictionary(now_unix()).
 # scripts/server/platform/character_saver.gd (P5)
@@ -1689,7 +1691,7 @@ func pending_count() -> int
   | `&"heartbeat"` | Respuesta del latido: `revoked`, `mutes` y `maintenance` | `ZoneServer` (P5: expulsiones y la cuenta atrás del mantenimiento de §7.2; P7b: silencios) |
   | `&"id_block"`, `&"progress_op"`, `&"progress_ledger"` | Bloques de ids, operación y libro | `ProgressService` (progresion.md P5a y P5d) |
   | `&"fortress"` | Respuesta de un PUT de fortaleza | `FortressPersistence` (P6) |
-  | `&"ignore"`, `&"report"`, `&"sanction"` | Respuestas de `/ignorar`, `/reportar` y `/gm` | `ChatRouter` y la moderación (P7b) |
+  | `&"ignore"`, `&"report"`, `&"sanction"` | Respuestas de `/ignorar` y `/designorar`, `/reportar` y las sanciones de `/gm` | `ModerationService` (P7b) |
   | `&"instance_closed"` | `instance_lost`, `instance_replaced` o `instance_stopped` en cualquier respuesta o en `instance_status` (una vez) | `ServerMain`: el cierre de §6.1 (P5) |
 
   Las respuestas de la liberación y de los lotes no salen de `ZonePlatform`: reintenta hasta una definitiva y
@@ -3042,3 +3044,152 @@ misma regla de versiones que `internal/war`); con varias fortalezas por zona (GU
 
 **Queda para después:** la recompensa de captura y lo que paga o no un ciclo forzado (progresion.md P5c); poner
 `gm_forced` y los GM invisibles (P7b); el extremo a extremo (P10).
+
+### 19.12 P7b · moderación en la zona (SOC-14 a SOC-18)
+
+**Qué hay.** La mitad de la zona de §9: roles por comando, `/gm`, el GM invisible, la marca `gm_forced` de los
+comandos, los ignorados, los reportes con su prueba, los silencios, los avisos al entrar y los lotes de chat y
+auditoría. Sin `--platform` todo sigue como en la fase 4: no hay roles, `/gm` contesta «Comando desconocido» y el
+chat es por conexión.
+
+| Pieza | Contenido |
+|---|---|
+| `command_registry.gd` | Roles (`ROLES`, `role_rank`, `role_allows`), `min_role` en `register` (`gm` por defecto), `get_min_role`, `can_use`, `get_names_for`; `Result.FORBIDDEN`; `Origin` (consola, chat, red) en el `Context`, con `role`, `target`, `audit_args` y `audit_key`; `execute_network(…, role)` (vacío: sin plataforma, no mira el rol); `execute_chat(peer, line, role)` (`/gm`: el manejador de consola; desconocido o sin permiso, «Comando desconocido. Escribe /ayuda.»; `ayuda` lista los del rol); `audit_entry_sink`, con cada uso que llega a ejecutarse |
+| `social/moderation_service.gd` (nuevo) | `ModerationService`: el canal GM del chat (`handle_command`: `gm`, `ignorar`, `designorar`, `reportar`), los comandos de moderación de `/gm`, las respuestas `ignore`, `report` y `sanction`, los `mutes` del latido, los avisos al entrar, la entrada del lote de auditoría y la del lote de chat; `parse_minutes` y `date_text` |
+| `social/chat_router.gd` | `command_sink` (el canal GM, tras gastar su ficha y sin la comprobación de repetición), el silencio («Estás silenciado N min más.», `MUTED`), el filtro de ignorados en todos los canales (en un susurro sale la copia del emisor), el anillo de lo recibido (`keep_received`), `log_sink` y `clock_unix` |
+| `social/chat_peer_state.gd` | `account_id`, `ignored_accounts`, `ignored_by_name`, `muted_until_unix`, `mute_changed_msec`, el anillo `received` (100 por receptor, `Received`, `received_from`) y los reportes recientes |
+| `social/social_service.gd` · `social_peers.gd` · `party_manager.gd` | `on_peer_joined` (el estado del chat por personaje, conservado `KNOWN_RECIPIENT_TICKS` tras la baja y reenganchado; cuenta, ignorados y silencio de la reclamación) y la purga en `step`; `find_any_by_name` e `ignores`; la invitación a quien ignora a quien invita, descartada en silencio |
+| Combate | `NetEntity.gm_invisible` y `Combatant.is_gm_invisible()`: `CombatResolver` lo salta como atacante y como candidato (también las puertas), `ProjectileSystem` no le deja disparar ni lo toma por blanco, `CombatDirector` no le aplica pulsos, caídas ni volúmenes letales (el vacío sí, que solo devuelve el cuerpo), `DownedSystem` no le deja levantar ni rematar y `NpcWorld` no lo da por objetivo; `ProgressService._collector` no le paga |
+| `zone_server.gd` | `ModerationService` en `start` (tras `SocialService`); `ignore`, `report` y `sanction` en «poll»; los `mutes` del latido; `on_peer_joined` y los avisos en el alta; `_is_relevant` deja fuera al invisible con cualquier política; fuera también de `_presence_candidates`, del marcador, de los objetivos y aliados de los bots y de los cuerpos que impiden cerrar la puerta; `set_gm_invisible` (DESPAWN o SPAWN en el acto), `kick_peer`, `send_notice`, `get_world_peers` y `get_moderation`; `min_role` de cada comando, `anuncio` y `apagar`; DEBUG_COMMAND con el rol de la reclamación (sin él, aviso); `_mark_gm_forced` en los DEBUG_COMMAND 1, 2 y 4 y en `teleport`, `heal`, `stamina_inf` y `unstuck` de la consola y de `/gm`; `teleport <jugador> <otro>`; el objetivo de cada comando en `ctx.target`; `moderation` en el informe |
+| `zone_platform.gd` | El contexto del latido: `{characters, sent_msec}` (por quién se latió y cuándo) |
+| Cliente | `ChatCommandParser.Kind.SERVER`: `/ignorar`, `/designorar` y `/reportar` (en la ayuda) y `/gm` (no sale en ella) se mandan tal cual por el canal GM; `ChatBox` los envía |
+| Pruebas | `FakeZonePlatform`: `set_account_state` (silencio, ignorados y avisos de la reclamación), `queued(kind)` y respuestas por defecto de `ignore`, `report` y `sanction` que resuelven el nombre entre los personajes dados de alta (antes, 404) |
+
+Comandos de `/gm` (los que no son de moderación son los de la consola y los del fuerte, con `gm` por defecto):
+
+| Comando | Rol | Hace |
+|---|---|---|
+| `aviso <jugador> <motivo>` | moderator | Sanción `warning`; si está en la zona, NOTICE con el motivo ya |
+| `silenciar <jugador> <duración> <motivo>` | moderator | Sanción `mute` (`30`, `30m`, `2h`, `7d`; más de 7 días, la plataforma pide admin); si está en la zona, silenciado ya y NOTICE |
+| `expulsar <jugador> [motivo]` | moderator | Lo echa de la zona con guardado final y enfriamiento; por `/gm`, solo a quien tiene un rol menor |
+| `suspender <jugador> <duración> <motivo>` | gm | Sanción `suspension`; pide un latido en el acto (su `revoked` lo echa) |
+| `renombrar <jugador> <motivo>` | gm | Sanción `rename`; si está en la zona, lo echa con guardado final para que elija otro nombre |
+| `invisible` · `visible` | gm | Sobre quien lo escribe (desde la consola, `invisible <jugador>`); `visible` marca con `gm_forced` |
+| `teleport <jugador> <x> <y> <z>` · `teleport <jugador> <otro>` | gm | Marca al que mueve con `gm_forced` |
+| `banear <jugador> <motivo>` · `anuncio <texto>` · `apagar <s>\|cancelar` | admin | Sanción `ban` (latido en el acto) · `announce` · `shutdown` (`kick`, `announce` y `shutdown` también son de admin) |
+
+**Desviaciones y decisiones:**
+
+- **Los comandos van por el canal 8 (GM) del CHAT_SEND.** El protocolo 7 no tenía mensaje para `/gm`, `/ignorar`,
+  `/designorar` ni `/reportar`, y la versión ya no sube. El cliente manda la línea sin la barra por ese canal (sin
+  cambiar los bytes) y la respuesta llega por el canal del sistema. Gasta la ficha de hablar, no pasa por la
+  comprobación de repetición y un silenciado puede usarlo (no es chat). red.md y social.md lo dicen.
+- **Las sanciones no salen de la consola** («Desde la consola, usa «admin sanction» de la plataforma»): la
+  plataforma exige un autor con arrendamiento en la instancia (§9.5) y la consola no tiene personaje.
+- **Lo que hace la zona con el 200 de una sanción** (§9.5 no lo decía para quien está dentro): el silencio se aplica
+  ya, sin esperar al latido, con un NOTICE «Un moderador te ha silenciado 30 min: motivo»; el aviso sale ya en un
+  NOTICE (y otra vez en la siguiente entrada, porque la plataforma lo da por visto con el primer guardado del
+  arrendamiento siguiente, §19.7); el renombrado echa al personaje con su guardado final; la suspensión y la expulsión
+  piden un latido en el acto, cuyo `revoked` lo echa con el texto de la plataforma.
+- **`mutes` del latido.** La respuesta trae los silencios vigentes de las cuentas por las que se latió; sin la
+  cuenta, no está silenciada (una sanción levantada). Para no levantar el silencio de quien entró después de salir
+  el latido ni deshacer una sanción de esta zona posterior, `ZonePlatform` pasa como contexto del latido
+  `{characters, sent_msec}` y la zona solo toca a esos personajes con su `lease_id` y si no hubo un cambio local
+  después.
+- **Reportes.** La zona frena ya 1 por objetivo cada 10 min y 10 por hora (por personaje, en su `ChatPeerState`;
+  la plataforma lo vuelve a mirar por cuenta y su 429 dice cuánto esperar); uno que la plataforma no acepta (nombre
+  que no existe, error) no gasta el límite. La prueba son los últimos 20 mensajes del reportado en el anillo de 100
+  de quien reporta, en 10 min (en una zona con mucho chat puede quedarse corta: el anillo es por receptor, no por
+  emisor). `context` lleva `zone_id`, `zone_channel`, `tick`, `reporter_position` y, si está en la zona,
+  `target_position`. Las categorías se escriben en español (`lenguaje`, `acoso`, `trampas`, `bot`, `nombre`, `otro`).
+- **Ignorados.** La respuesta del POST da la cuenta, que entra en el filtro ya; el DELETE contesta 204 sin ella, así
+  que `/designorar` quita la que se ignoró en esta sesión con ese nombre y la del personaje si está en la zona (lo
+  demás, con la reclamación siguiente). El filtro vale en todos los canales, también el de grupo; un susurro a quien
+  te ignora sale como siempre para el emisor, y una invitación se queda pendiente hasta caducar sin llegar al
+  invitado, que no la puede aceptar: quien ignora no se delata.
+- **Auditoría.** Va al lote cada uso que llega a ejecutarse (no los desconocidos ni los que no tienen permiso, que
+  solo quedan en el registro de la zona). `args` nunca lleva texto libre ni nombres: lo que pone el manejador
+  (`{kind, minutes}` en una sanción, `{position}` en un teletransporte) o, si no pone nada, los argumentos numéricos
+  (`values`) o, en un DEBUG_COMMAND, el `payload` en hexadecimal. El objetivo, por id, si está en la zona (un
+  DEBUG_COMMAND actúa sobre quien lo manda); el de una sanción a alguien de fuera queda en la fila `sanction` de la
+  plataforma. `Context.audit_key` es para la `op:<op_id>` de progresion.md P5d.
+- **Invisible.** Lo aplica `ZoneServer._is_relevant` y no `InterestPolicy`, para que valga con cualquier política
+  (la rejilla de Eldrun la sustituirá). Además de lo de §9.1, no es blanco de los PNJ ni de los bots, no cuenta como
+  aliado en sus reuniones ni impide cerrar la puerta, no levanta ni remata y no sufre caídas ni volúmenes letales.
+  Sigue en `PARTY_STATUS` de su propio grupo y su `/decir` lo oyen los cercanos: son decisiones suyas. No se guarda
+  (volver a entrar lo deja visible) y la reaparición no lo quita.
+- **`gm_forced`** lo ponen también la consola y `/gm` con `teleport`, `heal`, `stamina_inf` y `unstuck` (§9.1 nombra
+  `/gm teleport`, `/gm visible` y los DEBUG_COMMAND 1, 2 y 4: son los mismos manejadores). Solo con plataforma.
+- **Estado del chat por personaje.** Al reengancharlo se recalcula la clave del nombre y se toman de la reclamación
+  nueva la cuenta, los ignorados y el silencio; el anillo y los reportes recientes vuelven con él. Sin reclamación
+  (sin plataforma) no se conserva nada.
+- **El 5, el 13 y el 16 siguen en `gm`**: subirlos a `admin` es de progresion.md P5d, con sus pruebas.
+- **`FakeZonePlatform`** contesta por defecto a `ignore`, `report` y `sanction` resolviendo el nombre entre los
+  personajes dados de alta (404 si no está; 400 con la propia cuenta en ignorar y reportar), en lugar del 404 de P4.
+- **Cliente mínimo.** Solo el analizador y el envío del chat; las opciones de ignorar y reportar del menú social
+  (SOC-07) y la etiqueta del personal (P8) quedan fuera.
+
+**Para los paquetes siguientes.**
+
+- **progresion.md P5d:** registra sus comandos con `_commands.register(nombre, uso, consola, red, min_role)` y sube a
+  `admin` el 5, el 13 y el 16 (`register` de `zone_server.gd`). La regla de los propios personajes tiene en el
+  `Context` el rol (`ctx.role`), quien lo manda (`ctx.peer.claimed`) y el objetivo que resuelva el manejador
+  (`ctx.target`, que además pone el objetivo en la auditoría). Un comando que crea una operación pone
+  `ctx.audit_key = "op:<op_id>"` y sus `ctx.audit_args` con el objetivo por id; `ModerationService._audit_entry`
+  arma el resto (actor, `source`, `at_unix`). Con la zona cercada, `ModerationService` ya contesta «El servicio de
+  cuentas no responde» a ignorar, reportar y sancionar.
+- **P10:** `/gm silenciar` contra el almacén de verdad y el lote de chat que lee `admin chat`.
+
+**Pruebas** (Godot):
+
+- **`test_zone_moderation.gd`** (10, la zona sin red con `FakeZonePlatform`): `/gm` de un jugador (y `ayuda`, un
+  comando que no existe y uno de otro rol) → «Comando desconocido» y nada a la plataforma; un moderador silencia
+  (cuerpo de §6, texto con la fecha, silenciado ya con su NOTICE y «Estás silenciado 30 min más.») y la entrada de
+  auditoría (`source` `zone`, actor, objetivo por id, `args`, sin nombres ni motivo); DEBUG_COMMAND 1 sin rol →
+  aviso y no se mueve, y con `gm` se mueve, se marca y se audita sobre sí mismo, y 2 y 4 también marcan; `/gm
+  teleport` (a unas coordenadas y junto a otro) marca a quien mueve, `/gm invisible` manda el DESPAWN a todos y el
+  interés no lo vuelve a meter, fuera del círculo, del marcador y de los objetivos de los bots, y `/gm visible` lo
+  devuelve con su SPAWN y lo marca, y la reaparición quita las marcas; un ignorado no susurra, no invita ni llega a la
+  zona (y el emisor no lo nota), `/designorar`, a sí misma, un nombre que no existe, la lista llena y los ignorados de
+  la reclamación; el reporte con su prueba (lo recibido del reportado, sin lo de otros), el contexto, el límite de
+  la zona, el 429 de la plataforma, el nombre que no existe sin gastar el límite y el uso; los `mutes` del latido
+  (levanta, pone, no toca a quien no latió y no deshace una sanción posterior); el renombrado forzado con su guardado
+  final (motivo 5), `/gm expulsar` con el rol del objetivo y el 403 de la plataforma; el aviso de la reclamación al
+  entrar y uno nuevo al momento; el susurro en el lote de chat y salir y volver sin rellenar las ráfagas; sin
+  plataforma, `/gm` desconocido y ignorar y reportar sin servicio de cuentas, y una sanción desde la consola.
+- **`test_chat_moderation.gd`** (7, `SocialService` sin red): el ignorado en decir, zona y susurro; la invitación
+  descartada en silencio; el silencio en cada canal con los minutos y sin fin; el canal GM al `command_sink` sin la
+  repetición y con la ficha de hablar; el anillo (orden, ventana, límite, lo propio no) y el lote; el estado por
+  personaje (salir y volver no rellena, pasados 5 min sí, la purga) y lo que se toma de la reclamación nueva.
+- **`test_command_registry.gd`** (+3: roles, `min_role` en la red con la auditoría, `/gm` con su ayuda),
+  **`test_combat_resolver.gd`** (+1: el invisible ni golpea ni es golpeado), **`test_progress_rewards.gd`** (+1, la
+  de progresion.md §15 P5c que faltaba: un GM invisible en el círculo no cobra la captura, ni una baja),
+  **`test_chat_command_parser.gd`** (+1) y **`test_chat_box.gd`** (ajustada: `/gm` sale por el canal GM).
+
+Comprobadas con la mutación que deberían pillar: sin quitar al invisible de `_presence_candidates` o del interés, sin
+el rol en `execute_network`, sin el filtro de ignorados del chat o de las invitaciones, sin reenganchar el
+`ChatPeerState`, sin `gm_forced` en `/gm teleport`, sin el límite local de reportes y sin la guarda de
+`mute_changed_msec` del latido, fallan. Siguen correctas `test_zone_server*` (86, con las de plataforma y guardados),
+`test_chat_*` (111), `test_party_*`, `test_combat_*` (290), `test_downed`, `test_npc_*`,
+`test_hfsm_brain`, `test_character_saver`, `test_war_*`, `test_platform_client`, `test_progress_*`, `test_score*`,
+`test_unstuck*`, `test_loadout*`, `test_consumables*`, `test_ability*`, `test_fortress_*` (151), `test_net_loopback`,
+`test_net_client`, `test_bot_swarm`, `test_bot_cheat`, `test_online_main`, `test_handoff_ticket`,
+`test_zone_process_shutdown` y `test_architecture`; `test_combat_server` con el uso nuevo de `teleport` en la consola.
+La suite entera de Godot no se ha pasado; Go no cambia.
+
+**Medido** (esta máquina, 4 núcleos compartidos, Godot 4.7.2 headless; una sonda que no se sube, dos pasadas):
+
+| Qué | Resultado |
+|---|---|
+| Un mensaje de zona a 64 receptores (`ChatRouter.route`: ritmo, silencio, saneado, filtro y 64 envíos) | 135–155 µs sin anillo ni lote, con o sin 100 cuentas ignoradas por receptor (el filtro es una consulta a un diccionario por copia y no se nota); 180–210 µs con el anillo y el lote (un `Received` por mensaje apuntado en 64 anillos) |
+| `SocialService.on_peer_joined` con 100 ignorados | 20 µs |
+| `ChatPeerState.received_from` sobre un anillo lleno | 25–31 µs (una vez por reporte) |
+| `test_zone_moderation.gd` · `test_chat_moderation.gd` | 10 pruebas en unos 18 s y 7 en unos 15 s, con el arranque del ejecutor |
+
+**Sin comprobar:** contra la plataforma de Go de verdad (P10; aquí, `FakeZonePlatform` con los cuerpos de las rutas
+de §6 y los errores de `internal/social`); el chat de Eldrun con cientos de receptores y su anillo; que el personal
+vea a un GM invisible (no hace falta en la fase 5).
+
+**Queda para después:** los comandos de progresion.md §10 con `admin` en el 5, el 13 y el 16 y la regla de los
+propios personajes (progresion.md P5d); las opciones de ignorar y reportar del menú social y la lista de ignorados
+en el cliente (SOC-07); el extremo a extremo (P10).

@@ -83,7 +83,8 @@ func query_targets(position: Vector3, radius: float, realm: int, ignores_safe_ar
 ## true si [param candidate] sigue siendo un objetivo válido para un PNJ del bando [param realm]. Más barato que
 ## [method query_targets] cuando ya se sabe a quién se persigue.
 func is_valid_target(candidate: Combatant, realm: int, ignores_safe_area: bool) -> bool:
-	if candidate == null or candidate.is_dead() or candidate.is_protected(tick) or candidate.immortal:
+	if candidate == null or candidate.is_dead() or candidate.is_protected(tick) or candidate.immortal \
+			or candidate.is_gm_invisible():
 		return false
 	if not _is_hostile(realm, candidate.get_realm()):
 		return false
@@ -187,7 +188,8 @@ func _rebuild_candidates() -> void:
 	_candidates_tick = tick
 	_candidates.clear()
 	for candidate: Combatant in combat.get_sorted():
-		if candidate.is_dead() or candidate.immortal or candidate.is_protected(tick):
+		# Un GM invisible no es blanco de los PNJ (docs/plataforma.md §9.1).
+		if candidate.is_dead() or candidate.immortal or candidate.is_protected(tick) or candidate.is_gm_invisible():
 			continue
 		_candidates.append(candidate)
 

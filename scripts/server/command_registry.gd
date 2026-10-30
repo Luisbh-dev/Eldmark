@@ -13,10 +13,23 @@ extends RefCounted
 ## [b]Comandos de consola.[/b] Se escriben por la entrada estándar del servidor
 ## ([code]--console[/code]) con sus argumentos ([code]kick Ana[/code]). Los de red también existen en
 ## la consola, con el jugador como primer argumento. [code]announce[/code], [code]kick[/code] y
-## [code]shutdown <s>[/code] son solo de consola hasta los roles de GM (TEC-23).
+## [code]shutdown <s>[/code] son de consola y, con la plataforma, de [code]/gm[/code] con su rol.
+## [br][br]
+## [b]Comandos de chat[/b] ([code]/gm …[/code], docs/plataforma.md §9.1, P7b). Con la plataforma, un jugador con
+## rol escribe [code]/gm comando argumentos[/code] y llega aquí por [method execute_chat] con el rol de su
+## reclamación: se ejecuta el manejador de consola, con el peer que lo manda en el [Context]. Sin permiso, o un
+## comando que no existe, contesta [constant TEXT_UNKNOWN], lo mismo que a quien no tiene rol: no se revela qué
+## existe.
+## [br][br]
+## [b]Rol mínimo.[/b] Cada comando declara su [code]min_role[/code] al registrarse ([constant ROLE_GM] por defecto):
+## lo exigen [method execute_chat] y, con la plataforma, [method execute_network] (DEBUG_COMMAND con el rol de la
+## reclamación; sin él, [constant Result.FORBIDDEN], que la zona cuenta como un aviso). La consola no lo mira: es
+## el operador del servidor. Sin plataforma (rol vacío) los DEBUG_COMMAND siguen como en la fase 4.
 ## [br][br]
 ## [b]Auditoría.[/b] Cada uso, aceptado o no, queda en [member audit] y se manda a
-## [member audit_sink] (el registro del servidor): origen, comando, argumentos y resultado.
+## [member audit_sink] (el registro del servidor): origen, comando, argumentos y resultado. Con la plataforma,
+## cada uso que llega a ejecutarse (no los desconocidos ni los que no tienen permiso) sale además por
+## [member audit_entry_sink], que arma la entrada del lote de auditoría (docs/plataforma.md §9.1).
 
 ## Resultado de un comando de red.
 enum Result {
@@ -27,7 +40,33 @@ enum Result {
 	BAD_ARGUMENTS,
 	## El comando es válido pero no se puede cumplir ahora (sin aviso).
 	REFUSED,
+	## Con la plataforma, el rol de quien lo manda no llega al [code]min_role[/code] del comando: no se ejecuta
+	## (la zona suma un aviso, como sin [code]--debug-commands[/code]).
+	FORBIDDEN,
 }
+
+## Por dónde llega un comando.
+enum Origin {
+	## La consola del servidor (el operador: no se mira el rol).
+	CONSOLE,
+	## [code]/gm …[/code] por el chat, con el rol de la reclamación.
+	CHAT,
+	## Un DEBUG_COMMAND.
+	NETWORK,
+}
+
+## Roles de las cuentas (docs/plataforma.md §9.1), de menor a mayor; los mismos que
+## [constant ClaimedCharacter.ROLES].
+const ROLE_PLAYER: StringName = &"player"
+const ROLE_MODERATOR: StringName = &"moderator"
+const ROLE_GM: StringName = &"gm"
+const ROLE_ADMIN: StringName = &"admin"
+const ROLES: Array[StringName] = [ROLE_PLAYER, ROLE_MODERATOR, ROLE_GM, ROLE_ADMIN]
+## Rol mínimo de un comando que no declara otro.
+const DEFAULT_MIN_ROLE: StringName = ROLE_GM
+## Respuesta a un comando de chat desconocido o sin permiso (docs/social.md, sección 4).
+const TEXT_UNKNOWN: String = "Comando desconocido. Escribe /ayuda."
+const TEXT_CHAT_HELP: String = "Comandos de /gm: %s. Escribe /gm ayuda <comando> para ver cómo se usa."
 
 ## Entradas del registro de auditoría que se conservan.
 const MAX_AUDIT_ENTRIES: int = 200
@@ -38,6 +77,10 @@ var audit: PackedStringArray = PackedStringArray()
 var audit_total: int = 0
 ## Se llama con cada línea de auditoría, [code](line: String) -> void[/code].
 var audit_sink: Callable = Callable()
+## Con la plataforma: se llama con cada uso que llega a ejecutarse,
+## [code](ctx: CommandRegistry.Context, command_name: StringName, result: String) -> void[/code]; la zona arma
+## con él la entrada del lote de auditoría.
+var audit_entry_sink: Callable = Callable()
 
 # nombre -> Command.
 var _commands: Dictionary[StringName, Command] = {}
@@ -51,6 +94,8 @@ class Command:
 	var console_handler: Callable = Callable()
 	## [code](ctx: CommandRegistry.Context) -> int]: la red; devuelve un [enum Result].
 	var network_handler: Callable = Callable()
+	## Rol mínimo para usarlo por el chat ([code]/gm[/code]) o, con la plataforma, por DEBUG_COMMAND.
+	var min_role: StringName = DEFAULT_MIN_ROLE
 
 
 ## Lo que recibe un manejador.
@@ -66,14 +111,27 @@ class Context:
 	var args: PackedStringArray = PackedStringArray()
 	## Texto que el manejador añade a la auditoría (el resultado).
 	var note: String = ""
+	## Por dónde llega ([enum Origin]).
+	var origin: int = Origin.CONSOLE
+	## El rol de quien lo manda (vacío en la consola, y en la red sin plataforma).
+	var role: StringName = &""
+	## El personaje sobre el que actúa, si el manejador lo ha resuelto (para la auditoría: el objetivo va por id,
+	## nunca por nombre).
+	var target: NetEntity = null
+	## Argumentos para la entrada del lote de auditoría, sin nombres ni correos (docs/plataforma.md §9.1).
+	var audit_args: Dictionary = {}
+	## La [code]key[/code] de esa entrada si el comando la fija: [code]op:<op_id>[/code] en uno que crea una operación
+	## (§9.1, «Dos vías, una fila»; progresion.md P5d). Vacía: la pone [ZonePlatform].
+	var audit_key: String = ""
 
 
-## Registra el comando [param command_name]. [param console_handler] atiende la consola y
+## Registra el comando [param command_name]. [param console_handler] atiende la consola (y [code]/gm[/code]) y
 ## [param network_handler] (opcional) la red; este último exige que el nombre tenga su id fijo en
-## [constant NetProtocol.DEBUG_COMMAND_IDS]. Devuelve false (y registra un error) si el nombre ya
-## existe, no tiene ningún manejador o es de red sin id fijo.
+## [constant NetProtocol.DEBUG_COMMAND_IDS]. [param min_role] es el rol mínimo para el chat y, con la plataforma,
+## para la red. Devuelve false (y registra un error) si el nombre ya existe, no tiene ningún manejador, es de red
+## sin id fijo o el rol no existe.
 func register(command_name: StringName, usage: String, console_handler: Callable,
-		network_handler: Callable = Callable()) -> bool:
+		network_handler: Callable = Callable(), min_role: StringName = DEFAULT_MIN_ROLE) -> bool:
 	if _commands.has(command_name):
 		push_error("[Eldmark] Comando duplicado: '%s'" % command_name)
 		return false
@@ -83,13 +141,50 @@ func register(command_name: StringName, usage: String, console_handler: Callable
 	if network_handler.is_valid() and not NetProtocol.DEBUG_COMMAND_IDS.has(command_name):
 		push_error("[Eldmark] El comando de red '%s' no tiene un id fijo en NetProtocol" % command_name)
 		return false
+	if role_rank(min_role) < 0:
+		push_error("[Eldmark] Rol desconocido para '%s': %s" % [command_name, min_role])
+		return false
 	var command := Command.new()
 	command.name = command_name
 	command.usage = usage
 	command.console_handler = console_handler
 	command.network_handler = network_handler
+	command.min_role = min_role
 	_commands[command_name] = command
 	return true
+
+
+## El rango de [param role] en [constant ROLES] (player 0 … admin 3); uno desconocido, -1.
+static func role_rank(role: StringName) -> int:
+	return ROLES.find(role)
+
+
+## true si [param role] llega a [param min_role].
+static func role_allows(role: StringName, min_role: StringName) -> bool:
+	var needed: int = role_rank(min_role)
+	return needed >= 0 and role_rank(role) >= needed
+
+
+## El rol mínimo del comando (vacío si no existe).
+func get_min_role(command_name: StringName) -> StringName:
+	var command: Command = _commands.get(command_name)
+	return command.min_role if command != null else &""
+
+
+## true si quien tiene [param role] puede usar [param command_name] por el chat ([code]/gm[/code]).
+func can_use(command_name: StringName, role: StringName) -> bool:
+	var command: Command = _commands.get(command_name)
+	return command != null and command.console_handler.is_valid() and role_allows(role, command.min_role)
+
+
+## Los comandos que [param role] puede usar por el chat, ordenados.
+func get_names_for(role: StringName) -> PackedStringArray:
+	var names := PackedStringArray()
+	for command_name: StringName in _commands:
+		if can_use(command_name, role):
+			names.append(String(command_name))
+	names.sort()
+	return names
 
 
 ## true si hay un comando con ese nombre.
@@ -119,23 +214,71 @@ func missing_network_commands() -> PackedStringArray:
 
 
 ## Ejecuta el comando de red con id [param command_id] enviado por [param peer] con los datos
-## [param payload]. Devuelve un [enum Result]. Queda auditado.
-func execute_network(peer: ServerPeer, command_id: int, payload: PackedByteArray) -> int:
+## [param payload]. Con [param role] (la plataforma: el de la reclamación), el comando exige su
+## [code]min_role[/code]; sin él se devuelve [constant Result.FORBIDDEN] y no se ejecuta. Vacío, como sin
+## plataforma: no se mira. Devuelve un [enum Result]. Queda auditado.
+func execute_network(peer: ServerPeer, command_id: int, payload: PackedByteArray,
+		role: StringName = &"") -> int:
 	var command: Command = _find_by_network_id(command_id)
-	var source: String = "peer %d (%s)" % [peer.peer_id, peer.display_name]
-	if peer.entity != null:
-		source = "peer %d (%s, net_id %d)" % [peer.peer_id, peer.display_name, peer.entity.net_id]
+	var source: String = _peer_source(peer)
 	if command == null or not command.network_handler.is_valid():
 		_audit(source, "id %d" % command_id, "desconocido")
 		return Result.UNKNOWN
+	var what: String = String(command.name) if payload.is_empty() else "%s [%d B]" % [command.name, payload.size()]
+	if not role.is_empty() and not role_allows(role, command.min_role):
+		_audit(source, what, "sin permiso (%s; hace falta %s)" % [role, command.min_role])
+		return Result.FORBIDDEN
 	var context := Context.new()
 	context.source = source
 	context.peer = peer
 	context.payload = payload
+	context.origin = Origin.NETWORK
+	context.role = role
 	var result: int = command.network_handler.call(context)
-	_audit(source, String(command.name) if payload.is_empty() else "%s [%d B]" % [command.name,
-			payload.size()], _result_text(result, context.note))
+	var result_text: String = _result_text(result, context.note)
+	_audit(source, what, result_text)
+	_audit_entry(context, command.name, result_text)
 	return result
+
+
+## Ejecuta [param line] ([code]comando argumentos…[/code], lo que sigue a [code]/gm[/code]) que manda
+## [param peer] con el rol [param role] (el de su reclamación) y devuelve la respuesta para su chat. Un comando
+## que no existe, que no tiene manejador de consola o al que no llega su rol contesta [constant TEXT_UNKNOWN];
+## [code]ayuda[/code] lista los que puede usar (o explica uno), y a quien no puede usar ninguno le contesta lo mismo
+## que a un desconocido. Queda auditado (los desconocidos y los que no tienen permiso, solo en el registro).
+func execute_chat(peer: ServerPeer, line: String, role: StringName) -> String:
+	var source: String = "/gm " + _peer_source(peer)
+	var text: String = line.strip_edges()
+	var parts: PackedStringArray = text.split(" ", false, 1)
+	# Sin distinguir mayúsculas ni tildes (docs/social.md, sección 4).
+	var command_name := StringName(NameRules.normalize_key(parts[0])) if not parts.is_empty() else &""
+	var arguments := PackedStringArray()
+	if parts.size() > 1:
+		arguments = parts[1].strip_edges().split(" ", false)
+	var allowed: PackedStringArray = get_names_for(role)
+	if command_name.is_empty() or command_name == &"ayuda" or command_name == &"help":
+		if allowed.is_empty():
+			_audit(source, text, "desconocido")
+			return TEXT_UNKNOWN
+		var topic := StringName(NameRules.normalize_key(arguments[0])) if not arguments.is_empty() else &""
+		if can_use(topic, role):
+			return "Uso: /gm %s" % get_usage(topic)
+		return TEXT_CHAT_HELP % ", ".join(allowed)
+	if not can_use(command_name, role):
+		_audit(source, text, "desconocido" if not _commands.has(command_name) else "sin permiso (%s)" % role)
+		return TEXT_UNKNOWN
+	var command: Command = _commands[command_name]
+	var context := Context.new()
+	context.source = source
+	context.peer = peer
+	context.args = arguments
+	context.origin = Origin.CHAT
+	context.role = role
+	var response: String = command.console_handler.call(context)
+	var result_text: String = response if context.note.is_empty() else context.note
+	_audit(source, text, result_text)
+	_audit_entry(context, command.name, result_text)
+	return response
 
 
 ## Ejecuta una línea de la consola ([code]comando argumento argumento...[/code], con una barra
@@ -163,8 +306,11 @@ func execute_console(line: String) -> String:
 	var context := Context.new()
 	context.source = "consola"
 	context.args = arguments
+	context.origin = Origin.CONSOLE
 	var response: String = command.console_handler.call(context)
-	_audit("consola", text, response if context.note.is_empty() else context.note)
+	var result_text: String = response if context.note.is_empty() else context.note
+	_audit("consola", text, result_text)
+	_audit_entry(context, command.name, result_text)
 	return response
 
 
@@ -172,6 +318,18 @@ func execute_console(line: String) -> String:
 func get_usage(command_name: StringName) -> String:
 	var command: Command = _commands.get(command_name)
 	return command.usage if command != null else ""
+
+
+# Quién manda un comando, para la auditoría: [code]peer 3 (Ana, net_id 2)[/code].
+static func _peer_source(peer: ServerPeer) -> String:
+	if peer.entity != null:
+		return "peer %d (%s, net_id %d)" % [peer.peer_id, peer.display_name, peer.entity.net_id]
+	return "peer %d (%s)" % [peer.peer_id, peer.display_name]
+
+
+func _audit_entry(context: Context, command_name: StringName, result_text: String) -> void:
+	if audit_entry_sink.is_valid():
+		audit_entry_sink.call(context, command_name, result_text)
 
 
 func _find_by_network_id(command_id: int) -> Command:
@@ -190,6 +348,8 @@ static func _result_text(result: int, note: String) -> String:
 			text = "argumentos no válidos"
 		Result.REFUSED:
 			text = "rechazado"
+		Result.FORBIDDEN:
+			text = "sin permiso"
 	return text if note.is_empty() else "%s (%s)" % [text, note]
 
 

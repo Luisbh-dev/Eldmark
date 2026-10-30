@@ -2724,3 +2724,23 @@ ritmo de XP del Vado Gris (§6.1 suponía unos 3000 por hora de batalla).
 **Queda para después:** el GM invisible y `gm_forced` puesto por los comandos (plataforma.md P7b); los comandos de GM,
 `xp_add` y `level_set` (P5d); el reparto por daño y el antifarmeo de los méritos (PRG-09); las pruebas de punta a punta
 (P8).
+
+### 19.15 Lo que deja plataforma.md P7b
+
+plataforma.md P7b (su §19.12) pone la moderación en la zona. Lo que usa P5d:
+
+- **`min_role`.** `CommandRegistry.register(nombre, uso, consola, red, min_role)`, con `gm` por defecto; `/gm` pasa por
+  `execute_chat` con el rol de la reclamación y DEBUG_COMMAND, con plataforma, por `execute_network(…, rol)` (sin el
+  rol, `Result.FORBIDDEN`, que la zona cuenta como un aviso y no ejecuta). Los 40–43 aún no están registrados y el 5,
+  el 13 y el 16 siguen en `gm`: subirlos a `admin` es de P5d (`ZoneServer._register_commands`).
+- **El `Context` de un comando** trae `origin` (consola, chat o red), `role`, `peer` (con su `claimed`) y `target`,
+  que pone el manejador al resolver el personaje: con eso se mira la regla de los propios personajes (§10). La
+  entrada del lote de auditoría la arma `ModerationService` (actor, `source` `zone` o `console`, objetivo por id,
+  `at_unix`); el comando pone `ctx.audit_args` (sin nombres: el objetivo por `character_id` en cadena) y, si crea
+  una operación, `ctx.audit_key = "op:<op_id>"` (las dos vías de plataforma.md §9.1).
+- **`gm_forced`** lo ponen ya `/gm teleport`, `/gm visible` y los DEBUG_COMMAND 1, 2 y 4 (y `teleport`, `heal`,
+  `stamina_inf` y `unstuck` de la consola), solo con plataforma; **el GM invisible** (`NetEntity.gm_invisible`) no
+  está en `_presence_candidates`, no hace daño (no es contribuyente) y `_collector` tampoco le paga. La prueba que
+  faltaba de §15 P5c («un GM invisible en el círculo no cobra la captura») está en `test_progress_rewards`.
+- **Zona cercada:** ignorar, reportar y sancionar ya contestan «El servicio de cuentas no responde»; los comandos de
+  §10 que cambian algo son de P5d.

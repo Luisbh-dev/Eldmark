@@ -286,7 +286,9 @@ Tamaños máximos: 821 B el CHAT_SEND y 875 B el CHAT_MESSAGE.
 
 Canales (`ChatChannel.Id`, no se reordenan): `0` decir, `1` zona, `2` susurro, `3` grupo, `4` banda, `5`
 gremio, `6` reino, `7` sistema, `8` GM. En la fase 4 el servidor reparte decir, zona, susurro, grupo y
-sistema; los otros contestan «Ese canal aún no está disponible».
+sistema; los otros contestan «Ese canal aún no está disponible». Desde el protocolo 7 (fase 5, plataforma.md §9 y
+§19.12), el `8` lleva los comandos que atiende el servidor: el cliente manda `/gm …`, `/ignorar`, `/designorar` y
+`/reportar` tal cual, sin la barra, y la respuesta llega por el canal del sistema.
 
 `decode` devuelve `null` (y no registra ningún error del motor) si el tamaño no cuadra con las longitudes,
 si el canal no existe, si un cliente manda el del sistema, si un susurro no lleva destinatario o cualquier

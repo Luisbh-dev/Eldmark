@@ -968,8 +968,8 @@ func _restore_timers(entity: NetEntity, player: PlayerProgress, s: int) -> void:
 # --- Recompensas (§6.2) --------------------------------------------------------------------------
 
 # La sesión de quien puede cobrar una recompensa: con [PlayerProgress] (un jugador con peer, también el cuerpo que se
-# queda tras una salida en combate) y sin la marca de un comando de GM; null con plataforma y --fake-players.
-# (plataforma.md P7b quita además a los GM invisibles, que no hacen daño ni cuentan en el círculo.)
+# queda tras una salida en combate), sin la marca de un comando de GM y que no sea un GM invisible (plataforma.md P7b:
+# además no hace daño ni cuenta en el círculo); null con plataforma y --fake-players.
 func _collector(net_id: int) -> _Session:
 	if _rewards_blocked:
 		_stats[&"rewards_blocked"] += 1
@@ -978,7 +978,8 @@ func _collector(net_id: int) -> _Session:
 	if session == null:
 		return null
 	var entity: NetEntity = _entity(net_id)
-	if entity == null or entity.gm_forced:
+	# Ni el marcado por un comando de GM ni un GM invisible cobran (§6.2; plataforma.md §9.1).
+	if entity == null or entity.gm_forced or entity.gm_invisible:
 		return null
 	return session
 

@@ -21,6 +21,10 @@ extends RefCounted
 ## [br]- [code]/ayuda [comando][/code]: la lista de comandos o el detalle de uno ([constant Kind.HELP]).
 ## [br]- [code]/invitar nombre[/code], [code]/salir[/code], [code]/expulsar nombre[/code],
 ## [code]/lider nombre[/code]: los grupos (SOC-06 y SOC-08).
+## [br]- Desde la fase 5 (docs/plataforma.md §9, P7b), los que atiende el servidor ([constant Kind.SERVER]):
+## [code]/ignorar nombre[/code], [code]/designorar nombre[/code] y [code]/reportar nombre categoría
+## [comentario][/code], y [code]/gm …[/code], que no sale en la ayuda (solo lo usa quien tiene rol; a los demás el
+## servidor les contesta «Comando desconocido», sin revelar que existe). Se mandan tal cual por el canal GM.
 ## [br][br]
 ## Cualquier otro comando, aunque exista en docs/social.md para una fase futura ([code]/b[/code],
 ## [code]/gr[/code], [code]/reino[/code]...), es [constant Kind.UNKNOWN] y se contesta con
@@ -51,6 +55,9 @@ enum Kind {
 	UNKNOWN,
 	## Un comando que existe pero está mal usado: [member Command.error] explica cómo.
 	INVALID,
+	## Un comando que atiende el servidor ([code]/gm[/code], [code]/ignorar[/code], [code]/designorar[/code],
+	## [code]/reportar[/code]): [member Command.text] es la línea sin la barra, que va por el canal GM.
+	SERVER,
 }
 
 ## Respuesta a un comando desconocido.
@@ -80,9 +87,17 @@ const COMMANDS: Array[Dictionary] = [
 			"help": "El líder echa a un miembro del grupo."},
 	{"id": &"leader", "names": ["lider"], "usage": "/lider nombre",
 			"help": "El líder cede el mando del grupo a otro miembro."},
+	{"id": &"ignore", "names": ["ignorar"], "usage": "/ignorar nombre",
+			"help": "Dejas de recibir los mensajes y las invitaciones de ese jugador (de toda su cuenta)."},
+	{"id": &"unignore", "names": ["designorar"], "usage": "/designorar nombre",
+			"help": "Vuelves a recibir los mensajes de un jugador que ignorabas."},
+	{"id": &"report", "names": ["reportar"], "usage": "/reportar nombre categoría [comentario]",
+			"help": "Reporta a un jugador a la moderación (categorías: lenguaje, acoso, trampas, bot, nombre, otro)."},
 	{"id": &"help", "names": ["ayuda"], "usage": "/ayuda [comando]",
 			"help": "Lista los comandos o explica uno."},
 ]
+## El comando de la moderación: no está en [constant COMMANDS] (no sale en la ayuda).
+const GM_COMMAND: String = "gm"
 
 ## Canal de los comandos de canal.
 const _CHANNEL_OF: Dictionary[StringName, int] = {
@@ -129,6 +144,10 @@ static func parse(line: String) -> Command:
 	var raw_name: String = body if split_at < 0 else body.substr(0, split_at)
 	var rest: String = "" if split_at < 0 else body.substr(split_at).strip_edges()
 	command.name = raw_name
+	if not raw_name.begins_with("/") and NameRules.normalize_key(raw_name) == GM_COMMAND:
+		command.kind = Kind.SERVER
+		command.text = GM_COMMAND if rest.is_empty() else "%s %s" % [GM_COMMAND, rest]
+		return command
 	var spec: Dictionary = {} if raw_name.begins_with("/") else find_command(raw_name)
 	if spec.is_empty():
 		command.kind = Kind.UNKNOWN
@@ -156,6 +175,10 @@ static func parse(line: String) -> Command:
 			_parse_with_name(command, spec, rest, Kind.LEADER)
 		&"leave":
 			command.kind = Kind.LEAVE
+		&"ignore", &"unignore", &"report":
+			_parse_with_name(command, spec, rest, Kind.SERVER)
+			if command.kind == Kind.SERVER:
+				command.text = "%s %s" % [(spec["names"] as Array)[0], rest]
 	return command
 
 

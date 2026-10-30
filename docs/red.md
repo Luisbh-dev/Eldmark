@@ -627,7 +627,7 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 | `0x30` | NOTICE | S→C | 3 | 3 B + texto |
 | `0x31` | HANDOFF (reservado, fase 6) | S→C | 3 | — |
 | `0x32` | SCOREBOARD (v3) | S→C | 3 | 4 B + 18 B por fila (hasta 66 filas por mensaje: ≤ 1192 B) |
-| `0x40` | CHAT_SEND (v5) | C→S | 3 | 5 B + destinatario + texto (≤ 821 B) |
+| `0x40` | CHAT_SEND (v5) | C→S | 3 | 5 B + destinatario + texto (≤ 821 B). v7: por el canal 8 (GM) van los comandos que atiende el servidor (`gm …`, `ignorar`, `designorar`, `reportar`, sin la barra; [plataforma.md](plataforma.md) §9 y §19.12), sin cambiar los bytes |
 | `0x41` | CHAT_MESSAGE (v5) | S→C | 3 | 11 B + emisor + destinatario + texto (≤ 875 B) |
 | `0x48` | PARTY_INVITE (v5) | C→S | 3 | 2 B + nombre |
 | `0x49` | PARTY_RESPONSE (v5) | C→S | 3 | 3 B + nombre |
@@ -776,9 +776,12 @@ inmediata sin esperar al timeout.
   y 14 hasta H3a, 15 y 16 hasta H3c; 40 a 43 hasta progresion.md P5d). Con `--platform`, el rol que pide cada
   uno es de progresion.md §10 y plataforma.md §9.1. `NetProtocol.DEBUG_COMMAND_IDS` es la tabla
   nombre → id con la que el registro de comandos del servidor comprueba que todo comando de red
-  tiene su id. `announce`, `kick` y `shutdown` son solo de consola.
+  tiene su id. `announce`, `kick` y `shutdown` no tienen id: son de consola y, con la plataforma, de `/gm`
+  con rol `admin` (v7).
 - Solo se acepta si el servidor arrancó con `--debug-commands`; si no, cuenta un aviso
-  (*strike*, ver [12](#12-seguridad-de-la-fase-2)).
+  (*strike*, ver [12](#12-seguridad-de-la-fase-2)). v7: con `--platform`, además el rol de la reclamación
+  tiene que llegar al `min_role` del comando (`gm` por defecto; [plataforma.md](plataforma.md) §9.1); si no,
+  también cuenta un aviso y no se ejecuta.
 
 **RESPAWN_REQUEST** (`0x05`, canal 3): `u8 type`, `u8 point_index`. El jugador muerto pide
 reaparecer en el punto `point_index` de la lista de puntos de su reino (desde la fase 4, la lista

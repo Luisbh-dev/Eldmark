@@ -228,6 +228,9 @@ func get_projectile(projectile_id: int) -> Projectile:
 ## [param shooter] compromete en el tick [param s] (ya congelado), contra el mundo [param space]. No hace
 ## nada si la fuente no lleva proyectil.
 func fire(shooter: Combatant, source: int, s: int, space: PhysicsDirectSpaceState3D) -> void:
+	# Un GM invisible no dispara (docs/plataforma.md §9.1): no hace daño a nadie.
+	if shooter.is_gm_invisible():
+		return
 	var frame: Combatant.Frozen = shooter.frozen
 	# Qué sale, con qué velocidad y en qué abanico: lo mismo que la flecha predicha del cliente
 	# (ProjectileLaunch, compartido).
@@ -736,7 +739,8 @@ func _prepare(s: int) -> void:
 		_candidate_high.resize(total)
 	var count: int = 0
 	for combatant: Combatant in _combatants:
-		if combatant.is_dead():
+		# Un GM invisible no es blanco: una flecha lo atraviesa (docs/plataforma.md §9.1).
+		if combatant.is_dead() or combatant.is_gm_invisible():
 			continue
 		var frame: Combatant.Frozen = combatant.frozen
 		var net_id: int = combatant.get_id()

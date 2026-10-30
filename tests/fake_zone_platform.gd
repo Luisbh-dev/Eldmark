@@ -15,8 +15,11 @@ extends ZonePlatform
 ## [code]save_version[/code] que sube; release → 204; heartbeat → 200 sin [code]revoked[/code] y con
 ## [member fake_maintenance];
 ## progress_op y progress_ledger → 404; lotes → 204; live y la baja → 204; PUT de fortaleza → 200 con la versión
-## siguiente; ignore, report y sanction → 404. [method script_next] cambia la respuesta de la siguiente petición de
-## un kind.
+## siguiente. La moderación (plataforma.md P7b) resuelve [code]target_name[/code] entre los personajes de
+## [method add_character]: ignore → 200 [code]{ignored_account_id, name}[/code] (DELETE → 204), report → 200
+## [code]{report_id}[/code] y sanction → 200 [code]{sanction_id, ends_at_unix}[/code]; un nombre que no está, 404
+## [code]not_found[/code], y la propia cuenta, 400 [code]validation[/code]. [method script_next] cambia la respuesta de
+## la siguiente petición de un kind.
 
 ## En [method script_next], [code]body = DEFAULT[/code] contesta lo de por defecto (con el estado y el retraso
 ## que se den).
@@ -50,6 +53,8 @@ var _fenced: bool = false
 var _lease_counter: int = 0
 var _save_versions: Dictionary[int, int] = {}
 var _fake_fortress_versions: Dictionary[String, int] = {}
+var _accounts: Dictionary[int, Dictionary] = {}
+var _moderation_ids: int = 0
 
 
 ## El cliente sin red: contesta cada intento con [method FakeZonePlatform._answer] en un fotograma posterior.
@@ -101,6 +106,31 @@ func add_character(character_id: int, account_id: int, role: StringName, realm: 
 		"progress": progress.duplicate(true) if not progress.is_empty() else default_progress(realm),
 		"pvp": totals, "name": display_name if not display_name.is_empty() else NameRules.bot_name(character_id),
 	}
+
+
+## Lo que trae la reclamación de [param character_id] en [code]account[/code] además del rol (plataforma.md P7b):
+## [code]muted_until_unix[/code] (0 sin silencio), las cuentas que ignora y los avisos sin ver
+## ([code]{sanction_id, text, at_unix}[/code]). Vale para las reclamaciones siguientes.
+func set_account_state(character_id: int, muted_until_unix: int, ignored_account_ids: Array = [],
+		warnings: Array = []) -> void:
+	var ignored: Array = []
+	for id: Variant in ignored_account_ids:
+		ignored.append(str(id))
+	var shown: Array = []
+	for warning: Dictionary in warnings:
+		shown.append({"sanction_id": str(warning.get("sanction_id", 1)), "text": String(warning.get("text", "")),
+				"at_unix": int(warning.get("at_unix", 0))})
+	_accounts[character_id] = {"muted_until_unix": muted_until_unix, "ignored_account_ids": ignored,
+			"warnings": shown}
+
+
+## Las entradas del lote [param kind] ([code]&"chat"[/code], [code]&"audit"[/code] o [code]&"war"[/code]) que siguen
+## en la cola, sin mandar todavía (las mandadas salen en [method sent]).
+func queued(kind: StringName) -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	for entry: Variant in _batch_queues.get(kind, []):
+		entries.append(entry)
+	return entries
 
 
 ## La sección [code]progress[/code] de la reclamación de un personaje recién creado (progresion.md §3.4 y §14.3):
@@ -240,7 +270,40 @@ func _default_answer(kind: StringName, request: PlatformClient.Request, body: Di
 			var version: int = _fake_fortress_versions.get(fortress_id, 0) + 1
 			_fake_fortress_versions[fortress_id] = version
 			return [200, {"version": version}]
+		PlatformEvent.KIND_IGNORE, PlatformEvent.KIND_REPORT, PlatformEvent.KIND_SANCTION:
+			return _moderation_answer(kind, request, body)
 	return [404, error_body("not_found", "No existe")]
+
+
+# Ignorados, reportes y sanciones por defecto: el nombre se resuelve entre los personajes dados de alta.
+func _moderation_answer(kind: StringName, request: PlatformClient.Request, body: Dictionary) -> Array:
+	var author_key: String = {PlatformEvent.KIND_IGNORE: "character_id", PlatformEvent.KIND_REPORT:
+			"reporter_character_id", PlatformEvent.KIND_SANCTION: "author_character_id"}[kind]
+	var author: Dictionary = _characters.get(PlatformJson.id_of(body.get(author_key)), {})
+	var wanted: String = NameRules.normalize_key(PlatformJson.text_in(body, "target_name"))
+	var target_id: int = 0
+	for character_id: int in _characters:
+		if NameRules.normalize_key(String(_characters[character_id]["name"])) == wanted:
+			target_id = character_id
+	if kind == PlatformEvent.KIND_IGNORE and request.method == HTTPClient.METHOD_DELETE:
+		return [204, null]
+	if target_id == 0:
+		return [404, error_body("not_found", "No hay nadie con ese nombre")]
+	var target: Dictionary = _characters[target_id]
+	if kind != PlatformEvent.KIND_SANCTION and not author.is_empty() \
+			and int(author["account_id"]) == int(target["account_id"]):
+		return [400, error_body("validation", "Datos no válidos", {"fields": {"target_name": "self"}})]
+	_moderation_ids += 1
+	match kind:
+		PlatformEvent.KIND_IGNORE:
+			return [200, {"ignored_account_id": str(target["account_id"]), "name": target["name"]}]
+		PlatformEvent.KIND_REPORT:
+			return [200, {"report_id": str(_moderation_ids)}]
+	var minutes: int = int(body.get("minutes", 0))
+	var ends_at: Variant = null
+	if minutes > 0:
+		ends_at = now_unix() + minutes * 60
+	return [200, {"sanction_id": str(_moderation_ids), "ends_at_unix": ends_at}]
 
 
 func _claim_answer(body: Dictionary) -> Array:
@@ -250,11 +313,13 @@ func _claim_answer(body: Dictionary) -> Array:
 	var data: Dictionary = _characters[character_id]
 	_lease_counter += 1
 	var sections: Dictionary = _sections.get(character_id, {})
+	var account: Dictionary = _accounts.get(character_id, {})
 	return [200, {
 		"lease_id": FAKE_LEASE_PREFIX + "%012d" % _lease_counter,
 		"instance_status": "live",
-		"account": {"account_id": str(data["account_id"]), "role": data["role"], "muted_until_unix": 0,
-				"ignored_account_ids": [], "warnings": []},
+		"account": {"account_id": str(data["account_id"]), "role": data["role"],
+				"muted_until_unix": int(account.get("muted_until_unix", 0)),
+				"ignored_account_ids": account.get("ignored_account_ids", []), "warnings": account.get("warnings", [])},
 		"character": {"character_id": str(character_id), "world_id": _config.world_id if _config != null else 1,
 				"realm": data["realm"], "name": data["name"]},
 		"progress": sections.get("progress", data["progress"]),

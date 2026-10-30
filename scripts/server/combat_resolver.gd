@@ -29,7 +29,8 @@ extends RefCounted
 ## [br]3. [b]Candidatos.[/b] Hostiles según [FactionRules], vivos ahora y sin el bit «muerto» en
 ## [code]view_tick[/code], sin protección de reaparición y sin zona segura de por medio (la víctima
 ## en la de su reino, o el atacante en la de su reino), en [code]s[/code]. Un objetivo ya golpeado
-## por este ataque no se vuelve a probar.
+## por este ataque no se vuelve a probar. Un GM invisible ([method Combatant.is_gm_invisible]) ni ataca ni es
+## candidato (docs/plataforma.md §9.1).
 ## [br]4. [b]Forma y línea de visión.[/b] [method HitShapes.sector_hits_capsule] con la muestra de
 ## la víctima y un rayo contra el mundo actual.
 ## [br]5. [b]Defensa[/b], por este orden: invulnerable en algún tick de
@@ -161,7 +162,8 @@ func resolve(s: int, combatants: Array[Combatant],
 	var rules: CombatRules = CombatCatalog.rules()
 	for attacker: Combatant in combatants:
 		var attacker_frame: Combatant.Frozen = attacker.frozen
-		if not attacker_frame.attack_active or attacker.is_dead():
+		# Un GM invisible no hace daño a nadie, tampoco a las puertas (docs/plataforma.md §9.1).
+		if not attacker_frame.attack_active or attacker.is_dead() or attacker.is_gm_invisible():
 			continue
 		# El golpe activo congelado: un ataque o el golpe sintetizado de una habilidad. Sin forma (una
 		# canalización, un disparo) no hay golpe cuerpo a cuerpo.
@@ -324,7 +326,7 @@ func get_history() -> StateHistory:
 # Candidato por reglas: hostil, vivo, sin protección y sin zona segura de por medio (un atacante con
 # ignores_safe_area no queda frenado por la de su propio reino).
 func _is_candidate(attacker: Combatant, victim: Combatant, s: int) -> bool:
-	if victim.is_dead() or victim.is_protected(s):
+	if victim.is_dead() or victim.is_protected(s) or victim.is_gm_invisible():
 		return false
 	if not is_hostile(attacker.get_realm(), victim.get_realm()):
 		return false

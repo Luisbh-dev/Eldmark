@@ -32,3 +32,22 @@ static func find_by_name(peers: Array[ServerPeer], name: String, realm: int) -> 
 		if peer.realm == realm and name_key_of(peer) == key:
 			return peer
 	return null
+
+
+## El jugador de [param peers] que se llama [param name], sea del reino que sea (sin distinguir mayúsculas ni
+## tildes); null si no está. Solo para lo que funciona también con enemigos (ignorar, reportar, la moderación,
+## docs/social.md sección 1); el chat y los grupos usan [method find_by_name].
+static func find_any_by_name(peers: Array[ServerPeer], name: String) -> ServerPeer:
+	var key: String = NameRules.normalize_key(name)
+	if key.is_empty():
+		return null
+	for peer: ServerPeer in peers:
+		if name_key_of(peer) == key:
+			return peer
+	return null
+
+
+## true si [param receiver] ignora la cuenta de [param sender] (docs/plataforma.md §9.3): no le llega lo que
+## [param sender] escribe, susurra o le invita. Sin plataforma nadie tiene cuenta y nadie ignora a nadie.
+static func ignores(receiver: ServerPeer, sender: ServerPeer) -> bool:
+	return receiver != sender and receiver.chat.ignores_account(sender.chat.account_id)

@@ -665,7 +665,8 @@ func test_console_commands() -> void:
 	assert_true(_server.console_command("teleport Bot-02 10 0.5 -4").contains("teletransportado"))
 	assert_vec_near(_server.get_registry().get_entity(respawn_id).get_position(),
 			Vector3(10.0, 0.5, -4.0), 1e-4)
-	assert_eq(_server.console_command("teleport Bot-02 1 2"), "Uso: teleport <jugador> <x> <y> <z>")
+	assert_eq(_server.console_command("teleport Bot-02 1 2"),
+			"Uso: teleport <jugador> <x> <y> <z> | teleport <jugador> <otro jugador>")
 	assert_eq(_server.console_command("teleport Bot-02 1e9 0 0"), "Destino fuera de rango")
 	assert_eq(_server.console_command("teleport Nadie 1 2 3"), "No hay ningún jugador «Nadie»")
 	# Resistencia infinita y arma.

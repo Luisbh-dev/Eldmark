@@ -2,9 +2,9 @@ extends TestCase
 ## Pruebas de las recompensas (docs/progresion.md §6.2 y §6.3; §15, P5c): méritos de una víctima persistente de
 ## otro reino con su apunte y su XP; matar a un falso o a un PNJ no da méritos; un PNJ con dos contribuyentes paga a
 ## los dos; dos capturas en 30 min pagan una (también tras salir y volver); los méritos de objetivo son los segundos
-## en el círculo activo; un personaje marcado por un comando de GM ([member NetEntity.gm_forced], lo que harán
-## [code]/gm teleport[/code] y [code]/gm visible[/code] en plataforma.md P7b) no cobra captura, méritos ni PNJ hasta
-## reaparecer, y después sí; lo que provoca un comando del fuerte ([code]fort_capture_speed[/code],
+## en el círculo activo; un personaje marcado por un comando de GM ([member NetEntity.gm_forced], lo que hacen
+## [code]/gm teleport[/code] y [code]/gm visible[/code], plataforma.md P7b) no cobra captura, méritos ni PNJ hasta
+## reaparecer, y después sí; un GM invisible en el círculo no cobra la captura (plataforma.md P7b); lo que provoca un comando del fuerte ([code]fort_capture_speed[/code],
 ## [code]fort_owner[/code] y [code]fort_kill_captain[/code]) no paga a nadie; con [code]--fake-players[/code] y
 ## plataforma, nada; y la subida de nivel manda LEVEL_UP solo al dueño y a su reino, pone el nivel en la entidad y es
 ## crítica. Sin plataforma, los efímeros cobran los PNJ en memoria y el PvP entre efímeros no da nada.
@@ -543,6 +543,34 @@ func test_a_gm_forced_character_collects_nothing_until_it_respawns() -> void:
 	assert_eq([_wallet(ana, GOLD), _xp(ana)], [2, 140], "y un PNJ")
 	_progress().on_capture(FORTRESS, VARDHEIM, PackedInt32Array([ana_id]), _server.get_tick())
 	assert_eq(_wallet(ana, GOLD), 2 + ProgressService.CAPTURE_GOLD, "y una captura")
+
+
+func test_an_invisible_gm_in_the_circle_collects_no_capture() -> void:
+	# plataforma.md §9.1 (P7b): un GM invisible no cuenta en el círculo ni cobra (§6.2).
+	if not await _start(true):
+		return
+	var circle: Vector3 = FortressFixture.circle_center()
+	var ana: ServerPeer = await _join(1, 141, VARDHEIM)
+	var gema: ServerPeer = await _join(2, 142, VARDHEIM)
+	var bruno: ServerPeer = await _join(3, 143, SOLMARCH)
+	if ana == null or ana.entity == null or gema.entity == null or bruno.entity == null:
+		return
+	_server.teleport(ana.entity.net_id, circle)
+	_server.teleport(gema.entity.net_id, circle + Vector3(1.0, 0.0, 0.0))
+	_server.teleport(bruno.entity.net_id, circle + Vector3(30.0, 0.0, 0.0))
+	_server.set_gm_invisible(gema.entity, true)
+	if not assert_true(await _capture(VARDHEIM, false), "Vardheim captura"):
+		return
+	assert_eq(_wallet(ana, GOLD), ProgressService.CAPTURE_GOLD, "Ana cobra la captura")
+	assert_true(_wallet(ana, MERITS) > 0, "y méritos de objetivo")
+	assert_eq([_wallet(gema, GOLD), _wallet(gema, MERITS), _xp(gema)], [0, 0, 0],
+			"la invisible no cobra la captura ni los méritos de objetivo")
+	var entry: ScoreKeeper.Entry = _server.get_scores().get_entry(gema.entity.net_id)
+	assert_true(entry == null or (entry.captures == 0 and entry.circle_ticks == 0), "ni suma la captura ni el círculo")
+	_progress().on_capture(FORTRESS, VARDHEIM, PackedInt32Array([gema.entity.net_id]), _server.get_tick())
+	assert_eq(_wallet(gema, GOLD), 0, "aunque llegara en la lista")
+	_kill(bruno.entity.net_id, gema.entity.net_id, {gema.entity.net_id: 1000})
+	assert_eq([_wallet(gema, MERITS), _xp(gema)], [0, 0], "ni una baja")
 
 
 func test_fort_commands_pay_nobody_and_a_real_captain_kill_does() -> void:

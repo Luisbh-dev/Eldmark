@@ -821,7 +821,7 @@ func _fire(shooter: Combatant, source: int, s: int, space: PhysicsDirectSpaceSta
 # autor del efecto como atacante, sin bloqueo ni crítico, con el más daño del autor. Puede matar o, si el
 # autor es un jugador de otro reino que sigue en la zona, derribar; no interrumpe ni impone controles.
 func _apply_pulse(target: Combatant, author_id: int, effect: StatusTicks, amount: int, s: int) -> void:
-	if not target.is_alive():
+	if not target.is_alive() or target.is_gm_invisible():
 		return
 	var author: Combatant = _combatants.get(author_id) if author_id > 0 else null
 	var rules: CombatRules = CombatCatalog.rules()
@@ -923,7 +923,10 @@ func _process_environment(s: int, list: Array[Combatant]) -> void:
 		if combatant.is_dead() or combatant.immortal:
 			continue
 		var character: PlayerCharacter = combatant.get_character()
-		if _in_lethal_volume(character, volumes):
+		# Un GM invisible no recibe daño (docs/plataforma.md §9.1): ni volúmenes letales ni caídas; el vacío sí, que
+		# solo devuelve el cuerpo al mundo.
+		var invisible: bool = combatant.is_gm_invisible()
+		if not invisible and _in_lethal_volume(character, volumes):
 			stats[&"lethal_volumes"] += 1
 			_die(combatant, s, _credited_killer(combatant, s), 0)
 			continue
@@ -933,7 +936,7 @@ func _process_environment(s: int, list: Array[Combatant]) -> void:
 			_die_in_the_void(combatant, s)
 			continue
 		var speed: float = character.last_landing_speed
-		if speed > rules.fall_damage_threshold:
+		if not invisible and speed > rules.fall_damage_threshold:
 			_apply_fall(combatant, s, roundi((speed - rules.fall_damage_threshold)
 					* float(rules.fall_damage_per_mps)))
 

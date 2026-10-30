@@ -41,6 +41,10 @@ var is_staff: bool = false
 ## [code]/gm teleport[/code], [code]/gm visible[/code] y los DEBUG_COMMAND 1, 2 y 4, plataforma.md P7b): mientras
 ## dura no entra en la lista de capturas ni cobra méritos ni PNJ. La reaparición lo quita (plataforma.md P6).
 var gm_forced: bool = false
+## Un GM en modo invisible ([code]/gm invisible[/code], docs/plataforma.md §9.1, P7b): no entra en el interés de
+## los demás, no hace ni recibe daño, no cuenta en el círculo ni en el marcador y no cobra recompensas. Dura hasta
+## [code]/gm visible[/code] o hasta que se va (no se guarda); la reaparición no lo quita.
+var gm_invisible: bool = false
 ## Combinación de [constant FLAG_ALWAYS_RELEVANT].
 var flags: int = 0
 ## Nodo de la entidad en el mundo del servidor: un [PlayerCharacter] si es un jugador.
