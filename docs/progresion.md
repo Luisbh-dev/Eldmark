@@ -1377,7 +1377,7 @@ func consumable_definition(index: int) -> ItemDefinition                 # Comba
 func all_ids() -> Array[StringName]; func wire_hash() -> int
 
 class_name InventoryState extends RefCounted
-enum Container { BAG = 0, EQUIPMENT = 1, BANK = 2 }
+enum ContainerId { BAG = 0, EQUIPMENT = 1, BANK = 2 }   # no «Container»: es una clase nativa de Godot (§19.7)
 enum EquipmentSlot { WEAPON_1 = 0, WEAPON_2 = 1, HEAD = 2, CHEST = 3, HANDS = 4, LEGS = 5, FEET = 6 }
 const BAG_SLOTS_DEFAULT: int = 30; const BAG_SLOTS_MAX: int = 120; const EQUIPMENT_SLOTS: int = 7
 const OPEN_EQUIPMENT_SLOTS: int = 2                                      # fase 5: solo las armas
@@ -1387,6 +1387,7 @@ func set_item(container: int, slot: int, item: ItemInstance) -> void     # null 
 func first_free(container: int) -> int; func find_uid(uid: int) -> Vector2i   # −1 / (−1, −1)
 func count_of(def_id: StringName) -> int                                 # bolsa y equipo
 func all_items() -> Array[ItemInstance]; func duplicate_state() -> InventoryState
+# P2 añade: slot_count, has_slot, free_count, occupied_slots, equals y OPEN_CONTAINERS (§19.7)
 
 class_name InventoryOps extends RefCounted
 enum Op { MOVE = 1, SPLIT = 2, DESTROY = 3 }
@@ -1404,8 +1405,12 @@ class Context:
 class Outcome:
 	var result: int; var changed: Array[Vector2i]; var events: Array[ItemEvent]
 	var weapons_changed: bool                     # tocó EQUIPMENT 0 o 1
+	var new_id: int                               # P2: el id de new_uid (SPLIT: la pila nueva; DESTROY: su op PLAYER)
+	var required_level: int; var bag_full: bool   # P2: «Necesitas nivel N»; camp_refill sin sitio
 static func apply(state: InventoryState, request: Request, context: Context) -> Outcome
-static func result_text(result: int) -> String                           # español (§4.2)
+static func result_text(result: int, required_level: int = 0, in_combat: bool = false) -> String  # español (§4.2)
+# P2 añade los cambios del servidor de §4.4 (§19.7): camp_refill(state, context), add_items(state, def_id,
+# count, reason, context) y remove_items(state, def_id, count, reason, prefer_uid = 0) -> Outcome
 
 class_name ItemEvent extends RefCounted
 var uid: int                                      # 0 = agregado (null en JSON)
@@ -2002,3 +2007,109 @@ prueba del paquete del servidor comprueba que los objetos van dentro, no que se 
 
 **Queda para después:** `ItemDatabase` en el `sim_hash` y los mensajes de inventario (P4); el inventario, el kit
 y las monedas (P2); el registro (P5a); `ValidateCreate` y S5 en Go (P7); los iconos (ART-12, §16).
+
+### 19.7 P2 · inventario puro (PRG-11, PRG-12)
+
+**Qué hay.** Lo de §14.1 P2, en `scripts/shared/progression/` salvo donde se dice:
+
+| Pieza | Contenido |
+|---|---|
+| `InventoryState` | Los enumerados y constantes de §14.2 (con `ContainerId`, abajo) y `OPEN_CONTAINERS` (`[0, 1]`); `get_item`, `set_item`, `first_free`, `find_uid`, `count_of`, `all_items`, `duplicate_state` y además `slot_count`, `has_slot`, `free_count`, `occupied_slots` (en el orden de `all_items`) y `equals`. `bag_slots` se acota a 1–120 y al cambiar conserva lo que cabe |
+| `InventoryOps` | `Request`, `Context`, `Outcome`, `apply` y `result_text` de §14.2, más `make_request`, `fits_slot` y los cambios del servidor de §4.4: `camp_refill`, `add_items` y `remove_items`. `Outcome` gana `new_id`, `required_level`, `bag_full` e `is_ok()` |
+| `ItemEvent` | Los campos de §14.2, `create`, `equals` y la entrada de `items` de una operación (§9.3): `to_dictionary` y `from_dictionary` |
+| `EconomyReason` | Los 26 motivos de §5.3, los rangos, `CODES` (nombre en minúsculas → código), `is_source`, `is_sink`, `is_internal`, `is_known`, `sign_matches` (§5.2), `gives_realm_points` (I9: 3–5), `name_of` y `ranges()` |
+| `Currency` | `Code`, `CAP` (1 000 000 000, escrito con `_`), `WALLET_SIZE` (3: índice = moneda), ids (`gold`, `merits`) y nombres en español; `codes`, `is_valid`, `id_of`, `code_of`, `cap_of`, `display_name` |
+| `CurrencyRules` | `can_apply` y `clamp_gain` de §14.2, sin sumar antes de comparar (un delta cerca de 2^63 no da la vuelta), y `replay(deltas, start = 0)`: el saldo que dejan los apuntes en orden, o −1 si alguno es 0 o se sale de 0–`CAP` en algún paso (la reconstrucción de §5.4) |
+| `StarterKit` | `grant` de §14.2, `template_for` (la plantilla que usa) y `plan` (dónde va cada objeto) |
+| `ActionMachine.set_weapons` | §4.1 tal cual, en `scripts/shared/combat/action_machine.gd` |
+| `ProgressionRulesExport` | `_currencies`, `_reasons` y `_containers` leen de `Currency`, `EconomyReason` e `InventoryState`; fuera las constantes `CURRENCIES`, `REASON_RANGES`, `REASON_CODES` y `CONTAINERS`. `OP_KINDS` se queda hasta `EconomyOp` (P5a). El archivo sale igual byte a byte (5066 B; `-- --check` sale con 0) |
+
+**Desviaciones y decisiones de la implementación:**
+
+- **`enum ContainerId`, no `Container`.** Godot no deja compilar `InventoryState` con un miembro que se llama como
+  una clase nativa («The member "Container" shadows a native class»). §14.2 ya lo dice. Los valores son los mismos.
+- **El orden de §4.2, con dos precisiones.** La cantidad frente a la pila (SPLIT de `count` o más, DESTROY de más de
+  las que hay) es INVALID, pero se mira **después de STALE**: sin el objeto que el cliente esperaba no hay pila contra
+  la que medirla. Y el id de SPLIT y DESTROY se pide **al final**, cuando todo lo demás vale (tras LOCKED): una
+  petición rechazada nunca gasta un id; a cambio, con NO_ROOM o LOCKED y sin ids a la vez sale NO_ROOM o LOCKED.
+  El resto, en el orden de la tabla; WEAPON_REQUIRED va antes que LOCKED, así que destruir el arma activa da
+  WEAPON_REQUIRED.
+- **DESTROY toma su id en `apply`** (el `op_id` de su operación PLAYER, en `Outcome.new_id`), igual que SPLIT el
+  `uid` de la pila nueva: así `PlayerProgress.apply_request` no tiene que mirar los ids antes de validar. RATE,
+  «sin personaje o fuera del mundo» y el tope de 256 operaciones sin confirmar no salen de `apply` (§4.2: los mira
+  el servidor).
+- **`Outcome.changed` en un rechazo** lleva las ranuras que existen de las que tocaba la petición: las que el delta
+  manda con su contenido real (§4.6). Un rechazo nunca cambia nada ni da eventos.
+- **CANNOT_EQUIP mira lo que entra** en una ranura del equipo desde otra (también lo que vuelve en un intercambio:
+  desequipar sobre una poción la metería en la ranura del arma); lo que se queda donde estaba no se vuelve a mirar.
+  El nivel va en `Outcome.required_level` y `result_text(result, required_level, in_combat)` da «Necesitas nivel N»
+  y el texto de combate; quien llama sabe si está en combate.
+- **Nunca se cambia una instancia que ya está en el estado**: lo que cambia (cantidad, ligado) es una copia. El
+  cliente (P6) puede rehacer su vista sobre una copia del confirmado sin tocarlo. ON_EQUIP liga al entrar en el
+  equipo, también en el kit.
+- **Juntar exige el mismo ligado** (§4.2); `camp_refill` y `add_items` suman a las pilas con el ligado que tendrían
+  las nuevas (ligadas si la regla es ON_PICKUP).
+- **Cambios del servidor** (no estaban en §14.2; la prueba de propiedades necesita CAMP_REFILL y los de P5a son
+  los mismos cálculos): `camp_refill` es la regla de §4.4 tal cual (como `camp_refill ≤ max_stack`, si queda alguna
+  pila la de la ranura más baja tiene hueco para lo que falta: la pila nueva solo hace falta sin ninguna;
+  `bag_full` si no cabe y nada si falta el id); `add_items` llena las pilas con hueco y después pilas nuevas, entera o
+  nada (NO_ROOM, o NOT_NOW si falta un id); `remove_items` quita de `prefer_uid`, después de la bolsa por ranura y
+  por último del equipo, entera o nada (STALE si no hay tantas), y **no mira I10**: quitar un arma equipada (GM,
+  reversión) es cosa de quien llama. Sus eventos llevan siempre el `uid`: agregarlos (`uid` null, §5.2) es del diario
+  de P5a.
+- **Kit**: la regla 3 de §2.5 no pide `starter` (dice «cada objeto con `camp_refill > 0`»); una plantilla que existe
+  pero no se puede elegir cuenta como desconocida (la primera elegible por id, hoy `marksman`, con aviso); un arma
+  sin objeto se salta y la siguiente ocupa su ranura, para que WEAPON_1 no quede vacía. Con el inventario no vacío,
+  sin sitio en la bolsa o sin plantillas registra el error y no da nada; sin un id no da nada (los tomados se
+  pierden). El orden de los uid es el de la colocación: con el escudero y ids desde 1025 sale el ejemplo de §3.4.
+- **`set_weapons`** no limpia combo, búfer ni pulsación («sin reiniciar nada más»): solo hay acción NONE, el combo se
+  acota al arma en `_try_start_light` y el dueño se corrige con el LOADOUT. Con acción, `push_error` y nada.
+- **Adelantos para P5a**: `ItemEvent.to_dictionary`/`from_dictionary` (la valida sin mirar si la definición
+  existe: un evento antiguo puede nombrar una que ya no está), `EconomyReason.gives_realm_points`,
+  `Currency.WALLET_SIZE` y `code_of`.
+
+**Para los paquetes siguientes.**
+
+- **P4:** INVENTORY_REQUEST con `InventoryOps.make_request` (destino `NO_SLOT` en DESTROY); los contenedores, de
+  `InventoryState.ContainerId`.
+- **P5a:** `PlayerProgress.apply_request` rellena el `Context` (ranura activa del `CombatState`,
+  `can_touch_equipment`, `drinking`, `new_uid = ids.next_for_client`) tras mirar el tope de DESTROY, y usa
+  `Outcome.new_id` como `op_id` de la PLAYER (con un evento PLAYER_DESTROY ya hecho); `gain_items`/`lose_items` y
+  `add_items`/`remove_items` sobre los de `InventoryOps`, agregando sus eventos; el kit con
+  `StarterKit.grant(…, ids.next_for_server)`; `EconomyOp.from_dictionary` con `ItemEvent.from_dictionary`;
+  `EconomyOp.Kind` igual a `ProgressionRulesExport.OP_KINDS`.
+- **P5b:** `camp_step` con `InventoryOps.camp_refill` (`bag_full` → el NOTICE, una vez por entrada); CONSUME con
+  `remove_items(def, 1, CONSUME)`; `weapons_changed` → `set_weapons` con `stash_ready`; cargas `min(15, count_of)`.
+- **P6:** `ClientInventory` con `apply` y `result_text(result, required_level, in_combat)`; ids provisionales
+  negativos en `new_uid` (cualquiera menos 0 vale).
+
+**Pruebas.** En Godot: `test_inventory_ops` (20: `InventoryState`; INVALID, STALE, NOT_NOW, CANNOT_EQUIP,
+WEAPON_REQUIRED, NO_ROOM y LOCKED con su orden y sin cambiar nada; mover, juntar en parte y entero, los tres
+intercambios, dividir, destruir con el único evento, el ligado al equipar, lo que lleva un rechazo, los textos, los
+cambios del servidor, `ItemEvent` en JSON con 13 entradas rotas y el kit de las dos plantillas, con sus fallos);
+`test_inventory_properties` (3: 20 semillas × 1000 operaciones con las invariantes de §15, la larga tras el filtro y la
+tabla de la pila dividida); `test_currency_rules` (6: monedas, topes y negativos, ganancias recortadas, dos
+operaciones del mismo tick y el ejemplo de §5.2, la reconstrucción con 20 libros al azar, rangos y signos de los
+motivos); `test_action_machine_weapons` (6). Comprobadas con la mutación que deberían pillar: SPLIT que reutiliza el
+uid, CAMP_REFILL por pila, sin WEAPON_REQUIRED, juntar sin tope y DESTROY sin evento (las propiedades); armaduras en
+2–6 (las propiedades, tras mandar a menudo cada objeto a su ranura: al azar casi nunca llegaba); juntar sin mirar el
+ligado, CANNOT_EQUIP tras WEAPON_REQUIRED, STALE tras la cantidad, el id pedido antes de validar y sin ligar al
+equipar (la tabla). Siguen correctas `test_progression_rules_export` (12), `test_architecture` (19),
+`test_export_config` (10), `test_item_database` y `test_item_instance` (19) y `test_weapon_swap` (7); en Go,
+`internal/progress` e `internal/gamedata` (el archivo no cambia y Go no se toca). La suite entera de Godot no se ha
+pasado.
+
+**Medido** (esta máquina, 4 núcleos, Godot 4.7.2 headless):
+
+| Qué | Resultado |
+|---|---|
+| `test_inventory_properties` | 20 × 1000 en 1,1–1,4 s (por semilla, unas 190 peticiones del cliente aplicadas y 430 rechazadas, con los siete códigos; el resto, SWAP, CAMP_REFILL, CONSUME y GM); la larga, 20 × 5000 en 6,0 s |
+| `test_inventory_ops` | 20 pruebas; la más lenta, 12 ms (la primera, con la carga de la base) |
+| `test_currency_rules`, `test_action_machine_weapons` | 6 y 6 pruebas; la más lenta, 49 ms (los 20 libros al azar) |
+| Cada archivo | unos 10–12 s con el arranque del ejecutor |
+
+**Sin comprobar:** todo esto en la zona y en el cliente (P5a, P5b y P6).
+
+**Queda para después:** los mensajes (P4); el diario, la agregación, los ids por tramos y el registro (P5a); el
+inventario en la zona, CAMP_REFILL y CONSUME de verdad y `set_weapons` tras cada cambio (P5b); el cliente (P6); la
+concurrencia de los saldos en la BD (P7).
