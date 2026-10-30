@@ -2113,3 +2113,28 @@ pasado.
 **Queda para después:** los mensajes (P4); el diario, la agregación, los ids por tramos y el registro (P5a); el
 inventario en la zona, CAMP_REFILL y CONSUME de verdad y `set_weapons` tras cada cambio (P5b); el cliente (P6); la
 concurrencia de los saldos en la BD (P7).
+
+### 19.8 Lo que deja plataforma.md P4
+
+plataforma.md P4 (su §19.8) hace el lado de la zona del billete y sube el protocolo a 7, con lo que necesitan los
+paquetes de aquí:
+
+- **P4 (protocolo):** `PROTOCOL_VERSION` ya es 7 con la línea entera de plataforma.md §5.4 (que nombra también lo de
+  aquí: +9 B del SPAWN de PLAYER, 0x50–0x55, LEVEL_UP, 40–43 e `ItemDatabase` en el `sim_hash`); P4 añade su código
+  sin subirla. El bit 3 del `flags` de la cabecera del ENTITY_SPAWN ya es del personal del juego
+  (`NetMessages.SPAWN_FLAG_STAFF`) y red.md tiene la leyenda «v7» en §5.2: P4 escribe sus filas con la marca.
+  `progression_rules.json` está reexportado con `protocol_version` 7.
+- **P5a:** la reclamación llega como `ClaimedCharacter` con `progress: Dictionary` tal cual (tras la ida y vuelta
+  por JSON: los números, en `float`) en `AuthOutcome.claimed`. `ZoneServer._apply_auth_outcome` deja el paso (3),
+  entre el cupo y el WELCOME, para `ProgressService.prepare(peer_id, claimed)`, y `ZoneServer._leave_auth_states`
+  (la baja en `LOADING`) el de `cancel_prepared(peer_id)`. `ZonePlatform.RECORD_FORMAT` (1) existe. En
+  `FakeZonePlatform`, la reclamación sale de `_claim_answer` (hoy devuelve el `progress` de `add_character`) y lo
+  aplicado se guarda en `_remember_save` (hoy solo la sección `pvp`): ahí entran la parte `progress` y
+  `claim_progress`. El primer bloque de ids sale como evento `id_block` en el primer `take_events()` tras
+  `startup_finished`, y `request_id_block()` pide los siguientes.
+- **P5d:** `ZonePlatform.request(kind, method, path, body, priority, context)` pone `zone_instance_id`; las
+  respuestas salen como eventos `progress_op` y `progress_ledger` (en `ZoneServer._poll_platform`, hoy sin
+  consumidor). En el falso, por defecto 404, y `script_next(kind, status, body, delay_s)` las guioniza.
+- **El reloj:** `ZonePlatform.now_unix()` (en el falso, `fake_now_unix` si se pone).
+
+**Sin comprobar:** con la plataforma de Go de verdad (plataforma.md P10).

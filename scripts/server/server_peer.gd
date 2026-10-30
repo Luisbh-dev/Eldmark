@@ -6,9 +6,9 @@ extends RefCounted
 ## de ritmo, el contador de avisos (con la expulsión a los 50 en 600 ticks), el conjunto de
 ## entidades relevantes del peer y el acumulador de prioridad del [SnapshotBuilder].
 
-## Fase de la sesión: autenticándose, cargando la zona (hasta CLIENT_READY), dentro del mundo
-## o saliendo.
-enum State { AUTHENTICATING, LOADING, IN_WORLD, LEAVING }
+## Fase de la sesión: autenticándose (hasta el HELLO), verificando el billete (esperando la reclamación de la
+## plataforma, docs/plataforma.md §5.2), cargando la zona (hasta CLIENT_READY), dentro del mundo o saliendo.
+enum State { AUTHENTICATING, VERIFYING, LOADING, IN_WORLD, LEAVING }
 
 ## Mensajes no fiables por tick que admite el limitador (120 por segundo) y ráfaga máxima.
 const UNRELIABLE_RATE_PER_TICK: float = 2.0
@@ -54,6 +54,16 @@ var rtt_peak_ticks: int = 0
 var rtt_floor_ticks: int = 0
 ## Tick en el que conectó y empezó a autenticarse (para el plazo del HELLO).
 var connected_tick: int = 0
+## Instante (ms de [code]Time.get_ticks_msec()[/code]) en que conectó: el plazo de 7 s de VERIFYING va en tiempo
+## real, porque uno en ticks se descuadraba con el servidor atrasado (docs/plataforma.md §5.2).
+var connected_at_msec: int = 0
+## El [code]character_id[/code] del HELLO (0 sin billete).
+var character_id: int = 0
+## Con la plataforma, lo que trajo la reclamación (desde el WELCOME; null sin plataforma o antes).
+var claimed: ClaimedCharacter = null
+## Sale sin la salida en combate (GUE-41): la baja sin guardado de docs/plataforma.md §7.2 (un
+## [code]revoked[/code] [code]lease_lost[/code]) saca el cuerpo en el acto.
+var drop_body_at_once: bool = false
 ## Tick en el que empezó la carga de la zona (para el límite de CLIENT_READY).
 var loading_since_tick: int = 0
 var limiter_unreliable: RateLimiter

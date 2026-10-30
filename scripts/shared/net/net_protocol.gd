@@ -19,7 +19,11 @@ extends RefCounted
 ## los comandos de depuración 13 a 16, el ENTITY_SPAWN y los motivos de ENTITY_DESPAWN de los proyectiles,
 ## los ENTITY_EVENT 7 a 11, los bits 5 y 6 de un HIT, el bit 3 de los flags del registro (ranura 2 activa)
 ## y el bit 3 de [code]status[/code] (derribado).
-const PROTOCOL_VERSION: int = 6
+## [br]- 7: la fase 5 (docs/plataforma.md y docs/progresion.md): REJECT 10–12, billete de 52 B, [code]auth_timeout[/code]
+## de 10 s, bit 3 del [code]flags[/code] de la cabecera del ENTITY_SPAWN (personal del juego), +9 B del SPAWN de
+## PLAYER (nivel y apariencia), mensajes 0x50–0x55, ENTITY_EVENT 16 LEVEL_UP, DEBUG_COMMAND 40–43 e
+## [code]ItemDatabase[/code] en el [code]sim_hash[/code].
+const PROTOCOL_VERSION: int = 7
 ## Primeros 4 bytes de los mensajes de autenticación (los bytes «ELDM»).
 const MAGIC: int = 0x4D444C45
 const DEFAULT_PORT: int = 24600
@@ -168,8 +172,11 @@ const DEBUG_COMMAND_IDS: Dictionary[StringName, int] = {
 enum Realm { NONE = 0, VARDHEIM = 1, SOLMARCH = 2, ASKARRA = 3 }
 enum EntityKind { NONE = 0, PLAYER = 1, NPC = 2, PROJECTILE = 3, STRUCTURE = 4 }
 ## Resultado de la autenticación: 0 es WELCOME y el resto son motivos de REJECT.
+## Desde el protocolo 7 (docs/plataforma.md §5.4): BUSY, el personaje sigue en el mundo (en otra zona o saliendo
+## en combate); UNAVAILABLE, la plataforma no responde, la zona está cercada o no se pudo cargar el personaje; y
+## BANNED, la cuenta está suspendida, expulsada o con el borrado pedido (el texto lo compone la plataforma).
 enum Result { OK = 0, VERSION = 1, SIM_HASH = 2, REALM = 3, FULL = 4, TICKET = 5, MALFORMED = 6,
-		TOO_MANY_CONNECTIONS = 7, NAME = 8, IMBALANCE = 9 }
+		TOO_MANY_CONNECTIONS = 7, NAME = 8, IMBALANCE = 9, BUSY = 10, UNAVAILABLE = 11, BANNED = 12 }
 ## Motivo de un ENTITY_DESPAWN. IMPACT y EXPIRED son de los proyectiles (protocolo 6): la flecha ha dado
 ## en algo en [code]despawn_tick[/code], o ha caducado (o la ha retirado el servidor: tope de flechas, el
 ## tirador se ha ido).
@@ -304,4 +311,12 @@ static func result_text(result: int) -> String:
 		Result.IMBALANCE:
 			return "Ese reino tiene demasiados jugadores en esta zona: elige otro para " \
 					+ "equilibrar la batalla"
+		Result.BUSY:
+			return "Tu personaje sigue en el mundo: espera unos segundos"
+		Result.UNAVAILABLE:
+			return "El servicio de cuentas no responde: inténtalo más tarde"
+		Result.BANNED:
+			# El texto de verdad lo compone la plataforma (el message del 403 account_blocked); este solo sale
+			# si falta.
+			return "Tu cuenta está suspendida"
 	return "Conexión rechazada"

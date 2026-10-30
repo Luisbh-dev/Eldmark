@@ -11,7 +11,11 @@ extends Node
 ## [codeblock]
 ## poll             recibir: autenticación, READY, LEAVE, INPUT_BATCH -> InputQueue.push(),
 ##                  RESPAWN_REQUEST, DEBUG_COMMAND, LOADOUT_SELECT (la plantilla pendiente), el chat y
-##                  los grupos (SocialService); y las líneas de la consola
+##                  los grupos (SocialService); y las líneas de la consola. Con la plataforma
+##                  (docs/plataforma.md §14.3), después: ZonePlatform.take_events() repartido por kind en
+##                  el orden de llegada (claim al AuthProvider, heartbeat a la zona; instance_closed al
+##                  final), AuthProvider.take_completed() (cada 200: reino, cupo y WELCOME) y los
+##                  VERIFYING vencidos (7 s en tiempo real desde la conexión, REJECT UNAVAILABLE)
 ## tick += 1        s es el tick que se simula
 ## bajas            desconexión, LEAVE o expulsión -> SocialService.on_peer_left (sale de su grupo, el
 ##                  mando pasa al más antiguo, se cancelan sus invitaciones), DESPAWN (motivo 1) y el id
@@ -59,6 +63,15 @@ extends Node
 ## [code]send[/code] hasta que llega [signal NetTransport.peer_connected]. El jugador aparece al
 ## final del tick en el que llega CLIENT_READY.
 ## [br][br]
+## [b]Con la plataforma[/b] (docs/plataforma.md §5.2, [TicketAuthProvider] y [ZonePlatform]): un HELLO con
+## billete válido deja al peer en [constant ServerPeer.State.VERIFYING] (cuenta para el cupo) mientras la
+## plataforma lo reclama; con el 200, la zona mira que admite su reino (REALM) y que cabe (FULL) y le manda el
+## WELCOME con el reino y el nombre del personaje, nunca los del HELLO. Una baja en VERIFYING cancela la espera
+## (si la reclamación llega después, se libera); una en LOADING libera el arrendamiento sin guardar. Hasta
+## [code]CharacterSaver[/code] (P5), un jugador que sale del mundo libera su arrendamiento cuando su cuerpo se
+## va. El latido trae los [code]revoked[/code], que expulsan con su texto (uno con otro lease_id no expulsa a
+## nadie).
+## [br][br]
 ## [b]Seguridad[/b] (sección 12): limitadores por peer, avisos con expulsión a los 50 en 600 ticks
 ## (NOTICE de expulsión y corte), tope de conexiones por IP, tipos de mensaje inesperados según el
 ## estado de la sesión y comandos de depuración solo con [code]--debug-commands[/code].
@@ -96,6 +109,9 @@ signal player_left(peer_id: int, net_id: int)
 ## La cuenta atrás de un cierre pedido por la consola ([code]shutdown <s>[/code]) ha llegado a 0:
 ## quien lleva el proceso ([ServerMain]) debe cerrar el servidor.
 signal shutdown_requested(reason: String)
+## La plataforma ha cerrado esta instancia ([code]instance_lost[/code], [code]instance_replaced[/code] o
+## [code]instance_stopped[/code], docs/plataforma.md §6.1): lo atiende [ServerMain].
+signal instance_closed(code: String)
 
 ## Escena del personaje. En el servidor se le libera el nodo [code]Visual[/code].
 const PLAYER_SCENE: PackedScene = preload("res://scenes/characters/player_character.tscn")
@@ -120,7 +136,7 @@ const KICK_COOLDOWN_TICKS: int = 1800
 const RTT_SLACK_TICKS: int = 3
 ## Motivo del aviso por cada paquete que el transporte descarta por no ser del protocolo.
 const DISCARDED_REASON: String = "paquete ajeno al protocolo"
-## Ticks que un peer puede estar conectado sin enviar el HELLO (1,5 s). Mucho menos que los 5 s de
+## Ticks que un peer puede estar conectado sin enviar el HELLO (1,5 s). Mucho menos que los 10 s de
 ## la autenticación de [SceneMultiplayer]: una conexión ociosa ocupa una de las plazas de ENet.
 const HELLO_TIMEOUT_TICKS: int = 90
 ## Motivo con el que el informe cuenta (en [code]rejects[/code]) las conexiones cortadas por no
@@ -128,13 +144,21 @@ const HELLO_TIMEOUT_TICKS: int = 90
 const HELLO_TIMEOUT_REASON: String = "sin HELLO a tiempo"
 ## Cada cuántos ticks se comprueba el plazo del HELLO.
 const HELLO_CHECK_TICKS: int = 10
+## Plazo de un peer en VERIFYING desde que conectó (ms, en tiempo real): pasado, REJECT UNAVAILABLE. Menos que el
+## [constant NetTransport.AUTH_TIMEOUT_SECONDS] de 10 s, así que el REJECT siempre llega (docs/plataforma.md §5.2).
+const VERIFY_TIMEOUT_MS: int = 7000
+## Motivo con el que se registra el plazo de VERIFYING vencido.
+const VERIFY_TIMEOUT_REASON: String = "la plataforma no ha contestado a tiempo"
 ## Ticks que se espera, tras [method stop], a que los peers se vayan antes de cerrar el transporte.
 const STOP_DRAIN_TICKS: int = 30
 ## Secciones del tick que aparecen en la línea de métricas (las mismas que mide el bucle).
-const LOGGED_SECTIONS: Array[StringName] = [&"net", &"npc_brains", &"sim", &"combat", &"combat_resolve",
+const LOGGED_SECTIONS: Array[StringName] = [&"net", &"platform", &"npc_brains", &"sim", &"combat", &"combat_resolve",
 		&"combat_projectiles", &"combat_events", &"war", &"npc", &"social", &"history", &"snapshot", &"flush"]
 ## Secciones de [ServerMetrics] de los PNJ: los cerebros (paso 0) y el sistema de generadores.
 const SECTION_NPC_BRAINS: StringName = &"npc_brains"
+## Sección de las métricas con el reparto de los eventos de la plataforma y los finales de las reclamaciones (dentro
+## de «net»; docs/plataforma.md §16).
+const SECTION_PLATFORM: StringName = &"platform"
 const SECTION_NPC: StringName = &"npc"
 ## Sección de [ServerMetrics] del paso de las fortalezas (4b del tick).
 const SECTION_WAR: StringName = &"war"
@@ -201,6 +225,8 @@ var loading_timeout_ticks: int = LOADING_TIMEOUT_TICKS
 ## Ticks que un peer puede estar conectado sin enviar el HELLO antes de que se le corte
 ## ([constant HELLO_TIMEOUT_TICKS] por defecto; las pruebas lo cambian).
 var hello_timeout_ticks: int = HELLO_TIMEOUT_TICKS
+## Plazo de VERIFYING en ms ([constant VERIFY_TIMEOUT_MS] por defecto; las pruebas lo cambian).
+var verify_timeout_ms: int = VERIFY_TIMEOUT_MS
 ## Ticks de enfriamiento tras una expulsión ([constant KICK_COOLDOWN_TICKS] por defecto; las pruebas
 ## lo cambian).
 var kick_cooldown_ticks: int = KICK_COOLDOWN_TICKS
@@ -222,6 +248,12 @@ var _config: ServerConfig
 var _world: Node3D
 var _transport: NetTransport
 var _auth: ServerAuth
+var _auth_provider: AuthProvider = null
+## La plataforma (null sin [code]--platform[/code]: personajes efímeros, docs/progresion.md §9.4).
+var _platform: ZonePlatform = null
+## Arrendamientos de los cuerpos en el mundo (net_id -> reclamación): hasta CharacterSaver (P5) se liberan sin
+## guardar cuando el cuerpo se va (también tras la salida en combate).
+var _claims_by_net: Dictionary[int, ClaimedCharacter] = {}
 var _sim_hash: int = 0
 var _tick: int = 0
 var _drain_ticks: int = 0
@@ -510,10 +542,14 @@ func _exit_tree() -> void:
 ## 4 de más permiten contestar «servidor lleno» con un REJECT). Si ya escucha, lo usa tal cual.
 ## [br]- [param transport] puede ser null: el servidor corre sin red, solo con jugadores falsos
 ## ([method add_fake_player]), que es lo que usan las pruebas.
-## [br]- [param auth_provider] decide la identidad de los clientes ([DevAuthProvider] en la fase 2).
+## [br]- [param auth_provider] decide la identidad de los clientes ([DevAuthProvider] sin plataforma,
+## [TicketAuthProvider] con ella).
+## [br]- [param platform] es la plataforma ya arrancada ([signal ZonePlatform.startup_finished]); null sin
+## [code]--platform[/code]. Sus eventos se reparten en el paso «poll» de cada tick (las fortalezas que cargó
+## las aplica P6 antes de abrir el puerto).
 ## Devuelve el error de [method NetTransport.host] si no se puede abrir el puerto.
 func start(config: ServerConfig, world: Node3D, transport: NetTransport,
-		auth_provider: AuthProvider) -> Error:
+		auth_provider: AuthProvider, platform: ZonePlatform = null) -> Error:
 	if _run_state != _RunState.IDLE:
 		return ERR_ALREADY_IN_USE
 	if config == null or world == null or not is_inside_tree() or not world.is_inside_tree():
@@ -521,6 +557,10 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_config = config
 	_world = world
 	_transport = transport
+	_auth_provider = auth_provider
+	_platform = platform
+	if _platform != null:
+		_platform.player_count_source = get_player_count
 	_players_root = Node3D.new()
 	_players_root.name = "Players"
 	add_child(_players_root)
@@ -590,6 +630,7 @@ func stop(notice_text: String = "") -> void:
 			var peer: ServerPeer = _peers[peer_id]
 			if peer.state == ServerPeer.State.LEAVING:
 				continue
+			_leave_auth_states(peer)
 			_transport.send(peer_id, NetProtocol.CH_RELIABLE, bytes)
 			_transport.disconnect_after_flush(peer_id)
 			peer.state = ServerPeer.State.LEAVING
@@ -639,15 +680,17 @@ func get_peer_ids() -> PackedInt32Array:
 	return ids
 
 
-## Jugadores que cuentan para el cupo: los peers aceptados (cargando la zona o ya dentro) más los
-## jugadores falsos. Los que se están autenticando o se van (también los falsos con la baja pedida, que
+## Jugadores que cuentan para el cupo: los peers que verifican su billete con la plataforma (docs/plataforma.md
+## §5.2: varias entradas a la vez no pasan de max_players), los aceptados (cargando la zona o ya dentro) y los
+## jugadores falsos. Los que aún no han mandado el HELLO o se van (también los falsos con la baja pedida, que
 ## desaparecen al empezar el siguiente tick) no cuentan. Los falsos de relleno sí cuentan aquí, pero ceden su
 ## plaza a las personas (ver [method set_filler_keeper]): mientras una persona carga la zona en la plaza que le ha
 ## apartado uno, cuentan los dos (uno de más), y el falso se va cuando ella entra en el mundo.
 func get_player_count() -> int:
 	var count: int = _fakes.size() - _fake_leaving.size()
 	for peer: ServerPeer in _peers.values():
-		if peer.state == ServerPeer.State.LOADING or peer.state == ServerPeer.State.IN_WORLD:
+		if peer.state == ServerPeer.State.VERIFYING or peer.state == ServerPeer.State.LOADING \
+				or peer.state == ServerPeer.State.IN_WORLD:
 			count += 1
 	return count
 
@@ -1103,6 +1146,9 @@ func _physics_process(delta: float) -> void:
 		_grant_stall_credit()
 		_transport.poll(_tick)
 	_run_console_lines()
+	_metrics.begin_section(SECTION_PLATFORM)
+	_poll_platform()
+	_metrics.end_section(SECTION_PLATFORM)
 	_metrics.end_section(&"net")
 
 	_tick += 1
@@ -1335,6 +1381,10 @@ func _process_arrivals(s: int) -> void:
 		if entity == null:
 			_kick(peer, "no queda sitio en la zona", false)
 			continue
+		if peer.claimed != null:
+			# Desde aquí el arrendamiento es del cuerpo: se libera cuando se va (P5: con su guardado final).
+			entity.is_staff = peer.claimed.is_staff()
+			_claims_by_net[entity.net_id] = peer.claimed
 		peer.entity = entity
 		peer.input_queue = _queues[entity.net_id]
 		peer.state = ServerPeer.State.IN_WORLD
@@ -1488,7 +1538,7 @@ func _process_departures(s: int) -> void:
 		var entity: NetEntity = peer.entity
 		# Fuera de la lista antes de nada: lo que salga de su baja (la muerte de un derribado) ya no es para él.
 		_world_peers.erase(peer)
-		var lingers: bool = _should_linger(entity, s)
+		var lingers: bool = not peer.drop_body_at_once and _should_linger(entity, s)
 		if lingers:
 			_start_lingering(entity, s)
 		else:
@@ -1549,6 +1599,7 @@ func _remove_player(entity: NetEntity, s: int, reason: int, bleed: bool = true) 
 	if record != null:
 		record.close(s)
 		_player_by_net.erase(net_id)
+	_release_claim_of(net_id)
 	_queues.erase(net_id)
 	_fakes.erase(net_id)
 	_npcs.erase(net_id)
@@ -1570,6 +1621,8 @@ func _remove_player(entity: NetEntity, s: int, reason: int, bleed: bool = true) 
 
 # Libera a todos los jugadores (cierre del servidor), sin enviar DESPAWN.
 func _clear_players() -> void:
+	for net_id: int in _claims_by_net.keys():
+		_release_claim_of(net_id)
 	for entity: NetEntity in _registry.get_sorted().duplicate():
 		var character: PlayerCharacter = entity.get_character()
 		if character != null:
@@ -2932,6 +2985,7 @@ func _on_peer_authenticating(peer_id: int) -> void:
 	if remote_address_override.is_valid():
 		peer.remote_address = str(remote_address_override.call(peer_id, peer.remote_address))
 	peer.connected_tick = _tick
+	peer.connected_at_msec = Time.get_ticks_msec()
 	_peers[peer_id] = peer
 	# Quien ha sido expulsado hace poco no vuelve a entrar en un RTT con los avisos a 0 y los cubos
 	# llenos: su IP recibe un REJECT nada más conectar (se reutiliza TOO_MANY_CONNECTIONS para no
@@ -2947,7 +3001,8 @@ func _on_peer_authenticating(peer_id: int) -> void:
 		_reject(peer, NetProtocol.Result.TOO_MANY_CONNECTIONS)
 
 
-# HELLO: se valida y se contesta WELCOME (y complete_auth) o REJECT (y corte ordenado).
+# HELLO: se valida y se contesta WELCOME (y complete_auth) o REJECT (y corte ordenado). Con billete, el peer
+# queda en VERIFYING hasta que la plataforma conteste a la reclamación (_apply_auth_outcome).
 func _on_auth_received(peer_id: int, bytes: PackedByteArray) -> void:
 	var peer: ServerPeer = _peers.get(peer_id)
 	if peer == null or _run_state != _RunState.RUNNING or peer.state == ServerPeer.State.LEAVING:
@@ -2958,31 +3013,189 @@ func _on_auth_received(peer_id: int, bytes: PackedByteArray) -> void:
 	var hello: NetMessages.Hello = NetMessages.Hello.decode(bytes)
 	var result: int = NetProtocol.Result.MALFORMED
 	if hello != null:
-		if _is_cooling_down(_cooldown_key_for_name(peer.remote_address, hello.display_name)):
+		peer.character_id = hello.character_id if _auth.uses_tickets() else 0
+		if _is_cooling_down(_cooldown_key_for_identity(peer.remote_address, hello.display_name,
+				peer.character_id)):
 			_reject(peer, NetProtocol.Result.TOO_MANY_CONNECTIONS)
 			return
-		result = _auth.validate(hello, peer.remote_address, _occupied_seats(),
+		result = _auth.validate(peer_id, hello, peer.remote_address, _occupied_seats(),
 				_connections_from(peer), _filler_seats())
-		if result == NetProtocol.Result.OK and not _make_room_for(peer, hello):
+		if result == NetProtocol.Result.OK and not _make_room_for(peer, hello.realm, hello.display_name,
+				_occupied_seats()):
 			result = NetProtocol.Result.FULL
-	if result != NetProtocol.Result.OK:
-		_reject(peer, result)
+	if result == AuthProvider.PENDING:
+		peer.state = ServerPeer.State.VERIFYING
 		return
+	if result != NetProtocol.Result.OK:
+		var text: String = ""
+		if result == NetProtocol.Result.TICKET and hello != null and hello.ticket.is_empty() \
+				and _auth.uses_tickets():
+			text = TicketAuthProvider.NO_TICKET_TEXT
+		_reject(peer, result, text)
+		return
+	_welcome(peer, hello.realm, hello.display_name)
+
+
+# WELCOME y complete_auth: el peer pasa a LOADING con [param realm] y [param display_name] (los del HELLO sin
+# plataforma; los de la reclamación con ella).
+func _welcome(peer: ServerPeer, realm: int, display_name: String) -> void:
 	peer.state = ServerPeer.State.LOADING
-	peer.realm = hello.realm
-	peer.display_name = hello.display_name
+	peer.realm = realm
+	peer.display_name = display_name
 	peer.loading_since_tick = _tick
 	var welcome := NetMessages.Welcome.new()
 	welcome.server_tick = _tick
 	welcome.tick_rate = Engine.physics_ticks_per_second
-	welcome.realm = hello.realm
+	welcome.realm = realm
+	welcome.channel = _config.channel
 	welcome.zone_id = _config.zone_id
 	welcome.realm_counts = get_realm_counts(false, peer)
-	var error: Error = _transport.send_auth(peer_id, welcome.encode())
+	var error: Error = _transport.send_auth(peer.peer_id, welcome.encode())
 	if error == OK:
-		error = _transport.complete_auth(peer_id)
+		error = _transport.complete_auth(peer.peer_id)
 	if error != OK:
 		_mark_leaving(peer)
+
+
+# --- Plataforma (docs/plataforma.md §5.2 y §14.3) ------------------------------------------------
+
+# Paso «poll» con la plataforma: los eventos, por kind y en orden de llegada (instance_closed al final), los
+# finales del AuthProvider y los VERIFYING vencidos.
+func _poll_platform() -> void:
+	if _platform != null:
+		var closed_code: String = ""
+		for event: PlatformEvent in _platform.take_events():
+			match event.kind:
+				PlatformEvent.KIND_CLAIM:
+					if _auth_provider != null:
+						_auth_provider.on_platform_event(event)
+				PlatformEvent.KIND_HEARTBEAT:
+					_on_heartbeat_event(event)
+				PlatformEvent.KIND_INSTANCE_CLOSED:
+					closed_code = event.error_code
+				_:
+					# save (CharacterSaver, P5), id_block, progress_op y progress_ledger (ProgressService,
+					# progresion.md P5a y P5d), fortress (P6), ignore, report y sanction (P7b): sin consumidor
+					# todavía.
+					pass
+		if not closed_code.is_empty():
+			_log("La plataforma ha cerrado esta instancia (%s)" % closed_code)
+			instance_closed.emit(closed_code)
+	if _auth_provider != null:
+		for outcome: AuthOutcome in _auth_provider.take_completed():
+			_apply_auth_outcome(outcome)
+	_check_verify_timeouts()
+
+
+# El final de una reclamación (tabla de §5.2). Con OK, en orden: (1) la zona admite el reino del personaje
+# (REALM); (2) cabe (FULL); (3) ProgressService.prepare (progresion.md P5a); (4) WELCOME con el reino y el nombre
+# del personaje. Si falla alguno, REJECT y se libera el arrendamiento.
+func _apply_auth_outcome(outcome: AuthOutcome) -> void:
+	var peer: ServerPeer = _peers.get(outcome.peer_id)
+	if peer == null or peer.state != ServerPeer.State.VERIFYING:
+		# Se fue en el mismo tick: el proveedor ya no lo esperaba, pero por si acaso no queda nada colgado.
+		if outcome.result == NetProtocol.Result.OK and outcome.claimed != null and _platform != null:
+			_platform.release(outcome.claimed.character_id, outcome.claimed.lease_id)
+		return
+	if outcome.result != NetProtocol.Result.OK:
+		_reject(peer, outcome.result, outcome.text)
+		return
+	var claimed: ClaimedCharacter = outcome.claimed
+	var rejection: int = NetProtocol.Result.OK
+	if not _auth.is_realm_allowed(claimed.realm):
+		rejection = NetProtocol.Result.REALM
+	else:
+		# Él ya cuenta en _occupied_seats (VERIFYING): el cupo se mira sin él, como en ServerAuth.
+		var others: int = _occupied_seats() - 1
+		if others - _filler_seats() >= _config.max_players \
+				or not _make_room_for(peer, claimed.realm, claimed.display_name, others):
+			rejection = NetProtocol.Result.FULL
+	if rejection != NetProtocol.Result.OK:
+		_platform.release(claimed.character_id, claimed.lease_id)
+		_reject(peer, rejection)
+		return
+	peer.claimed = claimed
+	_welcome(peer, claimed.realm, claimed.display_name)
+	if peer.state == ServerPeer.State.LOADING:
+		_log("%s (personaje %d, cuenta %d, %s) entra con billete (peer %d)" % [claimed.display_name,
+				claimed.character_id, claimed.account_id, claimed.role, peer.peer_id])
+
+
+# Los peers en VERIFYING desde hace más de verify_timeout_ms (tiempo real, desde la conexión): REJECT
+# UNAVAILABLE. Si la reclamación llega después, el proveedor la libera.
+func _check_verify_timeouts() -> void:
+	var now: int = Time.get_ticks_msec()
+	for peer: ServerPeer in _peers.values():
+		if peer.state == ServerPeer.State.VERIFYING and now - peer.connected_at_msec >= verify_timeout_ms:
+			_log("Conexión de %s (peer %d): %s" % [peer.remote_address, peer.peer_id, VERIFY_TIMEOUT_REASON])
+			_reject(peer, NetProtocol.Result.UNAVAILABLE)
+
+
+# Respuesta del latido: los revoked (§6). Cada entrada lleva el lease_id; la que no casa con el arrendamiento
+# actual del personaje en esta zona no expulsa a nadie. lease_lost es la baja sin guardado (sin liberar: el
+# arrendamiento ya no es de la zona); los demás expulsan con el texto de la plataforma (hasta P5, sin guardado
+# final: se libera al irse el cuerpo, o en el acto si estaba cargando). Los silencios son de P7b y el
+# mantenimiento, de P5.
+func _on_heartbeat_event(event: PlatformEvent) -> void:
+	if not event.is_success():
+		return
+	for value: Variant in PlatformJson.array_in(event.body_dict(), "revoked"):
+		var revoked: Dictionary = value if value is Dictionary else {}
+		var character_id: int = PlatformJson.id_of(revoked.get("character_id"))
+		var lease_id: String = PlatformJson.text_in(revoked, "lease_id")
+		var reason: String = PlatformJson.text_in(revoked, "reason")
+		var text: String = PlatformJson.text_in(revoked, "text")
+		if character_id < 1 or lease_id.is_empty():
+			continue
+		_revoke(character_id, lease_id, reason, text)
+
+
+func _revoke(character_id: int, lease_id: String, reason: String, text: String) -> void:
+	var lease_lost: bool = reason == "lease_lost"
+	for peer: ServerPeer in _peers.values():
+		if peer.claimed == null or peer.claimed.character_id != character_id \
+				or peer.claimed.lease_id != lease_id:
+			continue
+		if peer.state != ServerPeer.State.LOADING and peer.state != ServerPeer.State.IN_WORLD:
+			continue
+		_log("La plataforma revoca a %s (personaje %d): %s" % [peer.display_name, character_id, reason])
+		if lease_lost:
+			# El arrendamiento ya no es de esta zona: ni se libera ni se guarda, y el cuerpo sale en el acto.
+			peer.claimed = null
+			if peer.entity != null:
+				_claims_by_net.erase(peer.entity.net_id)
+			peer.drop_body_at_once = true
+		_kick(peer, reason, false, text if not text.is_empty() else "Tu sesión ha terminado: vuelve a entrar")
+		return
+	# Un cuerpo que se queda tras una salida en combate: un lease_lost no se libera al irse.
+	if lease_lost:
+		for net_id: int in _claims_by_net.keys():
+			var claim: ClaimedCharacter = _claims_by_net[net_id]
+			if claim.character_id == character_id and claim.lease_id == lease_id:
+				_claims_by_net.erase(net_id)
+
+
+# Libera sin guardar el arrendamiento del cuerpo [param net_id], si tiene uno.
+func _release_claim_of(net_id: int) -> void:
+	var claim: ClaimedCharacter = _claims_by_net.get(net_id)
+	if claim == null:
+		return
+	_claims_by_net.erase(net_id)
+	if _platform != null:
+		_platform.release(claim.character_id, claim.lease_id)
+
+
+# Un peer que deja VERIFYING o LOADING sin llegar al mundo (§5.2): en VERIFYING se cancela la espera de su
+# reclamación; en LOADING se libera su arrendamiento sin guardar (y ProgressService.cancel_prepared, P5a).
+func _leave_auth_states(peer: ServerPeer) -> void:
+	match peer.state:
+		ServerPeer.State.VERIFYING:
+			if _auth_provider != null:
+				_auth_provider.cancel(peer.peer_id)
+		ServerPeer.State.LOADING:
+			if peer.claimed != null and _platform != null:
+				_platform.release(peer.claimed.character_id, peer.claimed.lease_id)
+				peer.claimed = null
 
 
 # Autenticación completada en los dos lados: ya se puede enviar a este peer.
@@ -3032,7 +3245,7 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 			float(bytes.size())):
 		_add_strike(peer, "exceso de ritmo")
 		return
-	if peer.state == ServerPeer.State.AUTHENTICATING:
+	if peer.state == ServerPeer.State.AUTHENTICATING or peer.state == ServerPeer.State.VERIFYING:
 		_add_strike(peer, "mensaje antes de autenticarse")
 		return
 	match msg_type:
@@ -3202,15 +3415,16 @@ func _add_strike(peer: ServerPeer, reason: String) -> void:
 
 
 # NOTICE de expulsión y corte ordenado. El motivo queda en el informe. Con [param cooldown], su IP (o,
-# desde loopback, su nombre) no puede volver a entrar durante kick_cooldown_ticks.
-func _kick(peer: ServerPeer, reason: String, cooldown: bool = true) -> void:
+# desde loopback, su nombre o su personaje) no puede volver a entrar durante kick_cooldown_ticks. Con
+# [param notice_text] el NOTICE lleva ese texto tal cual (el de un revoked de la plataforma).
+func _kick(peer: ServerPeer, reason: String, cooldown: bool = true, notice_text: String = "") -> void:
 	if peer.state == ServerPeer.State.LEAVING:
 		return
 	if cooldown:
 		_start_cooldown(peer)
 	var notice := NetMessages.Notice.new()
 	notice.code = NetProtocol.NoticeCode.KICK
-	notice.text = "Expulsado del servidor: %s" % reason
+	notice.text = notice_text if not notice_text.is_empty() else "Expulsado del servidor: %s" % reason
 	_transport.send(peer.peer_id, NetProtocol.CH_RELIABLE, notice.encode())
 	_transport.disconnect_after_flush(peer.peer_id)
 	var net_id: int = peer.entity.net_id if peer.entity != null else 0
@@ -3230,11 +3444,12 @@ func _kick(peer: ServerPeer, reason: String, cooldown: bool = true) -> void:
 
 
 # Apunta el enfriamiento de un peer expulsado y purga los vencidos. Por IP (las IPv6, por /64) salvo
-# desde loopback, donde no hay tope por IP y se usa el nombre normalizado, si ya lo había dado.
+# desde loopback, donde no hay tope por IP y se usa el nombre normalizado, si ya lo había dado (con billete, el
+# personaje: character:<id>, docs/plataforma.md §5.4).
 func _start_cooldown(peer: ServerPeer) -> void:
 	var key: String = _cooldown_key_for_address(peer.remote_address)
 	if key.is_empty():
-		key = _cooldown_key_for_name(peer.remote_address, peer.display_name)
+		key = _cooldown_key_for_identity(peer.remote_address, peer.display_name, peer.character_id)
 	if key.is_empty():
 		return
 	for old_key: String in _kick_until.keys():
@@ -3250,9 +3465,14 @@ func _cooldown_key_for_address(address: String) -> String:
 	return "ip:" + ServerAuth.address_group(address)
 
 
-# Clave de enfriamiento por nombre: solo desde loopback, que no tiene tope por IP.
-func _cooldown_key_for_name(address: String, display_name: String) -> String:
-	if display_name.is_empty() or not ServerAuth.is_loopback(address):
+# Clave de enfriamiento por identidad: solo desde loopback, que no tiene tope por IP. Con billete, el personaje
+# ([param character_id] > 0); sin él, el nombre del HELLO.
+func _cooldown_key_for_identity(address: String, display_name: String, character_id: int) -> String:
+	if not ServerAuth.is_loopback(address):
+		return ""
+	if character_id > 0:
+		return "character:%d" % character_id
+	if display_name.is_empty():
 		return ""
 	return "name:" + NameRules.normalize_key(display_name)
 
@@ -3264,15 +3484,17 @@ func _is_cooling_down(key: String) -> bool:
 func _mark_leaving(peer: ServerPeer) -> void:
 	if peer.state == ServerPeer.State.LEAVING:
 		return
+	_leave_auth_states(peer)
 	peer.state = ServerPeer.State.LEAVING
 	_leaving.append(peer.peer_id)
 
 
-# REJECT y corte ordenado: lo encolado sale antes de cortar.
-func _reject(peer: ServerPeer, result: int) -> void:
+# REJECT y corte ordenado: lo encolado sale antes de cortar. [param text] vacío = el de
+# NetProtocol.result_text (el informe cuenta siempre por ese, no por el texto propio).
+func _reject(peer: ServerPeer, result: int, text: String = "") -> void:
 	var reject := NetMessages.Reject.new()
 	reject.result = result
-	reject.text = NetProtocol.result_text(result)
+	reject.text = text if not text.is_empty() else NetProtocol.result_text(result)
 	_transport.send_auth(peer.peer_id, reject.encode())
 	_transport.disconnect_after_flush(peer.peer_id)
 	var key: String = NetProtocol.result_text(result)
@@ -3314,16 +3536,16 @@ func _filler_seats() -> int:
 
 # Un HELLO aceptado con el servidor lleno solo por los falsos de relleno: el guardián le aparta la plaza de uno, que se
 # va cuando la persona entra en el mundo (FillerKeeper.on_person_joined). false si no hay sitio (no debería pasar:
-# ServerAuth ya ha comprobado que el relleno basta).
-func _make_room_for(peer: ServerPeer, hello: NetMessages.Hello) -> bool:
-	if _occupied_seats() < _config.max_players:
+# ServerAuth ya ha comprobado que el relleno basta). [param occupied] son las plazas ocupadas sin contarle a él.
+func _make_room_for(peer: ServerPeer, realm: int, display_name: String, occupied: int) -> bool:
+	if occupied < _config.max_players:
 		return true
 	if _filler_keeper == null or _filler_seats() <= 0:
 		return false
-	if not _filler_keeper.reserve_seat(peer.peer_id, hello.realm):
+	if not _filler_keeper.reserve_seat(peer.peer_id, realm):
 		return false
 	_log("Servidor lleno de relleno: un falso de relleno aparta su plaza a %s (peer %d, %s); se irá cuando entre"
-			% [hello.display_name, peer.peer_id, NetProtocol.realm_display_name(hello.realm)])
+			% [display_name, peer.peer_id, NetProtocol.realm_display_name(realm)])
 	return true
 
 

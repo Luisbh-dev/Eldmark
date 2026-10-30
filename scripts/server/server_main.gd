@@ -44,9 +44,17 @@ extends Node
 ## sin borrar). Por eso existe [code]--stop-file[/code] y, con [code]--report[/code], el informe se
 ## reescribe cada [constant ZoneServer.METRICS_LOG_TICKS] ticks (10 s): si matan al servidor, queda
 ## el de la última marca (con [code]"closed": false[/code]).
+## [br]- [b]Con [code]--platform=<url interna>[/code][/b] (docs/plataforma.md §5.5 y §8): lee los secretos de la
+## zona ([method ZonePlatform.read_secrets]), arranca la [ZonePlatform] (registro, [code]env[/code], fortalezas y
+## primer bloque de ids) y espera [signal ZonePlatform.startup_finished] antes de abrir el puerto; los clientes
+## entran con [TicketAuthProvider] y, ya con el puerto abierto, [method ZonePlatform.go_live]. Con un
+## [code]env[/code] de staging o production, las opciones de desarrollo hacen salir a la zona con código 1, y
+## [code]--max-realm-diff[/code] no se aplica (el reino sale del personaje). Al cerrar, espera a que salga lo
+## pendiente y da la instancia de baja. Si la plataforma cierra la instancia ([signal ZoneServer.instance_closed]),
+## el proceso sale con código 3 para que el orquestador arranque otra.
 ## [br][br]
-## El código de salida es 0 en un cierre normal y 1 si no puede arrancar (zona desconocida, puerto
-## ocupado...).
+## El código de salida es 0 en un cierre normal, 1 si no puede arrancar (zona desconocida, puerto
+## ocupado, plataforma que no responde o que no admite la zona...) y 3 si la plataforma cerró la instancia.
 
 ## Archivo de bloqueo de [code]--dev-lock[/code] si no se da [code]--dev-lock-path[/code].
 const DEV_LOCK_PATH: String = "user://dev_server.json"
@@ -56,8 +64,11 @@ const MAX_FPS: int = 120
 ## jugadores falsos: los cuerpos de colisión (el Terrain3D, sobre todo) entran en el espacio de
 ## física en los primeros pasos.
 const WARMUP_PHYSICS_FRAMES: int = 3
-## Pasos de física como mucho que se espera, al cerrar, a que los clientes se vayan.
+## Pasos de física como mucho que se espera, al cerrar, a que los clientes se vayan (y, con la plataforma, a
+## que salga lo pendiente y la baja).
 const SHUTDOWN_MAX_FRAMES: int = 90
+## Código de salida cuando la plataforma cierra la instancia (docs/plataforma.md §6.1).
+const EXIT_INSTANCE_CLOSED: int = 3
 ## Semilla del primer jugador falso; cada uno suma su índice.
 const FAKE_SEED_BASE: int = 7000
 ## Radio (m) por el que pasea cada jugador falso alrededor de su punto de aparición. Con
@@ -93,6 +104,8 @@ static var config: ServerConfig
 var _world: Node3D
 var _transport: NetTransport
 var _zone_server: ZoneServer
+## La plataforma (null sin --platform).
+var _platform: ZonePlatform = null
 var _idle_ticks: int = 0
 # Jugadores falsos vivos, del más antiguo al más nuevo (para las bajas de --fake-churn), cuántos se han
 # creado en total (fija la semilla de cada cerebro), reinos de la zona con campamento y el azar del
@@ -151,14 +164,28 @@ func _ready() -> void:
 	_zone_server = ZoneServer.new()
 	_zone_server.name = "ZoneServer"
 	add_child(_zone_server)
-	var error: Error = _zone_server.start(config, _world, _transport, DevAuthProvider.new())
+	var provider: AuthProvider = DevAuthProvider.new()
+	if config.uses_platform():
+		var keys: Variant = await _start_platform()
+		if keys == null:
+			await _drain_platform()
+			get_tree().quit(1)
+			return
+		provider = TicketAuthProvider.new(_platform, config.world_id, config.zone_id, config.channel, keys)
+	var error: Error = _zone_server.start(config, _world, _transport, provider, _platform)
 	if error != OK:
 		push_error("[Eldmark] No se pudo abrir el puerto UDP %d (%s)" % [config.port,
 				error_string(error)])
+		if _platform != null:
+			_platform.deregister()
+			await _drain_platform()
 		get_tree().quit(1)
 		return
 	_zone_server.tick_finished.connect(_on_tick_finished)
 	_zone_server.shutdown_requested.connect(_shutdown)
+	_zone_server.instance_closed.connect(_on_instance_closed)
+	if _platform != null:
+		_platform.go_live()
 	print("[Eldmark] Servidor de la zona '%s' escuchando en el puerto UDP %d (hasta %d jugadores, "
 			% [config.zone_id, config.port, config.max_players]
 			+ "%d ticks/s, huella de la simulación 0x%08X)"
@@ -168,7 +195,10 @@ func _ready() -> void:
 	if config.debug_commands:
 		print("[Eldmark] Comandos de depuración activados (--debug-commands)")
 
-	_setup_fillers()
+	if _platform != null and config.max_realm_diff > 0:
+		print("[Eldmark] Con la plataforma --max-realm-diff no se aplica: el reino sale del personaje")
+	else:
+		_setup_fillers()
 	_spawn_fake_players()
 	if not config.no_dummies:
 		var dummies: int = _zone_server.spawn_zone_dummies()
@@ -199,6 +229,52 @@ func _notification(what: int) -> void:
 		if _zone_server != null and is_instance_valid(_zone_server):
 			_zone_server.stop(SHUTDOWN_TEXT)
 		_remove_lock()
+
+
+# --- Plataforma (docs/plataforma.md §8) ---------------------------------------------------------
+
+# Lee los secretos y arranca la plataforma: registro, env, fortalezas y primer bloque. Devuelve las claves del
+# billete, o null si la zona no puede arrancar (el motivo ya está en el registro).
+func _start_platform() -> Variant:
+	var secrets: Dictionary = ZonePlatform.read_secrets()
+	var errors: PackedStringArray = secrets["errors"]
+	if not errors.is_empty():
+		for line: String in errors:
+			push_error("[Eldmark] Secretos de la zona: %s" % line)
+		return null
+	_platform = ZonePlatform.new()
+	_platform.name = "ZonePlatform"
+	add_child(_platform)
+	_platform.fatal_error.connect(_on_platform_fatal)
+	print("[Eldmark] Plataforma: registrando la zona '%s' (mundo %d, canal %d) en %s"
+			% [config.zone_id, config.world_id, config.channel, config.platform_url])
+	_platform.start(config, secrets)
+	var result: Array = await _platform.startup_finished
+	if not bool(result[0]):
+		push_error("[Eldmark] %s" % String(result[1]))
+		return null
+	print("[Eldmark] Plataforma lista (env %s, instancia %s)" % [_platform.env(), _platform.instance_id()])
+	return secrets["ticket_keys"]
+
+
+# Espera, como mucho SHUTDOWN_MAX_FRAMES pasos, a que la plataforma no tenga nada en cola ni en vuelo.
+func _drain_platform() -> void:
+	if _platform == null:
+		return
+	_platform.begin_flush()
+	var waited: int = 0
+	while not _platform.is_flushed() and waited < SHUTDOWN_MAX_FRAMES:
+		await get_tree().physics_frame
+		waited += 1
+
+
+func _on_instance_closed(code: String) -> void:
+	_shutdown("la plataforma ha cerrado la instancia (%s)" % code, EXIT_INSTANCE_CLOSED)
+
+
+func _on_platform_fatal(error: String) -> void:
+	push_error("[Eldmark] %s" % error)
+	_shutdown(error, 1)
 
 
 # --- Lock de desarrollo -----------------------------------------------------------------------
@@ -496,8 +572,9 @@ func _churn_fake_players(tick: int) -> void:
 		_add_fake_player()
 
 
-# NOTICE de cierre y corte ordenado de los clientes (ZoneServer.stop), informe, y salida.
-func _shutdown(reason: String) -> void:
+# NOTICE de cierre y corte ordenado de los clientes (ZoneServer.stop), informe, y salida con
+# [param exit_code]. Con la plataforma, antes de salir sale lo pendiente (las liberaciones) y la baja.
+func _shutdown(reason: String, exit_code: int = 0) -> void:
 	if _shutting_down:
 		return
 	_shutting_down = true
@@ -507,6 +584,10 @@ func _shutdown(reason: String) -> void:
 	while not _zone_server.is_stopped() and waited < SHUTDOWN_MAX_FRAMES:
 		await get_tree().physics_frame
 		waited += 1
+	if _platform != null:
+		await _drain_platform()
+		_platform.deregister()
+		await _drain_platform()
 	if not config.report_path.is_empty():
 		var error: Error = _zone_server.write_report(config.report_path)
 		if error == OK:
@@ -524,4 +605,4 @@ func _shutdown(reason: String) -> void:
 		# deja salir al proceso mientras la lectura tenga cogido el bloqueo de stdin.
 		print("[Eldmark] La consola sigue leyendo la entrada estándar: el proceso termina al cerrarla "
 				+ "(Ctrl+D) o al pulsar Intro")
-	get_tree().quit(0)
+	get_tree().quit(exit_code)

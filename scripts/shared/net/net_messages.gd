@@ -64,6 +64,10 @@ const INPUT_BATCH_HEADER_SIZE: int = 11
 const INPUT_RECORD_SIZE: int = 10
 ## Cabecera de un ENTITY_SPAWN, antes de los datos de la entidad.
 const SPAWN_HEADER_SIZE: int = 10
+## Bit 3 del [code]flags[/code] de la cabecera de un ENTITY_SPAWN (protocolo 7, docs/plataforma.md §5.4): el
+## personaje es del personal del juego (moderador o más), para la etiqueta (SOC-14). No es el bit 3 de los
+## [code]flags[/code] del registro del snapshot (la ranura 2 activa, de docs/habilidades.md).
+const SPAWN_FLAG_STAFF: int = 1 << 3
 ## Máximo de [code]view_offset_q[/code] (u16).
 const MAX_VIEW_OFFSET_Q: int = 0xFFFF
 
@@ -1000,6 +1004,9 @@ class EntitySpawn:
 	var is_yours: bool = false
 	## Contador de teletransporte (mod 4).
 	var teleport_counter: int = 0
+	## Bit 3 de los flags ([constant NetMessages.SPAWN_FLAG_STAFF], protocolo 7): personal del juego. Solo en
+	## jugadores y PNJ.
+	var is_staff: bool = false
 	var state: PlayerState = null
 	var display_name: String = ""
 	## NPC: id de su definición en el catálogo de PNJ ([code]NpcCatalog[/code], ids 1..n por orden
@@ -1100,6 +1107,8 @@ class EntitySpawn:
 		var flags: int = (teleport_counter & TELEPORT_MASK) << TELEPORT_SHIFT
 		if is_yours:
 			flags |= 1
+		if is_staff:
+			flags |= SPAWN_FLAG_STAFF
 		bytes.encode_u8(9, flags)
 		for i: int in PlayerState.ENCODED_SIZE:
 			bytes[SPAWN_HEADER_SIZE + i] = state_bytes[i]
@@ -1145,6 +1154,7 @@ class EntitySpawn:
 		var flags: int = bytes[9]
 		spawn.is_yours = (flags & 1) != 0
 		spawn.teleport_counter = (flags >> TELEPORT_SHIFT) & TELEPORT_MASK
+		spawn.is_staff = (flags & SPAWN_FLAG_STAFF) != 0
 		spawn.state = PlayerState.decode(
 				bytes.slice(SPAWN_HEADER_SIZE, name_offset))
 		spawn.display_name = NetMessages.read_text(bytes, name_offset + 1, name_len)

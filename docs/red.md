@@ -264,8 +264,8 @@ cubre ±5,24 km, así que caben los 5 × 5 km de terreno de Eldrun.
 **`SceneMultiplayer`:** uno propio por cada `NetTransport`.
 
 - Configuración: `server_relay = false`, `allow_object_decoding = false`, `auth_callback` en los
-  dos lados y `auth_timeout = 5.0` (10 s desde la subida de protocolo de la fase 5, plataforma.md
-  §5.4: cuenta desde la conexión y deja sitio a la reclamación del billete).
+  dos lados y `auth_timeout = 10.0` (v7; 5 s hasta la v6): cuenta desde la conexión, en los dos lados, y
+  deja sitio a la reclamación del billete, que la zona corta a los 7 s (plataforma.md §5.2 y §5.4).
 - Se registra con `get_tree().set_multiplayer(mp, transport.get_path())`. Así caben varias
   instancias en un mismo proceso (pruebas y enjambre de bots).
 - **Filtro de paquetes en el servidor (`GuardedEnetPeer`, hallazgo S1).** `SceneMultiplayer`
@@ -636,6 +636,8 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 «v5» marca lo que añade el protocolo 5 (chat y grupos, [social.md](social.md#12-implementación-fase-4)).
 «v6» marca lo que añade o cambia el protocolo 6 (habilidades, efectos, cambio de arma, proyectiles, derribado
 y plantillas, [habilidades.md 5](habilidades.md#5-protocolo-protocol_version--6)).
+«v7» marca lo que añade o cambia el protocolo 7, la subida de la fase 5 ([plataforma.md](plataforma.md) §5.4 y
+[progresion.md](progresion.md) §12): cada documento escribe aquí lo que añade su código.
 El tamaño de un ENTITY_SPAWN depende de `kind` (ver 5.5).
 
 ### 5.3 Autenticación
@@ -645,15 +647,15 @@ El tamaño de un ENTITY_SPAWN depende de `kind` (ver 5.5).
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
 | 0 | u32 | magic | `0x4D444C45` |
-| 4 | u16 | protocol_version | `NetProtocol.PROTOCOL_VERSION` (= 6: 2 combate, 3 su revisión, 4 el fuerte, 5 el chat y los grupos, 6 las habilidades) |
+| 4 | u16 | protocol_version | `NetProtocol.PROTOCOL_VERSION` (= 7, v7: 2 combate, 3 su revisión, 4 el fuerte, 5 el chat y los grupos, 6 las habilidades, 7 la fase 5) |
 | 6 | u32 | sim_hash | ver [3](#3-conexión) |
-| 10 | u8 | realm | 0 ninguno (se rechaza), 1 Vardheim, 2 Solmarch, 3 Askarra |
+| 10 | u8 | realm | 0 ninguno (se rechaza), 1 Vardheim, 2 Solmarch, 3 Askarra. Con billete (v7), se ignora: manda el de la reclamación |
 | 11 | u8 | flags | bit0 = bot; resto, 0 |
-| 12 | u64 | character_id | 0 en la fase 2; personaje guardado desde la fase 5 |
+| 12 | u64 | character_id | 0 en la fase 2; con billete (v7), el del billete |
 | 20 | u8 | name_len | ≤ 48 B |
-| 21 | n B | name | UTF-8, 3–24 caracteres |
-| 21+n | u16 | ticket_len | 0 en la fase 2; ≤ 256 |
-| 23+n | t B | ticket | sesión o billete de traspaso (fases 5–6) |
+| 21 | n B | name | UTF-8, 3–24 caracteres. Con billete (v7), se ignora y no se compara con los conectados (sin `REJECT NAME`) |
+| 21+n | u16 | ticket_len | 0 sin plataforma; ≤ 256 |
+| 23+n | t B | ticket | v7: el billete de 52 B de [plataforma.md](plataforma.md) §5.1 (`HandoffTicket`), con la zona `--platform`; también el de traspaso (fase 6) |
 
 **WELCOME** (S→C): 18 B + id de zona + 3 B con el recuento por reino (v3).
 
@@ -680,9 +682,15 @@ El tamaño es exactamente `21 + z`: un WELCOME de la versión 2 (sin el recuento
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
 | 0 | u32 | magic | |
-| 4 | u8 | result | 1 VERSION, 2 SIM_HASH, 3 REALM, 4 FULL, 5 TICKET, 6 MALFORMED, 7 TOO_MANY_CONNECTIONS, 8 NAME, 9 IMBALANCE (v3: el reino elegido tiene demasiados jugadores, `--max-realm-diff`; se comprueba después del proveedor de identidad) |
+| 4 | u8 | result | 1 VERSION, 2 SIM_HASH, 3 REALM, 4 FULL, 5 TICKET, 6 MALFORMED, 7 TOO_MANY_CONNECTIONS, 8 NAME, 9 IMBALANCE (v3: el reino elegido tiene demasiados jugadores, `--max-realm-diff`; se comprueba después del proveedor de identidad); v7: 10 BUSY (el personaje sigue en el mundo), 11 UNAVAILABLE (la plataforma no responde, la zona está cercada o no se pudo cargar el personaje), 12 BANNED (cuenta suspendida, expulsada o con el borrado pedido) |
 | 5 | u8 | text_len | |
-| 6 | n B | text | UTF-8, en español (`NetProtocol.result_text`) |
+| 6 | n B | text | UTF-8, en español (`NetProtocol.result_text`). v7: en BANNED, el `message` del 403 `account_blocked`, que compone la plataforma (≤ 255 B); en un TICKET sin billete, «Entra desde el menú con tu cuenta» |
+
+**Con la plataforma (v7, [plataforma.md](plataforma.md) §5.2):** un HELLO con billete válido no recibe
+respuesta enseguida: el peer espera en `ServerPeer.State.VERIFYING` (cuenta para el cupo) mientras la zona
+reclama el billete; con el 200 llega el WELCOME con el reino y el nombre del personaje, y si no, un REJECT
+(TICKET, BUSY, BANNED, REALM, FULL o UNAVAILABLE). Pasados 7 s desde la conexión sin respuesta, REJECT
+UNAVAILABLE: siempre antes del `auth_timeout` de 10 s de los dos lados.
 
 ### 5.4 Cliente → servidor
 
@@ -827,7 +835,7 @@ porque no cambia la simulación ([combate.md 1](combate.md#1-qué-se-predice-y-q
 | 3 | u8 | kind | 1 PLAYER, 2 NPC, 3 PROJECTILE, 4 STRUCTURE |
 | 4 | u32 | spawn_tick | tick del estado incluido |
 | 8 | u8 | realm | |
-| 9 | u8 | flags | bit0 = es tu personaje; bits 1–2 = contador de teletransporte. En un proyectil (v6), 0 |
+| 9 | u8 | flags | bit0 = es tu personaje; bits 1–2 = contador de teletransporte; bit3 = personal del juego (v7: moderador o más, para la etiqueta, SOC-14; solo en PLAYER). En un proyectil (v6), 0. No es el bit 3 de los flags del registro del snapshot (la ranura 2 activa) |
 | 10 | … | payload | según `kind` (abajo) |
 
 Payload según `kind`:
@@ -1595,8 +1603,8 @@ reino salen del personaje del billete y ese rechazo desaparece (detalle en
 
 **Fases 5 y 6:**
 
-- **`TicketAuthProvider`** con `HandoffTicket` de **52 B** (formato y vector de prueba en
-  [plataforma.md](plataforma.md) §5.1; sustituye al de 47 B que se preveía aquí):
+- **`TicketAuthProvider`** con `HandoffTicket` de **52 B** (v7, hecho en plataforma.md P4; formato y vector de
+  prueba en [plataforma.md](plataforma.md) §5.1; sustituye al de 47 B que se preveía aquí):
   - campos: versión, clave, mundo, `ticket_id`, `character_id`, huella de la zona, canal, reino
     (informativo), punto de llegada, flags, emisión y caducidad (+10 s);
   - firma HMAC-SHA256 truncada a 16 B con una clave con identificador (rotable);
@@ -2278,7 +2286,7 @@ func set_idle_from(tick: int) -> void
 ```gdscript
 # net_protocol.gd
 class_name NetProtocol extends RefCounted
-const PROTOCOL_VERSION: int = 6                      # 5 el chat y los grupos (social.md 12), 6 las habilidades
+const PROTOCOL_VERSION: int = 7                      # 5 el chat y los grupos (social.md 12), 6 las habilidades, 7 la fase 5
 const MAGIC: int = 0x4D444C45
 const DEFAULT_PORT: int = 24600
 const CUSTOM_CHANNELS: int = 3
@@ -2579,6 +2587,7 @@ signal packet_received(peer_id: int, bytes: PackedByteArray)
 signal connection_failed()
 ## Solo servidor (S1): paquetes de un peer descartados por no ser del protocolo (ver 2).
 signal packets_discarded(peer_id: int, count: int)
+const AUTH_TIMEOUT_SECONDS: float = 10.0     # v7 (5.0 hasta la v6): en los dos lados, desde la conexión
 ## Antes de host()/connect_to(). Vacío = sin simulador.
 func set_net_sim_spec(spec: String) -> void
 func host(port: int, max_peers: int) -> Error
@@ -2653,13 +2662,15 @@ var kick_cooldown_ticks: int = KICK_COOLDOWN_TICKS      # S6: 1800
 var max_logged_players: int = MAX_LOGGED_PLAYERS        # S3: 1000
 var max_logged_kicks: int = MAX_LOGGED_KICKS            # S3: 200
 const RTT_SLACK_TICKS: int = 3                          # S4
+var verify_timeout_ms: int = VERIFY_TIMEOUT_MS          # v7: 7000, plazo de VERIFYING en tiempo real
+signal instance_closed(code: String)                    # v7: la plataforma cerró la instancia (plataforma.md §6.1)
 func start(config: ServerConfig, world: Node3D, transport: NetTransport,
-		auth_provider: AuthProvider) -> Error
+		auth_provider: AuthProvider, platform: ZonePlatform = null) -> Error   # v7: plataforma.md §14.3
 func stop(notice_text: String = "") -> void
 func get_tick() -> int
 func get_peer(peer_id: int) -> ServerPeer
 func get_peer_ids() -> PackedInt32Array
-func get_player_count() -> int
+func get_player_count() -> int                          # v7: cuenta también VERIFYING
 func get_registry() -> NetEntityRegistry
 func get_history() -> StateHistory
 func get_metrics() -> ServerMetrics
@@ -2672,7 +2683,7 @@ func write_report(path: String) -> Error
 
 # server_peer.gd
 class_name ServerPeer extends RefCounted
-enum State { AUTHENTICATING, LOADING, IN_WORLD, LEAVING }
+enum State { AUTHENTICATING, VERIFYING, LOADING, IN_WORLD, LEAVING }   # VERIFYING (v7): reclamando el billete
 var peer_id: int
 var state: State = State.AUTHENTICATING
 var realm: int
@@ -2700,9 +2711,12 @@ func grant_stall_credit(now_tick: int, missed_ticks: int) -> void
 class_name ServerAuth extends RefCounted
 func _init(config: ServerConfig, sim_hash: int, allowed_realms: PackedInt32Array,
 		provider: AuthProvider) -> void
-## Devuelve un NetProtocol.Result.
-func validate(hello: NetMessages.Hello, remote_address: String, player_count: int,
-		connections_from_address: int) -> int
+## Devuelve un NetProtocol.Result o AuthProvider.PENDING. v7: el peer_id va primero (para el proveedor) y, con
+## billetes (uses_tickets), ni el reino ni el nombre del HELLO se miran, ni hay IMBALANCE.
+func validate(peer_id: int, hello: NetMessages.Hello, remote_address: String, player_count: int,
+		connections_from_address: int, filler_seats: int = 0) -> int
+func uses_tickets() -> bool
+func is_realm_allowed(realm: int) -> bool       # la zona mira el reino de la reclamación
 ## SOC-01: fuente de los nombres ya conectados (Callable sin argumentos -> PackedStringArray).
 func set_connected_names_source(source: Callable) -> void
 func check_name(display_name: String) -> int   # NameRules.Reason (TAKEN si ya está conectado)
@@ -2711,14 +2725,17 @@ static func address_group(remote_address: String) -> String
 
 # auth_provider.gd
 class_name AuthProvider extends RefCounted
-## Identidad y reino: OK o TICKET. Base de DevAuthProvider y del futuro TicketAuthProvider.
-func authenticate(hello: NetMessages.Hello) -> int
-## Desde la fase 5 (plataforma.md §14.3): authenticate(peer_id, hello) -> int (OK, PENDING = -1 o
-## motivo), on_platform_event(event) -> bool, take_completed() -> Array[AuthOutcome],
-## cancel(peer_id) y uses_tickets() -> bool.
+## Identidad y reino (plataforma.md §14.3). Base de DevAuthProvider y de TicketAuthProvider
+## (scripts/server/platform/).
+const PENDING: int = -1
+func authenticate(peer_id: int, hello: NetMessages.Hello) -> int   # OK, PENDING o motivo (la base: TICKET)
+func on_platform_event(event: PlatformEvent) -> bool              # true si era suyo (kind claim)
+func take_completed() -> Array[AuthOutcome]
+func cancel(peer_id: int) -> void
+func uses_tickets() -> bool
 
 # dev_auth_provider.gd
-class_name DevAuthProvider extends AuthProvider   # acepta el reino y el nombre declarados
+class_name DevAuthProvider extends AuthProvider   # acepta en el acto el reino y el nombre declarados
 
 # rate_limiter.gd: cubo de fichas medido en ticks
 class_name RateLimiter extends RefCounted

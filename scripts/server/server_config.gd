@@ -12,7 +12,17 @@ extends RefCounted
 ## --debug-commands --dev-lock --dev-lock-path=<ruta>
 ## --quit-after-ticks=N --report=<ruta.json> --state-log=<ruta.csv> --net-sim=rtt=120,jitter=20
 ## --stop-file=<ruta> --combat-log=<ruta.csv> --console --no-dummies --no-npcs --battle-log=<ruta.jsonl>
+## --platform=<url interna> --world=<id> --channel=<n> --public-address=<host>[:<puerto>] --save-interval=<s>
+## --replace --dtls-cert=<pem> --dtls-key=<pem>
 ## [/codeblock]
+## [b]Con la plataforma[/b] (docs/plataforma.md §5.5 y §14.3): [code]--platform=<url>[/code] es la API interna
+## (sin ella, [DevAuthProvider] y personajes efímeros); [code]--world[/code] (1) y [code]--channel[/code] (0) son
+## el alcance del token de la zona; [code]--public-address[/code] es el host (y puerto) al que conectan los
+## clientes (127.0.0.1 y [member port] por defecto); [code]--save-interval[/code] el punto de control de
+## [code]CharacterSaver[/code] (60 s, P5); [code]--replace[/code] sustituye a una instancia viva de la misma zona y
+## canal; [code]--dtls-cert[/code] y [code]--dtls-key[/code] el certificado de DTLS (P9c). Con un
+## [code]env[/code] de [code]staging[/code] o [code]production[/code] las opciones de desarrollo
+## ([method platform_dev_options]) hacen salir a la zona.
 ## [code]--combat-log=<ruta>[/code] escribe un CSV con una línea por golpe resuelto
 ## ([code]tick,atacante,objetivo,ataque,view_tick,rebobinado,resultado,daño[/code]; en el proyecto
 ## usa otra extensión, p. ej. [code].txt[/code], porque el importador convierte los [code].csv[/code]
@@ -119,6 +129,21 @@ var no_dummies: bool = false
 ## No crea los PNJ de los generadores de la zona (Huecos, Capitán del Vado, guarnición y Guardianes de la
 ## Puerta; [NpcSpawnerSystem]).
 var no_npcs: bool = false
+## URL de la API interna de la plataforma ([code]--platform[/code]); vacía = sin plataforma.
+var platform_url: String = ""
+## Mundo y canal de la zona ([code]--world[/code], [code]--channel[/code]): el alcance de su token.
+var world_id: int = 1
+var channel: int = 0
+## [code]<host>[:<puerto>][/code] al que conectan los clientes ([code]--public-address[/code]); vacío = 127.0.0.1
+## y [member port]. Ver [method public_host] y [method public_port].
+var public_address: String = ""
+## Segundos entre puntos de control de [code]CharacterSaver[/code] ([code]--save-interval[/code], P5).
+var save_interval_s: int = 60
+## Sustituye a la instancia viva de la misma zona y canal al registrarse ([code]--replace[/code]).
+var replace: bool = false
+## Certificado y clave de DTLS en PEM ([code]--dtls-cert[/code], [code]--dtls-key[/code]; los usa P9c).
+var dtls_cert_path: String = ""
+var dtls_key_path: String = ""
 ## Escribe [code]user://dev_server.json[/code] para que [code]--local[/code] reutilice el servidor.
 var dev_lock: bool = false
 ## Dónde se escribe el bloqueo de [member dev_lock] en lugar de [code]user://dev_server.json[/code]
@@ -199,7 +224,66 @@ static func from_args(args: PackedStringArray) -> ServerConfig:
 	config.debug_commands = args.has("--debug-commands")
 	config.dev_lock = args.has("--dev-lock")
 	config.dev_lock_path = _string_option(args, "--dev-lock-path=").replace("\\", "/")
+	config.platform_url = _string_option(args, "--platform=")
+	config.world_id = _int_option(args, "--world=", config.world_id, 1, 0xFFFF)
+	config.channel = _int_option(args, "--channel=", config.channel, 0, 255)
+	config.public_address = _string_option(args, "--public-address=")
+	config.save_interval_s = _int_option(args, "--save-interval=", config.save_interval_s, 1, 86400)
+	config.replace = args.has("--replace")
+	config.dtls_cert_path = _string_option(args, "--dtls-cert=").replace("\\", "/")
+	config.dtls_key_path = _string_option(args, "--dtls-key=").replace("\\", "/")
 	return config
+
+
+## true si la zona trabaja con la plataforma ([code]--platform[/code]).
+func uses_platform() -> bool:
+	return not platform_url.is_empty()
+
+
+## El host de [member public_address] (127.0.0.1 si no se dio). Admite [code][::1]:24600[/code].
+func public_host() -> String:
+	var text: String = public_address.strip_edges()
+	if text.is_empty():
+		return "127.0.0.1"
+	if text.begins_with("["):
+		var close: int = text.find("]")
+		return text.substr(1, close - 1) if close > 0 else text
+	var colon: int = text.rfind(":")
+	if colon > 0 and text.count(":") == 1:
+		return text.substr(0, colon)
+	return text
+
+
+## El puerto de [member public_address], o [member port] si no lo trae (o no vale).
+func public_port() -> int:
+	var text: String = public_address.strip_edges()
+	var colon: int = text.rfind(":")
+	if colon < 0 or (not text.begins_with("[") and text.count(":") != 1):
+		return port
+	var port_text: String = text.substr(colon + 1)
+	if not port_text.is_valid_int() or port_text.to_int() < 1 or port_text.to_int() > _MAX_PORT:
+		return port
+	return port_text.to_int()
+
+
+## Opciones de desarrollo dadas que con la plataforma solo valen en [code]dev[/code] y [code]test[/code]
+## (docs/plataforma.md §5.5): [code]--debug-commands[/code], [code]--fake-players[/code],
+## [code]--fake-churn[/code], [code]--battle-log[/code], [code]--combat-log[/code] y [code]--state-log[/code].
+func platform_dev_options() -> PackedStringArray:
+	var options := PackedStringArray()
+	if debug_commands:
+		options.append("--debug-commands")
+	if fake_players > 0:
+		options.append("--fake-players")
+	if fake_churn_ticks > 0:
+		options.append("--fake-churn")
+	if not battle_log_path.is_empty():
+		options.append("--battle-log")
+	if not combat_log_path.is_empty():
+		options.append("--combat-log")
+	if not state_log_path.is_empty():
+		options.append("--state-log")
+	return options
 
 
 ## La plantilla de [code]--fake-loadout=<plantilla>[:<porcentaje>][/code]: una plantilla del catálogo de combate

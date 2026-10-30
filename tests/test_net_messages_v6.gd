@@ -17,7 +17,7 @@ const FUZZ_SEED: int = 20261029 + 6
 # --- Constantes y canales ---------------------------------------------------------------------
 
 func test_protocol_6_constants_and_channels() -> void:
-	assert_eq(NetProtocol.PROTOCOL_VERSION, 6, "las habilidades suben el protocolo a la versión 6")
+	assert_true(NetProtocol.PROTOCOL_VERSION >= 6, "las habilidades suben el protocolo a la versión 6")
 	assert_eq(NetProtocol.MSG_LOADOUT_SELECT, 0x07, "LOADOUT_SELECT es el 0x07")
 	assert_eq(NetProtocol.channel_for_type(NetProtocol.MSG_LOADOUT_SELECT), NetProtocol.CH_RELIABLE,
 			"LOADOUT_SELECT va por el canal fiable (3)")

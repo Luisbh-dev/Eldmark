@@ -34,6 +34,9 @@ var spawn_tick: int
 ## Id del peer dueño (0 si no lo controla ningún cliente).
 var owner_peer: int = 0
 var display_name: String
+## Personal del juego (moderador o más, el rol de la reclamación; docs/plataforma.md §5.4): su ENTITY_SPAWN
+## lleva el bit [constant NetMessages.SPAWN_FLAG_STAFF] para la etiqueta (SOC-14). Siempre false sin plataforma.
+var is_staff: bool = false
 ## Combinación de [constant FLAG_ALWAYS_RELEVANT].
 var flags: int = 0
 ## Nodo de la entidad en el mundo del servidor: un [PlayerCharacter] si es un jugador.
@@ -125,6 +128,7 @@ func encode_spawn(tick: int, for_owner: bool) -> PackedByteArray:
 	spawn.realm = realm
 	spawn.is_yours = for_owner
 	spawn.teleport_counter = teleport_counter & EntityRecord.TELEPORT_MASK
+	spawn.is_staff = is_staff
 	spawn.display_name = display_name
 	spawn.npc_def_id = npc_def_id
 	var character: PlayerCharacter = get_character()

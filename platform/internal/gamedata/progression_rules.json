@@ -194,7 +194,7 @@
 		],
 		"upper_letters": "ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÚÜÑ"
 	},
-	"protocol_version": 6,
+	"protocol_version": 7,
 	"races": [
 		{
 			"allows_no_beard": false,

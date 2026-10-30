@@ -1635,10 +1635,12 @@ var fake_env: StringName = &"test"                                # el env del r
 var next_block_first: int = 1025                                  # cada bloque (uno dentro de start, antes de
 		# startup_finished, y uno por request_id_block) sale como evento id_block {first, count: 1024} y sube 1024
 func add_character(character_id: int, account_id: int, role: StringName, realm: int, progress: Dictionary,
-		pvp: Dictionary = {}) -> void   # lo que devuelve su reclamación (lease_id nuevo en cada una); sin él, 409 ticket_invalid
+		pvp: Dictionary = {}, display_name: String = "") -> void   # lo que devuelve su reclamación (lease_id nuevo en
+		# cada una; sin nombre, NameRules.bot_name(id)); sin él, 409 ticket_invalid
 func script_next(kind: StringName, status: int, body: Variant, delay_s: float = 0.0) -> void
 		# la siguiente petición de ese kind (claim, save, release, heartbeat, id_block, progress_op, progress_ledger,
-		# ignore, report, sanction…) recibe esa respuesta, una vez; status 0 = sin conexión (transport_ok false)
+		# ignore, report, sanction…) recibe esa respuesta, una vez; status 0 = sin conexión (transport_ok false);
+		# body FakeZonePlatform.DEFAULT = la respuesta por defecto con ese estado y ese retraso (P4, §19.8)
 func set_fenced(fenced: bool) -> void                             # is_fenced() lo devuelve hasta cambiarlo
 func applied(character_id: int) -> Dictionary                     # el último cuerpo aplicado; {} si ninguno
 func sent(kind: StringName) -> Array[Dictionary]                  # los cuerpos recibidos de ese kind, en orden
@@ -2653,3 +2655,112 @@ solo cambia la documentación.
 **Sin comprobar:** el vigilante de `testdb` fuera de Linux (usa `sh` y `Setpgid`, que macOS también tiene); la
 reserva del correo con una `account_tokens` grande; el envío con un servidor SMTP de verdad (STARTTLS sigue
 probándose con el falso).
+
+### 19.8 P4 · billete en la zona (TEC-24)
+
+**Qué hay.** El lado de la zona de §5 y §6: el billete, la reclamación antes del WELCOME, la `ZonePlatform` con su
+cliente HTTP y el protocolo 7. Sin `--platform` todo sigue como antes (`DevAuthProvider`, personajes efímeros):
+
+| Pieza | Contenido |
+|---|---|
+| `scripts/server/platform/` | `HandoffTicket` (§5.1: `decode`, `verify` en tiempo constante, `sign`, `zone_key_of`), `TicketAuthProvider` (los cinco pasos de §5.2 y la tabla de respuestas de la reclamación), `ZonePlatform` (arranque de §8, latido con su conjunto, cercado, reloj, reclamación, liberación, guardado, bloques, fortalezas, lotes, `request` y los `kind` de `PlatformEvent`), `PlatformClient` (las plazas y prioridades de §6 con los reintentos de cada clase), `PlatformEvent`, `ClaimedCharacter`, `AuthOutcome` y `PlatformJson` (ids de 0 a 2^63 − 1 y enteros exactos, como `jsonx`) |
+| `auth_provider.gd` · `dev_auth_provider.gd` · `server_auth.gd` | La API de §14.3 (`PENDING`, `authenticate(peer_id, hello)`, `on_platform_event`, `take_completed`, `cancel`, `uses_tickets`); `validate(peer_id, …)`, que con billetes no mira reino ni nombre (sin `REJECT NAME` ni `IMBALANCE`) |
+| `server_peer.gd` | `State.VERIFYING`, `connected_at_msec` (tiempo real), `character_id`, `claimed` y `drop_body_at_once` |
+| `zone_server.gd` | `start(…, platform)`; en «poll», los eventos por `kind` (`claim` al proveedor, `heartbeat` a la zona, `instance_closed` al final, como la señal `instance_closed`), los finales (reino → cupo → WELCOME con el reino y el nombre del personaje) y los `VERIFYING` vencidos a los 7 s; `get_player_count()` con `VERIFYING`; bajas en `VERIFYING` (`cancel`) y en `LOADING` (`release`); los `revoked` del latido; el bit del personal en el SPAWN; el enfriamiento por `character:<id>`; la sección `platform` de las métricas |
+| `server_config.gd` · `server_main.gd` | `--platform`, `--world`, `--channel`, `--public-address`, `--save-interval`, `--replace`, `--dtls-cert`, `--dtls-key` y `platform_dev_options()`; con plataforma, los secretos del entorno, el arranque, `TicketAuthProvider`, `go_live`, la salida con código 1 (arranque) o 3 (`instance_closed`) y, al cerrar, lo pendiente y la baja |
+| Protocolo 7 | `PROTOCOL_VERSION = 7` con la línea entera de §5.4, REJECT 10–12 con sus textos, `NetTransport.AUTH_TIMEOUT_SECONDS = 10.0`, bit 3 del `flags` de la cabecera del ENTITY_SPAWN (`NetMessages.SPAWN_FLAG_STAFF`, `EntitySpawn.is_staff`, `NetEntity.is_staff`); `progression_rules.json` reexportado con `protocol_version` 7; red.md con sus marcas «v7» |
+| Pruebas | `tests/fake_zone_platform.gd` (`FakeZonePlatform`, la API de §14.3) y `tests/support/fake_http_server.gd` (`FakeHttpServer`, un `TCPServer` con respuestas y retrasos guionizados) |
+
+**Para los paquetes siguientes.**
+
+- **progresion.md P4:** la versión ya es la 7 y la línea de `net_protocol.gd` ya nombra lo suyo; añade su código sin
+  subirla y sus filas «v7» en red.md (la leyenda de §5.2 ya está).
+- **P5:** `CharacterSaver` llama a `ZonePlatform.save(character_id, lease_id, bytes, release_lease, context)`; la
+  respuesta definitiva sale como evento `save` (el `match` de `_poll_platform` le deja el sitio) y saca al personaje
+  del latido si llevaba `release_lease`. Hasta entonces, **provisional**: quien sale del mundo libera su arrendamiento
+  cuando se va el cuerpo (`_claims_by_net`, en `_remove_player`, también tras la salida en combate y en
+  `_clear_players`); un `revoked` que no es `lease_lost` expulsa con su NOTICE y sin guardado final; `instance_closed`
+  cierra como cualquier otro cierre y sale con código 3 (el cierre de §6.1, con los finales primero y su NOTICE, es de
+  P5); el `maintenance` del latido no se mira; `SHUTDOWN_MAX_FRAMES` sigue en 90 y `_drain_platform` espera a
+  `is_flushed()` como mucho eso antes y después de la baja.
+- **progresion.md P5a:** el paso (3) de `_apply_auth_outcome` es el sitio de `ProgressService.prepare` y
+  `_leave_auth_states` (LOADING) el de `cancel_prepared`; `ZonePlatform.RECORD_FORMAT` ya existe; en
+  `FakeZonePlatform`, `_claim_answer` y `_remember_save` son donde entra la parte `progress` y `claim_progress`.
+- **P6:** `ZonePlatform.fortress_records()` trae lo del GET del arranque (`{fortress_id, record, version}`), que
+  `ZoneServer.start` aún no aplica; `put_fortress` ya lleva una en vuelo por fortaleza con `expected_version` y el
+  reenvío tras `version_conflict`; el falso tiene `fake_fortresses`.
+- **P7b:** `ClaimedCharacter` trae `role`, `muted_until_unix`, `ignored_accounts` y `warnings`; `ServerPeer.claimed`
+  sigue puesto en el mundo; los `mutes` del latido no tienen consumidor; `enqueue_batch` y `request` ya están.
+- **P9c:** el registro manda `dtls_cert_pem` y `dtls_name` a null: el `X509Certificate` de Godot no da el CN, así que
+  P9c tendrá que leerlo del DER o pedir `--dtls-name`.
+
+**Desviaciones y decisiones de la implementación:**
+
+- **Los reintentos viven en `PlatformClient`** y el transporte de un intento es un método aparte (`_perform`): el
+  `HTTPRequest` de verdad o, en `FakeZonePlatform`, un `FakeClient` que contesta sin red. Así el falso corre toda la
+  lógica de `ZonePlatform` (conjunto del latido, `instance_closed`, reintentos, lotes) y solo cambia el cable; sus
+  reintentos van 20 veces más rápido (`fake_retry_scale` 0,05).
+- **API de más en `ZonePlatform`** (§14.3 no la nombra): la señal `fatal_error` (`live` agotado), `deregister()`
+  (la baja), `get_client()`, `heartbeat_set()`, `heartbeat_interval_s()`, `send_heartbeat_now()`, `log_sink`,
+  `player_count_source` y las estáticas `read_secrets()`, `parse_ticket_keys()`, `env_guard_error()`,
+  `registration_body()`, `build_id()` y `describe()`. Las clases de petición propias, que no salen como evento:
+  `register`, `live`, `fortresses`, `release`, `stop` y los lotes (`chat`, `audit`, `war`).
+- **El paso 2 de §8 lo hace `ZonePlatform`**, tras el registro: con un `env` de `staging` o `production` y alguna opción
+  de desarrollo, o con la clave del vector de §5.1 fuera de `test` (la regla de §2.3 en la zona), se da de baja y
+  emite `startup_finished(false, motivo)`; `ServerMain` vacía la cola y sale con código 1.
+- **`ClaimedCharacter`** añade `instance_status` y `warnings` (los `account.warnings` de §19.5) a los campos de §14.3
+  e `is_staff()`. Un cuerpo que no se entiende es `UNAVAILABLE` con alerta, y el `lease_id` que traiga se libera.
+- **`FakeZonePlatform`:** `script_next(kind, status, FakeZonePlatform.DEFAULT, delay_s)` contesta lo de por defecto con
+  ese estado y retraso; `add_character` admite un `display_name` al final (§14.3 no da el nombre; sin él,
+  `NameRules.bot_name(id)`); `fake_heartbeat_s` (1 s), `fake_now_unix`, `fake_fortresses`; `sent()` de un GET es
+  `{"path": …}`; `ignore`, `report` y `sanction` dan 404 por defecto, como `progress_op`.
+- **El latido:** solo los 200 salen como evento `heartbeat`; un `revoked` `lease_lost` saca al personaje del conjunto
+  (si no, se latiría por él para siempre); `players` es `get_player_count()` (con `VERIFYING` y los falsos); la zona
+  está cercada también antes del registro.
+- **Bajas:** la de `VERIFYING` y la de `LOADING` se hacen en `_mark_leaving`, por donde pasan todas (desconexión,
+  CLIENT_LEAVE, expulsión, REJECT, plazo de carga), y en `stop()`. Un `lease_lost` no libera nada y saca el cuerpo en el
+  acto (`drop_body_at_once`), también en `LOADING` (§6 dice «sin release»).
+- **Con plataforma, `--max-realm-diff` no se aplica** (§5.4): `ServerAuth` no da `IMBALANCE` con billetes y
+  `ServerMain` no crea los falsos de relleno (lo dice en el registro).
+- **REJECT:** el informe cuenta los rechazos por el texto de `result_text`, no por el propio (el de `BANNED` lleva el
+  motivo de cada cuenta); un HELLO sin billete recibe `TICKET` con «Entra desde el menú con tu cuenta». El WELCOME
+  lleva el `channel` de la configuración (antes, siempre 0).
+- **`build_id`** del registro: `eldmark-<versión del proyecto>-p<protocolo>`.
+- **`FakeHttpServer`** contesta con `Connection: close` y descarta la respuesta si el cliente ya cortó (plazo
+  vencido): no escribe en un socket cerrado.
+
+**Pruebas** (Godot): `test_handoff_ticket.gd` (15: los vectores de Go, las huellas, los 9 inválidos, y
+`TicketAuthProvider` con firma alterada, clave desconocida, sin billete, otra zona, mundo o canal, caducado y el
+desfase de 5 s a los dos lados, reutilizado durante 30 s, otro personaje, zona cercada, la tabla de respuestas de la
+reclamación, el 200 que llega tarde y se libera, un cuerpo que no se entiende, `from_claim` con ids de más de 2^53 y
+cuerpos rotos, `ELDMARK_TICKET_KEYS` y la guardia del `env`, y el falso que devuelve el `pvp` aplicado y sube los
+bloques); `test_zone_server_platform.gd` (13, con ENet: billete → `VERIFYING` → WELCOME con el reino y el nombre del
+personaje, el `ticket_id` > 2^53 en la reclamación y el bit del personal; sin billete → `TICKET`; cupo de 4 con 5 en
+`VERIFYING` → `FULL`; HELLO a 1,4 s con la reclamación a 5 s → WELCOME; plataforma muda → `UNAVAILABLE` a los 7 s y
+liberación de la que llega tarde; zona cercada; bajas en `VERIFYING` y en `LOADING`; `revoked` en `LOADING`; en el
+mundo, un `lease_id` viejo no expulsa, el de ahora sí y `lease_lost` no libera; `BUSY` y `BANNED` en suspensión,
+expulsión y borrado pendiente; `test_hello_cannot_probe_an_enemy_name`; `--debug-commands` con `production`);
+`test_platform_client.gd` (14, con `FakeHttpServer`: el arranque, plazo vencido y reintento con los mismos bytes, la
+reclamación sin reintento, el latido y la reclamación con cuatro guardados lentos en vuelo, el orden por prioridad,
+204, vacío, roto y sin UTF-8 → `body` null sin errores del motor, `zone_instance_id` y `key`, el conjunto del latido,
+un solo `instance_closed`, la liberación con 403 que no se repite y con 503 que sí, el registro que reintenta cada 2 s
+con `instance_alive`, y el servidor de zona de verdad en otro proceso: registro, fortalezas, bloque, `live`, latidos y
+baja con código 0, y con `production` y `--debug-commands`, baja y código 1); además dos en `test_net_messages.gd`
+(REJECT 10–12 y bit 3), una en `test_server_auth.gd` y otra en `test_server_config.gd`. Go: la suite entera pasa con
+`protocol_version` 7 (`internal/gamedata` lo compara con `net_protocol.gd`); el `ticket_id` > 2^53 en la reclamación
+ya lo probaba P3 (`TestClaimBigTicketID`).
+
+**Medido** (esta máquina, 4 núcleos, Godot 4.7.2):
+
+| Qué | Resultado |
+|---|---|
+| `test_zone_server_platform.gd` | 32 s las 13; la del HELLO tardío, 6,6 s (WELCOME a ~6,4 s de la conexión) y la de la plataforma muda, 8,1 s (REJECT a ~7,0 s) |
+| `test_platform_client.gd` | 26 s las 14; el proceso de zona con `--platform`, 3,1 s de arranque a baja, y el de `production`, 1,9 s |
+| `test_handoff_ticket.gd` | 15 pruebas en menos de 1 s (sin contar la carga del ejecutor) |
+
+**Sin comprobar:** contra la plataforma de Go de verdad (P10; aquí, el falso y `FakeHttpServer` con las rutas y los
+cuerpos de §6); `PlatformClient` con cientos de personajes en el latido y lotes llenos; DTLS (P9c).
+
+**Queda para después:** `CharacterSaver` y el cierre de §6.1 (P5); `prepare` y la sección `progress` (progresion.md
+P5a); las fortalezas cargadas y la sección `pvp` (P6); silencios, avisos, `/gm` y lotes de chat y auditoría (P7b);
+`NetClient` con billete y `AccountFlow` (P8); DTLS (P9c); la prueba de extremo a extremo (P10).

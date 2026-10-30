@@ -50,8 +50,10 @@ signal packet_received(peer_id: int, bytes: PackedByteArray)
 ## [signal auth_received], ese es el motivo.
 signal connection_failed()
 
-## Tiempo máximo de autenticación de [SceneMultiplayer] (segundos).
-const AUTH_TIMEOUT_SECONDS: float = 5.0
+## Tiempo máximo de autenticación de [SceneMultiplayer] (segundos), en los dos lados y contado desde la
+## conexión, no desde el HELLO. 10 s desde el protocolo 7 (docs/plataforma.md §5.2): deja sitio a la
+## reclamación del billete, que la zona corta a los 7 s con un REJECT que siempre llega a tiempo.
+const AUTH_TIMEOUT_SECONDS: float = 10.0
 ## Ticks que se deja a [method disconnect_after_flush] antes de cortar a la fuerza.
 const FORCE_DISCONNECT_TICKS: int = 60
 ## Tiempos de espera de ENet tras conectar: una desconexión se detecta en 3-8 s.
