@@ -29,6 +29,11 @@ extends Node
 ## [constant IDLE_TAIL_TICKS] ticks (un cuarto como mucho) el bot se queda quieto, para que las
 ## pruebas de convergencia comparen estados estacionarios.
 ## [br][br]
+## [b]Escenario[/b] ([code]--bot-scenario=progress[/code], [BotProgressScenario], docs/progresion.md §15 P8): al
+## aparecer, el bot se queda quieto y corre el escenario; al acabar cada paso reescribe el informe (con la clave
+## [code]scenario[/code], para quien lo mira desde fuera mientras juega). Al terminarlo sale con código 0 si no hay
+## [code]--quit-after-ticks[/code] (con él, sigue hasta esos ticks); si falla, informe y código 1.
+## [br][br]
 ## [b]Elección de reino.[/b] Si un cliente con ventana arranca sin [code]--realm[/code] se muestra
 ## [RealmSelect] (reino, dirección y nombre, validados antes de conectar). También se vuelve a ella,
 ## con el motivo como aviso, tras un rechazo, un fallo de conexión o una desconexión: la zona, la
@@ -131,6 +136,8 @@ var _exit_code: int = 0
 # Camino de la cuenta del bot con --platform: la API y lo que va al informe (clave «platform»).
 var _api: PlatformApi = null
 var _account_report: Dictionary = {}
+# El escenario del bot (--bot-scenario), desde que aparece.
+var _scenario: BotProgressScenario = null
 
 
 func _ready() -> void:
@@ -140,7 +147,7 @@ func _ready() -> void:
 	for warning: String in config.warnings:
 		push_warning("[Eldmark] %s" % warning)
 	set_process(false)
-	set_physics_process(config.quit_after_ticks > 0)
+	set_physics_process(config.quit_after_ticks > 0 or (_is_bot() and not config.bot_scenario.is_empty()))
 	if not _is_bot():
 		InputBindings.ensure_defaults()
 		_create_overlay()
@@ -202,6 +209,11 @@ func get_platform_api() -> PlatformApi:
 	return _api
 
 
+## El escenario del bot ([code]--bot-scenario[/code]; null sin él o antes de aparecer).
+func get_bot_scenario() -> BotProgressScenario:
+	return _scenario
+
+
 ## Lo que va al informe bajo [code]platform[/code] (vacío sin cuenta): [code]code[/code] (vacío si entró),
 ## [code]status[/code], [code]message[/code], [code]character_id[/code] y [code]created[/code].
 func get_account_report() -> Dictionary:
@@ -240,6 +252,14 @@ func _physics_process(_delta: float) -> void:
 		if _leave_wait_ticks >= LEAVE_WAIT_TICKS:
 			_quit(0)
 		return
+	if _scenario != null and not _scenario.is_finished():
+		_scenario.step()
+		if _scenario.is_failed():
+			_fail("Escenario %s: %s" % [BotProgressScenario.NAME, _scenario.get_error()])
+			return
+		if _scenario.is_done() and config.quit_after_ticks <= 0:
+			_finish_session()
+			return
 	var quit_after: int = config.quit_after_ticks
 	if quit_after <= 0:
 		return
@@ -309,7 +329,9 @@ func _enter_with_account() -> void:
 		character_name = NameRules.bot_name(config.bot_seed)
 	var realm_id: StringName = RealmCatalog.id_of_code(config.realm) \
 			if RealmCatalog.is_realm_code(config.realm) else &""
-	var ensured: ApiResult = await flow.ensure_character(config.world_id, character_name, realm_id)
+	# --loadout es la plantilla de inicio del personaje si hay que crearlo (docs/progresion.md §2.5).
+	var ensured: ApiResult = await flow.ensure_character(config.world_id, character_name, realm_id,
+			StringName(config.loadout))
 	if _quitting:
 		return
 	if not ensured.ok:
@@ -580,6 +602,13 @@ func _on_local_spawned(character: PlayerCharacter) -> void:
 	if _is_bot():
 		_brain = ClientBotBrains.make(_client, config, character.global_position, BOT_RADIUS)
 		_controller.set_bot(_brain)
+		if config.bot_scenario == ClientConfig.BOT_SCENARIO_PROGRESS and _scenario == null:
+			# El escenario no anda: el bot se queda quieto (equipar pide estar sin acción y fuera de combate).
+			_brain.set_idle_from(_client.get_prediction().get_predicted_tick() + 1)
+			_idle_set = true
+			_scenario = BotProgressScenario.new(_client)
+			_scenario.phase_completed.connect(_on_scenario_phase)
+			print("[Eldmark] Escenario %s: empieza" % BotProgressScenario.NAME)
 		return
 
 	# Aspecto visual: el humanoide animado sustituye a la cápsula provisional, con la apariencia del SPAWN propio (la
@@ -782,9 +811,23 @@ func _quit(code: int) -> void:
 	get_tree().quit(code)
 
 
+# Un paso del escenario acabado: al registro y al informe (reescrito entero, sin darlo por escrito: el final sale
+# igual al salir).
+func _on_scenario_phase(phase: String) -> void:
+	print("[Eldmark] Escenario %s: %s" % [BotProgressScenario.NAME, phase])
+	if config.report_path.is_empty() or _client == null or _report_written:
+		return
+	_client.report_extra["scenario"] = _scenario.to_report()
+	var error: Error = _client.write_report(config.report_path)
+	if error != OK:
+		push_warning("[Eldmark] No se pudo escribir el informe '%s' (error %d)" % [config.report_path, error])
+
+
 func _write_report() -> void:
 	if _report_written or config.report_path.is_empty():
 		return
+	if _scenario != null and _client != null:
+		_client.report_extra["scenario"] = _scenario.to_report()
 	if _client == null:
 		# El bot con cuenta que no llegó a conectar: solo lo de la cuenta.
 		if not _account_report.is_empty():

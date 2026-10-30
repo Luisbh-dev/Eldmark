@@ -10,5 +10,6 @@
 // una vez (godot --headless --import, con los objetos de LFS ya bajados). ELDMARK_E2E_ARTIFACTS=<carpeta>
 // conserva allí los registros de cada prueba (la plataforma, las zonas, los bots y sus informes); sin ella
 // van a una carpeta temporal y, si la prueba falla, se copia el final de cada uno en su salida.
-// progresion.md P8 usa el mismo arnés.
+// progress_test.go (progresion.md P8) usa el mismo arnés para el inventario, los saldos y la caída con operaciones
+// de la economía.
 package e2e

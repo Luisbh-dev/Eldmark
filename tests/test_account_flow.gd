@@ -141,6 +141,21 @@ func test_ensure_character_creates_the_missing_one_with_the_defaults() -> void:
 			"la apariencia por defecto del pueblo vale")
 
 
+func test_ensure_character_creates_it_with_the_asked_starter_template() -> void:
+	# progresion.md P8: el --loadout del bot con cuenta es la plantilla de inicio del personaje que crea.
+	await _flow.login(_platform.email, _platform.password)
+	await _flow.ensure_character(1, "Aneira", &"", &"squire")
+	await _flow.ensure_character(1, "Bruno", &"", &"volar")
+	var posted: Array[Dictionary] = _platform.calls_to("/v1/worlds/1/characters", HTTPClient.METHOD_POST)
+	if not assert_eq(posted.size(), 2):
+		return
+	assert_eq(posted[0]["body"].get("starter_template_id"), "squire", "la pedida")
+	assert_eq(posted[1]["body"].get("starter_template_id"), "marksman", "una que no existe: la primera por id")
+	var found: ApiResult = await _flow.ensure_character(1, "Aneira", &"", &"marksman")
+	assert_false(found.data.get("created"), "uno que ya existe no se crea otra vez")
+	assert_eq(_platform.calls_to("/v1/worlds/1/characters", HTTPClient.METHOD_POST).size(), 2)
+
+
 func test_ensure_character_on_a_new_account_uses_the_asked_realm_or_vardheim() -> void:
 	await _flow.login(_platform.email, _platform.password)
 	await _flow.ensure_character(1, "Aneira", &"solmarch")

@@ -200,6 +200,19 @@ func test_bot_brain_option_accepts_the_known_brains_and_warns_about_the_others()
 		assert_true(unknown.warnings[0].contains("volar") and unknown.warnings[0].contains("combat"))
 
 
+func test_bot_scenario_option_accepts_progress_and_warns_about_the_others() -> void:
+	var progress: ClientConfig = ClientConfig.from_args(PackedStringArray(["--bot", "--bot-scenario=Progress"]))
+	assert_eq(progress.bot_scenario, ClientConfig.BOT_SCENARIO_PROGRESS, "en minúsculas")
+	assert_eq(progress.warnings.size(), 0)
+	assert_eq(ClientConfig.from_args(PackedStringArray(["--bot"])).bot_scenario, "", "sin la opción, ninguno")
+	var unknown: ClientConfig = ClientConfig.from_args(PackedStringArray(["--bot", "--bot-scenario=volar"]))
+	assert_eq(unknown.bot_scenario, "", "uno desconocido se ignora")
+	if assert_eq(unknown.warnings.size(), 1, "con un aviso en español"):
+		assert_true(unknown.warnings[0].contains("volar") and unknown.warnings[0].contains("progress"))
+	var options: Dictionary = BootScript.parse_client_options(PackedStringArray(["--bot-scenario=progress"]))
+	assert_eq(options["warnings"], PackedStringArray(), "el sandbox lo trata como un argumento de red")
+
+
 func test_loadout_option_takes_a_selectable_template_by_name() -> void:
 	var config: ClientConfig = _parse(["--bot", "--loadout=Marksman"])
 	assert_eq(config.loadout, "marksman", "en minúsculas")

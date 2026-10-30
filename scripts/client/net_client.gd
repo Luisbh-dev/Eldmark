@@ -958,6 +958,39 @@ func get_stats() -> Dictionary:
 	}
 
 
+## Lo que el cliente sabe de su progreso, en la forma del registro de docs/progresion.md §3.4 para compararlo con lo
+## guardado (§15 P8): [code]items[/code] (el confirmado del inventario por contenedor y ranura, cada uno con
+## [method ItemInstance.to_dictionary]), [code]wallets[/code] ([code]{currency, balance}[/code] de cada moneda, de
+## WALLET_UPDATE), [code]level[/code], [code]xp_in_level[/code], [code]realm_points[/code],
+## [code]attribute_points[/code] (de PROGRESS_UPDATE), [code]bag_slots[/code], [code]active_weapon_slot[/code] (el
+## bit0 de [code]combat_flags2[/code] del estado predicho), [code]revision[/code] y [code]pending[/code] (peticiones
+## sin respuesta). Vacío sin inventario (antes del primer INVENTORY_FULL o en una zona sin progreso).
+func progress_report() -> Dictionary:
+	var confirmed: InventoryState = _inventory.get_confirmed()
+	if confirmed == null:
+		return {}
+	var items: Array = []
+	for container: int in [InventoryState.ContainerId.BAG, InventoryState.ContainerId.EQUIPMENT]:
+		for slot: int in confirmed.slot_count(container):
+			var item: ItemInstance = confirmed.get_item(container, slot)
+			if item != null:
+				items.append(item.to_dictionary(container, slot))
+	var wallets: Array = []
+	var codes: Array = Currency.Code.values()
+	codes.sort()
+	for code: Variant in codes:
+		wallets.append({"currency": int(code), "balance": _progress.get_balance(int(code))})
+	var active_slot: int = 0
+	if is_instance_valid(_character):
+		active_slot = 1 if (_character.combat.combat_flags2 & CombatState.FLAG2_SECOND_SLOT) != 0 else 0
+	return {
+		"items": items, "wallets": wallets, "level": _progress.get_level(), "xp_in_level": _progress.get_xp_in_level(),
+		"realm_points": _progress.get_realm_points(), "attribute_points": _progress.get_attribute_points(),
+		"bag_slots": confirmed.bag_slots, "active_weapon_slot": active_slot, "revision": _inventory.get_revision(),
+		"pending": _inventory.get_pending_count(),
+	}
+
+
 ## Escribe el informe JSON de la sesión en [param path] (los directorios que falten se crean). Sus
 ## claves son las de [method get_stats] más: [code]version[/code], [code]name[/code],
 ## [code]realm[/code], [code]mode[/code], [code]address[/code], [code]port[/code],
@@ -968,7 +1001,8 @@ func get_stats() -> Dictionary:
 ## [code]final[/code]: [code]{predicted_tick,
 ## predicted_state, server_tick, server_state, exact, position, velocity}[/code], donde los estados
 ## son los bytes de [method PlayerState.encode] en hexadecimal y [code]exact[/code] dice si el
-## estado predicho para el último tick del servidor es idéntico al suyo.
+## estado predicho para el último tick del servidor es idéntico al suyo. Con inventario, también
+## [code]progress[/code] ([method progress_report]). Las claves de [member report_extra] van encima.
 func write_report(path: String) -> Error:
 	if path.is_empty():
 		return ERR_INVALID_PARAMETER
@@ -1734,6 +1768,8 @@ func _build_report() -> Dictionary:
 	report["reject_text"] = _reject_text
 	report["disconnect_text"] = _last_disconnect_text
 	report["character_id"] = str(_config.character_id) if _config != null else "0"
+	if _inventory.has_inventory():
+		report["progress"] = progress_report()
 	for key: Variant in report_extra:
 		report[key] = report_extra[key]
 	var final_state: Dictionary = {

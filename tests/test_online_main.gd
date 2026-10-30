@@ -5,6 +5,9 @@ extends TestCase
 ## [br]- Cliente normal: cámara, HUD y humanoide animado al aparecer, y la pantalla de carga fuera.
 ## [br]- Bot: sin cámara ni HUD, informe al terminar, quieto al final y código de salida 0.
 ## [br]- Rechazo, cierre del servidor y zona desconocida: código de salida 1 e informe.
+## [br]- El escenario [code]progress[/code] ([BotProgressScenario], progresion.md §15 P8): equipa el arco, da oro y una
+## poción, reescribe el informe en cada paso y sale con 0 y su progreso en el informe; si un paso no se cumple,
+## código 1 y el motivo en el informe.
 
 const ONLINE_MAIN_SCENE: String = "res://scenes/client/online_main.tscn"
 const REPORT_FILE: String = "test_online_main_report.json"
@@ -55,13 +58,14 @@ func after_each() -> void:
 # --- Ayudantes --------------------------------------------------------------------------------
 
 ## Servidor con la zona real de test_world escuchando en un puerto libre.
-func _start_server(zone_id: String = "test_world", max_players: int = 8) -> void:
+func _start_server(zone_id: String = "test_world", max_players: int = 8, debug_commands: bool = false) -> void:
 	_port = NetHarness.free_udp_port()
 	_server_viewport = NetHarness.make_world_viewport(_root, NetZones.scene_path("test_world"))
 	var config := ServerConfig.new()
 	config.port = _port
 	config.zone_id = zone_id
 	config.max_players = max_players
+	config.debug_commands = debug_commands
 	_server = NetHarness.start_server(_server_viewport, config)
 	await wait_physics_frames(3)
 
@@ -241,3 +245,65 @@ func test_quit_after_ticks_without_entering_the_world_is_a_failure() -> void:
 	assert_eq(_exit_codes, [1] as Array[int], "no llegar a entrar en la zona es un fallo")
 	var report: Dictionary = NetHarness.read_report(NetHarness.build_path(REPORT_FILE))
 	assert_eq(report.get("state"), "CONNECTING")
+
+
+func test_the_progress_scenario_equips_the_bow_gives_gold_and_a_potion_and_leaves() -> void:
+	await _start_server("test_world", 8, true)
+	_start_online(ClientConfig.Mode.BOT, func(config: ClientConfig) -> void:
+		config.realm = NetProtocol.Realm.VARDHEIM
+		config.bot_scenario = ClientConfig.BOT_SCENARIO_PROGRESS)
+	assert_true(await _wait_until(func() -> bool: return _online.get_bot_scenario() != null), "aparece con el escenario")
+	var scenario: BotProgressScenario = _online.get_bot_scenario()
+	# Cada paso reescribe el informe: se lee justo después (OnlineMain lo escribe antes, se conectó primero).
+	var phases: Array[String] = []
+	scenario.phase_completed.connect(func(_phase: String) -> void:
+		var interim: Dictionary = NetHarness.read_report(NetHarness.build_path(REPORT_FILE))
+		phases.append(str((interim.get("scenario", {}) as Dictionary).get("phase", ""))))
+	var net_id: int = _online.get_client().get_net_id()
+	var server_record: Array[ProgressRecord] = []
+	var gold_given: bool = await _wait_until(func() -> bool:
+		var player: PlayerProgress = _server.get_progress().get_player(net_id)
+		if player != null:
+			server_record.assign([player.record.duplicate_record()])
+		return scenario.get_phase() == "gold", 900)
+	assert_true(gold_given, "llega a dar el oro")
+	assert_true(await _wait_until(_exited, 900), "y al acabar sale")
+	assert_eq(_exit_codes, [0] as Array[int], "con código 0")
+	assert_eq(phases, ["equip", "gold", "potion", "done"] as Array[String], "el informe, reescrito tras cada paso")
+	var report: Dictionary = NetHarness.read_report(NetHarness.build_path(REPORT_FILE))
+	var summary: Dictionary = report.get("scenario", {})
+	assert_eq([summary.get("phase"), summary.get("error"), summary.get("completed")],
+			["done", "", ["equip", "gold", "potion", "done"]], "el escenario entero, sin error")
+	assert_eq(summary.get("bow_slot"), [1.0, 1.0], "el arco, en WEAPON_2 (en JSON, números)")
+	assert_false(bool(summary.get("already_equipped", true)), "lo equipó él (el escudero lo lleva en la bolsa)")
+	var progress: Dictionary = report.get("progress", {})
+	var by_slot: Dictionary = {}
+	var potions: int = 0
+	for item: Dictionary in progress.get("items", []):
+		by_slot["%d:%d" % [int(item["container"]), int(item["slot"])]] = item["def_id"]
+		if item["def_id"] == "potion_health":
+			potions += int(item["count"])
+	assert_eq([by_slot.get("1:0"), by_slot.get("1:1")], ["sword_shield_vado", "bow_vado"], "el equipo del informe")
+	assert_eq(potions, 4, "las tres del kit y la dada")
+	assert_eq(progress.get("wallets"), [{"currency": 1.0, "balance": 50.0}, {"currency": 2.0, "balance": 0.0}],
+			"y los saldos")
+	assert_eq(int(progress.get("active_weapon_slot", -1)), 0, "con la espada en la mano")
+	assert_eq(int(progress.get("pending", -1)), 0, "sin peticiones en vuelo")
+	if assert_eq(server_record.size(), 1, "el servidor tenía su registro"):
+		assert_eq(server_record[0].wallets[Currency.Code.GOLD], 50, "con el oro dado")
+	assert_true(await _wait_until(func() -> bool: return _server.get_player_count() == 0), "sale de la zona")
+
+
+func test_a_progress_scenario_step_that_never_happens_ends_with_code_one() -> void:
+	# Sin --debug-commands en la zona, el oro no llega nunca.
+	await _start_server()
+	_start_online(ClientConfig.Mode.BOT, func(config: ClientConfig) -> void:
+		config.realm = NetProtocol.Realm.VARDHEIM
+		config.bot_scenario = ClientConfig.BOT_SCENARIO_PROGRESS)
+	assert_true(await _wait_until(func() -> bool: return _online.get_bot_scenario() != null))
+	_online.get_bot_scenario().step_timeout_ticks = 90
+	assert_true(await _wait_until(_exited, 900), "se cierra")
+	assert_eq(_exit_codes, [1] as Array[int], "con código 1")
+	var summary: Dictionary = NetHarness.read_report(NetHarness.build_path(REPORT_FILE)).get("scenario", {})
+	assert_eq(summary.get("phase"), "equip", "el arco sí")
+	assert_true(str(summary.get("error", "")).contains("«gold»"), "y el motivo: %s" % summary.get("error"))
