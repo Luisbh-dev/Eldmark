@@ -10,7 +10,8 @@ extends RefCounted
 ## pitch y el hombro de la entrada simulada en [code]s[/code], [method InputQueue.get_applied]), con la
 ## convergencia a la profundidad del hostil más cercano a la mira en [code]s − rewind[/code]. El abanico
 ## gira la dirección en yaw. El origen y la velocidad se cuantizan como viajan en el ENTITY_SPAWN
-## ([method Ballistics.quantize]) y el servidor vuela con eso. El rebobinado
+## ([method Ballistics.quantize]) y el servidor vuela con eso. Qué sale, su velocidad, el abanico y la
+## cuantización son los de [ProjectileLaunch], compartido con la flecha predicha del cliente. El rebobinado
 ## ([method CombatResolver.compute_rewind]) se fija una vez por disparo, en ticks enteros; si se rechaza,
 ## la flecha es [b]inofensiva[/b] (vuela y choca con el mundo, no prueba a nadie), con sospecha + 1 y
 ## registro; también lo es la de quien dispara desde la zona segura de su reino. El proyectil guarda una
@@ -52,9 +53,6 @@ signal despawned(projectile_id: int, tick: int, reason: int, recipients: PackedI
 
 ## Por debajo de esta altura el proyectil caduca (cae fuera del mundo).
 const VOID_LIMIT_Y: float = -100.0
-## Por debajo de esta distancia (m) entre el pecho y el punto apuntado no hay dirección: se dispara por
-## el rayo de la cámara.
-const _MIN_AIM_DISTANCE: float = 0.01
 
 const _IMPACT: int = NetProtocol.DespawnReason.IMPACT
 const _EXPIRED: int = NetProtocol.DespawnReason.EXPIRED
@@ -231,28 +229,25 @@ func get_projectile(projectile_id: int) -> Projectile:
 ## nada si la fuente no lleva proyectil.
 func fire(shooter: Combatant, source: int, s: int, space: PhysicsDirectSpaceState3D) -> void:
 	var frame: Combatant.Frozen = shooter.frozen
+	# Qué sale, con qué velocidad y en qué abanico: lo mismo que la flecha predicha del cliente
+	# (ProjectileLaunch, compartido).
 	var attack: AttackTicks = null
-	var count: int = 1
-	var spread_deg: float = 0.0
-	var speed: float = 0.0
+	var launch: ProjectileLaunch = null
 	var charge_ticks: int = 0
 	match CombatSource.kind_of(source):
 		CombatSource.Kind.ATTACK:
 			attack = CombatCatalog.attack(CombatSource.id_of(source))
-			if attack != null:
-				speed = attack.projectile_speed_mps
-				if attack.heavy:
-					charge_ticks = frame.charge_ticks
+			if attack != null and attack.heavy:
+				charge_ticks = frame.charge_ticks
+			launch = ProjectileLaunch.for_attack(attack, charge_ticks)
 		CombatSource.Kind.ABILITY:
 			var ability: AbilityTicks = CombatCatalog.ability(CombatSource.id_of(source))
 			if ability != null:
 				attack = ability.hit
-				count = ability.projectile_count
-				spread_deg = ability.projectile_spread_deg
-				speed = ability.projectile_speed_mps
-	if attack == null or attack.projectile_id == 0:
+				launch = ProjectileLaunch.for_ability(ability)
+	if attack == null or launch == null:
 		return
-	var definition: ProjectileTicks = CombatCatalog.projectile(attack.projectile_id)
+	var definition: ProjectileTicks = CombatCatalog.projectile(launch.projectile_id)
 	if definition == null:
 		return
 	var rules: CombatRules = CombatCatalog.rules()
@@ -283,19 +278,11 @@ func fire(shooter: Combatant, source: int, s: int, space: PhysicsDirectSpaceStat
 		_prepare(s)
 		feet = _aim_candidates(shooter, camera, forward, s - rewind, s)
 	var point: Vector3 = AimRay.aim_point(space, camera, forward, feet)
-	var muzzle: Vector3 = AimRay.muzzle(frame.position)
-	var base: Vector3 = point - muzzle
-	base = base / base.length() if base.length() > _MIN_AIM_DISTANCE else forward
-	var factor: float = _charge_progress(charge_ticks, attack)
-	var launch_speed: float = speed * lerpf(1.0, attack.charge_speed_scale, factor)
+	var shots: Array[PackedVector3Array] = launch.launch_toward(AimRay.muzzle(frame.position), point,
+			forward)
 	var shot := Shot.new()
 	var scale: float = status.damage_scale(shooter) if status != null else 1.0
-	for index: int in count:
-		var offset_deg: float = (float(index) - float(count - 1) * 0.5) * spread_deg
-		var direction: Vector3 = base
-		if offset_deg != 0.0:
-			direction = base.rotated(Vector3.UP, deg_to_rad(offset_deg))
-		var quantized: Array = Ballistics.quantize(muzzle, direction * launch_speed)
+	for index: int in shots.size():
 		_make_room(shooter.get_id(), s, rules)
 		var projectile_id: int = registry.allocate_transient_id(s)
 		if projectile_id == 0:
@@ -317,8 +304,8 @@ func fire(shooter: Combatant, source: int, s: int, space: PhysicsDirectSpaceStat
 		projectile.charge_ticks = charge_ticks
 		projectile.damage_scale = scale
 		projectile.spawn_tick = s
-		projectile.origin = quantized[0]
-		projectile.velocity = quantized[1]
+		projectile.origin = shots[index][0]
+		projectile.velocity = shots[index][1]
 		projectile.reached_ticks = 0
 		projectile.reached = projectile.origin
 		projectile.shot = shot
@@ -330,14 +317,6 @@ func fire(shooter: Combatant, source: int, s: int, space: PhysicsDirectSpaceStat
 		spawned.emit(NetMessages.EntitySpawn.for_projectile(projectile_id, s, projectile.realm,
 				projectile.owner_id, definition.id, source, index, harmless, projectile.origin,
 				projectile.velocity), PackedInt32Array([projectile.owner_id]))
-
-
-# Progreso (0..1) de la carga de un fuerte (la f de la fórmula de daño); 0 sin carga.
-static func _charge_progress(charge_ticks: int, attack: AttackTicks) -> float:
-	if attack.charge_max_ticks <= attack.charge_min_ticks:
-		return 0.0
-	return clampf(float(charge_ticks - attack.charge_min_ticks)
-			/ float(attack.charge_max_ticks - attack.charge_min_ticks), 0.0, 1.0)
 
 
 # Un disparo con el rebobinado rechazado: sospecha + 1 y una línea del registro (el director la recibe en

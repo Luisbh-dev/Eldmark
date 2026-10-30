@@ -230,9 +230,222 @@ hold_end = true
 blend_in_s = 0.08
 blend_out_s = 0.2
 
+[sub_resource type="Resource" id="Seg_shield_bash_windup"]
+script = ExtResource("3_seg")
+animation = &"ual2/Shield_OneShot"
+from_s = 0.0
+to_s = 0.3
+
+[sub_resource type="Resource" id="Seg_shield_bash_active"]
+script = ExtResource("3_seg")
+animation = &"ual2/Shield_OneShot"
+from_s = 0.3
+to_s = 0.45
+
+[sub_resource type="Resource" id="Seg_shield_bash_recovery"]
+script = ExtResource("3_seg")
+animation = &"ual2/Shield_OneShot"
+from_s = 0.45
+to_s = 0.83
+
+[sub_resource type="Resource" id="Seg_shield_rush_windup"]
+script = ExtResource("3_seg")
+animation = &"ual2/Shield_Dash"
+from_s = 0.0
+to_s = 0.15
+
+[sub_resource type="Resource" id="Seg_shield_rush_active"]
+script = ExtResource("3_seg")
+animation = &"ual2/Shield_Dash"
+from_s = 0.15
+to_s = 0.75
+
+[sub_resource type="Resource" id="Seg_shield_rush_recovery"]
+script = ExtResource("3_seg")
+animation = &"ual2/Shield_Dash"
+from_s = 0.75
+to_s = 1.1
+
+[sub_resource type="Resource" id="Seg_shield_wall_main"]
+script = ExtResource("3_seg")
+animation = &"ual2/Idle_Shield_Loop"
+from_s = 0.0
+to_s = 0.4
+
+[sub_resource type="Resource" id="Seg_drink_windup"]
+script = ExtResource("3_seg")
+animation = &"ual2/Consume"
+from_s = 0.0
+to_s = 0.9
+
+[sub_resource type="Resource" id="Seg_drink_active"]
+script = ExtResource("3_seg")
+animation = &"ual2/Consume"
+from_s = 0.9
+to_s = 0.95
+
+[sub_resource type="Resource" id="Seg_drink_recovery"]
+script = ExtResource("3_seg")
+animation = &"ual2/Consume"
+from_s = 0.95
+to_s = 1.33
+
+[sub_resource type="Resource" id="Seg_swap_main"]
+script = ExtResource("3_seg")
+animation = &"ual1/Sword_Idle"
+from_s = 0.0
+to_s = 0.4
+
+[sub_resource type="Resource" id="Seg_downed_main"]
+script = ExtResource("3_seg")
+animation = &"ual1/Death01"
+from_s = 2.3
+to_s = 2.4
+
+[sub_resource type="Resource" id="Seg_downed_crawl_main"]
+script = ExtResource("3_seg")
+animation = &"ual1/Crouch_Fwd_Loop"
+from_s = 0.0
+to_s = 2.0
+
+[sub_resource type="Resource" id="Seg_revive_main"]
+script = ExtResource("3_seg")
+animation = &"ual1/Fixing_Kneeling"
+from_s = 0.0
+to_s = 3.0
+
+[sub_resource type="Resource" id="Seg_execute_main"]
+script = ExtResource("3_seg")
+animation = &"ual2/Melee_Hook"
+from_s = 0.0
+to_s = 0.466
+
+[sub_resource type="Resource" id="Seg_get_up_main"]
+script = ExtResource("3_seg")
+animation = &"ual2/LayToIdle"
+from_s = 0.0
+to_s = 1.5
+
+[sub_resource type="Resource" id="Anim_shield_bash"]
+script = ExtResource("2_anim")
+key = &"shield_bash"
+upper_body = true
+windup = SubResource("Seg_shield_bash_windup")
+active = SubResource("Seg_shield_bash_active")
+recovery = SubResource("Seg_shield_bash_recovery")
+contact_s = 0.38
+duration_s = 0.0
+hold_end = false
+blend_in_s = 0.06
+blend_out_s = 0.12
+
+[sub_resource type="Resource" id="Anim_shield_rush"]
+script = ExtResource("2_anim")
+key = &"shield_rush"
+upper_body = false
+windup = SubResource("Seg_shield_rush_windup")
+active = SubResource("Seg_shield_rush_active")
+recovery = SubResource("Seg_shield_rush_recovery")
+contact_s = 0.4
+duration_s = 0.0
+hold_end = false
+blend_in_s = 0.06
+blend_out_s = 0.15
+
+[sub_resource type="Resource" id="Anim_shield_wall"]
+script = ExtResource("2_anim")
+key = &"shield_wall"
+upper_body = true
+windup = SubResource("Seg_shield_wall_main")
+contact_s = -1.0
+duration_s = 0.2
+hold_end = true
+blend_in_s = 0.08
+blend_out_s = 0.15
+
+[sub_resource type="Resource" id="Anim_drink"]
+script = ExtResource("2_anim")
+key = &"drink"
+upper_body = true
+windup = SubResource("Seg_drink_windup")
+active = SubResource("Seg_drink_active")
+recovery = SubResource("Seg_drink_recovery")
+contact_s = -1.0
+duration_s = 0.0
+hold_end = false
+blend_in_s = 0.1
+blend_out_s = 0.15
+
+[sub_resource type="Resource" id="Anim_swap"]
+script = ExtResource("2_anim")
+key = &"swap"
+upper_body = true
+windup = SubResource("Seg_swap_main")
+contact_s = -1.0
+duration_s = 0.4
+hold_end = false
+blend_in_s = 0.2
+blend_out_s = 0.2
+
+[sub_resource type="Resource" id="Anim_downed"]
+script = ExtResource("2_anim")
+key = &"downed"
+upper_body = false
+windup = SubResource("Seg_downed_main")
+contact_s = -1.0
+duration_s = 0.1
+hold_end = true
+blend_in_s = 0.25
+blend_out_s = 0.25
+
+[sub_resource type="Resource" id="Anim_downed_crawl"]
+script = ExtResource("2_anim")
+key = &"downed_crawl"
+upper_body = false
+windup = SubResource("Seg_downed_crawl_main")
+contact_s = -1.0
+duration_s = 2.0
+hold_end = false
+loop = true
+blend_in_s = 0.25
+blend_out_s = 0.25
+
+[sub_resource type="Resource" id="Anim_revive"]
+script = ExtResource("2_anim")
+key = &"revive"
+upper_body = false
+windup = SubResource("Seg_revive_main")
+contact_s = -1.0
+duration_s = 3.0
+hold_end = false
+blend_in_s = 0.15
+blend_out_s = 0.2
+
+[sub_resource type="Resource" id="Anim_execute"]
+script = ExtResource("2_anim")
+key = &"execute"
+upper_body = true
+windup = SubResource("Seg_execute_main")
+contact_s = -1.0
+duration_s = 1.0
+hold_end = false
+blend_in_s = 0.08
+blend_out_s = 0.15
+
+[sub_resource type="Resource" id="Anim_get_up"]
+script = ExtResource("2_anim")
+key = &"get_up"
+upper_body = false
+windup = SubResource("Seg_get_up_main")
+contact_s = -1.0
+duration_s = 1.5
+hold_end = false
+blend_in_s = 0.1
+blend_out_s = 0.2
+
 [resource]
 script = ExtResource("1_set")
-entries = Array[ExtResource("2_anim")]([SubResource("Anim_sword_light_1"), SubResource("Anim_sword_light_2"), SubResource("Anim_sword_light_3"), SubResource("Anim_sword_heavy"), SubResource("Anim_charge"), SubResource("Anim_block"), SubResource("Anim_dodge"), SubResource("Anim_stagger"), SubResource("Anim_stun"), SubResource("Anim_dead")])
+entries = Array[ExtResource("2_anim")]([SubResource("Anim_sword_light_1"), SubResource("Anim_sword_light_2"), SubResource("Anim_sword_light_3"), SubResource("Anim_sword_heavy"), SubResource("Anim_charge"), SubResource("Anim_block"), SubResource("Anim_dodge"), SubResource("Anim_stagger"), SubResource("Anim_stun"), SubResource("Anim_dead"), SubResource("Anim_shield_bash"), SubResource("Anim_shield_rush"), SubResource("Anim_shield_wall"), SubResource("Anim_drink"), SubResource("Anim_swap"), SubResource("Anim_downed"), SubResource("Anim_downed_crawl"), SubResource("Anim_revive"), SubResource("Anim_execute"), SubResource("Anim_get_up")])
 libraries = Dictionary[StringName, String]({
 &"ual1": "res://assets/animations/ual1/UAL1_Standard.glb",
 &"ual2": "res://assets/animations/ual2/UAL2_Standard.glb"

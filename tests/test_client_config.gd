@@ -179,7 +179,7 @@ func test_network_arguments_are_not_reported_as_unknown_by_boot() -> void:
 	var options: Dictionary = BootScript.parse_client_options(PackedStringArray([
 		"--connect=127.0.0.1:24600", "--bot", "--bots=3", "--local", "--realm=solmarch",
 		"--name=Ana", "--port=24600", "--net-sim=rtt=100", "--bot-seed=2", "--bot-cheat=flood",
-		"--quit-after-ticks=100", "--report=x.json", "--state-log=x.csv",
+		"--quit-after-ticks=100", "--report=x.json", "--state-log=x.csv", "--loadout=marksman",
 	]))
 	assert_eq(options["warnings"], PackedStringArray(), "ningún argumento de red es desconocido")
 	assert_eq(options["realm"], &"solmarch", "--realm se sigue leyendo como antes")
@@ -197,3 +197,18 @@ func test_bot_brain_option_accepts_the_known_brains_and_warns_about_the_others()
 	assert_eq(unknown.bot_brain, "", "uno desconocido se ignora")
 	if assert_eq(unknown.warnings.size(), 1, "con un aviso en español"):
 		assert_true(unknown.warnings[0].contains("volar") and unknown.warnings[0].contains("combat"))
+
+
+func test_loadout_option_takes_a_selectable_template_by_name() -> void:
+	var config: ClientConfig = _parse(["--bot", "--loadout=Marksman"])
+	assert_eq(config.loadout, "marksman", "en minúsculas")
+	assert_true(config.warnings.is_empty())
+	assert_eq(config.get_loadout_template_id(), CombatCatalog.template_id(&"marksman"))
+	var unknown: ClientConfig = _parse(["--bot", "--loadout=rompefilas"])
+	assert_eq(unknown.loadout, "", "una plantilla que no existe se ignora")
+	assert_eq(unknown.get_loadout_template_id(), 0)
+	if assert_eq(unknown.warnings.size(), 1, "con un aviso"):
+		assert_true(unknown.warnings[0].contains("rompefilas"))
+	assert_eq(_parse([]).get_loadout_template_id(), 0, "sin --loadout, la de por defecto (no se pide nada)")
+	assert_true(ClientConfig.is_selectable_template("squire"))
+	assert_false(ClientConfig.is_selectable_template(""))

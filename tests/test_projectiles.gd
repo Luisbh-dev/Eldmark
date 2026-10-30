@@ -10,8 +10,8 @@ extends TestCase
 ## puerta con su parte perforante. Además: el vuelo contra posiciones rebobinadas (y el control sin
 ## rebobinar, en la misma ejecución), el rebobinado rechazado y la zona segura dan flechas inofensivas, el
 ## abanico, la carga del tensado, la flecha lastrante, la interrupción, la balística igual a la del SPAWN,
-## la caducidad, un arquero falso en un [ZoneServer] y el SPAWN y el DESPAWN que llegan por red al cliente
-## que ve al tirador.
+## la caducidad, la flecha del servidor igual a la que predice el cliente ([ProjectileLaunch]), un arquero
+## falso en un [ZoneServer] y el SPAWN y el DESPAWN que llegan por red al cliente que ve al tirador.
 ## [br][br]
 ## Las cortas montan los luchadores a mano y avanzan el [CombatDirector] tick a tick (como
 ## test_ability_server); las del servidor avanzan un [ZoneServer] sin red con [code]_physics_process[/code];
@@ -739,6 +739,47 @@ func test_the_flight_is_the_ballistics_of_the_spawn_and_ends_when_it_expires() -
 			"caduca en n + 1 = lifetime_ticks, con DESPAWN 5")
 	assert_eq(_director.projectiles.live_count(), 0)
 	assert_eq(_director.projectiles.registry.transient_count(), 0)
+
+
+func test_the_server_arrow_is_the_shared_launch_the_client_predicts() -> void:
+	# La flecha predicha del cliente (ProjectileWorld) y la del servidor salen de ProjectileLaunch: con la
+	# misma entrada, el mismo estado y el mismo blanco para la convergencia, el SPAWN trae exactamente lo
+	# que predice el cliente (fuente, índice del abanico, origen y velocidad cuantizados), también con el
+	# hombro izquierdo, la carga del tensado y el abanico (fusión de H3b y H4).
+	var archer: Combatant = _body(1, VARDHEIM, Vector3.ZERO, 0.0)
+	var target: Combatant = _body(2, SOLMARCH, Vector3(1.5, 0.0, -20.0), PI)
+	var cases: Array[Dictionary] = [
+		{"attack": &"bow_quick", "charge": 0, "left": false},
+		{"attack": &"bow_drawn", "charge": 40, "left": true},
+		{"ability": &"bow_volley"},
+	]
+	var tick: int = S
+	for case: Dictionary in cases:
+		_spawns.clear()
+		var aim: Vector3 = _center_of(target) + Vector3(0.0, 0.4, 0.0)
+		if case.has("ability"):
+			_cast(archer, case["ability"], tick, aim)
+		else:
+			_shoot(archer, case["attack"], tick, aim, case["charge"], 0, case["left"])
+		# Lo que hace el cliente en su paso del compromiso (sin rebobinado: el blanco donde está).
+		var launch: ProjectileLaunch = ProjectileLaunch.from_state(archer.get_character().combat, tick)
+		var input: PlayerInput = archer.queue.get_applied(tick)
+		if not assert_not_null(launch, "el compromiso dispara") or not assert_not_null(input):
+			return
+		var predicted: Array[PackedVector3Array] = launch.launch(archer.entity.get_position(),
+				input.look_yaw, input.look_pitch, input.has(PlayerInput.AIM_LEFT), _space(),
+				PackedVector3Array([target.entity.get_position()]))
+		_tick(tick)
+		var label: String = str(case)
+		if assert_eq(_spawns.size(), predicted.size(), "%s: tantas flechas como las predichas" % label):
+			for index: int in predicted.size():
+				var spawn: NetMessages.EntitySpawn = _spawns[index]
+				assert_eq(spawn.source, launch.source, "%s: la misma fuente" % label)
+				assert_eq(spawn.volley_index, index, "%s: el mismo índice" % label)
+				assert_eq(spawn.origin, predicted[index][0], "%s: el mismo origen" % label)
+				assert_eq(spawn.velocity, predicted[index][1], "%s: la misma velocidad" % label)
+		_run(tick + 1, tick + 60)
+		tick += 100
 
 
 # --- Servidor ---------------------------------------------------------------------------------

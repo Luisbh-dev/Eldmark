@@ -14,6 +14,9 @@ extends Control
 ## los dañó un golpe en los últimos [constant DAMAGED_SECONDS] s ([method mark_damaged]).
 ## Sin ninguna de las dos, no hay placa.
 ## [br]- Los muertos ([code]health_q[/code] a 0) y los que no se están dibujando, nada.
+## [br]- Fase 4 (UI-45): con un cliente ([method set_client]), los efectos de cada uno (sus STATUS, en el
+## tick de dibujo) y si está derribado (la acción DOWNED de su registro dibujado: su barra es la de la vida
+## de derribado).
 ## [br][br]
 ## [b]Oclusión.[/b] Un rayo de la cámara a la cabeza contra la capa del mundo ([method
 ## HitShapes.is_ray_clear]) oculta la placa de quien está detrás de un muro. Para no lanzar un rayo
@@ -49,6 +52,8 @@ var _camera_rig: CameraRig = null
 var _own_realm: int = NetProtocol.Realm.NONE
 # Grupo del jugador local (SOC-08): sus miembros llevan el nombre con el color de grupo.
 var _party: PartyState = null
+# Cliente de red: los efectos de cada entidad y el tick de dibujo (null = sin efectos).
+var _client: NetClient = null
 var _plates: Array[Nameplate] = []
 # net_id -> placa asignada en el último fotograma.
 var _assigned: Dictionary[int, Nameplate] = {}
@@ -80,6 +85,12 @@ func setup(world: RemoteWorld, camera_rig: CameraRig, own_realm: int) -> void:
 	_own_realm = own_realm
 	_occluded.clear()
 	_damaged_at.clear()
+
+
+## Da a las placas el cliente de red [param client]: de él salen los efectos de cada remoto
+## ([method NetClient.get_status_tracker]) y el tick de dibujo con el que caducan. null los quita.
+func set_client(client: NetClient) -> void:
+	_client = client
 
 
 ## Da a las placas el grupo del jugador local ([param party]): el nombre de sus miembros se pinta con
@@ -273,6 +284,10 @@ func _show(plate: Nameplate, candidate: Dictionary, camera: Camera3D) -> void:
 		realm_color = PARTY_COLOR
 	plate.configure(net_id, view.get_display_name(), realm_color, show_name, show_bar, fraction,
 			ally, alpha)
+	plate.set_downed((view.get_drawn_action() & 15) == CombatState.Action.DOWNED)
+	if is_instance_valid(_client):
+		plate.set_statuses(_client.get_status_tracker(net_id),
+				int(_client.get_interpolation_clock().get_render_tick()))
 	plate.place(camera.unproject_position(head))
 	plate.visible = true
 

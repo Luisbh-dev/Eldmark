@@ -1853,3 +1853,229 @@ LOADOUT propios; los avisos de derribado con la vida del bloque extra (bit 3, so
 LOADOUT_SELECT (`0x07`) también antes de CLIENT_READY; el LOADOUT ajeno llega con 0 cargas. H5: bots que
 levantan y rematan (mantienen E), el modo tramposo `interact`, `test_loadout_net` y la hoja de equilibrio con
 los derribos (`tools/combat_balance.gd` ya mide hasta la caída).
+
+### 11.7 H4 · cliente
+
+**Hecho.**
+
+- **Predicción y flechas.** `ClientPrediction` emite `stepped(tick, input, state)` tras cada `step()` (nunca
+  en las repeticiones ni en el avance neutro del arranque). `ProjectileWorld` (`scripts/client/projectile_world.gd`)
+  lo escucha: en el compromiso de un disparo crea las flechas predichas con la entrada de ese tick, el rayo
+  canónico contra el mundo local y las cápsulas de los remotos hostiles tal como se dibujan, y la misma
+  cuantización; las dibuja en el tiempo predicho, las para en el mundo con su propio rayo (el primer
+  segmento con `hit_from_inside`) y las oculta al tocar la cápsula dibujada de un enemigo. El SPAWN propio
+  se empareja por fuente, índice del abanico y tick (a menos de `input_buffer_ticks`) y se adopta con un
+  desfase que decae en 6 ticks; sin pareja se dibuja la del servidor; sin SPAWN en `rtt + 30` ticks la
+  predicha se retira. Las remotas salen en su `spawn_tick`, se dibujan en `pos(render_tick + fracción −
+  spawn_tick)` y se retiran en `despawn_tick + f` (DESPAWN 4, con su propio rayo contra el mundo y las
+  cápsulas dibujadas) o en `despawn_tick` (DESPAWN 5). `NetClient` la crea, la mete en la zona junto al
+  `RemoteWorld` y le pasa los pasos, los SPAWN y los DESPAWN antes de emitir sus señales.
+- **`ProjectileLaunch`** (`scripts/shared/combat/projectile_launch.gd`, compartido): qué dispara un
+  compromiso (`from_state`: ataque con proyectil o habilidad con proyectil, su fuente, su velocidad con
+  `lerp(1, charge_speed_scale, f)` y el abanico) y con qué balística (`launch`: rayo canónico, `aim_point`,
+  boca en el pecho, giro en yaw `(i − (n − 1)/2) · spread` de la flecha `i` y `Ballistics.quantize`).
+- **Barra de acciones** (`ActionBar`, UI-11): ligero/fuerte (o disparo/tensado), bloqueo (oculto con
+  `can_block` falso), esquiva, habilidades 1–3 del arma activa, R y T con sus cargas y Q con el arma de la
+  otra ranura, en casillas `UIIconSlot` con su glifo de tecla. Lee el estado predicho cada fotograma:
+  reutilización `ability_ready[i] − tick predicho` con barrido y segundos, destello al acabar sola, sin
+  destello si la quita una reconciliación (rechazo) o un cambio de arma; `ability_status` apaga (BLOCKED) y
+  tacha (NO_CHARGES); la esquiva y el bloqueo se apagan agotado y la esquiva parpadea con el bit 1; una
+  pulsación a destiempo (en las entradas de `LocalPlayerController.input_generated`) parpadea la casilla.
+  Iconos provisionales `PlaceholderIcon` (una `Texture2D` que se dibuja sola: cuadro del color del arma y
+  la inicial) con los colores de `CombatIcons`.
+- **Estados** (UI-45): `StatusTracker` por entidad en `NetClient` (`get_status_tracker`), alimentado con los
+  STATUS ya temporizados y vaciado por STATUS 2, DEATH, DOWNED, RESPAWN y el ENTITY_DESPAWN; `StatusIcons`
+  (fila propia sobre la vida, contra el tick del servidor estimado: icono, segundos, acumulaciones, borde
+  rojo o verde y tooltip) y las placas (hasta 4, primero los perjudiciales, contra el tick de dibujo; la
+  barra de derribado en naranja con su icono).
+- **Derribado**: `DownedNotice` («Derribado» con la cuenta atrás de la vida de derribado, «Ana te está
+  levantando» o «¡Te rematan!» con la barra del INTERACT, «Mantén E para levantar a …» cerca de un aliado
+  derribado y «Levantando a …»); `NetClient.is_downed()` (bit 3 del `status`); el registro de bajas enseña
+  también los DOWNED.
+- **Plantillas**: `TemplateSelector` en la pantalla de muerte (manda el LOADOUT_SELECT con
+  `NetClient.send_loadout_select`) y en la elección de reino; `ClientConfig.loadout` (`--loadout=<plantilla>`)
+  sale en un LOADOUT_SELECT nada más llegar el WELCOME, antes de CLIENT_READY.
+- **Arco**: tensando, `CameraRig.set_aim_zoom` cierra el campo de visión al 75 % del configurado
+  (`get_fov` sigue siendo el de los ajustes) y `Crosshair.set_tension` cierra la retícula con la carga.
+- **Teclas**: Q `swap_weapon`, R `consumable_1`, T `consumable_2` (en `InputBindings` y
+  `LocalPlayerController.BUTTON_ACTIONS`) y el bit `AIM_LEFT` en cada entrada del dispositivo con
+  `CameraRig.get_effective_shoulder()` (el hombro tras el cambio automático por una pared).
+- **Explicaciones de `NetClient`** (§5.4): STATUS de movimiento sobre uno mismo, DOWNED propio, INTERACT
+  donde uno es el derribado o el actor y LOADOUT propio dan por explicada la corrección (el HIT propio con
+  el bit 5 ya lo estaba: todo golpe recibido lo está).
+- **Textos** (`CombatText`): `source_label` para las fuentes de §5.4 (ataques, habilidades, pulsos, remate y
+  desangrado), la pantalla de muerte con «Te ha rematado…» y «Te has desangrado…», y los nombres de
+  habilidades, efectos, armas y plantillas, por nombre del recurso.
+- **Animación provisional** (§6.6): `CombatClipPlanner` gana las claves de cada habilidad, `drink`, `swap`,
+  `downed`, `downed_crawl`, `revive`, `execute` y `get_up`; las habilidades con tres tramos se estiran a
+  su lanzamiento, activo y recuperación; `CombatActionAnim.loop` (arrastrarse). Cada arma usa su juego
+  (`CombatAnimationLayer.clips_for`: `data/animation/<arma>_clips.tres`; nuevo `bow_clips.tres`, y las
+  entradas nuevas en `sword_shield_clips.tres`), el remoto con la pareja de armas de su vista y el bit 3 de
+  su registro (`RemotePlayerView.get_active_weapon_id`, que toman del SPAWN y de un LOADOUT). `WeaponProps`
+  gana el arco provisional (dos palas y empuñadura en arco, con cuerda) y `show_weapon`, que el
+  `HumanoidVisual` llama cuando el animador avisa de otra arma (`weapon_shown`), también en los remotos.
+
+**Pruebas.** Nuevas: `test_projectile_world` (5: la predicha se sustituye sin salto y adopta id, tick y
+balística del servidor; dos pasos en un tick de física con el compromiso en el primero, con la
+`ClientPrediction` de verdad; SPAWN propio con el jugador ya en el mundo por `NetClient`, con y sin
+pareja; la remota sale en su `render_tick` y se retira en `despawn_tick + f` en un muro (f = 0,25) y en
+`despawn_tick` al caducar; la propia se clava en el muro, se oculta en la cápsula de un enemigo y sin
+SPAWN se retira en `rtt + 30`), `test_action_bar` (4: iconos y reutilizaciones tras dos cambios de arma;
+**un rechazo revierte el contador** con `PredictionPair` y la pulsación perdida, sin destello; el destello
+de la que acaba sola; cargas, tachado, parpadeos y agotamiento), `test_status_icons` (4: tracker, uno por
+entidad y fuera con el DESPAWN, fila propia con duración y acumulaciones que se va al caducar, placa con
+cuatro iconos perjudiciales primero, caducidad y derribado) y `test_ability_input` (2: Q, R, T y G sin
+teclas repetidas; los bits nuevos y `AIM_LEFT` desde el hombro efectivo, también con la entrada
+suspendida). Ampliadas: `test_hud_combat` (+5: avisos de derribado con levantar, corte y remate; la
+invitación a levantar a un aliado y «Levantando a…»; el selector de la pantalla de muerte; zoom y
+retícula del arco; registro de bajas y frases de remate y desangrado), `test_net_client` (+2:
+LOADOUT_SELECT antes de CLIENT_READY y desde la pantalla de muerte; las explicaciones nuevas),
+`test_combat_animation` (+4: juegos de clips por arma, claves y fases de habilidades, capa con el arma
+y el levantarse, accesorios por arma), `test_remote_world` (+1: pareja de armas y bit de ranura),
+`test_client_config` (+1, `--loadout`) y `test_realm_select` (+1). Adaptadas: `test_social_menu` (la tecla
+del menú de jugador es G) y `test_combat_animation` (el arma 1 ya no es la espada: se pide por nombre).
+
+**Desvíos y decisiones.**
+
+- **T era el menú de jugador** (SOC-07, provisional). §0 da T a la poción de resistencia: el menú pasa a
+  **G** (libre, y no la quieren el inventario I, el personaje C, el diario L ni las habilidades K de la
+  hoja de ruta). Anotado en social.md y en SOC-07. Hasta UI-17 no hay reasignación ni perfil guardado, así
+  que nadie tiene una T vieja.
+- **`ProjectileLaunch` es nuevo y compartido.** §7.2 deja el disparo dentro de `ProjectileSystem.fire`; para
+  que la flecha predicha y la del servidor salgan iguales, qué se dispara, con qué velocidad y en qué
+  dirección (el giro del abanico incluido, que el documento no fijaba) vive en un solo sitio. H3b, hecho a
+  la vez en otra rama, debe usarlo (o igualarlo) al fusionar: la prueba de `test_projectile_world` compara
+  con él. Hecho en la fusión (§11.8): `ProjectileSystem.fire` dispara con él.
+- **Tiempo de las flechas propias**: `tick predicho − 1 + fracción`, el instante en que se dibuja el
+  personaje local (con interpolación de física, entre el tick anterior y el último), para que la flecha
+  salga del pecho que se ve.
+- **Lo que se para en el mundo** solo es la propia: una remota no se para por su cuenta (el servidor decide
+  y avisa con el DESPAWN 4). Una flecha propia ya clavada desaparece cuando llega su DESPAWN; dejarla
+  clavada un rato es de los VFX pendientes (ART-12).
+- **El zoom** llega entero al alcanzar la carga mínima (antes se cierra a la par que la carga) y la
+  retícula se cierra con la `f` de la carga (de la mínima a la máxima).
+- **Plantilla en la elección de reino**: la de por defecto no se pide (sin LOADOUT_SELECT), para no mandar
+  un mensaje que el servidor de antes de H3c cuenta como inesperado; elegir otra, y cualquier elección en la
+  pantalla de muerte, sí.
+- **Derribado sin eventos de servidor todavía**: los avisos leen el bit 3 del `status` y los INTERACT de
+  H3c; mientras no los mande nadie, las pruebas usan eventos sintéticos, como las de cliente de antes.
+- **Animación**: sin clip para la flecha ni para tensar (ART-41); el tensado usa `Pistol_Aim_Neutral` y el
+  disparo, `Spell_Simple_Shoot`; `swap` es un `Sword_Idle` de 0,4 s con fundidos de 0,2 s; derribado
+  quieto es el último fotograma de `Death01` y se arrastra con `Crouch_Fwd_Loop` en bucle; levantarse
+  (`LayToIdle`) se ve una vez al pasar de DOWNED a NONE. El arco cuelga del mismo `BoneAttachment3D` que el
+  escudo (la mano izquierda) y se crea la primera vez que hace falta.
+- **Curación sin número**: el HEAL (poción) aún no saca un número verde; la fila de efectos ya enseña la
+  regeneración. Queda para cuando haya VFX.
+- **Ayudas de más**: `CameraRig.get_effective_fov()`/`get_aim_zoom()`, `Crosshair.get_ring_radius()`,
+  `ActionBar.is_ranged(weapon)`, `CombatText.template_summary`, `NetClient.get_projectile_world()`,
+  `KillFeed.show_downed`, `RemoteWorld.on_loadout` y `HUD.bind_controller` (el sandbox conecta su
+  controlador para los parpadeos).
+
+**Medido** (orientativo: máquina compartida, 4 núcleos con otros trabajos; `probes/bench_h4.gd`, no se sube):
+dibujar 40 flechas remotas, 86–118 µs por fotograma (2,2–2,9 µs por flecha); el alta de una flecha predicha
+(rayo canónico y `aim_point` contra un mundo plano), 25–27 µs; `ActionBar.refresh` con una reutilización
+en marcha, 31–34 µs por fotograma; `StatusIcons.show_tracker` con dos efectos, 28–33 µs al principio y 4,6
+µs tras no tocar lo que no cambia (con 32 placas cuenta: se tocan solo los iconos que cambian).
+
+**Para los paquetes siguientes.** H3a: los STATUS y HEAL que ya pintan la fila propia y las placas
+(`StatusTracker` los toma de `NetClient` sin más), el bit 5 de HIT. H3b: `ProjectileSystem.fire` con
+`ProjectileLaunch.from_state` y `launch` (la misma fuente, velocidad, abanico y cuantización que la flecha
+predicha; si se cambia algo, en los dos lados), el SPAWN con esa fuente y `volley_index` (la pareja se busca
+por ellos) y los DESPAWN 4 y 5 (`ProjectileWorld` ya los atiende). H3c: el bit 3 del `status` con la vida de
+derribado en el bloque extra, DOWNED e INTERACT (los avisos ya los leen), LOADOUT_SELECT en `ZoneServer`
+(el cliente lo manda nada más llegar el WELCOME si eligió plantilla) y LOADOUT a quien tenga relevante al
+jugador (la vista del remoto toma de él su pareja de armas). H5: los bots ponen `AIM_LEFT` ellos mismos (su
+cámara es la canónica) y eligen plantilla con `--loadout`; `test_loadout_net` puede mirar las armas del otro
+con `RemotePlayerView.get_weapons`/`get_active_weapon_id` y el sangrado del comando 14 con
+`NetClient.get_status_tracker` y la fila del HUD; `test_projectile_loopback`, con las estadísticas de
+`ProjectileWorld` (`substituted`, `rejected`).
+
+### 11.8 Fusión de H3 (servidor) y H4 (cliente)
+
+H3a–H3c (servidor, rama `wip/habilidades`) y H4 (cliente, rama `wip/habilidades-h4`) salieron a la vez de
+H2. Se fusionan con `git merge --no-ff wip/habilidades-h4`.
+
+**Qué chocó.** Solo la documentación; el código se fusionó solo, porque H3 tocó servidor y compartido y H4,
+cliente, datos de animación y un archivo compartido nuevo (`ProjectileLaunch`).
+
+- **`docs/backlog.md`**: las dos ramas añadían su nota «Hecho» al final de las mismas líneas. Son UI-45,
+  CMB-19 a CMB-24, CMB-28, PRG-04, PRG-07 y PRG-08. Cada línea guarda las dos notas, primero las de H3 y luego
+  la de H4, por orden de paquete. En las notas de H4, los «Falta…» que pedían el servidor (H3a, H3b o H3c)
+  se ponen al día, porque ya está hecho. Las casillas son las de cada rama: CMB-20, CMB-28 y PRG-08 (H3) y
+  UI-11 (H4).
+- **`docs/habilidades.md`**: las dos ramas empezaban su §11 en 11.4. Las de H3 se quedan en 11.4–11.6 y la
+  de H4 pasa a ser §11.7. Sus referencias se cambian a la vez: SOC-07 del backlog, el enlace de social.md
+  §12.5 y el comentario de `InputBindings`.
+
+**Integración de código: el servidor dispara con `ProjectileLaunch`.** H4 pedía en su «Desvíos y decisiones»
+que la flecha del servidor y la predicha salieran del mismo sitio. H3b calculaba lo mismo por su cuenta, con
+tres diferencias de borde:
+
+- el servidor normalizaba dividiendo por `length()`;
+- con una puntería degenerada, el servidor salía por el rayo de la cámara por debajo de 1 cm y
+  `ProjectileLaunch` hacia −Z solo en el cero;
+- el servidor solo leía la carga de un fuerte.
+
+Ahora `ProjectileSystem.fire` saca qué sale, la velocidad (con la carga) y el abanico de
+`ProjectileLaunch.for_attack`/`for_ability`, y el origen y la velocidad cuantizados de cada flecha de
+`launch_toward(boca, punto, rayo de la cámara)`. El punto apuntado sigue siendo el del servidor: `aim_point`
+con sus candidatos rebobinados y cribados.
+
+En `ProjectileLaunch`:
+
+- `MIN_AIM_DISTANCE` = 0,01 m;
+- `launch_toward` gana `fallback`, la dirección del rayo de la cámara, que `launch` pasa;
+- `for_attack` no cuenta la carga de un ligero.
+
+Del servidor salen `_charge_progress` y `_MIN_AIM_DISTANCE`. Ninguna prueba de H3b ni de H4 cambia de
+resultado. La única diferencia que queda entre las dos flechas es la de diseño (§6.2): los hostiles de la
+convergencia, rebobinados en el servidor y tal como se dibujan en el cliente.
+
+**Prueba nueva**: `test_projectiles::test_the_server_arrow_is_the_shared_launch_the_client_predicts`. Hace
+un disparo rápido, un tensado con 40 ticks de carga desde el hombro izquierdo y el abanico, cada uno con
+convergencia sobre un blanco a 20 m. El SPAWN trae, bit a bit, la fuente, el índice del abanico, el origen y
+la velocidad que calcula el cliente con `ProjectileLaunch.from_state(...).launch(...)` a partir de la misma
+entrada aplicada.
+
+**Lo que ya encajaba** (comprobado leyendo los dos lados, sin cambios):
+
+- **Derribado.** Los avisos de derribado leen `NetClient.get_health()`, el bloque extra, que con un
+  derribado lleva la vida de derribado sobre 400 (`Combatant.publish`). Las placas usan el `health_q` de esa
+  misma vida.
+- **INTERACT.** Las operaciones 1 a 5 y su `end_tick` son las mismas en `DownedSystem` y `DownedNotice`. El
+  remate acaba con la DEATH, que borra el aviso.
+- **LOADOUT.** El LOADOUT ajeno llega con 0 cargas y `RemoteWorld.on_loadout` solo toma las armas.
+- **LOADOUT_SELECT.** El de antes de CLIENT_READY lo admite `ZoneServer` en LOADING. La plantilla por
+  defecto es la misma en los dos lados (`CombatCatalog.default_template_id`). El desvío de H4 de no pedirla
+  al elegir reino ya no hace falta, pero tampoco molesta.
+- **Flechas.** El SPAWN lleva la fuente y `volley_index`, con los que `ProjectileWorld` empareja la flecha.
+  Los DESPAWN 4 y 5 los manda `ProjectileSystem`.
+- **STATUS.** Los STATUS y HEAL de `StatusSystem` llegan a `StatusTracker` sin más.
+
+**Arreglado al probar.** `test_combat_wire` fallaba ya en H3c (3 de 8; comprobado en `8d9a752`, antes de
+fusionar) y H3c no lo había pasado. Había dos causas:
+
+- **El LOADOUT de la entrada.** Cada cliente recibe el suyo, y el público de los que entran después. Las
+  esperas de «algún evento» se cumplían antes del HIT, y el que no ve a nadie recibía un evento: su propio
+  LOADOUT.
+- **El derribado.** «test_world» es RVR, así que el golpe mortal entre reinos derriba.
+
+Ahora las pruebas esperan el HIT por su clase y el ciego no recibe nada de los otros dos. La prueba del
+KILL comprueba que el ligero derriba (bit 6 y no bit 4, DOWNED a los tres), que Ana remata manteniendo E y
+que la DEATH y el KILL llevan la fuente del remate, a Ana como asesina y a Cleo como asistente.
+
+**Pruebas.** Se pasaron 143 archivos, uno a uno, con 2020 pruebas. Son todos los de las áreas que tocan
+las dos ramas: combate, predicción, mensajes, `ZoneServer`, HUD, flechas, derribado, habilidades, efectos,
+plantillas, consumibles, chat y grupos, fuerte, asedio, PNJ y bots, más los de bucle local y procesos. Todo
+pasa en verde. Lo único que falló fue `test_combat_wire`, arreglado arriba. Los únicos archivos que no se
+pasaron son los 11 que nadie toca aquí: terreno, mapa y zona del Vado Gris, recursos, navmesh y rutas,
+exportación, audio, nombres y reinos.
+
+**Para H5**, sin cambios respecto de §11.6 y §11.7, ahora que cliente y servidor están juntos:
+
+- `test_projectile_loopback`: con el SPAWN emparejado, `ProjectileWorld.stats` `substituted` y `rejected`;
+- `test_loadout_net`;
+- la prueba en red del sangrado del comando 14 en las placas y en el HUD;
+- bots que levantan y rematan (mantienen E) y el modo tramposo `interact`;
+- `AIM_LEFT` y `--loadout` en los bots;
+- las pruebas contra el maniquí y la hoja de equilibrio.

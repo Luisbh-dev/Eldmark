@@ -841,7 +841,9 @@ Cerrado durante K5 (integración):
   en los 12 siguientes (`COMBAT_EXPLAIN_TICKS`); el evento va por el canal fiable y puede llegar
   después del snapshot, así que una diferencia espera 90 ticks (`DIFF_SETTLE_TICKS`) a su evento
   antes de contar como fallo (mientras tanto `get_stats()` la cuenta según lo que sabe). Estadística
-  nueva: `combat_diffs`. Medido en una refriega de 6 bots de combate con rtt=120, jitter=20 y 5 % de
+  nueva: `combat_diffs`. Fase 4 (H4, [habilidades.md 5.4](habilidades.md#54-entity_event-y-fuentes)): también
+  un STATUS de movimiento sobre uno mismo, su DOWNED, un INTERACT donde es el derribado o quien actúa y su
+  LOADOUT. Medido en una refriega de 6 bots de combate con rtt=120, jitter=20 y 5 % de
   pérdida (`test_combat_reconciliation`): 40 golpes, 4 muertes, 2-4 correcciones por bot, todas
   explicadas (sustitución o combate), ningún reinicio duro ni resincronización y convergencia exacta
   al quedarse quietos.

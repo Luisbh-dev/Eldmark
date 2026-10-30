@@ -133,6 +133,7 @@ func _ready() -> void:
 		return
 	add_child(_hud)
 	_hud.bind(_character, _camera_rig)
+	_hud.bind_controller(_controller)
 
 	if demo_mode:
 		_start_demo()
