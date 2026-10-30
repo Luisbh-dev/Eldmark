@@ -655,8 +655,12 @@ El tamaño de un ENTITY_SPAWN depende de `kind` (ver 5.5).
 Los formatos de `0x50`–`0x55` (v7) son de [progresion.md](progresion.md) §4.6 y §12 y están en
 `scripts/shared/net/progress_messages.gd` (`ProgressMessages`), aparte de `net_messages.gd`. Del `0x56` al `0x5F`,
 reservados (banco, comercio y correo de la fase 6). `NetClient` los decodifica y los da por señales; `SwarmBot`
-los decodifica y los descarta; los dos solo cuentan como mal formado lo que no se decodifica. Hasta progresion.md
-P5b el servidor no manda ninguno ni atiende el `0x50` y el `0x53`, que cuentan como «tipo de mensaje inesperado».
+los decodifica y los descarta; los dos solo cuentan como mal formado lo que no se decodifica. Desde progresion.md
+P5b el servidor los usa (§19.12 de allí): atiende el `0x50` y el `0x53` en el «poll» (sus ritmos, en 12) y aplica las
+peticiones al final del tick; manda INVENTORY_FULL, un WALLET_UPDATE por moneda y un PROGRESS_UPDATE tras el SPAWN
+propio, un INVENTORY_DELTA por petición y por cada cambio suyo (`request_id` 0: CONSUME tras simular, CAMP_REFILL en
+la recarga del campamento), INVENTORY_FULL a cada sincronía y WALLET_UPDATE y PROGRESS_UPDATE agrupados, uno cada 10
+ticks como mucho.
 
 ### 5.3 Autenticación
 
@@ -1600,6 +1604,7 @@ El servidor nunca acepta estado del cliente, y todo valor decodificado está aco
 | Rebobinado | Acotado por lo medido ([10](#10-historial-para-la-compensación-de-latencia)); el RTT que declara el cliente con sus acks se acota con el de ENet más el simulador del servidor + 3 ticks |
 | Comandos de depuración | Solo con `--debug-commands` |
 | Chat (protocolo 5) | Cada CHAT_SEND cuenta como un mensaje fiable más y además tiene sus cubos por peer, que gasta antes de sanear: decir, zona y grupo, 1 mensaje/s con ráfaga de 5; susurro, 1/s con ráfaga de 3 y 5 destinatarios nuevos por minuto; un texto igual al anterior en 10 s y al mismo sitio se descarta. Los diez primeros descartes de cada 600 ticks son gratis y cada uno de los siguientes suma un aviso: desde unos 6 mensajes por segundo sostenidos (el transporte deja pasar 10 sin avisos) se llega a la expulsión. Las invitaciones de grupo, igual. El servidor sanea el texto (también invisibles y marcas combinantes) y nunca manda a un cliente el de otro reino ([social.md](social.md#12-implementación-fase-4)) |
+| Inventario (v7) | INVENTORY_REQUEST cuenta como un fiable más y tiene sus cubos por peer, que se miran al llegar, antes que nada: 8 peticiones/s con ráfaga de 16 y, además, 2 SPLIT o DESTROY/s con ráfaga de 10 (gastan ids). Lo que sobra recibe al momento su INVENTORY_DELTA con `result` 8 RATE y el contenido real de sus ranuras; los diez primeros descartes de cada 600 ticks son gratis y cada uno de los siguientes suma un aviso, como el chat. Una petición fuera del mundo, mal formada o INVALID suma un aviso; INVENTORY_SYNC_REQUEST, una cada 5 s (más, aviso y sin respuesta). Las aceptadas se aplican al final del tick, tras las altas, en orden de llegada ([progresion.md](progresion.md) §4.2 y §19.12) |
 
 **Crédito por parón.** Los limitadores cuentan en ticks del servidor, y el tick no avanza mientras
 el proceso está parado. Si el servidor pierde `k` ticks (un parón, una pausa de la máquina virtual;

@@ -1552,6 +1552,11 @@ func on_departure(net_id: int) -> void        # tras CharacterSaver.finish y Sco
 func flush(s: int) -> void                                          # WALLET_UPDATE y PROGRESS_UPDATE
 # P5a añade (§19.11): SECTION, PREPARE_FAILED_TEXT, get_player, get_prepared, get_ids y get_stats; y en ZoneServer,
 # get_progress y get_config
+# P5b añade (§19.12): before_simulate (las cargas antes del paso 1, para after_simulate), force_refill (el 16 sin
+# plataforma), set_timer (unstuck; capture:<id> de P5c), character_id_of, pending_count, send_sink, strike_sink y
+# notice_sink, BAG_FULL_TEXT, TIMER_UNSTUCK, los ritmos de RATE y los textos de los avisos; en PlayerProgress,
+# take_items (lose_items con su Outcome), saved_active_slot y last_currency_reasons; en CombatDirector,
+# equip_inventory, loadout_source y camp_step; y en ZoneServer, unstuck_key_of y place_returning
 
 # scripts/shared/net/progress_messages.gd (P4, §19.9): los formatos de §4.6 y §12; los tipos, en NetProtocol.MSG_*
 class_name ProgressMessages extends RefCounted
@@ -2441,3 +2446,135 @@ inventario por la red y los efímeros (P5b).
 
 **Queda para después:** el resto del alta, los efímeros, el inventario en la red, CONSUME, CAMP_REFILL y las cargas
 (P5b); las recompensas (P5c); los comandos de GM y la reversión (P5d); el almacén en Go con estos casos (P7).
+
+### 19.12 P5b · inventario en la zona (PRG-11, PRG-08, CMB-30, MUN-41)
+
+**Qué hay.** Lo de §14.1 P5b, en `scripts/server/` salvo donde se dice:
+
+| Pieza | Contenido |
+|---|---|
+| `ProgressService` (`progress/progress_service.gd`) | **Alta**: `on_arrival` ata el preparado o, sin plataforma, crea el efímero (§9.4: el pueblo del reino con su apariencia por defecto y el kit de la plantilla de LOADOUT_SELECT o la de por defecto), aplica la regla de volver al mundo (sitio y vida), restaura `unstuck`, toma la foto confirmada, da el kit, pone `NetEntity.level` y `appearance` y devuelve el `Loadout`; `after_spawn` (INVENTORY_FULL, un WALLET_UPDATE por moneda y un PROGRESS_UPDATE); `loadout_for` (la reaparición). **Red**: `handle_packet` (0x50 y 0x53: fuera del mundo, mal formado y RATE al llegar, con sus avisos) y `apply_pending` (la cola en orden de llegada, el `Context` del `CombatState`, el INVENTORY_DELTA, las armas y las cargas impuestas y una línea de registro por petición aplicada). **Servidor**: `before_simulate` y `after_simulate` (CONSUME), `camp_step` (CAMP_REFILL y «Bolsa llena»), `force_refill` (el 16 sin plataforma) y `flush` (WALLET_UPDATE y PROGRESS_UPDATE agrupados). Además `set_timer`, `character_id_of`, `pending_count` y los sumideros `send_sink`, `strike_sink` y `notice_sink` |
+| `PlayerProgress` | `take_items` (`lose_items` con su `Outcome`: las ranuras del delta de CONSUME), `saved_active_slot` (la ranura activa del registro con la regla de I10) y `last_currency_reasons` (el motivo de WALLET_UPDATE) |
+| `CombatDirector` | `equip_inventory` (el alta: `set_loadout` y, con la 2 activa, `set_weapons` sin reutilizaciones; plantilla vigente 0); `loadout_source` (la reaparición de quien tiene inventario: su equipo y sus cargas, sin mirar plantillas ni la pendiente del peer) y `camp_step` (la recarga del paso 8: CAMP_REFILL en lugar de la de la plantilla, con sus mismas condiciones y cadencia) |
+| `ZoneServer` | El orden del tick (abajo); el alta con el `Loadout` en lugar de la plantilla y `after_spawn` tras el SPAWN; 0x50 y 0x53 en `_on_packet_received`; LOADOUT_SELECT que no cambia nada a quien tiene inventario; el 16 y el `refill` de la consola; la clave de /atascado (`unstuck_key_of`: `character:<id>` con plataforma) y su temporizador al completarse; `place_returning` (la regla de las zonas SAFE) |
+| `UnstuckTracker` | `get_ready_at` y `set_ready_at` de §14.2 |
+| `tests/test_progress_service.gd` | Las nueve pruebas de §15 P5b (abajo), sin red: peers montados a mano como el alta de verdad, sus entradas en su `InputQueue` y un transporte que apunta lo enviado; las que guardan, con `FakeZonePlatform` |
+
+**El tick** (cabecera de `zone_server.gd`): en el «poll», INVENTORY_REQUEST e INVENTORY_SYNC_REQUEST (RATE y a la cola);
+antes del paso 1, `before_simulate`, y justo después, `after_simulate` (CONSUME); en el paso 8, la recarga llama a
+`camp_step` para quien tiene inventario; tras las altas, `apply_pending` y `flush`, y después `CharacterSaver.step`
+(la foto del guardado ya lleva las peticiones del tick).
+
+**Desviaciones y decisiones de la implementación:**
+
+- **Sin plataforma, todo peer es efímero con inventario** (§9.4), así que lo de habilidades.md H3c para los peers
+  cambia: LOADOUT lleva plantilla 0, la plantilla elegida antes de CLIENT_READY es solo el kit, LOADOUT_SELECT en el
+  mundo no cambia nada (sí suma su aviso un id que no existe), la reaparición es con el equipo y las cargas son las
+  pociones de la bolsa (3 y 2 para todos: el tirador tenía 2 y 3 en su plantilla). Los falsos siguen con plantilla.
+  Pruebas ajustadas: `test_loadout_server` (el alta con el kit del tirador y la reaparición con el mismo equipo),
+  `test_consumables_server` (plantilla 0 en el LOADOUT del bot), `test_loadout_net` (Bruno se equipa el arco de su
+  bolsa en WEAPON_2 con una INVENTORY_REQUEST en lugar de elegir el tirador en el mundo; los seis cambios con Q
+  vuelven a la espada) y `test_bot_cheat` (al segundo tramposo se le quitan de la bolsa las pociones que sobran para
+  dejarle 1 y 0).
+- **CONSUME con las cargas de antes del paso 1** (`before_simulate`, no está en §14.2): durante el paso 1 solo el
+  compromiso de beber baja una carga, así que comparar con lo de antes es exacto; seguir «las últimas impuestas» se
+  rompería con cualquier camino que las imponga y se olvide de apuntarlo.
+- **RATE responde al llegar**, en el «poll», con su INVENTORY_DELTA (`result` 8 y el contenido real de las ranuras),
+  sin pasar por la cola: puede salir antes que la respuesta de una petición anterior del mismo tick, pero no sube la
+  revisión y el cliente aplica las entradas en orden de llegada. Una petición pide ficha en los dos cubos (el de
+  SPLIT y DESTROY solo si lo es) y no gasta ninguna si le falta alguna. Los descartes avisan con la ventana del chat
+  (`ChatPeerState.FloodWindow`: los diez primeros de cada 600 ticks son gratis). Los cubos no reciben el crédito por
+  parón de red.md §12.
+- **Avisos**: fuera del mundo, mal formado, INVALID y una sincronía antes de 5 s (que no se contesta). La sincronía
+  va a la cola con las peticiones: su INVENTORY_FULL lleva lo que dejan las anteriores del tick.
+- **Solo DESTROY impone cargas** entre las peticiones (mover, dividir y juntar no cambian la cantidad, I4); también
+  CONSUME, CAMP_REFILL y el 16. El LOADOUT al dueño sale solo si las cargas cambian, salvo el 16, que lo manda
+  siempre (como la plantilla).
+- **Reutilizaciones al cambiar las armas**: se guardan por arma las del `CombatState` (las de su ranura antes del
+  cambio, no las del inventario), así que un arma puesta con el comando 5 también conserva las suyas. La ranura
+  activa sigue siendo la misma; si se quedara sin arma (las peticiones no pueden: WEAPON_REQUIRED), la otra.
+- **«Bolsa llena» una vez por entrada**: una entrada es un `camp_step` cuyo anterior para ese jugador no fue la
+  recarga de 60 ticks antes (salir de la zona segura, entrar en combate o morir entre medias cuentan como salir).
+- **El 16 y el `refill` de la consola con plataforma se rechazan** hasta P5d, donde son una operación GM; sin
+  plataforma son un CAMP_REFILL forzado (agregado) y piden estar vivo, como antes.
+- **El temporizador `unstuck` se escribe al completarse** /atascado (`set_timer` con `get_ready_at`), no al construir
+  el guardado: su fin queda fijo y `is_dirty` no cambia con el reloj. Al entrar, los vencidos salen del registro
+  antes de la foto confirmada (entrar no ensucia) y el vigente se restaura con `set_ready_at`. Los efímeros no tienen
+  temporizadores (sin reloj), pero su reutilización sigue por la clave de su nombre, como antes.
+- **El orden del alta**: volver al mundo, temporizadores, foto confirmada y, después, el kit (que sí ensucia y es
+  crítico). La regla de las zonas SAFE está hecha (`place_returning` mira que el sitio sea finito, dentro de los
+  límites y con suelo), pero en la fase 5 todas son RVR: ahí el jugador ya está en el punto de aparición de su reino.
+- **`flush` ya está** (es de §14.2 y nadie lo tenía asignado): WALLET_UPDATE con el delta sumado desde el último y el
+  motivo del último cambio, y PROGRESS_UPDATE si hay XP pendiente o cambiaron nivel, XP o puntos de reino, uno cada
+  10 ticks por jugador como mucho (escalonado por `net_id`). En P5b nada mueve saldos ni XP: solo salen los del alta.
+- **El registro** deja una línea por petición aplicada (`Inventario: net_id N (personaje C | efímero) OP c:s -> c:s
+  ×n uid U (nuevo X): OK`); las rechazadas solo cuentan en `get_stats()` (`rejected`, `rate_limited`), para que un
+  cliente no llene el registro.
+- **Coste por tick**: cada sesión guarda su `Combatant` (el mismo desde el alta hasta la baja) y los pasos de cada tick
+  recorren una lista de sesiones, no `Dictionary.values()` (abajo, medido).
+
+**Para los paquetes siguientes.**
+
+- **P5c:** `gain_currency` y `add_xp` ya llegan al cliente por `flush` (con `last_currency_reasons` y
+  `pending_xp_gain`/`pending_xp_source`); LEVEL_UP, `NetEntity.level` al subir y el crítico, aparte. La recompensa de
+  captura usa `set_timer(net_id, "capture:<id>", ready_tick, s)` o escribe su fin directamente.
+- **P5d:** el 16 con plataforma (hoy `force_refill` devuelve false con plataforma) y los deltas de los cambios de GM
+  (`_send_server_delta` con el motivo; las cargas, con `_impose_charges`, y las armas, con `_impose_weapons` si el
+  cambio toca el equipo).
+- **P6:** las respuestas, los rechazos con su contenido real, RATE («Más despacio») y las páginas del FULL ya llegan
+  de verdad.
+- **P8:** `test_progress_loopback` y `test_progress_platform_loopback` sobre esto.
+
+**Pruebas.** En Godot, `test_progress_service` (9): el alta del tirador efímero (equipo, `Loadout`, plantilla 0,
+cargas, nivel, apariencia, SPAWN y después FULL, monedas y progreso; LOADOUT_SELECT sin efecto y la reaparición con su
+equipo) y la de un registro con la ranura 1 activa y 400 de vida (y en el campamento, no donde se guardó); equipar y
+desequipar sin reiniciar reutilizaciones, intercambiar las armas, WEAPON_REQUIRED y NOT_NOW con el contenido real, dos
+peticiones del mismo tick en orden e INVALID con aviso; CONSUME en el tick del compromiso y no al interrumpir, y la
+carga que vuelve a 15 con más de 15 en la bolsa; CAMP_REFILL por total (dividir no da más) en la recarga cada 60
+ticks, el falso con su plantilla y «Bolsa llena» una vez por entrada; avisos fuera del mundo, mal formado, sincronía
+seguida y RATE (16 en cola, el resto RATE al momento y avisos pasados los diez primeros descartes); 10 000 SPLIT y
+juntar sin ningún evento, con el abusón fuera por los avisos, los ids acotados, el otro que bebe y guarda, y otro que
+divide a 3 por segundo sin avisos y no pasa de los 2 ids por segundo de RATE; /atascado restaurado por
+`character:<id>` (con el tiempo sin conexión, y vencido, fuera); la vida guardada con la regeneración del tiempo sin
+conexión y el muerto que vuelve con la vida llena al campamento; y el escudero que pone el arco en WEAPON_2, cambia a
+él, desequipa WEAPON_1, muere y reaparece con el arco activo, guarda una foto que pasa S5 (`_s5_errors`, la parte de
+S5 que se mira sin base) y vuelve con lo mismo. Comprobadas con la mutación que deberían pillar: sin `after_simulate`,
+sin guardar las reutilizaciones del arma que se quita, sin la regla de WEAPON_1 vacía al reaparecer, sin volver a
+avisar de la bolsa llena, sin el temporizador al completar /atascado, sin los avisos de RATE y sin el cubo de los
+ids, fallan.
+
+Pruebas de otros paquetes ajustadas (el comportamiento de los peers cambia, arriba): `test_loadout_server`,
+`test_consumables_server`, `test_loadout_net`, `test_bot_cheat` (el segundo tramposo de `potion`) y
+`test_projectile_loopback` (el arquero aparece con el kit del tirador: plantilla 0 y el arco en la ranura 0 de su
+equipo). Siguen correctas, además, `test_player_progress` (15), `test_progress_section` (9), `test_progress_record`,
+`test_progression_fixtures`, `test_progression_rules_export`, `test_inventory_ops`, `test_character_saver`,
+`test_progress_messages`, `test_zone_server_saves`, `test_zone_server_platform`, `test_zone_process_shutdown`,
+`test_zone_server`, `test_zone_server_net`, `test_net_loopback`, `test_net_client`, `test_net_harness`,
+`test_net_messages` (con `_v3` y `_v6`), `test_net_processes` (procesos aparte, bots con 0 malformados),
+`test_bot_swarm` (0 malformados), `test_combat_server`, `test_combat_director`, `test_combat_events`,
+`test_combat_loopback`, `test_combat_processes`, `test_combat_reconciliation`, `test_combat_resolver`,
+`test_combat_animation`, `test_combat_balance`, `test_combat_demo`, `test_combatant`, `test_abilities_reconciliation`,
+`test_ability_server`, `test_status_effects`, `test_downed`, `test_projectiles`, `test_hud_combat`,
+`test_command_registry`, `test_hfsm_brain`, `test_npc_brain`, `test_fortress_controller`, `test_fortress_loopback`,
+`test_fortress_net`, `test_fortress_processes`, `test_fortress_server`, `test_gate_target`, `test_siege_clients`,
+`test_chat_loopback`, `test_chat_router`, `test_party_demo`, `test_party_loopback`, `test_party_manager`,
+`test_platform_client`, `test_server_main`, `test_online_main`, `test_local_server_launcher`, `test_realm_select`,
+`test_snapshot_builder`, `test_state_logs`, `test_net_debug_overlay`, `test_rate_limiter`, `test_unstuck_tracker`,
+`test_architecture` y `test_export_config`. La suite entera de Godot no se ha pasado; Go no cambia.
+
+**Medido** (esta máquina, 4 núcleos compartidos, Godot 4.7.2 headless; una sonda que no se sube, con 64 jugadores
+efímeros en la zona plana):
+
+| Qué | Resultado |
+|---|---|
+| `before_simulate` + `after_simulate` (CONSUME) por tick | 107–112 µs con 64 (358 µs antes de guardar el `Combatant` en la sesión y de la lista de sesiones) |
+| `flush` por tick | 21–22 µs con 64 (sin nada que mandar) |
+| Una petición en `apply_pending` | 56–60 µs (64 MOVE en 3,6–3,9 ms): `InventoryOps.apply` 13 µs, el delta 13–14 µs, la línea del registro 1,5 µs; con el tope de 8 por segundo y jugador, unos 0,5 ms por tick con 64 que no paran |
+| `camp_step` | 23 µs por jugador sin nada que reponer (cada 60 ticks y solo en el campamento) y 70–76 µs reponiendo (con su delta, sus cargas y el LOADOUT, que recorre los jugadores del mundo) |
+| `test_progress_service` | 9 pruebas, unos 20 s con el arranque del ejecutor; la más lenta, la de los 10 000 SPLIT (3,4 s, con los 30 s de juego del segundo abusón) |
+
+**Sin comprobar:** la regla de las zonas SAFE con una zona SAFE de verdad (en la fase 5 no hay ninguna); contra la
+plataforma de Go de verdad (P7 y P10); el cliente que usa los mensajes (P6, en `wip/fase5-cliente`).
+
+**Queda para después:** las recompensas, LEVEL_UP y lo que mueve saldos y XP (P5c); los comandos de GM con sus
+deltas, el 16 con plataforma y la reversión (P5d); el almacén en Go (P7); las pruebas de punta a punta (P8).

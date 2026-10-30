@@ -67,6 +67,9 @@ var revision: int = 1
 ## pone a 0).
 var pending_xp_gain: int = 0
 var pending_xp_source: int = 0
+## Motivo ([EconomyReason]) del último cambio de cada moneda (índice = moneda; 0 = ninguno): el de WALLET_UPDATE
+## ([method ProgressService.flush]).
+var last_currency_reasons: PackedInt32Array = PackedInt32Array()
 
 var _ids: IdAllocator = null
 var _db: ItemDatabase = null
@@ -89,6 +92,7 @@ func _init(p_record: ProgressRecord, p_persistent: bool, ids: IdAllocator, db: I
 	_ids = ids if ids != null else IdAllocator.local()
 	_db = db if db != null else ItemDatabase.shared()
 	_ledger_balance = record.wallets.duplicate()
+	last_currency_reasons.resize(Currency.WALLET_SIZE)
 	_confirmed = _snapshot(null)
 
 
@@ -203,6 +207,7 @@ func change_currency(op: EconomyOp, currency: int, delta: int, reason: int, ref_
 		return false
 	record.wallets[currency] += delta
 	_ledger_balance[currency] += delta
+	last_currency_reasons[currency] = reason
 	op.ledger.append(LedgerEntry.create(currency, delta, _ledger_balance[currency], reason, ref_kind, ref_id))
 	if currency == Currency.Code.MERITS and EconomyReason.gives_realm_points(reason):
 		record.realm_points = maxi(record.realm_points + delta, 0)
@@ -221,6 +226,7 @@ func gain_currency(currency: int, amount: int, reason: int, ref_kind: int, ref_i
 	if applied <= 0:
 		return 0
 	record.wallets[currency] += applied
+	last_currency_reasons[currency] = reason
 	var key: String = "%d:%d:%d:%d" % [currency, reason, ref_kind, ref_id]
 	if _pending_ledger.has(key):
 		_pending_ledger[key].delta += applied
@@ -246,12 +252,17 @@ func gain_items(def_id: StringName, count: int, reason: int) -> bool:
 ## Quita [param count] unidades de [param def_id] por el juego (CONSUME: de la pila de la bolsa con la ranura más
 ## baja), agregado. false si no hay tantas: nada cambia.
 func lose_items(def_id: StringName, count: int, reason: int) -> bool:
+	return take_items(def_id, count, reason).is_ok()
+
+
+## [method lose_items] con su [InventoryOps.Outcome]: las ranuras que cambiaron, para el INVENTORY_DELTA del
+## servidor (P5b).
+func take_items(def_id: StringName, count: int, reason: int) -> InventoryOps.Outcome:
 	var outcome: InventoryOps.Outcome = InventoryOps.remove_items(record.inventory, def_id, count, reason)
-	if not outcome.is_ok():
-		return false
-	_aggregate(outcome.events)
-	revision += 1
-	return true
+	if outcome.is_ok():
+		_aggregate(outcome.events)
+		revision += 1
+	return outcome
 
 
 ## CAMP_REFILL (§4.4) agregado: repone el total de cada definición con [member ItemDefinition.camp_refill]; una
@@ -320,6 +331,11 @@ func charges() -> int:
 		if definition != null:
 			counts[index] = mini(record.inventory.count_of(definition.id), CombatState.MAX_CHARGES)
 	return CombatState.pack_charges(counts[0], counts[1])
+
+
+## La ranura activa con la que entra (§8): la del registro y, si no tiene arma y la otra sí, la otra (I10).
+func saved_active_slot() -> int:
+	return _effective_active_slot(record.active_weapon_slot)
 
 
 ## Las armas del equipo (ranuras 0 y 1) como ids de [CombatCatalog]; 0 = vacía.

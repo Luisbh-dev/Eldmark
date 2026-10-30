@@ -11,7 +11,8 @@ extends Node
 ## [codeblock]
 ## poll             recibir: autenticación, READY, LEAVE, INPUT_BATCH -> InputQueue.push(),
 ##                  RESPAWN_REQUEST, DEBUG_COMMAND, LOADOUT_SELECT (la plantilla pendiente), el chat y
-##                  los grupos (SocialService); y las líneas de la consola. Con la plataforma
+##                  los grupos (SocialService), INVENTORY_REQUEST e INVENTORY_SYNC_REQUEST (RATE y a la cola
+##                  del progreso, progresion.md §4.2); y las líneas de la consola. Con la plataforma
 ##                  (docs/plataforma.md §14.3), después: ZonePlatform.take_events() repartido por kind en
 ##                  el orden de llegada (claim al AuthProvider, heartbeat a la zona; instance_closed al
 ##                  final), AuthProvider.take_completed() (cada 200: reino, cupo y WELCOME) y los
@@ -26,7 +27,8 @@ extends Node
 ##                  con la entrada de InputQueue.take(s); _check_motion. Justo antes de la suya, cada
 ##                  falso piensa (su BotBrain, con su estado de combate tras s - 1 para el kit de H5) y
 ##                  empuja su entrada de s; las vistas de asedio, sus objetivos y, para los de asedio
-##                  (F6b), los golpes avisados en curso y los aliados se reúnen una vez por tick
+##                  (F6b), los golpes avisados en curso y los aliados se reúnen una vez por tick. Después,
+##                  CONSUME: lo que ha bebido cada uno con inventario sale de su bolsa (progresion.md §4.4)
 ## combate          CombatDirector.process_tick(), pasos 2 a 9 de docs/habilidades.md, sección 4.1:
 ##                  congelar (golpe activo, compromiso y muro de cada uno), disparos y efectos propios
 ##                  de quien compromete un ataque o una habilidad, resolver los golpes de ataques y
@@ -34,7 +36,8 @@ extends Node
 ##                  proyectiles, aplicar (daño, bloqueo, controles, efectos al objetivo, interrupciones,
 ##                  derribos y muertes), efectos de estado (pulsos y caducidades), el derribado
 ##                  (desangrado, levantar y rematar), entorno (caída, volúmenes letales, y < -100),
-##                  reapariciones con su plantilla, la recarga del campamento y publicar la vida; los
+##                  reapariciones con su plantilla (con inventario, con su equipo), la recarga del campamento
+##                  (con inventario, CAMP_REFILL de la bolsa) y publicar la vida; los
 ##                  ENTITY_EVENT y los ENTITY_SPAWN y ENTITY_DESPAWN de los proyectiles salen aquí, y
 ##                  al final, los avisos TELEGRAPH de los ataques fuertes de PNJ que empiezan en s
 ## fuertes          FortressController.step() (paso 4b): presencia en el círculo, avance del estado de
@@ -43,8 +46,11 @@ extends Node
 ## PNJ              NpcSpawnerSystem.step(): altas y retiradas de PNJ según los generadores y las
 ##                  fortalezas, cadáveres
 ## altas            los READY pendientes: el jugador aparece con el estado «tras s» y el equipo de su
-##                  plantilla (la pendiente o la de por defecto), SPAWN y LOADOUT; con la plataforma,
-##                  CharacterSaver.track en cuanto existe la entidad
+##                  inventario (progresion.md §8; sin él, el de su plantilla: la pendiente o la de por
+##                  defecto), SPAWN, LOADOUT, INVENTORY_FULL, WALLET_UPDATE y PROGRESS_UPDATE; con la
+##                  plataforma, CharacterSaver.track en cuanto existe la entidad
+## inventario       ProgressService.apply_pending: las peticiones del tick en orden de llegada, con su
+##                  INVENTORY_DELTA y las armas y cargas impuestas; flush: WALLET_UPDATE y PROGRESS_UPDATE
 ## guardados        con la plataforma, CharacterSaver.step(s): los críticos marcados y los puntos de
 ##                  control que tocan (docs/plataforma.md §7.2); la foto se toma aquí, tras las altas
 ## social          SocialService.step(): caducan las invitaciones de grupo (PARTY_INVITATION caducada y
@@ -83,11 +89,13 @@ extends Node
 ## hora. [method stop] (el cierre ordenado de los cinco disparadores) y [method close_instance] (el de §6.1) mandan
 ## los finales de todos y esperan a que la plataforma los conteste antes de terminar.
 ## [br][br]
-## [b]Progreso[/b] (docs/progresion.md §9, [ProgressService], [method get_progress]): con plataforma, el registro de
-## la reclamación se prepara antes del WELCOME (si no se puede leer, REJECT UNAVAILABLE y liberación), la baja en
-## LOADING lo descarta y el alta lo ata al cuerpo y da el kit de la primera entrada (crítico). La sección
+## [b]Progreso[/b] (docs/progresion.md §4, §8 y §9, [ProgressService], [method get_progress]): con plataforma, el
+## registro de la reclamación se prepara antes del WELCOME (si no se puede leer, REJECT UNAVAILABLE y liberación), la
+## baja en LOADING lo descarta y el alta lo ata al cuerpo; sin ella, cada jugador con peer es un personaje efímero
+## (§9.4). El alta aplica la regla de volver al mundo, da el kit de la primera entrada (crítico) y equipa al jugador
+## con su inventario en lugar de la plantilla; LOADOUT_SELECT ya no cambia nada tras ella. La sección
 ## [code]progress[/code] de los guardados es la primera de [CharacterSaver]. Los bloques de ids llegan como eventos
-## [code]id_block[/code]. Sin plataforma (personajes efímeros) aún no hace nada: es de progresion.md P5b.
+## [code]id_block[/code]. El inventario va por la red (0x50–0x55) y la recarga del campamento repone la bolsa.
 ## [br][br]
 ## [b]Seguridad[/b] (sección 12): limitadores por peer, avisos con expulsión a los 50 en 600 ticks
 ## (NOTICE de expulsión y corte), tope de conexiones por IP, tipos de mensaje inesperados según el
@@ -610,6 +618,9 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	# La sección progress se registra la primera (progresion.md §9.2): antes que ninguna otra.
 	_progress = ProgressService.new()
 	_progress.log_sink = Callable(self, "_log")
+	_progress.send_sink = Callable(self, "_progress_send")
+	_progress.strike_sink = Callable(self, "_add_strike")
+	_progress.notice_sink = Callable(self, "_send_notice")
 	_progress.setup(self, _platform, _saver, _commands)
 	_players_root = Node3D.new()
 	_players_root.name = "Players"
@@ -625,6 +636,9 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 			Callable(self, "_place"), Callable(self, "_pick_spawn_point"))
 	_combat.event_emitted.connect(_on_combat_event)
 	_combat.metrics = _metrics
+	# Quien tiene inventario reaparece con su equipo y repone su bolsa en el campamento (progresion.md §4.4 y §8).
+	_combat.loadout_source = _progress.loadout_for
+	_combat.camp_step = _progress.camp_step
 	# Los proyectiles toman su id del espacio de las entidades (con su cuarentena).
 	_combat.projectiles.registry = _registry
 	_combat.projectiles.spawned.connect(_on_projectile_spawned)
@@ -893,6 +907,26 @@ func get_social() -> SocialService:
 
 func get_unstuck() -> UnstuckTracker:
 	return _unstuck
+
+
+## La clave de [param entity] en el [UnstuckTracker]: con la plataforma, [code]"character:<id>"[/code] (la del
+## temporizador [code]unstuck[/code] que se guarda, docs/progresion.md §8); sin ella, la de su nombre (volver a
+## entrar con el mismo nombre no salta la reutilización).
+func unstuck_key_of(entity: NetEntity) -> String:
+	var character_id: int = _progress.character_id_of(entity.net_id) if _progress != null else 0
+	if character_id > 0:
+		return "character:%d" % character_id
+	return NameRules.normalize_key(entity.display_name)
+
+
+## Coloca a [param entity] en [param position] mirando a [param yaw] (la regla de volver al mundo de las zonas SAFE,
+## docs/progresion.md §8) si el sitio vale: finito, dentro de los límites de la zona y con suelo. true si lo coloca.
+func place_returning(entity: NetEntity, position: Vector3, yaw: float) -> bool:
+	if entity == null or entity.get_character() == null or not _is_valid_teleport_target(position) \
+			or not is_finite(yaw) or not _probe_grounded(position):
+		return false
+	_place(entity, position, yaw)
+	return true
 
 
 ## Cuerpos que siguen en el mundo tras la baja de un jugador en combate (GUE-41).
@@ -1248,7 +1282,10 @@ func _physics_process(delta: float) -> void:
 
 	_metrics.begin_section(&"sim")
 	_refresh_siege_views()
+	_progress.before_simulate(s)
 	_simulate_players(s, delta)
+	# CONSUME (progresion.md §4.4): lo que ha bebido cada uno sale de su bolsa, tras el paso 1.
+	_progress.after_simulate(s)
 	_metrics.end_section(&"sim")
 
 	_metrics.begin_section(&"combat")
@@ -1272,6 +1309,10 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_process_arrivals(s)
+	# Las peticiones de inventario del tick, tras las altas y antes de la foto de los guardados (progresion.md §4.2),
+	# y los WALLET_UPDATE y PROGRESS_UPDATE agrupados.
+	_progress.apply_pending(s)
+	_progress.flush(s)
 	if _saver != null:
 		_saver.step(s)
 	_metrics.begin_section(SECTION_SOCIAL)
@@ -1477,24 +1518,31 @@ func _process_arrivals(s: int) -> void:
 			entity.is_staff = peer.claimed.is_staff()
 			if _saver != null:
 				_saver.track(entity.net_id, peer.claimed.character_id, peer.claimed.lease_id, s)
-		# El progreso preparado se ata al cuerpo (y el kit de la primera entrada sale crítico en el step de este tick).
-		# El Loadout que devuelve sustituye a la plantilla desde progresion.md P5b; hasta entonces es null.
-		if _progress != null:
-			_progress.on_arrival(entity, peer, s)
+		# El progreso (progresion.md §9.1 paso 4): el preparado o, sin plataforma, uno efímero se ata al cuerpo; la
+		# regla de volver al mundo, el kit de la primera entrada (crítico en el step de este tick), nivel y apariencia
+		# para el SPAWN, y el equipo de su inventario en lugar de la plantilla.
+		var loadout: ProgressService.Loadout = _progress.on_arrival(entity, peer, s) if _progress != null else null
 		peer.entity = entity
 		peer.input_queue = _queues[entity.net_id]
 		peer.state = ServerPeer.State.IN_WORLD
 		var record: _PlayerRecord = _player_by_net[entity.net_id]
 		record.peer = peer
 		_world_peers.append(peer)
-		# La plantilla pendiente (LOADOUT_SELECT, también antes de CLIENT_READY) o la de por defecto: el SPAWN ya
-		# sale con sus armas y sus cargas, y el LOADOUT detrás.
+		# Con inventario, su equipo; si no, la plantilla pendiente (LOADOUT_SELECT, también antes de CLIENT_READY) o
+		# la de por defecto: el SPAWN ya sale con sus armas y sus cargas, y el LOADOUT detrás.
 		var combatant: Combatant = _combat.get_combatant(entity.net_id)
-		_combat.equip_template(combatant, maxi(peer.pending_template_id, 0))
+		if loadout != null:
+			_combat.equip_inventory(combatant, loadout.weapon_1, loadout.weapon_2, loadout.second_active,
+					loadout.charges)
+		else:
+			_combat.equip_template(combatant, maxi(peer.pending_template_id, 0))
 		peer.pending_template_id = -1
 		_announce_arrival(entity, peer, s)
-		if combatant.template_id > 0:
+		if combatant.template_id > 0 or loadout != null:
 			_combat.announce_loadout(combatant, s, true)
+		# INVENTORY_FULL, WALLET_UPDATE y PROGRESS_UPDATE tras el SPAWN propio (progresion.md §9.1 paso 5).
+		if _progress != null:
+			_progress.after_spawn(entity, peer, s)
 		player_joined.emit(peer_id, entity.net_id)
 		if _filler_keeper != null:
 			_filler_keeper.on_person_joined(peer.realm, peer_id)
@@ -1902,6 +1950,12 @@ func _social_peers() -> Array[ServerPeer]:
 func _social_send(peer_id: int, bytes: PackedByteArray) -> void:
 	if _transport != null:
 		_transport.send(peer_id, NetProtocol.CH_RELIABLE, bytes)
+
+
+# Lo que manda el progreso (INVENTORY_DELTA, INVENTORY_FULL, WALLET_UPDATE y PROGRESS_UPDATE): por el canal fiable y
+# solo al dueño (progresion.md §4.6).
+func _progress_send(peer: ServerPeer, bytes: PackedByteArray) -> void:
+	_send(peer, NetProtocol.CH_RELIABLE, bytes)
 
 
 # --- Combate: eventos, enemigos, suelo ----------------------------------------------------------
@@ -2449,12 +2503,19 @@ func _net_down(ctx: CommandRegistry.Context) -> int:
 	return CommandRegistry.Result.OK
 
 
-# 16 refill: repone las cargas de los consumibles de su plantilla (set_charges, con LOADOUT al dueño).
+# 16 refill: repone las cargas de los consumibles de su plantilla (set_charges, con LOADOUT al dueño). Con
+# inventario, sin plataforma, un CAMP_REFILL forzado de su bolsa (progresion.md §4.4); con plataforma es una operación
+# GM (progresion.md P5d) y aún no se acepta.
 func _net_refill(ctx: CommandRegistry.Context) -> int:
 	if not ctx.payload.is_empty():
 		return CommandRegistry.Result.BAD_ARGUMENTS
 	var combatant: Combatant = _combatant_of_peer(ctx)
-	if combatant == null or not _combat.refill(combatant, _tick + 1):
+	if combatant == null:
+		return CommandRegistry.Result.REFUSED
+	if _progress.has_inventory(combatant.get_id()):
+		return CommandRegistry.Result.OK if _progress.force_refill(combatant.get_id(), _tick + 1) \
+				else CommandRegistry.Result.REFUSED
+	if not _combat.refill(combatant, _tick + 1):
 		return CommandRegistry.Result.REFUSED
 	return CommandRegistry.Result.OK
 
@@ -2643,6 +2704,13 @@ func _console_refill(ctx: CommandRegistry.Context) -> String:
 	var combatant: Combatant = _combatant_by_name(ctx.args[0])
 	if combatant == null:
 		return "No hay ningún jugador «%s»" % ctx.args[0]
+	if _progress.has_inventory(combatant.get_id()):
+		if _platform != null:
+			return "%s tiene inventario guardado: reponer sus pociones es un comando de GM" \
+					% combatant.entity.display_name
+		if not _progress.force_refill(combatant.get_id(), _tick + 1):
+			return "%s no puede reponer ahora" % combatant.entity.display_name
+		return "Pociones de %s repuestas" % combatant.entity.display_name
 	if not _combat.refill(combatant, _tick + 1):
 		return "%s no tiene cargas que reponer" % combatant.entity.display_name
 	return "Cargas de %s repuestas" % combatant.entity.display_name
@@ -2975,7 +3043,7 @@ func _start_lingering(entity: NetEntity, s: int) -> void:
 	if combatant != null:
 		combatant.peer = null
 	entity.owner_peer = 0
-	_unstuck.cancel(NameRules.normalize_key(entity.display_name))
+	_unstuck.cancel(unstuck_key_of(entity))
 	_lingering[net_id] = s + linger_ticks
 	_lingering_total += 1
 
@@ -3007,7 +3075,7 @@ func _request_unstuck(peer: ServerPeer) -> int:
 	if combatant == null:
 		return UnstuckTracker.RequestResult.DEAD
 	var s: int = _tick + 1
-	var key: String = NameRules.normalize_key(entity.display_name)
+	var key: String = unstuck_key_of(entity)
 	var result: int = _unstuck.request(key, s, combatant.is_alive(), combatant.is_in_combat(s))
 	var text: String = "/atascado: te llevaré al punto más cercano de tu reino en %.0f s si no " \
 			% (float(_unstuck.channel_ticks) / float(Engine.physics_ticks_per_second)) \
@@ -3047,6 +3115,8 @@ func _process_unstuck(s: int) -> void:
 				_send_notice(peer, "/atascado: interrumpido")
 		else:
 			_teleport_unstuck(entity, s)
+			# Con la plataforma, la reutilización se guarda como el temporizador unstuck (progresion.md §8).
+			_progress.set_timer(entity.net_id, ProgressService.TIMER_UNSTUCK, _unstuck.get_ready_at(key), s)
 			if peer != null:
 				_send_notice(peer, "/atascado: ya estás en un punto seguro de tu reino")
 
@@ -3473,6 +3543,9 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 			_handle_unstuck_request(peer, bytes)
 		NetProtocol.MSG_LOADOUT_SELECT:
 			_handle_loadout_select(peer, bytes)
+		NetProtocol.MSG_INVENTORY_REQUEST, NetProtocol.MSG_INVENTORY_SYNC_REQUEST:
+			# El inventario (progresion.md §4.2 y §4.6): RATE al llegar y la cola de ProgressService.apply_pending.
+			_progress.handle_packet(peer, bytes)
 		_:
 			# El chat y los grupos (0x40 a 0x4F) los atiende el servicio social.
 			if not _social.handle_packet(peer, msg_type, bytes, _tick):
@@ -3613,6 +3686,9 @@ func _handle_loadout_select(peer: ServerPeer, bytes: PackedByteArray) -> void:
 		if template == null or not template.selectable:
 			_add_strike(peer, "plantilla de equipo no válida (%d)" % select.template_id)
 			return
+	# Quien tiene inventario ya tiene su equipo: tras el alta no cambia nada (progresion.md §2.5).
+	if peer.entity != null and _progress.has_inventory(peer.entity.net_id):
+		return
 	peer.pending_template_id = select.template_id
 
 
