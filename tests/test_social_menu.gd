@@ -453,6 +453,42 @@ func test_the_hud_gives_the_same_answer_for_an_enemy_a_wall_a_fake_or_nobody() -
 	menu.close()
 
 
+## Pulsa y suelta [param keycode] por la entrada de la ventana (la interfaz la ve antes que el juego).
+func _tap(keycode: Key) -> void:
+	for pressed: bool in [true, false]:
+		var event := InputEventKey.new()
+		event.physical_keycode = keycode
+		event.keycode = keycode
+		event.pressed = pressed
+		tree.root.push_input(event)
+
+
+## Revisión de la fase 4 (cliente): el menú da el foco a su primer botón al abrirse («Intro lo pulsa») y las ventanas no
+## suspenden la entrada de juego, así que Espacio, que es saltar, pulsaba también «Invitar al grupo». Espacio ya no
+## confirma en la interfaz (ui_accept se queda con Intro).
+func test_space_jumps_without_pressing_the_focused_button_and_enter_still_presses_it() -> void:
+	var accept: Array[Key] = []
+	for event: InputEvent in InputMap.action_get_events(&"ui_accept"):
+		if event is InputEventKey:
+			accept.append((event as InputEventKey).keycode if (event as InputEventKey).keycode != KEY_NONE
+					else (event as InputEventKey).physical_keycode)
+	assert_false(accept.has(KEY_SPACE), "Espacio no confirma (%s)" % [accept])
+	assert_true(accept.has(KEY_ENTER), "Intro sí")
+	var hud: HUD = _hud()
+	var menu: SocialMenu = hud.get_social_menu()
+	_spawn(ALLY_ID, VARDHEIM, "Bruno", _on_the_aim_ray(10.0))
+	hud._unhandled_input(_key(KEY_G))
+	if not assert_true(menu.is_open(), "G abre el menú sobre Bruno"):
+		return
+	assert_eq(tree.root.gui_get_focus_owner(), menu.get_buttons()[0], "con el foco en «Invitar al grupo»")
+	_tap(KEY_SPACE)
+	assert_eq(_client.invited.size(), 0, "saltar no invita a nadie")
+	assert_true(menu.is_open(), "ni cierra el menú")
+	_tap(KEY_ENTER)
+	assert_eq(PackedStringArray(_client.invited), PackedStringArray(["Bruno"]), "Intro pulsa el botón enfocado")
+	assert_false(menu.is_open())
+
+
 ## Lleva al jugador local (y la cámara, que va con él) a [param feet].
 func _move_player_to(feet: Vector3) -> void:
 	_client.fake_character.global_position = feet

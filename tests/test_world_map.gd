@@ -566,13 +566,13 @@ func test_the_death_screen_lists_the_valid_sites_and_sends_the_index_of_the_one_
 	assert_eq(screen.get_point_count(), 1, "con el fuerte neutral, solo el campamento propio")
 	assert_eq(screen.get_point_label(0), "Campamento de Vardheim")
 	assert_false(screen.get_map_button().visible, "con una sola opción no hace falta el mapa")
-	assert_eq(h.hud.get_war_hud().get_hints().get_current_id(), &"", "ni sale la pista del mapa")
+	assert_eq(h.hud.get_hints().get_current_id(), &"", "ni sale la pista del mapa")
 	h.view.on_spawn(_fortress_spawn(100, {FortressFields.OWNER: VARDHEIM}))
 	h.hud._process(0.016)
 	assert_eq(screen.get_point_count(), 2, "al entrar el fuerte en su poder, la lista se actualiza sin cerrarse")
 	assert_eq(screen.get_point_label(1), "Fuerte del Vado Gris")
 	assert_true(screen.get_map_button().visible, "y con dos opciones sale «Elegir en el mapa»")
-	assert_eq(h.hud.get_war_hud().get_hints().get_current_id(), HintCatalog.RESPAWN_MAP,
+	assert_eq(h.hud.get_hints().get_current_id(), HintCatalog.RESPAWN_MAP,
 			"y la pista del mapa, al aparecer la segunda con la pantalla ya abierta")
 	assert_eq(screen.get_selected_point_index(), RespawnPointList.option_indices(
 			RespawnPointList.valid_options(h.world, VARDHEIM, h.view.get_states_by_definition(1000), 1000), OWN_ID)[0],
@@ -592,7 +592,7 @@ func test_choosing_on_the_map_selects_the_site_and_returns_to_the_death_screen()
 	var world_map: WorldMap = h.hud.get_world_map()
 	_die(h)
 	assert_eq(screen.get_point_count(), 2)
-	assert_eq(h.hud.get_war_hud().get_hints().get_current_id(), HintCatalog.RESPAWN_MAP,
+	assert_eq(h.hud.get_hints().get_current_id(), HintCatalog.RESPAWN_MAP,
 			"con dos sitios donde elegir, sale la pista del mapa")
 	assert_eq(screen.get_selected_point(), 0, "empieza en el primero")
 	screen.get_map_button().pressed.emit()
@@ -628,3 +628,144 @@ func test_a_map_opened_while_alive_is_not_in_respawn_mode_and_survives_the_hud_r
 	assert_true(world_map.is_open(), "vivo, el HUD no lo cierra")
 	assert_eq(world_map.get_options().size(), 0, "ni ofrece reaparición")
 	world_map.close()
+
+
+# --- La pantalla de muerte no se queda el teclado ----------------------------------------------
+
+## Pulsa y suelta el ratón en el centro de [param control], por la entrada de la ventana (en sus coordenadas: la
+## ventana de las pruebas es pequeña y escala el contenido).
+func _click(control: Control) -> void:
+	var center: Vector2 = tree.root.get_final_transform() * control.get_global_transform_with_canvas() \
+			* (control.size * 0.5)
+	for pressed: bool in [true, false]:
+		var click := InputEventMouseButton.new()
+		click.button_index = MOUSE_BUTTON_LEFT
+		click.pressed = pressed
+		click.position = center
+		click.global_position = center
+		tree.root.push_input(click)
+
+
+## Pulsa o suelta la tecla [param keycode], por la entrada de la ventana.
+func _push_key(keycode: Key, pressed: bool) -> void:
+	var key := InputEventKey.new()
+	key.physical_keycode = keycode
+	key.keycode = keycode
+	key.pressed = pressed
+	tree.root.push_input(key)
+
+
+## Revisión de la fase 4 (cliente): la pantalla de muerte se maneja con el ratón. Si un clic en un punto o en una
+## plantilla le daba el foco a ese control, Tab lo movía al siguiente (en vez de abrir el marcador, que se monta encima
+## para verlo muerto) e Intro o Espacio pulsaban «Reaparecer».
+func test_after_clicking_the_death_screen_tab_still_shows_the_scoreboard_and_enter_does_not_respawn() -> void:
+	var h: HudRig = _make_hud()
+	h.view.on_spawn(_fortress_spawn(100, {FortressFields.OWNER: VARDHEIM}))
+	var screen: DeathScreen = h.hud.get_death_screen()
+	_die(h)
+	h.client.fake_tick = h.client.fake_respawn_tick
+	h.hud._process(0.016)
+	assert_true(screen.is_respawn_enabled(), "ya se puede reaparecer")
+	await wait_process_frames(2)
+	var selector: TemplateSelector = screen.get_template_selector()
+	var template_button: Button = selector.get_button(selector.get_template_ids()[0])
+	_click(template_button)
+	assert_true(template_button.button_pressed, "el clic elige la plantilla")
+	assert_null(tree.root.gui_get_focus_owner(), "sin quedarse el foco")
+	var board: ScoreboardPanel = h.hud.get_scoreboard()
+	_push_key(KEY_TAB, true)
+	assert_true(board.is_open(), "Tab abre el marcador también después de elegir plantilla")
+	_push_key(KEY_TAB, false)
+	assert_false(board.is_open(), "y al soltarla se cierra")
+	_push_key(KEY_ENTER, true)
+	_push_key(KEY_ENTER, false)
+	_push_key(KEY_SPACE, true)
+	_push_key(KEY_SPACE, false)
+	assert_eq(h.client.respawn_requests.size(), 0, "ni Intro ni Espacio pulsan «Reaparecer»")
+	# Lo mismo tras pulsar en la lista de puntos.
+	var points: ItemList = screen.get_node(^"Centro/Columna/Puntos") as ItemList
+	_click(points)
+	assert_null(tree.root.gui_get_focus_owner(), "la lista tampoco se queda el foco")
+	_push_key(KEY_TAB, true)
+	assert_true(board.is_open(), "y Tab sigue siendo el marcador")
+	_push_key(KEY_TAB, false)
+	for control: Control in [points, screen.get_map_button(), screen.get_button(), template_button]:
+		assert_eq(control.focus_mode, Control.FOCUS_NONE, "%s no toma el foco" % control.name)
+	# El botón sigue funcionando con el ratón.
+	_click(screen.get_button())
+	assert_eq(h.client.respawn_requests.size(), 1, "un clic en «Reaparecer» sí reaparece")
+
+
+# --- Las pistas con la pantalla de muerte y el mapa ---------------------------------------------
+
+## Opacidad con la que se pinta [param item]: la suya por la de todos sus padres de la interfaz.
+func _effective_alpha(item: CanvasItem) -> float:
+	var alpha: float = 1.0
+	var node: Node = item
+	while node is CanvasItem:
+		alpha *= (node as CanvasItem).modulate.a * (node as CanvasItem).self_modulate.a
+		node = node.get_parent()
+	return alpha
+
+
+## Revisión de la fase 4 (cliente): las pistas vivían en la interfaz de guerra, por debajo de la pantalla de muerte
+## y atenuadas con ella, y se anotaban como vistas nada más salir. La de reaparecer (que solo se pide con la pantalla
+## de muerte abierta) se perdía siempre sin poderse leer; las demás, si llegaban muerto o con el mapa abierto.
+func test_the_hints_show_above_the_death_screen_undimmed_and_wait_while_the_map_covers_them() -> void:
+	var h: HudRig = _make_hud()
+	h.view.on_spawn(_fortress_spawn(100, {FortressFields.OWNER: VARDHEIM}))
+	var hints: HintToasts = h.hud.get_hints()
+	if not assert_not_null(hints, "el HUD en red monta las pistas"):
+		return
+	var screen: DeathScreen = h.hud.get_death_screen()
+	var world_map: WorldMap = h.hud.get_world_map()
+	assert_true(hints.get_index() > screen.get_index(), "por encima de la pantalla de muerte")
+	assert_true(hints.get_index() < world_map.get_index(), "y por debajo del mapa")
+	assert_true(hints.get_index() < h.hud.get_scoreboard().get_index(), "y del marcador")
+	_die(h)
+	assert_true(h.hud.is_dimmed(), "muerto, la interfaz de juego se atenúa")
+	assert_eq(hints.get_current_id(), HintCatalog.RESPAWN_MAP, "y sale la pista de reaparecer")
+	assert_true(hints.is_showing())
+	assert_near(_effective_alpha(hints.get_panel()), 1.0, 1e-6, "sin atenuar")
+	var log: HintLog = HintLog.current()
+	assert_false(log.has_shown(HintCatalog.RESPAWN_MAP), "no se anota hasta que se ha visto un rato")
+	hints.advance(HintToasts.MIN_SEEN_SECONDS * 0.5)
+	# El jugador abre el mapa (lo que pide la pista) antes de acabar de leerla: el mapa la tapa.
+	screen.get_map_button().pressed.emit()
+	assert_true(world_map.is_open())
+	hints.advance(0.016)
+	assert_false(hints.is_showing(), "tapada por el mapa, se quita")
+	assert_eq(hints.get_queued_ids(), [HintCatalog.RESPAWN_MAP] as Array[StringName], "y vuelve a la cola")
+	assert_false(log.has_shown(HintCatalog.RESPAWN_MAP), "sin anotarse")
+	hints.advance(HintToasts.GAP_SECONDS + HintToasts.SHOW_SECONDS)
+	assert_false(hints.is_showing(), "con el mapa abierto no sale nada")
+	world_map.close()
+	hints.advance(0.016)
+	assert_eq(hints.get_current_id(), HintCatalog.RESPAWN_MAP, "al cerrarlo, vuelve a salir")
+	hints.advance(HintToasts.MIN_SEEN_SECONDS + 0.1)
+	assert_true(log.has_shown(HintCatalog.RESPAWN_MAP), "vista el tiempo suficiente, anotada")
+	assert_true(hints.is_showing(), "y se queda hasta su tiempo")
+
+
+func test_a_respawn_hint_not_yet_read_leaves_with_the_death_screen_and_comes_back_next_time() -> void:
+	var h: HudRig = _make_hud()
+	h.view.on_spawn(_fortress_spawn(100, {FortressFields.OWNER: VARDHEIM}))
+	var hints: HintToasts = h.hud.get_hints()
+	_die(h)
+	assert_eq(hints.get_current_id(), HintCatalog.RESPAWN_MAP)
+	hints.advance(1.0)
+	# Reaparece enseguida: la pista ya no viene a cuento y no cuenta como vista.
+	h.client.fake_dead = false
+	h.client.fake_respawn_tick = 0
+	h.client.fake_snapshot_tick = 2000
+	h.hud._process(0.016)
+	assert_false(h.hud.get_death_screen().is_open())
+	assert_false(hints.is_showing(), "se quita al cerrarse la pantalla de muerte")
+	assert_false(hints.get_queued_ids().has(HintCatalog.RESPAWN_MAP), "y no se queda en la cola")
+	assert_false(HintLog.current().has_shown(HintCatalog.RESPAWN_MAP), "sin anotarse")
+	hints.advance(HintToasts.GAP_SECONDS + 0.1)
+	h.client.fake_tick = 3000
+	h.client.fake_snapshot_tick = 3000
+	_die(h)
+	hints.advance(HintToasts.GAP_SECONDS + 0.1)
+	assert_eq(hints.get_current_id(), HintCatalog.RESPAWN_MAP, "la siguiente muerte la vuelve a enseñar")

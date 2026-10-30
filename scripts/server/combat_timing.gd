@@ -24,14 +24,16 @@ const RESPAWN_REQUEST_SLACK_TICKS: int = 12
 var in_combat: int = 600
 ## Ticks desde la muerte hasta que se puede reaparecer.
 var respawn: int = 600
-## Ticks tras la muerte en los que la reaparición se hace sola (en el primer punto del reino).
+## Ticks tras la muerte en los que la reaparición se hace sola (en el primer punto del reino); con oleadas, en la
+## primera oleada a partir de ahí ([method auto_respawn_tick_for]).
 var auto_respawn: int = 1800
 ## Ticks de protección tras reaparecer.
 var protection: int = 180
 ## Oleadas de reaparición (docs/fuerte.md, sección 5; GUE-14): si es mayor que 1, nadie reaparece fuera
 ## de un múltiplo de este número de ticks (el primero que cae a [member respawn] ticks o más de la
-## muerte). 0 = sin oleadas, reaparece a los [member respawn] ticks. El servidor lo pone a
-## [constant WAVE_TICKS] en las zonas con fortaleza.
+## muerte si lo pide, y el primero a [member auto_respawn] ticks o más si no lo pide). 0 = sin oleadas,
+## reaparece a los [member respawn] ticks. El servidor lo pone a [constant WAVE_TICKS] en las zonas con
+## fortaleza.
 var respawn_wave_ticks: int = 0
 ## Ventana (ticks) en la que se cuentan los controles encadenados y ticks de inmunidad tras la cadena.
 var cc_window: int = 180
@@ -66,7 +68,18 @@ static func seconds_to_ticks(seconds: float) -> int:
 ## Primer tick en el que puede reaparecer quien muere en [param death_tick]: [member respawn] ticks
 ## después o, con oleadas ([member respawn_wave_ticks]), el primer múltiplo de la oleada a partir de ahí.
 func respawn_tick_for(death_tick: int) -> int:
-	var earliest: int = death_tick + respawn
+	return _on_wave(death_tick + respawn)
+
+
+## Tick en el que reaparece solo quien muere en [param death_tick] y no lo ha pedido: [member auto_respawn]
+## ticks después o, con oleadas, el primer múltiplo de la oleada a partir de ahí (la reaparición
+## automática también sale en oleada).
+func auto_respawn_tick_for(death_tick: int) -> int:
+	return _on_wave(death_tick + auto_respawn)
+
+
+# [param earliest] o, con oleadas, el primer múltiplo de la oleada que no es anterior.
+func _on_wave(earliest: int) -> int:
 	if respawn_wave_ticks <= 1:
 		return earliest
 	@warning_ignore("integer_division")

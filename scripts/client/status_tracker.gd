@@ -1,8 +1,9 @@
 class_name StatusTracker
 extends RefCounted
 ## Efectos de estado activos de una entidad tal como los cuenta el servidor (UI-45, docs/habilidades.md,
-## sección 6.4): uno por entidad, lo alimenta [NetClient] con los ENTITY_EVENT ya temporizados (los del
-## jugador local al llegar; los de un remoto en su tick de dibujo).
+## sección 6.4): uno por entidad, lo alimenta [NetClient] con los ENTITY_EVENT ya temporizados (los de la
+## entidad del jugador local al llegar; los de un remoto en su tick de dibujo, también los propios, para
+## que lleguen en el orden de ticks del servidor: este tracker los aplica en el orden en que le llegan).
 ## [br][br]
 ## Un STATUS 1 (aplicado o renovado) guarda o actualiza el efecto con sus acumulaciones y su
 ## [code]until_tick[/code]; un STATUS 2 lo quita. DEATH, DOWNED y RESPAWN de la entidad los quitan todos

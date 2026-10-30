@@ -20,7 +20,12 @@ extends RefCounted
 ## [br][br]
 ## [b]Reaparición completa de los Huecos[/b] (MUN-10): con el fuerte neutral y faltando alguno de los Huecos o el
 ## Capitán, si no hay ningún jugador a menos de [constant FULL_RESPAWN_RADIUS] m del fuerte durante
-## [constant FULL_RESPAWN_EMPTY_TICKS] ticks (2 min), vuelven todos (y el Capitán, si había caído).
+## [constant FULL_RESPAWN_EMPTY_TICKS] ticks (2 min), vuelven todos (y el Capitán, si había caído) como al crearse:
+## se retiran los refuerzos que siguieran vivos y el Capitán que no había caído recupera su llamada.
+## [br][br]
+## [b]Refuerzos[/b] (los que llama el Capitán, [member NpcDefinition.reinforcement_id]): no salen de ningún puesto y
+## solo se van al morir, al retirarse los defensores (captura, reinicio) o con la reaparición completa. Nunca hay vivos
+## más de los que llama una vez ([member NpcDefinition.reinforcement_count]) por fortaleza.
 ## [br][br]
 ## [b]Tick.[/b] [method begin_tick] y los cerebros (paso 0), y [method step] (después del paso 4b: altas, retirada de
 ## cadáveres y depuración). Los avisos [code]TELEGRAPH[/code] de los ataques fuertes los manda el [ZoneServer]
@@ -568,10 +573,7 @@ func _process_requests(tick: int) -> void:
 			if slot.fortress_id == fortress_id and slot.active:
 				_retire_slot(slot, tick)
 				slot.need_fill = true
-		for member: Member in _extras.duplicate():
-			if member.fortress_id == fortress_id:
-				_extras.erase(member)
-				_remove_member(member)
+		_retire_extras(fortress_id)
 	_retired.clear()
 	for request: Dictionary in _garrison_requests:
 		for slot: Slot in _slots:
@@ -658,23 +660,49 @@ func _full_respawn(fortress_id: StringName, state: FortressState, tick: int) -> 
 	for slot: Slot in _slots:
 		if slot.fortress_id == fortress_id and not slot.mirror and slot.active:
 			slot.need_fill = true
+			# El Capitán que sigue vivo vuelve a poder llamar a sus refuerzos, como uno recién creado.
+			for member: Member in slot.members:
+				if member.death_tick < 0 and member.definition.is_boss:
+					member.brain.rearm_reinforcements()
+	# Vuelven «enteros»: sin los refuerzos que quedaran.
+	_retire_extras(fortress_id)
+
+
+# Retira los refuerzos de [param fortress_id] (vivos y cadáveres).
+func _retire_extras(fortress_id: StringName) -> void:
+	for member: Member in _extras.duplicate():
+		if member.fortress_id == fortress_id:
+			_extras.erase(member)
+			_remove_member(member)
+
+
+# Refuerzos vivos de [param fortress_id].
+func _alive_extras_of(fortress_id: StringName) -> int:
+	var total: int = 0
+	for member: Member in _extras:
+		if member.fortress_id == fortress_id and member.death_tick < 0:
+			total += 1
+	return total
 
 
 # --- Refuerzos y avisos ----------------------------------------------------------------------------
 
-# Crea [param count] PNJ de [param definition_id] alrededor de [param caller], ya en alerta con su objetivo. Devuelve
-# cuántos ha creado.
+# Crea [param count] PNJ de [param definition_id] alrededor de [param caller], ya en alerta con su objetivo, menos los
+# refuerzos de su fortaleza que sigan vivos (nunca hay más de [param count] a la vez: los de un Capitán anterior
+# cuentan). Devuelve cuántos ha creado.
 func _spawn_reinforcements(caller: HfsmBrain, definition_id: StringName, count: int) -> int:
 	var definition: NpcDefinition = _definition_of(definition_id)
 	if definition == null:
 		return 0
 	var origin: Vector3 = caller.get_position()
+	var fortress_id: StringName = _member_fortress(caller)
+	var wanted: int = count - _alive_extras_of(fortress_id)
 	var created: int = 0
-	for index: int in count:
+	for index: int in maxi(wanted, 0):
 		var angle: float = TAU * float(index) / float(maxi(count, 1)) + 0.5
 		var position: Vector3 = origin + Vector3(cos(angle), 0.0, sin(angle)) * REINFORCEMENT_RADIUS
 		var member: Member = _create_member(definition, caller.get_realm(), position, angle + PI,
-				_member_fortress(caller), caller.get_group(), PackedVector3Array(),
+				fortress_id, caller.get_group(), PackedVector3Array(),
 				900001 + _reinforcements_total * 7919)
 		if member == null:
 			continue

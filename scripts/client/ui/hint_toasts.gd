@@ -5,27 +5,44 @@ extends Control
 ## las pistas están activadas en los ajustes ([constant ClientSettings.HINTS]).
 ## [br][br]
 ## [b]Qué las dispara.[/b] Eventos del cliente: un aviso de guerra de capitán caído ([signal
-## NetClient.war_event]) o un TELEGRAPH ([signal NetClient.telegraph_received]); y cosas que se miran cada
+## NetClient.war_event]) o un TELEGRAPH ([signal NetClient.telegraph_received]) de quien puede dañar al jugador
+## ([method TelegraphMarks.threatens], la misma regla que dibuja la marca) a menos de su radio más
+## [constant TELEGRAPH_DISTANCE] m; y cosas que se miran cada
 ## [constant POLL_SECONDS] ([method poll]): estar ya dentro del mundo (los controles de combate y los del
 ## mapa y el marcador), estar cerca del fuerte (el panel de
 ## captura se ve) o a menos de [constant GATE_DISTANCE] m de una puerta cerrada para tu reino. La pantalla
-## de muerte pide [constant HintCatalog.RESPAWN_MAP] con [method request].
+## de muerte pide [constant HintCatalog.RESPAWN_MAP] con [method request] y la retira al cerrarse
+## ([method withdraw]).
 ## [br][br]
 ## [b]Cola.[/b] Se enseña una pista cada vez, [constant SHOW_SECONDS] s con fundido, y entre una y otra pasan
-## [constant GAP_SECONDS] s. Una pista solo se anota como vista cuando de verdad sale en pantalla: si se
-## desactivan las pistas con alguna en cola, se descartan sin anotarse. Medidas, textos y tiempos
-## provisionales. Solo cliente.
+## [constant GAP_SECONDS] s. La del TELEGRAPH caduca con su marca: si no le llega el turno antes, se descarta.
+## [br][br]
+## [b]Vista de verdad.[/b] El [HUD] las monta por encima de la pantalla de muerte (sin atenuar) y por debajo del
+## mapa y del marcador, y le da [member is_covered]: mientras el mapa o el marcador las tapan no sale ninguna, y la
+## que se veía vuelve a la cabeza de la cola si aún no se había leído. Una pista solo se anota como vista
+## ([HintLog]) tras [constant MIN_SEEN_SECONDS] s en pantalla sin tapar, o al quitarla con [method dismiss] (se acaba
+## su tiempo o se desactivan las pistas); si se desactivan con alguna en cola, se descartan sin anotarse (revisión
+## de la fase 4, cliente). Medidas, textos y tiempos provisionales. Solo cliente.
 
 const SHOW_SECONDS: float = 9.0
 const FADE_SECONDS: float = 1.0
 const GAP_SECONDS: float = 2.0
 const POLL_SECONDS: float = 0.5
+## Segundos en pantalla, sin tapar, tras los que una pista cuenta como vista.
+const MIN_SEEN_SECONDS: float = 4.0
 ## Metros de una puerta cerrada para tu reino a los que sale la pista de la puerta.
 const GATE_DISTANCE: float = 15.0
+## Metros, más allá del radio de la marca, hasta los que un TELEGRAPH da su pista.
+const TELEGRAPH_DISTANCE: float = 20.0
+## Segundos de más (tras el impacto) que espera en la cola la pista de un TELEGRAPH.
+const TELEGRAPH_GRACE_SECONDS: float = 0.5
 const WIDTH: float = 640.0
 const BOTTOM_OFFSET: float = 84.0
 const FONT_SIZE: int = 18
 const TEXT_TITLE: String = "Pista"
+
+## [code]() -> bool[/code]: true mientras algo tapa las pistas (el mapa, el marcador). Lo da el [HUD].
+var is_covered: Callable = Callable()
 
 var _client: NetClient = null
 var _view: FortressView = null
@@ -38,6 +55,11 @@ var _left: float = 0.0
 var _gap: float = 0.0
 var _poll_left: float = 0.0
 var _shown_total: int = 0
+# Segundos que lleva la actual a la vista y si ya se ha anotado.
+var _seen: float = 0.0
+var _noted: bool = false
+# Pista en cola -> segundos que le quedan para salir antes de caducar (las que no caducan no están).
+var _deadlines: Dictionary[StringName, float] = {}
 
 var _panel: PanelContainer = null
 var _body: Label = null
@@ -88,8 +110,9 @@ func is_enabled() -> bool:
 
 
 ## Pide la pista [param id]. Se pone en cola si el catálogo la conoce, las pistas están activadas, el
-## jugador no la ha visto ya y no está ya en cola o en pantalla. Devuelve true si se ha puesto en cola.
-func request(id: StringName) -> bool:
+## jugador no la ha visto ya y no está ya en cola o en pantalla. Con [param lifetime] mayor que 0, si no ha salido
+## en ese tiempo se descarta sin anotarse (lo que la motivaba ya no está). Devuelve true si se ha puesto en cola.
+func request(id: StringName, lifetime: float = 0.0) -> bool:
 	if not HintCatalog.has_hint(id) or not is_enabled():
 		return false
 	if _log != null and _log.has_shown(id):
@@ -97,22 +120,51 @@ func request(id: StringName) -> bool:
 	if id == _current or _queue.has(id):
 		return false
 	_queue.append(id)
-	if _current == &"" and _gap <= 0.0:
+	if lifetime > 0.0:
+		_deadlines[id] = lifetime
+	if _current == &"" and _gap <= 0.0 and not _covered():
 		_show_next()
 	return true
 
 
-## Avanza [param delta] segundos: el tiempo en pantalla, el fundido y la pausa entre pistas.
+## Retira la pista [param id] porque ya no viene a cuento (la de reaparecer, al cerrarse la pantalla de muerte): sale
+## de la cola y, si se está viendo y aún no se ha leído, se quita sin anotarse. Se puede volver a pedir.
+func withdraw(id: StringName) -> void:
+	_queue.erase(id)
+	_deadlines.erase(id)
+	if id != _current:
+		return
+	if _noted:
+		dismiss()
+		return
+	_hide_current()
+	_gap = GAP_SECONDS
+
+
+## Avanza [param delta] segundos: el tiempo en pantalla, el fundido, la pausa entre pistas y la caducidad de las que
+## esperan.
 func advance(delta: float) -> void:
+	_expire(delta)
 	if _current == &"":
 		if _gap > 0.0:
 			_gap -= delta
-		if _gap <= 0.0 and not _queue.is_empty():
+		if _gap <= 0.0 and not _queue.is_empty() and not _covered():
 			_show_next()
 		return
 	if not is_enabled():
 		dismiss()
 		return
+	if _covered():
+		if _noted:
+			dismiss()
+		else:
+			# Tapada antes de leerla: vuelve la primera de la cola y sale en cuanto se destape.
+			_queue.push_front(_current)
+			_hide_current()
+		return
+	_seen += delta
+	if not _noted and _seen >= MIN_SEEN_SECONDS:
+		_note_current()
 	_left -= delta
 	if _left <= 0.0:
 		dismiss()
@@ -120,15 +172,14 @@ func advance(delta: float) -> void:
 		_panel.modulate.a = clampf(_left / FADE_SECONDS, 0.0, 1.0)
 
 
-## Quita la pista de la pantalla (la siguiente sale tras la pausa).
+## Quita la pista de la pantalla y la da por vista (la siguiente sale tras la pausa).
 func dismiss() -> void:
 	if _current == &"":
 		return
-	_current = &""
-	_left = 0.0
+	if not _noted:
+		_note_current()
+	_hide_current()
 	_gap = GAP_SECONDS
-	if _panel != null:
-		_panel.visible = false
 
 
 ## Mira lo que dispara pistas sin evento: estar en el mundo, cerca del fuerte o de una puerta cerrada.
@@ -173,6 +224,12 @@ func is_showing() -> bool:
 	return _panel != null and _panel.visible
 
 
+## El panel de la pista.
+func get_panel() -> PanelContainer:
+	_ensure_built()
+	return _panel
+
+
 # --- Interno ----------------------------------------------------------------------------------
 
 func _disconnect() -> void:
@@ -190,15 +247,56 @@ func _on_war_event(event: NetMessages.EntityEvent) -> void:
 		request(HintCatalog.CAPTAIN_DOWN)
 
 
-func _on_telegraph(_event: NetMessages.EntityEvent) -> void:
-	request(HintCatalog.TELEGRAPH)
+# Un TELEGRAPH da su pista si es de quien puede dañar al jugador y cae cerca; caduca con la marca.
+func _on_telegraph(event: NetMessages.EntityEvent) -> void:
+	if event == null or not is_instance_valid(_client) or not TelegraphMarks.threatens(_client, event.net_id):
+		return
+	var character: PlayerCharacter = _client.get_character()
+	if character == null or not is_instance_valid(character):
+		return
+	var here: Vector3 = character.global_position if character.is_inside_tree() else character.position
+	var distance: float = Vector2(here.x - event.position.x, here.z - event.position.z).length()
+	if distance > event.get_radius() + TELEGRAPH_DISTANCE:
+		return
+	var lifetime: float = float(maxi(event.impact_in_ticks, 0)) / float(Engine.physics_ticks_per_second) \
+			+ TELEGRAPH_GRACE_SECONDS
+	request(HintCatalog.TELEGRAPH, lifetime)
 
 
 # Al desactivar las pistas, lo que esperaba en cola se descarta (y no se anota como visto).
 func _on_setting_changed(id: StringName, value: Variant) -> void:
 	if id == ClientSettings.HINTS and not bool(value):
 		_queue.clear()
+		_deadlines.clear()
 		dismiss()
+
+
+func _covered() -> bool:
+	return is_covered.is_valid() and bool(is_covered.call())
+
+
+# Descuenta [param delta] a las pistas en cola que caducan y descarta (sin anotarlas) las que ya no van a salir.
+func _expire(delta: float) -> void:
+	for id: StringName in _deadlines.keys():
+		_deadlines[id] -= delta
+		if _deadlines[id] <= 0.0:
+			_deadlines.erase(id)
+			_queue.erase(id)
+
+
+func _note_current() -> void:
+	_noted = true
+	if _log != null:
+		_log.mark_shown(_current)
+
+
+func _hide_current() -> void:
+	_current = &""
+	_left = 0.0
+	_seen = 0.0
+	_noted = false
+	if _panel != null:
+		_panel.visible = false
 
 
 # true si hay una puerta enteramente cerrada para el reino del jugador a menos de GATE_DISTANCE m.
@@ -224,12 +322,13 @@ func _near_closed_gate(character: PlayerCharacter) -> bool:
 func _show_next() -> void:
 	while not _queue.is_empty():
 		var id: StringName = _queue.pop_front()
+		_deadlines.erase(id)
 		if _log != null and _log.has_shown(id):
 			continue
-		if _log != null:
-			_log.mark_shown(id)
 		_current = id
 		_left = SHOW_SECONDS
+		_seen = 0.0
+		_noted = false
 		_shown_total += 1
 		_ensure_built()
 		_body.text = HintCatalog.text_of(id)

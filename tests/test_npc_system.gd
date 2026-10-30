@@ -491,6 +491,66 @@ func test_the_hollows_and_the_captain_come_back_whole_after_two_minutes_with_nob
 	assert_eq(_rig.npcs().get_report()["full_respawns"], 1)
 
 
+# Revisión de la fase 4 (guerra): el Capitán llama a sus refuerzos una vez por vida (volver regenerado a su puesto no
+# rearma la llamada) y la reaparición completa retira los que queden y le devuelve la llamada.
+func test_the_captain_calls_his_reinforcements_once_per_life_and_the_full_respawn_takes_them_away() -> void:
+	await _start_fort_zone()
+	var captain: int = _rig.alive_of(&"ford_captain")[0]
+	assert_eq(_rig.alive_of(&"hollow").size(), 2)
+	for cycle: int in 3:
+		await _failed_assault(captain)
+		assert_eq(_rig.alive_of(&"hollow").size(), 4,
+				"asalto %d: los dos Huecos y los dos refuerzos de la única llamada" % (cycle + 1))
+	assert_eq(_rig.npcs().get_report()["reinforcements"], 2, "una sola llamada en tres asaltos")
+	assert_true(_rig.npcs().get_brain(captain).has_called_reinforcements())
+	assert_true(_rig.npcs().force_full_respawn(FORTRESS, _rig.server.get_tick()))
+	await _rig.advance(30)
+	assert_eq(_rig.alive_of(&"hollow").size(), 2, "la reaparición completa los deja enteros, sin refuerzos")
+	assert_eq(_rig.alive_of(&"ford_captain"), [captain] as Array[int], "con el mismo Capitán")
+	assert_false(_rig.npcs().get_brain(captain).has_called_reinforcements(), "que vuelve a poder llamarlos")
+	await _failed_assault(captain)
+	assert_eq(_rig.alive_of(&"hollow").size(), 4, "y los llama en el asalto siguiente")
+	assert_eq(_rig.npcs().get_report()["reinforcements"], 4)
+
+
+func test_a_new_captain_does_not_add_reinforcements_while_the_previous_ones_live() -> void:
+	await _start_fort_zone(0.0, 2.0)
+	var first: int = _rig.alive_of(&"ford_captain")[0]
+	await _failed_assault(first)
+	assert_eq(_rig.alive_of(&"hollow").size(), 4, "el primer Capitán llama a dos")
+	_kill(first)
+	var replaced: bool = await _rig.advance_until(func() -> bool:
+		var captains: Array[int] = _rig.alive_of(&"ford_captain")
+		return captains.size() == 1 and captains[0] != first, 1200)
+	if not assert_true(replaced, "vuelve otro Capitán"):
+		return
+	var second: int = _rig.alive_of(&"ford_captain")[0]
+	await _failed_assault(second)
+	assert_true(_rig.npcs().get_brain(second).has_called_reinforcements(), "el nuevo también llama")
+	assert_eq(_rig.alive_of(&"hollow").size(), 4, "pero con los dos de antes vivos no suma más")
+	assert_eq(_rig.npcs().get_report()["reinforcements"], 2)
+
+
+# Un asalto que fracasa: un jugador de Vardheim pelea con el Capitán, que está por debajo de la mitad de la vida, y muere;
+# el Capitán vuelve a su puesto regenerado. El jugador aparece a 3 m del puesto (dentro de lo que el Capitán oye: tras un
+# regreso descansa mirando hacia donde venía y no vería a nadie a su espalda).
+func _failed_assault(captain: int) -> void:
+	var post: Vector3 = _rig.npcs().get_brain(captain).get_home()
+	var player: int = _rig.add_player(VARDHEIM, post + Vector3(-3.0, 0.1, 0.0))
+	_rig.combatant(captain).health = 14000
+	var engaged: bool = await _rig.advance_until(func() -> bool:
+		return _rig.npcs().get_brain(captain).state == HfsmBrain.State.COMBAT, 600)
+	assert_true(engaged, "el Capitán entra en combate")
+	await _rig.advance(60)
+	_kill(player)
+	await _rig.advance(2)
+	_rig.server.remove_fake_player(player)
+	var back: bool = await _rig.advance_until(func() -> bool:
+		return _rig.npcs().get_brain(captain).state == HfsmBrain.State.REST \
+				and _rig.combatant(captain).health == _rig.combatant(captain).max_health, 3600)
+	assert_true(back, "el Capitán vuelve regenerado")
+
+
 func test_without_the_npc_system_the_zone_has_no_npcs() -> void:
 	await _rig.start_flat(tree, func(world: Node3D) -> void:
 		NpcRig.add_spawner(world, "Solo", &"hollow", Vector3(0.0, 0.05, 0.0)),

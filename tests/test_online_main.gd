@@ -183,6 +183,30 @@ func test_a_combat_cheat_mode_gives_the_bot_the_cheaters_brain() -> void:
 		assert_true(brain.has_enemy_finder())
 
 
+# Revisión de la fase 4 (guerra): el bot muerto pide reaparecer en cuanto se puede, como quien pulsa el botón (sin
+# pedirlo esperaría a la reaparición automática; con oleadas, eso lo sacaba de la suya).
+func test_a_dead_bot_asks_for_its_respawn_as_soon_as_it_can() -> void:
+	await _start_server()
+	_start_online(ClientConfig.Mode.BOT)
+	assert_true(await _wait_until(_in_world))
+	var client: NetClient = _online.get_client()
+	var combatant: Combatant = _server.get_combat().get_combatant(client.get_net_id())
+	if not assert_not_null(combatant):
+		return
+	var timing: CombatTiming = _server.get_combat_timing()
+	timing.respawn = 60
+	timing.auto_respawn = 100000
+	_server.get_combat().kill(combatant, _server.get_tick() + 1)
+	assert_true(await _wait_until(func() -> bool: return client.is_dead(), 120), "el bot se sabe muerto")
+	var back: bool = await _wait_until(func() -> bool: return combatant.is_alive(), 400)
+	assert_true(back, "reaparece al pedirlo, mucho antes de la automática")
+	assert_true(int(client.get_stats()["respawn_requests"]) >= 1, "con su RESPAWN_REQUEST")
+	assert_eq(_server.get_combat().stats[&"respawns"], 1)
+	await wait_physics_frames(90)
+	var peer: ServerPeer = _server.get_peer(_server.get_peer_ids()[0])
+	assert_eq(peer.strikes_total, 0, "ni antes de tiempo ni de más: ningún aviso del servidor")
+
+
 func test_the_default_bot_brain_wanders() -> void:
 	await _start_server()
 	_start_online(ClientConfig.Mode.BOT)

@@ -375,16 +375,125 @@ func test_a_broken_gate_or_a_neutral_fort_changes_who_it_is_closed_to() -> void:
 	assert_eq(neutral_toasts.get_current_id(), HintCatalog.GATE_CLOSED, "neutral, cerrada para todos")
 
 
+# --- Vista de verdad (revisión de la fase 4, cliente) -------------------------------------------
+
+func test_a_hint_is_noted_only_after_it_has_been_on_screen_for_a_while() -> void:
+	var hint_log: HintLog = HintLog.in_memory()
+	var toasts: HintToasts = _make_toasts(_make_client(), hint_log)
+	toasts.request(HintCatalog.CONTROLS)
+	assert_eq(toasts.get_current_id(), HintCatalog.CONTROLS)
+	assert_false(hint_log.has_shown(HintCatalog.CONTROLS), "al salir aún no se ha leído")
+	toasts.advance(HintToasts.MIN_SEEN_SECONDS - 0.1)
+	assert_false(hint_log.has_shown(HintCatalog.CONTROLS))
+	toasts.advance(0.2)
+	assert_true(hint_log.has_shown(HintCatalog.CONTROLS), "tras %.0f s a la vista, sí" % HintToasts.MIN_SEEN_SECONDS)
+
+
+func test_a_covered_hint_waits_and_one_covered_before_being_read_goes_back_to_the_queue() -> void:
+	var hint_log: HintLog = HintLog.in_memory()
+	var toasts: HintToasts = _make_toasts(_make_client(), hint_log)
+	var covered: Array[bool] = [true]
+	toasts.is_covered = func() -> bool: return covered[0]
+	assert_true(toasts.request(HintCatalog.CONTROLS), "se pide aunque esté tapada")
+	assert_false(toasts.is_showing(), "pero no sale mientras algo la tapa (el mapa, el marcador)")
+	toasts.advance(HintToasts.SHOW_SECONDS * 2.0)
+	assert_eq(toasts.get_queued_ids(), [HintCatalog.CONTROLS] as Array[StringName], "espera en la cola")
+	covered[0] = false
+	toasts.advance(0.016)
+	assert_eq(toasts.get_current_id(), HintCatalog.CONTROLS, "destapada, sale")
+	toasts.request(HintCatalog.FORT_NEAR)
+	toasts.advance(1.0)
+	covered[0] = true
+	toasts.advance(0.016)
+	assert_false(toasts.is_showing(), "tapada al poco de salir, se quita")
+	assert_eq(toasts.get_queued_ids(), [HintCatalog.CONTROLS, HintCatalog.FORT_NEAR] as Array[StringName],
+			"y vuelve la primera de la cola")
+	assert_false(hint_log.has_shown(HintCatalog.CONTROLS), "sin anotarse")
+	covered[0] = false
+	toasts.advance(0.016)
+	assert_eq(toasts.get_current_id(), HintCatalog.CONTROLS, "al destaparse sale otra vez")
+	toasts.advance(HintToasts.MIN_SEEN_SECONDS + 0.1)
+	covered[0] = true
+	toasts.advance(0.016)
+	assert_true(hint_log.has_shown(HintCatalog.CONTROLS), "leída ya, tapar la quita pero cuenta como vista")
+	assert_eq(toasts.get_queued_ids(), [HintCatalog.FORT_NEAR] as Array[StringName], "y no vuelve a la cola")
+
+
+func test_withdrawing_a_hint_drops_it_without_noting_it() -> void:
+	var hint_log: HintLog = HintLog.in_memory()
+	var toasts: HintToasts = _make_toasts(_make_client(), hint_log)
+	toasts.request(HintCatalog.RESPAWN_MAP)
+	toasts.request(HintCatalog.CAPTAIN_DOWN)
+	toasts.withdraw(HintCatalog.RESPAWN_MAP)
+	assert_false(toasts.is_showing(), "la que se veía se quita")
+	assert_false(hint_log.has_shown(HintCatalog.RESPAWN_MAP), "sin anotarse")
+	toasts.withdraw(HintCatalog.CAPTAIN_DOWN)
+	assert_true(toasts.get_queued_ids().is_empty(), "y la que esperaba sale de la cola")
+	assert_true(toasts.request(HintCatalog.RESPAWN_MAP), "se puede volver a pedir")
+
+
+func _telegraph(npc_id: int, origin: Vector3, impact_ticks: int = 60) -> NetMessages.EntityEvent:
+	return NetMessages.EntityEvent.telegraph(npc_id, 100, 7, NetMessages.EntityEvent.SHAPE_CIRCLE, origin, 0.0, 300,
+			impact_ticks)
+
+
+func _npc(client: FakeClient, net_id: int, realm: int, feet: Vector3) -> void:
+	var spawn := NetMessages.EntitySpawn.new()
+	spawn.net_id = net_id
+	spawn.kind = NetProtocol.EntityKind.NPC
+	spawn.spawn_tick = 100
+	spawn.realm = realm
+	spawn.display_name = "PNJ %d" % net_id
+	spawn.state = PlayerState.new()
+	spawn.state.position = feet
+	client.get_remote_world().on_spawn(spawn)
+
+
+func test_the_telegraph_hint_needs_a_hostile_mark_near_the_player_and_still_on_the_ground() -> void:
+	var client: FakeClient = _make_client(Vector3.ZERO, VARDHEIM)
+	client.get_remote_world().install_visuals = false
+	_npc(client, 41, VARDHEIM, Vector3(2.0, 0.0, 0.0))
+	_npc(client, 42, RealmCatalog.NEUTRAL_CODE, Vector3(3.0, 0.0, 0.0))
+	var toasts: HintToasts = _make_toasts(client, _log_after_the_intro())
+	client.telegraph_received.emit(_telegraph(41, Vector3(2.0, 0.0, 0.0)))
+	assert_false(toasts.is_showing(), "el golpe de un guardia de tu reino no te puede dañar: no es «un ataque enemigo»")
+	client.telegraph_received.emit(_telegraph(42, Vector3(200.0, 0.0, 0.0)))
+	assert_false(toasts.is_showing(), "una marca a 200 m no se ve: no se explica")
+	assert_true(toasts.get_queued_ids().is_empty())
+	client.telegraph_received.emit(_telegraph(42, Vector3(3.0, 0.0, 0.0)))
+	assert_eq(toasts.get_current_id(), HintCatalog.TELEGRAPH, "un Hueco que golpea a tu lado, sí")
+	# Si tiene que esperar en la cola, caduca con la marca.
+	var later: HintToasts = _make_toasts(client, _log_after_the_intro())
+	later.request(HintCatalog.FORT_NEAR)
+	client.telegraph_received.emit(_telegraph(42, Vector3(3.0, 0.0, 0.0), 30))
+	assert_eq(later.get_queued_ids(), [HintCatalog.TELEGRAPH] as Array[StringName], "en cola tras la del fuerte")
+	later.advance(HintToasts.SHOW_SECONDS)
+	later.advance(HintToasts.GAP_SECONDS + 0.1)
+	assert_false(later.is_showing(), "cuando le llega el turno la marca ya no está: se descarta")
+	assert_true(later.get_queued_ids().is_empty())
+	assert_false(later.get_shown_total() > 1, "solo salió la del fuerte")
+
+
 # --- El HUD ------------------------------------------------------------------------------------
 
-func test_the_war_hud_mounts_the_hints() -> void:
+func test_the_hud_mounts_the_hints_above_the_death_screen() -> void:
 	HintLog.set_current(HintLog.in_memory())
 	var client: FakeClient = _make_client()
-	var war: WarHud = _track(WarHud.new()) as WarHud
-	war.bind(client, null)
-	var toasts: HintToasts = war.get_hints()
-	if not assert_not_null(toasts, "la interfaz de guerra monta las pistas"):
+	var rig: CameraRig = (load("res://scenes/client/camera_rig.tscn") as PackedScene).instantiate() as CameraRig
+	rig.set_scripted_look(false)
+	_track(rig)
+	var hud: HUD = (load("res://scenes/ui/hud.tscn") as PackedScene).instantiate() as HUD
+	_track(hud)
+	hud.bind(client.fake_character, rig)
+	hud.bind_net(client, _root)
+	var toasts: HintToasts = hud.get_hints()
+	if not assert_not_null(toasts, "el HUD en red monta las pistas"):
 		return
+	assert_eq(toasts.get_parent(), hud, "fuera de la interfaz de guerra (que se atenúa al morir)")
+	assert_true(toasts.get_index() > hud.get_death_screen().get_index(), "y por encima de la pantalla de muerte")
 	assert_true(toasts.is_enabled() == bool(ClientSettings.current().get_value(ClientSettings.HINTS)),
 			"con los ajustes del jugador")
 	assert_eq(HintLog.current().get_shown_count(), 0, "y el registro en memoria de las pruebas")
+	hud.bind_net(client, _root)
+	assert_eq(hud.get_children().filter(func(child: Node) -> bool: return child is HintToasts).size(), 1,
+			"una segunda llamada a bind_net no las duplica")

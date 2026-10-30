@@ -4,7 +4,8 @@ extends TestCase
 ## esquina da en la esquina aunque la cámara vea el blanco, desde el vano de la puerta cerrada la flecha se
 ## clava en el origen, el escudo de frente la bloquea (nunca la para), la esquiva la deja pasar, la caja
 ## del muro de escudos para las flechas que llegan de frente a quien está detrás (desde lejos y con el
-## arquero dentro de ella) y no las de un arquero detrás de quien lo sostiene, un segmento que empieza
+## arquero dentro de ella) y no las de un arquero detrás de quien lo sostiene (ni las que llegan a quien lo
+## sostiene en la zona segura de su reino), un segmento que empieza
 ## dentro de una cápsula da a quemarropa, los topes (8 por tirador, 64 por zona) retiran la más vieja y el
 ## disparo nuevo existe, el tirador que se va se lleva sus flechas (DESPAWN 5) y una flecha golpea la
 ## puerta con su parte perforante. Además: el vuelo contra posiciones rebobinadas (y el control sin
@@ -422,6 +423,49 @@ func test_the_shield_wall_box_stops_arrows_from_the_front_only() -> void:
 	assert_eq(_hits_on(11).size(), 1, "control: sin el muro el aliado recibe la flecha")
 
 
+## Revisión de la fase 4 (lente «habilidades»): el muro de quien está en la zona segura de su reino no para
+## las flechas enemigas (pasan como por su cápsula, que no es candidata): sin resistencia y con poca vida no
+## hay golpe bloqueado, ni rotura de guardia, ni daño, ni derribado, ni «en combate» para él ni para el
+## arquero. Control: el mismo muro fuera de la zona segura sí la bloquea, con rotura de guardia.
+func test_the_shield_wall_inside_its_own_safe_area_lets_arrows_through() -> void:
+	var wall: AbilityTicks = CombatCatalog.ability(CombatCatalog.ability_id(&"shield_wall"))
+	_safe_areas.add(Vector3.ZERO, 5.0, SOLMARCH)
+	var holder: Combatant = _body(10, SOLMARCH, Vector3.ZERO, 0.0)
+	var outside: Combatant = _body(20, SOLMARCH, Vector3(30.0, 0.0, 0.0), 0.0)
+	for fighter: Combatant in [holder, outside]:
+		var combat: CombatState = fighter.get_character().combat
+		combat.action = CombatState.Action.ABILITY
+		combat.action_id = wall.id
+		combat.action_tick = S - wall.cast_ticks - 30
+		combat.stamina = 10
+		fighter.health = 30
+	var archer: Combatant = _body(1, VARDHEIM, Vector3(0.0, 0.0, -20.0), PI)
+	_shoot(archer, &"bow_quick", S, _center_of(holder))
+	_run(S, S + 40)
+	assert_eq(_hits_on(10).size(), 0, "la flecha atraviesa el muro de quien está en su zona segura")
+	assert_true(holder.health >= 30, "sin daño (en su zona segura se regenera): %d" % holder.health)
+	assert_true(holder.get_character().combat.stamina >= 10, "sin gasto de resistencia")
+	assert_eq(holder.get_character().combat.action, CombatState.Action.ABILITY,
+			"sin rotura de guardia: sigue en el muro")
+	assert_false(holder.is_in_combat(S + 40), "quien sostiene el muro no queda en combate")
+	assert_false(archer.is_in_combat(S + 40), "ni el arquero")
+	assert_eq(_director.stats[&"wall_blocked"], 0, "registro: ningún wall_blocked")
+	if assert_eq(_spawns.size(), 1):
+		assert_true(_despawn_of(_spawns[0].net_id).has("tick"), "la flecha sigue de largo y se clava")
+		var segment: Array[Vector3] = _last_segment(_spawns[0])
+		assert_true(segment[1].z > 0.0, "más allá de quien sostiene el muro: %s" % [segment])
+	# Control: el mismo muro fuera de la zona segura bloquea y, sin resistencia, la guardia se rompe.
+	var far: Combatant = _body(2, VARDHEIM, Vector3(30.0, 0.0, -20.0), PI)
+	_shoot(far, &"bow_quick", S + 100, _center_of(outside))
+	_run(S + 100, S + 140)
+	var blocked: Array[NetMessages.EntityEvent] = _hits_on(20)
+	if assert_eq(blocked.size(), 1, "control: fuera de la zona segura el muro la para"):
+		assert_true(blocked[0].has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_BLOCKED))
+		assert_true(blocked[0].has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_GUARD_BREAK),
+				"control: sin resistencia, rotura de guardia")
+	assert_true(outside.is_in_combat(S + 140), "control: queda en combate")
+
+
 func test_a_segment_that_starts_inside_a_capsule_hits_point_blank() -> void:
 	# El enemigo se ha metido encima del arquero (los personajes no chocan): su cápsula contiene el pecho.
 	var archer: Combatant = _body(1, VARDHEIM, Vector3.ZERO, 0.0)
@@ -640,6 +684,32 @@ func test_a_rejected_rewind_or_the_safe_area_make_a_harmless_arrow() -> void:
 		assert_true(_spawns[1].is_harmless(), "desde la zona segura, inofensiva")
 	assert_eq(_hits_on(4).size(), 0)
 	assert_eq(_director.projectiles.stats[&"projectiles_harmless"], 2)
+
+
+## Revisión de la fase 4 (lente «trampas»): la flecha de un honrado que dispara en un fotograma retrasado (siete
+## pasos de física de más sobre el tope + 1 de antes) se recorta al tope y no es inofensiva ni suma sospecha.
+func test_an_arrow_shot_in_a_late_frame_is_clamped_to_the_cap_not_made_harmless() -> void:
+	var peer := ServerPeer.new(7)
+	peer.rtt_ticks = 4
+	peer.interp_delay_q = 48
+	var archer: Combatant = _body(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
+	var target: Combatant = _body(2, SOLMARCH, Vector3(0.0, 0.0, -8.0), PI)
+	for tick: int in range(S - 30, S):
+		for fighter: Combatant in _director.get_sorted():
+			CombatFixture.record(_history, fighter, tick)
+	var allowed: int = CombatResolver.allowed_rewind(peer.rtt_ticks, 0, peer.interp_delay_q)
+	assert_eq(allowed, 12)
+	_shoot(archer, &"bow_quick", S, _center_of(target), 0, allowed + 1 + 7)
+	for tick: int in range(S, S + 30):
+		_tick(tick)
+		for fighter: Combatant in _director.get_sorted():
+			CombatFixture.record(_history, fighter, tick)
+	if assert_eq(_spawns.size(), 1):
+		assert_false(_spawns[0].is_harmless(), "no es inofensiva")
+	assert_eq(_hits_on(2).size(), 1, "y acierta")
+	assert_eq(peer.suspicion_score, 0, "sin sospecha")
+	assert_eq(peer.rewind_rejects, 0)
+	assert_eq(_director.projectiles.stats[&"projectiles_harmless"], 0)
 
 
 # --- Abanico, carga, efectos ------------------------------------------------------------------

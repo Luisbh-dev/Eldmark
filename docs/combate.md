@@ -370,10 +370,14 @@ Para cada atacante en golpe activo en `s`:
    más la holgura de su ventana). Un honrado no pierde nada (su vista es `rtt + antelación de la
    entrada + interpolación`, así que con la antelación de esa entrada nunca queda por encima del
    tope), pero un cliente que adelanta solo las entradas de su golpe 14 ticks ya no sube el tope de
-   12 a 24 con RTT de LAN. Si `view_offset_q / 16 > allowed + 1`, el golpe **no se prueba**: suma a
-   la puntuación de sospecha y va al `--combat-log`. Si no, `view_tick = clamp(s − view_offset_q /
-   16, s − allowed, s)`. **Mínimo para la defensa:** las defensas retroactivas (invulnerable,
-   parada, bloqueo; paso 6) miran al menos `max(0, rtt_floor + 4 − 2)` ticks atrás
+   12 a 24 con RTT de LAN. Si `view_offset_q / 16 > allowed + 8`
+   (`CombatResolver.REWIND_REJECT_SLACK_TICKS`), el golpe **no se prueba**: suma a la puntuación de
+   sospecha y va al `--combat-log`. Si no, `view_tick = clamp(s − view_offset_q / 16, s − allowed, s)`:
+   lo que pasa del tope sin llegar al rechazo se recorta. *(Revisión de la fase 4, lente «trampas»: el
+   rechazo empezaba en `allowed + 1` y un honrado con un tirón o pocos FPS, que encadena hasta 8 pasos de
+   física en un fotograma y declara la vista del último dibujado, perdía el golpe y sumaba sospecha; ver
+   red.md §10. La interpolación del tope se redondea ahora hacia arriba.)* **Mínimo para la defensa:**
+   las defensas retroactivas (invulnerable, parada, bloqueo; paso 6) miran al menos `max(0, rtt_floor + 4 − 2)` ticks atrás
    (`ServerPeer.rtt_floor_ticks` es el RTT de ENet, que el cliente no controla, y 4 el retardo de
    interpolación mínimo), aunque el golpe pida menos: un honrado nunca ve el mundo con menos
    retraso, y pedir 0 ya no libra de ellas. La geometría (paso 3) sigue en el `view_tick` pedido.
@@ -472,7 +476,8 @@ ninguno debe hacer daño de más.
   DEATH (víctima, autor, ataque) y un KILL (asesino, ataque, asistentes con ≥ 10 % del daño en 900
   ticks; no cuentan aliados ni autolesiones).
 - **Reaparición**: desde `respawn_tick` el cliente puede pedirla con **RESPAWN_REQUEST**
-  (`point_index`); a los 30 s sin pedirla, automática en el primer punto. Puntos: nodos del grupo
+  (`point_index`); a los 30 s sin pedirla, automática en el primer punto (con las oleadas de la fase 4, en
+  la primera oleada desde ahí: [fuerte.md 5](fuerte.md#5-avisos-reaparición-salida-y-atascado)). Puntos: nodos del grupo
   `respawn_points` (o, si la zona no tiene, `spawn_points`) con metadato `realm`, en el orden de la
   escena, que el cliente conoce porque carga la misma zona; en la fase 4 el índice pasa a ser el de la
   lista **estática** de todos los puntos y se añade la condición (el fuerte propio, sin atacar:
@@ -499,7 +504,8 @@ ninguno debe hacer daño de más.
   zonas RVR. `Zones.get_pvp_mode(zone_id) -> PvpMode` (SAFE o RVR; Vado Gris y test_world RVR).
   **Zonas seguras**: `Marker3D` del grupo `safe_areas` con metadatos `realm` y `radius` (24 m) en
   cada campamento del Vado Gris. **Solo protege a su reino**: un jugador de ese reino dentro no
-  recibe daño ni lo hace (no se puede atacar a salvo desde dentro); un intruso enemigo dentro sí
+  recibe daño ni lo hace (no se puede atacar a salvo desde dentro; tampoco su muro de escudos para
+  flechas, habilidades.md §4.4); un intruso enemigo dentro sí
   es dañable, por los Guardianes de la Puerta de la fase 4 (PNJ con `ignores_safe_area`).
 
 ---
@@ -535,7 +541,9 @@ ninguno debe hacer daño de más.
     también cuando el remoto es la víctima (o el muerto) de un evento propio: `CombatFeedback`
     aplica al llegar lo que es del jugador local y guarda el destello, la placa de vida
     (`entity_damaged`) y el sonido de muerte o de baja del remoto en su propia cola hasta ese
-    `render_tick`.
+    `render_tick`. Igual el `StatusTracker` del remoto (sus iconos en la placa): `NetClient` le pasa
+    los eventos propios en ese `render_tick`, en la cola de los ajenos (habilidades.md §6.4; revisión
+    de la fase 4).
 - **RESPAWN_REQUEST** (`0x05`, C→S, canal 3): `u8 type`, `u8 point_index`. Fuera de plazo o con un
   índice inválido cuenta un aviso.
 - **DEBUG_COMMAND** (TEC-19) con ids fijos en `NetProtocol`: 1 `teleport` (sin cambios), 2 `heal`,
@@ -620,7 +628,7 @@ comandos de depuración 13 `cooldowns_off`, 14 `apply_status`, 15 `down` y 16 `r
 | **K2 · protocolo** | `PROTOCOL_VERSION = 2`, registro de 21 B, bloque extra, ENTITY_EVENT, RESPAWN_REQUEST, ids de comandos, red.md actualizado | fase 2 (usa `PlayerState.encode()` sea cual sea su tamaño) |
 | **K3 · servidor** | `Combatant`, orden del tick (§4.2), `CombatResolver` (§4.3), `InputQueue.get_rewind_params`, banderas en `StateHistory`, muerte, reaparición y RESPAWN_REQUEST, caída, volúmenes letales, zonas seguras, NPC y maniquí, `CommandRegistry` y consola, `--combat-log`, puntuación de sospecha | K1a, K1b, K2 |
 | **K4 · cliente** | eventos por `render_tick`, `CombatFeedback`, HUD de vida y resistencia, marcador y números, placas con vida, pantalla de muerte con reaparición, capa de animación, armas provisionales, DPS en F3 | K1a, K2 |
-| **K5 · integración** | loopback con NetSim rtt=150 (≥ 95 % de acierto contra un objetivo que se mueve en lateral; 0 impactos con `view_offset_q` de 30 ticks contra un objetivo quieto), bot tramposo `rewind`/`reach`/`rate`, `BotBrain` de combate, reconciliación con rtt=120 y 5 % de pérdida, carga con refriegas de 32, 64 y 128 bots, límite de jugadores anotado en red.md, demo del sandbox con el combo | K3, K4 |
+| **K5 · integración** | loopback con NetSim rtt=150 (≥ 95 % de acierto contra un objetivo que se mueve en lateral; 0 impactos con `view_offset_q` de 30 ticks contra un objetivo quieto; 40 desde la revisión de la fase 4, por la holgura del rechazo), bot tramposo `rewind`/`reach`/`rate`, `BotBrain` de combate, reconciliación con rtt=120 y 5 % de pérdida, carga con refriegas de 32, 64 y 128 bots, límite de jugadores anotado en red.md, demo del sandbox con el combo | K3, K4 |
 
 K1a, K1b y K2 van en paralelo; después K3 y K4 en paralelo; al final K5.
 
@@ -765,6 +773,12 @@ Cerrado durante K3 (servidor) y K4 (cliente):
   en servidor y cliente (`RespawnPointList` la usa tal cual). Un índice que ya no vale usa el
   primer punto, sin aviso. Una petición hasta 12 ticks antes de `respawn_tick` queda pendiente;
   antes de eso, o estando vivo, es aviso. La automática llega a los 30 s **desde la muerte**.
+  *(Revisión de la fase 4: con oleadas (`respawn_wave_ticks`), la automática también cae en una, la primera ≥
+  muerte + 30 s (`Combatant.auto_respawn_tick`, `CombatTiming.auto_respawn_tick_for`); antes salía a los 30 s
+  justos, fuera de oleada. Los jugadores falsos del servidor piden la reaparición al morir
+  (`Combatant.requests_respawn_on_death`, punto 0) y el `--bot` en cuanto el tick estimado del servidor llega a
+  `respawn_tick` (lo repite cada segundo mientras siga muerto), como el `SwarmBot`: todos reaparecen como
+  quien pulsa el botón en cuanto puede, a los 10 s (o en su oleada) y no a los 30.)*
   *(Cambiado en F3, fase 4: el índice va sobre `NetZones.get_all_respawn_points(zona)`, la lista estática
   de todos los puntos; el servidor valida con `RespawnRules.points_for` y, si no vale, usa el primer
   campamento válido del reino; ver [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones).
@@ -843,10 +857,12 @@ Cerrado durante K5 (integración):
   antes de contar como fallo (mientras tanto `get_stats()` la cuenta según lo que sabe). Estadística
   nueva: `combat_diffs`. Fase 4 (H4, [habilidades.md 5.4](habilidades.md#54-entity_event-y-fuentes)): también
   un STATUS de movimiento sobre uno mismo, su DOWNED, un INTERACT donde es el derribado o quien actúa y su
-  LOADOUT. Medido en una refriega de 6 bots de combate con rtt=120, jitter=20 y 5 % de
-  pérdida (`test_combat_reconciliation`): 40 golpes, 4 muertes, 2-4 correcciones por bot, todas
-  explicadas (sustitución o combate), ningún reinicio duro ni resincronización y convergencia exacta
-  al quedarse quietos.
+  LOADOUT. Revisión de la fase 4 (cliente): también un cambio de la puerta del fuerte para el reino propio
+  que llega con la predicción ya por delante (`gate_diffs`, [fuerte.md 3.2](fuerte.md#32-predicción-exacta)).
+  Medido en una refriega de 6 bots de combate con rtt=120, jitter=20 y 5 % de pérdida
+  (`test_combat_reconciliation`): 40 golpes, 4 muertes, 2-4 correcciones por bot, todas explicadas
+  (sustitución o combate), ningún reinicio duro ni resincronización y convergencia exacta al quedarse
+  quietos.
 - **Carga de combate** (TEC-15; cifras y límite en red.md 14): `load_test.gd --brawl` mide refriegas de 32, 64
   y 128 combatientes (falsos con `--fake-brain=combat` en un corro, `--fake-center`, y 10 bots reales con
   `--bot-brain=combat`). El servidor cuenta aparte las secciones `combat_resolve` (golpes con

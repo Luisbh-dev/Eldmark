@@ -591,6 +591,70 @@ func test_the_repair_after_a_capture_also_waits_for_a_free_doorway() -> void:
 	assert_eq(_state().gate_health, 900, "reparada al quedar libre")
 
 
+# Revisión de la fase 4 (guerra): solo se aplaza la reparación de una puerta rota. La de una entera no cambia la
+# colisión y, aplazada, borraba el daño que llegaba mientras tanto (el dueño se quedaba en el vano de su puerta).
+func test_a_whole_gate_is_repaired_at_once_with_someone_in_the_doorway_and_later_damage_stays() -> void:
+	var attacker: Combatant = _fighter(10, SOLMARCH)
+	assert_true(_controller.set_owner(FORTRESS, VARDHEIM, 1))
+	_tick = 1
+	_run(1)
+	_hit_gate(attacker, 300, 2)
+	assert_eq(_state().gate_health, 600)
+	# Un defensor del dueño (cruza su propia puerta cerrada) se queda quieto en el vano.
+	_bodies = PackedVector3Array([FortressFixture.gate_position() + Vector3(0.0, 0.05, 1.0)])
+	_run(20 * 60 + 30)
+	assert_eq(_state().gate_health, 900, "entera, se repara a su plazo aunque haya alguien en el vano")
+	assert_false(_controller.is_repair_pending(FORTRESS), "sin nada pendiente")
+	_hit_gate(attacker, 500, _tick)
+	assert_eq(_state().gate_health, 400)
+	_run(5)
+	_bodies = PackedVector3Array()
+	_run(5)
+	assert_eq(_state().gate_health, 400, "el daño de después no se borra al quedar libre el vano")
+	assert_false(_controller.is_repair_pending(FORTRESS))
+
+
+func test_a_gate_broken_after_its_repair_came_due_waits_the_whole_delay_from_the_break() -> void:
+	var attacker: Combatant = _fighter(10, SOLMARCH)
+	assert_true(_controller.set_owner(FORTRESS, VARDHEIM, 1))
+	_tick = 1
+	_run(1)
+	_hit_gate(attacker, 300, 2)
+	_bodies = PackedVector3Array([FortressFixture.gate_position() + Vector3(0.0, 0.05, 1.0)])
+	_run(20 * 60 + 30)
+	_hit_gate(attacker, 900, _tick)
+	var broken_at: int = _tick
+	assert_true(_state().is_gate_broken(), "rota")
+	_run(1)
+	assert_true(_gate().is_broken())
+	_bodies = PackedVector3Array()
+	_run(30)
+	assert_true(_gate().is_broken(), "libre el vano, sigue rota: ninguna reparación vieja la cierra")
+	assert_eq(_state().gate_health, 0)
+	_run(broken_at + 20 * 60 - _tick - 1)
+	assert_true(_gate().is_broken(), "aún no han pasado 20 s desde la rotura")
+	_run(2)
+	assert_false(_gate().is_broken(), "reparada a los 20 s de la rotura")
+	assert_eq(_state().gate_health, 900)
+
+
+func test_an_owner_change_with_a_whole_damaged_gate_repairs_it_at_once_with_someone_in_the_doorway() -> void:
+	var attacker: Combatant = _fighter(10, VARDHEIM)
+	_hit_gate(attacker, 300, 5)
+	_tick = 5
+	_run(1)
+	_bodies = PackedVector3Array([FortressFixture.gate_position() + Vector3(0.0, 0.05, 1.0)])
+	assert_true(_controller.set_owner(FORTRESS, SOLMARCH, _tick + 1))
+	_run(1)
+	assert_eq(_state().gate_health, 900, "entera: el cambio de dueño la deja reparada")
+	assert_false(_controller.is_repair_pending(FORTRESS), "sin nada pendiente")
+	assert_eq(_gate().collision_layer, FortGate.layers_for(SOLMARCH, false), "con las capas del dueño nuevo")
+	_hit_gate(attacker, 500, _tick)
+	_bodies = PackedVector3Array()
+	_run(5)
+	assert_eq(_state().gate_health, 400, "y el daño de después no se borra al quedar libre el vano")
+
+
 func test_the_owner_change_swaps_which_realms_the_gate_stops() -> void:
 	_gate().set_state(0, false)
 	assert_eq(_gate().collision_layer, PlayerCharacter.realm_layer(VARDHEIM) | PlayerCharacter.realm_layer(SOLMARCH)

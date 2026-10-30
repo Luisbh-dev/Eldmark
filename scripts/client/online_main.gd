@@ -27,7 +27,9 @@ extends Node
 ## cuentan la conexión y la carga) escribe el informe ([code]--report[/code]), sale de la zona con
 ## CLIENT_LEAVE y cierra con código 0; con 1 si fue rechazado o se desconectó antes. Los últimos
 ## [constant IDLE_TAIL_TICKS] ticks (un cuarto como mucho) el bot se queda quieto, para que las
-## pruebas de convergencia comparen estados estacionarios.
+## pruebas de convergencia comparen estados estacionarios. Muerto, el bot pide reaparecer (RESPAWN_REQUEST, en el
+## primer punto de la lista) en cuanto el servidor lo permite, como quien pulsa el botón de la pantalla de muerte o un
+## [code]SwarmBot[/code]: así reaparece en la oleada que le toca y no a los 30 s de la automática.
 ## [br][br]
 ## [b]Elección de reino.[/b] Si un cliente con ventana arranca sin [code]--realm[/code] se muestra
 ## [RealmSelect] (reino, dirección y nombre, validados antes de conectar). También se vuelve a ella,
@@ -62,6 +64,9 @@ const IDLE_TAIL_TICKS: int = 90
 const BOT_RADIUS: float = 30.0
 ## Ticks que se espera, tras salir de la zona, a que se cierre la conexión antes de cerrar.
 const LEAVE_WAIT_TICKS: int = 30
+## Cada cuántos ticks locales repite un bot muerto su RESPAWN_REQUEST mientras siga muerto (1 s: pasado medio
+## RTT el snapshot ya lo da por vivo, y una petición de más tras reaparecer sería un aviso del servidor).
+const BOT_RESPAWN_RETRY_TICKS: int = 60
 ## Ancho (píxeles de la ventana base) de la columna de texto de la pantalla de carga.
 const OVERLAY_WIDTH: float = 900.0
 const REALM_SELECT_SCENE_PATH: String = "res://scenes/ui/realm_select.tscn"
@@ -107,6 +112,8 @@ var _returning_to_menu: bool = false
 var _last_realm_counts: PackedInt32Array = PackedInt32Array()
 var _imbalanced_realm: int = NetProtocol.Realm.NONE
 var _idle_set: bool = false
+# Tick local de la última petición de reaparición del bot.
+var _bot_respawn_request_tick: int = -BOT_RESPAWN_RETRY_TICKS
 var _finishing: bool = false
 var _leave_wait_ticks: int = 0
 var _quitting: bool = false
@@ -121,7 +128,7 @@ func _ready() -> void:
 	for warning: String in config.warnings:
 		push_warning("[Eldmark] %s" % warning)
 	set_process(false)
-	set_physics_process(config.quit_after_ticks > 0)
+	set_physics_process(config.quit_after_ticks > 0 or _is_bot())
 	if not _is_bot():
 		InputBindings.ensure_defaults()
 		_create_overlay()
@@ -207,6 +214,8 @@ func _physics_process(_delta: float) -> void:
 		if _leave_wait_ticks >= LEAVE_WAIT_TICKS:
 			_quit(0)
 		return
+	if _brain != null:
+		_request_bot_respawn(local_tick)
 	var quit_after: int = config.quit_after_ticks
 	if quit_after <= 0:
 		return
@@ -216,6 +225,22 @@ func _physics_process(_delta: float) -> void:
 		_brain.set_idle_from(_client.get_prediction().get_predicted_tick() + 1)
 	if local_tick >= quit_after:
 		_finish_session()
+
+
+# Un bot muerto pide reaparecer en cuanto el servidor lo permite (el tick estimado del servidor, que va medio RTT
+# por detrás, ha llegado a su tick de reaparición: la petición llega a tiempo, nunca antes) y lo repite cada
+# BOT_RESPAWN_RETRY_TICKS mientras siga muerto. El punto 0: si no vale para su reino, el servidor usa el primer
+# campamento válido.
+func _request_bot_respawn(local_tick: int) -> void:
+	if _client.get_state() != NetClient.State.IN_WORLD or not _client.is_dead():
+		return
+	var respawn_tick: int = _client.get_respawn_tick()
+	if respawn_tick <= 0 or _client.get_estimated_server_tick() < respawn_tick:
+		return
+	if local_tick - _bot_respawn_request_tick < BOT_RESPAWN_RETRY_TICKS:
+		return
+	_bot_respawn_request_tick = local_tick
+	_client.send_respawn_request(0)
 
 
 # --- Arranque ---------------------------------------------------------------------------------
@@ -585,6 +610,7 @@ func _return_to_realm_select(notice: String) -> void:
 	_free_session_nodes()
 	_brain = null
 	_idle_set = false
+	_bot_respawn_request_tick = -BOT_RESPAWN_RETRY_TICKS
 	_finishing = false
 	_leave_wait_ticks = 0
 	_was_welcomed = false

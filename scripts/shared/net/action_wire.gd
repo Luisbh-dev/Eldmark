@@ -12,8 +12,9 @@ extends RefCounted
 ## byte es idéntico, el remoto no reiniciaría el clip y recorrería la segunda acción congelado en la
 ## última pose. Una habilidad no lo necesita: entre dos usos de la misma ranura (o dos consumibles) hay
 ## siempre [constant AbilityTicks.REARM_TICKS] ticks de NONE, más que el intervalo de los snapshots: la
-## validación del catálogo lo exige a las reutilizaciones y una interrupción antes del compromiso deja ese
-## margen (docs/habilidades.md, sección 5.5; con un solo tick, un remoto que no lo muestreaba seguía el clip
+## validación del catálogo lo exige a las reutilizaciones, y una interrupción antes del compromiso o una
+## canalización que acaba sin comprometer (soltada en el fin de su lanzamiento) dejan ese margen
+## (docs/habilidades.md, sección 5.5; con un solo tick, un remoto que no lo muestreaba seguía el clip
 ## del primero). DOWNED, REVIVE y EXECUTE llevan 0.
 ## [br][br]
 ## El contador es de quien publica ([ActionWire] es una instancia por entidad): sube en 1 (módulo 4)
