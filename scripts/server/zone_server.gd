@@ -3053,7 +3053,9 @@ func _release_resources() -> void:
 	_disconnect_transport()
 
 
-# Línea de métricas cada 10 s: duración del tick, jugadores, entradas sustituidas y ancho de banda.
+# Línea de métricas cada 10 s: duración del tick, jugadores, entradas sustituidas, ancho de banda y, al final, los PNJ
+# que se simulan en ese momento (los de guerra y los maniquíes; GUE-16: la carga con PNJ los sigue a lo largo de la
+# batalla).
 func _log_metrics(s: int) -> void:
 	_sync_byte_counters()
 	var now_usec: int = Time.get_ticks_usec()
@@ -3073,7 +3075,7 @@ func _log_metrics(s: int) -> void:
 			_metrics.get_max_us(ServerMetrics.SECTION_TICK)]
 			+ "(p99 por sección: %s), entradas sustituidas %.2f %%, subida %.1f KB/s, "
 			% [", ".join(sections), _metrics.get_substituted_percent(), kb_out]
-			+ "bajada %.1f KB/s" % kb_in)
+			+ "bajada %.1f KB/s, %d PNJ" % [kb_in, _npcs.size()])
 
 
 func _build_report() -> Dictionary:

@@ -179,20 +179,53 @@ func test_siege_matrix_has_sieges_of_32_and_64_a_side() -> void:
 func test_the_tick_timeline_is_read_from_the_metric_lines() -> void:
 	var text: String = "\n".join([
 		METRICS_LINE_600,
-		"[Eldmark] Métricas (tick 1200): 74 jugadores, tick p50 3250 µs / p99 6000 µs / máx 9500 µs (p99 por sección: tick 6000)",
+		"[Eldmark] Métricas (tick 1200): 74 jugadores, tick p50 3250 µs / p99 6000 µs / máx 9500 µs (p99 por sección: tick 6000), entradas sustituidas 0.00 %, subida 9.0 KB/s, bajada 1.0 KB/s, 21 PNJ",
 		METRICS_LINE_1800,
 		"[Eldmark] Métricas (tick 2400): sin datos del tick",
-		"[Eldmark] Métricas (tick 3000): 80 jugadores, tick p50 9000 µs / p99 16000 µs / máx 30000 µs (p99 por sección: tick 16000)",
+		"[Eldmark] Métricas (tick 3000): 80 jugadores, tick p50 9000 µs / p99 16000 µs / máx 30000 µs (p99 por sección: tick 16000), bajada 1.0 KB/s, 9 PNJ\r",
 	])
 	var marks: Array[Dictionary] = LoadTestSummary.parse_tick_timeline(text)
 	assert_eq(marks.size(), 4, "las líneas sin datos del tick no cuentan")
-	assert_eq(marks[0], {"tick": 600, "players": 74, "p50_us": 3200, "p99_us": 5100, "max_us": 9000})
+	assert_eq(marks[0], {"tick": 600, "players": 74, "npcs": -1, "p50_us": 3200, "p99_us": 5100, "max_us": 9000},
+			"una línea de antes de F6b no dice los PNJ")
+	assert_eq(marks[1]["npcs"], 21, "los PNJ, al final de la línea (GUE-16)")
 	assert_eq(marks[3]["players"], 80)
+	assert_eq(marks[3]["npcs"], 9)
 	var window: Dictionary = LoadTestSummary.timeline_window(marks, 1000, 3000)
 	assert_eq(window["marks"], 3, "las marcas 1200, 1800 y 3000")
 	assert_eq(window["p50_us"], 3300, "mediana de los p50")
 	assert_eq(window["p99_us"], 6000, "mediana de los p99")
 	assert_eq(window["worst_p99_us"], 16000, "el peor p99")
 	assert_eq(window["max_us"], 30000, "el mayor máximo")
+	assert_eq(window["npcs_min"], 9, "el mínimo de PNJ de las marcas que lo dicen")
+	assert_eq(window["npcs_max"], 21)
+	assert_eq(LoadTestSummary.timeline_window(marks, 0, 1000)["npcs_min"], -1, "sin marcas con PNJ, -1")
 	assert_true(LoadTestSummary.timeline_window(marks, 4000, 5000).is_empty(), "sin marcas en la ventana, nada")
 	assert_true(LoadTestSummary.parse_tick_timeline("").is_empty())
+
+
+func test_the_siege_server_has_its_npcs_only_with_the_npcs_option() -> void:
+	var script: GDScript = load(LOAD_TEST_PATH) as GDScript
+	if not assert_not_null(script):
+		return
+	# F6a (sin --npcs): sin PNJ y con la orden que abre el círculo al empezar la ventana.
+	var without: PackedStringArray = script.call("siege_server_args", false, "/tmp/b.jsonl", 3530)
+	assert_eq(without, PackedStringArray(["--battle-log=/tmp/b.jsonl", "--no-npcs", "--run-at=3530:fort_kill_captain"]))
+	# F6b (--npcs): los PNJ de la zona y el fuerte sin ayudas.
+	var with_npcs: PackedStringArray = script.call("siege_server_args", true, "/tmp/b.jsonl", 3530)
+	assert_eq(with_npcs, PackedStringArray(["--battle-log=/tmp/b.jsonl"]), "ni --no-npcs ni fort_kill_captain")
+	var sections: Array = script.get_script_constant_map().get("SECTIONS", [])
+	for section: String in ["war", "npc_brains", "npc"]:
+		assert_true(sections.has(section), "el resumen muestra la sección %s" % section)
+
+
+func test_fort_arrivals_count_the_real_bots_that_reached_the_fort_before_the_window() -> void:
+	var swarms: Array = [
+		{"clients": [{"fort_reached_tick": 2400}, {"fort_reached_tick": 3530}, {"fort_reached_tick": 3600}]},
+		{"clients": [{"fort_reached_tick": -1}, {"world_ticks": 900}]},
+		{},
+	]
+	assert_eq(LoadTestSummary.fort_arrivals(swarms, 3530),
+			{"bots": 4, "arrived": 3, "before_window": 2, "last_tick": 3600},
+			"cuatro de asedio (el que no lo es no cuenta), tres llegan y dos antes de la ventana (el tick de su principio incluido)")
+	assert_eq(LoadTestSummary.fort_arrivals([], 100), {"bots": 0, "arrived": 0, "before_window": 0, "last_tick": -1})

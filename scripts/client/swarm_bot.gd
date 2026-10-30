@@ -41,7 +41,8 @@ extends Node
 ## [br][br]
 ## [b]Estadísticas[/b] ([method get_stats]): bytes de subida y de bajada de ENet desde que apareció
 ## (con las cabeceras de ENet, sin las de UDP/IP), snapshots recibidos y su tamaño medio, registros por
-## snapshot, y lo que [BotSwarm] vuelca en su informe.
+## snapshot, y lo que [BotSwarm] vuelca en su informe; con el cerebro de asedio, también el tick del servidor en que llegó
+## al fuerte ([code]fort_reached_tick[/code], GUE-16).
 
 ## Fase de la sesión.
 enum State {
@@ -101,6 +102,9 @@ var _siege_routes: ApproachRoutes = null
 var _threat_sight: BotThreatSight = null
 var _fortress_net_id: int = 0
 var _object_states_applied: int = 0
+# Tick del servidor (el del snapshot) en que el bot de asedio llega por primera vez a menos de
+# BotBrain.SIEGE_RALLY_FORT_RADIUS del círculo; -1 mientras no llega (GUE-16: la carga mira que estén en el fuerte).
+var _fort_reached_tick: int = -1
 var _local_tick: int = 0
 var _hello_tick: int = 0
 var _ready_tick: int = 0
@@ -362,7 +366,19 @@ func get_stats() -> Dictionary:
 		stats["siege_route"] = String(_brain.get_siege_route()) if _brain != null else ""
 		stats["fortress_known"] = _siege_view.known
 		stats["object_states_applied"] = _object_states_applied
+		stats["fort_reached_tick"] = _fort_reached_tick
 	return stats
+
+
+# Asedio: apunta el tick del servidor [param server_tick] la primera vez que el bot está a menos de
+# [constant BotBrain.SIEGE_RALLY_FORT_RADIUS] (en horizontal) del centro del círculo, la misma distancia con la que el
+# cerebro cuenta a los suyos «peleando en el fuerte».
+func _note_fort_reached(server_tick: int) -> void:
+	if not _siege_mode or _fort_reached_tick >= 0 or _siege_view.circle_radius <= 0.0:
+		return
+	var center: Vector3 = _siege_view.circle_center
+	if Vector2(_position.x - center.x, _position.z - center.z).length() <= BotBrain.SIEGE_RALLY_FORT_RADIUS:
+		_fort_reached_tick = server_tick
 
 
 # --- Bucle del tick ---------------------------------------------------------------------------
@@ -620,6 +636,7 @@ func _on_snapshot(bytes: PackedByteArray) -> void:
 		if state != null:
 			_position = state.position
 			_yaw = state.yaw
+			_note_fort_reached(server_tick)
 		if _combat:
 			_note_extra_block(bytes, server_tick)
 

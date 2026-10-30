@@ -117,6 +117,7 @@ func test_swarm_bots_read_the_fort_from_object_states_break_the_gate_and_capture
 		assert_eq(bot.get_brain().get_pattern(), BotBrain.Pattern.SIEGE)
 		assert_true(bot.get_brain().has_siege())
 		assert_true(bot.get_brain().has_ally_counter(), "con quien le cuente a los suyos (GUE-44)")
+		assert_eq(int(bot.get_stats()["fort_reached_tick"]), -1, "en el campamento aún no ha llegado al fuerte (GUE-16)")
 	# Cada uno ve a los otros dos de su reino por sus altas y los snapshots (los cuenta en la reunión, GUE-44).
 	var counted: bool = await _wait_until(func() -> bool:
 		for bot: SwarmBot in bots:
@@ -126,6 +127,7 @@ func test_swarm_bots_read_the_fort_from_object_states_break_the_gate_and_capture
 	assert_true(counted, "cada bot cuenta a los otros dos (%d)" % bots[0]._count_allies(bots[0].get_position(), 60.0))
 	# La puerta se queda en 600 de vida (llega como OBJECT_STATE) y los bots empiezan en la explanada.
 	_state().gate_health = 600
+	var teleport_tick: int = _server.get_tick()
 	var ground: float = _server.get_fortresses().get_gate(_server.get_fortresses().get_fortress_ids()[0]).global_position.y
 	for i: int in 3:
 		_server.teleport(bots[i].get_net_id(), Vector3(-25.0, ground + 0.4, -2.0 + 2.0 * float(i)))
@@ -139,6 +141,10 @@ func test_swarm_bots_read_the_fort_from_object_states_break_the_gate_and_capture
 	if not assert_true(inside, "los tres entran en el círculo (%d)" % _state().presence[VARDHEIM]):
 		return
 	assert_eq(String(bots[0].get_stats()["siege_task"]), "HOLD", "y se quedan en él")
+	for bot: SwarmBot in bots:
+		var reached: int = int(bot.get_stats()["fort_reached_tick"])
+		assert_true(reached > teleport_tick and reached <= _server.get_tick(),
+				"el informe del bot dice en qué tick del servidor llegó al fuerte (%d, tras el %d)" % [reached, teleport_tick])
 	assert_true(int(bots[0].get_stats()["object_states_applied"]) >= 2, "tras aplicar varios OBJECT_STATE")
 	# Cae el capitán y capturan.
 	_server.console_command("fort_capture_speed 30")

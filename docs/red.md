@@ -1753,7 +1753,29 @@ Desde GUE-44 (F6b) los bots de asedio esperan a los suyos en la salida de su cam
 paquete C). Para la carga cambia poco: el servidor cuenta a los aliados con una lista por reino que reúne una vez por tick, solo
 mientras alguien espera, y cada `SwarmBot` decodifica también los registros de los de su reino (los mismos que ya leía por turnos).
 Pero los `SwarmBot` que entran cuando los falsos ya han salido pueden esperar hasta 30 s en el campamento: la repetición con PNJ
-(GUE-16, F6b) tiene que comprobar que llegan a la puerta antes de la ventana de medida. Las medidas de arriba son de antes.
+(GUE-16, F6b) tiene que comprobar que llegan a la puerta antes de la ventana de medida. Las medidas de arriba son de antes. En las de
+F6b (abajo) lo comprueba el resumen: los 10 bots reales llegan a menos de 25 m del círculo a los 25–26,5 s con 32 contra 32 y a los
+54 s con 64 contra 64, antes de la ventana (59 s).
+
+**Asedios con los PNJ** (`load_test.gd --siege --npcs` o `--scenario=siege --npcs`, GUE-16, F6b): el servidor arranca con los PNJ del
+Vado Gris (cuatro Huecos, el Capitán del Vado, la guarnición del dueño y los cuatro Guardianes de los campamentos) y el fuerte va solo,
+sin `fort_kill_captain`; sin `--npcs`, el asedio de F6a con `--no-npcs`. Dos pasadas de cada asedio de 32 contra 32, alternadas, en la
+misma máquina de 4 núcleos **sin otra suite en marcha** (carga media de 0,5 a 1,1), así que no se comparan al detalle con las de F6a.
+Tick en ms, p50 / p95 / p99 / máximo del último tramo de 34 s; `npc_brains` (los cerebros de los PNJ) y `npc` (sus generadores), p50:
+
+| Asedio | Jugadores | Tick | `sim` p50 | `npc_brains` / `npc` | `war` p50 / p99 | Bajada por cliente | Sustituidas (ventana) | Rebobinados rechazados |
+|---|---|---|---|---|---|---|---|---|
+| 32 contra 32 con PNJ (dos pasadas) | 64 | 10,6 / 14,8 / 17,4 / 27,5 y 9,4 / 13,5 / 15,2 / 23,0 | 7,0 y 6,1 | 0,22 / 0,06 y 0,20 / 0,06 | 0,08 / 1,1 | 36,2–36,3 KB/s | 0,03 y 0,00 % | 0 |
+| 32 contra 32 sin PNJ (dos pasadas) | 64 | 9,1 / 12,8 / 15,0 / 27,9 y 9,9 / 14,2 / 16,9 / 24,9 | 6,2 y 6,7 | 0,05 / 0 (los maniquíes) | 0,08–0,09 / 1,0–1,1 | 36,2 KB/s | 0,00 % | 0 |
+| 64 contra 64 con PNJ (una) | 128 | 16,2 / 22,8 / 27,0 / 39,6 | 13,5 | 0,27 / 0,07 | 0,09 / 2,1 | 29,0 KB/s | 38,6 % | 83 (10 sospechosos) |
+
+Los 9 PNJ del fuerte cuestan alrededor de 1 ms del tick mientras viven (sus cerebros, con un p99 de 0,8 a 1,1 ms por marca de 10 s;
+los generadores, 0,06 ms; su `simulate()`, unos 0,55 ms dentro de `sim`), y ~0,5 ms cuando solo quedan los cuatro Guardianes. Es del
+orden de la diferencia entre dos pasadas iguales (0,8–1,2 ms de p50): con estas cifras no se distingue el asedio con PNJ del de sin
+ellos. Los criterios no cambian: con 64 jugadores, **p99 de 15,2 a 17,4 ms, NO se cumple** (domina `simulate()`); 36,2–36,3 KB/s por
+cliente y como mucho un 0,03 % de entradas sustituidas, sí; con 128, no (38,6 % sustituidas y el rebobinado falla a los honrados).
+**El primer límite de jugadores por batalla en el fuerte sigue en 64 (32 contra 32), también con los PNJ.** La batalla de cada pasada
+y la sesión de telemetría de 20 contra 20, en [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones) (F6b, paquete E).
 
 **Palancas para Eldrun, por orden,** decididas con las medidas del final de la fase 2:
 
@@ -1998,8 +2020,9 @@ todas las copias del proyecto.
   cada una. Mide por sección (golpes con rebobinado, eventos, snapshots) y los KB/s con los ENTITY_EVENT;
   resultados y primer límite de jugadores por batalla en 14.
 - Asedios de fuerte (GUE-16): `--siege` (o `--scenario=siege`) con 32 contra 32 y 64 contra 64, 120 s de medida con los bots ya en la
-  puerta y el círculo; los falsos llevan `--fake-brain=siege`, los bots reales `--bot-brain=siege` y el servidor abre el círculo con
-  `--run-at=<tick>:fort_kill_captain` y escribe un registro de batalla. Cifras en 14.
+  puerta y el círculo; los falsos llevan `--fake-brain=siege`, los bots reales `--bot-brain=siege` y el servidor, sin PNJ, abre el círculo
+  con `--run-at=<tick>:fort_kill_captain` y escribe un registro de batalla. Con `--npcs` (F6b), con los PNJ de la zona y sin esa orden.
+  Cifras en 14.
 
 ### Arquitectura (`test_architecture`, ampliado)
 

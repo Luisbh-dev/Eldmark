@@ -365,7 +365,9 @@ de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D
   2,6 min; antes, con las mismas semillas, 6,7 / 27,6 / 24,5 / 4,4 / 5,6); con el capitán del reino en 15 000, también las cinco
   dentro del ciclo (de 2,6 a 17,4 min). Sigue dependiendo de la semilla (8.3, F6b, paquete C).
 - **Carga** (GUE-16): escenario de `load_test` con 32 contra 32 y 64 contra 64 en la puerta y el
-  círculo durante 120 s (`--siege`; resultados en 8.3).
+  círculo durante 120 s (`--siege`; resultados en 8.3). Desde F6b, `--npcs` lo repite con los PNJ de la zona y el fuerte sin
+  ayudas: los 9 PNJ del fuerte cuestan alrededor de 1 ms del tick, del orden de la diferencia entre dos pasadas iguales, y el
+  límite sigue en 32 contra 32 (8.3, F6b, paquete E).
 - **Equilibrio** (GUE-42, hecho en F6a): `--max-realm-diff=N` (por defecto 0 = sin límite); un REJECT nuevo,
   **9 IMBALANCE**, con texto propio. El recuento por reino para RealmSelect llega en el WELCOME (`u8 × 3` al
   final; lo rellena el servidor desde F6a). Regla exacta (`RealmBalance`, `FillerKeeper`, `ServerAuth`,
@@ -403,7 +405,8 @@ de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D
 - **Telemetría** (GUE-17): eventos de guerra y muertes en JSON Lines (`--battle-log`) y
   `tools/war/summarize_battle.gd` con el tiempo hasta la captura, las muertes por ruta y el tiempo
   hasta romper la puerta. Desde GUE-45 las muertes de PNJ también salen por sitio, y la pasarela cuenta su eje entero
-  si las rutas la conocen.
+  si las rutas la conocen. La sesión con los PNJ (F6b, paquete E): cinco batallas de 20 contra 20 con su registro y su resumen;
+  con esos números los datos de `vado_gris.tres` no cambian (8.3, F6b, paquete E).
 
 ---
 
@@ -460,10 +463,10 @@ var before_simulate: Callable                                  # (tick: int) -> 
 
 ### 8.3 Lo que han dejado F0, F1 y F2 (añadidos al contrato y decisiones)
 
-F0 (escena, capas, malla y rutas), F1 (fortaleza pura), F2 (protocolo 3), F3 (servidor del fuerte), F4 (PNJ), F5 (cliente) y la
-primera mitad de F6 (F6a: bots que asedian, equilibrio de reinos y carga) están hechos; F6b (extremo a extremo con los PNJ) va por paquetes
-(hechos: GUE-43, los bots contra los PNJ y GUE-44; faltan GUE-45 y la carga con PNJ). Además
-de lo de 8.2, quien siga con F6b (y con lo que toque a los PNJ) encontrará esto:
+F0 (escena, capas, malla y rutas), F1 (fortaleza pura), F2 (protocolo 3), F3 (servidor del fuerte), F4 (PNJ), F5 (cliente) y F6
+(F6a: bots que asedian, equilibrio de reinos y carga; F6b, por paquetes: GUE-43, los bots contra los PNJ, GUE-44, GUE-45 y la carga
+y la telemetría con PNJ) están hechos; lo que queda está al final de F6b. Además de lo de 8.2, quien toque el fuerte (y lo que
+toque a los PNJ) encontrará esto:
 
 **F0**
 
@@ -895,7 +898,8 @@ pruebas en `test_realm_balance`, `test_bot_brain_siege`, `test_siege_zone`, `tes
     ciclo (15 s desde la caída del capitán); la puerta se rompe 25,7 s (32 contra 32) y 12,6 s (64 contra 64) después del primer golpe.
 - **GUE-17**: las sesiones de arriba están documentadas con su registro de batalla y su resumen
   (`summarize_battle.gd`); los números sirven para ajustar `vado_gris.tres` **cuando haya PNJ** (F6b): hoy no hay capitán ni
-  guarnición, así que la duración de la puerta (9000) y la consolidación (120 s) no se tocan con estos datos.
+  guarnición, así que la duración de la puerta (9000) y la consolidación (120 s) no se tocan con estos datos. Hecho en F6b (paquete
+  E, más abajo): con los PNJ tampoco cambian.
 
 **Desviaciones y hallazgos de F6a**
 
@@ -930,7 +934,8 @@ verdad (Huecos, Capitán del Vado y guarnición), el criterio de `--bots=20` por
 `fort_kill_captain`), la defensa de la pasarela y la repetición de la carga con los PNJ. El cerebro ya está preparado: el buscador de
 enemigos del servidor incluye a los PNJ no inmortales, así que los bots que entran en el patio atacan al más cercano del dueño (con el
 doble del capitán de pruebas lo hacen: `test_bots_capture_the_neutral_fort_killing_the_captain_themselves`), y `SwarmBot`/`--bot`
-cuentan como enemigos a los PNJ con `npc_def_id`.
+cuentan como enemigos a los PNJ con `npc_def_id`. Hecho todo en F6b (más abajo; la pasarela, con lo que permiten las armas cuerpo
+a cuerpo), salvo que una persona juegue contra ellos.
 
 **F6b** (la segunda mitad de la fase 6: extremo a extremo con los PNJ, GUE-43, GUE-44, GUE-45 y la carga con PNJ; se hace por
 paquetes, y cada uno se anota aquí)
@@ -1240,12 +1245,126 @@ batalla tardó de 1 a 7 min de reloj, y las de antes hasta 12):
   a disputar el círculo, la batalla de los `SwarmBot` por ENet con la pasarela (el mismo cerebro y los mismos datos, probado sin red y
   con los falsos del servidor) y la carga con PNJ (GUE-16).
 
+**F6b, paquete E: la carga y la telemetría con los PNJ (GUE-16, GUE-17) y el cierre de F6b** (ampliaciones de `test_load_test` y
+`test_siege_clients`)
+
+- **`load_test.gd --npcs`** (con `--scenario=siege` o con la batería `--siege`): el servidor arranca con sus PNJ y el fuerte va solo,
+  sin `fort_kill_captain`. Sin la opción es el asedio de F6a, que ahora pasa `--no-npcs` de forma explícita: desde que se fusionó F4 la
+  herramienta arrancaba con los PNJ y además mataba al capitán por orden al empezar la ventana, una mezcla que no medía ni el asedio de
+  F6a ni el de con PNJ. Lo decide `siege_server_args()`. El resumen gana las secciones `npc_brains` (los cerebros de los PNJ) y `npc` (los generadores), las dos
+  y `war` con su media de toda la sesión (los percentiles del informe son de los últimos 34 s, y los PNJ del fuerte pueden haber muerto
+  antes), lo que dice el informe de los PNJ (vivos al acabar, aparecidos, muertos, avisos) y cuántos bots reales habían llegado al
+  fuerte antes de la ventana.
+- **Servidor**: la línea de métricas de cada 10 s acaba en «N PNJ», los que se simulan en ese momento (los de guerra y los maniquíes).
+  `LoadTestSummary.parse_tick_timeline` lo lee (-1 en las líneas de antes) y `timeline_window` da el mínimo y el máximo de la ventana.
+- **Clientes**: `SwarmBot` apunta en su informe `fort_reached_tick`, el tick del servidor en que llega por primera vez a menos de 25 m
+  del círculo (`BotBrain.SIEGE_RALLY_FORT_RADIUS`), y `LoadTestSummary.fort_arrivals` cuenta los que llegaron antes de la ventana. Lo
+  pedía el paquete C: los `SwarmBot` que entran cuando los falsos ya han salido podían quedarse hasta 30 s esperando en el campamento.
+  **Llegan todos antes de la ventana**: el último, a los 25–26,5 s de partida con 32 contra 32 (ticks 1499 a 1590) y a los 54 s con 64
+  contra 64 (tick 3263; la ventana empieza en el 3530). Salen en cuanto ven a 3 de los suyos en el fuerte, o con el reloj.
+- **Pruebas**: `test_load_test` (dos nuevas y una ampliada: las opciones del servidor con y sin `--npcs` y las secciones del resumen;
+  la llegada de los bots reales; la línea de métricas con los PNJ y su mínimo y su máximo en la ventana) y `test_siege_clients` (el
+  informe del `SwarmBot` dice -1 en el campamento y, al llegar, el tick).
+
+**Medido en F6b (paquete E): la carga con PNJ** con `load_test.gd --scenario=siege --fakes=54 --bots=10 --seconds=120 [--npcs]` (32
+contra 32). Dos pasadas de cada, alternadas, en la misma máquina de 4 núcleos **sin ninguna otra suite en marcha** (carga media de 0,5 a
+1,1, solo estas medidas); F6a midió con otra suite a la vez, así que sus cifras no se comparan al detalle con estas. Tick en ms del
+último tramo de 34 s del servidor; «ventana», la mediana de las marcas de 10 s de la ventana de medida (cada una, sobre los 34 s
+anteriores); secciones de los PNJ y de las fortalezas en ms, con la media de la sesión entre paréntesis:
+
+| Asedio | Tick p50 / p95 / p99 / máx | Ventana p50 / p99 | `sim` p50 | `npc_brains` p50 / p99 (media) | `npc` p50 / p99 (media) | `war` p50 / p99 | Bajada por cliente | Sustituidas (ventana) |
+|---|---|---|---|---|---|---|---|---|
+| **32 contra 32 con PNJ**, 1.ª | 10,6 / 14,8 / 17,4 / 27,5 | 10,5 / 17,4 | 7,0 | 0,22 / 0,41 (0,29) | 0,06 / 0,12 (0,07) | 0,08 / 1,1 | 36,2 KB/s | 0,03 % (18 de 66 000) |
+| **32 contra 32 con PNJ**, 2.ª | 9,4 / 13,5 / 15,2 / 23,0 | 10,8 / 17,9 | 6,1 | 0,20 / 0,37 (0,31) | 0,06 / 0,13 (0,08) | 0,08 / 1,1 | 36,3 KB/s | 0,00 % |
+| 32 contra 32 sin PNJ (F6a), 1.ª | 9,1 / 12,8 / 15,0 / 27,9 | 9,7 / 15,8 | 6,2 | 0,05 / 0,10 (0,05) | 0 | 0,08 / 1,0 | 36,2 KB/s | 0,00 % |
+| 32 contra 32 sin PNJ (F6a), 2.ª | 9,9 / 14,2 / 16,9 / 24,9 | 10,7 / 17,8 | 6,7 | 0,05 / 0,12 (0,06) | 0 | 0,09 / 1,1 | 36,2 KB/s | 0,00 % |
+| 64 contra 64 con PNJ (una) | 16,2 / 22,8 / 27,0 / 39,6 | 19,6 / 33,7 | 13,5 | 0,27 / 0,56 (0,38) | 0,07 / 0,15 (0,09) | 0,09 / 2,1 | 29,0 KB/s | **38,6 %**; 83 rebobinados rechazados (10 sospechosos) |
+
+- **Qué pasa en la ventana** (de los 59 a los 177 s de partida). Con PNJ, los dos reinos atacan a la vez el fuerte neutral: la puerta
+  cae a los 48,7 y 51,4 s, los cuatro Huecos entre los 58 y los 75 s, y el Capitán del Vado a los 106,0 y 143,9 s; captura Vardheim a
+  los 121,9 s en la primera pasada y Solmarch a los 164,1 s en la segunda. Hasta la caída del capitán hay 11 PNJ (los 9 de guerra y los
+  2 maniquíes) y después 6 (los 4 Guardianes de los campamentos y los maniquíes); la guarnición del dueño no llega a salir (sale al
+  acabar la consolidación, 120 s después de la captura). 136 y 159 muertes de jugadores, 5 de PNJ y 7 y 9 avisos TELEGRAPH. Sin PNJ
+  (con `fort_kill_captain` al empezar la ventana), captura a los 74–79 s.
+- **Los PNJ cuestan alrededor de 1 ms del tick con los 9 del fuerte vivos, del orden de la diferencia entre dos pasadas iguales.** Sus
+  cerebros (`npc_brains`): 0,2 ms de mediana con 6 PNJ; con los 11, el p99 de cada marca sube a 0,8–1,1 ms (0,4–0,5 ms con 6); de media
+  en la sesión, 0,29–0,31 ms frente a 0,05–0,06 sin PNJ (los maniquíes). Los generadores (`npc`): 0,06 ms de mediana. Su `simulate()`
+  va dentro de `sim`, a unos 62 µs por personaje (media de jugadores y PNJ): ~0,55 ms los 9 del fuerte. En total, ~1 ms con el fuerte
+  guardado y ~0,5 ms cuando solo quedan los Guardianes. Entre dos pasadas iguales hay tanto o más: el p50 del último tramo da
+  9,1 y 9,9 ms sin PNJ y 10,6 y 9,4 con ellos, y las medianas de la ventana se solapan (9,7–10,7 frente a 10,5–10,8). **Con estos
+  números no se distingue el asedio con PNJ del de sin ellos.** La sección `war` cuesta lo mismo con y sin PNJ (0,08 ms de mediana,
+  1,0–1,1 ms de p99, la presencia recontada cada 6 ticks con todos en el círculo).
+- **Criterios** (red.md 14 y 16) con 64 jugadores y los PNJ: **p99 < 8 ms, no** (15,2–17,4 ms; domina `simulate()`, como en F6a);
+  **≤ 37 KB/s por cliente, sí** (36,2–36,3); **< 1 % de sustituidas, sí** (0,00–0,03 %), y ningún rebobinado rechazado. Con 128 (64
+  contra 64), no: el 38,6 % de las entradas de los clientes se sustituye y el rebobinado falla a los honrados (83 rechazos). **El primer
+  límite de jugadores por batalla en el fuerte sigue en 64 (32 contra 32), también con los PNJ.**
+- Frente a F6a sin PNJ (10,6 / 15,3 / 19,1 / 27,8 ms, con otra suite en marcha), las dos pasadas sin PNJ de ahora dan 9,1–9,9 /
+  12,8–14,2 / 15,0–16,9 ms con la máquina tranquila: la diferencia es de la carga de la máquina, no del código.
+
+**Medido en F6b (paquete E): la batalla con telemetría** (GUE-17) con `siege_battle.gd --npcs --per-side=20 --minutes=28 --seed=N
+--battle-log=<ruta>` y las cinco semillas de GUE-44 y GUE-45, y el resumen de cada registro con `summarize_battle.gd` (también por
+separado, con `--out` para el JSON). Tiempos de juego (no dependen de la máquina; cada batalla, de 72 a 122 s de reloj con tres a la
+vez); los de la recaptura, desde que salen los de Solmarch, que es cuando Vardheim captura y empieza su consolidación de 120 s:
+
+| Semilla | Neutral: primer golpe / puerta rota / Capitán del Vado / captura | Recaptura: primer golpe / puerta rota (desde el primer golpe) / capitán del reino / captura | Muertes de jugadores: total (explanada y patio, vado, pasarela) | Muertes de PNJ |
+|---|---|---|---|---|
+| 1000 | 25,9 / 36,5 / 72,2 / 87,2 s | 24,9 / 37,7 (12,8) / 234,7 / 263,6 s | 95 (82, 11, 2) | 8 |
+| 2000 | 25,8 / 37,3 / 71,2 / 86,2 s | 24,6 / 106,1 (81,5) / 130,3 / 146,3 s | 49 (43, 0, 6) | 10 |
+| 3000 | 25,7 / 37,3 / 67,6 / 82,9 s | 24,7 / 39,6 (14,9) / 150,9 / 264,8 s | 108 (99, 6, 3) | 10 |
+| 4000 | 25,9 / 37,9 / 65,2 / 80,2 s | 24,8 / 36,3 (11,6) / 141,0 / 159,5 s | 48 (44, 0, 4) | 10 |
+| 5000 | 26,1 / 37,2 / 65,9 / 80,9 s | 25,0 / 47,0 (22,1) / 143,2 / 160,2 s | 60 (59, 0, 1) | 10 |
+
+- **Es exactamente lo del paquete D** (es determinista): recaptura en 263,6 / 146,3 / 264,8 / 159,5 / 160,2 s (de 2,4 a 4,4 min,
+  mediana 2,7) y 2 / 6 / 3 / 4 / 1 muertes en la pasarela. Ninguna muerte en el puente (los grupos de la reunión van todos por él); de
+  las 360 de jugadores, 327 en la explanada y el patio, 17 en el vado y 16 en la pasarela. De los 48 PNJ muertos, 47 en la explanada y
+  el patio; el otro es el capitán del reino de la semilla 1000, que cae fuera del recinto, junto al camino del puente y a 25,6 m del
+  círculo (su correa, `leash_radius`, es de 36 m).
+- **Captura del neutral**: los 20 de Vardheim llegan juntos por el puente (de 25,6 a 27,1 s), rompen la puerta en 10,7–12,0 s, el
+  Capitán del Vado cae 28–36 s después y la captura dura 15,0–15,3 s (cuatro o más en el círculo). Sin muertes de Vardheim salvo dos
+  con la semilla 2000.
+- **Recaptura**: los 20 de Solmarch golpean la puerta por primera vez a los 24,6–25,0 s, en plena consolidación de Vardheim, y la rompen
+  en 11,6–22,1 s en cuatro de cinco (81,5 s con la 2000, en la que los defensores la aguantan). El círculo no se activa hasta que sale
+  la guarnición (120 s) y cae su capitán, de 10 a 115 s después (a los 130–235 s); la captura en sí dura 15,0–18,5 s, y antes puede
+  haber disputa (con la 3000 pasan 114 s desde la caída del capitán).
+- **Decisión: los datos de `vado_gris.tres` no cambian.** Ninguna cifra queda claramente fuera con estos números:
+  - `gate_health` 9000: sigue dando lo que pide GUE-10 (3 atacantes, unos 60 s; 54,8 s en F3). Con 20 cae en 11–12 s en el neutral y en
+    12–22 s en la recaptura, pero en ninguna fase es lo que más tarda: en el neutral, el Capitán del Vado tarda 28–36 s más; en la
+    recaptura la puerta cae durante la consolidación y los atacantes esperan igual a la guarnición. Para que contara en la recaptura con
+    20 tendría que aguantar los ~95 s que van del primer golpe al final de la consolidación, unas ocho veces la vida de ahora, y 3
+    atacantes tardarían más de 7 min: rompería GUE-10.
+  - `consolidation_s` 120: es el suelo de la recaptura (ninguna antes de 146 s desde que salen) y hace lo que pide la decisión de §0
+    (no hay recaptura inmediata). Los bots no dan motivo para moverla: no hay un tiempo objetivo de tenencia, y cuánto aguanta un dueño
+    lo dirán las personas.
+  - `captain_respawn_s` 300 y `guard_respawn_s` 180: de la caída del capitán del reino a la captura van de 16 a 114 s, nunca 300 (no
+    reaparece); mueren de 2 a 4 guardias por batalla y su reaparición no pesa en ninguna captura.
+  - `capture_s` 30: 15,0–18,5 s capturando (15 s con cuatro o más, como quiere 1.3).
+  - `under_attack_s`, `gate_repair_after_s` y `reset_to_neutral_s` no intervienen (la puerta se repara al capturar y ninguna batalla
+    llega al ciclo de 30 min).
+  - Siguen provisionales (§0), como el capitán del reino en 7500 (paquete B), hasta probarlos con personas (MUN-10, MUN-11, GUE-11 y
+    «Pendiente de probar mañana con ventana» del informe).
+- **Para las pruebas con personas**: la puerta no protege la consolidación (en cuatro de cinco recapturas cae 12–22 s después del primer
+  golpe, antes de que salga la guarnición). Si se quiere que la proteja, la palanca no es su vida (rompería GUE-10) sino una regla, por
+  ejemplo que no se pueda dañar mientras se consolida: eso es código y otro elemento, no GUE-17.
+
+**Lo que queda tras F6b** (F6b está hecho):
+
+- GUE-15: que una persona juegue contra los bots (el cliente de verdad contra `--bots` con los PNJ).
+- MUN-10 y MUN-11: sus criterios con personas (los Huecos en 60–90 s con 2–3; el Capitán en 60–120 s con 3–5), y con ellos el capitán
+  del reino en 7500 y los datos de `vado_gris.tres`, que siguen provisionales.
+- El p99 < 8 ms con 64 jugadores (GUE-16 lo deja medido y no cumplido): es `simulate()`, palanca 6 de red.md 14 (TEC-35).
+- Una batalla larga solo con `SwarmBot` por ENet, con los PNJ y la pasarela: el mismo cerebro y los mismos datos se prueban sin red y
+  con los falsos del servidor, y en la carga los 10 bots reales pelean con los PNJ, pero no hay batalla entera solo con ellos.
+- La pasarela con armas a distancia (CMB-23) y que los guardias bajen a disputar el círculo.
+- La recaptura sigue dependiendo de la semilla (riesgo de §9): cualquier ajuste se mide con cinco semillas o más.
+
 ---
 
 ## 9. Riesgos
 
 - **Coste de los PNJ**: 5–10 PNJ más con `simulate()` y su cerebro. Medido en F4: unos 50 a 85 µs por PNJ y tick (8.3); con 10 a 20
-  PNJ son de 0,5 a 1,7 ms del tick de 16,7 ms. F6a midió el asedio sin PNJ (8.3); F6b repite la medida con los de F4.
+  PNJ son de 0,5 a 1,7 ms del tick de 16,7 ms. F6a midió el asedio sin PNJ (8.3); F6b repitió la medida con los de F4 (8.3, paquete E):
+  con los 9 del Vado Gris vivos, ~1 ms del tick en un asedio de 32 contra 32 (cerebros con un p99 de 0,8–1,1 ms, generadores 0,06 ms y
+  su `simulate()` ~0,55 ms), del orden de la diferencia entre dos pasadas iguales. Un castillo con más PNJ (F7) se vuelve a medir.
 - **Generador de la zona** (resuelto en F0): `vado_gris.tscn` sale de un script y los assets que
   necesita sí están en el repo, así que se regenera (no se edita a mano); ver 8.3.
 - **Arte**: Huecos, Capitán, tabardos, estandartes y efectos de la puerta definitivos son del

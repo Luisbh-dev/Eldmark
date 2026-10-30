@@ -27,6 +27,8 @@ extends SceneTree
 ## godot --headless --path . -s res://tools/load_test.gd -- --siege
 ## # Un asedio suelto: 54 falsos de asedio y 10 clientes reales (--bot-brain=siege), 32 contra 32
 ## godot --headless --path . -s res://tools/load_test.gd -- --scenario=siege --fakes=54 --bots=10 --seconds=60
+## # Lo mismo con los PNJ de verdad y el fuerte sin ayudas (F6b): 32 contra 32, 120 s de medida
+## godot --headless --path . -s res://tools/load_test.gd -- --scenario=siege --fakes=54 --bots=10 --seconds=120 --npcs
 ## [/codeblock]
 ## [b]Opciones[/b] (después de [code]--[/code]):
 ## [br]- [code]--scenario=cluster|spread|churn[/code] (por defecto [code]cluster[/code]):
@@ -46,10 +48,13 @@ extends SceneTree
 ## [br]  · [code]siege[/code], asedio (GUE-16): los falsos asedian y defienden el fuerte del Vado Gris
 ## ([code]--fake-brain=siege[/code], repartidos entre Vardheim y Solmarch) y los bots reales ([code]--bots[/code],
 ## uno de cada reino por turnos) llevan el cerebro de asedio ([code]--bot-brain=siege[/code], que sigue la ruta,
-## golpea la puerta, entra en el círculo y pelea sin simular). El servidor abre el círculo con una orden
-## programada ([code]--run-at=<tick>:fort_kill_captain[/code]: aún no hay capitán de verdad) y escribe un registro de
-## batalla ([code]--battle-log[/code]) que el resumen lee. La ventana de medida empieza cuando los bots ya han
-## llegado a la puerta ([constant SIEGE_EXTRA_SETTLE_SECONDS]).
+## golpea la puerta, entra en el círculo y pelea sin simular). Sin [code]--npcs[/code] es el asedio de F6a: el
+## servidor arranca sin PNJ ([code]--no-npcs[/code]) y abre el círculo con una orden programada
+## ([code]--run-at=<tick>:fort_kill_captain[/code]). Con [code]--npcs[/code] (F6b) arranca con sus PNJ (Huecos, Capitán
+## del Vado, guarnición del dueño y Guardianes) y el fuerte va solo: nadie mata al capitán por ellos. En los dos casos
+## escribe un registro de batalla ([code]--battle-log[/code]) que el resumen lee. La ventana de medida empieza cuando
+## los bots ya han llegado a la puerta ([constant SIEGE_EXTRA_SETTLE_SECONDS]); el resumen dice cuántos bots reales
+## habían llegado al fuerte antes de ella (GUE-44: los que entran tarde esperan a los suyos en el campamento).
 ## [br]- [code]--fakes=N[/code] jugadores falsos (entradas inyectadas en la cola, sin red; por defecto 64).
 ## [br]- [code]--bots=N[/code] clientes reales: procesos [code]--bots=N[/code] ([BotSwarm]) que entran uno cada 5 ticks
 ## (por defecto 0).
@@ -63,6 +68,8 @@ extends SceneTree
 ## [br]- [code]--zone=<id>[/code] zona del servidor (por defecto la de siempre, el Vado Gris).
 ## [br]- [code]--out=<carpeta>[/code] dónde van los informes y los registros (por defecto [code]build/load_test[/code]).
 ## [br]- [code]--siege[/code] lanza la batería de [constant SIEGE_MATRIX] (120 s de medida cada una).
+## [br]- [code]--npcs[/code] (solo en los asedios, también con [code]--siege[/code]): con los PNJ de la zona y sin la
+## orden que mata al capitán (ver [code]siege[/code] arriba). En los demás escenarios no cambia nada.
 ## [br]- [code]--brawl[/code] lanza la batería de refriegas de [constant BRAWL_MATRIX] (60 s de medida cada una).
 ## [br]- [code]--check[/code] sale con código 1 si algún escenario incumple el criterio de la fase 2.
 ## [br][br]
@@ -73,7 +80,10 @@ extends SceneTree
 ## entradas sustituidas, los avisos y las expulsiones. En las refriegas, además, las secciones de combate
 ## ([code]combat[/code], con [code]combat_resolve[/code] —golpes con rebobinado— y [code]combat_events[/code]
 ## —envío de los ENTITY_EVENT— dentro), los µs por comprobación de golpe, los golpes, las muertes y los eventos
-## por segundo, y la bajada de cada cliente separada en snapshots y eventos (KB/s). Los percentiles del servidor son de los últimos 2048
+## por segundo, y la bajada de cada cliente separada en snapshots y eventos (KB/s). En los asedios, además, las
+## secciones de los PNJ ([code]npc_brains[/code], sus cerebros, y [code]npc[/code], los generadores) y la de las
+## fortalezas ([code]war[/code]), con su media de toda la sesión, y los PNJ que había en cada marca de métricas del
+## servidor (su [code]simulate()[/code] va en [code]sim[/code], con el de los jugadores). Los percentiles del servidor son de los últimos 2048
 ## ticks (34 s) de su ejecución, así que el servidor sigue unos segundos de más después de que los bots
 ## entren, para que la ventana sea solo de régimen.
 ## [br][br]
@@ -109,8 +119,8 @@ const MAX_P99_TICK_US: int = 8000
 const MAX_KB_PER_CLIENT: float = 37.0
 const MAX_SUBSTITUTED_PERCENT: float = 1.0
 ## Secciones del tick que se muestran (las de combate van dentro de [code]combat[/code]).
-const SECTIONS: Array[String] = ["tick", "net", "sim", "combat", "combat_resolve", "combat_events",
-		"war", "history", "snapshot", "flush"]
+const SECTIONS: Array[String] = ["tick", "net", "npc_brains", "sim", "combat", "combat_resolve", "combat_events",
+		"war", "npc", "history", "snapshot", "flush"]
 ## Batería de [code]--matrix[/code]: [escenario, jugadores falsos, bots, simulador de red de los bots].
 ## Los tres primeros son los de siempre (sin retardo); el cuarto es el criterio de la fase 2 medido como
 ## pide docs/red.md, 16 (64 agrupados y 100 ms de RTT); después disperso, altas y bajas y los tamaños
@@ -226,6 +236,7 @@ func _make_run(args: PackedStringArray, scenario: String, fakes: int, bots: int,
 		"seconds": _int_option(args, "--seconds=", default_seconds),
 		"net_sim": net_sim if not net_sim.is_empty() else _option(args, "--net-sim=", ""),
 		"zone": _option(args, "--zone=", ""),
+		"npcs": args.has("--npcs") and scenario == "siege",
 	}
 
 
@@ -240,6 +251,8 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 	var tag: String = "%s_%df_%db" % [scenario, fakes, bots]
 	if not str(run["net_sim"]).is_empty():
 		tag += "_" + String(run["net_sim"]).replace("=", "").replace(",", "_")
+	if bool(run.get("npcs", false)):
+		tag += "_npcs"
 	var port: int = _free_port()
 	var summary: Dictionary = {"tag": tag, "run": run, "port": port, "ok": false}
 	if port < 0:
@@ -282,13 +295,12 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 		if scenario == "churn":
 			server_args.append("--fake-churn=%d" % _tick_rate)
 	if scenario == "siege":
-		# El círculo se abre al empezar la ventana de medida; el registro de batalla lo lee el resumen.
-		server_args.append_array(PackedStringArray(["--battle-log=%s" % battle_log,
-				"--run-at=%d:fort_kill_captain" % settle_ticks]))
+		server_args.append_array(siege_server_args(bool(run.get("npcs", false)), battle_log, settle_ticks))
 	DirAccess.remove_absolute(server_report)
 	DirAccess.remove_absolute(server_log)
-	print("\n== %s: %d falsos, %d bots en %d proceso(s), %d s de medida (servidor %d ticks, puerto %d) ==" % [
-		scenario, fakes, bots, swarms if bots > 0 else 0, run["seconds"], server_ticks, port])
+	print("\n== %s%s: %d falsos, %d bots en %d proceso(s), %d s de medida (servidor %d ticks, puerto %d) ==" % [
+		scenario, " con PNJ" if bool(run.get("npcs", false)) else "", fakes, bots, swarms if bots > 0 else 0,
+		run["seconds"], server_ticks, port])
 	var server_pid: int = _launch(server_args, server_log)
 	if server_pid <= 0:
 		summary["error"] = "no se pudo lanzar el servidor"
@@ -349,7 +361,7 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 	if scenario == "brawl" or scenario == "siege":
 		_summarise_combat(summary, server_data, swarm_data)
 	if scenario == "siege":
-		_summarise_siege(summary, server_data, server_log, battle_log, settle_ticks, swarm_ticks)
+		_summarise_siege(summary, server_data, swarm_data, server_log, battle_log, settle_ticks, swarm_ticks)
 	summary["ok"] = not summary.has("error")
 	return summary
 
@@ -466,10 +478,11 @@ func _summarise_combat(summary: Dictionary, server: Dictionary, swarms: Array[Di
 
 
 # Cifras del asedio (GUE-16): cómo se comporta el tick a lo largo de la ventana de medida (las marcas de
-# métricas que el servidor escribe cada 10 s, cada una sobre los 34 s anteriores) y qué pasó en el fuerte según
-# el registro de batalla (capturas, puertas rotas, muertes de jugadores).
-func _summarise_siege(summary: Dictionary, server: Dictionary, server_log: String, battle_log: String,
-		first_tick: int, last_tick: int) -> void:
+# métricas que el servidor escribe cada 10 s, cada una sobre los 34 s anteriores, con los PNJ de cada una), qué pasó
+# en el fuerte según el registro de batalla (capturas, puertas rotas, muertes de jugadores y de PNJ), lo que cuestan
+# las secciones de los PNJ y de las fortalezas, y cuándo llegaron al fuerte los bots reales.
+func _summarise_siege(summary: Dictionary, server: Dictionary, swarms: Array[Dictionary], server_log: String,
+		battle_log: String, first_tick: int, last_tick: int) -> void:
 	var marks: Array[Dictionary] = LoadTestSummary.parse_tick_timeline(FileAccess.get_file_as_string(server_log))
 	var figures: Dictionary = {"window": LoadTestSummary.timeline_window(marks, first_tick, last_tick),
 			"timeline": marks}
@@ -482,6 +495,12 @@ func _summarise_siege(summary: Dictionary, server: Dictionary, server_log: Strin
 	figures["scoreboards_sent"] = int(war.get("scoreboards_sent", 0))
 	var sections: Dictionary = (server.get("metrics", {}) as Dictionary).get("sections", {})
 	figures["war_section"] = sections.get("war", {})
+	figures["npc_brains_section"] = sections.get("npc_brains", {})
+	figures["npc_section"] = sections.get("npc", {})
+	figures["npcs"] = server.get("npcs", {})
+	# Los maniquíes que se crearon (al cerrar el servidor ya no queda ninguno).
+	figures["dummies"] = int((server.get("combat", {}) as Dictionary).get("dummies_created", 0))
+	figures["fort_arrivals"] = LoadTestSummary.fort_arrivals(swarms, first_tick)
 	summary["siege"] = figures
 
 
@@ -580,20 +599,36 @@ func _siege_lines(figures: Dictionary) -> PackedStringArray:
 	if window.is_empty():
 		lines.append("   Tick en la ventana de medida: sin marcas de métricas del servidor en ella")
 	else:
-		lines.append("   Tick en la ventana (%d marcas de 34 s): p50 %d µs, p99 %d µs (el peor, %d µs), máx %d µs" % [
-			window["marks"], window["p50_us"], window["p99_us"], window["worst_p99_us"], window["max_us"]])
-	var war: Dictionary = figures.get("war_section", {})
-	lines.append("   Sección war (fortalezas): p50 %d µs, p99 %d µs, máx %d µs; %d OBJECT_STATE y %d marcadores enviados" % [
-		int(war.get("p50", 0)), int(war.get("p99", 0)), int(war.get("max", 0)), figures["object_states_sent"],
+		lines.append("   Tick en la ventana (%d marcas de 34 s): p50 %d µs, p99 %d µs (el peor, %d µs), máx %d µs; PNJ de %d a %d" % [
+			window["marks"], window["p50_us"], window["p99_us"], window["worst_p99_us"], window["max_us"],
+			window.get("npcs_min", -1), window.get("npcs_max", -1)])
+	for entry: Array in [["war", "war_section", "fortalezas"], ["npc_brains", "npc_brains_section", "cerebros de los PNJ"],
+			["npc", "npc_section", "generadores de PNJ"]]:
+		var data: Dictionary = figures.get(entry[1], {})
+		var pushed: int = int(data.get("pushed", 0))
+		lines.append("   Sección %s (%s): p50 %d µs, p95 %d µs, p99 %d µs, máx %d µs; media de la sesión %.0f µs" % [
+			entry[0], entry[2], int(data.get("p50", 0)), int(data.get("p95", 0)), int(data.get("p99", 0)),
+			int(data.get("max", 0)), float(data.get("total_us", 0)) / float(pushed) if pushed > 0 else 0.0])
+	lines.append("   Fortalezas: %d OBJECT_STATE y %d marcadores enviados" % [figures["object_states_sent"],
 		figures["scoreboards_sent"]])
+	var npcs: Dictionary = figures.get("npcs", {})
+	lines.append("   PNJ: %d de guerra vivos al acabar (%d puestos), %d aparecidos y %d muertos, %d avisos TELEGRAPH; %d maniquíes creados" % [
+		int(npcs.get("alive", 0)), int(npcs.get("slots", 0)), int(npcs.get("spawned", 0)), int(npcs.get("died", 0)),
+		int(npcs.get("telegraphs", 0)), figures.get("dummies", 0)])
+	var arrivals: Dictionary = figures.get("fort_arrivals", {})
+	if int(arrivals.get("bots", 0)) > 0:
+		lines.append("   Bots reales en el fuerte (a menos de %.0f m del círculo): %d de %d antes de la ventana, %d en total; el último, en el tick %d" % [
+			BotBrain.SIEGE_RALLY_FORT_RADIUS, arrivals["before_window"], arrivals["bots"], arrivals["arrived"],
+			arrivals["last_tick"]])
 	var battle: Dictionary = figures.get("battle", {})
 	if not battle.is_empty():
 		var deaths: Dictionary = battle["deaths"]
 		var by_route: Dictionary = deaths["by_route"]
-		lines.append("   Batalla: %d capturas, %d puertas rotas, %d muertes de jugadores (puente %d, vado %d, explanada y patio %d, pasarela %d, otros %d); avisos %s" % [
+		lines.append("   Batalla: %d capturas, %d puertas rotas, %d muertes de jugadores (puente %d, vado %d, explanada y patio %d, pasarela %d, otros %d) y %d de PNJ; avisos %s" % [
 			(battle["captures"] as Array).size(), (battle["gate_breaks"] as Array).size(), deaths["players"],
 			int(by_route.get("bridge", 0)), int(by_route.get("ford", 0)), int(by_route.get("gate", 0)),
-			int(by_route.get("walkway", 0)), int(by_route.get("other", 0)), battle["war_events"]])
+			int(by_route.get("walkway", 0)), int(by_route.get("other", 0)), int(deaths.get("npcs", 0)),
+			battle["war_events"]])
 		for gate_break: Dictionary in battle["gate_breaks"]:
 			lines.append("     puerta rota %.1f s después del primer golpe" % gate_break["seconds"])
 		for capture: Dictionary in battle["captures"]:
@@ -618,6 +653,17 @@ func _combat_lines(figures: Dictionary) -> PackedStringArray:
 			figures["clients_measured"], figures["client_snapshot_kb_per_s"],
 			figures["client_event_kb_per_s"], figures["client_wire_kb_per_s"]])
 	return lines
+
+
+## Opciones del servidor propias de un asedio: el registro de batalla en [param battle_log] y, sin [param with_npcs]
+## (el asedio de F6a), [code]--no-npcs[/code] y la orden que da por muerto al capitán al terminar el tick
+## [param open_circle_tick] (el principio de la ventana de medida), para que el círculo se abra. Con
+## [param with_npcs] el servidor lleva sus PNJ y nadie le ayuda.
+static func siege_server_args(with_npcs: bool, battle_log: String, open_circle_tick: int) -> PackedStringArray:
+	var args := PackedStringArray(["--battle-log=%s" % battle_log])
+	if not with_npcs:
+		args.append_array(PackedStringArray(["--no-npcs", "--run-at=%d:fort_kill_captain" % open_circle_tick]))
+	return args
 
 
 # true si el escenario es aquel para el que se define el criterio de la fase 2 (docs/red.md, 16): 64
