@@ -105,7 +105,9 @@ extends Node
 ## Las recompensas (§6.2): los méritos de PvP salen del KILL (solo con una víctima persistente de otro reino), la de
 ## un PNJ de su DEATH (a quien hizo al menos el 10 % del daño, salvo un defensor de una fortaleza en un ciclo forzado),
 ## y la de captura y los méritos de objetivo, de [FortressController]; subir de nivel manda LEVEL_UP al dueño y a los
-## de su reino que lo tienen relevante. Con plataforma y [code]--fake-players[/code] no se paga nada.
+## de su reino que lo tienen relevante. Con plataforma y [code]--fake-players[/code] no se paga nada. Los comandos de
+## GM de la progresión (§10, [ProgressCommands]: consola, [code]/gm[/code] y DEBUG_COMMAND 40–43) cambian el personaje
+## en una sola operación GM o REVERSAL con su rastro, guardado crítico y auditoría; con plataforma, el 16 también.
 ## [br][br]
 ## [b]Moderación[/b] (docs/plataforma.md §9, [ModerationService], [method get_moderation]): el canal GM del chat lleva
 ## [code]/gm[/code] (por el [CommandRegistry], con el rol de la reclamación), [code]/ignorar[/code],
@@ -694,6 +696,10 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_moderation = ModerationService.new()
 	_moderation.log_sink = Callable(self, "_log")
 	_moderation.setup(self, _platform, _commands, _social)
+	# Los comandos de GM de la progresión contestan por el chat y, sin plataforma, fechan sus operaciones con la hora
+	# del sistema (progresion.md P5d).
+	_progress.reply_sink = Callable(self, "_progress_reply")
+	_progress.clock_unix = _moderation.now_unix
 	if _transport != null:
 		_connect_transport()
 		if not _transport.is_server():
@@ -2078,6 +2084,12 @@ func _progress_send(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	_send(peer, NetProtocol.CH_RELIABLE, bytes)
 
 
+# Una línea de respuesta de un comando de GM de la progresión por el canal del sistema del chat (progresion.md P5d).
+func _progress_reply(peer: ServerPeer, text: String) -> void:
+	if _social != null and peer != null and peer.state == ServerPeer.State.IN_WORLD:
+		_social.get_chat().send_system(peer, text, _tick)
+
+
 # --- Combate: eventos, enemigos, suelo ----------------------------------------------------------
 
 # Un evento de combate: ENTITY_EVENT (canal fiable) a los dueños de las entidades implicadas
@@ -2509,10 +2521,13 @@ func _close_combat_log() -> void:
 # de consola, y los que son solo de consola.
 # Cada comando con su rol mínimo para /gm y, con la plataforma, para DEBUG_COMMAND (docs/plataforma.md §9.1): gm por
 # defecto (los de red: teletransporte, vida, fuerte); kick, announce y shutdown, y sus nombres de /gm anuncio y apagar,
-# de admin (la expulsión de la zona de los moderadores es /gm expulsar, de ModerationService). El 5, el 13 y el 16
-# pasan a admin con progresion.md P5d.
+# de admin (la expulsión de la zona de los moderadores es /gm expulsar, de ModerationService). Los que crean o conservan
+# valor de un personaje persistente o se saltan su equipo piden admin (progresion.md §10, P5d): el 5 set_weapon y el
+# 13 cooldowns_off, también por /gm; el 16 refill, por DEBUG_COMMAND (por /gm es una operación GM como item_give, con
+# gm). Los de §10 (40–43 y los de consola) los registra ProgressService.setup.
 func _register_commands() -> void:
 	var admin: StringName = CommandRegistry.ROLE_ADMIN
+	var gm: StringName = CommandRegistry.ROLE_GM
 	_commands.register(&"teleport", "teleport <jugador> <x> <y> <z> | teleport <jugador> <otro jugador>",
 			_console_teleport, _net_teleport)
 	_commands.register(&"heal", "heal <jugador>", _console_heal, _net_heal)
@@ -2520,15 +2535,16 @@ func _register_commands() -> void:
 	_commands.register(&"stamina_inf", "stamina_inf <jugador> [on|off]", _console_stamina_inf,
 			_net_stamina_inf)
 	_commands.register(&"set_weapon", "set_weapon <jugador> <arma>", _console_set_weapon,
-			_net_set_weapon)
+			_net_set_weapon, admin)
 	_commands.register(&"spawn_dummy", "spawn_dummy <x> <y> <z> [quieto|bloqueando|girando]",
 			_console_spawn_dummy, _net_spawn_dummy)
 	_commands.register(&"cooldowns_off", "cooldowns_off <jugador> [on|off]", _console_cooldowns_off,
-			_net_cooldowns_off)
+			_net_cooldowns_off, admin)
 	_commands.register(&"apply_status", "apply_status <jugador> <efecto> [ticks]", _console_apply_status,
 			_net_apply_status)
 	_commands.register(&"down", "down <jugador>", _console_down, _net_down)
-	_commands.register(&"refill", "refill <jugador>", _console_refill, _net_refill)
+	_commands.register(&"refill", "refill <jugador> [motivo… (con plataforma, obligatorio)]", _console_refill,
+			_net_refill, gm, admin)
 	_fortresses.register_commands(_commands, Callable(self, "_next_tick"))
 	if _npc_system != null:
 		_npc_system.register_commands(_commands)
@@ -2712,8 +2728,8 @@ func _net_down(ctx: CommandRegistry.Context) -> int:
 
 
 # 16 refill: repone las cargas de los consumibles de su plantilla (set_charges, con LOADOUT al dueño). Con
-# inventario, sin plataforma, un CAMP_REFILL forzado de su bolsa (progresion.md §4.4); con plataforma es una operación
-# GM (progresion.md P5d) y aún no se acepta.
+# inventario, sin plataforma, un CAMP_REFILL forzado de su bolsa (progresion.md §4.4); con plataforma, una operación
+# GM con un GM_GRANT por lo que falta y note «debug» (progresion.md §4.4 y §10, P5d; pide admin).
 func _net_refill(ctx: CommandRegistry.Context) -> int:
 	if not ctx.payload.is_empty():
 		return CommandRegistry.Result.BAD_ARGUMENTS
@@ -2721,6 +2737,8 @@ func _net_refill(ctx: CommandRegistry.Context) -> int:
 	if combatant == null:
 		return CommandRegistry.Result.REFUSED
 	if _progress.has_inventory(combatant.get_id()):
+		if _platform != null:
+			return _progress.gm_commands().net_refill(ctx)
 		return CommandRegistry.Result.OK if _progress.force_refill(combatant.get_id(), _tick + 1) \
 				else CommandRegistry.Result.REFUSED
 	if not _combat.refill(combatant, _tick + 1):
@@ -2921,16 +2939,17 @@ func _console_down(ctx: CommandRegistry.Context) -> String:
 	return "%s derribado" % combatant.entity.display_name
 
 
+# refill <jugador>: sin plataforma, como el 16; con ella, a quien tiene inventario, la operación GM del 16 con el
+# motivo escrito (refill <jugador> <motivo…>; progresion.md P5d).
 func _console_refill(ctx: CommandRegistry.Context) -> String:
-	if ctx.args.size() != 1:
-		return "Uso: refill <jugador>"
+	if ctx.args.is_empty() or (ctx.args.size() != 1 and _platform == null):
+		return "Uso: refill <jugador>" + (" <motivo…>" if _platform != null else "")
 	var combatant: Combatant = _combatant_by_name(ctx.args[0], ctx)
 	if combatant == null:
 		return "No hay ningún jugador «%s»" % ctx.args[0]
 	if _progress.has_inventory(combatant.get_id()):
 		if _platform != null:
-			return "%s tiene inventario guardado: reponer sus pociones es un comando de GM" \
-					% combatant.entity.display_name
+			return _progress.gm_commands().console_refill(ctx, combatant.get_id())
 		if not _progress.force_refill(combatant.get_id(), _tick + 1):
 			return "%s no puede reponer ahora" % combatant.entity.display_name
 		return "Pociones de %s repuestas" % combatant.entity.display_name

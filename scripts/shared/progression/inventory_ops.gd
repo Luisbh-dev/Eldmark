@@ -354,25 +354,28 @@ static func add_items(state: InventoryState, def_id: StringName, count: int, rea
 ## Quita [param count] unidades de [param def_id] con el motivo [param reason] (un sumidero o un interno):
 ## primero de la instancia [param prefer_uid] si es de esa definición, después de la bolsa en orden de ranura
 ## (CONSUME: la pila con la ranura más baja) y por último del equipo. Una pila que se queda en 0 desaparece y
-## su [code]uid[/code] muere. Entera o nada: INVALID con [param count] < 1, STALE si no hay tantas. No mira la
-## ranura activa (I10): quitar un arma equipada es cosa de quien llama ([member Outcome.weapons_changed]).
+## su [code]uid[/code] muere. Las ranuras de [param protected] no se tocan (la reversión de progresion.md §10 no
+## quita de la ranura activa del equipo). Entera o nada: INVALID con [param count] < 1, STALE si no hay tantas
+## fuera de las protegidas. No mira la ranura activa (I10): quitar un arma equipada es cosa de quien llama
+## ([member Outcome.weapons_changed]).
 static func remove_items(state: InventoryState, def_id: StringName, count: int, reason: int,
-		prefer_uid: int = 0) -> Outcome:
+		prefer_uid: int = 0, protected: Array[Vector2i] = []) -> Outcome:
 	var out := Outcome.new()
 	if count < 1:
 		return _fail(out, Result.INVALID)
-	if state.count_of(def_id) < count:
+	if count_outside(state, def_id, protected) < count:
 		return _fail(out, Result.STALE)
 	var order: Array[Vector2i] = []
 	if prefer_uid != 0:
 		var preferred: Vector2i = state.find_uid(prefer_uid)
-		if preferred.x >= 0 and state.get_item(preferred.x, preferred.y).def_id == def_id:
+		if preferred.x >= 0 and state.get_item(preferred.x, preferred.y).def_id == def_id \
+				and not protected.has(preferred):
 			order.append(preferred)
 	for container: int in InventoryState.OPEN_CONTAINERS:
 		for slot: int in range(state.slot_count(container)):
 			var position := Vector2i(container, slot)
 			var item: ItemInstance = state.get_item(container, slot)
-			if item != null and item.def_id == def_id and not order.has(position):
+			if item != null and item.def_id == def_id and not order.has(position) and not protected.has(position):
 				order.append(position)
 	var left: int = count
 	for position: Vector2i in order:
@@ -385,6 +388,63 @@ static func remove_items(state: InventoryState, def_id: StringName, count: int, 
 		out.events.append(ItemEvent.create(item.uid, def_id, -taken, reason))
 		out.weapons_changed = out.weapons_changed or _is_weapon_slot(position)
 		left -= taken
+	return out
+
+
+## Las unidades de [param def_id] en la bolsa y el equipo fuera de las ranuras de [param protected].
+static func count_outside(state: InventoryState, def_id: StringName, protected: Array[Vector2i] = []) -> int:
+	var total: int = state.count_of(def_id)
+	var seen: Dictionary[Vector2i, bool] = {}
+	for position: Vector2i in protected:
+		if seen.has(position) or not state.has_slot(position.x, position.y):
+			continue
+		seen[position] = true
+		var item: ItemInstance = state.get_item(position.x, position.y)
+		if item != null and item.def_id == def_id:
+			total -= item.count
+	return total
+
+
+## Crea [param count] unidades de [param def_id] en pilas nuevas (hasta [member ItemDefinition.max_stack] cada una)
+## en las primeras ranuras libres de la bolsa, con ids de [member Context.new_uid] y el motivo [param reason]: sin
+## juntar con las que ya hay (el [code]item_give[/code] de GM y la reversión de progresion.md §10, que crean «con
+## otros uid»). Con [param template], cada pila copia su durabilidad, rareza, ligado, semilla y afijos (la fila
+## retirada de lo que se revierte); sin ella, como [method ItemInstance.create]. Entera o nada: INVALID con una
+## definición que no existe, [param count] < 1 o una plantilla de otra definición; NO_ROOM sin ranuras libres
+## bastantes; NOT_NOW si falta algún id. Un evento por pila.
+static func create_items(state: InventoryState, def_id: StringName, count: int, reason: int, context: Context,
+		template: ItemInstance = null) -> Outcome:
+	var out := Outcome.new()
+	var db: ItemDatabase = context.db if context.db != null else ItemDatabase.shared()
+	var definition: ItemDefinition = db.get_definition(def_id)
+	if definition == null or count < 1 or (template != null and template.def_id != def_id):
+		return _fail(out, Result.INVALID)
+	var bag: int = InventoryState.ContainerId.BAG
+	var stacks: int = ceili(float(count) / float(maxi(definition.max_stack, 1)))
+	if state.free_count(bag) < stacks:
+		return _fail(out, Result.NO_ROOM)
+	var ids: Array[int] = []
+	for _i: int in range(stacks):
+		var new_id: int = _take_id(context)
+		if new_id == 0:
+			return _fail(out, Result.NOT_NOW)
+		ids.append(new_id)
+	var left: int = count
+	for new_id: int in ids:
+		var amount: int = mini(left, definition.max_stack)
+		var item: ItemInstance = ItemInstance.create(new_id, definition, amount)
+		if template != null:
+			if definition.has_durability and template.durability >= 0:
+				item.durability = template.durability
+			item.rarity = template.rarity
+			item.bound = template.bound
+			item.seed = template.seed
+			item.affixes = template.affixes.duplicate()
+		var slot: int = state.first_free(bag)
+		state.set_item(bag, slot, item)
+		out.changed.append(Vector2i(bag, slot))
+		out.events.append(ItemEvent.create(new_id, def_id, amount, reason))
+		left -= amount
 	return out
 
 

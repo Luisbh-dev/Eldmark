@@ -1561,6 +1561,13 @@ func flush(s: int) -> void                                          # WALLET_UPD
 # TIMER_CAPTURE_PREFIX, CRITICAL_LEVEL_UP, CRITICAL_CAPTURE, CAPTURE_XP, CAPTURE_GOLD, CAPTURE_COOLDOWN_S,
 # OBJECTIVE_TICKS_PER_MERIT y FAKE_PLAYERS_TEXT; en DamageLedger, contributors; en FortressController, la señal
 # objective_time y fortress_of_defender; en NpcDefinition, xp_reward y gold_reward
+# P5d añade (§19.16): la clase ProgressCommands (scripts/server/progress/progress_commands.gd: los comandos de §10,
+# net_refill y console_refill para el 16, on_platform_event de progress_op y progress_ledger); en ProgressService,
+# gm_commands, now_unix, reply_sink, clock_unix y lo que usan los comandos (find_connected, connected_net_id_of,
+# is_connected_player, peer_of, player_net_ids, active_weapon_slot, can_change_weapons, is_alive, after_gm_change,
+# after_level_change, mark_gm_critical, reply, log_line y notice); en PlayerProgress, abort_op, op_add_items,
+# op_create_items y op_remove_items (con protected); en InventoryOps, create_items, count_outside y protected en
+# remove_items; en CommandRegistry (plataforma.md P7b), network_min_role y Context.audit_at_unix y audit_deferred
 
 # scripts/shared/net/progress_messages.gd (P4, §19.9): los formatos de §4.6 y §12; los tipos, en NetProtocol.MSG_*
 class_name ProgressMessages extends RefCounted
@@ -2744,3 +2751,141 @@ plataforma.md P7b (su §19.12) pone la moderación en la zona. Lo que usa P5d:
   faltaba de §15 P5c («un GM invisible en el círculo no cobra la captura») está en `test_progress_rewards`.
 - **Zona cercada:** ignorar, reportar y sancionar ya contestan «El servicio de cuentas no responde»; los comandos de
   §10 que cambian algo son de P5d.
+
+### 19.16 P5d · GM (PRG-16)
+
+**Qué hay.** Lo de §14.1 P5d, en `scripts/server/` salvo donde se dice:
+
+| Pieza | Contenido |
+|---|---|
+| `ProgressCommands` (`progress/progress_commands.gd`, nuevo) | Los diez comandos de §10, registrados por `ProgressService.setup` con `gm` (y `admin` por DEBUG_COMMAND en los cuatro de red): `item_give`, `item_take`, `currency_add`, `level_set`, `xp_add` (con sus manejadores de red 40–43), `mastery_set` («No disponible hasta la fase 6.»), `inv_show`, `ledger_show`, `op_show` y `op_revert`; el 16 con plataforma (`net_refill` y `console_refill`, que llama la zona); las respuestas de `progress_op` y `progress_ledger` (`on_platform_event`); `OpView` (la operación de la ruta de §13.2 o del diario) y `Actor` (quién y por dónde) |
+| `PlayerProgress` | `abort_op` (todo o nada: `begin_op` guarda el estado de justo después de cerrar lo agregado); `op_add_items`, `op_create_items` y `op_remove_items` (con `protected`), que devuelven el `Outcome` con las ranuras del delta (`add_items` y `remove_items` siguen con su `bool`); y los uids de los eventos del cuerpo según lo guardado (abajo) |
+| `InventoryOps` (compartido) | `create_items` (pilas nuevas en las primeras ranuras libres, copiando los campos de una plantilla), `count_outside` y `remove_items(…, protected)` (ranuras que no se tocan) |
+| `ProgressService` | `gm_commands`, `now_unix`, `reply_sink` (las líneas de `/gm` por el canal del sistema), `clock_unix` (la hora sin plataforma) y lo que usan los comandos: `find_connected`, `connected_net_id_of`, `is_connected_player`, `peer_of`, `player_net_ids`, `active_weapon_slot`, `can_change_weapons`, `is_alive`, `after_gm_change` (el INVENTORY_DELTA con el motivo, las armas y las cargas con LOADOUT), `after_level_change` (`NetEntity.level` y LEVEL_UP), `mark_gm_critical`, `reply`, `log_line` y `notice`; `progress_op` y `progress_ledger` ya no se descartan; `get_stats()["gm"]` |
+| `CommandRegistry` (de plataforma.md P7b) | `register(…, min_role, network_min_role)` y `get_network_min_role`: el rol de DEBUG_COMMAND si es otro; en el `Context`, `audit_at_unix` (la hora de la entrada del lote) y `audit_deferred` (la entrada la arma el comando después) |
+| `ModerationService` | La entrada del lote con `audit_at_unix` si el comando la fija, y ninguna con `audit_deferred` |
+| `ZoneServer` | `set_weapon` (5) y `cooldowns_off` (13) con `admin`; `refill` con `gm` por `/gm` y `admin` por DEBUG_COMMAND; con plataforma, el 16 y `refill <jugador> <motivo…>` de la consola y `/gm` son la operación GM de §4.4; `_progress_reply` y `clock_unix` |
+
+**Cómo es cada comando** (consola y `/gm`; por DEBUG_COMMAND, sobre quien lo manda y con `note` «debug»):
+
+| Comando | Uso | Hace |
+|---|---|---|
+| `item_give` (40) | `item_give <jugador> <objeto> [cantidad] <motivo…>` | GM con un GM_GRANT por pila nueva (de `max_stack` como mucho) en las primeras ranuras libres; sin sitio, «La bolsa de X no tiene sitio.» |
+| `item_take` | `item_take <jugador> <uid> [cantidad] <motivo…>` | GM_REMOVE de ese uid (sin cantidad, la pila entera); la única arma equipada no («Es la única arma de X…», I10) |
+| `currency_add` (41) | `currency_add <jugador> <oro\|meritos> <±cantidad> <motivo…>` | Un apunte GM_GRANT o GM_REMOVE; un saldo que quedaría negativo o pasaría del tope, nada |
+| `level_set` (42) | `level_set <jugador> <nivel> <motivo…>` | Nivel y `xp_total = total_to(nivel)` en una GM sin apuntes ni eventos; `detail` con antes y después |
+| `xp_add` (43) | `xp_add <jugador> <cantidad> <motivo…>` | `PlayerProgress.add_xp` con la fuente GM (LEVEL_UP si sube); `detail` con antes y después |
+| `inv_show` | `inv_show <jugador>` | Nivel, XP, puntos de reino, saldos, equipo (con la activa) y bolsa con uid, cantidad y ligado, cuatro objetos por línea |
+| `ledger_show` | `ledger_show <jugador> [n = 20]` | Los n más recientes: primero los del diario sin confirmar («sin guardar») y, con plataforma, los de `GET …/ledger?limit=n` |
+| `op_show` | `op_show <op_id>` | Del diario si está en uno de esta zona (con plataforma, «sin guardar»); si no, de `GET /internal/v1/ops/{op_id}` |
+| `op_revert` | `op_revert <op_id> <motivo…>` | §10 (abajo) |
+
+**Desviaciones y decisiones de la implementación:**
+
+- **Un rol por `/gm` y otro por la red.** La tabla de §10 da `gm` a los comandos y la regla de DEBUG_COMMAND pide
+  `admin` a los 40–43 y al 16: `CommandRegistry.register` gana `network_min_role` (vacío: el `min_role`) y
+  `execute_network` mira ese. El 5 y el 13 piden `admin` también por `/gm` (no son herramientas de §10: ponen un arma
+  que no está en el equipo o beben sin gastar); el 16 por `/gm` es una operación GM como `item_give`, con `gm` y la
+  regla de los propios personajes.
+- **El motivo es obligatorio** en todo lo que cambia algo por la consola y `/gm` («`note` … obligatoria y no vacía»;
+  la tabla solo lo escribía en `currency_add` y `op_revert`), también sin plataforma: una sola regla. Va en la `note`
+  (hasta 200 caracteres), **nunca en `args`**: la auditoría no guarda texto libre (plataforma.md §19.12). El caso
+  `valid_reversal` de `save_cases.json` lo lleva en `args`; a S2 le da igual y no se toca. `args` lleva el objetivo
+  por su `character_id` (`"0"` en un efímero) y los argumentos que no son texto (`["42", "potion_health", "5"]`, la
+  moneda como `oro` o `meritos`, `[op_id]` en `op_revert`). Desde la consola, `actor_character_id` va como `null`
+  (§10; los casos de P5a lo omiten y `checks.go` admite las dos cosas).
+- **La entrada del lote y la fila de S8, iguales.** `_commit` pone `ctx.audit_key = "op:<op_id>"`, `ctx.audit_args`
+  (lo de `detail` que S8 no pone en su columna: `args` y, si los hay, nivel y XP) y `ctx.audit_at_unix =
+  detail.at_unix`. El `op_revert` con plataforma es asíncrono: su entrada se arma con la respuesta de la ruta
+  (`audit_deferred`), con la `op:<op_id>` de la REVERSAL o, si no se crea, con la clave de la instancia y su motivo
+  en el registro de la zona; así cada uso deja una sola entrada.
+- **`item_give` crea pilas nuevas** («en la primera ranura libre»: `InventoryOps.create_items`), sin juntar con las
+  que ya hay. El 16 con plataforma junta como CAMP_REFILL (`op_add_items`).
+- **Los uids de los eventos del cuerpo frente a lo guardado (arreglo de P5a).** S4 (§13.3 y `checks.go`) mira cada
+  evento con `uid` contra lo vivo en la base: si suma, el uid no puede estar; si resta, tiene que estar. Sin esto, el
+  16 (que suma a la pila guardada), quitar de la mitad de un SPLIT que aún no se ha guardado (una reversión,
+  `item_take`) y también **el DESTROY del jugador de esa mitad** (P2/P5a) darían `invalid_save` y la baja sin
+  guardado. `PlayerProgress` guarda los uids que tendrá la plataforma al recibir el cuerpo siguiente (los del registro
+  cargado y, tras cada `build_section`, los de su foto: los cuerpos de un personaje se aplican en orden) y el cuerpo
+  lleva `uid: null` en esos eventos, como uno agregado. Las cantidades no cambian (S4 por definición sigue cuadrando),
+  el diario conserva el uid de verdad y `save_cases.json` sale igual.
+- **Todo o nada con `abort_op`.** `begin_op` guarda inventario, saldos, saldo apuntado, puntos de reino, nivel, XP,
+  revisión y lo pendiente del PROGRESS_UPDATE de justo después de cerrar lo agregado; `abort_op` lo devuelve y quita
+  la operación (lo agregado cerrado se queda, y los ids tomados se pierden). Además, lo que se puede saber antes
+  (saldos, lo que falta, I10, la zona cercada, los propios personajes) se mira antes de abrir la operación, para no
+  gastar ids ni cerrar lo agregado en balde.
+- **Reversión.** Primero se mira lo que hay en esta zona: una REVERSAL suya en un diario («Esa operación ya se está
+  revirtiendo»; sin plataforma, «ya está revertida»), un `op_revert` de la misma esperando su ruta (lo mismo) y, con
+  plataforma, la operación aún en un diario («aún no está guardada»). Después, la ruta (o el diario sin plataforma):
+  ni REVERSAL ni MIGRATION, ni con `reversed_by`, y el participante conectado aquí. La regla de los propios personajes
+  se mira con la respuesta (antes no se sabe de quién es). Lo que falta se dice antes de tocar nada («A Ana le faltan
+  20 de oro: no se revierte nada.», «… 1 × bow_vado …»). Lo que se quita respeta la ranura activa del equipo **también
+  si es el uid del evento** (I10: S5 rechaza la activa sin arma), así que revertir un kit con el arma puesta dice
+  que falta. Lo que se recrea copia la fila retirada de la ruta (`instances`) o va ligado. Los puntos de reino bajan
+  con todos los méritos de la REVERSAL si la original tenía méritos de motivo 3–5 (la regla de S6 en `checks.go`). La
+  XP resta `detail.xp_delta`, acotada a 0 … `total_to(40)`, con su nivel, y la REVERSAL lleva también antes y
+  después. Sin plataforma, una reversión que ya salió de las 256 del diario podría repetirse: es un efímero.
+- **Equipo con una acción en curso.** `ActionMachine.set_weapons` solo vale con la acción NONE: un comando que toca las
+  ranuras de arma con una acción en curso responde «X está en plena acción…» sin hacer nada.
+- **Lo que no cambia nada no crea operación:** `level_set` al mismo nivel con la misma XP, `xp_add` en el tope y el 16
+  sin nada que reponer (que manda el LOADOUT igual, como siempre).
+- **DEBUG_COMMAND rechazado por un motivo** (bolsa llena, zona cercada, sin ids): REFUSED (sin aviso), con el motivo en
+  la auditoría y en un NOTICE al jugador. Sin el rol, FORBIDDEN y aviso (plataforma.md P7b).
+- **Respuestas de `/gm`**: una línea por mensaje del canal del sistema (`reply_sink`); por la consola, juntas en el
+  registro. Las que llegan con una ruta van a quien lo pidió si sigue en el mundo, o al registro desde la consola.
+- **La hora sin plataforma** (el `at_unix` de los efímeros) la da la zona (`clock_unix`, la de `ModerationService`):
+  `scripts/server/progress/` no lee `Time`.
+
+**Para los paquetes siguientes.**
+
+- **P8:** el bot `progress` da oro y una poción por DEBUG_COMMAND 41 y 40, que con plataforma piden una cuenta `admin`
+  (§15 ya la pone). `TestProgressEndToEnd` puede comparar también la operación GM con su fila de `audit_log`.
+- **P7 y plataforma.md P10:** contra la plataforma de Go de verdad, `op_revert` con la ruta real (`instances` y
+  `reversed_by`) y `ledger_show`; S2 con el `detail` de estos comandos (las claves de `detailKeys`).
+
+**Pruebas.** En Godot, `test_gm_progress` (11, la zona sin red con `FakeZonePlatform`, peers montados a mano y los
+comandos de `/gm` por el canal GM; cada guardado pasa por las comprobaciones de forma de S2, S4 y S5 que se pueden
+hacer sin base): dar 5 pociones, dividirlas en 3 y 2, juntar las 2 con la pila del kit y revertir con la ruta
+guionizada a partir de lo guardado (el total baja 5, primero del uid dado; el GM_GRANT y la REVERSAL guardados; una
+entrada `op:<op_id>` por operación con los args de S8, `at_unix` y el objetivo por id, sin el nombre; una segunda con
+`reversed_by`, «ya está revertida»); dos `op_revert` a la vez y otro con la REVERSAL en vuelo («ya se está
+revirtiendo», sin pedir la ruta otra vez), el apunte contrario con `ref_kind` 4 y lo que ya se gastó («le faltan 20 de
+oro»); DEBUG_COMMAND con plataforma (41 de un `player`, 40, 16, 5 y 13 de un `gm`: aviso, ni objeto ni guardado; el 16
+de un `admin`: GM con GM_GRANT y «debug» que el guardado acepta, sin el uid de la pila guardada, y su LOADOUT; el 5 y el
+13 de un `admin`: sin operación y con su entrada; el 40 de un `admin` sobre sí mismo); los propios personajes con `env`
+`dev` (`item_give` y `op_revert` de un `gm`, rechazados; de un `admin`, sí); la zona cercada (`item_give`, `level_set`
+y `op_revert`, nada; `inv_show`, sí); `level_set` y `xp_add` con su `detail`, LEVEL_UP y `NetEntity.level`, y la
+reversión del `level_set`; revertir méritos de PvP (los puntos de reino bajan, S6); `ledger_show` y `op_show` por las
+rutas (el diario «sin guardar» primero, la ruta con su `limit` y la instancia, una que no existe, su auditoría) y
+`mastery_set`; sin plataforma, todo del diario (dos pilas de 15 y 5, `inv_show`, `op_show`, DEBUG_COMMAND sin rol,
+`ledger_show`, revertir, «ya está revertida», no revertir una REVERSAL, `item_take` y la única arma, el 16 de siempre);
+y la base: los uids del cuerpo frente a lo guardado (la mitad dividida y destruida, sumar a una guardada, la pila nueva)
+y `abort_op` con las ranuras protegidas. Comprobadas con la mutación que deberían pillar: sin la regla de los propios
+personajes, sin el cerco, sin los uids frente a lo guardado, sin el `op_revert` que espera su ruta, el 40 con `gm`, sin
+la entrada diferida del `op_revert` y sin bajar los puntos de reino, fallan.
+
+Ajustadas: `test_combat_server` y `test_hfsm_brain` (ya no falta ningún comando de red). Siguen correctas, además,
+`test_command_registry` (13, una nueva: el rol por la red distinto del de `/gm`), `test_zone_moderation`,
+`test_chat_moderation`, `test_progress_service`, `test_progress_rewards`, `test_progress_section`,
+`test_player_progress`, `test_progression_fixtures` (`save_cases.json` sale igual con los uids frente a lo guardado),
+`test_progress_messages`, `test_inventory_ops`, `test_inventory_properties`, `test_character_saver`,
+`test_zone_server*` (86), `test_zone_process_shutdown`, `test_war_persistence`, `test_war_platform_process`,
+`test_ability_server`, `test_consumables_server`, `test_loadout_server`, `test_loadout_net`, `test_combat_wire`,
+`test_combat_director`, `test_net_loopback`, `test_bot_cheat`, `test_projectile_loopback`, `test_architecture` y
+`test_export_config`. La suite entera de Godot no se ha pasado; Go no cambia.
+
+**Medido** (esta máquina, 4 núcleos compartidos, Godot 4.7.2 headless; una sonda que no se sube, tres pasadas):
+
+| Qué | Resultado |
+|---|---|
+| `build_section` del personaje más grande (120 objetos y 256 operaciones) | 2,4–2,7 ms, como en P5a (2,2–2,7 ms): los uids frente a lo guardado no se notan |
+| `begin_op` con 120 objetos (la copia para `abort_op`) | 0,36–0,63 ms; con los 4 objetos del kit, 25–165 µs. Solo en el kit, los comandos de GM y la reversión |
+| Un comando por la consola (efímero, 24 objetos) | `item_give` 0,2–0,65 ms, `op_revert` del diario 0,25–0,42 ms, `currency_add` 0,11–0,21 ms, `level_set` 0,12–0,2 ms, `inv_show` 0,1–0,18 ms, `ledger_show 100` 23–67 µs |
+| `test_gm_progress` | 11 pruebas, unos 16 s con el arranque del ejecutor; la más lenta, la de las dos reversiones (3 s, con el guardado que tarda 2 s) |
+
+**Sin comprobar:** contra la plataforma de Go de verdad (P7 y plataforma.md P10): S2 con el `detail` de estos comandos y
+el rol del actor en `at_unix`, la ruta de operación con sus `instances` y el libro real; el bot que da oro y pociones
+(P8).
+
+**Queda para después:** las pruebas de punta a punta (P8); `mastery_set` (fase 6); la edición sin conexión del panel
+de moderación (SOC-37, fase 8).

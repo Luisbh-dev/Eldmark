@@ -229,6 +229,24 @@ func test_a_network_command_with_a_role_needs_its_minimum() -> void:
 			[CommandRegistry.Origin.NETWORK, &"", &"heal", "ok"]], "solo lo ejecutado va a la auditoría de la plataforma")
 
 
+## progresion.md P5d: un comando puede pedir por la red otro rol que por /gm (los 40–43 y el 16: admin y gm).
+func test_a_network_command_can_need_another_role_than_by_chat() -> void:
+	var registry: CommandRegistry = _registry()
+	assert_true(registry.register(&"item_give", "x", _console_ok, _net_ok, &"gm", &"admin"))
+	allow_logged_errors()
+	assert_false(registry.register(&"refill", "x", _console_ok, _net_ok, &"gm", &"jefe"), "un rol que no existe")
+	assert_eq([registry.get_min_role(&"item_give"), registry.get_network_min_role(&"item_give")], [&"gm", &"admin"])
+	var peer: ServerPeer = _peer()
+	assert_eq(registry.execute_network(peer, NetProtocol.DEBUG_ITEM_GIVE, PackedByteArray(), &"gm"),
+			CommandRegistry.Result.FORBIDDEN, "por la red, gm no llega")
+	assert_eq(registry.audit[0], "[auditoría] peer 4 (Ana): item_give -> sin permiso (gm; hace falta admin)")
+	assert_eq(registry.execute_network(peer, NetProtocol.DEBUG_ITEM_GIVE, PackedByteArray(), &"admin"),
+			CommandRegistry.Result.OK)
+	assert_true(registry.can_use(&"item_give", &"gm"), "por /gm basta gm")
+	registry.register(&"heal", "x", _console_ok, _net_ok)
+	assert_eq(registry.get_network_min_role(&"heal"), &"gm", "sin él, el de siempre")
+
+
 func test_chat_commands_answer_unknown_without_the_role() -> void:
 	var registry: CommandRegistry = _registry()
 	var entries: Array = []

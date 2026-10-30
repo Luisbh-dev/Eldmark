@@ -84,6 +84,11 @@ var _stashed: Dictionary[int, PackedInt64Array] = {}
 ## La foto del último guardado confirmado (o la del alta) y las de los cuerpos construidos sin confirmar, por seq.
 var _confirmed: Dictionary = {}
 var _built: Dictionary[int, Dictionary] = {}
+## Lo de la última operación abierta con [method begin_op], para [method abort_op].
+var _open_mark: Dictionary = {}
+## Los uids vivos (uid → def_id) que tendrá la plataforma cuando le llegue el cuerpo siguiente: los del registro
+## cargado y, tras cada [method build_section], los de su foto (los cuerpos de un personaje se aplican en orden).
+var _saved_uids: Dictionary[int, StringName] = {}
 
 
 func _init(p_record: ProgressRecord, p_persistent: bool, ids: IdAllocator, db: ItemDatabase) -> void:
@@ -94,6 +99,7 @@ func _init(p_record: ProgressRecord, p_persistent: bool, ids: IdAllocator, db: I
 	_ledger_balance = record.wallets.duplicate()
 	last_currency_reasons.resize(Currency.WALLET_SIZE)
 	_confirmed = _snapshot(null)
+	_saved_uids = _live_uids()
 
 
 ## El generador de ids que usa.
@@ -143,7 +149,8 @@ func apply_request(request: InventoryOps.Request, context: InventoryOps.Context)
 ## Abre una operación suelta de [param kind] (kit, GM, reversión) con el actor, la [param note] y el
 ## [param detail] del rastro (§10), tras cerrar lo agregado como una GAMEPLAY. Va al diario ya: lo que se le añada
 ## ([method add_items], [method remove_items], [method change_currency]) sale con ella. null si no hay ids del tramo
-## del servidor (para cerrar o para ella; lo cerrado se queda en el diario).
+## del servidor (para cerrar o para ella; lo cerrado se queda en el diario). Guarda el estado de justo después de
+## cerrar lo agregado para [method abort_op] (P5d: «todo o nada» de §10).
 func begin_op(kind: int, actor_account_id: int, note: String, detail: Dictionary) -> EconomyOp:
 	if not _close_aggregate(_ids.next_for_server):
 		return null
@@ -152,6 +159,12 @@ func begin_op(kind: int, actor_account_id: int, note: String, detail: Dictionary
 		return null
 	var op: EconomyOp = EconomyOp.create(id, kind, actor_account_id, note, detail)
 	_append(op)
+	_open_mark = {
+		"op": op, "inventory": record.inventory.duplicate_state(), "wallets": record.wallets.duplicate(),
+		"ledger_balance": _ledger_balance.duplicate(), "realm_points": record.realm_points, "level": record.level,
+		"xp_total": record.xp_total, "reasons": last_currency_reasons.duplicate(), "revision": revision,
+		"pending_xp_gain": pending_xp_gain, "pending_xp_source": pending_xp_source,
+	}
 	return op
 
 
@@ -164,19 +177,52 @@ func discard_op(op: EconomyOp) -> bool:
 	return true
 
 
+## Deshace [param op] entera (P5d, «todo o nada» de §10): si es la última del diario, aún no ha salido en ningún
+## cuerpo y es la última abierta con [method begin_op], vuelven el inventario, los saldos, los puntos de reino, el
+## nivel y la XP de justo después de abrirla y la operación sale del diario (lo agregado que cerró se queda). Su id
+## y los de las pilas que creó se pierden. true si la deshace.
+func abort_op(op: EconomyOp) -> bool:
+	if op == null or _open_mark.get("op") != op or _journal.is_empty() or _journal[-1] != op or op.save_seq != 0:
+		return false
+	record.inventory = _open_mark["inventory"]
+	record.wallets = _open_mark["wallets"]
+	_ledger_balance = _open_mark["ledger_balance"]
+	record.realm_points = _open_mark["realm_points"]
+	record.level = _open_mark["level"]
+	record.xp_total = _open_mark["xp_total"]
+	last_currency_reasons = _open_mark["reasons"]
+	revision = _open_mark["revision"]
+	pending_xp_gain = _open_mark["pending_xp_gain"]
+	pending_xp_source = _open_mark["pending_xp_source"]
+	_open_mark = {}
+	_journal.pop_back()
+	return true
+
+
 ## Crea [param count] unidades de [param def_id] en la bolsa dentro de [param op] (fuente o interno): a las pilas
 ## con hueco y el resto en pilas nuevas con ids del tramo del servidor. false si no cabe, faltan ids o la
 ## operación ya salió en un cuerpo: entonces nada cambia.
 func add_items(op: EconomyOp, def_id: StringName, count: int, reason: int) -> bool:
+	return op_add_items(op, def_id, count, reason).is_ok()
+
+
+## [method add_items] con su [InventoryOps.Outcome] (las ranuras del INVENTORY_DELTA). Una operación cerrada da
+## NOT_NOW.
+func op_add_items(op: EconomyOp, def_id: StringName, count: int, reason: int) -> InventoryOps.Outcome:
 	if not _is_open(op):
-		return false
-	var outcome: InventoryOps.Outcome = InventoryOps.add_items(record.inventory, def_id, count, reason,
-			_server_context())
-	if not outcome.is_ok():
-		return false
-	op.items.append_array(outcome.events)
-	revision += 1
-	return true
+		return _refused(InventoryOps.Result.NOT_NOW)
+	return _record_in(op, InventoryOps.add_items(record.inventory, def_id, count, reason, _server_context()))
+
+
+## Crea [param count] unidades de [param def_id] dentro de [param op] en pilas nuevas en las primeras ranuras libres
+## de la bolsa, sin juntar ([method InventoryOps.create_items]: el [code]item_give[/code] de GM y lo que recrea una
+## reversión), copiando los campos de [param template] si la hay.
+func op_create_items(op: EconomyOp, def_id: StringName, count: int, reason: int,
+		template: ItemInstance = null) -> InventoryOps.Outcome:
+	if not _is_open(op):
+		return _refused(InventoryOps.Result.NOT_NOW)
+	return _record_in(op, InventoryOps.create_items(record.inventory, def_id, count, reason, _server_context(),
+			template))
 
 
 ## Quita [param count] unidades de [param def_id] dentro de [param op] (sumidero o interno), primero de
@@ -184,15 +230,16 @@ func add_items(op: EconomyOp, def_id: StringName, count: int, reason: int) -> bo
 ## ranura activa (I10): quitar un arma equipada es cosa de quien llama.
 func remove_items(op: EconomyOp, def_id: StringName, count: int, reason: int,
 		prefer_uid: int = 0) -> bool:
+	return op_remove_items(op, def_id, count, reason, prefer_uid).is_ok()
+
+
+## [method remove_items] con su [InventoryOps.Outcome], sin tocar las ranuras de [param protected] (la activa del
+## equipo en una reversión, §10).
+func op_remove_items(op: EconomyOp, def_id: StringName, count: int, reason: int, prefer_uid: int = 0,
+		protected: Array[Vector2i] = []) -> InventoryOps.Outcome:
 	if not _is_open(op):
-		return false
-	var outcome: InventoryOps.Outcome = InventoryOps.remove_items(record.inventory, def_id, count, reason,
-			prefer_uid)
-	if not outcome.is_ok():
-		return false
-	op.items.append_array(outcome.events)
-	revision += 1
-	return true
+		return _refused(InventoryOps.Result.NOT_NOW)
+	return _record_in(op, InventoryOps.remove_items(record.inventory, def_id, count, reason, prefer_uid, protected))
 
 
 ## Un apunte de [param delta] en [param currency] dentro de [param op], con su [code]balance_after[/code]. Entero o
@@ -382,6 +429,13 @@ static func ready_tick_for(ends_at_unix: int, now_unix: int, s: int,
 ## cuerpo; los temporizadores vencidos fuera) y devuelve el registro sin los campos de solo lectura con
 ## [code]ops[/code]: solo las operaciones con [member EconomyOp.save_seq] 0, a las que pone [param seq]. Sin id para
 ## cerrar lo agregado devuelve [code]{}[/code] sin tocar nada (§4.5).
+## [br][br]
+## [b]Uids de los eventos[/b] (S4, §13.3: un evento con [code]uid[/code] que suma es de uno que no estaba vivo en la
+## base, y uno que resta, de uno que sí): el cuerpo lleva el [code]uid[/code] de un evento solo si cumple eso con lo
+## que tendrá la base al recibirlo (la foto del cuerpo anterior o el registro cargado); si no, [code]null[/code],
+## como un evento agregado. Pasa al destruir o quitar una pila que aún no se ha guardado (la mitad de un SPLIT) o al
+## sumar a una que ya estaba guardada (el 16 de GM, que junta). Las cantidades no cambian, y el diario conserva el
+## [code]uid[/code] de verdad.
 func build_section(seq: int) -> Dictionary:
 	if not _close_aggregate(_ids.next_for_build):
 		return {}
@@ -391,10 +445,11 @@ func build_section(seq: int) -> Dictionary:
 	for op: EconomyOp in _journal:
 		if op.save_seq == 0:
 			op.save_seq = seq
-			ops.append(op.to_dictionary())
+			ops.append(_saved_form(op))
 	var data: Dictionary = record.to_dictionary()
 	data["ops"] = ops
 	_built[seq] = _snapshot(live)
+	_saved_uids = _live_uids()
 	return data
 
 
@@ -451,6 +506,43 @@ func _server_context() -> InventoryOps.Context:
 # Una operación del diario que aún no ha salido en ningún cuerpo (lo enviado no cambia).
 func _is_open(op: EconomyOp) -> bool:
 	return op != null and op.save_seq == 0 and _journal.has(op)
+
+
+# Los uids vivos del inventario (uid → def_id).
+func _live_uids() -> Dictionary[int, StringName]:
+	var uids: Dictionary[int, StringName] = {}
+	for item: ItemInstance in record.inventory.all_items():
+		uids[item.uid] = item.def_id
+	return uids
+
+
+# La entrada de ops de [param op] en el cuerpo: sin el uid de los eventos que S4 no admitiría con lo guardado
+# (ver build_section).
+func _saved_form(op: EconomyOp) -> Dictionary:
+	var data: Dictionary = op.to_dictionary()
+	var events: Array = data["items"]
+	for i: int in range(op.items.size()):
+		var event: ItemEvent = op.items[i]
+		if event.uid == 0:
+			continue
+		var saved: bool = _saved_uids.get(event.uid, &"") == event.def_id
+		if (event.count_delta > 0 and _saved_uids.has(event.uid)) or (event.count_delta < 0 and not saved):
+			(events[i] as Dictionary)["uid"] = null
+	return data
+
+
+static func _refused(result: int) -> InventoryOps.Outcome:
+	var outcome := InventoryOps.Outcome.new()
+	outcome.result = result
+	return outcome
+
+
+# Los eventos de [param outcome], si se aplicó, pasan a [param op] y la revisión sube.
+func _record_in(op: EconomyOp, outcome: InventoryOps.Outcome) -> InventoryOps.Outcome:
+	if outcome.is_ok():
+		op.items.append_array(outcome.events)
+		revision += 1
+	return outcome
 
 
 func _append(op: EconomyOp) -> void:

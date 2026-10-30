@@ -96,6 +96,10 @@ class Command:
 	var network_handler: Callable = Callable()
 	## Rol mínimo para usarlo por el chat ([code]/gm[/code]) o, con la plataforma, por DEBUG_COMMAND.
 	var min_role: StringName = DEFAULT_MIN_ROLE
+	## Rol mínimo por DEBUG_COMMAND con la plataforma si es otro (vacío: [member min_role]). Los que crean o conservan
+	## valor del propio personaje piden [code]admin[/code] por la red aunque por [code]/gm[/code] baste
+	## [code]gm[/code] (progresion.md §10).
+	var network_min_role: StringName = &""
 
 
 ## Lo que recibe un manejador.
@@ -123,15 +127,23 @@ class Context:
 	## La [code]key[/code] de esa entrada si el comando la fija: [code]op:<op_id>[/code] en uno que crea una operación
 	## (§9.1, «Dos vías, una fila»; progresion.md P5d). Vacía: la pone [ZonePlatform].
 	var audit_key: String = ""
+	## La hora Unix de esa entrada si el comando la fija: el [code]detail.at_unix[/code] de la operación que crea, para
+	## que la entrada y la fila del guardado (S8) lleven la misma (progresion.md P5d). 0: la de ahora.
+	var audit_at_unix: int = 0
+	## true si la entrada del lote la arma el comando más tarde (el [code]op_revert[/code] con plataforma: su
+	## REVERSAL, con su [code]op:<op_id>[/code], se crea al llegar la respuesta de la plataforma; progresion.md P5d).
+	var audit_deferred: bool = false
 
 
 ## Registra el comando [param command_name]. [param console_handler] atiende la consola (y [code]/gm[/code]) y
 ## [param network_handler] (opcional) la red; este último exige que el nombre tenga su id fijo en
 ## [constant NetProtocol.DEBUG_COMMAND_IDS]. [param min_role] es el rol mínimo para el chat y, con la plataforma,
-## para la red. Devuelve false (y registra un error) si el nombre ya existe, no tiene ningún manejador, es de red
-## sin id fijo o el rol no existe.
+## para la red; [param network_min_role], si no está vacío, el de la red (progresion.md P5d: los 40–43 y el 16 piden
+## [code]admin[/code] por DEBUG_COMMAND y [code]gm[/code] por [code]/gm[/code]). Devuelve false (y registra un
+## error) si el nombre ya existe, no tiene ningún manejador, es de red sin id fijo o el rol no existe.
 func register(command_name: StringName, usage: String, console_handler: Callable,
-		network_handler: Callable = Callable(), min_role: StringName = DEFAULT_MIN_ROLE) -> bool:
+		network_handler: Callable = Callable(), min_role: StringName = DEFAULT_MIN_ROLE,
+		network_min_role: StringName = &"") -> bool:
 	if _commands.has(command_name):
 		push_error("[Eldmark] Comando duplicado: '%s'" % command_name)
 		return false
@@ -141,7 +153,7 @@ func register(command_name: StringName, usage: String, console_handler: Callable
 	if network_handler.is_valid() and not NetProtocol.DEBUG_COMMAND_IDS.has(command_name):
 		push_error("[Eldmark] El comando de red '%s' no tiene un id fijo en NetProtocol" % command_name)
 		return false
-	if role_rank(min_role) < 0:
+	if role_rank(min_role) < 0 or (not network_min_role.is_empty() and role_rank(network_min_role) < 0):
 		push_error("[Eldmark] Rol desconocido para '%s': %s" % [command_name, min_role])
 		return false
 	var command := Command.new()
@@ -150,6 +162,7 @@ func register(command_name: StringName, usage: String, console_handler: Callable
 	command.console_handler = console_handler
 	command.network_handler = network_handler
 	command.min_role = min_role
+	command.network_min_role = network_min_role
 	_commands[command_name] = command
 	return true
 
@@ -169,6 +182,14 @@ static func role_allows(role: StringName, min_role: StringName) -> bool:
 func get_min_role(command_name: StringName) -> StringName:
 	var command: Command = _commands.get(command_name)
 	return command.min_role if command != null else &""
+
+
+## El rol mínimo del comando por DEBUG_COMMAND con la plataforma (vacío si no existe).
+func get_network_min_role(command_name: StringName) -> StringName:
+	var command: Command = _commands.get(command_name)
+	if command == null:
+		return &""
+	return command.network_min_role if not command.network_min_role.is_empty() else command.min_role
 
 
 ## true si quien tiene [param role] puede usar [param command_name] por el chat ([code]/gm[/code]).
@@ -225,8 +246,9 @@ func execute_network(peer: ServerPeer, command_id: int, payload: PackedByteArray
 		_audit(source, "id %d" % command_id, "desconocido")
 		return Result.UNKNOWN
 	var what: String = String(command.name) if payload.is_empty() else "%s [%d B]" % [command.name, payload.size()]
-	if not role.is_empty() and not role_allows(role, command.min_role):
-		_audit(source, what, "sin permiso (%s; hace falta %s)" % [role, command.min_role])
+	var needed: StringName = get_network_min_role(command.name)
+	if not role.is_empty() and not role_allows(role, needed):
+		_audit(source, what, "sin permiso (%s; hace falta %s)" % [role, needed])
 		return Result.FORBIDDEN
 	var context := Context.new()
 	context.source = source

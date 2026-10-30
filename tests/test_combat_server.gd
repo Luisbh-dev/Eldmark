@@ -646,10 +646,9 @@ func test_console_commands() -> void:
 	# Los ids 7 a 12 (protocolo 4) son fijos y todos tienen ya su manejador: el /atascado y los cuatro comandos del
 	# fuerte los registró F3 y npc_debug, F4. De los del protocolo 6 (13 a 16, docs/habilidades.md §5.1),
 	# cooldowns_off y apply_status llegaron con H3a y down y refill, con H3c. Los cuatro de la progresión del
-	# protocolo 7 (40 a 43, docs/progresion.md §10) tienen id y llegan con su manejador en progresion.md P5d.
-	assert_eq(commands.missing_network_commands(),
-			PackedStringArray(["currency_add", "item_give", "level_set", "xp_add"]),
-			"todos los comandos de red tienen manejador salvo los de la progresión (P5d)")
+	# protocolo 7 (40 a 43, docs/progresion.md §10), con progresion.md P5d.
+	assert_eq(commands.missing_network_commands(), PackedStringArray(),
+			"todos los comandos de red tienen manejador")
 	assert_true(_server.console_command("help").contains("teleport"))
 	assert_true(_server.console_command("noexiste").begins_with("Comando desconocido"))
 	# Daño, curar y matar.

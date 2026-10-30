@@ -142,11 +142,19 @@ var notice_sink: Callable = Callable()
 ## [code](net_id: int, level: int, s: int) -> void[/code]: el ENTITY_EVENT LEVEL_UP al dueño y a los de su reino que
 ## lo tienen relevante (§6.3; lo pone la zona).
 var level_up_sink: Callable = Callable()
+## [code](peer: ServerPeer, text: String) -> void[/code]: una línea de respuesta de un comando de [code]/gm[/code]
+## por el canal del sistema del chat (P5d; lo pone la zona).
+var reply_sink: Callable = Callable()
+## [code]() -> int[/code]: la hora Unix sin plataforma (P5d: el [code]detail.at_unix[/code] de las operaciones de GM
+## de los efímeros; lo pone la zona). Con plataforma manda [method ZonePlatform.now_unix].
+var clock_unix: Callable = Callable()
 
 var _zone: ZoneServer = null
 var _platform: ZonePlatform = null
 var _saver: CharacterSaver = null
 var _commands: CommandRegistry = null
+## Los comandos de GM de §10 (P5d); null sin registro de comandos.
+var _gm: ProgressCommands = null
 var _ids: IdAllocator = null
 var _db: ItemDatabase = null
 ## peer_id -> lo preparado en la reclamación, hasta el alta o la baja en LOADING.
@@ -178,13 +186,16 @@ var _stats: Dictionary[StringName, int] = {
 ## Engancha el servicio a [param zone]: con [param platform] y [param saver] (null sin plataforma, §9.4), registra la
 ## sección [code]progress[/code] en [param saver] (la primera: es la única que puede devolver [code]{}[/code], y
 ## [CharacterSaver] no deshace lo que haya construido otra antes en ese intento) y usa los bloques de la plataforma;
-## sin ella, ids locales. [param commands] es para los comandos de GM (P5d).
+## sin ella, ids locales. En [param commands] registra los comandos de GM de §10 ([ProgressCommands], P5d).
 func setup(zone: ZoneServer, platform: ZonePlatform, saver: CharacterSaver, commands: CommandRegistry) -> void:
 	_zone = zone
 	_platform = platform
 	_saver = saver
 	_commands = commands
 	_db = ItemDatabase.shared()
+	if _commands != null:
+		_gm = ProgressCommands.new(self, zone, platform)
+		_gm.register_commands(_commands)
 	if _platform == null:
 		_ids = IdAllocator.local()
 	else:
@@ -473,7 +484,7 @@ func camp_step(entity: NetEntity, s: int) -> void:
 ## El comando 16 [code]refill[/code] (y el [code]refill[/code] de la consola) para quien tiene inventario (§4.4):
 ## sin plataforma, un CAMP_REFILL forzado (agregado) sin mirar zona ni combate, con su delta, las cargas y LOADOUT
 ## al dueño. false si [param net_id] no tiene inventario o no está vivo; también con plataforma, donde es una
-## operación GM (progresion.md P5d) que aún no existe.
+## operación GM ([method ProgressCommands.net_refill], P5d).
 func force_refill(net_id: int, s: int) -> bool:
 	var session: _Session = _sessions.get(net_id)
 	var combatant: Combatant = session.combatant if session != null else null
@@ -640,8 +651,8 @@ func pending_count() -> int:
 
 
 ## Un evento de la plataforma de los suyos (§14.2): [code]id_block[/code] (un bloque nuevo; si quedan pocos, pide
-## otro), [code]progress_op[/code] y [code]progress_ledger[/code] (las respuestas de [code]op_show[/code] y
-## [code]ledger_show[/code], P5d: hasta entonces se descartan). true si era suyo.
+## otro), [code]progress_op[/code] y [code]progress_ledger[/code] (las respuestas de [code]op_show[/code],
+## [code]op_revert[/code] y [code]ledger_show[/code], que atiende [ProgressCommands]). true si era suyo.
 func on_platform_event(event: PlatformEvent) -> bool:
 	match event.kind:
 		PlatformEvent.KIND_ID_BLOCK:
@@ -657,6 +668,8 @@ func on_platform_event(event: PlatformEvent) -> bool:
 			_check_ids()
 			return true
 		PlatformEvent.KIND_PROGRESS_OP, PlatformEvent.KIND_PROGRESS_LEDGER:
+			if _gm != null:
+				_gm.on_platform_event(event)
 			return true
 	return false
 
@@ -681,7 +694,147 @@ func get_stats() -> Dictionary:
 	stats["players"] = _players.size()
 	stats["prepared_now"] = _prepared.size()
 	stats["ids_available"] = _ids.available() if _ids != null and not _ids.is_local() else -1
+	if _gm != null:
+		stats["gm"] = _gm.get_stats()
 	return stats
+
+
+# --- Lo que usan los comandos de GM (P5d, [ProgressCommands]) ------------------------------------
+
+## Los comandos de GM de §10 (null sin registro de comandos).
+func gm_commands() -> ProgressCommands:
+	return _gm
+
+
+## La hora Unix: la de la plataforma o, sin ella, la de [member clock_unix] (0 si no hay ninguna).
+func now_unix() -> int:
+	if _platform != null:
+		return _platform.now_unix()
+	return int(clock_unix.call()) if clock_unix.is_valid() else 0
+
+
+## El [code]net_id[/code] del jugador con progreso conectado en esta zona que nombra [param text] (su
+## [code]net_id[/code] o su nombre, sin distinguir mayúsculas ni tildes), o 0.
+func find_connected(text: String) -> int:
+	var wanted: String = text.strip_edges()
+	var key: String = NameRules.normalize_key(wanted)
+	for session: _Session in _session_list:
+		if not _is_reachable(session):
+			continue
+		if (wanted.is_valid_int() and wanted.to_int() == session.net_id) \
+				or NameRules.normalize_key(session.peer.display_name) == key:
+			return session.net_id
+	return 0
+
+
+## El [code]net_id[/code] del personaje persistente [param character_id] si está conectado en esta zona, o 0.
+func connected_net_id_of(character_id: int) -> int:
+	for session: _Session in _session_list:
+		if session.player.persistent and session.player.character_id == character_id and _is_reachable(session):
+			return session.net_id
+	return 0
+
+
+## true si [param net_id] tiene progreso y su peer sigue en el mundo con ese cuerpo.
+func is_connected_player(net_id: int) -> bool:
+	var session: _Session = _sessions.get(net_id)
+	return session != null and _is_reachable(session)
+
+
+## El peer de [param net_id] si sigue en el mundo con ese cuerpo, o null.
+func peer_of(net_id: int) -> ServerPeer:
+	var session: _Session = _sessions.get(net_id)
+	return session.peer if session != null and _is_reachable(session) else null
+
+
+## Los [code]net_id[/code] con [PlayerProgress] (también el cuerpo que se queda tras una salida en combate).
+func player_net_ids() -> PackedInt32Array:
+	return PackedInt32Array(_players.keys())
+
+
+## La ranura de arma activa de [param net_id] (bit0 de [code]combat_flags2[/code] del [CombatState]; sin cuerpo, la
+## del registro).
+func active_weapon_slot(net_id: int) -> int:
+	var session: _Session = _sessions.get(net_id)
+	if session != null and session.combatant != null:
+		return 1 if session.combatant.get_character().combat.is_second_slot() else 0
+	var player: PlayerProgress = _players.get(net_id)
+	return player.saved_active_slot() if player != null else 0
+
+
+## true si se le pueden cambiar las armas a [param net_id] ahora (sin una acción en curso: [method
+## ActionMachine.set_weapons] solo vale con la acción NONE).
+func can_change_weapons(net_id: int) -> bool:
+	var session: _Session = _sessions.get(net_id)
+	return session != null and session.combatant != null \
+			and session.combatant.get_character().combat.action == CombatState.Action.NONE
+
+
+## true si [param net_id] tiene cuerpo y está vivo.
+func is_alive(net_id: int) -> bool:
+	var session: _Session = _sessions.get(net_id)
+	return session != null and session.combatant != null and session.combatant.is_alive()
+
+
+## Lo que un comando de GM ha cambiado en el inventario de [param net_id] en el tick [param s] (§4.4): el
+## INVENTORY_DELTA del servidor con [param reason], las armas si tocó las ranuras de arma ([param weapons_changed]) y
+## las cargas, con LOADOUT al dueño si cambian (o siempre, con [param always_loadout]: el 16).
+func after_gm_change(net_id: int, changed: Array[Vector2i], weapons_changed: bool, reason: int, s: int,
+		always_loadout: bool = false) -> void:
+	var session: _Session = _sessions.get(net_id)
+	if session == null:
+		return
+	var unique: Array[Vector2i] = []
+	for position: Vector2i in changed:
+		if not unique.has(position):
+			unique.append(position)
+	if not unique.is_empty():
+		_send_server_delta(session, unique, reason)
+	if session.combatant == null:
+		return
+	if weapons_changed:
+		_impose_weapons(session, session.combatant, s)
+	_impose_charges(session, session.combatant, s, always_loadout)
+
+
+## Tras un cambio de nivel de GM de [param net_id] (que tenía [param old_level]) en el tick [param s]: el nivel en la
+## entidad (los SPAWN siguientes) y, si sube, el LEVEL_UP (§6.3). PROGRESS_UPDATE sale en [method flush].
+func after_level_change(net_id: int, old_level: int, s: int) -> void:
+	var player: PlayerProgress = _players.get(net_id)
+	if player == null or player.record.level == old_level:
+		return
+	var entity: NetEntity = _entity(net_id)
+	if entity != null:
+		entity.level = player.record.level
+	if player.record.level > old_level:
+		_stats[&"level_ups"] += 1
+		if level_up_sink.is_valid():
+			level_up_sink.call(net_id, player.record.level, s)
+
+
+## Un comando de GM ha cambiado el personaje de [param net_id]: guardado crítico [code]gm[/code] (§9.2).
+func mark_gm_critical(net_id: int) -> void:
+	var player: PlayerProgress = _players.get(net_id)
+	if _saver != null and player != null and player.persistent:
+		_saver.mark_critical(net_id, ProgressCommands.CRITICAL_GM)
+
+
+## Una línea de respuesta a [param peer] por el canal del sistema del chat (los comandos de [code]/gm[/code]).
+func reply(peer: ServerPeer, text: String) -> void:
+	if reply_sink.is_valid() and peer != null:
+		reply_sink.call(peer, text)
+
+
+## Una línea para el registro de la zona.
+func log_line(text: String) -> void:
+	_log(text)
+
+
+## Un NOTICE informativo a [param net_id] si sigue en el mundo (la razón de un DEBUG_COMMAND rechazado).
+func notice(net_id: int, text: String) -> void:
+	var session: _Session = _sessions.get(net_id)
+	if session != null and notice_sink.is_valid() and _is_reachable(session):
+		notice_sink.call(session.peer, text)
 
 
 # --- La sección progress de CharacterSaver (§9.2) ------------------------------------------------

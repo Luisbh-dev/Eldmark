@@ -773,8 +773,10 @@ inmediata sin esperar al timeout.
   exista lo mira el servidor) y `u16` cantidad (1 a 999); 41, `u8` moneda (1 oro, 2 méritos) y `s32` cantidad
   (≠ 0; la `note` es «debug»); 42, `u8` nivel (1 a 40); 43, `u32` XP (1 a 10 000 000). Un id fijo cuyo manejador
   aún no existe en el servidor se acepta sin aviso y sin efecto (los de 7 a 12 hasta que llegaron F3 y F4; 13
-  y 14 hasta H3a, 15 y 16 hasta H3c; 40 a 43 hasta progresion.md P5d). Con `--platform`, el rol que pide cada
-  uno es de progresion.md §10 y plataforma.md §9.1. `NetProtocol.DEBUG_COMMAND_IDS` es la tabla
+  y 14 hasta H3a, 15 y 16 hasta H3c; 40 a 43 hasta progresion.md P5d, que los trae). Con `--platform`, el rol que
+  pide cada uno es de progresion.md §10 y plataforma.md §9.1: `admin` en el 5, el 13, el 16 y del 40 al 43 (crean o
+  conservan valor del propio personaje o se saltan su equipo), `gm` en los demás; el 16 y del 40 al 43 crean entonces
+  una operación GM con `note` «debug» y guardado crítico. `NetProtocol.DEBUG_COMMAND_IDS` es la tabla
   nombre → id con la que el registro de comandos del servidor comprueba que todo comando de red
   tiene su id. `announce`, `kick` y `shutdown` no tienen id: son de consola y, con la plataforma, de `/gm`
   con rol `admin` (v7).

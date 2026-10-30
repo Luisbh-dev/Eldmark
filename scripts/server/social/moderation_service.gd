@@ -555,7 +555,11 @@ func _on_sanction(event: PlatformEvent, context: Dictionary) -> void:
 
 # La entrada del lote de auditoría de un comando ejecutado (CommandRegistry.audit_entry_sink, §9.1).
 func _audit_entry(ctx: CommandRegistry.Context, command_name: StringName, _result: String) -> void:
-	var entry: Dictionary = {"command": String(command_name), "at_unix": now_unix(), "actor_account_id": null,
+	if ctx.audit_deferred:
+		return
+	# Un comando que crea una operación fija la hora: la de su detail.at_unix, la misma que la fila del guardado (S8).
+	var at_unix: int = ctx.audit_at_unix if ctx.audit_at_unix > 0 else now_unix()
+	var entry: Dictionary = {"command": String(command_name), "at_unix": at_unix, "actor_account_id": null,
 			"actor_character_id": null, "target_character_id": null, "target_account_id": null}
 	var target: NetEntity = ctx.target
 	if ctx.origin == CommandRegistry.Origin.CONSOLE:
