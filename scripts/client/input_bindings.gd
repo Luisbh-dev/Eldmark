@@ -9,6 +9,10 @@ extends RefCounted
 ## [br][br]Estas asignaciones son solo los valores por defecto: más adelante el
 ## jugador podrá reasignarlas desde las opciones y se guardarán en su perfil.
 ## Por eso [method ensure_defaults] nunca pisa una acción que ya exista.
+## [br][br][b]Espacio no confirma en la interfaz.[/b] Godot trae Espacio en [code]ui_accept[/code], pero en el juego es
+## saltar y las ventanas no suspenden la entrada de juego (UI-47): con el menú social abierto (su primer botón tiene el
+## foco), saltar pulsaba «Invitar al grupo». [method ensure_defaults] lo quita de [code]ui_accept[/code]; Intro sigue
+## confirmando (revisión de la fase 4, cliente).
 
 ## Valor de [member InputEvent.device] que acepta cualquier dispositivo.
 const ALL_DEVICES: int = -1
@@ -61,6 +65,18 @@ static func ensure_defaults() -> void:
 	# Menú de jugador (SOC-07). Era T, provisional: T es la poción de resistencia desde la fase 4
 	# (docs/habilidades.md, sección 0, y sección 11.7).
 	_ensure_key(&"social_menu", KEY_G)
+	# Espacio es saltar: no pulsa el botón que tenga el foco.
+	_erase_key(&"ui_accept", KEY_SPACE)
+
+
+## Quita de [param action] (si existe) los eventos de la tecla [param keycode] (por código o por código físico).
+static func _erase_key(action: StringName, keycode: Key) -> void:
+	if not InputMap.has_action(action):
+		return
+	for event: InputEvent in InputMap.action_get_events(action):
+		var key: InputEventKey = event as InputEventKey
+		if key != null and (key.keycode == keycode or key.physical_keycode == keycode):
+			InputMap.action_erase_event(action, event)
 
 
 static func _ensure_key(action: StringName, physical_keycode: Key) -> void:

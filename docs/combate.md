@@ -854,10 +854,12 @@ Cerrado durante K5 (integración):
   antes de contar como fallo (mientras tanto `get_stats()` la cuenta según lo que sabe). Estadística
   nueva: `combat_diffs`. Fase 4 (H4, [habilidades.md 5.4](habilidades.md#54-entity_event-y-fuentes)): también
   un STATUS de movimiento sobre uno mismo, su DOWNED, un INTERACT donde es el derribado o quien actúa y su
-  LOADOUT. Medido en una refriega de 6 bots de combate con rtt=120, jitter=20 y 5 % de
-  pérdida (`test_combat_reconciliation`): 40 golpes, 4 muertes, 2-4 correcciones por bot, todas
-  explicadas (sustitución o combate), ningún reinicio duro ni resincronización y convergencia exacta
-  al quedarse quietos.
+  LOADOUT. Revisión de la fase 4 (cliente): también un cambio de la puerta del fuerte para el reino propio
+  que llega con la predicción ya por delante (`gate_diffs`, [fuerte.md 3.2](fuerte.md#32-predicción-exacta)).
+  Medido en una refriega de 6 bots de combate con rtt=120, jitter=20 y 5 % de pérdida
+  (`test_combat_reconciliation`): 40 golpes, 4 muertes, 2-4 correcciones por bot, todas explicadas
+  (sustitución o combate), ningún reinicio duro ni resincronización y convergencia exacta al quedarse
+  quietos.
 - **Carga de combate** (TEC-15; cifras y límite en red.md 14): `load_test.gd --brawl` mide refriegas de 32, 64
   y 128 combatientes (falsos con `--fake-brain=combat` en un corro, `--fake-center`, y 10 bots reales con
   `--bot-brain=combat`). El servidor cuenta aparte las secciones `combat_resolve` (golpes con

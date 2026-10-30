@@ -70,6 +70,13 @@ func get_button(template_id: int) -> Button:
 	return _buttons.get(template_id)
 
 
+## Con [param focusable] false, los botones no toman el foco ni con un clic (la pantalla de muerte, que se maneja con el
+## ratón y deja Tab e Intro para el juego); por defecto lo toman, para navegar con el teclado.
+func set_buttons_focusable(focusable: bool) -> void:
+	for button: Button in _buttons.values():
+		button.focus_mode = Control.FOCUS_ALL if focusable else Control.FOCUS_NONE
+
+
 func _build() -> void:
 	_title = Label.new()
 	_title.name = "Titulo"

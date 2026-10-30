@@ -922,7 +922,9 @@ demás mensajes del canal 3.
 - **TELEGRAPH**: el `net_id` es el PNJ que prepara el ataque. `position` va empaquetada como en el
   registro de entidad (20 bits por eje, 1 cm), `yaw` como en el registro (0..65535 sobre [0, TAU)),
   `radius_cm` es el alcance y `impact_in_ticks` los ticks que faltan para el golpe. Se aplica al
-  llegar: es un aviso.
+  llegar: es un aviso. El golpe cae en `tick + impact_in_ticks` del servidor y lo esquiva la entrada
+  de ese tick, así que el cliente cuenta el plazo con su tick predicho, no con la hora de llegada
+  (la marca, los bots; [fuerte.md 5](fuerte.md#5-avisos-reaparición-salida-y-atascado)).
 
 - **Flags de HIT:** bit0 crítico, bit1 bloqueado, bit2 parado, bit3 rotura de guardia, bit4
   mortal; v6: bit5 interrumpido (beber, un lanzamiento marcado, levantar o rematar) y bit6 derriba.
@@ -2904,7 +2906,7 @@ func get_local_tick() -> int
 func get_last_server_state() -> PlayerState
 func get_stats() -> Dictionary
 ## Bots: snapshots con estado, coincidencias exactas, diferencias explicadas (sustitución,
-## teletransporte o combate: combat_diffs) y sin explicar, resincronizaciones, ajustes de TickSync y
+## teletransporte, combate: combat_diffs, o la puerta del fuerte: gate_diffs) y sin explicar, resincronizaciones, ajustes de TickSync y
 ## estado final.
 func write_report(path: String) -> Error
 

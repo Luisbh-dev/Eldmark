@@ -27,6 +27,11 @@ extends CanvasLayer
 ## [b]Marcador (UI-41).[/b] Mientras se mantiene Tab, el [ScoreboardPanel] (el último hijo, por encima de todo)
 ## enseña la tabla de la zona; el registro de bajas ([KillFeed]) vive en la interfaz de guerra.
 ## [br][br]
+## [b]Pistas (UI-42).[/b] En red, las [HintToasts] van justo encima de la pantalla de muerte y sin atenuar (la de
+## reaparecer es de esa pantalla) y debajo del mapa y del marcador, que las tapan: mientras uno de los dos está
+## abierto esperan ([member HintToasts.is_covered]). Al cerrarse la pantalla de muerte, la pista de reaparecer se
+## retira si aún no se había leído.
+## [br][br]
 ## [b]Chat (SOC-05).[/b] En red, la [ChatBox] abajo a la izquierda enseña los mensajes de [signal
 ## NetClient.chat_received] y los NOTICE; Intro abre su línea y suspende el movimiento y la cámara mientras se
 ## escribe.
@@ -84,6 +89,8 @@ var _war_hud: WarHud = null
 # Mapa a pantalla completa y marcador (por encima de la pantalla de muerte); null en el sandbox.
 var _world_map: WorldMap = null
 var _scoreboard: ScoreboardPanel = null
+# Pistas del juego (UI-42), por encima de la pantalla de muerte; null en el sandbox.
+var _hints: HintToasts = null
 # Caja de chat (SOC-05); null en el sandbox.
 var _chat: ChatBox = null
 # Interfaz de grupo (SOC-08): invitación y marcos; null en el sandbox.
@@ -175,6 +182,7 @@ func bind_net(client: NetClient, world: Node) -> void:
 		_setup_war_hud()
 		_setup_world_map()
 		_setup_scoreboard()
+		_setup_hints()
 		_setup_chat()
 		_setup_party()
 		_setup_social_menu()
@@ -273,6 +281,11 @@ func get_world_map() -> WorldMap:
 ## Marcador de la zona, Tab (null sin red).
 func get_scoreboard() -> ScoreboardPanel:
 	return _scoreboard
+
+
+## Pistas del juego (null sin red).
+func get_hints() -> HintToasts:
+	return _hints
 
 
 ## Caja de chat (null sin red).
@@ -392,6 +405,27 @@ func _setup_scoreboard() -> void:
 	_scoreboard.name = "Scoreboard"
 	add_child(_scoreboard)
 	_scoreboard.bind(_client)
+
+
+# Crea (de nuevo, si ya había unas) las pistas del juego: justo encima de la pantalla de muerte (sin atenuar: la de
+# reaparecer es de esa pantalla) y debajo del mapa y del marcador, que las tapan mientras están abiertos.
+func _setup_hints() -> void:
+	if is_instance_valid(_hints):
+		remove_child(_hints)
+		_hints.free()
+	_hints = HintToasts.new()
+	_hints.name = "HintToasts"
+	add_child(_hints)
+	move_child(_hints, _death.get_index() + 1)
+	_hints.bind(_client, _client.get_fortress_view(),
+			_war_hud.get_capture_panel() if is_instance_valid(_war_hud) else null)
+	_hints.is_covered = _hints_covered
+
+
+# true si el mapa o el marcador tapan las pistas.
+func _hints_covered() -> bool:
+	return (is_instance_valid(_world_map) and _world_map.is_open()) \
+			or (is_instance_valid(_scoreboard) and _scoreboard.is_open())
 
 
 # Crea (de nuevo, si ya había una) la caja de chat: por debajo de la pantalla de muerte, que es el último hijo
@@ -645,8 +679,8 @@ static func _options_signature(options: Array[RespawnPointList.Option], spread_s
 
 # Con la pantalla de muerte abierta y más de un sitio donde reaparecer, la pista del mapa (una sola vez).
 func _hint_respawn_map() -> void:
-	if is_instance_valid(_war_hud) and is_instance_valid(_war_hud.get_hints()) and _death.get_point_count() > 1:
-		_war_hud.get_hints().request(HintCatalog.RESPAWN_MAP)
+	if is_instance_valid(_hints) and _death.get_point_count() > 1:
+		_hints.request(HintCatalog.RESPAWN_MAP)
 
 
 func _on_map_requested() -> void:
@@ -686,6 +720,9 @@ func _on_death_opened() -> void:
 func _on_death_closed() -> void:
 	_set_dimmed(false)
 	_death_signature = ""
+	# La pista de reaparecer ya no viene a cuento (si no se había leído, vuelve en la siguiente muerte).
+	if is_instance_valid(_hints):
+		_hints.withdraw(HintCatalog.RESPAWN_MAP)
 	if is_instance_valid(_world_map) and _world_map.is_respawn_mode():
 		_world_map.close()
 	if is_instance_valid(_camera_rig):

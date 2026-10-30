@@ -45,7 +45,8 @@ extends Node
 ## [b]Fuerte[/b] (docs/fuerte.md, secciones 2, 3.2, 5 y 6; protocolo 4): el ENTITY_SPAWN de una estructura
 ## y los OBJECT_STATE los guarda [FortressView] (historia de cambios), que aplica la interfaz y los
 ## estandartes cuando el tick de dibujo alcanza el del mensaje y da la capa de la puerta de cada tick
-## simulado por el gancho [member ClientPrediction.before_simulate], también en las repeticiones. Los
+## simulado por el gancho [member ClientPrediction.before_simulate], también en las repeticiones (la
+## corrección de los ticks ya predichos con la puerta vieja cuenta como explicada: [code]gate_diffs[/code]). Los
 ## avisos de guerra (WAR) esperan en su propia cola a su tick de dibujo ([signal war_event]); los
 ## TELEGRAPH se entregan al llegar ([signal telegraph_received]). El SCOREBOARD se junta por páginas en un
 ## [ScoreboardState] ([signal scoreboard_updated]) y [PlayerDirectory] recuerda nombre y reino de cada
@@ -146,6 +147,12 @@ const MAX_REMEMBERED_EVENTS: int = 64
 ## o parado, una muerte, una reaparición: el servidor impone tambaleo, aturdimiento, empuje, resistencia
 ## gastada...) si el snapshot que la causó es del tick del evento o de los [constant COMBAT_EXPLAIN_TICKS]
 ## siguientes (los snapshots salen cada 2 ticks y alguno se pierde).
+## [br][br]
+## También se da por explicada por la puerta del fuerte (revisión de la fase 4, cliente): un OBJECT_STATE del tick
+## [code]s[/code] que cambia la capa de movimiento del reino propio en la puerta llega cuando la predicción ya va por
+## [code]P[/code], y los ticks de [code]s + 1[/code] a [code]P[/code] se simularon con la puerta vieja. Vale para los
+## snapshots de [code]s + 1[/code] a [code]P[/code] más estos mismos ticks (el primero que se compara puede ser algo
+## posterior). Estadística: [code]gate_diffs[/code].
 const COMBAT_EXPLAIN_TICKS: int = 12
 ## Ticks locales que se espera, antes de dar una diferencia por definitiva, a que llegue el evento que la
 ## explique: el ENTITY_EVENT va por el canal fiable y puede llegar después del snapshot.
@@ -269,6 +276,7 @@ var _explained_diffs: int = 0
 var _unexplained_diffs: int = 0
 var _combat_diffs: int = 0
 var _teleport_diffs: int = 0
+var _gate_diffs: int = 0
 var _consecutive_matches: int = 0
 var _last_result: int = ClientPrediction.Result.IGNORED
 var _resyncs: int = 0
@@ -281,6 +289,9 @@ var _pending_diffs: Array[Vector2i] = []
 # Ticks del servidor de los eventos de combate propios que imponen estado (golpe recibido, parada,
 # muerte, reaparición).
 var _imposed_ticks: PackedInt64Array = PackedInt64Array()
+# Intervalos de ticks del servidor (desde, hasta) cuyas diferencias explica un cambio de la puerta del fuerte para el
+# reino propio que llegó con la predicción ya por delante.
+var _gate_changes: Array[Vector2i] = []
 
 var _state_log: FileAccess = null
 var _state_log_failed: bool = false
@@ -711,9 +722,10 @@ func get_last_notice_text() -> String:
 ## [code]snapshots_with_state[/code] (con estado propio reconciliado), [code]malformed_packets[/code].
 ## [br]- [code]matches[/code] (coincidencias exactas), [code]ignored[/code], [code]diffs[/code]
 ## (estados que no coincidían y se repitieron), [code]explained_diffs[/code] (con una subida de
-## [code]substitutions[/code], un teletransporte o un evento de combate propio),
+## [code]substitutions[/code], un teletransporte, un evento de combate propio o un cambio de la puerta),
 ## [code]combat_diffs[/code] (las explicadas por el combate: lo que impone el servidor y el cliente no
-## predice), [code]unexplained_diffs[/code] (las demás: fallos de la predicción),
+## predice), [code]gate_diffs[/code] (las explicadas por un cambio de la puerta del fuerte que llegó con la
+## predicción por delante), [code]unexplained_diffs[/code] (las demás: fallos de la predicción),
 ## [code]teleport_diffs[/code], [code]corrections[/code] (las de más de 1 mm),
 ## [code]resimulated_ticks[/code], [code]last_correction[/code], [code]max_correction[/code],
 ## [code]consecutive_matches[/code] (racha actual), [code]last_result[/code].
@@ -743,11 +755,14 @@ func get_stats() -> Dictionary:
 	var prediction_stats: Dictionary = _prediction.get_stats()
 	# Las diferencias que aún esperan su evento cuentan ya, según lo que se sepa ahora.
 	var provisional_combat: int = 0
+	var provisional_gate: int = 0
 	var provisional_unexplained: int = 0
 	var unexplained_ticks: Array[int] = _unexplained_ticks.duplicate()
 	for pending: Vector2i in _pending_diffs:
 		if _is_imposed_at(pending.x):
 			provisional_combat += 1
+		elif _is_gate_change_at(pending.x):
+			provisional_gate += 1
 		else:
 			provisional_unexplained += 1
 			if unexplained_ticks.size() < MAX_REMEMBERED_EVENTS:
@@ -767,8 +782,9 @@ func get_stats() -> Dictionary:
 		"matches": prediction_stats["matches"],
 		"ignored": prediction_stats["ignored"],
 		"diffs": _diffs,
-		"explained_diffs": _explained_diffs + provisional_combat,
+		"explained_diffs": _explained_diffs + provisional_combat + provisional_gate,
 		"combat_diffs": _combat_diffs + provisional_combat,
+		"gate_diffs": _gate_diffs + provisional_gate,
 		"unexplained_diffs": _unexplained_diffs + provisional_unexplained,
 		"teleport_diffs": _teleport_diffs,
 		"corrections": prediction_stats["corrections"],
@@ -1002,14 +1018,56 @@ func _settle_pending_diffs() -> void:
 		_settle_diff(_pending_diffs.pop_front())
 
 
-# Una diferencia definitiva: de combate si un evento propio la explica, y si no un fallo de predicción.
+# Una diferencia definitiva: de combate si un evento propio la explica, de la puerta si la explica un cambio de la
+# puerta del fuerte, y si no un fallo de predicción.
 func _settle_diff(pending: Vector2i) -> void:
 	if _is_imposed_at(pending.x):
 		_combat_diffs += 1
 		_explained_diffs += 1
 		return
+	if _is_gate_change_at(pending.x):
+		_gate_diffs += 1
+		_explained_diffs += 1
+		return
 	_unexplained_diffs += 1
 	_remember(_unexplained_ticks, pending.y)
+
+
+# true si un cambio de la puerta para el reino propio explica una diferencia del snapshot del tick [param server_tick].
+func _is_gate_change_at(server_tick: int) -> bool:
+	for change: Vector2i in _gate_changes:
+		if server_tick >= change.x and server_tick <= change.y:
+			return true
+	return false
+
+
+# Capa de movimiento del reino propio (su bit) en la puerta de la fortaleza [param fortress_id] para el último tick
+# predicho, según lo que se sabe ahora; -1 sin predicción en marcha, sin reino o sin estado de esa fortaleza.
+func _own_gate_bit_at_prediction(fortress_id: int) -> int:
+	if not _prediction.is_started():
+		return -1
+	var realm: int = _welcome.realm if _welcome != null else (_config.realm if _config != null else 0)
+	var bit: int = PlayerCharacter.realm_layer(realm)
+	if bit == 0:
+		return -1
+	var layers: int = _fortress_view.get_gate_layers_for_tick(fortress_id, _prediction.get_predicted_tick())
+	return layers & bit if layers >= 0 else -1
+
+
+# Tras aplicar [param object_state]: si cambia la puerta para el reino propio en ticks que ya se predijeron con la
+# vieja ([param bit_before] es el bit de antes de aplicarlo), anota el intervalo de snapshots que eso explica.
+func _note_gate_change(object_state: NetMessages.ObjectState, bit_before: int) -> void:
+	if bit_before < 0:
+		return
+	var predicted: int = _prediction.get_predicted_tick()
+	if object_state.tick >= predicted:
+		return
+	var bit_after: int = _own_gate_bit_at_prediction(object_state.net_id)
+	if bit_after < 0 or bit_after == bit_before:
+		return
+	_gate_changes.append(Vector2i(object_state.tick + 1, predicted + COMBAT_EXPLAIN_TICKS))
+	if _gate_changes.size() > MAX_TRACKED_DIFFS:
+		_gate_changes.remove_at(0)
 
 
 # true si un evento de combate propio del tick del servidor [param server_tick] o de los
@@ -1346,7 +1404,9 @@ func _on_object_state(bytes: PackedByteArray) -> void:
 		_malformed_packets += 1
 		return
 	_object_states_received += 1
+	var gate_bit_before: int = _own_gate_bit_at_prediction(object_state.net_id)
 	_fortress_view.on_object_state(object_state)
+	_note_gate_change(object_state, gate_bit_before)
 
 
 # SCOREBOARD: se junta por páginas y, completo, se publica.

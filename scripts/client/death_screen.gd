@@ -15,6 +15,10 @@ extends Control
 ## [b]Plantilla de equipo[/b] (PRG-07, docs/habilidades.md, sección 6.5): debajo de los puntos de
 ## reaparición, el [TemplateSelector] ([method get_template_selector]); el [HUD] manda el LOADOUT_SELECT al
 ## elegir y la plantilla vale en esta reaparición.
+## [br][br]
+## [b]Con el ratón.[/b] Ningún control toma el foco ([constant Control.FOCUS_NONE]): si un clic en un punto o en una
+## plantilla se lo quedara, Tab movería el foco en vez de abrir el marcador (que se monta encima para verlo muerto) e
+## Intro pulsaría «Reaparecer» (revisión de la fase 4, cliente).
 
 ## El jugador pide reaparecer en el punto [param point_index] de la lista.
 signal respawn_requested(point_index: int)
@@ -297,14 +301,17 @@ func _build() -> void:
 	_points.name = "Puntos"
 	_points.select_mode = ItemList.SELECT_SINGLE
 	_points.auto_height = false
+	_points.focus_mode = Control.FOCUS_NONE
 	column.add_child(_points)
 	_map_button = Button.new()
 	_map_button.name = "Mapa"
 	_map_button.text = MAP_BUTTON_TEXT
 	_map_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_map_button.focus_mode = Control.FOCUS_NONE
 	_map_button.pressed.connect(func() -> void: map_requested.emit())
 	column.add_child(_map_button)
 	_templates = TemplateSelector.new()
+	_templates.set_buttons_focusable(false)
 	column.add_child(_templates)
 	_button = Button.new()
 	_button.name = "Reaparecer"
@@ -312,6 +319,7 @@ func _build() -> void:
 	_button.custom_minimum_size = Vector2(200.0, 48.0)
 	_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_button.disabled = true
+	_button.focus_mode = Control.FOCUS_NONE
 	_button.pressed.connect(_on_button_pressed)
 	column.add_child(_button)
 

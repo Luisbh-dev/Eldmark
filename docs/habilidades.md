@@ -1922,8 +1922,10 @@ los derribos (`tools/combat_balance.gd` ya mide hasta la caída).
   derribado y «Levantando a …»); `NetClient.is_downed()` (bit 3 del `status`); el registro de bajas enseña
   también los DOWNED.
 - **Plantillas**: `TemplateSelector` en la pantalla de muerte (manda el LOADOUT_SELECT con
-  `NetClient.send_loadout_select`) y en la elección de reino; `ClientConfig.loadout` (`--loadout=<plantilla>`)
-  sale en un LOADOUT_SELECT nada más llegar el WELCOME, antes de CLIENT_READY.
+  `NetClient.send_loadout_select`; allí sus botones no toman el foco, `set_buttons_focusable(false)`, para que Tab
+  siga abriendo el marcador e Intro no pulse «Reaparecer», revisión de la fase 4, cliente) y en la elección de reino;
+  `ClientConfig.loadout` (`--loadout=<plantilla>`) sale en un LOADOUT_SELECT nada más llegar el WELCOME, antes de
+  CLIENT_READY.
 - **Arco**: tensando, `CameraRig.set_aim_zoom` cierra el campo de visión al 75 % del configurado
   (`get_fov` sigue siendo el de los ajustes) y `Crosshair.set_tension` cierra la retícula con la carga.
 - **Teclas**: Q `swap_weapon`, R `consumable_1`, T `consumable_2` (en `InputBindings` y

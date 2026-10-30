@@ -149,7 +149,9 @@ static func start_server(viewport: SubViewport, config: ServerConfig) -> ZoneSer
 ## ([constant ClientConfig.BOT_BRAINS], [code]--bot-brain[/code]) y la plantilla de equipo [param loadout]
 ## ([code]--loadout[/code]: sale en un LOADOUT_SELECT nada más llegar el WELCOME, antes de CLIENT_READY; vacía =
 ## la de por defecto). Hace lo mismo que [OnlineMain] en modo
-## bot: carga la zona (la del viewport, sin lo visual), avisa en cuanto se autentica y, al aparecer,
+## bot: carga la zona (la del viewport, sin lo visual), le da esa zona a su [FortressView] (así enlaza las
+## fortalezas de su propio mundo y su gancho mueve su puerta, no la del servidor que vive en el mismo proceso),
+## avisa en cuanto se autentica y, al aparecer,
 ## le pone a su controlador el [BotBrain] de [ClientBotBrains] (por defecto, uno que pasea alrededor del
 ## punto de aparición).
 ## [br][br]
@@ -173,6 +175,8 @@ static func start_bot(viewport: SubViewport, port: int, realm: int, bot_seed: in
 	viewport.add_child(entities)
 	var client := NetClient.new()
 	viewport.add_child(client)
+	if get_world(viewport) != null:
+		client.get_fortress_view().set_zone(get_world(viewport))
 	client.set_meta(&"controller", controller)
 	client.set_meta(&"transport", transport)
 	client.set_meta(&"entities", entities)

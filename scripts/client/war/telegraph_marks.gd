@@ -12,16 +12,29 @@ extends Node3D
 ## ataque del catálogo de combate ([member HitShape.angle_deg]) y, si no se conoce, es
 ## [constant DEFAULT_SECTOR_DEGREES].
 ## [br][br]
-## El tiempo lo lleva [method advance] (en [method _process], con el delta de cada fotograma). Solo
-## cliente.
+## [b]Reloj.[/b] El golpe cae en el tick del aviso más [code]impact_in_ticks[/code] (la carga) y lo esquiva la
+## entrada del jugador para ese tick, que el cliente genera con su tick predicho; cuando llega el aviso, ese reloj ya
+## va un RTT y el margen de [TickSync] por delante. Por eso la marca se llena con el tiempo predicho local
+## ([method ClientPrediction.get_predicted_tick] menos uno más la fracción del tick, el instante en que el jugador ve
+## su personaje, como [ProjectileWorld]): al llegar ya va por esa parte, está llena justo en el último tick en que
+## salir aún evita el golpe y se quita cuando acaba la ventana activa del golpe ([member AttackTicks.active_ticks]).
+## Un aviso que llega con su golpe ya pasado no se dibuja. Sin predicción en marcha (pruebas, espectador), cuenta el
+## tiempo desde que llegó, con el delta de cada fotograma ([method advance]), y se quita
+## [constant TAIL_SECONDS] s después del impacto (revisión de la fase 4, cliente).
+## [br][br]
+## [b]Solo lo que te puede dañar.[/b] El servidor avisa los golpes fuertes de todos los PNJ, también los de la
+## guarnición y el capitán del reino dueño del fuerte; al defensor de ese reino no se le dibujan ([method threatens]:
+## la regla de [FactionRules], la misma de los bots). Solo cliente.
 
 ## Altura sobre el origen (m) y vértices por vuelta de la malla.
 const LIFT: float = 0.06
 const SEGMENTS: int = 40
 ## Ángulo (grados) de un sector cuyo ataque no está en el catálogo.
 const DEFAULT_SECTOR_DEGREES: float = 100.0
-## Segundos que se queda la marca tras el impacto.
+## Segundos que se queda la marca tras el impacto sin reloj predicho.
 const TAIL_SECONDS: float = 0.35
+## Ticks que sigue activo un golpe cuyo ataque no está en el catálogo (con reloj predicho).
+const DEFAULT_ACTIVE_TICKS: int = 12
 ## Marcas a la vez como mucho (al llegar otra de más, se quita la más antigua).
 const MAX_MARKS: int = 24
 const BASE_COLOR: Color = Color(0.9, 0.18, 0.12, 0.28)
@@ -33,6 +46,14 @@ class Mark extends RefCounted:
 	var age: float = 0.0
 	var impact_seconds: float = 0.0
 	var npc_id: int = 0
+	## Tick del servidor del aviso, ticks hasta el impacto y ticks que sigue activo el golpe tras él.
+	var event_tick: int = 0
+	var impact_ticks: int = 0
+	var active_ticks: int = 0
+
+## Reloj predicho local ([code]() -> float[/code], en ticks con fracción; negativo = sin reloj). Sin él, el del
+## cliente enlazado. Es para las pruebas.
+var clock: Callable = Callable()
 
 var _marks: Array[Mark] = []
 var _client: NetClient = null
@@ -65,8 +86,22 @@ func bind(client: NetClient) -> void:
 		_client.telegraph_received.connect(add_telegraph)
 
 
-## Dibuja la zona de peligro de un TELEGRAPH. Una forma desconocida o un radio de 0 no dibuja nada.
-## Devuelve true si se ha creado la marca.
+## true si el PNJ [param npc_id] del aviso puede dañar al jugador de [param client]: [method FactionRules.can_damage]
+## con el reino de su vista en el [RemoteWorld], el del jugador y la zona del WELCOME. Sin cliente, sin reino propio o
+## sin el alta del PNJ (no se sabe de quién es), true: ante la duda, la marca se dibuja.
+static func threatens(client: NetClient, npc_id: int) -> bool:
+	if not is_instance_valid(client) or client.get_config() == null or client.get_remote_world() == null:
+		return true
+	var view: RemotePlayerView = client.get_remote_world().get_view(npc_id)
+	if view == null:
+		return true
+	var welcome: NetMessages.Welcome = client.get_welcome()
+	var zone_id: StringName = StringName(welcome.zone_id) if welcome != null else &""
+	return FactionRules.can_damage(view.get_realm(), client.get_config().realm, zone_id)
+
+
+## Dibuja la zona de peligro de un TELEGRAPH. Una forma desconocida, un radio de 0, el golpe de quien no puede dañar al
+## jugador ([method threatens]) o uno que ya ha pasado no dibujan nada. Devuelve true si se ha creado la marca.
 func add_telegraph(event: NetMessages.EntityEvent) -> bool:
 	if event == null or event.event != NetMessages.EntityEvent.Kind.TELEGRAPH or event.radius_cm <= 0:
 		return false
@@ -75,12 +110,20 @@ func add_telegraph(event: NetMessages.EntityEvent) -> bool:
 		angle = deg_to_rad(sector_degrees(event.attack_id))
 	elif event.shape != NetMessages.EntityEvent.SHAPE_CIRCLE:
 		return false
+	if is_instance_valid(_client) and not threatens(_client, event.net_id):
+		return false
+	var mark := Mark.new()
+	mark.npc_id = event.net_id
+	mark.event_tick = event.tick
+	mark.impact_ticks = maxi(event.impact_in_ticks, 0)
+	mark.active_ticks = active_ticks_of(event.attack_id)
+	mark.impact_seconds = float(mark.impact_ticks) / float(Engine.physics_ticks_per_second)
+	var now: float = get_clock_time()
+	if now >= 0.0 and _is_over(mark, now):
+		return false
 	while _marks.size() >= MAX_MARKS:
 		_remove(0)
 	var radius: float = event.get_radius()
-	var mark := Mark.new()
-	mark.npc_id = event.net_id
-	mark.impact_seconds = float(maxi(event.impact_in_ticks, 0)) / float(Engine.physics_ticks_per_second)
 	var root := Node3D.new()
 	root.name = "Marca%d" % _added
 	var base := MeshInstance3D.new()
@@ -105,27 +148,49 @@ func add_telegraph(event: NetMessages.EntityEvent) -> bool:
 	else:
 		root.position = origin
 	root.rotation = Vector3(0.0, event.yaw, 0.0)
-	_set_fill_scale(mark, 0.0)
+	_set_fill_scale(mark, _progress_of(mark, now))
 	_marks.append(mark)
 	_added += 1
 	return true
 
 
-## Avanza [param delta] segundos: crece el relleno y se quitan las marcas que acaban.
+## Avanza [param delta] segundos: crece el relleno y se quitan las marcas que acaban. Con reloj predicho manda él (el
+## delta solo cuenta sin reloj).
 func advance(delta: float) -> void:
+	var now: float = get_clock_time()
 	var index: int = _marks.size() - 1
 	while index >= 0:
 		var mark: Mark = _marks[index]
 		mark.age += delta
-		if mark.age >= mark.impact_seconds + TAIL_SECONDS:
+		if _is_over(mark, now):
 			_remove(index)
 		else:
-			_set_fill_scale(mark, fill_progress(mark.age, mark.impact_seconds))
+			_set_fill_scale(mark, _progress_of(mark, now))
 		index -= 1
 
 
-## Fracción (0 a 1) que lleva el relleno de una marca con [param age] s de edad y [param impact_seconds]
-## hasta el impacto: crece linealmente y se queda llena.
+## Instante del reloj predicho local en ticks con fracción ([member clock] o el de la predicción del cliente), o -1
+## si no hay ninguno en marcha.
+func get_clock_time() -> float:
+	if clock.is_valid():
+		return float(clock.call())
+	if not is_instance_valid(_client):
+		return -1.0
+	var prediction: ClientPrediction = _client.get_prediction()
+	if prediction == null or not prediction.is_started():
+		return -1.0
+	return float(prediction.get_predicted_tick() - 1) + Engine.get_physics_interpolation_fraction()
+
+
+## Ticks que sigue activo tras el impacto el golpe del ataque [param attack_id] del catálogo
+## ([constant DEFAULT_ACTIVE_TICKS] si no se conoce).
+static func active_ticks_of(attack_id: int) -> int:
+	var attack: AttackTicks = CombatCatalog.attack(attack_id)
+	return attack.active_ticks if attack != null and attack.active_ticks > 0 else DEFAULT_ACTIVE_TICKS
+
+
+## Fracción (0 a 1) que lleva el relleno de una marca con [param age] de edad y [param impact_seconds]
+## hasta el impacto (en segundos o en ticks, las dos en la misma unidad): crece linealmente y se queda llena.
 static func fill_progress(age: float, impact_seconds: float) -> float:
 	if impact_seconds <= 0.0:
 		return 1.0
@@ -201,6 +266,20 @@ func get_mark_fill(index: int) -> float:
 func clear() -> void:
 	while not _marks.is_empty():
 		_remove(0)
+
+
+# Relleno de [param mark] en el instante [param now] del reloj predicho (negativo: sin reloj, por su edad).
+func _progress_of(mark: Mark, now: float) -> float:
+	if now < 0.0:
+		return fill_progress(mark.age, mark.impact_seconds)
+	return fill_progress(now - float(mark.event_tick), float(mark.impact_ticks))
+
+
+# true si [param mark] ya ha acabado en el instante [param now] del reloj predicho (negativo: sin reloj, por su edad).
+func _is_over(mark: Mark, now: float) -> bool:
+	if now < 0.0:
+		return mark.age >= mark.impact_seconds + TAIL_SECONDS
+	return now - float(mark.event_tick) >= float(mark.impact_ticks + mark.active_ticks)
 
 
 func _set_fill_scale(mark: Mark, fraction: float) -> void:

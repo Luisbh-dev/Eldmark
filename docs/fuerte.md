@@ -204,6 +204,15 @@ historia de cambios **para el tick `t` que se simula**, también durante las rep
 aplica un cambio de `collision_layer` en el siguiente `move_and_slide` del mismo tick
 (comprobado), así que cliente y servidor simulan cada tick con la misma puerta.
 
+Eso vale para las repeticiones, pero el OBJECT_STATE del tick `s` llega un trayecto después y la
+predicción va por delante: los ticks de `s + 1` al predicho al recibirlo (`P`) ya se simularon con la
+puerta vieja. Si el jugador la empujaba (o entraba en el vano) en ellos, el snapshot no coincide y hay
+**una corrección esperada**, que la repetición deja bien. `NetClient` la cuenta como explicada por la
+puerta (`gate_diffs`, dentro de `explained_diffs`) si el cambio toca la capa del reino propio: vale para
+los snapshots de `s + 1` a `P + 12` (revisión de la fase 4, cliente). En las pruebas, `NetHarness.start_bot`
+da a la `FortressView` del bot su propia zona (`set_zone`), como `OnlineMain`; sin eso, con servidor y
+cliente en el mismo proceso, el gancho del cliente movía la puerta del servidor.
+
 ### 3.3 Vida y reglas
 
 - 9000 de vida, dañable por los enemigos del dueño (todos si es neutral). Multiplicadores contra
@@ -310,7 +319,13 @@ de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D
   la zona, aplicados en el tick de dibujo. Textos en español en `WarEvents` (compartido).
 - **ENTITY_EVENT `6 TELEGRAPH`**: `net_id` = PNJ, datos `u16 attack_id`, `u8 shape` (0 círculo, 1
   sector), `u64 posición` (20 bits por eje, como el registro), `u16 yaw`, `u16 radius_cm`, `u16
-  impact_in_ticks`. Se aplica al llegar (es un aviso, debe verse cuanto antes).
+  impact_in_ticks`. Se aplica al llegar (es un aviso, debe verse cuanto antes). El golpe cae en
+  `tick + impact_in_ticks` y lo esquiva la entrada del jugador para ese tick, que el cliente genera con su
+  tick predicho: la marca del suelo (`TelegraphMarks`) se llena con ese reloj (al llegar ya va un RTT y el
+  margen de TickSync por delante), está llena justo en el último tick en que salir aún evita el golpe y se
+  quita al acabar la ventana activa del ataque. Solo se dibuja a quien el PNJ puede dañar (`FactionRules`,
+  la regla de los bots): la guarnición y el capitán del reino dueño no pintan peligro a sus defensores
+  (revisión de la fase 4, cliente).
 - **Reaparición** (amplía combate.md §5):
   - Índice **estático** sobre todos los marcadores `respawn_points` de la escena, en orden de
     escena (campamentos incluidos: el generador añade los de cada campamento). Metadatos `realm` o
@@ -350,8 +365,17 @@ de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D
   u16 bajas, u16 muertes, u16 asistencias, u32 daño a la puerta, u16 s en el círculo, u32 méritos`
   (18 B). Una página lleva como mucho 66 filas (1192 B); con más jugadores el servidor parte el
   marcador en varios mensajes (`NetMessages.Scoreboard.split`) y el cliente los junta por página. El
-  registro de bajas sale de los KILL, que en la fase 4 van a toda la zona.
-- **Pistas** (UI-42): una vez por jugador, en `user://`, con opción para desactivarlas.
+  registro de bajas sale de los KILL, que en la fase 4 van a toda la zona. Tab abre y cierra con
+  cualquier modificador pulsado (Mayús es esprintar y Ctrl esquivar); si su soltar no llega, se cierra
+  al ver la tecla suelta. La pantalla de muerte se maneja con el ratón y ningún control suyo toma el
+  foco, así que Tab sigue siendo el marcador e Intro no pulsa «Reaparecer» (revisión de la fase 4, cliente).
+- **Pistas** (UI-42): una vez por jugador, en `user://`, con opción para desactivarlas. Van encima de
+  la pantalla de muerte sin atenuar (la de reaparecer es de esa pantalla) y debajo del mapa y del
+  marcador, que las tapan: mientras están abiertos no sale ninguna y la que se veía vuelve a la cola si
+  aún no se había leído. Cuentan como vistas tras 4 s a la vista (o al acabarse su tiempo). La del
+  TELEGRAPH solo sale con una marca de quien te puede dañar a menos de su radio más 20 m, y caduca con
+  ella; la de reaparecer se retira si la pantalla de muerte se cierra antes de leerla (revisión de la
+  fase 4, cliente).
 
 ---
 
@@ -811,12 +835,15 @@ toque a los PNJ) encontrará esto:
   `EstandartePuertaN` y `EstandartePuertaS`), la pose de la puerta y la señal `state_changed`; el progreso es la fórmula en el
   instante de dibujo. `ClientPrediction.before_simulate` es el gancho de 8.2: se llama antes de **cada** `simulate()` (aparición,
   paso y repeticiones). **Contrato con el servidor:** el dueño y la rotura de la puerta tienen que llegar con el tick en el que
-  cambiaron de verdad (el controlador de F3 manda los que ven los clientes). `OnlineMain` enlaza la vista con la zona (`set_zone`).
+  cambiaron de verdad (el controlador de F3 manda los que ven los clientes). `OnlineMain` enlaza la vista con la zona (`set_zone`),
+  y en las pruebas `NetHarness.start_bot` también. Los ticks predichos antes de recibir el OBJECT_STATE se simularon con la puerta
+  vieja: esa corrección cuenta como explicada (`gate_diffs`, sección 3.2).
 - **Interfaz de guerra** (`WarHud`, hijo del `HUD` por debajo de la pantalla de muerte): `CapturePanel` (a menos de 80 m del
   fuerte o combatiendo a menos de 200 m), `WarBanners` (los siete WAR), `BossBar` (jefes por `npc_def_id` del SPAWN de NPC: `BossInfo`
   lee `data/npcs/*.tres` por orden alfabético, como `NpcCatalog`, y sin la carpeta no hay jefes), `TelegraphMarks` (malla plana provisional
-  que se llena hasta el impacto), `Compass` y `WorldMarkers` (`MarkerSource` junta fuerte, puerta, círculo, campamentos y pasos),
-  `Minimap`, `KillFeed` y `HintToasts`. El `HUD` monta además, por encima de la pantalla de muerte, `WorldMap` y `ScoreboardPanel`.
+  que se llena hasta el impacto con el reloj predicho, solo de quien puede dañarte; sección 5), `Compass` y `WorldMarkers` (`MarkerSource`
+  junta fuerte, puerta, círculo, campamentos y pasos), `Minimap` y `KillFeed`. El `HUD` monta además, por encima de la pantalla de muerte,
+  `HintToasts` (sin atenuar), `WorldMap` y `ScoreboardPanel`, en ese orden.
 - **Mapa** (`tools/bake_zone_map.gd` y `ZoneMapBaker`): `assets/maps/vado_gris.png` (1024 x 1024 px, 0,6 MB, por LFS) y
   `vado_gris_map.tres` (`ZoneMapDefinition`: origen (−160, −160), 320 x 320 m y los lugares fijos); ver docs/zonas/vado_gris.md. El
   minimapa va abajo a la derecha (la esquina de arriba es del panel de depuración F3) y se acerca y aleja con `map_zoom_in` y
@@ -831,6 +858,8 @@ toque a los PNJ) encontrará esto:
   en el radio de interés sale como «Jugador N»; haría falta un mensaje con nombres.
 - **Pistas:** `HintCatalog` (siete, con las teclas reales de `UIKeyGlyph`), `HintLog` (`user://hints.cfg`) y el ajuste «Pistas del juego»
   (`ClientSettings.HINTS`). Sin pantalla (headless: pruebas y procesos de prueba) el `HintLog` es solo de memoria y no escribe en `user://`.
+  `HintToasts.is_covered` (el mapa o el marcador abiertos) las deja esperando; se anotan tras `MIN_SEEN_SECONDS` (4 s) a la vista o al
+  quitarlas con `dismiss`; `withdraw` retira una sin anotarla; `request(id, lifetime)` caduca si no sale a tiempo (sección 6).
 - **Selección de reino:** `RealmSelect` enseña el recuento por reino del último WELCOME (no hay otro antes de conectar), recomienda el
   más corto y, tras un REJECT 9, deja el reino rechazado sin elegir y marcado, con el texto de `NetProtocol.result_text` y el reino corto
   ofrecido. El servidor rellena el recuento en F6.

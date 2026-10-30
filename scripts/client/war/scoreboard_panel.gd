@@ -10,6 +10,11 @@ extends Control
 ## interés) no tiene nombre ni reino conocidos: sale como «Jugador N», sin color. Arreglarlo es cosa del
 ## protocolo (nombres en el marcador o un mensaje de lista de jugadores), no de esta interfaz.
 ## [br][br]
+## [b]La tecla.[/b] Se abre al pulsar [code]scoreboard[/code] y se cierra al soltarla, con cualquier modificador pulsado:
+## Mayús es esprintar, Ctrl esquivar y Alt soltar el cursor, así que en pleno combate Tab casi nunca llega sola. Si el
+## soltar no llega (se lo queda otro nodo), se cierra igual en cuanto [Input] ve la tecla suelta; abierto por código
+## ([method open]) no se cierra solo.
+## [br][br]
 ## La tabla es un [Tree] (rápido y con desplazamiento con cientos de filas). Las medidas, los colores y los
 ## textos son provisionales. Solo cliente.
 
@@ -43,6 +48,8 @@ var _client: NetClient = null
 var _state: ScoreboardState = null
 var _directory: PlayerDirectory = null
 var _open: bool = false
+# true si lo abrió la tecla (y se cierra al verla suelta).
+var _held_by_key: bool = false
 var _shown_version: int = -1
 var _entries: Array[Dictionary] = []
 var _own_id: int = 0
@@ -62,6 +69,12 @@ func _ready() -> void:
 	_ensure_built()
 
 
+func _process(_delta: float) -> void:
+	# Red de seguridad: abierto con la tecla, se cierra en cuanto la tecla está suelta aunque su soltar no haya llegado.
+	if _open and _held_by_key and InputMap.has_action(&"scoreboard") and not Input.is_action_pressed(&"scoreboard"):
+		close()
+
+
 func _exit_tree() -> void:
 	if is_instance_valid(_client) and _client.scoreboard_updated.is_connected(_on_scoreboard_updated):
 		_client.scoreboard_updated.disconnect(_on_scoreboard_updated)
@@ -76,10 +89,12 @@ func _notification(what: int) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not InputMap.has_action(&"scoreboard"):
 		return
-	if event.is_action_pressed(&"scoreboard", false, true):
+	# Sin coincidencia exacta de modificadores: corriendo (Mayús) o esquivando (Ctrl) también vale.
+	if event.is_action_pressed(&"scoreboard"):
 		open()
+		_held_by_key = true
 		get_viewport().set_input_as_handled()
-	elif event.is_action_released(&"scoreboard", true):
+	elif event.is_action_released(&"scoreboard"):
 		close()
 
 
@@ -110,6 +125,7 @@ func close() -> void:
 	if not _open:
 		return
 	_open = false
+	_held_by_key = false
 	visible = false
 
 
@@ -127,7 +143,9 @@ func refresh(force: bool = false) -> void:
 	if not force and version == _shown_version:
 		return
 	_shown_version = version
-	var rows: Array[NetMessages.ScoreRow] = _state.get_rows() if _state != null else []
+	var rows: Array[NetMessages.ScoreRow] = []
+	if _state != null:
+		rows = _state.get_rows()
 	_entries = build_entries(rows, _directory, _own_id)
 	_fill_tree()
 	_fill_summary()
