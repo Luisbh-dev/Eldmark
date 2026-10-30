@@ -87,11 +87,26 @@ func _publish(client: FakeClient, rows: Array[NetMessages.ScoreRow]) -> void:
 		client._on_scoreboard(page.encode())
 
 
-func _key_event(pressed: bool) -> InputEventKey:
+func _key_event(pressed: bool, shift: bool = false, ctrl: bool = false, alt: bool = false) -> InputEventKey:
 	var event := InputEventKey.new()
 	event.physical_keycode = KEY_TAB
 	event.pressed = pressed
+	event.shift_pressed = shift
+	event.ctrl_pressed = ctrl
+	event.alt_pressed = alt
 	return event
+
+
+## Una tecla [param keycode] pulsada o soltada como la mandaría el sistema: pasa por [Input] (que lleva el estado
+## de las acciones) y llega a la ventana.
+func _send_key(keycode: Key, pressed: bool, shift: bool = false) -> void:
+	var event := InputEventKey.new()
+	event.physical_keycode = keycode
+	event.keycode = keycode
+	event.pressed = pressed
+	event.shift_pressed = shift
+	Input.parse_input_event(event)
+	Input.flush_buffered_events()
 
 
 # --- Datos ------------------------------------------------------------------------------------
@@ -226,6 +241,57 @@ func test_holding_tab_opens_the_panel_and_releasing_closes_it() -> void:
 	panel.open()
 	panel.propagate_notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
 	assert_false(panel.is_open(), "y sin foco de la ventana también se cierra")
+
+
+## Revisión de la fase 4 (cliente): Mayús es esprintar, Ctrl esquivar y Alt soltar el cursor, así que en pleno
+## combate Tab llega casi siempre con alguna pulsada. Con la coincidencia exacta de modificadores, corriendo no se
+## abría y, si se soltaba Tab con Mayús pulsada, la tabla se quedaba abierta tapando el centro de la pantalla.
+func test_tab_opens_and_closes_with_the_combat_modifiers_held() -> void:
+	var panel: ScoreboardPanel = _make_panel(_make_client())
+	panel._unhandled_input(_key_event(true, true))
+	assert_true(panel.is_open(), "corriendo (Mayús+Tab) se abre")
+	panel._unhandled_input(_key_event(false, true))
+	assert_false(panel.is_open(), "y soltar Tab sin soltar Mayús lo cierra")
+	panel._unhandled_input(_key_event(true, false, true))
+	assert_true(panel.is_open(), "Ctrl+Tab (esquivando) se abre")
+	panel._unhandled_input(_key_event(false))
+	assert_false(panel.is_open(), "y soltar Tab después de Ctrl lo cierra")
+	panel._unhandled_input(_key_event(true))
+	assert_true(panel.is_open(), "Tab sola se abre")
+	panel._unhandled_input(_key_event(false, true))
+	assert_false(panel.is_open(), "y si se empieza a correr antes de soltarla, también se cierra")
+	panel._unhandled_input(_key_event(true, false, false, true))
+	assert_true(panel.is_open(), "con Alt (cursor suelto) también")
+	panel._unhandled_input(_key_event(false, false, false, true))
+	assert_false(panel.is_open())
+
+
+func test_the_real_keys_open_and_close_it_while_sprinting() -> void:
+	var panel: ScoreboardPanel = _make_panel(_make_client())
+	_send_key(KEY_SHIFT, true, true)
+	_send_key(KEY_TAB, true, true)
+	var opened: bool = panel.is_open()
+	_send_key(KEY_TAB, false, true)
+	var still_open: bool = panel.is_open()
+	_send_key(KEY_SHIFT, false)
+	await wait_process_frames(2)
+	assert_true(opened, "con Mayús pulsada (corriendo), Tab abre el marcador por la entrada de verdad")
+	assert_false(still_open, "y soltar Tab con Mayús aún pulsada lo cierra")
+	assert_false(panel.is_open() or panel.visible, "y sigue cerrado")
+
+
+func test_it_closes_by_itself_when_the_key_is_up_although_its_release_never_arrived() -> void:
+	var panel: ScoreboardPanel = _make_panel(_make_client())
+	# La pulsación llega, pero la tecla ya no está pulsada para Input (el soltar se lo quedó otro nodo).
+	panel._unhandled_input(_key_event(true))
+	assert_true(panel.is_open())
+	await wait_process_frames(2)
+	assert_false(panel.is_open(), "con Tab suelta, la red de seguridad lo cierra")
+	# Abierto por código (sin tecla), no se cierra solo.
+	panel.open()
+	await wait_process_frames(2)
+	assert_true(panel.is_open(), "abierto sin la tecla, se queda")
+	panel.close()
 
 
 # --- El registro de bajas ---------------------------------------------------------------------

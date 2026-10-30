@@ -17,8 +17,11 @@ extends Node
 ## [member ClientPrediction.before_simulate]: antes de simular el tick [code]t[/code] (también en las
 ## repeticiones de la reconciliación) pone las capas de movimiento de la puerta que tenía ese tick
 ## ([method FortressTimeline.gate_layers_for_tick]: un cambio con [code]tick = s[/code] vale desde
-## [code]s + 1[/code]). Así cliente y servidor simulan cada tick con la misma puerta y la
-## reconciliación, que compara el estado byte a byte, no ve diferencias. Esas capas no las pisa la
+## [code]s + 1[/code]). Así las repeticiones de la reconciliación simulan cada tick con la misma puerta que el
+## servidor. Pero el OBJECT_STATE llega un trayecto después y el cliente va por delante: los ticks de
+## [code]s + 1[/code] al predicho al recibirlo ya se simularon con la puerta vieja, y si el jugador la tocaba en
+## ellos el snapshot no coincide. Esa corrección es esperada y la repetición la arregla; [NetClient] la cuenta como
+## explicada por la puerta ([code]gate_diffs[/code]), no como un fallo de la predicción. Esas capas no las pisa la
 ## pose de dibujo: [method advance] las vuelve a poner tras cambiar la pose. Los cambios que tocan a
 ## la colisión (dueño y rotura de la puerta) tienen que llegar con el tick en el que cambiaron de
 ## verdad.
@@ -186,6 +189,15 @@ func before_simulate(tick: int) -> void:
 		if gate.collision_layer != layers:
 			gate.collision_layer = layers
 			_gate_layer_changes += 1
+
+
+## Capas de movimiento de la puerta de [param net_id] para el tick [param tick] que se simula, según la historia que
+## se conoce ahora (-1 si la fortaleza no se conoce o aún no tiene estado).
+func get_gate_layers_for_tick(net_id: int, tick: int) -> int:
+	var fortress: Fortress = _fortresses.get(net_id)
+	if fortress == null or not fortress.timeline.has_state():
+		return -1
+	return fortress.timeline.gate_layers_for_tick(tick)
 
 
 ## Capas de movimiento que el gancho puso por última vez a la puerta de [param net_id] (-1 si

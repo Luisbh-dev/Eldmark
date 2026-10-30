@@ -331,6 +331,78 @@ Los criterios finos de MUN-10 (60–90 s con 2–3 personas) y MUN-11 (60–120 
 personas: los bots no son buena medida. Vida y daño de los PNJ ajustados para que los criterios se
 puedan medir (provisionales; ver `docs/fuerte.md` §8.3).
 
+### Revisión adversarial de la fase 4
+
+Cuatro lentes (guerra: fortaleza, puerta, PNJ y asedio; trampas y robustez; cliente del fuerte; habilidades), con un
+verificador por lente que intentó refutar cada hallazgo. Chat y grupos ya tenían su revisión (social.md §12): aquí
+solo se miraron sus cruces con lo demás. 19 hallazgos y ninguno refutado:
+17 confirmados y 2 confirmados en parte (TR2 y CL5). GU3 y TR2 son el mismo fallo visto dos veces, así que quedan 18.
+
+| Id | Gravedad | Hallazgo |
+|---|---|---|
+| GU1 | media | La reaparición automática no respeta las oleadas: los falsos del servidor y el `--bot` nunca reaparecen en oleada |
+| GU2 | media | Una reparación aplazada de la puerta se aplica aunque la puerta haya recibido daño nuevo: el dueño la cura entera quedándose en el vano |
+| GU3/TR2 | media | Los refuerzos del Capitán del Vado se acumulan sin límite: los vuelve a llamar en cada regeneración y la reaparición completa no los retira (TR2, «cada combate que se reinicia suma 2 Huecos», confirmado en parte) |
+| TR1 | media | Falso positivo del rebobinado (el fallo intermitente del tramposo «rate»): con varios ticks de física en un fotograma, `view_offset_q` se mide contra un `render_tick` viejo |
+| TR3 | media | Un PNJ atacado desde más allá de su radio de pérdida se queda quieto y solo se cura cada 3 s: con fuego a distancia muere sin moverse ni dañar a nadie |
+| TR4 | baja | `HfsmBrain._state_log` crece sin límite durante toda la vida de cada PNJ |
+| CL1 | media | El marcador (Tab) exige los modificadores exactos: no se abre corriendo con Mayús y se queda abierto si se suelta Tab con Mayús pulsada |
+| CL2 | media | La marca del TELEGRAPH se llena con el reloj de llegada: acaba de llenarse un RTT y el margen después del último tick en que aún se puede esquivar |
+| CL3 | baja | Las pistas se dan por vistas aunque las tapen la pantalla de muerte o el mapa (la de reaparecer, siempre): UI-42 marcada sin cumplir «ve cada pista una vez» |
+| CL4 | baja | `TelegraphMarks` (y su pista) dibujan como peligro los golpes fuertes de la guarnición y del capitán del propio reino |
+| CL5 | baja | Con el menú social abierto, Espacio (saltar) pulsa «Invitar al grupo», que tiene el foco al abrirse (en parte: lo de Intro no es un fallo, confirma el botón con el foco como en cualquier ventana) |
+| CL6 | baja | En la pantalla de muerte, tras pulsar un punto o una plantilla, Tab mueve el foco en vez de abrir el marcador |
+| CL7 | baja | Las correcciones de la predicción que provoca la puerta al cambiar (rota o de dueño) se cuentan como fallos de predicción sin explicar |
+| HA1 | media | El muro de escudos de quien está en la zona segura de su reino para flechas enemigas: gasta resistencia, sufre la rotura de guardia y queda «en combate» dentro del campamento |
+| HA2 | baja | Un toque del muro de escudos más corto que su lanzamiento deja un solo tick de NONE entre dos usos con el mismo byte de acción (lo que RP3 quería evitar) |
+| HA3 | baja | Ralentizar (STRONGEST) renovado por otro jugador conserva el autor de la primera aplicación: el STATUS sale con el autor equivocado y la baja del primero quita lo que renovó el segundo |
+| HA4 | baja | Cliente: un STATUS ajeno diferido borra del `StatusTracker` un efecto más nuevo que acaba de poner el jugador local |
+| HA5 | baja | Aviso de derribado: el corte de otra interacción borra «¡Te rematan!» aunque el remate sigue |
+
+Refutados: ninguno. Ninguno es grave en una partida normal, pero GU1 cambia lo que medían todas las batallas de bots
+de F6a y F6b, y TR1 hacía perder golpes a jugadores honrados con un tirón (y sumarles sospecha).
+
+**Los 18 están corregidos en `wip/revision-fase4`**, cada uno con una prueba que fallaba antes del arreglo (commits
+dc15ed9 guerra, e666a8e trampas, 34a0c93 cliente y b152e5b habilidades). Lo más relevante:
+
+- GU1: la automática cae en la primera oleada a 30 s o más de la muerte (`CombatTiming.auto_respawn_tick_for`,
+  `Combatant.auto_respawn_tick`); los falsos del servidor piden la reaparición al morir y el `--bot` en cuanto puede,
+  como el `SwarmBot`. Fuera de las zonas con fortaleza los falsos vuelven a los 10 s, no a los 30. Las cinco batallas
+  medidas otra vez: recaptura 158,8 / 162,8 / 161,8 / 156,6 / 286,9 s (mediana 161,8; antes 157,4) y la captura del
+  neutral igual. GUE-44 se mantiene: sin reunión la mediana sube a 220,5 s. La carga de 20 contra 20 con PNJ y la
+  refriega de 40 no cambian (fuerte.md 8.3).
+- GU2: solo se aplaza la reparación de la puerta rota (la que cambia la colisión); la de una entera se hace en el acto
+  y un golpe que quita vida anula la pendiente.
+- GU3/TR2: el Capitán llama a sus refuerzos una vez por vida; la reaparición completa los retira y le rearma la
+  llamada, y nunca hay vivos más de `reinforcement_count` por fortaleza.
+- TR1: `CombatResolver.compute_rewind` recorta al tope lo que lo pasa hasta en 8 ticks
+  (`REWIND_REJECT_SLACK_TICKS`) y solo rechaza, con sospecha, por encima; `allowed_rewind` redondea hacia arriba la
+  interpolación. Quien declara de más se queda en el tope, como un honrado; el tramposo `rewind` (40 ticks) sigue
+  rechazado. Con tirones reales (SIGSTOP de 150–200 ms al bot «rate»), de 2 a 5 rechazos falsos con el código de antes
+  y 0 en cuatro pasadas con el de ahora. Efecto secundario (deducido, no medido): un honrado con unos 200 ms de RTT ya
+  no pierde golpes hasta los 32 ticks; se comprueban con 24 y sin sospecha (red.md §10).
+- TR3: quien golpea a un PNJ desde más allá de su radio de pérdida se lo amplía hasta él y el PNJ lo persigue; la
+  correa o el atasco lo mandan al regreso inmune si no lo alcanza. TR4: `_state_log` acotado (`STATE_LOG_MAX`).
+- CL1: sin coincidencia exacta de modificadores; el marcador abierto con la tecla se cierra solo si su soltar no llega.
+- CL2 y CL4: `TelegraphMarks` se llena con el tick predicho (llena justo en el último tick en que salir aún evita el
+  golpe, se quita al acabar la ventana activa y un aviso caducado no se dibuja) y solo dibuja los golpes de quien puede
+  dañar al jugador (`TelegraphMarks.threatens`, con la regla de `FactionRules`).
+- CL3: el HUD monta las pistas encima de la pantalla de muerte y debajo del mapa y del marcador; esperan mientras las
+  tapan, se anotan tras 4 s a la vista y la de reaparecer se retira si se cierra la pantalla antes de leerla.
+- CL5: `InputBindings` quita Espacio de `ui_accept` (Intro sigue confirmando). CL6: ningún control de la pantalla de
+  muerte toma el foco. CL7: `NetClient` cuenta como explicadas las correcciones de los ticks predichos con la puerta
+  vieja antes del OBJECT_STATE que la cambia.
+- HA1: la flecha atraviesa el muro de quien está en su zona segura, como su cápsula (tampoco cubre a los aliados de
+  fuera: dentro ni se recibe daño ni se hace). HA2: soltar o romper una canalización sin comprometer deja el margen de
+  `REARM_TICKS` en su ranura (código compartido y predicho; sin cambio de protocolo). HA3: un STRONGEST renovado con un
+  fin más tardío pasa al autor de ese fin. HA4: el `StatusTracker` de un remoto recibe los eventos propios en su tick de
+  dibujo, en la cola de los ajenos. HA5: `DownedNotice` guarda cada interacción con su actor y solo la quita el fin o el
+  corte de ese actor.
+
+**Suite entera tras los arreglos** (commit b152e5b), en dos mitades a la vez en la máquina de 4 núcleos
+(`--shard=1/2` y `--shard=2/2`): **2291 pruebas, todas correctas a la primera** (1107 en 817 s y 1184 en 491 s); no hizo
+falta ninguna ronda más.
+
 ## Cierre de la sesión: qué queda y en qué orden
 
 La sesión se cerró a petición del usuario. Se pararon los trabajos en marcha y se subió todo lo que
@@ -373,7 +445,8 @@ habían dejado; nada se ha perdido salvo F6b, que aún no tenía commits.
    - Dos carriles: H1a → H1b → H3a → H3b → H3c, y a la vez H2 → H4 → H5.
    - Protocolo 6.
 5. **Revisión adversarial de la fase 4** entera (tres lentes con refutación, como las de las fases 2
-   y 3) y sus arreglos con prueba.
+   y 3) y sus arreglos con prueba. **Hecho**: cuatro lentes y 18 hallazgos corregidos con prueba («Revisión adversarial
+   de la fase 4», arriba).
 6. **Fase 5**:
    - Primero, conciliar `plataforma.md` y `progresion.md`. Cada uno lista en su sección de interfaz
      lo que pide al otro: nombres de tablas, ids en JSON, quién es dueño de CMB-30, billete de 52 B.

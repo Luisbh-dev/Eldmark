@@ -791,6 +791,8 @@ func get_sim_hash() -> int:
 ## antes de simular, su entrada sale de [code]brain.next_input()[/code], cuantizada y con el tick
 ## correspondiente, y entra directamente en su [InputQueue]. Aparece con la plantilla de equipo
 ## [param template_id] (0 = la de por defecto; [code]--fake-loadout[/code]) y la conserva al reaparecer.
+## Al morir pide la reaparición en cuanto se puede ([member Combatant.requests_respawn_on_death]), como una
+## persona que pulsa el botón o un [code]SwarmBot[/code]: con oleadas, reaparece en la primera que le toca.
 ## Devuelve su [code]net_id[/code], o -1 si el servidor no está en marcha, está lleno
 ## ([member ServerConfig.max_players]) o no quedan ids. Se puede llamar entre dos ticks; el jugador aparece
 ## con el estado «tras el último tick» y su primera simulación es la del siguiente.
@@ -805,6 +807,7 @@ func add_fake_player(brain: BotBrain, realm: int, template_id: int = 0) -> int:
 		return -1
 	var combatant: Combatant = _combat.get_combatant(entity.net_id)
 	_combat.equip_template(combatant, template_id)
+	combatant.requests_respawn_on_death = true
 	_fakes[entity.net_id] = brain
 	var pattern: BotBrain.Pattern = brain.get_pattern()
 	var fighter: bool = pattern == BotBrain.Pattern.COMBAT or pattern == BotBrain.Pattern.SIEGE

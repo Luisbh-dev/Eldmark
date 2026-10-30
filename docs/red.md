@@ -92,7 +92,7 @@ ajustes y el audio): para el cliente instancia por su ruta `scenes/client/client
 | `--server [--port=24600] [--zone=<id>] [--max-players=N] [--max-per-ip=4] [--idle-quit=<s>] [--fake-players=N [--fake-layout=cluster\|spread] [--fake-churn=<ticks>]] [--debug-commands] [--dev-lock [--dev-lock-path=<ruta>]] [--stop-file=<ruta>]` | Servidor dedicado (siempre con `--headless`) | `scenes/server/server_main.tscn` |
 | `--connect=<host>[:<puerto>] [--realm=<reino>] [--name=<nombre>]` | Cliente en red | `scenes/client/online_main.tscn` |
 | `--local [--realm=…] [--name=…]` | Cliente contra un servidor local, que se lanza si no hay ninguno | `scenes/client/online_main.tscn` |
-| `--bot --connect=… [--bot-seed=N] [--bot-brain=wander\|combat] [--bot-cheat=<modo>]` | Un cliente que predice, sin cámara ni HUD, guiado por `BotBrain` (pasea, o pelea con el cerebro de combate) | `scenes/client/online_main.tscn` |
+| `--bot --connect=… [--bot-seed=N] [--bot-brain=wander\|combat] [--bot-cheat=<modo>]` | Un cliente que predice, sin cámara ni HUD, guiado por `BotBrain` (pasea, o pelea con el cerebro de combate); muerto, pide reaparecer en cuanto puede | `scenes/client/online_main.tscn` |
 | `--bots=N --connect=… [--bot-seed=N] [--bot-brain=combat] [--quit-at-server-tick=N]` | Enjambre de N clientes ligeros que no simulan, para pruebas de carga (con `combat`, pelean; con `--quit-at-server-tick`, se van cuando alguno ve ese tick del servidor) | `scenes/client/bot_swarm.tscn` |
 | Comunes | `--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1`, `--quit-after-ticks=N`, `--report=<ruta.json>`, `--state-log=<ruta.csv>` | |
 
@@ -750,7 +750,10 @@ reaparecer en el punto `point_index` de la lista de puntos de su reino (desde la
 estática de todos los puntos de la zona, `NetZones.get_all_respawn_points`; el servidor comprueba
 que valga para su reino, [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones))
 ([combate.md 5](combate.md#5-vida-eventos-muerte-y-reaparición-cmb-10-cmb-15-cmb-41-gue-03-gue-05)).
-Fuera de plazo o con un índice inválido, el servidor cuenta un aviso.
+Fuera de plazo o con un índice inválido, el servidor cuenta un aviso. La mandan el botón de la pantalla de
+muerte, el `SwarmBot` y, desde la revisión de la fase 4, el `--bot` (punto 0, en cuanto el tick estimado del
+servidor llega al `respawn_tick` del bloque extra, y cada segundo mientras siga muerto); los jugadores falsos
+del servidor no tienen red y la piden al morir (`Combatant.requests_respawn_on_death`).
 
 **UNSTUCK_REQUEST** (`0x06`, canal 3, v3): 1 B, solo `u8 type`. El jugador pide `/atascado`
 ([fuerte.md 5](fuerte.md#5-avisos-reaparición-salida-y-atascado)). Vale sin `--debug-commands`. Antes
@@ -919,7 +922,9 @@ demás mensajes del canal 3.
 - **TELEGRAPH**: el `net_id` es el PNJ que prepara el ataque. `position` va empaquetada como en el
   registro de entidad (20 bits por eje, 1 cm), `yaw` como en el registro (0..65535 sobre [0, TAU)),
   `radius_cm` es el alcance y `impact_in_ticks` los ticks que faltan para el golpe. Se aplica al
-  llegar: es un aviso.
+  llegar: es un aviso. El golpe cae en `tick + impact_in_ticks` del servidor y lo esquiva la entrada
+  de ese tick, así que el cliente cuenta el plazo con su tick predicho, no con la hora de llegada
+  (la marca, los bots; [fuerte.md 5](fuerte.md#5-avisos-reaparición-salida-y-atascado)).
 
 - **Flags de HIT:** bit0 crítico, bit1 bloqueado, bit2 parado, bit3 rotura de guardia, bit4
   mortal; v6: bit5 interrumpido (beber, un lanzamiento marcado, levantar o rematar) y bit6 derriba.
@@ -1458,9 +1463,27 @@ PNJ del fuerte, 73 ajenos, también; pasa a uno de cada tres con más de 100). L
   ```
   view_tick = T − view_offset_q / 16
   allowed   = min(MAX_REWIND_TICKS (24),
-                  rtt_ticks + lead(T) + clamp(interp_delay_q / 8, 4, 12) + 2)
+                  rtt_ticks + lead(T) + clamp(ceil(interp_delay_q / 8), 4, 12) + 2)
+  si view_offset_q / 16 > allowed + 8: el golpe no se prueba (sospecha + 1)
   view_tick = clamp(view_tick, T − allowed, T)
   ```
+  - **Holgura del rechazo** (`CombatResolver.REWIND_REJECT_SLACK_TICKS` = 8; revisión de la fase 4, lente
+    «trampas»): lo que pasa del tope hasta `allowed + 8` se **recorta** al tope; solo por encima se rechaza y
+    suma sospecha. Antes era `allowed + 1` y un cliente honrado con un tirón del proceso o pocos FPS lo pasaba:
+    cuando el motor encadena varios pasos de física en un fotograma (hasta `max_physics_steps_per_frame` = 8),
+    el paso k declara la vista del último fotograma dibujado (`RemoteWorld.get_last_drawn_render_tick`, lo que
+    el jugador vio de verdad), k ticks más vieja, y las entradas de ese fotograma llegan con menos antelación
+    (`lead(T)` y el tope bajan). El golpe entero se rechazaba (o la flecha salía inofensiva) y sumaba sospecha:
+    con un `SIGSTOP` de 150–200 ms al proceso del bot «rate» de `test_net_processes`, de 2 a 5 golpes
+    rechazados por pasada, la firma exacta de su fallo intermitente (`s=647`, `vq=385` con un tope de 23); con
+    la holgura, 0 en cuatro pasadas. Quien declara de más se queda en el tope, como un honrado, sin ganar nada;
+    el tramposo `rewind` (40 ticks) sigue por encima de `24 + 8`. Medir en el cliente con el render del propio
+    paso no bastaría (no cubre la caída de la antelación) y falsearía lo que vio el jugador. De rebote, un
+    honrado con más RTT del que cubre el tope de 24 (unos 200 ms) ya no ve sus golpes rechazados hasta los 32
+    ticks: se prueban con 24, sin sospecha (pueden fallar contra quien se mueve; no medido). La sospecha solo
+    sale en el informe (`ZoneServer`): no expulsa ni sanciona a nadie.
+  - **`ceil` en la interpolación** (misma revisión): truncar `interp_delay_q / 8` perdía hasta 7/8 de tick de
+    la vista de un honrado.
   - **`rtt_ticks`** lo mide el servidor sin reloj: es el mínimo, en los últimos 120 ticks, de
     `s − ack_snapshot_tick` al llegar cada INPUT_BATCH, **acotado por una fuente que el cliente no
     controla** (hallazgo S4): `ceil(PEER_ROUND_TRIP_TIME · 60 / 1000) + retardo máximo del
@@ -2864,7 +2887,8 @@ signal projectile_despawned(projectile_id: int, tick: int, reason: int)
 func start(config: ClientConfig, transport: NetTransport,
 		controller: LocalPlayerController) -> Error
 ## v6 (habilidades.md 6, H4): LOADOUT_SELECT desde el WELCOME; los STATUS de cada entidad en su
-## StatusTracker; las flechas en el ProjectileWorld (que entra en la zona con el RemoteWorld).
+## StatusTracker (el de un remoto, en su tick de dibujo, también los propios: revisión de la fase 4);
+## las flechas en el ProjectileWorld (que entra en la zona con el RemoteWorld).
 func send_loadout_select(template_id: int) -> bool
 func get_status_tracker(net_id: int) -> StatusTracker
 func get_projectile_world() -> ProjectileWorld
@@ -2883,7 +2907,7 @@ func get_local_tick() -> int
 func get_last_server_state() -> PlayerState
 func get_stats() -> Dictionary
 ## Bots: snapshots con estado, coincidencias exactas, diferencias explicadas (sustitución,
-## teletransporte o combate: combat_diffs) y sin explicar, resincronizaciones, ajustes de TickSync y
+## teletransporte, combate: combat_diffs, o la puerta del fuerte: gate_diffs) y sin explicar, resincronizaciones, ajustes de TickSync y
 ## estado final.
 func write_report(path: String) -> Error
 

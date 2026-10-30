@@ -243,6 +243,8 @@ func test_running_and_jumping_down_a_ramp_does_no_fall_damage() -> void:
 func test_falling_below_the_world_kills_and_the_body_waits_dead_at_the_spawn_until_it_respawns() -> void:
 	await _start_server()
 	var id: int = _server.add_fake_player(_brain(), SOLMARCH)
+	# Sin la petición al morir de los falsos: se mide la reaparición automática.
+	_combatant(id).requests_respawn_on_death = false
 	var timing: CombatTiming = _server.get_combat_timing()
 	timing.respawn = 20
 	timing.auto_respawn = 60

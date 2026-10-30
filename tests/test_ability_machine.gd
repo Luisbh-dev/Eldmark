@@ -242,7 +242,9 @@ func test_release_and_press_primary_in_the_same_tick() -> void:
 	assert_eq(d.c.ability_ready[2], d.tick + 1080, "y el muro fijó su reutilización")
 
 
-func test_a_tap_shorter_than_the_cast_gives_twelve_ticks_and_no_cooldown() -> void:
+## Sin reutilización, pero con el margen de REARM_TICKS en la ranura (revisión de la fase 4: sin él, otra
+## pulsación en p + 13 salía con el mismo byte de acción tras un solo tick de NONE; ver test_action_wire).
+func test_a_tap_shorter_than_the_cast_gives_twelve_ticks_and_only_the_rearm_margin() -> void:
 	var d := _sword_driver()
 	d.step(ABILITY_3)
 	var p: int = d.tick
@@ -254,7 +256,8 @@ func test_a_tap_shorter_than_the_cast_gives_twelve_ticks_and_no_cooldown() -> vo
 	d.step()
 	assert_eq(d.tick, p + 12, "en el fin del lanzamiento")
 	assert_eq(d.c.action, Action.NONE, "acaba sin muro")
-	assert_eq(d.c.ability_ready[2], 0, "y sin reutilización")
+	assert_eq(d.c.ability_ready[2], p + 12 + AbilityTicks.REARM_TICKS,
+			"y sin reutilización: solo el margen")
 
 
 func test_release_on_the_commit_tick_and_one_tick_after() -> void:
@@ -265,7 +268,8 @@ func test_release_on_the_commit_tick_and_one_tick_after() -> void:
 	on_commit.step()
 	assert_eq(on_commit.tick, p + 12, "suelta en el compromiso")
 	assert_eq(on_commit.c.action, Action.NONE, "se cancela")
-	assert_eq(on_commit.c.ability_ready[2], 0, "sin reutilización")
+	assert_eq(on_commit.c.ability_ready[2], p + 12 + AbilityTicks.REARM_TICKS,
+			"sin reutilización: solo el margen")
 	var after := _sword_driver()
 	after.step(ABILITY_3)
 	var q: int = after.tick

@@ -11,7 +11,8 @@ extends RefCounted
 ## [b]Aplicar[/b] ([method apply]) en [code]s[/code]: REFRESH alarga el fin a [code]s + D[/code] (el ancla
 ## no cambia); STACK suma una acumulación (hasta [member StatusTicks.max_stacks]) y alarga el fin; STRONGEST
 ## se queda con el más fuerte y, si es igual (un mismo efecto siempre lo es: sus datos no cambian), con
-## el fin más tardío. Uno nuevo empieza con [code]anchor = s[/code] y una acumulación. SLOW y ROOT
+## el fin más tardío y el autor de ese fin. REFRESH y STACK pasan siempre al último autor. Uno nuevo
+## empieza con [code]anchor = s[/code] y una acumulación. SLOW y ROOT
 ## escriben además su ranura de movimiento en [CombatState] ([method ActionMachine.impose_move_effect]),
 ## que es lo que cambia la velocidad en el cliente y en el servidor. Evento STATUS 1.
 ## [br][br]
@@ -66,7 +67,8 @@ var stats: Dictionary[StringName, int] = {
 class ActiveEffect:
 	## Id del [StatusTicks] en el catálogo.
 	var status_id: int = 0
-	## net_id de quien lo puso (0 = sin autor: el comando 14). El último que lo renovó.
+	## net_id de quien lo puso (0 = sin autor: el comando 14). El último que lo renovó (en STRONGEST, el
+	## que puso el fin más tardío).
 	var source_id: int = 0
 	## Tick desde el que se cuentan los pulsos (el de la primera aplicación).
 	var anchor_tick: int = 0
@@ -126,8 +128,11 @@ func apply(target: Combatant, status_id: int, source_id: int, s: int, duration_t
 				effect.stacks = mini(effect.stacks + 1, maxi(status.max_stacks, 1))
 				effect.source_id = source_id
 			StatusEffectDefinition.Stacking.STRONGEST:
-				# Un mismo efecto siempre es igual de fuerte (sus datos no cambian): el fin más tardío.
-				pass
+				# Un mismo efecto siempre es igual de fuerte (sus datos no cambian): el fin más tardío, y
+				# con él su autor (el que lo sostiene; si no, la baja del primero quitaría lo que renovó
+				# otro: revisión de la fase 4).
+				if until > effect.until_tick:
+					effect.source_id = source_id
 			_:
 				effect.source_id = source_id
 		# El fin nunca retrocede (solo podría con la duración del comando 14): así la ranura de

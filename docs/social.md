@@ -575,7 +575,8 @@ reino, vivo, con nombre de persona y sin una pared o estructura entre la cámara
 que oculta su placa (`Nameplates.is_head_hidden`: rayo contra `HitShapes.LINE_OF_SIGHT_MASK` cortado 0,4 m antes
 de la cabeza). Los demás se ignoran, también si están delante de un aliado. Con él se abre una ventana pequeña
 (`SocialMenu`, una `UIWindow`: libera el cursor, se maneja con teclado o ratón y Esc la cierra) con las acciones
-que aplican:
+que aplican. El primer botón tiene el foco e Intro lo pulsa; Espacio no, porque es saltar y la ventana no suspende
+la entrada de juego (UI-47): `InputBindings` lo quita de `ui_accept` (revisión de la fase 4, cliente):
 
 | Objetivo | Opciones |
 |---|---|

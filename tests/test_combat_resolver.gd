@@ -456,6 +456,10 @@ func test_allowed_rewind_formula() -> void:
 	assert_eq(CombatResolver.allowed_rewind(2, 3, 200), 19, "2 + 3 + 12 (máximo) + 2")
 	assert_eq(CombatResolver.allowed_rewind(30, 10, 96), NetProtocol.MAX_REWIND_TICKS, "tope de 24")
 	assert_eq(CombatResolver.allowed_rewind(4, -3, 48), 12, "una antelación negativa cuenta 0")
+	# Revisión de la fase 4 (trampas): la interpolación se redondea hacia arriba (truncada perdía hasta 7/8 de tick
+	# de la vista de un honrado).
+	assert_eq(CombatResolver.allowed_rewind(4, 0, 41), 12, "4 + 0 + ceil(5,125) + 2")
+	assert_eq(CombatResolver.allowed_rewind(4, 0, 47), 12, "4 + 0 + ceil(5,875) + 2")
 
 
 func test_rewound_hit_lands_where_the_attacker_saw_the_target() -> void:
@@ -506,15 +510,16 @@ func test_rewind_beyond_the_cap_is_rejected_and_counts_suspicion() -> void:
 			CombatFixture.record(_history, fighter, tick)
 	var allowed: int = CombatResolver.allowed_rewind(peer.rtt_ticks, 0, peer.interp_delay_q)
 	assert_eq(allowed, 12)
-	# allowed + 1 ticks se acepta (con tope): el view_tick queda en S - allowed.
-	_set_view_offset(attacker, (allowed + 1) * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	var slack: int = CombatResolver.REWIND_REJECT_SLACK_TICKS
+	# Hasta allowed + holgura se acepta (con tope): el view_tick queda en S - allowed.
+	_set_view_offset(attacker, (allowed + slack) * CombatResolver.VIEW_OFFSET_Q_SCALE)
 	var hits: Array[CombatResolver.Hit] = _resolve()
-	if assert_eq(hits.size(), 1, "allowed + 1 no se rechaza"):
+	if assert_eq(hits.size(), 1, "allowed + holgura no se rechaza"):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT)
 		assert_near(hits[0].view_tick, float(S - allowed), 1e-4, "y se recorta al tope")
 	assert_eq(peer.suspicion_score, 0)
-	# Por encima de allowed + 1, el golpe ni se prueba.
-	_set_view_offset(attacker, (allowed + 1) * CombatResolver.VIEW_OFFSET_Q_SCALE + 1)
+	# Por encima de allowed + holgura, el golpe ni se prueba.
+	_set_view_offset(attacker, (allowed + slack) * CombatResolver.VIEW_OFFSET_Q_SCALE + 1)
 	hits = _resolve()
 	if assert_eq(hits.size(), 1, "una entrada de rechazo"):
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.REWIND_REJECTED)
@@ -533,6 +538,32 @@ func test_rewind_beyond_the_cap_is_rejected_and_counts_suspicion() -> void:
 	hits = _resolve(S + 30)
 	assert_eq(_outcomes(hits), [CombatResolver.Outcome.REWIND_REJECTED], "40 ticks de rebobinado")
 	assert_eq(peer.suspicion_score, 2)
+
+
+## Revisión de la fase 4 (lente «trampas»): con un tirón del proceso o pocos FPS, el cliente encadena varios pasos de
+## física en un fotograma y el paso k declara la vista del último fotograma dibujado, k ticks más vieja (y sus
+## entradas llegan con menos antelación). Con el tope + 1 de antes, el golpe de un honrado que caía en el séptimo de
+## ocho pasos se rechazaba entero y sumaba sospecha (la causa del fallo intermitente del tramposo «rate» de
+## test_net_processes: s=647, vq=385 con un tope de 23). Ahora se recorta al tope, como uno que declara de más.
+func test_a_late_frame_of_an_honest_client_is_clamped_to_the_cap_not_rejected() -> void:
+	var peer: ServerPeer = _lagged_peer()
+	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
+	_fighter(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI_YAW)
+	CombatFixture.start_light_active(attacker, S)
+	_record_all(S - 30, S - 1)
+	var allowed: int = CombatResolver.allowed_rewind(peer.rtt_ticks, 0, peer.interp_delay_q)
+	# Lo de antes (allowed + 1) más 7 pasos de física de un fotograma de 8.
+	_set_view_offset(attacker, (allowed + 1 + 7) * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	var hits: Array[CombatResolver.Hit] = _resolve()
+	if assert_eq(hits.size(), 1, "el golpe se prueba"):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "y acierta")
+		assert_near(hits[0].rewind, float(allowed), 1e-4, "recortado al tope")
+	assert_eq(peer.suspicion_score, 0, "sin sospecha")
+	assert_eq(peer.rewind_rejects, 0)
+	assert_eq(_resolver.rewind_rejects, 0)
+	# El rebobinado que se usa no pasa del tope: quien declara de más no gana nada.
+	var fixed: Vector2 = CombatResolver.compute_rewind(attacker, S)
+	assert_near(fixed.x, float(allowed), 1e-4, "compute_rewind (también el de las flechas) da el tope")
 
 
 ## Con jitter, el mínimo del RTT de la ventana se queda por debajo del viaje de un tick cualquiera: un
@@ -556,9 +587,13 @@ func test_the_cap_covers_the_worst_round_trips_of_the_window_not_only_the_best()
 		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT)
 		assert_near(hits[0].view_tick, float(S - 17), 1e-4, "sin recortar")
 	assert_eq(peer.suspicion_score, 0, "y no suma sospecha")
-	# El tope sigue siendo un tope: 20 ticks pasan del máximo (18 + 1).
+	# El tope sigue siendo un tope: 20 ticks se recortan a 18 y 27 pasan de la holgura (18 + 8).
 	_set_view_offset(attacker, 20 * CombatResolver.VIEW_OFFSET_Q_SCALE)
-	assert_eq(_outcomes(_resolve()), [CombatResolver.Outcome.REWIND_REJECTED], "20 ticks, no")
+	hits = _resolve()
+	if assert_eq(hits.size(), 1, "20 ticks"):
+		assert_near(hits[0].view_tick, float(S - 18), 1e-4, "20 ticks se recortan al tope de 18")
+	_set_view_offset(attacker, 27 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	assert_eq(_outcomes(_resolve()), [CombatResolver.Outcome.REWIND_REJECTED], "27 ticks, no")
 	assert_eq(peer.suspicion_score, 1)
 
 
@@ -576,15 +611,16 @@ func test_an_isolated_early_input_does_not_raise_the_rewind_cap() -> void:
 	assert_eq(attacker.queue.get_typical_lead(S), 0, "y la habitual es 0")
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1, "un resultado"):
-		assert_eq(hits[0].outcome, CombatResolver.Outcome.REWIND_REJECTED,
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "24 ticks entran recortados")
+		assert_near(hits[0].view_tick, float(S - 19), 1e-4,
 				"24 ticks de rebobinado con RTT de 2: el tope es 19, no 24")
-	assert_eq(peer.suspicion_score, 1, "y suma sospecha")
-	# Lo que sí cubre el tope entra, recortado.
-	_fill_queue(attacker, S - 20, 0, 14, 19 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	assert_eq(peer.suspicion_score, 0, "dentro de la holgura del tope no suma sospecha")
+	# Por encima de la holgura (19 + 8), se rechaza y suma sospecha.
+	_fill_queue(attacker, S - 20, 0, 14, 28 * CombatResolver.VIEW_OFFSET_Q_SCALE)
 	hits = _resolve()
 	if assert_eq(hits.size(), 1):
-		assert_eq(hits[0].outcome, CombatResolver.Outcome.IMPACT, "19 ticks entran")
-		assert_near(hits[0].view_tick, float(S - 19), 1e-4)
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.REWIND_REJECTED, "28 ticks, no")
+	assert_eq(peer.suspicion_score, 1, "y suma sospecha")
 	# Un honrado con 3 de antelación en todas sus entradas no pierde nada: el tope sigue siendo
 	# rtt + antelación + interpolación + 2 (2 + 3 + 12 + 2 = 19), y un tick más se recorta.
 	_fill_queue(attacker, S - 20, 3, 3, 20 * CombatResolver.VIEW_OFFSET_Q_SCALE)
@@ -607,8 +643,11 @@ func test_a_client_that_is_always_ahead_gets_at_most_the_lead_credit() -> void:
 	_fill_queue(attacker, S - 20, 14, 14, 24 * CombatResolver.VIEW_OFFSET_Q_SCALE)
 	var hits: Array[CombatResolver.Hit] = _resolve()
 	if assert_eq(hits.size(), 1):
-		assert_eq(hits[0].outcome, CombatResolver.Outcome.REWIND_REJECTED,
-				"24 ticks con un tope de 18")
+		assert_near(hits[0].view_tick, float(S - 18), 1e-4, "24 ticks con un tope de 18 se recortan a 18")
+	_fill_queue(attacker, S - 20, 14, 14, 27 * CombatResolver.VIEW_OFFSET_Q_SCALE)
+	hits = _resolve()
+	if assert_eq(hits.size(), 1):
+		assert_eq(hits[0].outcome, CombatResolver.Outcome.REWIND_REJECTED, "27 ticks pasan de la holgura (18 + 8)")
 	_fill_queue(attacker, S - 20, 14, 14, 18 * CombatResolver.VIEW_OFFSET_Q_SCALE)
 	hits = _resolve()
 	if assert_eq(hits.size(), 1):

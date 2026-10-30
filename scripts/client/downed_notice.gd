@@ -10,6 +10,10 @@ extends Control
 ## No lee la red: el [HUD] le pasa los eventos de combate ([method handle_event]: INTERACT, DOWNED, DEATH y
 ## RESPAWN) y, cada fotograma, si el jugador está derribado, su vida, el tick del servidor estimado y a quién
 ## se puede levantar ([method update_view]). Los nombres los da [member name_of]. Solo cliente.
+## [br][br]
+## El servidor deja que un aliado levante y uno o más enemigos rematen al mismo derribado a la vez: cada
+## interacción sobre el jugador local se guarda con su actor y solo la quita el fin o el corte de ese actor
+## (o quedar en pie, morir o reaparecer); el remate se muestra antes que el levantar (revisión de la fase 4).
 
 ## Lo que se está haciendo con el jugador local o lo que hace él.
 enum Interaction { NONE, BEING_REVIVED, BEING_EXECUTED, REVIVING, EXECUTING }
@@ -24,20 +28,32 @@ const BAR_BACK: Color = Color(0.03, 0.03, 0.04, 0.75)
 ## Desde lo alto de la pantalla (px).
 const TOP_OFFSET: float = 150.0
 
+## Ticks tras el fin previsto de una interacción en que se olvida si no llega su evento de fin.
+const FORGET_AFTER_TICKS: int = 30
+
 ## Nombre de una entidad por su net_id ([code]func(net_id: int) -> String[/code]); vacío si no se sabe.
 var name_of: Callable = Callable()
 
 var _own_id: int = 0
-var _interaction: int = Interaction.NONE
-var _other_id: int = 0
-var _start_tick: int = 0
-var _end_tick: int = 0
+# Levantar y rematar sobre el jugador local, cada uno con su actor (en el orden en que empezaron).
+var _on_me: Array[_Ongoing] = []
+# Lo que hace él (levantar o rematar a otro), o null.
+var _mine: _Ongoing = null
 var _column: VBoxContainer = null
 var _title: Label = null
 var _countdown: Label = null
 var _detail: Label = null
 var _bar: ProgressBar = null
 var _prompt: Label = null
+
+
+# Una interacción en curso: qué es ([enum Interaction]), con quién (quien actúa sobre el jugador local o a
+# quien levanta o remata él) y sus ticks.
+class _Ongoing:
+	var interaction: int = Interaction.NONE
+	var other_id: int = 0
+	var start_tick: int = 0
+	var end_tick: int = 0
 
 
 func _init() -> void:
@@ -52,7 +68,8 @@ func set_own_id(net_id: int) -> void:
 
 
 ## Un ENTITY_EVENT ya temporizado: los INTERACT donde el jugador local es el derribado o quien actúa
-## empiezan o acaban levantar y rematar; su DOWNED, DEATH o RESPAWN lo borra todo.
+## empiezan o acaban levantar y rematar (el fin o el corte, solo la de su actor; levantado, todas las que
+## había sobre él); su DOWNED, DEATH o RESPAWN lo borra todo.
 func handle_event(event: NetMessages.EntityEvent) -> void:
 	if event == null or _own_id == 0:
 		return
@@ -67,23 +84,34 @@ func handle_event(event: NetMessages.EntityEvent) -> void:
 					_start(Interaction.BEING_REVIVED if on_me else Interaction.REVIVING, event)
 				NetMessages.EntityEvent.InteractOp.EXECUTE:
 					_start(Interaction.BEING_EXECUTED if on_me else Interaction.EXECUTING, event)
-				_:
-					_interaction = Interaction.NONE
+				NetMessages.EntityEvent.InteractOp.REVIVED:
+					if on_me:
+						# En pie: ya no le levantan ni le rematan.
+						_on_me.clear()
+					else:
+						_end_mine(Interaction.REVIVING, event.net_id)
+				NetMessages.EntityEvent.InteractOp.REVIVE_CUT:
+					if on_me:
+						_end_on_me(Interaction.BEING_REVIVED, event.actor)
+					else:
+						_end_mine(Interaction.REVIVING, event.net_id)
+				NetMessages.EntityEvent.InteractOp.EXECUTE_CUT:
+					if on_me:
+						_end_on_me(Interaction.BEING_EXECUTED, event.actor)
+					else:
+						_end_mine(Interaction.EXECUTING, event.net_id)
 		NetMessages.EntityEvent.Kind.DOWNED, NetMessages.EntityEvent.Kind.DEATH, \
 				NetMessages.EntityEvent.Kind.RESPAWN:
 			if event.net_id == _own_id:
-				_interaction = Interaction.NONE
+				_on_me.clear()
+				_mine = null
 
 
 ## Pone el aviso al día: [param downed] si el jugador está derribado, con [param downed_health] de vida de
 ## derribado; [param tick], el tick del servidor estimado; [param revive_target], el aliado derribado al
 ## que se puede levantar (0 = ninguno; solo cuenta en pie).
 func update_view(downed: bool, downed_health: int, tick: int, revive_target: int = 0) -> void:
-	var interaction: int = _interaction
-	if interaction != Interaction.NONE and tick >= _end_tick + 30:
-		# El final (levantado, rematado o cortado) llega por evento; si se perdió de vista, se olvida.
-		_interaction = Interaction.NONE
-		interaction = Interaction.NONE
+	_forget_stale(tick)
 	_title.visible = downed
 	_countdown.visible = downed
 	_prompt.visible = false
@@ -91,14 +119,15 @@ func update_view(downed: bool, downed_health: int, tick: int, revive_target: int
 	_bar.visible = false
 	if downed:
 		_countdown.text = CombatText.TEXT_DOWNED_COUNTDOWN % seconds_left(downed_health)
-		if interaction == Interaction.BEING_REVIVED:
-			var who: String = _name(_other_id)
+		var shown: _Ongoing = _shown_on_me()
+		if shown != null and shown.interaction == Interaction.BEING_REVIVED:
+			var who: String = _name(shown.other_id)
 			_show_bar(CombatText.TEXT_BEING_REVIVED_BY % who if not who.is_empty()
-					else CombatText.TEXT_BEING_REVIVED, REVIVE_COLOR, tick)
-		elif interaction == Interaction.BEING_EXECUTED:
-			_show_bar(CombatText.TEXT_BEING_EXECUTED, EXECUTE_COLOR, tick)
-	elif interaction == Interaction.REVIVING:
-		_show_bar(CombatText.TEXT_REVIVING % _name_or_ally(_other_id), REVIVE_COLOR, tick)
+					else CombatText.TEXT_BEING_REVIVED, REVIVE_COLOR, tick, shown)
+		elif shown != null and shown.interaction == Interaction.BEING_EXECUTED:
+			_show_bar(CombatText.TEXT_BEING_EXECUTED, EXECUTE_COLOR, tick, shown)
+	elif _mine != null and _mine.interaction == Interaction.REVIVING:
+		_show_bar(CombatText.TEXT_REVIVING % _name_or_ally(_mine.other_id), REVIVE_COLOR, tick, _mine)
 	elif revive_target != 0:
 		_prompt.visible = true
 		_prompt.text = CombatText.TEXT_REVIVE_PROMPT % [UIKeyGlyph.label_for_action(&"interact"),
@@ -141,9 +170,13 @@ static func find_downed_ally(world: RemoteWorld, own_feet: Vector3, own_realm: i
 	return best
 
 
-## Lo que se está haciendo ahora ([enum Interaction]).
+## Lo que se está haciendo ahora ([enum Interaction]): sobre el jugador local, el remate antes que el
+## levantar; si no, lo que hace él.
 func get_interaction() -> int:
-	return _interaction
+	var shown: _Ongoing = _shown_on_me()
+	if shown != null:
+		return shown.interaction
+	return _mine.interaction if _mine != null else Interaction.NONE
 
 
 func get_title_text() -> String:
@@ -170,18 +203,68 @@ func get_progress() -> float:
 
 
 func _start(interaction: int, event: NetMessages.EntityEvent) -> void:
-	_interaction = interaction
-	_other_id = event.actor if event.net_id == _own_id else event.net_id
-	_start_tick = event.tick
-	_end_tick = maxi(event.end_tick, event.tick + 1)
+	var ongoing := _Ongoing.new()
+	ongoing.interaction = interaction
+	ongoing.start_tick = event.tick
+	ongoing.end_tick = maxi(event.end_tick, event.tick + 1)
+	if event.net_id == _own_id:
+		# Un actor hace una sola cosa a la vez: lo nuevo sustituye a lo que tuviera.
+		ongoing.other_id = event.actor
+		_forget_actor(event.actor)
+		_on_me.append(ongoing)
+	else:
+		ongoing.other_id = event.net_id
+		_mine = ongoing
 
 
-func _show_bar(text: String, color: Color, tick: int) -> void:
+# Quita lo que hacía [param actor] sobre el jugador local.
+func _forget_actor(actor: int) -> void:
+	for index: int in range(_on_me.size() - 1, -1, -1):
+		if _on_me[index].other_id == actor:
+			_on_me.remove_at(index)
+
+
+# El fin o el corte de [param interaction] de [param actor] sobre el jugador local: solo quita la suya.
+func _end_on_me(interaction: int, actor: int) -> void:
+	for index: int in range(_on_me.size() - 1, -1, -1):
+		if _on_me[index].other_id == actor and _on_me[index].interaction == interaction:
+			_on_me.remove_at(index)
+
+
+# El fin o el corte de lo que hace el jugador local ([param interaction] con [param target]).
+func _end_mine(interaction: int, target: int) -> void:
+	if _mine != null and _mine.interaction == interaction and _mine.other_id == target:
+		_mine = null
+
+
+# El final (levantado, rematado o cortado) llega por evento; si se perdió de vista, se olvida
+# [constant FORGET_AFTER_TICKS] ticks después de su fin previsto.
+func _forget_stale(tick: int) -> void:
+	for index: int in range(_on_me.size() - 1, -1, -1):
+		if tick >= _on_me[index].end_tick + FORGET_AFTER_TICKS:
+			_on_me.remove_at(index)
+	if _mine != null and tick >= _mine.end_tick + FORGET_AFTER_TICKS:
+		_mine = null
+
+
+# Lo que se muestra sobre el jugador local: el remate que antes acaba y, si no hay, el levantar; o null.
+func _shown_on_me() -> _Ongoing:
+	var shown: _Ongoing = null
+	for ongoing: _Ongoing in _on_me:
+		if shown == null:
+			shown = ongoing
+		elif ongoing.interaction == Interaction.BEING_EXECUTED:
+			if shown.interaction != Interaction.BEING_EXECUTED or ongoing.end_tick < shown.end_tick:
+				shown = ongoing
+	return shown
+
+
+func _show_bar(text: String, color: Color, tick: int, ongoing: _Ongoing) -> void:
 	_detail.visible = true
 	_detail.text = text
 	_bar.visible = true
-	_bar.value = clampf(float(tick - _start_tick) / float(maxi(_end_tick - _start_tick, 1)), 0.0, 1.0) \
-			* _bar.max_value
+	_bar.value = clampf(float(tick - ongoing.start_tick)
+			/ float(maxi(ongoing.end_tick - ongoing.start_tick, 1)), 0.0, 1.0) * _bar.max_value
 	var fill := StyleBoxFlat.new()
 	fill.bg_color = color
 	_bar.add_theme_stylebox_override(&"fill", fill)

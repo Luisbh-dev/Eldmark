@@ -132,7 +132,8 @@ class Site:
 	# Dueño y rotura que tienen ahora las capas de la puerta.
 	var applied_owner: int = 0
 	var applied_broken: bool = false
-	# true mientras una reparación espera a que el vano quede libre.
+	# true mientras la reparación de una puerta rota espera a que el vano quede libre (solo con la puerta rota:
+	# una entera se repara sin esperar).
 	var repair_pending: bool = false
 	# PNJ capitán registrado (0 = ninguno) y reino de quien ha pedido matarlo (-1 = nadie).
 	var captain_net_id: int = 0
@@ -310,7 +311,7 @@ func get_structure_targets() -> Array[StructureTarget]:
 	return targets
 
 
-## true si hay una reparación de la puerta esperando a que el vano quede libre.
+## true si hay una reparación de la puerta rota esperando a que el vano quede libre.
 func is_repair_pending(fortress_id: StringName) -> bool:
 	var site: Site = _sites_by_id.get(fortress_id)
 	return site != null and site.repair_pending
@@ -388,13 +389,17 @@ func set_guards_alive(fortress_id: StringName, count: int) -> void:
 
 ## Un golpe ha dado en la puerta ([signal CombatDirector.structure_hit]): le resta [param amount] de
 ## vida en el tick [param tick], sale el aviso de «fuerte atacado» (como mucho uno por minuto) y el de
-## «puerta rota» si la rompe, y el daño cuenta para el marcador de [param attacker].
+## «puerta rota» si la rompe, y el daño cuenta para el marcador de [param attacker]. Un golpe que quita
+## vida anula cualquier reparación pendiente: la siguiente llega tras el plazo sin daño contado desde él.
 func on_structure_hit(target: StructureTarget, attacker: Combatant, amount: int, tick: int) -> void:
 	var site: Site = _sites_by_net_id.get(target.net_id)
 	if site == null or amount <= 0:
 		return
 	var first_damage: bool = not site.gate_damage_announced
+	var health_before: int = site.state.gate_health
 	var events: PackedInt32Array = site.state.on_gate_damaged(tick, amount, attacker.get_realm())
+	if site.state.gate_health < health_before:
+		site.repair_pending = false
 	if first_damage:
 		site.gate_damage_announced = true
 		gate_damage_started.emit(site.id, tick)
@@ -610,22 +615,25 @@ func _on_death(event: NetMessages.EntityEvent) -> void:
 
 # --- La puerta -----------------------------------------------------------------------------------
 
-# Si una reparación que ha hecho el estado (captura, reinicio) deja a alguien en el vano, se
-# deshace: la puerta sigue rota y la reparación espera.
+# Si una reparación que ha hecho el estado (captura, reinicio) cierra una puerta que estaba rota con
+# alguien en el vano, se deshace: la puerta sigue rota y la reparación espera. Una puerta entera (dañada
+# o no) se queda reparada: cerrarla no cambia su colisión, así que no hay nadie a quien dejar atrapado.
 func _hold_repair_if_blocked(site: Site, health_before: int, last_damage_before: int) -> void:
 	var state: FortressState = site.state
-	if state.gate_health > health_before and _is_gate_blocked(site):
+	if health_before <= 0 and state.gate_health > health_before and _is_gate_blocked(site):
 		state.gate_health = health_before
 		state.gate_last_damage_tick = last_damage_before
 		site.repair_pending = true
 
 
-# Repara la puerta si toca (tras 5 min sin daño o una reparación aplazada) y el vano está libre.
+# Repara la puerta si toca (tras 5 min sin daño o una reparación aplazada). Solo la rota espera a que el
+# vano esté libre: la entera se repara en el acto. Una rota no recibe daño, así que lo que espera no se
+# queda viejo (y un golpe a una entera anula lo pendiente: on_structure_hit).
 func _repair_if_due(site: Site, tick: int) -> void:
 	var state: FortressState = site.state
 	if not site.repair_pending and not state.gate_repair_due(tick):
 		return
-	if _is_gate_blocked(site):
+	if state.is_gate_broken() and _is_gate_blocked(site):
 		site.repair_pending = true
 		return
 	if state.gate_health < state.gate_max:

@@ -21,9 +21,17 @@ class FakeClient extends NetClient:
 	var fake_in_combat: bool = false
 	var fake_tick: int = 0
 	var fake_config: ClientConfig = ClientConfig.new()
+	var fake_welcome: NetMessages.Welcome = null
+	var fake_prediction: ClientPrediction = null
 
 	func get_character() -> PlayerCharacter:
 		return fake_character
+
+	func get_welcome() -> NetMessages.Welcome:
+		return fake_welcome
+
+	func get_prediction() -> ClientPrediction:
+		return fake_prediction if fake_prediction != null else super.get_prediction()
 
 	func is_in_combat() -> bool:
 		return fake_in_combat
@@ -398,10 +406,12 @@ func test_the_boss_bar_follows_the_nearest_living_boss_in_range() -> void:
 	assert_eq(bar.get_shown_id(), 0)
 
 
-func _npc_spawn(net_id: int, display_name: String, npc_def_id: int, position: Vector3) -> NetMessages.EntitySpawn:
+func _npc_spawn(net_id: int, display_name: String, npc_def_id: int, position: Vector3,
+		realm: int = RealmCatalog.NEUTRAL_CODE) -> NetMessages.EntitySpawn:
 	var spawn := NetMessages.EntitySpawn.new()
 	spawn.net_id = net_id
 	spawn.kind = NetProtocol.EntityKind.NPC
+	spawn.realm = realm
 	spawn.spawn_tick = 100
 	spawn.display_name = display_name
 	spawn.npc_def_id = npc_def_id
@@ -487,6 +497,91 @@ func test_marks_listen_to_the_clients_telegraphs() -> void:
 	_root.remove_child(marks)
 	assert_false(client.telegraph_received.is_connected(marks.add_telegraph), "al salir del árbol deja de escuchar")
 	_root.add_child(marks)
+
+
+## Revisión de la fase 4 (cliente): el golpe cae en el tick del aviso más su carga y lo esquiva la entrada del jugador
+## para ese tick, que el cliente genera con su tick predicho; al llegar el aviso, ese reloj ya va un RTT y el margen
+## de TickSync por delante. La marca se llena con ese reloj (no con la edad desde que llegó): está llena justo en el
+## último tick en que salir aún evita el golpe, y se quita al acabar la ventana activa del golpe.
+func test_a_mark_fills_with_the_predicted_clock_and_is_full_at_the_last_tick_that_can_still_dodge() -> void:
+	var crush_id: int = CombatCatalog.attack_id(&"npc_captain_crush")
+	var crush: AttackTicks = CombatCatalog.attack(crush_id)
+	assert_eq(crush.windup_ticks, 60, "el imbloqueable del Capitán carga 1 s")
+	var marks: TelegraphMarks = _track(TelegraphMarks.new()) as TelegraphMarks
+	var now: Array[float] = [1011.0]
+	marks.clock = func() -> float: return now[0]
+	var event: NetMessages.EntityEvent = NetMessages.EntityEvent.telegraph(31, 1000, crush_id,
+			NetMessages.EntityEvent.SHAPE_SECTOR, Vector3.ZERO, 0.0, 350, crush.windup_ticks)
+	assert_true(marks.add_telegraph(event))
+	assert_near(marks.get_mark_fill(0), 11.0 / 60.0, 1e-6,
+			"llega con el reloj predicho 11 ticks por delante del aviso (RTT y margen): ya lleva esa parte")
+	now[0] = 1030.0
+	marks.advance(0.5)
+	assert_near(marks.get_mark_fill(0), 0.5, 1e-6, "manda el reloj predicho, no el tiempo de los fotogramas")
+	now[0] = 1059.5
+	marks.advance(0.016)
+	assert_true(marks.get_mark_fill(0) < 1.0, "medio tick antes aún no está llena")
+	now[0] = 1060.0
+	marks.advance(0.016)
+	assert_near(marks.get_mark_fill(0), 1.0, 1e-6, "llena en el tick del golpe: la última entrada que aún esquiva")
+	now[0] = 1060.0 + float(crush.active_ticks) - 0.5
+	marks.advance(0.016)
+	assert_eq(marks.get_mark_count(), 1, "se queda mientras el golpe sigue activo")
+	now[0] = 1060.0 + float(crush.active_ticks)
+	marks.advance(0.016)
+	assert_eq(marks.get_mark_count(), 0, "y se quita al acabar su ventana activa")
+	# Un aviso que llega cuando su golpe ya ha pasado no se dibuja.
+	now[0] = 2000.0
+	assert_false(marks.add_telegraph(event), "un aviso caducado no dibuja nada")
+
+
+func test_bound_to_a_client_the_marks_use_its_predicted_tick() -> void:
+	var client: FakeClient = _track(FakeClient.new()) as FakeClient
+	var prediction := ClientPrediction.new()
+	prediction._started = true
+	prediction._predicted_tick = 1012
+	client.fake_prediction = prediction
+	var marks: TelegraphMarks = _track(TelegraphMarks.new()) as TelegraphMarks
+	marks.bind(client)
+	client.telegraph_received.emit(NetMessages.EntityEvent.telegraph(31, 1000, 3,
+			NetMessages.EntityEvent.SHAPE_CIRCLE, Vector3.ZERO, 0.0, 350, 60))
+	assert_eq(marks.get_mark_count(), 1)
+	# El jugador ve su personaje entre el tick predicho anterior y el último: 11 ticks (y una fracción) tras el aviso.
+	var fill: float = marks.get_mark_fill(0)
+	assert_true(fill >= 11.0 / 60.0 - 1e-6 and fill <= 12.0 / 60.0 + 1e-6,
+			"al llegar ya va por 11/60 del aviso (%.3f)" % fill)
+	prediction._predicted_tick = 1061
+	marks.advance(0.016)
+	assert_near(marks.get_mark_fill(0), 1.0, 1e-6, "y llena cuando el reloj predicho pasa el tick del golpe")
+
+
+## Revisión de la fase 4 (cliente): el servidor avisa los golpes fuertes de todos los PNJ, también los de la guarnición
+## y el capitán del reino dueño del fuerte, que no pueden dañar a los defensores de ese reino. A ellos no se les dibuja
+## la zona de peligro (la misma regla que los bots, [FactionRules]).
+func test_marks_ignore_the_heavy_blows_of_npcs_of_your_own_realm() -> void:
+	var client: FakeClient = _track(FakeClient.new()) as FakeClient
+	client.fake_config.realm = VARDHEIM
+	client.fake_welcome = NetMessages.Welcome.new()
+	client.fake_welcome.zone_id = "vado_gris"
+	client.get_remote_world().install_visuals = false
+	client.get_remote_world().on_spawn(_npc_spawn(41, "Guardia de Vardheim", 0, Vector3(2.0, 0.0, 0.0), VARDHEIM))
+	client.get_remote_world().on_spawn(_npc_spawn(42, "Hueco", 0, Vector3(3.0, 0.0, 0.0), RealmCatalog.NEUTRAL_CODE))
+	client.get_remote_world().on_spawn(_npc_spawn(43, "Guardia de Solmarch", 0, Vector3(4.0, 0.0, 0.0), SOLMARCH))
+	var marks: TelegraphMarks = _track(TelegraphMarks.new()) as TelegraphMarks
+	marks.bind(client)
+	for npc_id: int in [41, 42, 43, 99]:
+		client.telegraph_received.emit(NetMessages.EntityEvent.telegraph(npc_id, 10, 3,
+				NetMessages.EntityEvent.SHAPE_CIRCLE, Vector3.ZERO, 0.0, 300, 30))
+	assert_eq(marks.get_mark_count(), 3, "tres marcas de cuatro avisos")
+	var drawn: Array[int] = []
+	for index: int in marks.get_mark_count():
+		drawn.append(marks.get_mark_npc(index))
+	assert_false(drawn.has(41), "el guardia de tu reino no te puede dañar: sin marca")
+	assert_true(drawn.has(42), "un Hueco, sí")
+	assert_true(drawn.has(43), "un guardia enemigo, sí")
+	assert_true(drawn.has(99), "y uno del que aún no ha llegado el alta, por prudencia")
+	assert_false(TelegraphMarks.threatens(client, 41))
+	assert_true(TelegraphMarks.threatens(null, 41), "sin cliente se dibuja todo")
 
 
 func test_mesh_builder_makes_a_fan_with_the_right_triangles() -> void:

@@ -333,6 +333,107 @@ func test_the_leash_sends_the_npc_back_regenerated_and_immune() -> void:
 	assert_true(player > 0)
 
 
+# --- Atacado desde lejos (revisión de la fase 4, lente «trampas») ---------------------------------------
+
+## [param count] arqueros de Vardheim con el arco en z = [param z] (separados 3 m) que disparan el ligero a
+## [param target_id] (con la caída compensada) dos ticks de cada 40, escalonados. Devuelve sus net_id.
+func _archers(count: int, z: float, target_id: int) -> Array[int]:
+	var archers: Array[int] = []
+	var arrow: ProjectileTicks = CombatCatalog.projectile(CombatCatalog.projectile_id(&"arrow"))
+	var bow: int = CombatCatalog.weapon_id(&"bow")
+	for index: int in count:
+		var offset: int = index * 13
+		var archer := CombatFixture.ScriptBrain.new(1)
+		archer.script_fn = func(tick: int, position: Vector3, yaw: float) -> PlayerInput:
+			var input := PlayerInput.new()
+			input.tick = tick
+			input.look_yaw = yaw
+			var target: NetEntity = _rig.entity(target_id) if _rig != null and _rig.server != null else null
+			if target == null:
+				return input
+			var muzzle: Vector3 = AimRay.muzzle(position)
+			var center: Vector3 = target.get_position() + Vector3(0.0, 0.9, 0.0)
+			var point: Vector3 = muzzle + Ballistics.solve_lead(muzzle, center, Vector3.ZERO, 45.0, arrow.gravity) \
+					* muzzle.distance_to(center)
+			var look: Vector2 = AimRay.look_for(position, point, false)
+			input.look_yaw = look.x
+			input.look_pitch = look.y
+			if (tick + offset) % 40 < 2:
+				input.buttons |= PlayerInput.PRIMARY
+			return input
+		var x: float = (float(index) - float(count - 1) * 0.5) * 3.0
+		var net_id: int = _rig.add_player(VARDHEIM, Vector3(x, 0.0, z), archer, PI)
+		assert_true(_rig.server.get_combat().set_weapon(_rig.combatant(net_id), bow), "con el arco")
+		archers.append(net_id)
+	return archers
+
+
+func _damage_taken(net_ids: Array[int]) -> int:
+	var total: int = 0
+	for net_id: int in net_ids:
+		total += _rig.combatant(net_id).max_health - _rig.combatant(net_id).health
+	return total
+
+
+## Antes, un PNJ golpeado desde más allá de su radio de pérdida (28 m el Hueco; la flecha llega a unos 90 m) entraba
+## en combate sin objetivo, se quedaba quieto y a los 3 s volvía a su puesto curado del todo, y vuelta a empezar: con
+## pocos arqueros no se le podía matar y con muchos moría sin moverse ni hacer daño. Ahora va a por quien le dispara.
+func test_an_npc_shot_from_beyond_its_lose_radius_goes_for_the_archers() -> void:
+	await _flat_with_no_spawners()
+	var hollow: int = _lone(&"hollow", 0, Vector3.ZERO, 0.0)
+	var brain: HfsmBrain = _brain(hollow)
+	var lose: float = NpcCatalog.get_definition(&"hollow").lose_radius
+	assert_true(33.0 > lose, "los arqueros, más allá de su radio de pérdida (%.0f m)" % lose)
+	var archers: Array[int] = _archers(3, -33.0, hollow)
+	var hit: bool = await _rig.advance_until(func() -> bool:
+		return _rig.combatant(hollow).health < _rig.combatant(hollow).max_health, 300)
+	if not assert_true(hit, "las flechas le dan"):
+		return
+	var rests_before: int = _states(hollow).count(STATE_REST)
+	var fought_back: bool = await _rig.advance_until(func() -> bool: return _damage_taken(archers) > 0, 1200)
+	var position: Vector3 = _rig.entity(hollow).get_position()
+	assert_true(fought_back, "llega hasta los arqueros y les hace daño (está en %s, %s)"
+			% [position, HfsmBrain.state_name(brain.state)])
+	assert_true(position.z < -25.0, "ha ido a por ellos (z = %.1f)" % position.z)
+	assert_eq(_states(hollow).count(STATE_REST), rests_before, "sin volver a su puesto curado entre medias")
+	assert_eq(_states(hollow).count(STATE_RETURN), 0, "ni regresar: los arqueros están dentro de su correa")
+
+
+## Si quien le dispara está más allá de su correa, lo persigue hasta ella y regresa inmune (no se queda quieto
+## recibiendo flechas).
+func test_an_npc_shot_from_beyond_its_leash_chases_to_the_leash_and_returns_immune() -> void:
+	await _flat_with_no_spawners()
+	var hollow: int = _lone(&"hollow", 0, Vector3.ZERO, 0.0)
+	var brain: HfsmBrain = _brain(hollow)
+	var leash: float = NpcCatalog.get_definition(&"hollow").leash_radius
+	var archers: Array[int] = _archers(3, -55.0, hollow)
+	var returned: bool = await _rig.advance_until(func() -> bool: return brain.state == STATE_RETURN, 1500)
+	if not assert_true(returned, "pasada la correa, regresa (estado %s, en %s)"
+			% [HfsmBrain.state_name(brain.state), _rig.entity(hollow).get_position()]):
+		return
+	assert_true(_rig.entity(hollow).get_position().length() >= leash - 1.0, "tras perseguirlos hasta su correa")
+	assert_true(_rig.combatant(hollow).is_protected(_rig.server.get_tick()), "inmune mientras regresa")
+	assert_eq(_damage_taken(archers), 0, "sin llegar a ellos")
+	assert_true(_rig.combatant(hollow).is_alive())
+
+
+## Revisión de la fase 4 (trampas): el registro de estados de un PNJ está acotado (antes crecía sin límite: un Hueco
+## que patrulla suma unas 10 transiciones por minuto durante días).
+func test_the_state_log_keeps_only_the_latest_transitions() -> void:
+	var brain := HfsmBrain.new(1)
+	var transitions: int = HfsmBrain.STATE_LOG_MAX * 10
+	for index: int in transitions:
+		brain._enter(STATE_REST if index % 2 == 0 else HfsmBrain.State.PATROL, index)
+	var entries: Array[Vector2i] = brain.get_state_log()
+	assert_true(entries.size() >= HfsmBrain.STATE_LOG_MAX and entries.size() < HfsmBrain.STATE_LOG_MAX * 2,
+			"entre el tope y el doble (%d)" % entries.size())
+	assert_eq(entries[entries.size() - 1], Vector2i(transitions - 1, HfsmBrain.State.PATROL), "con la última")
+	var contiguous: bool = true
+	for index: int in range(1, entries.size()):
+		contiguous = contiguous and entries[index].x == entries[index - 1].x + 1
+	assert_true(contiguous, "y las anteriores seguidas, sin huecos")
+
+
 # --- Alerta de grupo y grito -----------------------------------------------------------------------
 
 func test_a_group_alert_wakes_the_nearby_members_and_not_the_far_ones() -> void:

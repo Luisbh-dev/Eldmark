@@ -17,8 +17,9 @@ extends RefCounted
 ## sección 10, con el mayor de [member ServerPeer.rtt_ticks] y [member ServerPeer.rtt_peak_ticks] (con
 ## jitter el mínimo se queda corto para un jugador honrado) y una antelación acotada por la habitual
 ## del cliente más su dispersión y por un máximo (la de cada entrada la escoge el cliente). Con más de
-## [code]allowed + 1[/code] ticks el golpe no se prueba (puntuación de sospecha del peer y línea en el
-## registro). Si no, [code]view_tick = clamp(s − view_offset_q / 16, s − allowed, s)[/code]. Para las
+## [code]allowed + [/code][constant REWIND_REJECT_SLACK_TICKS] ticks el golpe no se prueba (puntuación de
+## sospecha del peer y línea en el registro). Si no, [code]view_tick = clamp(s − view_offset_q / 16, s − allowed,
+## s)[/code]: lo que pasa del tope sin llegar al rechazo se recorta (un fotograma retrasado del cliente). Para las
 ## defensas retroactivas se mira atrás como mínimo [code]rtt_floor + 4 − 2[/code] ticks
 ## ([member ServerPeer.rtt_floor_ticks], el RTT de ENet): pedir 0 no libra de ellas. Los jugadores
 ## falsos y los PNJ no rebobinan ([code]view_tick = s[/code]).
@@ -87,6 +88,14 @@ const _MAX_LEAD_CREDIT: int = 8
 ## ([method InputQueue.get_typical_lead]): la dispersión de un honrado con jitter. Más es una entrada
 ## adelantada a propósito.
 const _LEAD_SPREAD: int = 3
+## Ticks por encima del tope ([method allowed_rewind]) que se [b]recortan[/b] al tope en vez de rechazar el golpe
+## (y sumar sospecha): 1 de redondeo más 7 de un fotograma retrasado del cliente. Con un tirón o pocos FPS el motor
+## encadena hasta [code]physics/common/max_physics_steps_per_frame[/code] (8) pasos de física en un fotograma; el
+## paso k declara la vista del último fotograma dibujado, k ticks más vieja, y las entradas de ese fotograma llegan
+## con menos antelación (el tope baja). Quien declara de más se queda en el tope, como un honrado: no gana nada
+## (revisión de la fase 4, lente «trampas»; antes era 1 y un honrado con un tirón de 70–150 ms perdía el golpe o la
+## flecha y sumaba sospecha). El tramposo [code]rewind[/code] (40 ticks) sigue por encima de 24 + 8.
+const REWIND_REJECT_SLACK_TICKS: int = 8
 
 ## Blancos estáticos de la zona (las puertas de los fuertes, docs/fuerte.md 3.3): se prueban para cada
 ## ataque activo después de los jugadores, sin rebobinado (no se mueven).
@@ -143,11 +152,13 @@ func _init(history: StateHistory, zone_id: StringName, safe_areas: SafeAreas = n
 	_safe_areas = safe_areas if safe_areas != null else SafeAreas.new()
 
 
-## Tope de rebobinado en ticks (red.md, sección 10): [code]min(24, rtt + lead + clamp(interp / 8,
-## 4, 12) + 2)[/code], con el retardo de interpolación [param interp_delay_q] en octavos de tick.
+## Tope de rebobinado en ticks (red.md, sección 10): [code]min(24, rtt + lead + clamp(ceil(interp / 8),
+## 4, 12) + 2)[/code], con el retardo de interpolación [param interp_delay_q] en octavos de tick (redondeado hacia
+## arriba: truncado perdía hasta 7/8 de tick de la vista de un honrado; revisión de la fase 4).
 @warning_ignore("integer_division")
 static func allowed_rewind(rtt_ticks: int, lead: int, interp_delay_q: int) -> int:
-	var interpolation: int = clampi(interp_delay_q / NetProtocol.INTERP_DELAY_Q_SCALE,
+	var scale: int = NetProtocol.INTERP_DELAY_Q_SCALE
+	var interpolation: int = clampi((maxi(interp_delay_q, 0) + scale - 1) / scale,
 			_MIN_INTERP_TICKS, NetProtocol.MAX_INTERP_DELAY_TICKS)
 	return mini(NetProtocol.MAX_REWIND_TICKS, rtt_ticks + maxi(lead, 0) + interpolation + 2)
 
@@ -258,12 +269,12 @@ func _swing_rewind(attacker: Combatant, s: int) -> float:
 
 
 ## El rebobinado de un golpe o un disparo de [param attacker] que empieza en [param s] (docs/combate.md,
-## 4.3, paso 2), sin fijarlo en ningún sitio: [code]x[/code] son los ticks que ve atrás (NAN si pide más
-## de lo permitido) e [code]y[/code] los que se miran atrás para la parada, el bloqueo y la
-## invulnerabilidad (al menos el mínimo coherente con el RTT medido, nunca más que el tope; 0 si se
-## rechaza). Un atacante sin peer (jugador falso, PNJ) no rebobina: (0, 0). Lo usan los golpes
-## ([method _swing_rewind], que lo fija en el [Combatant]) y los proyectiles ([ProjectileSystem], que lo
-## fija para todo el vuelo redondeado a ticks enteros).
+## 4.3, paso 2), sin fijarlo en ningún sitio: [code]x[/code] son los ticks que ve atrás (recortados al tope;
+## NAN si pide más de [code]allowed + [/code][constant REWIND_REJECT_SLACK_TICKS]) e [code]y[/code] los que
+## se miran atrás para la parada, el bloqueo y la invulnerabilidad (al menos el mínimo coherente con el RTT
+## medido, nunca más que el tope; 0 si se rechaza). Un atacante sin peer (jugador falso, PNJ) no rebobina:
+## (0, 0). Lo usan los golpes ([method _swing_rewind], que lo fija en el [Combatant]) y los proyectiles
+## ([ProjectileSystem], que lo fija para todo el vuelo redondeado a ticks enteros).
 static func compute_rewind(attacker: Combatant, s: int) -> Vector2:
 	if attacker.peer == null or attacker.queue == null:
 		return Vector2.ZERO
@@ -273,7 +284,7 @@ static func compute_rewind(attacker: Combatant, s: int) -> Vector2:
 	var allowed: int = allowed_rewind(maxi(attacker.peer.rtt_ticks, attacker.peer.rtt_peak_ticks),
 			lead, attacker.peer.interp_delay_q)
 	var rewind: float = NAN
-	if params.x <= (allowed + 1) * VIEW_OFFSET_Q_SCALE:
+	if params.x <= (allowed + REWIND_REJECT_SLACK_TICKS) * VIEW_OFFSET_Q_SCALE:
 		rewind = clampf(float(params.x) / float(VIEW_OFFSET_Q_SCALE), 0.0, float(allowed))
 	if is_nan(rewind):
 		return Vector2(NAN, 0.0)
