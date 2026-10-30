@@ -5,6 +5,10 @@ extends TestCase
 ## inmunidad), la muerte (una sola DEATH y KILL con asistentes), el entorno (caída, volumen letal,
 ## bajo y = -100), la reaparición pedida y automática con protección y el maniquí inmortal.
 ## [br][br]
+## Desde H3c (docs/habilidades.md, sección 4.5) el golpe mortal de un jugador de otro reino en una zona RVR
+## derriba en vez de matar (test_downed): las pruebas de la muerte usan un atacante PNJ ([method _npc_duel]),
+## contra el que se muere directamente.
+## [br][br]
 ## No hay red ni servidor: el director recibe los cuerpos y se le llama tick a tick con
 ## [method CombatDirector.process_tick].
 
@@ -85,6 +89,16 @@ func _duel() -> Array[Combatant]:
 	var attacker: Combatant = _body(1, VARDHEIM, Vector3.ZERO, 0.0)
 	var victim: Combatant = _body(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI)
 	return [attacker, victim]
+
+
+## Como [method _duel], pero el atacante es un PNJ (de Vardheim): su golpe mortal mata sin derribar
+## (docs/habilidades.md, sección 4.5). Con [param both_npcs] la víctima también lo es.
+func _npc_duel(both_npcs: bool = false) -> Array[Combatant]:
+	var duel: Array[Combatant] = _duel()
+	duel[0].entity.kind = NetProtocol.EntityKind.NPC
+	if both_npcs:
+		duel[1].entity.kind = NetProtocol.EntityKind.NPC
+	return duel
 
 
 func _tick(s: int = S) -> void:
@@ -358,7 +372,7 @@ func test_third_control_in_the_window_does_not_enter_and_opens_immunity() -> voi
 # --- Muerte -----------------------------------------------------------------------------------
 
 func test_lethal_hit_kills_once_with_death_and_kill_events() -> void:
-	var duel: Array[Combatant] = _duel()
+	var duel: Array[Combatant] = _npc_duel()
 	duel[1].health = 50
 	CombatFixture.start_light_active(duel[0], S)
 	_tick()
@@ -396,7 +410,7 @@ func test_lethal_hit_kills_once_with_death_and_kill_events() -> void:
 
 
 func test_kill_lists_the_assistants_of_the_damage_ledger() -> void:
-	var duel: Array[Combatant] = _duel()
+	var duel: Array[Combatant] = _npc_duel()
 	duel[1].health = 90
 	# Antes de este golpe: 600 de otro atacante, 300 de un tercero y 5 de un cuarto.
 	duel[1].ledger.record(S - 100, 5, 600)
@@ -435,7 +449,7 @@ func test_a_kill_by_an_npc_is_credited_to_the_npc_and_allies_and_self_do_not_ass
 
 
 func test_simultaneous_exchange_can_kill_both() -> void:
-	var duel: Array[Combatant] = _duel()
+	var duel: Array[Combatant] = _npc_duel(true)
 	duel[0].health = 50
 	duel[1].health = 50
 	CombatFixture.start_light_active(duel[0], S)

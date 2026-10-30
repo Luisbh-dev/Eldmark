@@ -644,7 +644,8 @@ func test_console_commands() -> void:
 	var ana: int = _server.add_fake_player(_brain(), VARDHEIM)
 	var commands: CommandRegistry = _server.get_commands()
 	# Los ids 7 a 12 (protocolo 4) son fijos y todos tienen ya su manejador: el /atascado y los cuatro comandos del
-	# fuerte los registró F3 y npc_debug, F4.
+	# fuerte los registró F3 y npc_debug, F4. De los del protocolo 6 (13 a 16, docs/habilidades.md §5.1),
+	# cooldowns_off y apply_status llegaron con H3a y down y refill, con H3c.
 	assert_eq(commands.missing_network_commands(), PackedStringArray(),
 			"todos los comandos de red tienen manejador")
 	assert_true(_server.console_command("help").contains("teleport"))
@@ -693,6 +694,62 @@ func test_console_commands() -> void:
 	# Todo queda auditado.
 	assert_true(commands.audit_total >= 20, "cada uso queda en la auditoría (%d)" % commands.audit_total)
 	assert_true(commands.audit[commands.audit.size() - 1].begins_with("[auditoría] consola: shutdown cancel"))
+
+
+## H3a (docs/habilidades.md, 5.1): los comandos 13 cooldowns_off (bit 7 de combat_flags2) y 14 apply_status
+## (un efecto sin autor, con su duración o la del dato), por la red y por la consola.
+func test_cooldowns_off_and_apply_status_commands() -> void:
+	await _start_server()
+	var ana: int = _server.add_fake_player(_brain(), VARDHEIM)
+	var commands: CommandRegistry = _server.get_commands()
+	var peer := ServerPeer.new(3)
+	peer.entity = _server.get_registry().get_entity(ana)
+	var no_cooldowns: Callable = func() -> bool:
+		return (_character(ana).combat.combat_flags2 & CombatState.FLAG2_NO_COOLDOWNS) != 0
+	assert_eq(commands.execute_network(peer, NetProtocol.DEBUG_COOLDOWNS_OFF, PackedByteArray([1])),
+			CommandRegistry.Result.OK, "13 con 1")
+	assert_true(no_cooldowns.call(), "sin reutilizaciones")
+	assert_eq(commands.execute_network(peer, NetProtocol.DEBUG_COOLDOWNS_OFF, PackedByteArray([0])),
+			CommandRegistry.Result.OK, "13 con 0")
+	assert_false(no_cooldowns.call(), "con reutilizaciones otra vez")
+	assert_eq(commands.execute_network(peer, NetProtocol.DEBUG_COOLDOWNS_OFF, PackedByteArray([2])),
+			CommandRegistry.Result.BAD_ARGUMENTS, "ni 0 ni 1")
+	assert_eq(commands.execute_network(peer, NetProtocol.DEBUG_COOLDOWNS_OFF, PackedByteArray()),
+			CommandRegistry.Result.BAD_ARGUMENTS, "sin datos")
+	assert_eq(_server.console_command("cooldowns_off Bot-01 on"), "Sin reutilizaciones para Bot-01")
+	assert_true(no_cooldowns.call())
+	assert_eq(_server.console_command("cooldowns_off Bot-01"), "Con reutilizaciones para Bot-01", "sin on/off, alterna")
+	# 14: el sangrado con 120 ticks, sin autor, desde el tick que va a simular el servidor.
+	var bleed: int = CombatCatalog.status_id(&"bleed")
+	var next_tick: int = _server.get_tick() + 1
+	assert_eq(commands.execute_network(peer, NetProtocol.DEBUG_APPLY_STATUS,
+			NetMessages.DebugCommand.apply_status(bleed, 120).payload), CommandRegistry.Result.OK, "14")
+	var effect: StatusSystem.ActiveEffect = _server.get_combat().status.find(_combatant(ana), bleed)
+	if assert_not_null(effect, "lo lleva"):
+		assert_eq(effect.until_tick, next_tick + 120, "con la duración pedida")
+		assert_eq(effect.source_id, 0, "sin autor")
+	var statuses: Array[NetMessages.EntityEvent] = _events_of(NetMessages.EntityEvent.Kind.STATUS)
+	if assert_eq(statuses.size(), 1, "STATUS 1"):
+		assert_eq(statuses[0].until_tick, next_tick + 120)
+		assert_eq(statuses[0].source_entity, 0)
+	assert_eq(commands.execute_network(peer, NetProtocol.DEBUG_APPLY_STATUS,
+			NetMessages.DebugCommand.apply_status(250, 0).payload), CommandRegistry.Result.BAD_ARGUMENTS,
+			"un efecto que no existe")
+	assert_eq(commands.execute_network(peer, NetProtocol.DEBUG_APPLY_STATUS, PackedByteArray([bleed])),
+			CommandRegistry.Result.BAD_ARGUMENTS, "datos cortos")
+	# Por la consola, con la duración del dato: la ralentización ocupa su ranura de movimiento.
+	var slowed: int = CombatCatalog.status_id(&"slowed")
+	assert_eq(_server.console_command("apply_status Bot-01 slowed"), "slowed aplicado a Bot-01")
+	assert_eq(_character(ana).combat.move_effect_ids[0], slowed, "la ranura de movimiento")
+	assert_eq(_server.console_command("apply_status Bot-01 nada"), "No existe el efecto «nada»")
+	# El sangrado pulsa sin autor (HIT del «entorno» con la fuente del efecto).
+	var pulsed: bool = await _wait_until(func() -> bool:
+		return not _events_of(NetMessages.EntityEvent.Kind.HIT).is_empty(), 90)
+	if assert_true(pulsed, "pulsa"):
+		var pulse: NetMessages.EntityEvent = _events_of(NetMessages.EntityEvent.Kind.HIT)[0]
+		assert_eq(pulse.attacker, 0)
+		assert_eq(pulse.tick, next_tick + 60, "en anchor + 60")
+		assert_eq(pulse.get_source(), CombatSource.make(CombatSource.Kind.STATUS, bleed))
 
 
 func test_console_lines_run_at_the_start_of_the_next_tick() -> void:

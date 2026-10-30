@@ -129,7 +129,7 @@ static func record(history: StateHistory, fighter: Combatant, tick: int) -> void
 			<< EntityRecord.TELEPORT_SHIFT
 	if character.grounded:
 		flags |= EntityRecord.FLAG_GROUNDED
-	flags |= ActionMachine.defense_flags(character.combat, tick)
+	flags = (flags & EntityRecord.HISTORY_FLAGS_MASK) | ActionMachine.defense_flags(character.combat, tick)
 	history.record(tick, fighter.get_id(), fighter.entity.get_position(), character.yaw, flags)
 
 

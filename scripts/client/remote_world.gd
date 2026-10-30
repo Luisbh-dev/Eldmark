@@ -53,9 +53,11 @@ func setup(clock: InterpolationClock) -> void:
 
 
 ## ENTITY_SPAWN de otra entidad: crea su vista con la primera muestra del mensaje. Ignora el SPAWN
-## propio ([code]is_yours[/code]) y los repetidos.
+## propio ([code]is_yours[/code]), los repetidos y los que no son personajes (los proyectiles, kind 3,
+## los dibuja otro; las estructuras no traen estado).
 func on_spawn(msg: NetMessages.EntitySpawn) -> void:
-	if msg == null or msg.is_yours or msg.state == null:
+	if msg == null or msg.is_yours or msg.state == null \
+			or msg.kind == NetProtocol.EntityKind.PROJECTILE:
 		return
 	var existing: RemotePlayerView = _views.get(msg.net_id)
 	if existing != null:
@@ -80,7 +82,8 @@ func on_spawn(msg: NetMessages.EntitySpawn) -> void:
 	# El animador de combate del remoto lee el byte action de su registro dibujado.
 	var visual: HumanoidVisual = body.get_node_or_null(^"Visual/HumanoidVisual") as HumanoidVisual
 	if visual != null:
-		visual.get_animator().set_remote_source(Callable(view, "get_drawn_action"))
+		visual.get_animator().set_remote_source(Callable(view, "get_drawn_action"),
+				Callable(view, "get_active_weapon_id"))
 	_views[msg.net_id] = view
 	_spawn_count += 1
 
@@ -94,6 +97,16 @@ func on_despawn(msg: NetMessages.EntityDespawn) -> void:
 		return
 	view.schedule_despawn(msg.despawn_tick)
 	_despawn_count += 1
+
+
+## LOADOUT de un remoto (ya en su tick de dibujo): su nueva pareja de armas (docs/habilidades.md, sección
+## 5.4). Ignora ids desconocidos.
+func on_loadout(event: NetMessages.EntityEvent) -> void:
+	if event == null or event.event != NetMessages.EntityEvent.Kind.LOADOUT:
+		return
+	var view: RemotePlayerView = _views.get(event.net_id)
+	if view != null:
+		view.set_weapons(event.weapon_1, event.weapon_2)
 
 
 ## Reparte los registros de un SNAPSHOT entre las vistas. Ignora los de ids que no conoce y los

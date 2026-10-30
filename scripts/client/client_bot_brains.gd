@@ -11,9 +11,15 @@ extends RefCounted
 ## respaldo, las posiciones de [code]data/routes/<zona>.tres[/code]; los enemigos son los remotos que dibuja su
 ## [RemoteWorld], también los PNJ de guerra ([BotEnemySight]), a los que busca primero, los golpes avisados
 ## (TELEGRAPH) que evita le llegan por [signal NetClient.telegraph_received] ([BotThreatSight], solo los de PNJ que le
-## pueden dañar: [method BotThreatSight.is_hostile_view]) y a los suyos los cuenta
-## en el punto de reunión de su campamento con [BotAllySight] (GUE-44);
+## pueden dañar: [method BotThreatSight.is_hostile_view]), a los suyos los cuenta
+## en el punto de reunión de su campamento con [BotAllySight] (GUE-44) y el arco del kit solo tira si la flecha llega,
+## con el rayo de [method BotBrain.bow_sight_clear] en el mundo del cliente ([method BotBrain.set_line_of_sight]);
 ## [br]- si no, [constant BotBrain.Pattern.WANDER]: pasea alrededor de su punto de aparición.
+## [br][br]
+## Los cerebros de combate y de asedio pelean con el kit de la fase 4 (H5; docs/habilidades.md, sección 7.1,
+## [method give_kit_senses]): leen el estado de combate predicho del personaje, la vida del bloque extra, los
+## enemigos con su velocidad dibujada y su derribo y los aliados derribados que dibuja el [RemoteWorld]. Los del
+## bot tramposo no: juegan como en la fase 3 (lo tramposo es otra cosa).
 
 
 ## Crea el cerebro del bot [param client] (en el mundo, con su personaje) para la configuración
@@ -29,9 +35,25 @@ static func make(client: NetClient, config: ClientConfig, home: Vector3, radius:
 	if config.bot_brain == ClientConfig.BOT_BRAIN_COMBAT:
 		var sight := BotEnemySight.new(client)
 		var brain := BotBrain.new(config.bot_seed, BotBrain.Pattern.COMBAT, home, radius)
-		brain.set_enemy_finder(func(position: Vector3) -> Variant: return sight.find(position))
+		give_kit_senses(brain, client, sight)
 		return brain
 	return BotBrain.new(config.bot_seed, BotBrain.Pattern.WANDER, home, radius)
+
+
+## Le da a [param brain] lo que necesita el kit de la fase 4 (H5): los enemigos de [param sight] como
+## [BotTarget] (posición y velocidad dibujadas y derribo), el estado de combate predicho del personaje de
+## [param client] (el de después del último paso de la predicción, con el que se decide la entrada del
+## siguiente), su vida del bloque extra y los aliados derribados que dibuja.
+static func give_kit_senses(brain: BotBrain, client: NetClient, sight: BotEnemySight) -> void:
+	brain.set_enemy_finder(func(position: Vector3) -> Variant: return sight.find_target(position))
+	brain.set_ally_finder(func(position: Vector3) -> Variant: return sight.find_downed_ally(position))
+	brain.set_combat_source(func() -> CombatState:
+		var character: PlayerCharacter = client.get_character()
+		return character.combat if is_instance_valid(character) else null)
+	brain.set_health_source(func() -> float:
+		if not client.has_health() or client.get_max_health() <= 0:
+			return 1.0
+		return float(client.get_health()) / float(client.get_max_health()))
 
 
 # El cerebro de asedio de un bot del cliente: su reino es el del WELCOME, las rutas las de la zona y el
@@ -59,12 +81,20 @@ static func _make_siege(client: NetClient, config: ClientConfig, home: Vector3, 
 	client.telegraph_received.connect(threats.note)
 	var prediction: ClientPrediction = client.get_prediction()
 	var brain := BotBrain.new(config.bot_seed, BotBrain.Pattern.SIEGE, home, radius)
-	brain.set_enemy_finder(func(position: Vector3) -> Variant: return sight.find(position))
-	brain.set_defender_finder(func(position: Vector3) -> Variant: return defenders.find(position))
+	give_kit_senses(brain, client, sight)
+	brain.set_defender_finder(func(position: Vector3) -> Variant: return defenders.find_target(position))
 	brain.set_threat_finder(func(_position: Vector3) -> Array[BotBrain.Threat]:
 		return threats.find(prediction.get_predicted_tick()))
 	var allies := BotAllySight.new(client)
 	brain.set_ally_counter(func(center: Vector3, radius: float) -> int: return allies.count(center, radius))
+	# El arco solo tira si la flecha llega: el mismo rayo que el servidor, en el mundo del cliente (la puerta de su
+	# FortGate se cierra y se abre con el estado de la fortaleza).
+	brain.set_line_of_sight(func(from_feet: Vector3, to_feet: Vector3, left_shoulder: bool) -> bool:
+		var character: PlayerCharacter = client.get_character()
+		if not is_instance_valid(character) or not character.is_inside_tree():
+			return true
+		return BotBrain.bow_sight_clear(character.get_world_3d().direct_space_state, from_feet, to_feet,
+				left_shoulder))
 	brain.set_siege(view, routes, realm)
 	return brain
 

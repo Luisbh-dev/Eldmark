@@ -488,3 +488,17 @@ func test_online_main_without_a_window_keeps_entering_as_vardheim() -> void:
 
 func _type_name(screen: RealmSelect, text: String) -> void:
 	_type(screen.get_name_edit(), text)
+
+
+func test_the_template_selector_is_in_the_form_and_remembers_the_choice() -> void:
+	_make_screen(PackedInt32Array())
+	var selector: TemplateSelector = _screen.get_template_selector()
+	if not assert_not_null(selector, "la elección de reino tiene el selector de plantilla"):
+		return
+	assert_eq(_screen.get_selected_template(), CombatCatalog.default_template_id(), "por defecto, el escudero")
+	var marksman: int = CombatCatalog.template_id(&"marksman")
+	_screen.set_selected_template(marksman)
+	assert_eq(_screen.get_selected_template(), marksman)
+	assert_true(selector.get_button(marksman).button_pressed, "su botón queda marcado")
+	selector.get_button(CombatCatalog.template_id(&"squire")).pressed.emit()
+	assert_eq(_screen.get_selected_template(), CombatCatalog.template_id(&"squire"), "pulsar otro lo cambia")

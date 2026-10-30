@@ -26,6 +26,36 @@ extends Resource
 @export var parry_window_ticks: int = 6
 ## Ticks hasta que se puede abrir otra ventana de parada.
 @export var parry_cooldown_ticks: int = 30
+## Duración (s) del cambio de arma (docs/habilidades.md, sección 3).
+@export var swap_s: float = 0.4
+## Fracción de la velocidad de carrera permitida durante el cambio de arma.
+@export var swap_move_scale: float = 0.8
+## Fracción de la velocidad de carrera de un derribado (se arrastra).
+@export var downed_move_scale: float = 0.15
+## Giro hacia la cámara (rad/s) de un derribado.
+@export var downed_turn_rate: float = 3.0
+## Duración (s) de levantar a un aliado derribado.
+@export var revive_s: float = 3.0
+## Duración (s) de rematar a un enemigo derribado.
+@export var execute_s: float = 1.0
+## Los dos consumibles (pociones), en orden de botón: CONSUMABLE_1 (R) y CONSUMABLE_2 (T). Sin
+## ninguno (catálogos de prueba) no hay pociones.
+@export var consumables: Array[AbilityDefinition] = []
+## Reutilización compartida (s) de los consumibles.
+@export var consumable_cooldown_s: float = 20.0
+## Puntería canónica (docs/habilidades.md, sección 4.4): altura del pivote de la cámara sobre los
+## pies, desplazamiento lateral del hombro y vertical de la cámara (el [code]h_offset[/code] y el
+## [code]v_offset[/code] de [code]camera_rig.tscn[/code]).
+@export var aim_pivot_height: float = 1.6
+@export var aim_shoulder_offset: float = 0.6
+@export var aim_camera_v_offset: float = 0.1
+## Alcance (m) del rayo de la mira cuando no toca nada.
+@export var aim_range_m: float = 150.0
+## Ángulo (grados) dentro del cual la flecha converge a la profundidad del hostil más cercano a la
+## mira.
+@export var aim_converge_deg: float = 12.0
+## Altura (m) sobre los pies desde la que salen los proyectiles (el pecho).
+@export var muzzle_height: float = 1.4
 
 # --- Solo del servidor ------------------------------------------------------------------------
 
@@ -61,6 +91,25 @@ extends Resource
 @export var structure_pierce_multiplier: float = 0.2
 @export var structure_blunt_multiplier: float = 1.0
 @export var structure_elemental_multiplier: float = 0.6
+## Vida de derribado (docs/habilidades.md, sección 4.5).
+@export var downed_health: int = 400
+## Segundos que tarda en desangrarse un derribado.
+@export var downed_s: float = 20.0
+## Vida con la que vuelve un derribado al que levantan.
+@export var revived_health: int = 300
+## Distancia horizontal (m) a la que se empieza a levantar o rematar.
+@export var interact_range_m: float = 2.0
+## Distancia (m) a la que se corta levantar o rematar.
+@export var interact_keep_range_m: float = 2.5
+## Cono total (grados) del bloqueo de una canalización que bloquea (muro de escudos).
+@export var ability_block_angle_deg: float = 180.0
+## Resistencia por punto de daño que absorbe ese bloqueo.
+@export var ability_block_stamina_per_damage: float = 0.6
+## Proyectiles vivos como mucho por tirador y por zona (al pasar, sale el más viejo).
+@export var max_projectiles_per_shooter: int = 8
+@export var max_projectiles_per_zone: int = 64
+## Plantilla con la que aparece quien no ha elegido (el escudero).
+@export var default_template: EquipmentTemplate
 
 
 ## Multiplicador del daño de tipo [param damage_type] ([enum DamageFormula.DamageType]) contra

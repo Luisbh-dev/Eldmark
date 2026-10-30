@@ -158,6 +158,7 @@ var _max_snapshot_bytes: int = 0
 var _max_snapshot_records: int = 0
 var _batches_sent: int = 0
 var _spawns_seen: int = 0
+var _projectile_spawns_seen: int = 0
 var _despawns_seen: int = 0
 var _events_seen: int = 0
 var _event_bytes: int = 0
@@ -304,7 +305,8 @@ func get_last_notice_text() -> String:
 ## [br]- [code]batches_sent[/code], [code]target_margin[/code], [code]last_input_margin[/code],
 ## [code]tick_sync_adjustments[/code], [code]resyncs[/code], [code]substitution_rises[/code],
 ## [code]substitutions[/code] (contador del servidor), [code]spawns_seen[/code], [code]despawns_seen[/code],
-## [code]delay_ticks[/code], [code]jitter_ticks[/code], [code]malformed_packets[/code].
+## [code]projectile_spawns_seen[/code] (los proyectiles del protocolo 6, que el bot ignora; sus DESPAWN cuentan en
+## [code]despawns_seen[/code]), [code]delay_ticks[/code], [code]jitter_ticks[/code], [code]malformed_packets[/code].
 ## [br]- Del chat y los grupos (protocolo 5), que el bot decodifica y descarta: [code]chat_messages_seen[/code]
 ## (CHAT_MESSAGE) y [code]party_messages_seen[/code] (PARTY_INVITATION, PARTY_ROSTER y PARTY_STATUS).
 ## [br]- Del combate: [code]combat[/code] (si pelea), [code]events_seen[/code] y [code]event_bytes[/code]
@@ -357,6 +359,7 @@ func get_stats() -> Dictionary:
 		"substitution_rises": _substitution_rises,
 		"substitutions": maxi(_server_substitutions, 0),
 		"spawns_seen": _spawns_seen,
+		"projectile_spawns_seen": _projectile_spawns_seen,
 		"despawns_seen": _despawns_seen,
 		"events_seen": _events_seen,
 		"event_bytes": _event_bytes,
@@ -703,10 +706,19 @@ func _scan_enemies(bytes: PackedByteArray, section_offset: int) -> void:
 				_enemy_alive[net_id] = bytes[record_offset + 20] != EntityRecord.HEALTH_Q_DEAD
 			elif _ally_positions.has(net_id):
 				_ally_positions[net_id] = NetMath.unpack_position(bytes.decode_u64(record_offset + 2))
-				_ally_alive[net_id] = bytes[record_offset + 20] != EntityRecord.HEALTH_Q_DEAD
+				_ally_alive[net_id] = is_standing_record(bytes, record_offset)
 			record += ENEMY_SCAN_STRIDE
 		running += count
 		offset += count * EntityRecord.SIZE
+
+
+## true si el registro de [param bytes] en [param record_offset] ([EntityRecord]) es de alguien vivo y en pie: su vida
+## no es [constant EntityRecord.HEALTH_Q_DEAD] y su acción (byte 19, los 4 bits bajos) no es DOWNED. Un derribado publica
+## su vida de derribado, que nunca es 0 ([code]Combatant.publish[/code]): sin mirar la acción contaría como vivo. Son los
+## aliados que cuenta en la reunión (GUE-44), como [code]ZoneServer._count_allies[/code] y [BotAllySight].
+static func is_standing_record(bytes: PackedByteArray, record_offset: int) -> bool:
+	return bytes[record_offset + 20] != EntityRecord.HEALTH_Q_DEAD \
+			and (bytes[record_offset + 19] & 15) != CombatState.Action.DOWNED
 
 
 # Cerebro de combate: lee el bloque extra del snapshot (vida, estado, tick de reaparición) y, estando
@@ -757,8 +769,9 @@ func _find_defender(position: Vector3) -> Variant:
 	return best
 
 
-# Cerebro de asedio: cuántos jugadores de su reino, vivos y sin contarle a él, están a menos de [param radius] metros
-# (en horizontal) de [param center], según su última posición conocida (el contador de la reunión, GUE-44).
+# Cerebro de asedio: cuántos jugadores de su reino, vivos y en pie (is_standing_record) y sin contarle a él, están a menos
+# de [param radius] metros (en horizontal) de [param center], según su última posición conocida (el contador de la
+# reunión, GUE-44).
 func _count_allies(center: Vector3, radius: float) -> int:
 	var limit: float = radius * radius
 	var found: int = 0
@@ -818,6 +831,10 @@ func _on_spawn(bytes: PackedByteArray) -> void:
 	var spawn: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(bytes)
 	if spawn == null:
 		_malformed_packets += 1
+		return
+	# Un proyectil (kind 3, protocolo 6) no es una entidad para el bot: ni enemigo ni el personaje propio.
+	if spawn.kind == NetProtocol.EntityKind.PROJECTILE:
+		_projectile_spawns_seen += 1
 		return
 	if not spawn.is_yours:
 		_spawns_seen += 1

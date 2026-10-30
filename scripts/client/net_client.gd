@@ -51,6 +51,20 @@ extends Node
 ## [ScoreboardState] ([signal scoreboard_updated]) y [PlayerDirectory] recuerda nombre y reino de cada
 ## entidad vista, porque el marcador y los KILL de toda la zona solo llevan ids.
 ## [br][br]
+## [b]Proyectiles[/b] (docs/habilidades.md, sección 5.3; protocolo 6): el ENTITY_SPAWN se reparte por
+## [code]kind[/code] antes de mirar [code]is_yours[/code] (que en un proyectil siempre es 0: la flecha
+## propia es la de [code]owner_id[/code] igual al [code]net_id[/code] local). Los de kind 3 no son
+## personajes: van al [ProjectileWorld] (que dibuja la flecha predicha y las de los demás, sección 6.2) y
+## salen por [signal projectile_spawned] y su ENTITY_DESPAWN por [signal projectile_despawned].
+## [br][br]
+## [b]Habilidades[/b] (docs/habilidades.md, secciones 4.6, 5.4 y 6): los STATUS de cada entidad se guardan,
+## ya temporizados, en un [StatusTracker] por entidad ([method get_status_tracker]; los quitan DEATH, DOWNED,
+## RESPAWN y el ENTITY_DESPAWN); el LOADOUT de un remoto le da su pareja de armas a su vista. La plantilla
+## elegida ([member ClientConfig.loadout]) sale en un LOADOUT_SELECT nada más llegar el WELCOME, y
+## [method send_loadout_select] la cambia después. Las correcciones de la predicción se dan por explicadas
+## también con un STATUS de movimiento sobre uno mismo, un DOWNED o INTERACT donde uno es el derribado o el
+## actor y el LOADOUT propio ([method _note_imposed_state]).
+## [br][br]
 ## [b]Bot tramposo[/b] ([member ClientConfig.bot_cheat], solo en modo BOT): un [BotCheater] falsea
 ## el HELLO ([code]version[/code]), envía tráfico de más tras el lote honrado de cada tick
 ## ([code]future[/code], [code]dupes[/code], [code]garbage[/code], [code]flood[/code]) o falsea la vista
@@ -85,6 +99,13 @@ signal scoreboard_updated(scoreboard: ScoreboardState)
 ## Ha llegado un mensaje de chat (CHAT_MESSAGE, protocolo 5) ya saneado por el servidor. Se entrega al
 ## llegar: el chat no se temporiza con el tick de dibujo.
 signal chat_received(message: NetMessages.ChatMessage)
+## Ha llegado el ENTITY_SPAWN de un proyectil (kind 3, protocolo 6): balística, tirador y fuente. Se entrega
+## al llegar; quien la dibuja decide cuándo se ve (la propia la sustituye, la remota espera a su tick).
+signal projectile_spawned(spawn: NetMessages.EntitySpawn)
+## Ha llegado el ENTITY_DESPAWN de un proyectil conocido: [param reason] es
+## [constant NetProtocol.DespawnReason.IMPACT] (dio en algo en [param tick]) o
+## [constant NetProtocol.DespawnReason.EXPIRED].
+signal projectile_despawned(projectile_id: int, tick: int, reason: int)
 
 enum State {
 	## Sin [method start].
@@ -213,6 +234,13 @@ var _war_queue: CombatEventQueue = CombatEventQueue.new()
 var _scoreboard: ScoreboardState = ScoreboardState.new()
 var _directory: PlayerDirectory = PlayerDirectory.new()
 var _structure_spawns_received: int = 0
+# Proyectiles (protocolo 6): ids de los que han llegado con SPAWN y aún no se han ido, y quien los dibuja.
+var _projectile_ids: Dictionary[int, bool] = {}
+var _projectile_spawns_received: int = 0
+var _projectile_world: ProjectileWorld = ProjectileWorld.new()
+# Efectos de estado de cada entidad (net_id -> StatusTracker), ya temporizados (UI-45).
+var _status_trackers: Dictionary[int, StatusTracker] = {}
+var _loadout_selects_sent: int = 0
 var _object_states_received: int = 0
 var _scoreboards_received: int = 0
 var _war_events_received: int = 0
@@ -265,6 +293,7 @@ func _init() -> void:
 	_view_offsets_q.fill(0)
 	_remote_world.setup(_interp_clock)
 	_fortress_view.setup(_interp_clock)
+	_projectile_world.setup(_interp_clock, _remote_world)
 	# La puerta del fuerte que tenía cada tick simulado, también en las repeticiones (fuerte.md, 3.2).
 	_prediction.before_simulate = _fortress_view.before_simulate
 
@@ -288,6 +317,8 @@ func _notification(what: int) -> void:
 			_remote_world.free()
 		if is_instance_valid(_fortress_view) and _fortress_view.get_parent() == null:
 			_fortress_view.free()
+		if is_instance_valid(_projectile_world) and _projectile_world.get_parent() == null:
+			_projectile_world.free()
 
 
 # --- API pública ------------------------------------------------------------------------------
@@ -337,6 +368,8 @@ func notify_zone_ready(world_root: Node3D) -> void:
 	_world_root = world_root
 	if _remote_world.get_parent() == null:
 		_world_root.add_child(_remote_world)
+	if _projectile_world.get_parent() == null:
+		_world_root.add_child(_projectile_world)
 	_ready_local_tick = _local_tick
 	var error: Error = _transport.send(SERVER_PEER_ID, NetProtocol.CH_RELIABLE,
 			NetMessages.ClientReady.new().encode())
@@ -410,6 +443,26 @@ func send_chat(channel: int, recipient: String, text: String) -> bool:
 	return true
 
 
+## Pide la plantilla de equipo [param template_id] ([method CombatCatalog.template_id]; 0 = la de por
+## defecto) para la siguiente aparición: LOADOUT_SELECT (docs/habilidades.md, secciones 4.6 y 5.1). Vale desde
+## el WELCOME, también antes de CLIENT_READY; el servidor no contesta: la plantilla llega con la reaparición
+## (evento LOADOUT). La anota en [member ClientConfig.loadout] para las conexiones siguientes. Devuelve false,
+## sin enviar nada, si no hay sesión autenticada o el id no es de una plantilla que se pueda elegir.
+func send_loadout_select(template_id: int) -> bool:
+	if _state != State.WELCOMED and _state != State.READY_SENT and _state != State.IN_WORLD:
+		return false
+	var template: EquipmentTemplate = CombatCatalog.template(template_id) if template_id != 0 else null
+	if template_id != 0 and (template == null or not template.selectable):
+		return false
+	if _transport.send(SERVER_PEER_ID, NetProtocol.CH_RELIABLE,
+			NetMessages.LoadoutSelect.make(template_id).encode()) != OK:
+		return false
+	_loadout_selects_sent += 1
+	if _config != null:
+		_config.loadout = String(template.id) if template != null else ""
+	return true
+
+
 ## Invita a [param target_name], un jugador de tu reino, a tu grupo (PARTY_INVITE). El servidor decide y
 ## contesta por el canal del sistema del chat. Devuelve false si no hay sesión en el mundo o el nombre no vale.
 func send_party_invite(target_name: String) -> bool:
@@ -467,14 +520,20 @@ func has_health() -> bool:
 	return _has_extra
 
 
-## Bits [constant NetMessages.STATUS_IN_COMBAT], [constant NetMessages.STATUS_PROTECTED] y
-## [constant NetMessages.STATUS_DEAD] del último bloque extra.
+## Bits [constant NetMessages.STATUS_IN_COMBAT], [constant NetMessages.STATUS_PROTECTED],
+## [constant NetMessages.STATUS_DEAD] y [constant NetMessages.STATUS_DOWNED] del último bloque extra.
 func get_status() -> int:
 	return _status
 
 
 func is_dead() -> bool:
 	return (_status & NetMessages.STATUS_DEAD) != 0
+
+
+## true si el jugador local está derribado (bit [constant NetMessages.STATUS_DOWNED] del bloque extra):
+## entonces [method get_health] es la vida de derribado y [method get_max_health], su máximo.
+func is_downed() -> bool:
+	return (_status & NetMessages.STATUS_DOWNED) != 0
 
 
 func is_in_combat() -> bool:
@@ -511,22 +570,41 @@ func get_combat_queue() -> CombatEventQueue:
 
 
 ## true si el jugador local interviene en [param event]: atacante o víctima de un HIT, víctima o
-## asesino de un DEATH, víctima, asesino o asistente de un KILL, o quien reaparece en un RESPAWN.
-## Falso mientras no hay personaje local.
+## asesino de un DEATH, víctima, asesino o asistente de un KILL, o quien reaparece en un RESPAWN; y desde
+## el protocolo 6 (docs/habilidades.md, sección 5.4), el afectado o el autor de un STATUS, el curado o quien
+## cura en un HEAL, el dueño de un LOADOUT, el derribado o quien derriba en un DOWNED, y el derribado o
+## quien lo levanta o lo remata en un INTERACT. Falso mientras no hay personaje local.
 func is_own_event(event: NetMessages.EntityEvent) -> bool:
 	if _net_id == 0 or event == null:
 		return false
 	match event.event:
-		NetMessages.EntityEvent.Kind.HIT:
+		NetMessages.EntityEvent.Kind.HIT, NetMessages.EntityEvent.Kind.DOWNED:
 			return event.net_id == _net_id or event.attacker == _net_id
 		NetMessages.EntityEvent.Kind.DEATH:
 			return event.net_id == _net_id or event.killer == _net_id
 		NetMessages.EntityEvent.Kind.KILL:
 			return event.net_id == _net_id or event.killer == _net_id \
 					or event.assistants.has(_net_id)
-		NetMessages.EntityEvent.Kind.RESPAWN:
+		NetMessages.EntityEvent.Kind.RESPAWN, NetMessages.EntityEvent.Kind.LOADOUT:
 			return event.net_id == _net_id
+		NetMessages.EntityEvent.Kind.STATUS:
+			return event.net_id == _net_id or event.source_entity == _net_id
+		NetMessages.EntityEvent.Kind.HEAL:
+			return event.net_id == _net_id or event.healer == _net_id
+		NetMessages.EntityEvent.Kind.INTERACT:
+			return event.net_id == _net_id or event.actor == _net_id
 	return false
+
+
+## Efectos de estado de la entidad [param net_id] según los STATUS que han llegado (null si nunca ha tenido
+## ninguno). Los del jugador local, al llegar; los de un remoto, en su tick de dibujo.
+func get_status_tracker(net_id: int) -> StatusTracker:
+	return _status_trackers.get(net_id)
+
+
+## Quien dibuja las flechas (la propia predicha y las de los demás).
+func get_projectile_world() -> ProjectileWorld:
+	return _projectile_world
 
 
 ## Personaje local (null hasta [signal local_spawned]).
@@ -651,6 +729,9 @@ func get_last_notice_text() -> String:
 ## [br]- [code]combat_events[/code] recibidos, [code]combat_events_own[/code] (los propios),
 ## [code]combat_events_pending[/code] (esperando a su tick de dibujo), [code]respawn_requests[/code],
 ## [code]health[/code] y [code]max_health[/code].
+## [br]- [code]projectile_spawns[/code]: ENTITY_SPAWN de proyectiles recibidos (protocolo 6);
+## [code]loadout_selects[/code]: LOADOUT_SELECT enviados; [code]status_trackers[/code]: entidades con efectos
+## guardados.
 ## [br]- [code]structure_spawns[/code], [code]object_states[/code], [code]scoreboards[/code],
 ## [code]war_events[/code] y [code]telegraphs[/code]: mensajes del protocolo 4 recibidos;
 ## [code]war_events_pending[/code] (avisos de guerra esperando a su tick de dibujo) y
@@ -719,6 +800,9 @@ func get_stats() -> Dictionary:
 		"combat_events_pending": _event_queue.size(),
 		"respawn_requests": _respawn_requests,
 		"structure_spawns": _structure_spawns_received,
+		"projectile_spawns": _projectile_spawns_received,
+		"loadout_selects": _loadout_selects_sent,
+		"status_trackers": _status_trackers.size(),
 		"object_states": _object_states_received,
 		"scoreboards": _scoreboards_received,
 		"war_events": _war_events_received,
@@ -796,6 +880,8 @@ func _reconcile_latest() -> void:
 	if snapshot == null or snapshot.server_tick <= _last_snapshot_tick:
 		return
 	_last_snapshot_tick = snapshot.server_tick
+	# Hasta dónde ha simulado el servidor: una flecha predicha sin SPAWN mucho después de su tick, rechazada.
+	_projectile_world.on_server_tick(_last_snapshot_tick)
 	_tick_sync.set_jitter(_interp_clock.get_jitter_ticks())
 	_tick_sync.on_snapshot(snapshot.input_ack_tick, snapshot.input_margin)
 	_input_ack_tick = maxi(_input_ack_tick, snapshot.input_ack_tick)
@@ -841,7 +927,30 @@ func _deliver_due_events() -> void:
 	if _event_queue.size() == 0:
 		return
 	for event: NetMessages.EntityEvent in _event_queue.pop_due(_interp_clock.get_render_tick()):
-		combat_event.emit(event, false)
+		_deliver_combat_event(event, false)
+
+
+# Entrega un evento de combate ya temporizado: antes de la señal, los STATUS (y lo que los borra) van al
+# tracker de su entidad y el LOADOUT de un remoto, a su vista.
+func _deliver_combat_event(event: NetMessages.EntityEvent, is_own: bool) -> void:
+	_track_status(event)
+	if event.event == NetMessages.EntityEvent.Kind.LOADOUT and event.net_id != _net_id:
+		_remote_world.on_loadout(event)
+	combat_event.emit(event, is_own)
+
+
+# STATUS de una entidad: a su tracker (que se crea con el primero). DEATH, DOWNED y RESPAWN los borran.
+func _track_status(event: NetMessages.EntityEvent) -> void:
+	match event.event:
+		NetMessages.EntityEvent.Kind.STATUS, NetMessages.EntityEvent.Kind.DEATH, \
+				NetMessages.EntityEvent.Kind.DOWNED, NetMessages.EntityEvent.Kind.RESPAWN:
+			var tracker: StatusTracker = _status_trackers.get(event.net_id)
+			if tracker == null:
+				if event.event != NetMessages.EntityEvent.Kind.STATUS:
+					return
+				tracker = StatusTracker.new()
+				_status_trackers[event.net_id] = tracker
+			tracker.handle_event(event)
 
 
 # Apunta qué hizo la predicción con el estado del servidor. Una diferencia se da por explicada si
@@ -913,16 +1022,26 @@ func _is_imposed_at(server_tick: int) -> bool:
 
 
 # Anota los eventos propios con los que el servidor impone estado al jugador local, aunque el cliente no
-# lo prediga: un golpe recibido (tambaleo, aturdimiento, empuje, resistencia gastada al bloquear, vida),
-# su propio golpe parado (el atacante queda tambaleándose), su muerte y su reaparición.
+# lo prediga: un golpe recibido (tambaleo, aturdimiento, empuje, resistencia gastada al bloquear, vida; y
+# desde el protocolo 6 la interrupción de beber o de levantar, bit 5, que también es un golpe recibido),
+# su propio golpe parado (el atacante queda tambaleándose), su muerte y su reaparición; y (docs/habilidades.md,
+# sección 5.4) un efecto de movimiento sobre sí mismo (STATUS de ralentizar o enraizar: el servidor escribe
+# su ranura), su derribo (DOWNED), levantar o rematar donde es el derribado o quien actúa (INTERACT: el
+# servidor empieza y corta esas acciones) y su propio LOADOUT (armas y cargas al aparecer o en el campamento).
 func _note_imposed_state(event: NetMessages.EntityEvent) -> void:
 	var imposed: bool = false
 	match event.event:
 		NetMessages.EntityEvent.Kind.HIT:
 			imposed = event.net_id == _net_id or (event.attacker == _net_id
 					and (event.hit_flags & NetMessages.EntityEvent.HIT_FLAG_PARRIED) != 0)
-		NetMessages.EntityEvent.Kind.DEATH, NetMessages.EntityEvent.Kind.RESPAWN:
+		NetMessages.EntityEvent.Kind.DEATH, NetMessages.EntityEvent.Kind.RESPAWN, \
+				NetMessages.EntityEvent.Kind.DOWNED, NetMessages.EntityEvent.Kind.LOADOUT:
 			imposed = event.net_id == _net_id
+		NetMessages.EntityEvent.Kind.STATUS:
+			var status: StatusTicks = CombatCatalog.status(event.status_id)
+			imposed = event.net_id == _net_id and status != null and status.is_movement()
+		NetMessages.EntityEvent.Kind.INTERACT:
+			imposed = event.net_id == _net_id or event.actor == _net_id
 	if not imposed:
 		return
 	_imposed_ticks.append(event.tick)
@@ -1081,6 +1200,10 @@ func _on_peer_connected(peer_id: int) -> void:
 	if peer_id != SERVER_PEER_ID or _state != State.HELLO_SENT or _welcome == null:
 		return
 	_state = State.WELCOMED
+	# La plantilla elegida antes de conectar (elección de reino o --loadout) vale ya para la primera
+	# aparición: el LOADOUT_SELECT se admite desde el WELCOME (docs/habilidades.md, sección 5.1).
+	if _config != null and _config.get_loadout_template_id() != 0:
+		send_loadout_select(_config.get_loadout_template_id())
 	welcomed.emit(_welcome)
 
 
@@ -1110,6 +1233,9 @@ func _close_session(text: String) -> void:
 	_event_queue.clear()
 	_war_queue.clear()
 	_party.clear()
+	_status_trackers.clear()
+	if is_instance_valid(_projectile_world):
+		_projectile_world.clear()
 	if is_instance_valid(_transport):
 		_transport.close()
 	set_physics_process(false)
@@ -1142,7 +1268,11 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 			var despawn: NetMessages.EntityDespawn = NetMessages.EntityDespawn.decode(bytes)
 			if despawn == null:
 				_malformed_packets += 1
+			elif _projectile_ids.erase(despawn.net_id):
+				_projectile_world.on_despawn(despawn.net_id, despawn.despawn_tick, despawn.reason)
+				projectile_despawned.emit(despawn.net_id, despawn.despawn_tick, despawn.reason)
 			else:
+				_status_trackers.erase(despawn.net_id)
 				_remote_world.on_despawn(despawn)
 		NetProtocol.MSG_ENTITY_EVENT:
 			_on_entity_event(bytes)
@@ -1250,7 +1380,7 @@ func _on_entity_event(bytes: PackedByteArray) -> void:
 	if is_own_event(event):
 		_events_own += 1
 		_note_imposed_state(event)
-		combat_event.emit(event, true)
+		_deliver_combat_event(event, true)
 	else:
 		_event_queue.push(event)
 
@@ -1260,6 +1390,15 @@ func _on_spawn(bytes: PackedByteArray) -> void:
 	if spawn == null:
 		_malformed_packets += 1
 		return
+	# El tipo antes que is_yours: un proyectil nunca es el personaje propio (docs/habilidades.md, 5.3).
+	if spawn.kind == NetProtocol.EntityKind.PROJECTILE:
+		_projectile_spawns_received += 1
+		_projectile_ids[spawn.net_id] = true
+		_projectile_world.on_spawn(spawn)
+		projectile_spawned.emit(spawn)
+		return
+	# Un id que vuelve como entidad ya no es de un proyectil (los ids comparten espacio y cuarentena).
+	_projectile_ids.erase(spawn.net_id)
 	if spawn.is_yours:
 		_on_own_spawn(spawn)
 	elif spawn.kind == NetProtocol.EntityKind.STRUCTURE:
@@ -1308,6 +1447,8 @@ func _on_own_spawn(spawn: NetMessages.EntitySpawn) -> void:
 	_prediction.setup(character, _controller, _smoother,
 			1.0 / float(Engine.physics_ticks_per_second))
 	_prediction.start(spawn.spawn_tick, spawn.state, first_real_tick)
+	_projectile_world.set_local(spawn.net_id, spawn.realm,
+			StringName(_welcome.zone_id) if _welcome != null else &"", character, _prediction, _rtt_ticks)
 	_state = State.IN_WORLD
 	local_spawned.emit(character)
 

@@ -1,6 +1,10 @@
 [gd_resource type="Resource" script_class="CombatRules" format=3]
 
 [ext_resource type="Script" path="res://scripts/shared/combat/combat_rules.gd" id="1_rules"]
+[ext_resource type="Script" path="res://scripts/shared/combat/ability_definition.gd" id="2_ability"]
+[ext_resource type="Resource" path="res://data/combat/potion_health.tres" id="3_potion_health"]
+[ext_resource type="Resource" path="res://data/combat/potion_stamina.tres" id="4_potion_stamina"]
+[ext_resource type="Resource" path="res://data/combat/squire.tres" id="5_squire"]
 
 [resource]
 script = ExtResource("1_rules")
@@ -13,6 +17,20 @@ hold_to_heavy_ticks = 8
 input_buffer_ticks = 8
 parry_window_ticks = 6
 parry_cooldown_ticks = 30
+swap_s = 0.4
+swap_move_scale = 0.8
+downed_move_scale = 0.15
+downed_turn_rate = 3.0
+revive_s = 3.0
+execute_s = 1.0
+consumables = Array[ExtResource("2_ability")]([ExtResource("3_potion_health"), ExtResource("4_potion_stamina")])
+consumable_cooldown_s = 20.0
+aim_pivot_height = 1.6
+aim_shoulder_offset = 0.6
+aim_camera_v_offset = 0.1
+aim_range_m = 150.0
+aim_converge_deg = 12.0
+muzzle_height = 1.4
 health_max = 1000
 health_regen_per_s = 20
 in_combat_s = 10.0
@@ -30,3 +48,13 @@ structure_slash_multiplier = 0.35
 structure_pierce_multiplier = 0.2
 structure_blunt_multiplier = 1.0
 structure_elemental_multiplier = 0.6
+downed_health = 400
+downed_s = 20.0
+revived_health = 300
+interact_range_m = 2.0
+interact_keep_range_m = 2.5
+ability_block_angle_deg = 180.0
+ability_block_stamina_per_damage = 0.6
+max_projectiles_per_shooter = 8
+max_projectiles_per_zone = 64
+default_template = ExtResource("5_squire")

@@ -5,9 +5,10 @@ extends RefCounted
 ## Se rellena con [method from_args] a partir de los argumentos de usuario (los que van tras
 ## [code]--[/code]):
 ## [codeblock]
-## --server --port=24600 --zone=<id> --max-players=64 --max-per-ip=4 --idle-quit=<s>
+## --server --port=24600 --zone=<id> --max-players=N --max-per-ip=4 --idle-quit=<s>
 ## --fake-players=N --fake-layout=<cluster|spread> --fake-churn=<ticks> --fake-brain=<combat|siege>
-## --fake-center=<x>,<z> --max-realm-diff=N --run-at=<tick>:<orden>
+## --fake-center=<x>,<z> --fake-loadout=<plantilla>[:<porcentaje>] --fake-archers=<porcentaje>
+## --max-realm-diff=N --run-at=<tick>:<orden>
 ## --debug-commands --dev-lock --dev-lock-path=<ruta>
 ## --quit-after-ticks=N --report=<ruta.json> --state-log=<ruta.csv> --net-sim=rtt=120,jitter=20
 ## --stop-file=<ruta> --combat-log=<ruta.csv> --console --no-dummies --no-npcs --battle-log=<ruta.jsonl>
@@ -20,6 +21,13 @@ extends RefCounted
 ## [code]--no-npcs[/code] no crea los PNJ de sus generadores (Huecos, Capitán, guarnición y Guardianes; [NpcSpawnerSystem]).
 ## [code]--battle-log=<ruta>[/code] escribe los eventos de guerra y las muertes en JSON Lines
 ## ([BattleLog]; lo resume [code]tools/war/summarize_battle.gd[/code], GUE-17).
+## [code]--fake-loadout=<plantilla>[:<porcentaje>][/code] (docs/habilidades.md, sección 4.6) da a los jugadores
+## falsos la plantilla de equipo con ese nombre ([code]marksman[/code], [code]squire[/code]…): a todos o, con un
+## porcentaje, a esa parte repartida en orden de creación (con 50, uno de cada dos); los demás, la de por defecto.
+## [code]--fake-archers=<porcentaje>[/code] (pruebas de carga, H5) hace arqueros puros de los falsos que llevan el arco
+## en la mano: no cambian a la espada ([member BotBrain.kit_ranged_only]) y ese porcentaje de ellos (de 0 a 100,
+## repartido en orden) dispara al cielo ([member BotBrain.kit_aim_raise]): sus flechas viven los 2 s y llenan el tope
+## de proyectiles de la zona.
 ## [code]--max-realm-diff=N[/code] (GUE-42) limita la diferencia de personas conectadas entre los reinos de la zona:
 ## el HELLO de quien entraría en un reino y dejaría más de N personas de ventaja sobre el reino con menos
 ## recibe un REJECT 9 (IMBALANCE); 0 = sin límite. Con N > 0 los jugadores falsos de reino automático
@@ -33,6 +41,9 @@ extends RefCounted
 ## informe y borrado del bloqueo de [code]--dev-lock[/code] está [code]--stop-file=<ruta>[/code]: el
 ## servidor mira cada segundo si el archivo existe (por ejemplo, un [code]ExecStop[/code] que lo
 ## cree con [code]touch[/code]).
+## Sin [code]--max-players[/code], el aforo es el de la zona ([method NetZones.max_players]: 40 en el Vado Gris,
+## el límite de jugadores por batalla medido con el kit de la fase 4, docs/red.md, sección 14) o, si la zona no
+## tiene uno propio, [constant DEFAULT_MAX_PLAYERS].
 ## Un valor que no es un número válido o está fuera de rango se ignora y se queda el valor por
 ## defecto: el servidor nunca arranca con una configuración absurda por un error al teclear.
 
@@ -41,9 +52,12 @@ var port: int = NetProtocol.DEFAULT_PORT
 ## Id de la zona que sirve ([method NetZones.default_zone_id] si no se indica). No se comprueba
 ## aquí que exista: [code]ServerMain[/code] lo hace con [method NetZones.scene_path].
 var zone_id: String = ""
+## Aforo de una zona sin uno propio ([method NetZones.max_players]).
+const DEFAULT_MAX_PLAYERS: int = 64
+
 ## Jugadores como mucho (los falsos cuentan; los de relleno de [member max_realm_diff] ceden su plaza a las
-## personas, GUE-43).
-var max_players: int = 64
+## personas, GUE-43). [method from_args] pone el de la zona si no se indica.
+var max_players: int = DEFAULT_MAX_PLAYERS
 ## Conexiones simultáneas como mucho desde una misma IP (salvo loopback).
 var max_connections_per_ip: int = 4
 ## Segundos sin jugadores tras los que el servidor se cierra solo. 0 = nunca.
@@ -85,6 +99,13 @@ var fake_brain: String = ""
 ## en torno al que se juntan los falsos en lugar del campamento del primer reino (donde la zona segura
 ## les impide pelear). [constant NO_FAKE_CENTER] = ninguno ([method has_fake_center]).
 var fake_center: Vector2 = NO_FAKE_CENTER
+## Plantilla de equipo de los jugadores falsos ([code]--fake-loadout[/code]): su nombre en el catálogo de combate
+## (vacío = la de por defecto) y a qué porcentaje de ellos se da (1 a 100).
+var fake_loadout: StringName = &""
+var fake_loadout_percent: int = 100
+## Arqueros puros entre los falsos con arco ([code]--fake-archers[/code]; pruebas de carga): -1 = no; si no, el
+## porcentaje de ellos que dispara al cielo.
+var fake_archers_sky_percent: int = -1
 ## Diferencia máxima de personas conectadas entre los reinos de la zona (GUE-42); 0 = sin límite. Los
 ## jugadores falsos no cuentan para rechazar a una persona.
 var max_realm_diff: int = 0
@@ -132,6 +153,10 @@ static func from_args(args: PackedStringArray) -> ServerConfig:
 		config.zone_id = NetZones.default_zone_id()
 
 	config.port = _int_option(args, "--port=", config.port, 1, _MAX_PORT)
+	# El aforo de la zona si lo tiene (revisión de H5: el Vado Gris, el límite medido por batalla).
+	var zone_capacity: int = NetZones.max_players(config.zone_id)
+	if zone_capacity > 0:
+		config.max_players = zone_capacity
 	config.max_players = _int_option(args, "--max-players=", config.max_players, 1,
 			_MAX_PLAYERS_LIMIT)
 	config.max_connections_per_ip = _int_option(args, "--max-per-ip=",
@@ -157,6 +182,8 @@ static func from_args(args: PackedStringArray) -> ServerConfig:
 				center_parts[1].strip_edges().to_float())
 		if center.is_finite() and absf(center.x) <= MAX_FAKE_CENTER and absf(center.y) <= MAX_FAKE_CENTER:
 			config.fake_center = center
+	_parse_fake_loadout(config, _string_option(args, "--fake-loadout="))
+	config.fake_archers_sky_percent = _int_option(args, "--fake-archers=", -1, 0, 100)
 	config.max_realm_diff = _int_option(args, "--max-realm-diff=", config.max_realm_diff, 0,
 			_MAX_PLAYERS_LIMIT)
 	config.scheduled_commands = _scheduled_commands(args)
@@ -173,6 +200,49 @@ static func from_args(args: PackedStringArray) -> ServerConfig:
 	config.dev_lock = args.has("--dev-lock")
 	config.dev_lock_path = _string_option(args, "--dev-lock-path=").replace("\\", "/")
 	return config
+
+
+## La plantilla de [code]--fake-loadout=<plantilla>[:<porcentaje>][/code]: una plantilla del catálogo de combate
+## que se pueda elegir y, si se da, un porcentaje de 1 a 100. Si algo no vale se ignora entera.
+static func _parse_fake_loadout(config: ServerConfig, text: String) -> void:
+	var value: String = text.strip_edges()
+	if value.is_empty():
+		return
+	var parts: PackedStringArray = value.split(":")
+	if parts.size() > 2:
+		return
+	var template_name := StringName(parts[0].strip_edges())
+	var template: EquipmentTemplate = CombatCatalog.template(CombatCatalog.template_id(template_name))
+	if template == null or not template.selectable:
+		return
+	var percent: int = 100
+	if parts.size() == 2:
+		var percent_text: String = parts[1].strip_edges()
+		if not percent_text.is_valid_int() or percent_text.to_int() < 1 or percent_text.to_int() > 100:
+			return
+		percent = percent_text.to_int()
+	config.fake_loadout = template_name
+	config.fake_loadout_percent = percent
+
+
+## La plantilla del jugador falso número [param index] (0, 1, 2…) según [code]--fake-loadout[/code]: su id en el
+## catálogo o 0 (la de por defecto). Con un porcentaje se reparte en orden: el falso [param index] la lleva si el
+## recuento acumulado sube al contarlo ([code]⌊(i + 1)·p / 100⌋ > ⌊i·p / 100⌋[/code]).
+func fake_template_for(index: int) -> int:
+	if fake_loadout.is_empty():
+		return 0
+	@warning_ignore("integer_division")
+	var takes: bool = (index + 1) * fake_loadout_percent / 100 > index * fake_loadout_percent / 100
+	return CombatCatalog.template_id(fake_loadout) if takes else 0
+
+
+## true si el arquero puro número [param archer_index] (0, 1, 2…, en orden de creación entre los falsos con arco)
+## dispara al cielo según [code]--fake-archers[/code] (el mismo reparto que [method fake_template_for]).
+func is_sky_archer(archer_index: int) -> bool:
+	if fake_archers_sky_percent <= 0:
+		return false
+	@warning_ignore("integer_division")
+	return (archer_index + 1) * fake_archers_sky_percent / 100 > archer_index * fake_archers_sky_percent / 100
 
 
 ## Las órdenes programadas de [param args] ([code]--run-at=<tick>:<orden>[/code]): las que tienen un tick

@@ -1,9 +1,14 @@
 extends TestCase
 ## El combate del servidor por la red, con clientes que hablan el protocolo a mano sobre ENet en
 ## 127.0.0.1 (docs/combate.md, secciones 5 y 6; docs/red.md, 5.5 y 5.6): a quién se envía cada
-## ENTITY_EVENT (HIT, DEATH, KILL y RESPAWN), el bloque extra del snapshot con la vida, el PNJ en
+## ENTITY_EVENT (HIT, DOWNED, DEATH, KILL y RESPAWN), el bloque extra del snapshot con la vida, el PNJ en
 ## los snapshots, RESPAWN_REQUEST (en plazo, fuera de plazo y con un índice que ya no vale) y los
 ## comandos de depuración (con y sin [code]--debug-commands[/code]).
+## [br][br]
+## Desde la fase 4 (docs/habilidades.md, secciones 4.5 y 4.6) cada jugador recibe al entrar su LOADOUT (y
+## la pública de los que entran después y tiene relevantes), así que las pruebas esperan los eventos por
+## su clase; y en una zona RVR («test_world») el golpe mortal de otro reino derriba: la DEATH y el KILL
+## llegan con el remate.
 ## [br][br]
 ## Los clientes son [RawClient]: sin predicción ni interpolación, mandan las entradas que dice cada
 ## prueba (con botones) en los ticks del servidor.
@@ -300,9 +305,10 @@ func test_a_hit_reaches_attacker_victim_and_a_third_player_with_the_same_content
 		return PlayerInput.PRIMARY if tick >= press and tick < press + 2 else 0)
 	_drive(victim, PI)
 	_drive(third, 0.0)
+	var hit_kind: int = NetMessages.EntityEvent.Kind.HIT
 	var delivered: bool = await _run_until(func() -> bool:
-		return not attacker.events.is_empty() and not victim.events.is_empty() \
-				and not third.events.is_empty())
+		return not attacker.events_of(hit_kind).is_empty() and not victim.events_of(hit_kind).is_empty() \
+				and not third.events_of(hit_kind).is_empty())
 	if not assert_true(delivered, "los tres reciben el evento"):
 		return
 	var first: NetMessages.EntityEvent = attacker.events_of(NetMessages.EntityEvent.Kind.HIT)[0]
@@ -346,13 +352,21 @@ func test_events_only_go_to_players_who_own_or_see_the_entities() -> void:
 		return PlayerInput.PRIMARY if tick >= press and tick < press + 2 else 0)
 	_drive(victim, PI)
 	_drive(blind, 0.0)
-	assert_true(await _run_until(func() -> bool: return not victim.events.is_empty()),
+	var hit_kind: int = NetMessages.EntityEvent.Kind.HIT
+	assert_true(await _run_until(func() -> bool: return not victim.events_of(hit_kind).is_empty()),
 			"la víctima recibe el golpe")
 	await _run_frames(20)
-	assert_false(attacker.events.is_empty(), "el atacante también")
-	assert_eq(blind.events.size(), 0, "quien no ve a ninguno de los dos no recibe nada")
+	assert_false(attacker.events_of(hit_kind).is_empty(), "el atacante también")
+	# Solo su propio LOADOUT de la entrada: nada de Ana ni de Bea.
+	var foreign: Array[NetMessages.EntityEvent] = []
+	for event: NetMessages.EntityEvent in blind.events:
+		if event.net_id != blind.own_spawn.net_id:
+			foreign.append(event)
+	assert_eq(foreign.size(), 0, "quien no ve a ninguno de los dos no recibe nada")
 
 
+## En RVR el golpe mortal de Ana derriba a Bea (HIT con el bit 6 y DOWNED a los tres) y Ana la remata
+## manteniendo E: la DEATH y el KILL nombran al asesino, la fuente del remate y a Cleo, que asistió.
 func test_kill_and_death_events_name_the_killer_and_the_assistants() -> void:
 	await _start_server()
 	var attacker: RawClient = await _join("Ana", VARDHEIM)
@@ -369,8 +383,12 @@ func test_kill_and_death_events_name_the_killer_and_the_assistants() -> void:
 	combatant.mark_combat(_server.get_tick())
 	combatant.ledger.record(_server.get_tick(), helper.own_spawn.net_id, 500)
 	var press: int = _server.get_tick() + 10
+	# Acabado el ligero, Ana mantiene E para rematar (60 ticks).
+	var hold_from: int = press + 90
 	_drive(attacker, 0.0, func(tick: int) -> int:
-		return PlayerInput.PRIMARY if tick >= press and tick < press + 2 else 0)
+		if tick >= press and tick < press + 2:
+			return PlayerInput.PRIMARY
+		return PlayerInput.INTERACT if tick >= hold_from else 0)
 	_drive(victim, PI)
 	_drive(helper, 0.0)
 	var delivered: bool = await _run_until(func() -> bool:
@@ -383,12 +401,20 @@ func test_kill_and_death_events_name_the_killer_and_the_assistants() -> void:
 	assert_eq(kill.killer, attacker.own_spawn.net_id)
 	assert_eq(kill.net_id, victim.own_spawn.net_id)
 	assert_eq(kill.assistants, PackedInt32Array([helper.own_spawn.net_id]), "Cleo asistió")
+	assert_eq(kill.get_source(), CombatSource.EXECUTE, "con la fuente del remate")
 	var death: NetMessages.EntityEvent = victim.events_of(NetMessages.EntityEvent.Kind.DEATH)[0]
 	assert_eq(death.killer, attacker.own_spawn.net_id)
-	assert_eq(death.attack_id, CombatCatalog.attack_id(&"sword_light_1"))
+	assert_eq(death.get_source(), CombatSource.EXECUTE)
 	var hit: NetMessages.EntityEvent = victim.events_of(NetMessages.EntityEvent.Kind.HIT)[0]
-	assert_true(hit.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_LETHAL), "el golpe es mortal")
+	assert_eq(hit.get_source(), CombatSource.make(CombatSource.Kind.ATTACK,
+			CombatCatalog.attack_id(&"sword_light_1")), "el golpe es el ligero")
+	assert_true(hit.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_DOWNED), "el golpe derriba")
+	assert_false(hit.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_LETHAL), "no mata")
 	assert_eq(hit.amount, 60, "lo que le quedaba")
+	for client: RawClient in [attacker, victim, helper]:
+		var downed: Array[NetMessages.EntityEvent] = client.events_of(NetMessages.EntityEvent.Kind.DOWNED)
+		if assert_eq(downed.size(), 1, "DOWNED a toda la zona"):
+			assert_eq(downed[0].net_id, victim.own_spawn.net_id)
 	await _run_frames(10)
 	assert_eq(victim.events_of(NetMessages.EntityEvent.Kind.DEATH).size(), 1, "una sola DEATH")
 	assert_eq(attacker.events_of(NetMessages.EntityEvent.Kind.KILL).size(), 1, "un solo KILL")

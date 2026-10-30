@@ -43,6 +43,8 @@ class FakeServer extends Node:
 	var batches: Array[Dictionary] = []
 	var debug_commands: Array[NetMessages.DebugCommand] = []
 	var chat_sends: Array[NetMessages.ChatSend] = []
+	## LOADOUT_SELECT recibidos: {template, ready_count} (CLIENT_READY recibidos hasta entonces).
+	var loadout_selects: Array[Dictionary] = []
 	var leave_received: bool = false
 	var snapshots_sent: int = 0
 	var last_newest: int = 0
@@ -148,6 +150,10 @@ class FakeServer extends Node:
 				var chat: NetMessages.ChatSend = NetMessages.ChatSend.decode(bytes)
 				if chat != null:
 					chat_sends.append(chat)
+			NetProtocol.MSG_LOADOUT_SELECT:
+				var select: NetMessages.LoadoutSelect = NetMessages.LoadoutSelect.decode(bytes)
+				if select != null:
+					loadout_selects.append({"template": select.template_id, "ready_count": ready_count})
 
 
 var _root: Node
@@ -802,3 +808,128 @@ func test_remote_entities_flow_to_the_remote_world() -> void:
 	assert_eq(_client.get_character().get_parent(), _client.get_meta(&"entities"),
 			"el personaje local cuelga del nodo que se pasó a notify_zone_ready")
 	assert_eq(_client.get_remote_world().get_parent(), _client.get_meta(&"entities"))
+
+
+# --- Protocolo 6 ------------------------------------------------------------------------------
+
+func test_protocol_6_projectiles_go_by_kind_and_new_events_are_timed_like_combat() -> void:
+	await _start()
+	assert_true(await _wait_until(_in_world))
+	var own_id: int = _client.get_net_id()
+	var character: PlayerCharacter = _client.get_character()
+	var spawned: Array[NetMessages.EntitySpawn] = []
+	var despawned: Array[Vector3i] = []
+	var events: Array[Array] = []
+	_client.projectile_spawned.connect(func(spawn: NetMessages.EntitySpawn) -> void: spawned.append(spawn))
+	_client.projectile_despawned.connect(func(id: int, tick: int, reason: int) -> void:
+		despawned.append(Vector3i(id, tick, reason)))
+	_client.combat_event.connect(func(event: NetMessages.EntityEvent, is_own: bool) -> void:
+		events.append([event.event, is_own]))
+	var send: Callable = func(bytes: PackedByteArray) -> void:
+		_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, bytes)
+	# Una flecha propia (owner = el net_id local) y una ajena: ninguna es un personaje.
+	var arrow: int = CombatCatalog.projectile_id(&"arrow")
+	send.call(NetMessages.EntitySpawn.for_projectile(600, _fake.tick, VARDHEIM, own_id, arrow,
+			CombatCatalog.attack_id(&"bow_quick"), 0, false, Vector3(1.0, 1.4, 0.0),
+			Vector3(0.0, 0.0, 45.0)).encode())
+	send.call(NetMessages.EntitySpawn.for_projectile(601, _fake.tick, NetProtocol.Realm.SOLMARCH, 77,
+			arrow, CombatCatalog.attack_id(&"bow_quick"), 0, true, Vector3(5.0, 1.4, 0.0),
+			Vector3(0.0, 0.0, -45.0)).encode())
+	assert_true(await _wait_until(func() -> bool: return spawned.size() == 2), "los dos SPAWN de proyectil")
+	assert_eq(spawned[0].owner_id, own_id, "la propia lleva el net_id local como dueño")
+	assert_false(spawned[0].is_yours, "aunque nunca es «tuya» en la cabecera")
+	assert_true(spawned[1].is_harmless(), "la ajena llega inofensiva")
+	assert_eq(_client.get_character(), character, "el personaje local no cambia")
+	assert_eq(_client.get_remote_world().get_view_count(), 0, "ni crean vistas de remotos")
+	assert_eq(_client.get_stats()["projectile_spawns"], 2)
+	# Sus DESPAWN salen por su propia señal con el tick y el motivo.
+	var impact := NetMessages.EntityDespawn.new()
+	impact.net_id = 600
+	impact.despawn_tick = _fake.tick + 20
+	impact.reason = NetProtocol.DespawnReason.IMPACT
+	send.call(impact.encode())
+	var expired := NetMessages.EntityDespawn.new()
+	expired.net_id = 601
+	expired.despawn_tick = _fake.tick + 120
+	expired.reason = NetProtocol.DespawnReason.EXPIRED
+	send.call(expired.encode())
+	assert_true(await _wait_until(func() -> bool: return despawned.size() == 2), "los dos DESPAWN")
+	assert_eq(despawned[0], Vector3i(600, impact.despawn_tick, NetProtocol.DespawnReason.IMPACT), "impacto")
+	assert_eq(despawned[1], Vector3i(601, expired.despawn_tick, NetProtocol.DespawnReason.EXPIRED), "caducada")
+	# Eventos nuevos: el STATUS y el LOADOUT propios llegan ya; el DOWNED de otro espera a su tick de dibujo.
+	var slowed: int = CombatCatalog.status_id(&"slowed")
+	send.call(NetMessages.EntityEvent.status(own_id, _fake.tick, 77, NetMessages.EntityEvent.StatusOp.APPLIED,
+			slowed, 1, _fake.tick + 180).encode())
+	send.call(NetMessages.EntityEvent.loadout(own_id, _fake.tick, CombatCatalog.template_id(&"marksman"),
+			CombatCatalog.weapon_id(&"bow"), CombatCatalog.weapon_id(&"sword_shield"), 0x32).encode())
+	var downed_tick: int = _fake.tick + 40
+	send.call(NetMessages.EntityEvent.downed(88, downed_tick, 77, CombatSource.make(CombatSource.Kind.ABILITY,
+			CombatCatalog.ability_id(&"shield_bash"))).encode())
+	assert_true(await _wait_until(func() -> bool: return events.size() >= 2), "los propios llegan")
+	assert_eq(events[0], [NetMessages.EntityEvent.Kind.STATUS, true], "STATUS propio, al llegar")
+	assert_eq(events[1], [NetMessages.EntityEvent.Kind.LOADOUT, true], "LOADOUT propio, al llegar")
+	assert_eq(events.size(), 2, "el DOWNED ajeno aún espera")
+	var clock: InterpolationClock = _client.get_interpolation_clock()
+	assert_true(await _wait_until(func() -> bool: return events.size() == 3), "y luego se entrega")
+	assert_eq(events[2], [NetMessages.EntityEvent.Kind.DOWNED, false], "DOWNED ajeno")
+	assert_true(clock.get_render_tick() >= float(downed_tick), "no antes de su tick")
+	assert_eq(_client.get_stats()["malformed_packets"], 0, "nada del protocolo 6 cuenta como malformado")
+	assert_eq(_client.get_state(), NetClient.State.IN_WORLD, "el cliente sigue en el mundo")
+	# Un id que fue de una flecha puede volver como entidad (comparten espacio de ids) y va al mundo remoto.
+	var other := NetMessages.EntitySpawn.new()
+	other.net_id = 600
+	other.spawn_tick = _fake.tick
+	other.realm = NetProtocol.Realm.SOLMARCH
+	other.state = PlayerState.new()
+	other.display_name = "Otro"
+	send.call(other.encode())
+	assert_true(await _wait_until(func() -> bool:
+		return _client.get_remote_world().get_view(600) != null), "el id reutilizado crea su vista")
+
+
+func test_the_chosen_template_goes_in_a_loadout_select_right_after_the_welcome() -> void:
+	await _start()
+	# La plantilla elegida antes de conectar (elección de reino o --loadout).
+	_client.get_config().loadout = "marksman"
+	assert_true(await _wait_until(_in_world))
+	await wait_physics_frames(4)
+	var marksman: int = CombatCatalog.template_id(&"marksman")
+	assert_eq(_fake.loadout_selects.size(), 1, "un LOADOUT_SELECT")
+	assert_eq(int(_fake.loadout_selects[0]["template"]), marksman, "con el id del tirador")
+	assert_eq(int(_fake.loadout_selects[0]["ready_count"]), 0, "antes del CLIENT_READY (vale ya en la carga)")
+	# Desde la pantalla de muerte: otra, que también se recuerda para la próxima conexión.
+	var squire: int = CombatCatalog.template_id(&"squire")
+	assert_true(_client.send_loadout_select(squire))
+	assert_eq(_client.get_config().loadout, "squire")
+	assert_false(_client.send_loadout_select(250), "un id que no es una plantilla no sale")
+	assert_true(await _wait_until(func() -> bool: return _fake.loadout_selects.size() == 2))
+	assert_eq(int(_fake.loadout_selects[1]["template"]), squire)
+	assert_eq(_client.get_stats()["loadout_selects"], 2)
+
+
+func test_protocol_6_own_events_explain_corrections() -> void:
+	var client := NetClient.new()
+	_root.add_child(client)
+	client._net_id = 5
+	var slowed: int = CombatCatalog.status_id(&"slowed")
+	var bleed: int = CombatCatalog.status_id(&"bleed")
+	var cases: Array[Array] = [
+		# evento, ¿explica?, texto
+		[NetMessages.EntityEvent.status(5, 100, 9, 1, slowed, 1, 280), true, "una ralentización sobre uno mismo"],
+		[NetMessages.EntityEvent.status(5, 200, 9, 1, bleed, 1, 560), false, "un sangrado no toca la simulación"],
+		[NetMessages.EntityEvent.status(7, 300, 5, 1, slowed, 1, 480), false, "ralentizar a otro no"],
+		[NetMessages.EntityEvent.downed(5, 400, 9, 0), true, "el derribo propio"],
+		[NetMessages.EntityEvent.downed(7, 500, 5, 0), false, "derribar a otro no"],
+		[NetMessages.EntityEvent.interact(7, 600, 5, 1, 780), true, "levantar a otro (el servidor empieza REVIVE)"],
+		[NetMessages.EntityEvent.interact(5, 700, 9, 4, 760), true, "que le rematen a uno"],
+		[NetMessages.EntityEvent.interact(7, 800, 9, 1, 980), false, "lo que hacen otros, no"],
+		[NetMessages.EntityEvent.loadout(5, 900, 1, 1, 0, 0x23), true, "el LOADOUT propio"],
+		[NetMessages.EntityEvent.loadout(7, 1000, 1, 1, 0, 0), false, "el ajeno no"],
+		[NetMessages.EntityEvent.hit(5, 1100, 9, 30, 0, NetMessages.EntityEvent.HIT_FLAG_INTERRUPTED, 1), true,
+				"un golpe que interrumpe"],
+	]
+	for row: Array in cases:
+		var event: NetMessages.EntityEvent = row[0]
+		client._note_imposed_state(event)
+		assert_eq(client._is_imposed_at(event.tick + 2), bool(row[1]), str(row[2]))
+	client.free()

@@ -28,6 +28,12 @@ func test_button_constants_match_wire_format() -> void:
 	assert_eq(PlayerInput.ABILITY_2, 1 << 6, "ABILITY_2")
 	assert_eq(PlayerInput.ABILITY_3, 1 << 7, "ABILITY_3")
 	assert_eq(PlayerInput.INTERACT, 1 << 8, "INTERACT")
+	# Fase 4 (docs/habilidades.md, sección 3.2); 13-14 reservados y 15 es SUBSTITUTED.
+	assert_eq(PlayerInput.SWAP_WEAPON, 1 << 9, "SWAP_WEAPON")
+	assert_eq(PlayerInput.AIM_LEFT, 1 << 10, "AIM_LEFT")
+	assert_eq(PlayerInput.CONSUMABLE_1, 1 << 11, "CONSUMABLE_1")
+	assert_eq(PlayerInput.CONSUMABLE_2, 1 << 12, "CONSUMABLE_2")
+	assert_eq(PlayerInput.SUBSTITUTED, 1 << 15, "SUBSTITUTED")
 
 
 func test_encode_has_documented_layout() -> void:
@@ -147,7 +153,8 @@ func test_buttons_roundtrip_and_has() -> void:
 	var all_buttons: Array[int] = [
 		PlayerInput.JUMP, PlayerInput.SPRINT, PlayerInput.DODGE, PlayerInput.PRIMARY,
 		PlayerInput.BLOCK, PlayerInput.ABILITY_1, PlayerInput.ABILITY_2, PlayerInput.ABILITY_3,
-		PlayerInput.INTERACT,
+		PlayerInput.INTERACT, PlayerInput.SWAP_WEAPON, PlayerInput.AIM_LEFT, PlayerInput.CONSUMABLE_1,
+		PlayerInput.CONSUMABLE_2,
 	]
 	var mask: int = 0
 	for button: int in all_buttons:

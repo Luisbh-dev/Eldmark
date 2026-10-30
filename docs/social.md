@@ -498,7 +498,8 @@ resto de reglas están en `PartyRules` (shared).
 | `0x4F` | PARTY_STATUS | S→C | `u8 type, u8 count` y, por miembro, `u16 net_id, u8 health_q, u8 stamina_q, u8 status, f32 x, f32 y, f32 z` (17 B por miembro, ≤ 87 B) |
 
 `health_q` es la vida cuantizada de los snapshots (0 muerto, de 1 a 255 vivo), `stamina_q` la resistencia en 255
-pasos y `status` los bits `STATUS_IN_COMBAT`, `STATUS_PROTECTED` y `STATUS_DEAD`. `decode` devuelve `null` si el
+pasos y `status` los bits `STATUS_IN_COMBAT`, `STATUS_PROTECTED` y `STATUS_DEAD` (y, desde el protocolo 6,
+`STATUS_DOWNED`: el miembro está derribado, [habilidades.md 5.2](habilidades.md#52-estado-snapshot-y-registro)). `decode` devuelve `null` si el
 tamaño no cuadra, hay más de 5 miembros, un id de red se repite, el líder no está en la lista, un nombre está
 vacío (también si solo es un BOM UTF-8, que se lee vacío) o no es UTF-8 válido, un bit de estado es desconocido
 o una posición no es finita.
@@ -551,7 +552,8 @@ muerte.
 | `PartyHud` | Reúne los dos y traduce `/invitar`, `/salir`, `/expulsar` y `/lider` de la caja de chat en peticiones (`NetClient.send_party_*`) |
 | `Nameplates.set_party` | Los miembros del grupo llevan el nombre con el color de grupo (azul del canal) en lugar del de su reino |
 
-Teclas nuevas en `InputBindings`: `party_accept` (Y), `party_decline` (N) y `social_menu` (T); todas
+Teclas nuevas en `InputBindings`: `party_accept` (Y), `party_decline` (N) y `social_menu` (G; era T hasta
+la fase 4, que da T a la poción de resistencia: [habilidades.md 11.7](habilidades.md#117-h4--cliente)); todas
 provisionales (pendiente del usuario, igual que las medidas y los colores de los marcos). Y y N solo responden
 con el aviso a la vista y **sin ninguna otra pieza de la interfaz con el cursor** (`CameraRig.is_ui_holding_cursor`:
 el menú social, el mapa, los ajustes, la línea del chat), para que una letra pulsada en una ventana no acepte ni
@@ -565,7 +567,7 @@ distancia, atenuado por lejos, por muerte y por falta de datos, y que los marcos
 
 ### 12.6 Menú social sobre el jugador bajo el punto de mira (SOC-07)
 
-Solo el primer origen de las acciones: la tecla `social_menu` (T) lanza un rayo desde la cámara contra la
+Solo el primer origen de las acciones: la tecla `social_menu` (G; T hasta la fase 4) lanza un rayo desde la cámara contra la
 cápsula de cada jugador remoto que se está dibujando (como el de las placas de nombre) y toma al más cercano a
 lo largo del rayo a **20 m o menos del jugador local** (no de la cámara, que va detrás). **Solo cuentan los
 aliados que se ven** (`SocialTarget.is_social_target` y la oclusión de `SocialTarget.find`): un jugador del propio
@@ -677,7 +679,7 @@ falso y nadie.
 **Pendiente del usuario** (provisional, a la espera de ART-12 y de probarlo jugando): los colores de cada canal,
 las medidas y el desvanecimiento de la caja de chat, el aspecto y la posición de los marcos y del aviso de
 invitación, los textos de los avisos y las teclas nuevas (Intro y `/` para el chat, Y y N para responder a una
-invitación, T para el menú de jugador). Además, si la caja de chat debe atenuarse con la pantalla de muerte (hoy
+invitación, G para el menú de jugador). Además, si la caja de chat debe atenuarse con la pantalla de muerte (hoy
 no).
 
 **Pendiente de implementar:**

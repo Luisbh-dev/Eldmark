@@ -95,3 +95,46 @@ func test_the_same_seed_gives_the_same_inputs() -> void:
 		var b: PlayerInput = second.next_input(tick, Vector3.ZERO, 0.0)
 		assert_eq(a.move, b.move)
 		assert_eq(a.buttons, b.buttons)
+
+
+# --- Modos de la fase 4: reuse, potion e interact (docs/habilidades.md, sección 4.7) ----------------
+
+func _count_button(inputs: Array[PlayerInput], button: int) -> int:
+	var count: int = 0
+	for input: PlayerInput in inputs:
+		if (input.buttons & button) != 0:
+			count += 1
+	return count
+
+
+func test_reuse_closes_in_and_mashes_the_first_ability_every_other_tick() -> void:
+	var far: BotCheatBrain = _brain(BotCheatBrain.Style.REUSE, Vector3(0.0, 0.0, -6.0))
+	var approach: PlayerInput = far.next_input(2, Vector3.ZERO, 0.0)
+	assert_eq(approach.move, Vector2(0.0, 1.0), "se acerca")
+	assert_eq(approach.buttons & PlayerInput.ABILITY_1, 0, "sin pulsar mientras no llega")
+	var close: BotCheatBrain = _brain(BotCheatBrain.Style.REUSE, Vector3(0.0, 0.0, -1.5))
+	var inputs: Array[PlayerInput] = _inputs(close, 10, 40)
+	assert_eq(_count_button(inputs, PlayerInput.ABILITY_1), 20, "la habilidad 1 un tick de cada dos")
+	assert_eq(_count_button(inputs, PlayerInput.PRIMARY), 0, "y nada más")
+	for input: PlayerInput in inputs:
+		assert_eq((input.buttons & PlayerInput.ABILITY_1) != 0, input.tick % 2 == 0, "tick %d" % input.tick)
+
+
+func test_potion_mashes_both_potions_in_place_without_an_enemy() -> void:
+	var brain: BotCheatBrain = _brain(BotCheatBrain.Style.POTION, null)
+	var inputs: Array[PlayerInput] = _inputs(brain, 100, 40, Vector3(3.0, 0.0, 3.0))
+	assert_eq(_count_button(inputs, PlayerInput.CONSUMABLE_1), 10, "R en los múltiplos de 4")
+	assert_eq(_count_button(inputs, PlayerInput.CONSUMABLE_2), 10, "T en los demás pares")
+	for input: PlayerInput in inputs:
+		assert_eq(input.move, Vector2.ZERO, "quieto")
+		if input.tick % 2 != 0:
+			assert_eq(input.buttons, 0, "un flanco cada dos ticks: los impares, sueltos")
+
+
+func test_interact_mashes_interact_in_place() -> void:
+	var brain: BotCheatBrain = _brain(BotCheatBrain.Style.INTERACT, Vector3(0.0, 0.0, -1.0))
+	var inputs: Array[PlayerInput] = _inputs(brain, 100, 30)
+	assert_eq(_count_button(inputs, PlayerInput.INTERACT), 15, "INTERACT un tick de cada dos")
+	for input: PlayerInput in inputs:
+		assert_eq(input.move, Vector2.ZERO, "sin ir hacia nadie")
+		assert_eq(input.buttons & ~PlayerInput.INTERACT, 0, "y sin otros botones")

@@ -112,7 +112,7 @@ func test_window_percent_is_unavailable_without_two_metric_lines_in_range() -> v
 
 # --- Refriegas (TEC-15) -----------------------------------------------------------------------
 
-func test_brawl_matrix_has_fights_of_32_64_and_128_combatants() -> void:
+func test_brawl_matrix_has_fights_of_32_40_64_and_128_combatants() -> void:
 	var script: GDScript = load(LOAD_TEST_PATH) as GDScript
 	if not assert_not_null(script):
 		return
@@ -122,7 +122,8 @@ func test_brawl_matrix_has_fights_of_32_64_and_128_combatants() -> void:
 		assert_eq(entry[0], "brawl", "todos son refriegas")
 		assert_true(int(entry[2]) > 0, "con clientes reales que reciben snapshots y eventos")
 		totals.append(int(entry[1]) + int(entry[2]))
-	assert_eq(totals, [32, 64, 128] as Array[int], "falsos más bots reales")
+	assert_eq(totals, [32, 40, 64, 128] as Array[int], "falsos más bots reales (40: el límite por batalla)")
+	assert_eq(totals[1], NetZones.max_players("vado_gris"), "que es el aforo del Vado Gris")
 	assert_true(int(constants.get("BRAWL_SECONDS", 0)) >= 60, "al menos un minuto de medida")
 	assert_true(String(constants.get("BRAWL_CENTER", "")).contains(","), "el corro tiene su punto (x,z)")
 
@@ -159,6 +160,35 @@ func test_combat_figures_of_a_quiet_server_do_not_divide_by_zero() -> void:
 		assert_eq(float(figures[key]), 0.0, key)
 
 
+func test_phase_4_figures_count_arrows_and_the_kit_and_the_brawl_has_marksmen() -> void:
+	var report: Dictionary = {"combat": {
+		"projectiles_fired": 600, "projectiles_harmless": 2, "projectile_character_hits": 400,
+		"projectile_world_hits": 150, "arrow_blocked": 30, "wall_blocked": 5, "projectiles_expired": 10,
+		"projectiles_evicted": 3, "projectile_peak": 64, "projectile_rewind_rejected": 1,
+		"projectile_busy_ticks": 3000, "projectile_us": 1500000, "projectile_segments": 9000,
+		"projectile_capsule_tests": 800, "projectile_messages_sent": 12000, "projectile_bytes_sent": 1024 * 60,
+		"status_applied": 50, "pulses": 70, "healed": 3000, "interrupts": 9, "downs": 12, "revives": 3,
+		"executions": 6, "bled_out": 1,
+	}}
+	var kit: Dictionary = LoadTestSummary.phase_4_figures(report, 60.0)
+	assert_eq(kit["fired"], 600)
+	assert_near(float(kit["fired_per_s"]), 10.0, 1e-9, "600 flechas en 60 s")
+	assert_eq(kit["arrow_blocked"], 35, "las bloqueadas, por escudo o por muro")
+	assert_eq(kit["peak"], 64)
+	assert_eq(kit["zone_cap"], CombatCatalog.rules().max_projectiles_per_zone, "el tope de la zona, del dato")
+	assert_eq(kit["evicted"], 3)
+	assert_near(float(kit["projectile_us_per_busy_tick"]), 500.0, 1e-9, "1,5 s entre 3000 ticks ocupados")
+	assert_near(float(kit["kb_per_s"]), 1.0, 1e-9)
+	assert_eq([kit["downs"], kit["revives"], kit["executions"], kit["bled_out"]], [12, 3, 6, 1])
+	var quiet: Dictionary = LoadTestSummary.phase_4_figures({}, 0.0)
+	assert_eq(float(quiet["fired_per_s"]), 0.0, "sin dividir por cero")
+	assert_eq(float(quiet["projectile_us_per_busy_tick"]), 0.0)
+	var constants: Dictionary = (load(LOAD_TEST_PATH) as GDScript).get_script_constant_map()
+	assert_eq(String(constants.get("BRAWL_LOADOUT", "")), "marksman:50", "la refriega lleva la mitad de tiradores")
+	assert_true((constants.get("SECTIONS", []) as Array).has("combat_projectiles"),
+			"y el resumen enseña la sección de los proyectiles")
+
+
 # --- Asedios (GUE-16) ----------------------------------------------------------------------------
 
 func test_siege_matrix_has_sieges_of_32_and_64_a_side() -> void:
@@ -175,6 +205,26 @@ func test_siege_matrix_has_sieges_of_32_and_64_a_side() -> void:
 	assert_eq(sides, [32, 64] as Array[int], "32 contra 32 y 64 contra 64")
 	assert_eq(int(constants.get("SIEGE_SECONDS", 0)), 120, "120 s de medida")
 	assert_true(float(constants.get("SIEGE_EXTRA_SETTLE_SECONDS", 0.0)) >= 40.0, "los bots tienen tiempo de llegar a la puerta")
+
+
+# Integración de las habilidades sobre F6b: el Vado Gris tiene aforo propio (40, el límite por batalla con el kit;
+# docs/red.md 14 y docs/fuerte.md 8.3), así que todo escenario de más jugadores tiene que pedir el suyo con --max-players.
+func test_every_battery_scenario_fits_in_the_server_it_launches() -> void:
+	var script: GDScript = load(LOAD_TEST_PATH) as GDScript
+	if not assert_not_null(script):
+		return
+	var constants: Dictionary = script.get_script_constant_map()
+	var over_zone_capacity: int = 0
+	for matrix: String in ["MATRIX", "BRAWL_MATRIX", "SIEGE_MATRIX"]:
+		for entry: Array in constants.get(matrix, []):
+			var players: int = int(entry[1]) + int(entry[2])
+			assert_true(int(script.call("server_max_players", int(entry[1]), int(entry[2]))) >= players,
+					"%s %s: caben los %d jugadores" % [matrix, entry, players])
+			if players > NetZones.max_players("vado_gris"):
+				over_zone_capacity += 1
+	assert_true(over_zone_capacity > 0, "hay escenarios de más jugadores que el aforo del Vado Gris (los asedios de F6b)")
+	assert_true(FileAccess.get_file_as_string(LOAD_TEST_PATH).contains(
+			'"--max-players=%d" % server_max_players(fakes, bots)'), "y el servidor se lanza con ese aforo explícito")
 
 
 func test_the_tick_timeline_is_read_from_the_metric_lines() -> void:

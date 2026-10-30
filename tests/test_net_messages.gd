@@ -433,11 +433,12 @@ func test_entity_record_interpolate() -> void:
 # --- NetProtocol ------------------------------------------------------------------------------
 
 func test_protocol_constants_and_helpers() -> void:
-	assert_true(NetProtocol.PROTOCOL_VERSION >= 4, "versión (4 el fuerte, 5 el chat y los grupos)")
+	assert_eq(NetProtocol.PROTOCOL_VERSION, 6,
+			"versión (4 el fuerte, 5 el chat y los grupos, 6 las habilidades)")
 	assert_eq(NetProtocol.MAGIC, 0x4D444C45, "magic")
 	assert_eq(PackedByteArray([0x45, 0x4C, 0x44, 0x4D]).decode_u32(0), NetProtocol.MAGIC,
 			"los bytes del magic leen «ELDM»")
-	assert_eq(NetProtocol.VALID_BUTTONS, 0x1FF, "botones válidos: bits 0-8")
+	assert_eq(NetProtocol.VALID_BUTTONS, 0x1FFF, "botones válidos: bits 0-12 (protocolo 6)")
 	assert_eq(NetProtocol.CUSTOM_CHANNELS, 3, "canales propios")
 	assert_eq(NetProtocol.Realm.ASKARRA, 3, "códigos de reino")
 
@@ -449,7 +450,8 @@ func test_protocol_constants_and_helpers() -> void:
 			NetProtocol.MSG_DEBUG_COMMAND, NetProtocol.MSG_ENTITY_SPAWN,
 			NetProtocol.MSG_ENTITY_DESPAWN, NetProtocol.MSG_OBJECT_STATE,
 			NetProtocol.MSG_ENTITY_EVENT, NetProtocol.MSG_NOTICE, NetProtocol.MSG_HANDOFF,
-			NetProtocol.MSG_UNSTUCK_REQUEST, NetProtocol.MSG_SCOREBOARD, 0x7F]:
+			NetProtocol.MSG_UNSTUCK_REQUEST, NetProtocol.MSG_SCOREBOARD, NetProtocol.MSG_LOADOUT_SELECT,
+			0x7F]:
 		assert_eq(NetProtocol.channel_for_type(msg_type), NetProtocol.CH_RELIABLE,
 				"el tipo 0x%02X va por el canal fiable" % msg_type)
 
@@ -983,7 +985,7 @@ func test_input_batch_decodes_quantized_inputs_with_button_mask() -> void:
 		assert_eq(decoded.inputs[i].tick, 593 + i, "ticks seguidos: %d" % i)
 		assert_eq(decoded.inputs[i].buttons & ~NetProtocol.VALID_BUTTONS, 0,
 				"ningún botón inválido")
-	assert_eq(decoded.inputs[0].buttons, NetProtocol.VALID_BUTTONS, "0xFFFF queda en 0x1FF")
+	assert_eq(decoded.inputs[0].buttons, NetProtocol.VALID_BUTTONS, "0xFFFF queda en 0x1FFF")
 
 	# Un cliente tramposo escribe lo que quiere: el decode normaliza igual.
 	var raw := PackedByteArray()
@@ -995,7 +997,7 @@ func test_input_batch_decodes_quantized_inputs_with_button_mask() -> void:
 	raw.encode_s8(12, 127)
 	raw.encode_u16(13, 65535)
 	raw.encode_s16(15, -32768) # pitch fuera de rango
-	raw.encode_u16(17, 0xFE00)
+	raw.encode_u16(17, 0xE000)
 	raw.encode_u16(19, 0xFFFF)
 	var cheat: NetMessages.InputBatch = NetMessages.InputBatch.decode(raw)
 	if assert_not_null(cheat, "decode de un lote con valores extremos"):
@@ -1003,7 +1005,7 @@ func test_input_batch_decodes_quantized_inputs_with_button_mask() -> void:
 		assert_true(input.move.length() <= 1.0 + 1e-6, "movimiento normalizado")
 		assert_true(absf(input.look_pitch) <= PI / 2.0 + 1e-6, "pitch limitado")
 		assert_true(input.look_yaw >= 0.0 and input.look_yaw < TAU, "yaw en [0, TAU)")
-		assert_eq(input.buttons, 0, "0xFE00 no tiene ningún botón válido")
+		assert_eq(input.buttons, 0, "0xE000 (bits 13-15) no tiene ningún botón válido")
 		assert_eq(input.tick, 50, "tick")
 		assert_eq(cheat.view_offsets_q[0], 65535, "view_offset_q máximo")
 
@@ -1334,11 +1336,11 @@ func test_snapshot_capacity_fits_in_one_packet() -> void:
 	# Capacidad con estado propio, bloque extra y una sección: floor((1200 - cabecera - 2) / 21).
 	var capacity: int = floori((NetProtocol.MAX_PACKET_BYTES - HEADER_WITH_STATE - 2)
 			/ float(EntityRecord.SIZE))
-	# Con el PlayerState de 69 B de la fase 3 (combate.md, 3.1): 13 + 69 + 9 + 1 = 92 B de cabecera
-	# y floor((1200 - 94) / 21) = 52 registros.
-	if PlayerState.ENCODED_SIZE == 69:
-		assert_eq(HEADER_WITH_STATE, 92, "cabecera de 92 B")
-		assert_eq(capacity, 52, "capacidad del documento: 52 registros")
+	# Con el PlayerState de 111 B de la fase 4 (habilidades.md, 3.1): 13 + 111 + 9 + 1 = 134 B de
+	# cabecera y floor((1200 - 136) / 21) = 50 registros (52 con los 69 B de la fase 3).
+	if PlayerState.ENCODED_SIZE == 111:
+		assert_eq(HEADER_WITH_STATE, 134, "cabecera de 134 B")
+		assert_eq(capacity, 50, "capacidad del documento: 50 registros")
 	var snapshot := NetMessages.Snapshot.new()
 	snapshot.own_state = PlayerState.new()
 	for i: int in capacity:
@@ -1484,8 +1486,8 @@ func test_entity_spawn_roundtrip_and_layout() -> void:
 		assert_eq(spawn.encode().size(), name_offset + 1, "10 B + estado + 1 B sin nombre")
 	spawn.kind = NetProtocol.EntityKind.NPC
 	assert_not_null(NetMessages.EntitySpawn.decode(spawn.encode()), "un PNJ reutiliza el formato")
-	spawn.kind = NetProtocol.EntityKind.PROJECTILE
-	assert_true(spawn.encode().is_empty(), "los demás tipos no tienen formato en la fase 2")
+	spawn.kind = NetProtocol.EntityKind.NONE
+	assert_true(spawn.encode().is_empty(), "un tipo sin formato no se codifica")
 
 
 func test_entity_despawn_and_notice() -> void:
@@ -1638,8 +1640,8 @@ func test_entity_event_death_kill_respawn_layout_and_roundtrip() -> void:
 
 	# Un evento que no existe no se codifica.
 	var unknown := NetMessages.EntityEvent.new()
-	unknown.event = 9
-	assert_true(unknown.encode().is_empty(), "un evento desconocido no tiene formato")
+	unknown.event = 12
+	assert_true(unknown.encode().is_empty(), "un evento desconocido (el 12; del 7 al 11 son del protocolo 6) no tiene formato")
 
 
 func test_entity_event_rejects_inconsistent_lengths() -> void:
@@ -1676,8 +1678,9 @@ func test_entity_event_rejects_inconsistent_lengths() -> void:
 	too_many.encode_u8(13, too_many_count)
 	assert_null(NetMessages.EntityEvent.decode(too_many),
 			"más de %d asistentes" % NetMessages.EntityEvent.MAX_ASSISTANTS)
-	# Evento desconocido o cero (el 5 WAR y el 6 TELEGRAPH existen desde el protocolo 3).
-	for event_code: int in [0, 7, 255]:
+	# Evento desconocido o cero (el 5 WAR y el 6 TELEGRAPH existen desde el protocolo 3; del 7 al 11, desde
+	# el 6).
+	for event_code: int in [0, 12, 255]:
 		var unknown_bytes: PackedByteArray = _sample_respawn().encode()
 		unknown_bytes.encode_u8(7, event_code)
 		assert_null(NetMessages.EntityEvent.decode(unknown_bytes), "evento %d" % event_code)
@@ -1727,7 +1730,11 @@ func test_new_message_channels_and_debug_command_ids() -> void:
 	assert_eq(NetProtocol.DEBUG_FORT_KILL_CAPTAIN, 10, "fort_kill_captain")
 	assert_eq(NetProtocol.DEBUG_FORT_CAPTURE_SPEED, 11, "fort_capture_speed")
 	assert_eq(NetProtocol.DEBUG_NPC_DEBUG, 12, "npc_debug")
-	assert_eq(NetProtocol.DEBUG_COMMAND_IDS.size(), 12, "doce comandos")
+	assert_eq(NetProtocol.DEBUG_COOLDOWNS_OFF, 13, "cooldowns_off")
+	assert_eq(NetProtocol.DEBUG_APPLY_STATUS, 14, "apply_status")
+	assert_eq(NetProtocol.DEBUG_DOWN, 15, "down")
+	assert_eq(NetProtocol.DEBUG_REFILL, 16, "refill")
+	assert_eq(NetProtocol.DEBUG_COMMAND_IDS.size(), 16, "dieciséis comandos")
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"set_weapon"], 5, "tabla: set_weapon")
 	var seen: Dictionary = {}
 	for command_name: StringName in NetProtocol.DEBUG_COMMAND_IDS:
@@ -1869,7 +1876,7 @@ func test_malformed_lengths_and_counters_return_null() -> void:
 	bad_kind.encode_u8(14, 9)
 	assert_null(NetMessages.Snapshot.decode(bad_kind), "tipo de sección desconocido")
 	bad_kind.encode_u8(14, NetProtocol.EntityKind.PROJECTILE)
-	assert_null(NetMessages.Snapshot.decode(bad_kind), "tipo de sección sin formato en la fase 2")
+	assert_null(NetMessages.Snapshot.decode(bad_kind), "los proyectiles no van en el snapshot (protocolo 6)")
 	var bad_sections: PackedByteArray = without_state.duplicate()
 	bad_sections.encode_u8(13, 2)
 	assert_null(NetMessages.Snapshot.decode(bad_sections), "section_count mayor que las secciones")
@@ -1916,7 +1923,7 @@ func test_fuzz_random_buffers_never_error() -> void:
 	var type_bytes: Array[int] = [NetProtocol.MSG_INPUT_BATCH, NetProtocol.MSG_CLIENT_READY,
 			NetProtocol.MSG_CLIENT_LEAVE, NetProtocol.MSG_DEBUG_COMMAND, NetProtocol.MSG_SNAPSHOT,
 			NetProtocol.MSG_ENTITY_SPAWN, NetProtocol.MSG_ENTITY_DESPAWN, NetProtocol.MSG_NOTICE,
-			NetProtocol.MSG_ENTITY_EVENT, NetProtocol.MSG_RESPAWN_REQUEST]
+			NetProtocol.MSG_ENTITY_EVENT, NetProtocol.MSG_RESPAWN_REQUEST, NetProtocol.MSG_LOADOUT_SELECT]
 	var decoded_count: int = 0
 	var mutated_decoded: int = 0
 	for i: int in FUZZ_BUFFERS:
@@ -1985,11 +1992,13 @@ func _decoders() -> Array[Callable]:
 		NetMessages.Snapshot.decode, NetMessages.EntitySpawn.decode,
 		NetMessages.EntityDespawn.decode, NetMessages.Notice.decode,
 		NetMessages.EntityEvent.decode, NetMessages.RespawnRequest.decode,
+		NetMessages.LoadoutSelect.decode,
 	]
 	return result
 
 
-## [etiqueta, bytes válidos, decodificador] de un mensaje de cada tipo.
+## [etiqueta, bytes válidos, decodificador] de un mensaje de cada tipo (con los del protocolo 6:
+## LOADOUT_SELECT, el SPAWN de un proyectil, los ENTITY_EVENT 7 a 11 y un comando de depuración nuevo).
 func _sample_messages() -> Array:
 	var despawn := NetMessages.EntityDespawn.new()
 	despawn.net_id = 77
@@ -2015,6 +2024,22 @@ func _sample_messages() -> Array:
 		["ENTITY_EVENT RESPAWN", _sample_respawn().encode(), NetMessages.EntityEvent.decode],
 		["RESPAWN_REQUEST", _sample_respawn_request().encode(),
 				NetMessages.RespawnRequest.decode],
+		["LOADOUT_SELECT", NetMessages.LoadoutSelect.make(1).encode(), NetMessages.LoadoutSelect.decode],
+		["ENTITY_SPAWN PROJECTILE", NetMessages.EntitySpawn.for_projectile(901, 5000, 1, 4242, 1, 2, 0,
+				false, Vector3(1.0, 2.0, 3.0), Vector3(40.0, 1.0, -5.0)).encode(),
+				NetMessages.EntitySpawn.decode],
+		["DEBUG_COMMAND apply_status", NetMessages.DebugCommand.apply_status(2, 300).encode(),
+				NetMessages.DebugCommand.decode],
+		["ENTITY_EVENT STATUS", NetMessages.EntityEvent.status(321, 9, 654,
+				NetMessages.EntityEvent.StatusOp.APPLIED, 3, 1, 400).encode(), NetMessages.EntityEvent.decode],
+		["ENTITY_EVENT HEAL", NetMessages.EntityEvent.heal(321, 9, 0, 50, 0x8002).encode(),
+				NetMessages.EntityEvent.decode],
+		["ENTITY_EVENT LOADOUT", NetMessages.EntityEvent.loadout(321, 9, 2, 3, 1, 0x23).encode(),
+				NetMessages.EntityEvent.decode],
+		["ENTITY_EVENT DOWNED", NetMessages.EntityEvent.downed(321, 9, 654, 0x4001).encode(),
+				NetMessages.EntityEvent.decode],
+		["ENTITY_EVENT INTERACT", NetMessages.EntityEvent.interact(321, 9, 655,
+				NetMessages.EntityEvent.InteractOp.REVIVE, 189).encode(), NetMessages.EntityEvent.decode],
 	]
 
 

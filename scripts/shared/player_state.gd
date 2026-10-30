@@ -14,11 +14,13 @@ extends RefCounted
 ## 28      u8       flags: bit 0 = grounded, bits 1-3 = coyote_ticks, bits 4-7 = jump_buffer_ticks
 ## 29      u16      prev_buttons
 ## 31      u32      last_input_tick
-## 35      34 B     combat (CombatState, ver docs/combate.md sección 3.1)
+## 35      76 B     combat (CombatState v5, ver docs/combate.md sección 3.1 y docs/habilidades.md
+##                  sección 3.1)
 ## [/codeblock]
 
-## Tamaño en bytes de un estado codificado.
-const ENCODED_SIZE: int = 69
+## Tamaño en bytes de un estado codificado (35 de movimiento y [constant CombatState.ENCODED_SIZE]
+## de combate).
+const ENCODED_SIZE: int = 111
 ## Offset del estado de combate dentro del estado codificado.
 const COMBAT_OFFSET: int = 35
 ## Valor máximo de [member coyote_ticks] (ocupa 3 bits de los flags).

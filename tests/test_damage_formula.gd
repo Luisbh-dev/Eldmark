@@ -224,6 +224,31 @@ func test_is_physical() -> void:
 # --- Utilidades -------------------------------------------------------------------------------
 
 ## Golpe ligero sin defensa ni armadura.
+func test_status_modifiers_scale_the_damage_and_lower_the_mitigation() -> void:
+	# docs/habilidades.md, sección 4.3: damage_scale = 1 + Σ DAMAGE_UP y mitigation_penalty = Σ
+	# MITIGATION_DOWN; sin efectos, lo de siempre.
+	var plain: DamageFormula.Result = DamageFormula.compute(LIGHT_1, 0, 0, 0, 1.0, false, false, 1.0,
+			STAMINA_PER_DAMAGE, FULL_STAMINA, 0)
+	var neutral: DamageFormula.Result = DamageFormula.compute(LIGHT_1, 0, 0, 0, 1.0, false, false, 1.0,
+			STAMINA_PER_DAMAGE, FULL_STAMINA, 0, DamageFormula.CRIT_MULTIPLIER, 1.0, 0.0)
+	assert_eq(neutral.damage, plain.damage, "con 1 y 0, el mismo daño")
+	var stronger: DamageFormula.Result = DamageFormula.compute(LIGHT_1, 0, 0, 0, 1.0, true, false, 1.0,
+			STAMINA_PER_DAMAGE, FULL_STAMINA, 0, DamageFormula.CRIT_MULTIPLIER, 1.2, 0.0)
+	assert_eq(stronger.damage, roundi(LIGHT_1 * 1.5 * 1.2), "más daño: multiplica el bruto (con el crítico)")
+	var blocked: DamageFormula.Result = DamageFormula.compute(LIGHT_1, 0, 0, 0, 1.0, false, true, 1.0,
+			STAMINA_PER_DAMAGE, FULL_STAMINA, 0, DamageFormula.CRIT_MULTIPLIER, 1.0, 0.25)
+	assert_eq(blocked.absorbed, roundi(LIGHT_1 * 0.75), "menos mitigación: el escudo absorbe un 25 % menos")
+	assert_eq(blocked.damage, roundi(LIGHT_1 * 0.25), "y pasa el resto")
+	assert_eq(blocked.stamina_cost, roundi(LIGHT_1 * 0.75 * STAMINA_PER_DAMAGE), "pagando solo lo absorbido")
+	var floor_zero: DamageFormula.Result = DamageFormula.compute(LIGHT_1, 0, 0, 0, 1.0, false, true, 0.5,
+			STAMINA_PER_DAMAGE, FULL_STAMINA, 0, DamageFormula.CRIT_MULTIPLIER, 1.0, 0.8)
+	assert_eq(floor_zero.absorbed, 0, "la mitigación no baja de 0")
+	assert_eq(floor_zero.damage, LIGHT_1, "y pasa todo")
+	var negative: DamageFormula.Result = DamageFormula.compute(LIGHT_1, 0, 0, 0, 1.0, false, false, 1.0,
+			STAMINA_PER_DAMAGE, FULL_STAMINA, 0, DamageFormula.CRIT_MULTIPLIER, -1.0, 0.0)
+	assert_eq(negative.damage, 0, "un multiplicador negativo cuenta como 0")
+
+
 func _light(base: int) -> DamageFormula.Result:
 	return DamageFormula.compute(base, 0, 0, 0, 1.0, false, false, 0.0, 0.0, 0, 0)
 

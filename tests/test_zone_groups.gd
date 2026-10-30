@@ -151,7 +151,9 @@ func test_vado_gris_has_a_safe_area_per_camp_that_covers_its_spawns() -> void:
 		assert_eq(area["radius"], 24.0, "%s: radio de 24 m" % area["name"])
 		realms.append(area["realm"])
 		safe.add(area["position"], area["radius"], RealmCatalog.code_of(area["realm"]))
-	realms.sort()
+	# Por su texto: Array.sort() ordena los StringName por su dirección interna, no por su texto, y el orden cambiaba
+	# según los nombres que hubiera creado antes la suite (salía al revés al añadir test_siege_archers a la mitad 2).
+	realms.sort_custom(func(a: StringName, b: StringName) -> bool: return String(a) < String(b))
 	assert_eq(realms, [&"solmarch", &"vardheim"] as Array[StringName], "una de cada reino")
 	# Cada zona segura contiene todos los puntos de aparición de su reino.
 	var spawns: Array[Dictionary] = _scene_markers(path, Zones.SPAWN_GROUP)

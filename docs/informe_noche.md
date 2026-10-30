@@ -450,11 +450,17 @@ $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Mi
     Comandos de la consola del servidor: `fort_kill_captain`, `fort_owner vardheim`, `fort_reset`,
     `fort_capture_speed 20`, `npc_debug`.
 
-    Con bots de asedio contra tu cliente:
+    Con bots de asedio contra tu cliente (40 falsos, 20 bots y las dos personas son 62 jugadores: hace falta
+    `--max-players=64`):
     ```powershell
-    & $godot --headless --path . -- --server --zone=vado_gris --fake-players=40 --fake-brain=siege
+    & $godot --headless --path . -- --server --zone=vado_gris --max-players=64 --fake-players=40 --fake-brain=siege
     & $godot --headless --path . -- --bots=20 --bot-brain=siege --connect=127.0.0.1
     ```
+    Desde la integración de las habilidades el Vado Gris tiene un aforo de 40 por defecto (`Zones.MAX_PLAYERS`, el
+    límite con el kit de la fase 4): **cualquier sesión a mano en el Vado Gris con más de 40 jugadores (falsos, bots y
+    personas) necesita `--max-players`**. Sin él, los 40 falsos (que no son de relleno sin `--max-realm-diff`) llenan
+    el servidor y los 20 del enjambre y las dos personas reciben «lleno» (FULL). Con más de 40 el tick ya no cumple el
+    criterio (docs/red.md 14): es para mirar, no para medir.
     Todo lo visual de la fase 4 es provisional y está sin ver: Huecos con el humanoide, estandartes,
     efectos de la puerta, marcas en el suelo, mapa horneado, colores y tamaños del HUD.
 11. **Chat y grupos** (rama `fase4-chat-grupos`, con el servidor y los dos clientes del punto 2):

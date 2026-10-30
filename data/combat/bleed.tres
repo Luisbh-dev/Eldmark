@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="StatusEffectDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/combat/status_effect_definition.gd" id="1_status"]
+
+[resource]
+script = ExtResource("1_status")
+id = &"bleed"
+kind = 0
+duration_s = 6.0
+stacking = 1
+max_stacks = 3
+move_speed_scale = 1.0
+pulse_every_s = 1.0
+pulse_amount = 15
+damage_type = 0
+magnitude = 0.0

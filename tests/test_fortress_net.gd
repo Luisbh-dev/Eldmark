@@ -527,7 +527,8 @@ func test_killing_the_lingering_body_credits_the_killer_like_any_other_death() -
 	await _run_frames(3)
 	ana.send_raw(NetProtocol.CH_RELIABLE, NetMessages.ClientLeave.new().encode())
 	await _run_until(func() -> bool: return _server.is_lingering(net_id))
-	# Un enemigo golpea al cuerpo: un ligero de 90 lo mata.
+	# Un enemigo golpea al cuerpo: un ligero de 90 lo derriba (docs/habilidades.md, sección 4.5: es un jugador de
+	# otro reino) y lo remata manteniendo E.
 	var killer: int = _server.add_fake_player(_brain(), SOLMARCH)
 	_server.teleport(killer, Vector3(-20.0, 0.05, 6.5))
 	_server.get_registry().get_entity(killer).get_character().yaw = PI
@@ -539,9 +540,11 @@ func test_killing_the_lingering_body_credits_the_killer_like_any_other_death() -
 		input.look_yaw = PI
 		if tick >= attack_tick and tick < attack_tick + 2:
 			input.buttons = PlayerInput.PRIMARY
+		elif tick >= attack_tick + 60 and tick < attack_tick + 150:
+			input.buttons = PlayerInput.INTERACT
 		return input
 	var is_dead := func() -> bool: return _combatant(net_id) == null or _combatant(net_id).is_dead()
-	var dead: bool = await _run_until(is_dead, 200)
+	var dead: bool = await _run_until(is_dead, 400)
 	assert_true(dead, "el cuerpo muere como cualquier otro")
 	var kills: Array[NetMessages.EntityEvent] = bo.events_of(NetMessages.EntityEvent.Kind.KILL)
 	if assert_eq(kills.size(), 1, "con su KILL"):

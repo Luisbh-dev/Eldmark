@@ -11,6 +11,10 @@ extends Control
 ## reaparición real aunque el reloj local se desfase. Los nodos se crean una sola vez en
 ## [method _ready] y abrirla y cerrarla solo cambia textos y visibilidad: morir y reaparecer muchas
 ## veces no acumula nada.
+## [br][br]
+## [b]Plantilla de equipo[/b] (PRG-07, docs/habilidades.md, sección 6.5): debajo de los puntos de
+## reaparición, el [TemplateSelector] ([method get_template_selector]); el [HUD] manda el LOADOUT_SELECT al
+## elegir y la plantilla vale en esta reaparición.
 
 ## El jugador pide reaparecer en el punto [param point_index] de la lista.
 signal respawn_requested(point_index: int)
@@ -49,6 +53,7 @@ var _points_title: Label = null
 var _points: ItemList = null
 var _button: Button = null
 var _map_button: Button = null
+var _templates: TemplateSelector = null
 
 
 func _ready() -> void:
@@ -194,6 +199,12 @@ func select_point(index: int) -> void:
 		_points.select(index)
 
 
+## El selector de plantilla de equipo para la reaparición.
+func get_template_selector() -> TemplateSelector:
+	_ensure_built()
+	return _templates
+
+
 ## El botón «Elegir en el mapa» (visible mientras hay más de un punto donde elegir).
 func get_map_button() -> Button:
 	return _map_button
@@ -293,6 +304,8 @@ func _build() -> void:
 	_map_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_map_button.pressed.connect(func() -> void: map_requested.emit())
 	column.add_child(_map_button)
+	_templates = TemplateSelector.new()
+	column.add_child(_templates)
 	_button = Button.new()
 	_button.name = "Reaparecer"
 	_button.text = BUTTON_TEXT

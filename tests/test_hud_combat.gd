@@ -5,6 +5,10 @@ extends TestCase
 ## pantalla de muerte ([DeathScreen]: cuenta atrás con el tick del servidor, botón, 10 ciclos sin
 ## restos) y la lista de puntos de reaparición ([RespawnPointList]). La última parte monta el [HUD]
 ## entero con un cliente de red falso que da la vida y el estado a voluntad.
+## [br][br]
+## Fase 4 (H4, docs/habilidades.md, sección 6.5): los avisos de derribado (cuenta atrás, levantar, rematar y
+## la invitación a levantar a un aliado), el selector de plantilla de la pantalla de muerte y la puntería
+## del arco (zoom de la cámara y retícula).
 
 const OWN_ID: int = 5
 const OTHER_ID: int = 21
@@ -24,7 +28,9 @@ class FakeClient extends NetClient:
 	var fake_estimated_tick: int = 0
 	var fake_snapshot_tick: int = 1
 	var fake_config: ClientConfig = ClientConfig.new()
+	var fake_downed: bool = false
 	var respawn_requests: Array[int] = []
+	var loadout_selects: Array[int] = []
 
 	func has_health() -> bool:
 		return fake_has_health
@@ -55,6 +61,13 @@ class FakeClient extends NetClient:
 
 	func send_respawn_request(point_index: int) -> bool:
 		respawn_requests.append(point_index)
+		return true
+
+	func is_downed() -> bool:
+		return fake_downed
+
+	func send_loadout_select(template_id: int) -> bool:
+		loadout_selects.append(template_id)
 		return true
 
 
@@ -762,3 +775,157 @@ func test_hud_marks_damaged_entities_for_the_nameplates() -> void:
 			false)
 	assert_true(plates.was_damaged_recently(OTHER_ID), "el daño a otro marca su placa")
 	assert_false(plates.was_damaged_recently(33), "y no la del atacante")
+
+
+# --- Fase 4: derribado, plantillas y arco ---------------------------------------------------------
+
+func _interact(downed_id: int, tick: int, actor: int, operation: int, ends: int) -> NetMessages.EntityEvent:
+	return NetMessages.EntityEvent.interact(downed_id, tick, actor, operation, ends)
+
+
+func test_downed_notices_count_down_and_show_who_revives_or_executes_you() -> void:
+	var h: HudRig = _make_hud()
+	var notice: DownedNotice = h.hud.get_downed_notice()
+	if not assert_not_null(notice, "el HUD tiene los avisos de derribado"):
+		return
+	assert_true(notice.get_index() < h.hud.get_death_screen().get_index(), "por debajo de la pantalla de muerte")
+	h.client.get_remote_world().on_spawn(_remote_spawn(OTHER_ID, "Ana"))
+	h.client.get_directory().remember(OTHER_ID, "Ana", NetProtocol.Realm.VARDHEIM)
+	h.client.fake_estimated_tick = 1000
+	_step(h)
+	assert_false(notice.visible, "en pie y sin nadie derribado cerca, nada")
+	# Derribado: la vida del bloque extra es la de derribado (300 de 400: 15 s al ritmo del desangrado).
+	h.client.combat_event.emit(NetMessages.EntityEvent.downed(OWN_ID, 1000, 33, 0), true)
+	h.client.fake_downed = true
+	h.client.fake_health = 300
+	h.client.fake_max_health = 400
+	_step(h)
+	assert_true(notice.visible)
+	assert_eq(notice.get_title_text(), CombatText.TEXT_DOWNED, "«Derribado»")
+	assert_eq(notice.get_countdown_text(), CombatText.TEXT_DOWNED_COUNTDOWN % 15, "con la cuenta atrás")
+	assert_false(h.hud.get_death_screen().is_open(), "derribado no es muerto: sin pantalla de muerte")
+	# Ana empieza a levantarlo (INTERACT 1, 180 ticks): «Ana te está levantando» con su barra.
+	h.client.combat_event.emit(_interact(OWN_ID, 1000, OTHER_ID,
+			NetMessages.EntityEvent.InteractOp.REVIVE, 1180), true)
+	h.client.fake_estimated_tick = 1090
+	_step(h)
+	assert_eq(notice.get_detail_text(), CombatText.TEXT_BEING_REVIVED_BY % "Ana")
+	assert_near(notice.get_progress(), 0.5, 0.01, "a medio levantar")
+	# Le cortan (INTERACT 2): la barra se va.
+	h.client.combat_event.emit(_interact(OWN_ID, 1095, OTHER_ID,
+			NetMessages.EntityEvent.InteractOp.REVIVE_CUT, 1180), true)
+	_step(h)
+	assert_eq(notice.get_detail_text(), "", "cortado, sin barra")
+	assert_eq(notice.get_progress(), -1.0)
+	# Un enemigo empieza a rematarlo (INTERACT 4).
+	h.client.combat_event.emit(_interact(OWN_ID, 1100, 33,
+			NetMessages.EntityEvent.InteractOp.EXECUTE, 1160), true)
+	h.client.fake_estimated_tick = 1130
+	_step(h)
+	assert_eq(notice.get_detail_text(), CombatText.TEXT_BEING_EXECUTED, "«¡Te rematan!»")
+	assert_near(notice.get_progress(), 0.5, 0.01)
+	# Levantado (INTERACT 3) y de pie otra vez: nada.
+	h.client.combat_event.emit(_interact(OWN_ID, 1140, OTHER_ID,
+			NetMessages.EntityEvent.InteractOp.REVIVED, 1140), true)
+	h.client.fake_downed = false
+	h.client.fake_health = 300
+	h.client.fake_max_health = 1000
+	_step(h)
+	assert_false(notice.visible, "levantado, el aviso se va")
+
+
+func test_a_downed_ally_nearby_shows_the_revive_prompt() -> void:
+	var h: HudRig = _make_hud()
+	var notice: DownedNotice = h.hud.get_downed_notice()
+	var remote_world: RemoteWorld = h.client.get_remote_world()
+	remote_world.install_visuals = false
+	var ally: NetMessages.EntitySpawn = _remote_spawn(OTHER_ID, "Bruno")
+	ally.realm = NetProtocol.Realm.VARDHEIM
+	ally.state.position = Vector3(1.2, 0.0, -1.0)
+	remote_world.on_spawn(ally)
+	h.client.get_directory().remember(OTHER_ID, "Bruno", NetProtocol.Realm.VARDHEIM)
+	remote_world.draw(20.0, 0.0)
+	_step(h)
+	assert_eq(notice.get_prompt_text(), "", "en pie, no hay nada que levantar")
+	var record: EntityRecord = EntityRecord.from_state(OTHER_ID, NetProtocol.EntityKind.PLAYER, ally.state, 0)
+	record.action = CombatState.Action.DOWNED | (ActionMachine.PHASE_NONE << 4)
+	remote_world.get_view(OTHER_ID).push(22, record)
+	remote_world.draw(24.0, 0.0)
+	_step(h)
+	assert_eq(notice.get_prompt_text(), CombatText.TEXT_REVIVE_PROMPT % [
+			UIKeyGlyph.label_for_action(&"interact"), "Bruno"], "«Mantén E para levantar a Bruno»")
+	assert_eq(DownedNotice.find_downed_ally(remote_world, Vector3.ZERO, NetProtocol.Realm.SOLMARCH), 0,
+			"un derribado de otro reino no se levanta")
+	assert_eq(DownedNotice.find_downed_ally(remote_world, Vector3(0.0, 0.0, 5.0), NetProtocol.Realm.VARDHEIM),
+			0, "ni uno lejos")
+	# Levantándolo (INTERACT 1 con el jugador local de actor): «Levantando a Bruno».
+	h.client.combat_event.emit(_interact(OTHER_ID, 30, OWN_ID,
+			NetMessages.EntityEvent.InteractOp.REVIVE, 210), true)
+	h.client.fake_estimated_tick = 75
+	_step(h)
+	assert_eq(notice.get_detail_text(), CombatText.TEXT_REVIVING % "Bruno")
+	assert_near(notice.get_progress(), 0.25, 0.01)
+
+
+func test_the_death_screen_template_selector_sends_the_loadout_select() -> void:
+	var h: HudRig = _make_hud()
+	var selector: TemplateSelector = h.hud.get_death_screen().get_template_selector()
+	if not assert_not_null(selector, "la pantalla de muerte tiene el selector de plantilla"):
+		return
+	var marksman: int = CombatCatalog.template_id(&"marksman")
+	var squire: int = CombatCatalog.template_id(&"squire")
+	assert_true(selector.get_template_ids().has(marksman) and selector.get_template_ids().has(squire),
+			"ofrece el escudero y el tirador")
+	assert_eq(selector.get_selected(), CombatCatalog.default_template_id(), "marcada la de por defecto")
+	assert_true(selector.get_button(marksman).text.begins_with("Tirador"), "con su nombre")
+	assert_true(selector.get_button(marksman).text.contains("Arco"), "y sus armas")
+	_die(h, 1000)
+	assert_true(selector.choose(marksman))
+	assert_eq(h.client.loadout_selects, [marksman] as Array[int], "elegir manda el LOADOUT_SELECT")
+	assert_eq(selector.get_selected(), marksman)
+
+
+func test_drawing_the_bow_zooms_the_camera_and_closes_the_reticle() -> void:
+	var h: HudRig = _make_hud()
+	var crosshair: Crosshair = h.hud.get_node(^"Crosshair") as Crosshair
+	var bow: WeaponTicks = CombatCatalog.weapon(CombatCatalog.weapon_id(&"bow"))
+	var drawn: AttackTicks = CombatCatalog.attack(bow.heavy_id)
+	h.character.combat.copy_from(CombatState.initial(CombatCatalog.rules(), bow.id))
+	h.character.combat.action = CombatState.Action.CHARGE
+	h.character.combat.action_tick = 500
+	h.character.last_input_tick = 500 + drawn.charge_min_ticks / 2
+	_step(h)
+	assert_near(h.rig.get_aim_zoom(), 0.5, 0.05, "la cámara se cierra mientras se tensa")
+	assert_eq(crosshair.get_tension(), 0.0, "la retícula aún no (por debajo de la carga mínima)")
+	h.character.last_input_tick = 500 + drawn.charge_max_ticks
+	_step(h)
+	assert_eq(h.rig.get_aim_zoom(), 1.0, "tensado: el zoom entero")
+	assert_eq(crosshair.get_tension(), 1.0, "y la retícula cerrada")
+	assert_true(crosshair.get_ring_radius() < crosshair.ring_radius)
+	h.rig._process(10.0)
+	assert_near(h.rig.get_camera().fov, h.rig.get_fov() * CameraRig.AIM_ZOOM_FOV_SCALE, 0.01,
+			"al 75 % del campo de visión configurado")
+	assert_eq(h.rig.get_fov(), 72.0, "que no cambia")
+	# Con la espada, una carga no hace zoom.
+	h.character.combat.copy_from(CombatState.initial(CombatCatalog.rules(), CombatCatalog.weapon_id(&"sword_shield")))
+	h.character.combat.action = CombatState.Action.CHARGE
+	_step(h)
+	assert_eq(h.rig.get_aim_zoom(), 0.0)
+	assert_eq(crosshair.get_tension(), 0.0)
+	h.rig._process(10.0)
+	assert_near(h.rig.get_camera().fov, 72.0, 0.01, "vuelve al campo de visión configurado")
+
+
+func test_the_kill_feed_shows_downed_players() -> void:
+	var h: HudRig = _make_hud()
+	var feed: KillFeed = h.hud.get_war_hud().get_kill_feed()
+	h.client.get_directory().remember(OTHER_ID, "Ana", NetProtocol.Realm.SOLMARCH)
+	h.client.get_directory().remember(33, "Bruno", NetProtocol.Realm.VARDHEIM)
+	var drawn_source: int = CombatSource.make(CombatSource.Kind.ATTACK, CombatCatalog.attack_id(&"bow_drawn"))
+	var text: String = feed.show_downed(NetMessages.EntityEvent.downed(33, 100, OTHER_ID, drawn_source))
+	assert_eq(text, "Ana derribó a Bruno con un disparo tensado", "una línea por derribo")
+	var slowing: int = CombatSource.make(CombatSource.Kind.ABILITY, CombatCatalog.ability_id(&"bow_slowing_shot"))
+	assert_eq(CombatText.source_label(slowing), "una flecha lastrante", "las habilidades tienen nombre")
+	assert_eq(CombatText.death_text(OTHER_ID, "Ana", CombatSource.EXECUTE), "Te ha rematado Ana.")
+	assert_eq(CombatText.death_text(OTHER_ID, "Ana", CombatSource.BLEED_OUT), "Te has desangrado: te derribó Ana.")
+	assert_eq(CombatText.death_text(0, "", CombatSource.BLEED_OUT), "Te has desangrado.")

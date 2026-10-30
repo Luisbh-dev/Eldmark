@@ -164,7 +164,7 @@ func test_buttons_are_masked_to_valid_bits() -> void:
 	var input: PlayerInput = _input(1)
 	input.buttons = 0xFFFF
 	queue.push(input, 0, 1)
-	assert_eq(queue.take(1).buttons, NetProtocol.VALID_BUTTONS, "solo los bits 0-8")
+	assert_eq(queue.take(1).buttons, NetProtocol.VALID_BUTTONS, "solo los bits 0-12")
 
 
 # --- Ack --------------------------------------------------------------------------------------
@@ -482,6 +482,37 @@ func test_typical_lead_is_the_median_of_the_recent_real_inputs() -> void:
 		window.push(_input(t), 0, t - 5)
 		window.take(t)
 	assert_eq(window.get_typical_lead(99), 5, "la antelación 0 de los primeros ticks queda fuera")
+
+
+## H3a (docs/habilidades.md, 7.2): get_applied(tick) da la entrada que se simuló en ese tick, real o
+## sustituta (también si la real llegó después, tarde), y null si aún no se ha consumido o ya salió del anillo.
+func test_get_applied_returns_the_input_that_was_simulated() -> void:
+	var queue: InputQueue = _make_queue(10)
+	assert_null(queue.get_applied(11), "sin consumir todavía")
+	queue.push(_input(11, Vector2(0.0, 1.0), PRIMARY, 0.5, 0.25), 32, 11)
+	assert_null(queue.get_applied(11), "recibida pero sin consumir")
+	queue.take(11)
+	var real: PlayerInput = queue.get_applied(11)
+	if assert_not_null(real, "la real"):
+		assert_eq(real.buttons, PRIMARY)
+		assert_near(real.look_yaw, _input(11, Vector2.ZERO, 0, 0.5).look_yaw, 0.000001, "con su yaw")
+		assert_near(real.look_pitch, _input(11, Vector2.ZERO, 0, 0.0, 0.25).look_pitch, 0.000001, "y su pitch")
+	# El 12 no llega: se aplica la sustituta, y sigue siéndolo aunque la real llegue tarde.
+	queue.take(12)
+	var substituted: PlayerInput = queue.get_applied(12)
+	if assert_not_null(substituted, "la sustituta"):
+		assert_eq(substituted.tick, 12)
+		assert_true(substituted.has(SUBSTITUTED), "con su bit")
+		assert_eq(substituted.buttons & ~SUBSTITUTED, PRIMARY, "repite los botones")
+	assert_eq(queue.push(_input(12, Vector2.ZERO, DODGE), 0, 13), InputQueue.PushResult.LATE)
+	var after_late: PlayerInput = queue.get_applied(12)
+	assert_true(after_late != null and after_late.has(SUBSTITUTED) and not after_late.has(DODGE),
+			"la tardía no cambia lo que se simuló")
+	# Fuera del anillo, null.
+	for tick: int in range(13, 13 + InputQueue.CAPACITY + 1):
+		queue.take(tick)
+	assert_null(queue.get_applied(11), "ya no está en el anillo")
+	assert_not_null(queue.get_applied(13 + InputQueue.CAPACITY), "la última consumida sí")
 
 
 func test_take_always_returns_the_requested_tick() -> void:

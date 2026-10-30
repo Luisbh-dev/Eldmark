@@ -73,6 +73,9 @@ const FAKE_COMBAT_RING_GROWTH: float = 0.5
 const FAKE_SPREAD_HALF_EXTENT: float = 900.0
 const FAKE_SPREAD_PROBE_HEIGHT: float = 400.0
 const FAKE_SPREAD_SEED: int = 4242
+## Con [code]--fake-archers[/code]: radianes que suben la puntería los arqueros que disparan al cielo (unos 45°
+## por encima del tiro bueno: las flechas viven sus 2 s).
+const FAKE_SKY_AIM_RAISE: float = 0.8
 ## Patrones de los jugadores falsos, repartidos en rueda.
 const FAKE_PATTERNS: Array[BotBrain.Pattern] = [
 	BotBrain.Pattern.WANDER, BotBrain.Pattern.WANDER, BotBrain.Pattern.JUMPY,
@@ -96,6 +99,8 @@ var _idle_ticks: int = 0
 # reparto --fake-layout=spread.
 var _fake_ids: Array[int] = []
 var _fake_created: int = 0
+# Arqueros puros creados con --fake-archers (para repartir los que disparan al cielo).
+var _fake_archers: int = 0
 var _fake_realms: Array[int] = []
 var _spread_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 # Los falsos de relleno de --max-realm-diff (null sin equilibrio).
@@ -323,7 +328,18 @@ func _add_fake_player(forced_realm: int = 0) -> int:
 		# ZoneServer.add_fake_player le da el fuerte, las rutas y el buscador de enemigos.
 		pattern = BotBrain.Pattern.SIEGE
 	var brain := BotBrain.new(FAKE_SEED_BASE + index, pattern, home, FAKE_RADIUS)
-	var net_id: int = _zone_server.add_fake_player(brain, realm)
+	# --fake-loadout: la plantilla de equipo (docs/habilidades.md, sección 4.6).
+	var template_id: int = config.fake_template_for(index)
+	# --fake-archers (pruebas de carga, H5): los que llevan el arco en la mano son arqueros puros y una parte dispara
+	# al cielo.
+	var weapons: PackedInt32Array = CombatCatalog.template_weapons(template_id) if template_id > 0 \
+			else PackedInt32Array()
+	if config.fake_archers_sky_percent >= 0 and not weapons.is_empty() and BotBrain.is_ranged_weapon(weapons[0]):
+		brain.kit_ranged_only = true
+		if config.is_sky_archer(_fake_archers):
+			brain.kit_aim_raise = FAKE_SKY_AIM_RAISE
+		_fake_archers += 1
+	var net_id: int = _zone_server.add_fake_player(brain, realm, template_id)
 	if net_id < 0:
 		return -1
 	_fake_created += 1
@@ -406,7 +422,8 @@ func _setup_fillers() -> void:
 	_fillers.creator = func(realm: int) -> int: return _add_fake_player(realm)
 	_fillers.remover = func(net_id: int) -> void:
 		_fake_ids.erase(net_id)
-		_zone_server.remove_fake_player(net_id)
+		_zone_server.retire_filler(net_id)
+	_fillers.calm_check = _zone_server.is_fake_calm
 	_zone_server.set_filler_keeper(_fillers)
 	print("[Eldmark] Equilibrio de reinos: diferencia máxima de %d personas; los falsos rellenan el bando corto"
 			% config.max_realm_diff)
