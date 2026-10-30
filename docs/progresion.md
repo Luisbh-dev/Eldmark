@@ -326,8 +326,8 @@ al registrarse (plataforma.md §7.1). Todo id (`uid`, `op_id`, `actor_account_id
 rechaza el registro.
 
 ```json
-{"progress_format": 1, "race_id": "race_vardheim", "appearance": "AQAAAQEDAiE=",
- "starter_template_id": "squire", "starter_granted": true, "level": 7, "xp_total": 12345,
+{"progress_format": 1, "race_id": "race_vardheim", "appearance": "AQAAAQEDAgE=",
+ "starter_template_id": "squire", "starter_granted": true, "level": 8, "xp_total": 12345,
  "realm_points": 420, "played_seconds": 5400, "bag_slots": 30, "active_weapon_slot": 0, "health": 820,
  "location": {"zone_id": "vado_gris", "channel": 0, "x": 12.5, "y": 0.0, "z": -40.25, "yaw": 1.57,
               "in_combat": false, "saved_at_unix": 1793282400},
@@ -933,7 +933,7 @@ la de la instancia que reclamó (`SaveKey.ZoneID`), que rellena `economy_ops.zon
 compara `location.zone_id`.
 
 ```json
-{"progress_format": 1, "level": 7, "xp_total": 12345, "…": "resto de §3.4, sin los campos de solo lectura",
+{"progress_format": 1, "level": 8, "xp_total": 12345, "…": "resto de §3.4, sin los campos de solo lectura",
  "ops": [{"op_id": "5120", "kind": 2, "actor_account_id": null, "ref_op_id": null, "note": null, "detail": {},
           "ledger": [{"currency": 1, "delta": 2, "balance_after": 102, "reason": 6, "ref_kind": 2, "ref_id": "3021413298"},
                      {"currency": 2, "delta": 30, "balance_after": 3230, "reason": 3, "ref_kind": 1, "ref_id": "88"}],
@@ -1751,3 +1751,138 @@ plataforma.md P7a (su §19.5) escribe la fila de `set-role` que lee S2 (§13.3) 
   key update`, en orden de id) y escribe la fila con la hora de Go en la misma transacción que cambia el rol.
 - **Auditoría sin datos personales:** las filas de la CLI y de la plataforma nunca llevan correos ni nombres en
   `args` (plataforma.md §9.1); las de S8 siguen la misma regla (el objetivo por id en `detail.args`, §10).
+
+### 19.4 P3 · progreso y apariencia (PRG-13, PRG-14, ART-19)
+
+**Qué hay.** Lo de §14.1 P3, en `scripts/shared/progression/` salvo donde se dice:
+
+| Pieza | Contenido |
+|---|---|
+| `LevelCurve` y `data/progression/level_curve.tres` | La tabla de §6.1 (39 valores, tope 40, un punto de atributo por nivel). `shared()`, `total_to`, `level_for`, `xp_for_next` (la XP del nivel al siguiente, 0 en el tope: la que pide PROGRESS_UPDATE) y `get_errors` |
+| `ProgressionRules` | `XP_PER_MERIT`, `XpResult`, `add_xp` y `attribute_points` (§6.3) |
+| `AppearancePart`, `AppearanceColor`, `RaceDefinition` | Los recursos de §7.2. Las escenas y texturas van como rutas (`String`), nunca como recursos cargados. `RaceDefinition` añade `description` (lo propio del pueblo, para la creación) y `allowed(categoría)` |
+| `AppearanceCatalog` | `shared()`, `race_index`, `race_for_realm`, `entries`, `ids_of`, `fitting_indices` y `get_errors`: ids con formato y sin repetir, tamaños que caben en los 8 B (16 colores de ojos y 15 marcas como mucho), al menos un cuerpo, una cabeza y un color de cada tipo, piezas con cuerpos que existen y, por pueblo, reino jugable, índices que existen sin repetir, una cabeza (y pelo o barba si no admite ir sin ellos) para cada cuerpo permitido y `stat_modifiers` vacío |
+| `CharacterAppearance` | Los 8 B: `encode`, `decode`, `validate`, `random`, `default_for` y `equals` |
+| `data/characters/` | `appearance_catalog.tres`; `races/race_vardheim.tres`, `race_solmarch.tres` y `race_askarra.tres`; `appearance_ids.txt` («categoría índice id», con tres líneas de comentario `#` al principio) |
+| `ProgressionRulesExport` | Las secciones `races`, `appearance`, `level_curve`, `currencies`, `reasons`, `containers` y `combat`; el archivo exportado de nuevo |
+| `tests/fixtures/progression/appearance_cases.json` | 40 casos escritos a mano (7 válidos), uno o más por regla: raza y reino, cada índice fuera de rango, lo que no permite cada pueblo, y tamaños de 0, 7 y 9 B |
+| `platform/internal/progress/rules.go` | El paquete de P7 empieza aquí: `LoadRules` (las siete secciones, cada una estricta con `jsonx.DecodeBytes`, y las mismas comprobaciones que `get_errors` del catálogo y de la curva, más las de monedas, motivos, contenedores y vida), `ValidAppearance` (la regla de `validate`), `RaceIndex`, `TotalTo` y `LevelFor` |
+
+**El catálogo de la fase 5** solo tiene lo que hay en el repo (§16): el cuerpo `body_male` (`Male_Ranger.gltf`, el
+traje de explorador con su cuerpo), la cabeza `head_superhero_male` (`Superhero_Male_Head.gltf`), el peinado
+`hair_simple_parted` (`Hair_SimpleParted.gltf`) y la barba `beard_full` (`Hair_Beard.gltf`); ninguna marca. La
+cabeza y la barba encajan solo con el cuerpo 0 y el peinado con todos, para que un cuerpo femenino (ART-20) no
+herede una cabeza ni una barba masculinas. Colores: 8 tonos de piel (la paleta completa en los tres reinos, §0),
+10 de pelo y 7 de ojos. Lo que distingue a los pueblos (provisional, **tomado de noche**, hasta ART-20 y el visto
+bueno visual de §16):
+
+| Pueblo | Pelo (índices) | Ojos (índices) | Sin pelo | Sin barba |
+|---|---|---|---|---|
+| `race_vardheim` | castaño, caoba, pelirrojo, cobrizo, rubio, rubio pajizo, ceniza, canoso (2–9) | avellana, verdes, azules, grises, azul hielo (1, 3–6) | no (trenzas y melenas) | no (barbas largas) |
+| `race_solmarch` | negro, castaño oscuro, castaño, caoba, rubio, canoso (0–3, 6, 9) | marrones, avellana, ámbar, verdes, azules (0–4) | sí (tonsura) | sí |
+| `race_askarra` | negro, castaño oscuro, caoba, pelirrojo, ceniza, canoso (0, 1, 3, 4, 8, 9) | marrones, ámbar, verdes, grises (0, 2, 3, 5) | no (pelo recogido) | sí |
+
+**Formato de las secciones** (claves ordenadas, como todo el archivo):
+
+- `races`: `[{id, realm, allows_no_hair, allows_no_beard, bodies, heads, hairs, beards, marks, skin_tones,
+  hair_colors, eye_colors}]` en el orden del catálogo (la posición es el byte 0 − 1), con el reino en el código de
+  `NetProtocol.Realm` y las listas como índices desde 0 (también pelo y barba).
+- `appearance`: `{body_count, heads, hairs, beards, marks, skin_tone_count, hair_color_count, eye_color_count}`, con
+  cada lista de piezas como `[{id, bodies}]`.
+- `level_curve`: `{level_cap, xp_to_next, attribute_points_per_level}`.
+- `currencies`: `[{code, id, cap}]` (`gold` y `merits`, tope 10^9).
+- `reasons`: `{ranges: {source, sink, internal}, codes, op_kinds}`, cada rango `{min, max}` y los motivos y tipos de
+  operación por nombre en minúsculas (`starter_kit`: 1…).
+- `containers`: `{bag: {code, default_slots, max_slots}, equipment: {code, slots, open_slots}, open: [0, 1]}`.
+- `combat`: `{health_max}`.
+
+**Desviaciones y decisiones de la implementación:**
+
+- **Sin `items` ni `starter_templates`.** §14.1 dice que P3 no depende de nada, pero §13.4 y §15 ponen en su
+  exportación los objetos (de `ItemDatabase`, P1, que va en paralelo) y las plantillas `selectable` (de
+  `EquipmentTemplate`, habilidades.md H1a, que aún no está en esta rama: `wip/fase5-go` sale de `b4affb7`, antes
+  de habilidades). Entran con esos paquetes, cada una con su función en `build()` y sus comprobaciones en
+  `test_progression_rules_export`; `LoadRules` las ignora hasta que P7 las lea. Mientras, `*progress.Rules` no
+  implementa `CreateValidator` y `serve` sigue con la validación provisional de plataforma.md P2.
+- **Monedas, motivos, contenedores y tipos de operación son constantes de `ProgressionRulesExport`**
+  (`CURRENCIES`, `REASON_RANGES`, `REASON_CODES`, `OP_KINDS`, `CONTAINERS`): sus clases (`Currency`,
+  `EconomyReason` e `InventoryState` de P2; `EconomyOp.Kind` de P5a, en `scripts/server/`, que lo compartido no
+  puede leer) aún no existen. En `reasons` están todos los motivos de §5.3, también los de fases siguientes, porque
+  sus números ya son fijos.
+- **Los casos compartidos llevan una quinta clave, `case`** (la regla que prueban), además de `{realm, race_id,
+  appearance, valid}`: con 40 casos en base64, sin ella un fallo no se entiende. Las dos pruebas exigen las cinco.
+  Lo que no son 8 B no vale, en los dos lados.
+- **La regla de los cuerpos no tiene caso compartido:** con un solo cuerpo en el repositorio no se puede escribir
+  «una pieza de otro cuerpo» con los datos de verdad. Las dos pruebas la comprueban con el mismo catálogo de dos
+  cuerpos hecho en la prueba (`_two_body_catalog` en GDScript, `twoBodyRules` en Go).
+- **Ir sin marcas vale siempre** (no hay `allows_no_marks`). La piel, el color de pelo (también el de las cejas)
+  y el de ojos se piden siempre, haya o no pelo y barba.
+- **`default_for`** toma lo primero que permite cada lista, con pelo y barba si hay alguno compatible y sin marcas;
+  **`random`** es uniforme en cada campo entre lo compatible con el cuerpo elegido, con «sin» entre las opciones
+  cuando se admite. Las dos devuelven null con un índice de raza que no existe.
+- **`add_xp`** con 0 o menos no aplica nada; un total por encima del tope se lleva al tope (I8).
+  **`attribute_points`** nunca baja de 0 (tras una reversión que quita niveles).
+- **`shared()`** (curva y catálogo) carga una vez y, si el recurso no está, registra el error y devuelve uno vacío
+  (todos a nivel 1; ninguna apariencia vale). El catálogo registra también sus `get_errors`.
+- **Los ejemplos de §3.4 y §9.3 no cumplían I8** (nivel 7 con 12345 de XP, que con esta curva es nivel 8) **y su
+  apariencia no valía** (marcas 2, y no hay marcas): pasan a nivel 8 y a `AQAAAQEDAgE=`, que está en los casos
+  compartidos.
+- **`test_architecture`** gana tres pruebas: la progresión compartida no nombra `Time`, `OS` ni `Input` y
+  `scripts/server/progress/` no nombra `Time` (la carpeta aún no existe: la regla ya está para P5a); ningún `.tres`
+  de `data/characters/`, `data/items/` ni `data/progression/` enlaza o tiene, declarada o con valor, una textura,
+  una escena o una malla, tampoco en sus subrecursos; y ningún `class_name` se repite en `scripts/`, `tests/`,
+  `tools/` ni `addons/` (§14.2 decía `scripts/` y `tests/`, pero las herramientas y los complementos también
+  registran clases).
+- **`test_export_config`:** el catálogo, una raza y la curva están entre lo que ningún filtro puede quitar, y el
+  catálogo y la curva, en el paquete del servidor.
+
+**Para los paquetes siguientes.**
+
+- **P1** añade `items` (`_items()` con `ItemDatabase`) y **la integración con habilidades.md** `starter_templates`
+  (las `EquipmentTemplate` con `selectable`); cada una vuelve a exportar el archivo y amplía
+  `test_progression_rules_export` y `LoadRules`.
+- **P2** hace que `_currencies`, `_reasons` y `_containers` lean de `Currency`, `EconomyReason` e
+  `InventoryState`: el archivo no debe cambiar. **P5a** comprueba que `EconomyOp.Kind` coincide con
+  `ProgressionRulesExport.OP_KINDS`.
+- **P4:** el SPAWN lleva `CharacterAppearance.encode()`; el cliente sustituye una que no vale por `default_for`.
+- **P5a:** en `ProgressService.prepare`, `CharacterAppearance.decode` y `validate(AppearanceCatalog.shared(),
+  claimed.realm, race_id)`; si no vale, `default_for(catalog, catalog.race_index(race_id))`. `ProgressRecord`
+  comprueba I8 con `LevelCurve.shared().level_for`, y `PlayerProgress.add_xp` usa `ProgressionRules.add_xp`.
+- **P6 y plataforma.md P8:** `random` para «Aleatorio», `display_name` de piezas, colores y pueblos para la creación;
+  `AppearanceApplier` monta `scene_path` y tiñe con `color`.
+- **P7:** `progress.LoadRules(gamedata.Raw())` ya lee y comprueba lo de P3. Le quedan `items` y `starter_templates`,
+  `ValidateCreate` (`RaceIndex` y el reino para `{"race_id": "wrong_realm"}`, `ValidAppearance` para
+  `{"appearance": "invalid"}`) y lo que leen S5 y S6 (`LevelFor`, `Combat.HealthMax`, `Containers`,
+  `Currencies`, `Reasons`).
+
+**Pruebas.** En Godot: `test_level_curve` (9: recurso en texto y sin errores, 39 valores crecientes, la tabla de
+§6.1 y su fórmula, `level_for(total_to(n)) = n` y un punto antes, varias subidas con un solo aporte, el tope, aportes
+de 0 o negativos, puntos de atributo y una curva rota); `test_character_appearance` (13: ida y vuelta de 200 × 8 B
+al azar y de una conocida campo a campo, otros tamaños, los 40 casos compartidos, cada campo fuera de rango, raza y
+reino, ir sin pelo o barba, la pieza de otro cuerpo, 100 aleatorias válidas por raza y `default_for`, una raza por
+reino en su archivo, sin estadísticas, `appearance_ids.txt` como prefijo, escenas que existen y errores del
+catálogo); `test_progression_rules_export` (las 5 de plataforma.md P2 y 5 nuevas, una por sección o grupo);
+`test_architecture` (3 nuevas, arriba) y `test_export_config` (los datos nuevos). En Go, `internal/progress` (5):
+los casos compartidos, la pieza de otro cuerpo, las reglas incrustadas (razas, curva, monedas, motivos,
+contenedores, vida), cada byte fuera de rango y 28 archivos rotos que `LoadRules` rechaza.
+
+**Medido** (esta máquina, 4 núcleos, Godot 4.7.2 headless, Go 1.24.7):
+
+| Qué | Resultado |
+|---|---|
+| Las 30 pruebas nuevas de Godot | La más lenta, 8 ms (`test_100_random_valid_per_race`); cada archivo, unos 7 s con el arranque del ejecutor |
+| `test_architecture` | 12 s (las tres nuevas, 0,8 s: casi todo es `test_class_names_are_unique`) |
+| Suite entera de Godot | 1954 pruebas (1924 antes), todas correctas, en 1042 s |
+| `go test ./internal/progress` | 0,01 s (5 pruebas); `go test -p 2 -count=1 ./...` entero, 32 s |
+| `progression_rules.json` | 4286 B (877 con solo las secciones de plataforma.md) |
+
+`--import` da el mismo registro que antes (las fugas al salir de siempre) y la herramienta con `-- --check` sale
+con 0.
+
+**Sin comprobar:** las piezas y los colores sobre `HumanoidVisual` (`AppearanceApplier`, P6) y el visto bueno visual
+de los colores de cada pueblo (§16); la regla de los cuerpos con datos de verdad (llega con el cuerpo femenino de
+ART-20).
+
+**Queda para después:** `items` (P1) y `starter_templates` (integración con habilidades.md) en las reglas
+exportadas; `ValidateCreate` y el resto del almacén en Go (P7); el uso de todo esto en la zona (P4, P5a, P5c) y en el
+cliente (P6, plataforma.md P8).

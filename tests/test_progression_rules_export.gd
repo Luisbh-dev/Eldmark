@@ -50,3 +50,85 @@ func test_names_section() -> void:
 			"mayúsculas y minúsculas en el mismo orden")
 	assert_eq(names["folded"], NameRules.FOLDED, "folded")
 	assert_eq(Array(names["reserved"]), Array(NameRules.RESERVED), "reserved, como está escrito")
+
+
+# --- Secciones de progresion.md (P3) --------------------------------------------------------------
+
+## Las secciones de progresion.md §13.4 que ya existen. [code]items[/code] y [code]starter_templates[/code]
+## llegan con ItemDatabase (progresion.md P1) y las plantillas de habilidades.md (progresion.md §19).
+func test_progression_sections_present() -> void:
+	var data: Dictionary = ProgressionRulesExport.build()
+	for section: String in ["races", "appearance", "level_curve", "currencies", "reasons", "containers", "combat"]:
+		assert_true(data.has(section), "sección %s (progresion.md §13.4)" % section)
+
+
+## Las tres razas, en el orden del catálogo, con el reino en código y la regla entera de la apariencia.
+func test_races_section() -> void:
+	var races: Array = ProgressionRulesExport.build()["races"]
+	var catalog: AppearanceCatalog = AppearanceCatalog.shared()
+	assert_eq(races.size(), catalog.races.size(), "una entrada por raza del catálogo")
+	var expected_ids: Array = ["race_vardheim", "race_solmarch", "race_askarra"]
+	var expected_realms: Array = [NetProtocol.Realm.VARDHEIM, NetProtocol.Realm.SOLMARCH, NetProtocol.Realm.ASKARRA]
+	for i: int in range(races.size()):
+		var entry: Dictionary = races[i]
+		var keys: Array = entry.keys()
+		keys.sort()
+		assert_eq(keys, ["allows_no_beard", "allows_no_hair", "beards", "bodies", "eye_colors", "hair_colors",
+				"hairs", "heads", "id", "marks", "realm", "skin_tones"], "claves de races[%d]" % i)
+		assert_eq(entry["id"], expected_ids[i],
+				"races[%d] es %s (el byte 0 es su posición + 1)" % [i, expected_ids[i]])
+		assert_eq(entry["realm"], expected_realms[i], "%s: reino en el código de NetProtocol.Realm" % entry["id"])
+		var race: RaceDefinition = catalog.races[i]
+		assert_eq(entry["allows_no_hair"], race.allows_no_hair, "%s: allows_no_hair" % race.id)
+		assert_eq(entry["allows_no_beard"], race.allows_no_beard, "%s: allows_no_beard" % race.id)
+		for category: StringName in AppearanceCatalog.PART_CATEGORIES + AppearanceCatalog.COLOR_CATEGORIES:
+			assert_eq(entry[String(category)], Array(race.allowed(category)), "%s: %s" % [race.id, category])
+
+
+func test_appearance_section() -> void:
+	var appearance: Dictionary = ProgressionRulesExport.build()["appearance"]
+	var catalog: AppearanceCatalog = AppearanceCatalog.shared()
+	assert_eq(appearance["body_count"], catalog.bodies.size(), "cuerpos")
+	assert_eq(appearance["skin_tone_count"], catalog.skin_tones.size(), "tonos de piel")
+	assert_eq(appearance["hair_color_count"], catalog.hair_colors.size(), "colores de pelo")
+	assert_eq(appearance["eye_color_count"], catalog.eye_colors.size(), "colores de ojos")
+	for category: StringName in [&"heads", &"hairs", &"beards", &"marks"]:
+		var parts: Array = appearance[String(category)]
+		var catalog_parts: Array = catalog.entries(category)
+		assert_eq(parts.size(), catalog_parts.size(), "%s: una entrada por pieza" % category)
+		for i: int in range(mini(parts.size(), catalog_parts.size())):
+			assert_eq(parts[i], {"id": String(catalog_parts[i].id), "bodies": Array(catalog_parts[i].bodies)},
+					"%s[%d]: id y cuerpos compatibles" % [category, i])
+
+
+func test_level_curve_section() -> void:
+	var curve: Dictionary = ProgressionRulesExport.build()["level_curve"]
+	assert_eq(curve["level_cap"], 40, "tope 40")
+	assert_eq(Array(curve["xp_to_next"]), Array(LevelCurve.shared().xp_to_next), "la tabla de la curva")
+	assert_eq(curve["xp_to_next"].size(), 39, "39 valores")
+	assert_eq(curve["attribute_points_per_level"], 1, "un punto por nivel")
+
+
+## Topes de las monedas, rangos de los motivos y tipos de operación de §5.1 y §5.3.
+func test_currencies_reasons_containers_combat() -> void:
+	var data: Dictionary = ProgressionRulesExport.build()
+	assert_eq(data["currencies"], [{"code": 1, "id": "gold", "cap": 1000000000},
+			{"code": 2, "id": "merits", "cap": 1000000000}], "oro y méritos con tope de mil millones")
+	var reasons: Dictionary = data["reasons"]
+	assert_eq(reasons["ranges"], {"source": {"min": 1, "max": 63}, "sink": {"min": 64, "max": 127},
+			"internal": {"min": 128, "max": 191}}, "rangos de §5.3")
+	var codes: Dictionary = reasons["codes"]
+	var by_code: Dictionary = {}
+	for reason: String in codes:
+		var code: int = codes[reason]
+		assert_false(by_code.has(code), "el código %d no se repite (%s, %s)" % [code, reason, by_code.get(code, "")])
+		by_code[code] = reason
+		assert_true((code >= 1 and code <= 191), "%s: %d está en algún rango" % [reason, code])
+	assert_eq([codes["starter_kit"], codes["camp_refill"], codes["pvp_kill"], codes["npc_kill"], codes["gm_grant"],
+			codes["player_destroy"], codes["consume"], codes["gm_remove"], codes["reversal"], codes["migration"]],
+			[1, 2, 3, 6, 7, 64, 65, 66, 128, 129], "los motivos de la fase 5")
+	assert_eq(reasons["op_kinds"], {"player": 1, "gameplay": 2, "starter_kit": 3, "gm": 4, "reversal": 5,
+			"migration": 6, "trade": 7, "mail": 8}, "tipos de operación")
+	assert_eq(data["containers"], {"bag": {"code": 0, "default_slots": 30, "max_slots": 120},
+			"equipment": {"code": 1, "slots": 7, "open_slots": 2}, "open": [0, 1]}, "contenedores de §4.1")
+	assert_eq(data["combat"], {"health_max": CombatCatalog.rules().health_max}, "vida máxima de CombatRules")

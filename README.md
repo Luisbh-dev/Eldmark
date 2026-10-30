@@ -220,7 +220,9 @@ Los personajes (`/v1/worlds/{w}/characters`, `POST /v1/characters/{id}/enter`) g
 llegue el almacén de `docs/progresion.md` P7, en memoria: se pierde al reiniciar, y por eso `serve` no arranca
 en `staging` ni en `production`. `enter` solo da billete si hay una instancia de zona viva que admite el reino.
 Las reglas de los nombres y el protocolo mínimo por defecto salen de
-`platform/internal/gamedata/progression_rules.json`, que se genera desde Godot (la prueba
+`platform/internal/gamedata/progression_rules.json`, que se genera desde Godot, igual que las razas, la apariencia
+(`data/characters/`), la curva de niveles (`data/progression/`), las monedas, los motivos, los contenedores y la
+vida máxima. Tras cambiar cualquiera de esos datos hay que volver a exportarlo (la prueba
 `test_progression_rules_export.gd` avisa si se ha quedado viejo):
 
 ```bash

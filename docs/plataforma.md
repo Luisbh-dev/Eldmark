@@ -2542,3 +2542,21 @@ zona de prueba libera a mano; es de P4 y P5); `audit` y `chat` con volúmenes gr
 **Queda para después:** la zona de la moderación (P7b: `min_role`, `/gm`, invisible, NOTICE de los avisos,
 silencios en `ChatRouter`, filtro de ignorados, anillo de reportes, lotes de chat y auditoría); `reapply-purges` y
 el resto de retenciones (P9a); `admin maintenance` (TEC-28); `dev.sh` con `bootstrap` y `create-account` (P9b).
+
+### 19.6 Lo que trae progresion.md P3
+
+progresion.md P3 (su §19.4) añade sus secciones a `progression_rules.json` y empieza `internal/progress`:
+
+- **`progression_rules.json`** tiene ya `races`, `appearance`, `level_curve`, `currencies`, `reasons`,
+  `containers` y `combat`. `internal/gamedata` no cambia (sigue mirando solo `protocol_version` y `names`) y sus
+  pruebas siguen pasando. Faltan `items` (progresion.md P1) y `starter_templates` (las plantillas de
+  habilidades.md, que aún no están en esta rama).
+- **`progress.LoadRules(gamedata.Raw())`** lee y comprueba esas secciones y da `ValidAppearance(realm, raceID,
+  [8]byte)`, la regla de §4.4 paso 5 para la apariencia, con los casos compartidos
+  (`tests/fixtures/progression/appearance_cases.json`). `*progress.Rules` aún no implementa `CreateValidator` (le
+  faltan las plantillas): `serve` sigue con `ProvisionalValidator` hasta progresion.md P7, y nada de lo que hay en
+  `cmd/` cambia.
+- **Para P7:** las pruebas de `internal/characters` crean personajes con 8 B que no valen con las reglas de verdad
+  (`appearance` de `harness_test.go`: cabeza 2, sin barba en Vardheim y marcas 2). Al cambiar `progressStore()` por
+  `*progress.Rules` hay que darles una que valga para cada reino, como las de los casos compartidos
+  (`AQAAAQEDAgE=` en Vardheim, `AgAAAAAHAAA=` en Solmarch).

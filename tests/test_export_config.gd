@@ -24,6 +24,8 @@ const REQUIRED_PATHS: Array[String] = [
 	"scripts/client/client_main.gd", "scenes/boot.tscn", "scenes/server/server_main.tscn",
 	"scenes/client/client_main.tscn", "scenes/ui/hud.tscn",
 	"scenes/world/zones/vado_gris/vado_gris.tscn", "data/combat/combat_rules.tres",
+	"data/characters/appearance_catalog.tres", "data/characters/races/race_vardheim.tres",
+	"data/progression/level_curve.tres",
 	"assets/ui/theme/eldmark_theme.tres", "assets/emblems/vardheim.svg",
 	"addons/terrain_3d/terrain.gdextension", "addons/terrain_3d/LICENSE.txt",
 	"addons/proton_scatter/LICENSE", "assets/LICENCIAS.md",
@@ -277,7 +279,8 @@ func test_the_server_pack_exports_trimmed_and_without_development_folders() -> v
 			"addons/terrain_3d/LICENSE.txt", "assets/LICENCIAS.md",
 			"scenes/world/zones/vado_gris/vado_gris.tscn.remap",
 			"scenes/world/zones/vado_gris/terrain/terrain3d_00_00.res",
-			"scenes/server/server_main.tscn.remap", "scripts/server/zone_server.gd.remap"]:
+			"scenes/server/server_main.tscn.remap", "scripts/server/zone_server.gd.remap",
+			"data/characters/appearance_catalog.tres.remap", "data/progression/level_curve.tres.remap"]:
 		assert_true(files.has(required), "el paquete lleva %s" % required)
 	assert_true(files.size() > 500, "y no está vacío (%d archivos)" % files.size())
 	# Recortado: la exportación completa del proyecto pasa de los 80 MB; el servidor ronda los 17.

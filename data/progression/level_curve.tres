@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="LevelCurve" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/progression/level_curve.gd" id="1_curve"]
+
+[resource]
+script = ExtResource("1_curve")
+level_cap = 40
+xp_to_next = PackedInt32Array(500, 650, 950, 1370, 1880, 2470, 3140, 3870, 4680, 5550, 6470, 7460, 8490, 9590, 10730, 11920, 13170, 14460, 15790, 17180, 18600, 20070, 21580, 23140, 24730, 26370, 28050, 29760, 31510, 33300, 35130, 37000, 38900, 40840, 42810, 44820, 46860, 48940, 51050)
+attribute_points_per_level = 1
