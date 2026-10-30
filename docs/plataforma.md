@@ -3197,7 +3197,6 @@ vea a un GM invisible (no hace falta en la fase 5).
 propios personajes (progresion.md P5d); las opciones de ignorar y reportar del menú social y la lista de ignorados
 en el cliente (SOC-07); el extremo a extremo (P10).
 
-
 ### 19.13 P9b · operación (TEC-28)
 
 **Qué hay.** `platform/deploy/` con lo de §10.1, §10.3 y §12 que se puede automatizar aquí, más `admin
@@ -3461,7 +3460,6 @@ Godot: fuera de `platform/` solo cambia la documentación.
 **Queda para después:** la revisión legal de los textos, de la edad mínima y de los plazos marcados en §11.1 (usuario,
 §16); el contacto del responsable en `privacy-1.md`.
 
-
 ### 19.16 P8 · cliente (UI-22, UI-23, UI-24)
 
 **Qué hay.** El lado del jugador de §13: el título con cuenta, la selección y la creación de personaje, la entrada con
@@ -3570,3 +3568,68 @@ plataforma de Go (el token dura 15 min y las pruebas usan la de mentira).
 **Queda para después:** el fondo, el logotipo y la música del título (ART-21) y su revisión visual (usuario); más
 piezas de apariencia y cuerpos (ART-20); que la zona cargue la apariencia elegida (progresion.md P5a, criterio de
 UI-24); DTLS en la zona y su medida (P9c); la prueba de extremo a extremo con la plataforma en Go (P10).
+
+### 19.17 Integración de los carriles de la fase 5
+
+**Qué hay.** `wip/fase5-zona` (P4, P5, P6 y P7b de aquí; P1, P2, P4 y P5a–P5d de progresion.md) junta los otros dos
+carriles con dos fusiones `--no-ff`: `wip/fase5-almacen` (P9b, progresion.md P7 y P9a, hasta `1972199`) y
+`wip/fase5-cliente` (progresion.md P6 y P8, hasta `c755f7b`). Ningún archivo de código cambiaba en dos carriles a la
+vez: los conflictos fueron todos de documentación y se resolvieron conservando lo de los dos lados.
+
+- **Apartados de §19.** Los de cada carril se numeraban desde el último que veían; quedan en el orden de las
+  fusiones y con sus referencias al día (en este documento, en progresion.md, en backlog.md, en README.md y en los
+  comentarios de progresion.md §14.3). Aquí: §19.13 P9b (era §19.11), §19.14 lo que deja progresion.md P7 (§19.12),
+  §19.15 P9a (§19.13) y §19.16 P8 (§19.9); en progresion.md, §19.17 P7 (§19.12), §19.18 lo que deja P9a (§19.13) y
+  §19.19 P6 (§19.10). Las citas «plataforma.md §19, «P8 · cliente»» del backlog pasan a §19.16.
+- **Backlog.** Donde los dos carriles añadían su «Hecho» al mismo elemento (PRG-07, PRG-12, PRG-16, SOC-14, SOC-17,
+  SOC-18, TEC-25 y TEC-27) van los dos, en el orden de los paquetes; en TEC-25 los dos «Faltan» se quedan en uno
+  («Falta la prueba del kill -9»). Con los tres carriles juntos se cumplen tres «Terminado cuando» que ninguno
+  cumplía solo y se cierran: PRG-13 (el nivel ya se guarda), PRG-14 (la creación ofrece el pueblo de cada reino) y
+  ART-19 (aplicar 100 al azar y que el servidor no deje pasar índices fuera de rango). UI-24 y TEC-25 ganan su nota y
+  siguen abiertos.
+- **Arreglos.** No hizo falta tocar el código del juego ni el de la plataforma: `--import` no cambia nada (los `.uid`
+  venían de cada carril) y todas las pruebas pasan tal cual. Lo que se queda viejo al juntar: la ayuda de
+  `platform/deploy/dev.sh` decía que `--platform` de la zona y el cliente con cuenta «llegaban» con P4 y P8, y
+  README.md no contaba las opciones de la zona con plataforma (`--platform`, `--world`, `--channel`,
+  `--public-address`, `--save-interval`, `--replace`, los secretos y los códigos de salida 1 y 3), que ahora tiene en
+  «Servidor dedicado».
+
+**Comprobado a mano contra la plataforma de verdad** (`scratchpad/int/real_platform.sh`, no está en el repositorio:
+el de §19.16 sobre esta rama, con la consola de la zona por una FIFO): PostgreSQL 16 efímero con `migrate up` (hasta
+`0010_progress`), `serve` con el almacén del progreso de verdad, una zona `test_world` con `--platform`, `--console` y
+`--save-interval=5`, y tres bots `--bot --platform`.
+
+1. El primero inicia sesión, crea «Probador» en Solmarch (`race_solmarch` y sus 8 B en `character_progress`) y entra:
+   la zona le da el kit (operación STARTER_KIT con sus cuatro eventos de objeto) y el bot recibe el INVENTORY_FULL,
+   dos WALLET_UPDATE y un PROGRESS_UPDATE, sin ningún paquete mal formado.
+2. Con el bot dentro, la consola de la zona manda `xp_add Probador 30000`, `item_give Probador potion_health 2` y
+   `currency_add Probador gold 75`: tres operaciones GM con `source: console`, nota y `detail` (en `xp_add`,
+   `level_before` 1 y `level_after` 11), que salen en el guardado crítico y pasan S1–S8. La base queda con nivel 11 y
+   30 000 de XP, las dos pociones nuevas en la ranura 2 de la bolsa (evento con su uid), 75 de oro con su apunte y
+   sus tres filas `op:<op_id>` en `audit_log` (objetivo por `character_id`, `args` sin nombres); el bot recibe un
+   INVENTORY_DELTA, un WALLET_UPDATE y un PROGRESS_UPDATE más.
+3. Al salir, el guardado final y la liberación (`save_version` 4, arrendamiento libre). El segundo bot encuentra el
+   personaje, entra con otro billete y la reclamación trae lo guardado: mismo nivel, objetos y saldos, y la salida
+   lo vuelve a guardar sin cambiar nada más que el tiempo jugado (`save_version` 7).
+4. El tercero, con una contraseña mala, sale con 1 e `invalid_credentials`; el título sin ventana lee el estado.
+
+**Pruebas.** Go: `gofmt -l` y `go vet` limpios y `go test -race -count=1 ./...` entero en verde (28 paquetes con
+pruebas; el más lento, `platform/deploy`, 17–19 s), tras la primera fusión y al final, con el `dev.sh` retocado.
+Godot, tras `--import`, por filtros (cada ejecución carga todos los archivos de prueba, así que ninguno deja de
+compilar): las áreas que tocan los carriles, `platform` (67), `progress` (109), `save` (41), `auth` (31),
+`test_zone_server` (86), `inventory` (48), `net_messages` (95), `test_front` (26), `test_account_flow` (16),
+`test_client_` (74), `test_online_main` (15), `test_net_client` (34), `test_appearance` (6), `hud` (82),
+`test_character_` (36) y `test_architecture` (19); y los archivos que cambió algún carril o que usan lo cambiado,
+`test_loadout`, `test_consumables_server`, `test_bot_cheat`, `test_projectile_loopback`, `test_combat_resolver`,
+`test_combat_server`, `test_hfsm_brain`, `test_chat`, `test_command_registry`, `test_war_`, `test_zone_moderation`,
+`test_zone_process_shutdown`, `test_handoff_ticket`, `test_server_`, `test_item_`, `test_currency_rules`,
+`test_action_machine_weapons`, `test_level_curve`, `test_progression`, `test_bot_swarm`, `test_net_processes`,
+`test_realm_select`, `test_remote_world`, `test_nameplates`, `test_export_config`, `test_local_server_launcher`,
+`test_net_loopback`, `test_net_harness`, `test_siege_clients`, `test_ui_`, `test_social_menu`, `test_hints`,
+`test_ability_input`, `test_party_`, `test_combat_loopback` y `test_fortress_loopback`. En total, 1317 pruebas
+distintas de 118 archivos, todas correctas a la primera. La suite entera de Godot no se ha pasado.
+
+**Queda para después:** las pruebas de punta a punta del progreso (progresion.md P8: `test_progress_loopback`,
+`test_progress_platform_loopback`, `--bot-scenario=progress` y `platform/e2e/progress_test.go`), DTLS en la zona
+(P9c) y la prueba de extremo a extremo en la CI (P10); lo pendiente del usuario de cada paquete (revisión visual,
+textos legales, el VPS).

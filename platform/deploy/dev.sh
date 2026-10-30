@@ -156,13 +156,13 @@ Plataforma de desarrollo lista (base: 127.0.0.1:$port; entorno: $env_file).
            (también en $secrets/*.password).
   Orden admin: eval "\$(platform/deploy/dev.sh env)"; $bin admin --actor $ACTOR help
 
-  Zona (otra terminal, en la raíz del repositorio; --platform llega con docs/plataforma.md P4):
+  Zona (otra terminal, en la raíz del repositorio):
     ELDMARK_ZONE_TOKEN_FILE=$secrets/zone_token_vado_gris ELDMARK_TICKET_KEYS_FILE=$secrets/ticket_keys \\
       godot --headless --path . -- --server --zone=vado_gris --platform=$zone_url
     (test_world: --zone=test_world y ELDMARK_ZONE_TOKEN_FILE=$secrets/zone_token_test_world)
-  Cliente (P8):  godot --path . -- --title --platform=$public_url
-  Bot (P8):      godot --headless --path . -- --bot --platform=$public_url --login=$test_email \\
-                   --password-file=$secrets/prueba.password
+  Cliente:  godot --path . -- --title --platform=$public_url
+  Bot:      godot --headless --path . -- --bot --platform=$public_url --login=$test_email \\
+              --password-file=$secrets/prueba.password
 EOF
 }
 

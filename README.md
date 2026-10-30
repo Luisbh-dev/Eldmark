@@ -190,6 +190,17 @@ ancho de banda. El informe lleva, además de los contadores, el p50/p99/máximo 
 sección, los µs de cada `simulate()` y el tamaño y el coste de construir los snapshots. El código
 de salida es 0 en un cierre normal y 1 si no puede arrancar (zona desconocida, puerto ocupado).
 
+Con la plataforma (`docs/plataforma.md` §8 y «Servicio de plataforma», abajo) la zona se registra en la API
+interna y solo admite clientes con billete: `--platform=<url interna>` (sin ella, cada cliente entra con un
+personaje efímero que se pierde al salir, `docs/progresion.md` §9.4), `--world=<id>` (1) y `--channel=<n>` (0),
+`--public-address=<host>[:<puerto>]` (a dónde conectan los clientes), `--save-interval=<s>` (el punto de control
+de los guardados, 60) y `--replace` (sustituye a una instancia viva de la misma zona y canal). El token de la zona
+y las claves de los billetes van en `ELDMARK_ZONE_TOKEN` y `ELDMARK_TICKET_KEYS` o en los archivos que nombran
+`ELDMARK_ZONE_TOKEN_FILE` y `ELDMARK_TICKET_KEYS_FILE` (`platform/deploy/dev.sh` los prepara y escribe la orden
+entera). Con plataforma, la zona sale con 1 si no puede registrarse y con 3 si la plataforma cierra la
+instancia. `--console` lee comandos de la entrada estándar, también los del progreso (`item_give`, `xp_add`,
+`inv_show`…, `docs/progresion.md` §10).
+
 El servidor se defiende de los clientes (docs/red.md, sección 12): limita los paquetes por tick y
 por segundo y los bytes de cada peer, cuenta un aviso por cada paquete mal formado, de un tipo
 inesperado para el estado de la sesión o por encima del ritmo, y expulsa con un NOTICE al que

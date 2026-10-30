@@ -2894,7 +2894,6 @@ el rol del actor en `at_unix`, la ruta de operación con sus `instances` y el li
 **Queda para después:** las pruebas de punta a punta (P8); `mastery_set` (fase 6); la edición sin conexión del panel
 de moderación (SOC-37, fase 8).
 
-
 ### 19.17 P7 · almacén en Go (PRG-10, PRG-12, PRG-14, PRG-16, TEC-25, TEC-43)
 
 **Qué hay.** Lo de §14.1 P7, en `platform/` salvo donde se dice:
@@ -3047,7 +3046,6 @@ plataforma.md P9a (su §19.15) pone a trabajar lo de §3.5 que esperaba a la pla
   de una lápida sin operaciones, `null`. `accounts` solo ve `Export` (`accounts.ProgressExporter`).
 - **Nada cambia aquí:** ni `internal/progress` ni Godot.
 
-
 ### 19.19 P6 · cliente (UI-26, ART-19, PRG-07)
 
 **Qué hay.** Lo de §14.1 P6, en `scripts/client/inventory/` salvo donde se dice:
@@ -3173,3 +3171,24 @@ ventanas, del icono provisional y de los tintes (§16).
 
 **Queda para después:** el inventario en la zona (P5b), las recompensas que llenan monedas y XP (P5c), la creación y la
 selección con apariencia (plataforma.md P8), los iconos (ART-12) y los sombreadores de piel y ojos (ART-20).
+
+### 19.20 Integración de los carriles
+
+La integración de la fase 5 (las fusiones de `wip/fase5-almacen` y `wip/fase5-cliente` en `wip/fase5-zona`) está en
+plataforma.md §19.17. Lo que toca a este documento:
+
+- **Numeración.** P7 pasa a §19.17, lo que deja plataforma.md P9a a §19.18 y P6 a §19.19, con sus citas en §14.3 y en
+  el backlog.
+- **Sin cambios de código.** La zona (P5a–P5d), el almacén en Go (P7) y el cliente (P6) casan tal como los dejó
+  cada paquete: los 68 casos de `save_cases.json` siguen pasando en Go y las pruebas de la zona y del cliente pasan
+  sin tocarlas.
+- **De punta a punta, a mano** (plataforma.md §19.17): con la plataforma de verdad, el kit de la primera entrada
+  (STARTER_KIT), tres operaciones GM de la consola (`xp_add` que sube del 1 al 11 de una vez, `item_give` y
+  `currency_add`) en un guardado crítico que pasa S1–S8, su rastro en `detail` y en la auditoría, y la entrada
+  siguiente que carga lo guardado. Es lo que P8 convierte en pruebas (`test_progress_platform_loopback`,
+  `platform/e2e/progress_test.go`).
+- **Backlog.** Se cierran PRG-13 (el nivel se guarda), PRG-14 (la creación ofrece el pueblo de cada reino) y ART-19
+  (las dos mitades del criterio juntas); UI-24 sigue abierto (dos clientes con ventana y el visto bueno visual).
+
+**Queda para después:** P8 (`test_progress_loopback`, `test_progress_platform_loopback`, `--bot-scenario=progress` y
+`platform/e2e/progress_test.go`).
