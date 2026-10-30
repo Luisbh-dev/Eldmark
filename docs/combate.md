@@ -478,6 +478,12 @@ ninguno debe hacer daño de más.
   lista **estática** de todos los puntos y se añade la condición (el fuerte propio, sin atacar:
   [fuerte.md 5](fuerte.md#5-avisos-reaparición-salida-y-atascado)). Al reaparecer: teletransporte (contador), `reset_for_respawn`, vida llena,
   `protected_until = s + 3 s` (se pierde al empezar un ataque), evento RESPAWN.
+- **Fase 4** ([habilidades.md 4.5 y 4.6](habilidades.md#45-derribado-levantar-y-rematar-downedsystem-scriptsserverdowned_systemgd),
+  H3c): el golpe mortal de un **jugador** de otro reino a un jugador en una zona RVR no mata, **derriba**
+  (DOWNED, 20 s de desangrado, levantar y rematar); contra PNJ, el entorno o los Huecos, muerte directa. Un
+  derribado no es ni vivo ni muerto (`Combatant.is_downed`), no reaparece ni se cura, y su baja es antes una
+  muerte. La reaparición pone las armas y las cargas de su **plantilla** (la que eligió con LOADOUT_SELECT o la
+  de por defecto) con LOADOUT.
 - **Caída**: `PlayerCharacter.last_landing_speed = −velocity.y` medido **antes** de
   `move_and_slide()` en el tick en que `grounded` pasa a true (0 en los demás). Daño
   `(v − 15) × 70` por encima de 15 m/s: saltar desde la pasarela de 3 m (14,0 m/s) no hace daño; la

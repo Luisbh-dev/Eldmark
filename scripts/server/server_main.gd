@@ -322,7 +322,8 @@ func _add_fake_player(forced_realm: int = 0) -> int:
 		# ZoneServer.add_fake_player le da el fuerte, las rutas y el buscador de enemigos.
 		pattern = BotBrain.Pattern.SIEGE
 	var brain := BotBrain.new(FAKE_SEED_BASE + index, pattern, home, FAKE_RADIUS)
-	var net_id: int = _zone_server.add_fake_player(brain, realm)
+	# --fake-loadout: la plantilla de equipo (docs/habilidades.md, sección 4.6).
+	var net_id: int = _zone_server.add_fake_player(brain, realm, config.fake_template_for(index))
 	if net_id < 0:
 		return -1
 	_fake_created += 1

@@ -1,8 +1,9 @@
 extends TestCase
 ## Pruebas del [StatusSystem] dentro del [CombatDirector] (docs/habilidades.md, secciones 4.1 y 4.3; CMB-20,
 ## paquete H3a): un sangrado hace exactamente N pulsos en [code]anchor + 60k[/code], acumulación, renovación y
-## el más fuerte, la curación en el tiempo, un pulso no interrumpe, un pulso que mata a mitad de la lista no
-## cambia lo que se recorre, limpieza al morir, al reaparecer y al irse el autor, STATUS con su
+## el más fuerte, la curación en el tiempo, un pulso no interrumpe, un pulso que derriba (o que mata, si el
+## autor no es un jugador de otro reino) a mitad de la lista no cambia lo que se recorre, limpieza al morir, al
+## quedar derribado, al reaparecer y al irse el autor, STATUS con su
 ## [code]until_tick[/code], las ranuras de movimiento con el mismo fin y los modificadores de daño y de
 ## mitigación.
 ## [br][br]
@@ -260,8 +261,50 @@ func test_a_pulse_does_not_interrupt_drinking() -> void:
 	assert_eq(_director.stats[&"interrupts"], 0)
 
 
-func test_a_lethal_pulse_in_the_middle_of_the_list_does_not_change_what_is_walked() -> void:
+## H3c (docs/habilidades.md, sección 4.5): el pulso mortal de un jugador de otro reino derriba; los efectos se
+## quitan al quedar derribado (DOWNED los borra en el cliente) y la curación de ese tick ya no se aplica.
+func test_a_pulse_that_downs_in_the_middle_of_the_list_does_not_change_what_is_walked() -> void:
 	var author: Combatant = _body(1, VARDHEIM, Vector3.ZERO)
+	var first: Combatant = _body(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI)
+	var second: Combatant = _body(3, SOLMARCH, Vector3(3.0, 0.0, -1.5), PI)
+	var bleed: int = _status_id(&"bleed")
+	var regen: int = _status_id(&"potion_regen")
+	var slowed: int = _status_id(&"slowed")
+	first.health = 500
+	_director.status.apply(first, bleed, author.get_id(), S)
+	_director.status.apply(first, regen, first.get_id(), S)
+	_director.status.apply(first, slowed, author.get_id(), S)
+	_director.status.apply(second, bleed, author.get_id(), S)
+	_run(S + 1, S + 59)
+	first.health = 10
+	_events.clear()
+	_run(S + 60, S + 60)
+	assert_true(first.is_downed(), "el sangrado del jugador de otro reino lo derriba")
+	assert_false(first.is_dead() or first.is_alive(), "un derribado no es ni vivo ni muerto")
+	assert_eq(_events_of(HEAL, 2).size(), 0, "y su curación de ese mismo tick ya no se aplica")
+	assert_true(first.effects.is_empty(), "derribado, sin efectos")
+	assert_eq(_combat_of(first).move_effect_ids, PackedInt32Array([0, 0]), "ni ranuras de movimiento")
+	assert_eq(_combat_of(first).action, CombatState.Action.DOWNED)
+	var pulses: Array[NetMessages.EntityEvent] = _events_of(HIT, 2)
+	if assert_eq(pulses.size(), 1, "el pulso"):
+		assert_eq(pulses[0].hit_flags, NetMessages.EntityEvent.HIT_FLAG_DOWNED, "con el bit 6 (derriba)")
+	var downs: Array[NetMessages.EntityEvent] = _events_of(NetMessages.EntityEvent.Kind.DOWNED, 2)
+	if assert_eq(downs.size(), 1, "DOWNED"):
+		assert_eq(downs[0].attacker, 1, "lo derriba el autor del sangrado")
+		assert_eq(downs[0].get_source(), CombatSource.make(CombatSource.Kind.STATUS, bleed))
+	assert_eq(_events_of(DEATH, 2).size(), 0, "sin DEATH")
+	assert_eq(_events_of(STATUS, 2).size(), 0, "sin STATUS sueltos: DOWNED los borra en el cliente")
+	assert_eq(_events_of(HIT, 3).size(), 1, "el siguiente de la lista recibe su pulso")
+	assert_eq(second.health, 1000 - 15)
+	assert_false(_director.status.apply(first, bleed, author.get_id(), S + 61), "no se aplican efectos a un derribado")
+	_run(S + 61, S + 130)
+	assert_eq(_events_of(HIT, 2).size(), 1, "ni pulsa")
+
+
+func test_a_lethal_pulse_in_the_middle_of_the_list_does_not_change_what_is_walked() -> void:
+	# El autor es un PNJ: su pulso mortal mata sin derribar (docs/habilidades.md, sección 4.5).
+	var author: Combatant = _body(1, VARDHEIM, Vector3.ZERO)
+	author.entity.kind = NetProtocol.EntityKind.NPC
 	var first: Combatant = _body(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI)
 	var second: Combatant = _body(3, SOLMARCH, Vector3(3.0, 0.0, -1.5), PI)
 	var bleed: int = _status_id(&"bleed")

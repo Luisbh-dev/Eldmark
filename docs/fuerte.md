@@ -144,8 +144,10 @@ dueño (con un fuerte neutral, `D` es falso).
 Las habilidades lo completan ([habilidades.md 4.1](habilidades.md#41-orden-del-tick-completa-fuertemd-17),
 paquete H3a): tras congelar, los disparos (H3b) y los efectos propios de quien está en su
 compromiso; resolver incluye el vuelo de los proyectiles (H3b), y aplicar, los golpes de las habilidades y
-de las flechas, los efectos al objetivo y las interrupciones; después, los pulsos y caducidades de los efectos de estado y (H3c) el derribado, antes
-del entorno y las reapariciones. Todo dentro de `CombatDirector.process_tick`, antes de 4b.
+de las flechas, los efectos al objetivo y las interrupciones; después, los pulsos y caducidades de los efectos de estado y (H3c) el derribado
+(desangrado, levantar y rematar), antes del entorno, las reapariciones con su plantilla y la recarga de los consumibles en
+el campamento. Todo dentro de `CombatDirector.process_tick`, antes de 4b. Un derribado no cuenta en el círculo (§1.2: no
+está vivo) y sí impide reparar la puerta si está en el vano.
 
 ---
 
@@ -269,6 +271,11 @@ de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D
   **Fichas**: como mucho 2 PNJ atacan a la vez al mismo jugador; el resto lo rodea a 3–4 m.
 - Depuración: comando 12 `npc_debug` escribe estado, objetivo y ruta de los PNJ cercanos en el
   registro del servidor cada segundo (sin mensaje de red en la fase 4).
+- **Derribados** (H3c, [habilidades.md 4.5](habilidades.md#45-derribado-levantar-y-rematar-downedsystem-scriptsserverdowned_systemgd)):
+  los PNJ no quedan derribados (su golpe mortal mata), pero rematan. En `HfsmBrain`, un jugador derribado
+  hostil a ≤ 6 m es el objetivo preferido, antes que el más cercano en pie (también al notarlo en reposo o
+  patrulla), y se le ataca con el ligero, sin escudo ni carga; pide su ficha de `AttackTokens` como cualquier
+  objetivo. `NpcWorld` no cambia: un derribado ya es un objetivo válido (no está muerto).
 
 ### 4.3 Generadores y defensores (MUN-09 … MUN-12, GUE-11)
 

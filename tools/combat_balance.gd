@@ -26,10 +26,13 @@ extends SceneTree
 ## de guardia).
 ## [br]- [b]TTK entre iguales[/b]: duelos de dos bots de combate ([constant BotBrain.Pattern.COMBAT], que
 ## ataca, bloquea y esquiva con su semilla) de reinos enemigos, con las mismas armas, desde la distancia de
-## 4 m hasta que uno muere: tiempo del primer golpe a la muerte, quién gana, golpes, bloqueos y esquivas.
+## 4 m hasta que uno cae: tiempo del primer golpe a la caída, quién gana, golpes, bloqueos y esquivas.
 ## [br]- [b]Equipos[/b]: 2 contra 2 y 5 contra 5 de bots de combate, hasta que un bando se queda sin nadie
 ## en pie (o pasan 60 s, con reapariciones de 10 s de por medio): tiempo hasta la primera baja y hasta
 ## el fin, y bajas por bando.
+## [br][br]
+## Entre jugadores de reinos enemigos el golpe mortal derriba (docs/habilidades.md, sección 4.5): la «muerte» de
+## estas medidas es la caída, DOWNED o DEATH (lo que llegue antes), que es cuando el caído deja de pelear.
 
 ## Zona de las mediciones (sin zonas seguras ni terreno).
 const ZONE_ID: String = "test_world"
@@ -351,10 +354,11 @@ func _ideal_ttk_against(mode: String) -> Dictionary:
 					first_hit = event.tick
 				if (event.hit_flags & NetMessages.EntityEvent.HIT_FLAG_GUARD_BREAK) != 0 and guard_break_tick < 0:
 					guard_break_tick = event.tick
-			elif event.event == NetMessages.EntityEvent.Kind.DEATH and event.net_id == victim:
+			elif _is_fall(event) and event.net_id == victim and death_tick < 0:
 				death_tick = event.tick
 		_events.clear()
-		if _server.get_combat().get_combatant(victim).is_dead() and death_tick < 0:
+		var fallen: Combatant = _server.get_combat().get_combatant(victim)
+		if (fallen.is_dead() or fallen.is_downed()) and death_tick < 0:
 			death_tick = _server.get_tick()
 	var combatant: Combatant = _server.get_combat().get_combatant(victim)
 	var result: Dictionary = {
@@ -455,7 +459,7 @@ func _duel(seed_first: int) -> Dictionary:
 					damage_by[side] += event.amount
 					if first_hit < 0:
 						first_hit = event.tick
-			elif event.event == NetMessages.EntityEvent.Kind.DEATH:
+			elif _is_fall(event):
 				var dead: int = ids.find(event.net_id)
 				if dead >= 0 and winner < 0:
 					winner = 1 - dead
@@ -538,13 +542,19 @@ func _team_fight(size: int, seed_first: int) -> Dictionary:
 	var first_hit: int = -1
 	var end_tick: int = -1
 	var deaths: int = 0
+	# Quién sigue en pie: un derribado que luego muere solo cae una vez.
+	var standing: Dictionary[int, bool] = {}
+	for side: int in 2:
+		for net_id: int in teams[side]:
+			standing[net_id] = true
 	var limit: int = start + int(TEAM_TIMEOUT_SECONDS * 60.0)
 	while _server.get_tick() < limit and end_tick < 0:
 		_step(1)
 		for event: NetMessages.EntityEvent in _events:
 			if event.event == NetMessages.EntityEvent.Kind.HIT and event.amount > 0 and first_hit < 0:
 				first_hit = event.tick
-			elif event.event == NetMessages.EntityEvent.Kind.DEATH:
+			elif _is_fall(event) and standing.get(event.net_id, false):
+				standing[event.net_id] = false
 				for side: int in 2:
 					if teams[side].has(event.net_id):
 						alive[side] -= 1
@@ -553,7 +563,8 @@ func _team_fight(size: int, seed_first: int) -> Dictionary:
 							first_kill = event.tick
 						if alive[side] <= 0 and end_tick < 0:
 							end_tick = event.tick
-			elif event.event == NetMessages.EntityEvent.Kind.RESPAWN:
+			elif event.event == NetMessages.EntityEvent.Kind.RESPAWN and standing.has(event.net_id):
+				standing[event.net_id] = true
 				for side: int in 2:
 					if teams[side].has(event.net_id):
 						alive[side] += 1
@@ -565,6 +576,11 @@ func _team_fight(size: int, seed_first: int) -> Dictionary:
 	}
 	await _stop_server()
 	return result
+
+
+# true si [param event] es una caída: un derribo o una muerte (docs/habilidades.md, sección 4.5).
+static func _is_fall(event: NetMessages.EntityEvent) -> bool:
+	return event.event == NetMessages.EntityEvent.Kind.DEATH or event.event == NetMessages.EntityEvent.Kind.DOWNED
 
 
 # --- Servidor ---------------------------------------------------------------------------------

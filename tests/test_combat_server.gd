@@ -645,10 +645,9 @@ func test_console_commands() -> void:
 	var commands: CommandRegistry = _server.get_commands()
 	# Los ids 7 a 12 (protocolo 4) son fijos y todos tienen ya su manejador: el /atascado y los cuatro comandos del
 	# fuerte los registró F3 y npc_debug, F4. De los del protocolo 6 (13 a 16, docs/habilidades.md §5.1),
-	# cooldowns_off y apply_status llegaron con H3a; down y refill llegan con H3c. Hasta entonces el servidor
-	# acepta su id sin aviso y sin efecto.
-	assert_eq(commands.missing_network_commands(), PackedStringArray(["down", "refill"]),
-			"todos los comandos de red tienen manejador salvo down y refill")
+	# cooldowns_off y apply_status llegaron con H3a y down y refill, con H3c.
+	assert_eq(commands.missing_network_commands(), PackedStringArray(),
+			"todos los comandos de red tienen manejador")
 	assert_true(_server.console_command("help").contains("teleport"))
 	assert_true(_server.console_command("noexiste").begins_with("Comando desconocido"))
 	# Daño, curar y matar.

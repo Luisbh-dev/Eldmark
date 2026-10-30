@@ -757,7 +757,8 @@ reutilización y el teletransporte son de F3.
 siguiente aparición ([habilidades.md 4.6](habilidades.md#46-equipo-plantillas-y-consumibles)). Vale desde
 el WELCOME, también antes de CLIENT_READY (LOADING e IN_WORLD), y pasa por el limitador de fiables. 0 = la
 de por defecto, sin aviso; un id que no existe o no es `selectable` cuenta un aviso. El `decode` solo
-exige los 2 B y el tipo.
+exige los 2 B y el tipo. El servidor (H3c) la guarda en `ServerPeer.pending_template_id` y la aplica al dar de
+alta al jugador (el SPAWN ya sale con sus armas) y en cada reaparición, con un ENTITY_EVENT LOADOUT.
 
 ### 5.5 Servidor → cliente
 
@@ -2527,7 +2528,7 @@ func get_history() -> StateHistory
 func get_metrics() -> ServerMetrics
 func get_cooldown_count() -> int                        # S6: enfriamientos tras expulsiones sin purgar
 ## Jugador sin red: sus entradas salen de brain y entran directamente en su InputQueue.
-func add_fake_player(brain: BotBrain, realm: int) -> int
+func add_fake_player(brain: BotBrain, realm: int, template_id: int = 0) -> int   # v6: su plantilla (0 = la de por defecto)
 ## Teletransporte autoritativo: sube el contador de teletransporte.
 func teleport(net_id: int, position: Vector3) -> void
 func write_report(path: String) -> Error
@@ -2552,6 +2553,7 @@ var loading_since_tick: int = 0
 var limiter_unreliable: RateLimiter
 var limiter_reliable: RateLimiter
 var limiter_bytes: RateLimiter
+var pending_template_id: int = -1   # v6: la plantilla de LOADOUT_SELECT para la siguiente aparición (-1 = ninguna)
 ## Suma un aviso; devuelve true si hay que expulsar (50 en 600 ticks).
 func add_strike(now_tick: int, reason: String) -> bool
 ## N2: crédito de los ticks que el servidor no ha simulado (un parón) para los tres limitadores.

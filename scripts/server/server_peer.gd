@@ -73,6 +73,10 @@ var rewind_rejects: int = 0
 ## señales de sospecha futuras).
 var swings: int = 0
 var swings_landed: int = 0
+## Plantilla de equipo pendiente (docs/habilidades.md, sección 4.6): la que pidió con LOADOUT_SELECT para su
+## siguiente aparición (0 = la de por defecto; -1 = ninguna petición). Vale en LOADING e IN_WORLD; el
+## servidor la copia al [Combatant] al darlo de alta y en cada reaparición, y la vuelve a -1.
+var pending_template_id: int = -1
 
 # Anillo con los ticks de los últimos STRIKE_LIMIT avisos. El más antiguo de ellos está en
 # _strike_head, que es también el hueco que se sobrescribe con el siguiente. De 64 bits: los ticks

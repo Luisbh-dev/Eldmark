@@ -21,11 +21,20 @@ extends RefCounted
 ##               del muro es el de las reglas), controles (con cadena e inmunidad), efectos al objetivo,
 ##               interrupciones, paradas y muertes, con sus eventos
 ## 6 efectos     StatusSystem.step: pulsos (reunidos antes de aplicarlos) y caducidades
-## 7 derribado   (H3c)
+## 7 derribado   DownedSystem.step: desangrado, INTERACT nuevos (levantar a un aliado, rematar a un
+##               enemigo) y el progreso y el final de levantar y rematar
 ## 8 entorno     volúmenes letales, daño por caída, muerte bajo y = -100; reapariciones pedidas
-##               (RESPAWN_REQUEST) y automáticas vencidas (la recarga del campamento, H3c)
+##               (RESPAWN_REQUEST) y automáticas vencidas, con la plantilla de equipo; la recarga de los
+##               consumibles en el campamento (cada 60 ticks)
 ## 9 publicar    protección, regeneración y lo que ven los snapshots (vida, estado, acción)
 ## [/codeblock]
+## Un golpe mortal de un jugador de otro reino en una zona RVR no mata a un jugador: lo deja derribado
+## ([DownedSystem], docs/habilidades.md, sección 4.5). Un derribado o un muerto en el paso 5 no recibe más
+## golpes de ese tick.
+## [br][br]
+## [b]Plantillas[/b] (docs/habilidades.md, sección 4.6): [method equip_template] al dar de alta,
+## [method _respawn] con la pendiente del peer en cada reaparición, la recarga del campamento y los comandos
+## 5 [code]set_weapon[/code] y 16 [code]refill[/code]; cada cambio manda LOADOUT ([method announce_loadout]).
 ## Todo estado de combate que impone el servidor pasa por
 ## [code]PlayerState.decode(PlayerState.encode())[/code] ([method commit_state]), el mismo redondeo
 ## que sufre en el cliente al reconciliar.
@@ -33,8 +42,11 @@ extends RefCounted
 ## No toca la red ni el reloj: avisa de los eventos con [signal event_emitted] (quien llama decide a
 ## quién se envían) y coloca los cuerpos con el [Callable] [code]place[/code] que le da el servidor.
 
-## Un evento de combate (HIT, DEATH, KILL o RESPAWN) y los net_id de las entidades implicadas
-## (víctima, atacante, asesino y asistentes): sus dueños y quien las tenga por relevantes lo reciben.
+## Un evento de combate (HIT, DEATH, KILL, RESPAWN, STATUS, HEAL, LOADOUT, DOWNED o INTERACT) y los net_id de
+## las entidades implicadas (víctima, atacante, asesino y asistentes): sus dueños y quien las tenga por
+## relevantes lo reciben. LOADOUT sale dos veces cuando cambian las armas (docs/habilidades.md, sección 5.4):
+## con [param involved] = [code][jugador][/code] es la del dueño (con las cargas) y con [param involved]
+## vacío, la pública (cargas 0) para quien lo tenga por relevante.
 signal event_emitted(event: NetMessages.EntityEvent, involved: PackedInt32Array)
 ## Un golpe ha dado en un blanco estático (la puerta de un fuerte) y le ha quitado [param amount] de
 ## vida en el tick [param tick]: ya se ha emitido su HIT. Lo recoge el [FortressController].
@@ -52,6 +64,9 @@ enum RespawnRequestResult {
 
 ## Por debajo de esta altura el personaje muere (cae fuera del mundo).
 const VOID_LIMIT_Y: float = -100.0
+## Cada cuántos ticks se recargan los consumibles de quien está en el campamento de su reino
+## (docs/habilidades.md, sección 4.6).
+const RECHARGE_INTERVAL_TICKS: int = 60
 ## Sección de [ServerMetrics] de la resolución de los golpes (forma, línea de visión y rebobinado).
 const SECTION_RESOLVE: StringName = &"combat_resolve"
 ## Sección de [ServerMetrics] de los proyectiles: disparos (paso 3) y vuelo (paso 4); la reserva es de 1 ms
@@ -64,6 +79,7 @@ const _HIT_PARRIED: int = NetMessages.EntityEvent.HIT_FLAG_PARRIED
 const _HIT_GUARD_BREAK: int = NetMessages.EntityEvent.HIT_FLAG_GUARD_BREAK
 const _HIT_LETHAL: int = NetMessages.EntityEvent.HIT_FLAG_LETHAL
 const _HIT_INTERRUPTED: int = NetMessages.EntityEvent.HIT_FLAG_INTERRUPTED
+const _HIT_DOWNED: int = NetMessages.EntityEvent.HIT_FLAG_DOWNED
 
 ## Plazos en ticks (las pruebas los acortan).
 var timing: CombatTiming = CombatTiming.from_rules(CombatCatalog.rules())
@@ -75,6 +91,9 @@ var status: StatusSystem = StatusSystem.new()
 ## [signal ProjectileSystem.spawned] y [signal ProjectileSystem.despawned]; sus golpes los aplica el
 ## director.
 var projectiles: ProjectileSystem
+## Derribados, levantar y rematar (docs/habilidades.md, sección 4.5): sus eventos salen por
+## [signal event_emitted] y sus muertes las aplica el director.
+var downed: DownedSystem = DownedSystem.new()
 ## Archivo del registro de combate ([code]--combat-log[/code]); null = ninguno.
 var combat_log: FileAccess = null
 ## Medidas del servidor (null = sin medir): el paso de combate mide aparte la resolución de los golpes
@@ -87,7 +106,8 @@ var stats: Dictionary[StringName, int] = {
 	&"respawns": 0, &"falls": 0, &"lethal_volumes": 0, &"voids": 0, &"events": 0,
 	&"hit_tests": 0, &"resolve_us": 0, &"resolve_busy_ticks": 0, &"gate_hits": 0, &"gate_damage": 0,
 	&"interrupts": 0, &"pulse_hits": 0, &"heals": 0, &"arrow_hits": 0, &"arrow_blocked": 0,
-	&"wall_blocked": 0, &"projectile_us": 0, &"projectile_busy_ticks": 0,
+	&"wall_blocked": 0, &"projectile_us": 0, &"projectile_busy_ticks": 0, &"downed_hits": 0,
+	&"recharges": 0, &"loadouts": 0,
 }
 ## [code]() -> Dictionary[/code]: los [FortressState] vivos por id de fortaleza, para decidir qué puntos
 ## de reaparición valen ([method RespawnRules.points_for]). Sin esto no hay fortalezas.
@@ -125,6 +145,12 @@ func _init(history: StateHistory, zone_id: StringName, world: Node3D, safe_areas
 	projectiles.status = status
 	status.event_emitted.connect(_emit)
 	status.pulse_damage.connect(_apply_pulse)
+	downed.zone_id = zone_id
+	downed.safe_areas = safe_areas
+	downed.status = status
+	downed.combatants = _combatants
+	downed.event_emitted.connect(_on_downed_event)
+	downed.killed.connect(_on_downed_killed)
 
 
 ## Redondea el estado de [param character] como lo haría el cliente al reconciliar (pasa por
@@ -154,6 +180,7 @@ func remove(net_id: int, tick: int) -> void:
 		return
 	_combatants.erase(net_id)
 	_sorted_dirty = true
+	downed.forget(net_id)
 	projectiles.forget_owner(net_id, tick)
 	leaving.effects.clear()
 	status.forget_author(net_id, tick, get_sorted())
@@ -166,6 +193,7 @@ func remove(net_id: int, tick: int) -> void:
 ## Da de baja a todos (cierre del servidor).
 func clear() -> void:
 	projectiles.clear()
+	downed.clear()
 	_combatants.clear()
 	_sorted.clear()
 	_sorted_dirty = false
@@ -243,10 +271,12 @@ func process_tick(s: int, space: PhysicsDirectSpaceState3D) -> void:
 		_apply_hit(hit, s)
 	# Paso 6: efectos de estado (pulsos y caducidades).
 	status.step(s, list)
-	# Paso 7: derribado (H3c).
-	# Paso 8: entorno y reapariciones (la recarga de consumibles en el campamento, H3c).
+	# Paso 7: derribado (desangrado, INTERACT nuevos, levantar y rematar).
+	downed.step(s, list, space)
+	# Paso 8: entorno, reapariciones y recarga de consumibles en el campamento.
 	_process_environment(s, list)
 	_process_respawns(s, list)
+	_process_recharge(s, list)
 	# Paso 9: publicar.
 	var regen: int = CombatCatalog.rules().health_regen_per_s
 	for combatant: Combatant in list:
@@ -259,15 +289,15 @@ func process_tick(s: int, space: PhysicsDirectSpaceState3D) -> void:
 
 # --- Acciones desde fuera de la simulación -----------------------------------------------------
 
-## Mata a [param combatant] ahora (comando de depuración, caída...) sin autor. No hace nada si ya
-## está muerto o es un maniquí. [param tick] es el tick en el que se anota la muerte.
+## Mata a [param combatant] ahora (comando de depuración, caída...) sin autor; también a un derribado. No
+## hace nada si ya está muerto o es un maniquí. [param tick] es el tick en el que se anota la muerte.
 func kill(combatant: Combatant, tick: int) -> void:
 	if combatant.is_dead() or combatant.immortal:
 		return
 	_die(combatant, tick, 0, 0)
 
 
-## Cura del todo a [param combatant] (comando de depuración).
+## Cura del todo a [param combatant] (comando de depuración). No cura a un muerto ni a un derribado.
 func heal(combatant: Combatant) -> void:
 	if combatant.is_alive():
 		combatant.heal_full()
@@ -296,22 +326,119 @@ func set_cooldowns_off(combatant: Combatant, enabled: bool) -> void:
 
 ## Aplica a [param combatant] el efecto [param status_id] del catálogo en el tick [param tick], sin autor,
 ## durante [param duration_ticks] ticks (0 = los del dato): el comando 14 [code]apply_status[/code].
-## Devuelve false si el efecto no existe o está muerto.
+## Devuelve false si el efecto no existe o no está vivo (muerto o derribado).
 func apply_status(combatant: Combatant, status_id: int, tick: int, duration_ticks: int = 0) -> bool:
-	if CombatCatalog.status(status_id) == null or combatant.is_dead():
+	if CombatCatalog.status(status_id) == null or not combatant.is_alive():
 		return false
 	return status.apply(combatant, status_id, 0, tick, duration_ticks)
 
 
-## Cambia el arma equipada de [param combatant] (comando de depuración) por la del catálogo
-## [param weapon_id]. Devuelve false si no existe.
-func set_weapon(combatant: Combatant, weapon_id: int) -> bool:
-	if CombatCatalog.weapon(weapon_id) == null:
+## Pone el arma [param weapon_id] del catálogo en la ranura 1 de [param combatant] (comando 5
+## [code]set_weapon[/code], docs/habilidades.md, sección 3.5): [method ActionMachine.set_loadout] con la de la
+## ranura 2 que llevaba (ninguna si es la misma) y sus cargas; sobre un vivo, NONE antes. Con
+## [param tick] ≥ 0 manda LOADOUT al dueño y a quien lo tenga por relevante (un PNJ recién creado no lo
+## necesita: su SPAWN ya lleva el arma). Devuelve false si el arma no existe o está derribado.
+func set_weapon(combatant: Combatant, weapon_id: int, tick: int = -1) -> bool:
+	if CombatCatalog.weapon(weapon_id) == null or combatant.is_downed():
 		return false
 	var character: PlayerCharacter = combatant.get_character()
-	character.combat.weapon_id = weapon_id
+	var combat: CombatState = character.combat
+	var pair: PackedInt32Array = weapons_in_slot_order(combat)
+	var second: int = pair[1] if pair[1] != weapon_id else 0
+	ActionMachine.set_loadout(combat, weapon_id, second, combat.consumable_charges)
 	commit_state(character)
+	if tick >= 0:
+		announce_loadout(combatant, tick, pair != weapons_in_slot_order(combat))
 	return true
+
+
+## Las armas de [param combat] en orden de ranura: [code][ranura 1, ranura 2][/code] (0 = ninguna).
+static func weapons_in_slot_order(combat: CombatState) -> PackedInt32Array:
+	if combat.is_second_slot():
+		return PackedInt32Array([combat.alt_weapon_id, combat.weapon_id])
+	return PackedInt32Array([combat.weapon_id, combat.alt_weapon_id])
+
+
+## La plantilla que vale para [param requested] (docs/habilidades.md, sección 4.6): ella misma si existe; la
+## de por defecto ([member CombatRules.default_template]) con 0 o una que no existe. 0 si no hay ninguna.
+static func resolve_template(requested: int) -> int:
+	if requested > 0 and CombatCatalog.template(requested) != null:
+		return requested
+	return CombatCatalog.default_template_id()
+
+
+## Equipa a [param combatant] con la plantilla [param template_id] (0 = la de por defecto) al aparecer por
+## primera vez ([method ActionMachine.set_loadout]: sus armas, la 1 activa, y sus cargas). Con [param tick] ≥ 0
+## manda LOADOUT ([method announce_loadout]); el [ZoneServer] lo manda él tras el SPAWN. Devuelve el id de la
+## plantilla puesta (0 si no hay ninguna).
+func equip_template(combatant: Combatant, template_id: int, tick: int = -1) -> int:
+	var resolved: int = resolve_template(template_id)
+	if resolved <= 0:
+		return 0
+	var weapons: PackedInt32Array = CombatCatalog.template_weapons(resolved)
+	if weapons.is_empty():
+		return 0
+	combatant.template_id = resolved
+	var character: PlayerCharacter = combatant.get_character()
+	ActionMachine.set_loadout(character.combat, weapons[0], weapons[1] if weapons.size() > 1 else 0,
+			CombatCatalog.template_charges(resolved))
+	commit_state(character)
+	if tick >= 0:
+		announce_loadout(combatant, tick, true)
+	return resolved
+
+
+## LOADOUT de [param combatant] en [param tick] (docs/habilidades.md, sección 5.4): su plantilla, sus armas
+## en orden de ranura y sus cargas al dueño; con [param public], además, la misma sin cargas a quien lo tenga
+## por relevante (cuando cambian las armas).
+func announce_loadout(combatant: Combatant, tick: int, public: bool) -> void:
+	var combat: CombatState = combatant.get_character().combat
+	var pair: PackedInt32Array = weapons_in_slot_order(combat)
+	var player_id: int = combatant.get_id()
+	stats[&"loadouts"] += 1
+	_emit(NetMessages.EntityEvent.loadout(player_id, tick, combatant.template_id, pair[0], pair[1],
+			combat.consumable_charges), _ids([player_id]))
+	if public:
+		_emit(NetMessages.EntityEvent.loadout(player_id, tick, combatant.template_id, pair[0], pair[1], 0),
+				PackedInt32Array())
+
+
+## Repone las cargas de los consumibles de [param combatant] a las de su plantilla (comando 16
+## [code]refill[/code]): [method ActionMachine.set_charges], que no toca arma, reutilizaciones, ranuras ni la
+## acción en curso, y LOADOUT al dueño. Devuelve false si no está vivo o no tiene plantilla.
+func refill(combatant: Combatant, tick: int) -> bool:
+	if not combatant.is_alive() or combatant.template_id <= 0:
+		return false
+	var character: PlayerCharacter = combatant.get_character()
+	ActionMachine.set_charges(character.combat, CombatCatalog.template_charges(combatant.template_id))
+	commit_state(character)
+	announce_loadout(combatant, tick, false)
+	return true
+
+
+## Derriba a [param combatant] en [param tick] como si lo hubiera derribado un enemigo, sin autor (comando 15
+## [code]down[/code], docs/habilidades.md, sección 4.5): al desangrarse, DEATH sin KILL. Devuelve false fuera
+## de las zonas RVR, en la zona segura de su reino, si no es un jugador vivo o si es un maniquí.
+func down(combatant: Combatant, tick: int) -> bool:
+	if not downed.is_enabled() or not combatant.is_alive() or combatant.immortal \
+			or combatant.entity.kind != NetProtocol.EntityKind.PLAYER:
+		return false
+	var safe: SafeAreas = resolver.get_safe_areas()
+	if safe != null and safe.contains_own(combatant.get_realm(), combatant.entity.get_position()):
+		return false
+	downed.down(combatant, 0, CombatSource.NONE, tick)
+	_log_line(tick, 0, combatant.get_id(), "down", float(tick), 0.0, "downed", 0)
+	return true
+
+
+## Mata en [param tick] a un derribado que se va de la zona (salida, desconexión, [code]--fake-churn[/code],
+## fin del cuerpo de GUE-41; docs/habilidades.md, sección 4.5): DEATH y KILL con el asesino de
+## [method DownedSystem.killer_of] y la fuente «desangrado». No hace nada si no está derribado.
+func kill_downed(combatant: Combatant, tick: int) -> void:
+	if combatant == null or not combatant.is_downed():
+		return
+	downed.stats[&"bled_out"] += 1
+	_on_downed_killed(combatant, downed.killer_of(combatant), CombatSource.BLEED_OUT, tick)
 
 
 ## Anota una petición de reaparición de [param net_id] en el punto [param point_index] de la lista
@@ -321,7 +448,7 @@ func set_weapon(combatant: Combatant, weapon_id: int) -> bool:
 ## plazo.
 func request_respawn(net_id: int, point_index: int, tick: int) -> int:
 	var combatant: Combatant = _combatants.get(net_id)
-	if combatant == null or combatant.is_alive():
+	if combatant == null or not combatant.is_dead():
 		return RespawnRequestResult.NOT_DEAD
 	if tick + CombatTiming.RESPAWN_REQUEST_SLACK_TICKS < combatant.respawn_tick:
 		return RespawnRequestResult.TOO_EARLY
@@ -377,12 +504,16 @@ func _apply_hit(hit: CombatResolver.Hit, s: int) -> void:
 		stats[&"invulnerable"] += 1
 		_log_hit(s, hit, "invulnerable", 0)
 		return
-	if victim.is_dead():
-		# Murió antes en este mismo tick (otro golpe simultáneo): su turno ya pasó.
+	if victim.is_dead() or victim.downed_tick == s:
+		# Murió o quedó derribado antes en este mismo tick (otro golpe simultáneo): todos se resolvieron
+		# contra el mismo estado y su turno ya pasó (docs/habilidades.md, sección 4.1).
 		return
 	_note_landed(hit)
 	attacker.mark_combat(s)
 	victim.mark_combat(s)
+	if victim.is_downed():
+		_apply_downed_impact(hit, s)
+		return
 	if hit.outcome == CombatResolver.Outcome.PARRIED:
 		_apply_parry(hit, s)
 		return
@@ -488,7 +619,12 @@ func _apply_impact(hit: CombatResolver.Hit, s: int) -> void:
 	stats[&"hits"] += 1
 	stats[&"damage"] += applied
 	var lethal: bool = victim.is_dead()
-	if lethal:
+	# Un golpe mortal de un jugador de otro reino en una zona RVR derriba (docs/habilidades.md, sección 4.5): la
+	# flecha lleva la copia del autor (su reino y si es jugador), aunque el tirador ya no esté en pie.
+	var downs: bool = lethal and downed.should_down(victim, _author_realm(hit), _author_is_player(hit))
+	if downs:
+		flags |= _HIT_DOWNED
+	elif lethal:
 		flags |= _HIT_LETHAL
 	# Un maniquí inmortal anuncia el daño completo (el medidor de DPS lo cuenta entero).
 	var amount: int = result.damage if victim.immortal else applied
@@ -501,6 +637,10 @@ func _apply_impact(hit: CombatResolver.Hit, s: int) -> void:
 	_emit(NetMessages.EntityEvent.hit(victim.get_id(), s, attacker.get_id(), amount,
 			attack.damage_type, flags, attack.id), _ids([victim.get_id(), attacker.get_id()]))
 	_log_hit(s, hit, _impact_result(hit, blocked, flags), amount)
+	if downs:
+		downed.down(victim, attacker.get_id(), attack.id, s)
+		_log_hit(s, hit, "downed", 0)
+		return
 	if lethal:
 		_die(victim, s, attacker.get_id(), attack.id)
 		return
@@ -509,6 +649,49 @@ func _apply_impact(hit: CombatResolver.Hit, s: int) -> void:
 	# El efecto del golpe al objetivo, solo en un impacto.
 	if hit.outcome == CombatResolver.Outcome.IMPACT and attack.on_hit_status_id != 0:
 		status.apply(victim, attack.on_hit_status_id, attacker.get_id(), s)
+
+
+# Golpe a un derribado (docs/habilidades.md, sección 4.5): el daño de la fórmula (con la carga y el más daño,
+# sin bloqueo posible) le quita vida de derribado; sin controles, efectos ni interrupciones. A 0, muere: el
+# asesino es quien lo ha rematado con daño.
+func _apply_downed_impact(hit: CombatResolver.Hit, s: int) -> void:
+	var attacker: Combatant = hit.attacker
+	var victim: Combatant = hit.victim
+	var attack: AttackTicks = hit.attack
+	var rules: CombatRules = CombatCatalog.rules()
+	var scale: float = hit.projectile.damage_scale if hit.projectile != null \
+			else status.damage_scale(attacker)
+	var result: DamageFormula.Result = DamageFormula.compute(attack.base_damage, _charge_of(hit),
+			attack.charge_min_ticks, attack.charge_max_ticks, attack.charge_damage_scale, hit.critical, false,
+			0.0, 0.0, 0, 0, rules.crit_multiplier, scale, 0.0)
+	var applied: int = victim.take_downed_damage(result.damage, s)
+	victim.ledger.record(s, attacker.get_id(), applied)
+	victim.note_enemy_hit(attacker.get_id(), attack.id, s)
+	var flags: int = _HIT_CRITICAL if hit.critical else 0
+	if hit.critical:
+		stats[&"criticals"] += 1
+	var lethal: bool = victim.downed_health <= 0
+	if lethal:
+		flags |= _HIT_LETHAL
+	stats[&"hits"] += 1
+	stats[&"downed_hits"] += 1
+	stats[&"damage"] += applied
+	_emit(NetMessages.EntityEvent.hit(victim.get_id(), s, attacker.get_id(), applied, attack.damage_type,
+			flags, attack.id), _ids([victim.get_id(), attacker.get_id()]))
+	_log_hit(s, hit, "arrow_hit" if hit.projectile != null else "hit", applied)
+	if lethal:
+		_die(victim, s, attacker.get_id(), attack.id)
+
+
+# Reino del autor de [param hit] y si es un jugador: los de la copia del proyectil o los del atacante.
+static func _author_realm(hit: CombatResolver.Hit) -> int:
+	return hit.projectile.realm if hit.projectile != null else hit.attacker.get_realm()
+
+
+static func _author_is_player(hit: CombatResolver.Hit) -> bool:
+	if hit.projectile != null:
+		return hit.projectile.is_player
+	return hit.attacker.entity != null and hit.attacker.entity.kind == NetProtocol.EntityKind.PLAYER
 
 
 # Control del golpe, salvo con entereza en el golpe activo y respetando la cadena: aturdimiento si el
@@ -607,10 +790,10 @@ func _fire(shooter: Combatant, source: int, s: int, space: PhysicsDirectSpaceSta
 
 
 # Un pulso de daño en el tiempo ([signal StatusSystem.pulse_damage]): HIT con la fuente del efecto y el
-# autor del efecto como atacante, sin bloqueo ni crítico, con el más daño del autor. Puede matar (H3c:
-# derribar); no interrumpe ni impone controles.
+# autor del efecto como atacante, sin bloqueo ni crítico, con el más daño del autor. Puede matar o, si el
+# autor es un jugador de otro reino que sigue en la zona, derribar; no interrumpe ni impone controles.
 func _apply_pulse(target: Combatant, author_id: int, effect: StatusTicks, amount: int, s: int) -> void:
-	if target.is_dead():
+	if not target.is_alive():
 		return
 	var author: Combatant = _combatants.get(author_id) if author_id > 0 else null
 	var rules: CombatRules = CombatCatalog.rules()
@@ -627,22 +810,51 @@ func _apply_pulse(target: Combatant, author_id: int, effect: StatusTicks, amount
 	stats[&"pulse_hits"] += 1
 	stats[&"damage"] += applied
 	var lethal: bool = target.is_dead()
+	var downs: bool = lethal and author != null and downed.should_down(target, author.get_realm(),
+			author.entity.kind == NetProtocol.EntityKind.PLAYER)
+	var flags: int = 0
+	if downs:
+		flags = _HIT_DOWNED
+	elif lethal:
+		flags = _HIT_LETHAL
 	var shown: int = result.damage if target.immortal else applied
 	_emit(NetMessages.EntityEvent.hit(target.get_id(), s, attacker_id, shown, effect.damage_type,
-			_HIT_LETHAL if lethal else 0, source), _ids([target.get_id(), attacker_id]))
+			flags, source), _ids([target.get_id(), attacker_id]))
 	_log_line(s, attacker_id, target.get_id(), CombatSource.name_of(source), float(s), 0.0, "pulse",
 			shown)
-	if lethal:
+	if downs:
+		downed.down(target, attacker_id, source, s)
+		_log_line(s, attacker_id, target.get_id(), CombatSource.name_of(source), float(s), 0.0, "downed", 0)
+	elif lethal:
 		_die(target, s, attacker_id, source)
+
+
+# --- Derribado ---------------------------------------------------------------------------------
+
+# Un evento del DownedSystem (DOWNED o INTERACT): al registro de combate (levantado) y a la red.
+func _on_downed_event(event: NetMessages.EntityEvent, involved: PackedInt32Array) -> void:
+	if event.event == NetMessages.EntityEvent.Kind.INTERACT \
+			and event.op == NetMessages.EntityEvent.InteractOp.REVIVED:
+		_log_line(event.tick, event.actor, event.net_id, "levantar", float(event.tick), 0.0, "revived", 0)
+	_emit(event, involved)
+
+
+# Un derribado muere sin golpe ([signal DownedSystem.killed]): desangrado, rematado o al irse.
+func _on_downed_killed(victim: Combatant, killer_id: int, source: int, s: int) -> void:
+	_log_line(s, killer_id, victim.get_id(), CombatSource.name_of(source), float(s), 0.0,
+			"executed" if source == CombatSource.EXECUTE else "bled_out", 0)
+	_die(victim, s, killer_id, source)
 
 
 # --- Muerte -----------------------------------------------------------------------------------
 
 # Muerte de [param victim] por [param killer_id] (0 = el entorno) con [param attack_id]: acción
-# DEAD, una sola DEATH y, si hay autor, un KILL con los asistentes del registro de daño.
+# DEAD, una sola DEATH y, si hay autor, un KILL con los asistentes del registro de daño. Un derribado deja de
+# estarlo.
 func _die(victim: Combatant, s: int, killer_id: int, attack_id: int) -> void:
 	if victim.immortal or victim.death_tick >= 0:
 		return
+	downed.release(victim)
 	victim.mark_dead(s, killer_id, attack_id)
 	var character: PlayerCharacter = victim.get_character()
 	ActionMachine.impose_death(character.combat, s)
@@ -663,8 +875,11 @@ func _die(victim: Combatant, s: int, killer_id: int, attack_id: int) -> void:
 				_ids(involved))
 
 
-# Muerte o daño del entorno: el autor es el último enemigo que golpeó en los últimos 10 s.
+# Muerte o daño del entorno: el autor es el último enemigo que golpeó en los últimos 10 s; el de un derribado,
+# el de [method DownedSystem.killer_of] (quien le hizo daño ya derribado o quien lo derribó).
 func _credited_killer(victim: Combatant, s: int) -> int:
+	if victim.is_downed():
+		return downed.killer_of(victim)
 	if not victim.has_recent_enemy(s):
 		return 0
 	var enemy: Combatant = _combatants.get(victim.last_enemy_id)
@@ -708,6 +923,7 @@ func _in_lethal_volume(character: PlayerCharacter, volumes: Array[Node3D]) -> bo
 func _die_in_the_void(combatant: Combatant, s: int) -> void:
 	var killer: int = _credited_killer(combatant, s)
 	var character: PlayerCharacter = combatant.get_character()
+	downed.release(combatant)
 	combatant.mark_dead(s, killer, 0)
 	ActionMachine.impose_death(character.combat, s)
 	status.clear(combatant)
@@ -725,15 +941,18 @@ func _die_in_the_void(combatant: Combatant, s: int) -> void:
 		_emit(NetMessages.EntityEvent.kill(victim_id, s, killer, 0, assistants), _ids(involved))
 
 
-# Daño por caída: HIT del entorno (atacante 0); si mata, la muerte se acredita al último enemigo.
+# Daño por caída: HIT del entorno (atacante 0); si mata, la muerte se acredita al último enemigo. A un
+# derribado le quita vida de derribado (nunca derriba: la caída es del entorno).
 func _apply_fall(combatant: Combatant, s: int, damage: int) -> void:
 	if damage <= 0:
 		return
-	var applied: int = combatant.take_damage(damage, s)
+	var was_downed: bool = combatant.is_downed()
+	var applied: int = combatant.take_downed_damage(damage, s) if was_downed \
+			else combatant.take_damage(damage, s)
 	combatant.mark_combat(s)
 	stats[&"falls"] += 1
 	stats[&"damage"] += applied
-	var lethal: bool = combatant.is_dead()
+	var lethal: bool = combatant.downed_health <= 0 if was_downed else combatant.is_dead()
 	_emit(NetMessages.EntityEvent.hit(combatant.get_id(), s, 0, applied, DamageFormula.DamageType.BLUNT,
 			_HIT_LETHAL if lethal else 0, 0), _ids([combatant.get_id()]))
 	if lethal:
@@ -779,11 +998,20 @@ func _respawn(combatant: Combatant, point_index: int, s: int) -> void:
 		yaw = _yaw_of(transform)
 	var character: PlayerCharacter = combatant.get_character()
 	var combat: CombatState = character.combat
-	# Hasta las plantillas (H3c, docs/habilidades.md, sección 4.6) reaparece con las armas y las cargas que
-	# llevaba, con la de la ranura 1 activa.
-	var first: int = combat.alt_weapon_id if combat.is_second_slot() else combat.weapon_id
-	var second: int = combat.weapon_id if combat.is_second_slot() else combat.alt_weapon_id
-	ActionMachine.reset_for_respawn(combat, s, first, second, combat.consumable_charges)
+	# La plantilla (docs/habilidades.md, sección 4.6): la pendiente del peer, si eligió otra, pasa a ser la
+	# vigente; reaparece con sus armas (la de la ranura 1 activa) y sus cargas. Sin plantilla (PNJ y luchadores
+	# montados a mano) reaparece con las armas y las cargas que llevaba.
+	var before: PackedInt32Array = weapons_in_slot_order(combat)
+	if combatant.peer != null and combatant.peer.pending_template_id >= 0:
+		combatant.template_id = resolve_template(combatant.peer.pending_template_id)
+		combatant.peer.pending_template_id = -1
+	var weapons: PackedInt32Array = CombatCatalog.template_weapons(combatant.template_id) \
+			if combatant.template_id > 0 else PackedInt32Array()
+	if weapons.is_empty():
+		ActionMachine.reset_for_respawn(combat, s, before[0], before[1], combat.consumable_charges)
+	else:
+		ActionMachine.reset_for_respawn(combat, s, weapons[0], weapons[1] if weapons.size() > 1 else 0,
+				CombatCatalog.template_charges(combatant.template_id))
 	# Ya no debería quedar ninguno (se quitan al morir), pero reaparecer empieza siempre limpio.
 	status.clear(combatant)
 	combatant.mark_respawned(s)
@@ -792,6 +1020,41 @@ func _respawn(combatant: Combatant, point_index: int, s: int) -> void:
 	stats[&"respawns"] += 1
 	_emit(NetMessages.EntityEvent.respawn(combatant.get_id(), s, index),
 			_ids([combatant.get_id()]))
+	if not weapons.is_empty():
+		announce_loadout(combatant, s, before != weapons_in_slot_order(character.combat))
+
+
+# Recarga de los consumibles (docs/habilidades.md, sección 4.6), cada RECHARGE_INTERVAL_TICKS: quien está
+# vivo, fuera de combate, en la zona segura de su reino y con menos cargas que su plantilla las recupera todas
+# ([method ActionMachine.set_charges]: arma, reutilizaciones, ranuras y acción en curso no cambian) y su
+# dueño recibe LOADOUT.
+func _process_recharge(s: int, list: Array[Combatant]) -> void:
+	if s % RECHARGE_INTERVAL_TICKS != 0:
+		return
+	var safe: SafeAreas = resolver.get_safe_areas()
+	if safe == null:
+		return
+	for combatant: Combatant in list:
+		if combatant.template_id <= 0 or not combatant.is_alive() or combatant.is_in_combat(s):
+			continue
+		var full: int = CombatCatalog.template_charges(combatant.template_id)
+		var combat: CombatState = combatant.get_character().combat
+		if not _lacks_charges(combat, full):
+			continue
+		if not safe.contains_own(combatant.get_realm(), combatant.entity.get_position()):
+			continue
+		ActionMachine.set_charges(combat, full)
+		commit_state(combatant.get_character())
+		stats[&"recharges"] += 1
+		announce_loadout(combatant, s, false)
+
+
+# true si alguna poción de [param combat] tiene menos cargas que en [param full] (empaquetadas).
+static func _lacks_charges(combat: CombatState, full: int) -> bool:
+	for index: int in CombatState.CONSUMABLE_SLOTS:
+		if combat.charges_of(index) < (full >> (4 * index)) & CombatState.MAX_CHARGES:
+			return true
+	return false
 
 
 # El primer punto válido que es un campamento (lleva el metadato de reino), o -1 si no hay ninguno.
@@ -904,8 +1167,9 @@ func _log_hit(s: int, hit: CombatResolver.Hit, result: String, damage: int) -> v
 
 # Una línea del registro de combate ([code]--combat-log[/code]): la columna «ataque» lleva el nombre de la
 # fuente ([method CombatSource.name_of]: ataque, habilidad, efecto…). Resultados de la fase 4: pulse (un
-# pulso de daño de un efecto); arrow_hit, arrow_blocked, wall_blocked (H3b) y downed, executed, bled_out
-# y revived (H3c).
+# pulso de daño de un efecto); arrow_hit, arrow_blocked, wall_blocked (H3b); downed (tras la línea del golpe
+# que derriba, o del comando 15), executed (el rematador y el rematado), bled_out (el asesino y el
+# desangrado) y revived (quien levanta y el levantado) (H3c).
 func _log_line(s: int, attacker_id: int, target_id: int, source_name: String, view_tick: float,
 		rewind: float, result: String, damage: int) -> void:
 	if combat_log == null:

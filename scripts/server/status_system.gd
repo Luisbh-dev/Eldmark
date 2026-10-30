@@ -18,7 +18,7 @@ extends RefCounted
 ## [b]Pulsos exactos[/b] ([method step], paso 6 del tick): en [code]anchor + k · P[/code] para
 ## [code]k = 1, 2…[/code] mientras [code]anchor + k · P ≤ until[/code]; sin renovar son [code]D / P[/code]
 ## (6 en el sangrado). Primero se reúnen los pulsos de todos y después se aplican, por net_id del afectado
-## e id del efecto, saltándose a quien ya esté muerto (o derribado, H3c) en este tick: un pulso que mata
+## e id del efecto, saltándose a quien ya esté muerto o derribado en este tick: un pulso que mata o derriba
 ## a mitad no cambia la lista que se recorre. Un pulso de daño lo aplica el [CombatDirector]
 ## ([signal pulse_damage]: HIT con la fuente del efecto, puede matar y no interrumpe); uno de curación cura
 ## sin pasar del máximo (HEAL). El último pulso y la caducidad caen en el mismo tick: primero el pulso.
@@ -98,10 +98,11 @@ class _Pulse:
 
 ## Aplica el efecto [param status_id] del catálogo a [param target] en el tick [param s], puesto por
 ## [param source_id] (0 = sin autor), durante [param duration_ticks] ticks (0 = los del dato). No hace nada
-## sobre un muerto ni con un efecto que no existe. Devuelve si se ha aplicado.
+## sobre un muerto, un derribado (docs/habilidades.md, sección 4.3) ni con un efecto que no existe. Devuelve
+## si se ha aplicado.
 func apply(target: Combatant, status_id: int, source_id: int, s: int, duration_ticks: int = 0) -> bool:
 	var status: StatusTicks = CombatCatalog.status(status_id)
-	if status == null or target == null or target.is_dead():
+	if status == null or target == null or not target.is_alive():
 		return false
 	var duration: int = duration_ticks if duration_ticks > 0 else status.duration_ticks
 	if duration <= 0:
@@ -198,7 +199,7 @@ func step(s: int, list: Array[Combatant]) -> void:
 ## Cura [param amount] a [param target] sin pasar del máximo (de parte de [param healer_id]; él mismo
 ## si es su net_id) con la fuente [param source], y emite HEAL si ha curado algo. Devuelve lo curado.
 func heal(target: Combatant, healer_id: int, amount: int, source: int, s: int) -> int:
-	if target == null or target.is_dead():
+	if target == null or not target.is_alive():
 		return 0
 	var healed: int = target.restore_health(amount)
 	if healed <= 0:
@@ -267,9 +268,9 @@ func mitigation_penalty(victim: Combatant) -> float:
 
 # --- Internos ---------------------------------------------------------------------------------
 
-# Un pulso no se aplica a quien ya ha muerto en este tick (H3c añade: ni a quien ha quedado derribado).
+# Un pulso no se aplica a quien ya ha muerto o ha quedado derribado en este tick (sus efectos se quitaron).
 static func _takes_pulses(target: Combatant) -> bool:
-	return not target.is_dead()
+	return target.is_alive()
 
 
 func _sum_magnitude(combatant: Combatant, kind: int) -> float:

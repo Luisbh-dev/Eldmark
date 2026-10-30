@@ -104,7 +104,11 @@ func test_combat_fakes_fight_in_a_server_process_and_leave_their_combat_log() ->
 		results[columns[6]] = true
 		assert_true(columns[0].to_int() >= previous_tick, "los ticks no retroceden")
 		previous_tick = columns[0].to_int()
-		assert_true(columns[3].begins_with("sword_"), "el ataque lleva su nombre")
+		# Los desenlaces de un derribado (docs/habilidades.md, 4.5 y 4.7) llevan el nombre de su fuente: remate o
+		# desangrado (los falsos de combate rematan con daño, pero un derribado puede desangrarse antes).
+		var outcome: bool = columns[6] == "bled_out" or columns[6] == "executed"
+		assert_true(columns[3].begins_with("sword_") or (outcome and (columns[3] == "desangrado"
+				or columns[3] == "remate")), "el ataque lleva su nombre (%s)" % lines[index])
 	assert_true(results.has("hit"), "hay golpes")
 
 

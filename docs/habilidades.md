@@ -1712,3 +1712,144 @@ de `NetClient`; la flecha remota se retira en `despawn_tick + f`, con el segment
 servidor), y la inofensiva se dibuja igual. H5: `test_projectile_loopback` (los bots apuntan con
 `solve_lead` y `look_for`, como `_over_drop` de `test_projectiles`) y la carga con la sección
 `combat_projectiles` del registro de métricas.
+
+### 11.6 H3c · derribado y plantillas
+
+**Hecho.**
+
+- **`DownedSystem`** (`scripts/server/downed_system.gd`) con el contrato de §7.2 (`should_down`, `down`, `step`)
+  y, además, las señales `event_emitted` (DOWNED e INTERACT) y `killed` (la muerte de un derribado, que
+  aplica el director), `is_enabled`, `killer_of`, `release`, `forget`, `downed_count`, `interacting_count`,
+  `clear`, `bleed_loss` y `stats` (`downs`, `revives`, `executions`, `bled_out`, `interact_started`,
+  `interact_cut`).
+  - **Cuándo** (`should_down`): un jugador (entidad PLAYER, también los falsos; nunca un maniquí) sin vida por
+    el golpe, la flecha o el pulso de un jugador de un reino hostil en una zona RVR. El director lo mira en
+    `_apply_impact` (con la copia del autor de la flecha: su reino y si es jugador) y en `_apply_pulse` (el
+    autor del efecto, si sigue en la zona). Si no, muerte directa.
+  - **Caer** (`down`): `Combatant.mark_downed` (vida 0, 400 de derribado, autor y fuente),
+    `StatusSystem.clear` (sin STATUS), `impose_downed`, `commit_state` y DOWNED a toda la zona. El HIT que
+    derriba lleva el bit 6 y no el 4 (mortal).
+  - **Paso 7**: desangrado, INTERACT nuevos y el progreso y el final de levantar y rematar (§4.5), por net_id,
+    con todo lo de §4.5: flanco de INTERACT en una entrada real, vivo en NONE o BLOCK y en el suelo, el más
+    cercano a 2 m con `|Δy| ≤ 1,5` y línea de visión del pecho a pies + 0,5 (la puerta cerrada la corta), un
+    aliado sin nadie que lo levante (REVIVE, INTERACT 1) o un enemigo sin zonas seguras de por medio (EXECUTE,
+    INTERACT 4); acabar se mira antes que seguir (levantado con 300 e `impose_revived`, INTERACT 3; rematado,
+    muerte con la fuente «remate»); se corta (INTERACT 2 o 5, `impose_interrupt` si sigue en la acción) si
+    quien actúa deja la acción, el objetivo deja de estar derribado o recibe daño en el tick, pasa de 2,5 m o
+    se pierde la línea de visión.
+- **Predicados** (`Combatant`): `is_alive` sin cambios, `is_downed` (`downed_tick ≥ 0`) e `is_dead` (vida 0 y
+  no derribado); `status_bits` con el bit 3 (y el de «en combate»), nunca el de muerto; `publish` con la vida
+  de derribado sobre 400 (`health_q` nunca 0). Cada uso de la tabla de §4.5: el resolutor, los proyectiles,
+  `NpcWorld` y `_rebuild_target_cache` lo tienen por candidato sin tocar el código; `_apply_hit` descarta con
+  `is_dead() or downed_tick == s`; un golpe a un derribado pasa por `_apply_downed_impact` (vida de
+  derribado, sin bloqueo ni controles); los volúmenes letales y y < −100 lo matan con el asesino de
+  `killer_of`; `_gate_blockers` lo cuenta (`not is_dead()`); `request_respawn` (NOT_DEAD), `heal` (comando
+  y consola) y `regenerate` lo rechazan; el círculo y /atascado no lo cuentan (`is_alive`); `StatusSystem` no
+  le aplica efectos ni pulsos.
+- **Salida**: `ZoneServer._remove_player` mata antes a un derribado (`CombatDirector.kill_downed`: DEATH y KILL
+  con el asesino de `killer_of` y la fuente «desangrado»), así que vale para CLIENT_LEAVE, la caída de ENet,
+  `remove_fake_player`/`--fake-churn`, el fin del cuerpo de GUE-41 y `remove_npc`. Un derribado no deja cuerpo
+  (`_should_linger` pide `is_alive`), y `_process_departures` lo saca de `_world_peers` antes, para que lo
+  que sale de su baja no le llegue a él.
+- **PNJ** (`HfsmBrain`): un derribado hostil a ≤ 6 m (`DOWNED_PRIORITY_RADIUS`) es el objetivo preferido en
+  `_choose_target` y también al notarlo en reposo o patrulla (`_scan`); se le ataca con el ligero (ni escudo
+  ni carga) y con su ficha de `AttackTokens`. Nota en fuerte.md §4.2.
+- **Plantillas** (§4.6): `ServerPeer.pending_template_id` (−1 = ninguna); LOADOUT_SELECT en
+  `ZoneServer._on_packet_received` (`_handle_loadout_select`, en LOADING e IN_WORLD, tras el limitador de
+  fiables; 0 = la de por defecto; aviso con un id que no existe, que no se puede elegir o un mensaje mal
+  formado). La pendiente se copia al `Combatant` al darlo de alta (`_process_arrivals`, antes del SPAWN, con
+  `CombatDirector.equip_template`: `set_loadout` con sus armas y sus cargas) y en cada reaparición
+  (`_respawn`: `reset_for_respawn` con las de la plantilla), y vuelve a −1. Los falsos:
+  `add_fake_player(brain, realm, template_id = 0)` y `--fake-loadout=<plantilla>[:<porcentaje>]`
+  (`ServerConfig.fake_template_for`, en `ServerMain`). LOADOUT con `announce_loadout`: al dueño con sus cargas
+  y, si cambian las armas, la pública con 0 cargas.
+- **Recarga** (paso 8, `_process_recharge`, `RECHARGE_INTERVAL_TICKS` = 60): vivo, fuera de combate, en la
+  zona segura de su reino y con menos cargas que su plantilla en alguna poción → `set_charges` con las llenas
+  y LOADOUT al dueño.
+- **Comandos**: 5 `set_weapon` es `set_loadout` con el arma en la ranura 1 y la de la ranura 2 que llevaba
+  (`CombatDirector.set_weapon(combatant, weapon_id, tick)`), con su LOADOUT; 15 `down` (`CombatDirector.down`)
+  y 16 `refill` (`CombatDirector.refill`), por la red y por la consola (`down <jugador>`, `refill <jugador>`).
+  `missing_network_commands()` ya está vacía.
+- **Registro de combate**: `downed` (tras la línea del golpe o del pulso que derriba, o la del comando 15),
+  `executed`, `bled_out` y `revived`. Informe: los contadores del `DownedSystem`, `downed_now` y los del
+  director `downed_hits`, `recharges` y `loadouts`.
+- `tools/combat_balance.gd`: la «muerte» de sus medidas (TTK ideal, duelos y equipos) es la caída, DOWNED o
+  DEATH, lo que llegue antes; un derribado que luego muere solo cae una vez.
+- `NetZones.is_rvr(zone_id)` (nueva): el servidor solo habla con `Zones` a través de `NetZones`
+  (test_architecture).
+- Notas en combate.md §5, fuerte.md §1.7 y §4.2 y red.md §5.4 y §17; notas «Hecho (H3c)» en backlog.md.
+
+**Pruebas.** Nuevas: `test_downed` (15: el golpe mortal entre reinos derriba con el bit 6 y DOWNED, publica la
+vida de derribado sobre 400 con el bit 3 y se arrastra a ×0,15; levantado en 180 ticks con 300 de vida y NONE,
+INTERACT 1 con su `end_tick` y 3; rematado en 60 con la fuente del remate, DEATH y KILL; desangrado en 1200
+exactos (200 a los 600) con el asesino que derribó; levantar cortado por un golpe a quien levanta (bit 5) y por
+un golpe al derribado; no se remata a través de la puerta cerrada y rota sí; la puerta no se repara con un
+derribado en el vano; el falso que se va derribado muere antes con DEATH y KILL; con ENet, el jugador que sale
+derribado muere aunque esté en combate (sin cuerpo) y al volver aparece en el punto de su reino, y el cuerpo
+de GUE-41 derribado muere al acabar su plazo; el golpe mortal de un PNJ mata sin derribar; un Hueco prefiere al
+derribado (su primer golpe es para él, no para el de pie más cerca) y lo remata con daño antes de 1200 ticks;
+el comando 15 sin autor (y rechazado en la zona segura propia, fuera de RVR o ya derribado) se desangra sin KILL,
+y por la consola; dos golpes en el mismo tick: el segundo se descarta y los de después quitan vida de derribado
+sin controles), `test_consumables_server` (5: la poción de vida cura 6 pulsos de 50 en `compromiso + 30k`, gasta
+una carga y fija la reutilización compartida; un golpe que interrumpe no gasta carga ni reutilización y se puede
+volver a beber; la recarga del campamento con la ranura 2 activa, el golpe de escudo en reutilización y el muro
+levantado: arma, ranura, `ability_ready` y acción no cambian, LOADOUT solo al dueño, y fuera del campamento o en
+combate no recarga; el comando 16; con ENet, el LOADOUT del comando 5 llega al dueño con sus cargas y al otro con
+0, y el del 16 solo al dueño) y `test_loadout_server` (5: el escudero por defecto y el tirador con sus armas,
+cargas y las dos LOADOUT; LOADOUT_SELECT mientras carga decide la plantilla del alta, con avisos para un id que
+no existe, uno que no se puede elegir y un mensaje mal formado, y en el mundo la de la siguiente reaparición;
+reaparecer con la misma plantilla solo avisa al dueño; el comando 5 pone el arma en la ranura 1 y conserva la 2,
+y no vale con un derribado; `--fake-loadout` con su reparto y sus valores no válidos). Adaptadas a que el golpe
+mortal entre reinos derriba: `test_combat_director` (las tres pruebas de la muerte usan un atacante PNJ),
+`test_status_effects` (el pulso a mitad de la lista ahora derriba, con la limpieza al quedar derribado, y la
+versión que mata usa un autor PNJ: 11) y `test_fortress_net` (el cuerpo de GUE-41 se derriba y se remata);
+`test_combat_server` y `test_hfsm_brain` ya no esperan comandos sin manejador.
+
+**Desvíos y decisiones.**
+
+- **El asesino sin golpe** (`killer_of`): el último enemigo que le hizo daño ya derribado y, si no, quien lo
+  derribó; 0 si ya no está en la zona (DEATH sin KILL). Vale para el desangrado, la salida, los volúmenes
+  letales, y < −100 y la caída. El desangrado es exacto en enteros: `⌊e · 400 / 1200⌋` acumulado.
+- **Golpes a un derribado**: daño de la fórmula con la carga, el crítico y el más daño (sin bloqueo aunque una
+  muestra antigua diga BLOCKED o PARRIED, sin controles, efectos ni interrupciones); el HIT lleva el bit 4 si le
+  mata, y el registro escribe `hit` o `arrow_hit`. La caída le quita vida de derribado; el entorno nunca derriba.
+- **El flanco de INTERACT** sale de `InputQueue.get_applied(s)` (sin `SUBSTITUTED`) frente a
+  `Combatant.last_buttons` del tick anterior; si no está al día (no había derribados), de `get_applied(s − 1)`.
+  Solo se mira si hay algún derribado en la zona: sin ninguno, el paso 7 no recorre a nadie. Se añade
+  `Combatant.last_buttons_tick`.
+- **Varios pueden rematar** al mismo derribado (gana quien acaba antes); levantar, solo uno. Se elige el más
+  cercano de los que valen y después se mira la línea de visión por orden.
+- **Al acabar** solo hace falta que el objetivo siga derribado y quien actúa vivo: un golpe en el último tick ya
+  no lo corta (en ese tick la simulación ya ha vuelto a NONE). El `end_tick` de INTERACT es el previsto en 1 y 4 y
+  el del tick en 2, 3 y 5. Levantado no da protección ni quita «en combate».
+- **Comando 15**: también se rechaza a quien no está vivo, a un maniquí y a quien no es un jugador; el DOWNED va
+  sin autor ni fuente y sin HIT. **Comando 16**: necesita estar vivo y llevar plantilla. **Comando 5**: con un
+  derribado se rechaza (REFUSED; `set_loadout` lo pondría en NONE) y la misma arma que la de la ranura 2 la deja
+  vacía. Los PNJ se equipan con él al crearse, sin LOADOUT (su SPAWN ya lleva el arma).
+- **LOADOUT por `event_emitted`**: el director lo emite dos veces cuando cambian las armas; con `involved` =
+  `[jugador]` es la del dueño (`ZoneServer` solo se la manda a él) y con `involved` vacío, la pública (cargas 0,
+  a quien tenga relevante al jugador, sin el dueño). Al aparecer sale tras el SPAWN; al reaparecer, tras el
+  RESPAWN, con la pública solo si cambian las armas.
+- **`template_id` 0** (PNJ, luchadores montados a mano en las pruebas): sin plantilla, reaparece con lo que
+  llevaba (lo de H1b) y no recarga. Un jugador siempre lleva una: la pendiente o la de por defecto.
+- **La recarga** cae en los ticks múltiplos de 60, sin escalonar (es barata: solo mira a quien tiene plantilla
+  y le faltan cargas) y repone la plantilla entera.
+- **El golpe mortal entre reinos ya no mata**: las pruebas que daban por hecha la muerte (las de
+  `test_combat_director`, `test_status_effects` y `test_fortress_net`) usan un autor PNJ o rematan. Los falsos
+  de combate (`BotBrain`) siguen atacando a un derribado y lo rematan con daño; levantar y rematar con INTERACT
+  es de H5. Un falso derribado deja de buscar enemigos (`_find_enemy_position` pide `is_alive`).
+- **Sin cambios** en `BattleLog` y `ScoreKeeper`: un derribo no es una baja; la baja es la muerte que le sigue
+  (DEATH y KILL).
+
+**Medido** (orientativo, sonda sin subir con 64 combatientes en una refriega y otros trabajos en la máquina):
+el paso 7 sin derribados cuesta 1,6 µs por tick (no recorre a nadie); con 8 derribados y la mitad de la zona
+pulsando E cada 2 ticks, 55–63 µs (sobre todo leer la entrada aplicada de los 64). `process_tick` con 64,
+1,1–1,6 ms con o sin derribados (el ruido de la máquina es mayor que la diferencia). `test_downed` tarda ~16 s
+con el arranque del motor (la prueba del desangrado avanza 1200 ticks en ~0,7 s), `test_consumables_server`
+~12 s y `test_loadout_server` ~10 s.
+
+**Para los paquetes siguientes.** H4: `_note_imposed_state` con DOWNED, INTERACT (levantado y cortes) y
+LOADOUT propios; los avisos de derribado con la vida del bloque extra (bit 3, sobre 400); el selector manda
+LOADOUT_SELECT (`0x07`) también antes de CLIENT_READY; el LOADOUT ajeno llega con 0 cargas. H5: bots que
+levantan y rematan (mantienen E), el modo tramposo `interact`, `test_loadout_net` y la hoja de equilibrio con
+los derribos (`tools/combat_balance.gd` ya mide hasta la caída).
