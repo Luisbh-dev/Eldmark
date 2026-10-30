@@ -1,7 +1,9 @@
 extends TestCase
 ## Los golpes avisados que recuerda un bot del cliente ([BotThreatSight], F6b): cada TELEGRAPH es un
 ## [BotBrain.Threat] con el origen, el giro y el alcance del aviso, activo hasta su impacto más la ventana activa
-## del golpe; el mismo PNJ sustituye su aviso anterior y su DESPAWN lo olvida. Los demás eventos no cuentan.
+## del golpe; el mismo PNJ sustituye su aviso anterior y su DESPAWN lo olvida. Los demás eventos no cuentan, ni (con
+## la regla de quien lo crea) los avisos de los PNJ que no pueden dañar al bot: [SwarmBot] solo guarda los de los PNJ de
+## guerra enemigos y [ClientBotBrains] los de quien [method BotThreatSight.is_hostile_view] da por hostil.
 
 
 func _telegraph(npc_id: int, tick: int, origin: Vector3, yaw: float, radius_cm: int,
@@ -44,3 +46,79 @@ func test_other_events_are_ignored() -> void:
 	sight.note(NetMessages.EntityEvent.war(5, 1000, WarEvents.GATE_BROKEN, 1))
 	sight.note(null)
 	assert_eq(sight.find(1000).size(), 0)
+
+
+func test_with_a_hostility_rule_it_keeps_only_the_hits_of_those_who_can_harm_it() -> void:
+	# Revisión de F6b: el servidor avisa los fuertes de todos los PNJ, también los de la guarnición del propio bot, y los
+	# falsos del servidor solo evitan los de un reino hostil; los bots del cliente esquivaban también los de los suyos.
+	var hostile: Dictionary[int, bool] = {41: true}
+	var sight := BotThreatSight.new(func(net_id: int) -> bool: return hostile.has(net_id))
+	sight.note(_telegraph(40, 1000, Vector3.ZERO, 0.0, 350, 60))
+	sight.note(_telegraph(41, 1000, Vector3(5.0, 0.0, 0.0), 0.0, 350, 60))
+	var found: Array[BotBrain.Threat] = sight.find(1000)
+	if not assert_eq(found.size(), 1, "solo el del PNJ que le puede dañar"):
+		return
+	assert_vec_near(found[0].origin, Vector3(5.0, 0.0, 0.0), 0.001)
+
+
+func test_a_remote_npc_is_hostile_by_the_faction_rules_of_the_zone() -> void:
+	var world := RemoteWorld.new()
+	world.install_visuals = false
+	world.setup(InterpolationClock.new())
+	tree.root.add_child(world)
+	world.on_spawn(_npc_spawn(40, NetProtocol.Realm.VARDHEIM))
+	world.on_spawn(_npc_spawn(41, NetProtocol.Realm.SOLMARCH))
+	world.on_spawn(_npc_spawn(42, RealmCatalog.NEUTRAL_CODE))
+	var zone: StringName = &"vado_gris"
+	var vardheim: int = NetProtocol.Realm.VARDHEIM
+	assert_false(BotThreatSight.is_hostile_view(world, vardheim, zone, 40), "un guardia de su reino no le daña")
+	assert_true(BotThreatSight.is_hostile_view(world, vardheim, zone, 41), "uno del otro reino sí")
+	assert_true(BotThreatSight.is_hostile_view(world, vardheim, zone, 42), "y uno neutral (los Huecos, el Capitán del Vado)")
+	assert_false(BotThreatSight.is_hostile_view(world, vardheim, zone, 99), "uno sin alta no cuenta")
+	assert_false(BotThreatSight.is_hostile_view(null, vardheim, zone, 41), "sin mundo, nada")
+	tree.root.remove_child(world)
+	world.free()
+	await wait_process_frames()
+
+
+func test_a_swarm_bot_does_not_evade_the_hits_of_the_npcs_of_its_realm() -> void:
+	var config := ClientConfig.new()
+	config.mode = ClientConfig.Mode.SWARM
+	config.bot_count = 1
+	config.bot_brain = ClientConfig.BOT_BRAIN_SIEGE
+	config.realm = NetProtocol.Realm.VARDHEIM
+	config.port = 1
+	var bot := SwarmBot.new()
+	tree.root.add_child(bot)
+	bot.setup(0, config)
+	var welcome := NetMessages.Welcome.new()
+	welcome.realm = NetProtocol.Realm.VARDHEIM
+	welcome.zone_id = "vado_gris"
+	bot._welcome = welcome
+	bot._predicted_tick = 1000
+	# Un guardia de Vardheim (su guarnición) y un Hueco (neutral), con sus altas de verdad.
+	bot._on_packet_received(SwarmBot.SERVER_PEER_ID, _npc_spawn(40, NetProtocol.Realm.VARDHEIM).encode())
+	bot._on_packet_received(SwarmBot.SERVER_PEER_ID, _npc_spawn(41, RealmCatalog.NEUTRAL_CODE).encode())
+	bot._on_packet_received(SwarmBot.SERVER_PEER_ID, _telegraph(40, 1000, Vector3.ZERO, 0.0, 350, 60).encode())
+	var own: int = bot._find_threats(Vector3.ZERO).size()
+	bot._on_packet_received(SwarmBot.SERVER_PEER_ID,
+			_telegraph(41, 1000, Vector3(3.0, 0.0, 0.0), 0.0, 350, 60).encode())
+	var found: Array[BotBrain.Threat] = bot._find_threats(Vector3.ZERO)
+	tree.root.remove_child(bot)
+	bot.free()
+	await wait_process_frames()
+	assert_eq(own, 0, "el golpe avisado de un guardia de su reino no es una amenaza")
+	if assert_eq(found.size(), 1, "el del Hueco, sí"):
+		assert_vec_near(found[0].origin, Vector3(3.0, 0.0, 0.0), 0.001)
+
+
+func _npc_spawn(net_id: int, realm: int) -> NetMessages.EntitySpawn:
+	var spawn := NetMessages.EntitySpawn.new()
+	spawn.net_id = net_id
+	spawn.kind = NetProtocol.EntityKind.NPC
+	spawn.spawn_tick = 900
+	spawn.realm = realm
+	spawn.display_name = "Guardia"
+	spawn.npc_def_id = 3
+	spawn.state = PlayerState.new()
+	return spawn

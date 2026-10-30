@@ -85,7 +85,11 @@ extends SceneTree
 ## fortalezas ([code]war[/code]), con su media de toda la sesión, y los PNJ que había en cada marca de métricas del
 ## servidor (su [code]simulate()[/code] va en [code]sim[/code], con el de los jugadores). Los percentiles del servidor son de los últimos 2048
 ## ticks (34 s) de su ejecución, así que el servidor sigue unos segundos de más después de que los bots
-## entren, para que la ventana sea solo de régimen.
+## entren, para que la ventana sea solo de régimen. Los enjambres se cierran por el tick del servidor
+## ([code]--quit-at-server-tick[/code], [constant TAIL_SECONDS] y [constant SWARM_START_MARGIN_TICKS] antes de su final),
+## no por su propio reloj: con muchos jugadores el servidor va más despacio que el tiempo real y los bots se iban antes de
+## tiempo. El resumen dice cuántos jugadores había en esos 2048 ticks y en las marcas de la ventana, y avisa si no son
+## los del pico.
 ## [br][br]
 ## [b]Entradas sustituidas.[/b] El informe del servidor da el porcentaje de toda la sesión, con el arranque
 ## dentro (cada bot pierde unas decenas de entradas mientras [TickSync] encuentra su antelación, más con
@@ -114,6 +118,15 @@ const SETTLE_SECONDS: float = 8.0
 const TAIL_SECONDS: float = 2.0
 ## Ticks de margen entre el cierre del enjambre y el del servidor (arranque del proceso del enjambre).
 const SWARM_START_MARGIN_TICKS: int = 90
+## El enjambre se cierra por el tick del servidor ([code]--quit-at-server-tick[/code]): con muchos jugadores el servidor
+## va más despacio que el tiempo real, y uno que se cerrase por su propio reloj se iría antes de que acabase la ventana
+## (con 128 jugadores, a los 8400 ticks de 10 850: los percentiles del último tramo salían de 118 jugadores sin ningún
+## cliente; revisión de F6b). Como cota, y para esperar a los procesos, se admite un servidor hasta este número de veces
+## más lento que el tiempo real.
+const SLOW_SERVER_FACTOR: float = 3.0
+## Si menos de esta parte de los últimos 2048 ticks del servidor (de los que salen los percentiles de su informe) tuvo el
+## pico de jugadores, el resumen avisa de que esos percentiles no son de la carga que se quería medir.
+const MIN_TAIL_AT_PEAK: float = 0.75
 ## Criterio de la fase 2.
 const MAX_P99_TICK_US: int = 8000
 const MAX_KB_PER_CLIENT: float = 37.0
@@ -324,8 +337,9 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 		swarm_reports.append(report_path)
 		var swarm_args := PackedStringArray([
 			"--bots=%d" % count, "--connect=127.0.0.1:%d" % port, "--bot-seed=%d" % (1000 * (k + 1)),
-			"--quit-after-ticks=%d" % swarm_ticks, "--report=%s" % report_path,
+			"--report=%s" % report_path,
 		])
+		swarm_args.append_array(swarm_quit_args(swarm_ticks))
 		if scenario != "spread" and scenario != "siege":
 			swarm_args.append("--realm=vardheim")
 		if scenario == "brawl":
@@ -343,7 +357,7 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 		for pid: int in all_pids:
 			if OS.is_process_running(pid):
 				return false
-		return true, float(server_ticks) / float(_tick_rate) + FINISH_MARGIN_SECONDS)
+		return true, SLOW_SERVER_FACTOR * float(server_ticks) / float(_tick_rate) + FINISH_MARGIN_SECONDS)
 	if not finished:
 		for pid: int in all_pids:
 			if OS.is_process_running(pid):
@@ -377,6 +391,11 @@ func _summarise(summary: Dictionary, server: Dictionary, swarms: Array[Dictionar
 	var peak: int = int(players.get("peak", 0))
 	summary["players_peak"] = peak
 	summary["server_ticks"] = int(server.get("ticks", 0))
+	# Quién había en el tramo del que salen los percentiles del informe (los últimos 2048 ticks del servidor).
+	var samples: int = int((sections.get("tick", {}) as Dictionary).get("samples", ServerMetrics.WINDOW_TICKS))
+	var end_tick: int = int(server.get("ticks", 0))
+	summary["tail_presence"] = LoadTestSummary.presence(server.get("player_list", []),
+			maxi(end_tick - samples + 1, 1), end_tick, end_tick)
 	var section_table: Dictionary = {}
 	for section: String in SECTIONS:
 		var data: Dictionary = sections.get(section, {})
@@ -560,6 +579,14 @@ func _summary_lines(summary: Dictionary) -> PackedStringArray:
 		var data: Dictionary = sections[section]
 		lines.append("     %-24s %6d   %6d   %6d   %6d" % [section, data["p50"], data["p95"], data["p99"],
 				data["max"]])
+	var tail: Dictionary = summary.get("tail_presence", {})
+	if not tail.is_empty():
+		var at_peak: float = float(tail["ticks_at_max"]) / float(maxi(int(tail["ticks"]), 1)) \
+				if int(tail["max"]) == int(summary["players_peak"]) else 0.0
+		lines.append("   ... de los últimos %d ticks del servidor, con de %d a %d jugadores; con el pico (%d), el %.0f %% de ellos" % [
+			tail["ticks"], tail["min"], tail["max"], summary["players_peak"], 100.0 * at_peak])
+		if at_peak < MIN_TAIL_AT_PEAK:
+			lines.append("   AVISO: los percentiles de arriba no son del pico de jugadores (se fueron antes de que acabara el servidor): mira las marcas de la ventana")
 	lines.append("   simulate() por personaje:   %.1f µs   (sección sim p50 / jugadores: %.1f µs)" % [
 		summary["simulate_us_per_character"], summary["sim_section_us_per_character"]])
 	lines.append("   Snapshot (servidor):        %.0f B de media, %d B como máximo, %.0f µs de construcción cada uno" % [
@@ -599,9 +626,12 @@ func _siege_lines(figures: Dictionary) -> PackedStringArray:
 	if window.is_empty():
 		lines.append("   Tick en la ventana de medida: sin marcas de métricas del servidor en ella")
 	else:
-		lines.append("   Tick en la ventana (%d marcas de 34 s): p50 %d µs, p99 %d µs (el peor, %d µs), máx %d µs; PNJ de %d a %d" % [
+		lines.append("   Tick en la ventana (%d marcas de 34 s): p50 %d µs, p99 %d µs (el peor, %d µs), máx %d µs; PNJ de %d a %d; jugadores de %d a %d" % [
 			window["marks"], window["p50_us"], window["p99_us"], window["worst_p99_us"], window["max_us"],
-			window.get("npcs_min", -1), window.get("npcs_max", -1)])
+			window.get("npcs_min", -1), window.get("npcs_max", -1), window.get("players_min", -1),
+			window.get("players_max", -1)])
+		if int(window.get("players_min", -1)) != int(window.get("players_max", -1)):
+			lines.append("   AVISO: el número de jugadores cambia dentro de la ventana: sus marcas no son todas de la misma carga")
 	for entry: Array in [["war", "war_section", "fortalezas"], ["npc_brains", "npc_brains_section", "cerebros de los PNJ"],
 			["npc", "npc_section", "generadores de PNJ"]]:
 		var data: Dictionary = figures.get(entry[1], {})
@@ -653,6 +683,16 @@ func _combat_lines(figures: Dictionary) -> PackedStringArray:
 			figures["clients_measured"], figures["client_snapshot_kb_per_s"],
 			figures["client_event_kb_per_s"], figures["client_wire_kb_per_s"]])
 	return lines
+
+
+## Las opciones con las que se cierra un enjambre: cuando alguno de sus bots ve el tick [param swarm_ticks] del servidor
+## ([code]--quit-at-server-tick[/code]) y, como cota, tras [constant SLOW_SERVER_FACTOR] veces ese número de ticks de su
+## propio reloj ([code]--quit-after-ticks[/code]).
+static func swarm_quit_args(swarm_ticks: int) -> PackedStringArray:
+	return PackedStringArray([
+		"--quit-at-server-tick=%d" % swarm_ticks,
+		"--quit-after-ticks=%d" % ceili(float(swarm_ticks) * SLOW_SERVER_FACTOR),
+	])
 
 
 ## Opciones del servidor propias de un asedio: el registro de batalla en [param battle_log] y, sin [param with_npcs]

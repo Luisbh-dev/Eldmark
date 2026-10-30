@@ -15,12 +15,19 @@ func _init(client: NetClient) -> void:
 ## Cuántos jugadores de su reino, sin contarle a él, dibuja a menos de [param radius] metros (en horizontal) de
 ## [param center].
 func count(center: Vector3, radius: float) -> int:
-	var world: RemoteWorld = _client.get_remote_world()
 	var config: ClientConfig = _client.get_config()
 	var welcome: NetMessages.Welcome = _client.get_welcome()
-	if world == null or (welcome == null and config == null):
+	if welcome == null and config == null:
 		return 0
 	var realm: int = welcome.realm if welcome != null else config.realm
+	return count_in(_client.get_remote_world(), realm, center, radius)
+
+
+## Cuántos jugadores remotos del reino [param realm] dibuja [param world], vivos y a menos de [param radius] metros (en
+## horizontal) de [param center]. Los PNJ, los de otros reinos, los muertos y los que aún no se dibujan no cuentan.
+static func count_in(world: RemoteWorld, realm: int, center: Vector3, radius: float) -> int:
+	if world == null:
+		return 0
 	var limit: float = radius * radius
 	var found: int = 0
 	for view: RemotePlayerView in world.get_views():

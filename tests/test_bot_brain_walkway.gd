@@ -172,8 +172,29 @@ func test_a_quarter_of_the_seeds_have_the_walkway_role_whatever_their_spacing() 
 		if brain.is_walkway_sweeper():
 			sweepers += 1
 			assert_true(brain.has_walkway_role(), "semilla %d: los que la recorren atacando también la guardan" % rng_seed)
-	assert_eq(consecutive, 5, "5 de 20 semillas seguidas (las de un reino en siege_battle) la guardan")
+	assert_eq(consecutive, 5, "con la base 1000, 5 de 20 semillas seguidas (las de un reino en siege_battle) la guardan")
 	assert_eq(sweepers, 3, "y 3 la recorren cuando atacan (una octava parte de 20 son 2,5)")
+	# Con otras bases, de 4 a 6 y de 1 a 4 (revisión de F6b: la base 2000, la de Vardheim en la semilla 2000, da 6).
+	var counts: Dictionary[int, int] = {}
+	var sweeping: Dictionary[int, int] = {}
+	for base: int in range(0, 10001, 7):
+		var guards: int = 0
+		var sweeps: int = 0
+		for index: int in 20:
+			guards += 1 if BotBrain.is_walkway_seed(base + index) else 0
+			sweeps += 1 if BotBrain.is_walkway_seed(base + index, BotBrain.SIEGE_WALKWAY_SWEEP_SHARE) else 0
+		counts[guards] = counts.get(guards, 0) + 1
+		sweeping[sweeps] = sweeping.get(sweeps, 0) + 1
+	assert_eq(counts.keys().filter(func(guards: int) -> bool: return guards < 4 or guards > 6), [],
+			"de 4 a 6 guardias de cada 20 (%s)" % [counts])
+	assert_true(counts.get(5, 0) * 2 > counts.values().reduce(func(a: int, b: int) -> int: return a + b, 0),
+			"5 en más de la mitad de las bases (%s)" % [counts])
+	assert_eq(sweeping.keys().filter(func(sweeps: int) -> bool: return sweeps < 1 or sweeps > 4), [],
+			"de 1 a 4 de cada 20 la recorren (%s)" % [sweeping])
+	var of_2000: int = 0
+	for index: int in 20:
+		of_2000 += 1 if BotBrain.is_walkway_seed(2000 + index) else 0
+	assert_eq(of_2000, 6, "con la base 2000, 6")
 	assert_true(every_other >= 4 and every_other <= 6, "y de una de cada dos, también una cuarta parte (%d)" % every_other)
 	for rng_seed: int in [5, 10, 11, 12, 13]:
 		var brain: BotBrain = _brain(V, rng_seed)
@@ -376,6 +397,34 @@ func test_an_attacker_without_the_role_and_outside_the_fort_never_climbs() -> vo
 	for _i: int in 300:
 		out_walker.step(outside)
 	assert_eq(outside.get_siege_task(), BotBrain.SiegeTask.ASSAULT)
+
+
+func test_a_walkway_guard_whose_realm_loses_the_fort_drops_into_the_circle_instead_of_hitting_the_air() -> void:
+	# Revisión de F6b: al capturar, la puerta se repara, y los guardias de la pasarela del dueño anterior (vivos y fuera del
+	# círculo) pasaban a ser atacantes dentro de un fuerte cerrado: «asaltaban» la puerta desde arriba, golpeando el aire.
+	# Desde dentro no se asalta la puerta: baja al patio y va al círculo (en formación, con contador de aliados, y sin ella).
+	for formation: bool in [true, false]:
+		_view.owner = V
+		_view.gate_health = 9000
+		var rng_seed: int = _walkway_seeds(1.0, 1)[0]
+		var brain: BotBrain = _brain(V, rng_seed)
+		brain.set_walkway_role(true, false)
+		if formation:
+			brain.set_ally_counter(func(_center: Vector3, _radius: float) -> int: return 0)
+		var walker := HeightWalker.new(_routes, CIRCLE)
+		if not assert_true(_run(walker, brain, 1800, func() -> bool: return _at_post(walker, brain)) > 0,
+				"formación %s: en su puesto" % formation):
+			continue
+		# Solmarch captura: el fuerte es suyo y la puerta, reparada, cierra el paso a Vardheim.
+		_view.owner = S
+		var assaulted: Array[bool] = [false]
+		var inside: int = _run(walker, brain, 900, func() -> bool:
+			assaulted[0] = assaulted[0] or brain.get_siege_task() == BotBrain.SiegeTask.ASSAULT
+			return brain.get_siege_task() == BotBrain.SiegeTask.HOLD and _view.is_in_circle(walker.position))
+		assert_true(inside > 0, "formación %s: baja de la pasarela y va al círculo (%s)" % [formation, walker.position])
+		assert_false(assaulted[0], "formación %s: sin asaltar la puerta desde dentro" % formation)
+		assert_eq(walker.presses, 0, "formación %s: ni golpear el aire" % formation)
+		assert_eq(walker.elevation, 0.0)
 
 
 func test_inside_the_fort_an_enemy_on_the_walkway_is_not_a_target_from_the_ground() -> void:

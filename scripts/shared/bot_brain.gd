@@ -30,12 +30,15 @@ extends RefCounted
 ## que guardan el fuerte (los Huecos, el Capitán y la guarnición del dueño; [method set_defender_finder], F6b): el
 ## capitán tiene que caer para abrir el círculo. Si persiguiendo a alguien que está a más de
 ## [constant COMBAT_ENGAGE_DISTANCE] no se le acerca en [constant SIEGE_STUCK_TICKS] ticks (un muro, la pasarela),
-## deja de perseguir durante [constant SIEGE_CHASE_GIVE_UP_TICKS] ticks y sigue con su plan.
+## deja de perseguir durante [constant SIEGE_CHASE_GIVE_UP_TICKS] ticks y sigue con su plan. Cuenta cada persecución por
+## separado: llegar a la distancia de pelea, o cambiar de blanco, empieza otra.
 ## [br]2. [b]Marcha[/b]: sigue la ruta de su reino, [constant ApproachRoutes.BRIDGE] o
 ## [constant ApproachRoutes.FORD] (la elige con su generador al empezar y tras cada reaparición), hasta la
 ## explanada delante de la puerta, esprintando por los tramos largos si no hay enemigos cerca.
 ## [br]3. [b]Asalto[/b]: llegado a la explanada, si la puerta cierra el paso a su reino
-## ([method SiegeView.is_gate_closed_for]) se acerca a ella y la golpea (ligeros en combo y algún fuerte).
+## ([method SiegeView.is_gate_closed_for]) se acerca a ella y la golpea (ligeros en combo y algún fuerte). Solo desde
+## fuera: si ya está dentro del fuerte (la puerta se ha reparado con él dentro, o el fuerte ha cambiado de dueño con él en
+## la pasarela) sigue con la pasarela y el círculo, que no necesitan la puerta.
 ## [br]4. [b]Círculo[/b]: con la puerta abierta para su reino (rota, o suya) entra en el círculo de captura y
 ## se queda dentro cerca del centro: los atacantes lo toman y el dueño lo defiende (salvo los que tienen el papel de la
 ## pasarela, GUE-45: ver abajo).
@@ -178,7 +181,8 @@ const SIEGE_THREAT_MARGIN: float = 1.0
 const SIEGE_EVADE_DODGE_TICKS: int = 15
 ## [constant SIEGE]: si persiguiendo a alguien que está a más de [constant COMBAT_ENGAGE_DISTANCE] no se acerca
 ## [constant SIEGE_STUCK_MIN_PROGRESS] metros en [constant SIEGE_STUCK_TICKS] ticks (está tras un muro, en la pasarela
-## o huye más rápido), deja de perseguir a nadie que no esté a esa distancia durante estos ticks y sigue con su plan.
+## o huye más rápido), deja de perseguir a nadie que no esté a esa distancia durante estos ticks y sigue con su plan. Mide
+## persecuciones seguidas del mismo blanco: al llegar a la distancia de pelea, o al cambiar de blanco, empieza otra.
 const SIEGE_CHASE_GIVE_UP_TICKS: int = 600
 ## [constant SIEGE], reunión (GUE-44): cuántos de su reino (él incluido) tiene que haber en el punto de reunión para salir
 ## sin esperar al reloj.
@@ -212,12 +216,12 @@ const SLOT_STEP_ANGLE: float = 0.7548776662466927
 const SLOT_STEP_RADIUS: float = 0.5698402909980532
 ## [constant SIEGE], pasarela (GUE-45): qué parte de los bots tiene el papel de la pasarela ([method is_walkway_seed]):
 ## los del dueño que la guardan y, de ellos, los que la recorren cuando atacan. Con la misma parte para los atacantes
-## (cinco de veinte que dejan la pelea del patio y suben de uno en uno contra los cinco del dueño) la recaptura de
-## siege_battle.gd pasaba de una mediana de 2,6 a 5,3 min; con la mitad, 2,7 (docs/fuerte.md 8.3, F6b, paquete D).
+## (unos cinco de veinte que dejan la pelea del patio y suben de uno en uno contra los unos cinco del dueño) la recaptura
+## de siege_battle.gd pasaba de una mediana de 2,6 a 5,3 min; con la mitad, 2,7 (docs/fuerte.md 8.3, F6b, paquete D).
 const SIEGE_WALKWAY_SHARE: float = 0.25
 const SIEGE_WALKWAY_SWEEP_SHARE: float = 0.125
 ## Paso de la sucesión de Weyl con la que se reparte el papel por semillas (la inversa del número áureo): cualquier
-## serie de semillas seguidas, o de una en una cada N, da la misma proporción.
+## serie de semillas seguidas, o de una cada N, da casi la misma proporción (con veinte, uno arriba o abajo).
 const WALKWAY_SEED_STEP: float = 0.6180339887498949
 ## [constant SIEGE], pasarela: hasta cuántos metros a cada lado del puesto (encima de la puerta, a lo largo de la
 ## pasarela) se coloca cada uno según su hueco ([method get_siege_slot]).
@@ -324,10 +328,13 @@ var _siege_evade_since: int = -1
 var _siege_defender_finder: Callable = Callable()
 var _siege_defender_position: Variant = null
 var _siege_defender_checked_tick: int = -1000
-# SIEGE: la persecución en curso (distancia y tick de referencia; -1 = ninguna) y hasta cuándo no persigue.
+# SIEGE: la persecución en curso (distancia y tick de referencia; -1 = ninguna), hasta cuándo no persigue, y a quién
+# perseguía en la última comprobación (si era el PNJ defensor y dónde estaba): otro blanco es otra persecución.
 var _siege_chase_ref_distance: float = 0.0
 var _siege_chase_ref_tick: int = -1
 var _siege_chase_blocked_until: int = -1
+var _siege_chase_defender: bool = false
+var _siege_chase_target: Vector3 = Vector3.ZERO
 # SIEGE, reunión (GUE-44): quién cuenta a los suyos, el tamaño del grupo y la vuelta del reloj; si toca mirar si espera
 # (al empezar y tras reaparecer) y, mientras espera, hasta qué tick como mucho (-1 = no espera).
 var _siege_ally_counter: Callable = Callable()
@@ -517,7 +524,8 @@ func get_rally_deadline() -> int:
 
 ## El hueco de un bot con la semilla [param rng_seed] en la formación del patrón [constant SIEGE] (GUE-44): un punto del
 ## disco de radio 1 (x de lado, y hacia delante) sacado de la sucesión R2, que reparte bien semillas seguidas (los bots
-## de un mismo grupo: con veinte, ninguno a menos de 0,18 del otro). No usa el generador.
+## de un mismo grupo: con veinte seguidas, el par más cercano queda de media a 0,19 y nunca a menos de 0,1 en las bases
+## de 0 a 6000; en una de cada diez bases, a menos de 0,18). No usa el generador.
 static func slot_for_seed(rng_seed: int) -> Vector2:
 	var angle: float = TAU * fposmod(float(rng_seed) * SLOT_STEP_ANGLE, 1.0)
 	var reach: float = sqrt(fposmod(float(rng_seed) * SLOT_STEP_RADIUS, 1.0))
@@ -537,7 +545,8 @@ func get_last_rally_departure() -> int:
 
 ## true si un bot con la semilla [param rng_seed] tiene el papel de la pasarela del patrón [constant SIEGE] (GUE-45): la
 ## fracción [param share] de las semillas, repartidas con la sucesión de Weyl del número áureo, así que con 20 semillas
-## seguidas (o una de cada dos, las de un reino) son 5 con [constant SIEGE_WALKWAY_SHARE]. No usa el generador.
+## seguidas (o una de cada dos, las de un reino) son de 4 a 6 con [constant SIEGE_WALKWAY_SHARE] (5 en más de la mitad de
+## las bases) y de 1 a 4 con [constant SIEGE_WALKWAY_SWEEP_SHARE] (casi siempre 2 o 3). No usa el generador.
 static func is_walkway_seed(rng_seed: int, share: float = SIEGE_WALKWAY_SHARE) -> bool:
 	return fposmod(float(rng_seed) * WALKWAY_SEED_STEP, 1.0) < share
 
@@ -787,12 +796,12 @@ func _siege_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 			_siege_defender_checked_tick = tick
 			_siege_defender_position = _siege_defender_finder.call(position)
 		var fighting_defender: PlayerInput = _siege_fight_if_in_range(tick, position, yaw,
-				_siege_defender_position)
+				_siege_defender_position, true)
 		if fighting_defender != null:
 			return fighting_defender
 	if _enemy_finder.is_valid():
 		_refresh_enemy(tick, position)
-		var fighting: PlayerInput = _siege_fight_if_in_range(tick, position, yaw, _enemy_position)
+		var fighting: PlayerInput = _siege_fight_if_in_range(tick, position, yaw, _enemy_position, false)
 		if fighting != null:
 			return fighting
 	_hold_until = -1
@@ -808,7 +817,8 @@ func _siege_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 
 	# 3. El plan: marchar, asaltar la puerta o quedarse en el círculo.
 	_ensure_route(position)
-	if _siege_inside_fort(position):
+	var inside: bool = _siege_on_walkway_now or _siege_inside_fort(position)
+	if inside:
 		_siege_route_index = _siege_route_points.size()
 	if _siege_route_index < _siege_route_points.size():
 		_siege_task = SiegeTask.MARCH
@@ -819,7 +829,10 @@ func _siege_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 		var to_corner: Vector3 = (corner as Vector3) - position
 		to_corner.y = 0.0
 		return _walk_input(tick, position, yaw, to_corner, to_corner.length())
-	if _siege.is_gate_closed_for(_siege_realm) and _siege_has_places():
+	# La puerta cerrada solo se asalta desde fuera. Un atacante que ya está dentro (la puerta se ha reparado con él en el
+	# patio, o el fuerte ha cambiado de dueño con él en la pasarela) sigue con la pasarela y el círculo: la captura no
+	# necesita la puerta, y el hueco de la formación delante de ella le dejaba golpeando el aire de espaldas a ella.
+	if not inside and _siege.is_gate_closed_for(_siege_realm) and _siege_has_places():
 		_siege_task = SiegeTask.ASSAULT
 		return _assault_input(tick, position, yaw)
 	# 4. Con el papel de la pasarela (GUE-45): el dueño la guarda y el atacante la recorre una vez.
@@ -830,9 +843,11 @@ func _siege_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 	return _hold_circle_input(tick, position, yaw)
 
 
-# Pelea con quien está en [param target] (una posición, o null) si está a menos de SIEGE_FIGHT_RANGE y se puede
-# alcanzar; null si no. Persiguiendo sin acercarse (SIEGE_CHASE_GIVE_UP_TICKS), deja de perseguir un rato.
-func _siege_fight_if_in_range(tick: int, position: Vector3, yaw: float, target: Variant) -> PlayerInput:
+# Pelea con quien está en [param target] (una posición, o null; [param defender], si es el PNJ defensor) si está a menos
+# de SIEGE_FIGHT_RANGE y se puede alcanzar; null si no. Persiguiendo sin acercarse (SIEGE_CHASE_GIVE_UP_TICKS), deja de
+# perseguir un rato.
+func _siege_fight_if_in_range(tick: int, position: Vector3, yaw: float, target: Variant,
+		defender: bool) -> PlayerInput:
 	if not target is Vector3:
 		return null
 	var to_enemy: Vector3 = (target as Vector3) - position
@@ -840,7 +855,11 @@ func _siege_fight_if_in_range(tick: int, position: Vector3, yaw: float, target: 
 	var distance: float = to_enemy.length()
 	if distance > SIEGE_FIGHT_RANGE or not _can_reach(position, target as Vector3):
 		return null
-	if distance > COMBAT_ENGAGE_DISTANCE and not _siege_keeps_chasing(tick, distance):
+	if distance <= COMBAT_ENGAGE_DISTANCE:
+		# Ha llegado: si el otro se vuelve a alejar (una esquiva, un paso atrás) es otra persecución, que se mide desde
+		# entonces y no desde la distancia a la que empezó la de antes.
+		_siege_chase_ref_tick = -1
+	elif not _siege_keeps_chasing(tick, distance, target as Vector3, defender):
 		return null
 	_siege_task = SiegeTask.FIGHT
 	_reset_stuck(tick, position)
@@ -855,13 +874,20 @@ func _siege_fight_if_in_range(tick: int, position: Vector3, yaw: float, target: 
 	return _fight_input(tick, to_enemy, distance, yaw)
 
 
-# Una persecución (alguien a [param distance] metros, más lejos que la distancia de pelea): false si hay que dejarla,
-# porque lleva SIEGE_STUCK_TICKS sin acercarse o porque la dejó hace poco.
-func _siege_keeps_chasing(tick: int, distance: float) -> bool:
+# Una persecución (alguien a [param distance] metros, en [param target], más lejos que la distancia de pelea; con
+# [param defender], el PNJ defensor): false si hay que dejarla, porque lleva SIEGE_STUCK_TICKS sin acercarse o porque la
+# dejó hace poco. Solo mide persecuciones seguidas del mismo blanco: si el blanco cambia (del defensor al enemigo o al
+# revés, o su posición salta más de SIEGE_TELEPORT_DISTANCE desde la comprobación anterior: es otro) empieza de cero.
+func _siege_keeps_chasing(tick: int, distance: float, target: Vector3, defender: bool) -> bool:
 	if tick < _siege_chase_blocked_until:
 		return false
-	if _siege_chase_ref_tick < 0 or tick - _siege_chase_ref_tick > SIEGE_STUCK_TICKS + COMBAT_RETARGET_TICKS:
-		# Empieza (o vuelve a empezar tras un rato sin perseguir).
+	var same_target: bool = defender == _siege_chase_defender \
+			and target.distance_to(_siege_chase_target) <= SIEGE_TELEPORT_DISTANCE
+	_siege_chase_defender = defender
+	_siege_chase_target = target
+	if not same_target or _siege_chase_ref_tick < 0 \
+			or tick - _siege_chase_ref_tick > SIEGE_STUCK_TICKS + COMBAT_RETARGET_TICKS:
+		# Empieza (otra persecución, o la misma tras un rato sin perseguir).
 		_siege_chase_ref_tick = tick
 		_siege_chase_ref_distance = distance
 		return true

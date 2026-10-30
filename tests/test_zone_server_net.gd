@@ -560,8 +560,10 @@ func test_a_server_full_of_fillers_lets_people_in_and_a_filler_yields_each_seat(
 	if ana == null:
 		return
 	assert_null(ana.reject, "Ana no recibe «lleno»")
-	assert_null(_server.get_registry().get_entity(first_of_vardheim), "el falso de relleno más antiguo de Vardheim se ha ido")
-	assert_eq(keeper.filler_counts(), PackedInt32Array([1, 1, 1]), "uno solo: su entrada en el mundo no retira otro")
+	# El falso que le aparta la plaza se va cuando ella entra en el mundo (su baja, al empezar el tick siguiente).
+	assert_true(await _run_until(func() -> bool: return _server.get_registry().get_entity(first_of_vardheim) == null),
+			"el falso de relleno más antiguo de Vardheim se ha ido")
+	assert_eq(keeper.filler_counts(), PackedInt32Array([1, 1, 1]), "uno solo: uno por persona")
 	assert_eq(_server.get_player_count(), 4, "siguen cuatro")
 	var bruno: RawClient = await _join("Bruno", SOLMARCH)
 	var carla: RawClient = await _join("Carla", NetProtocol.Realm.ASKARRA)
@@ -601,19 +603,90 @@ func test_fakes_that_are_not_fillers_still_take_a_seat() -> void:
 	assert_not_null(_server.get_registry().get_entity(plain), "y sigue en el mundo")
 
 
-func test_a_person_who_leaves_before_entering_gets_the_yielded_filler_back() -> void:
+func test_a_person_who_leaves_before_entering_frees_the_seat_and_no_filler_moves() -> void:
 	await _start_server(func(config: ServerConfig) -> void:
 		config.max_players = 2
 		config.max_realm_diff = 1)
 	var keeper: FillerKeeper = _fill_with_fillers(2)
+	var fillers: Array[int] = _filler_ids(keeper)
 	var loading: RawClient = _connect_client(_hello(VARDHEIM, "Ana"), false)
 	assert_true(await _run_until(func() -> bool: return loading.connected), "Ana entra y carga la zona")
-	assert_eq(keeper.filler_counts(), PackedInt32Array([0, 1, 0]), "el falso de Vardheim le ha cedido su plaza ya")
+	assert_null(loading.reject, "sin «lleno»: el relleno le aparta una plaza")
+	assert_eq(keeper.reserved_count(), 1, "la plaza apartada")
+	assert_eq(_filler_ids(keeper), fillers, "pero el falso no se va mientras ella carga")
+	assert_eq(_server.get_player_count(), 3, "mientras tanto hay uno de más")
 	loading.send_raw(NetProtocol.CH_RELIABLE, NetMessages.ClientLeave.new().encode())
-	assert_true(await _run_until(func() -> bool: return keeper.filler_count() == 2),
-			"se va sin entrar en el mundo y vuelve un falso de relleno")
-	assert_eq(keeper.filler_counts(), PackedInt32Array([1, 1, 0]), "en Vardheim, el reino con menos total")
+	assert_true(await _run_until(func() -> bool: return keeper.reserved_count() == 0),
+			"se va sin entrar en el mundo y la plaza se libera")
+	assert_eq(_filler_ids(keeper), fillers, "los mismos falsos de relleno, sin altas ni bajas")
 	assert_eq(_server.get_player_count(), 2, "el servidor vuelve a estar lleno de relleno")
+
+
+func test_a_hello_and_a_disconnect_in_a_loop_do_not_churn_the_fillers() -> void:
+	# Revisión de F6b (GUE-43): cada HELLO aceptado con el servidor lleno retiraba ya a un falso de relleno (DESPAWN a
+	# todos; con algunos recuentos, del bando contrario) y, si la persona cortaba antes de CLIENT_READY, creaba otro en su
+	# campamento (SPAWN a todos). En bucle, sin límite. Ahora el falso solo aparta su plaza hasta que la persona entra.
+	await _start_server(func(config: ServerConfig) -> void:
+		config.max_players = 3
+		config.max_realm_diff = 2)
+	var keeper: FillerKeeper = _fill_with_fillers(3)
+	var ana: RawClient = await _join("Ana", VARDHEIM)
+	if ana == null:
+		return
+	assert_true(await _run_until(func() -> bool: return keeper.filler_count() == 2 and _server.get_player_count() == 3),
+			"Ana en la plaza del falso de Vardheim")
+	await _run_frames(10)
+	var fillers: Array[int] = _filler_ids(keeper)
+	var spawns_before: int = ana.spawns.size()
+	var despawns_before: int = ana.despawns.size()
+	var visitors: Array[String] = ["Bruno", "Carla", "Diego", "Elena", "Fabio"]
+	for round_index: int in visitors.size():
+		var visitor: RawClient = _connect_client(_hello(VARDHEIM, visitors[round_index]), false)
+		assert_true(await _run_until(func() -> bool: return visitor.connected or visitor.reject != null),
+				"vuelta %d: el HELLO llega" % round_index)
+		assert_null(visitor.reject, "vuelta %d: se acepta (el relleno le aparta su plaza): %s" % [round_index,
+				visitor.reject.text if visitor.reject != null else ""])
+		visitor.send_raw(NetProtocol.CH_RELIABLE, NetMessages.ClientLeave.new().encode())
+		assert_true(await _run_until(func() -> bool: return _server.get_peer_ids().size() == 1),
+				"vuelta %d: se va sin entrar" % round_index)
+		await _run_frames(3)
+	await _run_frames(10)
+	assert_eq(_filler_ids(keeper), fillers, "los mismos falsos de relleno")
+	assert_eq(ana.despawns.size(), despawns_before, "Ana no recibe ninguna baja")
+	assert_eq(ana.spawns.size(), spawns_before, "ni ninguna alta")
+
+
+func test_a_seat_abandoned_while_another_person_loads_keeps_the_sides_even() -> void:
+	# Revisión de F6b (GUE-43): Ana (Vardheim) y Sam (Solmarch) llegan con el servidor lleno de relleno y cargan a la vez;
+	# Sam se va sin entrar. Con la retirada al llegar el HELLO, el falso de Sam volvía al reino con menos total sin contar
+	# a Ana, que cargaba (Vardheim), y al entrar ella quedaban 2 de Vardheim contra 0 de Solmarch. Ahora: uno por reino.
+	await _start_server(func(config: ServerConfig) -> void:
+		config.max_players = 3
+		config.max_realm_diff = 1)
+	_fill_with_fillers(3)
+	var ana: RawClient = _connect_client(_hello(VARDHEIM, "Ana"), false)
+	var sam: RawClient = _connect_client(_hello(SOLMARCH, "Sam"), false)
+	assert_true(await _run_until(func() -> bool: return ana.connected and sam.connected), "los dos cargan la zona")
+	sam.send_raw(NetProtocol.CH_RELIABLE, NetMessages.ClientLeave.new().encode())
+	assert_true(await _run_until(func() -> bool: return _server.get_peer_ids().size() == 1), "Sam se va sin entrar")
+	ana.send_ready()
+	assert_true(await _run_until(func() -> bool: return ana.own_spawn != null), "Ana entra en el mundo")
+	await _run_frames(5)
+	var by_realm := PackedInt32Array([0, 0, 0])
+	for entity: NetEntity in _server.get_registry().get_sorted():
+		if entity.kind == NetProtocol.EntityKind.PLAYER and entity.realm >= 1 and entity.realm <= 3:
+			by_realm[entity.realm - 1] += 1
+	assert_eq(by_realm, PackedInt32Array([1, 1, 1]), "uno por reino: Ana y los falsos de Solmarch y Askarra")
+	assert_eq(_server.get_player_count(), 3)
+
+
+## Los net_id de los falsos de relleno vivos, ordenados.
+func _filler_ids(keeper: FillerKeeper) -> Array[int]:
+	var ids: Array[int] = []
+	for entity: NetEntity in _server.get_registry().get_sorted():
+		if keeper.is_filler(entity.net_id):
+			ids.append(entity.net_id)
+	return ids
 
 
 func test_duplicate_name_is_rejected_while_the_first_player_is_connected() -> void:

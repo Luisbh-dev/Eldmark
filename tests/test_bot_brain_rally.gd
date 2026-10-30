@@ -395,6 +395,23 @@ func test_slots_of_consecutive_seeds_are_spread_over_the_unit_disk() -> void:
 	for slot: Vector2 in slots:
 		left += 1 if slot.x < 0.0 else 0
 	assert_true(left >= 6 and left <= 14, "repartidos a los dos lados (%d de 20 a la izquierda)" % left)
+	# Lo que dicen slot_for_seed y docs/fuerte.md (revisión de F6b): con cualquier base de 0 a 6000, el par más cercano de
+	# veinte semillas seguidas queda a 0,1 o más (a menos de 0,18 en una de cada diez bases).
+	var worst: float = INF
+	var below: int = 0
+	for base: int in range(0, 6001):
+		var group: Array[Vector2] = []
+		for index: int in 20:
+			group.append(BotBrain.slot_for_seed(base + index))
+		var nearest: float = INF
+		for i: int in group.size():
+			for j: int in range(i + 1, group.size()):
+				nearest = minf(nearest, group[i].distance_squared_to(group[j]))
+		nearest = sqrt(nearest)
+		worst = minf(worst, nearest)
+		below += 1 if nearest < 0.18 else 0
+	assert_true(worst >= 0.1, "con cualquier base, a 0,1 o más (el peor, %.3f)" % worst)
+	assert_true(below > 0 and below < 900, "a menos de 0,18 en una de cada diez bases, no en ninguna (%d de 6001)" % below)
 
 
 func test_in_a_group_they_hit_the_gate_and_hold_the_circle_each_from_its_own_spot() -> void:

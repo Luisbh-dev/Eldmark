@@ -311,7 +311,8 @@ func test_max_realm_diff_rejects_people_and_makes_the_fake_fillers_leave() -> vo
 	var report_path: String = _build_path("test_server_main_l.json")
 	DirAccess.remove_absolute(report_path)
 	# Zona de pruebas (tres reinos): seis falsos de relleno, dos por reino; hasta 1 persona de ventaja. El servidor
-	# está lleno solo de relleno (--max-players=6, GUE-43): la persona entra igual y un falso le cede su plaza.
+	# está lleno solo de relleno (--max-players=6, GUE-43): la persona entra igual y un falso le aparta su plaza, que
+	# deja cuando ella entra en el mundo.
 	var pid: int = _launch(PackedStringArray([
 		"--port=%d" % port, "--zone=test_world", "--quit-after-ticks=840", "--fake-players=6",
 		"--max-players=6", "--max-realm-diff=1", "--report=%s" % report_path,
@@ -342,7 +343,7 @@ func test_max_realm_diff_rejects_people_and_makes_the_fake_fillers_leave() -> vo
 			"nadie recibe «lleno»: el relleno no ocupa plazas de personas (%s)" % [rejects])
 	var log_text: String = FileAccess.get_file_as_string(log_path)
 	assert_true(log_text.contains("Equilibrio de reinos: diferencia máxima de 1"), "el registro lo anuncia")
-	assert_true(log_text.contains("un falso de relleno cede su plaza"), "con el servidor lleno, un falso cede su plaza")
+	assert_true(log_text.contains("un falso de relleno aparta su plaza"), "con el servidor lleno, un falso aparta su plaza")
 	var retired: Array[String] = []
 	var added_back: Array[String] = []
 	for line: String in log_text.split("\n"):

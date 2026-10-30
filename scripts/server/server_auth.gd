@@ -63,10 +63,11 @@ func set_realm_counts_source(source: Callable) -> void:
 ## [param connections_from_address], las conexiones que ya tiene abiertas esa IP (sin contar
 ## esta): se rechaza si llega a [member ServerConfig.max_connections_per_ip].
 ## [br][br]
-## [param filler_seats] son los falsos de relleno de [code]--max-realm-diff[/code] que hay entre esos jugadores
-## (GUE-43): no ocupan plazas de personas, así que el servidor solo está lleno (FULL) si los demás (personas y
-## falsos que no son de relleno) llegan a [member ServerConfig.max_players]. Si con un OK el servidor sigue
-## lleno, quien llama retira un falso de relleno para dejar sitio ([method FillerKeeper.yield_seat]).
+## [param filler_seats] son los falsos de relleno de [code]--max-realm-diff[/code] que hay entre esos jugadores y que
+## aún pueden ceder su plaza (GUE-43): no ocupan plazas de personas, así que el servidor solo está lleno (FULL) si los
+## demás (personas y falsos que no son de relleno) llegan a [member ServerConfig.max_players]. Si con un OK el servidor
+## sigue lleno, quien llama le aparta a la persona la plaza de un falso de relleno, que se va cuando ella entra en el
+## mundo ([method FillerKeeper.reserve_seat]).
 func validate(hello: NetMessages.Hello, remote_address: String, player_count: int,
 		connections_from_address: int, filler_seats: int = 0) -> int:
 	if hello == null:

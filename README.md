@@ -285,6 +285,8 @@ godot --headless --path . -- --bots=32 --connect=127.0.0.1:24600 --realm=vardhei
     --bot-seed=1000 --quit-after-ticks=3600 --report=build/enjambre.json
 ```
 
+Con `--quit-at-server-tick=N` el enjambre se va cuando alguno de sus bots recibe un snapshot del tick N
+del servidor, aunque el servidor vaya más despacio que el tiempo real (lo usa `tools/load_test.gd`).
 Cada bot se llama `Bot` más cuatro letras según `--bot-seed` más su índice, así que dos enjambres
 contra el mismo servidor necesitan semillas distintas. Sin `--realm` se reparten entre Vardheim y
 Solmarch. El informe trae los bytes de subida y de bajada de cada cliente, los snapshots recibidos

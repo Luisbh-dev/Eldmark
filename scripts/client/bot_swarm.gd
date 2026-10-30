@@ -11,7 +11,8 @@ extends Node
 ## que un proceso aguanta decenas de ellos.
 ## [br][br]
 ## Opciones ([ClientConfig]): [code]--bots=N --connect=<host>[:<puerto>] [--realm=<reino>]
-## [--bot-seed=N] [--bot-brain=combat] [--net-sim=…] [--quit-after-ticks=N] [--report=<ruta.json>][/code]. El bot [i]i[/i]
+## [--bot-seed=N] [--bot-brain=combat] [--net-sim=…] [--quit-after-ticks=N] [--quit-at-server-tick=N]
+## [--report=<ruta.json>][/code]. El bot [i]i[/i]
 ## se llama [code]NameRules.bot_name(bot_seed + i)[/code]: dos enjambres contra el mismo servidor
 ## necesitan semillas distintas (los nombres no se pueden repetir en una zona). Sin [code]--realm[/code]
 ## los bots se reparten entre Vardheim y Solmarch.
@@ -19,7 +20,10 @@ extends Node
 ## Con [code]--quit-after-ticks=N[/code], tras N ticks de física locales (desde que arranca el
 ## enjambre) los bots salen de la zona con CLIENT_LEAVE, se escribe el informe y se cierra con
 ## código 0 si todos los bots estaban jugando, y con 1 si alguno fue rechazado, se desconectó o no
-## llegó a entrar.
+## llegó a entrar. Con [code]--quit-at-server-tick=N[/code] hace lo mismo en cuanto alguno de sus bots recibe un
+## snapshot del tick N del servidor (o posterior): un servidor cargado va más despacio que el tiempo real, y la prueba
+## de carga necesita que los bots sigan dentro hasta un tick del servidor, no hasta un instante del reloj
+## ([code]tools/load_test.gd[/code]). Las dos pueden ir juntas: sale con la primera que se cumpla.
 ## [br][br]
 ## [b]Informe[/b] ([method build_report]): [code]bots[/code] pedidos, creados, jugando, rechazados y
 ## desconectados; [code]totals[/code] (bytes de subida y de bajada de todos, snapshots, tamaño medio de
@@ -217,7 +221,19 @@ func _physics_process(_delta: float) -> void:
 		_spawn_bot()
 	var quit_after: int = _config.quit_after_ticks
 	if quit_after > 0 and _tick >= quit_after:
-		_begin_finish()
+		_begin_finish("--quit-after-ticks")
+		return
+	var quit_at: int = _config.quit_at_server_tick
+	if quit_at > 0 and newest_server_tick() >= quit_at:
+		_begin_finish("--quit-at-server-tick")
+
+
+## El tick del servidor más reciente que ha visto en un snapshot alguno de sus bots (0 si ninguno ha recibido uno).
+func newest_server_tick() -> int:
+	var newest: int = 0
+	for bot: SwarmBot in _bots:
+		newest = maxi(newest, bot.get_newest_server_tick())
+	return newest
 
 
 func _spawn_bot() -> void:
@@ -228,10 +244,11 @@ func _spawn_bot() -> void:
 	_created_ticks.append(_tick)
 
 
-# Fin normal: los bots salen de la zona y, cuando se han ido (o tras LEAVE_WAIT_TICKS), informe y cierre.
-func _begin_finish() -> void:
-	print("[Eldmark] Fin del enjambre: %d ticks locales (--quit-after-ticks), %d de %d bots jugando"
-			% [_tick, count_in_world(), _bots.size()])
+# Fin normal: los bots salen de la zona y, cuando se han ido (o tras LEAVE_WAIT_TICKS), informe y cierre. [param reason]
+# es la opción que lo ha decidido.
+func _begin_finish(reason: String) -> void:
+	print("[Eldmark] Fin del enjambre: %d ticks locales, tick %d del servidor (%s), %d de %d bots jugando"
+			% [_tick, newest_server_tick(), reason, count_in_world(), _bots.size()])
 	_exit_code = 0 if count_in_world() == _config.bot_count else 1
 	_write_report()
 	_finishing = true

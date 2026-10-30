@@ -189,7 +189,7 @@ func setup(index: int, config: ClientConfig) -> void:
 	_combat = config.bot_brain == ClientConfig.BOT_BRAIN_COMBAT or _siege_mode
 	if _siege_mode:
 		_siege_view = SiegeView.new()
-		_threat_sight = BotThreatSight.new()
+		_threat_sight = BotThreatSight.new(_is_enemy_npc)
 	_display_name = NameRules.bot_name(config.bot_seed + index)
 	_realm = config.realm if config.realm != NetProtocol.Realm.NONE \
 			else DEFAULT_REALMS[index % DEFAULT_REALMS.size()]
@@ -247,6 +247,11 @@ func is_in_world() -> bool:
 ## Id de red del personaje (0 hasta el SPAWN propio).
 func get_net_id() -> int:
 	return _net_id
+
+
+## El tick del servidor del snapshot más reciente que ha recibido (0 si aún ninguno).
+func get_newest_server_tick() -> int:
+	return _newest_snapshot_tick
 
 
 func get_local_tick() -> int:
@@ -736,6 +741,12 @@ func _count_allies(center: Vector3, radius: float) -> int:
 		if dx * dx + dz * dz <= limit:
 			found += 1
 	return found
+
+
+# Cerebro de asedio: true si el PNJ [param net_id] es uno de los de guerra enemigos que conoce por sus altas (los únicos
+# cuyos golpes avisados evita: los de los PNJ de su reino no le dañan).
+func _is_enemy_npc(net_id: int) -> bool:
+	return _enemy_npcs.has(net_id)
 
 
 # Cerebro de asedio: los golpes avisados que siguen activos en el tick de la entrada que se decide.

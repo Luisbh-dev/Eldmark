@@ -26,9 +26,9 @@ extends RefCounted
 ## ha agotado el cupo de [code]--fake-players[/code], entra un falso de relleno en [i]r[/i]
 ## ([method should_add_on_leave]).
 ## [br]- Llega el HELLO de una persona de [i]r[/i] con el servidor lleno solo por el relleno (GUE-43): el relleno no
-## ocupa plazas de personas, así que entra y un falso le cede la suya ya, antes de que cargue la zona. Lo cede el
-## reino con más total contando a quien entra; a igualdad, el de [i]r[/i] y, si no, el de código más alto
-## ([method realm_to_yield_seat]). Cuenta como el falso que retira esa persona: al entrar en el mundo no se
+## ocupa plazas de personas, así que entra y un falso le aparta la suya, que deja cuando ella entra en el mundo (si se
+## va antes, no se ha movido nadie). Lo cede el reino con más total contando a quien entra; a igualdad, el de [i]r[/i]
+## y, si no, el de código más alto ([method realm_to_yield_seat]). Cuenta como el falso que retira esa persona: no se
 ## retira otro por ella (sigue siendo uno por persona).
 ## [br]Un falso nunca se retira por otra razón, y el relleno no cuenta para el rechazo: una persona no se
 ## queda fuera porque el bando contrario esté lleno de falsos, ni porque el servidor lo esté.

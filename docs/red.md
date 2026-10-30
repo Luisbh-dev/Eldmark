@@ -93,7 +93,7 @@ ajustes y el audio): para el cliente instancia por su ruta `scenes/client/client
 | `--connect=<host>[:<puerto>] [--realm=<reino>] [--name=<nombre>]` | Cliente en red | `scenes/client/online_main.tscn` |
 | `--local [--realm=…] [--name=…]` | Cliente contra un servidor local, que se lanza si no hay ninguno | `scenes/client/online_main.tscn` |
 | `--bot --connect=… [--bot-seed=N] [--bot-brain=wander\|combat] [--bot-cheat=<modo>]` | Un cliente que predice, sin cámara ni HUD, guiado por `BotBrain` (pasea, o pelea con el cerebro de combate) | `scenes/client/online_main.tscn` |
-| `--bots=N --connect=… [--bot-seed=N] [--bot-brain=combat]` | Enjambre de N clientes ligeros que no simulan, para pruebas de carga (con `combat`, pelean) | `scenes/client/bot_swarm.tscn` |
+| `--bots=N --connect=… [--bot-seed=N] [--bot-brain=combat] [--quit-at-server-tick=N]` | Enjambre de N clientes ligeros que no simulan, para pruebas de carga (con `combat`, pelean; con `--quit-at-server-tick`, se van cuando alguno ve ese tick del servidor) | `scenes/client/bot_swarm.tscn` |
 | Comunes | `--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1`, `--quit-after-ticks=N`, `--report=<ruta.json>`, `--state-log=<ruta.csv>` | |
 
 - **`--zone` y `--realm`** se leen con las utilidades de `zones.gd`, a través de `NetZones`.
@@ -1740,8 +1740,11 @@ Tick en ms, p50 / p95 / p99 / máximo del último tramo de 34 s:
 | Asedio | Jugadores | Tick | `sim` p50 | Bajada por cliente | Sustituidas (ventana) | Rebobinados rechazados |
 |---|---|---|---|---|---|---|
 | 32 contra 32 | 64 | 10,6 / 15,3 / 19,1 / 27,8 | 6,8 | 36,1 KB/s | 0,00 % | 0 |
-| 64 contra 64 | 128 | 14,8 / 22,0 / 26,4 / 42,8 | 12,0 | 28,5 KB/s | 50,76 % | 25 (6 sospechosos) |
+| 64 contra 64 | 128 en la ventana; **118 sin clientes en el último tramo** | 14,8 / 22,0 / 26,4 / 42,8 (de 118; con los 128, p99 de las marcas 32,5) | 12,0 (de 118) | 28,5 KB/s | 50,76 % | 25 (6 sospechosos) |
 
+La fila de 64 contra 64 no es de 128 jugadores (revisión de F6b): el enjambre se cerraba por su propio reloj y el servidor, más lento
+que el tiempo real, siguió el último tramo sin los 10 bots reales (su `snapshot` de 0,002 ms lo delata); desde la revisión el enjambre
+se cierra por el tick del servidor (`--quit-at-server-tick`) y el resumen avisa si el tramo no tiene el pico de jugadores.
 Los resultados completos y lo que pasa en la batalla están en [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones). Con 64 jugadores
 el criterio de 8 ms de p99 **no se cumple** (19,1 ms, con la mediana ya en 10,6), igual que en la refriega de la fase 3 (15,9 ms con 64
 combatientes en una máquina en reposo), los KB/s por cliente se cumplen (36,1 de 37) y no se sustituye ni una entrada; con 128 el
@@ -1761,19 +1764,25 @@ F6b (abajo) lo comprueba el resumen: los 10 bots reales llegan a menos de 25 m d
 Vado Gris (cuatro Huecos, el Capitán del Vado, la guarnición del dueño y los cuatro Guardianes de los campamentos) y el fuerte va solo,
 sin `fort_kill_captain`; sin `--npcs`, el asedio de F6a con `--no-npcs`. Dos pasadas de cada asedio de 32 contra 32, alternadas, en la
 misma máquina de 4 núcleos **sin otra suite en marcha** (carga media de 0,5 a 1,1), así que no se comparan al detalle con las de F6a.
+La primera de 64 contra 64 tenía el mismo defecto que la de F6a (sus percentiles son de 118 jugadores sin ningún cliente); la segunda,
+de la revisión de F6b, se hizo con el enjambre cerrado por el tick del servidor y con otra suite en marcha (carga de 0,7 a 1,8).
 Tick en ms, p50 / p95 / p99 / máximo del último tramo de 34 s; `npc_brains` (los cerebros de los PNJ) y `npc` (sus generadores), p50:
 
 | Asedio | Jugadores | Tick | `sim` p50 | `npc_brains` / `npc` | `war` p50 / p99 | Bajada por cliente | Sustituidas (ventana) | Rebobinados rechazados |
 |---|---|---|---|---|---|---|---|---|
 | 32 contra 32 con PNJ (dos pasadas) | 64 | 10,6 / 14,8 / 17,4 / 27,5 y 9,4 / 13,5 / 15,2 / 23,0 | 7,0 y 6,1 | 0,22 / 0,06 y 0,20 / 0,06 | 0,08 / 1,1 | 36,2–36,3 KB/s | 0,03 y 0,00 % | 0 |
 | 32 contra 32 sin PNJ (dos pasadas) | 64 | 9,1 / 12,8 / 15,0 / 27,9 y 9,9 / 14,2 / 16,9 / 24,9 | 6,2 y 6,7 | 0,05 / 0 (los maniquíes) | 0,08–0,09 / 1,0–1,1 | 36,2 KB/s | 0,00 % | 0 |
-| 64 contra 64 con PNJ (una) | 128 | 16,2 / 22,8 / 27,0 / 39,6 | 13,5 | 0,27 / 0,07 | 0,09 / 2,1 | 29,0 KB/s | 38,6 % | 83 (10 sospechosos) |
+| 64 contra 64 con PNJ, 1.ª | 128 en la ventana; **118 sin clientes en el último tramo** | 16,2 / 22,8 / 27,0 / 39,6 (de 118; con los 128, las marcas dan p50 19,6 y p99 33,5) | 13,5 (de 118) | 0,27 / 0,07 (de 118) | 0,09 / 2,1 (de 118) | 29,0 KB/s | 38,6 % | 83 (10 sospechosos) |
+| 64 contra 64 con PNJ, 2.ª (revisión de F6b) | 128 (el 90 % del último tramo) | 17,2 / 24,2 / 30,0 / 72,3 | 12,3 | 0,23 / 0,06 | 0,08 / 1,9 | 32,1 KB/s | 0,00 % | 44 (8 sospechosos) |
 
-Los 9 PNJ del fuerte cuestan alrededor de 1 ms del tick mientras viven (sus cerebros, con un p99 de 0,8 a 1,1 ms por marca de 10 s;
-los generadores, 0,06 ms; su `simulate()`, unos 0,55 ms dentro de `sim`), y ~0,5 ms cuando solo quedan los cuatro Guardianes. Es del
+Los 9 PNJ de guerra (los 5 del fuerte y los 4 Guardianes de los campamentos) cuestan alrededor de 1 ms del tick mientras viven (sus
+cerebros, con un p99 de 0,8 a 1,1 ms por marca de 10 s mientras viven los Huecos; los generadores, 0,06 ms; su `simulate()`, unos
+0,55 ms dentro de `sim`), y ~0,5 ms cuando solo quedan los cuatro Guardianes. Es del
 orden de la diferencia entre dos pasadas iguales (0,8–1,2 ms de p50): con estas cifras no se distingue el asedio con PNJ del de sin
 ellos. Los criterios no cambian: con 64 jugadores, **p99 de 15,2 a 17,4 ms, NO se cumple** (domina `simulate()`); 36,2–36,3 KB/s por
-cliente y como mucho un 0,03 % de entradas sustituidas, sí; con 128, no (38,6 % sustituidas y el rebobinado falla a los honrados).
+cliente y como mucho un 0,03 % de entradas sustituidas, sí; con 128, no: el p99 pasa de 29 ms, el servidor no llega al tiempo real
+(81 y 87 %), las entradas de los clientes se sustituyen o no según cuánto se retrasa (38,6 % y 0,00 % en las dos pasadas) y el
+rebobinado falla a los honrados en las dos.
 **El primer límite de jugadores por batalla en el fuerte sigue en 64 (32 contra 32), también con los PNJ.** La batalla de cada pasada
 y la sesión de telemetría de 20 contra 20, en [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones) (F6b, paquete E).
 

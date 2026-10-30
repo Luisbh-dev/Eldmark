@@ -10,7 +10,8 @@ extends RefCounted
 ## de la zona: el [SiegeView] lo llena [FortressView] (lo que el cliente dibuja de la fortaleza) y, de
 ## respaldo, las posiciones de [code]data/routes/<zona>.tres[/code]; los enemigos son los remotos que dibuja su
 ## [RemoteWorld], también los PNJ de guerra ([BotEnemySight]), a los que busca primero, los golpes avisados
-## (TELEGRAPH) que evita le llegan por [signal NetClient.telegraph_received] ([BotThreatSight]) y a los suyos los cuenta
+## (TELEGRAPH) que evita le llegan por [signal NetClient.telegraph_received] ([BotThreatSight], solo los de PNJ que le
+## pueden dañar: [method BotThreatSight.is_hostile_view]) y a los suyos los cuenta
 ## en el punto de reunión de su campamento con [BotAllySight] (GUE-44);
 ## [br]- si no, [constant BotBrain.Pattern.WANDER]: pasea alrededor de su punto de aparición.
 
@@ -51,7 +52,10 @@ static func _make_siege(client: NetClient, config: ClientConfig, home: Vector3, 
 			_previous: FortressState) -> void: _refresh_siege_view(view, fortress_view))
 	var sight := BotEnemySight.new(client, false, true)
 	var defenders := BotEnemySight.new(client, false, true, true)
-	var threats := BotThreatSight.new()
+	# Solo los golpes avisados de quien puede dañarle (como los falsos del servidor): no los de la guarnición de su reino.
+	var zone_id: StringName = StringName(welcome.zone_id) if welcome != null else &""
+	var threats := BotThreatSight.new(func(net_id: int) -> bool:
+		return BotThreatSight.is_hostile_view(client.get_remote_world(), realm, zone_id, net_id))
 	client.telegraph_received.connect(threats.note)
 	var prediction: ClientPrediction = client.get_prediction()
 	var brain := BotBrain.new(config.bot_seed, BotBrain.Pattern.SIEGE, home, radius)

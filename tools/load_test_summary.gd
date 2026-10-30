@@ -60,15 +60,18 @@ static func parse_tick_timeline(log_text: String) -> Array[Dictionary]:
 
 
 ## Resume las marcas de [method parse_tick_timeline] entre [param first_tick] y [param last_tick] (ambos
-## incluidos): [code]{marks, p50_us, p99_us, worst_p99_us, max_us, npcs_min, npcs_max}[/code] con el número de
-## marcas, la mediana de sus p50 y de sus p99, el peor p99, el mayor máximo y los PNJ que había como mínimo y como
-## máximo en ellas (-1 si ninguna lo dice). Vacío si no hay ninguna.
+## incluidos): [code]{marks, p50_us, p99_us, worst_p99_us, max_us, npcs_min, npcs_max, players_min, players_max}[/code]
+## con el número de marcas, la mediana de sus p50 y de sus p99, el peor p99, el mayor máximo, los PNJ que había como
+## mínimo y como máximo en ellas (-1 si ninguna lo dice) y lo mismo de los jugadores (si cambian dentro de la ventana,
+## las marcas no son todas de la misma carga). Vacío si no hay ninguna.
 static func timeline_window(marks: Array[Dictionary], first_tick: int, last_tick: int) -> Dictionary:
 	var p50s: Array[int] = []
 	var p99s: Array[int] = []
 	var worst_max: int = 0
 	var npcs_min: int = -1
 	var npcs_max: int = -1
+	var players_min: int = -1
+	var players_max: int = -1
 	for mark: Dictionary in marks:
 		var tick: int = int(mark["tick"])
 		if tick < first_tick or tick > last_tick:
@@ -76,6 +79,10 @@ static func timeline_window(marks: Array[Dictionary], first_tick: int, last_tick
 		p50s.append(int(mark["p50_us"]))
 		p99s.append(int(mark["p99_us"]))
 		worst_max = maxi(worst_max, int(mark["max_us"]))
+		var players: int = int(mark.get("players", -1))
+		if players >= 0:
+			players_min = players if players_min < 0 else mini(players_min, players)
+			players_max = maxi(players_max, players)
 		var npcs: int = int(mark.get("npcs", -1))
 		if npcs >= 0:
 			npcs_min = npcs if npcs_min < 0 else mini(npcs_min, npcs)
@@ -87,7 +94,57 @@ static func timeline_window(marks: Array[Dictionary], first_tick: int, last_tick
 	return {
 		"marks": p50s.size(), "p50_us": p50s[p50s.size() / 2], "p99_us": p99s[p99s.size() / 2],
 		"worst_p99_us": p99s[p99s.size() - 1], "max_us": worst_max, "npcs_min": npcs_min, "npcs_max": npcs_max,
+		"players_min": players_min, "players_max": players_max,
 	}
+
+
+## Cuántos jugadores (personas y falsos) había en el servidor en cada tick de [param first_tick] a [param last_tick]
+## (ambos incluidos), según el alta y la baja de cada ficha del [code]player_list[/code] del informe ([param players]):
+## está desde su [code]joined_tick[/code] hasta el tick anterior a su [code]left_tick[/code] (-1, o
+## [param end_tick] o más, el cierre del servidor: hasta el final). Devuelve [code]{min, max, ticks, ticks_at_max}[/code]:
+## el menor y el mayor número, los ticks del tramo y cuántos de ellos tuvieron el mayor. Sirve para saber si los
+## percentiles del informe del servidor (de sus últimos 2048 ticks) son de la carga que se quería medir: con muchos
+## jugadores el servidor va más despacio que el tiempo real, y un enjambre que se cierra por su reloj se iba antes de
+## que acabara ese tramo (GUE-16, revisión de F6b). Vacío si el tramo está vacío.
+static func presence(players: Array, first_tick: int, last_tick: int, end_tick: int) -> Dictionary:
+	if last_tick < first_tick:
+		return {}
+	var changes: Dictionary = {}
+	var current: int = 0
+	for entry: Dictionary in players:
+		var joined: int = int(entry.get("joined_tick", 0))
+		var left: int = int(entry.get("left_tick", -1))
+		if left < 0 or left >= end_tick:
+			left = last_tick + 1
+		if left <= first_tick or joined > last_tick or left <= joined:
+			continue
+		if joined <= first_tick:
+			current += 1
+		else:
+			changes[joined] = int(changes.get(joined, 0)) + 1
+		if left <= last_tick:
+			changes[left] = int(changes.get(left, 0)) - 1
+	var ticks: Array = changes.keys()
+	ticks.sort()
+	# Tramos [desde, hasta) con el mismo número de jugadores.
+	var spans: Array[Vector3i] = []
+	var start: int = first_tick
+	for tick: int in ticks:
+		spans.append(Vector3i(start, tick, current))
+		current += int(changes[tick])
+		start = tick
+	spans.append(Vector3i(start, last_tick + 1, current))
+	var lowest: int = 0x7FFFFFFF
+	var highest: int = -1
+	for span: Vector3i in spans:
+		if span.y > span.x:
+			lowest = mini(lowest, span.z)
+			highest = maxi(highest, span.z)
+	var at_max: int = 0
+	for span: Vector3i in spans:
+		if span.z == highest:
+			at_max += span.y - span.x
+	return {"min": lowest, "max": highest, "ticks": last_tick - first_tick + 1, "ticks_at_max": at_max}
 
 
 ## Entradas que el servidor había consumido de los jugadores de red (no los falsos) hasta el tick

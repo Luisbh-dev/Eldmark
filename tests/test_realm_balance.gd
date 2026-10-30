@@ -158,10 +158,15 @@ class Rig:
 		return keeper.on_person_joined(realm, peer_id)
 
 
-	## Llega el HELLO de [param peer_id] con el servidor lleno: un falso le cede su plaza (GUE-43). La persona aún
-	## no cuenta: entra en el mundo con [method person_joins].
+	## Llega el HELLO de [param peer_id] con el servidor lleno: el relleno le aparta una plaza (GUE-43). La persona
+	## aún no cuenta: entra en el mundo con [method person_joins], y entonces se va el falso que la cede.
 	func hello_when_full(peer_id: int, realm: int) -> bool:
-		return keeper.yield_seat(peer_id, realm)
+		return keeper.reserve_seat(peer_id, realm)
+
+
+	## [param peer_id] se va sin haber entrado en el mundo (corta o no termina de cargar).
+	func leaves_while_loading(peer_id: int) -> bool:
+		return keeper.release_seat(peer_id)
 
 
 	func person_leaves(realm: int) -> bool:
@@ -300,14 +305,15 @@ func test_with_the_server_full_the_seat_comes_from_the_side_that_would_otherwise
 func test_a_person_arriving_at_a_full_server_takes_the_seat_of_the_oldest_filler_of_their_realm() -> void:
 	var rig := Rig.new(4, BORDER)
 	rig.fill(4)
-	assert_true(rig.hello_when_full(11, V), "con el servidor lleno de relleno, un falso cede su plaza")
-	assert_eq(rig.removed, [101] as Array[int], "el más antiguo de Vardheim, en el momento")
-	assert_eq(rig.keeper.filler_counts(), _counts(1, 2, 0))
-	assert_true(rig.keeper.has_yielded_seat(11), "la plaza queda a nombre de esa persona")
-	assert_false(rig.person_joins(V, 11), "al entrar en el mundo no se retira otro: es uno por persona")
-	assert_eq(rig.removed.size(), 1)
-	assert_false(rig.keeper.has_yielded_seat(11), "y la plaza deja de estar pendiente")
+	assert_true(rig.hello_when_full(11, V), "con el servidor lleno de relleno, un falso le aparta su plaza")
+	assert_true(rig.removed.is_empty(), "pero no se va hasta que ella entra en el mundo")
+	assert_true(rig.keeper.has_reserved_seat(11), "la plaza queda a nombre de esa persona")
+	assert_eq(rig.keeper.reserved_count(), 1)
+	assert_true(rig.person_joins(V, 11), "al entrar en el mundo se va el falso que se la cede")
+	assert_eq(rig.removed, [101] as Array[int], "el más antiguo de Vardheim")
+	assert_false(rig.keeper.has_reserved_seat(11), "y la plaza deja de estar pendiente")
 	assert_eq(RealmBalance.totals(rig.persons, rig.keeper.filler_counts()), _counts(2, 2, 0), "2 contra 2")
+	assert_eq(rig.removed.size(), 1, "uno solo por persona")
 
 
 func test_after_a_yielded_seat_the_usual_rules_keep_working() -> void:
@@ -329,33 +335,79 @@ func test_two_people_of_the_same_realm_arriving_together_at_a_full_server_both_g
 	rig.fill(4)
 	# Los dos HELLO llegan antes de que ninguno entre en el mundo.
 	assert_true(rig.hello_when_full(11, V))
-	assert_true(rig.hello_when_full(12, V), "Vardheim 2 (1 falso y la segunda persona) contra 2: el suyo")
+	assert_true(rig.hello_when_full(12, V))
+	assert_eq(rig.keeper.reserved_count(), 2, "dos plazas apartadas")
+	assert_true(rig.removed.is_empty())
+	assert_true(rig.person_joins(V, 11))
+	assert_true(rig.person_joins(V, 12), "Vardheim 2 (1 falso y la segunda persona) contra 2: el suyo")
 	assert_eq(rig.removed, [101, 103] as Array[int], "los dos falsos de Vardheim")
-	assert_false(rig.person_joins(V, 11))
-	assert_false(rig.person_joins(V, 12))
 	assert_eq(rig.keeper.filler_counts(), _counts(0, 2, 0))
 	assert_eq(RealmBalance.totals(rig.persons, rig.keeper.filler_counts()), _counts(2, 2, 0))
 	# La tercera ya no encuentra relleno de Vardheim: cede uno de Solmarch (lo que diga el cupo lo decide el servidor).
 	assert_true(rig.hello_when_full(13, V))
+	assert_true(rig.person_joins(V, 13))
 	assert_eq(rig.removed.back(), 102, "el más antiguo de Solmarch")
 
 
-func test_a_person_who_leaves_before_entering_the_world_gets_the_filler_back() -> void:
+func test_the_fillers_only_reserve_as_many_seats_as_there_are_fillers() -> void:
+	var rig := Rig.new(2, BORDER)
+	rig.fill(2)
+	assert_true(rig.hello_when_full(11, V))
+	assert_true(rig.hello_when_full(12, S))
+	assert_false(rig.hello_when_full(13, V), "los dos falsos ya han apartado su plaza")
+	assert_false(rig.hello_when_full(11, V), "ni se apartan dos a la misma persona")
+	assert_eq(rig.keeper.reserved_count(), 2)
+	assert_true(rig.leaves_while_loading(12))
+	assert_true(rig.hello_when_full(13, V), "la que se va sin entrar deja libre la suya")
+
+
+func test_a_person_who_leaves_before_entering_the_world_frees_the_seat_without_moving_any_filler() -> void:
 	var rig := Rig.new(4, BORDER)
 	rig.fill(4)
 	rig.hello_when_full(11, V)
-	assert_eq(rig.keeper.filler_count(), 3)
-	assert_true(rig.keeper.on_seat_abandoned(11), "se va sin entrar: vuelve el falso")
-	assert_eq(rig.created, [V] as Array[int], "en el reino con menos total")
-	assert_eq(rig.keeper.filler_counts(), _counts(2, 2, 0), "el cupo entero otra vez")
-	assert_false(rig.keeper.has_yielded_seat(11))
-	assert_false(rig.keeper.on_seat_abandoned(11), "solo una vez")
-	assert_false(rig.keeper.on_seat_abandoned(77), "quien no entró en una plaza cedida no repone nada")
-	assert_eq(rig.created.size(), 1)
+	assert_eq(rig.keeper.filler_count(), 4, "el falso sigue en el mundo mientras ella carga")
+	assert_true(rig.leaves_while_loading(11), "se va sin entrar: la plaza se libera")
+	assert_true(rig.removed.is_empty(), "no se ha retirado a nadie")
+	assert_true(rig.created.is_empty(), "ni hay que reponer a nadie")
+	assert_eq(rig.keeper.filler_counts(), _counts(2, 2, 0), "el cupo entero, los mismos falsos")
+	assert_false(rig.keeper.has_reserved_seat(11))
+	assert_false(rig.leaves_while_loading(11), "solo una vez")
+	assert_false(rig.leaves_while_loading(77), "quien no tenía plaza apartada no libera nada")
+
+
+func test_a_hello_and_a_disconnect_in_a_loop_never_touch_the_fillers() -> void:
+	# Revisión de F6b (GUE-43): con la retirada al llegar el HELLO, cada HELLO seguido de una desconexión antes de entrar
+	# retiraba al falso más antiguo (DESPAWN a todos; en algunos estados, uno del bando contrario) y creaba otro nuevo en su
+	# campamento (SPAWN a todos), sin límite. Ahora la plaza solo se aparta: el relleno no se mueve.
+	# Vardheim 2 personas contra Solmarch 1 persona y 1 falso: una tercera de Vardheim llega con el servidor lleno.
+	var rig := Rig.new(2, BORDER)
+	rig.persons = _counts(2, 1, 0)
+	rig.keeper.track(50, S)
+	for peer_id: int in range(11, 16):
+		assert_true(rig.hello_when_full(peer_id, V), "HELLO %d: plaza apartada" % peer_id)
+		assert_true(rig.leaves_while_loading(peer_id), "y se va sin entrar")
+	assert_true(rig.removed.is_empty(), "no se retira ningún falso (%s)" % [rig.removed])
+	assert_true(rig.created.is_empty(), "ni se crea ninguno (%s)" % [rig.created])
+	assert_true(rig.keeper.is_filler(50), "el de Solmarch sigue donde estaba")
+
+
+func test_a_seat_abandoned_while_another_person_loads_leaves_the_sides_even() -> void:
+	# Revisión de F6b (GUE-43): con la retirada al llegar el HELLO, Ana (Vardheim) y Sam (Solmarch) cogían la plaza de un
+	# falso de su reino; Sam se iba cargando y su falso volvía al reino con menos total sin contar a Ana, que aún cargaba
+	# (Vardheim, por empate): al entrar Ana quedaban 3 contra 1. Ahora el falso se retira cuando ella entra: 2 contra 2.
+	var rig := Rig.new(4, BORDER)
+	rig.fill(4)
+	assert_true(rig.hello_when_full(11, V), "Ana")
+	assert_true(rig.hello_when_full(12, S), "Sam")
+	assert_true(rig.leaves_while_loading(12), "Sam se va cargando")
+	assert_true(rig.person_joins(V, 11), "Ana entra: se va un falso")
+	assert_eq(RealmBalance.totals(rig.persons, rig.keeper.filler_counts()), _counts(2, 2, 0), "2 contra 2")
+	assert_eq(rig.keeper.filler_counts(), _counts(1, 2, 0))
+	assert_true(rig.created.is_empty())
 
 
 func test_without_fillers_nothing_yields_a_seat() -> void:
 	var rig := Rig.new(2, BORDER)
 	assert_false(rig.hello_when_full(11, V), "no hay relleno")
-	assert_false(rig.keeper.has_yielded_seat(11))
+	assert_false(rig.keeper.has_reserved_seat(11))
 	assert_true(rig.removed.is_empty())
