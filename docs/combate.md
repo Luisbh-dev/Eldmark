@@ -504,7 +504,8 @@ ninguno debe hacer daño de más.
   zonas RVR. `Zones.get_pvp_mode(zone_id) -> PvpMode` (SAFE o RVR; Vado Gris y test_world RVR).
   **Zonas seguras**: `Marker3D` del grupo `safe_areas` con metadatos `realm` y `radius` (24 m) en
   cada campamento del Vado Gris. **Solo protege a su reino**: un jugador de ese reino dentro no
-  recibe daño ni lo hace (no se puede atacar a salvo desde dentro); un intruso enemigo dentro sí
+  recibe daño ni lo hace (no se puede atacar a salvo desde dentro; tampoco su muro de escudos para
+  flechas, habilidades.md §4.4); un intruso enemigo dentro sí
   es dañable, por los Guardianes de la Puerta de la fase 4 (PNJ con `ignores_safe_area`).
 
 ---
@@ -540,7 +541,9 @@ ninguno debe hacer daño de más.
     también cuando el remoto es la víctima (o el muerto) de un evento propio: `CombatFeedback`
     aplica al llegar lo que es del jugador local y guarda el destello, la placa de vida
     (`entity_damaged`) y el sonido de muerte o de baja del remoto en su propia cola hasta ese
-    `render_tick`.
+    `render_tick`. Igual el `StatusTracker` del remoto (sus iconos en la placa): `NetClient` le pasa
+    los eventos propios en ese `render_tick`, en la cola de los ajenos (habilidades.md §6.4; revisión
+    de la fase 4).
 - **RESPAWN_REQUEST** (`0x05`, C→S, canal 3): `u8 type`, `u8 point_index`. Fuera de plazo o con un
   índice inválido cuenta un aviso.
 - **DEBUG_COMMAND** (TEC-19) con ids fijos en `NetProtocol`: 1 `teleport` (sin cambios), 2 `heal`,

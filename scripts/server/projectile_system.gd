@@ -716,7 +716,8 @@ func _base_hit(projectile: Projectile, s: int) -> CombatResolver.Hit:
 # --- Candidatos y muros del tick --------------------------------------------------------------
 
 # Calcula una vez por tick los candidatos (vivos, con su caja barrida ensanchada con la cápsula) y los muros
-# de escudos de [member _combatants], en los arrays del tick (sin crear objetos salvo los muros).
+# de escudos de [member _combatants] (solo de quien está sin protección y fuera de la zona segura de su
+# reino), en los arrays del tick (sin crear objetos salvo los muros).
 func _prepare(s: int) -> void:
 	if _prepared_tick == s:
 		return
@@ -756,7 +757,10 @@ func _prepare(s: int) -> void:
 		_candidate_low[count] = low - reach
 		_candidate_high[count] = high + top
 		count += 1
-		if frame.wall_half_extents != Vector3.ZERO:
+		# Solo el muro de quien está «abierto»: el de quien tiene protección o está en la zona segura de su
+		# reino no para flechas (pasan como por su cápsula), así no gasta resistencia, ni se le rompe la
+		# guardia, ni queda en combate dentro de su campamento (docs/combate.md §5).
+		if open and frame.wall_half_extents != Vector3.ZERO:
 			var wall := _Wall.new()
 			wall.holder = combatant
 			wall.realm = realm

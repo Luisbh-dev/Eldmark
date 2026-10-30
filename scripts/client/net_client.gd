@@ -60,7 +60,8 @@ extends Node
 ## [br][br]
 ## [b]Habilidades[/b] (docs/habilidades.md, secciones 4.6, 5.4 y 6): los STATUS de cada entidad se guardan,
 ## ya temporizados, en un [StatusTracker] por entidad ([method get_status_tracker]; los quitan DEATH, DOWNED,
-## RESPAWN y el ENTITY_DESPAWN); el LOADOUT de un remoto le da su pareja de armas a su vista. La plantilla
+## RESPAWN y el ENTITY_DESPAWN; el de un remoto los recibe todos en su tick de dibujo, también los propios);
+## el LOADOUT de un remoto le da su pareja de armas a su vista. La plantilla
 ## elegida ([member ClientConfig.loadout]) sale en un LOADOUT_SELECT nada más llegar el WELCOME, y
 ## [method send_loadout_select] la cambia después. Las correcciones de la predicción se dan por explicadas
 ## también con un STATUS de movimiento sobre uno mismo, un DOWNED o INTERACT donde uno es el derribado o el
@@ -230,6 +231,9 @@ var _status: int = 0
 var _respawn_tick: int = 0
 var _has_extra: bool = false
 var _event_queue: CombatEventQueue = CombatEventQueue.new()
+# Eventos propios sobre un remoto que esperan en [member _event_queue] solo para el tracker de efectos de ese
+# remoto (su señal ya salió al llegar): así el tracker sigue el orden de ticks del servidor.
+var _tracker_only: Dictionary[NetMessages.EntityEvent, bool] = {}
 var _events_received: int = 0
 var _events_own: int = 0
 var _respawn_requests: int = 0
@@ -813,7 +817,7 @@ func get_stats() -> Dictionary:
 		"remote_views": _remote_world.get_view_count(),
 		"combat_events": _events_received,
 		"combat_events_own": _events_own,
-		"combat_events_pending": _event_queue.size(),
+		"combat_events_pending": maxi(_event_queue.size() - _tracker_only.size(), 0),
 		"respawn_requests": _respawn_requests,
 		"structure_spawns": _structure_spawns_received,
 		"projectile_spawns": _projectile_spawns_received,
@@ -943,30 +947,51 @@ func _deliver_due_events() -> void:
 	if _event_queue.size() == 0:
 		return
 	for event: NetMessages.EntityEvent in _event_queue.pop_due(_interp_clock.get_render_tick()):
-		_deliver_combat_event(event, false)
+		if _tracker_only.erase(event):
+			_track_status(event)
+		else:
+			_deliver_combat_event(event, false)
+	if _event_queue.size() == 0:
+		# Ninguna marca sobrevive a su evento (también si la cola llena descartó alguno).
+		_tracker_only.clear()
 
 
 # Entrega un evento de combate ya temporizado: antes de la señal, los STATUS (y lo que los borra) van al
-# tracker de su entidad y el LOADOUT de un remoto, a su vista.
+# tracker de su entidad y el LOADOUT de un remoto, a su vista. El tracker de un remoto los recibe siempre en
+# su tick de dibujo, también los propios (los que puso o mató el jugador local), que esperan en la cola de los
+# ajenos: si no, un STATUS ajeno más viejo que aún esperaba se aplicaba después de uno propio más nuevo y lo
+# deshacía (revisión de la fase 4).
 func _deliver_combat_event(event: NetMessages.EntityEvent, is_own: bool) -> void:
-	_track_status(event)
+	if is_own and event.net_id != get_net_id() and _is_tracked_kind(event):
+		_tracker_only[event] = true
+		_event_queue.push(event)
+	else:
+		_track_status(event)
 	if event.event == NetMessages.EntityEvent.Kind.LOADOUT and event.net_id != _net_id:
 		_remote_world.on_loadout(event)
 	combat_event.emit(event, is_own)
 
 
-# STATUS de una entidad: a su tracker (que se crea con el primero). DEATH, DOWNED y RESPAWN los borran.
-func _track_status(event: NetMessages.EntityEvent) -> void:
+# true si [param event] le importa a un [StatusTracker]: STATUS y lo que los borra (DEATH, DOWNED, RESPAWN).
+static func _is_tracked_kind(event: NetMessages.EntityEvent) -> bool:
 	match event.event:
 		NetMessages.EntityEvent.Kind.STATUS, NetMessages.EntityEvent.Kind.DEATH, \
 				NetMessages.EntityEvent.Kind.DOWNED, NetMessages.EntityEvent.Kind.RESPAWN:
-			var tracker: StatusTracker = _status_trackers.get(event.net_id)
-			if tracker == null:
-				if event.event != NetMessages.EntityEvent.Kind.STATUS:
-					return
-				tracker = StatusTracker.new()
-				_status_trackers[event.net_id] = tracker
-			tracker.handle_event(event)
+			return true
+	return false
+
+
+# STATUS de una entidad: a su tracker (que se crea con el primero). DEATH, DOWNED y RESPAWN los borran.
+func _track_status(event: NetMessages.EntityEvent) -> void:
+	if not _is_tracked_kind(event):
+		return
+	var tracker: StatusTracker = _status_trackers.get(event.net_id)
+	if tracker == null:
+		if event.event != NetMessages.EntityEvent.Kind.STATUS:
+			return
+		tracker = StatusTracker.new()
+		_status_trackers[event.net_id] = tracker
+	tracker.handle_event(event)
 
 
 # Apunta qué hizo la predicción con el estado del servidor. Una diferencia se da por explicada si
@@ -1289,6 +1314,7 @@ func _close_session(text: String) -> void:
 	_state = State.CLOSED
 	_last_disconnect_text = text
 	_event_queue.clear()
+	_tracker_only.clear()
 	_war_queue.clear()
 	_party.clear()
 	_status_trackers.clear()

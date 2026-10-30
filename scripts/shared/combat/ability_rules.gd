@@ -183,6 +183,11 @@ static func rearm_after_interrupt(c: CombatState, tick: int) -> void:
 	var ability: AbilityTicks = CombatCatalog.tables().ability(c.action_id)
 	if ability == null:
 		return
+	_rearm(c, ability, tick)
+
+
+# El margen de [method rearm_after_interrupt] para [param ability] (la de [param c]) desde [param tick].
+static func _rearm(c: CombatState, ability: AbilityTicks, tick: int) -> void:
 	var ready: int = tick + AbilityTicks.REARM_TICKS
 	if ability.is_consumable():
 		c.consumable_ready_tick = maxi(c.consumable_ready_tick, ready)
@@ -197,7 +202,8 @@ static func rearm_after_interrupt(c: CombatState, tick: int) -> void:
 ## cambiar la acción. [param after_step] es true si quien la corta lo hace después de simular
 ## [param tick] (el servidor al imponer otra acción: el compromiso de ese tick ya ha ocurrido) y false
 ## si es la propia máquina, dentro del tick y antes del compromiso: soltar o esquivar en el mismo tick
-## del compromiso la cancela sin reutilización.
+## del compromiso la cancela sin reutilización (soltarla deja el margen de
+## [constant AbilityTicks.REARM_TICKS]: [method end_by_input]).
 static func close_channel(c: CombatState, data: CombatTables, tick: int, after_step: bool) -> void:
 	if c.action != _ABILITY:
 		return
@@ -228,7 +234,11 @@ static func expire_move_effects(c: CombatState, t: int) -> void:
 
 ## Regla 4a con una entrada real: una canalización con [member AbilityTicks.channel_hold] acaba si su
 ## botón no está abajo y una con [member AbilityTicks.channel_breaks_on_move], si hay movimiento (solo
-## desde el fin del lanzamiento); REVIVE y EXECUTE acaban sin INTERACT. Todas vuelven a NONE.
+## desde el fin del lanzamiento); REVIVE y EXECUTE acaban sin INTERACT. Todas vuelven a NONE. La
+## canalización que acaba así sin comprometer (en el fin del lanzamiento) no tiene reutilización, pero deja
+## el margen de [constant AbilityTicks.REARM_TICKS] en su ranura, como una interrupción: sin él, otra
+## pulsación en el tick siguiente salía con el mismo byte de acción tras un solo tick de NONE (revisión de la
+## fase 4).
 static func end_by_input(c: CombatState, input: PlayerInput, data: CombatTables, down: int) -> void:
 	match c.action:
 		_ABILITY:
@@ -240,6 +250,8 @@ static func end_by_input(c: CombatState, input: PlayerInput, data: CombatTables,
 			var moved: bool = ability.channel_breaks_on_move \
 					and input.move.length() >= CHANNEL_MOVE_BREAK
 			if released or moved:
+				if input.tick - c.action_tick <= ability.cast_ticks:
+					_rearm(c, ability, input.tick)
 				close_channel(c, data, input.tick, false)
 				ActionMachine._to_none(c)
 		_REVIVE, _EXECUTE:

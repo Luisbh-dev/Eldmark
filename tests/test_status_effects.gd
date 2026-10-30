@@ -389,6 +389,45 @@ func test_effects_of_an_author_that_leaves_are_removed_with_status_two() -> void
 	assert_eq(_events_of(HIT, 2).size(), 0)
 
 
+
+## Revisión de la fase 4 (lente «habilidades»): un STRONGEST (ralentizar) renovado por otro autor con un fin
+## más tardío pasa a ser suyo, como REFRESH y STACK: el STATUS de la renovación lleva su source_entity (y le
+## llega como implicado), y la baja del primero ya no quita lo que sostiene el segundo; la del segundo, sí.
+## Renovar sin alargar el fin no cambia de autor.
+func test_a_strongest_renewed_by_another_author_belongs_to_whoever_holds_the_latest_end() -> void:
+	_body(1, VARDHEIM, Vector3.ZERO)
+	_body(3, VARDHEIM, Vector3(3.0, 0.0, 0.0))
+	var victim: Combatant = _body(20, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI)
+	var slowed: int = _status_id(&"slowed")
+	var data: StatusTicks = CombatCatalog.status(slowed)
+	assert_eq(data.stacking, StatusEffectDefinition.Stacking.STRONGEST, "ralentizar es STRONGEST")
+	var until: int = S + 60 + data.duration_ticks
+	_director.status.apply(victim, slowed, 1, S)
+	_director.status.apply(victim, slowed, 3, S + 60)
+	var effect: StatusSystem.ActiveEffect = _director.status.find(victim, slowed)
+	assert_eq([effect.source_id, effect.until_tick], [3, until], "el segundo alarga el fin y pasa a ser el autor")
+	var applied: Array[NetMessages.EntityEvent] = _events_of(STATUS, 20)
+	if assert_eq(applied.size(), 2, "STATUS 1 de las dos aplicaciones"):
+		assert_eq(applied[1].source_entity, 3, "el de la renovación lleva al segundo")
+		assert_eq(applied[1].until_tick, until)
+		assert_true(_involved[_events.find(applied[1])].has(3), "y le llega como implicado")
+	# Un fin que no es más tardío (el comando 14 con una duración corta) no cambia de autor.
+	_director.status.apply(victim, slowed, 1, S + 70, 30)
+	assert_eq([effect.source_id, effect.until_tick], [3, until], "sin alargar el fin, el autor no cambia")
+	_events.clear()
+	_director.remove(1, S + 100)
+	assert_eq(_director.status.find(victim, slowed), effect, "la baja del primero no quita lo que sostiene el segundo")
+	assert_eq(_events_of(STATUS, 20).size(), 0, "ni sale STATUS 2")
+	var combat: CombatState = _combat_of(victim)
+	assert_eq([combat.move_effect_ids[0], combat.move_effect_until[0]], [slowed, until], "la ranura sigue")
+	_director.remove(3, S + 110)
+	assert_null(_director.status.find(victim, slowed), "la baja del segundo, sí")
+	var removed: Array[NetMessages.EntityEvent] = _events_of(STATUS, 20)
+	if assert_eq(removed.size(), 1, "con STATUS 2"):
+		assert_eq([removed[0].op, removed[0].source_entity, removed[0].tick], [REMOVED, 3, S + 110])
+	assert_eq(combat.move_effect_ids, PackedInt32Array([0, 0]), "y vacía la ranura")
+
+
 # --- Ranuras y límites ------------------------------------------------------------------------
 
 func test_a_slow_and_a_root_write_their_movement_slots_and_the_ninth_effect_replaces_the_earliest() -> void:

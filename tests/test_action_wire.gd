@@ -4,7 +4,8 @@ extends TestCase
 ## arma, que llevan en los bits 6-7 un contador de reinicio para que un remoto distinga dos acciones
 ## iguales y seguidas. Una habilidad lleva ahí su ranura (3 = un consumible) y su fase en los bits 4-5
 ## (docs/habilidades.md, sección 5.5): dos usos con el mismo byte dejan siempre
-## [constant AbilityTicks.REARM_TICKS] ticks en NONE entre medias, también tras una interrupción.
+## [constant AbilityTicks.REARM_TICKS] ticks en NONE entre medias, también tras una interrupción o tras un
+## muro soltado antes del compromiso.
 
 const START_TICK: int = 1000
 
@@ -199,3 +200,53 @@ func test_after_an_interrupted_drink_the_next_one_waits_until_a_remote_can_see_n
 	assert_true(committed > late.tick + AbilityTicks.REARM_TICKS, "comprometida, ya tiene su reutilización")
 	ActionMachine.impose_interrupt(late.c, late.tick)
 	assert_eq(late.c.consumable_ready_tick, committed, "y la interrupción no la toca")
+
+
+## Revisión de la fase 4 (lente «habilidades»): un toque de 3 más corto que el lanzamiento del muro acaba
+## sin compromiso en el fin del lanzamiento (p + cast, 4a con el botón suelto). Antes no dejaba ningún
+## margen: otra pulsación en p + cast + 1 salía con el mismo byte (ABILITY, fase 0, ranura 2) tras un solo
+## tick de NONE, y un remoto que no lo muestreaba seguía el clip del primero. Ahora deja el de REARM_TICKS,
+## como la interrupción: NONE de p + cast a p + cast + REARM_TICKS − 1 y el muro vuelve a salir al acabar,
+## del búfer con el botón abajo.
+func test_after_a_wall_tap_shorter_than_the_cast_the_next_one_waits_until_a_remote_can_see_none() -> void:
+	var d := MachineDriver.new(CombatCatalog.weapon_id(&"sword_shield"))
+	var wire := ActionWire.new()
+	var wall: AbilityTicks = CombatCatalog.ability(CombatCatalog.ability_id(&"shield_wall"))
+	d.step(PlayerInput.ABILITY_3)
+	var p: int = d.tick
+	assert_eq(d.c.action_id, wall.id, "empieza el muro")
+	var first: int = wire.encode(d.c, p)
+	d.idle_until_before(p + wall.cast_ticks)
+	d.step()
+	var end: int = d.tick
+	assert_eq(end, p + wall.cast_ticks, "en el fin del lanzamiento")
+	assert_eq(d.c.action, CombatState.Action.NONE, "acaba sin muro")
+	assert_eq(d.c.ability_ready[wall.slot], end + AbilityTicks.REARM_TICKS,
+			"sin reutilización, pero con el margen de REARM_TICKS")
+	var bytes: Array[int] = [wire.encode(d.c, end)]
+	var started: int = -1
+	var second: int = -1
+	for _rel: int in range(1, AbilityTicks.REARM_TICKS + 4):
+		# Otra pulsación de 3 en p + cast + 1, y se mantiene.
+		d.step(PlayerInput.ABILITY_3)
+		var byte: int = wire.encode(d.c, d.tick)
+		if started < 0 and d.c.action == CombatState.Action.ABILITY:
+			started = d.tick
+			second = byte
+		if started < 0:
+			bytes.append(byte)
+	assert_eq(second, first,
+			"el segundo muro sale con el mismo byte que el primero (por eso hace falta el margen)")
+	assert_eq(started, end + AbilityTicks.REARM_TICKS,
+			"el muro vuelve a salir al acabar el margen (del búfer)")
+	assert_eq(bytes.size(), AbilityTicks.REARM_TICKS, "NONE de p + cast a p + cast + REARM_TICKS − 1")
+	for byte: int in bytes:
+		assert_eq(byte, 0x30, "todo NONE")
+	# Control: soltar ya comprometido fija la reutilización entera.
+	var held := MachineDriver.new(CombatCatalog.weapon_id(&"sword_shield"))
+	held.step(PlayerInput.ABILITY_3)
+	held.hold(PlayerInput.ABILITY_3, wall.cast_ticks + 1)
+	held.step()
+	assert_eq(held.c.action, CombatState.Action.NONE, "control: soltado tras el compromiso, acaba")
+	assert_eq(held.c.ability_ready[wall.slot], held.tick + wall.cooldown_ticks,
+			"control: con su reutilización")

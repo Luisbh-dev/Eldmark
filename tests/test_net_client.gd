@@ -887,6 +887,54 @@ func test_protocol_6_projectiles_go_by_kind_and_new_events_are_timed_like_combat
 		return _client.get_remote_world().get_view(600) != null), "el id reutilizado crea su vista")
 
 
+## Revisión de la fase 4 (lente «habilidades»): el [StatusTracker] de un remoto sigue el orden de ticks del
+## servidor aunque mezcle eventos ajenos (que esperan a su tick de dibujo) y propios (cuya señal sale al
+## llegar). Antes, el STATUS 2 ajeno de la caducidad de la ralentización de un aliado (tick t) se entregaba
+## después del STATUS 1 propio con que el jugador local la volvía a poner en t + 2 y borraba de la placa el
+## efecto nuevo; y en una renovación STACK, la ajena vieja pisaba la propia nueva (1 acumulación en vez de 2).
+func test_a_remote_status_tracker_follows_the_server_order_of_own_and_foreign_events() -> void:
+	await _start()
+	assert_true(await _wait_until(_in_world))
+	var clock: InterpolationClock = _client.get_interpolation_clock()
+	assert_true(await _wait_until(func() -> bool: return clock.get_render_tick() > 0.0), "el reloj de dibujo anda")
+	var own_id: int = _client.get_net_id()
+	var remote: int = 88
+	var events: Array[Array] = []
+	_client.combat_event.connect(func(event: NetMessages.EntityEvent, is_own: bool) -> void:
+		events.append([event.status_id, event.source_entity, is_own]))
+	var send: Callable = func(event: NetMessages.EntityEvent) -> void:
+		_fake.transport.send(_fake.peer_id, NetProtocol.CH_RELIABLE, event.encode())
+	var slowed: int = CombatCatalog.status_id(&"slowed")
+	var bleed: int = CombatCatalog.status_id(&"bleed")
+	var applied: int = NetMessages.EntityEvent.StatusOp.APPLIED
+	var t: int = _fake.tick + 40
+	# La ralentización del aliado 77 caduca en t y el local la vuelve a poner en t + 2.
+	send.call(NetMessages.EntityEvent.status(remote, t, 77, NetMessages.EntityEvent.StatusOp.REMOVED, slowed,
+			0, t))
+	send.call(NetMessages.EntityEvent.status(remote, t + 2, own_id, applied, slowed, 1, t + 182))
+	# El aliado sangra al remoto en t y el local lo renueva en t + 2 (dos acumulaciones).
+	send.call(NetMessages.EntityEvent.status(remote, t, 77, applied, bleed, 1, t + 360))
+	send.call(NetMessages.EntityEvent.status(remote, t + 2, own_id, applied, bleed, 2, t + 362))
+	assert_true(await _wait_until(func() -> bool: return events.size() >= 2), "los propios llegan")
+	assert_eq(events, [[slowed, own_id, true], [bleed, own_id, true]], "la señal de los propios sale al llegar")
+	assert_true(clock.get_render_tick() < float(t), "antes del tick de dibujo de t")
+	assert_null(_client.get_status_tracker(remote), "el tracker del remoto los recibe en su tick de dibujo")
+	assert_true(await _wait_until(func() -> bool: return clock.get_render_tick() >= float(t + 2), 300),
+			"el tick de dibujo pasa de t + 2")
+	await wait_physics_frames(2)
+	assert_eq(events.size(), 4, "y luego salen los dos ajenos")
+	var tracker: StatusTracker = _client.get_status_tracker(remote)
+	if assert_not_null(tracker, "el remoto tiene tracker"):
+		var slow: StatusTracker.Entry = tracker.get_entry(slowed)
+		if assert_not_null(slow, "la ralentización que puso el local sigue en la placa"):
+			assert_eq([slow.until_tick, slow.source_entity], [t + 182, own_id])
+		var bleeding: StatusTracker.Entry = tracker.get_entry(bleed)
+		if assert_not_null(bleeding, "el sangrado también"):
+			assert_eq([bleeding.stacks, bleeding.until_tick, bleeding.source_entity], [2, t + 362, own_id],
+					"con la renovación propia, la más nueva")
+	assert_eq(_client.get_stats()["combat_events_pending"], 0, "nada se queda en la cola")
+
+
 func test_the_chosen_template_goes_in_a_loadout_select_right_after_the_welcome() -> void:
 	await _start()
 	# La plantilla elegida antes de conectar (elección de reino o --loadout).

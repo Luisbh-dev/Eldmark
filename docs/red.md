@@ -2887,7 +2887,8 @@ signal projectile_despawned(projectile_id: int, tick: int, reason: int)
 func start(config: ClientConfig, transport: NetTransport,
 		controller: LocalPlayerController) -> Error
 ## v6 (habilidades.md 6, H4): LOADOUT_SELECT desde el WELCOME; los STATUS de cada entidad en su
-## StatusTracker; las flechas en el ProjectileWorld (que entra en la zona con el RemoteWorld).
+## StatusTracker (el de un remoto, en su tick de dibujo, también los propios: revisión de la fase 4);
+## las flechas en el ProjectileWorld (que entra en la zona con el RemoteWorld).
 func send_loadout_select(template_id: int) -> bool
 func get_status_tracker(net_id: int) -> StatusTracker
 func get_projectile_world() -> ProjectileWorld

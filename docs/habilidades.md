@@ -337,8 +337,10 @@ una habilidad, un cambio de arma ni una poción.
    que sea (también si la corta el servidor, §3.5), **si ha llegado comprometida**: la que acaba en
    `t ≤ action_tick + cast` (soltar o DODGE en el tick del compromiso, que 4a y 4c miran antes) se
    cancela sin reutilización. Un toque de 3 más corto que el lanzamiento da 12 ticks de lanzamiento, NONE
-   y ninguna reutilización; soltar en `action_tick + cast + 1`, un tick de muro y 18 s. Con el bit7 no se
-   fija nada ni se gastan cargas.
+   y ninguna reutilización, solo el margen de `REARM_TICKS` en la ranura (como una interrupción, §4.2 y
+   §5.5); soltar en `action_tick + cast + 1`, un tick de muro y 18 s. Con el bit7 no se fija nada ni se
+   gastan cargas. *(Revisión de la fase 4, lente «habilidades»: sin el margen, otra pulsación de 3 en
+   `action_tick + cast + 1` salía con el mismo byte de acción tras un solo tick de NONE.)*
 6. **Salida de movimiento** (§3.4).
 
 ### 3.4 Movimiento permitido
@@ -457,7 +459,8 @@ baja de un derribado es antes una muerte (§4.5).
   `stacks`. Uno nuevo cuando ya hay 8 sustituye al que acaba antes.
 - **Aplicar** en `s`: `REFRESH` → `until = s + D` (el ancla no cambia); `STACK` → `stacks = min(stacks +
   1, max)` y `until = s + D`; `STRONGEST` → solo si es más fuerte (menor escala en SLOW/ROOT, más
-  `pulse_amount` o `magnitude`), y si es igual, `until = max`. Nuevo: `anchor = s`, `stacks = 1`.
+  `pulse_amount` o `magnitude`), y si es igual, `until = max` (con el autor del fin más tardío). REFRESH y
+  STACK pasan al último autor. Nuevo: `anchor = s`, `stacks = 1`.
   SLOW y ROOT escriben además su ranura (`impose_move_effect`). Evento STATUS 1.
 - **Pulsos exactos**: en `anchor + k · P` para `k = 1, 2, …` mientras `anchor + k · P ≤ until`. Sin
   renovar, N = D / P (6 en `bleed`). El último pulso y la caducidad caen en el mismo tick: primero el
@@ -524,7 +527,13 @@ segmento que **empieza dentro** de una caja o una cápsula da fracción 0.
   un `StructureTarget` que el tirador puede dañar (`get_body_rids`), es un golpe a la puerta (perforante
   ×0,2).
 - **Muros**: las cajas de los muros de escudos de entidades hostiles al tirador, en `k` (presente, como
-  el mundo y la puerta; quien lo sostiene va a ×0,3), con `HitShapes.segment_box_fraction`.
+  el mundo y la puerta; quien lo sostiene va a ×0,3), con `HitShapes.segment_box_fraction`. Solo cuentan
+  los de quien no tiene protección ni está en la zona segura de su reino (los «abiertos», como los
+  candidatos): por el muro de quien está en su campamento la flecha pasa como por su cápsula, y ese muro
+  tampoco cubre a los aliados de fuera (combate.md §5: dentro ni se recibe daño ni se hace). *(Revisión de
+  la fase 4, lente «habilidades»: antes lo paraba, y quien lo sostenía en su campamento gastaba
+  resistencia, quedaba «en combate» con el tirador y, sin resistencia, sufría la rotura de guardia con su
+  aturdimiento y la parte del golpe que no pagaba, hasta quedar derribado dentro de su zona segura.)*
 - **Personajes**: candidatos de combate.md §4.3 paso 4 (hostiles, vivos o derribados, sin protección ni
   zona segura) en `k − rewind`, leídos con `StateHistory.position_at(id, tick) -> Vector3` (sin crear
   objetos; con `rewind = 0`, la congelada). Criba: una **caja barrida** por candidato (la unión de 4
@@ -724,7 +733,8 @@ INTERACT donde uno es el derribado o el actor, LOADOUT propio y HIT propio con e
 
 Dos usos seguidos de la misma ranura o dos consumibles seguidos salen con el mismo byte, pero entre ellos
 hay siempre al menos `AbilityTicks.REARM_TICKS` = 6 ticks de NONE: la validación de §2.2 lo exige a las
-reutilizaciones y una interrupción antes del compromiso deja ese margen (§4.2). Un solo tick de NONE no
+reutilizaciones y una interrupción antes del compromiso (§4.2) o una canalización soltada o rota en el fin
+de su lanzamiento, sin comprometer (§3.3, revisión de la fase 4), dejan ese margen. Un solo tick de NONE no
 bastaba: un remoto ve el registro cada `SNAPSHOT_INTERVAL_TICKS` = 2 ticks (o menos a menudo, con el reparto
 por prioridad del snapshot), y el que no muestreaba ese tick veía el mismo byte y no reiniciaba el clip
 (revisión en §11.10). Con el margen, ABILITY no necesita contador. `ActionWire.has_counter` añade SWAP.
@@ -784,7 +794,13 @@ provisionales: cuadros con la inicial y el color del arma hasta ART-12.
 ### 6.4 Estados (UI-45, `StatusTracker` y `StatusIcons`)
 
 `StatusTracker` (uno por entidad) guarda `status_id`, `stacks` y `until_tick` de los STATUS; los quita
-con STATUS 2, DEATH, DOWNED, RESPAWN o DESPAWN. Fila propia sobre la vida: icono, segundos que quedan
+con STATUS 2, DEATH, DOWNED, RESPAWN o DESPAWN. El del jugador local recibe sus eventos al llegar (todos
+son propios); el de un remoto, en su `render_tick`, también los propios (los STATUS que pone el jugador
+local, el DEATH o el DOWNED que causa), cuya señal sí sale al llegar: así sigue el orden de ticks del
+servidor. *(Revisión de la fase 4, lente «habilidades»: antes un STATUS propio sobre un remoto entraba al
+llegar y un STATUS ajeno más viejo que aún esperaba su tick de dibujo lo deshacía: la caducidad de la
+ralentización de un aliado borraba de la placa la que el jugador acababa de volver a poner, o una
+renovación STACK ajena pisaba la propia.)* Fila propia sobre la vida: icono, segundos que quedan
 (contra el tick del servidor estimado), acumulaciones, borde rojo si es perjudicial y verde si no,
 tooltip. Placas: hasta 4 iconos (primero los perjudiciales), con la vida de derribado y un icono de
 derribado.
@@ -793,7 +809,12 @@ derribado.
 
 - **Derribado**: aviso «Derribado» con la cuenta atrás de la vida de derribado (bloque extra), «Te están
   levantando» con la barra de INTERACT 1, «¡Te rematan!» con INTERACT 4. Quien está cerca de un aliado
-  derribado (posiciones dibujadas y acción DOWNED) ve «Mantén E para levantar a …».
+  derribado (posiciones dibujadas y acción DOWNED) ve «Mantén E para levantar a …». Un aliado puede
+  levantar mientras uno o más enemigos rematan (§4.5): `DownedNotice` guarda cada interacción con su actor,
+  la quita solo el fin o el corte de ese actor (levantado, todas) y muestra el remate antes que el
+  levantar. *(Revisión de la fase 4, lente «habilidades»: guardaba una sola y cualquier corte la borraba;
+  el corte del que levantaba quitaba «¡Te rematan!» con el remate en marcha, y un levantar que empezaba lo
+  tapaba.)*
 - **Plantillas**: selector (armas y cargas de cada `EquipmentTemplate`) en la pantalla de muerte y en la
   selección de reino; manda LOADOUT_SELECT al elegir. Desde la fase 5 solo cuenta para la primera entrada: el
   cliente no lo muestra a quien entra con billete y, sin plataforma, lo oculta tras la primera aparición
@@ -1557,8 +1578,11 @@ empieza dentro de un cuerpo no está libre).
 **Desvíos y decisiones.**
 
 - **Un efecto por id y entidad.** Renovarlo no crea otro: `source_id` pasa a ser el último que lo renueva
-  (REFRESH y STACK) y STRONGEST no cambia de autor. Un mismo efecto siempre es igual de fuerte (sus datos
-  no cambian), así que STRONGEST se queda con el fin más tardío. El fin nunca retrocede (`max`, también en
+  (REFRESH y STACK); en STRONGEST, el que pone el fin más tardío. Un mismo efecto siempre es igual de fuerte
+  (sus datos no cambian), así que STRONGEST se queda con el fin más tardío y con su autor. *(Revisión de la
+  fase 4, lente «habilidades»: STRONGEST no cambiaba de autor; el STATUS de la renovación de otro tirador
+  salía con el primero y, si el primero se daba de baja, `forget_author` quitaba la ralentización que
+  sostenía el segundo.)* El fin nunca retrocede (`max`, también en
   REFRESH y STACK): solo podría con la duración del comando 14, y así la ranura de movimiento (que también
   se queda con el máximo) acaba en el mismo tick que el efecto.
 - **STATUS 2** sale al caducar, al irse el autor y cuando el noveno efecto sustituye al que acaba antes,

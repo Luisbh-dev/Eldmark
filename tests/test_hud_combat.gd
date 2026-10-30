@@ -834,6 +834,63 @@ func test_downed_notices_count_down_and_show_who_revives_or_executes_you() -> vo
 	assert_false(notice.visible, "levantado, el aviso se va")
 
 
+## Revisión de la fase 4 (lente «habilidades»): el servidor deja que un aliado levante y uno o más enemigos
+## rematen al mismo derribado a la vez. El aviso guardaba una sola interacción y cualquier corte o fin la
+## borraba: el corte del que levantaba quitaba «¡Te rematan!» aunque el remate seguía, y un levantar que
+## empezaba durante el remate lo tapaba. Ahora guarda cada una con su actor, solo la quita el corte de ese
+## actor (o quedar en pie), y el remate se muestra antes que el levantar.
+func test_the_downed_notice_keeps_each_interaction_until_its_own_actor_ends_it() -> void:
+	var notice: DownedNotice = _track(DownedNotice.new()) as DownedNotice
+	notice.set_own_id(OWN_ID)
+	var names: Dictionary[int, String] = {7: "Ana", 9: "Bruno", 10: "Carla"}
+	notice.name_of = func(net_id: int) -> String: return names.get(net_id, "")
+	var op_revive: int = NetMessages.EntityEvent.InteractOp.REVIVE
+	var op_execute: int = NetMessages.EntityEvent.InteractOp.EXECUTE
+	# 1) Ana levanta (100-280) y Bruno remata (105-165); Ana se corta en 106: el remate sigue.
+	notice.handle_event(_interact(OWN_ID, 100, 7, op_revive, 280))
+	notice.handle_event(_interact(OWN_ID, 105, 9, op_execute, 165))
+	notice.update_view(true, 300, 110)
+	assert_eq(notice.get_detail_text(), CombatText.TEXT_BEING_EXECUTED, "el remate va antes que el levantar")
+	notice.handle_event(_interact(OWN_ID, 106, 7, NetMessages.EntityEvent.InteractOp.REVIVE_CUT, 106))
+	assert_eq(notice.get_interaction(), DownedNotice.Interaction.BEING_EXECUTED, "el corte de Ana no lo quita")
+	notice.update_view(true, 300, 120)
+	assert_eq(notice.get_detail_text(), CombatText.TEXT_BEING_EXECUTED, "«¡Te rematan!» sigue")
+	assert_near(notice.get_progress(), 0.25, 0.01, "con la barra del remate de Bruno")
+	notice.handle_event(_interact(OWN_ID, 130, 9, NetMessages.EntityEvent.InteractOp.EXECUTE_CUT, 130))
+	notice.update_view(true, 300, 131)
+	assert_eq(notice.get_detail_text(), "", "cortado el remate, nada")
+	# 2) Bruno remata (200-260) y Ana empieza a levantar en 210: se sigue viendo el remate; cuando a Bruno
+	# se le corta, el levantar que sigue.
+	notice.handle_event(_interact(OWN_ID, 200, 9, op_execute, 260))
+	notice.handle_event(_interact(OWN_ID, 210, 7, op_revive, 390))
+	notice.update_view(true, 300, 230)
+	assert_eq(notice.get_detail_text(), CombatText.TEXT_BEING_EXECUTED, "un levantar que empieza no tapa el remate")
+	notice.handle_event(_interact(OWN_ID, 235, 9, NetMessages.EntityEvent.InteractOp.EXECUTE_CUT, 235))
+	notice.update_view(true, 300, 240)
+	assert_eq(notice.get_detail_text(), CombatText.TEXT_BEING_REVIVED_BY % "Ana",
+			"cortado el remate, se ve el levantar que sigue")
+	assert_near(notice.get_progress(), 30.0 / 180.0, 0.01)
+	# 3) Dos que rematan: el corte de uno no quita el remate del otro.
+	notice.handle_event(_interact(OWN_ID, 250, 9, op_execute, 310))
+	notice.handle_event(_interact(OWN_ID, 252, 10, op_execute, 312))
+	notice.handle_event(_interact(OWN_ID, 255, 10, NetMessages.EntityEvent.InteractOp.EXECUTE_CUT, 255))
+	notice.update_view(true, 300, 280)
+	assert_eq(notice.get_detail_text(), CombatText.TEXT_BEING_EXECUTED, "el remate de Bruno sigue")
+	assert_near(notice.get_progress(), 0.5, 0.01)
+	# Levantado: en pie, ya no le rematan ni le levantan.
+	notice.handle_event(_interact(OWN_ID, 290, 7, NetMessages.EntityEvent.InteractOp.REVIVED, 290))
+	assert_eq(notice.get_interaction(), DownedNotice.Interaction.NONE, "levantado, nada")
+	# 4) Lo que hace él: el corte de otro que levanta al mismo aliado no quita «Levantando a Ana».
+	notice.handle_event(_interact(7, 400, OWN_ID, op_revive, 580))
+	notice.handle_event(_interact(7, 405, 10, NetMessages.EntityEvent.InteractOp.EXECUTE_CUT, 405))
+	notice.update_view(false, 0, 445)
+	assert_eq(notice.get_detail_text(), CombatText.TEXT_REVIVING % "Ana", "«Levantando a Ana» sigue")
+	assert_near(notice.get_progress(), 0.25, 0.01)
+	notice.handle_event(_interact(7, 450, OWN_ID, NetMessages.EntityEvent.InteractOp.REVIVE_CUT, 450))
+	notice.update_view(false, 0, 451)
+	assert_eq(notice.get_detail_text(), "", "su propio corte, sí")
+
+
 func test_a_downed_ally_nearby_shows_the_revive_prompt() -> void:
 	var h: HudRig = _make_hud()
 	var notice: DownedNotice = h.hud.get_downed_notice()
