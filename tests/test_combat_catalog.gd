@@ -538,7 +538,8 @@ func test_sword_and_shield_abilities_in_ticks() -> void:
 		assert_eq(ability.total_ticks, want[0] + want[1] + want[2], "%s: duración" % ability_name)
 		assert_eq(ability.weapon_id, sword_id, "%s: la lleva la espada y escudo" % ability_name)
 		assert_false(ability.is_consumable(), "%s: no es un consumible" % ability_name)
-		assert_true(ability.cooldown_ticks >= ability.total_ticks + 1, "%s: reutilización > duración" % ability_name)
+		assert_true(ability.cooldown_ticks >= ability.total_ticks + AbilityTicks.REARM_TICKS,
+				"%s: reutilización ≥ duración + el margen del byte de acción" % ability_name)
 	var bash: AbilityTicks = tables.ability(bash_id)
 	assert_eq(bash.hit.stun_ticks, 48, "el golpe de escudo aturde 0,8 s")
 	assert_true(bash.hit.unblockable, "imbloqueable")
@@ -727,10 +728,12 @@ func test_ability_validation_follows_section_2_2() -> void:
 	var cases: Dictionary[String, String] = {
 		"está en más de un arma": "two_weapons",
 		"en los consumibles": "weapon_and_consumable",
-		"la reutilización debe ser al menos la duración + 1": "cooldown",
+		"la reutilización debe ser al menos la duración + 6 ticks": "cooldown",
+		"la reutilización debe ser al menos la duración +": "cooldown_rearm",
 		"una canalización no lleva recuperación": "channel_recovery",
 		"un consumible no lleva reutilización propia": "consumable_cooldown",
-		"la reutilización compartida debe ser mayor que su duración": "shared_cooldown",
+		"la reutilización compartida debe ser al menos su duración + 6 ticks": "shared_cooldown",
+		"la reutilización compartida debe ser al menos su duración +": "shared_cooldown_rearm",
 		"un consumible lleva interrupt_on_damage": "consumable_interrupt",
 		"consumables debe tener exactamente 2": "one_consumable",
 		"la duración debe ser múltiplo exacto de los pulsos": "pulses",
@@ -1079,9 +1082,12 @@ func _ability_resources(what: String) -> Array[Resource]:
 			resources.append(other)
 		"weapon_and_consumable": rules.consumables.assign([potion_a, strike])
 		"cooldown": strike.cooldown_s = 0.3
+		# Duración + 1 tick ya no basta: el byte de acción pide REARM_TICKS en NONE entre dos usos.
+		"cooldown_rearm": strike.cooldown_s = 0.3 + float(AbilityTicks.REARM_TICKS - 1) / 60.0
 		"channel_recovery": wall.recovery_s = 0.1
 		"consumable_cooldown": potion_a.cooldown_s = 1.0
 		"shared_cooldown": rules.consumable_cooldown_s = 0.2
+		"shared_cooldown_rearm": rules.consumable_cooldown_s = 0.3 + float(AbilityTicks.REARM_TICKS - 1) / 60.0
 		"consumable_interrupt": potion_b.interrupt_on_damage = false
 		"one_consumable": rules.consumables.assign([potion_a])
 		"pulses": regen.duration_s = 2.2

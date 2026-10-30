@@ -171,6 +171,27 @@ static func finish_ability(c: CombatState, data: CombatTables, t: int) -> void:
 		ActionMachine._to_none(c)
 
 
+## Al interrumpir en [param tick] una ABILITY de [param c] ([method ActionMachine.impose_interrupt]): la
+## reutilización de su ranura (o la compartida, si es un consumible) pasa a ser como poco
+## [code]tick + REARM_TICKS[/code] ([constant AbilityTicks.REARM_TICKS]). Sin esto, cortada antes del
+## compromiso, otro consumible (o la misma ranura) podía empezar en [code]tick + 1[/code] con el mismo byte de
+## acción, y un remoto que no muestrea ese único tick de NONE seguía el clip de la primera. Tras el compromiso
+## la reutilización ya es mayor y no cambia.
+static func rearm_after_interrupt(c: CombatState, tick: int) -> void:
+	if c.action != _ABILITY:
+		return
+	var ability: AbilityTicks = CombatCatalog.tables().ability(c.action_id)
+	if ability == null:
+		return
+	var ready: int = tick + AbilityTicks.REARM_TICKS
+	if ability.is_consumable():
+		c.consumable_ready_tick = maxi(c.consumable_ready_tick, ready)
+		return
+	var index: int = ready_index(c, ability)
+	if index >= 0:
+		c.ability_ready[index] = maxi(c.ability_ready[index], ready)
+
+
 ## Si [param c] está en una canalización comprometida, fija su reutilización en
 ## [code]tick + cooldown[/code] (regla 5): lo llama todo lo que la acaba o la corta, justo antes de
 ## cambiar la acción. [param after_step] es true si quien la corta lo hace después de simular

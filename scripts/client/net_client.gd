@@ -880,6 +880,8 @@ func _reconcile_latest() -> void:
 	if snapshot == null or snapshot.server_tick <= _last_snapshot_tick:
 		return
 	_last_snapshot_tick = snapshot.server_tick
+	# Hasta dónde ha simulado el servidor: una flecha predicha sin SPAWN mucho después de su tick, rechazada.
+	_projectile_world.on_server_tick(_last_snapshot_tick)
 	_tick_sync.set_jitter(_interp_clock.get_jitter_ticks())
 	_tick_sync.on_snapshot(snapshot.input_ack_tick, snapshot.input_margin)
 	_input_ack_tick = maxi(_input_ack_tick, snapshot.input_ack_tick)

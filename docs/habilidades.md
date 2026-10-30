@@ -160,9 +160,11 @@ Cambios en los recursos existentes:
 - **Avance**: `dash_curve` se hornea como la esquiva: velocidad f32 por tick entre `dash_from` y
   `dash_to` que suma `dash_distance_m`.
 - **Validación** (errores en `CombatTables.errors`): una habilidad en un solo arma o en los consumibles;
-  `cooldown_ticks ≥ total_ticks + 1` (dos usos de la misma ranura nunca se encadenan sin NONE: lo
-  necesita el byte de acción); canalización sin recuperación; consumible con `cooldown_s` 0 y
-  `consumable_cooldown_ticks > total` de cada consumible; duración de un efecto con pulsos múltiplo de
+  `cooldown_ticks ≥ total_ticks + REARM_TICKS` (dos usos de la misma ranura dejan al menos
+  `AbilityTicks.REARM_TICKS` = 6 ticks en NONE entre medias, tres intervalos de snapshot: lo necesita el
+  byte de acción, §5.5; antes era `+ 1`, revisión de la implementación en §11.10); canalización sin
+  recuperación; consumible con `cooldown_s` 0 y `consumable_cooldown_ticks ≥ total + REARM_TICKS` de cada
+  consumible; duración de un efecto con pulsos múltiplo de
   `pulse_ticks`; ROOT con escala 0, SLOW con escala > 0; ventana del avance dentro de la habilidad;
   `lifetime_ticks ≥ 1`; `projectile_count` 1–5; una plantilla `selectable` no lleva armas `npc_*`.
 - **`prediction_hash`** (`_HASH_FORMAT` pasa a 2): entra **todo campo marcado P en §2.1, sin
@@ -440,9 +442,13 @@ baja de un derribado es antes una muerte (§4.5).
   de efectos ni entorno) a quien está en la fase 0 (`[0, cast)`) de un consumible o de una habilidad con
   `interrupt_on_damage`, o en REVIVE o EXECUTE → `impose_interrupt` (si el golpe no impone ya un
   control). Tras el compromiso ya no se interrumpe: la carga y la curación ya están puestas. HIT con el
-  bit 5.
+  bit 5. Antes del compromiso no se gasta nada, pero la interrupción deja un margen de `REARM_TICKS`
+  ticks en la reutilización de la ranura (o en la compartida, si es un consumible) para que el siguiente
+  uso no salga con el mismo byte de acción tras un solo tick de NONE (§5.5; revisión en §11.10).
 - **Protección de reaparición**: se pierde también en ABILITY que no sea consumible
-  (`CombatDirector._started_attack`, como LIGHT, HEAVY y CHARGE); beber, SWAP, REVIVE y EXECUTE no la
+  (`CombatDirector._started_attack`, como LIGHT, HEAVY y CHARGE) y al **empezar a rematar** (EXECUTE,
+  en `DownedSystem`, en el tick en que empieza: rematar es atacar, y un protegido no es candidato de
+  ningún golpe, así que nadie podría cortarle el remate; revisión en §11.10); beber, SWAP y REVIVE no la
   quitan.
 
 ### 4.3 Efectos de estado (`StatusSystem`, `scripts/server/status_system.gd`)
@@ -572,11 +578,15 @@ segmento que **empieza dentro** de una caja o una cápsula da fracción 0.
   corta):
   - **aliado** sin nadie levantándolo → `impose_interact(REVIVE)`; INTERACT 1 con `end_tick = s +
     revive_ticks`;
-  - **enemigo** (sin zonas seguras de por medio) → `impose_interact(EXECUTE)`; INTERACT 4.
+  - **enemigo** (sin zonas seguras de por medio: el derribado no está en la de su reino ni quien remata en
+    la suya) → `impose_interact(EXECUTE)`; INTERACT 4. Empezar a rematar quita la protección de
+    reaparición (§4.2).
 - **Seguir**: cada tick se corta (`impose_interrupt` si aún está en la acción; INTERACT 2 o 5) si quien
   actúa ha dejado la acción (soltó, esquivó o le impusieron otra), el objetivo ya no está derribado,
   pasa de `interact_keep_range_m` o se pierde la línea de visión, o uno de los dos recibe un impacto
-  que interrumpe (§4.2). Lo predicho termina solo la acción: el servidor lo nota porque sale de REVIVE
+  que interrumpe (§4.2). Un remate, además, si queda una zona segura de por medio (el derribado se
+  arrastra a su campamento o quien remata entra en el suyo), también en el tick del final (revisión en
+  §11.10). Lo predicho termina solo la acción: el servidor lo nota porque sale de REVIVE
   antes de tiempo.
 - **Acabar** (se mira antes que seguir: en ese tick la simulación ya ha vuelto a NONE), en `s == inicio +
   duración`: levantar → `impose_revived`, vida 300, INTERACT 3; rematar → muerte con fuente «remate».
@@ -705,8 +715,12 @@ INTERACT donde uno es el derribado o el actor, LOADOUT propio y HIT propio con e
 | DOWNED, REVIVE, EXECUTE | 3 | 0 |
 | CHARGE con el arco | 0 | 0 (el remoto sabe que es tensado por el arma) |
 
-Dos usos seguidos de la misma ranura o dos consumibles seguidos no pueden darse sin NONE (validación de
-§2.2), así que ABILITY no necesita contador. `ActionWire.has_counter` añade SWAP.
+Dos usos seguidos de la misma ranura o dos consumibles seguidos salen con el mismo byte, pero entre ellos
+hay siempre al menos `AbilityTicks.REARM_TICKS` = 6 ticks de NONE: la validación de §2.2 lo exige a las
+reutilizaciones y una interrupción antes del compromiso deja ese margen (§4.2). Un solo tick de NONE no
+bastaba: un remoto ve el registro cada `SNAPSHOT_INTERVAL_TICKS` = 2 ticks (o menos a menudo, con el reparto
+por prioridad del snapshot), y el que no muestreaba ese tick veía el mismo byte y no reiniciaba el clip
+(revisión en §11.10). Con el margen, ABILITY no necesita contador. `ActionWire.has_counter` añade SWAP.
 
 ### 5.6 Ancho de banda
 
@@ -738,11 +752,17 @@ action_tick)`; ninguna señal sale de `simulate()`.
 - **Sustitución**: el SPAWN con `owner` propio se empareja con la predicha de la misma fuente y
   `volley_index` cuyo tick difiera ≤ `input_buffer_ticks`; se adoptan `p0`, `v0` y `spawn_tick` del
   servidor con un desfase visual que decae en 6 ticks. Sin pareja: se dibuja la del servidor. Una predicha
-  sin SPAWN en `rtt + 30` ticks se retira (rechazo).
+  sin SPAWN se retira (rechazo) cuando el tick del último snapshot pasa de su tick +
+  `input_buffer_ticks` + 30 (el servidor ya la habría mandado; el SPAWN va por el canal fiable y puede
+  llegar algo después que el snapshot de su tick). Se mide con el tick del servidor y no con el RTT de la
+  entrada, que se queda viejo si la latencia sube (revisión en §11.10); sin ningún snapshot aún, `rtt + 30`
+  ticks.
 - **Remotas**: aparecen cuando `render_tick ≥ spawn_tick` y se dibujan en `pos(render_tick + fracción −
   spawn_tick)`. Con DESPAWN 4 se retiran cuando `render_tick + fracción ≥ despawn_tick + f`, con `f` la
-  fracción de su propio rayo (mundo y cápsulas dibujadas) en el último segmento, o 1 si no toca nada: así
-  llegan al muro o al blanco, como la propia. Con DESPAWN 5, en `despawn_tick`.
+  fracción de su propio rayo (mundo y cápsulas dibujadas de los hostiles al reino de la flecha, el del
+  SPAWN) en el último segmento, o 1 si no toca nada: así llegan al muro o al blanco, como la propia. Si el
+  último segmento es el primero, con `hit_from_inside`, como el servidor: la que sale desde dentro de la
+  puerta cerrada se queda en su boca (revisión en §11.10). Con DESPAWN 5, en `despawn_tick`.
 
 ### 6.3 Barra de acciones (UI-11, `ActionBar`)
 
@@ -1478,7 +1498,7 @@ selector que manda LOADOUT_SELECT y las teclas que ponen los bits 9 a 12.
   la del arma (1 en la espada y escudo). Sin resistencia, la rotura de guardia aturde y corta la
   canalización con su reutilización (`_leave_imposed` de H1b).
 - **Protección de reaparición**: la quita también una ABILITY que no sea un consumible
-  (`_started_attack`); beber, SWAP, REVIVE y EXECUTE no.
+  (`_started_attack`); beber, SWAP, REVIVE y EXECUTE no (EXECUTE sí desde la revisión de §11.10).
 - **Muestra antigua** (§4.2): `_dropped_guard_after` descarta la muestra de `view_tick` si la acción
   congelada no es BLOCK y su `action_tick > view_tick`, sea NONE o no. Nota en combate.md §4.3.
 - **`HitShapes.is_ray_clear`** con `hit_from_inside = true`: desde el vano de la puerta cerrada ni se
@@ -2148,13 +2168,17 @@ exportación, audio, nombres y reinos.
 - `test_abilities_reconciliation` (1, ~19 s): tres bots de combate con las dos plantillas y 120 ms de RTT, 20 de
   jitter y 5 % de pérdida: usan habilidades (5 golpes de habilidad), cambian de arma, beben, disparan 15 flechas,
   alguien queda ralentizado y alguien derribado (rematado con INTERACT); ninguna corrección sin explicar, ningún
-  reinicio duro ni resincronización y convergencia exacta tras 180 ticks quietos.
-- `test_loadout_net` (1, ~15 s): plantillas distintas (una antes de CLIENT_READY, otra al reaparecer) y cada uno ve
+  reinicio duro ni resincronización y convergencia exacta tras 180 ticks quietos. Desde la revisión (§11.10) lo
+  que se cuenta es lo que hace el servidor (habilidades, cambios de arma y tragos que empieza su estado, HEAL y el
+  HIT con el bit 6) y no lo que el bot quiso pulsar.
+- `test_loadout_net` (1, ~15 s): plantillas distintas (Ana el tirador antes de CLIENT_READY, que no es la de por
+  defecto y sale ya en su SPAWN; después los dos eligen en el mundo y vale al reaparecer: §11.10) y cada uno ve
   las armas del otro; con 100 ms de RTT sin pérdida, seis cambios de arma sin ninguna corrección y el otro ve los seis;
   el sangrado del comando 14 en la fila del HUD (6 s) y en la placa de un aliado, y se va de los dos al caducar.
 
 Ampliadas: `test_bot_cheat` (+3: `reuse`, dos golpes de escudo en 900 ticks separados exactamente 738; `potion`, dos
-tragos en 1300 ticks y ninguna curación sin carga; `interact`, ningún INTERACT con un derribado enemigo a 4 m; sin
+tragos en 1300 ticks separados por la reutilización compartida y, desde la revisión (§11.10), un segundo tramposo con
+1 y 0 cargas que bebe una vez y ninguna más; `interact`, ningún INTERACT con un derribado enemigo a 4 m; sin
 sospecha ni avisos ni fallos de predicción), `test_bot_cheat_brain` (+3), `test_bot_cheater` (los seis modos de
 combate y sus cerebros), `test_combat_balance` (la pasada mínima comprueba el DPS del arco, los alcances con el vuelo
 de la balística, el muro contra uno y dos y el 2 contra 2 con las dos plantillas), `test_load_test` (+1: las cifras de
@@ -2179,7 +2203,11 @@ falsos de combate usan el kit: el registro de combate lleva también nombres de 
 - **Respaldo en `test_abilities_reconciliation`**: si a mitad de la pelea nadie se ha ralentizado, el servidor
   ralentiza al de Solmarch (como el comando 14), y si a dos tercios nadie ha caído, lo derriba (como el 15); la prueba
   dice cuál ha hecho falta. Sin él, según las semillas la pelea acaba antes de tiempo o la flecha lastrante falla, y la
-  prueba no probaría lo que dice. En las ejecuciones de H5, la ralentización salió sola y el derribo se impuso.
+  prueba no probaría lo que dice. En las ejecuciones de H5, la ralentización salió sola y el derribo se impuso. Desde
+  la revisión (§11.10) el respaldo del derribo, a mitad de la pelea, deja al de Solmarch con 1 de vida y sin pociones
+  de vida (con su LOADOUT, como el comando 16), y lo derriba un golpe (HIT con el bit 6); `down()` solo queda para
+  cinco sextos de la pelea, y en las ejecuciones de la revisión no ha hecho falta (con 1 de vida y sus pociones, una
+  de tres sí: se curó bebiendo).
 - **El objetivo de `test_projectile_loopback` corre en círculo** alrededor del arquero: siempre de lado y siempre a
   30 m, sin darse la vuelta en mitad de un vuelo (en línea recta y de ida y vuelta, 20 tensados no caben en 30 s).
   Tensado de 30 ticks (46,9 m/s).
@@ -2198,7 +2226,8 @@ falsos de combate usan el kit: el registro de combate lleva también nombres de 
   [red.md 14](red.md#14-presupuesto-de-ancho-de-banda-y-cpu)): p99 del tick y de `combat_projectiles` con 32
   combatientes, 11,3 y 0,98 ms (cumple); con 48, 17,0 y 0,89 ms; con 64, **19,3 y 1,68 ms** (no cumple; con todos los
   arqueros al cielo, 19,5 y 2,04 ms y un pico de 54 flechas vivas: el tope de 64 no se llega a llenar); con 128, 28,9 y
-  2,94 ms. **El límite de jugadores por batalla baja de 64 a 40** (red.md 14). `simulate()` sigue a 67–69 µs por
+  2,94 ms. **El límite de jugadores por batalla baja de 64 a 40** (red.md 14; la refriega de 40 se midió en la
+  revisión, §11.10: 12,4 y 0,90 ms, cumple). `simulate()` sigue a 67–69 µs por
   personaje; ningún rebobinado rechazado hasta 64; la bajada por cliente, 36 KB/s con 64.
 - **Equilibrio** (`combat_balance.gd --duels=60 --seconds=30 --reference`, unos 3 min, determinista; combate.md 12.8):
   todo lo calculado en §2.4 se cumple (arco 97,3, 125,6 y 131,7 DPS; habilidades +8,1 y +25,8 con el abanico entero;
@@ -2217,3 +2246,64 @@ falsos de combate usan el kit: el registro de combate lleva también nombres de 
   de todos los candidatos, unos 6–8 µs por jugador o PNJ, y unos 10 µs por flecha viva) y `simulate()` (palanca 6): lo
   que hace falta para volver a 64 por batalla con arqueros.
 - ART-41 (tensar y soltar) y ART-12 (iconos y VFX); el enjambre ligero sin kit.
+
+### 11.10 Revisión de la implementación
+
+Tres revisores sobre H1a–H5 (predicción y red, servidor y trampas, diseño de las pruebas) y un verificador por
+hallazgo que lo reprodujo con una sonda desechable: 11 hallazgos, todos confirmados (tres «en parte») y todos de
+gravedad baja tras la verificación (RS1 y RD1 llegaron como media). Cada arreglo lleva una prueba que falla sin él
+(comprobado deshaciendo el arreglo o con el mutante del hallazgo), salvo RS3 y RD1, que son de aforo y de medida.
+
+| Id | Gravedad | Hallazgo | Arreglo |
+|---|---|---|---|
+| RP1 | baja | La remota con DESPAWN 4 en el tick del disparo calculaba `f` sin `hit_from_inside` en el segmento 0: la flecha que sale desde dentro de la puerta cerrada (SER4) la atravesaba un tick entero en los demás clientes (`end_n` 1 frente al 0 del servidor) | `on_despawn` usa `hit_from_inside` si el último segmento es el primero, como el servidor (`flown == 0`) y la propia (`k == 0`); §6.2; prueba en `test_projectile_world` (`end_n` 0 y no se ve tras su tick) |
+| RP2 | baja | Sin la vista del tirador (salió del interés con su flecha en el aire), `_hostile_feet` usaba el reino 0, que es el de los Huecos y hostil a todos: los aliados del tirador y el jugador local paraban la remota | `Arrow.realm` (el `realm` del SPAWN; `_own_realm` en la predicha) y `_hostile_feet(id, reino)`, sin buscar la vista; §6.2; prueba en `test_projectile_world` (un aliado del tirador en el último segmento no cuenta, un enemigo sí) |
+| RP3 | baja | Tras interrumpir un consumible antes del compromiso, otro (o la misma ranura) podía empezar en `s + 1` con el mismo byte de acción: un NONE de un tick, y un remoto que muestrea cada 2 ticks seguía el clip de la primera sin reiniciarlo; §5.5 y `ActionWire` decían lo contrario | `AbilityTicks.REARM_TICKS` = 6 (tres intervalos de snapshot): `impose_interrupt` (`AbilityRules.rearm_after_interrupt`) deja ese margen en la reutilización de la ranura o en la compartida, y la validación de §2.2 pide `cooldown ≥ total + REARM_TICKS` (y lo mismo a la compartida); §2.2, §4.2, §5.5; pruebas en `test_action_wire` y `test_combat_catalog` |
+| RS1 | baja (media) | Un rematador con la protección de reaparición no era candidato de ningún golpe ni flecha y rematar no la quitaba: un remate que nadie podía cortar en sus 3 s | Empezar un EXECUTE pone `protected_until = min(protected_until, s)` en `DownedSystem._try_start` (no se rechaza: sería un rechazo que el cliente no predice); §4.2 y §4.5; prueba en `test_downed` (pierde la protección en el tick del INTERACT 4 y el golpe de un aliado del derribado lo corta con INTERACT 5 y el bit 5) |
+| RS2 | baja | La zona segura solo se miraba al empezar a rematar: el derribado que se arrastraba a su campamento moría rematado dentro, donde ningún golpe le alcanza | `_safe_area_between` (la de su reino o la de quien remata) también en `_keeps_going` y en el tick del final; §4.5; prueba en `test_downed` (INTERACT 5 en el tick en que entra, sin DEATH) |
+| RS3 | baja (en parte) | `ServerConfig.max_players` seguía en 64 aunque el límite medido por batalla con el kit es 40, y nada lo aplicaba | Aforo por zona: `Zones.MAX_PLAYERS` (el Vado Gris, 40) y `NetZones.max_players`, que `ServerConfig.from_args` usa si no viene `--max-players`; una zona sin aforo propio sigue en 64 (`DEFAULT_MAX_PLAYERS`) y `--max-players` manda; red.md 1.2 y 14; prueba en `test_server_config` |
+| RD1 | baja (media, en parte) | El límite de 40 salía de interpolar entre 32 y 48, sin medirlo, y el tope de 64 flechas nunca se llenó en carga (§7.3 pedía «el tope de zona lleno») | Medidos: la refriega de 40 (30 falsos y 10 bots) da 12,4 ms de p99 del tick y 0,90 de los proyectiles (cumple; el verificador, 14,1 y 0,84) y entra en `BRAWL_MATRIX`; el tope lleno, forzado con todos tiradores al cielo (pico 64, 4603 echadas, 3,09 ms de p99 de los proyectiles); «20 contra 20» en el fuerte, marcado como estimación; red.md 14 y TEC-15 |
+| RD2 | baja (en parte) | `test_abilities_reconciliation` comprobaba habilidades, cambios de arma y pociones con los contadores del bot (lo que quiso pulsar) y el derribo lo imponía siempre la prueba | Cuenta lo que empieza el estado del servidor (habilidades, SWAP y tragos), los golpes de habilidad y los HEAL; el respaldo deja al de Solmarch con 1 de vida y sin pociones de vida a mitad de la pelea y el derribo sale de un golpe (HIT con el bit 6), con `down()` solo a cinco sextos |
+| RD3 | baja | El tramposo `potion` nunca se quedaba sin cargas (5 en 1300 ticks con 1200 de reutilización): quitar la comprobación de cargas de `try_consumable` no hacía fallar la prueba | Un segundo tramposo a la vez con 1 carga de vida y 0 de resistencia (`set_charges`, `commit_state` y LOADOUT al dueño): un trago de vida y ninguno más, cargas finales (0, 0) y una curación; el primero comprueba que dos tragos se separan por la reutilización compartida. Con el mutante del hallazgo, falla |
+| RD4 | baja | En `test_loadout_net` la elección antes de CLIENT_READY era el escudero, la plantilla por defecto: la prueba pasaba aunque el servidor ignorase el LOADOUT_SELECT en LOADING | Ana elige el tirador con `--loadout` y aparece con él (servidor, predicción con el arco y lo que ve Bruno) sin reaparecer; después los dos eligen en el mundo (Bruno el tirador, Ana el escudero) y valen al reaparecer. Con el mutante del hallazgo, falla |
+| RD5 | baja | `ProjectileWorld` daba por rechazada una predicha con el RTT del saludo (`rtt + 30`), que nunca se actualizaba: si la latencia subía unos 470 ms, todas las flechas propias desaparecían y volvían a salir sin pareja | El rechazo se mide con el tick del último snapshot (`on_server_tick`, que llama `NetClient` con cada uno): sin SPAWN cuando el servidor pasa del tick de la predicha + `input_buffer_ticks` + 30; sin snapshots aún, el RTT de la entrada; y en todo caso al acabar su vida; §6.2; prueba en `test_projectile_world` (RTT de 3 al entrar y 45 ticks de adelanto: sustituida, no rechazada) |
+
+**Pruebas.** Nuevas: `test_projectile_world` (+3: RP1, RP2 y RD5), `test_action_wire` (+1: RP3, con el margen
+también en la ranura de una habilidad y sin tocar la reutilización ya comprometida), `test_downed` (+2: RS1 y RS2)
+y `test_server_config` (+1: RS3). Cambiadas: `test_combat_catalog` (los casos de validación con `REARM_TICKS`, que
+fallan con la regla de antes), `test_consumables_machine`, `test_consumables_server` y `test_ability_server` (tras
+interrumpir beber, la reutilización compartida es `s + REARM_TICKS` en vez de 0), `test_load_test` (la batería
+`--brawl` tiene 32, 40, 64 y 128), `test_abilities_reconciliation` (RD2), `test_bot_cheat` (RD3) y `test_loadout_net`
+(RD4). Pasan todos los archivos de las zonas tocadas: `test_projectile_world`, `test_projectiles`,
+`test_projectile_loopback`, `test_net_client`, `test_action_wire`, `test_combat_catalog`, `test_consumables_machine`,
+`test_consumables_server`, `test_ability_machine`, `test_ability_server`, `test_ability_reconciliation`,
+`test_status_effects`, `test_downed`, `test_action_bar`, `test_bot_brain_kit`, `test_combat_animation`,
+`test_server_config`, `test_server_main`, `test_load_test`, `test_zones`, `test_architecture`,
+`test_abilities_reconciliation` (dos veces),
+`test_bot_cheat` y `test_loadout_net`.
+
+**Decisiones.**
+
+- **RP3 con un margen y no con un bit**: el byte de acción no tiene bits libres (en ABILITY solo sobra el valor 3 de
+  la fase, que no da para un contador robusto) y un bit de reinicio en otro campo del registro pedía cambiar el
+  protocolo. El margen va en el estado predicho (`consumable_ready_tick` y `ability_ready`), así que la reconciliación
+  lo corrige sola cuando el servidor interrumpe, y en juego son 0,1 s. Con los datos de ahora (reutilizaciones de 10 a
+  20 s) la validación nueva no cambia nada; solo cierra el caso de unos datos futuros con una reutilización justa.
+- **RS1 quita la protección en vez de rechazar el remate**: rechazarlo sería un INTERACT que el cliente no predice y la
+  pulsación se perdería sin aviso. REVIVE sigue sin quitarla.
+- **RS3 por zona y no global**: `max_players` es el aforo del proceso de cualquier zona; bajar el valor global a 40
+  recortaría zonas sin combate que nadie ha medido. Las pruebas y las herramientas que necesitan más pasan
+  `--max-players` o ponen el suyo (`load_test.gd` ya lo hacía).
+- **RD5 con el tick del servidor**: no depende del RTT, que sube y baja durante la sesión, y es lo que de verdad
+  significa «el servidor no la mandó». El margen de 30 ticks cubre que el SPAWN (canal fiable) llegue algo después
+  que el snapshot de su tick.
+
+**Medido** (máquina de 4 núcleos en reposo; `load_test.gd --scenario=brawl`, 60 s de medida):
+
+- 40 combatientes (30 falsos y 10 bots, la mitad tiradores): tick 7,5 / 12,4 / 16,2 ms (p50, p99, máximo),
+  `combat_projectiles` 0,25 ms de mediana y 0,90 de p99, 97 disparos con un pico de 18 flechas, 35,4 KB/s por
+  cliente, 0,00 % de entradas sustituidas en la ventana y ningún rebobinado rechazado: **cumple** el criterio de la
+  fase 4, con poco margen en los proyectiles.
+- El tope lleno (54 falsos tiradores, arqueros puros y al cielo, y 10 bots): 4755 disparos (57 por segundo), pico de
+  64 vivas y 4603 echadas por el tope sin errores; `combat_projectiles` 1,29 / 3,09 ms y el tick 23,2 ms de p99. El
+  tope acota las flechas vivas, no el coste por disparo.

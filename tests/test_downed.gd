@@ -6,7 +6,8 @@ extends TestCase
 ## puerta no se repara con un derribado en el vano, la baja de un derribado es antes su muerte (CLIENT_LEAVE con
 ## ENet, el falso que se va y el cuerpo de GUE-41) y al volver aparece en el campamento, la muerte directa contra
 ## un PNJ, el PNJ que prefiere al derribado y lo remata con daño, el comando 15 sin KILL y el descarte de los
-## golpes del mismo tick.
+## golpes del mismo tick. Revisión de H5: empezar a rematar quita la protección de reaparición (y así los
+## aliados del derribado pueden cortarlo), y el remate se corta si el derribado se arrastra a su campamento.
 ## [br][br]
 ## Casi todo con jugadores falsos de guion sobre la zona plana de [ZoneFixture] (montaje de [NpcRig]), avanzados
 ## deprisa con su [FortressFixture.Stepper]; la salida, con clientes de verdad sobre ENet en 127.0.0.1.
@@ -23,6 +24,7 @@ const OP_REVIVE: int = NetMessages.EntityEvent.InteractOp.REVIVE
 const OP_REVIVE_CUT: int = NetMessages.EntityEvent.InteractOp.REVIVE_CUT
 const OP_REVIVED: int = NetMessages.EntityEvent.InteractOp.REVIVED
 const OP_EXECUTE: int = NetMessages.EntityEvent.InteractOp.EXECUTE
+const OP_EXECUTE_CUT: int = NetMessages.EntityEvent.InteractOp.EXECUTE_CUT
 const WAIT_FRAMES: int = 900
 
 var _rig: NpcRig = null
@@ -387,6 +389,72 @@ func test_no_execution_through_the_closed_gate_and_through_the_broken_one_yes() 
 	if assert_eq(interacts.size(), 1, "con la puerta rota, INTERACT 4"):
 		assert_eq(interacts[0].op, OP_EXECUTE)
 	assert_true(_combatant(victim).is_dead(), "y lo remata")
+
+
+func test_an_executor_under_respawn_protection_loses_it_and_the_downeds_ally_cuts_it() -> void:
+	await _rig.start_flat(tree)
+	var plans: Array[Plan] = []
+	var ids: Array[int] = await _downed_pair(plans)
+	var attacker: int = ids[0]
+	var victim: int = ids[1]
+	await _rig.advance(60)
+	# Un aliado del derribado a 1,5 m del rematador, de cara.
+	var ally_plan := Plan.new()
+	var ally: int = _scripted(SOLMARCH, Vector3(1.5, 0.05, 0.0), PI * 0.5, ally_plan)
+	await _rig.advance(4)
+	var start: int = _server().get_tick() + 2
+	# Como si el rematador acabara de reaparecer: protegido 3 s.
+	_combatant(attacker).protected_until = start + 180
+	plans[0].hold(PlayerInput.INTERACT, start, start + 90)
+	ally_plan.hold(PlayerInput.PRIMARY, start + 5, start + 7)
+	await _advance_to(start + 61)
+	var interacts: Array[NetMessages.EntityEvent] = _events_of(INTERACT, victim)
+	if assert_eq(interacts.size(), 2, "INTERACT 4 y 5 (antes: el remate no se podía cortar)"):
+		assert_eq(interacts[0].op, OP_EXECUTE)
+		assert_eq(_combatant(attacker).protected_until, interacts[0].tick,
+				"empezar a rematar le quita la protección en ese tick")
+		assert_eq(interacts[1].op, OP_EXECUTE_CUT, "el golpe del aliado lo corta")
+		var attacker_hits: Array[NetMessages.EntityEvent] = _events_of(HIT, attacker)
+		if assert_true(attacker_hits.size() >= 1, "el aliado del derribado le golpea"):
+			assert_eq(attacker_hits[0].attacker, ally)
+			assert_true((attacker_hits[0].hit_flags & NetMessages.EntityEvent.HIT_FLAG_INTERRUPTED) != 0,
+					"con el bit 5")
+			assert_eq(interacts[1].tick, attacker_hits[0].tick, "en el tick del golpe")
+	assert_true(_combatant(victim).is_downed(), "y el derribado sigue derribado")
+	assert_eq(_events_of(DEATH, victim).size(), 0)
+
+
+func test_an_execution_is_cut_when_the_downed_crawls_into_its_camp() -> void:
+	# Un campamento de Solmarch de 10 m de radio con el borde 0,25 m detrás del derribado (en z = -1,75).
+	await _rig.start_flat(tree, func(world: Node3D) -> void:
+		NpcRig.add_safe_area(world, &"solmarch", Vector3(0.0, 0.0, -1.75 - 10.0), 10.0))
+	var plans: Array[Plan] = []
+	var ids: Array[int] = await _downed_pair(plans)
+	var attacker: int = ids[0]
+	var victim: int = ids[1]
+	await _rig.advance(60)
+	var start: int = _server().get_tick() + 2
+	plans[0].hold(PlayerInput.INTERACT, start, start + 90)
+	# El derribado se arrastra hacia atrás (hacia -Z), hacia su campamento.
+	plans[1].move = Vector2(0.0, -1.0)
+	plans[1].move_from = start + 1
+	plans[1].move_to = start + 200
+	var safe: SafeAreas = _server().get_combat().resolver.get_safe_areas()
+	var inside_at: int = -1
+	for rel: int in range(1, 70):
+		await _advance_to(start + rel)
+		if inside_at < 0 and safe.contains_own(SOLMARCH, _rig.entity(victim).get_position()):
+			inside_at = _server().get_tick()
+	assert_true(inside_at > start and inside_at < start + 60, "entra en su campamento antes del final (%d)" % (
+			inside_at - start))
+	var interacts: Array[NetMessages.EntityEvent] = _events_of(INTERACT, victim)
+	if assert_eq(interacts.size(), 2, "INTERACT 4 y 5 (antes: rematado dentro de su campamento)"):
+		assert_eq(interacts[0].op, OP_EXECUTE)
+		assert_eq(interacts[1].op, OP_EXECUTE_CUT, "dentro de su zona segura se corta")
+		assert_eq(interacts[1].tick, inside_at, "en el tick en que entra")
+	assert_eq(_events_of(DEATH, victim).size(), 0, "sin muerte por remate")
+	assert_true(_combatant(victim).is_downed(), "sigue derribado")
+	assert_eq(_combat_of(attacker).action, CombatState.Action.NONE, "quien remataba vuelve a NONE")
 
 
 func test_the_gate_is_not_repaired_with_a_downed_player_in_the_doorway() -> void:

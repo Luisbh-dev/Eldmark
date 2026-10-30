@@ -10,9 +10,11 @@ extends RefCounted
 ## cambio de arma guardados en el búfer salen en el mismo tick en que acaba el anterior (nunca hay un
 ## tick en NONE) y un segundo tambaleo o aturdimiento encadena con el primero; en los dos casos el
 ## byte es idéntico, el remoto no reiniciaría el clip y recorrería la segunda acción congelado en la
-## última pose. Una habilidad no lo necesita: dos usos de la misma ranura (o dos consumibles) nunca se
-## encadenan sin NONE, porque la reutilización dura más que la habilidad (docs/habilidades.md, sección
-## 5.5). DOWNED, REVIVE y EXECUTE llevan 0.
+## última pose. Una habilidad no lo necesita: entre dos usos de la misma ranura (o dos consumibles) hay
+## siempre [constant AbilityTicks.REARM_TICKS] ticks de NONE, más que el intervalo de los snapshots: la
+## validación del catálogo lo exige a las reutilizaciones y una interrupción antes del compromiso deja ese
+## margen (docs/habilidades.md, sección 5.5; con un solo tick, un remoto que no lo muestreaba seguía el clip
+## del primero). DOWNED, REVIVE y EXECUTE llevan 0.
 ## [br][br]
 ## El contador es de quien publica ([ActionWire] es una instancia por entidad): sube en 1 (módulo 4)
 ## cada vez que empieza una esquiva, un tambaleo, un aturdimiento o un cambio de arma, es decir, cada

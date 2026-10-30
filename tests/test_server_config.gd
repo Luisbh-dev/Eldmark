@@ -8,7 +8,7 @@ func test_defaults_without_arguments() -> void:
 	assert_eq(config.port, NetProtocol.DEFAULT_PORT, "puerto por defecto")
 	assert_eq(config.port, 24600, "24600")
 	assert_eq(config.zone_id, NetZones.default_zone_id(), "zona por defecto")
-	assert_eq(config.max_players, 64, "jugadores")
+	assert_eq(config.max_players, 40, "jugadores: el aforo del Vado Gris (el límite por batalla medido)")
 	assert_eq(config.max_connections_per_ip, 4, "conexiones por IP")
 	assert_eq(config.idle_quit_seconds, 0, "sin cierre por inactividad")
 	assert_eq(config.quit_after_ticks, 0, "sin cierre por ticks")
@@ -58,7 +58,7 @@ func test_invalid_numbers_keep_the_default() -> void:
 	])
 	var config: ServerConfig = ServerConfig.from_args(args)
 	assert_eq(config.port, 24600, "puerto no numérico")
-	assert_eq(config.max_players, 64, "0 jugadores no vale")
+	assert_eq(config.max_players, 40, "0 jugadores no vale: el aforo de la zona")
 	assert_eq(config.max_connections_per_ip, 4, "-1 conexiones no vale")
 	assert_eq(config.idle_quit_seconds, 0, "texto en --idle-quit")
 	assert_eq(config.fake_players, 0, "vacío en --fake-players")
@@ -77,7 +77,23 @@ func test_out_of_range_numbers_keep_the_default() -> void:
 	assert_eq(ServerConfig.from_args(PackedStringArray(["--fake-players=-3"])).fake_players, 0,
 			"jugadores falsos negativos")
 	assert_eq(ServerConfig.from_args(PackedStringArray(["--max-players=100000"])).max_players,
-			64, "cupo absurdo")
+			40, "cupo absurdo")
+
+
+## Revisión de H5: el aforo por defecto es el de la zona. El Vado Gris (la zona de guerra) se queda en el límite
+## de jugadores por batalla medido con el kit de la fase 4 (docs/red.md, sección 14); una zona sin aforo propio,
+## en 64; y --max-players manda siempre.
+func test_the_zone_sets_the_default_capacity() -> void:
+	assert_eq(NetZones.max_players("vado_gris"), 40, "el Vado Gris tiene aforo propio")
+	assert_eq(ServerConfig.from_args(PackedStringArray(["--zone=vado_gris"])).max_players, 40, "y es el de su servidor")
+	assert_eq(NetZones.max_players("test_world"), 0, "el mundo de pruebas no tiene")
+	assert_eq(ServerConfig.from_args(PackedStringArray(["--zone=test_world"])).max_players,
+			ServerConfig.DEFAULT_MAX_PLAYERS, "sin aforo propio, 64")
+	assert_eq(ServerConfig.DEFAULT_MAX_PLAYERS, 64)
+	assert_eq(ServerConfig.from_args(PackedStringArray(["--zone=atlantida"])).max_players, 64, "ni una desconocida")
+	assert_eq(ServerConfig.from_args(PackedStringArray(["--zone=vado_gris", "--max-players=64"])).max_players, 64,
+			"--max-players manda sobre el de la zona")
+	assert_eq(ServerConfig.new().max_players, 64, "sin leer argumentos, 64")
 
 
 func test_zone_argument_is_normalised_and_not_validated() -> void:
@@ -107,7 +123,7 @@ func test_first_occurrence_wins_and_unknown_arguments_are_ignored() -> void:
 	])
 	var config: ServerConfig = ServerConfig.from_args(args)
 	assert_eq(config.port, 24800, "gana la primera ocurrencia")
-	assert_eq(config.max_players, 64, "lo desconocido no cambia nada")
+	assert_eq(config.max_players, 40, "lo desconocido no cambia nada")
 
 
 func test_flags_need_exact_name() -> void:

@@ -20,13 +20,17 @@ extends RefCounted
 ## [constant MAX_HEIGHT_DIFFERENCE], empate por net_id) con línea de visión del pecho (pies + 1,4) a pies +
 ## 0,5 del derribado: un aliado al que nadie levanta → REVIVE (INTERACT 1); un enemigo sin zonas seguras de
 ## por medio → EXECUTE (INTERACT 4). [method ActionMachine.impose_interact] y [code]commit_state[/code].
+## Empezar a rematar quita la protección de reaparición (como atacar): si no, nadie podría cortar el remate de
+## quien acaba de reaparecer, porque un protegido no es candidato de ningún golpe (revisión de H5).
 ## [br]3. [b]Progreso y final[/b]: en [code]s == inicio + duración[/code] acaba (se mira antes que seguir: en
 ## ese tick la simulación ya ha vuelto a NONE): levantar → [method ActionMachine.impose_revived] con
 ## [member CombatRules.revived_health] (INTERACT 3); rematar → muerte con la fuente «remate». Antes, cada
 ## tick se corta (INTERACT 2 o 5, e [method ActionMachine.impose_interrupt] si aún está en la acción) si
 ## quien actúa ha dejado la acción (soltó, esquivó, le impusieron otra o le interrumpió un golpe), el
 ## objetivo ya no está derribado o ha recibido daño en este tick, pasa de
-## [member CombatRules.interact_keep_range_m] o se pierde la línea de visión (la puerta cerrada la corta).
+## [member CombatRules.interact_keep_range_m] o se pierde la línea de visión (la puerta cerrada la corta); un
+## remate, también si queda una zona segura de por medio (el derribado se arrastra a su campamento o quien
+## remata entra en el suyo), y eso se mira también en el tick del final.
 ## [br][br]
 ## Un derribado no es ni vivo ni muerto ([method Combatant.is_downed]): es candidato de los golpes y de los
 ## PNJ, no recibe efectos ni pulsos, no cuenta en el círculo, no se cura ni reaparece y su baja (salir,
@@ -256,6 +260,10 @@ func _try_start(actor: Combatant, s: int, space: PhysicsDirectSpaceState3D, tabl
 		if not _clear_line(space, feet, target.entity.get_position()):
 			continue
 		var action: int = option[3]
+		if action == _EXECUTE:
+			# Rematar es atacar: quita la protección de reaparición desde este tick (los golpes de este tick ya
+			# se han resuelto; desde el siguiente, los aliados del derribado lo pueden cortar).
+			actor.protected_until = mini(actor.protected_until, s)
 		ActionMachine.impose_interact(combat, s, action)
 		CombatDirector.commit_state(character)
 		actor.interact_target = target.get_id()
@@ -277,13 +285,18 @@ func _interaction_for(actor: Combatant, target: Combatant) -> int:
 		return 0 if _being_revived(target) else _REVIVE
 	if not _is_hostile(actor.get_realm(), target.get_realm()):
 		return 0
-	if safe_areas != null:
-		if safe_areas.contains_own(target.get_realm(), target.entity.get_position()):
-			return 0
-		if not actor.ignores_safe_area \
-				and safe_areas.contains_own(actor.get_realm(), actor.entity.get_position()):
-			return 0
-	return _EXECUTE
+	return 0 if _safe_area_between(actor, target) else _EXECUTE
+
+
+# true si hay una zona segura de por medio para rematar: el derribado está en la de su reino, o quien remata en
+# la suya (salvo que la ignore). Vale para empezar, para seguir y para acabar.
+func _safe_area_between(actor: Combatant, target: Combatant) -> bool:
+	if safe_areas == null:
+		return false
+	if safe_areas.contains_own(target.get_realm(), target.entity.get_position()):
+		return true
+	return not actor.ignores_safe_area \
+			and safe_areas.contains_own(actor.get_realm(), actor.entity.get_position())
 
 
 func _being_revived(target: Combatant) -> bool:
@@ -299,7 +312,8 @@ func _progress(actor: Combatant, s: int, space: PhysicsDirectSpaceState3D, table
 	var end_tick: int = actor.interact_start + _duration(actor.interact_action, tables)
 	if s >= end_tick:
 		# Acabar se mira antes que seguir: en este tick la simulación ya ha vuelto a NONE.
-		if s == end_tick and target != null and target.is_downed() and actor.is_alive():
+		if s == end_tick and target != null and target.is_downed() and actor.is_alive() \
+				and not (actor.interact_action == _EXECUTE and _safe_area_between(actor, target)):
 			_complete(actor, target, s, tables)
 		else:
 			_cut(actor, s)
@@ -314,6 +328,9 @@ func _keeps_going(actor: Combatant, target: Combatant, s: int, space: PhysicsDir
 	if character == null or not _still_in_action(actor, character.combat):
 		return false
 	if target == null or not target.is_downed() or target.last_damage_tick == s:
+		return false
+	if actor.interact_action == _EXECUTE and _safe_area_between(actor, target):
+		# Se ha arrastrado a su campamento (o quien remata ha entrado en el suyo): ahí no se le puede rematar.
 		return false
 	var feet: Vector3 = actor.entity.get_position()
 	var other: Vector3 = target.entity.get_position()

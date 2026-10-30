@@ -165,7 +165,9 @@ func test_a_hit_that_interrupts_drinking_spends_neither_the_charge_nor_the_coold
 	var combat: CombatState = _combat_of(drinker)
 	assert_eq(combat.action, CombatState.Action.NONE, "deja de beber")
 	assert_eq(combat.charges_of(0), 3, "sin gastar la carga")
-	assert_eq(combat.consumable_ready_tick, 0, "ni la reutilización")
+	if not hits.is_empty():
+		assert_eq(combat.consumable_ready_tick, hits[0].tick + AbilityTicks.REARM_TICKS,
+				"ni la reutilización: solo el margen para que un remoto vea el NONE (revisión de H5)")
 	assert_eq(_events_of(STATUS, drinker).size(), 0, "ni curación")
 	# Y puede volver a beber enseguida.
 	var again: int = _server().get_tick() + 2

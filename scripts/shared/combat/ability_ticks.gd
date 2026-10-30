@@ -15,6 +15,14 @@ extends RefCounted
 ## ([method CombatSource.make] con [constant CombatSource.Kind.ABILITY]) y no está en la tabla de
 ## ataques.
 
+## Ticks en NONE, como poco, entre dos usos que el byte de acción no distingue (docs/habilidades.md, sección
+## 5.5): dos de la misma ranura, o dos consumibles, salen con el mismo byte (ABILITY, fase 0 y la misma ranura),
+## y un remoto ve el registro cada [constant NetProtocol.SNAPSHOT_INTERVAL_TICKS] ticks (o menos a menudo, con
+## el reparto por prioridad del snapshot). Tres intervalos: la validación de [CombatCatalog] lo exige a las
+## reutilizaciones y [method ActionMachine.impose_interrupt] lo deja como margen tras cortar un lanzamiento
+## (revisión de H5).
+const REARM_TICKS: int = 6
+
 ## ID u16 del catálogo (1..n por orden alfabético del nombre; 0 = ninguna).
 var id: int = 0
 ## El [member AbilityDefinition.id] original.

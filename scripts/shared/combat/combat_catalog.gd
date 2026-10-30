@@ -807,12 +807,15 @@ static func _convert_ability(definition: AbilityDefinition, id: int, owner: Vect
 	if ticks.is_consumable():
 		if ticks.cooldown_ticks != 0:
 			errors.append("%s: un consumible no lleva reutilización propia (cooldown_s 0)" % label)
-		if tables_in.consumable_cooldown_ticks <= ticks.total_ticks:
-			errors.append("%s: la reutilización compartida debe ser mayor que su duración" % label)
+		if tables_in.consumable_cooldown_ticks < ticks.total_ticks + AbilityTicks.REARM_TICKS:
+			errors.append("%s: la reutilización compartida debe ser al menos su duración + %d ticks"
+					% [label, AbilityTicks.REARM_TICKS])
 		if not definition.interrupt_on_damage:
 			errors.append("%s: un consumible lleva interrupt_on_damage" % label)
-	elif ticks.cooldown_ticks < ticks.total_ticks + 1:
-		errors.append("%s: la reutilización debe ser al menos la duración + 1 tick" % label)
+	elif ticks.cooldown_ticks < ticks.total_ticks + AbilityTicks.REARM_TICKS:
+		# Así dos usos seguidos de la misma ranura (o dos consumibles) dejan REARM_TICKS en NONE entre medias.
+		errors.append("%s: la reutilización debe ser al menos la duración + %d ticks"
+				% [label, AbilityTicks.REARM_TICKS])
 	if ticks.cancel_to_dodge_from_ticks < 0 or ticks.cancel_to_dodge_from_ticks > ticks.total_ticks \
 			or ticks.cancel_to_attack_from_ticks < 0 \
 			or ticks.cancel_to_attack_from_ticks > ticks.total_ticks:

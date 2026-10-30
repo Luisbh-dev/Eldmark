@@ -27,6 +27,14 @@ const PVP_MODES: Dictionary[StringName, int] = {
 	&"test_world": PvpMode.RVR,
 }
 
+## Aforo por defecto del servidor de cada zona (jugadores, también los falsos), si no se pasa
+## [code]--max-players[/code]: en el Vado Gris, la zona de guerra, el límite de jugadores por batalla medido con
+## el kit de la fase 4 (docs/red.md, sección 14; docs/habilidades.md, sección 11). Una zona que no figura aquí
+## usa el de [code]ServerConfig[/code] (64).
+const MAX_PLAYERS: Dictionary[StringName, int] = {
+	&"vado_gris": 40,
+}
+
 ## Reinos jugables (ver docs/mundo.md): los de [RealmCatalog].
 const REALMS: Array[StringName] = RealmCatalog.REALM_IDS
 ## Reino que se usa si no se indica otro.
@@ -86,6 +94,11 @@ static func get_scene_path(zone_id: StringName) -> String:
 ## son RVR; una zona desconocida es [code]SAFE[/code], la opción segura.
 static func get_pvp_mode(zone_id: StringName) -> int:
 	return PVP_MODES.get(zone_id, PvpMode.SAFE)
+
+
+## Aforo por defecto de [param zone_id] ([constant MAX_PLAYERS]), o 0 si no tiene uno propio.
+static func get_max_players(zone_id: StringName) -> int:
+	return MAX_PLAYERS.get(zone_id, 0)
 
 
 ## Identificadores de todas las zonas registradas, ordenados.

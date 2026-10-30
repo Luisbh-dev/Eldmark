@@ -3,7 +3,8 @@ extends TestCase
 ## [method ActionMachine.action_byte] salvo en la esquiva, el tambaleo, el aturdimiento y el cambio de
 ## arma, que llevan en los bits 6-7 un contador de reinicio para que un remoto distinga dos acciones
 ## iguales y seguidas. Una habilidad lleva ahí su ranura (3 = un consumible) y su fase en los bits 4-5
-## (docs/habilidades.md, sección 5.5).
+## (docs/habilidades.md, sección 5.5): dos usos con el mismo byte dejan siempre
+## [constant AbilityTicks.REARM_TICKS] ticks en NONE entre medias, también tras una interrupción.
 
 const START_TICK: int = 1000
 
@@ -143,3 +144,58 @@ func test_swap_carries_a_counter_and_downed_revive_execute_do_not() -> void:
 	bow.hold(PlayerInput.PRIMARY, 10)
 	assert_eq(bow.c.action, CombatState.Action.CHARGE, "tensando")
 	assert_eq(wire.encode(bow.c, bow.tick), CombatState.Action.CHARGE, "CHARGE, fase 0, bits 6-7 a 0")
+
+
+## Revisión de H5: cortada la poción de vida en su lanzamiento (NONE en s), un flanco de la de resistencia en
+## s + 1 empezaba otra ABILITY con el mismo byte (fase 0, ranura 3) que en s − 1. Un remoto ve el registro cada
+## SNAPSHOT_INTERVAL_TICKS ticks: el que no muestreaba s veía el mismo byte y el clip de beber seguía sin
+## reiniciarse. Ahora la interrupción deja REARM_TICKS ticks de margen y el NONE se ve con cualquier muestreo.
+func test_after_an_interrupted_drink_the_next_one_waits_until_a_remote_can_see_none() -> void:
+	var sword: int = CombatCatalog.weapon_id(&"sword_shield")
+	var d := MachineDriver.new(sword, 0, CombatState.pack_charges(3, 2))
+	var wire := ActionWire.new()
+	d.step(PlayerInput.CONSUMABLE_1)
+	d.hold(PlayerInput.CONSUMABLE_1, 10)
+	var before: int = wire.encode(d.c, d.tick)
+	assert_eq([before & 15, (before >> 4) & 3, ActionWire.step_of(before)], [CombatState.Action.ABILITY, 0, 3],
+			"en s − 1 bebe la de vida: ABILITY, fase 0, ranura 3")
+	d.step(PlayerInput.CONSUMABLE_1)
+	var s: int = d.tick
+	ActionMachine.impose_interrupt(d.c, s)
+	assert_eq(wire.encode(d.c, s), 0x30, "en s, NONE")
+	assert_eq(d.c.charges_of(0), 3, "sin gastar la carga")
+	var bytes: Array[int] = [0x30]
+	var started: int = -1
+	for rel: int in range(1, AbilityTicks.REARM_TICKS + 4):
+		# Un flanco de la otra poción en s + 1 (otro botón, sin soltar nada), y se mantiene.
+		d.step(PlayerInput.CONSUMABLE_2)
+		var byte: int = wire.encode(d.c, d.tick)
+		if started < 0 and d.c.action == CombatState.Action.ABILITY:
+			started = d.tick
+		if started < 0:
+			bytes.append(byte)
+	assert_true(bytes.size() > 1 and bytes[1] != before,
+			"en s + 1 ya no sale el byte de s − 1 (antes: el mismo, y has_counter(ABILITY) es false)")
+	assert_eq(started, s + AbilityTicks.REARM_TICKS, "la de resistencia empieza al acabar el margen (del búfer)")
+	assert_eq(d.c.action_id, CombatCatalog.ability_id(&"potion_stamina"))
+	assert_eq(bytes.size(), AbilityTicks.REARM_TICKS, "NONE de s a s + REARM_TICKS − 1")
+	for byte: int in bytes:
+		assert_eq(byte, 0x30, "todo NONE")
+	assert_true(AbilityTicks.REARM_TICKS >= 3 * NetProtocol.SNAPSHOT_INTERVAL_TICKS,
+			"más de un intervalo de snapshot: cualquier muestreo ve el NONE")
+	# Una habilidad cortada en su lanzamiento deja el mismo margen en su ranura.
+	var bash := MachineDriver.new(sword)
+	bash.step(PlayerInput.ABILITY_1)
+	var ability: AbilityTicks = CombatCatalog.ability(bash.c.action_id)
+	bash.step()
+	ActionMachine.impose_interrupt(bash.c, bash.tick)
+	assert_eq(bash.c.ability_ready[ability.slot], bash.tick + AbilityTicks.REARM_TICKS,
+			"la ranura de %s, con el margen" % ability.name)
+	# Tras el compromiso la reutilización ya es mayor y no cambia.
+	var late := MachineDriver.new(sword, 0, CombatState.pack_charges(3, 2))
+	late.step(PlayerInput.CONSUMABLE_1)
+	late.hold(0, CombatCatalog.ability(late.c.action_id).cast_ticks + 2)
+	var committed: int = late.c.consumable_ready_tick
+	assert_true(committed > late.tick + AbilityTicks.REARM_TICKS, "comprometida, ya tiene su reutilización")
+	ActionMachine.impose_interrupt(late.c, late.tick)
+	assert_eq(late.c.consumable_ready_tick, committed, "y la interrupción no la toca")

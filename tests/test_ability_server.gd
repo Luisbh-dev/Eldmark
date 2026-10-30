@@ -377,7 +377,8 @@ func test_a_hit_interrupts_drinking_before_the_commit_and_not_after() -> void:
 	assert_eq(combat.action, CombatState.Action.NONE, "deja de beber")
 	assert_eq(combat.action_tick, S - 10, "conservando el action_tick de lo que corta")
 	assert_eq(combat.charges_of(0), 3, "sin gastar la carga")
-	assert_eq(combat.consumable_ready_tick, 0, "ni la reutilización")
+	assert_eq(combat.consumable_ready_tick, S + AbilityTicks.REARM_TICKS,
+			"ni la reutilización: solo el margen para que un remoto vea el NONE (revisión de H5)")
 	assert_eq(_director.stats[&"interrupts"], 1)
 	# Ya comprometida (en la recuperación), un golpe no la corta.
 	_start_ability(drinker, potion, S + 100 - potion.cast_ticks - 2)

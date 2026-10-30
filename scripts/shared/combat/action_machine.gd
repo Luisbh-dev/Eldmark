@@ -432,8 +432,11 @@ static func impose_interact(c: CombatState, tick: int, action: int) -> void:
 
 ## Interrupción (docs/habilidades.md, sección 4.2): NONE, cortando beber, un lanzamiento marcado,
 ## levantar o rematar, y conservando el [member CombatState.action_tick] de lo que corta (como al
-## acabar sin más). Antes del compromiso no hay reutilización ni gasto.
+## acabar sin más). Antes del compromiso no hay reutilización ni gasto: solo un margen de
+## [constant AbilityTicks.REARM_TICKS] ticks antes de otro consumible (o de la misma ranura), para que un
+## remoto vea el NONE entre los dos (el byte de acción no los distingue; revisión de H5).
 static func impose_interrupt(c: CombatState, tick: int) -> void:
+	AbilityRules.rearm_after_interrupt(c, tick)
 	_leave_imposed(c, tick)
 	_to_none(c)
 

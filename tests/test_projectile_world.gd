@@ -10,7 +10,12 @@ extends TestCase
 ## [br]- La remota aparece en su [code]render_tick[/code] y se retira en [code]despawn_tick + f[/code] (en el
 ## muro) o en [code]despawn_tick[/code] si caduca.
 ## [br]- La propia se clava en el mundo, se oculta en la cápsula dibujada de un enemigo y, sin SPAWN, se
-## retira en [code]rtt + 30[/code] ticks.
+## retira en [code]rtt + 30[/code] ticks si aún no ha llegado ningún snapshot.
+## [br]- Revisión de H5: la remota con DESPAWN 4 en su propio tick desde dentro de un cuerpo de vista (el vano de
+## la puerta cerrada) se queda en su boca ([code]hit_from_inside[/code] en el primer segmento, como el
+## servidor); la fracción de la remota mira la hostilidad con el reino del SPAWN, también sin la vista del
+## tirador (los aliados del tirador no la paran); y la predicha se da por rechazada con el tick del último
+## snapshot, no con el RTT de la entrada.
 
 const OWN_ID: int = 5
 const ENEMY_ID: int = 77
@@ -314,12 +319,90 @@ func test_an_own_arrow_sticks_in_the_wall_hides_in_an_enemy_and_is_retired_witho
 	assert_eq(world.get_stats()["hidden"], 1)
 
 
-func _enemy_spawn(net_id: int, feet: Vector3) -> NetMessages.EntitySpawn:
+# --- Revisión de H5 ---------------------------------------------------------------------------
+
+func test_a_remote_arrow_that_sticks_at_its_origin_inside_a_closed_gate_never_crosses_it() -> void:
+	var world: ProjectileWorld = _make_world(false)
+	# Un cuerpo de vista de 2×3×2 m en el origen (como el vano de la puerta cerrada): la flecha sale de dentro.
+	_add_box(world.get_parent(), Vector3(0.0, 1.5, 0.0), Vector3(2.0, 3.0, 2.0))
+	await wait_physics_frames(3)
+	world.on_spawn(_arrow_spawn(811, 400, ENEMY_ID, NetProtocol.Realm.SOLMARCH, _quick_source(),
+			Vector3(0.0, 1.4, 0.0), Vector3(0.0, 0.0, -45.0)))
+	var arrow: ProjectileWorld.Arrow = world.find_arrow(811)
+	# El servidor prueba el primer segmento con hit_from_inside: DESPAWN 4 en el tick del disparo, fracción 0.
+	world.on_despawn(811, 400, NetProtocol.DespawnReason.IMPACT)
+	assert_near(arrow.end_n, 0.0, 0.0001, "se clava en su origen, como en el servidor (antes, 1: un tick entero)")
+	world.draw(500.0, 399.5)
+	assert_eq(world.get_live_count(), 1, "antes de su tick aún no ha salido")
+	assert_false(arrow.visible)
+	world.draw(500.0, 400.5)
+	assert_eq(world.get_live_count(), 0, "y nunca se ve al otro lado de la puerta cerrada")
+
+
+func test_a_remote_arrow_fraction_ignores_the_shooters_allies_even_without_the_shooters_view() -> void:
+	var world: ProjectileWorld = _make_world(false)
+	await wait_physics_frames(2)
+	var remote: RemoteWorld = world._remote_world
+	# Un aliado del tirador (Solmarch) a 10 m en la trayectoria; el tirador (77, Solmarch) no tiene vista: ya salió
+	# del interés de este cliente con su flecha en el aire.
+	remote.on_spawn(_enemy_spawn(78, Vector3(0.0, 0.0, -10.0), NetProtocol.Realm.SOLMARCH))
+	remote.draw(50.0, 0.0)
+	assert_true(remote.get_view(78).is_drawn())
+	assert_null(remote.get_view(ENEMY_ID), "sin la vista del tirador")
+	world.on_spawn(_arrow_spawn(821, 100, ENEMY_ID, NetProtocol.Realm.SOLMARCH, _quick_source(),
+			Vector3(0.0, 1.4, 0.0), Vector3(0.0, 0.0, -45.0)))
+	assert_eq(world.find_arrow(821).realm, NetProtocol.Realm.SOLMARCH, "la flecha guarda el reino del SPAWN")
+	# El servidor dice que dio en algo en el tick 113 (más allá del aliado): el segmento 13 no lo para.
+	world.on_despawn(821, 113, NetProtocol.DespawnReason.IMPACT)
+	assert_near(world.find_arrow(821).end_n, 14.0, 0.0001,
+			"el aliado del tirador no cuenta (antes, con el reino 0 de los Huecos, 13)")
+	# Control: un enemigo del tirador (Vardheim) en el mismo sitio sí la para.
+	remote.on_spawn(_enemy_spawn(79, Vector3(0.0, 0.0, -10.0), NetProtocol.Realm.VARDHEIM))
+	remote.draw(50.0, 0.0)
+	world.on_spawn(_arrow_spawn(822, 100, ENEMY_ID, NetProtocol.Realm.SOLMARCH, _quick_source(),
+			Vector3(0.0, 1.4, 0.0), Vector3(0.0, 0.0, -45.0)))
+	world.on_despawn(822, 113, NetProtocol.DespawnReason.IMPACT)
+	assert_true(world.find_arrow(822).end_n < 14.0,
+			"un enemigo del tirador en el último segmento la para (n = %.2f)" % world.find_arrow(822).end_n)
+
+
+func test_a_predicted_arrow_is_judged_against_the_servers_tick_not_the_rtt_at_entry() -> void:
+	var world: ProjectileWorld = _make_world(false)
+	await wait_physics_frames(2)
+	# RTT de 3 ticks al entrar; después la latencia sube y la predicción va 45 ticks por delante del servidor.
+	world.set_local(OWN_ID, NetProtocol.Realm.VARDHEIM, ZONE, null, null, 3)
+	world.on_stepped(SHOT_TICK, _look_input(SHOT_TICK), _quick_shot_state(SHOT_TICK, Vector3.ZERO))
+	var predicted: ProjectileWorld.Arrow = world.get_arrows()[0]
+	world.on_server_tick(SHOT_TICK + 34 - 45)
+	world.draw(SHOT_TICK + 34.0, 0.0)
+	assert_eq(world.get_stats()["rejected"], 0,
+			"con el servidor 11 ticks por detrás de su tick no está rechazada (antes: 34 > 3 + 30)")
+	assert_eq(world.get_live_count(), 1)
+	world.on_server_tick(SHOT_TICK)
+	world.draw(SHOT_TICK + 45.0, 0.0)
+	world.on_spawn(_arrow_spawn(831, SHOT_TICK, OWN_ID, NetProtocol.Realm.VARDHEIM, _quick_source(),
+			predicted.p0, predicted.v0))
+	assert_eq(world.get_stats()["substituted"], 1, "el SPAWN llega 45 ticks después y la sustituye")
+	assert_eq(world.get_stats()["own_from_server"], 0, "sin desaparecer y volver a salir")
+	# Otra sin SPAWN: se retira cuando el servidor pasa su tick más el búfer de entradas y el margen.
+	var later: int = SHOT_TICK + 300
+	world.on_stepped(later, _look_input(later), _quick_shot_state(later, Vector3.ZERO))
+	var limit: int = later + CombatCatalog.rules().input_buffer_ticks + ProjectileWorld.REJECT_EXTRA_TICKS
+	world.on_server_tick(limit)
+	world.draw(float(limit + 45), 0.0)
+	assert_eq(world.get_stats()["rejected"], 0, "con el servidor justo en el límite, aún no")
+	world.on_server_tick(limit + 1)
+	world.draw(float(limit + 46), 0.0)
+	assert_eq(world.get_stats()["rejected"], 1, "un tick más y el servidor ya la habría mandado: rechazada")
+	world.clear()
+
+
+func _enemy_spawn(net_id: int, feet: Vector3, realm: int = NetProtocol.Realm.SOLMARCH) -> NetMessages.EntitySpawn:
 	var spawn := NetMessages.EntitySpawn.new()
 	spawn.net_id = net_id
 	spawn.kind = NetProtocol.EntityKind.PLAYER
 	spawn.spawn_tick = 10
-	spawn.realm = NetProtocol.Realm.SOLMARCH
+	spawn.realm = realm
 	spawn.display_name = "Bruno"
 	var state := PlayerState.new()
 	state.position = feet

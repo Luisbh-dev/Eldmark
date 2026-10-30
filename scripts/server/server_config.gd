@@ -5,7 +5,7 @@ extends RefCounted
 ## Se rellena con [method from_args] a partir de los argumentos de usuario (los que van tras
 ## [code]--[/code]):
 ## [codeblock]
-## --server --port=24600 --zone=<id> --max-players=64 --max-per-ip=4 --idle-quit=<s>
+## --server --port=24600 --zone=<id> --max-players=N --max-per-ip=4 --idle-quit=<s>
 ## --fake-players=N --fake-layout=<cluster|spread> --fake-churn=<ticks> --fake-brain=<combat|siege>
 ## --fake-center=<x>,<z> --fake-loadout=<plantilla>[:<porcentaje>] --fake-archers=<porcentaje>
 ## --max-realm-diff=N --run-at=<tick>:<orden>
@@ -40,6 +40,9 @@ extends RefCounted
 ## informe y borrado del bloqueo de [code]--dev-lock[/code] está [code]--stop-file=<ruta>[/code]: el
 ## servidor mira cada segundo si el archivo existe (por ejemplo, un [code]ExecStop[/code] que lo
 ## cree con [code]touch[/code]).
+## Sin [code]--max-players[/code], el aforo es el de la zona ([method NetZones.max_players]: 40 en el Vado Gris,
+## el límite de jugadores por batalla medido con el kit de la fase 4, docs/red.md, sección 14) o, si la zona no
+## tiene uno propio, [constant DEFAULT_MAX_PLAYERS].
 ## Un valor que no es un número válido o está fuera de rango se ignora y se queda el valor por
 ## defecto: el servidor nunca arranca con una configuración absurda por un error al teclear.
 
@@ -48,8 +51,11 @@ var port: int = NetProtocol.DEFAULT_PORT
 ## Id de la zona que sirve ([method NetZones.default_zone_id] si no se indica). No se comprueba
 ## aquí que exista: [code]ServerMain[/code] lo hace con [method NetZones.scene_path].
 var zone_id: String = ""
-## Jugadores como mucho (los falsos cuentan).
-var max_players: int = 64
+## Aforo de una zona sin uno propio ([method NetZones.max_players]).
+const DEFAULT_MAX_PLAYERS: int = 64
+
+## Jugadores como mucho (los falsos cuentan). [method from_args] pone el de la zona si no se indica.
+var max_players: int = DEFAULT_MAX_PLAYERS
 ## Conexiones simultáneas como mucho desde una misma IP (salvo loopback).
 var max_connections_per_ip: int = 4
 ## Segundos sin jugadores tras los que el servidor se cierra solo. 0 = nunca.
@@ -145,6 +151,10 @@ static func from_args(args: PackedStringArray) -> ServerConfig:
 		config.zone_id = NetZones.default_zone_id()
 
 	config.port = _int_option(args, "--port=", config.port, 1, _MAX_PORT)
+	# El aforo de la zona si lo tiene (revisión de H5: el Vado Gris, el límite medido por batalla).
+	var zone_capacity: int = NetZones.max_players(config.zone_id)
+	if zone_capacity > 0:
+		config.max_players = zone_capacity
 	config.max_players = _int_option(args, "--max-players=", config.max_players, 1,
 			_MAX_PLAYERS_LIMIT)
 	config.max_connections_per_ip = _int_option(args, "--max-per-ip=",

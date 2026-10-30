@@ -1120,7 +1120,8 @@ func _impact_result(hit: CombatResolver.Hit, blocked: bool, flags: int) -> Strin
 
 
 # Lo que quita la protección de reaparición: un ataque (o su carga) y una habilidad que no sea un
-# consumible (docs/habilidades.md, sección 4.2). Beber, SWAP, REVIVE y EXECUTE no la quitan.
+# consumible (docs/habilidades.md, sección 4.2). Beber, SWAP y REVIVE no la quitan; EXECUTE la quita
+# DownedSystem en el tick en que empieza (revisión de H5).
 func _started_attack(combatant: Combatant) -> bool:
 	var frame: Combatant.Frozen = combatant.frozen
 	match frame.action:

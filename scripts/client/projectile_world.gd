@@ -18,13 +18,18 @@ extends Node3D
 ## fuente y [code]volley_index[/code] cuyo tick difiera como mucho [member CombatRules.input_buffer_ticks];
 ## se adoptan su [code]p0[/code], [code]v0[/code] y [code]spawn_tick[/code] con un desfase visual que
 ## decae en [constant OFFSET_DECAY_TICKS] ticks. Sin pareja se dibuja la del servidor (en el tiempo
-## predicho, como la propia). Una predicha sin SPAWN en [code]rtt + [/code][constant REJECT_EXTRA_TICKS]
-## ticks se retira: el servidor la rechazó.
+## predicho, como la propia). Una predicha sin SPAWN cuando el servidor ya va
+## [member CombatRules.input_buffer_ticks] + [constant REJECT_EXTRA_TICKS] ticks por delante de su tick (el
+## tick del último snapshot, [method on_server_tick]) se retira: el servidor la rechazó. Se mide con el tick del
+## servidor y no con el RTT, que cambia durante la sesión (revisión de H5); sin ningún snapshot todavía, con el
+## RTT de la entrada.
 ## [br][br]
 ## [b]Remotas.[/b] Aparecen cuando el tick de dibujo alcanza su [code]spawn_tick[/code] y se dibujan en
 ## [code]pos(render_tick + fracción − spawn_tick)[/code]. Con DESPAWN 4 (impacto) se retiran en
 ## [code]despawn_tick + f[/code], con [code]f[/code] la fracción de su propio rayo (mundo y cápsulas
-## dibujadas) en el último segmento, o 1 si no toca nada: así llegan al muro o al blanco. Con DESPAWN 5
+## dibujadas de los hostiles al reino del tirador que trae el SPAWN) en el último segmento, o 1 si no toca
+## nada: así llegan al muro o al blanco. Si el último es el primero, con [code]hit_from_inside[/code], como el
+## servidor: la flecha que sale de dentro de la puerta cerrada se queda en su boca. Con DESPAWN 5
 ## (caducada), en [code]despawn_tick[/code]. La propia se retira con la misma regla en su tiempo.
 ## [br][br]
 ## [NetClient] la crea, la mete en la zona con el [RemoteWorld] y le pasa los pasos y los mensajes. Las
@@ -49,6 +54,8 @@ class Arrow:
 	## Id de red (0 mientras es solo predicha).
 	var net_id: int = 0
 	var owner_id: int = 0
+	## Reino del tirador (el del SPAWN; el del jugador local en la predicha): quién es hostil a la flecha.
+	var realm: int = NetProtocol.Realm.NONE
 	var source: int = 0
 	var volley_index: int = 0
 	var projectile_id: int = 0
@@ -111,6 +118,8 @@ var _own_id: int = 0
 var _own_realm: int = NetProtocol.Realm.NONE
 var _zone_id: StringName = &""
 var _rtt_ticks: int = 0
+# Tick del último snapshot del servidor (-1 = aún ninguno): para dar por rechazada una predicha.
+var _server_tick: int = -1
 var _arrows: Array[Arrow] = []
 var _last_own_time: float = 0.0
 var _last_render_time: float = 0.0
@@ -136,7 +145,7 @@ func setup(clock: InterpolationClock, remote_world: RemoteWorld) -> void:
 
 ## El jugador local: su id de red, su reino y la zona (quién es hostil, [FactionRules]), su personaje
 ## (el mundo de física local) y su predicción (el tiempo predicho y [signal ClientPrediction.stepped],
-## que conecta), y el RTT en ticks (para dar por rechazada una predicha).
+## que conecta), y el RTT en ticks (para dar por rechazada una predicha mientras no llegue ningún snapshot).
 func set_local(net_id: int, realm: int, zone_id: StringName, character: PlayerCharacter,
 		prediction: ClientPrediction, rtt_ticks: int) -> void:
 	if _prediction != null and _prediction.stepped.is_connected(on_stepped):
@@ -147,6 +156,7 @@ func set_local(net_id: int, realm: int, zone_id: StringName, character: PlayerCh
 	_character = character
 	_prediction = prediction
 	_rtt_ticks = maxi(rtt_ticks, 0)
+	_server_tick = -1
 	if _prediction != null:
 		_prediction.stepped.connect(on_stepped)
 
@@ -164,6 +174,14 @@ func _process(_delta: float) -> void:
 
 # --- Entradas -----------------------------------------------------------------------------------
 
+## El tick [param tick] del snapshot más nuevo que ha llegado ([NetClient] lo pasa con cada uno): hasta dónde
+## ha simulado ya el servidor. Una predicha cuyo tick se queda más de
+## [member CombatRules.input_buffer_ticks] + [constant REJECT_EXTRA_TICKS] ticks por detrás sin SPAWN se
+## retira (el SPAWN va por el canal fiable y puede llegar algo después que el snapshot de su tick).
+func on_server_tick(tick: int) -> void:
+	_server_tick = maxi(_server_tick, tick)
+
+
 ## Un paso de predicción ([signal ClientPrediction.stepped]): si [param tick] es el compromiso de un
 ## disparo, crea sus flechas predichas con la entrada [param input] y los pies de [param state].
 func on_stepped(tick: int, input: PlayerInput, state: PlayerState) -> void:
@@ -176,10 +194,12 @@ func on_stepped(tick: int, input: PlayerInput, state: PlayerState) -> void:
 	if projectile == null:
 		return
 	var shots: Array[PackedVector3Array] = launch.launch(state.position, input.look_yaw,
-			input.look_pitch, (input.buttons & PlayerInput.AIM_LEFT) != 0, _space(), _hostile_feet())
+			input.look_pitch, (input.buttons & PlayerInput.AIM_LEFT) != 0, _space(),
+			_hostile_feet(_own_id, _own_realm))
 	for index: int in shots.size():
 		var arrow := Arrow.new()
 		arrow.owner_id = _own_id
+		arrow.realm = _own_realm
 		arrow.source = launch.source
 		arrow.volley_index = index
 		arrow.spawn_tick = tick
@@ -225,7 +245,9 @@ func on_despawn(projectile_id: int, tick: int, reason: int) -> void:
 	var segment: int = maxi(tick - arrow.spawn_tick, 0)
 	arrow.despawn_reason = reason
 	if reason == NetProtocol.DespawnReason.IMPACT:
-		arrow.end_n = float(segment) + _segment_fraction(arrow, segment, false)
+		# El primer segmento, con hit_from_inside (como el servidor y como la propia): si no, la que sale de dentro
+		# de un cuerpo de vista no lo ve y lo atraviesa un tick entero.
+		arrow.end_n = float(segment) + _segment_fraction(arrow, segment, segment == 0)
 		_stats["impacts"] += 1
 	else:
 		arrow.end_n = float(segment)
@@ -294,6 +316,7 @@ func clear() -> void:
 	for arrow: Arrow in _arrows:
 		_free_node(arrow)
 	_arrows.clear()
+	_server_tick = -1
 
 
 # --- Interno ------------------------------------------------------------------------------------
@@ -315,6 +338,7 @@ func _set_ballistics(arrow: Arrow, projectile_id: int, projectile: ProjectileTic
 func _fill_from_spawn(arrow: Arrow, spawn: NetMessages.EntitySpawn, projectile: ProjectileTicks) -> void:
 	arrow.net_id = spawn.net_id
 	arrow.owner_id = spawn.owner_id
+	arrow.realm = spawn.realm
 	arrow.source = spawn.source
 	arrow.volley_index = spawn.volley_index
 	arrow.spawn_tick = spawn.spawn_tick
@@ -366,11 +390,24 @@ func _should_retire(arrow: Arrow, own_time: float, render_time: float) -> bool:
 	if arrow.end_n >= 0.0 and n >= arrow.end_n:
 		return true
 	if arrow.predicted and not arrow.confirmed:
-		if own_time - float(arrow.created_tick) > float(_rtt_ticks + REJECT_EXTRA_TICKS):
+		if _is_rejected(arrow, own_time):
 			_stats["rejected"] += 1
 			return true
 		return false
 	return n >= float(arrow.lifetime_ticks + LIFETIME_GRACE_TICKS)
+
+
+# Una predicha sin SPAWN: el servidor ya ha simulado su tick más el búfer de entradas y un margen sin mandarlo
+# (con el tick del último snapshot, que sigue al RTT de ahora; sin snapshots, el RTT de la entrada), o ya ha
+# pasado su vida entera.
+func _is_rejected(arrow: Arrow, own_time: float) -> bool:
+	var waited: float = own_time - float(arrow.created_tick)
+	if waited >= float(arrow.lifetime_ticks + LIFETIME_GRACE_TICKS):
+		return true
+	if _server_tick >= 0:
+		return _server_tick - arrow.created_tick \
+				> CombatCatalog.rules().input_buffer_ticks + REJECT_EXTRA_TICKS
+	return waited > float(_rtt_ticks + REJECT_EXTRA_TICKS)
 
 
 func _place(arrow: Arrow, time: float) -> void:
@@ -437,7 +474,7 @@ func _segment_hit(arrow: Arrow, k: int, from_inside: bool) -> Vector2:
 		var result: Dictionary = space.intersect_ray(query)
 		if not result.is_empty():
 			best = clampf(a.distance_to(result["position"] as Vector3) / a.distance_to(b), 0.0, 1.0)
-	for feet: Vector3 in _hostile_feet(arrow.owner_id):
+	for feet: Vector3 in _hostile_feet(arrow.owner_id, arrow.realm):
 		var fraction: float = HitShapes.segment_capsule_fraction(a, b, feet,
 				HitShapes.CAPSULE_RADIUS + arrow.radius, HitShapes.CAPSULE_HEIGHT)
 		if fraction >= 0.0 and fraction < best:
@@ -446,17 +483,15 @@ func _segment_hit(arrow: Arrow, k: int, from_inside: bool) -> Vector2:
 	return Vector2(best if best < INF else -1.0, kind)
 
 
-# Pies de los remotos que se dibujan, vivos y hostiles al tirador [param shooter_id] (por defecto, el
-# jugador local), tal como se ven ahora.
-func _hostile_feet(shooter_id: int = 0) -> PackedVector3Array:
+# Pies de los remotos que se dibujan, vivos y hostiles al reino [param shooter_realm] del tirador
+# [param shooter_id], tal como se ven ahora. El reino es el de la flecha (el del SPAWN), no el de la vista del
+# tirador: esa puede no estar (salió del interés con su flecha en el aire) y el reino 0 es el de los Huecos,
+# hostiles a todos (revisión de H5).
+func _hostile_feet(shooter_id: int, shooter_realm: int) -> PackedVector3Array:
 	var feet := PackedVector3Array()
 	if _remote_world == null or not is_instance_valid(_remote_world):
 		return feet
 	var own_shooter: bool = shooter_id == 0 or shooter_id == _own_id
-	var shooter_realm: int = _own_realm
-	if not own_shooter:
-		var shooter: RemotePlayerView = _remote_world.get_view(shooter_id)
-		shooter_realm = shooter.get_realm() if shooter != null else NetProtocol.Realm.NONE
 	for view: RemotePlayerView in _remote_world.get_views():
 		if view.get_net_id() == shooter_id or not view.is_drawn() \
 				or view.get_drawn_health_q() == EntityRecord.HEALTH_Q_DEAD:

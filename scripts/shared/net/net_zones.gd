@@ -30,6 +30,12 @@ static func is_rvr(zone_id: String) -> bool:
 	return Zones.get_pvp_mode(StringName(zone_id)) == Zones.PvpMode.RVR
 
 
+## Aforo por defecto del servidor de [param zone_id] cuando no se pasa [code]--max-players[/code]
+## ([method Zones.get_max_players]); 0 si la zona no tiene uno propio.
+static func max_players(zone_id: String) -> int:
+	return Zones.get_max_players(StringName(zone_id))
+
+
 ## Códigos de [enum NetProtocol.Realm] admitidos en [param zone_id], según [RealmCatalog]. Vacío
 ## = todos: es lo que devuelve para una zona sin restricción registrada.
 static func allowed_realms(zone_id: String) -> PackedInt32Array:

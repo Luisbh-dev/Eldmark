@@ -2,10 +2,12 @@ extends TestCase
 ## Plantillas, cambio de arma y efectos de estado de punta a punta con ENet real sobre 127.0.0.1 (H5;
 ## docs/habilidades.md, secciones 4.6, 6.4 y 7.3): un [ZoneServer] y dos bots ([NetClient]) de Vardheim, cada uno
 ## en su [SubViewport] con su propio mundo de física. Lo que piden PRG-07, PRG-04/CMB-24 y UI-45:
-## [br]- [b]PRG-07[/b]: los dos eligen plantillas distintas, Ana antes de CLIENT_READY (el escudero, con
-## [code]--loadout[/code]: LOADOUT_SELECT nada más llegar el WELCOME) y Bruno ya en el mundo (el tirador, que vale
-## al reaparecer), y cada uno ve las armas del otro (la pareja del SPAWN o del LOADOUT y la ranura activa del
-## bit 3 del registro).
+## [br]- [b]PRG-07[/b]: Ana elige antes de CLIENT_READY una plantilla distinta de la de por defecto (el tirador, con
+## [code]--loadout[/code]: LOADOUT_SELECT nada más llegar el WELCOME) y aparece ya con ella, con el arco en su
+## predicción y en lo que ve Bruno (revisión de H5: antes elegía el escudero, que es la de por defecto, y la prueba
+## pasaba aunque el servidor ignorase la elección). Después los dos eligen en el mundo (Bruno el tirador y Ana el
+## escudero, que valen al reaparecer) y acaban con plantillas distintas, y cada uno ve las armas del otro (la pareja
+## del SPAWN o del LOADOUT y la ranura activa del bit 3 del registro).
 ## [br]- [b]PRG-04 y CMB-24[/b]: con 100 ms de RTT y sin pérdida, Bruno cambia de arma seis veces con Q; el servidor las simula y su
 ## predicción no tiene ni una corrección en toda la ventana (que cubre ± el RTT de cada cambio), y Ana ve cambiar
 ## el arma activa de Bruno.
@@ -114,7 +116,7 @@ func test_templates_weapon_swaps_and_a_bleed_over_the_network() -> void:
 	config.net_sim_spec = NET_SIM
 	_server = NetHarness.start_server(_server_viewport, config)
 	await wait_physics_frames(3)
-	for entry: Array in [[1, "squire"], [2, ""]]:
+	for entry: Array in [[1, "marksman"], [2, ""]]:
 		var viewport: SubViewport = NetHarness.make_world_viewport(_root, "")
 		_viewports.append(viewport)
 		_clients.append(NetHarness.start_bot(viewport, port, VARDHEIM, entry[0], "", "", "", entry[1]))
@@ -133,23 +135,39 @@ func test_templates_weapon_swaps_and_a_bleed_over_the_network() -> void:
 	for client: NetClient in _clients:
 		_set_script(client, _idle)
 
-	# --- PRG-07: Ana eligió antes de CLIENT_READY; Bruno elige ya en el mundo y vale al reaparecer. --------
+	# --- PRG-07: Ana eligió antes de CLIENT_READY (no la de por defecto) y aparece con ella. ---------------
+	assert_true(marksman != CombatCatalog.default_template_id(), "el tirador no es la plantilla por defecto")
 	assert_eq(ana.get_stats()["loadout_selects"], 1, "Ana mandó su LOADOUT_SELECT antes de CLIENT_READY")
-	assert_eq(_server.get_combat().get_combatant(ana_id).template_id, squire, "y aparece con el escudero")
+	assert_eq(_server.get_combat().get_combatant(ana_id).template_id, marksman,
+			"y aparece con el tirador, sin reaparecer")
+	assert_eq(_server_weapon(ana_id), bow, "con el arco en la mano en el servidor")
+	assert_eq(ana.get_character().combat.weapon_id, bow, "y en su predicción desde el SPAWN")
 	assert_eq(_server.get_combat().get_combatant(bruno_id).template_id, squire, "Bruno, con la de por defecto")
+	var bruno_sees_ana: bool = await _wait_until(func() -> bool:
+		var view: RemotePlayerView = bruno.get_remote_world().get_view(ana_id)
+		return view != null and view.is_drawn() and view.get_weapons() == Vector2i(bow, sword), 300)
+	assert_true(bruno_sees_ana, "Bruno ve a Ana con el arco y la espada")
+	# --- Los dos eligen ya en el mundo: vale al reaparecer. -------------------------------------------------
 	assert_true(bruno.send_loadout_select(marksman), "Bruno elige el tirador en el mundo")
+	assert_true(ana.send_loadout_select(squire), "y Ana el escudero")
 	assert_true(await _wait_until(func() -> bool:
-			return _peer_of(bruno_id).pending_template_id == marksman, 120), "el servidor la anota como pendiente")
-	assert_eq(_server_weapon(bruno_id), sword, "y no cambia nada hasta que reaparece")
+			return _peer_of(bruno_id).pending_template_id == marksman \
+					and _peer_of(ana_id).pending_template_id == squire, 120), "el servidor las anota como pendientes")
+	assert_eq(_server_weapon(bruno_id), sword, "y no cambia nada hasta que reaparecen")
+	assert_eq(_server_weapon(ana_id), bow)
 	var timing: CombatTiming = _server.get_combat_timing()
 	timing.respawn = 20
 	timing.auto_respawn = 40
 	_server.get_combat().kill(_server.get_combat().get_combatant(bruno_id), _server.get_tick() + 1)
+	_server.get_combat().kill(_server.get_combat().get_combatant(ana_id), _server.get_tick() + 1)
 	var respawned: bool = await _wait_until(func() -> bool:
 		var combatant: Combatant = _server.get_combat().get_combatant(bruno_id)
+		var ana_combatant: Combatant = _server.get_combat().get_combatant(ana_id)
 		return combatant.is_alive() and combatant.template_id == marksman \
-				and bruno.get_character().combat.weapon_id == bow, 600)
-	if not assert_true(respawned, "Bruno reaparece con el tirador y su predicción ya lleva el arco"):
+				and bruno.get_character().combat.weapon_id == bow \
+				and ana_combatant.is_alive() and ana_combatant.template_id == squire \
+				and ana.get_character().combat.weapon_id == sword, 600)
+	if not assert_true(respawned, "Bruno reaparece con el tirador y Ana con el escudero, y sus predicciones ya lo llevan"):
 		return
 	# Cerca el uno del otro, y que se vean.
 	_server.teleport(bruno_id, Vector3(0.0, 0.05, 0.0))

@@ -119,7 +119,8 @@ func test_an_interrupt_before_the_commit_spends_nothing() -> void:
 	assert_eq(d.c.action, Action.NONE, "interrumpido")
 	assert_eq(d.c.action_tick, p, "conserva el action_tick de lo que corta")
 	assert_eq(d.c.charges_of(0), 3, "no gasta la carga")
-	assert_eq(d.c.consumable_ready_tick, 0, "ni la reutilización")
+	assert_eq(d.c.consumable_ready_tick, d.tick + AbilityTicks.REARM_TICKS,
+			"ni la reutilización: solo el margen para que un remoto vea el NONE (revisión de H5)")
 	d.hold(POTION_1, 5)
 	assert_eq(d.c.action, Action.NONE, "mantener no vuelve a beber")
 	d.step()

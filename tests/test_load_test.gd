@@ -111,7 +111,7 @@ func test_window_percent_is_unavailable_without_two_metric_lines_in_range() -> v
 
 # --- Refriegas (TEC-15) -----------------------------------------------------------------------
 
-func test_brawl_matrix_has_fights_of_32_64_and_128_combatants() -> void:
+func test_brawl_matrix_has_fights_of_32_40_64_and_128_combatants() -> void:
 	var script: GDScript = load(LOAD_TEST_PATH) as GDScript
 	if not assert_not_null(script):
 		return
@@ -121,7 +121,8 @@ func test_brawl_matrix_has_fights_of_32_64_and_128_combatants() -> void:
 		assert_eq(entry[0], "brawl", "todos son refriegas")
 		assert_true(int(entry[2]) > 0, "con clientes reales que reciben snapshots y eventos")
 		totals.append(int(entry[1]) + int(entry[2]))
-	assert_eq(totals, [32, 64, 128] as Array[int], "falsos más bots reales")
+	assert_eq(totals, [32, 40, 64, 128] as Array[int], "falsos más bots reales (40: el límite por batalla)")
+	assert_eq(totals[1], NetZones.max_players("vado_gris"), "que es el aforo del Vado Gris")
 	assert_true(int(constants.get("BRAWL_SECONDS", 0)) >= 60, "al menos un minuto de medida")
 	assert_true(String(constants.get("BRAWL_CENTER", "")).contains(","), "el corro tiene su punto (x,z)")
 

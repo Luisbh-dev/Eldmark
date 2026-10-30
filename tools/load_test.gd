@@ -16,7 +16,7 @@ extends SceneTree
 ## godot --headless --path . -s res://tools/load_test.gd -- --fakes=128 --bots=100 --swarms=2
 ## godot --headless --path . -s res://tools/load_test.gd -- --fakes=156 --bots=100 --swarms=2 --seconds=20
 ##
-## # La batería de la fase 3 (ver BRAWL_MATRIX): refriegas agrupadas de 32, 64 y 128 combatientes con el
+## # La batería de la fase 3 (ver BRAWL_MATRIX): refriegas agrupadas de 32, 40, 64 y 128 combatientes con el
 ## # cerebro de combate (falsos del servidor y bots reales que pelean); 60 s de medida cada una. Desde H5 (fase 4,
 ## # docs/habilidades.md, sección 7.3) los falsos pelean con el kit y la mitad lleva la plantilla del tirador
 ## # (--fake-loadout=marksman:50), arqueros puros de los que la mitad dispara al cielo (--fake-archers=50: sus flechas
@@ -67,8 +67,9 @@ extends SceneTree
 ## [br]- [code]--fake-loadout=<plantilla>[:<porcentaje>][/code] plantilla de equipo de los falsos (la pasa al
 ## servidor). En las refriegas, por defecto [constant BRAWL_LOADOUT].
 ## [br]- [code]--sky-archers=<porcentaje>[/code] en las refriegas con tiradores: qué parte de ellos dispara al cielo
-## (por defecto [constant BRAWL_SKY_ARCHERS_PERCENT]; con 100, el máximo de flechas vivas: un pico de 54 de las 64 del
-## tope con 64 combatientes).
+## (por defecto [constant BRAWL_SKY_ARCHERS_PERCENT]; con 100, un pico de 54 de las 64 del tope con 64 combatientes;
+## para llenar el tope y medir los desalojos, todos tiradores: [code]--fake-loadout=marksman:100
+## --sky-archers=100[/code]: pico de 64 y unas 4600 echadas en toda la ejecución).
 ## [br]- [code]--out=<carpeta>[/code] dónde van los informes y los registros (por defecto [code]build/load_test[/code]).
 ## [br]- [code]--siege[/code] lanza la batería de [constant SIEGE_MATRIX] (120 s de medida cada una).
 ## [br]- [code]--brawl[/code] lanza la batería de refriegas de [constant BRAWL_MATRIX] (60 s de medida cada una).
@@ -148,9 +149,11 @@ const MATRIX: Array[Array] = [
 ## Segundos de medida de cada escenario de [constant MATRIX] (docs/red.md, 16: 120 s cada uno).
 const MATRIX_SECONDS: int = 120
 ## Batería de [code]--brawl[/code] (TEC-15): [escenario, jugadores falsos, bots reales, simulador de red de los
-## bots]. Los combatientes son los falsos más los diez bots reales: 32, 64 y 128 en total.
+## bots]. Los combatientes son los falsos más los diez bots reales: 32, 40, 64 y 128 en total. La de 40 es el
+## límite de jugadores por batalla con el kit de la fase 4 (docs/red.md, sección 14) y el aforo del Vado Gris.
 const BRAWL_MATRIX: Array[Array] = [
 	["brawl", 22, 10, ""],
+	["brawl", 30, 10, ""],
 	["brawl", 54, 10, ""],
 	["brawl", 118, 10, ""],
 ]

@@ -89,7 +89,7 @@ ajustes y el audio): para el cliente instancia por su ruta `scenes/client/client
 | Argumentos | Modo | Escena |
 |---|---|---|
 | ninguno, `--demo`, `--shots=`, `--quit-after-demo` | Sandbox sin red de la fase 1, sin cambios | `scenes/client/client_main.tscn` |
-| `--server [--port=24600] [--zone=<id>] [--max-players=64] [--max-per-ip=4] [--idle-quit=<s>] [--fake-players=N [--fake-layout=cluster\|spread] [--fake-churn=<ticks>]] [--debug-commands] [--dev-lock [--dev-lock-path=<ruta>]] [--stop-file=<ruta>]` | Servidor dedicado (siempre con `--headless`) | `scenes/server/server_main.tscn` |
+| `--server [--port=24600] [--zone=<id>] [--max-players=N] [--max-per-ip=4] [--idle-quit=<s>] [--fake-players=N [--fake-layout=cluster\|spread] [--fake-churn=<ticks>]] [--debug-commands] [--dev-lock [--dev-lock-path=<ruta>]] [--stop-file=<ruta>]` | Servidor dedicado (siempre con `--headless`) | `scenes/server/server_main.tscn` |
 | `--connect=<host>[:<puerto>] [--realm=<reino>] [--name=<nombre>]` | Cliente en red | `scenes/client/online_main.tscn` |
 | `--local [--realm=…] [--name=…]` | Cliente contra un servidor local, que se lanza si no hay ninguno | `scenes/client/online_main.tscn` |
 | `--bot --connect=… [--bot-seed=N] [--bot-brain=wander\|combat] [--bot-cheat=<modo>]` | Un cliente que predice, sin cámara ni HUD, guiado por `BotBrain` (pasea, o pelea con el cerebro de combate) | `scenes/client/online_main.tscn` |
@@ -97,6 +97,9 @@ ajustes y el audio): para el cliente instancia por su ruta `scenes/client/client
 | Comunes | `--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1`, `--quit-after-ticks=N`, `--report=<ruta.json>`, `--state-log=<ruta.csv>` | |
 
 - **`--zone` y `--realm`** se leen con las utilidades de `zones.gd`, a través de `NetZones`.
+- **`--max-players`** es el aforo del proceso (los falsos cuentan). Sin él, el de la zona
+  (`NetZones.max_players`: 40 en el Vado Gris, el límite de jugadores por batalla con el kit de la fase 4 de la
+  sección 14) o, si la zona no tiene uno propio, 64 (revisión de H5, habilidades.md §11.10).
 - **Elección de reino.** Si un modo en red arranca sin `--realm`, `OnlineMain` muestra
   `RealmSelect`: tres botones (Vardheim, Solmarch, Askarra), el campo de dirección y «Entrar»,
   con los textos en español.
@@ -1840,16 +1843,26 @@ en marcha a ratos (carga media de 0,5 a 0,7 al empezar cada escenario). Tick en 
 | Combatientes | Tick | `sim` | `combat` | `combat_projectiles` | `snapshot` | Bajada por cliente | Sustituidas (ventana) | Flechas | Rebobinados rechazados |
 |---|---|---|---|---|---|---|---|---|---|
 | 32 (22 falsos y 10 bots) | 6,5 / 11,3 / 27,2 | 3,5 | 0,55 | 0,25 (0,98) | 1,14 | 30,7 KB/s | 0,00 % | 105, pico 13 | 0 |
+| **40** (30 y 10; revisión, máquina en reposo) | 7,5 / **12,4** / 16,2 | 4,3 | 0,62 | 0,25 (**0,90**) | 1,21 | 35,4 KB/s | 0,00 % | 97, pico 18 | 0 |
 | 48 (38 y 10) | 9,7 / **17,0** / 50,6 | 6,2 | 0,80 | 0,27 (0,89) | 1,34 | 35,9 KB/s | 0,00 % | 256, pico 24 | 0 |
 | **64** (54 y 10) | 10,7 / **19,3** / 30,1 | 6,5 | 1,00 | 0,43 (**1,68**) | 1,18 | 36,1 KB/s | 0,00 % | 286, pico 37 | 0 |
 | 64, todos los arqueros al cielo (`--sky-archers=100`) | 11,4 / 19,5 / 28,8 | 7,0 | 1,09 | 0,51 (2,04) | 1,74 | 36,2 KB/s | 0,00 % | 374, pico 54 | 0 |
+| 64, **el tope lleno**: todos tiradores y al cielo (`--fake-loadout=marksman:100 --sky-archers=100`; revisión) | 13,7 / 23,2 / 53,8 | 8,1 | 2,52 | 1,29 (3,09) | 1,55 | 39,2 KB/s | 0,00 % | 4755, pico **64**, 4603 echadas por el tope | 4 de golpe, 0 de flecha |
 | 128 (118 y 10) | 16,9 / 28,9 / 38,1 | 12,5 | 1,50 | 0,90 (2,94) | 0,00 | 27,4 KB/s | 100 % | 572, pico 51 | 0 |
 
 - **El criterio de la fase 4 no se cumple con 64** (p99 del tick ≤ 16,7 ms y de `combat_projectiles` ≤ 1 ms,
   habilidades.md §7.3 y §8): 19,3 ms y 1,68 ms. Con 32 se cumple con holgura (11,3 y 0,98 ms) y con 48 el tick roza el
-  límite (17,0 ms; proyectiles 0,89 ms). El tope de 64 flechas no llega a llenarse: ni con todos los arqueros disparando
-  al cielo (pico de 54) ni con 128 combatientes (51), porque los arqueros también caen y tardan 30 s en volver; el
-  coste ya pasa de la reserva antes.
+  límite (17,0 ms; proyectiles 0,89 ms). Con 40, medido en la revisión (habilidades.md §11.10), se cumple: 12,4 y
+  0,90 ms (otra ejecución de la revisión, 14,1 y 0,84 ms); el margen de los proyectiles es corto. En las refriegas de
+  la batería el tope de 64 flechas no llega a llenarse: ni con todos los arqueros disparando al cielo (pico de 54) ni
+  con 128 combatientes (51), porque los arqueros también caen y tardan 30 s en volver; el coste ya pasa de la reserva
+  antes.
+- **Con el tope lleno** (medida forzada de la revisión: los 54 falsos tiradores, arqueros puros y al cielo, 57
+  disparos por segundo): pico de 64 vivas y 4603 echadas por el tope (DESPAWN 5 de la más vieja de la zona) sin
+  errores; `combat_projectiles` 1,29 ms de mediana y 3,09 de p99 (1,36 ms por tick con flechas: unos 315 000 segmentos
+  y 89 000 SPAWN/DESPAWN, 21 KB/s del servidor entero), y el tick, 23,2 ms de p99 con picos de 54 ms, en los que el
+  servidor rechaza 4 rebobinados de golpes. El tope acota las flechas vivas pero no el coste por disparo: con muchos
+  arqueros la reserva de 1 ms no da, sea cual sea el tope.
 - **Lo que cuestan las flechas sobre el Terrain3D**: de 0,30 a 1,05 ms de media por tick con flechas vivas (32 y 128
   combatientes), creciendo sobre todo con los combatientes (preparar las cajas barridas de todos los candidatos, unos
   6–8 µs por jugador o PNJ y tick) y menos con las flechas (unos 10 µs por flecha viva: de 11 a 19 de media con 64, de
@@ -1859,12 +1872,14 @@ en marcha a ratos (carga media de 0,5 a 0,7 al empezar cada escenario). Tick en 
   pociones, efectos, derribos y remates (29 derribos, 14 rematados y 3 desangrados en la de 64) caben ahí. La bajada por
   cliente no cambia (36 KB/s, los snapshots; las flechas suman ~1 KB/s en el servidor entero) y no se rechaza ningún
   rebobinado hasta 64.
-- **Límite de jugadores por batalla con el kit de la fase 4: 40** (era 64 en la fase 3). Con arqueros, 64 pasa de los
-  16,7 ms de p99 y de la reserva de 1 ms de los proyectiles; 48 ya roza el tick y 32 cumple con holgura; 40 queda entre
-  medias. Para volver a 64 hacen falta la palanca 6 (`simulate()`, que sigue siendo el 60 % del tick) y abaratar la
+- **Límite de jugadores por batalla con el kit de la fase 4: 40** (era 64 en la fase 3), **medido**: 12,4 ms de p99
+  del tick y 0,90 de los proyectiles (cumple). Con arqueros, 64 pasa de los 16,7 ms de p99 y de la reserva de 1 ms de
+  los proyectiles; 48 ya roza el tick y 32 cumple con holgura. Es el aforo por defecto del servidor del Vado Gris
+  (`Zones.MAX_PLAYERS`, `NetZones.max_players`: lo usa `ServerConfig` si no se pasa `--max-players`; una zona sin
+  aforo propio sigue en 64), y la refriega de 40 está en la batería `--brawl`. Para volver a 64 hacen falta la palanca 6 (`simulate()`, que sigue siendo el 60 % del tick) y abaratar la
   preparación de los candidatos de las flechas (rehacer las cajas solo de quien se ha movido, o una rejilla en lugar del
-  barrido en x). Los asedios del fuerte (F6a) se midieron sin el kit; con él, por la misma cuenta y sin medir, el
-  fuerte pasaría de 32 contra 32 a unos 20 contra 20.
+  barrido en x). Los asedios del fuerte (F6a) se midieron sin el kit; con él, por la misma cuenta y **sin medir**
+  (estimación), el fuerte pasaría de 32 contra 32 a unos 20 contra 20.
 
 **Palancas para Eldrun, por orden,** decididas con las medidas del final de la fase 2:
 
@@ -2528,7 +2543,8 @@ func get_discarded_total() -> int
 class_name ServerConfig extends RefCounted
 var port: int = NetProtocol.DEFAULT_PORT
 var zone_id: String = ""
-var max_players: int = 64
+const DEFAULT_MAX_PLAYERS: int = 64
+var max_players: int = DEFAULT_MAX_PLAYERS   # from_args: el de NetZones.max_players(zona) si lo tiene
 var max_connections_per_ip: int = 4
 var idle_quit_seconds: int = 0
 var quit_after_ticks: int = 0
