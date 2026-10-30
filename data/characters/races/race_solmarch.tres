@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="RaceDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/progression/race_definition.gd" id="1_race"]
+
+[resource]
+script = ExtResource("1_race")
+id = &"race_solmarch"
+realm = &"solmarch"
+display_name = "Gente de Solmarch"
+description = "Pelo corto o tonsura, barbas cuidadas y marcas de sol doradas."
+bodies = PackedInt32Array(0)
+heads = PackedInt32Array(0)
+hairs = PackedInt32Array(0)
+beards = PackedInt32Array(0)
+marks = PackedInt32Array()
+skin_tones = PackedInt32Array(0, 1, 2, 3, 4, 5, 6, 7)
+hair_colors = PackedInt32Array(0, 1, 2, 3, 6, 9)
+eye_colors = PackedInt32Array(0, 1, 2, 3, 4)
+allows_no_hair = true
+allows_no_beard = true
+stat_modifiers = {}

@@ -103,6 +103,22 @@ const ZONES_PATTERN: Array[Array] = [["Zones.", "\\bZones\\."]]
 
 const CLASS_NAME_PATTERN: String = "(?m)^\\s*(?:@\\w+\\s+)*class_name\\s+([A-Za-z_]\\w*)"
 
+## La progresión (docs/progresion.md §14.2): lo compartido no ve la hora, el sistema ni la entrada, y el
+## servidor del progreso no lee la hora (la UTC es [code]ZonePlatform.now_unix()[/code]).
+const PROGRESSION_SHARED_DIR: String = "res://scripts/shared/progression"
+const PROGRESSION_SERVER_DIR: String = "res://scripts/server/progress"
+const PROGRESSION_SHARED_FORBIDDEN: Array[Array] = [
+	["Time", "\\bTime\\."], ["OS", "\\bOS\\."], ["Input", "\\bInput\\."],
+]
+const PROGRESSION_SERVER_FORBIDDEN: Array[Array] = [["Time", "\\bTime\\."]]
+## Datos que carga el servidor y no pueden llevar texturas, escenas ni mallas (el preset del servidor
+## recorta assets/): las rutas de las piezas van como texto (progresion.md §2.1 y §14.2).
+const ASSET_FREE_DATA_DIRS: Array[String] = ["res://data/characters", "res://data/items", "res://data/progression"]
+const ASSET_CLASSES: Array[String] = ["Texture2D", "Texture", "PackedScene", "Mesh", "ArrayMesh",
+		"CompressedTexture2D", "ImageTexture"]
+## Carpetas cuyos [code]class_name[/code] no pueden repetirse: Godot registra en silencio solo uno.
+const CLASS_NAME_DIRS: Array[String] = ["res://scripts", "res://tests", "res://tools", "res://addons"]
+
 
 func test_shared_scripts_exist() -> void:
 	var files: PackedStringArray = _list_scripts(SHARED_DIR)
@@ -421,6 +437,59 @@ func test_only_net_zones_talks_to_zones_in_the_network_code() -> void:
 		assert_true(FileAccess.file_exists(excepted), "existe la excepción %s" % excepted)
 
 
+## La progresión compartida no nombra Time, OS ni Input (ni scripts/client ni scripts/server, que ya miran
+## las pruebas de scripts/shared), y la del servidor no lee la hora (progresion.md §14.2).
+func test_progression_does_not_read_clock_os_or_input() -> void:
+	var shared_scripts: PackedStringArray = _list_scripts(PROGRESSION_SHARED_DIR)
+	assert_true(shared_scripts.has(PROGRESSION_SHARED_DIR.path_join("character_appearance.gd")),
+			"se revisan los scripts de %s (%d)" % [PROGRESSION_SHARED_DIR, shared_scripts.size()])
+	for path: String in shared_scripts:
+		for found: String in _find_matches(_read_text(path), PROGRESSION_SHARED_FORBIDDEN):
+			fail("%s usa %s; la progresión compartida no ve la hora, el sistema ni la entrada" % [path, found])
+	for path: String in _list_scripts(PROGRESSION_SERVER_DIR):
+		for found: String in _find_matches(_read_text(path), PROGRESSION_SERVER_FORBIDDEN):
+			fail("%s usa %s; la hora del progreso es ZonePlatform.now_unix()" % [path, found])
+	assert_eq(_find_matches("var t: int = Time.get_unix_time_from_system()\nvar a: Array = OS.get_cmdline_args()",
+			PROGRESSION_SHARED_FORBIDDEN).size(), 2, "el análisis detecta Time y OS")
+	assert_eq(_find_matches("var ostime: int = TimeLike.x # Time.now() en un comentario", PROGRESSION_SHARED_FORBIDDEN),
+			PackedStringArray(), "pero no otros nombres ni comentarios")
+
+
+## Ningún recurso de data/characters/ ni de data/items/ (ni la curva) tiene propiedades de textura, escena o
+## malla, ni declaradas ni con valor, tampoco en sus subrecursos (progresion.md §2.1 y §14.2).
+func test_progression_data_holds_no_assets() -> void:
+	var checked: int = 0
+	for dir: String in ASSET_FREE_DATA_DIRS:
+		for path: String in _list_files(dir, "tres"):
+			checked += 1
+			var text: String = _read_text(path)
+			for asset_class: String in ASSET_CLASSES:
+				assert_false(text.contains("type=\"%s\"" % asset_class), "%s enlaza un %s" % [path, asset_class])
+			var resource: Resource = ResourceLoader.load(path)
+			assert_not_null(resource, "%s se carga" % path)
+			for violation: String in _asset_properties(resource, {}):
+				fail("%s: %s" % [path, violation])
+	assert_true(checked >= 5, "se revisan el catálogo, las razas y la curva (%d)" % checked)
+	var probe := Resource.new()
+	probe.set_meta(&"icon", PlaceholderTexture2D.new())
+	assert_false(_asset_properties(probe, {}).is_empty(), "el análisis detecta una textura con valor")
+
+
+## Ningún class_name se repite en scripts/, tests/, tools/ ni addons/: Godot registra solo uno de los dos
+## sin avisar (progresion.md §14.2).
+func test_class_names_are_unique() -> void:
+	var owners: Dictionary[String, String] = {}
+	for dir: String in CLASS_NAME_DIRS:
+		for path: String in _list_scripts(dir):
+			for declared: String in _extract_class_names(_read_text(path)):
+				if owners.has(declared):
+					fail("class_name %s está en %s y en %s" % [declared, owners[declared], path])
+				else:
+					owners[declared] = path
+	assert_true(owners.size() > 100, "se revisan los class_name del proyecto (%d)" % owners.size())
+	assert_true(owners.has("CharacterAppearance") and owners.has("TestCase"), "también los de tests/")
+
+
 func test_dependency_scanner_detects_cross_references() -> void:
 	# Comprueba el analizador de dependencias entre carpetas con texto sintético.
 	var server_patterns: Array[Array] = [["scripts/server", "scripts/server"]]
@@ -501,6 +570,53 @@ func _creates_unseeded_generator(text: String) -> bool:
 	var seeded := RegEx.new()
 	seeded.compile("\\.seed\\s*=|\\.set_seed\\s*\\(")
 	return seeded.search(code) == null
+
+
+## Archivos con extensión [param extension] bajo [param dir], recursivamente, ordenados (vacío si la
+## carpeta no existe; en un proyecto exportado, sin el [code].remap[/code]).
+func _list_files(dir: String, extension: String) -> PackedStringArray:
+	var result: PackedStringArray = PackedStringArray()
+	if not DirAccess.dir_exists_absolute(dir):
+		return result
+	for file_name: String in DirAccess.get_files_at(dir):
+		var clean: String = file_name.trim_suffix(".remap")
+		if clean.get_extension() == extension and not result.has(dir.path_join(clean)):
+			result.append(dir.path_join(clean))
+	for sub_dir: String in DirAccess.get_directories_at(dir):
+		result.append_array(_list_files(dir.path_join(sub_dir), extension))
+	result.sort()
+	return result
+
+
+## Propiedades de [param resource] (y de sus subrecursos y arrays, recursivamente) que son o declaran una
+## textura, una escena o una malla.
+func _asset_properties(resource: Object, visited: Dictionary) -> PackedStringArray:
+	var violations := PackedStringArray()
+	if resource == null or visited.has(resource.get_instance_id()):
+		return violations
+	visited[resource.get_instance_id()] = true
+	var values: Array = []
+	for property: Dictionary in resource.get_property_list():
+		if not (property["usage"] & PROPERTY_USAGE_STORAGE):
+			continue
+		var declared: String = "%s %s" % [property["class_name"], property["hint_string"]]
+		for asset_class: String in ASSET_CLASSES:
+			if RegEx.create_from_string("\\b%s\\b" % asset_class).search(declared) != null:
+				violations.append("%s se declara como %s" % [property["name"], asset_class])
+		values.append(resource.get(property["name"]))
+	for meta: StringName in resource.get_meta_list():
+		values.append(resource.get_meta(meta))
+	while not values.is_empty():
+		var value: Variant = values.pop_back()
+		if value is Array:
+			values.append_array(value)
+		elif value is Dictionary:
+			values.append_array((value as Dictionary).values())
+		elif value is Texture or value is PackedScene or value is Mesh:
+			violations.append("tiene un %s" % (value as Object).get_class())
+		elif value is Resource and not (value is Script):
+			violations.append_array(_asset_properties(value, visited))
+	return violations
 
 
 ## Scripts .gd bajo [param dir], recursivamente, ordenados.

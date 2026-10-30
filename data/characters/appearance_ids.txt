@@ -1,0 +1,35 @@
+# Orden congelado de data/characters/appearance_catalog.tres (docs/progresion.md §7.2): «categoría índice id».
+# Solo crece: los 8 B guardados de cada personaje son índices en estas listas. Nada se reordena ni se borra;
+# una pieza se retira quitándola de las razas. test_character_appearance exige que el catálogo empiece así.
+races 0 race_vardheim
+races 1 race_solmarch
+races 2 race_askarra
+bodies 0 body_male
+heads 0 head_superhero_male
+hairs 0 hair_simple_parted
+beards 0 beard_full
+skin_tones 0 skin_porcelain
+skin_tones 1 skin_fair
+skin_tones 2 skin_rosy
+skin_tones 3 skin_olive
+skin_tones 4 skin_tan
+skin_tones 5 skin_bronze
+skin_tones 6 skin_brown
+skin_tones 7 skin_deep
+hair_colors 0 hair_black
+hair_colors 1 hair_dark_brown
+hair_colors 2 hair_brown
+hair_colors 3 hair_auburn
+hair_colors 4 hair_red
+hair_colors 5 hair_copper
+hair_colors 6 hair_blond
+hair_colors 7 hair_flaxen
+hair_colors 8 hair_ash
+hair_colors 9 hair_white
+eye_colors 0 eyes_brown
+eye_colors 1 eyes_hazel
+eye_colors 2 eyes_amber
+eye_colors 3 eyes_green
+eye_colors 4 eyes_blue
+eye_colors 5 eyes_grey
+eye_colors 6 eyes_ice

@@ -65,9 +65,25 @@ const RESERVED: Array[String] = [
 	"Capitán", "Guardia",
 ]
 
-# Equivalencias para [method normalize_key] (ya en minúscula).
-const _FOLDED: Dictionary = {
+## Equivalencias para [method normalize_key] (ya en minúscula). Las exporta
+## [ProgressionRulesExport] para la plataforma, que aplica la misma regla en Go.
+const FOLDED: Dictionary = {
 	"á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u", "ü": "u", "ñ": "n",
+}
+
+## Código de cada motivo en la API de la plataforma (el [code]reason[/code] del 422
+## [code]name_invalid[/code] y de [code]name-check[/code], docs/plataforma.md §4.1 y §4.4), por
+## valor de [enum Reason]. Los casos compartidos con Go ([code]tests/fixtures/names/[/code]) los usan.
+const REASON_CODES: Dictionary = {
+	Reason.OK: "ok",
+	Reason.TOO_SHORT: "too_short",
+	Reason.TOO_LONG: "too_long",
+	Reason.HAS_SPACE: "has_space",
+	Reason.HAS_DIGIT: "has_digit",
+	Reason.INVALID_CHARACTER: "invalid_character",
+	Reason.NOT_CAPITALIZED: "not_capitalized",
+	Reason.RESERVED: "reserved",
+	Reason.TAKEN: "taken",
 }
 
 
@@ -125,6 +141,21 @@ static func reason_text(reason: int) -> String:
 	return "Nombre no válido"
 
 
+## Código en la API de la plataforma del motivo [param reason] ([constant REASON_CODES]), o
+## [code]""[/code] si no es un valor de [enum Reason].
+static func reason_code(reason: int) -> String:
+	return REASON_CODES.get(reason, "")
+
+
+## Motivo ([enum Reason]) de un código de la API de la plataforma ([code]"too_short"[/code]...), o
+## -1 si no es ninguno.
+static func reason_from_code(code: String) -> int:
+	for reason: int in REASON_CODES:
+		if REASON_CODES[reason] == code:
+			return reason
+	return -1
+
+
 ## Resumen de todas las reglas en una frase, para mostrarlo junto al campo del nombre o en el
 ## texto de un rechazo genérico.
 static func rules_summary() -> String:
@@ -141,7 +172,7 @@ static func normalize_key(display_name: String) -> String:
 	var key: String = ""
 	for i: int in lowered.length():
 		var letter: String = lowered[i]
-		var folded: String = _FOLDED.get(letter, letter)
+		var folded: String = FOLDED.get(letter, letter)
 		key += folded
 	return key
 

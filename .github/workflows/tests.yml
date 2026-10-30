@@ -227,3 +227,63 @@ jobs:
           path: build/
           if-no-files-found: ignore
           retention-days: 14
+
+  # Servicio de plataforma en Go (docs/plataforma.md §2.6 y §10.3), independiente de los trabajos de
+  # Godot: comprobación de secretos del índice, gofmt, go vet y go test con un PostgreSQL efímero
+  # (initdb del PostgreSQL de ubuntu-latest; ELDMARK_REQUIRE_PG=1 hace que las pruebas fallen si
+  # falta, en lugar de saltarse). Para que bloquee el merge hay que marcar también «Plataforma» como
+  # comprobación obligatoria en la protección de la rama.
+  platform:
+    name: Plataforma
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOTOOLCHAIN: local
+      ELDMARK_REQUIRE_PG: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+
+      - name: Secretos fuera del repositorio
+        run: tools/check_secrets.sh
+
+      - name: Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: platform/go.mod
+          cache-dependency-path: platform/go.sum
+
+      - name: PostgreSQL
+        run: |
+          if ! ls /usr/lib/postgresql/*/bin/initdb > /dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-16
+          fi
+          ls -d /usr/lib/postgresql/*/bin
+          go version
+
+      - name: gofmt
+        working-directory: platform
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "Archivos sin gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        working-directory: platform
+        run: go vet ./...
+
+      - name: go test
+        working-directory: platform
+        timeout-minutes: 10
+        run: go test -p 2 ./...

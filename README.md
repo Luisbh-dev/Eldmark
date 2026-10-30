@@ -158,7 +158,9 @@ proyecto y lanza `tests/run_tests.gd` repartido en cuatro partes a la vez (`--sh
 con un plazo de 20 minutos. Si una falla, sube su `build/` (logs e informes) como artefacto
 `build-logs-K`. El trabajo «Suite completa» solo pasa si pasan las cuatro: para que una prueba rota
 bloquee el merge hay que marcarlo como comprobación obligatoria en la protección de la rama. Se puede
-lanzar a mano desde la pestaña Actions (`workflow_dispatch`).
+lanzar a mano desde la pestaña Actions (`workflow_dispatch`). El trabajo «Plataforma», aparte, comprueba
+que no haya secretos en el índice (`tools/check_secrets.sh`) y pasa `gofmt`, `go vet` y `go test` del
+servicio de plataforma (abajo).
 
 ## Servidor dedicado
 
@@ -191,6 +193,74 @@ por segundo y los bytes de cada peer, cuenta un aviso por cada paquete mal forma
 inesperado para el estado de la sesión o por encima del ritmo, y expulsa con un NOTICE al que
 suma 50 avisos en 600 ticks; además admite como mucho `--max-per-ip` conexiones por IP (salvo
 desde loopback).
+
+## Servicio de plataforma (Go)
+
+`platform/` es el servicio de cuentas, personajes y guardado de la fase 5, en Go 1.24 sobre PostgreSQL 16
+(diseño en `docs/plataforma.md`; lo hecho, en su §19). Godot no lo escanea (`platform/.gdignore`) ni lo
+exporta. Se configura con variables `ELDMARK_*` (§2.3):
+
+```bash
+cd platform
+go test ./...                                   # levanta un PostgreSQL efímero con initdb (sin Docker)
+go run ./cmd/eldmark-platform migrate status    # o migrate up, migrate down N (solo dev y test)
+go run ./cmd/eldmark-platform serve             # API pública en :24680 e interna en :24681
+```
+
+Las pruebas necesitan los binarios de PostgreSQL (`ELDMARK_PG_BIN`, `pg_config` o
+`/usr/lib/postgresql/*/bin`; si no hay, se saltan) o un servidor en `ELDMARK_TEST_DATABASE_URL`. Como root,
+`initdb` corre con `runuser -u postgres`, que tiene que poder entrar en `TMPDIR`.
+
+En desarrollo (`ELDMARK_MAIL=log`, por defecto) los correos de las cuentas no salen: van a la tabla
+`outbound_mail` y al registro con el enlace entero (`/verify`, `/reset` o `/revert` sobre `ELDMARK_PUBLIC_URL`).
+Los textos legales que se aceptan al registrarse son los borradores de `platform/legal/`, que van dentro del
+binario (`ELDMARK_LEGAL_DIR` los cambia por los de otra carpeta).
+
+Los personajes (`/v1/worlds/{w}/characters`, `POST /v1/characters/{id}/enter`) guardan su progreso, hasta que
+llegue el almacén de `docs/progresion.md` P7, en memoria: se pierde al reiniciar, y por eso `serve` no arranca
+en `staging` ni en `production`. `enter` solo da billete si hay una instancia de zona viva que admite el reino.
+Las reglas de los nombres y el protocolo mínimo por defecto salen de
+`platform/internal/gamedata/progression_rules.json`, que se genera desde Godot, igual que las razas, la apariencia
+(`data/characters/`), la curva de niveles (`data/progression/`), las monedas, los motivos, los contenedores y la
+vida máxima. Tras cambiar cualquiera de esos datos hay que volver a exportarlo (la prueba
+`test_progression_rules_export.gd` avisa si se ha quedado viejo):
+
+```bash
+godot --headless --path . -s res://tools/progression/export_rules.gd             # lo escribe
+godot --headless --path . -s res://tools/progression/export_rules.gd -- --check  # solo lo compara
+```
+
+La API interna (`/internal/v1`, en `ELDMARK_INTERNAL_ADDR`, solo para las zonas) pide en cada petición el
+token de un despliegue de zona: `ELDMARK_ZONE_TOKENS` guarda su SHA-256 con el alcance
+`<mundo>:<zona>:<canal>`. Para probarla a mano con el token `secreto` de `1:vado_gris:0` (`protocol_version`, el
+de `progression_rules.json`):
+
+```bash
+export ELDMARK_ZONE_TOKENS="1:vado_gris:0:$(printf %s secreto | sha256sum | cut -d' ' -f1)"
+curl -s -H 'Authorization: Bearer secreto' -d '{"world_id": 1, "zone_id": "vado_gris", "channel": 0,
+  "public_host": "127.0.0.1", "public_port": 24600, "realms": [1, 2], "build_id": "dev", "protocol_version": 5,
+  "record_format": 1, "max_players": 64, "dtls_cert_pem": null, "dtls_name": null, "replace": false}' \
+  http://127.0.0.1:24681/internal/v1/zone-instances
+```
+
+Una instancia que deja de latir 3 × `ELDMARK_HEARTBEAT_S` se da por perdida y sus personajes quedan libres.
+`ELDMARK_LEASE_TTL_S` tiene que pasar de 3 × `ELDMARK_HEARTBEAT_S` + min(5, `ELDMARK_HEARTBEAT_S`) segundos (con 5 y
+30, los valores por defecto, sobra); si no, `serve` no arranca.
+
+La moderación y las cuentas del equipo van por la orden `admin`, con la misma configuración que `serve`. Toda
+orden lleva `--actor` con el correo de una cuenta `admin` (o `moderator` para las de lectura) y deja su fila en
+la auditoría (`audit_log`, sin correos ni nombres); la primera cuenta `admin` se crea con `bootstrap`. La
+contraseña de las cuentas nuevas se lee de un archivo, nunca de la línea de órdenes:
+
+```bash
+go run ./cmd/eldmark-platform admin bootstrap jefa@eldmark.test --password-file clave.txt
+go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test create-account prueba@eldmark.test --password-file clave.txt
+go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test set-role gm@eldmark.test gm     # revoca sus sesiones
+go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test reports list
+go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test chat --character Bran --from 2026-11-01 --to 2026-11-02
+go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test sanction add Bran mute --duration 24h --reason "insultos"
+go run ./cmd/eldmark-platform admin help                                                       # todas las órdenes
+```
 
 ## Exportación (cliente Windows y servidor Linux)
 
