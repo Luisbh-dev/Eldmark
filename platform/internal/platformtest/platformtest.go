@@ -2,7 +2,7 @@
 // la base efímera de testdb, el reloj falso, el progreso en memoria
 // (persistence.MemoryProgressStore; con [NewWithProgress], el almacén de verdad de progresion.md P7),
 // la API pública (cuentas y personajes), la interna (zonas, reclamación y guardado, guerra y lo
-// social) y la orden admin, con ayudas para hacer de cliente y de zona.
+// social), la orden admin y las retenciones, con ayudas para hacer de cliente y de zona.
 //
 // Lo usan las pruebas de zones, persistence, war y social: la API interna solo se entiende con
 // cuentas, personajes y billetes de verdad delante.
@@ -41,6 +41,7 @@ import (
 	"eldmark/platform/internal/logx"
 	"eldmark/platform/internal/mail"
 	"eldmark/platform/internal/persistence"
+	"eldmark/platform/internal/privacy"
 	"eldmark/platform/internal/social"
 	"eldmark/platform/internal/testdb"
 	"eldmark/platform/internal/tickets"
@@ -132,7 +133,8 @@ type Platform struct {
 	Store         *persistence.Store
 	War           *war.Service
 	Social        *social.Service
-	Admin         *admin.Service // la orden admin (P7a), con os_user «prueba»
+	Admin         *admin.Service   // la orden admin (P7a), con os_user «prueba»
+	Privacy       *privacy.Service // las retenciones de §11.1 (P9a), con el reloj falso
 	Public        http.Handler
 	Internal      http.Handler
 	Logs          *SyncBuffer
@@ -205,7 +207,7 @@ func attach(t testing.TB, pool *pgxpool.Pool, newStore func(now func() time.Time
 		}
 	}
 	p.Accounts, err = accounts.New(accounts.Options{Config: cfg, Pool: pool, Log: log, Clock: p.Clock, Legal: set,
-		Mail: &mail.LogSender{DB: pool, Log: log}, Characters: purger, MinProtocol: Protocol})
+		Mail: &mail.LogSender{DB: pool, Log: log}, Characters: purger, Progress: p.ProgressStore, MinProtocol: Protocol})
 	must(err)
 	p.Characters, err = characters.New(characters.Options{Config: cfg, Pool: pool, Log: log, Clock: p.Clock,
 		Accounts: p.Accounts, Progress: p.ProgressStore, Validator: validator, Purger: purger, MinProtocol: Protocol})
@@ -221,6 +223,8 @@ func attach(t testing.TB, pool *pgxpool.Pool, newStore func(now func() time.Time
 	must(err)
 	p.Admin, err = admin.New(admin.Options{Pool: pool, Accounts: p.Accounts, Characters: purger, Legal: set, Clock: p.Clock, Log: log,
 		OSUser: "prueba", PurgePoll: 10 * time.Millisecond})
+	must(err)
+	p.Privacy, err = privacy.New(privacy.Options{Pool: pool, Progress: p.ProgressStore, Clock: p.Clock, Log: log})
 	must(err)
 
 	public := publicRouter{http.NewServeMux()}

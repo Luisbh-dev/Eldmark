@@ -18,6 +18,7 @@ import (
 	"eldmark/platform/internal/mail"
 	"eldmark/platform/internal/names"
 	"eldmark/platform/internal/persistence"
+	"eldmark/platform/internal/privacy"
 	"eldmark/platform/internal/progress"
 	"eldmark/platform/internal/social"
 	"eldmark/platform/internal/war"
@@ -25,7 +26,8 @@ import (
 	"eldmark/platform/legal"
 )
 
-// Cada cuánto corren las purgas de cuentas y de personajes (§2.5: retenciones y purgas, cada hora).
+// Cada cuánto corren las purgas de cuentas y de personajes y las retenciones (§2.5: retenciones y
+// purgas, cada hora).
 const purgeEvery = time.Hour
 
 // progressStore da el almacén del progreso y la validación de la creación (plataforma.md §7.5): los de
@@ -41,7 +43,8 @@ func progressStore() (*progress.Store, *progress.Rules, error) {
 }
 
 // mountServices monta en el proceso los servicios de los paquetes: cuentas y sesiones (P1),
-// personajes (P2) y la API interna (P3). Devuelve lo que hay que cerrar al parar (la cola de correo).
+// personajes (P2), la API interna (P3) y las retenciones (P9a). Devuelve lo que hay que cerrar al parar
+// (la cola de correo).
 func mountServices(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger) (func(), error) {
 	rules, err := gamedata.Load()
 	if err != nil {
@@ -75,7 +78,12 @@ func mountServices(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog
 		sender = smtp
 	}
 	svc, err := accounts.New(accounts.Options{Config: cfg, Pool: pool, Log: log, Mail: sender, Legal: documents,
-		Characters: purger, MinProtocol: minProtocol})
+		Characters: purger, Progress: progressRepo, MinProtocol: minProtocol})
+	if err != nil {
+		mail.Close(sender)
+		return nil, err
+	}
+	retention, err := privacy.New(privacy.Options{Pool: pool, Progress: progressRepo, Log: log})
 	if err != nil {
 		mail.Close(sender)
 		return nil, err
@@ -102,6 +110,7 @@ func mountServices(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog
 	}
 	a.AddJob("accounts_purge", purgeEvery, svc.PurgeDue)
 	a.AddJob("characters_purge", purgeEvery, purger.PurgeExpired)
+	a.AddJob("privacy_retention", purgeEvery, retention.Job)
 	return func() {
 		svc.Wait() // las recuperaciones de contraseña en curso mandan su correo antes de cerrar la cola
 		mail.Close(sender)

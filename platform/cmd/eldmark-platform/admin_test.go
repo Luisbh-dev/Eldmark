@@ -242,3 +242,45 @@ func TestServeRunsTheChatRetention(t *testing.T) {
 		t.Fatalf("queda el de hace 29 días: %q %v", key, err)
 	}
 }
+
+// serve corre las retenciones de §11.1 (privacy_retention) al arrancar: un acceso de hace 31 días y una lápida
+// purgada hace más de un año sin libro desaparecen; el acceso de ayer se queda.
+func TestServeRunsThePrivacyRetention(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	now := time.Now()
+	var account, tomb int64
+	if err := pool.QueryRow(ctx, `insert into accounts (email, age_confirmed_at) values ('a@example.org', $1)
+		returning account_id`, now).Scan(&account); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `insert into characters (world_id, account_id, realm, purged_at) values (1, $1, 1, $2)
+		returning character_id`, account, now.Add(-366*24*time.Hour)).Scan(&tomb); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `insert into auth_events (account_id, kind, user_agent, at) values ($1, 'login', 'viejo', $2),
+		($1, 'login', 'ayer', $3)`, account, now.Add(-31*24*time.Hour), now.Add(-24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	startServe(t, pool, serveEnv(pool))
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var events, tombs int
+		if err := pool.QueryRow(ctx, `select (select count(*) from auth_events where user_agent in ('viejo', 'ayer')),
+			(select count(*) from characters where character_id = $1)`, tomb).Scan(&events, &tombs); err != nil {
+			t.Fatal(err)
+		}
+		if events == 1 && tombs == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("accesos %d, lápida %d", events, tombs)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	var agent string
+	if err := pool.QueryRow(ctx, `select user_agent from auth_events where user_agent in ('viejo', 'ayer')`).Scan(&agent); err != nil ||
+		agent != "ayer" {
+		t.Fatalf("queda el de ayer: %q %v", agent, err)
+	}
+}

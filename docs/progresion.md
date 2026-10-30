@@ -2580,3 +2580,16 @@ por tabla (el tope por llamada no se ejercita); el tamaño de la exportación de
 **Queda para después:** el trabajo horario de la retención y el progreso en la exportación de la cuenta (plataforma.md
 P9a); la telemetría del libro (PRG-30) y la reconstrucción diaria de los saldos (§5.4); la excepción de `SaveMany`
 para las operaciones de dos participantes (fase 6).
+
+### 19.13 Lo que deja plataforma.md P9a
+
+plataforma.md P9a (su §19.13) pone a trabajar lo de §3.5 que esperaba a la plataforma:
+
+- **Retención del libro:** el trabajo horario `privacy_retention` (`internal/privacy`, `Service.PurgeLedger`) llama a
+  `PurgeRetention` en una transacción mientras `deleted > 0` y, en esa misma transacción, borra las filas de
+  `characters` de `emptied` (solo lápidas). El año lo mide el reloj del almacén (`progress.New(rules, now)`).
+  Comprobado con 10 050 apuntes de una lápida (tres pasadas), una operación compartida con un personaje vivo que se
+  queda y una lápida sin libro que se borra.
+- **Exportación:** `characters[i].progress` del archivo de la cuenta es `Export`, en la transacción de la exportación;
+  de una lápida sin operaciones, `null`. `accounts` solo ve `Export` (`accounts.ProgressExporter`).
+- **Nada cambia aquí:** ni `internal/progress` ni Godot.

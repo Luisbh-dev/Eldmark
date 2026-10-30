@@ -248,6 +248,11 @@ Una instancia que deja de latir 3 × `ELDMARK_HEARTBEAT_S` se da por perdida y s
 `ELDMARK_LEASE_TTL_S` tiene que pasar de 3 × `ELDMARK_HEARTBEAT_S` + min(5, `ELDMARK_HEARTBEAT_S`) segundos (con 5 y
 30, los valores por defecto, sobra); si no, `serve` no arranca.
 
+Cada hora, `serve` purga las cuentas y los personajes que han cumplido su plazo y borra lo caducado según la tabla de
+retenciones de `docs/plataforma.md` §11.1 (el chat a los 30 días, la auditoría y los reportes cerrados al año, el
+libro de un personaje al año de purgarlo…). La exportación de datos de una cuenta (`POST /v1/account/export`) lleva
+también el progreso de sus personajes.
+
 La moderación y las cuentas del equipo van por la orden `admin`, con la misma configuración que `serve`. Toda
 orden lleva `--actor` con el correo de una cuenta `admin` (o `moderator` para las de lectura) y deja su fila en
 la auditoría (`audit_log`, sin correos ni nombres); la primera cuenta `admin` se crea con `bootstrap`. La

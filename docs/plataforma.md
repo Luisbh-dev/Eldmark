@@ -1359,9 +1359,9 @@ auditoría. Ni nombre real, ni dirección, ni pagos (si los hay, son del proveed
 | `chat_messages` | 30 días | Trabajo horario, lotes de 10 000 |
 | `report_evidence`, reportes cerrados, `audit_log` | 1 año (desde el cierre en los reportes) | Trabajo horario. Un reporte sin cerrar al año de crearse pasa a `dismissed` (`closed_at = now()`, `resolution = 'caducado'`) y cuenta desde ahí |
 | `auth_events`; IP y agente de `sessions` | 30 días | Trabajo horario (la IP de la sesión pasa a null) |
-| `sessions` y `account_tokens` caducados · `enter_tickets` · `zone_instances` paradas · `outbound_mail` | 7 días · 1 día · 30 días · 7 días | Trabajo horario |
+| `sessions` y `account_tokens` caducados · `enter_tickets` · `zone_instances` terminadas (paradas, perdidas o sustituidas) · `outbound_mail` | 7 días · 1 día · 30 días · 7 días | Trabajo horario |
 | Cuenta sin verificar (`staging`, `production`) | 7 días | Purga (§11.2) |
-| Personaje borrado | 7 días restaurable; luego lápida; el nombre, 30 días más (o nada, §4.4) | Purga horaria |
+| Personaje borrado | 7 días restaurable; luego lápida; el nombre, 30 días más (o nada, §4.4) | Purga horaria; la fila `reserved` de `character_names`, el trabajo horario al vencer |
 | Libro, operaciones y eventos de objeto de un personaje vivo, también el `actor_account_id`, la `note` y el `detail` de las operaciones GM y REVERSAL (una segunda huella de esos comandos de GM, aparte de `audit_log`) | Mientras exista el personaje; tras su purga, la fila de abajo | Ninguno: son de solo añadir (progresion.md §3.5). La exportación los da sin los datos del personal (§11.2). **Revisión legal** (también de `note` y de que no tenga plazo) |
 | Libro, operaciones y eventos de objeto de un personaje purgado | **1 año** desde la purga. Sin nombres: la lápida no lo tiene y `detail.args` nombra al objetivo por id (progresion.md §10). Mientras la cuenta exista, ligados a ella y exportables (§11.2); seudónimos solo tras purgarla. La `note` de las operaciones GM y REVERSAL se conserva como dato de moderación | Retención horaria: `ProgressStore.PurgeRetention` (progresion.md §3.5), con `set local eldmark.retention_purge = 'on'`; luego se borran las lápidas que devuelve vacías. **Revisión legal** (también de `note`) |
 | Cuenta borrada | 14 días de gracia | Purga (§11.2) |
@@ -1370,6 +1370,9 @@ auditoría. Ni nombre real, ni dirección, ni pagos (si los hay, son del proveed
 | Copias diarias y semanales, WAL | 35 días; al restaurar se vuelven a aplicar las purgas (§12) | `backup.sh` y WAL-G |
 | Registros de los contenedores (zona, plataforma) | 30 días: la zona escribe nombre e IP en cada conexión y rechazo | journald (`MaxRetentionSec=30day`, §12) |
 | `fortress_events`, `realm_resources` | Sin límite: no son personales | — |
+
+El «trabajo horario» de la tabla es `privacy_retention` (`internal/privacy`, P9a, §19.13), salvo el chat
+(`chat_retention`, P7a) y las purgas (`accounts_purge` y `characters_purge`, P1 y P2).
 
 En `staging` y `production` con `--platform`, la zona no admite `--battle-log`, `--combat-log` ni `--state-log`
 (escriben nombres sin plazo; §5.5).
@@ -3044,3 +3047,128 @@ validación de la creación con las reglas exportadas, y cambia lo de aquí que 
 - **P10:** las pruebas de extremo a extremo pueden comparar con `Load` (el registro de progresion.md §3.4).
 
 **Sin comprobar:** con una zona de verdad (P10).
+
+### 19.13 P9a · privacidad (TEC-43)
+
+**Qué hay.** Lo que le quedaba a §11 tras P1 (exportación de la cuenta, purga de cuentas y huella del correo), P2
+(purga de personajes), P7a (`purge-now` y retención del chat), P9b (`reapply-purges`) y progresion.md P7 (`Purge`,
+`PurgeRetention` y `Export` de verdad):
+
+| Pieza | Contenido |
+|---|---|
+| `internal/privacy` | Nuevo (el de §2.1): `Service` con `Run` (una vuelta de las retenciones de §11.1 con la hora del reloj inyectable), `Job` (el trabajo horario `privacy_retention`, que registra cuánto borró cada paso, sin ids) y `PurgeLedger` (la retención del libro). Los plazos son constantes (`AuthEventsRetention`, `ReportRetention`…); `Result` da lo que tocó cada paso de `Steps` |
+| `internal/accounts` | `Options.Progress` (`ProgressExporter`, la parte `Export` de `ProgressStore`) y `characters[i].progress` en la exportación (abajo) |
+| `cmd/eldmark-platform` | `serve` pasa el almacén a la exportación y añade el trabajo `privacy_retention`, cada hora (el quinto: el pool de 16 conexiones de §19.5 sobra) |
+| `internal/platformtest` | `Platform.Privacy` (con el reloj falso) y el almacén en la exportación |
+| `platform/legal/privacy-1.md` | Revisado (abajo); `TestEmbeddedDrafts` busca algunas cifras y frases más |
+
+**Las retenciones.** Una vuelta hace los pasos en este orden, cada uno en sus propias sentencias (los de tablas que
+crecen, en lotes de 10 000 hasta que no queda nada); uno que falla no para a los demás y la vuelta devuelve los
+errores juntos:
+
+| Paso | Qué borra (o cambia) |
+|---|---|
+| `reports_closed` | Los reportes `open` o `in_review` creados hace más de un año pasan a `dismissed`, `closed_at` = ahora y `resolution = 'caducado'`: cuentan desde ahí |
+| `reports` | Los cerrados (`actioned` o `dismissed`) hace más de un año, con su `report_evidence` y sus `sanction_reports` (en cascada) |
+| `audit_log` | Lo de hace más de un año (`at`) |
+| `sanctions` | Las de las cuentas purgadas hace más de un año (con sus `sanction_reports`); las de una cuenta viva no caducan |
+| `sanctioned_emails` | Las huellas con `until ≤ ahora`, que el registro ya no mira |
+| `auth_events` | Lo de hace más de 30 días |
+| `session_access` | IP y agente a null en las sesiones abiertas hace más de 30 días |
+| `sessions` | Las caducadas (`refresh_expires_at`) hace más de 7 días; sus billetes caen en cascada y el arrendamiento que la tenga se queda sin sesión |
+| `account_tokens` | Los caducados (`expires_at`) hace más de 7 días |
+| `enter_tickets` | Los caducados hace más de un día |
+| `zone_instances` | Las terminadas (`stopped`, `lost` o `replaced`, las tres con `ended_at`) hace más de 30 días, con sus `id_blocks` y billetes en cascada; los arrendamientos, fortalezas y eventos de guerra que las nombran quedan a null |
+| `outbound_mail` | Lo de hace más de 7 días |
+| `character_names` | Las filas `reserved` con `reserved_until ≤ ahora` |
+| `ledger` y `ledger_tombstones` | `ProgressStore.PurgeRetention` en una transacción mientras borre algo y, en ella, `delete from characters` de las de `emptied` (con `purged_at`: un personaje vivo nunca se borra aquí). El año lo mide el reloj del almacén |
+
+**La exportación.** `characters[i].progress` es `ProgressStore.Export` del personaje, en la misma transacción
+(`repeatable read`, de solo lectura) que el resto del archivo: de uno sin purgar, `{"record", "ops"}`; de una lápida,
+`{"record": null, "ops"}` si le queda libro y `null` si ya no. De las operaciones GM y REVERSAL salen el tipo, la
+fecha, los apuntes y los eventos, sin actor, `note` ni `detail` (los quita `Export`).
+
+**Lo revisado** (§14.1 lo ponía todo en P9a):
+
+- **Purgas** (bloqueos, lápidas, `purge_log`): las de P1 y P2 tal cual. Sus pruebas de §15 P9a ya estaban (abajo) y
+  faltaba la de la restauración en el límite, que ahora está.
+- **`sanctioned_email_hashes`:** se queda la regla de P1 (cada sanción sin revocar cuenta hasta 90 días después de su
+  fin; un aviso o un renombrado, desde que se puso; una expulsión permanente, el tope), con el año como mucho desde la
+  purga (en `reapply-purges`, la original). Es la lectura de «hasta el fin de la sanción, o 90 días tras ella» de §11.1
+  que casa con «una sanción de los últimos 90 días» de §11.2 y con la reincidencia de social.md §9. Lo que faltaba era
+  borrar las vencidas (`sanctioned_emails`).
+- **`reapply-purges`** (P9b): sin cambios. Como la retención del libro y la de las sanciones cuentan desde
+  `purged_at`, una copia restaurada no alarga ninguna.
+- **`privacy-1.md`:** «instancias de zona terminadas»; el historial de un personaje purgado dura un año desde la
+  purga (decía «desde que se borra»); el nombre de un personaje de prueba solo se reserva mientras se puede
+  restaurar; las correcciones del personal (actor, nota y orden) siguen al historial y su nota se guarda como dato de
+  moderación; la huella del correo, 90 días tras el fin de la última sanción (la expulsión, el año entero); las
+  copias vuelven a purgar con la fecha original; y qué lleva la descarga (el progreso y el historial, también el de
+  los personajes purgados que se conserva) y qué no (quién hizo una corrección y su nota). Sigue siendo la versión 1:
+  no se ha publicado en staging (§19.2).
+
+**Desviaciones y decisiones de la implementación:**
+
+- **«`zone_instances` paradas» son las terminadas:** `stopped`, `lost` y `replaced` ponen `ended_at` y ninguna vuelve
+  a servir; la tabla de §11.1 lo dice ya así. Un arrendamiento cuyo `claimed_by` era una de ellas no cambia (no tiene
+  clave ajena) y solo vale para `Apply` mientras su instancia vive.
+- **Nombres reservados:** §11.1 decía «el nombre, 30 días más» sin mecanismo. Crear y restaurar ya tratan como libre
+  una fila `reserved` vencida, pero la fila guardaba el nombre para siempre; ahora el trabajo la borra (§11.1
+  corregida).
+- **Sesiones:** «caducadas» es `refresh_expires_at` (12 h desde el inicio de sesión; revocar no lo cambia), así que
+  una sesión vive como mucho 7 días y medio. Con eso, la regla de los 30 días de la IP y el agente no llega a aplicarse
+  hoy (se queda por si las sesiones se alargan), y la exportación da las sesiones de esos 7 días y medio. Un
+  arrendamiento de un personaje que lleva más de eso en el mundo se queda sin sesión (el latido ya no puede expulsarlo
+  por ella; tampoco podía: caducada no se revoca).
+- **La prueba de un reporte va con su reporte** (`report_evidence` cae en cascada): la de uno que estuvo abierto un año
+  dura hasta dos, como dice la tabla («desde el cierre»).
+- **Una lápida sin libro** da `progress: null` en la exportación (§11.2 solo pide las que lo tienen).
+- **`audit_log` a un año** borra también las filas `set-role` viejas que lee `sanctions.RoleAt` (S2): solo cambia algo
+  para una operación GM con `detail.at_unix` de hace más de un año, que se comprobaría con el rol de después.
+- **Relojes:** la retención del libro usa el del almacén (`progress.New`) y el resto el del servicio; en `serve` los dos
+  son la hora del sistema y en `platformtest`, el mismo reloj falso.
+
+**Pruebas.** `internal/privacy` (5, la plataforma entera con el almacén de verdad): `TestExportHasEverySectionAndTheProgress`
+(las doce secciones con datos; Aneira con registro y sus dos operaciones, la GM con solo sus siete claves y su apunte;
+la lápida de Brenna con libro y sin registro; la de Cora, sin libro, `null`; ni el correo del GM, ni su nota, ni
+`currency_add`, ni `detail`); `TestRetentionsDeleteWhatExpiredAndNothingElse` (cada fila de la tabla con una fila un
+minuto fuera del plazo y otra un minuto dentro: lo de cada paso exacto, las cascadas y los null, el reporte abierto que
+se cierra y el que no, las sanciones de una cuenta purgada hace un año y un minuto, de otra a la que le falta un minuto
+para el año y de una viva, el chat que no es de este trabajo; una segunda vuelta no borra nada; el reporte caducado se borra al año de cerrarse);
+`TestLedgerRetentionEmptiesAndRemovesTombstones` (10 050 apuntes en tres pasadas, la operación compartida con un vivo
+que se queda, una lápida sin libro, la purgada dos días después que se queda, antes del año nada y la marca que no
+sobrevive); `TestRestoreAtTheLimitRacesTheHourlyPurge` (10 rondas con la restauración en el último segundo y la purga,
+con su propio reloj, en el primero después; en la ejecución medida, 2 restaurados y 8 purgados, todos enteros o lápida);
+y `TestSanctionedAccountsArePurgedAndTheirEmailWaits` (la expulsada exporta con la sesión de privacidad, con el
+progreso, pide la supresión y se purga; su correo no se registra hasta el año, cuando la retención borra la huella; la
+suspendida, con `purge-now`, hasta 90 días tras el fin). En `cmd`, `TestServeRunsThePrivacyRetention` (`serve` borra al
+arrancar un acceso de hace 31 días y una lápida sin libro de hace 366, y deja el de ayer). Comprobadas con la mutación
+que deberían pillar: sin `exportProgress`, sin el trabajo en `serve`, sin el borrado de las lápidas vacías y sin el cierre
+de los reportes al año, fallan.
+
+Las de §15 P9a, una a una: exportación (`TestExportHasEverySectionAndTheProgress`); la purga deja las lápidas
+(`TestPurgeExpiredLeavesATombstone`, P2); arrendamiento vivo y `character_busy` (la misma y `TestPurgeNow`, P7a);
+restauración y purga a la vez (`TestRestoreAtTheLimitRacesTheHourlyPurge`); retenciones
+(`TestRetentionsDeleteWhatExpiredAndNothingElse`, `TestLedgerRetentionEmptiesAndRemovesTombstones`); las dos de
+`reapply-purges` (`TestReapplyPurgesAfterRestore` y `TestReapplyPurgesReportsWhatStaysUnpurged`, P9b); purgar una
+cuenta deja lápidas a sus vivos (`TestAccountPurgeWithCharacters`, P2); la suspendida y su correo y la expulsada que
+exporta, se suprime y se purga (`TestSanctionedAccountsArePurgedAndTheirEmailWaits`); y la auditoría sin su correo tras
+`purge-now` (`TestAuditHasNoPersonalData`, P7a) con `restore_check.sh` que falla si la tiene (`TestBackupAndRestoreCheck`,
+P9b).
+
+**Medido** (esta máquina, 4 núcleos, Go 1.24.7, PostgreSQL 16 con `fsync` apagado):
+
+| Qué | Resultado |
+|---|---|
+| Una vuelta con 200 000 accesos y 100 000 filas de auditoría caducadas (y otras 150 000 que se quedan) y una lápida con 60 000 filas de libro | 1,2 s; la vuelta siguiente, sin nada que borrar, 7,5 ms |
+| Borrar sesiones caducadas con 50 000 arrendamientos · instancias terminadas con 200 000 eventos de guerra | 3 ms por sesión · 15 ms por instancia: la clave ajena con `on delete set null` recorre entera `character_leases` (sin índice en `session_id`) o `fortress_events` (sin índice en `zone_instance_id`) por cada fila borrada. Unas mil sesiones por hora son 3 s de trabajo. **Para una migración futura** (fuera de la fase 5, §2.4): esos dos índices |
+| `go test -count=1 ./internal/privacy` | 2,5 s (3,9 s con `-race`) |
+| `go test -race -count=1 ./...` | 51 s, sin carreras |
+| Binario | 20,9 MB (20,8 MB antes) |
+
+Godot: fuera de `platform/` solo cambia la documentación.
+
+**Sin comprobar:** la retención con millones de filas (los lotes de 10 000 sí, con 200 000); el trabajo en staging.
+
+**Queda para después:** la revisión legal de los textos, de la edad mínima y de los plazos marcados en §11.1 (usuario,
+§16); el contacto del responsable en `privacy-1.md`.
