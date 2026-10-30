@@ -27,6 +27,16 @@ extends RefCounted
 ## [b]Ids[/b] ([IdAllocator], §4.5): sin plataforma, [method IdAllocator.local]; con ella, los bloques que llegan
 ## como eventos [code]id_block[/code] (el primero, del arranque de la plataforma, en el primer «poll») y uno nuevo
 ## cada vez que quedan pocos ([signal IdAllocator.running_low]), con uno en vuelo como mucho.
+## [br][br]
+## [b]Recompensas[/b] (§6.2, P5c): méritos de PvP ([method on_merits]: solo con una víctima persistente de otro
+## reino) y de objetivo ([method on_objective_ticks]: un mérito por segundo en el círculo activo de un ciclo de
+## verdad), con [code]méritos × 10[/code] de XP; XP y oro de los PNJ a cada contribuyente ([method on_npc_killed]);
+## y la de captura ([method on_capture]: 300 XP y 20 de oro, una vez por personaje y fortaleza cada 30 min, con el
+## temporizador [code]capture:<fortress_id>[/code]). Cobra quien tiene [PlayerProgress] y no está marcado por un
+## comando de GM ([member NetEntity.gm_forced]); con plataforma y [code]--fake-players[/code], nadie. Lo ganado
+## cambia el saldo al momento (agregado, §5.2) y llega al dueño por [method flush]; subir de nivel pone
+## [member NetEntity.level], manda el LEVEL_UP ([member level_up_sink]) y marca el guardado como crítico, igual que
+## cobrar una captura.
 
 ## La clave de la sección en el cuerpo del guardado (plataforma.md §7.1).
 const SECTION: StringName = &"progress"
@@ -48,6 +58,21 @@ const SYNC_INTERVAL_TICKS: int = 300
 const FLUSH_INTERVAL_TICKS: int = 10
 ## Temporizador de /atascado (§8).
 const TIMER_UNSTUCK: String = "unstuck"
+## Prefijo del temporizador de la recompensa de captura (§6.2 y §8): [code]capture:<fortress_id>[/code].
+const TIMER_CAPTURE_PREFIX: String = "capture:"
+## Críticos de la subida de nivel y de la recompensa de captura (§9.2).
+const CRITICAL_LEVEL_UP: StringName = &"level_up"
+const CRITICAL_CAPTURE: StringName = &"capture"
+## Recompensa de captura (§6.2): XP y oro a cada uno de la lista, una vez por personaje y fortaleza cada
+## [constant CAPTURE_COOLDOWN_S] segundos.
+const CAPTURE_XP: int = 300
+const CAPTURE_GOLD: int = 20
+const CAPTURE_COOLDOWN_S: int = 1800
+## Ticks en el círculo activo que dan un mérito de objetivo: uno por segundo, los provisionales del marcador
+## ([ScoreKeeper], fuerte.md) hasta que PRG-09 los cambie.
+const OBJECTIVE_TICKS_PER_MERIT: int = 60
+## Línea del registro al arrancar con plataforma y [code]--fake-players[/code] (§6.2).
+const FAKE_PLAYERS_TEXT: String = "Progreso: con --fake-players y la plataforma, la zona no da recompensas persistentes"
 ## Zonas SAFE (§8): se vuelve al sitio guardado si se guardó hace menos de esto (s).
 const RETURN_WINDOW_S: int = 900
 ## Motivos de los avisos (red.md §12).
@@ -92,6 +117,10 @@ class _Session:
 	## Lo último mandado: saldos (índice = moneda) y [nivel, xp_total, puntos de reino].
 	var sent_wallets: PackedInt64Array = PackedInt64Array()
 	var sent_progress: Array[int] = []
+	## Recompensa de captura: clave del temporizador ([code]capture:<id>[/code]) → tick desde el que vuelve a pagar.
+	var capture_ready: Dictionary[String, int] = {}
+	## Ticks de círculo que aún no llegan a un mérito de objetivo.
+	var objective_ticks: int = 0
 
 
 # Una petición en cola hasta el final del tick (request null = INVENTORY_SYNC_REQUEST).
@@ -110,6 +139,9 @@ var send_sink: Callable = Callable()
 var strike_sink: Callable = Callable()
 ## [code](peer: ServerPeer, text: String) -> void[/code]: un NOTICE informativo.
 var notice_sink: Callable = Callable()
+## [code](net_id: int, level: int, s: int) -> void[/code]: el ENTITY_EVENT LEVEL_UP al dueño y a los de su reino que
+## lo tienen relevante (§6.3; lo pone la zona).
+var level_up_sink: Callable = Callable()
 
 var _zone: ZoneServer = null
 var _platform: ZonePlatform = null
@@ -129,12 +161,17 @@ var _session_list: Array[_Session] = []
 var _pending: Array[_Pending] = []
 ## Un bloque pedido y sin respuesta (el primero llega del arranque de la plataforma).
 var _block_pending: bool = false
+## Con plataforma y --fake-players no se paga ninguna recompensa (§6.2).
+var _rewards_blocked: bool = false
+## Id de texto → su huella u32 (ref_id de los PNJ y las fortalezas, §5.2).
+var _ref_ids: Dictionary[StringName, int] = {}
 var _stats: Dictionary[StringName, int] = {
 	&"prepared": 0, &"prepare_failed": 0, &"appearance_replaced": 0, &"cancelled": 0, &"arrivals": 0,
 	&"ephemeral": 0, &"kits": 0, &"kits_deferred": 0, &"departures": 0, &"blocks": 0, &"block_requests": 0,
 	&"unbuilt": 0, &"requests": 0, &"applied": 0, &"rejected": 0, &"rate_limited": 0, &"not_in_world": 0,
 	&"syncs": 0, &"weapon_changes": 0, &"consumed": 0, &"camp_refills": 0, &"bag_full_notices": 0, &"refills": 0,
-	&"returned_to_spot": 0,
+	&"returned_to_spot": 0, &"merits": 0, &"xp": 0, &"gold": 0, &"npc_rewards": 0, &"captures_paid": 0,
+	&"captures_on_cooldown": 0, &"level_ups": 0, &"rewards_blocked": 0,
 }
 
 
@@ -158,6 +195,10 @@ func setup(zone: ZoneServer, platform: ZonePlatform, saver: CharacterSaver, comm
 		_ids.running_low.connect(_check_ids)
 	if _saver != null:
 		_saver.register_section(SECTION, _build, _acknowledge, _is_dirty)
+	var config: ServerConfig = zone.get_config() if zone != null else null
+	_rewards_blocked = _platform != null and config != null and config.fake_players > 0
+	if _rewards_blocked:
+		_log(FAKE_PLAYERS_TEXT)
 
 
 ## Arranque de la zona en el tick [param s]: con plataforma, el primer bloque ya está pedido (lo pide el arranque de
@@ -239,6 +280,7 @@ func on_arrival(entity: NetEntity, peer: ServerPeer, s: int) -> Loadout:
 	session.combatant = _combatant(net_id)
 	_sessions[net_id] = session
 	_session_list.append(session)
+	_restore_capture_timers(session, s)
 	return _loadout(player, true)
 
 
@@ -477,6 +519,104 @@ func set_timer(net_id: int, key: String, ready_tick: int, s: int) -> void:
 		player.record.timers.erase(key)
 	else:
 		player.record.timers[key] = PlayerProgress.ends_at_unix_for(ready_tick, s, now)
+
+
+## Méritos de PRG-09 para [param net_id] en el tick [param s] (§6.2): [param amount] de [param reason]
+## (PVP_KILL, PVP_ASSIST u OBJECTIVE) y [code]amount × 10[/code] de XP. Los de PvP solo con una víctima
+## ([param victim_net_id]) persistente de otro reino: la de un PNJ, un falso o un efímero no da nada, y su apunte
+## lleva el [code]character_id[/code] de la víctima. Los de objetivo van sin víctima (0). Sube los puntos de reino con
+## lo apuntado (I9). Nada sin [PlayerProgress], con [member NetEntity.gm_forced] o con plataforma y
+## [code]--fake-players[/code].
+func on_merits(net_id: int, amount: int, reason: int, victim_net_id: int, s: int) -> void:
+	if amount <= 0 or not EconomyReason.gives_realm_points(reason):
+		return
+	var session: _Session = _collector(net_id)
+	if session == null:
+		return
+	if reason == EconomyReason.OBJECTIVE:
+		if victim_net_id == 0:
+			_pay_merits(session, amount, reason, LedgerEntry.RefKind.NONE, 0, ProgressMessages.XpSource.CAPTURE, s)
+		return
+	var victim: PlayerProgress = _players.get(victim_net_id)
+	var victim_entity: NetEntity = _entity(victim_net_id)
+	var entity: NetEntity = _entity(net_id)
+	if victim == null or not victim.persistent or victim_entity == null or entity == null \
+			or victim_entity.realm == entity.realm:
+		return
+	_pay_merits(session, amount, reason, LedgerEntry.RefKind.CHARACTER, victim.character_id,
+			ProgressMessages.XpSource.PVP, s)
+
+
+## [param ticks] más de [param net_id] en el círculo activo de [param fortress_id] en el tick [param s] (la señal
+## [signal FortressController.objective_time]: ciclo de verdad y sin [member NetEntity.gm_forced]): cada
+## [constant OBJECTIVE_TICKS_PER_MERIT] ticks acumulados son un mérito de objetivo (motivo OBJECTIVE, con la
+## fortaleza como referencia) y su XP.
+func on_objective_ticks(fortress_id: StringName, net_id: int, ticks: int, s: int) -> void:
+	if ticks <= 0:
+		return
+	var session: _Session = _collector(net_id)
+	if session == null:
+		return
+	session.objective_ticks += ticks
+	@warning_ignore("integer_division")
+	var merits: int = session.objective_ticks / OBJECTIVE_TICKS_PER_MERIT
+	if merits <= 0:
+		return
+	session.objective_ticks -= merits * OBJECTIVE_TICKS_PER_MERIT
+	_pay_merits(session, merits, EconomyReason.OBJECTIVE, LedgerEntry.RefKind.FORTRESS, _ref_id(fortress_id),
+			ProgressMessages.XpSource.CAPTURE, s)
+
+
+## Ha muerto un PNJ de [param npc] en el tick [param s] (§6.2): cada uno de [param contributors] (quienes hicieron al
+## menos el 10 % del daño de la ventana, [method DamageLedger.contributors]) recibe la recompensa entera:
+## [member NpcDefinition.xp_reward] de XP y [member NpcDefinition.gold_reward] de oro (NPC_KILL, con el PNJ como
+## referencia). Sin méritos. La zona no lo llama si el PNJ defendía una fortaleza en un ciclo forzado.
+func on_npc_killed(npc: NpcDefinition, contributors: PackedInt32Array, s: int) -> void:
+	if npc == null or (npc.xp_reward <= 0 and npc.gold_reward <= 0):
+		return
+	for net_id: int in contributors:
+		var session: _Session = _collector(net_id)
+		if session == null:
+			continue
+		_stats[&"npc_rewards"] += 1
+		if npc.gold_reward > 0:
+			_stats[&"gold"] += session.player.gain_currency(Currency.Code.GOLD, npc.gold_reward, EconomyReason.NPC_KILL,
+					LedgerEntry.RefKind.NPC, _ref_id(npc.id))
+		_grant_xp(session, npc.xp_reward, ProgressMessages.XpSource.NPC, s)
+
+
+## Captura de verdad de [param fortress_id] por [param owner_realm] en el tick [param s]
+## ([signal FortressController.fortress_captured]): cada uno de [param in_circle] (la lista de plataforma.md §8, la
+## misma que suma [code]ScoreKeeper.captures[/code]) de ese reino recibe [constant CAPTURE_XP] de XP y
+## [constant CAPTURE_GOLD] de oro (OBJECTIVE, con la fortaleza como referencia), una vez cada
+## [constant CAPTURE_COOLDOWN_S] s por fortaleza: con plataforma, el temporizador
+## [code]capture:<fortress_id>[/code] se guarda y vuelve con el personaje (§8). Cobrar marca el guardado como
+## crítico. Una captura forzada no llega aquí.
+func on_capture(fortress_id: StringName, owner_realm: int, in_circle: PackedInt32Array, s: int) -> void:
+	var key: String = TIMER_CAPTURE_PREFIX + String(fortress_id)
+	for net_id: int in in_circle:
+		var session: _Session = _collector(net_id)
+		var entity: NetEntity = _entity(net_id)
+		if session == null or entity == null or entity.realm != owner_realm:
+			continue
+		if session.capture_ready.get(key, 0) > s:
+			_stats[&"captures_on_cooldown"] += 1
+			continue
+		var ready_tick: int = s + CAPTURE_COOLDOWN_S * PlayerProgress.TICKS_PER_SECOND
+		session.capture_ready[key] = ready_tick
+		set_timer(net_id, key, ready_tick, s)
+		_stats[&"captures_paid"] += 1
+		_stats[&"gold"] += session.player.gain_currency(Currency.Code.GOLD, CAPTURE_GOLD, EconomyReason.OBJECTIVE,
+				LedgerEntry.RefKind.FORTRESS, _ref_id(fortress_id))
+		_grant_xp(session, CAPTURE_XP, ProgressMessages.XpSource.CAPTURE, s)
+		if _saver != null and session.player.persistent:
+			_saver.mark_critical(net_id, CRITICAL_CAPTURE)
+		_log("Progreso: net_id %d (%s) cobra la captura de %s" % [net_id, _who(session.player), fortress_id])
+
+
+## true si la zona no paga recompensas: con plataforma y [code]--fake-players[/code] (§6.2).
+func rewards_blocked() -> bool:
+	return _rewards_blocked
 
 
 ## El progreso atado a [param net_id], o null (pruebas y paquetes siguientes).
@@ -720,8 +860,7 @@ static func _is_drinking(combat: CombatState) -> bool:
 
 func _log_request(session: _Session, entry: _Pending, outcome: InventoryOps.Outcome) -> void:
 	var request: InventoryOps.Request = entry.request
-	var who: String = "personaje %d" % session.player.character_id if session.player.persistent \
-			else "efímero"
+	var who: String = _who(session.player)
 	var target: String = "-" if request.op == InventoryOps.Op.DESTROY \
 			else "%d:%d" % [request.to_container, request.to_slot]
 	_log("Inventario: net_id %d (%s) %s %d:%d -> %s ×%d uid %d%s: OK" % [session.net_id, who,
@@ -826,7 +965,77 @@ func _restore_timers(entity: NetEntity, player: PlayerProgress, s: int) -> void:
 				PlayerProgress.ready_tick_for(player.record.timers[TIMER_UNSTUCK], now, s))
 
 
+# --- Recompensas (§6.2) --------------------------------------------------------------------------
+
+# La sesión de quien puede cobrar una recompensa: con [PlayerProgress] (un jugador con peer, también el cuerpo que se
+# queda tras una salida en combate) y sin la marca de un comando de GM; null con plataforma y --fake-players.
+# (plataforma.md P7b quita además a los GM invisibles, que no hacen daño ni cuentan en el círculo.)
+func _collector(net_id: int) -> _Session:
+	if _rewards_blocked:
+		_stats[&"rewards_blocked"] += 1
+		return null
+	var session: _Session = _sessions.get(net_id)
+	if session == null:
+		return null
+	var entity: NetEntity = _entity(net_id)
+	if entity == null or entity.gm_forced:
+		return null
+	return session
+
+
+func _pay_merits(session: _Session, amount: int, reason: int, ref_kind: int, ref_id: int, source: int,
+		s: int) -> void:
+	_stats[&"merits"] += session.player.gain_currency(Currency.Code.MERITS, amount, reason, ref_kind, ref_id)
+	_grant_xp(session, amount * ProgressionRules.XP_PER_MERIT, source, s)
+
+
+# Suma XP; si sube de nivel: el nivel en la entidad (los SPAWN siguientes), el LEVEL_UP y el guardado crítico (§6.3).
+# PROGRESS_UPDATE sale en flush con lo ganado.
+func _grant_xp(session: _Session, amount: int, source: int, s: int) -> void:
+	if amount <= 0:
+		return
+	var result: ProgressionRules.XpResult = session.player.add_xp(amount, source)
+	_stats[&"xp"] += result.applied
+	if result.levels_gained <= 0:
+		return
+	_stats[&"level_ups"] += 1
+	var entity: NetEntity = _entity(session.net_id)
+	if entity != null:
+		entity.level = result.level
+	if level_up_sink.is_valid():
+		level_up_sink.call(session.net_id, result.level, s)
+	if _saver != null and session.player.persistent:
+		_saver.mark_critical(session.net_id, CRITICAL_LEVEL_UP)
+	_log("Progreso: net_id %d (%s) sube al nivel %d" % [session.net_id, _who(session.player), result.level])
+
+
+# Los temporizadores de captura guardados (§8), en ticks de esta sesión: los vencidos ya los ha quitado el alta.
+func _restore_capture_timers(session: _Session, s: int) -> void:
+	var now: int = _platform.now_unix() if _platform != null else 0
+	if now <= 0 or not session.player.persistent:
+		return
+	var timers: Dictionary[String, int] = session.player.record.timers
+	for key: String in timers:
+		if key.begins_with(TIMER_CAPTURE_PREFIX):
+			session.capture_ready[key] = PlayerProgress.ready_tick_for(timers[key], now, s)
+
+
+# La huella u32 de un id de texto (el ref_id de un PNJ o una fortaleza, §5.2).
+func _ref_id(text_id: StringName) -> int:
+	if not _ref_ids.has(text_id):
+		_ref_ids[text_id] = HandoffTicket.zone_key_of(String(text_id))
+	return _ref_ids[text_id]
+
+
+static func _who(player: PlayerProgress) -> String:
+	return "personaje %d" % player.character_id if player.persistent else "efímero"
+
+
 # --- Interno -------------------------------------------------------------------------------------
+
+func _entity(net_id: int) -> NetEntity:
+	return _zone.get_registry().get_entity(net_id) if _zone != null and _zone.get_registry() != null else null
+
 
 func _combatant(net_id: int) -> Combatant:
 	if _zone == null or _zone.get_combat() == null:

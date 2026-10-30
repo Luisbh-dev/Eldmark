@@ -225,11 +225,13 @@ func test_the_section_is_registered_first_and_the_kit_is_critical() -> void:
 	if not await _start(func(platform: FakeZonePlatform) -> void:
 			platform.add_character(2042, 7, &"player", VARDHEIM, {})):
 		return
-	assert_eq(_server.get_saver().section_names(), [ProgressService.SECTION] as Array[StringName],
-			"progress, registrada en start")
+	# Desde plataforma.md P6, start registra también la de verdad de pvp (ScoreKeeper), detrás de progress.
+	assert_eq(_server.get_saver().section_names(), [ProgressService.SECTION, ScoreKeeper.SECTION] as Array[StringName],
+			"progress, registrada en start la primera")
 	var other := FakeSaveSection.new()
 	other.attach(_server.get_saver())
-	assert_eq(_server.get_saver().section_names(), [&"progress", &"pvp"] as Array[StringName], "la primera")
+	assert_eq(_server.get_saver().section_names(), [&"progress", &"pvp"] as Array[StringName],
+			"la falsa sustituye a pvp y progress sigue la primera")
 	var client: RawTicketClient = await _join(2042)
 	if client == null:
 		return

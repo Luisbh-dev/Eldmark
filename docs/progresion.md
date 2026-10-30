@@ -1557,6 +1557,10 @@ func flush(s: int) -> void                                          # WALLET_UPD
 # notice_sink, BAG_FULL_TEXT, TIMER_UNSTUCK, los ritmos de RATE y los textos de los avisos; en PlayerProgress,
 # take_items (lose_items con su Outcome), saved_active_slot y last_currency_reasons; en CombatDirector,
 # equip_inventory, loadout_source y camp_step; y en ZoneServer, unstuck_key_of y place_returning
+# P5c añade (§19.14): on_objective_ticks (los méritos de objetivo), rewards_blocked, level_up_sink,
+# TIMER_CAPTURE_PREFIX, CRITICAL_LEVEL_UP, CRITICAL_CAPTURE, CAPTURE_XP, CAPTURE_GOLD, CAPTURE_COOLDOWN_S,
+# OBJECTIVE_TICKS_PER_MERIT y FAKE_PLAYERS_TEXT; en DamageLedger, contributors; en FortressController, la señal
+# objective_time y fortress_of_defender; en NpcDefinition, xp_reward y gold_reward
 
 # scripts/shared/net/progress_messages.gd (P4, §19.9): los formatos de §4.6 y §12; los tipos, en NetProtocol.MSG_*
 class_name ProgressMessages extends RefCounted
@@ -2600,3 +2604,123 @@ plataforma.md P6 (su §19.11) pone la guerra persistente en la zona. Lo que usa 
   las dos secciones, `progress` y `pvp` (con `captures` al día).
 
 **Sin comprobar:** con la plataforma de Go de verdad (plataforma.md P10).
+
+### 19.14 P5c · recompensas (PRG-09, PRG-12, PRG-13, GUE-12, MUN-07)
+
+**Qué hay.** Lo de §14.1 P5c, en `scripts/server/` salvo donde se dice:
+
+| Pieza | Contenido |
+|---|---|
+| `ProgressService` (`progress/progress_service.gd`) | `on_merits` (PvP solo con una víctima persistente de otro reino, apunte con `ref_kind` 1 y el `character_id` de la víctima; OBJECTIVE sin víctima), `on_objective_ticks` (los méritos de objetivo, con la fortaleza como referencia), `on_npc_killed` (a cada contribuyente, `xp_reward` y `gold_reward` con NPC_KILL, `ref_kind` 2 y la huella del id), `on_capture` (300 XP y 20 de oro con OBJECTIVE y `ref_kind` 3, una vez por personaje y fortaleza cada 30 min con el temporizador `capture:<fortress_id>`, y el crítico `capture`), `rewards_blocked` y la regla de `--fake-players`. Toda XP pasa por `PlayerProgress.add_xp`: subir pone `NetEntity.level`, manda el LEVEL_UP por `level_up_sink` y marca el crítico `level_up`; lo ganado llega al dueño por `flush` (WALLET_UPDATE y PROGRESS_UPDATE, de P5b) |
+| `ZoneServer` | En `_track_battle`, la muerte de un PNJ (en su DEATH, `_reward_npc_death`) y los méritos de PvP del KILL de un jugador (`_reward_kill`); `_announce_level_up` (al dueño y a los de su reino que lo tienen relevante); `fortress_captured` y `objective_time` conectadas a `on_capture` y `on_objective_ticks` |
+| `FortressController` | La señal `objective_time(fortress_id, net_id, ticks, tick)` en cada recuento con el círculo activo, de un ciclo de verdad y sin `gm_forced`, y `fortress_of_defender(net_id)` |
+| `DamageLedger` | `contributors(tick)`: quienes hicieron al menos el 10 % del daño de la ventana, por id |
+| `NpcDefinition` y `data/npcs/` (compartido) | `xp_reward` y `gold_reward` (grupo «Recompensas», 0 por defecto) con los valores de §6.2: `hollow` 40 y 2, `realm_guard` 60 y 3, `ford_captain` y `realm_captain` 400 y 50, `gate_guardian` 0 y 0; `NpcCatalog` da error con uno negativo |
+| `tests/test_progress_rewards.gd` | Las pruebas de §15 P5c (abajo) |
+
+**Desviaciones y decisiones de la implementación:**
+
+- **Los méritos son los provisionales del marcador** (PRG-09 no está hecho): 10 por baja y 5 por asistencia
+  (`ScoreKeeper.MERITS_PER_KILL` y `MERITS_PER_ASSIST`) y uno por segundo entero en el círculo activo, sin reparto por
+  daño ni antifarmeo; el daño a la puerta no da méritos, como en el marcador (fuerte.md). Dos jugadores de reinos
+  distintos pueden granjearse bajas hasta PRG-09; en la fase 5 los méritos no se gastan y el nivel no cambia la hoja.
+  Con estos valores, estar en el círculo activo da 10 XP por segundo, mucho más que las bajas: se revisa con PRG-09 y
+  la telemetría (cifra provisional, como todas las de §6.2).
+- **`on_objective_ticks` (no está en §14.2):** los méritos de objetivo no pasan por `on_merits` porque llevan la
+  fortaleza como referencia (`ref_kind` 3), no una víctima. Los da la señal `objective_time` de `FortressController`
+  (6 ticks por recuento); cada 60 ticks acumulados son un mérito, y lo que no llega a un segundo se pierde al salir.
+  `on_merits` con OBJECTIVE y sin víctima sigue valiendo (con `ref_kind` 0) para quien lo necesite.
+- **Fuente de la XP** en PROGRESS_UPDATE: PVP para bajas y asistencias, NPC para los PNJ y CAPTURE para la captura y
+  los méritos de objetivo.
+- **El PNJ se paga en su DEATH, no en el KILL.** El DEATH llega a la zona antes que a `FortressController` (la zona
+  se conecta antes a `CombatDirector.event_emitted`), así que el defensor sigue registrado (`fortress_of_defender`) y
+  la marca de cambio forzado es la de su muerte, la que `fort_kill_captain` pone antes de matar (plataforma.md P6).
+  Los contribuyentes salen del registro de daño de la víctima (`contributors`), así que también paga una muerte por el
+  entorno con daño de jugadores en la ventana, y el autor del golpe de gracia solo cobra si llega al 10 %.
+- **Un defensor de una fortaleza en un ciclo forzado no paga**: los Huecos, los guardias y el capitán, también los
+  que pone `fort_owner` hasta que el ciclo deja de ser forzado, y el capitán muerto en combate en ese ciclo (su DEATH
+  aún ve la marca, que esa misma muerte quita después). Un PNJ que no defiende ninguna fortaleza paga siempre.
+- **Los cambios forzados no pagan tampoco sin plataforma**, igual que plataforma.md P6 no suma capturas ni
+  `defend_ticks` de un ciclo forzado (la captura forzada no emite `fortress_captured`): un efímero no cobra un ciclo
+  forzado. §6.2 dice «sin plataforma, como hoy»; así hay una sola regla y nada persistente cambia.
+- **`--fake-players` se mira en `setup`** con la opción (`ServerConfig.fake_players > 0`) y la plataforma, y queda
+  en el registro (`FAKE_PLAYERS_TEXT`). Un falso que una prueba crea con `add_fake_player` no bloquea nada (no es
+  `--fake-players`), y los de relleno no existen con plataforma (`ServerMain` no aplica `--max-realm-diff`). Los falsos
+  nunca cobran (no tienen `PlayerProgress`) ni dan méritos al morir (no son persistentes).
+- **Los GM invisibles no existen todavía** (plataforma.md P7b), así que su prueba («un GM invisible en el círculo no
+  cobra la captura») queda para P7b: el invisible no estará en los candidatos del círculo (sin captura ni méritos de
+  objetivo) ni hará daño (sin contribución ni méritos de PvP). `/gm teleport` y `/gm visible` se simulan poniendo
+  `gm_forced`, que es lo que harán; cada recompensa lo mira en `_collector`, el sitio donde mirar también al invisible
+  si alguna vez hiciera falta.
+- **El temporizador de la captura** vive por sesión en ticks (`capture_ready`), así que vale también para los
+  efímeros; con plataforma, además se escribe en `record.timers` (`set_timer`) y vuelve al entrar con
+  `ready_tick_for` (los vencidos ya los quitó el alta). Es por fortaleza. Solo cobrar es crítico: quien está en espera
+  lleva su `captures` de la sección `pvp` en el siguiente punto de control.
+- **LEVEL_UP**: uno por aporte con el nivel final (un aporte puede subir varios), en el tick del aporte, por el canal
+  fiable; el dueño lo recibe siempre y los de su reino si lo tienen relevante. Va contado en los ENTITY_EVENT del
+  informe.
+- **El cuerpo que se queda** tras una salida en combate (GUE-41) sigue cobrando lo que le toque (tiene
+  `PlayerProgress` hasta su baja), aunque no puede capturar (no está conectado).
+
+**Para los paquetes siguientes.**
+
+- **plataforma.md P7b:** los GM invisibles fuera de `_presence_candidates` y sin daño, y `gm_forced` con
+  `/gm teleport`, `/gm visible` y los DEBUG_COMMAND 1, 2 y 4: las recompensas ya miran `gm_forced` en cada jugador, y
+  la prueba del invisible en el círculo puede ir en `test_progress_rewards` (su `_capture` ya monta la captura).
+- **P5d:** `xp_add` y `level_set` suben de nivel como aquí (`NetEntity.level`, `level_up_sink` con la fuente GM y el
+  crítico; `_grant_xp` es privado: o se reutiliza o se repite con la operación GM).
+- **PRG-09:** el reparto por daño y el antifarmeo cambian lo que la zona pasa a `on_merits` (hoy, en `_reward_kill`) y
+  a `on_objective_ticks`; los filtros de aquí no cambian.
+- **P8:** `test_progress_loopback` y el bot `progress` pueden leer las recompensas por WALLET_UPDATE y PROGRESS_UPDATE.
+
+**Pruebas.** En Godot, `test_progress_rewards` (9, sin red: la zona plana con la fortaleza de pruebas, peers montados
+a mano con su reclamación de `FakeZonePlatform` y las muertes provocadas con el registro de daño ya escrito): los
+valores de §6.2 en `data/npcs/` y `contributors` (≥ 10 %, por id, solo la ventana); la baja de una víctima
+persistente de otro reino (10 méritos, 10 puntos de reino y 100 de XP al asesino, 5 y 50 al asistente, sin oro), su
+WALLET_UPDATE y su PROGRESS_UPDATE, el falso y el PNJ que no dan méritos y los apuntes de la GAMEPLAY del guardado
+con sus referencias (la víctima `102` y la huella de `hollow`); el PNJ con dos contribuyentes que cobran entero, el de
+menos del 10 % que no, y el que muere por el entorno; los efímeros sin plataforma (el PNJ en memoria, el PvP nada);
+dos capturas en 30 min que pagan una, los méritos de objetivo igual a los segundos enteros del círculo activo, el
+temporizador `capture:<id>` que vuelve al salir y entrar a los 10 min y el vencido que no vuelve a los 30, y la
+captura de otro reino o de otra fortaleza; el marcado con `gm_forced` que no cobra captura, méritos de objetivo,
+baja ni PNJ (y el otro contribuyente sí) y, tras reaparecer, cobra las tres cosas; el capitán muerto en combate que
+paga 400 y 50, el de `fort_kill_captain` con daño de la jugadora que no paga, y las capturas tras
+`fort_kill_captain` y con `fort_capture_speed 20` y `fort_owner` sin cobrar nada; `--fake-players` con plataforma
+(nada, el registro al arrancar y el marcador que sí cuenta); y la subida de nivel (400 + 300 de XP: el nivel 2 en el
+registro y en la entidad, un LEVEL_UP al dueño y al aliado y ninguno al enemigo, el crítico `level_up` con su
+guardado del nivel 2, el PROGRESS_UPDATE y el SPAWN con el nivel solo hacia su reino). Comprobadas con la mutación que
+deberían pillar: sin mirar `gm_forced`, sin exigir una víctima persistente, sin saltarse el PNJ de un ciclo forzado, sin
+la espera de la captura, sin restaurar su temporizador, sin mirar el reino captor, sin filtrar el reino del LEVEL_UP,
+sin el bloqueo de `--fake-players`, con méritos de objetivo en un ciclo forzado, sin el crítico de la subida y sin
+`NetEntity.level`, fallan.
+
+Ajustada: `test_progress_section` (la primera: desde plataforma.md P6, `start` registra también la sección `pvp` de
+verdad detrás de `progress`, y la prueba esperaba solo `progress`; fallaba ya antes de P5c). Siguen correctas,
+además, `test_progress_service` (9), `test_war_persistence` (15), `test_war_platform_process`, `test_fortress_*`
+(151), `test_npc_*` (55), `test_damage_ledger`, `test_score*`, `test_architecture`, `test_player_progress`,
+`test_progress_messages`, `test_progress_record`, `test_progression_*`, `test_zone_server*` (86),
+`test_combat_server`, `test_combat_director`, `test_combat_loopback`, `test_net_loopback`, `test_bot_swarm`,
+`test_net_processes` (procesos aparte, bots con 0 malformados), `test_siege_clients`, `test_hfsm_brain`,
+`test_character_saver`, `test_net_client`, `test_battle*`, `test_downed`, `test_loadout*`, `test_consumables*` y
+`test_unstuck*`. La suite entera de Godot no se ha pasado; Go no cambia (las reglas exportadas no llevan PNJ).
+
+**Medido** (esta máquina, 4 núcleos compartidos, Godot 4.7.2 headless; una sonda que no se sube, con 64 efímeros en el
+círculo de la zona plana; dos pasadas):
+
+| Qué | Resultado |
+|---|---|
+| `on_objective_ticks` de 64 jugadores (un recuento, cada 6 ticks) | 200–335 µs, con un mérito pagado por jugador cada 10 recuentos: unos 35–55 µs por tick |
+| `on_capture` con 32 de la lista | 0,6–1,1 ms cobrando (temporizador, oro, XP, subidas y su LEVEL_UP); 107–187 µs con los 32 en espera |
+| `on_npc_killed` con 10 contribuyentes | 128–234 µs |
+| `on_merits` descartado (víctima efímera) | 5–7 µs por llamada |
+| `DamageLedger.contributors` con 200 golpes en la ventana | 29–59 µs (una vez por muerte de PNJ con recompensa) |
+| LEVEL_UP a 64 peers | 52–96 µs |
+| `test_progress_rewards` | 9 pruebas, unos 18 s con el arranque del ejecutor; la más lenta, la de las capturas (2 s) |
+
+**Sin comprobar:** con la plataforma de Go de verdad (P7 y P10); con PNJ y combate de verdad (las muertes de las pruebas
+se provocan con el registro de daño escrito; el orden de las señales sí es el de verdad); el GM invisible (P7b); el
+ritmo de XP del Vado Gris (§6.1 suponía unos 3000 por hora de batalla).
+
+**Queda para después:** el GM invisible y `gm_forced` puesto por los comandos (plataforma.md P7b); los comandos de GM,
+`xp_add` y `level_set` (P5d); el reparto por daño y el antifarmeo de los méritos (PRG-09); las pruebas de punta a punta
+(P8).

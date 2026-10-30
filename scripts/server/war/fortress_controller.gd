@@ -47,7 +47,10 @@ extends RefCounted
 ## con el círculo activo suman [code]defend_ticks[/code]. [b]Cambio forzado[/b] (docs/progresion.md §6.2): lo que
 ## provoca un comando del fuerte ([code]fort_owner[/code], [code]fort_reset[/code], [code]fort_kill_captain[/code],
 ## una captura con [member FortressState.capture_rate_multiplier] distinto de 1) no suma capturas ni tiempo
-## defendiendo y [method is_forced] lo dice a quien paga recompensas (progresion.md P5c).
+## defendiendo y [method is_forced] lo dice a quien paga recompensas (progresion.md P5c). Las recompensas
+## (progresion.md §6.2) salen de [signal fortress_captured] (la captura), [signal objective_time] (el tiempo en el
+## círculo activo de un ciclo de verdad: los méritos de objetivo) y [method fortress_of_defender] (de qué fortaleza
+## era el PNJ que muere).
 ## [br][br]
 ## No toca la red ni el reloj: avisa con señales y recibe de quien lo lleva ([ZoneServer]) los
 ## candidatos a la presencia, los cuerpos que pueden ocupar el vano y cómo matar al capitán.
@@ -73,6 +76,11 @@ signal gate_damage_started(fortress_id: StringName, tick: int)
 ## [code]captures[/code] en el [ScoreKeeper]. Una captura forzada no sale (progresion.md §6.2): aquí se conecta
 ## [code]ProgressService.on_capture[/code] (progresion.md P5c).
 signal fortress_captured(fortress_id: StringName, owner_realm: int, in_circle: PackedInt32Array, tick: int)
+## [param ticks] más de [param net_id] en el círculo activo de [param fortress_id] (cada recuento, en el tick
+## [param tick]), de un ciclo de verdad y sin [member NetEntity.gm_forced]: el tiempo que da los méritos de objetivo
+## (docs/progresion.md §6.2; aquí se conecta [code]ProgressService.on_objective_ticks[/code], P5c). Cuenta a todos los
+## reinos presentes, como [code]circle_ticks[/code] del marcador, pero no en un ciclo forzado.
+signal objective_time(fortress_id: StringName, net_id: int, ticks: int, tick: int)
 
 ## Ticks entre dos OBJECT_STATE de una misma fortaleza.
 const OBJECT_STATE_INTERVAL_TICKS: int = 6
@@ -387,6 +395,16 @@ func get_consolidation_end_tick(fortress_id: StringName) -> int:
 	return site.state.phase_tick + site.definition.consolidation_ticks()
 
 
+## La fortaleza que defiende el PNJ [param net_id] (registrado con [method register_captain] o
+## [method register_defender]); vacío si no defiende ninguna. Su muerte la lee aquí quien la paga (progresion.md P5c)
+## antes de que el controlador lo olvide: el DEATH llega antes a la zona que a [method on_combat_event].
+func fortress_of_defender(net_id: int) -> StringName:
+	for site: Site in _sites:
+		if site.defenders.has(net_id):
+			return site.id
+	return &""
+
+
 ## El PNJ capitán registrado de [param fortress_id] (0 = ninguno).
 func get_captain_net_id(fortress_id: StringName) -> int:
 	var site: Site = _sites_by_id.get(fortress_id)
@@ -612,18 +630,24 @@ func _recount(site: Site, candidates: Array, s: int) -> void:
 	var counts := PackedInt32Array([0, 0, 0, 0])
 	var active: bool = site.state.is_circle_active()
 	var owner: int = site.state.owner
-	var defending: bool = active and owner != RealmCatalog.NEUTRAL_CODE and not is_forced(site.id)
+	var forced: bool = is_forced(site.id)
+	var defending: bool = active and owner != RealmCatalog.NEUTRAL_CODE and not forced
 	for candidate: FortressPresence.Candidate in candidates:
 		if not FortressPresence.is_present(site.definition, site.circle_center, site.circle_radius,
 				candidate, s):
 			continue
 		counts[candidate.realm] += 1
 		var player: PlayerCandidate = candidate as PlayerCandidate
-		if active and score_keeper != null and player != null:
+		if not active or player == null:
+			continue
+		if score_keeper != null:
 			score_keeper.add_circle_ticks(player.net_id, FortressState.PRESENCE_RECOUNT_TICKS)
 			# El tiempo defendiendo (docs/plataforma.md §8): solo el reino dueño, y no en un ciclo forzado.
 			if defending and candidate.realm == owner and not player.gm_forced:
 				score_keeper.add_defend_ticks(player.net_id, FortressState.PRESENCE_RECOUNT_TICKS)
+		# Los méritos de objetivo (progresion.md §6.2): no en un ciclo forzado ni a un marcado por un comando de GM.
+		if not forced and not player.gm_forced:
+			objective_time.emit(site.id, player.net_id, FortressState.PRESENCE_RECOUNT_TICKS, s)
 	site.presence = counts
 
 

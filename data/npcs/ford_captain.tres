@@ -25,3 +25,5 @@ shouts = true
 reinforcement_id = &"hollow"
 reinforcement_count = 2
 garrison_id = &"realm_captain"
+xp_reward = 400
+gold_reward = 50

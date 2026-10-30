@@ -40,10 +40,13 @@ extends Node
 ##                  reapariciones con su plantilla (con inventario, con su equipo), la recarga del campamento
 ##                  (con inventario, CAMP_REFILL de la bolsa) y publicar la vida; los
 ##                  ENTITY_EVENT y los ENTITY_SPAWN y ENTITY_DESPAWN de los proyectiles salen aquí, y
-##                  al final, los avisos TELEGRAPH de los ataques fuertes de PNJ que empiezan en s
+##                  al final, los avisos TELEGRAPH de los ataques fuertes de PNJ que empiezan en s; con cada
+##                  muerte, las recompensas (progresion.md §6.2): la del PNJ a sus contribuyentes y los
+##                  méritos de PvP del KILL (y el LEVEL_UP de quien sube)
 ## fuertes          FortressController.step() (paso 4b): presencia en el círculo, avance del estado de
 ##                  cada fortaleza, capas de la puerta (valen desde s + 1), avisos WAR y OBJECT_STATE,
-##                  capturas y tiempo defendiendo en el marcador; con la plataforma, FortressPersistence.step:
+##                  capturas y tiempo defendiendo en el marcador, y la recompensa de captura y los méritos
+##                  de objetivo (progresion.md §6.2); con la plataforma, FortressPersistence.step:
 ##                  el registro de la que ha cambiado (docs/plataforma.md §8); /atascado; cuerpos que se
 ##                  quedan tras una baja en combate
 ## PNJ              NpcSpawnerSystem.step(): altas y retiradas de PNJ según los generadores y las
@@ -99,6 +102,10 @@ extends Node
 ## con su inventario en lugar de la plantilla; LOADOUT_SELECT ya no cambia nada tras ella. La sección
 ## [code]progress[/code] de los guardados es la primera de [CharacterSaver]. Los bloques de ids llegan como eventos
 ## [code]id_block[/code]. El inventario va por la red (0x50–0x55) y la recarga del campamento repone la bolsa.
+## Las recompensas (§6.2): los méritos de PvP salen del KILL (solo con una víctima persistente de otro reino), la de
+## un PNJ de su DEATH (a quien hizo al menos el 10 % del daño, salvo un defensor de una fortaleza en un ciclo forzado),
+## y la de captura y los méritos de objetivo, de [FortressController]; subir de nivel manda LEVEL_UP al dueño y a los
+## de su reino que lo tienen relevante. Con plataforma y [code]--fake-players[/code] no se paga nada.
 ## [br][br]
 ## [b]Seguridad[/b] (sección 12): limitadores por peer, avisos con expulsión a los 50 en 600 ticks
 ## (NOTICE de expulsión y corte), tope de conexiones por IP, tipos de mensaje inesperados según el
@@ -631,6 +638,7 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_progress.send_sink = Callable(self, "_progress_send")
 	_progress.strike_sink = Callable(self, "_add_strike")
 	_progress.notice_sink = Callable(self, "_send_notice")
+	_progress.level_up_sink = Callable(self, "_announce_level_up")
 	_progress.setup(self, _platform, _saver, _commands)
 	# La sección pvp, detrás de progress (docs/plataforma.md §7.1 y §8).
 	if _saver != null:
@@ -2084,7 +2092,8 @@ func _on_projectile_despawned(projectile_id: int, tick: int, reason: int,
 
 # Marcador y registro de batalla: una muerte suma una muerte a la víctima (si es un jugador) y queda en el
 # registro; un KILL suma una baja al asesino y una asistencia a cada asistente (si son jugadores). La reaparición
-# quita la marca de un comando de GM (gm_forced, docs/progresion.md §6.2).
+# quita la marca de un comando de GM (gm_forced, docs/progresion.md §6.2). Las recompensas (progresion.md §6.2): la
+# muerte de un PNJ paga a sus contribuyentes y el KILL de un jugador, los méritos de PvP.
 func _track_battle(event: NetMessages.EntityEvent) -> void:
 	match event.event:
 		NetMessages.EntityEvent.Kind.RESPAWN:
@@ -2097,6 +2106,8 @@ func _track_battle(event: NetMessages.EntityEvent) -> void:
 				return
 			if victim.kind == NetProtocol.EntityKind.PLAYER:
 				_scores.add_death(victim.net_id)
+			elif victim.kind == NetProtocol.EntityKind.NPC:
+				_reward_npc_death(victim, event.tick)
 			if _battle_log != null:
 				_battle_log.log_death(event.tick, victim,
 						_registry.get_entity(event.killer) if event.killer != 0 else null,
@@ -2107,6 +2118,60 @@ func _track_battle(event: NetMessages.EntityEvent) -> void:
 			for assistant: int in event.assistants:
 				if _is_player(assistant):
 					_scores.add_assist(assistant)
+			_reward_kill(event)
+
+
+# Los méritos de PvP de un KILL (progresion.md §6.2; los provisionales del marcador hasta PRG-09): los de la baja al
+# asesino y los de la asistencia a cada asistente. ProgressService solo los paga con una víctima persistente de otro
+# reino.
+func _reward_kill(event: NetMessages.EntityEvent) -> void:
+	if _progress == null or not _is_player(event.net_id):
+		return
+	_progress.on_merits(event.killer, ScoreKeeper.MERITS_PER_KILL, EconomyReason.PVP_KILL, event.net_id, event.tick)
+	for assistant: int in event.assistants:
+		_progress.on_merits(assistant, ScoreKeeper.MERITS_PER_ASSIST, EconomyReason.PVP_ASSIST, event.net_id,
+				event.tick)
+
+
+# La recompensa de un PNJ que muere en el tick [param s] (progresion.md §6.2) a quienes hicieron al menos el 10 % del
+# daño de la ventana. Se mira en su DEATH, que llega aquí antes que a FortressController: el defensor sigue
+# registrado y la marca de cambio forzado es la de su muerte (fort_kill_captain la pone antes de matar). Un defensor de
+# una fortaleza en un ciclo forzado no paga nada.
+func _reward_npc_death(victim: NetEntity, s: int) -> void:
+	if _progress == null:
+		return
+	var definition: NpcDefinition = _npc_definition_of(victim)
+	if definition == null or (definition.xp_reward <= 0 and definition.gold_reward <= 0):
+		return
+	var fortress_id: StringName = _fortresses.fortress_of_defender(victim.net_id) if _fortresses != null else &""
+	if not fortress_id.is_empty() and _fortresses.is_forced(fortress_id):
+		return
+	var combatant: Combatant = _combat.get_combatant(victim.net_id)
+	if combatant != null:
+		_progress.on_npc_killed(definition, combatant.ledger.contributors(s), s)
+
+
+# La definición del PNJ [param entity] (la del sistema de generadores, que puede sustituir la del catálogo en las
+# pruebas), o null si no tiene.
+func _npc_definition_of(entity: NetEntity) -> NpcDefinition:
+	var definition: NpcDefinition = NpcCatalog.get_by_number(entity.npc_def_id) if entity.npc_def_id > 0 else null
+	if definition != null and _npc_system != null:
+		definition = _npc_system.get_definition(definition.id)
+	return definition
+
+
+# ENTITY_EVENT LEVEL_UP de [param net_id], que sube a [param level] en el tick [param s] (progresion.md §6.3): al
+# dueño y a los de su reino que lo tienen relevante, para el efecto; al enemigo no le llega.
+func _announce_level_up(net_id: int, level: int, s: int) -> void:
+	var entity: NetEntity = _registry.get_entity(net_id)
+	if entity == null or _transport == null or _world_peers.is_empty():
+		return
+	var bytes: PackedByteArray = NetMessages.EntityEvent.level_up(net_id, s, level).encode()
+	for peer: ServerPeer in _world_peers:
+		if peer.entity == entity or (peer.entity.realm == entity.realm and peer.relevant.get(net_id, false)):
+			_transport.send(peer.peer_id, NetProtocol.CH_RELIABLE, bytes)
+			_events_sent += 1
+			_event_bytes_sent += bytes.size()
 
 
 func _is_player(net_id: int) -> bool:
@@ -2946,6 +3011,10 @@ func _setup_fortresses(world: Node3D) -> void:
 	_fortresses.gate_damage_started.connect(_on_gate_damage_started)
 	_combat.event_emitted.connect(_fortresses.on_combat_event)
 	_combat.structure_hit.connect(_fortresses.on_structure_hit)
+	# Las recompensas (progresion.md §6.2): la de captura y los méritos de objetivo.
+	if _progress != null:
+		_fortresses.fortress_captured.connect(_progress.on_capture)
+		_fortresses.objective_time.connect(_progress.on_objective_ticks)
 	_combat.set_structure_targets(_fortresses.get_structure_targets())
 	_combat.fortress_states = Callable(_fortresses, "get_states")
 	if _fortresses.has_fortresses():

@@ -114,3 +114,6 @@ static func _validate(definition: NpcDefinition) -> void:
 		_errors.append("%s: la guarnición '%s' no existe" % [definition.id, definition.garrison_id])
 	if definition.reinforcement_id != &"" and not _numbers.has(definition.reinforcement_id):
 		_errors.append("%s: los refuerzos '%s' no existen" % [definition.id, definition.reinforcement_id])
+	if definition.xp_reward < 0 or definition.gold_reward < 0:
+		_errors.append("%s: recompensa negativa (XP %d, oro %d)" % [definition.id, definition.xp_reward,
+				definition.gold_reward])

@@ -16,3 +16,5 @@ lose_radius = 30.0
 leash_radius = 30.0
 block_chance = 0.2
 attack_gap_s = Vector2(0.6, 1.2)
+xp_reward = 60
+gold_reward = 3
