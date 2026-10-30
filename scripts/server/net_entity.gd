@@ -34,6 +34,9 @@ var spawn_tick: int
 ## Id del peer dueño (0 si no lo controla ningún cliente).
 var owner_peer: int = 0
 var display_name: String
+## Personal del juego (moderador o más, el rol de la reclamación; docs/plataforma.md §5.4): su ENTITY_SPAWN
+## lleva el bit [constant NetMessages.SPAWN_FLAG_STAFF] para la etiqueta (SOC-14). Siempre false sin plataforma.
+var is_staff: bool = false
 ## Combinación de [constant FLAG_ALWAYS_RELEVANT].
 var flags: int = 0
 ## Nodo de la entidad en el mundo del servidor: un [PlayerCharacter] si es un jugador.
@@ -58,6 +61,11 @@ var npc_def_id: int = 0
 ## completo en el momento del alta.
 var definition_id: String = ""
 var fortress_state: FortressState = null
+## PLAYER (protocolo 7, docs/progresion.md §7.3): nivel del personaje (1 a 40; 0 = sin progreso, como un jugador
+## falso) y los 8 B de su [CharacterAppearance] (vacío = sin apariencia). Los pone el progreso en el alta y al
+## subir de nivel; viajan en su ENTITY_SPAWN (el nivel, solo hacia su reino: ver [method encode_spawn]).
+var level: int = 0
+var appearance: PackedByteArray = PackedByteArray()
 
 
 ## Posición global de la entidad (los pies, si es un jugador).
@@ -112,7 +120,12 @@ func encode_record(bytes: PackedByteArray, offset: int) -> void:
 ## exacta, agotamiento, enfriamiento de la parada, búfer, controles, botones mantenidos,
 ## reutilizaciones, cargas ni efectos de movimiento (docs/combate.md, secciones 1 y 6, y
 ## docs/habilidades.md, sección 5.2).
-func encode_spawn(tick: int, for_owner: bool) -> PackedByteArray:
+## [br][br]
+## Un jugador lleva además su apariencia y su nivel (protocolo 7, docs/progresion.md §7.3); el nivel real solo
+## si es el SPAWN propio o [param receiver_realm] (el código de [enum NetProtocol.Realm] de quien lo recibe) es
+## el de la entidad, y 0 si no: el nivel del enemigo no cruza (social.md §1). Por eso quien reparte SPAWN los
+## codifica por reino receptor.
+func encode_spawn(tick: int, for_owner: bool, receiver_realm: int = NetProtocol.Realm.NONE) -> PackedByteArray:
 	if kind == NetProtocol.EntityKind.STRUCTURE:
 		if fortress_state == null:
 			return PackedByteArray()
@@ -125,8 +138,12 @@ func encode_spawn(tick: int, for_owner: bool) -> PackedByteArray:
 	spawn.realm = realm
 	spawn.is_yours = for_owner
 	spawn.teleport_counter = teleport_counter & EntityRecord.TELEPORT_MASK
+	spawn.is_staff = is_staff
 	spawn.display_name = display_name
 	spawn.npc_def_id = npc_def_id
+	if kind == NetProtocol.EntityKind.PLAYER:
+		spawn.appearance = appearance
+		spawn.level = level if for_owner or (receiver_realm == realm and realm != NetProtocol.Realm.NONE) else 0
 	var character: PlayerCharacter = get_character()
 	if character != null:
 		spawn.state = character.get_state()

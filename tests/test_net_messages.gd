@@ -433,8 +433,9 @@ func test_entity_record_interpolate() -> void:
 # --- NetProtocol ------------------------------------------------------------------------------
 
 func test_protocol_constants_and_helpers() -> void:
-	assert_eq(NetProtocol.PROTOCOL_VERSION, 6,
-			"versión (4 el fuerte, 5 el chat y los grupos, 6 las habilidades)")
+	assert_eq(NetProtocol.PROTOCOL_VERSION, 7,
+			"versión (4 el fuerte, 5 el chat y los grupos, 6 las habilidades, 7 la fase 5)")
+	assert_eq(NetTransport.AUTH_TIMEOUT_SECONDS, 10.0, "auth_timeout de 10 s desde el protocolo 7")
 	assert_eq(NetProtocol.MAGIC, 0x4D444C45, "magic")
 	assert_eq(PackedByteArray([0x45, 0x4C, 0x44, 0x4D]).decode_u32(0), NetProtocol.MAGIC,
 			"los bytes del magic leen «ELDM»")
@@ -469,7 +470,7 @@ func test_protocol_constants_and_helpers() -> void:
 	assert_eq(NetProtocol.realm_display_name(NetProtocol.Realm.VARDHEIM), "Vardheim", "Vardheim")
 	assert_eq(NetProtocol.realm_display_name(NetProtocol.Realm.SOLMARCH), "Solmarch", "Solmarch")
 	assert_eq(NetProtocol.realm_display_name(NetProtocol.Realm.ASKARRA), "Askarra", "Askarra")
-	for result: int in range(0, 10):
+	for result: int in range(0, 13):
 		assert_false(NetProtocol.result_text(result).is_empty(), "texto del resultado %d" % result)
 	assert_false(NetProtocol.result_text(99).is_empty(), "texto de un resultado desconocido")
 	assert_true(NetProtocol.result_text(NetProtocol.Result.NAME)
@@ -906,7 +907,7 @@ func test_reject_roundtrip_and_layout() -> void:
 		assert_eq(decoded.result, NetProtocol.Result.REALM, "result")
 		assert_eq(decoded.text, reject.text, "texto en español")
 
-	for result: int in range(1, 10):
+	for result: int in range(1, 13):
 		var each := NetMessages.Reject.new()
 		each.result = result
 		each.text = NetProtocol.result_text(result)
@@ -917,6 +918,30 @@ func test_reject_roundtrip_and_layout() -> void:
 	var empty := NetMessages.Reject.new()
 	assert_eq(empty.encode().size(), 6, "REJECT sin texto: 6 B")
 	assert_eq(NetMessages.Reject.decode(empty.encode()).text, "", "texto vacío")
+
+
+## Los REJECT del protocolo 7 (docs/plataforma.md §5.4): BUSY 10, UNAVAILABLE 11 y BANNED 12, con sus textos y,
+## en BANNED, el que compone la plataforma (cortado en un carácter entero a 255 B).
+func test_reject_10_to_12_of_protocol_7() -> void:
+	assert_eq([NetProtocol.Result.BUSY, NetProtocol.Result.UNAVAILABLE, NetProtocol.Result.BANNED], [10, 11, 12],
+			"códigos 10, 11 y 12")
+	assert_eq(NetProtocol.result_text(NetProtocol.Result.BUSY),
+			"Tu personaje sigue en el mundo: espera unos segundos", "texto de BUSY")
+	assert_eq(NetProtocol.result_text(NetProtocol.Result.UNAVAILABLE),
+			"El servicio de cuentas no responde: inténtalo más tarde", "texto de UNAVAILABLE")
+	assert_eq(NetProtocol.result_text(NetProtocol.Result.BANNED), "Tu cuenta está suspendida",
+			"texto de BANNED si falta el de la plataforma")
+	var banned := NetMessages.Reject.new()
+	banned.result = NetProtocol.Result.BANNED
+	banned.text = "Tu cuenta está suspendida hasta el 3/11/2026 18:00 UTC: " + "ñ".repeat(200)
+	var bytes: PackedByteArray = banned.encode()
+	assert_eq(bytes.decode_u8(4), 12, "u8 result en 4")
+	assert_true(bytes.size() <= 6 + 255, "el texto cabe en el u8 text_len")
+	var back: NetMessages.Reject = NetMessages.Reject.decode(bytes)
+	if assert_not_null(back, "decode del REJECT BANNED"):
+		assert_eq(back.result, NetProtocol.Result.BANNED, "BANNED")
+		assert_true(banned.text.begins_with(back.text) and back.text.ends_with("ñ"),
+				"el texto se corta en un carácter entero")
 
 
 func test_input_batch_roundtrip_and_layout() -> void:
@@ -1452,7 +1477,8 @@ func test_entity_spawn_roundtrip_and_layout() -> void:
 	var bytes: PackedByteArray = spawn.encode()
 	var name_bytes: PackedByteArray = spawn.display_name.to_utf8_buffer()
 	var name_offset: int = 10 + PlayerState.ENCODED_SIZE
-	assert_eq(bytes.size(), name_offset + 1 + name_bytes.size(), "tamaño: 10 B + estado + nombre")
+	var tail_offset: int = name_offset + 1 + name_bytes.size()
+	assert_eq(bytes.size(), tail_offset + 9, "tamaño: 10 B + estado + nombre + nivel y apariencia (v7)")
 	assert_eq(bytes.decode_u8(0), 0x20, "u8 type en 0")
 	assert_eq(bytes.decode_u16(1), 4242, "u16 net_id en 1")
 	assert_eq(bytes.decode_u8(3), NetProtocol.EntityKind.PLAYER, "u8 kind en 3")
@@ -1461,7 +1487,9 @@ func test_entity_spawn_roundtrip_and_layout() -> void:
 	assert_eq(bytes.decode_u8(9), 0b011, "u8 flags en 9: tuyo y contador 1")
 	assert_eq(bytes.slice(10, name_offset), spawn.state.encode(), "PlayerState en 10")
 	assert_eq(bytes.decode_u8(name_offset), name_bytes.size(), "u8 name_len tras el estado")
-	assert_eq(bytes.slice(name_offset + 1), name_bytes, "nombre tras la longitud")
+	assert_eq(bytes.slice(name_offset + 1, tail_offset), name_bytes, "nombre tras la longitud")
+	assert_eq(bytes.decode_u8(tail_offset), 12, "u8 level tras el nombre (v7)")
+	assert_eq(bytes.slice(tail_offset + 1), spawn.appearance, "y los 8 B de la apariencia")
 
 	var decoded: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(bytes)
 	if not assert_not_null(decoded, "decode del SPAWN"):
@@ -1473,6 +1501,8 @@ func test_entity_spawn_roundtrip_and_layout() -> void:
 	assert_true(decoded.is_yours, "is_yours")
 	assert_eq(decoded.teleport_counter, 1, "teleport_counter")
 	assert_eq(decoded.display_name, spawn.display_name, "nombre")
+	assert_eq(decoded.level, 12, "nivel")
+	assert_eq(decoded.appearance, spawn.appearance, "apariencia")
 	if assert_not_null(decoded.state, "estado"):
 		assert_true(decoded.state.equals_exact(spawn.state), "el estado es exacto")
 
@@ -1483,11 +1513,40 @@ func test_entity_spawn_roundtrip_and_layout() -> void:
 	if assert_not_null(plain, "decode de un SPAWN ajeno sin nombre"):
 		assert_false(plain.is_yours, "no es tuyo")
 		assert_eq(plain.teleport_counter, 2, "contador módulo 4")
-		assert_eq(spawn.encode().size(), name_offset + 1, "10 B + estado + 1 B sin nombre")
+		assert_eq(spawn.encode().size(), name_offset + 1 + 9, "10 B + estado + 1 B sin nombre + 9 B (v7)")
 	spawn.kind = NetProtocol.EntityKind.NPC
 	assert_not_null(NetMessages.EntitySpawn.decode(spawn.encode()), "un PNJ reutiliza el formato")
 	spawn.kind = NetProtocol.EntityKind.NONE
 	assert_true(spawn.encode().is_empty(), "un tipo sin formato no se codifica")
+
+
+## Bit 3 del flags de la cabecera del ENTITY_SPAWN (protocolo 7, docs/plataforma.md §5.4): personal del juego.
+## No toca el bit «tuyo» ni el contador de teletransporte.
+func test_entity_spawn_staff_bit() -> void:
+	var spawn: NetMessages.EntitySpawn = _sample_spawn()
+	assert_false(spawn.is_staff, "por defecto no")
+	assert_eq(spawn.encode().decode_u8(9), 0b0011, "sin el bit 3")
+	spawn.is_staff = true
+	var bytes: PackedByteArray = spawn.encode()
+	assert_eq(NetMessages.SPAWN_FLAG_STAFF, 1 << 3, "bit 3")
+	assert_eq(bytes.decode_u8(9), 0b1011, "u8 flags en 9: personal, tuyo y contador 1")
+	var decoded: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(bytes)
+	if assert_not_null(decoded, "decode con el bit 3"):
+		assert_true(decoded.is_staff, "personal del juego")
+		assert_true(decoded.is_yours, "sigue siendo tuyo")
+		assert_eq(decoded.teleport_counter, 1, "y el contador intacto")
+	spawn.is_yours = false
+	spawn.teleport_counter = 3
+	var other: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(spawn.encode())
+	if assert_not_null(other, "un SPAWN ajeno con el bit 3"):
+		assert_true(other.is_staff and not other.is_yours, "lo ven los demás")
+		assert_eq(other.teleport_counter, 3, "contador 3")
+	var entity := NetEntity.new()
+	entity.kind = NetProtocol.EntityKind.PLAYER
+	entity.display_name = "Aneira"
+	entity.is_staff = true
+	assert_true(NetMessages.EntitySpawn.decode(entity.encode_spawn(10, false)).is_staff,
+			"NetEntity.is_staff llega al SPAWN")
 
 
 func test_entity_despawn_and_notice() -> void:
@@ -1734,7 +1793,7 @@ func test_new_message_channels_and_debug_command_ids() -> void:
 	assert_eq(NetProtocol.DEBUG_APPLY_STATUS, 14, "apply_status")
 	assert_eq(NetProtocol.DEBUG_DOWN, 15, "down")
 	assert_eq(NetProtocol.DEBUG_REFILL, 16, "refill")
-	assert_eq(NetProtocol.DEBUG_COMMAND_IDS.size(), 16, "dieciséis comandos")
+	assert_eq(NetProtocol.DEBUG_COMMAND_IDS.size(), 20, "dieciséis comandos y los cuatro de la progresión (v7)")
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"set_weapon"], 5, "tabla: set_weapon")
 	var seen: Dictionary = {}
 	for command_name: StringName in NetProtocol.DEBUG_COMMAND_IDS:
@@ -2161,6 +2220,8 @@ func _sample_spawn() -> NetMessages.EntitySpawn:
 	state.last_input_tick = 654321
 	spawn.state = state
 	spawn.display_name = "Brunhilda ñ"
+	spawn.level = 12
+	spawn.appearance = PackedByteArray([1, 0, 0, 1, 1, 3, 2, 1])
 	return spawn
 
 

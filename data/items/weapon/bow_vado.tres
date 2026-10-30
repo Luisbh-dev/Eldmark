@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="ItemDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/progression/item_definition.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = &"bow_vado"
+display_name = "Arco del Vado"
+description = "Arco largo de tejo de los vigías del Vado Gris. Cuanto más se tensa, más lejos y más fuerte vuela la flecha."
+category = 1
+equip_slot = 1
+ref_id = &"bow"
+max_stack = 1
+required_level = 1
+base_value = 0
+bind_rule = 2
+destroyable = false
+has_durability = false
+starter = true
+camp_refill = 0
+icon_path = ""
+visual_paths = PackedStringArray()

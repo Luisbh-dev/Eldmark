@@ -19,7 +19,11 @@ extends RefCounted
 ## los comandos de depuración 13 a 16, el ENTITY_SPAWN y los motivos de ENTITY_DESPAWN de los proyectiles,
 ## los ENTITY_EVENT 7 a 11, los bits 5 y 6 de un HIT, el bit 3 de los flags del registro (ranura 2 activa)
 ## y el bit 3 de [code]status[/code] (derribado).
-const PROTOCOL_VERSION: int = 6
+## [br]- 7: la fase 5 (docs/plataforma.md y docs/progresion.md): REJECT 10–12, billete de 52 B, [code]auth_timeout[/code]
+## de 10 s, bit 3 del [code]flags[/code] de la cabecera del ENTITY_SPAWN (personal del juego), +9 B del SPAWN de
+## PLAYER (nivel y apariencia), mensajes 0x50–0x55, ENTITY_EVENT 16 LEVEL_UP, DEBUG_COMMAND 40–43 e
+## [code]ItemDatabase[/code] en el [code]sim_hash[/code].
+const PROTOCOL_VERSION: int = 7
 ## Primeros 4 bytes de los mensajes de autenticación (los bytes «ELDM»).
 const MAGIC: int = 0x4D444C45
 const DEFAULT_PORT: int = 24600
@@ -105,6 +109,16 @@ const MSG_PARTY_STATUS: int = 0x4F
 ## Miembros como mucho de un grupo (docs/social.md, sección 3). El grupo es del mismo reino y la lista de
 ## miembros y el estado compacto caben siempre en un paquete.
 const PARTY_MAX_SIZE: int = 5
+## Inventario y progreso (protocolo 7, docs/progresion.md §4.6 y §12; formatos en [ProgressMessages]), todos por
+## el canal fiable. C→S: una petición del inventario (mover, dividir o destruir) y la petición de sincronía. S→C,
+## solo al dueño: el delta de ranuras, el inventario entero por páginas, un saldo y el nivel con su XP. Del 0x56
+## al 0x5F, reservados (banco, comercio y correo de la fase 6).
+const MSG_INVENTORY_REQUEST: int = 0x50
+const MSG_INVENTORY_DELTA: int = 0x51
+const MSG_INVENTORY_FULL: int = 0x52
+const MSG_INVENTORY_SYNC_REQUEST: int = 0x53
+const MSG_WALLET_UPDATE: int = 0x54
+const MSG_PROGRESS_UPDATE: int = 0x55
 
 # Comandos de depuración (byte 1 de un DEBUG_COMMAND, solo con --debug-commands). Los ids son
 # fijos: no se reutilizan ni se reordenan (docs/combate.md, sección 6).
@@ -143,6 +157,17 @@ const DEBUG_APPLY_STATUS: int = 14
 const DEBUG_DOWN: int = 15
 ## Reponer las cargas de los consumibles de la plantilla (protocolo 6). Sin datos.
 const DEBUG_REFILL: int = 16
+## Comandos de GM de la progresión por DEBUG_COMMAND (protocolo 7, docs/progresion.md §10), siempre sobre el
+## propio jugador. Darse un objeto (4 B: [code]u16[/code] net id de [ItemDatabase], de 1 en adelante, y
+## [code]u16[/code] cantidad, de 1 a 999).
+const DEBUG_ITEM_GIVE: int = 40
+## Sumar o restar una moneda (5 B: [code]u8[/code] moneda, 1 oro o 2 méritos, y [code]s32[/code] cantidad
+## distinta de 0). La [code]note[/code] de la operación es «debug».
+const DEBUG_CURRENCY_ADD: int = 41
+## Fijar el nivel (1 B: de 1 a [constant ProgressMessages.MAX_LEVEL]).
+const DEBUG_LEVEL_SET: int = 42
+## Sumar XP (4 B: [code]u32[/code] de 1 a 10 000 000).
+const DEBUG_XP_ADD: int = 43
 ## Nombre -> id de cada comando de depuración de red. El registro de comandos del servidor
 ## comprueba contra esta tabla que todo comando de red tiene un id fijo.
 const DEBUG_COMMAND_IDS: Dictionary[StringName, int] = {
@@ -162,14 +187,21 @@ const DEBUG_COMMAND_IDS: Dictionary[StringName, int] = {
 	&"apply_status": DEBUG_APPLY_STATUS,
 	&"down": DEBUG_DOWN,
 	&"refill": DEBUG_REFILL,
+	&"item_give": DEBUG_ITEM_GIVE,
+	&"currency_add": DEBUG_CURRENCY_ADD,
+	&"level_set": DEBUG_LEVEL_SET,
+	&"xp_add": DEBUG_XP_ADD,
 }
 
 ## Reino en la red (independiente de cómo lo represente [Zones]; ver [NetZones]).
 enum Realm { NONE = 0, VARDHEIM = 1, SOLMARCH = 2, ASKARRA = 3 }
 enum EntityKind { NONE = 0, PLAYER = 1, NPC = 2, PROJECTILE = 3, STRUCTURE = 4 }
 ## Resultado de la autenticación: 0 es WELCOME y el resto son motivos de REJECT.
+## Desde el protocolo 7 (docs/plataforma.md §5.4): BUSY, el personaje sigue en el mundo (en otra zona o saliendo
+## en combate); UNAVAILABLE, la plataforma no responde, la zona está cercada o no se pudo cargar el personaje; y
+## BANNED, la cuenta está suspendida, expulsada o con el borrado pedido (el texto lo compone la plataforma).
 enum Result { OK = 0, VERSION = 1, SIM_HASH = 2, REALM = 3, FULL = 4, TICKET = 5, MALFORMED = 6,
-		TOO_MANY_CONNECTIONS = 7, NAME = 8, IMBALANCE = 9 }
+		TOO_MANY_CONNECTIONS = 7, NAME = 8, IMBALANCE = 9, BUSY = 10, UNAVAILABLE = 11, BANNED = 12 }
 ## Motivo de un ENTITY_DESPAWN. IMPACT y EXPIRED son de los proyectiles (protocolo 6): la flecha ha dado
 ## en algo en [code]despawn_tick[/code], o ha caducado (o la ha retirado el servidor: tope de flechas, el
 ## tirador se ha ido).
@@ -183,8 +215,8 @@ const _COLLISION_NODE: NodePath = ^"Collision"
 
 ## Canal por el que viaja un mensaje de tipo [param msg_type] (el byte 0). Las entradas van por el
 ## canal de entradas y los snapshots por el suyo; todo lo demás (incluidos ENTITY_EVENT,
-## RESPAWN_REQUEST, UNSTUCK_REQUEST, LOADOUT_SELECT, OBJECT_STATE, SCOREBOARD, el chat y los grupos) y
-## los tipos desconocidos o reservados, por el canal fiable.
+## RESPAWN_REQUEST, UNSTUCK_REQUEST, LOADOUT_SELECT, OBJECT_STATE, SCOREBOARD, el chat, los grupos y, desde el
+## protocolo 7, el inventario y el progreso) y los tipos desconocidos o reservados, por el canal fiable.
 static func channel_for_type(msg_type: int) -> int:
 	match msg_type:
 		MSG_INPUT_BATCH:
@@ -194,7 +226,8 @@ static func channel_for_type(msg_type: int) -> int:
 		MSG_ENTITY_EVENT, MSG_RESPAWN_REQUEST, MSG_UNSTUCK_REQUEST, MSG_LOADOUT_SELECT, MSG_OBJECT_STATE, \
 				MSG_SCOREBOARD, MSG_CHAT_SEND, MSG_CHAT_MESSAGE, MSG_PARTY_INVITE, MSG_PARTY_RESPONSE, \
 				MSG_PARTY_LEAVE, MSG_PARTY_KICK, MSG_PARTY_LEADER, MSG_PARTY_INVITATION, \
-				MSG_PARTY_ROSTER, MSG_PARTY_STATUS:
+				MSG_PARTY_ROSTER, MSG_PARTY_STATUS, MSG_INVENTORY_REQUEST, MSG_INVENTORY_DELTA, \
+				MSG_INVENTORY_FULL, MSG_INVENTORY_SYNC_REQUEST, MSG_WALLET_UPDATE, MSG_PROGRESS_UPDATE:
 			return CH_RELIABLE
 	return CH_RELIABLE
 
@@ -214,14 +247,15 @@ static func is_unreliable_channel(channel: int) -> bool:
 	return channel == CH_INPUT or channel == CH_SNAPSHOT
 
 
-## Huella (u32) de todo lo que hace que la simulación de un cliente difiera de la del servidor:
-## si no coincide, el servidor rechaza al cliente (REJECT SIM_HASH), porque predeciría mal todo
-## el tiempo. Es el SHA-256 ([HashingContext]) de [code]var_to_bytes()[/code] de un array con la
-## versión del protocolo, los ticks de física por segundo, el nombre del motor de física, los
-## [code]@export[/code] de [PlayerCharacter] ordenados por nombre, los valores [code]floor_*[/code]
-## que fija su [code]_ready()[/code] y el radio, la altura y la posición de la cápsula del nodo
-## [code]Collision[/code], más la huella de la parte predicha del catálogo de combate
-## ([method CombatCatalog.prediction_hash]). Se toman los 4 primeros bytes como u32.
+## Huella (u32) de la simulación y de los catálogos cuyos ids viajan: si no coincide, el servidor rechaza al
+## cliente (REJECT SIM_HASH), porque predeciría mal todo el tiempo o leería mal los ids. Es el SHA-256
+## ([HashingContext]) de [code]var_to_bytes()[/code] de un array con la versión del protocolo, los ticks de
+## física por segundo, el nombre del motor de física, los [code]@export[/code] de [PlayerCharacter] ordenados por
+## nombre, los valores [code]floor_*[/code] que fija su [code]_ready()[/code] y el radio, la altura y la posición
+## de la cápsula del nodo [code]Collision[/code], más la huella de la parte predicha del catálogo de combate
+## ([method CombatCatalog.prediction_hash]) y, desde el protocolo 7, la de la base de objetos
+## ([method ItemDatabase.wire_hash]: los net ids de objeto viajan al dueño; docs/progresion.md §2.2 y §12). La
+## apariencia no entra: un índice desconocido ya cae a la de por defecto. Se toman los 4 primeros bytes como u32.
 ## [br][br]
 ## La instancia debe estar en el árbol (o al menos haber pasado por [code]_ready()[/code]).
 static func compute_sim_hash(character: PlayerCharacter) -> int:
@@ -253,7 +287,7 @@ static func compute_sim_hash(character: PlayerCharacter) -> int:
 	var physics_engine: String = str(ProjectSettings.get_setting("physics/3d/physics_engine", ""))
 	var summary: Array = [
 		PROTOCOL_VERSION, Engine.physics_ticks_per_second, physics_engine, exports, floor_values,
-		capsule, CombatCatalog.prediction_hash(),
+		capsule, CombatCatalog.prediction_hash(), ItemDatabase.shared().wire_hash(),
 	]
 	var context := HashingContext.new()
 	context.start(HashingContext.HASH_SHA256)
@@ -288,7 +322,8 @@ static func result_text(result: int) -> String:
 		Result.VERSION:
 			return "Versión del juego incompatible: actualiza el cliente"
 		Result.SIM_HASH:
-			return "La simulación del cliente no coincide con la del servidor"
+			# Desde el protocolo 7 la huella también cubre los catálogos cuyos ids viajan (docs/progresion.md §12).
+			return "Los datos del juego no coinciden con los del servidor: actualiza el cliente"
 		Result.REALM:
 			return "Reino no válido o no admitido en esta zona"
 		Result.FULL:
@@ -304,4 +339,12 @@ static func result_text(result: int) -> String:
 		Result.IMBALANCE:
 			return "Ese reino tiene demasiados jugadores en esta zona: elige otro para " \
 					+ "equilibrar la batalla"
+		Result.BUSY:
+			return "Tu personaje sigue en el mundo: espera unos segundos"
+		Result.UNAVAILABLE:
+			return "El servicio de cuentas no responde: inténtalo más tarde"
+		Result.BANNED:
+			# El texto de verdad lo compone la plataforma (el message del 403 account_blocked); este solo sale
+			# si falta.
+			return "Tu cuenta está suspendida"
 	return "Conexión rechazada"

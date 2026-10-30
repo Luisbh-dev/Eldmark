@@ -514,6 +514,33 @@ static func set_loadout(c: CombatState, weapon_1: int, weapon_2: int, charges: i
 	clear_move_effects(c)
 
 
+## Pone las armas de las dos ranuras del equipo (docs/progresion.md §4.1) [b]sin reiniciar nada más[/b]:
+## [param weapon_1] y [param weapon_2] son las de las ranuras 1 y 2 (0 = vacía) y [param second_active], la
+## ranura activa (bit0 de [member CombatState.combat_flags2]). [member CombatState.weapon_id] y
+## [member CombatState.alt_weapon_id] quedan según la activa, [code]ability_ready[0..2][/code] con los
+## [code]ready_*[/code] del arma activa y [code][3..5][/code] con los de la otra (ticks absolutos, 3 valores;
+## los que falten, 0). Con la ranura 1 vacía y la 2 activa, [code]alt_weapon_id[/code] es 0 (no hay SWAP).
+## No toca [member CombatState.consumable_ready_tick], las cargas, las ranuras de movimiento, los botones ni
+## nada más. Solo con [code]action[/code] NONE: si no, no hace nada y registra el error (el inventario nunca
+## la llama entonces: NOT_NOW). La impone el servidor al final del tick, como [method set_loadout].
+static func set_weapons(c: CombatState, weapon_1: int, weapon_2: int, second_active: bool,
+		ready_1: PackedInt64Array, ready_2: PackedInt64Array) -> void:
+	if c.action != _NONE:
+		push_error("[Eldmark] set_weapons con la acción %d en curso: no cambia nada" % c.action)
+		return
+	var active_ready: PackedInt64Array = ready_2 if second_active else ready_1
+	var other_ready: PackedInt64Array = ready_1 if second_active else ready_2
+	c.weapon_id = weapon_2 if second_active else weapon_1
+	c.alt_weapon_id = weapon_1 if second_active else weapon_2
+	for i: int in CombatState.ABILITY_SLOTS:
+		c.ability_ready[i] = active_ready[i] if i < active_ready.size() else 0
+		c.ability_ready[i + CombatState.ABILITY_SLOTS] = other_ready[i] if i < other_ready.size() else 0
+	if second_active:
+		c.combat_flags2 |= CombatState.FLAG2_SECOND_SLOT
+	else:
+		c.combat_flags2 &= ~CombatState.FLAG2_SECOND_SLOT
+
+
 ## Deja el combate como al aparecer por primera vez (resistencia llena, sin acción, control,
 ## parada, reutilizaciones ni efectos de movimiento) con el equipo de la plantilla: [param weapon_1]
 ## activa, [param weapon_2] en la otra ranura y [param charges]. Conserva los niveles de los botones

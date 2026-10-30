@@ -59,6 +59,40 @@
 			"id": "merits"
 		}
 	],
+	"items": [
+		{
+			"category": 1,
+			"equip_slot": 1,
+			"has_durability": false,
+			"id": "bow_vado",
+			"max_stack": 1,
+			"required_level": 1
+		},
+		{
+			"category": 3,
+			"equip_slot": 0,
+			"has_durability": false,
+			"id": "potion_health",
+			"max_stack": 15,
+			"required_level": 1
+		},
+		{
+			"category": 3,
+			"equip_slot": 0,
+			"has_durability": false,
+			"id": "potion_stamina",
+			"max_stack": 15,
+			"required_level": 1
+		},
+		{
+			"category": 1,
+			"equip_slot": 1,
+			"has_durability": false,
+			"id": "sword_shield_vado",
+			"max_stack": 1,
+			"required_level": 1
+		}
+	],
 	"level_curve": {
 		"attribute_points_per_level": 1,
 		"level_cap": 40,
@@ -160,7 +194,7 @@
 		],
 		"upper_letters": "ABCDEFGHIJKLMNOPQRSTUVWXYZÁÉÍÓÚÜÑ"
 	},
-	"protocol_version": 6,
+	"protocol_version": 7,
 	"races": [
 		{
 			"allows_no_beard": false,
@@ -349,5 +383,20 @@
 				"min": 1
 			}
 		}
-	}
+	},
+	"starter_templates": [
+		{
+			"id": "marksman",
+			"weapons": [
+				"bow_vado",
+				"sword_shield_vado"
+			]
+		},
+		{
+			"id": "squire",
+			"weapons": [
+				"sword_shield_vado"
+			]
+		}
+	]
 }

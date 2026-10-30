@@ -161,7 +161,7 @@ func test_server_auth_admits_only_the_realms_of_the_zone() -> void:
 	}
 	for realm: int in expected:
 		hello.realm = realm
-		assert_eq(auth.validate(hello, "203.0.113.7", 0, 0), expected[realm],
+		assert_eq(auth.validate(1, hello, "203.0.113.7", 0, 0), expected[realm],
 				"reino %d en el Vado Gris" % realm)
 
 

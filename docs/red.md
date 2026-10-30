@@ -264,8 +264,8 @@ cubre ±5,24 km, así que caben los 5 × 5 km de terreno de Eldrun.
 **`SceneMultiplayer`:** uno propio por cada `NetTransport`.
 
 - Configuración: `server_relay = false`, `allow_object_decoding = false`, `auth_callback` en los
-  dos lados y `auth_timeout = 5.0` (10 s desde la subida de protocolo de la fase 5, plataforma.md
-  §5.4: cuenta desde la conexión y deja sitio a la reclamación del billete).
+  dos lados y `auth_timeout = 10.0` (v7; 5 s hasta la v6): cuenta desde la conexión, en los dos lados, y
+  deja sitio a la reclamación del billete, que la zona corta a los 7 s (plataforma.md §5.2 y §5.4).
 - Se registra con `get_tree().set_multiplayer(mp, transport.get_path())`. Así caben varias
   instancias en un mismo proceso (pruebas y enjambre de bots).
 - **Filtro de paquetes en el servidor (`GuardedEnetPeer`, hallazgo S1).** `SceneMultiplayer`
@@ -428,8 +428,9 @@ recibían ni un REJECT porque ENet descarta su conexión en silencio. Por eso:
 - **Límite que queda.** Con varias IP distintas (una botnet) sigue siendo posible llenar las
   plazas; eso se resuelve fuera del proceso (cortafuegos, DTLS en las fases 5 y 6).
 
-**`sim_hash`.** Rechaza a los clientes cuya simulación difiere de la del servidor, que
-predecirían mal todo el tiempo.
+**`sim_hash`.** Rechaza a los clientes cuya simulación o cuyos catálogos con ids que viajan difieren de los
+del servidor: predecirían mal todo el tiempo o leerían mal esos ids. Cubre la simulación y los catálogos cuyos
+ids viajan (`CombatCatalog`, `ItemDatabase`; v7, [progresion.md](progresion.md) §12).
 
 - Es el SHA-256 (`HashingContext`) de `var_to_bytes()` de un array con:
   - `PROTOCOL_VERSION`;
@@ -437,9 +438,14 @@ predecirían mal todo el tiempo.
   - el nombre del motor de física;
   - los `@export` de `PlayerCharacter`, ordenados por nombre;
   - los valores `floor_*` que fija `_ready()`;
-  - el radio, la altura y la posición de la cápsula.
+  - el radio, la altura y la posición de la cápsula;
+  - la huella de la parte predicha del catálogo de combate (`CombatCatalog.prediction_hash()`);
+  - v7: la de la base de objetos (`ItemDatabase.wire_hash()`, [progresion.md](progresion.md) §2.2), porque los
+    net ids de objeto viajan al dueño. La apariencia no entra: un índice desconocido ya cae a la de por defecto.
 - Se toman los 4 primeros bytes como u32.
 - Se calcula sobre una instancia que ya está en el árbol, después de `_ready()`.
+- El texto del REJECT `SIM_HASH` (v7) es «Los datos del juego no coinciden con los del servidor: actualiza el
+  cliente» (hasta la v6, «La simulación del cliente no coincide con la del servidor»).
 
 ---
 
@@ -614,10 +620,10 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 | `0x06` | UNSTUCK_REQUEST (v3) | C→S | 3 | 1 B |
 | `0x07` | LOADOUT_SELECT (v6) | C→S | 3 | 2 B |
 | `0x10` | SNAPSHOT | S→C | 2 | ≤ 1200 B (cabecera de 14 B, o de 134 B con estado y bloque extra propios (v6; 92 B hasta la v5), + 2 B por sección + 21 B por registro) |
-| `0x20` | ENTITY_SPAWN | S→C | 3 | 10 B + datos (PROJECTILE, v6: 32 B en total) |
+| `0x20` | ENTITY_SPAWN | S→C | 3 | 10 B + datos (PROJECTILE, v6: 32 B en total; PLAYER, v7: 9 B más tras el nombre) |
 | `0x21` | ENTITY_DESPAWN | S→C | 3 | 8 B (motivos 4 y 5 de los proyectiles, v6) |
 | `0x22` | OBJECT_STATE (v3) | S→C | 3 | 8 B + campos (de 1 a 32; 3, 4 o 6 B cada uno: ≤ 200 B) |
-| `0x23` | ENTITY_EVENT | S→C | 3 | 9 B + datos (HIT 17 B, DEATH 13 B, RESPAWN 10 B, KILL 14 + 2·n B, WAR 11 B, TELEGRAPH 26 B; v6: STATUS 18 B, HEAL 15 B, LOADOUT 15 B, DOWNED 13 B, INTERACT 16 B) |
+| `0x23` | ENTITY_EVENT | S→C | 3 | 9 B + datos (HIT 17 B, DEATH 13 B, RESPAWN 10 B, KILL 14 + 2·n B, WAR 11 B, TELEGRAPH 26 B; v6: STATUS 18 B, HEAL 15 B, LOADOUT 15 B, DOWNED 13 B, INTERACT 16 B; v7: LEVEL_UP 10 B) |
 | `0x30` | NOTICE | S→C | 3 | 3 B + texto |
 | `0x31` | HANDOFF (reservado, fase 6) | S→C | 3 | — |
 | `0x32` | SCOREBOARD (v3) | S→C | 3 | 4 B + 18 B por fila (hasta 66 filas por mensaje: ≤ 1192 B) |
@@ -631,12 +637,26 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 | `0x4D` | PARTY_INVITATION (v5) | S→C | 3 | 7 B + nombre |
 | `0x4E` | PARTY_ROSTER (v5) | S→C | 3 | 3 B + 3 B y nombre por miembro (≤ 258 B) |
 | `0x4F` | PARTY_STATUS (v5) | S→C | 3 | 2 B + 17 B por miembro (≤ 87 B), a 2 Hz |
+| `0x50` | INVENTORY_REQUEST (v7) | C→S | 3 | 18 B |
+| `0x51` | INVENTORY_DELTA (v7) | S→C | 3 | 10 B + entradas (≤ 1120 B), solo al dueño |
+| `0x52` | INVENTORY_FULL (v7) | S→C | 3 | 9 B + entradas (≤ 1089 B), solo al dueño, por páginas |
+| `0x53` | INVENTORY_SYNC_REQUEST (v7) | C→S | 3 | 1 B |
+| `0x54` | WALLET_UPDATE (v7) | S→C | 3 | 19 B, solo al dueño |
+| `0x55` | PROGRESS_UPDATE (v7) | S→C | 3 | 25 B, solo al dueño |
 
 «v3» marca lo que añade el protocolo 3 (fase 4, [fuerte.md](fuerte.md#2-replicación-con-estado-object_state-gue-09)).
 «v5» marca lo que añade el protocolo 5 (chat y grupos, [social.md](social.md#12-implementación-fase-4)).
 «v6» marca lo que añade o cambia el protocolo 6 (habilidades, efectos, cambio de arma, proyectiles, derribado
 y plantillas, [habilidades.md 5](habilidades.md#5-protocolo-protocol_version--6)).
+«v7» marca lo que añade o cambia el protocolo 7, la subida de la fase 5 ([plataforma.md](plataforma.md) §5.4 y
+[progresion.md](progresion.md) §12): cada documento escribe aquí lo que añade su código.
 El tamaño de un ENTITY_SPAWN depende de `kind` (ver 5.5).
+
+Los formatos de `0x50`–`0x55` (v7) son de [progresion.md](progresion.md) §4.6 y §12 y están en
+`scripts/shared/net/progress_messages.gd` (`ProgressMessages`), aparte de `net_messages.gd`. Del `0x56` al `0x5F`,
+reservados (banco, comercio y correo de la fase 6). `NetClient` los decodifica y los da por señales; `SwarmBot`
+los decodifica y los descarta; los dos solo cuentan como mal formado lo que no se decodifica. Hasta progresion.md
+P5b el servidor no manda ninguno ni atiende el `0x50` y el `0x53`, que cuentan como «tipo de mensaje inesperado».
 
 ### 5.3 Autenticación
 
@@ -645,15 +665,15 @@ El tamaño de un ENTITY_SPAWN depende de `kind` (ver 5.5).
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
 | 0 | u32 | magic | `0x4D444C45` |
-| 4 | u16 | protocol_version | `NetProtocol.PROTOCOL_VERSION` (= 6: 2 combate, 3 su revisión, 4 el fuerte, 5 el chat y los grupos, 6 las habilidades) |
+| 4 | u16 | protocol_version | `NetProtocol.PROTOCOL_VERSION` (= 7, v7: 2 combate, 3 su revisión, 4 el fuerte, 5 el chat y los grupos, 6 las habilidades, 7 la fase 5) |
 | 6 | u32 | sim_hash | ver [3](#3-conexión) |
-| 10 | u8 | realm | 0 ninguno (se rechaza), 1 Vardheim, 2 Solmarch, 3 Askarra |
+| 10 | u8 | realm | 0 ninguno (se rechaza), 1 Vardheim, 2 Solmarch, 3 Askarra. Con billete (v7), se ignora: manda el de la reclamación |
 | 11 | u8 | flags | bit0 = bot; resto, 0 |
-| 12 | u64 | character_id | 0 en la fase 2; personaje guardado desde la fase 5 |
+| 12 | u64 | character_id | 0 en la fase 2; con billete (v7), el del billete |
 | 20 | u8 | name_len | ≤ 48 B |
-| 21 | n B | name | UTF-8, 3–24 caracteres |
-| 21+n | u16 | ticket_len | 0 en la fase 2; ≤ 256 |
-| 23+n | t B | ticket | sesión o billete de traspaso (fases 5–6) |
+| 21 | n B | name | UTF-8, 3–24 caracteres. Con billete (v7), se ignora y no se compara con los conectados (sin `REJECT NAME`) |
+| 21+n | u16 | ticket_len | 0 sin plataforma; ≤ 256 |
+| 23+n | t B | ticket | v7: el billete de 52 B de [plataforma.md](plataforma.md) §5.1 (`HandoffTicket`), con la zona `--platform`; también el de traspaso (fase 6) |
 
 **WELCOME** (S→C): 18 B + id de zona + 3 B con el recuento por reino (v3).
 
@@ -680,9 +700,15 @@ El tamaño es exactamente `21 + z`: un WELCOME de la versión 2 (sin el recuento
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
 | 0 | u32 | magic | |
-| 4 | u8 | result | 1 VERSION, 2 SIM_HASH, 3 REALM, 4 FULL, 5 TICKET, 6 MALFORMED, 7 TOO_MANY_CONNECTIONS, 8 NAME, 9 IMBALANCE (v3: el reino elegido tiene demasiados jugadores, `--max-realm-diff`; se comprueba después del proveedor de identidad) |
+| 4 | u8 | result | 1 VERSION, 2 SIM_HASH, 3 REALM, 4 FULL, 5 TICKET, 6 MALFORMED, 7 TOO_MANY_CONNECTIONS, 8 NAME, 9 IMBALANCE (v3: el reino elegido tiene demasiados jugadores, `--max-realm-diff`; se comprueba después del proveedor de identidad); v7: 10 BUSY (el personaje sigue en el mundo), 11 UNAVAILABLE (la plataforma no responde, la zona está cercada o no se pudo cargar el personaje), 12 BANNED (cuenta suspendida, expulsada o con el borrado pedido) |
 | 5 | u8 | text_len | |
-| 6 | n B | text | UTF-8, en español (`NetProtocol.result_text`) |
+| 6 | n B | text | UTF-8, en español (`NetProtocol.result_text`). v7: en BANNED, el `message` del 403 `account_blocked`, que compone la plataforma (≤ 255 B); en un TICKET sin billete, «Entra desde el menú con tu cuenta» |
+
+**Con la plataforma (v7, [plataforma.md](plataforma.md) §5.2):** un HELLO con billete válido no recibe
+respuesta enseguida: el peer espera en `ServerPeer.State.VERIFYING` (cuenta para el cupo) mientras la zona
+reclama el billete; con el 200 llega el WELCOME con el reino y el nombre del personaje, y si no, un REJECT
+(TICKET, BUSY, BANNED, REALM, FULL o UNAVAILABLE). Pasados 7 s desde la conexión sin respuesta, REJECT
+UNAVAILABLE: siempre antes del `auth_timeout` de 10 s de los dos lados.
 
 ### 5.4 Cliente → servidor
 
@@ -733,13 +759,18 @@ inmediata sin esperar al timeout.
   ([fuerte.md 1.6](fuerte.md#16-controlador-gue-08-gue-12)), 7 `unstuck`, 8 `fort_reset`, 9
   `fort_owner`, 10 `fort_kill_captain`, 11 `fort_capture_speed` y 12 `npc_debug` y, desde la versión
   6 ([habilidades.md 5.1](habilidades.md#51-entradas-y-mensajes-cs)), 13 `cooldowns_off`, 14
-  `apply_status`, 15 `down` y 16 `refill`. Los datos de 2 a 6 los define el servidor
+  `apply_status`, 15 `down` y 16 `refill` y, desde la versión 7 ([progresion.md](progresion.md) §10), los de
+  GM de la progresión, siempre sobre el propio jugador: 40 `item_give`, 41 `currency_add`, 42 `level_set` y 43
+  `xp_add`. Los datos de 2 a 6 los define el servidor
   ([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)); el `decode` solo exige 64 B de
-  datos como mucho. Los de 7 a 16 los valida el `decode`: 7, 8, 10, 15 y 16, sin datos; 9, `u8` con el
+  datos como mucho. Los de 7 a 16 y 40 a 43 los valida el `decode`: 7, 8, 10, 15 y 16, sin datos; 9, `u8` con el
   reino (0 a 3); 11, `u8` con el factor (1 a 255); 12 y 13, `u8` (0 apaga, 1 activa); 14, `u8
-  status_id` (1 a 255) y `u16` ticks (0 = la duración del dato). Un id fijo cuyo manejador aún no
-  existe en el servidor se acepta sin aviso y sin efecto (los de 7 a 12 hasta que llegaron F3 y F4; 13
-  y 14 hasta H3a, 15 y 16 hasta H3c). `NetProtocol.DEBUG_COMMAND_IDS` es la tabla
+  status_id` (1 a 255) y `u16` ticks (0 = la duración del dato); v7: 40, `u16` net id de objeto (desde 1; que
+  exista lo mira el servidor) y `u16` cantidad (1 a 999); 41, `u8` moneda (1 oro, 2 méritos) y `s32` cantidad
+  (≠ 0; la `note` es «debug»); 42, `u8` nivel (1 a 40); 43, `u32` XP (1 a 10 000 000). Un id fijo cuyo manejador
+  aún no existe en el servidor se acepta sin aviso y sin efecto (los de 7 a 12 hasta que llegaron F3 y F4; 13
+  y 14 hasta H3a, 15 y 16 hasta H3c; 40 a 43 hasta progresion.md P5d). Con `--platform`, el rol que pide cada
+  uno es de progresion.md §10 y plataforma.md §9.1. `NetProtocol.DEBUG_COMMAND_IDS` es la tabla
   nombre → id con la que el registro de comandos del servidor comprueba que todo comando de red
   tiene su id. `announce`, `kick` y `shutdown` son solo de consola.
 - Solo se acepta si el servidor arrancó con `--debug-commands`; si no, cuenta un aviso
@@ -827,16 +858,23 @@ porque no cambia la simulación ([combate.md 1](combate.md#1-qué-se-predice-y-q
 | 3 | u8 | kind | 1 PLAYER, 2 NPC, 3 PROJECTILE, 4 STRUCTURE |
 | 4 | u32 | spawn_tick | tick del estado incluido |
 | 8 | u8 | realm | |
-| 9 | u8 | flags | bit0 = es tu personaje; bits 1–2 = contador de teletransporte. En un proyectil (v6), 0 |
+| 9 | u8 | flags | bit0 = es tu personaje; bits 1–2 = contador de teletransporte; bit3 = personal del juego (v7: moderador o más, para la etiqueta, SOC-14; solo en PLAYER). En un proyectil (v6), 0. No es el bit 3 de los flags del registro del snapshot (la ranura 2 activa) |
 | 10 | … | payload | según `kind` (abajo) |
 
 Payload según `kind`:
 
 - **PLAYER** (1): `PlayerState` (111 B desde la v6, 69 B hasta la v5; estado tras `spawn_tick`), `u8
-  name_len` y el nombre (≤ 48 B).
-- **NPC** (2): lo mismo que un jugador y, tras el nombre, `u16 npc_def_id` (v3): el id del catálogo
-  de PNJ (`NpcCatalog`, ids alfabéticos 1..n; 0 = sin definición) para que el cliente elija modelo,
-  tabardo y barra de jefe. Tamaño: 10 + 111 + 1 + n + 2 B (v6).
+  name_len` y el nombre (≤ 48 B) y, v7 ([progresion.md](progresion.md) §7.3), **9 B** tras el nombre: `u8 level`
+  (1 a 40; **0 si quien lo recibe no es de su reino**, porque el nivel del enemigo no cruza, o si no tiene
+  progreso, como un jugador falso) y los 8 B de `CharacterAppearance` (8 B a 0 = sin apariencia). Tamaño: 10 +
+  111 + 1 + n + 9 B. Por eso el servidor codifica el SPAWN de un jugador por reino receptor
+  (`NetEntity.encode_spawn(tick, for_owner, receiver_realm)`): el propio lleva el nivel real; el del recién
+  llegado, una variante por reino (tres como mucho) para los que ya están; los de los demás hacia él y los del
+  interés, con el reino del observador. El `decode` solo mira el tamaño y que el nivel no pase de 40; una
+  apariencia que no vale la sustituye el cliente por la de por defecto de la raza.
+- **NPC** (2): lo mismo que un jugador sin el nivel ni la apariencia (v7: no cambia) y, tras el nombre, `u16
+  npc_def_id` (v3): el id del catálogo de PNJ (`NpcCatalog`, ids alfabéticos 1..n; 0 = sin definición) para que
+  el cliente elija modelo, tabardo y barra de jefe. Tamaño: 10 + 111 + 1 + n + 2 B (v6).
 - **STRUCTURE** (4, v3): `u8 def_len` (1–32), el id de la definición en ASCII imprimible (por
   ejemplo `vado_gris_fort`), `u8 field_count` (1–32) y los campos completos, cada uno `u8 field_id,
   u8 value_type` y el valor, como en OBJECT_STATE (sin repetir type, net_id ni tick). No lleva
@@ -893,9 +931,9 @@ demás mensajes del canal 3.
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
 | 0 | u8 | type | `0x23` |
-| 1 | u16 | net_id | la entidad a la que se ata: la víctima en HIT, DEATH y KILL; la que reaparece en RESPAWN; la fortaleza en WAR; el PNJ en TELEGRAPH; v6: el afectado en STATUS, el curado en HEAL, el jugador en LOADOUT y el derribado en DOWNED e INTERACT |
+| 1 | u16 | net_id | la entidad a la que se ata: la víctima en HIT, DEATH y KILL; la que reaparece en RESPAWN; la fortaleza en WAR; el PNJ en TELEGRAPH; v6: el afectado en STATUS, el curado en HEAL, el jugador en LOADOUT y el derribado en DOWNED e INTERACT; v7: quien sube en LEVEL_UP |
 | 3 | u32 | tick | tick del servidor en que ocurrió |
-| 7 | u8 | event | 1 HIT, 2 DEATH, 3 KILL, 4 RESPAWN, 5 WAR, 6 TELEGRAPH; v6: 7 STATUS, 8 HEAL, 9 LOADOUT, 10 DOWNED, 11 INTERACT |
+| 7 | u8 | event | 1 HIT, 2 DEATH, 3 KILL, 4 RESPAWN, 5 WAR, 6 TELEGRAPH; v6: 7 STATUS, 8 HEAL, 9 LOADOUT, 10 DOWNED, 11 INTERACT; v7: 16 LEVEL_UP (del 12 al 15, libres) |
 | 8 | u8 | len | bytes de datos que siguen |
 | 9 | len B | datos | según `event` |
 
@@ -912,6 +950,7 @@ demás mensajes del canal 3.
 | 9 LOADOUT (v6) | `u8 template_id`, `u16 weapon_1`, `u16 weapon_2` (en orden de ranura; 0 = ninguna), `u8 charges` (bits 0–3 poción 1, 4–7 poción 2; 0 para quien no es el dueño) | 6 | 15 B |
 | 10 DOWNED (v6) | `u16 attacker`, `u16 source` | 4 | 13 B |
 | 11 INTERACT (v6) | `u16 actor`, `u8 op` (1 levantar, 2 levantar cortado, 3 levantado, 4 rematar, 5 rematar cortado), `u32 end_tick` | 7 | 16 B |
+| 16 LEVEL_UP (v7) | `u8 level` (1 a 40) | 1 | 10 B |
 
 - **WAR**: el `net_id` es la fortaleza y el `realm` el reino que acompaña al aviso
   (`FortressState.event_realm`). Va a toda la zona y se aplica en el tick de dibujo
@@ -932,11 +971,15 @@ demás mensajes del canal 3.
   predicción, en [habilidades.md 5.4](habilidades.md#54-entity_event-y-fuentes). DOWNED va a toda la zona
   (registro de bajas); LOADOUT, al dueño y, si cambian las armas, a quien lo tenga relevante con
   `charges` = 0.
+- **LEVEL_UP (v7)**: al dueño y a los de **su reino** que lo tienen relevante, para el efecto visual; al enemigo
+  no le llega ([progresion.md](progresion.md) §6.3). No impone estado: no explica correcciones. El cliente da el
+  propio al llegar y el de un aliado en su tick de dibujo, como los demás eventos.
 - **Validación.** `decode` devuelve `null` si el tipo no es `0x23`, el `event` es desconocido,
   `len` no cuadra con el evento o con el tamaño real del mensaje, `n` no cuadra con `len` o
   `n > 16` (los asistentes hacen al menos el 10 % del daño, así que nunca son más de 10), un WAR trae
   un aviso fuera de 1–7 o un reino mayor que 3, un TELEGRAPH trae una forma que no es 0 ni 1, un STATUS
-  o un INTERACT traen un `op` fuera de rango, o un STATUS aplicado trae 0 acumulaciones (v6).
+  o un INTERACT traen un `op` fuera de rango, o un STATUS aplicado trae 0 acumulaciones (v6), o un LEVEL_UP trae
+  un nivel fuera de 1 a 40 (v7).
   `encode` recorta un KILL a 16 asistentes.
 - **Destinatarios y temporización:** ver [combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2).
 
@@ -1284,7 +1327,12 @@ métricas por sección), es el de la cabecera de `scripts/server/zone_server.gd`
   porcentaje de entradas sustituidas.
 - **Cierre.** `--quit-after-ticks`, `--idle-quit` y `--stop-file` envían un NOTICE con el código 2,
   hacen `flush()` y cierran. `SIGTERM` y `SIGINT` no llegan a GDScript y no cierran de forma
-  ordenada (ver [1.3](#13-ajustes-del-servidor-headless)).
+  ordenada (ver [1.3](#13-ajustes-del-servidor-headless)). Con `--platform` (docs/plataforma.md §7.2 y
+  §19.9), el cierre manda además el guardado final de cada personaje y espera hasta 10 s a que la
+  plataforma lo conteste; el `maintenance` del latido es un quinto disparador, con avisos por NOTICE
+  (código 0). Cuando la plataforma cierra la instancia (§6.1), los finales salen antes y el NOTICE es
+  de expulsión (código 1): «El servidor de la zona se ha reiniciado: vuelve a entrar». Ni los
+  mensajes ni sus bytes cambian.
 
 ### 8.2 Cola de entradas (`InputQueue`)
 
@@ -1595,8 +1643,8 @@ reino salen del personaje del billete y ese rechazo desaparece (detalle en
 
 **Fases 5 y 6:**
 
-- **`TicketAuthProvider`** con `HandoffTicket` de **52 B** (formato y vector de prueba en
-  [plataforma.md](plataforma.md) §5.1; sustituye al de 47 B que se preveía aquí):
+- **`TicketAuthProvider`** con `HandoffTicket` de **52 B** (v7, hecho en plataforma.md P4; formato y vector de
+  prueba en [plataforma.md](plataforma.md) §5.1; sustituye al de 47 B que se preveía aquí):
   - campos: versión, clave, mundo, `ticket_id`, `character_id`, huella de la zona, canal, reino
     (informativo), punto de llegada, flags, emisión y caducidad (+10 s);
   - firma HMAC-SHA256 truncada a 16 B con una clave con identificador (rotable);
@@ -2278,7 +2326,7 @@ func set_idle_from(tick: int) -> void
 ```gdscript
 # net_protocol.gd
 class_name NetProtocol extends RefCounted
-const PROTOCOL_VERSION: int = 6                      # 5 el chat y los grupos (social.md 12), 6 las habilidades
+const PROTOCOL_VERSION: int = 7                      # 5 el chat y los grupos (social.md 12), 6 las habilidades, 7 la fase 5
 const MAGIC: int = 0x4D444C45
 const DEFAULT_PORT: int = 24600
 const CUSTOM_CHANNELS: int = 3
@@ -2579,6 +2627,7 @@ signal packet_received(peer_id: int, bytes: PackedByteArray)
 signal connection_failed()
 ## Solo servidor (S1): paquetes de un peer descartados por no ser del protocolo (ver 2).
 signal packets_discarded(peer_id: int, count: int)
+const AUTH_TIMEOUT_SECONDS: float = 10.0     # v7 (5.0 hasta la v6): en los dos lados, desde la conexión
 ## Antes de host()/connect_to(). Vacío = sin simulador.
 func set_net_sim_spec(spec: String) -> void
 func host(port: int, max_peers: int) -> Error
@@ -2653,13 +2702,15 @@ var kick_cooldown_ticks: int = KICK_COOLDOWN_TICKS      # S6: 1800
 var max_logged_players: int = MAX_LOGGED_PLAYERS        # S3: 1000
 var max_logged_kicks: int = MAX_LOGGED_KICKS            # S3: 200
 const RTT_SLACK_TICKS: int = 3                          # S4
+var verify_timeout_ms: int = VERIFY_TIMEOUT_MS          # v7: 7000, plazo de VERIFYING en tiempo real
+signal instance_closed(code: String)                    # v7: la plataforma cerró la instancia (plataforma.md §6.1)
 func start(config: ServerConfig, world: Node3D, transport: NetTransport,
-		auth_provider: AuthProvider) -> Error
+		auth_provider: AuthProvider, platform: ZonePlatform = null) -> Error   # v7: plataforma.md §14.3
 func stop(notice_text: String = "") -> void
 func get_tick() -> int
 func get_peer(peer_id: int) -> ServerPeer
 func get_peer_ids() -> PackedInt32Array
-func get_player_count() -> int
+func get_player_count() -> int                          # v7: cuenta también VERIFYING
 func get_registry() -> NetEntityRegistry
 func get_history() -> StateHistory
 func get_metrics() -> ServerMetrics
@@ -2672,7 +2723,7 @@ func write_report(path: String) -> Error
 
 # server_peer.gd
 class_name ServerPeer extends RefCounted
-enum State { AUTHENTICATING, LOADING, IN_WORLD, LEAVING }
+enum State { AUTHENTICATING, VERIFYING, LOADING, IN_WORLD, LEAVING }   # VERIFYING (v7): reclamando el billete
 var peer_id: int
 var state: State = State.AUTHENTICATING
 var realm: int
@@ -2700,9 +2751,12 @@ func grant_stall_credit(now_tick: int, missed_ticks: int) -> void
 class_name ServerAuth extends RefCounted
 func _init(config: ServerConfig, sim_hash: int, allowed_realms: PackedInt32Array,
 		provider: AuthProvider) -> void
-## Devuelve un NetProtocol.Result.
-func validate(hello: NetMessages.Hello, remote_address: String, player_count: int,
-		connections_from_address: int) -> int
+## Devuelve un NetProtocol.Result o AuthProvider.PENDING. v7: el peer_id va primero (para el proveedor) y, con
+## billetes (uses_tickets), ni el reino ni el nombre del HELLO se miran, ni hay IMBALANCE.
+func validate(peer_id: int, hello: NetMessages.Hello, remote_address: String, player_count: int,
+		connections_from_address: int, filler_seats: int = 0) -> int
+func uses_tickets() -> bool
+func is_realm_allowed(realm: int) -> bool       # la zona mira el reino de la reclamación
 ## SOC-01: fuente de los nombres ya conectados (Callable sin argumentos -> PackedStringArray).
 func set_connected_names_source(source: Callable) -> void
 func check_name(display_name: String) -> int   # NameRules.Reason (TAKEN si ya está conectado)
@@ -2711,14 +2765,17 @@ static func address_group(remote_address: String) -> String
 
 # auth_provider.gd
 class_name AuthProvider extends RefCounted
-## Identidad y reino: OK o TICKET. Base de DevAuthProvider y del futuro TicketAuthProvider.
-func authenticate(hello: NetMessages.Hello) -> int
-## Desde la fase 5 (plataforma.md §14.3): authenticate(peer_id, hello) -> int (OK, PENDING = -1 o
-## motivo), on_platform_event(event) -> bool, take_completed() -> Array[AuthOutcome],
-## cancel(peer_id) y uses_tickets() -> bool.
+## Identidad y reino (plataforma.md §14.3). Base de DevAuthProvider y de TicketAuthProvider
+## (scripts/server/platform/).
+const PENDING: int = -1
+func authenticate(peer_id: int, hello: NetMessages.Hello) -> int   # OK, PENDING o motivo (la base: TICKET)
+func on_platform_event(event: PlatformEvent) -> bool              # true si era suyo (kind claim)
+func take_completed() -> Array[AuthOutcome]
+func cancel(peer_id: int) -> void
+func uses_tickets() -> bool
 
 # dev_auth_provider.gd
-class_name DevAuthProvider extends AuthProvider   # acepta el reino y el nombre declarados
+class_name DevAuthProvider extends AuthProvider   # acepta en el acto el reino y el nombre declarados
 
 # rate_limiter.gd: cubo de fichas medido en ticks
 class_name RateLimiter extends RefCounted

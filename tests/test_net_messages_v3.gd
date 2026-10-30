@@ -379,8 +379,8 @@ func test_npc_spawn_ends_with_the_definition_id() -> void:
 	player.kind = NetProtocol.EntityKind.PLAYER
 	player.npc_def_id = 9
 	var player_bytes: PackedByteArray = player.encode()
-	assert_eq(player_bytes.size(), name_offset + 1 + name_bytes.size(),
-			"un jugador no escribe npc_def_id aunque lo tenga puesto")
+	assert_eq(player_bytes.size(), name_offset + 1 + name_bytes.size() + NetMessages.PLAYER_SPAWN_TAIL_SIZE,
+			"un jugador no escribe npc_def_id aunque lo tenga puesto (lleva su nivel y su apariencia, v7)")
 	var as_npc: PackedByteArray = player_bytes.duplicate()
 	as_npc.encode_u8(3, NetProtocol.EntityKind.NPC)
 	assert_null(NetMessages.EntitySpawn.decode(as_npc), "un PNJ necesita su npc_def_id")

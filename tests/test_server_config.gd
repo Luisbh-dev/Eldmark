@@ -246,3 +246,37 @@ func test_fake_archers_option_for_load_tests() -> void:
 	assert_true(ServerConfig.from_args(PackedStringArray(["--fake-archers=100"])).is_sky_archer(0), "con 100, todos")
 	for bad: String in ["--fake-archers=101", "--fake-archers=-3", "--fake-archers=muchos"]:
 		assert_eq(ServerConfig.from_args(PackedStringArray([bad])).fake_archers_sky_percent, -1, "%s no vale" % bad)
+
+
+## Las opciones de la plataforma (docs/plataforma.md §14.3): --platform, --world, --channel, --public-address,
+## --save-interval, --replace, --dtls-cert y --dtls-key, y las de desarrollo que con ella solo valen en dev y test.
+func test_platform_options() -> void:
+	var plain: ServerConfig = ServerConfig.from_args(PackedStringArray(["--server", "--port=24610"]))
+	assert_false(plain.uses_platform(), "sin --platform, sin plataforma")
+	assert_eq([plain.world_id, plain.channel, plain.save_interval_s, plain.replace], [1, 0, 60, false],
+			"mundo 1, canal 0, 60 s y sin --replace")
+	assert_eq([plain.public_host(), plain.public_port()], ["127.0.0.1", 24610], "127.0.0.1 y su puerto")
+	assert_eq(plain.platform_dev_options(), PackedStringArray(), "ninguna opción de desarrollo")
+	var config: ServerConfig = ServerConfig.from_args(PackedStringArray(["--server", "--port=24610",
+			"--platform=http://platform:24681", "--world=3", "--channel=2", "--public-address=203.0.113.5:24700",
+			"--save-interval=5", "--replace", "--dtls-cert=/run/secrets/c.pem", "--dtls-key=/run/secrets/k.pem",
+			"--debug-commands", "--fake-players=3", "--fake-churn=60", "--battle-log=b.jsonl",
+			"--combat-log=c.txt", "--state-log=s.txt"]))
+	assert_true(config.uses_platform(), "con --platform")
+	assert_eq(config.platform_url, "http://platform:24681", "la URL interna")
+	assert_eq([config.world_id, config.channel, config.save_interval_s, config.replace], [3, 2, 5, true],
+			"mundo, canal, intervalo y --replace")
+	assert_eq([config.public_host(), config.public_port()], ["203.0.113.5", 24700], "host y puerto públicos")
+	assert_eq([config.dtls_cert_path, config.dtls_key_path], ["/run/secrets/c.pem", "/run/secrets/k.pem"], "DTLS")
+	assert_eq(config.platform_dev_options(), PackedStringArray(["--debug-commands", "--fake-players",
+			"--fake-churn", "--battle-log", "--combat-log", "--state-log"]), "las seis de desarrollo")
+	var host_only: ServerConfig = ServerConfig.from_args(PackedStringArray(["--public-address=zona.eldmark.test"]))
+	assert_eq([host_only.public_host(), host_only.public_port()], ["zona.eldmark.test", NetProtocol.DEFAULT_PORT],
+			"sin puerto, el de --port")
+	var ipv6: ServerConfig = ServerConfig.from_args(PackedStringArray(["--public-address=[2001:db8::5]:24601"]))
+	assert_eq([ipv6.public_host(), ipv6.public_port()], ["2001:db8::5", 24601], "IPv6 entre corchetes")
+	for bad: String in ["--world=0", "--world=70000", "--channel=256", "--channel=-1", "--save-interval=0"]:
+		var parsed: ServerConfig = ServerConfig.from_args(PackedStringArray([bad]))
+		assert_eq([parsed.world_id, parsed.channel, parsed.save_interval_s], [1, 0, 60], "%s no vale" % bad)
+	var bad_port: ServerConfig = ServerConfig.from_args(PackedStringArray(["--public-address=h:99999"]))
+	assert_eq(bad_port.public_port(), NetProtocol.DEFAULT_PORT, "un puerto fuera de rango, el de --port")

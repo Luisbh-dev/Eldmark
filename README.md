@@ -280,7 +280,7 @@ platform/deploy/dev.sh reset          # borra la base, las claves y las cuentas 
 Staging y producción van con `platform/deploy/docker-compose.yml` (base, plataforma, Caddy con HTTPS de Let's
 Encrypt, zonas y copias), un `staging.env` o `production.env` sacado de su `.example` y los secretos como archivos
 en `platform/deploy/secrets/` (ignorada por git); la cabecera del compose tiene las órdenes y la lista de
-secretos, y `docs/plataforma.md` §12 y §19.8, el resto. Las copias: `backup.sh` (diaria, con `purges.txt`),
+secretos, y `docs/plataforma.md` §12 y §19.11, el resto. Las copias: `backup.sh` (diaria, con `purges.txt`),
 `restore_check.sh` (restauración de prueba semanal, con `reapply-purges`) y `pitr_check.sh` (recuperación a un
 instante); los tres corren en local contra un PostgreSQL efímero o en el contenedor `ops` del compose. Tras
 restaurar una copia de verdad, y antes de arrancar `serve`:

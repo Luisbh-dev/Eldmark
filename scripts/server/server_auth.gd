@@ -12,10 +12,14 @@ extends RefCounted
 ## nombre (NameRules)           -> NAME     (y no repetido entre los conectados)
 ## servidor lleno               -> FULL     (los falsos de relleno no ocupan plaza: GUE-43)
 ## demasiadas conexiones por IP -> TOO_MANY_CONNECTIONS (salvo loopback)
-## el AuthProvider              -> OK o TICKET
+## el AuthProvider              -> OK, PENDING o su motivo (TICKET, UNAVAILABLE…)
 ## el reino elegido              -> IMBALANCE (solo con --max-realm-diff, tras el proveedor: el reino lo puede
 ##                                 decidir él; ver RealmBalance)
 ## [/codeblock]
+## Con un proveedor de billetes ([method AuthProvider.uses_tickets], docs/plataforma.md §5.4) el reino y el
+## nombre del HELLO no se miran: mandan los de la reclamación, que la zona aplica al llegar (REALM) y que la
+## plataforma hace únicos al crear el personaje. Así no hay REJECT NAME y el HELLO deja de delatar si un nombre
+## está en la zona (docs/social.md, 12.7). Tampoco hay IMBALANCE: el reino ya no se elige al conectar.
 
 ## Direcciones de loopback exentas del tope por IP (para los bots y los clientes locales).
 ## Además se considera loopback cualquier dirección que empiece por [code]127.[/code].
@@ -64,8 +68,9 @@ func set_realm_counts_source(source: Callable) -> void:
 	_realm_counts = source
 
 
-## Devuelve un [enum NetProtocol.Result]: OK si hay que aceptar al cliente o el motivo del
-## rechazo. [param player_count] son los jugadores ya conectados y
+## Devuelve un [enum NetProtocol.Result]: OK si hay que aceptar al cliente, [constant AuthProvider.PENDING] si el
+## proveedor no decide aún (el peer pasa a VERIFYING) o el motivo del rechazo. [param peer_id] es el peer del
+## HELLO, para el proveedor. [param player_count] son los jugadores ya conectados (también los que verifican) y
 ## [param connections_from_address], las conexiones que ya tiene abiertas esa IP (sin contar
 ## esta): se rechaza si llega a [member ServerConfig.max_connections_per_ip].
 ## [br][br]
@@ -74,7 +79,7 @@ func set_realm_counts_source(source: Callable) -> void:
 ## demás (personas y falsos que no son de relleno) llegan a [member ServerConfig.max_players]. Si con un OK el servidor
 ## sigue lleno, quien llama le aparta a la persona la plaza de un falso de relleno, que se va cuando ella entra en el
 ## mundo ([method FillerKeeper.reserve_seat]).
-func validate(hello: NetMessages.Hello, remote_address: String, player_count: int,
+func validate(peer_id: int, hello: NetMessages.Hello, remote_address: String, player_count: int,
 		connections_from_address: int, filler_seats: int = 0) -> int:
 	if hello == null:
 		return NetProtocol.Result.MALFORMED
@@ -82,10 +87,12 @@ func validate(hello: NetMessages.Hello, remote_address: String, player_count: in
 		return NetProtocol.Result.VERSION
 	if hello.sim_hash != _sim_hash:
 		return NetProtocol.Result.SIM_HASH
-	if not _is_realm_allowed(hello.realm):
-		return NetProtocol.Result.REALM
-	if check_name(hello.display_name) != NameRules.Reason.OK:
-		return NetProtocol.Result.NAME
+	var tickets: bool = uses_tickets()
+	if not tickets:
+		if not _is_realm_allowed(hello.realm):
+			return NetProtocol.Result.REALM
+		if check_name(hello.display_name) != NameRules.Reason.OK:
+			return NetProtocol.Result.NAME
 	if player_count - clampi(filler_seats, 0, player_count) >= _config.max_players:
 		return NetProtocol.Result.FULL
 	if connections_from_address >= _config.max_connections_per_ip \
@@ -93,10 +100,20 @@ func validate(hello: NetMessages.Hello, remote_address: String, player_count: in
 		return NetProtocol.Result.TOO_MANY_CONNECTIONS
 	if _provider == null:
 		return NetProtocol.Result.TICKET
-	var result: int = _provider.authenticate(hello)
-	if result == NetProtocol.Result.OK and _would_unbalance(hello.realm):
+	var result: int = _provider.authenticate(peer_id, hello)
+	if result == NetProtocol.Result.OK and not tickets and _would_unbalance(hello.realm):
 		return NetProtocol.Result.IMBALANCE
 	return result
+
+
+## true si el proveedor usa billetes (el reino y el nombre salen de la reclamación).
+func uses_tickets() -> bool:
+	return _provider != null and _provider.uses_tickets()
+
+
+## true si [param realm] es un reino real admitido en la zona (lo usa la zona al aplicar la reclamación).
+func is_realm_allowed(realm: int) -> bool:
+	return _is_realm_allowed(realm)
 
 
 ## true si [param remote_address] es loopback (127.0.0.1, ::1, localhost o cualquier 127.x), que
