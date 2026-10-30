@@ -1580,3 +1580,135 @@ registro y el DESPAWN 5 de las flechas en `CombatDirector.remove` (junto a `forg
 `DownedSystem` en el paso 7, el descarte con `downed_tick == s` en `_apply_hit`, `StatusSystem` sin
 derribados (`_takes_pulses`, `apply`) y `status.clear` al caer, el corte de levantar y rematar con un
 impacto que interrumpe, la recarga del paso 8 y los comandos 15 y 16.
+
+### 11.5 H3b · proyectiles
+
+**Hecho.**
+
+- **`ProjectileSystem`** (`scripts/server/projectile_system.gd`) con el contrato de §7.2 (`spawned`,
+  `despawned`, `fire`, `resolve`, `live_count`, `forget_owner`) y, además, `begin_tick`, `has_pending`,
+  `get_live`, `get_projectile`, `clear`, `merge_by_attacker` y `stats`.
+  - **Disparo** (paso 3): `CombatDirector._process_commits` dispara en el compromiso de un LIGHT o HEAVY
+    con proyectil (el arco) y de una habilidad con proyectil. El rebobinado sale de
+    `CombatResolver.compute_rewind` (factorizado de `_swing_rewind`), redondeado a ticks enteros y fijado
+    para todo el vuelo; rechazado o desde la zona segura propia, la flecha es inofensiva (bit 0 de
+    `proj_flags`), y el rechazo suma sospecha y llega al registro de combate como `rewind_rejected`. La
+    puntería es la de §4.4 con la entrada de `InputQueue.get_applied(s)`: rayo canónico, punto apuntado
+    con convergencia sobre los hostiles en `s − rewind` (cribados por su caja barrida contra el cono de la
+    mira) y salida del pecho; el abanico gira en yaw; `v0` lleva la carga del tensado (`charge_speed_scale`);
+    origen y velocidad se cuantizan con `Ballistics.quantize` y el servidor vuela con eso. Cada proyectil
+    guarda la copia del autor (tirador, reino, si es jugador, fuente, golpe, rebobinado, carga y
+    `damage_scale` del disparo).
+  - **Vuelo** (paso 4): el segmento `[pos(n), pos(n + 1)]` contra el mundo y las puertas (el primero con
+    `hit_from_inside`), las cajas de los muros de los hostiles y las cápsulas rebobinadas (radio 0,4 + el
+    de la flecha) de los candidatos; gana la fracción menor. Invulnerable: sigue volando sin volver a
+    probarlo (golpe INVULNERABLE para el registro); bloqueo de cara a la flecha con el cono del arma o el
+    del muro, en la muestra de `k` o en la de `k − defense_rewind` si aún cuenta; nunca parada. Mundo: se
+    clava; una puerta que el tirador puede dañar recibe el golpe (perforante ×0,2). Caducidad en
+    `n + 1 ≥ lifetime_ticks` o bajo y = −100.
+  - **Topes**: con 8 vivos del tirador sale su más vieja y con 64 en la zona la más vieja de la zona (empate
+    por id), con DESPAWN 5 en ese tick; el disparo nuevo siempre existe.
+  - **Bajas**: `CombatDirector.remove` llama a `forget_owner` (DESPAWN 5 de las flechas del que se va).
+- **`CombatResolver`**: `compute_rewind` y `note_rewind_rejected`; públicos `is_hostile`,
+  `was_invulnerable`, `blocks_sample`, `dropped_guard_after`, `get_safe_areas` y `get_history`. `Hit` gana
+  `projectile_id`, `projectile` (la copia del autor), `wall` (bloqueado por la caja del muro) y `direction`
+  (la velocidad de la flecha al tocar).
+- **`CombatDirector`**: `projectiles`; el paso 4 junta los golpes cuerpo a cuerpo y los de los
+  proyectiles por net_id del atacante (primero sus golpes, después sus proyectiles por id); `_apply_hit`
+  aplica los de las flechas con la carga y el más daño copiados, la caja del muro con mitigación 1 y el
+  gasto del muro (su rotura de guardia corta la canalización con su reutilización), el empuje en la
+  dirección de la flecha, la interrupción y el `target_status` de siempre (la flecha lastrante pone
+  `slowed`), un acierto por disparo en el peer y los resultados `arrow_hit`, `arrow_blocked` y
+  `wall_blocked` del registro (con sus contadores). Sección de métricas `combat_projectiles` (disparos y
+  vuelo) y contadores `projectile_us` y `projectile_busy_ticks`.
+- **`StateHistory`**: `position_at(id, tick)` (sin crear objetos; `Vector3.INF` si no está) y
+  `swept_box(id)`: cada pista guarda al grabar las cajas de 4 bloques de 8 ticks y su unión, al día (cubre
+  los 25 ticks anteriores al siguiente como mínimo).
+- **`NetEntityRegistry`**: `allocate_transient_id`, `release_transient_id`, `is_transient` y
+  `transient_count`, del mismo espacio y con la misma cuarentena de 600 ticks; `allocate` no toma un id
+  pasajero en uso.
+- **`ZoneServer`**: los ids de los proyectiles salen del registro de la zona; el ENTITY_SPAWN de kind 3 va
+  al dueño del tirador y a quien lo tiene relevante; el ENTITY_DESPAWN, exactamente a quien recibió el
+  SPAWN; el informe cuenta disparos, impactos, bajas, criba, pico de vivas y los mensajes enviados.
+- Notas en combate.md §4.3, red.md §5.5 (destinatarios del SPAWN y el DESPAWN) y §17.4 (contratos de
+  `NetEntityRegistry` y `StateHistory`) y fuerte.md §1.7; notas «Hecho (H3b)» en
+  backlog.md (CMB-19, CMB-21, CMB-22 y CMB-23).
+
+**Pruebas.** Nueva `test_projectiles` (17): ninguna flecha atraviesa un muro (40 disparos con ángulos
+distintos, todos con DESPAWN 4 en el segmento que cruza su cara, y el control sin muro, que acierta); el
+disparo pegado a una esquina da en la esquina (la cámara ve al blanco y el pecho no); desde el vano de la
+puerta cerrada se clava en el origen (DESPAWN 4 en el tick del disparo) y rota sale; el escudo de frente la
+bloquea sin pararla aunque la ventana de parada esté abierta, y por la espalda no; la esquiva la deja pasar
+hasta el de detrás; la caja del muro para la flecha de lejos dirigida al aliado de detrás (sin daño, 0,6
+por punto) y la del arquero que está dentro de la caja, no la de un arquero detrás de quien lo sostiene, y
+sin muro el aliado recibe la flecha; un segmento que empieza dentro de una cápsula da a quemarropa en el
+tick del disparo; los topes (el noveno del tirador saca su primera y el primero con 64 en la zona saca la
+más vieja de la zona, los dos con DESPAWN 5, y el disparo nuevo existe); el que se va se lleva sus flechas;
+la flecha a la puerta (12 = 60 × 0,2) y la del dueño, que se clava; el vuelo contra posiciones rebobinadas
+(con 10 ticks de vista atrás acierta donde el arquero veía al blanco, y el control sin rebobinar, en la misma
+ejecución, falla); el rebobinado rechazado y la zona segura dan flechas inofensivas (sospecha + 1); el
+abanico (3 flechas a ±7°, un acierto por disparo), el tensado (40 y 70 m/s, 90 y 180), la flecha lastrante
+(60, `slowed` con su ranura e interrupción de beber) y el salto atrás; la balística del SPAWN es la que vuela
+el servidor y caduca en `n + 1 = 120` con DESPAWN 5; la criba (cajas barridas y barrido en x) toca
+exactamente a los mismos que probar las cápsulas de todos (3000 segmentos al azar, con un teletransportado);
+un arquero falso en un `ZoneServer` dispara con un id pasajero del registro, acierta y, al irse, se lleva su
+flecha; y, con ENet en 127.0.0.1, el cliente que ve al tirador recibe el SPAWN y el DESPAWN. Ampliadas:
+`test_state_history` (+3: `position_at`, la caja barrida cubre los 25 ticks y olvida lo de hace más de 4
+bloques, el hueco) y `test_net_entity_registry` (+1: ids pasajeros). Los 53 archivos de prueba de las áreas tocadas (combate,
+servidor de zona, fuerte, PNJ, asedio, red, snapshots, chat y grupos, procesos), uno a uno: 722 pruebas en
+verde.
+
+**Desvíos y decisiones.**
+
+- **`begin_tick(s, combatants)`** se añade al contrato: `fire` necesita los combatientes del tick para la
+  convergencia de la mira. Los candidatos y muros se calculan una vez por tick y solo si hay un disparo o
+  flechas vivas.
+- **DESPAWN al final del paso 4**, no en el 5: `resolve` da de baja las flechas que acaban (y su id va a la
+  cuarentena) y devuelve sus golpes. En el canal fiable el DESPAWN llega antes que el HIT del mismo tick;
+  los dos llevan su tick, así que el cliente no nota la diferencia.
+- **El muro cubre de frente**: su caja solo para las flechas cuya velocidad va contra el mirar de quien lo
+  sostiene. Así un arquero enemigo detrás de quien lo sostiene «dispara libre» también hacia los de
+  delante (la flecha cruza la caja por detrás) y uno dentro de la caja que dispara hacia él se para en el
+  origen. La caja se ensancha con el radio de la flecha.
+- **Sin crítico por la espalda** para las flechas: §4.4 no lo pide y la hoja de §2.4 se calculó sin él.
+  Decisión de equilibrio para H5.
+- **El cono de bloqueo frente a −velocidad** es el de siempre con un «atacante» detrás de la víctima en la
+  dirección horizontal de la que viene la flecha; una flecha vertical cuenta como de frente.
+- **Inofensivas**: solo chocan con el mundo; tampoco con muros ni puertas (una puerta la clava sin daño).
+- **Rebobinado**: `roundi` del de los golpes; el de las defensas, `max(roundi(defensa), rebobinado)`.
+- **Sin entrada aplicada** en `s` (una cola sin consumir, en las pruebas): yaw del cuerpo, pitch 0 y hombro
+  derecho.
+- **Cápsula ensanchada de verdad**: radio 0,4 + r y también la altura (pies − r, altura + 2r), la suma de la
+  cápsula y la esfera de la flecha.
+- **Un acierto por disparo** en `ServerPeer.swings_landed` (las flechas de un abanico comparten un `Shot`).
+- **Destinatarios**: `ZoneServer` apunta qué peers recibieron cada SPAWN y manda el DESPAWN a esos (aunque
+  ya no tengan relevante al tirador); quien empieza a ver al tirador después no recibe las flechas que ya
+  están en el aire (viven 2 s como mucho).
+- **`get_body_rids`**: `StructureTarget.exclude` ya guarda los cuerpos de la puerta (`FortGate.get_body_rids`),
+  así que la flecha reconoce la puerta por el cuerpo que toca su rayo.
+- **Coste**: la criba es la de §4.4 más un **barrido en x** (una rejilla de una dimensión, la que §8 dejaba
+  abierta): los candidatos estrechos se ordenan por el borde izquierdo de su caja (enteros en centímetros
+  con el índice, `PackedInt64Array.sort` y `bsearch`) y cada segmento solo mira los que caen en su ventana;
+  las cajas de más de 12 m de ancho (un teletransporte reciente) van aparte y se miran siempre. La unión de
+  los 4 bloques se mantiene al grabar (cada pista la rehace al empezar un bloque), así que `swept_box` no
+  recorre nada. `test_projectiles` comprueba que la criba no cambia el resultado. La convergencia criba con
+  una prueba esfera-cono en vez del ángulo (equivalente y sin `acos`).
+- **`touched_ids`** (para las pruebas): los candidatos que toca un segmento, con la criba o probando todas
+  las cápsulas.
+
+**Medido** (sonda sin subir, máquina compartida con otros trabajos; orientativo). Refriega de 64 en 20 × 20
+m que se mueven, 30 disparos por segundo (~51 flechas vivas, todas sobre la refriega): la sección de
+proyectiles cuesta **650–690 µs por tick**: preparar los 64 candidatos 130–170 µs, **9–10 µs por flecha y
+tick** y 70–115 µs por disparo (convergencia y punto apuntado); 0,023 pruebas exactas por segmento. Con el
+tope de 64 vivas, ~0,8 ms: dentro de la reserva de 1 ms. La primera versión (objetos por tick, un recorrido
+de todos los candidatos por flecha y la unión calculada al pedirla) costaba 3,3 ms. `StateHistory.record`
+pasa de 0,70–0,73 a 0,95–0,98 µs por entidad (+16 µs por tick con 64). `test_projectiles` tarda ~13 s con el
+arranque del motor (la de red, ~3 s).
+
+**Para los paquetes siguientes.** H3c: `should_down` con `Hit.projectile.realm` e `is_player` (la copia del
+autor); el descarte `downed_tick == s` de `_apply_hit` vale también para las flechas, y la flecha de un
+tirador que ya ha muerto o está derribado sigue pudiendo derribar o matar (la copia del autor basta). H4: `ProjectileWorld` con las señales
+de `NetClient`; la flecha remota se retira en `despawn_tick + f`, con el segmento de §6.2 (es el que probó el
+servidor), y la inofensiva se dibuja igual. H5: `test_projectile_loopback` (los bots apuntan con
+`solve_lead` y `look_for`, como `_over_drop` de `test_projectiles`) y la carga con la sección
+`combat_projectiles` del registro de métricas.

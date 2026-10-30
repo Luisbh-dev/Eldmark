@@ -47,6 +47,12 @@ extends RefCounted
 ## Los golpes de las habilidades ([member AbilityTicks.hit], el golpe sintetizado que congela
 ## [method Combatant.freeze]) siguen el mismo camino que los ataques, también contra las puertas.
 ## Un impacto, un bloqueo o una parada consumen el golpe para ese objetivo (una vez por acción).
+## [br][br]
+## Los proyectiles ([ProjectileSystem], docs/habilidades.md, sección 4.4) usan del resolutor el mismo
+## rebobinado ([method compute_rewind], que fijan por disparo en ticks enteros), la hostilidad
+## ([method is_hostile]), la invulnerabilidad ([method was_invulnerable]), el bloqueo por muestra
+## ([method blocks_sample] y [method dropped_guard_after]) y las puertas ([member structure_targets]); sus
+## golpes son [CombatResolver.Hit] con [member Hit.projectile] y los aplica el director igual que estos.
 
 ## Resultado de un golpe sobre un objetivo.
 enum Outcome {
@@ -116,6 +122,17 @@ class Hit:
 	## BLOCKED por un bloqueo ancho (el muro de escudos, [constant ActionMachine.DEFENSE_WIDE_BLOCK]):
 	## gasta [member CombatRules.ability_block_stamina_per_damage] en vez del coste del arma.
 	var wide_block: bool = false
+	## Golpe de un proyectil ([ProjectileSystem], docs/habilidades.md, sección 4.4): su id de red (0 = un
+	## golpe cuerpo a cuerpo) y la copia del autor que guardó al salir (carga, más daño, reino...): el
+	## director no vuelve a mirar el estado del tirador para el daño.
+	var projectile_id: int = 0
+	var projectile: ProjectileSystem.Projectile = null
+	## BLOCKED por la caja del muro de escudos de [member victim] (sin daño: mitigación 1, y el gasto del
+	## muro); solo con proyectiles.
+	var wall: bool = false
+	## Velocidad del proyectil en el impacto (m/s); cero en un golpe cuerpo a cuerpo. Da la dirección del
+	## empuje.
+	var direction: Vector3 = Vector3.ZERO
 
 
 ## [param history] es el historial de posiciones del servidor, [param zone_id] la zona (para las
@@ -233,6 +250,23 @@ func _swing_rewind(attacker: Combatant, s: int) -> float:
 		return 0.0
 	if attacker.swing_rewind_fixed:
 		return attacker.swing_rewind
+	var fixed: Vector2 = compute_rewind(attacker, s)
+	attacker.swing_rewind_fixed = true
+	attacker.swing_rewind = fixed.x
+	attacker.swing_defense_rewind = fixed.y
+	return fixed.x
+
+
+## El rebobinado de un golpe o un disparo de [param attacker] que empieza en [param s] (docs/combate.md,
+## 4.3, paso 2), sin fijarlo en ningún sitio: [code]x[/code] son los ticks que ve atrás (NAN si pide más
+## de lo permitido) e [code]y[/code] los que se miran atrás para la parada, el bloqueo y la
+## invulnerabilidad (al menos el mínimo coherente con el RTT medido, nunca más que el tope; 0 si se
+## rechaza). Un atacante sin peer (jugador falso, PNJ) no rebobina: (0, 0). Lo usan los golpes
+## ([method _swing_rewind], que lo fija en el [Combatant]) y los proyectiles ([ProjectileSystem], que lo
+## fija para todo el vuelo redondeado a ticks enteros).
+static func compute_rewind(attacker: Combatant, s: int) -> Vector2:
+	if attacker.peer == null or attacker.queue == null:
+		return Vector2.ZERO
 	var params: Vector2i = attacker.queue.get_rewind_params(s)
 	var lead: int = mini(params.y, mini(attacker.queue.get_typical_lead(s) + _LEAD_SPREAD,
 			_MAX_LEAD_CREDIT))
@@ -241,15 +275,23 @@ func _swing_rewind(attacker: Combatant, s: int) -> float:
 	var rewind: float = NAN
 	if params.x <= (allowed + 1) * VIEW_OFFSET_Q_SCALE:
 		rewind = clampf(float(params.x) / float(VIEW_OFFSET_Q_SCALE), 0.0, float(allowed))
-	attacker.swing_rewind_fixed = true
-	attacker.swing_rewind = rewind
+	if is_nan(rewind):
+		return Vector2(NAN, 0.0)
 	# Para la defensa se mira atrás como mínimo lo que un honrado con ese RTT no puede evitar ver
 	# (el RTT de ENet más el retardo de interpolación mínimo, menos 2 de holgura), pero nunca más allá
 	# del tope.
 	var minimum: float = minf(float(maxi(attacker.peer.rtt_floor_ticks + _MIN_INTERP_TICKS - 2, 0)),
 			float(allowed))
-	attacker.swing_defense_rewind = maxf(rewind, minimum) if not is_nan(rewind) else 0.0
-	return rewind
+	return Vector2(rewind, maxf(rewind, minimum))
+
+
+## Anota en el peer de [param attacker] un rebobinado rechazado (sospecha + 1) y lo cuenta en
+## [member rewind_rejects]. Lo usan los golpes y los disparos.
+func note_rewind_rejected(attacker: Combatant) -> void:
+	rewind_rejects += 1
+	if attacker.peer != null:
+		attacker.peer.suspicion_score += 1
+		attacker.peer.rewind_rejects += 1
 
 
 # Anota un golpe rechazado por rebobinado excesivo: una vez por ataque.
@@ -257,10 +299,7 @@ func _reject(attacker: Combatant, attack: AttackTicks, s: int, hits: Array[Hit])
 	if attacker.rejected_swing_tick == attacker.frozen.action_tick:
 		return
 	attacker.rejected_swing_tick = attacker.frozen.action_tick
-	rewind_rejects += 1
-	if attacker.peer != null:
-		attacker.peer.suspicion_score += 1
-		attacker.peer.rewind_rejects += 1
+	note_rewind_rejected(attacker)
 	var hit := Hit.new()
 	hit.attacker = attacker
 	hit.attack = attack
@@ -272,12 +311,22 @@ func _reject(attacker: Combatant, attack: AttackTicks, s: int, hits: Array[Hit])
 	hits.append(hit)
 
 
+## Zonas seguras de la zona (nunca null).
+func get_safe_areas() -> SafeAreas:
+	return _safe_areas
+
+
+## Historial de posiciones que usa el resolutor.
+func get_history() -> StateHistory:
+	return _history
+
+
 # Candidato por reglas: hostil, vivo, sin protección y sin zona segura de por medio (un atacante con
 # ignores_safe_area no queda frenado por la de su propio reino).
 func _is_candidate(attacker: Combatant, victim: Combatant, s: int) -> bool:
 	if victim.is_dead() or victim.is_protected(s):
 		return false
-	if not _is_hostile(attacker.get_realm(), victim.get_realm()):
+	if not is_hostile(attacker.get_realm(), victim.get_realm()):
 		return false
 	if _safe_areas.contains_own(victim.get_realm(), victim.frozen.position):
 		return false
@@ -288,8 +337,8 @@ func _is_candidate(attacker: Combatant, victim: Combatant, s: int) -> bool:
 	return true
 
 
-# [method FactionRules.can_damage] de la zona, con caché por pareja de bandos (la zona no cambia).
-func _is_hostile(attacker_realm: int, victim_realm: int) -> bool:
+## [method FactionRules.can_damage] de la zona, con caché por pareja de bandos (la zona no cambia).
+func is_hostile(attacker_realm: int, victim_realm: int) -> bool:
 	var key: int = attacker_realm * 16 + victim_realm
 	if not _hostile_cache.has(key):
 		_hostile_cache[key] = FactionRules.can_damage(attacker_realm, victim_realm, _zone_id)
@@ -332,7 +381,7 @@ func _test(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_tic
 func _defense(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_tick: float,
 		defense_tick: float, s: int, sample: StateHistory.Sample, rules: CombatRules, hit: Hit) -> int:
 	var old_tick: float = minf(view_tick, defense_tick)
-	if _was_invulnerable(victim, old_tick, s):
+	if was_invulnerable(victim, old_tick, s):
 		return Outcome.INVULNERABLE
 	var victim_frame: Combatant.Frozen = victim.frozen
 	var weapon: WeaponTicks = CombatCatalog.weapon(victim_frame.weapon_id)
@@ -348,7 +397,7 @@ func _defense(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_
 	if old_tick < view_tick:
 		old_sample = _sample(victim, old_tick, s)
 	var old_counts: bool = old_sample != null and old_tick < float(s) \
-			and not _dropped_guard_after(victim_frame, old_tick)
+			and not dropped_guard_after(victim_frame, old_tick)
 	# Parada (solo contra golpes cuerpo a cuerpo: todos los que prueba este resolutor).
 	if _defends(victim_frame, old_sample, old_counts, ActionMachine.DEFENSE_PARRY, cone,
 			attacker_position):
@@ -358,18 +407,20 @@ func _defense(attacker: Combatant, victim: Combatant, attack: AttackTicks, view_
 	if not DamageFormula.is_physical(attack.damage_type):
 		return Outcome.IMPACT
 	var wide_cone: float = rules.ability_block_angle_deg
-	if _blocks(victim_frame, victim_frame.defense, cone, wide_cone, attacker_position):
+	if blocks_sample(victim_frame, victim_frame.defense, cone, wide_cone, attacker_position):
 		hit.wide_block = (victim_frame.defense & ActionMachine.DEFENSE_WIDE_BLOCK) != 0
 		return Outcome.BLOCKED
-	if old_counts and _blocks(old_sample, old_sample.flags, cone, wide_cone, attacker_position):
+	if old_counts and blocks_sample(old_sample, old_sample.flags, cone, wide_cone, attacker_position):
 		hit.wide_block = (old_sample.flags & ActionMachine.DEFENSE_WIDE_BLOCK) != 0
 		return Outcome.BLOCKED
 	return Outcome.IMPACT
 
 
-# true si la muestra [param sample] (con sus banderas [param flags]) bloquea al atacante: bloqueando y
-# con el atacante en su cono, el del arma ([param cone]) o, con el bloqueo ancho, [param wide_cone].
-static func _blocks(sample: StateHistory.Sample, flags: int, cone: float, wide_cone: float,
+## true si la muestra [param sample] (con sus banderas [param flags]) bloquea al atacante que está en
+## [param attacker_position]: bloqueando y con el atacante en su cono, el del arma ([param cone]) o, con
+## el bloqueo ancho, [param wide_cone]. Un proyectil pasa como atacante un punto detrás de la víctima en
+## la dirección de la que viene.
+static func blocks_sample(sample: StateHistory.Sample, flags: int, cone: float, wide_cone: float,
 		attacker_position: Vector3) -> bool:
 	if (flags & ActionMachine.DEFENSE_BLOCKING) == 0:
 		return false
@@ -388,20 +439,21 @@ func _defends(victim_frame: Combatant.Frozen, sample: StateHistory.Sample, old_c
 			sample.yaw, attacker_position, cone)
 
 
-# true si la muestra de view_tick ya no cuenta (docs/habilidades.md, sección 4.2): la acción congelada del
-# defensor no es BLOCK y empezó después de view_tick, sea NONE o no. Un ataque, una carga, una esquiva,
-# una habilidad, beber, levantar o un control (tambaleo, aturdimiento, muerte) bajan el escudo; y
-# también volver a NONE desde ellos, porque NONE conserva el action_tick de lo que acaba (_to_none,
-# impose_interrupt). Soltar el escudo sin más (NONE con el action_tick del bloqueo) o seguir bloqueando
-# no cuenta: ahí la muestra de view_tick sigue siendo lo que el atacante veía.
-static func _dropped_guard_after(victim_frame: Combatant.Frozen, view_tick: float) -> bool:
+## true si la muestra de view_tick ya no cuenta (docs/habilidades.md, sección 4.2): la acción congelada del
+## defensor no es BLOCK y empezó después de view_tick, sea NONE o no. Un ataque, una carga, una esquiva,
+## una habilidad, beber, levantar o un control (tambaleo, aturdimiento, muerte) bajan el escudo; y
+## también volver a NONE desde ellos, porque NONE conserva el action_tick de lo que acaba (_to_none,
+## impose_interrupt). Soltar el escudo sin más (NONE con el action_tick del bloqueo) o seguir bloqueando
+## no cuenta: ahí la muestra de view_tick sigue siendo lo que el atacante veía.
+static func dropped_guard_after(victim_frame: Combatant.Frozen, view_tick: float) -> bool:
 	if float(victim_frame.action_tick) <= view_tick:
 		return false
 	return victim_frame.action != CombatState.Action.BLOCK
 
 
-# true si el objetivo fue invulnerable en algún tick de [floor(view_tick), s].
-func _was_invulnerable(victim: Combatant, view_tick: float, s: int) -> bool:
+## true si el objetivo fue invulnerable en algún tick de [code][floor(view_tick), s][/code] (la muestra
+## congelada de [code]s[/code] y el historial).
+func was_invulnerable(victim: Combatant, view_tick: float, s: int) -> bool:
 	if (victim.frozen.defense & ActionMachine.DEFENSE_INVULNERABLE) != 0:
 		return true
 	for tick: int in range(floori(view_tick), s):

@@ -1,7 +1,8 @@
 extends TestCase
 ## Pruebas del historial de posiciones para la compensación de latencia ([StateHistory], docs/red.md
 ## sección 10): muestras exactas y fraccionarias, sobrescritura del anillo de 64 ticks,
-## teletransporte y [method StateHistory.forget].
+## teletransporte y [method StateHistory.forget]; y, para los proyectiles (docs/habilidades.md, sección 4.4),
+## [method StateHistory.position_at] y las cajas barridas por bloques.
 
 const GROUNDED: int = EntityRecord.FLAG_GROUNDED
 
@@ -277,3 +278,59 @@ func test_get_flags_returns_exact_flags_or_minus_one() -> void:
 	assert_eq(history.get_flags(3, 10), -1, "sobrescrito por el anillo")
 	var sample: StateHistory.Sample = history.sample(3, 11.0)
 	assert_true((sample.flags & ActionMachine.DEFENSE_INVULNERABLE) != 0, "sample también las devuelve")
+
+
+# --- Proyectiles: posición de un tick y cajas barridas ----------------------------------------
+
+func test_position_at_reads_an_exact_tick_or_infinity() -> void:
+	var history := StateHistory.new()
+	history.add_entity(4)
+	for tick: int in range(100, 110):
+		history.record(tick, 4, _path(tick), 0.0, _flags(0))
+	assert_eq(history.position_at(4, 105), _path(105), "el tick exacto")
+	assert_eq(history.position_at(4, 110), Vector3.INF, "un tick sin grabar")
+	assert_eq(history.position_at(4, 99), Vector3.INF, "uno anterior")
+	assert_eq(history.position_at(4, -1), Vector3.INF, "uno negativo")
+	assert_eq(history.position_at(5, 105), Vector3.INF, "una entidad sin pista")
+	history.record(105 + StateHistory.LENGTH_TICKS, 4, Vector3.ONE, 0.0, _flags(0))
+	assert_eq(history.position_at(4, 105), Vector3.INF, "sobrescrito por el anillo")
+	var sample: StateHistory.Sample = history.sample(4, 106.0)
+	assert_eq(history.position_at(4, 106), sample.position, "lo mismo que sample en un tick entero")
+
+
+func test_the_swept_box_covers_the_last_25_recorded_ticks() -> void:
+	var history := StateHistory.new()
+	history.add_entity(2)
+	assert_true(history.swept_box(2).size.x < 0.0, "sin nada grabado, una caja vacía")
+	assert_true(history.swept_box(9).size.x < 0.0, "ni pista")
+	# Una trayectoria que va y viene en x y sube en z: cada tick en un sitio distinto.
+	var position_of: Callable = func(tick: int) -> Vector3:
+		return Vector3(sin(float(tick) * 0.7) * 5.0, float(tick % 3), float(tick) * 0.25)
+	for last: int in range(200, 260):
+		history.record(last, 2, position_of.call(last), 0.0, _flags(0))
+		var box: AABB = history.swept_box(2)
+		# Lo que el rebobinado de los proyectiles puede pedir en el tick siguiente (s = last + 1): de s − 24 a
+		# s − 1, más un tick de margen.
+		for tick: int in range(last - 24, last + 1):
+			if tick < 200:
+				continue
+			var point: Vector3 = position_of.call(tick)
+			assert_true(box.grow(1e-4).has_point(point), "la caja tras %d cubre el tick %d" % [last, tick])
+	# Y no se queda con lo de hace más de 4 bloques: un punto muy lejano olvidado.
+	history.record(300, 2, Vector3(1000.0, 0.0, 0.0), 0.0, _flags(0))
+	for tick: int in range(301, 301 + 4 * StateHistory.SWEPT_BLOCK_TICKS):
+		history.record(tick, 2, Vector3.ZERO, 0.0, _flags(0))
+	assert_eq(history.swept_box(2), AABB(Vector3.ZERO, Vector3.ZERO), "lo de hace más de 4 bloques no cuenta")
+
+
+func test_the_swept_box_is_cheap_to_keep_and_survives_a_gap() -> void:
+	var history := StateHistory.new()
+	history.add_entity(1)
+	history.record(16, 1, Vector3(1.0, 0.0, 0.0), 0.0, _flags(0))
+	history.record(17, 1, Vector3(2.0, 0.0, 0.0), 0.0, _flags(0))
+	assert_eq(history.swept_box(1), AABB(Vector3(1.0, 0.0, 0.0), Vector3(1.0, 0.0, 0.0)), "dos puntos")
+	# Un hueco de más de 4 bloques: los bloques viejos ya no cuentan aunque sigan en sus huecos.
+	history.record(17 + 5 * StateHistory.SWEPT_BLOCK_TICKS, 1, Vector3(-3.0, 1.0, 0.0), 0.0, _flags(0))
+	assert_eq(history.swept_box(1), AABB(Vector3(-3.0, 1.0, 0.0), Vector3.ZERO), "solo el bloque nuevo")
+	history.add_entity(1)
+	assert_true(history.swept_box(1).size.x < 0.0, "add_entity la vacía")

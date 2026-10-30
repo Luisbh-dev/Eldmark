@@ -142,9 +142,9 @@ dueño (con un fuerte neutral, `D` es falso).
    `ZoneServer`.
 
 Las habilidades lo completan ([habilidades.md 4.1](habilidades.md#41-orden-del-tick-completa-fuertemd-17),
-paquete H3a): tras congelar, los efectos propios (y, con H3b, los disparos) de quien está en su
-compromiso; resolver y aplicar incluyen los golpes de las habilidades, los efectos al objetivo y las
-interrupciones; después, los pulsos y caducidades de los efectos de estado y (H3c) el derribado, antes
+paquete H3a): tras congelar, los disparos (H3b) y los efectos propios de quien está en su
+compromiso; resolver incluye el vuelo de los proyectiles (H3b), y aplicar, los golpes de las habilidades y
+de las flechas, los efectos al objetivo y las interrupciones; después, los pulsos y caducidades de los efectos de estado y (H3c) el derribado, antes
 del entorno y las reapariciones. Todo dentro de `CombatDirector.process_tick`, antes de 4b.
 
 ---

@@ -416,6 +416,10 @@ Para cada atacante en golpe activo en `s`:
      REVIVE soltado (empezados después de `view_tick`) ya no. El muro de escudos (bit 7 del historial,
      `DEFENSE_WIDE_BLOCK`) bloquea con el cono de `ability_block_angle_deg` en la muestra que lo
      lleve.
+     **Proyectiles** ([habilidades.md 4.4](habilidades.md#44-proyectiles-projectilesystem-scriptsserverprojectile_systemgd),
+     paquete H3b): el rebobinado del paso 2 sale de `CombatResolver.compute_rewind` (factorizado de
+     `_swing_rewind`), se redondea a ticks enteros y se fija una vez por disparo para todo el vuelo; las
+     defensas son las de aquí sin parada, con el cono frente a la dirección de la que viene la flecha.
    - Si nada aplica: **impacto**.
 
 `StateHistory` añade a sus banderas por tick: bit 3 bloqueando, bit 4 ventana de parada, bit 5

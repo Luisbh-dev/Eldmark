@@ -9,13 +9,17 @@ extends RefCounted
 ## [codeblock]
 ## 2 congelar    la muestra del tick actual de cada entidad (Combatant.freeze): posición, giro, defensa,
 ##               acción, golpe activo (ataque o habilidad), compromiso y caja del muro
-## 3 propios     quien está en su compromiso, por net_id: efecto propio (self_status) y curación propia
-##               (HEAL) de su habilidad; los proyectiles nuevos son de H3b
+## 3 propios     quien está en su compromiso, por net_id: los proyectiles nuevos de su ataque o su
+##               habilidad (ProjectileSystem.fire, con su SPAWN), el efecto propio (self_status) y la
+##               curación propia (HEAL) de su habilidad
 ## 4 resolver    CombatResolver.resolve: todos los golpes de ataques y habilidades del tick contra lo
-##               congelado y el historial, y las puertas (el vuelo de los proyectiles, H3b)
-## 5 aplicar     por net_id del atacante y del objetivo: daño (con los modificadores de los efectos),
-##               gasto de resistencia del bloqueo (el del muro es el de las reglas), controles (con cadena
-##               e inmunidad), efectos al objetivo, interrupciones, paradas y muertes, con sus eventos
+##               congelado y el historial, y las puertas; ProjectileSystem.resolve: el vuelo de todos los
+##               proyectiles vivos (también los del paso 3) contra el mundo, las puertas, los muros de
+##               escudos y los personajes rebobinados, con los DESPAWN de los que acaban
+## 5 aplicar     por net_id del atacante (primero sus golpes, después sus proyectiles por id) y del
+##               objetivo: daño (con los modificadores de los efectos), gasto de resistencia del bloqueo (el
+##               del muro es el de las reglas), controles (con cadena e inmunidad), efectos al objetivo,
+##               interrupciones, paradas y muertes, con sus eventos
 ## 6 efectos     StatusSystem.step: pulsos (reunidos antes de aplicarlos) y caducidades
 ## 7 derribado   (H3c)
 ## 8 entorno     volúmenes letales, daño por caída, muerte bajo y = -100; reapariciones pedidas
@@ -50,6 +54,9 @@ enum RespawnRequestResult {
 const VOID_LIMIT_Y: float = -100.0
 ## Sección de [ServerMetrics] de la resolución de los golpes (forma, línea de visión y rebobinado).
 const SECTION_RESOLVE: StringName = &"combat_resolve"
+## Sección de [ServerMetrics] de los proyectiles: disparos (paso 3) y vuelo (paso 4); la reserva es de 1 ms
+## con 64 jugadores (docs/habilidades.md, sección 8).
+const SECTION_PROJECTILES: StringName = &"combat_projectiles"
 ## Bits de [member NetMessages.EntityEvent.hit_flags] que da el director.
 const _HIT_CRITICAL: int = NetMessages.EntityEvent.HIT_FLAG_CRITICAL
 const _HIT_BLOCKED: int = NetMessages.EntityEvent.HIT_FLAG_BLOCKED
@@ -64,6 +71,10 @@ var resolver: CombatResolver
 ## Efectos de estado de la zona (docs/habilidades.md, sección 4.3): sus eventos salen por
 ## [signal event_emitted] y sus pulsos de daño los aplica el director.
 var status: StatusSystem = StatusSystem.new()
+## Proyectiles de la zona (docs/habilidades.md, sección 4.4): sus altas y bajas salen por sus señales
+## [signal ProjectileSystem.spawned] y [signal ProjectileSystem.despawned]; sus golpes los aplica el
+## director.
+var projectiles: ProjectileSystem
 ## Archivo del registro de combate ([code]--combat-log[/code]); null = ninguno.
 var combat_log: FileAccess = null
 ## Medidas del servidor (null = sin medir): el paso de combate mide aparte la resolución de los golpes
@@ -75,7 +86,8 @@ var stats: Dictionary[StringName, int] = {
 	&"criticals": 0, &"rewind_rejected": 0, &"damage": 0, &"deaths": 0, &"kills": 0,
 	&"respawns": 0, &"falls": 0, &"lethal_volumes": 0, &"voids": 0, &"events": 0,
 	&"hit_tests": 0, &"resolve_us": 0, &"resolve_busy_ticks": 0, &"gate_hits": 0, &"gate_damage": 0,
-	&"interrupts": 0, &"pulse_hits": 0, &"heals": 0,
+	&"interrupts": 0, &"pulse_hits": 0, &"heals": 0, &"arrow_hits": 0, &"arrow_blocked": 0,
+	&"wall_blocked": 0, &"projectile_us": 0, &"projectile_busy_ticks": 0,
 }
 ## [code]() -> Dictionary[/code]: los [FortressState] vivos por id de fortaleza, para decidir qué puntos
 ## de reaparición valen ([method RespawnRules.points_for]). Sin esto no hay fortalezas.
@@ -109,6 +121,8 @@ func _init(history: StateHistory, zone_id: StringName, world: Node3D, safe_areas
 	_place = place
 	_pick_spawn = pick_spawn
 	resolver = CombatResolver.new(history, zone_id, safe_areas)
+	projectiles = ProjectileSystem.new(history, resolver)
+	projectiles.status = status
 	status.event_emitted.connect(_emit)
 	status.pulse_damage.connect(_apply_pulse)
 
@@ -132,14 +146,15 @@ func add(entity: NetEntity, queue: InputQueue, peer: ServerPeer) -> Combatant:
 
 
 ## Da de baja a [param net_id] en el tick [param tick] y borra su rastro de los registros de daño de los
-## demás (su id puede reutilizarse). Los efectos que puso a otros se quitan con STATUS 2 en ese tick
-## (docs/habilidades.md, sección 4.1); sus flechas en el aire, con H3b.
+## demás (su id puede reutilizarse). Sus flechas en el aire salen con DESPAWN 5 y los efectos que puso a
+## otros se quitan con STATUS 2, en ese tick (docs/habilidades.md, sección 4.1).
 func remove(net_id: int, tick: int) -> void:
 	var leaving: Combatant = _combatants.get(net_id)
 	if leaving == null:
 		return
 	_combatants.erase(net_id)
 	_sorted_dirty = true
+	projectiles.forget_owner(net_id, tick)
 	leaving.effects.clear()
 	status.forget_author(net_id, tick, get_sorted())
 	for other: Combatant in _combatants.values():
@@ -150,6 +165,7 @@ func remove(net_id: int, tick: int) -> void:
 
 ## Da de baja a todos (cierre del servidor).
 func clear() -> void:
+	projectiles.clear()
 	_combatants.clear()
 	_sorted.clear()
 	_sorted_dirty = false
@@ -194,10 +210,11 @@ func process_tick(s: int, space: PhysicsDirectSpaceState3D) -> void:
 		_count_swing(combatant)
 		if combatant.frozen.commit:
 			committing.append(combatant)
-	# Paso 3: disparos y efectos propios de quien está en su compromiso (los proyectiles, H3b).
+	projectiles.begin_tick(s, list)
+	# Paso 3: disparos y efectos propios de quien está en su compromiso.
 	if not committing.is_empty():
-		_process_commits(s, committing)
-	# Paso 4: resolver (el vuelo de los proyectiles, H3b).
+		_process_commits(s, committing, space)
+	# Paso 4: resolver los golpes y el vuelo de los proyectiles.
 	if metrics != null:
 		metrics.begin_section(SECTION_RESOLVE)
 	var tests_before: int = resolver.tests
@@ -210,7 +227,18 @@ func process_tick(s: int, space: PhysicsDirectSpaceState3D) -> void:
 	if metrics != null:
 		metrics.end_section(SECTION_RESOLVE)
 	stats[&"hit_tests"] = resolver.tests
-	# Paso 5: aplicar, por net_id del atacante y del objetivo.
+	if projectiles.live_count() > 0 or projectiles.has_pending():
+		if metrics != null:
+			metrics.begin_section(SECTION_PROJECTILES)
+		var flight_started: int = Time.get_ticks_usec()
+		var arrow_hits: Array[CombatResolver.Hit] = projectiles.resolve(s, list, space)
+		stats[&"projectile_us"] += Time.get_ticks_usec() - flight_started
+		stats[&"projectile_busy_ticks"] += 1
+		if metrics != null:
+			metrics.end_section(SECTION_PROJECTILES)
+		hits = ProjectileSystem.merge_by_attacker(hits, arrow_hits)
+	# Paso 5: aplicar, por net_id del atacante (primero sus golpes, después sus proyectiles por id) y del
+	# objetivo.
 	for hit: CombatResolver.Hit in hits:
 		_apply_hit(hit, s)
 	# Paso 6: efectos de estado (pulsos y caducidades).
@@ -352,7 +380,7 @@ func _apply_hit(hit: CombatResolver.Hit, s: int) -> void:
 	if victim.is_dead():
 		# Murió antes en este mismo tick (otro golpe simultáneo): su turno ya pasó.
 		return
-	_note_landed(attacker)
+	_note_landed(hit)
 	attacker.mark_combat(s)
 	victim.mark_combat(s)
 	if hit.outcome == CombatResolver.Outcome.PARRIED:
@@ -374,7 +402,7 @@ func _apply_structure_hit(hit: CombatResolver.Hit, s: int) -> void:
 		return
 	var rules: CombatRules = CombatCatalog.rules()
 	var result: DamageFormula.Result = DamageFormula.compute(attack.base_damage,
-			attacker.frozen.charge_ticks, attack.charge_min_ticks, attack.charge_max_ticks,
+			_charge_of(hit), attack.charge_min_ticks, attack.charge_max_ticks,
 			attack.charge_damage_scale, false, false, 0.0, 0.0, 0, 0, rules.crit_multiplier)
 	var scaled: int = roundi(float(result.damage) * rules.structure_multiplier(attack.damage_type))
 	if result.damage > 0:
@@ -383,7 +411,7 @@ func _apply_structure_hit(hit: CombatResolver.Hit, s: int) -> void:
 	var applied: int = mini(scaled, health_before)
 	if applied <= 0:
 		return
-	_note_landed(attacker)
+	_note_landed(hit)
 	attacker.mark_combat(s)
 	stats[&"gate_hits"] += 1
 	stats[&"gate_damage"] += applied
@@ -410,7 +438,9 @@ func _apply_parry(hit: CombatResolver.Hit, s: int) -> void:
 
 
 # Impacto, con o sin bloqueo. El golpe de una habilidad ([member AbilityTicks.hit]) sigue el mismo
-# camino que un ataque (docs/habilidades.md, sección 4.2): su id es la fuente de la habilidad.
+# camino que un ataque (docs/habilidades.md, sección 4.2): su id es la fuente de la habilidad. El de un
+# proyectil (docs/habilidades.md, sección 4.4) también, con la carga y el más daño que copió al salir; la
+# caja del muro de escudos lo bloquea por quien lo sostiene sin daño (mitigación 1) y con el gasto del muro.
 func _apply_impact(hit: CombatResolver.Hit, s: int) -> void:
 	var attacker: Combatant = hit.attacker
 	var victim: Combatant = hit.victim
@@ -422,15 +452,17 @@ func _apply_impact(hit: CombatResolver.Hit, s: int) -> void:
 	var mitigation: float = 0.0
 	var stamina_per_damage: float = 0.0
 	if blocked:
-		mitigation = weapon.block_mitigation if weapon != null else 1.0
+		mitigation = 1.0 if hit.wall or weapon == null else weapon.block_mitigation
 		# El muro de escudos gasta lo de las reglas, no lo del arma.
-		stamina_per_damage = rules.ability_block_stamina_per_damage if hit.wide_block \
+		stamina_per_damage = rules.ability_block_stamina_per_damage if hit.wide_block or weapon == null \
 				else weapon.block_stamina_per_damage
+	var scale: float = hit.projectile.damage_scale if hit.projectile != null \
+			else status.damage_scale(attacker)
 	var result: DamageFormula.Result = DamageFormula.compute(attack.base_damage,
-			attacker.frozen.charge_ticks, attack.charge_min_ticks, attack.charge_max_ticks,
+			_charge_of(hit), attack.charge_min_ticks, attack.charge_max_ticks,
 			attack.charge_damage_scale, hit.critical, blocked, mitigation, stamina_per_damage,
 			victim_character.combat.stamina, 0, rules.crit_multiplier,
-			status.damage_scale(attacker), status.mitigation_penalty(victim))
+			scale, status.mitigation_penalty(victim))
 	var applied: int = victim.take_damage(result.damage, s)
 	victim.ledger.record(s, attacker.get_id(), applied)
 	victim.note_enemy_hit(attacker.get_id(), attack.id, s)
@@ -468,8 +500,7 @@ func _apply_impact(hit: CombatResolver.Hit, s: int) -> void:
 		changed = true
 	_emit(NetMessages.EntityEvent.hit(victim.get_id(), s, attacker.get_id(), amount,
 			attack.damage_type, flags, attack.id), _ids([victim.get_id(), attacker.get_id()]))
-	_log_hit(s, hit, "guard_break" if (flags & _HIT_GUARD_BREAK) != 0
-			else ("blocked" if blocked else "hit"), amount)
+	_log_hit(s, hit, _impact_result(hit, blocked, flags), amount)
 	if lethal:
 		_die(victim, s, attacker.get_id(), attack.id)
 		return
@@ -498,6 +529,9 @@ func _apply_hit_controls(hit: CombatResolver.Hit, s: int) -> bool:
 		return true
 	var away := Vector2(victim.frozen.position.x - hit.attacker.frozen.position.x,
 			victim.frozen.position.z - hit.attacker.frozen.position.z)
+	if hit.projectile != null:
+		# El de un proyectil empuja hacia donde vuela.
+		away = Vector2(hit.direction.x, hit.direction.z)
 	var knockback := Vector2.ZERO
 	if attack.knockback_speed > 0.0 and away.length() > 0.0001:
 		knockback = away.normalized() * attack.knockback_speed
@@ -533,23 +567,43 @@ static func is_interruptible(combat: CombatState, tick: int) -> bool:
 
 # --- Efectos de estado ------------------------------------------------------------------------
 
-# Paso 3, sobre quien está en su compromiso ([param list], por net_id): el de una habilidad (el primer
-# tick activo) se pone su efecto propio ([member AbilityTicks.self_status_id], la curación de la poción) y
-# se cura [member AbilityTicks.self_heal]. Una vez: el compromiso cae en un solo tick.
-func _process_commits(s: int, list: Array[Combatant]) -> void:
+# Paso 3, sobre quien está en su compromiso ([param list], por net_id): un ataque o una habilidad con
+# proyectil dispara (docs/habilidades.md, sección 4.4: [method ProjectileSystem.fire] contra [param space]),
+# y el de una habilidad (el primer tick activo) se pone su efecto propio
+# ([member AbilityTicks.self_status_id], la curación de la poción) y se cura [member AbilityTicks.self_heal].
+# Una vez: el compromiso cae en un solo tick.
+func _process_commits(s: int, list: Array[Combatant], space: PhysicsDirectSpaceState3D) -> void:
 	for combatant: Combatant in list:
 		var frame: Combatant.Frozen = combatant.frozen
-		if not frame.commit or frame.action != CombatState.Action.ABILITY or combatant.is_dead():
+		if not frame.commit or combatant.is_dead():
+			continue
+		if frame.action != CombatState.Action.ABILITY:
+			# LIGHT o HEAVY: su golpe activo en el compromiso es el propio ataque.
+			if frame.hit != null and frame.hit.projectile_id != 0:
+				_fire(combatant, frame.hit.id, s, space)
 			continue
 		var ability: AbilityTicks = CombatCatalog.ability(frame.action_id)
 		if ability == null:
 			continue
+		if ability.projectile_id != 0:
+			_fire(combatant, ability.hit.id, s, space)
 		if ability.self_status_id != 0:
 			status.apply(combatant, ability.self_status_id, combatant.get_id(), s)
 		if ability.self_heal > 0:
 			if status.heal(combatant, combatant.get_id(), ability.self_heal,
 					CombatSource.make(CombatSource.Kind.ABILITY, ability.id), s) > 0:
 				stats[&"heals"] += 1
+
+
+# Los proyectiles de la fuente [param source] de [param shooter], medidos en la sección de proyectiles.
+func _fire(shooter: Combatant, source: int, s: int, space: PhysicsDirectSpaceState3D) -> void:
+	if metrics != null:
+		metrics.begin_section(SECTION_PROJECTILES)
+	var started: int = Time.get_ticks_usec()
+	projectiles.fire(shooter, source, s, space)
+	stats[&"projectile_us"] += Time.get_ticks_usec() - started
+	if metrics != null:
+		metrics.end_section(SECTION_PROJECTILES)
 
 
 # Un pulso de daño en el tiempo ([signal StatusSystem.pulse_damage]): HIT con la fuente del efecto y el
@@ -765,12 +819,41 @@ func _count_swing(combatant: Combatant) -> void:
 				combatant.peer.swings += 1
 
 
-# Un ataque (o su carga) ha acertado, fallado o sido parado: cuenta como acierto del peer una vez
-# por ataque.
-func _note_landed(attacker: Combatant) -> void:
+# Un golpe ha acertado, ha sido bloqueado o parado: cuenta como acierto del peer una vez por ataque (los
+# proyectiles, una vez por disparo: los de un abanico comparten su [ProjectileSystem.Shot]).
+func _note_landed(hit: CombatResolver.Hit) -> void:
+	var attacker: Combatant = hit.attacker
+	if hit.projectile != null:
+		if attacker.peer != null and not hit.projectile.shot.landed:
+			attacker.peer.swings_landed += 1
+		hit.projectile.shot.landed = true
+		return
 	if attacker.peer != null and not attacker.swing_landed:
 		attacker.peer.swings_landed += 1
 	attacker.swing_landed = true
+
+
+# Carga con la que se lanzó el golpe: la que copió el proyectil al salir o la del ataque en curso.
+static func _charge_of(hit: CombatResolver.Hit) -> int:
+	return hit.projectile.charge_ticks if hit.projectile != null else hit.attacker.frozen.charge_ticks
+
+
+# Resultado del registro de combate de un impacto o un bloqueo: los de los proyectiles (docs/habilidades.md,
+# sección 4.7) son arrow_hit, arrow_blocked y wall_blocked; los cuerpo a cuerpo, hit, blocked y
+# guard_break. Cuenta los de los proyectiles.
+func _impact_result(hit: CombatResolver.Hit, blocked: bool, flags: int) -> String:
+	if hit.projectile != null:
+		if hit.wall:
+			stats[&"wall_blocked"] += 1
+			return "wall_blocked"
+		if blocked:
+			stats[&"arrow_blocked"] += 1
+			return "arrow_blocked"
+		stats[&"arrow_hits"] += 1
+		return "arrow_hit"
+	if (flags & _HIT_GUARD_BREAK) != 0:
+		return "guard_break"
+	return "blocked" if blocked else "hit"
 
 
 # Lo que quita la protección de reaparición: un ataque (o su carga) y una habilidad que no sea un

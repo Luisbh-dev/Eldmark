@@ -21,12 +21,13 @@ extends Node
 ## simular          todas las entidades con cuerpo (jugadores, falsos y PNJ) por net_id ascendente,
 ##                  con la entrada de InputQueue.take(s); _check_motion
 ## combate          CombatDirector.process_tick(), pasos 2 a 9 de docs/habilidades.md, sección 4.1:
-##                  congelar (golpe activo, compromiso y muro de cada uno), efectos propios de quien
-##                  compromete una habilidad (los proyectiles nuevos, H3b), resolver los golpes de
-##                  ataques y habilidades (también contra las puertas de los fuertes), aplicar (daño,
-##                  bloqueo, controles, efectos al objetivo, interrupciones, muertes), efectos de estado
-##                  (pulsos y caducidades), el derribado (H3c), entorno (caída, volúmenes letales,
-##                  y < -100), reapariciones y publicar la vida; los ENTITY_EVENT salen aquí
+##                  congelar (golpe activo, compromiso y muro de cada uno), disparos y efectos propios
+##                  de quien compromete un ataque o una habilidad, resolver los golpes de ataques y
+##                  habilidades (también contra las puertas de los fuertes) y el vuelo de los
+##                  proyectiles, aplicar (daño, bloqueo, controles, efectos al objetivo, interrupciones,
+##                  muertes), efectos de estado (pulsos y caducidades), el derribado (H3c), entorno
+##                  (caída, volúmenes letales, y < -100), reapariciones y publicar la vida; los
+##                  ENTITY_EVENT y los ENTITY_SPAWN y ENTITY_DESPAWN de los proyectiles salen aquí
 ## fuertes          FortressController.step() (paso 4b): presencia en el círculo, avance del estado de
 ##                  cada fortaleza, capas de la puerta (valen desde s + 1), avisos WAR y OBJECT_STATE;
 ##                  /atascado; cuerpos que se quedan tras una baja en combate
@@ -118,7 +119,7 @@ const HELLO_CHECK_TICKS: int = 10
 const STOP_DRAIN_TICKS: int = 30
 ## Secciones del tick que aparecen en la línea de métricas (las mismas que mide el bucle).
 const LOGGED_SECTIONS: Array[StringName] = [&"net", &"npc_brains", &"sim", &"combat", &"combat_resolve",
-		&"combat_events", &"war", &"npc", &"social", &"history", &"snapshot", &"flush"]
+		&"combat_projectiles", &"combat_events", &"war", &"npc", &"social", &"history", &"snapshot", &"flush"]
 ## Secciones de [ServerMetrics] de los PNJ: los cerebros (paso 0) y el sistema de generadores.
 const SECTION_NPC_BRAINS: StringName = &"npc_brains"
 const SECTION_NPC: StringName = &"npc"
@@ -254,6 +255,11 @@ var _shutdown_tick: int = -1
 var _shutdown_announced: Dictionary[int, bool] = {}
 var _events_sent: int = 0
 var _event_bytes_sent: int = 0
+# Proyectiles (docs/habilidades.md, sección 4.4): los peers que recibieron el ENTITY_SPAWN de cada uno (los
+# mismos reciben su ENTITY_DESPAWN) y lo enviado.
+var _projectile_viewers: Dictionary[int, PackedInt32Array] = {}
+var _projectile_messages_sent: int = 0
+var _projectile_bytes_sent: int = 0
 var _dummies_created: int = 0
 # Caché de objetivos de los bots de combate: tick de la última vez, posiciones e ids por reino, y qué
 # reinos son hostiles entre sí.
@@ -497,6 +503,11 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 			Callable(self, "_place"), Callable(self, "_pick_spawn_point"))
 	_combat.event_emitted.connect(_on_combat_event)
 	_combat.metrics = _metrics
+	# Los proyectiles toman su id del espacio de las entidades (con su cuarentena).
+	_combat.projectiles.registry = _registry
+	_combat.projectiles.spawned.connect(_on_projectile_spawned)
+	_combat.projectiles.despawned.connect(_on_projectile_despawned)
+	_projectile_viewers.clear()
 	_war_fortresses_at_stop = []
 	_setup_fortresses(world)
 	_setup_npcs(world)
@@ -1460,6 +1471,7 @@ func _clear_players() -> void:
 		_fortresses.clear()
 	if _combat != null:
 		_combat.clear()
+	_projectile_viewers.clear()
 	_player_by_net.clear()
 	_substituted_now.clear()
 	for peer: ServerPeer in _peers.values():
@@ -1641,6 +1653,53 @@ func _on_combat_event(event: NetMessages.EntityEvent, involved: PackedInt32Array
 			_events_sent += 1
 			_event_bytes_sent += bytes.size()
 	_metrics.end_section(SECTION_COMBAT_EVENTS)
+
+
+# Alta de un proyectil (docs/habilidades.md, sección 4.4): ENTITY_SPAWN de kind 3 (canal fiable) al dueño del
+# tirador y a quien lo tenga relevante, en ese momento. Se apunta quién lo recibió para mandarle la baja.
+func _on_projectile_spawned(spawn: NetMessages.EntitySpawn, involved: PackedInt32Array) -> void:
+	if _transport == null or _world_peers.is_empty():
+		return
+	_metrics.begin_section(SECTION_COMBAT_EVENTS)
+	var bytes: PackedByteArray = spawn.encode()
+	var viewers := PackedInt32Array()
+	for peer: ServerPeer in _world_peers:
+		var receives: bool = involved.has(peer.entity.net_id)
+		if not receives:
+			for net_id: int in involved:
+				if peer.relevant.get(net_id, false):
+					receives = true
+					break
+		if receives:
+			_transport.send(peer.peer_id, NetProtocol.CH_RELIABLE, bytes)
+			viewers.append(peer.peer_id)
+			_projectile_messages_sent += 1
+			_projectile_bytes_sent += bytes.size()
+	if not viewers.is_empty():
+		_projectile_viewers[spawn.net_id] = viewers
+	_metrics.end_section(SECTION_COMBAT_EVENTS)
+
+
+# Baja de un proyectil: ENTITY_DESPAWN (motivo 4 impacto o 5 caducado) a los que recibieron su alta y siguen
+# en el mundo, aunque ya no tengan relevante al tirador.
+func _on_projectile_despawned(projectile_id: int, tick: int, reason: int,
+		_involved: PackedInt32Array) -> void:
+	var viewers: PackedInt32Array = _projectile_viewers.get(projectile_id, PackedInt32Array())
+	_projectile_viewers.erase(projectile_id)
+	if _transport == null or viewers.is_empty():
+		return
+	var despawn := NetMessages.EntityDespawn.new()
+	despawn.net_id = projectile_id
+	despawn.despawn_tick = tick
+	despawn.reason = reason
+	var bytes: PackedByteArray = despawn.encode()
+	for peer_id: int in viewers:
+		var peer: ServerPeer = _peers.get(peer_id)
+		if peer == null or peer.state != ServerPeer.State.IN_WORLD:
+			continue
+		_transport.send(peer_id, NetProtocol.CH_RELIABLE, bytes)
+		_projectile_messages_sent += 1
+		_projectile_bytes_sent += bytes.size()
 
 
 # Marcador y registro de batalla: una muerte suma una muerte a la víctima (si es un jugador) y queda en el
@@ -3111,6 +3170,12 @@ func _combat_report() -> Dictionary:
 		# Los efectos de estado (docs/habilidades.md, 4.3): aplicados, quitados, pulsos y vida curada.
 		for stat: StringName in _combat.status.stats:
 			report[String(stat)] = _combat.status.stats[stat]
+		# Los proyectiles (docs/habilidades.md, 4.4): disparos, impactos, bajas, criba y pico de vivos.
+		for stat: StringName in _combat.projectiles.stats:
+			report[String(stat)] = _combat.projectiles.stats[stat]
+		report["projectiles_live"] = _combat.projectiles.live_count()
+	report["projectile_messages_sent"] = _projectile_messages_sent
+	report["projectile_bytes_sent"] = _projectile_bytes_sent
 	report["events_sent"] = _events_sent
 	report["event_bytes_sent"] = _event_bytes_sent
 	report["dummies"] = get_dummy_count() if _combat != null else 0

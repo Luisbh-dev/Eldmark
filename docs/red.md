@@ -841,7 +841,10 @@ Payload según `kind`:
   **32 B** en total. `net_id` es el proyectil (del espacio de ids de `NetEntityRegistry`, sin ser una
   entidad), `realm` el del tirador, `spawn_tick` el tick del disparo y los flags de la cabecera van a 0
   (`is_yours` nunca: la flecha propia es la de `owner` igual a tu `net_id`). El cliente calcula el vuelo
-  con `Ballistics.position`; el snapshot no lleva registros de proyectiles.
+  con `Ballistics.position`; el snapshot no lleva registros de proyectiles. **Destinatarios** (H3b): el
+  SPAWN va al dueño del tirador y a quien lo tiene relevante en el tick del disparo; su DESPAWN (motivo 4
+  o 5), exactamente a quienes recibieron el SPAWN, aunque ya no tengan relevante al tirador. Quien empieza
+  a ver al tirador después no recibe las flechas que ya están en el aire (viven 2 s como mucho).
 
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
@@ -2632,6 +2635,9 @@ func release(net_id: int, now_tick: int) -> void
 func get_entity(net_id: int) -> NetEntity
 func get_sorted() -> Array[NetEntity]
 func size() -> int
+# v6 (habilidades.md 4.4, H3b): ids de los proyectiles, del mismo espacio y con la misma cuarentena
+func allocate_transient_id(now_tick: int) -> int    # 0 si no queda
+func release_transient_id(net_id: int, now_tick: int) -> void
 
 # spawn_picker.gd
 class_name SpawnPicker extends RefCounted
@@ -2661,6 +2667,9 @@ func forget(net_id: int) -> void
 func record(tick: int, net_id: int, position: Vector3, yaw: float, flags: int) -> void
 func has_tick(net_id: int, tick: int) -> bool
 func sample(net_id: int, tick: float) -> StateHistory.Sample     # null si está fuera de rango
+# v6 (habilidades.md 4.4, H3b): proyectiles
+func position_at(net_id: int, tick: int) -> Vector3     # Vector3.INF si no está; sin crear objetos
+func swept_box(net_id: int) -> AABB     # 4 bloques de 8 ticks hasta el último grabado; size.x < 0 sin nada
 
 # server_metrics.gd
 class_name ServerMetrics extends RefCounted
