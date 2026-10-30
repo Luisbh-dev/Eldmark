@@ -9,11 +9,14 @@ extends RefCounted
 ## propia captura (desde «captura iniciada»).
 ## [br]- [b]Puerta[/b]: los segundos entre el primer golpe a la puerta y su rotura.
 ## [br]- [b]Muertes por ruta[/b]: dónde han caído los jugadores, clasificados por posición como
-## [code]walkway[/code] (pasarela del fuerte, alta y dentro de su recinto), [code]gate[/code] (la explanada
+## [code]walkway[/code] (pasarela del fuerte y lo alto de sus rampas: a [constant WALKWAY_MIN_HEIGHT] m o más sobre el
+## círculo y a menos de [constant WALKWAY_RADIUS] de él, o, si las rutas conocen la pasarela, en su eje; GUE-45),
+## [code]gate[/code] (la explanada
 ## delante de la puerta y el patio: a menos de [constant GATE_RADIUS] del círculo; ahí acaban las dos rutas,
 ## así que sin esta clase todas las muertes del asalto saldrían como «vado»), [code]bridge[/code] (puente) o
 ## [code]ford[/code] (vado) por el camino; [code]other[/code] si no están cerca de ninguna ruta de
 ## [ApproachRoutes].
+## [br]- Las muertes de PNJ, por sitio con las mismas clases (los Huecos y la guarnición patrullan la pasarela).
 ## [br]- Los recuentos de avisos de guerra y de muertes por reino.
 
 ## Clave de las muertes en la pasarela del fuerte y en ningún sitio conocido.
@@ -29,6 +32,11 @@ const GATE_RADIUS: float = 25.0
 ## encima del suelo del círculo (m) tiene que estar.
 const WALKWAY_RADIUS: float = 30.0
 const WALKWAY_MIN_HEIGHT: float = 2.0
+## Con rutas que conocen la pasarela ([method ApproachRoutes.has_walkway]): una muerte a menos de esto (m) de su eje en
+## horizontal y a no más de [constant WALKWAY_LEVEL_MARGIN] por debajo de su suelo es de la pasarela, también lejos del
+## círculo (sus esquinas del fondo).
+const WALKWAY_BAND: float = 1.5
+const WALKWAY_LEVEL_MARGIN: float = 1.0
 ## Ticks por segundo de los datos.
 const TICK_RATE: int = 60
 
@@ -42,13 +50,14 @@ const TICK_RATE: int = 60
 ## captures      [{fortress, realm, ticks_from_cycle_start, seconds_from_cycle_start,
 ##                 seconds_from_captain_down, seconds_capturing}]
 ## gate_breaks   [{fortress, seconds}]
-## deaths        {players, npcs, by_route {ruta: jugadores muertos}, by_realm {reino: jugadores muertos}}
+## deaths        {players, npcs, by_route {ruta: jugadores muertos}, by_realm {reino: jugadores muertos},
+##                npcs_by_route {ruta: PNJ muertos}}
 ## [/codeblock]
 static func summarize(text: String, routes: ApproachRoutes = null) -> Dictionary:
 	var result: Dictionary = {
 		"zone": "", "ticks": 0, "duration_s": 0.0, "bad_lines": 0, "war_events": {},
 		"captures": [], "gate_breaks": [],
-		"deaths": {"players": 0, "npcs": 0, "by_route": {}, "by_realm": {}},
+		"deaths": {"players": 0, "npcs": 0, "by_route": {}, "by_realm": {}, "npcs_by_route": {}},
 	}
 	var fortresses: Dictionary = {}
 	# Estado por fortaleza: tick de inicio del ciclo, de la caída del capitán, de «captura iniciada»
@@ -88,6 +97,9 @@ static func classify_route(position: Array, fortress: Dictionary, routes: Approa
 		return OTHER
 	var point := Vector2(float(position[0]), float(position[2]))
 	var height: float = float(position[1])
+	if routes != null and routes.has_walkway() and height >= routes.walkway_height - WALKWAY_LEVEL_MARGIN \
+			and routes.walkway_distance(point) <= WALKWAY_BAND:
+		return WALKWAY
 	var circle: Array = fortress.get("circle", [])
 	if circle.size() >= 3:
 		var center := Vector2(float(circle[0]), float(circle[2]))
@@ -129,11 +141,18 @@ static func format(summary: Dictionary) -> String:
 				gate_break["seconds"]])
 	var deaths: Dictionary = summary["deaths"]
 	lines.append("Muertes: %d de jugadores y %d de PNJ" % [deaths["players"], deaths["npcs"]])
+	var labels: Dictionary = {"bridge": "puente", "ford": "vado", "gate": "explanada y patio", "walkway": "pasarela",
+			"other": "otros sitios"}
 	var by_route: Dictionary = deaths["by_route"]
 	for route: String in ["bridge", "ford", "gate", "walkway", "other"]:
-		var label: String = {"bridge": "puente", "ford": "vado", "gate": "explanada y patio",
-				"walkway": "pasarela", "other": "otros sitios"}[route]
-		lines.append("  %s: %d" % [label, int(by_route.get(route, 0))])
+		lines.append("  %s: %d" % [labels[route], int(by_route.get(route, 0))])
+	var npcs_by_route: Dictionary = deaths.get("npcs_by_route", {})
+	if not npcs_by_route.is_empty():
+		var npc_parts := PackedStringArray()
+		for route: String in ["bridge", "ford", "gate", "walkway", "other"]:
+			if npcs_by_route.has(route):
+				npc_parts.append("%s %d" % [labels[route], int(npcs_by_route[route])])
+		lines.append("  PNJ: %s" % ", ".join(npc_parts))
 	var war_events: Dictionary = summary["war_events"]
 	var names := PackedStringArray()
 	for key: String in war_events:
@@ -191,17 +210,19 @@ static func _note_war(result: Dictionary, cycles: Dictionary, entry: Dictionary,
 static func _note_death(result: Dictionary, entry: Dictionary, fortresses: Dictionary,
 		routes: ApproachRoutes) -> void:
 	var deaths: Dictionary = result["deaths"]
+	var fortress: Dictionary = {}
+	if not fortresses.is_empty():
+		fortress = fortresses[fortresses.keys()[0]]
+	var route: StringName = classify_route(entry.get("position", []), fortress, routes)
 	if String(entry.get("victim_kind", "player")) != "player":
 		deaths["npcs"] = int(deaths["npcs"]) + 1
+		var npcs_by_route: Dictionary = deaths["npcs_by_route"]
+		npcs_by_route[String(route)] = int(npcs_by_route.get(String(route), 0)) + 1
 		return
 	deaths["players"] = int(deaths["players"]) + 1
 	var by_realm: Dictionary = deaths["by_realm"]
 	var realm_key: String = str(int(entry.get("victim_realm", 0)))
 	by_realm[realm_key] = int(by_realm.get(realm_key, 0)) + 1
-	var fortress: Dictionary = {}
-	if not fortresses.is_empty():
-		fortress = fortresses[fortresses.keys()[0]]
-	var route: StringName = classify_route(entry.get("position", []), fortress, routes)
 	var by_route: Dictionary = deaths["by_route"]
 	by_route[String(route)] = int(by_route.get(String(route), 0)) + 1
 

@@ -7,8 +7,8 @@ extends RefCounted
 ## [codeblock]
 ## --connect=<host>[:<puerto>]  --local  --bot  --bots=N  --realm=<reino>  --name=<nombre>
 ## --port=<puerto>  --net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1  --bot-seed=N
-## --bot-cheat=<modo>  --bot-brain=<wander|combat|siege>  --quit-after-ticks=N  --report=<ruta.json>
-## --state-log=<ruta.csv>  --dev-lock-path=<ruta.json>
+## --bot-cheat=<modo>  --bot-brain=<wander|combat|siege>  --quit-after-ticks=N  --quit-at-server-tick=N
+## --report=<ruta.json>  --state-log=<ruta.csv>  --dev-lock-path=<ruta.json>
 ## [/codeblock]
 ## [br]El modo ([enum Mode]) sale de ellos con esta prioridad: [code]--bots[/code] ([constant SWARM])
 ## > [code]--bot[/code] ([constant BOT]) > [code]--local[/code] ([constant LOCAL]) >
@@ -63,6 +63,11 @@ var bot_cheat: String = ""
 ## lo defiende ([constant BotBrain.Pattern.SIEGE]).
 var bot_brain: String = ""
 var quit_after_ticks: int = 0
+## Solo el enjambre ([constant Mode.SWARM]): sale cuando alguno de sus bots ha recibido un snapshot de este tick del
+## servidor o posterior ([code]--quit-at-server-tick=N[/code]; 0 = no). Las pruebas de carga cierran así el enjambre
+## por el reloj del servidor, que con muchos jugadores va más despacio que el tiempo real; [member quit_after_ticks]
+## queda como cota.
+var quit_at_server_tick: int = 0
 var report_path: String = ""
 var state_log_path: String = ""
 ## Archivo de bloqueo del servidor local que consulta el modo [constant Mode.LOCAL] en lugar de
@@ -89,6 +94,8 @@ static func from_args(args: PackedStringArray) -> ClientConfig:
 	config.bot_seed = _int_option(args, "--bot-seed=", config.bot_seed, -_MAX_INT, _MAX_INT,
 			config.warnings)
 	config.quit_after_ticks = _int_option(args, "--quit-after-ticks=", config.quit_after_ticks,
+			0, _MAX_INT, config.warnings)
+	config.quit_at_server_tick = _int_option(args, "--quit-at-server-tick=", config.quit_at_server_tick,
 			0, _MAX_INT, config.warnings)
 	config.bot_count = _int_option(args, "--bots=", config.bot_count, 1, _MAX_BOTS,
 			config.warnings)

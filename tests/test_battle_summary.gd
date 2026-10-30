@@ -128,6 +128,7 @@ func test_the_summary_gives_capture_times_gate_time_and_deaths_by_route() -> voi
 	assert_eq(int(by_route.get("ford", 0)), 1)
 	assert_eq(int(by_route.get("walkway", 0)), 1)
 	assert_eq(int(by_route.get("other", 0)), 1)
+	assert_eq(deaths["npcs_by_route"], {"walkway": 1}, "y los PNJ, por sitio (GUE-45: el Hueco cayó en la pasarela)")
 	var by_realm: Dictionary = deaths["by_realm"]
 	assert_eq(int(by_realm[str(NetProtocol.Realm.SOLMARCH)]), 3)
 	assert_eq(int(by_realm[str(NetProtocol.Realm.VARDHEIM)]), 1)
@@ -162,6 +163,22 @@ func test_classify_route_by_position() -> void:
 	assert_eq(BattleSummary.classify_route([-12.0, 8.0, -47.0], fortress, routes), &"bridge",
 			"y la ladera que sube del puente")
 	assert_eq(BattleSummary.classify_route([200.0, 5.0, 200.0], fortress, routes), &"other")
+	# GUE-45: la pasarela por la que andan los bots, de rampa a rampa por encima de la puerta.
+	assert_eq(BattleSummary.classify_route([-18.77, 13.55, -18.77], fortress, routes), &"walkway", "la esquina del noroeste")
+	assert_eq(BattleSummary.classify_route([-18.9, 13.55, 1.0], fortress, routes), &"walkway", "encima de la puerta")
+	assert_eq(BattleSummary.classify_route([7.0, 13.5, 18.77], fortress, routes), &"walkway", "la cima de la rampa sur")
+	assert_eq(BattleSummary.classify_route([-18.77, 10.2, -10.0], fortress, routes), &"gate",
+			"y debajo de la pasarela, en el patio, no es la pasarela")
+	# Con unas rutas que conocen una pasarela lejos del círculo, cuenta su eje aunque quede a más de 30 m.
+	var far_walkway := ApproachRoutes.new()
+	far_walkway.walkway_height = 13.55
+	far_walkway.walkway_path = PackedVector2Array([Vector2(18.77, -18.77), Vector2(18.77, 18.77)])
+	var ramps: Array[PackedVector2Array] = [PackedVector2Array([Vector2(10.0, -5.0), Vector2(18.77, -5.0)])]
+	far_walkway.walkway_ramps = ramps
+	assert_eq(BattleSummary.classify_route([18.77, 13.55, -18.77], fortress, far_walkway), &"walkway",
+			"la esquina del noreste, por el eje")
+	assert_eq(BattleSummary.classify_route([18.77, 13.55, -18.77], fortress, null), &"other",
+			"que sin las rutas queda lejos del círculo")
 	assert_eq(BattleSummary.classify_route([1.0], fortress, routes), &"other", "una posición incompleta")
 
 
@@ -179,6 +196,7 @@ func test_the_text_summary_is_in_spanish_and_lists_everything() -> void:
 	assert_true(text.contains("Puertas rotas: 1"))
 	assert_true(text.contains("55.0 s desde el primer golpe hasta romperla"))
 	assert_true(text.contains("puente: 1") and text.contains("vado: 1") and text.contains("pasarela: 1"))
+	assert_true(text.contains("PNJ: pasarela 1"), "con los PNJ por sitio: %s" % text)
 	assert_true(text.contains("Vardheim") and text.contains("Solmarch"))
 
 

@@ -167,10 +167,14 @@ static func has_line_of_sight(space: PhysicsDirectSpaceState3D, attacker_feet: V
 
 ## true si el rayo de [param from] a [param to] no choca con el mundo ni con las estructuras
 ## ([constant LINE_OF_SIGHT_MASK]). Base de [method has_line_of_sight] con los puntos ya
-## calculados.
+## calculados. Un rayo que [b]empieza dentro[/b] de una forma convexa también choca con ella
+## ([code]hit_from_inside[/code], F6b): el dueño cruza su puerta cerrada, y quien se quedaba con el pecho
+## dentro de la caja de vista golpeaba hacia fuera sin que los de fuera le vieran a él. Las mallas
+## cóncavas y el terreno no cambian (Godot no tiene «dentro» para ellas).
 static func is_ray_clear(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3) -> bool:
 	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(from, to,
 			LINE_OF_SIGHT_MASK)
+	query.hit_from_inside = true
 	return space.intersect_ray(query).is_empty()
 
 

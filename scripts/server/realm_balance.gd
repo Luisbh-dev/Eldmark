@@ -25,8 +25,13 @@ extends RefCounted
 ## [br]- Sale una persona de [i]r[/i]: si el total de [i]r[/i] queda por debajo del mayor de los otros y no se
 ## ha agotado el cupo de [code]--fake-players[/code], entra un falso de relleno en [i]r[/i]
 ## ([method should_add_on_leave]).
+## [br]- Llega el HELLO de una persona de [i]r[/i] con el servidor lleno solo por el relleno (GUE-43): el relleno no
+## ocupa plazas de personas, así que entra y un falso le aparta la suya, que deja cuando ella entra en el mundo (si se
+## va antes, no se ha movido nadie). Lo cede el reino con más total contando a quien entra; a igualdad, el de [i]r[/i]
+## y, si no, el de código más alto ([method realm_to_yield_seat]). Cuenta como el falso que retira esa persona: no se
+## retira otro por ella (sigue siendo uno por persona).
 ## [br]Un falso nunca se retira por otra razón, y el relleno no cuenta para el rechazo: una persona no se
-## queda fuera porque el bando contrario esté lleno de falsos.
+## queda fuera porque el bando contrario esté lleno de falsos, ni porque el servidor lo esté.
 ## [br][br]
 ## Solo servidor.
 
@@ -118,6 +123,27 @@ static func should_add_on_leave(persons: PackedInt32Array, fillers: PackedInt32A
 		if code != realm:
 			highest = maxi(highest, all_totals[code - 1])
 	return highest >= 0 and all_totals[realm - 1] < highest
+
+
+## El reino del falso de relleno que cede su plaza a una persona de [param realm] que llega con el servidor
+## lleno (GUE-43): de los reinos con algún falso en [param fillers], el de más total (personas más relleno)
+## contando a la persona que entra; a igualdad, el suyo y, si no, el de código más alto (el último que se
+## habría rellenado). Es el que deja los bandos más igualados. [param persons] no cuenta a quien entra. 0 si no
+## hay relleno.
+static func realm_to_yield_seat(persons: PackedInt32Array, fillers: PackedInt32Array, realm: int) -> int:
+	var all_totals: PackedInt32Array = totals(persons, fillers)
+	if realm >= 1 and realm <= REALM_COUNT:
+		all_totals[realm - 1] += 1
+	var best: int = 0
+	var best_total: int = -1
+	for code: int in range(REALM_COUNT, 0, -1):
+		if _count_of(fillers, code) <= 0:
+			continue
+		var total: int = all_totals[code - 1]
+		if total > best_total or (total == best_total and code == realm):
+			best_total = total
+			best = code
+	return best
 
 
 static func _count_of(counts: PackedInt32Array, realm: int) -> int:

@@ -13,7 +13,7 @@ a150b78) tiene el chat y los grupos **sin revisar ni fusionar**.
 | Backlog (`docs/backlog.md`) | `main` | Hecho y subido |
 | Fase 2: red | `fase2-red` | Implementada (594 pruebas en verde, CI de GitHub en verde); revisión adversarial hecha y sus 19 hallazgos corregidos, cada uno con su prueba (656 pruebas en verde) |
 | Fase 3: combate | `fase3-combate` (desde `fase2-red`, que está fusionada dentro) | Diseño revisado (`docs/combate.md`); K1–K5 y el carril de audio, tema, ajustes, documento social y exportación integrados; revisión adversarial hecha y sus 18 hallazgos corregidos con prueba (1262 pruebas en verde) |
-| Fase 4: fuerte | `fase4-fuerte` (desde `fase3-combate`) | Diseño v2 revisado (`docs/fuerte.md`); F0 a F5 y F6a integrados (escena, fortaleza pura, protocolo 4, servidor del fuerte, PNJ, cliente, bots de asedio, equilibrio de reinos, carga). Suite completa en verde con F4 y F6a (1747 pruebas). Diseño de habilidades revisado (`docs/habilidades.md`), sin implementar. Falta F6b, las habilidades (H1–H5) y la revisión adversarial de la fase 4 |
+| Fase 4: fuerte | `fase4-fuerte` (desde `fase3-combate`) | Diseño v2 revisado (`docs/fuerte.md`); F0 a F5 y F6a integrados (escena, fortaleza pura, protocolo 4, servidor del fuerte, PNJ, cliente, bots de asedio, equilibrio de reinos, carga). Suite completa en verde con F4 y F6a (1747 pruebas). Diseño de habilidades revisado (`docs/habilidades.md`), sin implementar. F6b hecho en la rama `wip/f6b` (paquetes A a E, sin fusionar). Faltan las habilidades (H1–H5) y la revisión adversarial de la fase 4 |
 | Fase 4: chat y grupos | `fase4-chat-grupos` (desde `fase4-fuerte` a150b78) | SOC-03 a SOC-08 implementados (protocolo 5, `ChatRouter`, caja de chat, `PartyManager`, marcos de grupo, menú social), con su suite; **sin la revisión adversarial y sin fusionar** (la sesión se cerró durante la revisión) |
 | Fase 5: diseño | `fase5-cuentas` (desde `fase4-fuerte`) | `docs/plataforma.md` y `docs/progresion.md` escritos y revisados por tres lentes cada uno (45 y 41 hallazgos); **falta conciliarlos entre sí** (cada uno lista en su sección de interfaz lo que pide al otro). Sin código |
 
@@ -270,7 +270,7 @@ supuestos técnicos comprobados ejecutando Godot y Terrain3D).
 | F5 | Cliente del fuerte: `FortressView` con el gancho `before_simulate` (la puerta igual en cliente y servidor en cada tick), HUD de captura, banners, barra de jefe, marcas de TELEGRAPH, brújula, mapa horneado (`assets/maps/vado_gris.png`), minimapa, mapa completo con la reaparición, marcador (Tab) y registro de bajas, pistas, recuento por reino en la selección | Hecho |
 | F4 | PNJ: `NpcNavigation` (mapa propio, enlace de la puerta por reino), `NpcDefinition`/`NpcCatalog` (`data/npcs/`), armas de PNJ y golpe imbloqueable del Capitán con TELEGRAPH, `HfsmBrain` (reposo, patrulla, alerta, combate, regreso; fichas: nunca más de 2 atacan a la vez), `NpcSpawnerSystem` (Huecos, Capitán del Vado, guarnición del reino dueño, 2 Guardianes por campamento), `--no-npcs`, comando 12 `npc_debug` | Hecho (MUN-10 y MUN-11 siguen «en curso»: falta jugarlos con personas) |
 | F6a | Bots de asedio (`BotBrain` SIEGE, `--fake-brain=siege`, `--bot-brain=siege` para `--bot` y `--bots`), `--max-realm-diff` con REJECT 9 y recuento real en el WELCOME, falsos de relleno, `--run-at`, escenario `siege` de `load_test`, `tools/war/siege_runner.gd` y `siege_battle.gd` | Hecho (GUE-42; GUE-15/16/17 siguen «en curso» hasta F6b). Medido sin PNJ |
-| F6b | Prueba de extremo a extremo neutral → Vardheim → Solmarch con los PNJ de verdad, GUE-43/44/45, carga con PNJ | Pendiente (se cortó al cerrar la sesión, sin commits; el encargo está en «Cierre») |
+| F6b | Prueba de extremo a extremo neutral → Vardheim → Solmarch con los PNJ de verdad, GUE-43/44/45, carga y telemetría con PNJ | Hecho, por paquetes (el encargo está en «Cierre»; el detalle, en fuerte.md 8.3): GUE-43; bots contra los PNJ y extremo a extremo; GUE-44 (reunión y formación: recaptura con mediana de 2,6 min, aún según la semilla); GUE-45 (una parte del dueño guarda la pasarela; con armas cuerpo a cuerpo no alcanza la puerta: pelea con quien sube); carga con PNJ (GUE-16: 32 contra 32, tick p99 15,2–17,4 ms, 36,2 KB/s por cliente, los PNJ ~1 ms; el límite sigue en 32 contra 32) y telemetría (GUE-17: cinco batallas con registro y resumen; `vado_gris.tres` no cambia). GUE-15 sigue «en curso» por la persona que juegue contra ellos. Revisión de F6b con sus arreglos (fuerte.md 8.3, «Revisión de F6b»); queda GUE-46 (batalla larga solo con `SwarmBot`) |
 | Habilidades | Diseño corto `docs/habilidades.md` (CMB-19 a 24, CMB-28, PRG-04/07/08, UI-11, UI-45), revisado por tres lentes escépticas (41 hallazgos, 3 bloqueantes; 34 aplicados, 4 rechazados en parte con motivo en su sección «Revisión») | Diseño hecho; implementación tras fusionar F4 (paquetes H1 a H5) |
 | Social | Chat (SOC-03 a SOC-05) y grupos (SOC-06 a SOC-08) | Implementado en la rama `fase4-chat-grupos`; la revisión adversarial (tres lentes con refutación) se cortó al cerrar: falta revisar y fusionar |
 | Fase 5 (diseño) | `docs/plataforma.md` (servicio en Go + PostgreSQL, cuentas, billetes, guardado, RGPD, GM) y `docs/progresion.md` (objetos, inventario, monedas, niveles, razas): borrador, revisión escéptica y corrección | Hecho en `fase5-cuentas`; la conciliación entre los dos se cortó al cerrar |
@@ -284,11 +284,36 @@ supuestos técnicos comprobados ejecutando Godot y Terrain3D).
 | Captura del neutral con 20 de Vardheim (capitán con `fort_kill_captain`) | 55,9 s (puerta rota a los 39,5 s) |
 | Recaptura por 20 de Solmarch | 6,0 min (puerta 199,5 s, 117,7 s de disputa en el círculo); con 10 por bando, 8,8 min |
 | Carga 32 contra 32 (64 jugadores, 120 s en la puerta y el círculo) | tick p50/p95/p99/máx 10,6 / 15,3 / 19,1 / 27,8 ms; 36,1 KB/s por cliente; 0 % sustituidas |
-| Carga 64 contra 64 (128) | 14,8 / 22,0 / 26,4 / 42,8 ms; 28,5 KB/s; **50,8 % sustituidas** |
+| Carga 64 contra 64 (128) | 14,8 / 22,0 / 26,4 / 42,8 ms, pero **de 118 jugadores sin clientes** (el enjambre se fue antes; con los 128, p99 de las marcas 32,5 ms: revisión de F6b); 28,5 KB/s; **50,8 % sustituidas** |
 
 **El criterio de p99 < 8 ms con 64 jugadores no se cumple** (19,1 ms); domina `simulate()`
 (77 µs por personaje); la sección `war` cuesta 0,1 ms. Primer límite de batalla en el fuerte:
 **32 contra 32**. La recaptura desequilibrada (los refuerzos llegan de uno en uno) queda en GUE-44.
+
+### Medidas de F6b (bots contra los PNJ de verdad, sin órdenes; tiempos de juego, 20 por bando, tres semillas)
+
+| Medida | Valor |
+|---|---|
+| Captura del neutral por Vardheim | puerta a los 40–42 s, Huecos y Capitán del Vado a los 71–73 s, **captura a los 86–88 s**, sin muertes de Vardheim |
+| Golpe imbloqueable del Capitán (20 bots) | sin salir de la zona, 14 golpes y 7 muertes; con la esquiva, 0 y 0 (el Capitán cae 5 s más tarde) |
+| Recaptura por Solmarch contra 20 defensores y su guarnición | capitán del reino 15 000: una de tres en 30 min (6,7 min); **7500 (provisional): 6,7, 24,5 y 27,6 min** |
+| Versión corta de la suite (`test_siege_npcs`, 12 bots, PNJ más débiles; determinista) | con el código final, puerta a los 19,8 s, capitán a los 36,6 s y captura a los 37,4 s de juego (en el paquete B, 17 / 35–38 s; con GUE-44 y GUE-45, 19,8 / 42,4 / 42,9); la fase tarda unos 7 s de reloj (hasta 12 con la máquina cargada) |
+| Recaptura con GUE-44 (reunión y formación; cinco semillas, capitán del reino 7500) | **2,4 / 2,4 / 4,8 / 2,6 / 12,8 min** (mediana 2,6); antes, con las mismas, 6,7 / 27,6 / 24,5 / 4,4 / 5,6. Muertes del atacante por cada una del defensor: 1,3 (antes 2,7) |
+| Lo mismo con el capitán del reino en 15 000 | 2,6 / 2,7 / 11,5 / 15,0 / 17,4 min: las cinco dentro del ciclo de 30 min |
+| Con GUE-45 (pasarela: la guarda un 25 % del dueño y la recorre un 12,5 % de los atacantes; cinco semillas) | recaptura 4,4 / 2,4 / 4,4 / 2,7 / 2,7 min (mediana 2,7); muertes en la pasarela en las cinco (2, 6, 3, 4 y 1) |
+| Carga 32 contra 32 con los PNJ (`load_test.gd --npcs`; dos pasadas con PNJ y dos sin ellos, alternadas, máquina sin otra suite) | tick p50/p95/p99/máx 10,6 / 14,8 / 17,4 / 27,5 y 9,4 / 13,5 / 15,2 / 23,0 ms (sin PNJ, 9,1–9,9 / 12,8–14,2 / 15,0–16,9 / 24,9–27,9); 36,2–36,3 KB/s por cliente; 0,00–0,03 % sustituidas; los 9 PNJ de guerra (los 5 del fuerte y los 4 Guardianes de los campamentos), ~1 ms del tick (cerebros p99 0,8–1,1 ms mientras viven los Huecos, generadores 0,06 ms, `simulate()` ~0,55 ms); `war` 0,08 ms |
+| Carga 64 contra 64 con los PNJ | 1.ª: 16,2 / 22,8 / 27,0 / 39,6 ms, pero **de 118 jugadores sin clientes** (con los 128, las marcas dan p50 19,6 y p99 33,5); 29,0 KB/s; **38,6 % sustituidas** y 83 rebobinados rechazados. 2.ª (revisión de F6b, enjambre cerrado por el tick del servidor, otra suite en marcha): 17,2 / 24,2 / 30,0 / 72,3 ms; 32,1 KB/s; 0,00 % sustituidas y 44 rechazados |
+| Revisión de F6b: las cinco batallas con el código final | neutral a los 75–83 s; recaptura a los 202,4 / 399,8 / 151,4 / 152,2 / 144,3 s (mediana 2,5 min; antes 2,7); muertes en la pasarela en las cinco |
+| Telemetría (GUE-17): cinco batallas con `--battle-log` y `summarize_battle.gd` | idénticas a las de GUE-45 (determinista); neutral a los 80–87 s (puerta 11–12 s tras el primer golpe); recaptura a los 146–265 s (puerta 12–22 s, una vez 81,5 s); 360 muertes de jugadores (327 en la explanada y el patio, 17 en el vado, 16 en la pasarela, 0 en el puente) y 48 de PNJ. **`vado_gris.tres` no cambia** (fuerte.md 8.3, paquete E) |
+
+Lo que alarga la recaptura no son los PNJ sino el círculo frente a los defensores (GUE-44). Hallazgo arreglado: quien estaba
+dentro de su puerta cerrada golpeaba hacia fuera sin que le golpearan. Con GUE-44 (paquete C) se vio la causa de fondo: los
+personajes no chocan entre sí y los bots que siguen los mismos puntos se apilan, y un golpe que barre da a toda la pila (20 atacantes
+muertos en 1,2 s sin matar a nadie). Ahora los atacantes se reúnen en su campamento antes de salir y cada bot va en su hueco.
+Con la carga de 32 contra 32 y los PNJ, el p99 del tick sigue lejos de los 8 ms y el primer límite de batalla en el fuerte sigue en
+**32 contra 32**: los PNJ cuestan del orden de lo que varía una pasada a otra. Con la telemetría de las cinco batallas, ninguna cifra de
+`vado_gris.tres` queda claramente fuera: la puerta (9000) cumple GUE-10 y no es lo que más tarda, y la consolidación (120 s) es el suelo
+de la recaptura, que es lo que pide su decisión. Siguen provisionales hasta probarlas con personas.
 
 ### Medidas de F4 (máquina compartida con otras suites: cotas altas)
 
@@ -320,21 +345,30 @@ habían dejado; nada se ha perdido salvo F6b, que aún no tenía commits.
    servidor y protocolo, cliente) y fusionarla en `fase4-fuerte`. Toma `PROTOCOL_VERSION = 5`. Choca
    con `zone_server.gd`, `hud.gd` e `input_bindings.gd` de F4/F6a: hay que resolver a mano y pasar la
    suite. Lo implementado y lo pendiente está en `docs/social.md` §12.
-3. **F6b**, el encargo que se cortó:
+3. **F6b**, el encargo que se cortó. **Hecho** entero (paquetes A a E; fuerte.md 8.3, F6b), salvo lo que necesita personas:
    - **Bots contra los PNJ.** Los SIEGE matan a los Huecos y al Capitán del Vado sin comandos.
-     Atacan al PNJ del dueño más cercano y respetan el golpe imbloqueable.
+     Atacan al PNJ del dueño más cercano y respetan el golpe imbloqueable. **Hecho** (fuerte.md 8.3, F6b).
    - **Criterio de GUE-15.** «`--bots=20` por bando capturan y recapturan sin intervención», con PNJ
      reales: neutral → Vardheim → Solmarch.
      - Una herramienta larga fuera de la suite.
      - Una versión corta dentro, sin `fort_kill_captain`.
      - Si no capturan, ajustes mínimos y provisionales anotados en `fuerte.md` §8.3.
+     - **Hecho**: `siege_battle.gd --npcs` y `test_siege_npcs`; capitán del reino a 7500 (provisional). La recaptura aún
+       depende de la semilla (GUE-44); con GUE-44, de 2,4 a 12,8 min con cinco semillas.
    - **GUE-43, GUE-44 y GUE-45.**
      - GUE-43: el falso de relleno cede su plaza a una persona.
-     - GUE-44: los refuerzos se juntan antes de salir.
-     - GUE-45: los SIEGE del dueño defienden la pasarela.
-   - **Carga con PNJ.** `load_test.gd --siege` con 32 contra 32.
-   - **Batalla con telemetría.** Una batalla completa con `--battle-log` y su resumen.
-   - **Herramientas.** `SiegeRunner.start(..., with_npcs = true)` arranca con los PNJ.
+     - GUE-44: los refuerzos se juntan antes de salir. **Hecho** (fuerte.md 8.3, F6b, paquete C): reunión en la salida del
+       campamento (8 de su reino, 3 ya peleando en el fuerte o el reloj de 30 s), misma ruta y formación.
+     - GUE-45: los SIEGE del dueño defienden la pasarela. **Hecho** (fuerte.md 8.3, F6b, paquete D): con armas cuerpo a cuerpo
+       no se alcanza la puerta desde ella, así que la guardan y pelean con quien sube; muertes en la pasarela en las cinco batallas.
+   - **Carga con PNJ.** `load_test.gd --siege` con 32 contra 32. **Hecho** (paquete E): `load_test.gd --npcs`; con los PNJ, tick
+     p99 de 15,2 a 17,4 ms, 36,2 KB/s por cliente y como mucho un 0,03 % de entradas sustituidas; los 9 PNJ de guerra (los 5 del
+     fuerte y los 4 Guardianes de los campamentos), ~1 ms del tick.
+     El límite sigue en 32 contra 32.
+   - **Batalla con telemetría.** Una batalla completa con `--battle-log` y su resumen. **Hecho** (paquete E): cinco, con 20 por bando
+     y los PNJ, y su resumen; con esos números `vado_gris.tres` no cambia (provisional).
+   - **Herramientas.** `SiegeRunner.start(..., with_npcs = true)` arranca con los PNJ. **Hecho** (y
+     `siege_battle.gd --npcs`, `--npc-health`).
 4. **Habilidades** (`docs/habilidades.md` §7). Se empieza con F4 y el chat fusionados.
    - Dos carriles: H1a → H1b → H3a → H3b → H3c, y a la vez H2 → H4 → H5.
    - Protocolo 6.
@@ -452,11 +486,33 @@ $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Mi
   - `SiegeRunner` arranca sin PNJ salvo que se le pida.
 - **F4**:
   - Vida y daño de los PNJ ajustados para poder medir los criterios. Hueco, guardia y Guardián
-    tienen 2500 de vida, el Capitán del Vado 30 000 y el capitán del reino 15 000.
+    tienen 2500 de vida, el Capitán del Vado 30 000 y el capitán del reino 15 000 (7500 desde F6b, provisional:
+    con 15 000, 20 bots solo recapturaban una de tres veces dentro del ciclo de 30 min).
   - La guarnición del reino sale de espejos de los puestos de los Huecos (`garrison_id`), sin tocar
     la escena.
   - TELEGRAPH para todo golpe fuerte de un PNJ.
   - Opción nueva `--no-npcs`.
+- **F6b, carga y telemetría con PNJ (paquete E)**:
+  - `load_test.gd` gana `--npcs` (los PNJ y el fuerte sin ayudas). Sin ella, el asedio de F6a pasa ahora `--no-npcs`: desde la
+    fusión de F4 arrancaba con los PNJ y además mataba al capitán por orden al empezar la ventana.
+  - La línea de métricas del servidor acaba en «N PNJ», y el informe de `SwarmBot` dice cuándo llegó al fuerte
+    (`fort_reached_tick`), para comprobar lo que dejó pendiente GUE-44: los 10 bots reales llegan antes de la ventana.
+  - `vado_gris.tres` no se toca: ninguna cifra queda claramente fuera con los números de las cinco batallas (fuerte.md 8.3).
+- **F6b, GUE-45**:
+  - Desde la pasarela no se golpea a los de la puerta (no llega el arma): los guardias la guardan y pelean con quien sube.
+  - La subida es una ruta precalculada en los datos de las rutas, comprobada con la malla de los PNJ, no `NpcNavigation` en cada
+    consulta (el cerebro también lo usan `--bots` y `--bot`, que no tienen la malla).
+  - Recorre la pasarela al atacar la mitad de los que la guardan (12,5 %): con el mismo 25 % la recaptura se doblaba.
+  - Los buscadores de enemigos de los bots pesan la altura por 4, y dentro del recinto un enemigo a más de 1,6 m de altura no es un
+    blanco.
+- **F6b, GUE-44**:
+  - Los atacantes también se reúnen al empezar la batalla, no solo al reaparecer; el grupo va por la misma ruta, la de la vuelta del
+    reloj en la que sale (antes cada uno elegía la suya con su generador).
+  - Formación: cada bot de asedio en grupo suma a sus destinos un hueco que sale de su semilla. No estaba en el encargo; sin ella la
+    reunión apenas mejoraba la recaptura, porque los bots se apilan.
+  - Regla de «ir a ayudar»: no espera si ya hay 3 de los suyos peleando en el fuerte (esperar siempre dejaba curarse al capitán).
+  - La prueba de las dos rutas de `test_siege_zone` quita la reunión (`set_rally(0)`) para seguir midiendo las dos rutas.
+  - El capitán del reino sigue en 7500: con GUE-44 también cabría 15 000, pero se decide con personas.
 - **F6a**:
   - `--max-realm-diff` solo cuenta personas. Se rechaza entrar en el reino r si
     `personas[r] + 1 − min(otros) > N`.
@@ -516,6 +572,7 @@ $godot = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Mi
 
 - **Carga del fuerte**: con 32 contra 32 el p99 del tick es 19,1 ms, frente al criterio de 8 ms.
   Domina `simulate()`, con 77 µs por personaje. El primer límite de batalla queda en 32 contra 32.
+  Con los PNJ (F6b) no cambia: 15,2–17,4 ms con la máquina tranquila, y los PNJ cuestan ~1 ms.
   Para subirlo: `simulate()` en C++ (GDExtension) o un presupuesto por zona.
 - **Combate**: siguen abiertos `MAX_REWIND_TICKS` para un RTT de 200 ms y el equilibrio P1 de
   `combate.md` §12.

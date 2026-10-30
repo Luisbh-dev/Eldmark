@@ -208,6 +208,27 @@ func test_reject_full() -> void:
 			"loopback tampoco se salta el cupo")
 
 
+func test_filler_fakes_do_not_make_the_server_full() -> void:
+	# GUE-43: los falsos de relleno de --max-realm-diff no ocupan plazas de personas.
+	var auth: ServerAuth = _make_auth(null, PackedInt32Array(), _make_config(4, 2))
+	assert_eq(auth.validate(_make_hello(), REMOTE_ADDRESS, 4, 0, 4), NetProtocol.Result.OK,
+			"lleno solo de relleno: entra (y quien llama retira a uno)")
+	assert_eq(auth.validate(_make_hello(), REMOTE_ADDRESS, 4, 0, 1), NetProtocol.Result.OK,
+			"tres plazas de verdad y una de relleno: entra")
+	assert_eq(auth.validate(_make_hello(), REMOTE_ADDRESS, 5, 0, 1), NetProtocol.Result.FULL,
+			"con cuatro que no son relleno ya no hay plaza aunque quede un falso de relleno")
+	assert_eq(auth.validate(_make_hello(), REMOTE_ADDRESS, 4, 0, 0), NetProtocol.Result.FULL,
+			"sin relleno, el cupo de siempre (los falsos que no son de relleno sí cuentan)")
+	assert_eq(auth.validate(_make_hello(), REMOTE_ADDRESS, 2, 0, 9), NetProtocol.Result.OK,
+			"un recuento de relleno mayor que el de jugadores no da plazas de más")
+	var hello: NetMessages.Hello = _make_hello()
+	hello.display_name = "x"
+	assert_eq(auth.validate(hello, REMOTE_ADDRESS, 4, 0, 4), NetProtocol.Result.NAME,
+			"el relleno no se salta las otras comprobaciones")
+	assert_eq(auth.validate(_make_hello(), REMOTE_ADDRESS, 4, 2, 4), NetProtocol.Result.TOO_MANY_CONNECTIONS,
+			"ni el tope por IP")
+
+
 func test_reject_too_many_connections_from_address() -> void:
 	var auth: ServerAuth = _make_auth(null, PackedInt32Array(), _make_config(64, 4))
 	assert_eq(auth.validate(_make_hello(), REMOTE_ADDRESS, 0, 3), NetProtocol.Result.OK,

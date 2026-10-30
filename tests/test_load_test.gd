@@ -12,6 +12,7 @@ extends TestCase
 ## partir de las líneas «Métricas (tick N)» que el servidor escribe cada 600 ticks.
 
 const LOAD_TEST_PATH: String = "res://tools/load_test.gd"
+const BootScript = preload("res://scripts/boot.gd")
 
 const METRICS_LINE_600: String = "[Eldmark] Métricas (tick 600): 74 jugadores, tick p50 3200 µs / p99 5100 µs / máx 9000 µs (p99 por sección: tick 5100, net 300), entradas sustituidas 4.00 %, subida 85.5 KB/s, bajada 10.0 KB/s"
 const METRICS_LINE_1800: String = "[Eldmark] Métricas (tick 1800): 74 jugadores, tick p50 3300 µs / p99 5200 µs / máx 9100 µs (p99 por sección: tick 5200, net 310), entradas sustituidas 1.39 %, subida 86.0 KB/s, bajada 10.1 KB/s"
@@ -179,20 +180,100 @@ func test_siege_matrix_has_sieges_of_32_and_64_a_side() -> void:
 func test_the_tick_timeline_is_read_from_the_metric_lines() -> void:
 	var text: String = "\n".join([
 		METRICS_LINE_600,
-		"[Eldmark] Métricas (tick 1200): 74 jugadores, tick p50 3250 µs / p99 6000 µs / máx 9500 µs (p99 por sección: tick 6000)",
+		"[Eldmark] Métricas (tick 1200): 74 jugadores, tick p50 3250 µs / p99 6000 µs / máx 9500 µs (p99 por sección: tick 6000), entradas sustituidas 0.00 %, subida 9.0 KB/s, bajada 1.0 KB/s, 21 PNJ",
 		METRICS_LINE_1800,
 		"[Eldmark] Métricas (tick 2400): sin datos del tick",
-		"[Eldmark] Métricas (tick 3000): 80 jugadores, tick p50 9000 µs / p99 16000 µs / máx 30000 µs (p99 por sección: tick 16000)",
+		"[Eldmark] Métricas (tick 3000): 80 jugadores, tick p50 9000 µs / p99 16000 µs / máx 30000 µs (p99 por sección: tick 16000), bajada 1.0 KB/s, 9 PNJ\r",
 	])
 	var marks: Array[Dictionary] = LoadTestSummary.parse_tick_timeline(text)
 	assert_eq(marks.size(), 4, "las líneas sin datos del tick no cuentan")
-	assert_eq(marks[0], {"tick": 600, "players": 74, "p50_us": 3200, "p99_us": 5100, "max_us": 9000})
+	assert_eq(marks[0], {"tick": 600, "players": 74, "npcs": -1, "p50_us": 3200, "p99_us": 5100, "max_us": 9000},
+			"una línea de antes de F6b no dice los PNJ")
+	assert_eq(marks[1]["npcs"], 21, "los PNJ, al final de la línea (GUE-16)")
 	assert_eq(marks[3]["players"], 80)
+	assert_eq(marks[3]["npcs"], 9)
 	var window: Dictionary = LoadTestSummary.timeline_window(marks, 1000, 3000)
 	assert_eq(window["marks"], 3, "las marcas 1200, 1800 y 3000")
 	assert_eq(window["p50_us"], 3300, "mediana de los p50")
 	assert_eq(window["p99_us"], 6000, "mediana de los p99")
 	assert_eq(window["worst_p99_us"], 16000, "el peor p99")
 	assert_eq(window["max_us"], 30000, "el mayor máximo")
+	assert_eq(window["npcs_min"], 9, "el mínimo de PNJ de las marcas que lo dicen")
+	assert_eq(window["npcs_max"], 21)
+	assert_eq(window["players_min"], 74, "y los jugadores (si cambian, las marcas no son todas de la misma carga)")
+	assert_eq(window["players_max"], 80)
+	assert_eq(LoadTestSummary.timeline_window(marks, 0, 1000)["npcs_min"], -1, "sin marcas con PNJ, -1")
 	assert_true(LoadTestSummary.timeline_window(marks, 4000, 5000).is_empty(), "sin marcas en la ventana, nada")
 	assert_true(LoadTestSummary.parse_tick_timeline("").is_empty())
+
+
+func test_presence_says_how_many_players_there_were_in_the_tail_the_percentiles_come_from() -> void:
+	# Revisión de F6b: con 128 jugadores el servidor va más despacio que el tiempo real y el enjambre, que se cerraba por
+	# su reloj, se iba en el tick 8390 de 10 850: los percentiles del informe (los ticks 8803 a 10 850) eran de 118
+	# jugadores. Las fichas del player_list dicen quién había en cada tick.
+	var players: Array = []
+	for i: int in 118:
+		players.append({"fake": true, "joined_tick": 0, "left_tick": 10850})
+	for i: int in 10:
+		players.append({"fake": false, "joined_tick": 166 + 5 * i, "left_tick": 8390})
+	var tail: Dictionary = LoadTestSummary.presence(players, 8803, 10850, 10850)
+	assert_eq(tail, {"min": 118, "max": 118, "ticks": 2048, "ticks_at_max": 2048},
+			"en los últimos 2048 ticks, 118 todo el rato (los falsos siguen hasta el cierre)")
+	var window: Dictionary = LoadTestSummary.presence(players, 3530, 10640, 10850)
+	assert_eq(window["min"], 118)
+	assert_eq(window["max"], 128)
+	assert_eq(window["ticks_at_max"], 8390 - 3530, "con los 128 hasta que se van los bots")
+	# Con el enjambre cerrado por el tick del servidor se van en el 10 640: el tramo final tiene el pico casi entero.
+	for entry: Dictionary in players:
+		if not bool(entry["fake"]):
+			entry["left_tick"] = 10640
+	var fixed: Dictionary = LoadTestSummary.presence(players, 8803, 10850, 10850)
+	assert_eq(fixed["max"], 128)
+	assert_eq(fixed["ticks_at_max"], 10640 - 8803)
+	assert_eq(LoadTestSummary.presence([{"joined_tick": 50, "left_tick": -1}], 0, 99, 200),
+			{"min": 0, "max": 1, "ticks": 100, "ticks_at_max": 50}, "uno que entra en el 50 y sigue al cerrar")
+	assert_true(LoadTestSummary.presence(players, 10, 5, 100).is_empty(), "un tramo vacío")
+
+
+func test_the_swarm_of_the_load_test_leaves_by_the_server_tick() -> void:
+	var script: GDScript = load(LOAD_TEST_PATH) as GDScript
+	if not assert_not_null(script):
+		return
+	var factor: float = float(script.get_script_constant_map().get("SLOW_SERVER_FACTOR", 0.0))
+	assert_true(factor >= 2.0, "aguanta un servidor más lento que el tiempo real (%.1f veces)" % factor)
+	assert_eq(script.call("swarm_quit_args", 10640), PackedStringArray([
+		"--quit-at-server-tick=10640", "--quit-after-ticks=%d" % ceili(10640.0 * factor)]),
+			"el enjambre se cierra cuando el servidor llega al tick de salida; su reloj solo es la cota")
+	var config: ClientConfig = ClientConfig.from_args(PackedStringArray(["--bots=2", "--quit-at-server-tick=9000"]))
+	assert_eq(config.quit_at_server_tick, 9000)
+	assert_true(config.warnings.is_empty())
+	assert_eq(ClientConfig.from_args(PackedStringArray(["--bots=2"])).quit_at_server_tick, 0, "por defecto, no")
+	var options: Dictionary = BootScript.parse_client_options(PackedStringArray(["--bots=2", "--quit-at-server-tick=9000"]))
+	assert_eq(options["warnings"], PackedStringArray(), "boot no la da por desconocida")
+
+
+func test_the_siege_server_has_its_npcs_only_with_the_npcs_option() -> void:
+	var script: GDScript = load(LOAD_TEST_PATH) as GDScript
+	if not assert_not_null(script):
+		return
+	# F6a (sin --npcs): sin PNJ y con la orden que abre el círculo al empezar la ventana.
+	var without: PackedStringArray = script.call("siege_server_args", false, "/tmp/b.jsonl", 3530)
+	assert_eq(without, PackedStringArray(["--battle-log=/tmp/b.jsonl", "--no-npcs", "--run-at=3530:fort_kill_captain"]))
+	# F6b (--npcs): los PNJ de la zona y el fuerte sin ayudas.
+	var with_npcs: PackedStringArray = script.call("siege_server_args", true, "/tmp/b.jsonl", 3530)
+	assert_eq(with_npcs, PackedStringArray(["--battle-log=/tmp/b.jsonl"]), "ni --no-npcs ni fort_kill_captain")
+	var sections: Array = script.get_script_constant_map().get("SECTIONS", [])
+	for section: String in ["war", "npc_brains", "npc"]:
+		assert_true(sections.has(section), "el resumen muestra la sección %s" % section)
+
+
+func test_fort_arrivals_count_the_real_bots_that_reached_the_fort_before_the_window() -> void:
+	var swarms: Array = [
+		{"clients": [{"fort_reached_tick": 2400}, {"fort_reached_tick": 3530}, {"fort_reached_tick": 3600}]},
+		{"clients": [{"fort_reached_tick": -1}, {"world_ticks": 900}]},
+		{},
+	]
+	assert_eq(LoadTestSummary.fort_arrivals(swarms, 3530),
+			{"bots": 4, "arrived": 3, "before_window": 2, "last_tick": 3600},
+			"cuatro de asedio (el que no lo es no cuenta), tres llegan y dos antes de la ventana (el tick de su principio incluido)")
+	assert_eq(LoadTestSummary.fort_arrivals([], 100), {"bots": 0, "arrived": 0, "before_window": 0, "last_tick": -1})
