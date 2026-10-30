@@ -65,6 +65,14 @@ extends Node
 ## también con un STATUS de movimiento sobre uno mismo, un DOWNED o INTERACT donde uno es el derribado o el
 ## actor y el LOADOUT propio ([method _note_imposed_state]).
 ## [br][br]
+## [b]Inventario y progreso[/b] (docs/progresion.md §4.6 y §12; protocolo 7): INVENTORY_DELTA, INVENTORY_FULL,
+## WALLET_UPDATE y PROGRESS_UPDATE se decodifican ([ProgressMessages]) y salen al llegar por
+## [signal inventory_delta_received], [signal inventory_full_received], [signal wallet_updated] y
+## [signal progress_updated]; uno mal formado cuenta en [code]malformed_packets[/code]. El LEVEL_UP es un
+## ENTITY_EVENT más ([signal combat_event]): el propio llega al momento y el de un aliado, en su tick de dibujo.
+## [method send_inventory_request] y [method send_inventory_sync_request] mandan las peticiones (solo en el
+## mundo). El nivel y la apariencia de cada jugador vienen en su ENTITY_SPAWN.
+## [br][br]
 ## [b]Bot tramposo[/b] ([member ClientConfig.bot_cheat], solo en modo BOT): un [BotCheater] falsea
 ## el HELLO ([code]version[/code]), envía tráfico de más tras el lote honrado de cada tick
 ## ([code]future[/code], [code]dupes[/code], [code]garbage[/code], [code]flood[/code]) o falsea la vista
@@ -102,6 +110,14 @@ signal chat_received(message: NetMessages.ChatMessage)
 ## Ha llegado el ENTITY_SPAWN de un proyectil (kind 3, protocolo 6): balística, tirador y fuente. Se entrega
 ## al llegar; quien la dibuja decide cuándo se ve (la propia la sustituye, la remota espera a su tick).
 signal projectile_spawned(spawn: NetMessages.EntitySpawn)
+## Ha llegado un INVENTORY_DELTA (protocolo 7): la respuesta a una petición propia o un cambio del servidor.
+signal inventory_delta_received(delta: ProgressMessages.InventoryDelta)
+## Ha llegado una página de INVENTORY_FULL (protocolo 7); quien la usa junta las de una misma revisión.
+signal inventory_full_received(page: ProgressMessages.InventoryFull)
+## Ha llegado el saldo de una moneda (WALLET_UPDATE, protocolo 7).
+signal wallet_updated(update: ProgressMessages.WalletUpdate)
+## Ha llegado el nivel con su XP (PROGRESS_UPDATE, protocolo 7).
+signal progress_updated(update: ProgressMessages.ProgressUpdate)
 ## Ha llegado el ENTITY_DESPAWN de un proyectil conocido: [param reason] es
 ## [constant NetProtocol.DespawnReason.IMPACT] (dio en algo en [param tick]) o
 ## [constant NetProtocol.DespawnReason.EXPIRED].
@@ -252,6 +268,13 @@ var _party_messages_sent: int = 0
 var _party_rosters: int = 0
 var _party_statuses: int = 0
 var _party_invitations: int = 0
+# Inventario y progreso (protocolo 7): peticiones enviadas y mensajes recibidos.
+var _inventory_requests_sent: int = 0
+var _inventory_syncs_sent: int = 0
+var _inventory_deltas: int = 0
+var _inventory_fulls: int = 0
+var _wallet_updates: int = 0
+var _progress_updates: int = 0
 
 # Envío de entradas.
 var _view_offsets_q: PackedInt32Array = PackedInt32Array()
@@ -505,6 +528,31 @@ func send_party_leave() -> bool:
 	return true
 
 
+## Envía una petición del inventario (INVENTORY_REQUEST, protocolo 7; docs/progresion.md §4.6). Quien la manda
+## lleva sus [code]request_id[/code] y su estado optimista (§11.3). Devuelve false, sin enviar nada, si no hay
+## sesión en el mundo (antes sería un aviso del servidor) o el mensaje no se puede codificar.
+func send_inventory_request(message: ProgressMessages.InventoryRequest) -> bool:
+	if _state != State.IN_WORLD or message == null:
+		return false
+	var bytes: PackedByteArray = message.encode()
+	if bytes.is_empty() or _transport.send(SERVER_PEER_ID, NetProtocol.CH_RELIABLE, bytes) != OK:
+		return false
+	_inventory_requests_sent += 1
+	return true
+
+
+## Pide el inventario entero (INVENTORY_SYNC_REQUEST, protocolo 7): uno cada 5 s como mucho, o el servidor
+## cuenta un aviso. Devuelve false si no hay sesión en el mundo o no se pudo enviar.
+func send_inventory_sync_request() -> bool:
+	if _state != State.IN_WORLD:
+		return false
+	if _transport.send(SERVER_PEER_ID, NetProtocol.CH_RELIABLE,
+			ProgressMessages.InventorySyncRequest.new().encode()) != OK:
+		return false
+	_inventory_syncs_sent += 1
+	return true
+
+
 ## Vida del jugador local según el último snapshot reconciliado (vida máxima por defecto hasta que
 ## llega el primer bloque extra). La vida la decide el servidor: no se predice.
 func get_health() -> int:
@@ -573,7 +621,8 @@ func get_combat_queue() -> CombatEventQueue:
 ## asesino de un DEATH, víctima, asesino o asistente de un KILL, o quien reaparece en un RESPAWN; y desde
 ## el protocolo 6 (docs/habilidades.md, sección 5.4), el afectado o el autor de un STATUS, el curado o quien
 ## cura en un HEAL, el dueño de un LOADOUT, el derribado o quien derriba en un DOWNED, y el derribado o
-## quien lo levanta o lo remata en un INTERACT. Falso mientras no hay personaje local.
+## quien lo levanta o lo remata en un INTERACT; y desde el protocolo 7, quien sube en un LEVEL_UP. Falso
+## mientras no hay personaje local.
 func is_own_event(event: NetMessages.EntityEvent) -> bool:
 	if _net_id == 0 or event == null:
 		return false
@@ -585,7 +634,8 @@ func is_own_event(event: NetMessages.EntityEvent) -> bool:
 		NetMessages.EntityEvent.Kind.KILL:
 			return event.net_id == _net_id or event.killer == _net_id \
 					or event.assistants.has(_net_id)
-		NetMessages.EntityEvent.Kind.RESPAWN, NetMessages.EntityEvent.Kind.LOADOUT:
+		NetMessages.EntityEvent.Kind.RESPAWN, NetMessages.EntityEvent.Kind.LOADOUT, \
+				NetMessages.EntityEvent.Kind.LEVEL_UP:
 			return event.net_id == _net_id
 		NetMessages.EntityEvent.Kind.STATUS:
 			return event.net_id == _net_id or event.source_entity == _net_id
@@ -739,6 +789,9 @@ func get_last_notice_text() -> String:
 ## [br]- [code]chat_sent[/code] y [code]chat_received[/code]: mensajes de chat enviados y recibidos.
 ## [br]- [code]party_sent[/code] (peticiones de grupo enviadas) y [code]party_rosters[/code],
 ## [code]party_statuses[/code] y [code]party_invitations[/code]: mensajes de grupo recibidos.
+## [br]- Del inventario y el progreso (protocolo 7): [code]inventory_requests_sent[/code] y
+## [code]inventory_syncs_sent[/code] (enviados), [code]inventory_deltas[/code], [code]inventory_fulls[/code]
+## (páginas), [code]wallet_updates[/code] y [code]progress_updates[/code] (recibidos bien formados).
 func get_stats() -> Dictionary:
 	var prediction_stats: Dictionary = _prediction.get_stats()
 	# Las diferencias que aún esperan su evento cuentan ya, según lo que se sepa ahora.
@@ -813,6 +866,12 @@ func get_stats() -> Dictionary:
 		"party_rosters": _party_rosters,
 		"party_statuses": _party_statuses,
 		"party_invitations": _party_invitations,
+		"inventory_requests_sent": _inventory_requests_sent,
+		"inventory_syncs_sent": _inventory_syncs_sent,
+		"inventory_deltas": _inventory_deltas,
+		"inventory_fulls": _inventory_fulls,
+		"wallet_updates": _wallet_updates,
+		"progress_updates": _progress_updates,
 		"war_events_pending": _war_queue.size(),
 		"fortress_hook_calls": int(_fortress_view.get_stats()["hook_calls"]),
 		"health": _health,
@@ -1315,8 +1374,45 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 			else:
 				_chat_received += 1
 				chat_received.emit(chat)
+		NetProtocol.MSG_INVENTORY_DELTA, NetProtocol.MSG_INVENTORY_FULL, NetProtocol.MSG_WALLET_UPDATE, \
+				NetProtocol.MSG_PROGRESS_UPDATE:
+			_on_progress_message(bytes)
 		_:
 			_malformed_packets += 1
+
+
+# Inventario y progreso (protocolo 7, docs/progresion.md §4.6 y §12): se decodifican y salen por su señal al
+# llegar; los mal formados cuentan.
+func _on_progress_message(bytes: PackedByteArray) -> void:
+	match NetMessages.peek_type(bytes):
+		NetProtocol.MSG_INVENTORY_DELTA:
+			var delta: ProgressMessages.InventoryDelta = ProgressMessages.InventoryDelta.decode(bytes)
+			if delta == null:
+				_malformed_packets += 1
+				return
+			_inventory_deltas += 1
+			inventory_delta_received.emit(delta)
+		NetProtocol.MSG_INVENTORY_FULL:
+			var page: ProgressMessages.InventoryFull = ProgressMessages.InventoryFull.decode(bytes)
+			if page == null:
+				_malformed_packets += 1
+				return
+			_inventory_fulls += 1
+			inventory_full_received.emit(page)
+		NetProtocol.MSG_WALLET_UPDATE:
+			var wallet: ProgressMessages.WalletUpdate = ProgressMessages.WalletUpdate.decode(bytes)
+			if wallet == null:
+				_malformed_packets += 1
+				return
+			_wallet_updates += 1
+			wallet_updated.emit(wallet)
+		NetProtocol.MSG_PROGRESS_UPDATE:
+			var progress: ProgressMessages.ProgressUpdate = ProgressMessages.ProgressUpdate.decode(bytes)
+			if progress == null:
+				_malformed_packets += 1
+				return
+			_progress_updates += 1
+			progress_updated.emit(progress)
 
 
 # Un SNAPSHOT alimenta siempre al reloj de interpolación y a los remotos; el más nuevo se guarda

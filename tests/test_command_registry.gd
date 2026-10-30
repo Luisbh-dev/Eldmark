@@ -100,7 +100,12 @@ func test_ids_of_the_network_commands_are_fixed() -> void:
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"apply_status"], 14)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"down"], 15)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"refill"], 16)
-	assert_eq(NetProtocol.DEBUG_COMMAND_IDS.size(), 16)
+	# Protocolo 7 (docs/progresion.md §10): los de GM de la progresión.
+	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"item_give"], 40)
+	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"currency_add"], 41)
+	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"level_set"], 42)
+	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"xp_add"], 43)
+	assert_eq(NetProtocol.DEBUG_COMMAND_IDS.size(), 20)
 
 
 func test_network_execution_results_and_audit() -> void:

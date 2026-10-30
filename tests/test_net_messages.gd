@@ -1477,7 +1477,8 @@ func test_entity_spawn_roundtrip_and_layout() -> void:
 	var bytes: PackedByteArray = spawn.encode()
 	var name_bytes: PackedByteArray = spawn.display_name.to_utf8_buffer()
 	var name_offset: int = 10 + PlayerState.ENCODED_SIZE
-	assert_eq(bytes.size(), name_offset + 1 + name_bytes.size(), "tamaño: 10 B + estado + nombre")
+	var tail_offset: int = name_offset + 1 + name_bytes.size()
+	assert_eq(bytes.size(), tail_offset + 9, "tamaño: 10 B + estado + nombre + nivel y apariencia (v7)")
 	assert_eq(bytes.decode_u8(0), 0x20, "u8 type en 0")
 	assert_eq(bytes.decode_u16(1), 4242, "u16 net_id en 1")
 	assert_eq(bytes.decode_u8(3), NetProtocol.EntityKind.PLAYER, "u8 kind en 3")
@@ -1486,7 +1487,9 @@ func test_entity_spawn_roundtrip_and_layout() -> void:
 	assert_eq(bytes.decode_u8(9), 0b011, "u8 flags en 9: tuyo y contador 1")
 	assert_eq(bytes.slice(10, name_offset), spawn.state.encode(), "PlayerState en 10")
 	assert_eq(bytes.decode_u8(name_offset), name_bytes.size(), "u8 name_len tras el estado")
-	assert_eq(bytes.slice(name_offset + 1), name_bytes, "nombre tras la longitud")
+	assert_eq(bytes.slice(name_offset + 1, tail_offset), name_bytes, "nombre tras la longitud")
+	assert_eq(bytes.decode_u8(tail_offset), 12, "u8 level tras el nombre (v7)")
+	assert_eq(bytes.slice(tail_offset + 1), spawn.appearance, "y los 8 B de la apariencia")
 
 	var decoded: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(bytes)
 	if not assert_not_null(decoded, "decode del SPAWN"):
@@ -1498,6 +1501,8 @@ func test_entity_spawn_roundtrip_and_layout() -> void:
 	assert_true(decoded.is_yours, "is_yours")
 	assert_eq(decoded.teleport_counter, 1, "teleport_counter")
 	assert_eq(decoded.display_name, spawn.display_name, "nombre")
+	assert_eq(decoded.level, 12, "nivel")
+	assert_eq(decoded.appearance, spawn.appearance, "apariencia")
 	if assert_not_null(decoded.state, "estado"):
 		assert_true(decoded.state.equals_exact(spawn.state), "el estado es exacto")
 
@@ -1508,7 +1513,7 @@ func test_entity_spawn_roundtrip_and_layout() -> void:
 	if assert_not_null(plain, "decode de un SPAWN ajeno sin nombre"):
 		assert_false(plain.is_yours, "no es tuyo")
 		assert_eq(plain.teleport_counter, 2, "contador módulo 4")
-		assert_eq(spawn.encode().size(), name_offset + 1, "10 B + estado + 1 B sin nombre")
+		assert_eq(spawn.encode().size(), name_offset + 1 + 9, "10 B + estado + 1 B sin nombre + 9 B (v7)")
 	spawn.kind = NetProtocol.EntityKind.NPC
 	assert_not_null(NetMessages.EntitySpawn.decode(spawn.encode()), "un PNJ reutiliza el formato")
 	spawn.kind = NetProtocol.EntityKind.NONE
@@ -1788,7 +1793,7 @@ func test_new_message_channels_and_debug_command_ids() -> void:
 	assert_eq(NetProtocol.DEBUG_APPLY_STATUS, 14, "apply_status")
 	assert_eq(NetProtocol.DEBUG_DOWN, 15, "down")
 	assert_eq(NetProtocol.DEBUG_REFILL, 16, "refill")
-	assert_eq(NetProtocol.DEBUG_COMMAND_IDS.size(), 16, "dieciséis comandos")
+	assert_eq(NetProtocol.DEBUG_COMMAND_IDS.size(), 20, "dieciséis comandos y los cuatro de la progresión (v7)")
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"set_weapon"], 5, "tabla: set_weapon")
 	var seen: Dictionary = {}
 	for command_name: StringName in NetProtocol.DEBUG_COMMAND_IDS:
@@ -2215,6 +2220,8 @@ func _sample_spawn() -> NetMessages.EntitySpawn:
 	state.last_input_tick = 654321
 	spawn.state = state
 	spawn.display_name = "Brunhilda ñ"
+	spawn.level = 12
+	spawn.appearance = PackedByteArray([1, 0, 0, 1, 1, 3, 2, 1])
 	return spawn
 
 

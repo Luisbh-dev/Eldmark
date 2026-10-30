@@ -1495,22 +1495,26 @@ func _trim_player_log() -> void:
 
 # Mensajes de un alta (sección 3): el SPAWN propio, los de todo lo relevante para el recién
 # llegado y el suyo para quien lo tenga por relevante. [param peer] es null en un jugador falso.
+# El SPAWN de un jugador lleva su nivel solo hacia su reino (protocolo 7, docs/progresion.md §7.3): el del
+# recién llegado se codifica una vez por reino receptor (tres variantes como mucho) y los de los demás hacia él,
+# con su reino.
 func _announce_arrival(entity: NetEntity, peer: ServerPeer, s: int) -> void:
-	var own_spawn: PackedByteArray = entity.encode_spawn(s, true)
-	var spawn: PackedByteArray = entity.encode_spawn(s, false)
+	var spawn_by_realm: Dictionary[int, PackedByteArray] = {}
 	if peer != null:
-		_send(peer, NetProtocol.CH_RELIABLE, own_spawn)
+		_send(peer, NetProtocol.CH_RELIABLE, entity.encode_spawn(s, true))
 	for other: NetEntity in _registry.get_sorted():
 		if other == entity:
 			continue
 		if peer != null and _is_relevant(entity, other, false):
 			peer.relevant[other.net_id] = true
-			_send(peer, NetProtocol.CH_RELIABLE, other.encode_spawn(s, false))
+			_send(peer, NetProtocol.CH_RELIABLE, other.encode_spawn(s, false, entity.realm))
 		var other_peer: ServerPeer = _peers.get(other.owner_peer)
 		if other_peer != null and other_peer.state == ServerPeer.State.IN_WORLD \
 				and _is_relevant(other, entity, false):
 			other_peer.relevant[entity.net_id] = true
-			_send(other_peer, NetProtocol.CH_RELIABLE, spawn)
+			if not spawn_by_realm.has(other.realm):
+				spawn_by_realm[other.realm] = entity.encode_spawn(s, false, other.realm)
+			_send(other_peer, NetProtocol.CH_RELIABLE, spawn_by_realm[other.realm])
 
 
 # Cierra la sesión de los peers que se van: DESPAWN (motivo 1) a quien los tenía por relevantes, id
@@ -1760,7 +1764,7 @@ func _refresh_interest(peer: ServerPeer, entities: Array[NetEntity], s: int) -> 
 			continue
 		if now_relevant:
 			peer.relevant[entity.net_id] = true
-			_send(peer, NetProtocol.CH_RELIABLE, entity.encode_spawn(s, false))
+			_send(peer, NetProtocol.CH_RELIABLE, entity.encode_spawn(s, false, observer.realm))
 		else:
 			peer.relevant.erase(entity.net_id)
 			peer.priority.erase(entity.net_id)

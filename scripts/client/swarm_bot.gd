@@ -169,6 +169,8 @@ var _dead: bool = false
 # CHAT_MESSAGE y PARTY_* bien formados que han llegado (se descartan).
 var _chat_messages_seen: int = 0
 var _party_messages_seen: int = 0
+# INVENTORY_DELTA, INVENTORY_FULL, WALLET_UPDATE y PROGRESS_UPDATE bien formados (protocolo 7; se descartan).
+var _progress_messages_seen: int = 0
 var _malformed_packets: int = 0
 var _bytes_at_join: Dictionary = {}
 var _bytes_final: Dictionary = {}
@@ -309,6 +311,8 @@ func get_last_notice_text() -> String:
 ## [code]despawns_seen[/code]), [code]delay_ticks[/code], [code]jitter_ticks[/code], [code]malformed_packets[/code].
 ## [br]- Del chat y los grupos (protocolo 5), que el bot decodifica y descarta: [code]chat_messages_seen[/code]
 ## (CHAT_MESSAGE) y [code]party_messages_seen[/code] (PARTY_INVITATION, PARTY_ROSTER y PARTY_STATUS).
+## [br]- Del inventario y el progreso (protocolo 7, docs/progresion.md §4.6), que también decodifica y descarta:
+## [code]progress_messages_seen[/code] (INVENTORY_DELTA, INVENTORY_FULL, WALLET_UPDATE y PROGRESS_UPDATE).
 ## [br]- Del combate: [code]combat[/code] (si pelea), [code]events_seen[/code] y [code]event_bytes[/code]
 ## (ENTITY_EVENT recibidos y su tamaño), [code]hit_events_seen[/code], [code]enemies_known[/code] (y su máximo, [code]enemies_known_max[/code]),
 ## [code]dead[/code] y [code]respawn_requests[/code].
@@ -374,6 +378,7 @@ func get_stats() -> Dictionary:
 		"malformed_packets": _malformed_packets,
 		"chat_messages_seen": _chat_messages_seen,
 		"party_messages_seen": _party_messages_seen,
+		"progress_messages_seen": _progress_messages_seen,
 		"siege": _siege_mode,
 	}
 	if _siege_mode:
@@ -625,8 +630,30 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 				_malformed_packets += 1
 			else:
 				_party_messages_seen += 1
+		# Inventario y progreso (protocolo 7, docs/progresion.md §4.6): solo al dueño. El bot no tiene ventana de
+		# inventario: los decodifica y los descarta, y solo cuenta como mal formado lo que no se decodifica.
+		NetProtocol.MSG_INVENTORY_DELTA, NetProtocol.MSG_INVENTORY_FULL, NetProtocol.MSG_WALLET_UPDATE, \
+				NetProtocol.MSG_PROGRESS_UPDATE:
+			if _decode_progress_message(bytes) == null:
+				_malformed_packets += 1
+			else:
+				_progress_messages_seen += 1
 		_:
 			_malformed_packets += 1
+
+
+# El mensaje de inventario o progreso decodificado (null si está mal formado o no es uno de los S→C).
+static func _decode_progress_message(bytes: PackedByteArray) -> RefCounted:
+	match NetMessages.peek_type(bytes):
+		NetProtocol.MSG_INVENTORY_DELTA:
+			return ProgressMessages.InventoryDelta.decode(bytes)
+		NetProtocol.MSG_INVENTORY_FULL:
+			return ProgressMessages.InventoryFull.decode(bytes)
+		NetProtocol.MSG_WALLET_UPDATE:
+			return ProgressMessages.WalletUpdate.decode(bytes)
+		NetProtocol.MSG_PROGRESS_UPDATE:
+			return ProgressMessages.ProgressUpdate.decode(bytes)
+	return null
 
 
 # Solo se lee la cabecera del SNAPSHOT (ver NetMessages.Snapshot): este bot no dibuja a nadie, y

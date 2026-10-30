@@ -38,6 +38,9 @@ const MAX_OBJECT_FIELDS: int = 32
 const OBJECT_STATE_HEADER_SIZE: int = 8
 ## Bytes que añade al ENTITY_SPAWN de un PNJ su [code]u16 npc_def_id[/code].
 const NPC_SPAWN_TAIL_SIZE: int = 2
+## Bytes que añade al ENTITY_SPAWN de un jugador tras el nombre (protocolo 7, docs/progresion.md §7.3): el
+## [code]u8 level[/code] y los 8 B de [CharacterAppearance].
+const PLAYER_SPAWN_TAIL_SIZE: int = 1 + CharacterAppearance.ENCODED_SIZE
 ## Bytes del recuento por reino al final del WELCOME ([code]u8 × 3[/code]).
 const WELCOME_REALM_COUNTS_SIZE: int = 3
 
@@ -641,11 +644,25 @@ class ClientLeave:
 ## factor (1 a 255); 12 [code]npc_debug[/code], 1 B (0 o 1). Desde el protocolo 6 (docs/habilidades.md,
 ## sección 5.1): 13 [code]cooldowns_off[/code], 1 B (0 o 1); 14 [code]apply_status[/code], 3 B
 ## ([code]u8 status_id[/code] de 1 a 255 y [code]u16[/code] ticks, 0 = los del dato); 15 [code]down[/code]
-## y 16 [code]refill[/code], 0 B. Los comandos 2 a 6 los valida el servidor (hasta
-## [constant NetMessages.MAX_DEBUG_PAYLOAD_BYTES]).
+## y 16 [code]refill[/code], 0 B. Desde el protocolo 7 (docs/progresion.md §10), los de GM de la progresión:
+## 40 [code]item_give[/code], 4 B ([code]u16[/code] net id de objeto desde 1 y [code]u16[/code] cantidad de 1 a
+## 999); 41 [code]currency_add[/code], 5 B ([code]u8[/code] moneda, 1 o 2, y [code]s32[/code] cantidad distinta de
+## 0); 42 [code]level_set[/code], 1 B (de 1 a [constant ProgressMessages.MAX_LEVEL]); y 43 [code]xp_add[/code], 4
+## B ([code]u32[/code] de 1 a 10 000 000). Que el net id exista lo mira el servidor. Los comandos 2 a 6 los
+## valida el servidor (hasta [constant NetMessages.MAX_DEBUG_PAYLOAD_BYTES]).
 class DebugCommand:
 	## Bytes de datos de un teletransporte (3 × f32).
 	const TELEPORT_PAYLOAD_SIZE: int = 12
+	## Bytes de datos de [constant NetProtocol.DEBUG_ITEM_GIVE]: [code]u16 def, u16 count[/code].
+	const ITEM_GIVE_PAYLOAD_SIZE: int = 4
+	## Bytes de datos de [constant NetProtocol.DEBUG_CURRENCY_ADD]: [code]u8 currency, s32 amount[/code].
+	const CURRENCY_ADD_PAYLOAD_SIZE: int = 5
+	## Bytes de datos de [constant NetProtocol.DEBUG_XP_ADD]: [code]u32 amount[/code].
+	const XP_ADD_PAYLOAD_SIZE: int = 4
+	## Cantidad máxima de [constant NetProtocol.DEBUG_ITEM_GIVE] (la pila más grande, docs/progresion.md §2.1).
+	const MAX_ITEM_GIVE_COUNT: int = 999
+	## XP máxima de [constant NetProtocol.DEBUG_XP_ADD].
+	const MAX_XP_ADD: int = 10_000_000
 	## Bytes de datos de [constant NetProtocol.DEBUG_APPLY_STATUS]: [code]u8 status_id, u16 ticks[/code].
 	const APPLY_STATUS_PAYLOAD_SIZE: int = 3
 	## Reino más alto que admite [constant NetProtocol.DEBUG_FORT_OWNER].
@@ -714,6 +731,73 @@ class DebugCommand:
 		return debug_command
 
 
+	## Comando [constant NetProtocol.DEBUG_ITEM_GIVE]: darse [param count] (1 a 999) del objeto con net id
+	## [param item_net_id] ([method ItemDatabase.net_id_of]).
+	static func item_give(item_net_id: int, count: int) -> DebugCommand:
+		var debug_command := DebugCommand.simple(NetProtocol.DEBUG_ITEM_GIVE)
+		debug_command.payload.resize(ITEM_GIVE_PAYLOAD_SIZE)
+		debug_command.payload.encode_u16(0, item_net_id & 0xFFFF)
+		debug_command.payload.encode_u16(2, count & 0xFFFF)
+		return debug_command
+
+
+	## Comando [constant NetProtocol.DEBUG_CURRENCY_ADD]: sumar [param amount] (distinto de 0; negativo resta) de
+	## la moneda [param currency] ([enum Currency.Code]). Se satura a s32.
+	static func currency_add(currency: int, amount: int) -> DebugCommand:
+		var debug_command := DebugCommand.simple(NetProtocol.DEBUG_CURRENCY_ADD)
+		debug_command.payload.resize(CURRENCY_ADD_PAYLOAD_SIZE)
+		debug_command.payload.encode_u8(0, currency & 0xFF)
+		debug_command.payload.encode_s32(1, clampi(amount, -0x80000000, 0x7FFFFFFF))
+		return debug_command
+
+
+	## Comando [constant NetProtocol.DEBUG_LEVEL_SET]: fijar el nivel [param level].
+	static func level_set(level: int) -> DebugCommand:
+		var debug_command := DebugCommand.simple(NetProtocol.DEBUG_LEVEL_SET)
+		debug_command.payload = PackedByteArray([level & 0xFF])
+		return debug_command
+
+
+	## Comando [constant NetProtocol.DEBUG_XP_ADD]: sumar [param amount] de XP (1 a 10 000 000).
+	static func xp_add(amount: int) -> DebugCommand:
+		var debug_command := DebugCommand.simple(NetProtocol.DEBUG_XP_ADD)
+		debug_command.payload.resize(XP_ADD_PAYLOAD_SIZE)
+		debug_command.payload.encode_u32(0, clampi(amount, 0, 0xFFFFFFFF))
+		return debug_command
+
+
+	## Net id del objeto de un [constant NetProtocol.DEBUG_ITEM_GIVE] (0 si no es uno con sus datos).
+	func get_item_net_id() -> int:
+		return payload.decode_u16(0) if _has_payload(NetProtocol.DEBUG_ITEM_GIVE, ITEM_GIVE_PAYLOAD_SIZE) else 0
+
+
+	## Cantidad de un [constant NetProtocol.DEBUG_ITEM_GIVE] (0 si no es uno con sus datos).
+	func get_item_count() -> int:
+		return payload.decode_u16(2) if _has_payload(NetProtocol.DEBUG_ITEM_GIVE, ITEM_GIVE_PAYLOAD_SIZE) else 0
+
+
+	## Moneda de un [constant NetProtocol.DEBUG_CURRENCY_ADD] (0 si no es uno con sus datos).
+	func get_currency() -> int:
+		return payload.decode_u8(0) \
+				if _has_payload(NetProtocol.DEBUG_CURRENCY_ADD, CURRENCY_ADD_PAYLOAD_SIZE) else 0
+
+
+	## Cantidad (con signo) de un [constant NetProtocol.DEBUG_CURRENCY_ADD] (0 si no es uno con sus datos).
+	func get_currency_amount() -> int:
+		return payload.decode_s32(1) \
+				if _has_payload(NetProtocol.DEBUG_CURRENCY_ADD, CURRENCY_ADD_PAYLOAD_SIZE) else 0
+
+
+	## Nivel de un [constant NetProtocol.DEBUG_LEVEL_SET] (0 si no es uno con sus datos).
+	func get_level() -> int:
+		return payload.decode_u8(0) if _has_payload(NetProtocol.DEBUG_LEVEL_SET, 1) else 0
+
+
+	## XP de un [constant NetProtocol.DEBUG_XP_ADD] (0 si no es uno con sus datos).
+	func get_xp_amount() -> int:
+		return payload.decode_u32(0) if _has_payload(NetProtocol.DEBUG_XP_ADD, XP_ADD_PAYLOAD_SIZE) else 0
+
+
 	## Id del efecto de un [constant NetProtocol.DEBUG_APPLY_STATUS] (0 si no trae sus datos).
 	func get_status_id() -> int:
 		return payload.decode_u8(0) if payload.size() == APPLY_STATUS_PAYLOAD_SIZE else 0
@@ -743,7 +827,7 @@ class DebugCommand:
 
 
 	## Un teletransporte exige exactamente [constant TELEPORT_PAYLOAD_SIZE] bytes de datos y los
-	## comandos 7 a 16 los de su formato (ver la descripción de la clase); los demás comandos
+	## comandos 7 a 16 y 40 a 43 los de su formato (ver la descripción de la clase); los demás comandos
 	## admiten hasta [constant NetMessages.MAX_DEBUG_PAYLOAD_BYTES].
 	static func decode(bytes: PackedByteArray) -> DebugCommand:
 		var size: int = bytes.size()
@@ -777,7 +861,27 @@ class DebugCommand:
 				return data.size() == 1 and data[0] <= 1
 			NetProtocol.DEBUG_APPLY_STATUS:
 				return data.size() == APPLY_STATUS_PAYLOAD_SIZE and data[0] >= 1
+			NetProtocol.DEBUG_ITEM_GIVE:
+				if data.size() != ITEM_GIVE_PAYLOAD_SIZE:
+					return false
+				var count: int = data.decode_u16(2)
+				return data.decode_u16(0) >= 1 and count >= 1 and count <= MAX_ITEM_GIVE_COUNT
+			NetProtocol.DEBUG_CURRENCY_ADD:
+				return data.size() == CURRENCY_ADD_PAYLOAD_SIZE and Currency.is_valid(data[0]) \
+						and data.decode_s32(1) != 0
+			NetProtocol.DEBUG_LEVEL_SET:
+				return data.size() == 1 and data[0] >= 1 and data[0] <= ProgressMessages.MAX_LEVEL
+			NetProtocol.DEBUG_XP_ADD:
+				if data.size() != XP_ADD_PAYLOAD_SIZE:
+					return false
+				var amount: int = data.decode_u32(0)
+				return amount >= 1 and amount <= MAX_XP_ADD
 		return true
+
+
+	# true si es el comando [param command_id] con exactamente [param size] B de datos.
+	func _has_payload(command_id: int, size: int) -> bool:
+		return command == command_id and payload.size() == size
 
 
 ## SNAPSHOT (S→C, canal 2): cabecera de 14 B sin estado propio o, con él, de
@@ -973,9 +1077,13 @@ class Snapshot:
 
 ## ENTITY_SPAWN (S→C, canal 3): 10 B + datos según el tipo de entidad ([member kind]):
 ## [br]- [code]PLAYER[/code]: su [PlayerState] ([constant PlayerState.ENCODED_SIZE] B, el estado tras
-## [member spawn_tick]), un `u8` con la longitud del nombre y el nombre (hasta 48 B).
-## [br]- [code]NPC[/code]: lo mismo que un jugador y, tras el nombre, un [code]u16 npc_def_id[/code]
-## ([member npc_def_id]).
+## [member spawn_tick]), un `u8` con la longitud del nombre, el nombre (hasta 48 B) y, desde el protocolo 7
+## (docs/progresion.md §7.3), [constant NetMessages.PLAYER_SPAWN_TAIL_SIZE] B: el [code]u8 level[/code]
+## ([member level]: 0 si quien lo recibe no es de su reino) y los 8 B de [CharacterAppearance]
+## ([member appearance]). [method decode] solo mira su tamaño y que el nivel no pase del tope; la validez de la
+## apariencia la mira quien la dibuja (una que no vale se sustituye por la de por defecto de la raza).
+## [br]- [code]NPC[/code]: lo mismo que un jugador sin el nivel ni la apariencia y, tras el nombre, un
+## [code]u16 npc_def_id[/code] ([member npc_def_id]).
 ## [br]- [code]STRUCTURE[/code]: [code]u8 def_len[/code], el id de la definición en ASCII
 ## ([member definition_id]), [code]u8 field_count[/code] y los campos completos ([member fields]); no
 ## lleva estado de jugador ni nombre. Sin repetir type, net_id ni tick: son los de la cabecera.
@@ -1012,6 +1120,12 @@ class EntitySpawn:
 	## NPC: id de su definición en el catálogo de PNJ ([code]NpcCatalog[/code], ids 1..n por orden
 	## alfabético; 0 = sin definición). Va tras el nombre.
 	var npc_def_id: int = 0
+	## PLAYER (protocolo 7): nivel del personaje, de 1 a [constant ProgressMessages.MAX_LEVEL]; 0 si quien lo
+	## recibe no es de su reino (el nivel del enemigo no cruza) o no se conoce. Se satura al tope al codificar.
+	var level: int = 0
+	## PLAYER (protocolo 7): los 8 B de [CharacterAppearance], sin validar. Otro tamaño se codifica como 8 B a 0
+	## (sin apariencia: el cliente usa la de por defecto de la raza de su reino).
+	var appearance: PackedByteArray = PackedByteArray()
 	## STRUCTURE: id ASCII de la definición (por ejemplo [code]vado_gris_fort[/code]), de 1 a
 	## [constant NetProtocol.MAX_DEFINITION_ID_BYTES] caracteres.
 	var definition_id: String = ""
@@ -1115,13 +1229,20 @@ class EntitySpawn:
 		bytes.encode_u8(name_offset, name_bytes.size())
 		for i: int in name_bytes.size():
 			bytes[name_offset + 1 + i] = name_bytes[i]
-		if tail_size > 0:
-			bytes.encode_u16(name_offset + 1 + name_bytes.size(), npc_def_id & 0xFFFF)
+		var tail_offset: int = name_offset + 1 + name_bytes.size()
+		if kind == NetProtocol.EntityKind.NPC:
+			bytes.encode_u16(tail_offset, npc_def_id & 0xFFFF)
+		else:
+			bytes.encode_u8(tail_offset, clampi(level, 0, ProgressMessages.MAX_LEVEL))
+			if appearance.size() == CharacterAppearance.ENCODED_SIZE:
+				for i: int in CharacterAppearance.ENCODED_SIZE:
+					bytes[tail_offset + 1 + i] = appearance[i]
 		return bytes
 
 
 	## Devuelve null si el tipo no tiene formato, si el tamaño no cuadra con el que dicen las
-	## longitudes, si un texto no es válido o, en una estructura, si el id de la definición no es
+	## longitudes, si un texto no es válido, si un jugador trae un nivel por encima del tope o, en una
+	## estructura, si el id de la definición no es
 	## ASCII de 1 a 32 B, el contador de campos no está entre 1 y 32, un campo tiene un tipo de valor
 	## desconocido o se repite un id. Un proyectil, si no ocupa exactamente [constant PROJECTILE_SIZE] B,
 	## trae algún flag en la cabecera (el bit [code]is_yours[/code] o un contador de teletransporte) o un bit
@@ -1158,14 +1279,23 @@ class EntitySpawn:
 		spawn.state = PlayerState.decode(
 				bytes.slice(SPAWN_HEADER_SIZE, name_offset))
 		spawn.display_name = NetMessages.read_text(bytes, name_offset + 1, name_len)
-		if tail_size > 0:
-			spawn.npc_def_id = bytes.decode_u16(name_offset + 1 + name_len)
+		var tail_offset: int = name_offset + 1 + name_len
+		if kind_code == NetProtocol.EntityKind.NPC:
+			spawn.npc_def_id = bytes.decode_u16(tail_offset)
+		else:
+			spawn.level = bytes[tail_offset]
+			if spawn.level > ProgressMessages.MAX_LEVEL:
+				return null
+			spawn.appearance = bytes.slice(tail_offset + 1, tail_offset + 1 + CharacterAppearance.ENCODED_SIZE)
 		return spawn
 
 
-	# Bytes que van tras el nombre: el id de definición de un PNJ y nada en un jugador.
+	# Bytes que van tras el nombre: el id de definición de un PNJ y, desde el protocolo 7, el nivel y la
+	# apariencia de un jugador.
 	static func _tail_size(entity_kind: int) -> int:
-		return NetMessages.NPC_SPAWN_TAIL_SIZE if entity_kind == NetProtocol.EntityKind.NPC else 0
+		if entity_kind == NetProtocol.EntityKind.NPC:
+			return NetMessages.NPC_SPAWN_TAIL_SIZE
+		return NetMessages.PLAYER_SPAWN_TAIL_SIZE
 
 
 	# STRUCTURE: u8 def_len, id ASCII, u8 field_count y los campos, tras la cabecera.
@@ -2036,13 +2166,17 @@ class ObjectState:
 ## derribado, [member actor] quien lo levanta o lo remata, [member op] uno de [enum InteractOp] y
 ## [member end_tick] el tick en que acabaría.
 ## [br][br]
+## Desde el protocolo 7 (docs/progresion.md §6.3): [code]LEVEL_UP[/code] (16; 10 B), [code]u8 level[/code] de 1
+## a [constant ProgressMessages.MAX_LEVEL]. [member net_id] es quien sube; va al dueño y a los de su reino que lo
+## tienen relevante, para el efecto visual (al enemigo no le llega). El 16 deja hueco a los eventos de la fase 4.
+## [br][br]
 ## Con [method hit], [method death], [method kill], [method respawn], [method war], [method telegraph],
-## [method status], [method heal], [method loadout], [method downed] e [method interact] se crean ya
-## rellenos.
+## [method status], [method heal], [method loadout], [method downed], [method interact] y [method level_up] se
+## crean ya rellenos.
 class EntityEvent:
 	## Evento ([member event]).
 	enum Kind { HIT = 1, DEATH = 2, KILL = 3, RESPAWN = 4, WAR = 5, TELEGRAPH = 6, STATUS = 7, HEAL = 8,
-			LOADOUT = 9, DOWNED = 10, INTERACT = 11 }
+			LOADOUT = 9, DOWNED = 10, INTERACT = 11, LEVEL_UP = 16 }
 	## [member op] de un STATUS.
 	enum StatusOp { APPLIED = 1, REMOVED = 2 }
 	## [member op] de un INTERACT: empieza a levantar, levantar cortado, levantado, empieza a rematar y
@@ -2062,6 +2196,7 @@ class EntityEvent:
 	const LOADOUT_DATA_SIZE: int = 6
 	const DOWNED_DATA_SIZE: int = 4
 	const INTERACT_DATA_SIZE: int = 7
+	const LEVEL_UP_DATA_SIZE: int = 1
 	## Forma de un TELEGRAPH ([member shape]).
 	const SHAPE_CIRCLE: int = 0
 	const SHAPE_SECTOR: int = 1
@@ -2144,6 +2279,8 @@ class EntityEvent:
 	var actor: int = 0
 	## INTERACT: tick en que acabaría levantar o rematar.
 	var end_tick: int = 0
+	## LEVEL_UP (protocolo 7): el nivel al que se sube (1 a [constant ProgressMessages.MAX_LEVEL]).
+	var level: int = 0
 
 
 	static func hit(victim_id: int, event_tick: int, attacker_id: int, damage: int,
@@ -2292,6 +2429,16 @@ class EntityEvent:
 		return created
 
 
+	## [param player_id] sube al nivel [param new_level] (protocolo 7). Se satura a 1 … tope al codificar.
+	static func level_up(player_id: int, event_tick: int, new_level: int) -> EntityEvent:
+		var created := EntityEvent.new()
+		created.event = Kind.LEVEL_UP
+		created.net_id = player_id
+		created.tick = event_tick
+		created.level = new_level
+		return created
+
+
 	## La fuente del evento ([CombatSource]): el [member attack_id] de un HIT, DEATH, KILL, TELEGRAPH, HEAL o
 	## DOWNED; 0 en los demás.
 	func get_source() -> int:
@@ -2336,6 +2483,8 @@ class EntityEvent:
 				return DOWNED_DATA_SIZE
 			Kind.INTERACT:
 				return INTERACT_DATA_SIZE
+			Kind.LEVEL_UP:
+				return LEVEL_UP_DATA_SIZE
 		return -1
 
 
@@ -2403,15 +2552,17 @@ class EntityEvent:
 				bytes.encode_u16(9, actor & 0xFFFF)
 				bytes.encode_u8(11, op & 0xFF)
 				bytes.encode_u32(12, end_tick & 0xFFFFFFFF)
+			Kind.LEVEL_UP:
+				bytes.encode_u8(9, clampi(level, 1, ProgressMessages.MAX_LEVEL))
 		return bytes
 
 
 	## Devuelve null si el tipo, el evento, la longitud declarada o el tamaño total no cuadran
 	## (HIT 8 B de datos, DEATH 4, RESPAWN 1, WAR 2, TELEGRAPH 17, KILL 5 + 2n con el n declarado y n
-	## a lo sumo [constant MAX_ASSISTANTS], STATUS 9, HEAL 6, LOADOUT 6, DOWNED 4 e INTERACT 7), si un WAR
-	## trae un aviso que no es de [WarEvents] o un reino mayor que 3, si un TELEGRAPH trae una forma que no
-	## es 0 ni 1, si un STATUS o un INTERACT traen un [member op] que no existe o si un STATUS aplicado
-	## trae 0 acumulaciones.
+	## a lo sumo [constant MAX_ASSISTANTS], STATUS 9, HEAL 6, LOADOUT 6, DOWNED 4, INTERACT 7 y LEVEL_UP 1), si un
+	## WAR trae un aviso que no es de [WarEvents] o un reino mayor que 3, si un TELEGRAPH trae una forma que no
+	## es 0 ni 1, si un STATUS o un INTERACT traen un [member op] que no existe, si un STATUS aplicado
+	## trae 0 acumulaciones o si un LEVEL_UP trae un nivel fuera de 1 … tope.
 	static func decode(bytes: PackedByteArray) -> EntityEvent:
 		var size: int = bytes.size()
 		if size < HEADER_SIZE or bytes[0] != NetProtocol.MSG_ENTITY_EVENT:
@@ -2507,6 +2658,12 @@ class EntityEvent:
 				parsed.op = bytes.decode_u8(11)
 				parsed.end_tick = bytes.decode_u32(12)
 				if parsed.op < InteractOp.REVIVE or parsed.op > InteractOp.EXECUTE_CUT:
+					return null
+			Kind.LEVEL_UP:
+				if declared != LEVEL_UP_DATA_SIZE:
+					return null
+				parsed.level = bytes.decode_u8(9)
+				if parsed.level < 1 or parsed.level > ProgressMessages.MAX_LEVEL:
 					return null
 			_:
 				return null

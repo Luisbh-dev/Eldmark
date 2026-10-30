@@ -557,7 +557,8 @@ func test_player_spawn_carries_the_whole_v6_state() -> void:
 	spawn.state = state
 	spawn.display_name = "Ana"
 	var bytes: PackedByteArray = spawn.encode()
-	assert_eq(bytes.size(), 10 + 111 + 1 + 3, "SPAWN de jugador: 10 B + 111 B de estado + nombre")
+	assert_eq(bytes.size(), 10 + 111 + 1 + 3 + 9,
+			"SPAWN de jugador: 10 B + 111 B de estado + nombre + 9 B de nivel y apariencia (v7)")
 	var back: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(bytes)
 	if assert_not_null(back, "decode") and assert_not_null(back.state, "con estado"):
 		assert_true(back.state.equals_exact(state), "el estado de 111 B llega exacto")

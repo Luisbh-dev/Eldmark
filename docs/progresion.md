@@ -1546,6 +1546,17 @@ func on_departure(net_id: int) -> void        # tras CharacterSaver.finish y Sco
 		# (plataforma.md §7.2). Todo gancho por net_id, sobre uno sin PlayerProgress, no hace nada (§9.2)
 func flush(s: int) -> void                                          # WALLET_UPDATE y PROGRESS_UPDATE
 
+# scripts/shared/net/progress_messages.gd (P4, §19.9): los formatos de §4.6 y §12; los tipos, en NetProtocol.MSG_*
+class_name ProgressMessages extends RefCounted
+const MAX_LEVEL: int = 40; const MAX_ENTRIES: int = 30; const MAX_PAGES: int = 8; const NO_SLOT: int = 0xFF
+enum XpSource { STATE = 0, PVP = 1, NPC = 2, CAPTURE = 3, GM = 4 }
+class Entry: var container: int; var slot: int; var item: ItemInstance   # null = vacía (solo en un delta)
+# InventoryRequest (from_request, to_request), InventoryDelta (for_slots), InventoryFull (split, assemble),
+# InventorySyncRequest, WalletUpdate (make), ProgressUpdate (make): cada una con
+#     func encode(db: ItemDatabase = null) -> PackedByteArray         # vacío si decode no lo admitiría
+#     static func decode(bytes: PackedByteArray, db: ItemDatabase = null) -> <Clase>   # null si está malformado
+# (db solo en las que llevan objetos; null = ItemDatabase.shared())
+
 # scripts/client/inventory/ (cliente)
 class_name ClientInventory extends RefCounted
 signal view_changed; signal confirmed_changed; signal request_rejected(result: int, text: String)
@@ -2138,3 +2149,109 @@ paquetes de aquí:
 - **El reloj:** `ZonePlatform.now_unix()` (en el falso, `fake_now_unix` si se pone).
 
 **Sin comprobar:** con la plataforma de Go de verdad (plataforma.md P10).
+
+### 19.9 P4 · protocolo (PRG-11, PRG-13, PRG-14, PRG-16, ART-19)
+
+**Qué hay.** Lo de §14.1 P4 sobre la versión 7 que subió plataforma.md P4 (sin subirla otra vez: `PROTOCOL_VERSION`
+sigue en 7 y su línea ya nombraba todo esto):
+
+| Pieza | Contenido |
+|---|---|
+| `ProgressMessages` (`scripts/shared/net/progress_messages.gd`, nuevo) | Los seis mensajes de §4.6 y §12, cada uno con `encode` y `decode`: `InventoryRequest` (0x50, con `from_request(id, InventoryOps.Request)` y `to_request()`; el destino de DESTROY viaja como `NO_SLOT`), `InventoryDelta` (0x51, con `Entry` y `for_slots(revision, request_id, result, reason, state, ranuras)`), `InventoryFull` (0x52, con `split(revision, state)` en páginas de 30 y `assemble(páginas)`), `InventorySyncRequest` (0x53), `WalletUpdate` (0x54, `make`) y `ProgressUpdate` (0x55, `make(curva, nivel, xp_total, ganado, fuente, puntos de reino, gastados)`). Además `enum XpSource` (0 estado, 1 PvP, 2 PNJ, 3 captura, 4 GM), `MAX_LEVEL` (40), `MAX_ENTRIES` (30), `MAX_PAGES` (8), `NO_SLOT` (0xFF), `MAX_CONTAINER` (3) y `slot_in_range` |
+| `NetProtocol` | `MSG_INVENTORY_REQUEST` … `MSG_PROGRESS_UPDATE` (0x50–0x55, en `channel_for_type` con los fiables); `DEBUG_ITEM_GIVE`, `DEBUG_CURRENCY_ADD`, `DEBUG_LEVEL_SET` y `DEBUG_XP_ADD` (40–43) en `DEBUG_COMMAND_IDS` (`item_give`, `currency_add`, `level_set`, `xp_add`); `ItemDatabase.shared().wire_hash()` en `compute_sim_hash`; el texto nuevo del REJECT `SIM_HASH` |
+| `NetMessages` | `EntitySpawn.level` y `appearance`: +9 B tras el nombre del PLAYER (`PLAYER_SPAWN_TAIL_SIZE`); el PNJ no cambia. `EntityEvent.Kind.LEVEL_UP` (16, `u8 level`, 10 B; `level_up()`). `DebugCommand.item_give`, `currency_add`, `level_set` y `xp_add`, sus lectores (`get_item_net_id`, `get_item_count`, `get_currency`, `get_currency_amount`, `get_level`, `get_xp_amount`) y su validación en `decode` |
+| `NetEntity` | `level` (0 por defecto), `appearance` (vacía) y `encode_spawn(tick, for_owner, receiver_realm = NONE)`: el nivel real solo con `for_owner` o con el reino receptor igual al suyo |
+| `ZoneServer` | Las tres llamadas de §7.3: en `_announce_arrival`, el SPAWN propio, el del recién llegado una vez por reino receptor (tres variantes como mucho) y los de los demás con el reino del recién llegado; en `_refresh_interest`, con el del observador |
+| `NetClient` | Señales `inventory_delta_received`, `inventory_full_received`, `wallet_updated` y `progress_updated`; `send_inventory_request(ProgressMessages.InventoryRequest)` y `send_inventory_sync_request()` (solo en el mundo); el LEVEL_UP propio es un evento propio (`is_own_event`); contadores en `get_stats` |
+| `SwarmBot` | Decodifica y descarta 0x51, 0x52, 0x54 y 0x55 (`progress_messages_seen`); solo cuenta como mal formado lo que no se decodifica (y los C→S, que el servidor nunca manda) |
+| red.md | §3 (el `sim_hash` con `CombatCatalog` e `ItemDatabase` y el texto del REJECT), §5.2 (0x50–0x55), §5.4 (40–43) y §5.5 (los +9 B del PLAYER, el reparto por reino y LEVEL_UP), con la marca «v7» |
+
+**Desviaciones y decisiones de la implementación:**
+
+- **Los tipos van en `NetProtocol`** (`MSG_*` y `DEBUG_*`, como los del chat) y los formatos en `ProgressMessages`; el
+  LEVEL_UP y los cambios del SPAWN y de DEBUG_COMMAND no pueden salir de `net_messages.gd` (son sus clases).
+- **`decode` más estricto que la lista de §4.6**, para que nada raro llegue a quien lo usa: INVENTORY_REQUEST con
+  `request_id` 0, o con el destino `0xFF` fuera de un DESTROY (o un DESTROY con otro destino), es null; una ranura
+  repetida en un delta o en una página, o que no existe (contenedor 0–3; el equipo, 0–6; la bolsa, por debajo de
+  `bag_slots` en una página y de 120 en un delta; el 2 y el 3, por debajo de 120), es null; un delta que responde a
+  una petición (`request_id` ≠ 0) no lleva motivo, y uno del servidor (`request_id` 0) lleva OK y un motivo de
+  `EconomyReason`; WALLET_UPDATE pide una moneda que existe, saldo de 0 al tope, |delta| hasta el tope y motivo 0 o
+  conocido; PROGRESS_UPDATE, nivel de 1 a 40, fuente de 0 a 4 y `xp_in_level < xp_to_next` (0 en el tope).
+  **El SPAWN rechaza un nivel de más de 40** (§7.3 decía que el `decode` solo mira el tamaño: de la apariencia,
+  sí). Cada `encode` da un array vacío si el `decode` no lo admitiría (un fallo de quien construye el mensaje).
+- **`MAX_LEVEL` es una constante del protocolo** (40, el `CHECK` de la BD): el `decode` no carga la curva. La prueba
+  exige que sea `LevelCurve.shared().level_cap`.
+- **Sin progreso, nivel 0 y apariencia a 0.** Hasta P5b nadie pone `NetEntity.level` ni `appearance`: todo SPAWN de
+  jugador sale con nivel 0 y 8 B a 0, que el cliente tomará como «sin apariencia» (la de por defecto de la raza de
+  su reino, P6). Los jugadores falsos se quedan así siempre. Un `encode_spawn` sin reino receptor (`NONE`) da nivel 0:
+  así una llamada que olvide el reino nunca filtra el nivel.
+- **DEBUG_COMMAND 40–43 sin manejador hasta P5d**: están en `DEBUG_COMMAND_IDS`, así que el servidor los acepta sin
+  aviso y sin efecto (como pasó con 7–16), y `test_combat_server` y `test_hfsm_brain` esperan esos cuatro en
+  `missing_network_commands()` hasta que P5d los registre. Su `decode`: 40, net id ≥ 1 (que exista lo mira el
+  servidor) y cantidad 1–999 (`MAX_ITEM_GIVE_COUNT`); 41, `Currency.is_valid` y cantidad ≠ 0; 42, 1–`MAX_LEVEL`;
+  43, 1–10 000 000 (`MAX_XP_ADD`). Las fábricas saturan (`currency_add` a s32, `xp_add` a u32).
+- **El servidor aún no manda ni atiende 0x50–0x55**: un 0x50 o un 0x53 del cliente sigue contando como «tipo de
+  mensaje inesperado» hasta que P5b ponga `handle_packet`.
+- **El LEVEL_UP en el cliente** sale por `combat_event` como los demás ENTITY_EVENT (sin señal propia): el propio, al
+  llegar; el de un aliado, en su tick de dibujo. No impone estado (no explica correcciones).
+- **Adelantos para P5b y P6** (no estaban en §14.2): `InventoryDelta.for_slots`, `InventoryFull.split` y `assemble`,
+  `WalletUpdate.make`, `ProgressUpdate.make` y los dos envíos de `NetClient`. `ProgressUpdate.make` recorta una XP
+  incoherente con el nivel para que el mensaje se pueda codificar (con I8 nunca pasa).
+- red.md §3 no nombraba `CombatCatalog.prediction_hash()` (entra en el `sim_hash` desde la v6): ahora sí.
+
+**Para los paquetes siguientes.**
+
+- **P5b:** en `handle_packet`, `ProgressMessages.InventoryRequest.decode` (null → aviso) y `to_request()`; la
+  respuesta, `InventoryDelta.for_slots(revisión, request_id, outcome.result, 0, estado, outcome.changed)`; los cambios
+  del servidor, con `request_id` 0 y su motivo; `InventoryFull.split(revisión, estado)` tras el SPAWN propio, tras el
+  kit y con INVENTORY_SYNC_REQUEST; `NetEntity.level` y `appearance` en `on_arrival`, que tiene que ir antes de
+  `_announce_arrival` en `_process_arrivals` (hoy, justo tras `equip_template`). WALLET_UPDATE y PROGRESS_UPDATE con
+  `make`.
+- **P5c:** `EntityEvent.level_up` al dueño y a los de su reino que lo tienen relevante, y `NetEntity.level` al subir
+  (para los SPAWN siguientes).
+- **P5d:** los manejadores de red de 40–43 con los lectores de `DebugCommand`, y fuera esos cuatro de lo que esperan
+  `test_combat_server` y `test_hfsm_brain`.
+- **P6:** `ClientInventory.on_delta` y `on_full_page` con las señales de `NetClient` (y `InventoryFull.assemble` para
+  juntar páginas); `send_inventory_request(InventoryRequest.from_request(id, petición))`; `EntitySpawn.level` y
+  `appearance` para la placa y `AppearanceApplier` (`CharacterAppearance.decode` y `validate`; si no vale o es 0,
+  `default_for` de `race_for_realm`).
+
+**Pruebas.** En Godot, `test_progress_messages` (18): constantes (tipos, canales, ids 40–43, `MAX_LEVEL` igual al
+tope de la curva); INVENTORY_REQUEST byte a byte, de ida y vuelta con `InventoryOps.Request`, DESTROY con `0xFF` y
+cada campo que el `decode` no admite; INVENTORY_DELTA byte a byte (con durabilidad, rareza, semilla y afijos, de las
+armaduras de prueba), cambios del servidor, rechazos, cabeceras y entradas rotas, ranuras repetidas y objetos que no
+valen; el delta y la página más grandes (1120 y 1089 B) y la entrada 31; INVENTORY_FULL con 122 objetos en 5 páginas,
+juntadas en otro orden, y lo que no se junta (falta una, otra revisión, repetida, el banco); WALLET_UPDATE y
+PROGRESS_UPDATE byte a byte, con `make` y con cada rango; el SPAWN de PLAYER con nivel y apariencia, el tope, la
+apariencia sin validar y el PNJ sin cambios; `encode_spawn` por reino receptor (el dueño, su reino, otro, ninguno, un
+falso); LEVEL_UP; DEBUG_COMMAND 40–43 con sus extremos; ninguno pasa de 1200 B; cada mensaje truncado, con bytes de
+más, con otro tipo y ante los demás decodificadores; 6000 búferes al azar sin errores del motor; el `sim_hash` cambia
+con otra `ItemDatabase` y vuelve con la de siempre; `ZoneServer` (zona plana sin red, peers montados a mano y un
+transporte que apunta lo enviado): cada receptor recibe la variante de su reino en `_announce_arrival` y en
+`_refresh_interest`; `NetClient` (señales, contadores, el LEVEL_UP propio al momento y el ajeno en cola, los rotos y los
+C→S como mal formados) y `SwarmBot` (descarte). Comprobadas con la mutación que deberían pillar: sin el reino receptor
+en las dos llamadas de `ZoneServer` y sin `ItemDatabase` en el `sim_hash`, fallan. Ajustadas a la versión 7:
+`test_net_messages` (+9 B en el SPAWN y 20 ids), `test_net_messages_v3` y `_v6` (el tamaño del SPAWN de PLAYER),
+`test_command_registry` (ids 40–43), `test_combat_server` y `test_hfsm_brain` (los cuatro sin manejador hasta P5d) y
+`test_architecture` (`net/progress_messages.gd` entre los compartidos que deben existir). Siguen correctas, además,
+`test_net_entity`, `test_net_client`, `test_bot_swarm`, `test_party_messages`, `test_loadout_server`,
+`test_zone_server_net`, `test_npc_system`, `test_fortress_controller`, `test_ability_server`, `test_combat_wire`,
+`test_fortress_net`, `test_projectile_world`, `test_net_loopback`, `test_zone_server_platform`, `test_export_config`,
+`test_progression_rules_export`, `test_item_database`, `test_combat_catalog`, `test_combat_events`,
+`test_fortress_loopback`, `test_siege_clients`, `test_net_processes` (procesos aparte, bots con 0 malformados),
+`test_server_main`, `test_server_config`, `test_handoff_ticket` y `test_platform_client`; en Go, `internal/gamedata`
+e `internal/progress` (Go no cambia: `progression_rules.json` sigue igual).
+
+**Medido** (esta máquina, 4 núcleos, Godot 4.7.2 headless):
+
+| Qué | Resultado |
+|---|---|
+| `test_progress_messages` | 18 pruebas; la más lenta, el fuzz (95 ms), y la de `ZoneServer`, 62 ms; el archivo, unos 12 s con el arranque del ejecutor |
+| Tamaños | INVENTORY_DELTA ≤ 1120 B, INVENTORY_FULL ≤ 1089 B, el SPAWN de PLAYER más largo 179 B (170 hasta la v6), LEVEL_UP 10 B |
+| `test_net_messages` (con `_v3` y `_v6`) | 95 pruebas, 12 s |
+
+**Sin comprobar:** los mensajes con el servidor mandándolos de verdad (P5b) y el cliente usándolos (P6); la suite
+entera de Godot no se ha pasado.
+
+**Queda para después:** el inventario en la zona y el envío de 0x51–0x55 (P5b), LEVEL_UP y PROGRESS_UPDATE de las
+recompensas (P5c), los comandos 40–43 (P5d) y la interfaz (P6).

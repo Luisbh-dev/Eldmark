@@ -42,7 +42,7 @@ const REALM_MATERIALS_DIR: String = "res://assets/materials/realms"
 const REQUIRED_SHARED_SCRIPTS: Array[String] = [
 	"player_input.gd", "player_state.gd", "player_character.gd", "bot_brain.gd",
 	"net/net_protocol.gd", "net/net_zones.gd", "net/net_math.gd", "net/entity_record.gd",
-	"net/net_messages.gd",
+	"net/net_messages.gd", "net/progress_messages.gd",
 ]
 
 ## Scripts del servidor que deben existir (si no, las reglas de dependencias no comprobarían nada).
