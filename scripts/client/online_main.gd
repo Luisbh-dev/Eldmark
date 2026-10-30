@@ -461,9 +461,13 @@ func _on_local_spawned(character: PlayerCharacter) -> void:
 		_controller.set_bot(_brain)
 		return
 
-	# Aspecto visual: el humanoide animado sustituye a la cápsula provisional.
-	if HumanoidVisual.install_replacing_placeholder(character) == null:
+	# Aspecto visual: el humanoide animado sustituye a la cápsula provisional, con la apariencia del SPAWN propio (la
+	# de por defecto de su pueblo si no vale o la zona no tiene progreso; docs/progresion.md §7.3).
+	var visual: HumanoidVisual = HumanoidVisual.install_replacing_placeholder(character)
+	if visual == null:
 		push_warning("[Eldmark] Sin visual del humanoide: se usa la cápsula provisional")
+	else:
+		AppearanceApplier.apply_bytes(visual, _client.get_own_appearance(), config.realm)
 
 	# Cámara de acción por encima del hombro, mirando hacia donde mira el personaje.
 	_camera_rig = _instantiate_scene(CAMERA_RIG_SCENE_PATH, CameraRig) as CameraRig

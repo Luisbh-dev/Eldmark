@@ -73,6 +73,13 @@ extends Node
 ## [method send_inventory_request] y [method send_inventory_sync_request] mandan las peticiones (solo en el
 ## mundo). El nivel y la apariencia de cada jugador vienen en su ENTITY_SPAWN.
 ## [br][br]
+## [b]Inventario del jugador[/b] (docs/progresion.md §11.3, P6): un [ClientInventory] ([method get_inventory]) recibe
+## los INVENTORY_DELTA y las páginas de INVENTORY_FULL antes de su señal, envía por aquí sus peticiones y toma el
+## contexto de cada una ([method inventory_context]: nivel, ranura activa, «puede tocar el equipo» y «bebiendo»)
+## del estado predicho del personaje local y del bloque extra; su plazo de 5 s corre en cada tick. Un
+## [ClientProgress] ([method get_progress]) guarda los WALLET_UPDATE, los PROGRESS_UPDATE y el nivel del SPAWN propio.
+## El LEVEL_UP de un aliado sube el nivel de su vista ([method RemoteWorld.on_level_up]).
+## [br][br]
 ## [b]Bot tramposo[/b] ([member ClientConfig.bot_cheat], solo en modo BOT): un [BotCheater] falsea
 ## el HELLO ([code]version[/code]), envía tráfico de más tras el lote honrado de cada tick
 ## ([code]future[/code], [code]dupes[/code], [code]garbage[/code], [code]flood[/code]) o falsea la vista
@@ -275,6 +282,10 @@ var _inventory_deltas: int = 0
 var _inventory_fulls: int = 0
 var _wallet_updates: int = 0
 var _progress_updates: int = 0
+# Inventario, monedas y progreso del jugador local (P6) y los 8 B de la apariencia de su SPAWN.
+var _inventory: ClientInventory = ClientInventory.new()
+var _progress: ClientProgress = ClientProgress.new()
+var _own_appearance: PackedByteArray = PackedByteArray()
 
 # Envío de entradas.
 var _view_offsets_q: PackedInt32Array = PackedInt32Array()
@@ -319,6 +330,11 @@ func _init() -> void:
 	_projectile_world.setup(_interp_clock, _remote_world)
 	# La puerta del fuerte que tenía cada tick simulado, también en las repeticiones (fuerte.md, 3.2).
 	_prediction.before_simulate = _fortress_view.before_simulate
+	# El inventario envía por aquí y toma el contexto de cada petición del estado predicho.
+	_inventory.send_request = send_inventory_request
+	_inventory.send_sync = send_inventory_sync_request
+	_inventory.context_provider = inventory_context
+	_inventory.in_combat_provider = is_in_combat
 
 
 func _ready() -> void:
@@ -532,7 +548,7 @@ func send_party_leave() -> bool:
 ## lleva sus [code]request_id[/code] y su estado optimista (§11.3). Devuelve false, sin enviar nada, si no hay
 ## sesión en el mundo (antes sería un aviso del servidor) o el mensaje no se puede codificar.
 func send_inventory_request(message: ProgressMessages.InventoryRequest) -> bool:
-	if _state != State.IN_WORLD or message == null:
+	if _state != State.IN_WORLD or message == null or not is_instance_valid(_transport):
 		return false
 	var bytes: PackedByteArray = message.encode()
 	if bytes.is_empty() or _transport.send(SERVER_PEER_ID, NetProtocol.CH_RELIABLE, bytes) != OK:
@@ -544,13 +560,48 @@ func send_inventory_request(message: ProgressMessages.InventoryRequest) -> bool:
 ## Pide el inventario entero (INVENTORY_SYNC_REQUEST, protocolo 7): uno cada 5 s como mucho, o el servidor
 ## cuenta un aviso. Devuelve false si no hay sesión en el mundo o no se pudo enviar.
 func send_inventory_sync_request() -> bool:
-	if _state != State.IN_WORLD:
+	if _state != State.IN_WORLD or not is_instance_valid(_transport):
 		return false
 	if _transport.send(SERVER_PEER_ID, NetProtocol.CH_RELIABLE,
 			ProgressMessages.InventorySyncRequest.new().encode()) != OK:
 		return false
 	_inventory_syncs_sent += 1
 	return true
+
+
+## Inventario del jugador local (docs/progresion.md §11.3): vacío hasta el primer INVENTORY_FULL.
+func get_inventory() -> ClientInventory:
+	return _inventory
+
+
+## Monedas, nivel y XP del jugador local (WALLET_UPDATE, PROGRESS_UPDATE y el nivel del SPAWN propio).
+func get_progress() -> ClientProgress:
+	return _progress
+
+
+## Los 8 B de la apariencia del SPAWN propio (vacío antes de aparecer; a 0 si la zona no tiene progreso).
+func get_own_appearance() -> PackedByteArray:
+	return _own_appearance
+
+
+## El contexto de una petición del inventario ahora (docs/progresion.md §4.1 y §11.3): el nivel de
+## [method get_progress]; la ranura de arma activa, el bit0 de [code]combat_flags2[/code] del estado predicho; y «puede
+## tocar el equipo» solo vivo, sin derribar, fuera de combate (bloque extra) y sin acción predicha. «Bebiendo», con
+## una ABILITY de consumible en curso.
+func inventory_context() -> InventoryOps.Context:
+	var context := InventoryOps.Context.new()
+	context.level = _progress.get_level()
+	if is_instance_valid(_character):
+		var combat: CombatState = _character.combat
+		context.active_weapon_slot = 1 if (combat.combat_flags2 & CombatState.FLAG2_SECOND_SLOT) != 0 else 0
+		context.can_touch_equipment = combat.action == CombatState.Action.NONE and not is_dead() \
+				and not is_downed() and not is_in_combat()
+		var ability: AbilityTicks = CombatCatalog.ability(combat.action_id) \
+				if combat.action == CombatState.Action.ABILITY else null
+		context.drinking = ability != null and ability.is_consumable()
+	else:
+		context.can_touch_equipment = false
+	return context
 
 
 ## Vida del jugador local según el último snapshot reconciliado (vida máxima por defecto hasta que
@@ -928,6 +979,7 @@ func _physics_process(_delta: float) -> void:
 	_interp_clock.advance(_local_tick)
 	_fortress_view.advance(_interp_clock.get_render_tick())
 	_deliver_due_events()
+	_inventory.tick(Time.get_ticks_msec())
 	_smoother.physics_step()
 	_transport.flush()
 
@@ -995,6 +1047,11 @@ func _deliver_combat_event(event: NetMessages.EntityEvent, is_own: bool) -> void
 	_track_status(event)
 	if event.event == NetMessages.EntityEvent.Kind.LOADOUT and event.net_id != _net_id:
 		_remote_world.on_loadout(event)
+	elif event.event == NetMessages.EntityEvent.Kind.LEVEL_UP:
+		if event.net_id == _net_id:
+			_progress.on_level_up(event.level)
+		else:
+			_remote_world.on_level_up(event)
 	combat_event.emit(event, is_own)
 
 
@@ -1391,6 +1448,7 @@ func _on_progress_message(bytes: PackedByteArray) -> void:
 				_malformed_packets += 1
 				return
 			_inventory_deltas += 1
+			_inventory.on_delta(delta)
 			inventory_delta_received.emit(delta)
 		NetProtocol.MSG_INVENTORY_FULL:
 			var page: ProgressMessages.InventoryFull = ProgressMessages.InventoryFull.decode(bytes)
@@ -1398,6 +1456,7 @@ func _on_progress_message(bytes: PackedByteArray) -> void:
 				_malformed_packets += 1
 				return
 			_inventory_fulls += 1
+			_inventory.on_full_page(page)
 			inventory_full_received.emit(page)
 		NetProtocol.MSG_WALLET_UPDATE:
 			var wallet: ProgressMessages.WalletUpdate = ProgressMessages.WalletUpdate.decode(bytes)
@@ -1405,6 +1464,7 @@ func _on_progress_message(bytes: PackedByteArray) -> void:
 				_malformed_packets += 1
 				return
 			_wallet_updates += 1
+			_progress.on_wallet(wallet)
 			wallet_updated.emit(wallet)
 		NetProtocol.MSG_PROGRESS_UPDATE:
 			var progress: ProgressMessages.ProgressUpdate = ProgressMessages.ProgressUpdate.decode(bytes)
@@ -1412,6 +1472,7 @@ func _on_progress_message(bytes: PackedByteArray) -> void:
 				_malformed_packets += 1
 				return
 			_progress_updates += 1
+			_progress.on_progress(progress)
 			progress_updated.emit(progress)
 
 
@@ -1532,6 +1593,8 @@ func _on_own_spawn(spawn: NetMessages.EntitySpawn) -> void:
 	_net_id = spawn.net_id
 	_spawn_tick = spawn.spawn_tick
 	_own_teleport = spawn.teleport_counter
+	_own_appearance = spawn.appearance.duplicate()
+	_progress.set_spawn_level(spawn.level)
 	_controller.auto_step = false
 	_controller.setup(character, null)
 	var targets: Array[Node3D] = []
