@@ -3192,3 +3192,19 @@ plataforma.md §19.17. Lo que toca a este documento:
 
 **Queda para después:** P8 (`test_progress_loopback`, `test_progress_platform_loopback`, `--bot-scenario=progress` y
 `platform/e2e/progress_test.go`).
+
+### 19.21 Lo que deja plataforma.md P10
+
+plataforma.md P10 (su §19.19) deja el arnés de extremo a extremo que P8 usa para `platform/e2e/progress_test.go`:
+
+- **El paquete:** `platform/e2e`, con la etiqueta `e2e` (`ELDMARK_GODOT=<Godot> go test -tags e2e ./e2e`), un
+  `TestMain` que importa el proyecto y el trabajo «Plataforma e2e» de la CI, que corre todo el paquete: un
+  `progress_test.go` con la misma etiqueta entra solo.
+- **Lo que P8 usa tal cual:** `New(t)` (la plataforma de `serve` con el almacén de verdad de P7 sobre una base nueva,
+  `test_world` como zona de entrada de los dos reinos, latido de 1 s), `NewAccount`, `StartZone("--debug-commands", …)`,
+  `StartBot(acc, "--bot-scenario=progress", …)`, `Bot.ReadReport` (el informe entero en `Raw`), `Process.Kill` y
+  `CheckBooks`, que ya comprueba las cuentas de `TestProgressCrash` (por definición, Σ `count_delta` = Σ `count` de
+  los objetos vivos; por moneda, Σ `delta` = saldo; un solo STARTER_KIT).
+- **Lo que le falta a P8:** la cuenta `admin` (SQL sobre `h.Pool` o la orden `admin`) y la comparación con `Load`
+  (`progress.New(rules, nil).Load` sobre `h.Pool`). `TestZoneCrash` ya mata la zona con `--save-interval=5` y vuelve a
+  entrar con el mismo personaje en otra instancia sin repetir el kit.

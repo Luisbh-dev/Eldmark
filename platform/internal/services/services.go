@@ -1,4 +1,8 @@
-package main
+// Package services monta en el proceso de serve los servicios de los paquetes (plataforma.md §14.1): cuentas y
+// sesiones (P1), personajes (P2), la API interna (P3, con guerra y lo social de P7a) y las retenciones (P9a),
+// con el almacén del progreso de progresion.md P7. Lo usan la orden serve y las pruebas de extremo a extremo
+// (platform/e2e, P10), que arrancan la plataforma de verdad en el proceso de la prueba.
+package services
 
 import (
 	"context"
@@ -30,11 +34,11 @@ import (
 // purgas, cada hora).
 const purgeEvery = time.Hour
 
-// progressStore da el almacén del progreso y la validación de la creación (plataforma.md §7.5): los de
+// ProgressStore da el almacén del progreso y la validación de la creación (plataforma.md §7.5): los de
 // progresion.md P7 (internal/progress, sobre 0010_progress) con las reglas exportadas de
 // progression_rules.json, en todos los entornos. El falso en memoria y la validación provisional
 // quedan para las pruebas.
-func progressStore() (*progress.Store, *progress.Rules, error) {
+func ProgressStore() (*progress.Store, *progress.Rules, error) {
 	rules, err := progress.LoadRules(gamedata.Raw())
 	if err != nil {
 		return nil, nil, err
@@ -42,10 +46,10 @@ func progressStore() (*progress.Store, *progress.Rules, error) {
 	return progress.New(rules, nil), rules, nil
 }
 
-// mountServices monta en el proceso los servicios de los paquetes: cuentas y sesiones (P1),
+// Mount monta en el proceso los servicios de los paquetes: cuentas y sesiones (P1),
 // personajes (P2), la API interna (P3) y las retenciones (P9a). Devuelve lo que hay que cerrar al parar
 // (la cola de correo).
-func mountServices(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger) (func(), error) {
+func Mount(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger) (func(), error) {
 	rules, err := gamedata.Load()
 	if err != nil {
 		return nil, err
@@ -54,7 +58,7 @@ func mountServices(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog
 	if err != nil {
 		return nil, err
 	}
-	progressRepo, validator, err := progressStore()
+	progressRepo, validator, err := ProgressStore()
 	if err != nil {
 		return nil, err
 	}

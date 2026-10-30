@@ -26,6 +26,7 @@ import (
 	"eldmark/platform/internal/db"
 	"eldmark/platform/internal/logx"
 	"eldmark/platform/internal/migrate"
+	"eldmark/platform/internal/services"
 )
 
 // Códigos de salida.
@@ -99,7 +100,7 @@ func serve(ctx context.Context, lookup config.Lookup, stdout, stderr io.Writer) 
 		log.Error("no arranca", "err", err)
 		return exitError
 	}
-	closeServices, err := mountServices(a, cfg, pool, log)
+	closeServices, err := services.Mount(a, cfg, pool, log)
 	if err != nil {
 		log.Error("no arranca", "err", err)
 		return exitError

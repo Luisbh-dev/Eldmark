@@ -232,6 +232,16 @@ Las pruebas necesitan los binarios de PostgreSQL (`ELDMARK_PG_BIN`, `pg_config` 
 `/usr/lib/postgresql/*/bin`; si no hay, se saltan) o un servidor en `ELDMARK_TEST_DATABASE_URL`. Como root,
 `initdb` corre con `runuser -u postgres`, que tiene que poder entrar en `TMPDIR`.
 
+Las de extremo a extremo (`platform/e2e`, `docs/plataforma.md` P10) llevan la etiqueta `e2e` y arrancan la
+plataforma en el proceso de la prueba contra una zona `test_world` y bots de Godot de verdad; sin `ELDMARK_GODOT` se
+saltan. Importan el proyecto al empezar (con los objetos de LFS bajados) y tardan menos de un minuto:
+
+```bash
+cd platform
+ELDMARK_GODOT=<ruta de Godot 4.7.2> go test -tags e2e -count=1 -v ./e2e
+# ELDMARK_E2E_ARTIFACTS=<carpeta> conserva los registros de la plataforma, las zonas y los bots
+```
+
 En desarrollo (`ELDMARK_MAIL=log`, por defecto) los correos de las cuentas no salen: van a la tabla
 `outbound_mail` y al registro con el enlace entero (`/verify`, `/reset` o `/revert` sobre `ELDMARK_PUBLIC_URL`).
 Los textos legales que se aceptan al registrarse son los borradores de `platform/legal/`, que van dentro del

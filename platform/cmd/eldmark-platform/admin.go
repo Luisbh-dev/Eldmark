@@ -28,6 +28,7 @@ import (
 	"eldmark/platform/internal/migrate"
 	"eldmark/platform/internal/names"
 	"eldmark/platform/internal/sanctions"
+	"eldmark/platform/internal/services"
 	"eldmark/platform/legal"
 )
 
@@ -187,7 +188,7 @@ func adminServices(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, 
 		return nil, err
 	}
 	env := &adminEnv{}
-	progressRepo, _, err := progressStore()
+	progressRepo, _, err := services.ProgressStore()
 	if err != nil {
 		return nil, err
 	}

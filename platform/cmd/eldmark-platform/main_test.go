@@ -21,6 +21,7 @@ import (
 	"eldmark/platform/internal/gamedata"
 	"eldmark/platform/internal/logx"
 	"eldmark/platform/internal/migrate"
+	"eldmark/platform/internal/services"
 	"eldmark/platform/internal/testdb"
 )
 
@@ -125,7 +126,7 @@ func startServeApp(t *testing.T, pool *pgxpool.Pool, env map[string]string) *app
 	if err != nil {
 		t.Fatal(err)
 	}
-	closeServices, err := mountServices(a, cfg, pool, logx.Discard())
+	closeServices, err := services.Mount(a, cfg, pool, logx.Discard())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +273,7 @@ func TestServeMountsTheStoreWhenDeployed(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		closeServices, err := mountServices(a, cfg, pool, logx.Discard())
+		closeServices, err := services.Mount(a, cfg, pool, logx.Discard())
 		if err != nil {
 			t.Errorf("%s: %v", e, err)
 			continue

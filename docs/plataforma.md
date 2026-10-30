@@ -100,6 +100,7 @@ platform/            go.mod: module eldmark/platform, go 1.24.0, toolchain go1.2
   internal/  config logx db httpx (enrutador, errores, límites) jsonx (enteros e ids del JSON, §4.1) migrate
              (+ migrations/*.sql con embed) testdb passwords accounts names gamedata (progression_rules.json, §4.4)
              characters tickets zones persistence progress (progresion.md P7) war social privacy mail
+             services (lo que monta serve; también el arnés de e2e/, P10)
   e2e/  legal/ (terms-1.md, privacy-1.md, rules-1.md)  deploy/ (Dockerfile, docker-compose.yml, Caddyfile,
         journald-eldmark.conf, *.env.example, secrets/ (ignorada), dev.sh, backup.sh, restore_check.sh, pitr_check.sh)
 ```
@@ -1797,8 +1798,9 @@ instancia, intercambio diferido, purga con lápida, retención al año, `delete`
   instancia nueva. El primer bot no hace falta que reconecte.
 - **CI:** trabajo «Plataforma e2e» en `tests.yml`, que reutiliza la caché de Godot y de LFS del trabajo de Godot y
   exporta `ELDMARK_GODOT`.
-- **Tiempo: sin medir.** Dos arranques de zona y uno o dos de bot: la meta es < 30 s por prueba. Si P10 mide más,
-  el tope de P10 sube a 60 s y se anota aquí y en la entrada del backlog.
+- **Tiempo** (medido en P10, §19.19): `TestEnterAndSave` 11–13 s y `TestZoneCrash` 25–27 s, dentro de la meta de
+  < 30 s por prueba; no hace falta el tope de 60 s. Si un cambio lo pasa, el tope de P10 sube a 60 s y se anota aquí
+  y en la entrada del backlog.
 
 **Revisión visual de UI-22 a UI-24 (usuario).** Contra `deploy/dev.sh`: el título arranca con el estado y las
 noticias; se crea una cuenta y se inicia sesión; se crean dos personajes (reino, apariencia, plantilla y nombre con
@@ -1820,7 +1822,7 @@ con su texto.
 | Una zona comprometida (Godot recibe UDP de Internet) | Token con alcance, `public_host` de una lista, autorización de sanciones en la plataforma, lotes validados contra la instancia (§6), ids solo de sus bloques, S1–S8 en Go (progresion.md §13.3). **Riesgo que queda:** S1–S8 acotan la forma, los topes, los ids y el actor de las GM, no las cantidades; son la red contra una zona con un error, no contra una comprometida, que aún puede acuñar oro, méritos y XP con GAMEPLAY o con `source = console` sobre los personajes que tiene dentro. Lo detectan PRG-30 y PRG-39 |
 | Textos legales, edad, retenciones (libro, correos sancionados) y exportación | Borradores marcados; revisión humana antes de cualquier prueba pública |
 | `zone_server.gd` lo tocan nueve paquetes de los dos documentos (y antes habilidades.md) | Orden conjunto fijo, que empieza tras habilidades.md H3c (§14.1), y pasos del tick con nombre (§14.3) |
-| P10 puede pasar de 30 s | Se mide; si pasa, tope explícito de 60 s (§15) |
+| P10 puede pasar de 30 s | Medido en P10 (§19.19): unos 12 s y 25 s; si pasa, tope explícito de 60 s (§15) |
 
 ## 17. Interfaz con progresion.md (conciliada)
 
@@ -3728,3 +3730,88 @@ medido en loopback); IPv6.
 **Queda para después:** que el usuario elija el criterio de TEC-27 (§0: relativo, cumplido; absoluto, no se cumple
 ni sin DTLS); los certificados de verdad de cada zona en el VPS (TEC-20, con la orden del compose) y
 `net.core.rmem_default` alto allí; la prueba de extremo a extremo (P10).
+
+### 19.19 P10 · extremo a extremo
+
+**Qué hay.** Las dos pruebas de §15 con la plataforma de verdad (la de `serve`) en el proceso de la prueba, un
+PostgreSQL efímero y procesos de Godot de verdad (una zona `test_world` con `--platform` y bots con cuenta), y su
+trabajo de CI. Ningún cambio en Godot ni en lo que hace la plataforma:
+
+| Pieza | Contenido |
+|---|---|
+| `platform/e2e/` | Etiqueta de compilación `e2e` (`go test -tags e2e ./e2e`): `harness_test.go` (el arnés), `platform_test.go` (`TestEnterAndSave` y `TestZoneCrash`) y `proc_linux_test.go` (`Pdeathsig`: el núcleo mata las zonas y los bots si la prueba muere sin pararlos; fuera de Linux, `proc_other_test.go` no hace nada). `doc.go`, sin etiqueta, para que el paquete exista con `go vet ./...` |
+| `TestMain` | `ELDMARK_GODOT` (sin ella, `t.Skip`; con `ELDMARK_REQUIRE_GODOT=1`, la CI, falla), `godot --headless --path <raíz> --import` una vez (si falla, todas las pruebas fallan con el final de su registro) y `testdb.Main` |
+| `New(t)` | Base nueva (`testdb.New`) y la configuración de §15 por `config.Load`: `ELDMARK_ENV=test`, un token aleatorio de `1:test_world:0`, una clave de billete aleatoria, `ELDMARK_ENTRY_ZONES=vardheim=test_world,solmarch=test_world`, `ELDMARK_HEARTBEAT_S=1`, `ELDMARK_LEASE_TTL_S=6` (y las `Option` que cambien alguna). Monta los servicios de `serve` (`services.Mount`), abre las dos API en puertos libres y vuelve con el arranque hecho. Al acabar la prueba para, en este orden, los procesos de Godot que sigan vivos, la plataforma y la base; si la prueba ha fallado, copia en su salida el final de cada registro |
+| Cuentas, zonas y bots | `NewAccount` (registro por la API pública con los tres textos aceptados y la contraseña en un archivo 0600); `StartZone(args…)` (`--server --zone=test_world --world=1 --port=<UDP libre> --platform=<API interna> --stop-file --report`, con `ELDMARK_ZONE_TOKEN` y `ELDMARK_TICKET_KEYS` en el entorno y sin ninguna otra `ELDMARK_*` heredada); `Zone.WaitLive` (la instancia `live` con su `public_port`); `Zone.Stop` (el cierre ordenado por `--stop-file`, con su código de salida); `Process.Kill` (SIGKILL, devuelve la hora de antes de la señal); `StartBot(acc, args…)` (`--bot --platform=<API pública> --login --password-file --report`); `Bot.ReadReport` (`platform` del informe y el informe entero en `Raw`) |
+| Consultas | `WaitFor` (cada 100 ms, con plazo), `WaitCharacter`, `Scalar`, `Exists`, `PlatformLogContains`, `Process.LogContains` y **`CheckBooks`**: por definición, Σ `count_delta` de `item_events` = Σ `count` de los objetos vivos; por moneda, Σ `delta` de `ledger_entries` = saldo; una sola operación STARTER_KIT y algún objeto vivo |
+| Registros | Cada prueba deja `plataforma.log` (JSON de `slog`, nivel INFO), `zonaN.log`/`.json` y `botN.log`/`.json` en una carpeta temporal o, con `ELDMARK_E2E_ARTIFACTS=<carpeta>`, en `<carpeta>/<prueba>/` (vaciada al empezar), donde se quedan |
+| `internal/services` (nuevo) | `Mount` y `ProgressStore`, que eran `mountServices` y `progressStore` de `cmd/eldmark-platform/services.go` (archivo movido; `serve`, `admin` y sus pruebas los llaman ahí): así el arnés monta exactamente lo de `serve`, sin copiarlo. §2.1 lo nombra |
+| CI | Trabajo «Plataforma e2e» en `tests.yml`: checkout sin LFS, las cachés de LFS y de Godot con las claves de los trabajos de Godot (`git lfs pull` baja lo que falte; Godot solo se descarga si falla la caché), `setup-go`, el PostgreSQL de `ubuntu-latest`, `ELDMARK_GODOT`, `ELDMARK_REQUIRE_PG=1`, `ELDMARK_REQUIRE_GODOT=1` y `go test -tags e2e -count=1 -v -timeout 14m ./e2e`; los registros, en `$RUNNER_TEMP/e2e` (fuera del proyecto, que Godot importa), suben como artefacto si falla y las líneas de resultado y de tiempo van al resumen. El trabajo «Plataforma» añade `go vet -tags e2e ./e2e` |
+
+**Las pruebas.**
+
+- **`TestEnterAndSave`:** la zona pasa a `live`; un bot crea «Viajera», entra, juega 300 ticks y sale con código 0
+  (informe sin `code` y con `created`). Después, sin plazo de más que 20 s: el arrendamiento queda libre
+  (`zone_instance_id` nulo, `released_at` puesto) con `last_save_version > 0`; `character_progress` con
+  `save_version > 0`, `saved_at` puesto y `last_zone_id = 'test_world'`; el arrendamiento lo reclamó esa instancia;
+  un solo billete consumido; `CheckBooks`; y el cierre ordenado sale con 0 y deja la instancia en `stopped`.
+- **`TestZoneCrash`:** zona con `--save-interval=5`; un bot crea «Superviviente» y juega. Tras su primer `saved_at`
+  (el guardado crítico del kit, al llegar) se esperan 7 s (más que 5 s + 1 s), `kill -9` a la zona (y al bot, que no
+  tiene que reconectar) y se arranca otra con `--save-interval=5`. Con la nueva en `live`: es otra instancia, la vieja
+  está `lost`, y el último `saved_at` es **posterior al primero** (salió de un punto de control) y **`kill − saved_at` <
+  5 s + 1 s**; `CheckBooks` (lo que quedó de la vieja, sin nada a medias). Un segundo bot con la misma cuenta entra y
+  su personaje queda arrendado **por la instancia nueva**; sale con 0, su informe trae el mismo `character_id` sin
+  `created`; el cierre ordenado de la nueva sale con 0 y `CheckBooks` otra vez (el kit no se repite al volver).
+- **Que pillan lo que deben** (mutaciones a mano, no se quedan en el repositorio): con `--save-interval=60` en la zona
+  vieja, `TestZoneCrash` falla («no hubo ningún punto de control tras el primer guardado», `kill − saved_at` = 7,1 s);
+  con un objeto vivo de más insertado a mano, `CheckBooks` falla («potion_health: 3 en el libro y 4 guardados»).
+
+**Para los paquetes siguientes.**
+
+- **progresion.md P8:** `platform/e2e/progress_test.go` va en este paquete, con la etiqueta `e2e`, y usa el arnés tal
+  cual: `New(t)`, `NewAccount`, `StartZone("--debug-commands", …)`, `StartBot(acc, "--bot-scenario=progress", …)`,
+  `Bot.ReadReport` (el informe entero en `Raw`), `Process.Kill` y `CheckBooks` (las cuentas de su
+  `TestProgressCrash`). La cuenta `admin` no tiene ayuda: SQL sobre `h.Pool` o la orden `admin` con `--actor`. `Load`
+  se compara con `progress.New(rules, nil).Load` sobre `h.Pool` (o con la reclamación siguiente).
+
+**Desviaciones y decisiones de la implementación:**
+
+- **`--path`:** §15 dice `godot --headless --path ..`, pero las pruebas corren en `platform/e2e/`; el arnés usa la raíz
+  del repositorio (`../..`, donde está `project.godot`) para la importación, las zonas y los bots.
+- **El kill no va justo tras el primer `saved_at`:** ese primero es el guardado crítico de la llegada (el kit), y un
+  kill enseguida cumpliría `kill − saved_at < 6 s` sin ningún punto de control. La prueba espera 7 s y exige además un
+  `saved_at` posterior al primero, así que sin puntos de control falla (comprobado arriba).
+- **Quién pasa la vieja a `lost`:** en todas las pasadas el registro de la nueva dio un 409 `instance_alive` y
+  reintentó a los 2 s, pero antes el trabajo de perdidas (cada `min(5 s, HEARTBEAT_S)` = 1 s) ya la había dado por
+  perdida («instancia perdida: sin latido»); el camino en el que el propio registro la pasa a `lost` (§5.3) no se da
+  con `HEARTBEAT_S=1`. Las dos cosas valen y la prueba no exige ninguna: la anota en su salida. Ese camino lo prueba P3
+  en Go.
+- **De más, que §15 no pedía:** `CheckBooks` en las dos pruebas (el «sin duplicar nada» de TEC-25), la liberación, el
+  billete consumido, la instancia que reclamó y el cierre ordenado con `stopped` en `TestEnterAndSave`, y el informe
+  del segundo bot en `TestZoneCrash`. Variables nuevas: `ELDMARK_REQUIRE_GODOT` y `ELDMARK_E2E_ARTIFACTS`.
+- **Los bots solo juegan lo justo:** 300 ticks el de `TestEnterAndSave` y 240 el segundo de `TestZoneCrash` (con 600,
+  la prueba tardaba 32 s).
+
+**Pruebas.** Las dos nuevas pasan en siete pasadas seguidas (una con `-race`, sin carreras). Sin `ELDMARK_GODOT` se
+saltan, y con `ELDMARK_REQUIRE_GODOT=1` fallan. La suite de Go entera pasa con el arreglo de `internal/services`
+(`gofmt -l` y `go vet` limpios, también con `-tags e2e`; `go test -race -count=1 ./...` en verde, 28 paquetes con
+pruebas). Godot no cambia: la importación de `TestMain` no toca ningún archivo del repositorio.
+
+**Medido** (esta máquina, 4 núcleos, Go 1.24.7, PostgreSQL 16, Godot 4.7.2 headless):
+
+| Qué | Resultado |
+|---|---|
+| `TestEnterAndSave` | 11,2–12,5 s (siete pasadas): plataforma lista en 0,1–1,1 s, zona en `live` unos 2 s después de lanzarla, el bot de 300 ticks de lanzarlo a salir 8–9 s, cierre ordenado 0,3–0,9 s |
+| `TestZoneCrash` | 24,8–26,2 s (seis pasadas con el segundo bot de 240 ticks): primer guardado unos 3,5–4 s tras lanzar el bot; la nueva en `live` unos 4,3 s tras el kill (un 409 y el reintento a los 2 s); `kill − saved_at` de 0,47 a 1,14 s; el segundo bot, dentro unos 3,5 s después de lanzarlo |
+| Las dos con `-race` | 12,5 s y 25,1 s |
+| Importación de `TestMain` | 6,5–10,7 s con el proyecto ya importado (en la CI, sin `.godot/`, sin medir) |
+| `go test -tags e2e ./e2e` entero | 44–46 s con la compilación en caché y la importación |
+
+Las dos quedan por debajo de la meta de 30 s por prueba (§15): no hace falta el tope de 60 s.
+
+**Sin comprobar:** el trabajo «Plataforma e2e» en GitHub (`ubuntu-latest` sin raíz, la importación entera sin la caché
+de `.godot/` y los tiempos allí); DTLS de extremo a extremo (la zona con `--dtls-*` y el bot que lo ancla: P9c lo probó
+contra el falso y un servidor dedicado, no contra la plataforma de Go).
+
+**Queda para después:** `platform/e2e/progress_test.go` (progresion.md P8); ver «Plataforma e2e» en verde en GitHub y
+marcarlo como comprobación obligatoria en la protección de la rama (usuario).
