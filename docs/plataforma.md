@@ -3019,3 +3019,28 @@ trabajo «Plataforma» en GitHub con las herramientas obligatorias (shellcheck y
 **Queda para después:** `admin maintenance` y `deploy.sh` (copia previa, parar, `migrate up`, versión nueva, quitar
 el mantenimiento), de TEC-28 y sin paquete aquí; publicar las imágenes en GHCR; la imagen y el despliegue de las
 zonas (TEC-20); el resto de P9a.
+
+### 19.12 Lo que deja progresion.md P7
+
+progresion.md P7 (su §19.12) pone el almacén del progreso de verdad (`internal/progress` sobre `0010_progress`) y la
+validación de la creación con las reglas exportadas, y cambia lo de aquí que lo esperaba:
+
+- **`serve` y la orden `admin`** usan `progress.Store` y `*progress.Rules` en todos los entornos. Ya no hay
+  `errNoProgressStore`: `serve` arranca en `staging` y `production`, y `purge-now` y `reapply-purges` purgan allí
+  el estado del progreso con `ProgressStore.Purge`. `MemoryProgressStore` y `ProvisionalValidator` quedan para las
+  pruebas.
+- **`platformtest.NewWithProgress(t, newStore, validator)`** monta la plataforma con el almacén de verdad
+  (`ProgressStore` es el que esté en uso; `Progress`, el falso, es nil entonces) y `NewCharacter` crea con
+  `platformtest.ValidAppearances`. `TestBackupAndRestoreCheck` (P9b) ya la usa, y `restore_check.sh` comprueba que
+  los personajes purgados no tienen filas en `character_progress`, `character_wallets`, `item_instances` ni
+  `character_timers`.
+- **P9a:** el trabajo horario de la retención del libro llama a `ProgressStore.PurgeRetention` en una transacción
+  mientras devuelva `deleted > 0` y borra en ella las filas de `characters` de `emptied`; la exportación pone
+  `ProgressStore.Export` (`{"record", "ops"}`, sin datos del personal) bajo `characters[i].progress`, también de las
+  lápidas con libro.
+- **P7b y progresion.md P5d (auditoría):** la fila de `audit_log` que escribe S8 lleva en `args` el `detail` de la
+  operación sin `command`, `source`, `actor_character_id` ni `at_unix` (`{"args": [...]}`, y las claves de nivel y
+  XP si las hay); la entrada del lote con `key = "op:<op_id>"` tiene que llevar lo mismo.
+- **P10:** las pruebas de extremo a extremo pueden comparar con `Load` (el registro de progresion.md §3.4).
+
+**Sin comprobar:** con una zona de verdad (P10).

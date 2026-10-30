@@ -1,5 +1,5 @@
 // Package progress es el lado Go del progreso de los personajes (progresion.md §13.2): las reglas
-// exportadas por Godot y, con progresion.md P7, el almacén que implementa persistence.ProgressStore.
+// exportadas por Godot y el almacén que implementa persistence.ProgressStore (progresion.md P7).
 //
 // De progresion.md P3 es [LoadRules]: lee de progression_rules.json (internal/gamedata) las secciones de
 // progresion.md §13.4 (races, appearance, level_curve, currencies, reasons, containers y combat; items y
@@ -7,7 +7,12 @@
 // ([Rules.ValidAppearance]), la curva de niveles ([Rules.LevelFor], [Rules.TotalTo]) y las búsquedas de
 // objetos y plantillas ([Rules.Item], [Rules.SelectableTemplate]). Las dos implementaciones dan lo mismo con
 // los mismos datos: los casos de tests/fixtures/progression/appearance_cases.json los leen
-// test_character_appearance.gd y las pruebas de este paquete. ValidateCreate llega con P7.
+// test_character_appearance.gd y las pruebas de este paquete.
+//
+// De progresion.md P7 son [Rules.ValidateCreate] (persistence.CreateValidator) y [Store]
+// (persistence.ProgressStore): las tablas de 0010_progress, el guardado con S1–S8 (checks.go y write.go,
+// con los casos de tests/fixtures/progression/save_cases.json que genera la zona), los resúmenes, la purga y la
+// retención, la exportación y las rutas de operación y libro.
 package progress
 
 import (
@@ -17,6 +22,7 @@ import (
 	"regexp"
 
 	"eldmark/platform/internal/jsonx"
+	"eldmark/platform/internal/persistence"
 )
 
 // Race es un pueblo de la sección races: su reino (código de NetProtocol.Realm, 1–3) y los índices que
@@ -166,7 +172,34 @@ type Rules struct {
 
 	items     map[string]int // id → posición en Items
 	templates map[string]int // id → posición en Templates
+
+	// Lo que mira el almacén (P7), resuelto por nombre en check: así un motivo o un tipo que cambie de número
+	// en Godot cambia aquí con el archivo.
+	kinds        opKinds
+	kindReasons  map[int]map[int]bool // tipo de operación → motivos de sus apuntes y eventos (S2)
+	realmReasons map[int]bool         // motivos de méritos que dan puntos de reino (I9: 3–5)
+	reversal     int                  // el motivo REVERSAL
+	merits       int                  // el código de la moneda de los méritos
+	currencyCaps map[int]int64        // código → tope
 }
+
+// opKinds son los tipos de operación (EconomyOp.Kind, progresion.md §5.3) por su nombre en reasons.op_kinds.
+type opKinds struct{ player, gameplay, starterKit, gm, reversal, migration int }
+
+// kindReasonNames son los motivos de cada tipo de operación que admite S2 (progresion.md §13.3, el
+// EconomyOp.KIND_REASONS de la zona): PLAYER 64; GAMEPLAY 2–6 y 65; STARTER_KIT 1; GM 7 y 66; REVERSAL 128.
+var kindReasonNames = map[string][]string{
+	"player":      {"player_destroy"},
+	"gameplay":    {"camp_refill", "pvp_kill", "pvp_assist", "objective", "npc_kill", "consume"},
+	"starter_kit": {"starter_kit"},
+	"gm":          {"gm_grant", "gm_remove"},
+	"reversal":    {"reversal"},
+	"migration":   {"migration"},
+}
+
+// realmReasonNames son los motivos de los méritos de juego que suben los puntos de reino (I9,
+// EconomyReason.gives_realm_points).
+var realmReasonNames = []string{"pvp_kill", "pvp_assist", "objective"}
 
 // Tamaños máximos de cada lista para que su índice quepa en los 8 B (AppearanceCatalog.MAX_SIZES).
 const (
@@ -353,8 +386,98 @@ func (r *Rules) check() error {
 		fail("combat: health_max tiene que ser mayor que 0")
 	}
 	r.checkItems(fail)
+	r.resolveEconomy(fail)
 	return errors.Join(errs...)
 }
+
+// resolveEconomy busca por su nombre los tipos de operación, los motivos y la moneda de los méritos que
+// usan S2, S3 y S6, y falla si alguno no está.
+func (r *Rules) resolveEconomy(fail func(format string, args ...any)) {
+	kind := func(name string) int {
+		v, ok := r.Reasons.OpKinds[name]
+		if !ok {
+			fail("reasons: falta el tipo de operación %q", name)
+		}
+		return v
+	}
+	reason := func(name string) int {
+		v, ok := r.Reasons.Codes[name]
+		if !ok {
+			fail("reasons: falta el motivo %q", name)
+		}
+		return v
+	}
+	r.kinds = opKinds{player: kind("player"), gameplay: kind("gameplay"), starterKit: kind("starter_kit"),
+		gm: kind("gm"), reversal: kind("reversal"), migration: kind("migration")}
+	r.kindReasons = map[int]map[int]bool{}
+	for name, reasons := range kindReasonNames {
+		set := map[int]bool{}
+		for _, rn := range reasons {
+			set[reason(rn)] = true
+		}
+		r.kindReasons[kind(name)] = set
+	}
+	r.realmReasons = map[int]bool{}
+	for _, rn := range realmReasonNames {
+		r.realmReasons[reason(rn)] = true
+	}
+	r.reversal = reason("reversal")
+	r.currencyCaps = map[int]int64{}
+	r.merits = 0
+	for _, c := range r.Currencies {
+		r.currencyCaps[c.Code] = c.Cap
+		if c.ID == "merits" {
+			r.merits = c.Code
+		}
+	}
+	if r.merits == 0 {
+		fail("currencies: falta la moneda merits (los puntos de reino, I9)")
+	}
+}
+
+// signMatches dice si el signo de delta cuadra con el rango de reason (progresion.md §5.2): fuentes > 0,
+// sumideros < 0 e internos, cualquiera distinto de 0. Un motivo fuera de los rangos no cuadra nunca.
+func (r *Rules) signMatches(reason int, delta int64) bool {
+	rg := r.Reasons.Ranges
+	switch {
+	case delta == 0:
+		return false
+	case reason >= rg.Source.Min && reason <= rg.Source.Max:
+		return delta > 0
+	case reason >= rg.Sink.Min && reason <= rg.Sink.Max:
+		return delta < 0
+	case reason >= rg.Internal.Min && reason <= rg.Internal.Max:
+		return true
+	}
+	return false
+}
+
+// ValidateCreate implementa persistence.CreateValidator (plataforma.md §4.4 paso 5, progresion.md §13.2):
+// la raza existe y es del reino realm (código de NetProtocol.Realm), los 8 B valen para ella
+// ([Rules.ValidAppearance]) y la plantilla es elegible ([Rules.SelectableTemplate]). Devuelve nil o un
+// *persistence.ValidationError con un campo por fallo: race_id «unknown» (no existe) o «wrong_realm» (es de
+// otro reino), appearance «invalid» (solo se mira con una raza que vale) y starter_template_id
+// «not_selectable».
+func (r *Rules) ValidateCreate(realm int16, raceID string, appearance [8]byte, templateID string) error {
+	fields := map[string]string{}
+	switch i := r.RaceIndex(raceID); {
+	case i < 0:
+		fields["race_id"] = "unknown"
+	case r.Races[i].Realm != realm:
+		fields["race_id"] = "wrong_realm"
+	case !r.ValidAppearance(realm, raceID, appearance):
+		fields["appearance"] = "invalid"
+	}
+	if !r.SelectableTemplate(templateID) {
+		fields["starter_template_id"] = "not_selectable"
+	}
+	if len(fields) > 0 {
+		return &persistence.ValidationError{Fields: fields}
+	}
+	return nil
+}
+
+var _ persistence.CreateValidator = (*Rules)(nil)
 
 // checkItems comprueba items y starter_templates con las reglas de ItemDatabase (progresion.md §2.1) y
 // rellena los índices de Item y SelectableTemplate.

@@ -216,13 +216,14 @@ En desarrollo (`ELDMARK_MAIL=log`, por defecto) los correos de las cuentas no sa
 Los textos legales que se aceptan al registrarse son los borradores de `platform/legal/`, que van dentro del
 binario (`ELDMARK_LEGAL_DIR` los cambia por los de otra carpeta).
 
-Los personajes (`/v1/worlds/{w}/characters`, `POST /v1/characters/{id}/enter`) guardan su progreso, hasta que
-llegue el almacén de `docs/progresion.md` P7, en memoria: se pierde al reiniciar, y por eso `serve` no arranca
-en `staging` ni en `production`. `enter` solo da billete si hay una instancia de zona viva que admite el reino.
+Los personajes (`/v1/worlds/{w}/characters`, `POST /v1/characters/{id}/enter`) guardan su progreso en
+PostgreSQL (las tablas de `0010_progress` y `platform/internal/progress`, `docs/progresion.md` P7): al crearlos se
+validan raza, apariencia y plantilla con las reglas exportadas, y cada guardado de la zona pasa las comprobaciones
+S1–S8 (`docs/progresion.md` §13.3). `enter` solo da billete si hay una instancia de zona viva que admite el reino.
 Las reglas de los nombres y el protocolo mínimo por defecto salen de
 `platform/internal/gamedata/progression_rules.json`, que se genera desde Godot, igual que las razas, la apariencia
-(`data/characters/`), la curva de niveles (`data/progression/`), las monedas, los motivos, los contenedores y la
-vida máxima. Tras cambiar cualquiera de esos datos hay que volver a exportarlo (la prueba
+(`data/characters/`), la curva de niveles (`data/progression/`), los objetos (`data/items/`), las plantillas de
+inicio, las monedas, los motivos, los contenedores y la vida máxima. Tras cambiar cualquiera de esos datos hay que volver a exportarlo (la prueba
 `test_progression_rules_export.gd` avisa si se ha quedado viejo):
 
 ```bash

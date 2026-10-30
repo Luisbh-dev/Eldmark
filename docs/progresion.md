@@ -1280,7 +1280,7 @@ conexión → 503 y reintento).
 | S5 | **Foto.** Uids sin repetir; contenedor 0–1; ranuras únicas, bolsa < `bag_slots`, equipo 0–1; definición en las reglas; `count` 1 … `max_stack`; durabilidad según `has_durability`; rareza 0 y sin afijos en la fase 5; en el equipo, un WEAPON por ranura y la activa con arma (I10); un uid que ya estaba vivo en la BD para este personaje conserva `def_id`, `seed`, `rarity` y `affixes` y su `bound` no pasa a false (I1, I12): S4 cuenta por definición y no vería dos uids que se cambian el tipo. Un uid nuevo cae en un bloque de `id_blocks` dado a `SaveKey.InstanceID`; si ya existe en `item_instances` (vivo o retirado, de cualquier personaje) choca con la clave primaria al insertarlo (I1): es un error de la base de S8 y sale con `check = "S8"` (plataforma.md §7.3) |
 | S6 | **Progreso.** `level = level_for(xp_total)` con la curva de las reglas; `xp_total` no baja sin una GM o REVERSAL en el guardado; `realm_points` nuevo = antiguo + Σ apuntes de méritos de motivo 3–5 + Σ apuntes de méritos de las REVERSAL de operaciones con méritos de motivo 3–5; `bag_slots` no cambia; `starter_granted` no vuelve a false; `active_weapon_slot` 0–1; `played_seconds` no baja; `health` null o entre 0 y la vida máxima de las reglas (`combat`) |
 | S7 | **Temporizadores.** Claves `^[a-z0-9_:]{1,48}$`, 16 como mucho, `ends_at_unix ≤ ahora + 7 días`. **Las fechas pasadas valen**: un cuerpo reintentado puede llegar minutos después de construirse (plataforma.md §6) y un temporizador vencido no es un error (`on_arrival` descarta los vencidos) |
-| S8 | **Escribe.** `character_progress` entero, con `saved_at = now()` y `save_version + 1`, que `Apply` devuelve; saldos con su `last_seq`; objetos: inserta los nuevos, actualiza los que cambian y retira los que faltan (`retired_at`, sin contenedor ni ranura); operaciones con `zone_id = SaveKey.ZoneID`, sin `on conflict` (un `op_id` repetido es un 23505 de `economy_ops_pkey` y sale con `check = "S8"`, S2), participantes, apuntes con su `seq`, eventos y `op_reversals`; una fila de `audit_log` por operación GM o REVERSAL (`event_key = "op:<op_id>"`, `on conflict (event_key) do nothing`) con `world_id` y `zone_id` de la instancia (`SaveKey`), `at = to_timestamp(detail.at_unix)` y `source`, `command`, `actor_account_id`, `actor_character_id`, `target_character_id`, `target_account_id` y `args` sacados de la operación: los mismos campos y valores que la entrada del lote (plataforma.md §9.1); temporizadores (sustituye el conjunto). No toca `characters` |
+| S8 | **Escribe.** `character_progress` entero, con `saved_at = now()` y `save_version + 1`, que `Apply` devuelve; saldos con su `last_seq`; objetos: inserta los nuevos, actualiza los que cambian y retira los que faltan (`retired_at`, sin contenedor ni ranura); operaciones con `zone_id = SaveKey.ZoneID`, sin `on conflict` (un `op_id` repetido es un 23505 de `economy_ops_pkey` y sale con `check = "S8"`, S2), participantes, apuntes con su `seq`, eventos y `op_reversals`; una fila de `audit_log` por operación GM o REVERSAL (`event_key = "op:<op_id>"`, `on conflict (event_key) do nothing`) con `world_id` y `zone_id` de la instancia (`SaveKey`), `at = to_timestamp(detail.at_unix)` y `source`, `command`, `actor_account_id`, `actor_character_id`, `target_character_id`, `target_account_id` y `args` sacados de la operación (`args` es el objeto `detail` sin `command`, `source`, `actor_character_id` ni `at_unix`: `{"args": [...]}` y, si los hay, los campos de nivel y XP; §19.12): los mismos campos y valores que la entrada del lote (plataforma.md §9.1); temporizadores (sustituye el conjunto). No toca `characters` |
 
 S3 a S6 repiten en Go lo que `InventoryOps`, `CurrencyRules` y `PlayerProgress` ya garantizan en
 GDScript: son la red de seguridad contra un error de la zona, no la regla del juego. Para que las dos
@@ -2441,3 +2441,142 @@ inventario por la red y los efímeros (P5b).
 
 **Queda para después:** el resto del alta, los efímeros, el inventario en la red, CONSUME, CAMP_REFILL y las cargas
 (P5b); las recompensas (P5c); los comandos de GM y la reversión (P5d); el almacén en Go con estos casos (P7).
+
+### 19.12 P7 · almacén en Go (PRG-10, PRG-12, PRG-14, PRG-16, TEC-25, TEC-43)
+
+**Qué hay.** Lo de §14.1 P7, en `platform/` salvo donde se dice:
+
+| Pieza | Contenido |
+|---|---|
+| `internal/migrate/migrations/0010_progress.up.sql` y `.down.sql`, `internal/migrate/testdata/seed_0010.sql` | El DDL de §3.3: las cuatro tablas de estado (`character_progress`, `character_wallets`, `item_instances` con la restricción de ranuras `item_instances_slot_key` diferida, `character_timers`) y las cinco de solo añadir con `eldmark_append_only()` en cada una. La inversa quita disparadores, función y tablas en orden inverso; la semilla deja una fila en cada tabla nueva (el progreso de Aneira, un objeto vivo y otro retirado, una GM y su REVERSAL, y una operación retenida de la lápida) |
+| `progress.Rules` (`rules.go`) | `ValidateCreate` (implementa `persistence.CreateValidator`) y lo que miran S2, S3 y S6, resuelto por nombre en `LoadRules`: los tipos de operación, los motivos de cada tipo (el `EconomyOp.KIND_REASONS` de la zona), los que dan puntos de reino, la moneda `merits` y los topes. Un archivo sin alguno de esos nombres no se carga |
+| `progress.Store` (`store.go`) | `New(rules, now)`, `Create`, `Load`, `Summaries` y `Purge` |
+| `section.go` | S1: la lectura estricta de la sección |
+| `checks.go` | `Apply` (S1 → estado bloqueado → S2–S7 → S8) y S2–S7 |
+| `write.go` | S8 |
+| `retention.go` | `PurgeRetention`, con `Retention` (365 días) y `RetentionBatch` (10 000) |
+| `export.go` | `Export`, `Op` y `Ledger` con los cuerpos de §3.5 y §13.2 |
+| `cmd/eldmark-platform` | `serve` y la orden `admin` usan `progress.Store` y `*progress.Rules` en todos los entornos: fuera `errNoProgressStore` y las negativas de `purge-now` y `reapply-purges` en `staging` y `production` |
+| `internal/platformtest` | `NewWithProgress(t, newStore, validator)` monta la plataforma con el almacén de verdad; `ProgressStore` es el almacén en uso, y `ValidAppearances`, 8 B que valen por reino (`NewCharacter` los usa con él) |
+| `deploy/restore_check.sh` | La consulta de «personajes purgados con datos personales» mira también `character_progress`, `character_wallets`, `item_instances` y `character_timers` |
+
+**Los cuerpos que se deciden aquí** (ids en cadena, como todo):
+
+- **`Load`**: las claves de §3.4, con un saldo por cada moneda de las reglas (0 sin fila), los objetos vivos por
+  contenedor y ranura, los temporizadores por clave y `location` desde las columnas (`saved_at_unix` de
+  `saved_at`; null con `last_zone_id` null). Sin fila en `character_progress` (no existe o es una lápida),
+  `persistence.ErrNotFound`.
+- **`Export`**: `{"record": …, "ops": [{op_id, kind, zone_id, ref_op_id, created_at_unix, ledger: [{entry_id,
+  currency, seq, delta, balance_after, reason, ref_kind, ref_id, created_at_unix}], items: [{uid, def_id,
+  count_delta, reason}]}]}`, con `record` null en una lápida, las operaciones por `created_at` y `op_id`, y solo los
+  apuntes y eventos del propio personaje. Ninguna operación lleva `actor_account_id`, `note` ni `detail` (las que no
+  son GM ni REVERSAL no tienen).
+- **`Op`** y **`Ledger`**: los de §13.2; `instances` con `retired` y `Ledger` con `created_at_unix`.
+- **La fila de `audit_log` de S8**: `args` es el `detail` de la operación sin lo que tiene columna propia
+  (`command`, `source`, `actor_character_id`, `at_unix`): `{"args": ["42", "oro", "50"]}` y, en `level_set` o
+  `xp_add`, también `level_before`, `level_after`, `xp_before`, `xp_after` y `xp_delta`. `source` es `console` con
+  `detail.source = "console"` y `zone` con `gm` o `debug`; `target_account_id`, la cuenta del personaje que guarda.
+  §13.3 decía «sacados de la operación» sin fijar la forma, y el lote de la zona exige que `args` sea un objeto.
+
+**Desviaciones y decisiones de la implementación:**
+
+- **S1 solo mira la forma.** Todas las claves de la sección son obligatorias (también `ops`) y las de solo lectura
+  salen con su propio texto; los rangos de cada campo los mira la comprobación que es dueña de él (los saldos, S3;
+  los eventos, S4; los objetos, S5; nivel, vida y ranura activa, S6; los temporizadores, S7), porque los casos lo
+  esperan así (un saldo negativo es S3; la ranura 30, S5). S1 mira además lo que no tiene otra comprobación y la base
+  no admitiría: el canal (`smallint`), las coordenadas (`real`) y que `detail` sea un objeto que cabe en `jsonb`.
+- **S2, más estricta que §13.3**, para que S8 no escriba nada que no se pueda leer después: un `op_id` una sola vez
+  por cuerpo; fuera de GM y REVERSAL, `detail` vacío y sin actor; `ref_op_id` solo (y siempre) en la REVERSAL; la
+  `note` de hasta 200 caracteres y sin NUL; un solo STARTER_KIT por cuerpo. El `detail` de GM y REVERSAL solo admite
+  `command` (el formato del lote, `^[a-z][a-z0-9_]{0,47}$`: nunca uno de la CLI), `args` (lista de 32 cadenas de
+  255 B como mucho), `source` (`gm`, `console` o `debug`; `debug` lleva actor, como `gm`), `at_unix`,
+  `actor_character_id` (puede faltar o ser null desde la consola, como en los casos) y las cinco de nivel y XP, que
+  son enteros.
+- **S3** exige que la moneda exista y que la foto lleve cada moneda de las reglas una vez, y mira `ref_kind` (0–4).
+  **S4** mira además el formato del `def_id` de cada evento, `count_delta` (≠ 0, en `int`, con el signo de su
+  motivo) y que un evento que resta sea de un uid vivo **con ese mismo objeto**. **S5** mira la semilla (`u32`) y deja
+  a S6 una ranura activa fuera de 0–1; un uid «nuevo» es uno que no está vivo para este personaje, así que uno
+  retirado propio también choca con la clave primaria (S8, I1).
+- **Puntos de reino (S6)**: los antiguos + los apuntes de méritos de motivo 3–5 del cuerpo + los apuntes de méritos de
+  cada REVERSAL cuya operación revertida dio a este personaje méritos de motivo 3–5 (lo mira la consulta de S2 sobre
+  la revertida). Revertir méritos de una GM no los mueve. `xp_total` no pasa de `total_to(40)`.
+- **Bloqueo.** `Apply` bloquea al empezar (`for update`) el progreso, los saldos y los objetos vivos del personaje:
+  dos `Apply` del mismo personaje van en serie aunque quien llama no tenga el arrendamiento bloqueado (en la
+  plataforma, siempre lo tiene). Los saldos se escriben con la guarda de §5.4, una sentencia por moneda con apuntes
+  (`balance = balance + Σ delta`, `last_seq = last_seq + n`, `where … and balance + Σ delta between 0 and tope`), y
+  cada apunte toma su `seq` del `last_seq` que devuelve; sin fila, o con un saldo distinto del de la foto, el
+  guardado falla con S3 («otro guardado lo ha cambiado»). Con el bloqueo no pasa; está por si alguien escribe saldos
+  por otro camino.
+- **Las horas** (`saved_at`, `created_at` de operaciones, apuntes y eventos, `retired_at`, el «ahora» de S2 y S7 y el
+  año de la retención) salen del reloj del almacén (`New(rules, now)`; `time.Now` en `serve`), no de `now()` de la
+  base: las pruebas fijan el de los casos.
+- **`created_op`** es la operación del primer evento que suma de ese uid en el cuerpo; null si no hay (nació al
+  dividir). **`Create`** inserta además un saldo a 0 de cada moneda.
+- **Retención**: cada llamada borra como mucho 10 000 apuntes, 10 000 eventos y 10 000 participaciones (las que ya no
+  tienen ni apuntes ni eventos), y en la misma llamada las reversiones y operaciones que se han quedado sin
+  participantes; pone la marca con `set_config(…, true)` y la quita al acabar. `emptied` va ordenado por id.
+- **`ValidateCreate`**: una raza que no existe es `unknown` (como la provisional) y una de otro reino,
+  `wrong_realm`; la apariencia solo se mira con una raza que vale (si no, el fallo es de la raza); los campos que
+  fallan salen todos a la vez. `Ledger` con un `limit` fuera de 1–100 devuelve error (la ruta lo valida antes).
+- **Los casos de §13.3 no cambian**: los 68 pasan tal como los genera la zona, con las etiquetas de §19.11.
+- **`deploy/deploy_test.go`** (de plataforma.md P9b) monta la plataforma de `TestBackupAndRestoreCheck` con el
+  almacén de verdad: la copia lleva el progreso y `reapply-purges` (el binario) lo vuelve a borrar.
+
+**Para los paquetes siguientes.**
+
+- **P5d:** el lote de auditoría de un comando que crea operación lleva `key = "op:<op_id>"` y los mismos campos que
+  S8 (arriba): `args` = el `detail` sin `command`, `source`, `actor_character_id` ni `at_unix`; si no coinciden, gana
+  la que llegue antes. El `detail` solo puede llevar las claves de arriba (otra es S2 y el personaje pierde lo no
+  guardado). `op_show` y `ledger_show` leen los cuerpos de `Op` y `Ledger`; la reversión de un DESTROY copia los
+  campos de `instances` (con `retired`).
+- **plataforma.md P9a:** el trabajo horario de la retención llama a `PurgeRetention` en una transacción mientras
+  `deleted > 0` y borra en ella las filas de `characters` de `emptied`; la exportación de la cuenta pone
+  `Export` bajo `characters[i].progress`, también de las lápidas con libro.
+- **plataforma.md P10 y P8 de aquí:** `serve` ya guarda de verdad; las pruebas de extremo a extremo comparan con
+  `Load`.
+
+**Pruebas.** En Go, `internal/progress` (18 nuevas): `TestApplyFixtures` (los 68 casos de `save_cases.json`, cada uno
+en una base nueva y en paralelo; exige que haya casos de `applied` y de S1 a S8); `TestCreateLoad` (el registro de
+un personaje nuevo y, tras el kit y un rato de juego, la foto campo a campo con los de solo lectura y
+`saved_at_unix`); `TestValidateCreate` (los casos de `appearance_cases.json` de 8 B con sus `fields`, raza de otro
+reino, raza que no existe, plantilla que no es `selectable` y dos fallos a la vez); `TestApplyWritesTheSave`
+(`save_version`, `saved_at`, `last_seq` y `seq`, `created_op`, la zona de las operaciones, la fila de auditoría de la
+GM campo a campo, la del lote que llega antes y no se duplica ni se pisa, `op_reversals` y la consola sin actor);
+`TestApplyLateRetryKeepsExpiredTimers`; `TestApplyActorRoleAtTheTime` (la GM de antes del `set-role` pasa, la de
+después no, y una fila `set-role` con `source = 'zone'` no cuenta); `TestApplySwapsSlots` (un intercambio y una
+rotación de tres); `TestDuplicateUid` (dos guardados a la vez con el mismo uid nuevo y con el mismo `op_id`: el
+segundo espera, choca con `item_instances_pkey` o `economy_ops_pkey` y no deja nada); `TestWalletConcurrency` (la
+guarda del UPDATE con dos transacciones en SQL, dos `Apply` que gastan 60 de 100 y la reconstrucción del saldo);
+`TestTwoCharacterOp`; `TestApplyReversalOfMeritsLowersRealmPoints`; `TestApplyOpShape` (11 roturas de S2 que los
+casos no cubren); `TestPurgeKeepsLedger` (la purga de la cuenta con el purgador de `internal/characters`, la lápida,
+el libro intacto, P0001 en UPDATE, DELETE y TRUNCATE de las tablas de solo añadir, 23503 al borrar la lápida y la
+marca que no sobrevive a su transacción); `TestRetention` (antes del año nada; a +366 días, el libro del purgado, sus
+lápidas vacías y la de uno sin libro, y la operación de dos participantes con el vivo); `TestSummaries`;
+`TestExport` (también de una lápida); `TestOpLedger` (con y sin arrendamiento en la instancia, la fila retirada del
+DESTROY, `reversed_by`, la paginación y los límites); y `TestThroughThePlatform` (la plataforma entera con el almacén
+de verdad: creación validada, reclamación con `Load`, guardados `applied`, `duplicate` e `invalid_save` S5 por la API
+interna, la lista con `Summaries`, la reclamación siguiente y las rutas de operación y libro con 200 y 404).
+Ajustadas: `internal/migrate` (0010 entre las embebidas y su semilla), `cmd/eldmark-platform` (`migrate status` con 7,
+`down 2` deshace 0010 y 0006, `serve` rechaza una apariencia que la provisional admitía y guarda en
+`character_progress`, y en `staging` y `production` monta los servicios) y `deploy` (arriba). Comprobadas con la
+mutación que deberían pillar: sin el signo en S3 falla `s3_sign`; sin la regla de las REVERSAL de méritos falla
+`TestApplyReversalOfMeritsLowersRealmPoints`; con `Purge` que no borra los objetos ni el progreso fallan
+`TestPurgeKeepsLedger`, `TestExport` y `restore_check.sh`. En Godot, `test_progression_fixtures` y
+`test_progression_rules_export` siguen correctas (Godot no cambia).
+
+**Medido** (esta máquina, 4 núcleos, Go 1.24.7, PostgreSQL 16 en un socket Unix con `fsync` apagado):
+
+| Qué | Resultado |
+|---|---|
+| `Apply` (con el COMMIT) tras el kit: 1 GAMEPLAY / 32 / 256 (86 KB) | 3,7 / 8,0 / 49 ms |
+| `Apply` con 1 / 32 / 256 GM (dos consultas por GM: el personaje del actor y su rol) | 4,6 / 17 / 76 ms |
+| `Load` de un personaje con el kit | 1,4–2,2 ms |
+| `go test -count=1 ./internal/progress` | 11,8 s (con el arranque del clúster); los 68 casos, unos 3 s en paralelo |
+| `go test -race -count=1 ./...` entero | correcto, 37 s con `gofmt` y `go vet`; `internal/progress`, 8,7 s (19,6 s con los demás paquetes a la vez en otra pasada) |
+
+**Sin comprobar:** contra una zona de verdad (P8 de aquí y plataforma.md P10); la retención con más de 10 000 filas
+por tabla (el tope por llamada no se ejercita); el tamaño de la exportación de un personaje con años de libro.
+
+**Queda para después:** el trabajo horario de la retención y el progreso en la exportación de la cuenta (plataforma.md
+P9a); la telemetría del libro (PRG-30) y la reconstrucción diaria de los saldos (§5.4); la excepción de `SaveMany`
+para las operaciones de dos participantes (fase 6).

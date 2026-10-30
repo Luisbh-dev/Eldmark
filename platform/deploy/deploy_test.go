@@ -23,7 +23,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"eldmark/platform/internal/gamedata"
+	"eldmark/platform/internal/persistence"
 	"eldmark/platform/internal/platformtest"
+	"eldmark/platform/internal/progress"
 	"eldmark/platform/internal/sanctions"
 	"eldmark/platform/internal/testdb"
 )
@@ -212,11 +215,19 @@ func TestScriptsPassShellcheck(t *testing.T) {
 // antes de purgar, restaurada con el purges.txt más reciente, queda purgada y pasa las
 // comprobaciones; la más reciente (--dir) no tiene nada que volver a purgar; una copia cuya
 // auditoría guarda el correo de una cuenta purgada después no pasa; y la rotación deja las diarias
-// que tocan sin perder el purges.txt más reciente.
+// que tocan sin perder el purges.txt más reciente. La plataforma usa el almacén del progreso de
+// verdad (progresion.md P7, como serve y la orden admin): la copia lleva el progreso de los
+// personajes y reapply-purges lo vuelve a borrar.
 func TestBackupAndRestoreCheck(t *testing.T) {
 	requirePG(t)
 	bin := platformBinary(t)
-	p := platformtest.New(t)
+	rules, err := progress.LoadRules(gamedata.Raw())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := platformtest.NewWithProgress(t, func(now func() time.Time) persistence.ProgressStore {
+		return progress.New(rules, now)
+	}, rules)
 	if _, err := p.Admin.Bootstrap(ctx, "jefa@example.org", platformtest.Password); err != nil {
 		t.Fatal(err)
 	}
@@ -269,6 +280,7 @@ func TestBackupAndRestoreCheck(t *testing.T) {
 	out = mustScript(t, rc, "restore_check.sh", first[0], latest)
 	mustContain(t, out, "Borrados de la copia: 1 arrendamientos y 1 billetes",
 		"Purgados ahora: 1 cuentas y 2 personajes", "bien: filas de audit_log con el correo de una cuenta purgada: 0",
+		"bien: personajes purgados con datos personales: 0",
 		"bien: purged_at distinto del de purges.txt: 0", "Restauración de prueba correcta")
 	// La más reciente, con --dir: ya está todo purgado.
 	out = mustScript(t, rc, "restore_check.sh", "--dir", dir)

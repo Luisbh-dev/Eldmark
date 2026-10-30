@@ -186,6 +186,11 @@ with purged_accounts as (
 	union select l.character_id from character_leases l join purged_characters p on p.id = l.character_id
 	union select t.character_id from enter_tickets t join purged_characters p on p.id = t.character_id
 	union select n.character_id from character_names n join purged_characters p on p.id = n.character_id
+	-- El estado del progreso (progresion.md §3.5): lo borra ProgressStore.Purge; el libro se queda.
+	union select g.character_id from character_progress g join purged_characters p on p.id = g.character_id
+	union select w.character_id from character_wallets w join purged_characters p on p.id = w.character_id
+	union select i.character_id from item_instances i join purged_characters p on p.id = i.character_id
+	union select t.character_id from character_timers t join purged_characters p on p.id = t.character_id
 )
 select 'personajes sin cuenta', count(*) from characters c
 	where not exists (select 1 from accounts a where a.account_id = c.account_id)

@@ -4,7 +4,8 @@
 // interfaz [ProgressStore] con sus tipos y errores, y la validación de la creación
 // ([CreateValidator], [ValidationError]) con su implementación provisional
 // ([ProvisionalValidator]). Las implementa internal/progress (progresion.md P7), que importa este
-// paquete (nunca al revés: no hay ciclo). Hasta entonces, [MemoryProgressStore] es el falso.
+// paquete (nunca al revés: no hay ciclo), y serve las usa en todos los entornos; el falso
+// ([MemoryProgressStore]) y la provisional quedan para las pruebas.
 package persistence
 
 import (
@@ -114,10 +115,11 @@ func (e *ValidationError) Error() string {
 // templatePattern es la plantilla que admite la validación provisional.
 var templatePattern = regexp.MustCompile(`^[a-z0-9_]{1,32}$`)
 
-// ProvisionalValidator es la validación de la creación hasta tener progresion.md P3 y P7
-// (plataforma.md §4.4 paso 5): race_id = "race_" + el id de texto del reino, 8 B de apariencia
-// cualesquiera (la zona corrige al cargar una que no valga, progresion.md §7.2) y una plantilla que
-// cumple ^[a-z0-9_]{1,32}$. serve la cambia por *progress.Rules cuando exista.
+// ProvisionalValidator es la validación de la creación de antes de progresion.md P7 (plataforma.md
+// §4.4 paso 5): race_id = "race_" + el id de texto del reino, 8 B de apariencia cualesquiera (la
+// zona corrige al cargar una que no valga, progresion.md §7.2) y una plantilla que cumple
+// ^[a-z0-9_]{1,32}$. serve usa *progress.Rules; esta queda para las pruebas que crean personajes
+// sin las reglas exportadas.
 type ProvisionalValidator struct{}
 
 // ValidateCreate implementa [CreateValidator]. Una raza de otro reino es wrong_realm; un id que

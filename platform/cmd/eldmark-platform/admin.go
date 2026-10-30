@@ -27,7 +27,6 @@ import (
 	"eldmark/platform/internal/mail"
 	"eldmark/platform/internal/migrate"
 	"eldmark/platform/internal/names"
-	"eldmark/platform/internal/persistence"
 	"eldmark/platform/internal/sanctions"
 	"eldmark/platform/legal"
 )
@@ -81,10 +80,9 @@ func usageErr(format string, args ...any) error {
 
 // adminEnv es lo que necesita una orden admin al correr.
 type adminEnv struct {
-	svc    *admin.Service
-	actor  *admin.Actor
-	out    io.Writer
-	purger bool // hay quien purgue personajes (purge-now)
+	svc   *admin.Service
+	actor *admin.Actor
+	out   io.Writer
 }
 
 // adminOrder es una orden admin ya leída: el rol que pide y lo que hace.
@@ -162,7 +160,7 @@ func adminFail(stderr io.Writer, name string, err error) int {
 }
 
 // adminServices monta lo que usan las órdenes admin con la configuración de serve: cuentas (con la
-// purga de personajes, solo donde existe el almacén del progreso) y el servicio admin.
+// purga de personajes sobre el almacén del progreso de progresion.md P7) y el servicio admin.
 func adminServices(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger,
 	lookup config.Lookup) (*adminEnv, error) {
 	runner, err := migrate.New(pool, migrate.FS())
@@ -188,17 +186,12 @@ func adminServices(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, 
 	if err != nil {
 		return nil, err
 	}
-	// Mientras no exista el almacén del progreso (progresion.md P7), en dev y test los personajes
-	// se purgan con el falso en memoria (no tiene nada que borrar: serve guarda el progreso en su
-	// propio proceso); en staging y production purge-now se niega, como serve.
 	env := &adminEnv{}
-	var purger accounts.CharacterPurger
-	var reapplier admin.CharacterReapplier
-	if !cfg.Env.Deployed() {
-		p := characters.NewPurger(pool, persistence.NewMemoryProgressStore(), clock.System{}, log)
-		purger, reapplier = p, p
-		env.purger = true
+	progressRepo, _, err := progressStore()
+	if err != nil {
+		return nil, err
 	}
+	purger := characters.NewPurger(pool, progressRepo, clock.System{}, log)
 	acc, err := accounts.New(accounts.Options{Config: cfg, Pool: pool, Log: log, Mail: &mail.LogSender{DB: pool, Log: log},
 		Legal: documents, Characters: purger, MinProtocol: cfg.ResolveMinProtocol(rules.ProtocolVersion)})
 	if err != nil {
@@ -208,7 +201,7 @@ func adminServices(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, 
 	if !ok || osUser == "" {
 		osUser, _ = lookup("USER")
 	}
-	env.svc, err = admin.New(admin.Options{Pool: pool, Accounts: acc, Characters: reapplier, Legal: documents,
+	env.svc, err = admin.New(admin.Options{Pool: pool, Accounts: acc, Characters: purger, Legal: documents,
 		StrictLegal: cfg.Env.Deployed(), Names: nameRules, Log: log, OSUser: osUser})
 	return env, err
 }
@@ -280,10 +273,6 @@ func parseAdmin(args []string) (*adminOrder, error) {
 			return nil, usageErr("purge-now necesita <correo> (y --wait, una duración)")
 		}
 		return &adminOrder{name: name, need: sanctions.RoleAdmin, run: func(ctx context.Context, e *adminEnv) error {
-			if !e.purger {
-				return errors.New("el almacén del progreso (docs/progresion.md P7) aún no existe: en staging y " +
-					"production no se purgan personajes")
-			}
 			res, err := e.svc.PurgeNow(ctx, e.actor, pos[0], *wait)
 			if err != nil {
 				return err
@@ -301,10 +290,6 @@ func parseAdmin(args []string) (*adminOrder, error) {
 			return nil, usageErr("reapply-purges necesita <purges.txt> (el más reciente que dejó backup.sh)")
 		}
 		return &adminOrder{name: name, need: sanctions.RoleAdmin, run: func(ctx context.Context, e *adminEnv) error {
-			if !e.purger {
-				return errors.New("el almacén del progreso (docs/progresion.md P7) aún no existe: en staging y " +
-					"production no se purgan personajes")
-			}
 			entries, err := readPurges(pos[0])
 			if err != nil {
 				return err
