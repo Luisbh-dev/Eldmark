@@ -231,8 +231,11 @@ jobs:
   # Servicio de plataforma en Go (docs/plataforma.md §2.6 y §10.3), independiente de los trabajos de
   # Godot: comprobación de secretos del índice, gofmt, go vet y go test con un PostgreSQL efímero
   # (initdb del PostgreSQL de ubuntu-latest; ELDMARK_REQUIRE_PG=1 hace que las pruebas fallen si
-  # falta, en lugar de saltarse). Para que bloquee el merge hay que marcar también «Plataforma» como
-  # comprobación obligatoria en la protección de la rama.
+  # falta, en lugar de saltarse). Las pruebas de platform/deploy (P9b) corren además los scripts de
+  # copias y restauración, shellcheck y «docker compose config» (sin demonio), que la imagen de
+  # ubuntu-latest trae; ELDMARK_REQUIRE_DEPLOY_TOOLS=1 hace que fallen si falta alguna herramienta.
+  # Para que bloquee el merge hay que marcar también «Plataforma» como comprobación obligatoria en la
+  # protección de la rama.
   platform:
     name: Plataforma
     runs-on: ubuntu-latest
@@ -240,6 +243,7 @@ jobs:
     env:
       GOTOOLCHAIN: local
       ELDMARK_REQUIRE_PG: "1"
+      ELDMARK_REQUIRE_DEPLOY_TOOLS: "1"
     defaults:
       run:
         shell: bash

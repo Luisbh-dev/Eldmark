@@ -147,7 +147,13 @@ func (r internalRouter) HandleInternal(pattern string, h http.Handler) { r.Handl
 // New monta la plataforma sobre una base nueva. opts cambian la configuración antes de montar.
 func New(t testing.TB, opts ...func(*config.Config)) *Platform {
 	t.Helper()
-	pool := testdb.New(t)
+	return Attach(t, testdb.New(t), opts...)
+}
+
+// Attach monta la plataforma sobre una base que ya tiene el esquema (una restaurada con
+// pg_restore, por ejemplo), con un reloj y un progreso en memoria nuevos.
+func Attach(t testing.TB, pool *pgxpool.Pool, opts ...func(*config.Config)) *Platform {
+	t.Helper()
 	cfg := Config()
 	for _, o := range opts {
 		o(cfg)
@@ -188,7 +194,7 @@ func New(t testing.TB, opts ...func(*config.Config)) *Platform {
 	must(err)
 	p.Social, err = social.New(social.Options{Pool: pool, Guard: p.Zones.Guard(), Clock: p.Clock, Log: log})
 	must(err)
-	p.Admin, err = admin.New(admin.Options{Pool: pool, Accounts: p.Accounts, Legal: set, Clock: p.Clock, Log: log,
+	p.Admin, err = admin.New(admin.Options{Pool: pool, Accounts: p.Accounts, Characters: purger, Legal: set, Clock: p.Clock, Log: log,
 		OSUser: "prueba", PurgePoll: 10 * time.Millisecond})
 	must(err)
 

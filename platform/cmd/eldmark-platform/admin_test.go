@@ -30,6 +30,9 @@ func TestAdminUsage(t *testing.T) {
 		{"admin", "--actor", "a@example.org", "create-account", "b@example.org"},
 		{"admin", "--actor", "a@example.org", "bootstrap", "b@example.org", "--password-file", "x"},
 		{"admin", "--actor", "a@example.org", "names", "rename", "Bran"},
+		{"admin", "--actor", "a@example.org", "reapply-purges"},
+		{"admin", "--actor", "a@example.org", "reapply-purges", "a.txt", "b.txt"},
+		{"admin", "reapply-purges", "purges.txt"},
 	} {
 		code, _, stderr := runWith(t, map[string]string{}, args...)
 		if code != exitUsage {
@@ -146,6 +149,24 @@ func TestAdminCommands(t *testing.T) {
 		status != "purged" {
 		t.Fatalf("purge-now: %q %v", status, err)
 	}
+	// reapply-purges sobre la misma base: lo de purge_log ya está purgado (nada cambia, 0); un
+	// purges.txt mal formado o que no existe, 1.
+	dir := t.TempDir()
+	purges := filepath.Join(dir, "purges.txt")
+	if err := os.WriteFile(purges, []byte("account\t"+strconv.FormatInt(bran, 10)+"\t2026-10-30 09:46:00.5+00\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out := run(exitOK, "--actor", "jefa@example.org", "reapply-purges", purges); !strings.Contains(out,
+		"ya purgados o sin fila en la copia: 1") || !strings.Contains(out, "Todo lo de purges.txt está purgado") {
+		t.Fatalf("reapply-purges:\n%s", out)
+	}
+	if err := os.WriteFile(purges, []byte("cuenta 1 ayer\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out := run(exitError, "--actor", "jefa@example.org", "reapply-purges", purges); !strings.Contains(out, "línea 1") {
+		t.Fatalf("purges.txt mal formado:\n%s", out)
+	}
+	run(exitError, "--actor", "jefa@example.org", "reapply-purges", filepath.Join(dir, "no-existe.txt"))
 	var cli, withOSUser int
 	if err := pool.QueryRow(ctx, `select count(*), count(*) filter (where args->>'os_user' = 'operadora')
 		from audit_log where source = 'cli'`).Scan(&cli, &withOSUser); err != nil || cli < 10 || cli != withOSUser {

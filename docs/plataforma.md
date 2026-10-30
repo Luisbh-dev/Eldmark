@@ -2653,3 +2653,116 @@ solo cambia la documentación.
 **Sin comprobar:** el vigilante de `testdb` fuera de Linux (usa `sh` y `Setpgid`, que macOS también tiene); la
 reserva del correo con una `account_tokens` grande; el envío con un servidor SMTP de verdad (STARTTLS sigue
 probándose con el falso).
+
+### 19.8 P9b · operación (TEC-28)
+
+**Qué hay.** `platform/deploy/` con lo de §10.1, §10.3 y §12 que se puede automatizar aquí, más `admin
+reapply-purges`, que se trae de P9a (abajo):
+
+| Pieza | Contenido |
+|---|---|
+| `dev.sh` | `up` (por defecto), `prepare`, `env`, `stop` y `reset`. Un PostgreSQL propio en `build/dev_pg` (`initdb`, y `runuser -u postgres` como root, como `testdb`) que se conserva entre arranques, en 127.0.0.1:24682 (`ELDMARK_DEV_PG_PORT`). Claves del billete, un token por zona de desarrollo (`1:vado_gris:0` y `1:test_world:0`) y las contraseñas en `build/dev_secrets/` (0600), y `build/dev_platform.env` con las variables `*_FILE`. `migrate up`, `admin bootstrap admin@eldmark.test` si no hay ninguna admin y `admin --actor … create-account prueba@eldmark.test`. Escribe la orden de la zona con `--platform` (y las del cliente y el bot de P8). `up` arranca `serve` en primer plano: Ctrl-C o TERM paran `serve` y PostgreSQL. Compila el binario con Go o usa `ELDMARK_PLATFORM_BIN` |
+| `backup.sh` | `pg_dump -Fc` a `daily/eldmark-<UTC con ms>.dump` (comprobado con `pg_restore --list`) y después `purge_log` a su `.purges.txt` y a `<carpeta>/purges.txt` (cambiado de golpe con `mv`, nunca rotado): `kind<TAB>id<TAB>purged_at`, el texto de COPY en UTC con microsegundos, sin datos personales. Semanal (enlace duro) si la última semanal tiene casi 7 días o no hay; rota 7 diarias y 4 semanales (`ELDMARK_BACKUP_DAILY`, `…_WEEKLY`), cada una con su `purges.txt`. La base, de `ELDMARK_DATABASE_URL` o `…_FILE` (o las `PG*`), sin escribirla nunca en la salida. Si algo falla no deja archivos a medias y sale con 1 |
+| `restore_check.sh` | `<copia> <purges.txt>`, o `--dir <carpeta>` (la copia más reciente de `daily/` y `weekly/` y su `purges.txt`). Clúster efímero (como `testdb`, solo socket), `pg_restore`, los correos que la copia aún tiene de las cuentas de `purges.txt` (en un esquema aparte del clúster de prueba), `migrate up` si a la copia le faltan migraciones, `admin --actor <admin de la copia> reapply-purges`, `migrate status` y las consultas de integridad, que tienen que dar 0 (abajo). Sale con 1 si algo falla y con 2 si el uso no vale; borra el clúster al salir |
+| `pitr_check.sh` | El de §12: un primario con `archive_command` a una carpeta, `pg_basebackup`, 500 filas que solo están en el WAL, la hora objetivo, un borrado y `pg_switch_wal` (espera a que el segmento esté archivado); la copia base con `restore_command`, `recovery_target_time`, `recovery_target_action = 'promote'` y `recovery.signal` tiene que tener las 1500 filas de antes del borrado y ninguna otra. Solo `fsync=off`: el WAL y las escrituras de página completa, como en el VPS |
+| `pglib.sh` | Lo común de los tres que levantan PostgreSQL: los binarios (`ELDMARK_PG_BIN`, `pg_config` o el mayor `/usr/lib/postgresql/*/bin`), `runuser` como root (`ELDMARK_PG_USER`), `initdb`, arranque, parada y la ruta del socket (107 B) |
+| `Dockerfile` | `build` (golang:1.24.7-bookworm, `CGO_ENABLED=0`, `GOTOOLCHAIN=local`), `platform` (debian:bookworm-slim con `ca-certificates` y `tzdata`, usuario 10001, `serve`, las dos API en 0.0.0.0 dentro del contenedor) y `ops` (postgres:16-bookworm con el binario y los scripts). Contexto `platform/`, con `platform/.dockerignore` (secretos, copias, `*.env`, `*.pem`, `*.key` y el binario fuera) |
+| `docker-compose.yml` | `db` (postgres:16), `platform`, `caddy`, `zone-vado-gris` (perfil `zonas`) y `backup`, `restore-check` y `pitr-check` (perfil `ops`; los dos últimos sin red). Todos con `logging: {driver: journald, options: {tag: "{{.Name}}"}}`; los de servicio, `restart: unless-stopped`. Nueve secretos de archivo en `ELDMARK_SECRETS_DIR`, montados en `/run/secrets` y leídos con las `*_FILE`. Redes `edge` (Caddy, con IP fija: la única de `ELDMARK_TRUSTED_PROXIES`), `zones` (las zonas y la API interna) y `data` (interna: la base no sale a Internet). Solo Caddy (80, 443 y 443/udp) y la zona (24600/udp) publican puertos. WAL con WAL-G configurable (`ELDMARK_DB_IMAGE`, `ELDMARK_PG_ARCHIVE_MODE`, `ELDMARK_PG_ARCHIVE_COMMAND`); nombre de proyecto `eldmark-<entorno>` |
+| `Caddyfile` | §10.1: `reverse_proxy platform:24680 { header_up X-Real-IP {remote_host} }` (pisa cualquier `X-Real-IP` del cliente), sin directiva `log` (sin registro de accesos), HSTS, `nosniff` y sin `Server`. Validado con Caddy 2.10.2 (`caddy validate` y `adapt`: sin `logs`) |
+| `staging.env.example`, `production.env.example` | Las variables del compose: entorno, dominio y correo ACME, imágenes de GHCR, `public_host` y `ELDMARK_ZONE_HOSTS`, protocolo mínimo, remitente, reinos, carpetas de secretos y copias, WAL y la red de Caddy. Ningún secreto (la CI lo comprueba) |
+| `journald-eldmark.conf` | `Storage=persistent`, `MaxRetentionSec=30day` y `SystemMaxUse=2G` (§11.1), para `/etc/systemd/journald.conf.d/` |
+| CI | `ELDMARK_REQUIRE_DEPLOY_TOOLS=1` en «Plataforma»: sin bash, git, shellcheck o `docker compose`, las pruebas de `deploy` fallan en lugar de saltarse (Caddy es opcional: la CI no lo trae) |
+
+**`reapply-purges` llega aquí** (§14.1 lo pone en P9a, de la que depende P9b): sin él no se puede probar
+`restore_check.sh`. `eldmark-platform admin --actor <correo> reapply-purges <purges.txt>` (pide `admin`; deja la
+fila `reapply-purges` con los recuentos y sin ids) hace lo de §11.2: en una transacción borra todos los
+`character_leases` y `enter_tickets` de la copia; después, en orden de `purged_at` (a igual hora, los personajes
+antes que su cuenta), purga cada línea en su propia transacción con el `purged_at` del archivo: las cuentas con la
+purga de P1 (`accounts.Service.ReapplyPurge`, motivo nuevo `reapply-purges`: basta que no esté purgada, como en
+`purge-now`) y los personajes con el camino de la cuenta (`characters.Purger.ReapplyPurge`). La huella del correo,
+el año de las sanciones y del libro y los 30 días del nombre salen de ese `purged_at`. Al final comprueba que no
+queda ningún id sin purgar (`admin.UnpurgedError`, código 1); uno que la copia no tiene cuenta como purgado. Es
+idempotente. `admin.ParsePurges` lee el formato de `backup.sh` (y RFC 3339) y nombra la línea mala. Como
+`purge-now`, en `staging` y `production` se niega mientras no exista el almacén del progreso (progresion.md P7). El
+paso 3 de la purga (no con un arrendamiento vivo) se sigue mirando, aunque no encuentra nada: si aparece uno, hay
+una zona o `serve` en marcha contra la base, y la orden para con un error que lo dice. **A P9a le queda** lo demás:
+la exportación con el progreso, las retenciones horarias que faltan, la del libro con el borrado de las lápidas
+vacías y sus pruebas que no son de `reapply-purges`; las de `reapply-purges` de §15 P9a ya están (abajo).
+
+**Desviaciones y decisiones de la implementación:**
+
+- **`dev.sh` escucha en TCP** (127.0.0.1, sin socket): la ruta de `build/dev_pg` en un repositorio con una ruta larga
+  pasa de los 107 B del socket. Tiene más órdenes que §12 (`prepare`, `env`, `stop` y `reset`) y contraseñas
+  fijas de desarrollo (`eldmark-admin-dev` y `eldmark-prueba-dev`, también en `build/dev_secrets/`), que se
+  teclean en la revisión visual de §15. Las cuentas se crean con `bootstrap` y `create-account` (§19.5).
+- **`restore_check.sh` migra antes de `reapply-purges`** si a la copia le faltan migraciones del binario (una copia
+  de antes de un despliegue; `admin` se niega con el esquema sin migrar; expandir y contraer lo permite, §2.4), y
+  después `migrate status` tiene que salir con 0. El binario corre con una configuración de usar y tirar
+  (`env -i`, `ELDMARK_ENV=dev` y claves aleatorias): solo ve la base de prueba. El `--actor` es
+  `ELDMARK_RESTORE_ACTOR` o la primera cuenta admin activa, sin suspensión ni expulsión, que no está en
+  `purges.txt`; si la copia no tiene ninguna admin, una de usar y tirar con `bootstrap`.
+- **Las consultas de integridad** de §12, más las que comprueban `reapply-purges`: personajes sin cuenta;
+  arrendamientos de instancias inexistentes; arrendamientos y billetes que siguen de la copia; líneas de
+  `purges.txt` sin fila en `purge_log` (de las cuentas y personajes que la copia tiene); `purged_at` distinto del
+  de `purges.txt`; cuentas de `purge_log` o de `purges.txt` con datos personales (correo, hash o estado, o filas
+  en sesiones, enlaces, accesos, consentimientos, aceptaciones, derechos, reinos, ignorados en los dos sentidos,
+  chat enviado o sanciones con motivo: lo que borra la purga de P1); sus personajes, o los purgados sueltos, con
+  nombre, estadísticas, arrendamiento, billete o nombre ligado; correos de esas cuentas en `outbound_mail`; y filas
+  de `audit_log` con el correo de una cuenta de `purges.txt` (solo se busca en las filas con «@»). Van por
+  conjuntos: con un `exists` por fila, 1000 purgas sobre 100 000 mensajes tardaban 22 s.
+- **`backup.sh`:** el nombre lleva milisegundos (dos copias seguidas no se pisan y el nombre ordena por fecha); la
+  semanal sale de la antigüedad de la última semanal, no de un día fijo (aguanta días sin copia); el
+  `purges.txt` de cada copia rota con ella y el de la carpeta no rota nunca. Subirlas a S3 es del VPS.
+- **La imagen `ops`** (§12 no la tiene): PostgreSQL 16 con los scripts y el mismo binario, para correr las copias
+  y sus comprobaciones en un contenedor desechable con la versión de la base. `docker compose run --rm
+  restore-check` es la restauración semanal de TEC-28.
+- **Las zonas en el compose** van con el perfil `zonas` hasta que existan su imagen (TEC-20) y sus opciones
+  (`--platform`, `--world`, `--channel` y `--public-address` de P4; `--dtls-*` de P9c).
+- **Permisos de los secretos:** Compose sin swarm monta cada archivo con sus permisos del host y dentro lo leen
+  usuarios sin privilegios (eldmark 10001, postgres 999): 0444 dentro de una carpeta 0700 de root.
+- **`platformtest.Attach`** (la plataforma sobre una base ya hecha, como una restaurada) y **`testdb.BinDir`** (la
+  carpeta de `pg_dump` y `pg_restore` de las pruebas) son nuevos, para las pruebas.
+
+**Pruebas.** `platform/deploy` es un paquete de Go sin código (`doc.go`) con sus pruebas, que corren los scripts
+con bash: `TestBackupAndRestoreCheck` (la de §15 P9b: copia antes de un `purge-now` y del borrado de un personaje,
+restaurada con el `purges.txt` más reciente → purgada y las consultas a 0; la más reciente con `--dir`; una copia
+cuya auditoría guarda el correo de una cuenta purgada después → 1 y lo nombra; rotación), `TestRestoreCheckUsage`,
+`TestPitrCheck`, `TestDevScript` (`prepare` dos veces, `env`, `up` hasta `/ready` y TERM con PostgreSQL parado,
+`reset`), `TestComposeConfig` (`docker compose config -q` con los dos ejemplos y no sin ellos; journald en todos,
+puertos solo en Caddy y la zona, la base sola en `data`, ningún secreto en claro, `ELDMARK_TRUSTED_PROXIES` con
+la IP de Caddy), `TestCaddyfile`, `TestCheckSecrets` (la de §15 P9b: los ejemplos de verdad pasan; un
+`staging.env`, un `secrets/ticket_keys` o un ejemplo con el valor de un secreto en el índice → 1, sin repetir el
+valor; y el índice de este repositorio pasa) y `TestScriptsPassShellcheck` (`bash -n` y shellcheck 0.10 sin
+avisos). En `internal/admin`: `TestParsePurges`, `TestReapplyPurgesAfterRestore` (las dos de §15 P9a sobre
+`reapply-purges`: con `pg_dump` y `pg_restore` de verdad, el `purged_at` original en las lápidas, también la de un
+personaje que nunca se borró; sin arrendamientos ni billetes de la copia; `purge_log`, la huella del correo y la
+reserva del nombre como en la base original; la fila de auditoría; y una segunda vuelta que no cambia nada) y
+`TestReapplyPurgesReportsWhatStaysUnpurged` (con una purga que no purga, `UnpurgedError` con el id). En `cmd`, la
+orden por la línea de órdenes (uso, un `purges.txt` mal formado o que no existe → 1).
+
+**Medido** (esta máquina, 4 núcleos, Go 1.24.7, PostgreSQL 16.15):
+
+| Qué | Resultado |
+|---|---|
+| `pitr_check.sh` | 3,0–3,2 s (copia base 0,65 s, recuperación 0,15 s) |
+| `backup.sh` | 0,1 s con una base de prueba (76 KB); 0,3 s con 10 000 cuentas, 20 000 personajes, 100 000 mensajes y 50 000 filas de auditoría (43 MB de base, 1,6 MB de copia) |
+| `restore_check.sh` | 1,3–1,5 s con una base de prueba. Con la grande y 1000 cuentas en `purges.txt`: `pg_restore` 0,64 s, `reapply-purges` 18,6 s, todo 20,3 s |
+| `reapply-purges`, por cuenta con 2 personajes | 18 ms; 10 ms con un índice en `chat_messages (sender_account_id)`, que el esquema no tiene: la purga de una cuenta borra su chat recorriendo la tabla entera (igual en la purga horaria y en `purge-now`). **Para una migración futura** (fuera de la fase 5, §2.4) |
+| `go test -race -count=1 ./...` | 34 s, sin carreras; `deploy`, 14 s (con la compilación del binario) |
+| Binario | 20,5 MB |
+
+Godot: fuera de `platform/` solo cambian la documentación y la CI (`platform/` lleva `.gdignore` y está fuera de las
+exportaciones).
+
+**Sin comprobar (en el VPS, del usuario):** construir las imágenes (aquí el demonio de Docker no corre: `docker
+compose config` sí, `build` no) y arrancar el compose; Let's Encrypt con un dominio de verdad; los secretos
+montados y leídos por usuarios sin privilegios; journald con `MaxRetentionSec` (aquí no hay systemd); la imagen de
+la base con WAL-G, S3 y el `restore_command` de verdad; el cron de `backup` y `restore-check` con su alerta
+(TEC-31); `dev.sh` en macOS y en WSL con la zona en Windows; `serve`, `purge-now` y `reapply-purges` en staging y
+producción, que esperan al almacén del progreso (progresion.md P7); la zona en el compose (TEC-20, P4 y P9c); y el
+trabajo «Plataforma» en GitHub con las herramientas obligatorias (shellcheck y `docker compose` de
+`ubuntu-latest`).
+
+**Queda para después:** `admin maintenance` y `deploy.sh` (copia previa, parar, `migrate up`, versión nueva, quitar
+el mantenimiento), de TEC-28 y sin paquete aquí; publicar las imágenes en GHCR; la imagen y el despliegue de las
+zonas (TEC-20); el resto de P9a.

@@ -47,6 +47,10 @@ Cuentas y roles:
   bootstrap <correo> --password-file <ruta>
                                            Crea la primera cuenta admin (sin --actor; solo si
                                            no hay ninguna).
+  reapply-purges <purges.txt>              Tras restaurar una copia, con las zonas paradas y
+                                           antes de arrancar serve: borra los arrendamientos y
+                                           billetes de la copia y vuelve a purgar lo de
+                                           purges.txt (el más reciente) con su fecha original.
 Moderación:
   reports list [--status open|in_review|actioned|dismissed|all] [--limit N]      (L)
   reports show <id>                                                              (L)
@@ -189,8 +193,10 @@ func adminServices(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, 
 	// propio proceso); en staging y production purge-now se niega, como serve.
 	env := &adminEnv{}
 	var purger accounts.CharacterPurger
+	var reapplier admin.CharacterReapplier
 	if !cfg.Env.Deployed() {
-		purger = characters.NewPurger(pool, persistence.NewMemoryProgressStore(), clock.System{}, log)
+		p := characters.NewPurger(pool, persistence.NewMemoryProgressStore(), clock.System{}, log)
+		purger, reapplier = p, p
 		env.purger = true
 	}
 	acc, err := accounts.New(accounts.Options{Config: cfg, Pool: pool, Log: log, Mail: &mail.LogSender{DB: pool, Log: log},
@@ -202,8 +208,8 @@ func adminServices(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, 
 	if !ok || osUser == "" {
 		osUser, _ = lookup("USER")
 	}
-	env.svc, err = admin.New(admin.Options{Pool: pool, Accounts: acc, Legal: documents, StrictLegal: cfg.Env.Deployed(),
-		Names: nameRules, Log: log, OSUser: osUser})
+	env.svc, err = admin.New(admin.Options{Pool: pool, Accounts: acc, Characters: reapplier, Legal: documents,
+		StrictLegal: cfg.Env.Deployed(), Names: nameRules, Log: log, OSUser: osUser})
 	return env, err
 }
 
@@ -287,6 +293,32 @@ func parseAdmin(args []string) (*adminOrder, error) {
 				return nil
 			}
 			fmt.Fprintf(e.out, "Cuenta %d purgada (sesiones revocadas: %d). Queda en purge_log.\n", res.AccountID, res.Revoked)
+			return nil
+		}}, nil
+	case "reapply-purges":
+		pos, err := parseFlags(name, rest, nil)
+		if err != nil || len(pos) != 1 {
+			return nil, usageErr("reapply-purges necesita <purges.txt> (el más reciente que dejó backup.sh)")
+		}
+		return &adminOrder{name: name, need: sanctions.RoleAdmin, run: func(ctx context.Context, e *adminEnv) error {
+			if !e.purger {
+				return errors.New("el almacén del progreso (docs/progresion.md P7) aún no existe: en staging y " +
+					"production no se purgan personajes")
+			}
+			entries, err := readPurges(pos[0])
+			if err != nil {
+				return err
+			}
+			res, err := e.svc.ReapplyPurges(ctx, e.actor, entries)
+			if res != nil {
+				fmt.Fprintf(e.out, "purges.txt: %d líneas. Borrados de la copia: %d arrendamientos y %d billetes. Purgados "+
+					"ahora: %d cuentas y %d personajes; ya purgados o sin fila en la copia: %d.\n", res.Entries,
+					res.LeasesDeleted, res.TicketsDeleted, res.Accounts, res.Characters, res.Unchanged)
+			}
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(e.out, "Todo lo de purges.txt está purgado, con su fecha original. Ya se puede arrancar serve.")
 			return nil
 		}}, nil
 	case "names":
@@ -675,6 +707,16 @@ func parseSpan(s string) (time.Duration, error) {
 		return 0, usageErr("%q no es una duración (30m, 24h, 7d)", s)
 	}
 	return d, nil
+}
+
+// readPurges lee purges.txt (admin.ParsePurges).
+func readPurges(path string) ([]admin.PurgeEntry, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("no se puede leer purges.txt: %w", err)
+	}
+	defer f.Close()
+	return admin.ParsePurges(f)
 }
 
 // readPassword lee la contraseña de un archivo (sin el salto de línea final).

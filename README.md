@@ -262,6 +262,30 @@ go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test sanction add Bran 
 go run ./cmd/eldmark-platform admin help                                                       # todas las órdenes
 ```
 
+### Plataforma en local y despliegue
+
+`platform/deploy/dev.sh` levanta la plataforma de desarrollo sin Docker (Linux, macOS o WSL, con los binarios de
+PostgreSQL 16 y Go): un PostgreSQL propio en `build/dev_pg` (en 127.0.0.1:24682), las migraciones, claves y un
+token por zona de desarrollo (`vado_gris` y `test_world`) en `build/dev_secrets/`, una cuenta `admin@eldmark.test`
+y otra `prueba@eldmark.test` (contraseñas `eldmark-admin-dev` y `eldmark-prueba-dev`), y escribe la orden de la
+zona con `--platform`. Los datos se conservan entre arranques:
+
+```bash
+platform/deploy/dev.sh                # lo prepara todo y arranca serve; Ctrl-C para serve y PostgreSQL
+platform/deploy/dev.sh prepare        # lo mismo sin serve (PostgreSQL queda en marcha; dev.sh stop lo para)
+eval "$(platform/deploy/dev.sh env)"  # las variables para usar eldmark-platform a mano
+platform/deploy/dev.sh reset          # borra la base, las claves y las cuentas de desarrollo
+```
+
+Staging y producción van con `platform/deploy/docker-compose.yml` (base, plataforma, Caddy con HTTPS de Let's
+Encrypt, zonas y copias), un `staging.env` o `production.env` sacado de su `.example` y los secretos como archivos
+en `platform/deploy/secrets/` (ignorada por git); la cabecera del compose tiene las órdenes y la lista de
+secretos, y `docs/plataforma.md` §12 y §19.8, el resto. Las copias: `backup.sh` (diaria, con `purges.txt`),
+`restore_check.sh` (restauración de prueba semanal, con `reapply-purges`) y `pitr_check.sh` (recuperación a un
+instante); los tres corren en local contra un PostgreSQL efímero o en el contenedor `ops` del compose. Tras
+restaurar una copia de verdad, y antes de arrancar `serve`:
+`eldmark-platform admin --actor <correo> reapply-purges <carpeta de copias>/purges.txt`.
+
 ## Exportación (cliente Windows y servidor Linux)
 
 `export_presets.cfg` (en texto, versionado) define dos destinos, y `tools/export.sh` (Linux y macOS) o
