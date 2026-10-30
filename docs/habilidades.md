@@ -2079,3 +2079,141 @@ exportación, audio, nombres y reinos.
 - bots que levantan y rematan (mantienen E) y el modo tramposo `interact`;
 - `AIM_LEFT` y `--loadout` en los bots;
 - las pruebas contra el maniquí y la hoja de equilibrio.
+
+### 11.9 H5 · integración
+
+**Hecho.**
+
+- **El kit de los bots** (`BotBrain`, `scripts/shared/bot_brain.gd`). Si quien lleva el bot le da su estado de
+  combate (`set_combat_source`: el predicho en un cliente, el del servidor en un jugador falso), los patrones
+  `COMBAT` y `SIEGE` pelean con todo el equipo de la fase 4:
+  - **Habilidades por su papel en los datos** (`KitRole`, `kit_role`): golpe corto con forma (el golpe de escudo, a
+    2,2 m), avance hacia delante para acercarse (la embestida, entre 3,5 y 7 m), canalización que bloquea (el muro:
+    **mantiene su botón** de 60 a 200 ticks, lo que pide §3.3 para que la canalización siga), avance hacia atrás
+    (el salto atrás, si el enemigo se acerca a menos de 5 m) y disparo (abanico y flecha lastrante). Solo pulsa una
+    casilla que `ActionMachine.ability_status` da por lista.
+  - **Cambio de arma**: al arco con el enemigo a más de 11 m y a la espada a menos de 5.
+  - **Pociones**: la de vida por debajo de la mitad (`set_health_source`) y la de resistencia por debajo del 30 %,
+    con cargas y fuera de la reutilización compartida.
+  - **Arco**: guarda la distancia (de 9 a 26 m, de lado entre medias), alterna disparos rápidos y tensados (de 24 a
+    60 ticks) y apunta en cada tick con el tiro adelantado de lo que va a disparar (`BotBrain.lead_look`:
+    `Ballistics.solve_lead` desde la boca, el punto `O + dir · |blanco − O|` y `AimRay.look_for`), con la posición
+    del enemigo extrapolada desde que se buscó y el bit `AIM_LEFT` de su hombro (el izquierdo con semilla impar).
+  - **Derribados**: remata a un enemigo derribado (el buscador devuelve un `BotTarget` con `downed`) y levanta a un
+    aliado derribado (`set_ally_finder`) si no tiene un enemigo en pie a menos de 6 m, manteniendo INTERACT lo que
+    dura la acción.
+  - Contadores para las pruebas (`get_kit_counts`) y dos ayudas estáticas, `is_ranged_weapon` y `lead_look`.
+- **`BotTarget`** (`scripts/shared/bot_target.gd`, nuevo): lo que el buscador de enemigos puede devolver en vez de
+  una posición: pies, velocidad, derribado y net_id.
+- **Los sentidos de cada lado.** Servidor: `ZoneServer.add_fake_player` da a los falsos de combate y de asedio un
+  buscador de `BotTarget` (la caché de objetivos guarda también velocidad y derribo), su `CombatState`, su
+  fracción de vida y los aliados derribados de su reino. Cliente: `ClientBotBrains.give_kit_senses` (el estado
+  predicho del personaje, la vida del bloque extra) con `BotEnemySight.find_target` (posición y velocidad
+  dibujadas: el servidor rebobina las flechas a lo que se dibujaba) y `find_downed_ally` (la acción DOWNED del
+  registro dibujado).
+- **Tramposos** `reuse`, `potion` e `interact` (`BotCheatBrain.Style`, `BotCheater.MODES`/`COMBAT_MODES`, ayuda de
+  `ClientConfig.bot_cheat`): machacan la habilidad 1 pegados al enemigo, las dos pociones o INTERACT, un flanco cada
+  dos ticks. Sin kit: juegan con sus botones.
+- **Pruebas de extremo a extremo** con ENet en 127.0.0.1 (§7.3): `test_projectile_loopback`,
+  `test_abilities_reconciliation`, `test_loadout_net` y las tres de `test_bot_cheat`; `NetHarness.start_bot` gana
+  la plantilla (`--loadout`).
+- **Hoja de equilibrio medida** (`tools/combat_balance.gd`, §2.4 → [combate.md 12.8](combate.md#128-kits-de-la-fase-4-h5-docshabilidadesmd-sección-24)):
+  datos del kit, arco contra el maniquí, alcances a 10, 30 y 50 m, un uso de cada habilidad, el muro contra uno y
+  dos atacantes, duelos con el kit (también escudero contra tirador y tirador contra tirador), y 2 contra 2 con las
+  dos plantillas; con `--reference`, los duelos sin habilidades y con el kit sin pociones.
+- **Carga** (`tools/load_test.gd --brawl`): la mitad de los falsos con la plantilla del tirador
+  (`--fake-loadout=marksman:50`), arqueros puros con `--fake-archers` (de ellos, la parte de `--sky-archers` dispara
+  al cielo), los PNJ del fuerte en la zona y, en el resumen, la sección `combat_projectiles`, las flechas (pico frente
+  al tope, echadas por el tope) y el kit, con el criterio de la fase 4. Límite de jugadores en
+  [red.md 14](red.md#14-presupuesto-de-ancho-de-banda-y-cpu).
+- **`Nameplates`**: la oclusión pide el mundo con `find_world_3d()` (dentro de un `SubViewport` con su propio
+  mundo, `get_world_3d()` es null y la placa fallaba; lo destapó `test_loadout_net`, que pone un HUD en el viewport
+  de cada bot).
+
+**Pruebas.** Nuevas:
+
+- `test_bot_brain_kit` (11, sin red: la máquina de acciones avanza con las entradas del bot): el papel de cada
+  habilidad sale de sus datos; sin estado de combate, o con `use_kit` apagado, las entradas son las de la fase 3 byte
+  a byte (también con un `BotTarget`); el escudero solo pulsa casillas listas, mantiene el muro (≥ 60 ticks de
+  canalización) y separa los golpes de escudo por su reutilización; la embestida a 5 m; bebe las tres cargas de vida
+  separadas por la reutilización compartida y la de resistencia cansado; el tirador cambia a la espada de cerca y al
+  arco de lejos; el arquero contra un blanco que corre a 22 m: 11 de 11 flechas (las de `ProjectileLaunch` con su
+  entrada) dan en la cápsula en movimiento, con tensados y el hombro izquierdo; remata y levanta manteniendo
+  INTERACT, y no levanta con un enemigo encima; determinista con la semilla; los arqueros de carga no sacan la espada
+  y suben la puntería.
+- `test_projectile_loopback` (1, ~22 s): 150 ms de RTT y 30 de jitter en el servidor, 20 tensados a 30 m contra un
+  objetivo que corre en lateral: **20 confirmados**; el control en la misma ejecución, la trayectoria del SPAWN contra
+  la posición presente del objetivo en cada tick, **0**; 20 predichas sustituidas, 0 rechazadas, sin sospecha ni
+  correcciones sin explicar.
+- `test_abilities_reconciliation` (1, ~19 s): tres bots de combate con las dos plantillas y 120 ms de RTT, 20 de
+  jitter y 5 % de pérdida: usan habilidades (5 golpes de habilidad), cambian de arma, beben, disparan 15 flechas,
+  alguien queda ralentizado y alguien derribado (rematado con INTERACT); ninguna corrección sin explicar, ningún
+  reinicio duro ni resincronización y convergencia exacta tras 180 ticks quietos.
+- `test_loadout_net` (1, ~15 s): plantillas distintas (una antes de CLIENT_READY, otra al reaparecer) y cada uno ve
+  las armas del otro; con 100 ms de RTT sin pérdida, seis cambios de arma sin ninguna corrección y el otro ve los seis;
+  el sangrado del comando 14 en la fila del HUD (6 s) y en la placa de un aliado, y se va de los dos al caducar.
+
+Ampliadas: `test_bot_cheat` (+3: `reuse`, dos golpes de escudo en 900 ticks separados exactamente 738; `potion`, dos
+tragos en 1300 ticks y ninguna curación sin carga; `interact`, ningún INTERACT con un derribado enemigo a 4 m; sin
+sospecha ni avisos ni fallos de predicción), `test_bot_cheat_brain` (+3), `test_bot_cheater` (los seis modos de
+combate y sus cerebros), `test_combat_balance` (la pasada mínima comprueba el DPS del arco, los alcances con el vuelo
+de la balística, el muro contra uno y dos y el 2 contra 2 con las dos plantillas), `test_load_test` (+1: las cifras de
+la fase 4 y la refriega con tiradores), `test_server_config` (+1: `--fake-archers`) y `test_combat_processes` (los
+falsos de combate usan el kit: el registro de combate lleva también nombres de habilidades, y alguno tiene que salir).
+
+**Desvíos y decisiones.**
+
+- **El kit se enciende con el estado de combate.** Sin `set_combat_source` (o con `use_kit` en false) `BotBrain` saca
+  las mismas entradas que antes: no gasta números de su generador (el hombro sale de la paridad de la semilla), y la
+  huella de 600 ticks de `test_bot_brain_siege` no cambia. Los falsos del servidor y los bots `--bot-brain=combat` y
+  `siege` del cliente lo llevan siempre; los del bot tramposo y el enjambre ligero (`SwarmBot`, que no simula y solo
+  conoce su estado con un RTT de retraso), no.
+- **Por su papel, no por su nombre**: el bot no conoce `shield_bash`; mira forma, avance, canalización y proyectil.
+  Un arma nueva con habilidades parecidas se usa sin tocarlo.
+- **Asedio**: los bots de `SIEGE` usan el kit al pelear (el paso 1 de su plan) pero no levantan a nadie: siguen su
+  ruta. Las pruebas de asedio de F6b siguen en verde.
+- **Red mala en el servidor** en `test_abilities_reconciliation`: §7.3 pedía el `NetSim` en cada bot, pero el tope del
+  rebobinado cuenta el retardo del simulador del servidor y no el de un cliente (red.md §10), y con el simulador en
+  los bots el servidor rechazaba 14 de 20 disparos (flechas inofensivas) y 20 golpes. Con 120 ms de RTT, 20 de jitter
+  y 5 % de pérdida en el servidor, en los dos sentidos, nada se rechaza.
+- **Respaldo en `test_abilities_reconciliation`**: si a mitad de la pelea nadie se ha ralentizado, el servidor
+  ralentiza al de Solmarch (como el comando 14), y si a dos tercios nadie ha caído, lo derriba (como el 15); la prueba
+  dice cuál ha hecho falta. Sin él, según las semillas la pelea acaba antes de tiempo o la flecha lastrante falla, y la
+  prueba no probaría lo que dice. En las ejecuciones de H5, la ralentización salió sola y el derribo se impuso.
+- **El objetivo de `test_projectile_loopback` corre en círculo** alrededor del arquero: siempre de lado y siempre a
+  30 m, sin darse la vuelta en mitad de un vuelo (en línea recta y de ida y vuelta, 20 tensados no caben en 30 s).
+  Tensado de 30 ticks (46,9 m/s).
+- **`test_loadout_net`** usa 100 ms de RTT sin pérdida para que la predicción vaya por delante del servidor, y la
+  ventana sin correcciones cubre los seis cambios más tres RTT (más que ±RTT alrededor de cada uno).
+- **`--fake-archers` y `--sky-archers`** (pruebas de carga): en una refriega densa todos tienen un enemigo a menos de
+  5 m y los tiradores sacan la espada: la primera medida dio **0 flechas**. Para medir los proyectiles con la zona
+  llena, los falsos con el arco en la mano no cambian a la espada (`kit_ranged_only`) y una parte dispara 0,8 rad por
+  encima del tiro bueno (`kit_aim_raise`): sus flechas viven sus 2 s.
+- **`test_combat_balance`** lanza una pasada reducida (2 combates por tamaño de equipo y sin los duelos con el
+  tirador, opciones nuevas `--team-runs` y `--no-template-duels`) para seguir por debajo de 25 s.
+
+**Medido.** (Orientativo: máquina de 4 núcleos compartida con otros agentes.)
+
+- **Carga** (`load_test.gd --brawl`, 60 s de medida, Vado Gris, PNJ del fuerte; detalle en
+  [red.md 14](red.md#14-presupuesto-de-ancho-de-banda-y-cpu)): p99 del tick y de `combat_projectiles` con 32
+  combatientes, 11,3 y 0,98 ms (cumple); con 48, 17,0 y 0,89 ms; con 64, **19,3 y 1,68 ms** (no cumple; con todos los
+  arqueros al cielo, 19,5 y 2,04 ms y un pico de 54 flechas vivas: el tope de 64 no se llega a llenar); con 128, 28,9 y
+  2,94 ms. **El límite de jugadores por batalla baja de 64 a 40** (red.md 14). `simulate()` sigue a 67–69 µs por
+  personaje; ningún rebobinado rechazado hasta 64; la bajada por cliente, 36 KB/s con 64.
+- **Equilibrio** (`combat_balance.gd --duels=60 --seconds=30 --reference`, unos 3 min, determinista; combate.md 12.8):
+  todo lo calculado en §2.4 se cumple (arco 97,3, 125,6 y 131,7 DPS; habilidades +8,1 y +25,8 con el abanico entero;
+  el muro aguanta a uno, 558 de resistencia en 6 s, y lo rompen dos a los 5,4 s). Los duelos de bots con el kit duran
+  más (mediana 18,4 s frente a 10,7 sin habilidades; 14,9 s con el kit y sin pociones: cada duelo se bebe de media
+  una poción); la referencia sin habilidades da exactamente las cifras de 12.3. Ningún `.tres` cambia.
+- **Pruebas**: `test_projectile_loopback` ~22 s, `test_abilities_reconciliation` ~19 s, `test_loadout_net` ~15 s, las tres
+  de `test_bot_cheat` ~16, 22 y 6 s, `test_combat_balance` ~11 s y `test_bot_brain_kit` ~0,7 s (sin contar el arranque
+  del motor, unos 9 s por archivo).
+
+**Para después.**
+
+- Con personas: el TTK con las dos plantillas, la parada, el bloqueo de flechas y las propuestas P4 y P5 de
+  combate.md 12.8.
+- El coste de los proyectiles sobre el Terrain3D (de 0,3 a 1 ms por tick con flechas: sobre todo preparar las cajas
+  de todos los candidatos, unos 6–8 µs por jugador o PNJ, y unos 10 µs por flecha viva) y `simulate()` (palanca 6): lo
+  que hace falta para volver a 64 por batalla con arqueros.
+- ART-41 (tensar y soltar) y ART-12 (iconos y VFX); el enjambre ligero sin kit.

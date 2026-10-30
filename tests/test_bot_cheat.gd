@@ -11,6 +11,10 @@ extends TestCase
 ## un maniquí con las reglas del juego, pero con la vista falseada a 40 ticks, desde 5 m o machacando
 ## PRIMARY. Ninguno hace daño de más: el rebobinado excesivo no se prueba y suma sospecha; desde 5 m no
 ## hay golpe; y machacar el botón no pega más rápido que el combo de los datos.
+## [br]- [code]reuse[/code], [code]potion[/code] e [code]interact[/code] (fase 4; docs/habilidades.md, sección 4.7):
+## machacar una habilidad en reutilización da un golpe por reutilización; machacar las pociones, un trago por
+## reutilización compartida y con cargas; machacar INTERACT lejos de todos no levanta ni remata a nadie. Ningún
+## efecto de más ni sospecha.
 ## [br]En todos los modos el bot honrado sigue en el mundo, sin avisos ni fallos de predicción, y el
 ## servidor no registra errores (el ejecutor falla ante cualquier error del motor).
 
@@ -387,3 +391,133 @@ func _assert_client_untouched(client: NetClient) -> void:
 	var stats: Dictionary = client.get_stats()
 	assert_eq(stats["unexplained_diffs"], 0, "sin fallos de predicción: %s" % [stats])
 	assert_eq(client.get_state(), NetClient.State.IN_WORLD)
+
+
+# --- Modos de la fase 4: reuse, potion e interact (docs/habilidades.md, sección 4.7) -------------
+
+## Ticks que pelea el tramposo de reutilización: más que una reutilización del golpe de escudo (738 = 720 + 18).
+const REUSE_FIGHT_TICKS: int = 900
+## Ticks que machaca las pociones el tramposo: más que la reutilización compartida (1200).
+const POTION_TICKS: int = 1300
+
+
+func test_reuse_cheater_mashing_an_ability_on_cooldown_gets_one_use_per_cooldown() -> void:
+	if not assert_true(await _start_fight("reuse", false), "arranca la pelea"):
+		return
+	var bash: AbilityTicks = CombatCatalog.ability(CombatCatalog.ability_id(&"shield_bash"))
+	var bash_source: int = CombatSource.make(CombatSource.Kind.ABILITY, bash.id)
+	var bash_hits: Array[int] = []
+	_server.get_combat().event_emitted.connect(func(event: NetMessages.EntityEvent, _involved: PackedInt32Array) -> void:
+		if event.event == NetMessages.EntityEvent.Kind.HIT and event.attacker == _cheater.get_net_id() \
+				and event.get_source() == bash_source:
+			bash_hits.append(event.tick))
+	await wait_physics_frames(REUSE_FIGHT_TICKS)
+	var peer: ServerPeer = _server.get_peer(_peer_id_of(_cheater.get_net_id()))
+	var period: int = bash.cooldown_ticks + bash.cast_ticks
+	var most: int = ceili(float(REUSE_FIGHT_TICKS) / float(period))
+	print("[trampa reuse] golpes de escudo %s (cada %d ticks como mucho %d), sospecha %d" % [bash_hits, period, most,
+			peer.suspicion_score])
+	assert_true(bash_hits.size() >= 1, "el golpe de escudo sale (%d)" % bash_hits.size())
+	assert_true(bash_hits.size() <= most, "pero no más que su reutilización deja: %d <= %d" % [bash_hits.size(),
+			most])
+	for index: int in range(1, bash_hits.size()):
+		assert_true(bash_hits[index] - bash_hits[index - 1] >= period,
+				"dos golpes de escudo separados al menos %d ticks (%d)" % [period, bash_hits[index] - bash_hits[index - 1]])
+	assert_eq(peer.suspicion_score, 0, "machacar el botón no es un delito")
+	assert_eq(peer.strikes_total, 0)
+	assert_eq(_cheater.get_state(), NetClient.State.IN_WORLD)
+	assert_eq(_cheater.get_stats()["unexplained_diffs"], 0, "y su predicción no falla: la reutilización se predice")
+
+
+func test_potion_cheater_drinks_only_with_charges_and_off_the_shared_cooldown() -> void:
+	_port = NetHarness.free_udp_port()
+	_server_viewport = NetHarness.make_world_viewport(_root, "")
+	var config := ServerConfig.new()
+	config.port = _port
+	config.zone_id = ZONE_ID
+	config.max_players = 8
+	_server = NetHarness.start_server(_server_viewport, config)
+	await wait_physics_frames(3)
+	# Lo que bebe se cuenta desde que aparece: empieza a machacar en cuanto entra.
+	var healed: Array[int] = [0]
+	var regens: Array[int] = [0]
+	var cheater_ids: Array[int] = [0]
+	_server.get_combat().event_emitted.connect(func(event: NetMessages.EntityEvent, _involved: PackedInt32Array) -> void:
+		if event.net_id != cheater_ids[0]:
+			return
+		if event.event == NetMessages.EntityEvent.Kind.HEAL:
+			healed[0] += event.amount
+		elif event.event == NetMessages.EntityEvent.Kind.STATUS \
+				and event.status_id == CombatCatalog.status_id(&"potion_regen") \
+				and event.op == NetMessages.EntityEvent.StatusOp.APPLIED:
+			regens[0] += 1)
+	_server.player_joined.connect(func(_peer_id: int, net_id: int) -> void:
+		cheater_ids[0] = net_id
+		# Herido desde el principio, para que la poción de vida tenga algo que curar.
+		_server.get_combat().get_combatant(net_id).take_damage(600, _server.get_tick()))
+	_cheater = _add_bot(VARDHEIM, 2, "potion")
+	if not assert_true(await _wait_until(func() -> bool: return _cheater.get_state() == NetClient.State.IN_WORLD),
+			"entra el tramposo"):
+		return
+	var cheater_id: int = _cheater.get_net_id()
+	var spawn_tick: int = _server.get_tick()
+	await wait_physics_frames(POTION_TICKS)
+	var combat: CombatState = _server.get_registry().get_entity(cheater_id).get_character().combat
+	var template_charges: int = CombatCatalog.template_charges(CombatCatalog.default_template_id())
+	var charges_at_spawn: int = (template_charges & 15) + (template_charges >> 4)
+	var spent: int = charges_at_spawn - (combat.charges_of(0) + combat.charges_of(1))
+	var cooldown: int = CombatCatalog.tables().consumable_cooldown_ticks
+	var most: int = ceili(float(_server.get_tick() - spawn_tick + 1) / float(cooldown))
+	var peer: ServerPeer = _server.get_peer(_peer_id_of(cheater_id))
+	print("[trampa potion] cargas gastadas %d (como mucho %d en %d ticks), curaciones %d, curado %d, sospecha %d" % [
+			spent, most, _server.get_tick() - spawn_tick, regens[0], healed[0], peer.suspicion_score])
+	assert_true(spent >= 2, "bebe dos veces en %d ticks (%d)" % [POTION_TICKS, spent])
+	assert_true(spent <= most, "pero una vez por reutilización compartida: %d <= %d" % [spent, most])
+	assert_true(regens[0] <= spent, "ninguna curación sin su carga (%d)" % regens[0])
+	assert_true(healed[0] <= 300 * regens[0], "ni más vida que la de las pociones bebidas (%d)" % healed[0])
+	assert_eq(peer.suspicion_score, 0)
+	assert_eq(peer.strikes_total, 0)
+	assert_eq(_cheater.get_stats()["unexplained_diffs"], 0, "y su predicción no falla: cargas y reutilización se predicen")
+
+
+func test_interact_cheater_far_from_anyone_revives_and_executes_nobody() -> void:
+	_port = NetHarness.free_udp_port()
+	_server_viewport = NetHarness.make_world_viewport(_root, "")
+	var config := ServerConfig.new()
+	config.port = _port
+	config.zone_id = ZONE_ID
+	config.max_players = 8
+	_server = NetHarness.start_server(_server_viewport, config)
+	await wait_physics_frames(3)
+	_cheater = _add_bot(VARDHEIM, 2, "interact")
+	_honest = _add_bot(SOLMARCH, 1, "")
+	if not assert_true(await _wait_until(_both_in_world), "entran los dos"):
+		return
+	await wait_physics_frames(30)
+	# El honrado, enemigo, queda derribado a 4 m: más que el alcance de 2 m de rematar.
+	_server.teleport(_cheater.get_net_id(), Vector3(0.0, 0.05, 0.0))
+	_server.teleport(_honest.get_net_id(), Vector3(0.0, 0.05, -4.0))
+	await wait_physics_frames(10)
+	var honest: Combatant = _server.get_combat().get_combatant(_honest.get_net_id())
+	assert_true(_server.get_combat().down(honest, _server.get_tick() + 1), "el honrado queda derribado")
+	var interacts: Array[int] = [0]
+	_server.get_combat().event_emitted.connect(func(event: NetMessages.EntityEvent, _involved: PackedInt32Array) -> void:
+		if event.event == NetMessages.EntityEvent.Kind.INTERACT:
+			interacts[0] += 1)
+	var actions: Dictionary[int, bool] = {}
+	for _frame: int in 300:
+		await tree.physics_frame
+		actions[_server.get_registry().get_entity(_cheater.get_net_id()).get_character().combat.action] = true
+	var downed: DownedSystem = _server.get_combat().downed
+	var peer: ServerPeer = _server.get_peer(_peer_id_of(_cheater.get_net_id()))
+	print("[trampa interact] INTERACT %d, empezados %d, acciones %s, sospecha %d" % [interacts[0],
+			downed.stats[&"interact_started"], actions.keys(), peer.suspicion_score])
+	assert_eq(interacts[0], 0, "ni levantar ni rematar: nadie a su alcance")
+	assert_eq(downed.stats[&"interact_started"], 0)
+	assert_false(actions.has(CombatState.Action.EXECUTE) or actions.has(CombatState.Action.REVIVE),
+			"el tramposo nunca entra en REVIVE ni EXECUTE")
+	assert_true(honest.is_downed(), "el derribado sigue derribado")
+	assert_eq(peer.suspicion_score, 0)
+	assert_eq(peer.strikes_total, 0)
+	assert_eq(_cheater.get_stats()["unexplained_diffs"], 0, "y su predicción no falla")
+	assert_eq(_honest.get_stats()["unexplained_diffs"], 0, "ni la del derribado")

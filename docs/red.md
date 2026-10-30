@@ -1687,8 +1687,9 @@ sección; con la v5 eran 94 (92 y 2). Por debajo del tope, el estado de 111 B su
 por cliente; en el tope el paquete ya iba lleno y lo que se pierde son 2 registros por snapshot (50 en vez de
 52). A la bajada se suman los ENTITY_EVENT, unos 27 B por destinatario y golpe
 ([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)), y los SPAWN y DESPAWN de los proyectiles
-(v6). Las medidas de abajo son de la fase 2 (registro de 20 B y estado de 35 B) y de las fases 3 y 4 (estado
-de 69 B); con la v6 aún no se han medido (H5, [habilidades.md 7.3](habilidades.md#73-pruebas-cada-una--30-s)).
+(v6). Las medidas de abajo son de la fase 2 (registro de 20 B y estado de 35 B), de las fases 3 y 4 (estado de 69 B)
+y, la última, de la v6 con el kit de la fase 4 (H5, [habilidades.md 7.3](habilidades.md#73-pruebas-cada-una--30-s)): con
+el estado de 111 B, cada cliente baja 36,1 KB/s con 64 combatientes (35,3 con la v5).
 
 **CPU (fase 2):** el p99 del tick debe quedar por debajo de 8 ms (la mitad de los 16,7 ms) con
 64 bots agrupados. Se mide por sección: red, simulación (µs por personaje), historial,
@@ -1824,6 +1825,46 @@ combatientes en una máquina en reposo), los KB/s por cliente se cumplen (36,1 d
 servidor no sostiene el tiempo real (la mitad de las entradas de los clientes se sustituye y el rebobinado falla a los honrados).
 **El primer límite de jugadores por batalla en el fuerte sigue siendo 64 (32 contra 32)**. El coste de las fortalezas (la sección `war`)
 es de 0,1 ms de mediana: el cuello es `simulate()` (palanca 6).
+
+**Medidas de la fase 4: refriegas con el kit** (`tools/load_test.gd --brawl`, H5;
+[habilidades.md 7.3](habilidades.md#73-pruebas-cada-una--30-s)). Como las de la fase 3 (Vado Gris con su Terrain3D, 10
+bots reales `--bot-brain=combat` y el resto falsos de combate en el corro de `--fake-center=0,-96`, 60 s de medida tras
+12 s de aproximación), con el protocolo 6 y el kit de la fase 4: los falsos usan habilidades, pociones, derribos y
+remates, **la mitad lleva la plantilla del tirador** (`--fake-loadout=marksman:50`) y son arqueros puros
+(`--fake-archers`: en una refriega densa todos tienen un enemigo a menos de 5 m y un tirador normal saca la espada; la
+primera medida dio 0 flechas), de los que la mitad dispara al cielo (`--sky-archers=50`: sus flechas viven 2 s). Los PNJ
+del fuerte (Huecos, capitán, guarnición y Guardianes) están en la zona. Misma máquina de 4 núcleos, con otros agentes
+en marcha a ratos (carga media de 0,5 a 0,7 al empezar cada escenario). Tick en ms, p50 / p99 / máximo; el resto, p50
+(p99 entre paréntesis en `combat_projectiles`); flechas: disparos en los 83 s del servidor y pico de vivas (tope 64):
+
+| Combatientes | Tick | `sim` | `combat` | `combat_projectiles` | `snapshot` | Bajada por cliente | Sustituidas (ventana) | Flechas | Rebobinados rechazados |
+|---|---|---|---|---|---|---|---|---|---|
+| 32 (22 falsos y 10 bots) | 6,5 / 11,3 / 27,2 | 3,5 | 0,55 | 0,25 (0,98) | 1,14 | 30,7 KB/s | 0,00 % | 105, pico 13 | 0 |
+| 48 (38 y 10) | 9,7 / **17,0** / 50,6 | 6,2 | 0,80 | 0,27 (0,89) | 1,34 | 35,9 KB/s | 0,00 % | 256, pico 24 | 0 |
+| **64** (54 y 10) | 10,7 / **19,3** / 30,1 | 6,5 | 1,00 | 0,43 (**1,68**) | 1,18 | 36,1 KB/s | 0,00 % | 286, pico 37 | 0 |
+| 64, todos los arqueros al cielo (`--sky-archers=100`) | 11,4 / 19,5 / 28,8 | 7,0 | 1,09 | 0,51 (2,04) | 1,74 | 36,2 KB/s | 0,00 % | 374, pico 54 | 0 |
+| 128 (118 y 10) | 16,9 / 28,9 / 38,1 | 12,5 | 1,50 | 0,90 (2,94) | 0,00 | 27,4 KB/s | 100 % | 572, pico 51 | 0 |
+
+- **El criterio de la fase 4 no se cumple con 64** (p99 del tick ≤ 16,7 ms y de `combat_projectiles` ≤ 1 ms,
+  habilidades.md §7.3 y §8): 19,3 ms y 1,68 ms. Con 32 se cumple con holgura (11,3 y 0,98 ms) y con 48 el tick roza el
+  límite (17,0 ms; proyectiles 0,89 ms). El tope de 64 flechas no llega a llenarse: ni con todos los arqueros disparando
+  al cielo (pico de 54) ni con 128 combatientes (51), porque los arqueros también caen y tardan 30 s en volver; el
+  coste ya pasa de la reserva antes.
+- **Lo que cuestan las flechas sobre el Terrain3D**: de 0,30 a 1,05 ms de media por tick con flechas vivas (32 y 128
+  combatientes), creciendo sobre todo con los combatientes (preparar las cajas barridas de todos los candidatos, unos
+  6–8 µs por jugador o PNJ y tick) y menos con las flechas (unos 10 µs por flecha viva: de 11 a 19 de media con 64, de
+  544 a 628 µs). Un rayo contra el terreno cuesta de 1,2 a 2,8 µs (sonda aparte): no es el mundo. Disparar (punto
+  apuntado y convergencia) se reparte en pocos ticks.
+- **El resto del kit no se nota**: `combat` pasa de 0,77 ms (fase 3) a 1,00 ms de mediana con 64; habilidades,
+  pociones, efectos, derribos y remates (29 derribos, 14 rematados y 3 desangrados en la de 64) caben ahí. La bajada por
+  cliente no cambia (36 KB/s, los snapshots; las flechas suman ~1 KB/s en el servidor entero) y no se rechaza ningún
+  rebobinado hasta 64.
+- **Límite de jugadores por batalla con el kit de la fase 4: 40** (era 64 en la fase 3). Con arqueros, 64 pasa de los
+  16,7 ms de p99 y de la reserva de 1 ms de los proyectiles; 48 ya roza el tick y 32 cumple con holgura; 40 queda entre
+  medias. Para volver a 64 hacen falta la palanca 6 (`simulate()`, que sigue siendo el 60 % del tick) y abaratar la
+  preparación de los candidatos de las flechas (rehacer las cajas solo de quien se ha movido, o una rejilla en lugar del
+  barrido en x). Los asedios del fuerte (F6a) se midieron sin el kit; con él, por la misma cuenta y sin medir, el
+  fuerte pasaría de 32 contra 32 a unos 20 contra 20.
 
 **Palancas para Eldrun, por orden,** decididas con las medidas del final de la fase 2:
 
@@ -2072,6 +2113,11 @@ todas las copias del proyecto.
 - Asedios de fuerte (GUE-16): `--siege` (o `--scenario=siege`) con 32 contra 32 y 64 contra 64, 120 s de medida con los bots ya en la
   puerta y el círculo; los falsos llevan `--fake-brain=siege`, los bots reales `--bot-brain=siege` y el servidor abre el círculo con
   `--run-at=<tick>:fort_kill_captain` y escribe un registro de batalla. Cifras en 14.
+- Refriegas con el kit de la fase 4 (H5, [habilidades.md 7.3](habilidades.md#73-pruebas-cada-una--30-s)): `--brawl` lleva desde
+  entonces la mitad de los falsos con la plantilla del tirador (`--fake-loadout=marksman:50`), arqueros puros (`--fake-archers`) de los
+  que una parte dispara al cielo (`--sky-archers=<porcentaje>`, 50 por defecto; con 100, el máximo de flechas vivas), y los
+  PNJ del fuerte en la zona. El resumen añade la sección `combat_projectiles`, las flechas y el kit, y el criterio de la fase 4: p99 del
+  tick ≤ 16,7 ms y de `combat_projectiles` ≤ 1 ms. Cifras y límite en 14.
 
 ### Arquitectura (`test_architecture`, ampliado)
 

@@ -160,3 +160,41 @@ static func combat_figures(server: Dictionary, seconds: float) -> Dictionary:
 		"resolve_share": resolve_total / combat_total if combat_total > 0.0 else 0.0,
 		"events_us_per_event": events_total / float(events) if events > 0 else 0.0,
 	}
+
+
+## Cifras de la fase 4 de una refriega (H5; docs/habilidades.md, secciones 7.3 y 8), del bloque
+## [code]combat[/code] del informe del servidor ([method ZoneServer.write_report]): flechas (disparos, a quién dan,
+## pico de vivas frente al tope de la zona, las que echó el tope, rebobinados rechazados, coste por tick ocupado y
+## mensajes) y el resto del kit (efectos, curaciones, interrupciones y derribos). [param seconds]: lo que duró el
+## servidor.
+static func phase_4_figures(server: Dictionary, seconds: float) -> Dictionary:
+	var combat: Dictionary = server.get("combat", {})
+	var busy: int = int(combat.get("projectile_busy_ticks", 0))
+	var fired: int = int(combat.get("projectiles_fired", 0))
+	return {
+		"fired": fired,
+		"fired_per_s": float(fired) / seconds if seconds > 0.0 else 0.0,
+		"harmless": int(combat.get("projectiles_harmless", 0)),
+		"character_hits": int(combat.get("projectile_character_hits", 0)),
+		"world_hits": int(combat.get("projectile_world_hits", 0)),
+		"arrow_blocked": int(combat.get("arrow_blocked", 0)) + int(combat.get("wall_blocked", 0)),
+		"expired": int(combat.get("projectiles_expired", 0)),
+		"evicted": int(combat.get("projectiles_evicted", 0)),
+		"peak": int(combat.get("projectile_peak", 0)),
+		"zone_cap": CombatCatalog.rules().max_projectiles_per_zone,
+		"rewind_rejected": int(combat.get("projectile_rewind_rejected", 0)),
+		"busy_ticks": busy,
+		"projectile_us_per_busy_tick": float(combat.get("projectile_us", 0)) / float(busy) if busy > 0 else 0.0,
+		"segments": int(combat.get("projectile_segments", 0)),
+		"capsule_tests": int(combat.get("projectile_capsule_tests", 0)),
+		"messages": int(combat.get("projectile_messages_sent", 0)),
+		"kb_per_s": float(combat.get("projectile_bytes_sent", 0)) / 1024.0 / seconds if seconds > 0.0 else 0.0,
+		"status_applied": int(combat.get("status_applied", 0)),
+		"pulses": int(combat.get("pulses", 0)),
+		"healed": int(combat.get("healed", 0)),
+		"interrupts": int(combat.get("interrupts", 0)),
+		"downs": int(combat.get("downs", 0)),
+		"revives": int(combat.get("revives", 0)),
+		"executions": int(combat.get("executions", 0)),
+		"bled_out": int(combat.get("bled_out", 0)),
+	}

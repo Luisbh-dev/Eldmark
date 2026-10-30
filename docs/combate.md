@@ -872,7 +872,7 @@ Cerrado durante K5 (integración):
 ## 12. Primera pasada de equilibrio (CMB-29)
 
 Primera pasada con **espada y escudo**, el único kit de la fase 3. Se repite cuando lleguen las habilidades
-(CMB-21) y el arco (CMB-23); las dos partes que dependen de contenido que aún no existe, la puerta del
+(CMB-21) y el arco (CMB-23) —hecho en H5: 12.8—; las dos partes que dependen de contenido que aún no existe, la puerta del
 fuerte (GUE-10) y el capitán (MUN-11), quedan pendientes (12.7). Las cifras salen de
 `tools/combat_balance.gd`, no de una cuenta a mano: monta un `ZoneServer` sin red sobre `test_world`
 (llano, sin terreno ni zonas seguras: el daño no depende de ellos), lo avanza tick a tick sin esperar
@@ -1007,3 +1007,109 @@ llegar CMB-21 y GUE-15.
   no funciona, la parada pasa a habilidad del escudo).
 - **Personas:** todas las cifras son de bots que no reaccionan. Falta una sesión de 2 contra 2 y 5 contra 5
   con jugadores en el Vado Gris para fijar el TTK real.
+
+### 12.8 Kits de la fase 4 (H5; docs/habilidades.md, sección 2.4)
+
+La hoja calculada de [habilidades.md 2.4](habilidades.md#24-entrada-para-la-hoja-de-equilibrio-combatemd-12),
+medida. Sale de la misma herramienta, ampliada en H5 (determinista: el mismo JSON en cada ejecución):
+
+```
+godot --headless --path . -s res://tools/combat_balance.gd -- --duels=60 --seconds=30 --reference --out=build/combat_balance.json
+```
+
+(unos 3 min; `tests/test_combat_balance.gd` la lanza en pequeño y comprueba el DPS del arco, los alcances y el
+muro). Los bots de combate usan ya el kit (`BotBrain` con su estado de combate, habilidades.md 11.9): golpe de
+escudo de cerca, embestida para acercarse, muro mantenido de 1 a 3,3 s, pociones por debajo de la mitad de la
+vida o del 30 % de la resistencia, cambio de arma, arco con tiro adelantado, y rematar y levantar derribados.
+
+**Arco contra el maniquí a 10 m** (30 s, ciclos completos, apuntado como un bot):
+
+| Acción | Ciclo | Daño | DPS calculado (2.4) | Medido | Flechas que dan |
+|---|---|---|---|---|---|
+| Disparo rápido repetido | 37 ticks | 60 | 97,3 | **97,3** | 48 de 48 |
+| Tensado mínimo | 21 + 22 = 43 ticks | 90 | 125,6 | **125,6** | 41 de 41 |
+| Tensado máximo | 60 + 22 = 82 ticks | 180 | 131,7 | **131,7** | 21 de 21 |
+
+**Alcances** (5 flechas por distancia y tipo; «apunta» es cuánto pasa la mira por encima del centro del blanco
+para compensar la caída; el vuelo medido va del compromiso al tick del impacto, en la cara de la cápsula):
+
+| Distancia | Rápido (45 m/s): aciertos, vuelo, apunta | Tensado máximo (70 m/s): aciertos, vuelo, apunta | Calculado en 2.4 |
+|---|---|---|---|
+| 10 m | 5 de 5, 0,20 s, 0,15 m | 5 de 5, 0,13 s, 0,06 m | tensado 0,14 s |
+| 30 m | 5 de 5, 0,65 s, 1,33 m | 5 de 5, 0,42 s, 0,55 m | tensado 0,43 s |
+| 50 m | 5 de 5, 1,10 s, 3,71 m | 5 de 5, 0,70 s, 1,53 m | tensado 0,71 s (1,5 m); rápido 1,11 s (3,7 m) |
+
+**Habilidades** (un uso contra el maniquí):
+
+| Habilidad | Distancia | Golpes | Daño (datos) | A reutilización |
+|---|---|---|---|---|
+| Golpe de escudo | 1,6 m | 1 | 60 (60), aturde 48 ticks | +5,0 DPS (12 s) |
+| Embestida | 5 m | 1 | 50 (50) | +3,1 DPS (16 s) |
+| Muro de escudos | 2 m | 0 | 0 | — |
+| Abanico | 2 / 3 / 10 m | 3 / 2 / 1 | 165 / 110 / 55 (165) | +16,5 / +11,0 / +5,5 DPS (10 s) |
+| Flecha lastrante | 10 m | 1 | 60 (60) y `slowed` | +5,0 DPS (12 s) |
+| Salto atrás con disparo | 10 m | 1 | 60 (60) | +4,3 DPS (14 s) |
+
+- Espada y escudo a reutilización: **+8,1 DPS** medidos (5,0 + 3,1), lo calculado, y 0,8 s de aturdimiento cada
+  12 s. Arco: **+25,8** solo con el abanico entero, que contra un blanco solo pasa a 2 m (a ±7° las flechas de
+  los lados se abren ±0,37 m a 3 m y ±1,2 m a 10 m): a 10 m suma +14,8. El abanico es un arma de grupos, no de
+  duelo.
+
+**Muro de escudos** contra el combo perfecto (156,3 DPS por atacante), sus 6 s levantado:
+
+| Atacantes | Resistencia que le quitan | ¿Lo rompen? | Calculado en 2.4 |
+|---|---|---|---|
+| 1 | 558 en 6 s (9 golpes bloqueados) | no | 563, no |
+| 2 | 1000 (18 bloqueados) | **sí, a los 5,4 s** | 1000 a los 5,3 s |
+
+**Duelos de bots** (60 de cada, de reinos enemigos, hasta la caída):
+
+| Duelo | Distancia | TTK mín / p10 / **mediana** / p90 / máx | Golpes por duelo | DPS mediano del ganador |
+|---|---|---|---|---|
+| Escudero contra escudero, sin habilidades (el cerebro de la fase 3, referencia) | 4 m | 5,8 / 7,3 / **10,7** / 16,4 / 20,7 s | 15,0 | 92,6 |
+| Escudero contra escudero, con el kit | 4 m | 8,7 / 12,8 / **18,4** / 24,8 / 29,8 s | 20,4 (3,5 bloqueados) | 63,6 |
+| Escudero contra escudero, con el kit y sin pociones | 4 m | 7,7 / 10,5 / **14,9** / 18,4 / 23,1 s | 17,6 (2,9 bloqueados) | 67,0 |
+| Tirador contra tirador | 20 m | 10,1 / 15,3 / **18,9** / 24,2 / 36,1 s | 26,0 | 68,5 |
+| Escudero contra tirador | 20 m | 9,1 / 11,0 / **18,9** / 24,1 / 28,7 s | 20,8 | 62,6 (gana el tirador 39 de 60) |
+
+La referencia sin habilidades da exactamente las cifras de 12.3: el cerebro de la fase 3 no ha cambiado.
+
+**Equipos** (20 combates de cada, en fila a 4 m, con el kit):
+
+| | Primera baja (mediana, p10 / p90) | Un bando sin nadie en pie (mediana, p10 / p90) | Bajas por combate |
+|---|---|---|---|
+| 2 escuderos contra 2 | 7,3 s (5,6 / 13,6) | 15,0 s (6,3 / 20,9) | 2,4 |
+| 5 escuderos contra 5 | 4,0 s (2,4 / 6,0) | 14,8 s (6,9 / 21,9) | 6,6 |
+| **2 contra 2 con las dos plantillas** (un escudero y un tirador por bando) | 9,5 s (5,0 / 14,9) | 16,8 s (10,6 / 18,6) | 2,2 |
+
+**Lectura.**
+
+- **Lo que dicen los datos se cumple**: DPS del arco, alcances, daño de cada habilidad, aturdimiento y gasto del
+  muro, todo como en la hoja calculada.
+- **El kit alarga los duelos de bots**: la mediana pasa de 10,7 s a 18,4 s, por encima del objetivo de 12.5 (10–15
+  s), y el DPS del ganador baja de 92,6 a 63,6. Lo que lo alarga no es el daño (las habilidades suman +8,1 DPS) sino
+  el tiempo que el bot no ataca —bebe (0,8 s por poción), mantiene el muro (1 a 3,3 s) o se lanza con la
+  embestida— y lo que cura: sin pociones (el mismo cerebro, con las cargas a 0) la mediana baja a 14,9 s, dentro del objetivo, y el
+  daño que hace falta por duelo, de 2058 a 1750: en cada duelo se bebe de media una poción (300 de vida), unos 3,5 s
+  de mediana. En el 2 contra 2 con las dos plantillas la primera baja llega a los 9,5 s
+  (dentro del objetivo) y el combate acaba a los 16,8 s.
+- **El tirador gana al escudero a 20 m** (39 de 60): empieza haciendo daño gratis mientras el escudero se acerca, y
+  de cerca saca la espada y el escudo. Con personas el escudero bloquea las flechas de frente (los bots solo
+  bloquean un 14 % de sus decisiones) y la embestida cierra 6 m en 0,4 s.
+
+**Decisiones de esta pasada.**
+
+| Decisión | Motivo |
+|---|---|
+| **El coste del muro se queda en 0,6 por punto.** | Dos atacantes lo rompen (a los 5,4 s): el contrajuego de 2.4 (superioridad numérica, golpe de escudo imbloqueable, flanco) funciona; habilidades.md 2.4 pedía subirlo a 0,8–1,0 solo si dos tampoco lo rompían. |
+| **No se cambia ningún `.tres` del kit.** | Todo lo medido coincide con lo calculado; el TTK de los bots sube por cómo gastan el tiempo (beber, muro), que con personas cambia del todo. Como en 12.5, retocar contra bots que no reaccionan sería ajustar al ruido. |
+| **El TTK objetivo (12.5) se mantiene** y se vuelve a medir con personas. | Primera baja del 2 contra 2 con las dos plantillas: 9,5 s; duelos con el kit: 18,4 s (14,9 s sin pociones). |
+
+**Propuestas sin aplicar.**
+
+- **P4. Pociones.** Si con personas los duelos también pasan de 15 s de mediana, bajar `potion_regen` de 300 a 200
+  (o la reutilización compartida de 20 a 30 s) antes que tocar el daño: sin pociones los duelos de bots con el kit ya bajan a 14,9 s.
+- **P5. Abanico.** Si el arco se queda corto en duelos, cerrar el abanico de ±7° a ±4° (a 10 m acertaría 2 de 3 en vez
+  de 1, +11 DPS a reutilización); hoy es un arma contra grupos.
+- **Pendiente**: la parada y el bloqueo de flechas con personas; el TTK con jugadores (2 contra 2 y 5 contra 5 en el
+  Vado Gris, con las dos plantillas); las cifras del fuerte (12.7).

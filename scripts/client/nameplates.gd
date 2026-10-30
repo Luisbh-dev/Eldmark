@@ -221,8 +221,10 @@ func _is_occluded(net_id: int, eye: Vector3, head: Vector3, distance: float) -> 
 	var known: bool = _occluded.has(net_id)
 	if known and (_frame + net_id) % OCCLUSION_INTERVAL_FRAMES != 0:
 		return bool(_occluded[net_id])
-	var space: PhysicsDirectSpaceState3D = get_viewport().get_world_3d().direct_space_state \
-			if is_inside_tree() else null
+	# find_world_3d: también dentro de un SubViewport con su propio mundo (own_world_3d), donde get_world_3d()
+	# es null (las pruebas de red ponen un HUD en el viewport de cada bot).
+	var world: World3D = get_viewport().find_world_3d() if is_inside_tree() else null
+	var space: PhysicsDirectSpaceState3D = world.direct_space_state if world != null else null
 	if space == null:
 		_occluded[net_id] = false
 		return false

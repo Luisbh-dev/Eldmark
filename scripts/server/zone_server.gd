@@ -60,7 +60,10 @@ extends Node
 ## estado de la sesión y comandos de depuración solo con [code]--debug-commands[/code].
 ## [br][br]
 ## [b]Jugadores falsos[/b] ([method add_fake_player]): jugadores sin red cuyas entradas salen de un
-## [BotBrain] y entran directamente en su [InputQueue]; sirven para las pruebas y la carga.
+## [BotBrain] y entran directamente en su [InputQueue]; sirven para las pruebas y la carga. Los de combate y
+## asedio ven a sus enemigos con su velocidad y su derribo ([BotTarget]) y, desde H5, pelean con el kit de la
+## fase 4 (docs/habilidades.md, sección 7.1): leen su estado de combate y su vida del servidor y levantan a los
+## aliados derribados.
 ## [br][br]
 ## [b]Combate[/b] (docs/combate.md): un [CombatDirector] lleva la vida, los golpes con rebobinado, las
 ## muertes y las reapariciones; los PNJ ([method add_npc], el maniquí de entrenamiento) son cuerpos
@@ -268,6 +271,9 @@ var _dummies_created: int = 0
 var _targets_tick: int = -1
 var _targets_by_realm: Dictionary = {}
 var _targets_ids_by_realm: Dictionary = {}
+# Kit de los falsos (H5): la velocidad de cada objetivo y si está derribado, en el mismo orden.
+var _targets_velocity_by_realm: Dictionary = {}
+var _targets_downed_by_realm: Dictionary = {}
 var _hostile_cache: Dictionary = {}
 # Asedio de los falsos con cerebro SIEGE (GUE-15): la vista de cada fortaleza, que comparten todos y se pone al
 # día en cada tick, y las rutas de aproximación de la zona (data/routes/<zona>.tres; null si no hay).
@@ -773,9 +779,15 @@ func add_fake_player(brain: BotBrain, realm: int, template_id: int = 0) -> int:
 	_combat.equip_template(combatant, template_id)
 	_fakes[entity.net_id] = brain
 	var pattern: BotBrain.Pattern = brain.get_pattern()
-	if (pattern == BotBrain.Pattern.COMBAT or pattern == BotBrain.Pattern.SIEGE) \
-			and not brain.has_enemy_finder():
-		brain.set_enemy_finder(_find_enemy_position.bind(entity.net_id))
+	var fighter: bool = pattern == BotBrain.Pattern.COMBAT or pattern == BotBrain.Pattern.SIEGE
+	if fighter and not brain.has_enemy_finder():
+		brain.set_enemy_finder(_find_enemy_target.bind(entity.net_id))
+	if fighter and not brain.has_combat_source():
+		# El kit de la fase 4 (H5): el estado de combate del servidor tras el último tick, la vida y los aliados
+		# derribados.
+		brain.set_combat_source(_fake_combat_state.bind(entity.net_id))
+		brain.set_health_source(_fake_health_fraction.bind(entity.net_id))
+		brain.set_ally_finder(_find_downed_ally.bind(entity.net_id))
 	if pattern == BotBrain.Pattern.SIEGE and not brain.has_siege():
 		brain.set_siege(get_siege_view(), get_approach_routes(), realm)
 	var record: _PlayerRecord = _player_by_net[entity.net_id]
@@ -1764,18 +1776,20 @@ func _pick_spawn_point(realm: int) -> Transform3D:
 	return _spawn_picker.pick(realm)
 
 
-# Posición del enemigo vivo más cercano a [param position] para el jugador falso [param net_id] (el
-# cerebro de combate de BotBrain), o null si no hay ninguno que pueda atacar o ser atacado: los
-# maniquíes, los protegidos y los que están en la zona segura de su reino no cuentan, y quien está en
-# la zona segura de su reino no ataca. Las posiciones objetivo se reúnen una vez por tick y por reino
-# (con muchos bots, cada uno recorre solo los candidatos de los reinos que le son hostiles).
-func _find_enemy_position(position: Vector3, net_id: int) -> Variant:
+# El enemigo vivo (o derribado) más cercano a [param position] para el jugador falso [param net_id] (el cerebro de
+# combate de BotBrain): un BotTarget con sus pies, su velocidad y si está derribado (lo que usa el kit para el tiro
+# adelantado del arco y para rematar, H5), o null si no hay ninguno que pueda atacar o ser atacado: los maniquíes,
+# los protegidos y los que están en la zona segura de su reino no cuentan, y quien está en la zona segura de su
+# reino no ataca. Los objetivos se reúnen una vez por tick y por reino (con muchos bots, cada uno recorre solo los
+# candidatos de los reinos que le son hostiles).
+func _find_enemy_target(position: Vector3, net_id: int) -> Variant:
 	var me: Combatant = _combat.get_combatant(net_id)
 	if me == null or not me.is_alive() or _safe_areas.contains_own(me.get_realm(), position):
 		return null
 	if _targets_tick != _tick:
 		_rebuild_target_cache()
-	var best: Variant = null
+	var best_realm: int = -1
+	var best_index: int = -1
 	var best_distance: float = INF
 	for realm: int in _targets_by_realm:
 		if not _is_hostile_realm(me.get_realm(), realm):
@@ -1787,7 +1801,51 @@ func _find_enemy_position(position: Vector3, net_id: int) -> Variant:
 			var distance: float = position.distance_squared_to(positions[index])
 			if distance < best_distance:
 				best_distance = distance
-				best = positions[index]
+				best_realm = realm
+				best_index = index
+	if best_index < 0:
+		return null
+	return BotTarget.new(_targets_by_realm[best_realm][best_index],
+			_targets_velocity_by_realm[best_realm][best_index],
+			_targets_downed_by_realm[best_realm][best_index] != 0,
+			_targets_ids_by_realm[best_realm][best_index])
+
+
+# Kit de los falsos (H5): el estado de combate del jugador falso [param net_id] tras el último tick (null si ya
+# no está).
+func _fake_combat_state(net_id: int) -> CombatState:
+	var entity: NetEntity = _registry.get_entity(net_id)
+	var character: PlayerCharacter = entity.get_character() if entity != null else null
+	return character.combat if character != null else null
+
+
+# Kit de los falsos: la fracción de vida del jugador falso [param net_id] (0 derribado o muerto).
+func _fake_health_fraction(net_id: int) -> float:
+	var combatant: Combatant = _combat.get_combatant(net_id)
+	if combatant == null or combatant.max_health <= 0:
+		return 1.0
+	return float(combatant.health) / float(combatant.max_health)
+
+
+# Kit de los falsos: los pies del aliado derribado (un jugador de su reino) más cercano a [param position] para el
+# jugador falso [param net_id], o null. Sin derribados en la zona no recorre a nadie.
+func _find_downed_ally(position: Vector3, net_id: int) -> Variant:
+	if _combat.downed.downed_count() == 0:
+		return null
+	var me: Combatant = _combat.get_combatant(net_id)
+	if me == null or not me.is_alive():
+		return null
+	var best: Variant = null
+	var best_distance: float = INF
+	for other: Combatant in _combat.get_sorted():
+		if other == me or not other.is_downed() or other.get_realm() != me.get_realm() \
+				or not _is_player(other.get_id()):
+			continue
+		var feet: Vector3 = other.entity.get_position()
+		var distance: float = position.distance_squared_to(feet)
+		if distance < best_distance:
+			best_distance = distance
+			best = feet
 	return best
 
 
@@ -1796,6 +1854,8 @@ func _rebuild_target_cache() -> void:
 	_targets_tick = _tick
 	_targets_by_realm.clear()
 	_targets_ids_by_realm.clear()
+	_targets_velocity_by_realm.clear()
+	_targets_downed_by_realm.clear()
 	for other: Combatant in _combat.get_sorted():
 		if other.is_dead() or other.immortal or other.is_protected(_tick):
 			continue
@@ -1806,8 +1866,13 @@ func _rebuild_target_cache() -> void:
 		if not _targets_by_realm.has(realm):
 			_targets_by_realm[realm] = PackedVector3Array()
 			_targets_ids_by_realm[realm] = PackedInt32Array()
+			_targets_velocity_by_realm[realm] = PackedVector3Array()
+			_targets_downed_by_realm[realm] = PackedByteArray()
+		var character: PlayerCharacter = other.entity.get_character()
 		_targets_by_realm[realm].append(other_position)
 		_targets_ids_by_realm[realm].append(other.get_id())
+		_targets_velocity_by_realm[realm].append(character.velocity if character != null else Vector3.ZERO)
+		_targets_downed_by_realm[realm].append(1 if other.is_downed() else 0)
 
 
 # true si un bot de [param my_realm] puede dañar a uno de [param other_realm] en esta zona.

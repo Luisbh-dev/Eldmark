@@ -216,3 +216,17 @@ func test_run_at_option_schedules_console_commands() -> void:
 	assert_eq(config.scheduled_commands[0], {"tick": 900, "line": "fort_kill_captain"}, "tick y orden")
 	assert_eq(config.scheduled_commands[1], {"tick": 1800, "line": "fort_capture_speed 30"}, "con argumentos")
 	assert_eq(config.scheduled_commands[2], {"tick": 60, "line": "announce hola"}, "sin comillas ni espacios")
+
+
+func test_fake_archers_option_for_load_tests() -> void:
+	assert_eq(ServerConfig.from_args(PackedStringArray()).fake_archers_sky_percent, -1, "sin la opción, no hay arqueros puros")
+	assert_false(ServerConfig.from_args(PackedStringArray()).is_sky_archer(0))
+	var none: ServerConfig = ServerConfig.from_args(PackedStringArray(["--fake-archers=0"]))
+	assert_eq(none.fake_archers_sky_percent, 0, "arqueros puros, ninguno al cielo")
+	assert_false(none.is_sky_archer(0) or none.is_sky_archer(1))
+	var half: ServerConfig = ServerConfig.from_args(PackedStringArray(["--fake-archers=50"]))
+	assert_eq([half.is_sky_archer(0), half.is_sky_archer(1), half.is_sky_archer(2), half.is_sky_archer(3)],
+			[false, true, false, true], "con 50, uno de cada dos al cielo")
+	assert_true(ServerConfig.from_args(PackedStringArray(["--fake-archers=100"])).is_sky_archer(0), "con 100, todos")
+	for bad: String in ["--fake-archers=101", "--fake-archers=-3", "--fake-archers=muchos"]:
+		assert_eq(ServerConfig.from_args(PackedStringArray([bad])).fake_archers_sky_percent, -1, "%s no vale" % bad)

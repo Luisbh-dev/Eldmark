@@ -95,6 +95,7 @@ func test_combat_fakes_fight_in_a_server_process_and_leave_their_combat_log() ->
 	assert_eq(lines[0], ZoneServer.COMBAT_LOG_HEADER, "cabecera del registro de combate")
 	assert_true(lines.size() > 5, "y una línea por golpe resuelto (%d)" % (lines.size() - 1))
 	var results: Dictionary = {}
+	var ability_lines: int = 0
 	var previous_tick: int = 0
 	for index: int in range(1, lines.size()):
 		var columns: PackedStringArray = lines[index].split(",")
@@ -105,11 +106,16 @@ func test_combat_fakes_fight_in_a_server_process_and_leave_their_combat_log() ->
 		assert_true(columns[0].to_int() >= previous_tick, "los ticks no retroceden")
 		previous_tick = columns[0].to_int()
 		# Los desenlaces de un derribado (docs/habilidades.md, 4.5 y 4.7) llevan el nombre de su fuente: remate o
-		# desangrado (los falsos de combate rematan con daño, pero un derribado puede desangrarse antes).
+		# desangrado (los falsos de combate rematan con daño, pero un derribado puede desangrarse antes). Desde H5 los
+		# falsos pelean con el kit: un golpe de habilidad lleva el nombre de la habilidad (golpe de escudo, embestida).
 		var outcome: bool = columns[6] == "bled_out" or columns[6] == "executed"
-		assert_true(columns[3].begins_with("sword_") or (outcome and (columns[3] == "desangrado"
+		var ability: bool = CombatCatalog.ability_id(StringName(columns[3])) != 0
+		if ability:
+			ability_lines += 1
+		assert_true(columns[3].begins_with("sword_") or ability or (outcome and (columns[3] == "desangrado"
 				or columns[3] == "remate")), "el ataque lleva su nombre (%s)" % lines[index])
 	assert_true(results.has("hit"), "hay golpes")
+	assert_true(ability_lines > 0, "y alguno de habilidad: los falsos usan el kit (H5)")
 
 
 func test_the_console_reads_stdin_in_a_thread_and_does_not_stop_the_tick() -> void:

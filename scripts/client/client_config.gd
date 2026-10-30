@@ -56,6 +56,10 @@ var display_name: String = ""
 var net_sim_spec: String = ""
 var bot_seed: int = 1
 var bot_count: int = 0
+## Modo del bot tramposo ([code]--bot-cheat=<modo>[/code], [constant BotCheater.MODES]): de tráfico
+## ([code]version[/code], [code]future[/code], [code]dupes[/code], [code]garbage[/code], [code]flood[/code]) o de
+## combate ([code]rewind[/code], [code]reach[/code], [code]rate[/code] y, desde la fase 4, [code]reuse[/code],
+## [code]potion[/code] e [code]interact[/code]). Vacío = honrado. Lo valida [NetClient] al arrancar.
 var bot_cheat: String = ""
 ## Cerebro de los bots ([constant BOT_BRAINS]): vacío o [constant BOT_BRAIN_WANDER] pasea;
 ## [constant BOT_BRAIN_COMBAT] busca al enemigo más cercano y pelea ([constant BotBrain.Pattern.COMBAT]);

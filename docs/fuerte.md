@@ -873,7 +873,8 @@ pruebas en `test_realm_balance`, `test_bot_brain_siege`, `test_siege_zone`, `tes
     64 el servidor no llega a mandar todos (28,5).
   - **< 1 % de entradas sustituidas: se cumple con 64 jugadores (0,00 %) y no con 128 (50,76 %)**, y con 128 el rebobinado empieza a
     fallar a los honrados (25 rechazos, 6 sospechosos), como ya pasaba con 128 en la refriega. **Primer límite de jugadores por batalla
-    en el fuerte: 64 (32 contra 32)**; 64 contra 64 queda fuera de lo que el servidor sostiene hoy.
+    en el fuerte: 64 (32 contra 32)**; 64 contra 64 queda fuera de lo que el servidor sostiene hoy. (Medido sin el kit de la fase 4;
+    con arqueros y habilidades, la refriega de H5 baja el límite por batalla a 40: [red.md 14](red.md#14-presupuesto-de-ancho-de-banda-y-cpu).)
   - **El coste de las fortalezas es despreciable**: la sección `war` (paso 4b) cuesta de mediana 0,10–0,11 ms y de p99 1,4–2,4 ms
     (la presencia se recuenta cada 6 ticks con todos en el círculo), unos 300 `OBJECT_STATE` y 90 marcadores en los 3 minutos. El
     combate (`combat`) cuesta 0,9 ms de mediana con 64 y 1,5 con 128; los golpes con rebobinado, de 57 a 70 µs por comprobación.

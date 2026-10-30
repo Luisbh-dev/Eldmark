@@ -11,6 +11,11 @@ extends RefCounted
 ## respaldo, las posiciones de [code]data/routes/<zona>.tres[/code]; los enemigos son los remotos que dibuja su
 ## [RemoteWorld], también los PNJ de guerra ([BotEnemySight]);
 ## [br]- si no, [constant BotBrain.Pattern.WANDER]: pasea alrededor de su punto de aparición.
+## [br][br]
+## Los cerebros de combate y de asedio pelean con el kit de la fase 4 (H5; docs/habilidades.md, sección 7.1,
+## [method give_kit_senses]): leen el estado de combate predicho del personaje, la vida del bloque extra, los
+## enemigos con su velocidad dibujada y su derribo y los aliados derribados que dibuja el [RemoteWorld]. Los del
+## bot tramposo no: juegan como en la fase 3 (lo tramposo es otra cosa).
 
 
 ## Crea el cerebro del bot [param client] (en el mundo, con su personaje) para la configuración
@@ -26,9 +31,25 @@ static func make(client: NetClient, config: ClientConfig, home: Vector3, radius:
 	if config.bot_brain == ClientConfig.BOT_BRAIN_COMBAT:
 		var sight := BotEnemySight.new(client)
 		var brain := BotBrain.new(config.bot_seed, BotBrain.Pattern.COMBAT, home, radius)
-		brain.set_enemy_finder(func(position: Vector3) -> Variant: return sight.find(position))
+		give_kit_senses(brain, client, sight)
 		return brain
 	return BotBrain.new(config.bot_seed, BotBrain.Pattern.WANDER, home, radius)
+
+
+## Le da a [param brain] lo que necesita el kit de la fase 4 (H5): los enemigos de [param sight] como
+## [BotTarget] (posición y velocidad dibujadas y derribo), el estado de combate predicho del personaje de
+## [param client] (el de después del último paso de la predicción, con el que se decide la entrada del
+## siguiente), su vida del bloque extra y los aliados derribados que dibuja.
+static func give_kit_senses(brain: BotBrain, client: NetClient, sight: BotEnemySight) -> void:
+	brain.set_enemy_finder(func(position: Vector3) -> Variant: return sight.find_target(position))
+	brain.set_ally_finder(func(position: Vector3) -> Variant: return sight.find_downed_ally(position))
+	brain.set_combat_source(func() -> CombatState:
+		var character: PlayerCharacter = client.get_character()
+		return character.combat if is_instance_valid(character) else null)
+	brain.set_health_source(func() -> float:
+		if not client.has_health() or client.get_max_health() <= 0:
+			return 1.0
+		return float(client.get_health()) / float(client.get_max_health()))
 
 
 # El cerebro de asedio de un bot del cliente: su reino es el del WELCOME, las rutas las de la zona y el
@@ -49,7 +70,7 @@ static func _make_siege(client: NetClient, config: ClientConfig, home: Vector3, 
 			_previous: FortressState) -> void: _refresh_siege_view(view, fortress_view))
 	var sight := BotEnemySight.new(client, false, true)
 	var brain := BotBrain.new(config.bot_seed, BotBrain.Pattern.SIEGE, home, radius)
-	brain.set_enemy_finder(func(position: Vector3) -> Variant: return sight.find(position))
+	give_kit_senses(brain, client, sight)
 	brain.set_siege(view, routes, realm)
 	return brain
 
