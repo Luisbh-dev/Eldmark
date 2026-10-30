@@ -37,6 +37,10 @@ var display_name: String
 ## Personal del juego (moderador o más, el rol de la reclamación; docs/plataforma.md §5.4): su ENTITY_SPAWN
 ## lleva el bit [constant NetMessages.SPAWN_FLAG_STAFF] para la etiqueta (SOC-14). Siempre false sin plataforma.
 var is_staff: bool = false
+## Marcado por un comando de GM que lo mueve, lo cura o lo muestra (docs/progresion.md §6.2; lo ponen
+## [code]/gm teleport[/code], [code]/gm visible[/code] y los DEBUG_COMMAND 1, 2 y 4, plataforma.md P7b): mientras
+## dura no entra en la lista de capturas ni cobra méritos ni PNJ. La reaparición lo quita (plataforma.md P6).
+var gm_forced: bool = false
 ## Combinación de [constant FLAG_ALWAYS_RELEVANT].
 var flags: int = 0
 ## Nodo de la entidad en el mundo del servidor: un [PlayerCharacter] si es un jugador.

@@ -2578,3 +2578,25 @@ plataforma de Go de verdad (P7 y P10); el cliente que usa los mensajes (P6, en `
 
 **Queda para después:** las recompensas, LEVEL_UP y lo que mueve saldos y XP (P5c); los comandos de GM con sus
 deltas, el 16 con plataforma y la reversión (P5d); el almacén en Go (P7); las pruebas de punta a punta (P8).
+
+### 19.13 Lo que deja plataforma.md P6
+
+plataforma.md P6 (su §19.11) pone la guerra persistente en la zona. Lo que usa P5c:
+
+- **La lista de capturas:** `FortressController.fortress_captured(fortress_id, owner_realm, in_circle, tick)` sale en
+  cada captura de verdad con la lista de plataforma.md §8 (del reino captor, presentes, vivos y conectados en el
+  círculo en el tick de la captura, sin `NetEntity.gm_forced`), ordenada por `net_id`; es la misma que ya ha sumado
+  `ScoreKeeper.captures`. Una captura forzada no sale. `ProgressService.on_capture` se conecta ahí (los GM
+  invisibles los quita plataforma.md P7b de los candidatos).
+- **La marca de cambio forzado (§6.2):** `FortressController.is_forced(fortress_id)`. La ponen `fort_owner`,
+  `fort_reset`, `fort_kill_captain` (antes de matar al capitán: su DEATH ya sale forzada, así que `on_npc_killed`
+  puede mirarla en ese momento) y `fort_capture_speed` con un factor distinto de 1 (y todo es forzado mientras
+  `capture_rate_multiplier ≠ 1`). La quitan la muerte del capitán en combate, la guarnición que llega sola y el
+  reinicio periódico. La captura que sigue a un `fort_kill_captain` y la consolidación que sigue a una captura forzada
+  también son forzadas.
+- **`NetEntity.gm_forced`** existe (falso por defecto) y la reaparición lo quita; lo pone plataforma.md P7b.
+  `on_merits` y `on_npc_killed` lo miran en cada jugador.
+- **El crítico de la captura** (`mark_critical(net_id, &"capture")`) sale como cualquier otro: el guardado lleva ya
+  las dos secciones, `progress` y `pvp` (con `captures` al día).
+
+**Sin comprobar:** con la plataforma de Go de verdad (plataforma.md P10).

@@ -2906,3 +2906,139 @@ progresion.md P5a (su §19.11) registra la sección `progress` y prepara el regi
   liberación de quien estaba en el mundo su final con `release_lease` (contestado con el mismo retraso).
 - **P6:** `pvp` se registra detrás de `progress`. **P10:** los guardados de extremo a extremo llevan ya la sección
   `progress` (con el almacén de verdad, progresion.md P7).
+
+### 19.11 P6 · guerra (GUE-19)
+
+**Qué hay.** La guerra persistente en la zona (§8): el registro de cada fortaleza en la plataforma, su carga al
+arrancar, el historial, las capturas y el tiempo defendiendo por personaje y la sección `pvp` de los guardados. Sin
+`--platform` no hay `FortressPersistence` ni sección `pvp`; el marcador, las capturas y la marca de cambio forzado
+funcionan igual en memoria.
+
+| Pieza | Contenido |
+|---|---|
+| `scripts/server/war/fortress_persistence.gd` | `FortressPersistence`: el registro de §8 (`to_record`, `from_record` con su `Loaded` y el motivo si no vale), los ticks y la hora Unix (`unix_of` = `now_unix + ceili((t − tick) / 60.0)`; `tick_until` = `tick + max(0, at − now) · 60` para los plazos; `tick_since` = `tick − max(0, now − at) · 60` para el último reinicio, que es pasado), `load_records` (dentro de `ZoneServer.start`, antes del puerto y de los PNJ), `step` (cambio de dueño, de fase o de ciclo enseguida; lo demás cada 60 s), `flush` (cierre ordenado), `close` (cierre de §6.1), `on_platform_event` (kind `fortress`), `on_war_event` (3, 6 y 7 al lote `war`), `describe` y `get_stats` |
+| `fortress_controller.gd` | `restore_state` (el estado cargado, con la puerta y lo enviado al día), `get_consolidation_end_tick`, la marca de cambio forzado (`is_forced`), la lista de la captura con la señal `fortress_captured(fortress_id, owner_realm, in_circle, tick)`, `captures` y `defend_ticks` en el `ScoreKeeper` y `PlayerCandidate.gm_forced` |
+| `score_keeper.gd` | `Entry.captures`, `Entry.defend_ticks`, `add_capture`, `add_defend_ticks`; la sección `pvp`: `SECTION`, `attach`, `load_totals` (la base de la reclamación), `pvp_totals`, `build_section`, `acknowledge_section` e `is_section_dirty`, con los topes de las columnas |
+| `net_entity.gd` | `gm_forced` (falso por defecto) |
+| `zone_server.gd` | `ScoreKeeper.attach` detrás de `progress`; `FortressPersistence` en `start` (tras crear las fortalezas, antes de los PNJ y de abrir el puerto); su `step` tras `FortressController.step`; los eventos `fortress` en «poll»; `load_totals` en el alta, antes de `track`; la reaparición (RESPAWN) quita `gm_forced`; `_presence_candidates` con `gm_forced`; `flush` en `stop` y `close` en `close_instance`; `get_fortress_persistence()`; `war.persistence` en el informe |
+| `npc_spawner_system.gd` | El puesto del capitán no se llena con el capitán caído (un fuerte cargado en VULNERABLE o CAPTURING): vuelve con la guarnición o con la reaparición completa de los Huecos |
+| `zone_platform.gd` | `startup_limit_s` (60 s; las pruebas lo bajan) |
+| Pruebas | `tests/test_war_persistence.gd` (15) y `tests/test_war_platform_process.gd` (1, con el Vado Gris en otro proceso) |
+
+**El registro.** Esquema 1 con los campos de §8. `phase_ends_at_unix` es el fin de la consolidación o, en VULNERABLE,
+la vuelta del capitán; `captain_respawn_at_unix`, esa vuelta; los dos son null cuando no corre ningún plazo.
+`capture_realm` y `capture_progress` (el progreso del tick en que se escribe) solo en CAPTURING. Al leer, cada campo
+se comprueba (enteros exactos, como `jsonx`; las horas, null o de 0 a 253402300799); uno que falta o no cuadra
+(CONSOLIDATING sin dueño, CAPTURING sin captor o con el dueño de captor) es como otro esquema: el estado inicial con
+un aviso. `captain_alive` se comprueba pero sale de la fase. Una vida de la puerta mayor que la de la definición se
+recorta.
+
+**Cuándo se escribe.** Lo que sale enseguida: dueño, fase, el inicio de la fase y el último reinicio (un reinicio de
+un fuerte neutral no cambia ni el dueño ni la fase, pero empieza otro ciclo de 30 min). Lo que sale cada 60 s si
+cambió: la vida de la puerta, el capitán, el captor, el progreso y el fin de la consolidación. Se compara en ticks,
+no en hora Unix, que se mueve con el reloj. Solo con la instancia `live`: lo que cambia antes sale al quedar viva.
+El primer arranque (sin registro) escribe el estado inicial en cuanto la instancia está viva; un registro que no vale
+no se pisa hasta el primer cambio, con la versión que trajo el GET. El cierre ordenado escribe lo que quede; el de
+§6.1 no escribe nada más (la que manda es otra instancia).
+
+**Desviaciones y decisiones de la implementación:**
+
+- **CAPTURING vuelve como CAPTURING, no como VULNERABLE.** §8 dice «`CAPTURING` vuelve como `VULNERABLE` con su
+  progreso (el círculo está vacío y decae)», pero en la máquina de fuerte.md §1.5 un progreso que decae solo existe en
+  CAPTURING: en VULNERABLE la captura empieza en 0. Así que vuelve con su captor y su progreso, el círculo vacío
+  (`empty_since_tick` en el tick de la carga): espera el retardo de `decay_after_empty_s`, decae a −4 y, si nadie
+  vuelve, a 0 pasa a VULNERABLE con un plazo nuevo para el capitán (la prueba lo comprueba). Si vuelven los captores,
+  siguen desde lo que quede; si vuelve otro reino, lo que manda la tabla de §1.5.
+- **El fin de la consolidación lo lleva el controlador.** `phase_tick` viaja en OBJECT_STATE como u32 y el inicio de
+  una consolidación cargada a medias sería negativo: el estado lleva el tick de la carga y
+  `FortressController` guarda el fin (`restore_state`); en ese tick pone el inicio que hace que `advance` la cierre y
+  la guarnición llega por `garrison_due`, como siempre. No hay cambios en `scripts/shared`.
+- **La puerta dañada** se repara a los `gate_repair_after_s` del arranque (la hora del último golpe no se guarda).
+  `under_attack_until_tick`, los avisos y la presencia empiezan de cero; `capture_rate_multiplier` (comando de
+  depuración) no se guarda.
+- **Cambio forzado** (progresion.md §6.2; `is_forced`): marcan el ciclo `fort_owner`, `fort_reset`,
+  `fort_kill_captain` (antes de matar, así la muerte del capitán ya sale forzada para quien la paga) y
+  `fort_capture_speed` con un factor distinto de 1; además, con `capture_rate_multiplier ≠ 1` todo es forzado. La
+  marca la quita el siguiente cambio de verdad: la muerte del capitán en combate (o por `on_captain_died`), la
+  guarnición que llega sola (fin de la consolidación o vuelta del capitán) o el reinicio periódico. **Decisión:** la
+  captura que sigue a un `fort_kill_captain` también es forzada, y la consolidación que sigue a una captura forzada
+  también (hasta su guarnición): «lo que provoca un comando del fuerte no paga nada persistente», y sin el comando el
+  círculo no se habría abierto. En un ciclo forzado no se suman capturas ni `defend_ticks` (`circle_ticks`, que es
+  del marcador en memoria, sí). La marca no se guarda: un reinicio la pierde.
+- **La lista de la captura** se calcula una vez, en el tick de la captura, con los candidatos de ese tick (no con el
+  último recuento, que puede ser de hasta 5 ticks antes): del reino captor, presentes según `FortressPresence` (vivos,
+  no derribados, conectados y con entrada reciente) y sin `gm_forced`. Suma `captures` y sale por
+  `fortress_captured`, ordenada por `net_id`; una captura forzada no suma ni sale. Los GM invisibles los quitará P7b
+  de los candidatos.
+- **`defend_ticks`:** el reino dueño (nunca los Huecos) presente con el círculo activo, cada recuento (6 ticks), sin
+  `gm_forced` y fuera de un ciclo forzado. `defend_s` = cargado + `defend_ticks / 60` (entero).
+- **La sección `pvp`** nunca devuelve `{}`; está sucia mientras los totales no son los del último cuerpo confirmado (o
+  los cargados), así que entrar no ensucia. Cada total se recorta a 2^31 − 1 (`gate_damage`, a 2^53 − 1): un total
+  mayor sería `envelope` en la plataforma, y con `greatest` recortar no baja nada.
+- **Historial:** los avisos 3, 6 y 7 van al lote `war` también cuando los provoca un comando (es historia, no
+  recompensa), con la hora de `ZonePlatform.now_unix()`. Antes de quedar viva la instancia también se mandan (los lotes
+  valen en `starting`).
+- **API de más** (§14.3 no la detalla): `FortressPersistence.Loaded`, `describe`, `get_stats`, `flush` y `close`;
+  `FortressController.restore_state`, `get_consolidation_end_tick`, `is_forced` y la señal `fortress_captured`;
+  `ScoreKeeper.SECTION`, `attach`, `load_totals`, `pvp_totals` y las tres funciones de la sección;
+  `ZoneServer.get_fortress_persistence()`; `ZonePlatform.startup_limit_s`.
+
+**Para los paquetes siguientes.**
+
+- **progresion.md P5c:** `on_capture` se conecta a `FortressController.fortress_captured` (la misma lista que suma
+  `ScoreKeeper.captures`; una captura forzada no sale). Para `on_npc_killed` y los méritos de objetivo,
+  `FortressController.is_forced(fortress_id)` (la muerte del capitán con `fort_kill_captain` ya sale forzada) y
+  `NetEntity.gm_forced` de cada contribuyente.
+- **P7b:** pone `NetEntity.gm_forced` (la reaparición ya lo quita) y quita a los GM invisibles de
+  `ZoneServer._presence_candidates` (no cuentan en el círculo ni en la lista).
+- **P10:** el reinicio de la zona con el almacén de verdad (aquí, `FakeHttpServer` con versiones como la plataforma).
+
+**Pruebas** (Godot):
+
+- **`test_war_persistence.gd`** (15, sin red, con `FakeZonePlatform` y el reloj fijo): la ida y vuelta del registro
+  (CONSOLIDATING a 50,5 s de 120 escribe el fin a 70 s y vuelve a los 60 s diez segundos después, por JSON; VULNERABLE
+  con el plazo del capitán, también uno que ya pasó; CAPTURING con su progreso; GARRISONED sin plazos) y ocho
+  registros que no valen con su motivo; arrancar con CONSOLIDATING a medias (dueño, fase, puerta, plazo de 60 ticks,
+  la puerta de Solmarch, el alta de la fortaleza que se codifica, nada escrito al cargar y el PUT del cambio de fase
+  con la versión del GET y el último reinicio de antes); CAPTURING que vuelve con su progreso, espera el retardo y, sin
+  nadie, decae a VULNERABLE con un plazo nuevo; los captores que vuelven y terminan desde lo guardado; la plataforma
+  que no contesta el GET (el arranque falla tras reintentarlo, sin primer bloque ni PUT); la lista vacía (estado
+  inicial sin aviso, escrito una vez al quedar viva); otro esquema (estado inicial con aviso, sin pisarlo hasta un
+  cambio, y entonces con la versión que había); `version_conflict` (reenvío del mismo registro con la versión del
+  error y el siguiente con la del 200); capturas y `defend_ticks` (los dos del captor en el círculo suman, el marcado
+  y el de fuera no; la lista sale una vez; el dueño defiende con el círculo activo y el atacante no; la reaparición
+  quita `gm_forced`); capturas forzadas por `fort_capture_speed`, `fort_owner` y `fort_kill_captain` frente a una de
+  verdad, y la marca que quitan la guarnición que llega sola y la muerte del capitán en combate; la muerte del capitán
+  con `fort_kill_captain` que ya sale forzada; la sección `pvp` (la base de la reclamación, el crítico del kit con
+  `progress` y `pvp`, la sesión, el final construido antes de `forget`, la reconexión que la trae y sigue); la sección
+  limpia tras su `acknowledge` y los topes; y el lote de eventos reenviado tras un 503 con las mismas claves, solo los
+  avisos 3, 6 y 7.
+- **`test_war_platform_process.gd`** (1, el Vado Gris en otro proceso contra `FakeHttpServer`): un primer proceso
+  escribe el estado inicial, el dueño (`fort_owner solmarch` en el tick 30) y la fase (`fort_kill_captain` en el 60);
+  un segundo arranca con la plataforma sin contestar dos veces al GET de las fortalezas: con ella muda el puerto UDP
+  sigue cerrado, después abre y se da por viva, carga «dueño Solmarch, fase vulnerable; el capitán reaparece en
+  292 s» y no escribe nada (el dueño guardado no se pisa).
+
+Además siguen correctas `test_fortress_*` (151), `test_npc_system`, `test_zone_server_saves` (su sección falsa se
+llama `pvp` y sustituye a la de verdad), `test_character_saver`, `test_zone_server_platform`,
+`test_zone_process_shutdown`, `test_platform_client`, `test_progress_service`, `test_score*` y `test_architecture`.
+Comprobadas con la mutación que deberían pillar: sin el filtro de `gm_forced` en la lista, sin `load_totals` en el
+alta, con `forget` antes de `finish`, sin saltarse las capturas forzadas, sin el fin de la consolidación del
+controlador, sin quitar `gm_forced` al reaparecer y sin la marca de `fort_kill_captain` antes de matar, fallan.
+
+**Medido** (esta máquina, 4 núcleos compartidos, Godot 4.7.2 headless; los costes, con una sonda que no se sube):
+
+| Qué | Resultado |
+|---|---|
+| `test_war_persistence.gd` | 15 pruebas en unos 31 s con el arranque del ejecutor; las más lentas, la de las capturas forzadas (6,4 s de pasos de 2 ticks con fotogramas entre medias) y la de capturas y `defend_ticks` (3,9 s) |
+| `test_war_platform_process.gd` | 14,4 s: dos procesos del Vado Gris (el segundo espera 3 s de reintentos) |
+| `FortressPersistence.step` sin cambios (una fortaleza) | 1,8 µs por tick |
+| La lista de una captura con 64 jugadores en el círculo | 77 µs (una vez por captura: los candidatos de ese tick) |
+| `to_record` · `from_record` | 4 µs · 16 µs |
+| Sección `pvp`: `is_dirty` · `build` | 5 µs · 5 µs por personaje (uno por punto de control o crítico) |
+
+**Sin comprobar:** contra la plataforma de Go de verdad (P10; aquí, `FakeZonePlatform` y `FakeHttpServer` con la
+misma regla de versiones que `internal/war`); con varias fortalezas por zona (GUE-20, fase 7).
+
+**Queda para después:** la recompensa de captura y lo que paga o no un ciclo forzado (progresion.md P5c); poner
+`gm_forced` y los GM invisibles (P7b); el extremo a extremo (P10).

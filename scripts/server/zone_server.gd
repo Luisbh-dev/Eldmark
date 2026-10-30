@@ -14,8 +14,9 @@ extends Node
 ##                  los grupos (SocialService), INVENTORY_REQUEST e INVENTORY_SYNC_REQUEST (RATE y a la cola
 ##                  del progreso, progresion.md §4.2); y las líneas de la consola. Con la plataforma
 ##                  (docs/plataforma.md §14.3), después: ZonePlatform.take_events() repartido por kind en
-##                  el orden de llegada (claim al AuthProvider, heartbeat a la zona; instance_closed al
-##                  final), AuthProvider.take_completed() (cada 200: reino, cupo y WELCOME) y los
+##                  el orden de llegada (claim al AuthProvider, heartbeat a la zona, fortress a
+##                  FortressPersistence; instance_closed al final), AuthProvider.take_completed() (cada 200:
+##                  reino, cupo y WELCOME) y los
 ##                  VERIFYING vencidos (7 s en tiempo real desde la conexión, REJECT UNAVAILABLE)
 ## tick += 1        s es el tick que se simula
 ## bajas            desconexión, LEAVE o expulsión -> SocialService.on_peer_left (sale de su grupo, el
@@ -41,8 +42,10 @@ extends Node
 ##                  ENTITY_EVENT y los ENTITY_SPAWN y ENTITY_DESPAWN de los proyectiles salen aquí, y
 ##                  al final, los avisos TELEGRAPH de los ataques fuertes de PNJ que empiezan en s
 ## fuertes          FortressController.step() (paso 4b): presencia en el círculo, avance del estado de
-##                  cada fortaleza, capas de la puerta (valen desde s + 1), avisos WAR y OBJECT_STATE;
-##                  /atascado; cuerpos que se quedan tras una baja en combate
+##                  cada fortaleza, capas de la puerta (valen desde s + 1), avisos WAR y OBJECT_STATE,
+##                  capturas y tiempo defendiendo en el marcador; con la plataforma, FortressPersistence.step:
+##                  el registro de la que ha cambiado (docs/plataforma.md §8); /atascado; cuerpos que se
+##                  quedan tras una baja en combate
 ## PNJ              NpcSpawnerSystem.step(): altas y retiradas de PNJ según los generadores y las
 ##                  fortalezas, cadáveres
 ## altas            los READY pendientes: el jugador aparece con el estado «tras s» y el equipo de su
@@ -120,7 +123,12 @@ extends Node
 ## [br][br]
 ## [b]Fortalezas[/b] (docs/fuerte.md): un [FortressController] lleva el estado de cada fortaleza de la zona,
 ## su puerta (blanco de los golpes), los avisos de guerra y el OBJECT_STATE; [method get_fortresses] lo
-## expone a los PNJ. [code]--battle-log[/code] deja los eventos de guerra y las muertes en JSON Lines.
+## expone a los PNJ. Con la plataforma (docs/plataforma.md §8, GUE-19), [FortressPersistence] aplica en
+## [method start], antes de abrir el puerto, los registros que cargó [ZonePlatform], los escribe al cambiar y manda
+## los eventos de captura y reinicio al historial; el [ScoreKeeper] registra la sección [code]pvp[/code] de los
+## guardados (detrás de [code]progress[/code]) con los totales de la reclamación más los de la sesión. La
+## reaparición quita [member NetEntity.gm_forced]. [code]--battle-log[/code] deja los eventos de guerra y las muertes
+## en JSON Lines.
 ## Quien sale o se desconecta en combate deja el cuerpo [constant LINGER_TICKS] ticks en el mundo
 ## (GUE-41), el comando /atascado ([UnstuckTracker]) teletransporta a quien lo pide y el marcador
 ## ([ScoreKeeper]) se manda a toda la zona cada [constant SCOREBOARD_INTERVAL_TICKS] ticks.
@@ -330,6 +338,8 @@ var _combat: CombatDirector
 var _fortresses: FortressController = null
 var _npc_system: NpcSpawnerSystem = null
 var _scores: ScoreKeeper = ScoreKeeper.new()
+# Los registros de las fortalezas y su historial en la plataforma (docs/plataforma.md §8); null sin ella.
+var _fortress_persistence: FortressPersistence = null
 var _battle_log: BattleLog = null
 var _unstuck: UnstuckTracker = UnstuckTracker.new()
 # Chat y grupos (SOC-04, SOC-06); se crea en start().
@@ -596,8 +606,8 @@ func _exit_tree() -> void:
 ## [br]- [param auth_provider] decide la identidad de los clientes ([DevAuthProvider] sin plataforma,
 ## [TicketAuthProvider] con ella).
 ## [br]- [param platform] es la plataforma ya arrancada ([signal ZonePlatform.startup_finished]); null sin
-## [code]--platform[/code]. Sus eventos se reparten en el paso «poll» de cada tick (las fortalezas que cargó
-## las aplica P6 antes de abrir el puerto).
+## [code]--platform[/code]. Sus eventos se reparten en el paso «poll» de cada tick, y las fortalezas que cargó
+## ([method ZonePlatform.fortress_records]) se aplican aquí antes de abrir el puerto (docs/plataforma.md §8).
 ## Devuelve el error de [method NetTransport.host] si no se puede abrir el puerto.
 func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 		auth_provider: AuthProvider, platform: ZonePlatform = null) -> Error:
@@ -622,6 +632,9 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_progress.strike_sink = Callable(self, "_add_strike")
 	_progress.notice_sink = Callable(self, "_send_notice")
 	_progress.setup(self, _platform, _saver, _commands)
+	# La sección pvp, detrás de progress (docs/plataforma.md §7.1 y §8).
+	if _saver != null:
+		_scores.attach(_saver)
 	_players_root = Node3D.new()
 	_players_root.name = "Players"
 	add_child(_players_root)
@@ -646,6 +659,12 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_projectile_viewers.clear()
 	_war_fortresses_at_stop = []
 	_setup_fortresses(world)
+	if _platform != null:
+		# El estado guardado de cada fortaleza, antes de abrir el puerto y de que los PNJ lo lean (§8 paso 4).
+		_fortress_persistence = FortressPersistence.new(_platform, _fortresses)
+		_fortress_persistence.log_sink = Callable(self, "_log")
+		_fortress_persistence.load_records(_platform.fortress_records(), _tick)
+		_fortresses.war_event_emitted.connect(_fortress_persistence.on_war_event)
 	_setup_npcs(world)
 	_commands.audit_sink = Callable(self, "_log")
 	_register_commands()
@@ -688,6 +707,9 @@ func stop(notice_text: String = "") -> void:
 		return
 	_log("Cerrando el servidor de la zona '%s' (tick %d)" % [_config.zone_id, _tick])
 	_players_at_stop = get_player_count()
+	# Lo que haya cambiado de las fortalezas sale antes de vaciar el mundo (la instancia sigue viva hasta la baja).
+	if _fortress_persistence != null:
+		_fortress_persistence.flush(_tick)
 	if _transport != null:
 		var notice := NetMessages.Notice.new()
 		notice.code = NetProtocol.NoticeCode.SHUTDOWN
@@ -718,6 +740,9 @@ func close_instance(code: String) -> void:
 	_log("La plataforma ha cerrado esta instancia (%s): guardados finales antes de echar a nadie (tick %d)"
 			% [code, _tick])
 	_players_at_stop = get_player_count()
+	# Las fortalezas ya no son de esta instancia: ni registros ni eventos.
+	if _fortress_persistence != null:
+		_fortress_persistence.close()
 	if _transport != null:
 		for peer_id: int in get_peer_ids():
 			var peer: ServerPeer = _peers[peer_id]
@@ -895,9 +920,15 @@ func get_physics_space() -> PhysicsDirectSpaceState3D:
 	return _players_root.get_world_3d().direct_space_state if _players_root != null else null
 
 
-## El marcador de la batalla (bajas, muertes, asistencias, daño a la puerta, círculo y méritos).
+## El marcador de la batalla (bajas, muertes, asistencias, daño a la puerta, círculo, capturas, tiempo defendiendo
+## y méritos); con la plataforma, también la sección [code]pvp[/code] de los guardados.
 func get_scores() -> ScoreKeeper:
 	return _scores
+
+
+## Los registros de las fortalezas en la plataforma (docs/plataforma.md §8); null sin plataforma.
+func get_fortress_persistence() -> FortressPersistence:
+	return _fortress_persistence
 
 
 ## El control del comando /atascado (canalizaciones y reutilizaciones).
@@ -1296,6 +1327,8 @@ func _physics_process(delta: float) -> void:
 	# Paso 4b (docs/fuerte.md, 1.7): las fortalezas, con lo que ha dejado el combate.
 	_metrics.begin_section(SECTION_WAR)
 	_fortresses.step(s)
+	if _fortress_persistence != null:
+		_fortress_persistence.step(s)
 	_process_unstuck(s)
 	_metrics.end_section(SECTION_WAR)
 	if _npc_system != null:
@@ -1516,6 +1549,8 @@ func _process_arrivals(s: int) -> void:
 			# Desde aquí el arrendamiento es del cuerpo: se guarda (track antes de ProgressService.on_arrival, que
 			# puede marcarlo crítico) y su final sale cuando se va (docs/plataforma.md §7.2).
 			entity.is_staff = peer.claimed.is_staff()
+			# Los totales pvp de la reclamación: la base de su sección (docs/plataforma.md §8).
+			_scores.load_totals(entity.net_id, peer.claimed.pvp)
 			if _saver != null:
 				_saver.track(entity.net_id, peer.claimed.character_id, peer.claimed.lease_id, s)
 		# El progreso (progresion.md §9.1 paso 4): el preparado o, sin plataforma, uno efímero se ata al cuerpo; la
@@ -2048,9 +2083,14 @@ func _on_projectile_despawned(projectile_id: int, tick: int, reason: int,
 
 
 # Marcador y registro de batalla: una muerte suma una muerte a la víctima (si es un jugador) y queda en el
-# registro; un KILL suma una baja al asesino y una asistencia a cada asistente (si son jugadores).
+# registro; un KILL suma una baja al asesino y una asistencia a cada asistente (si son jugadores). La reaparición
+# quita la marca de un comando de GM (gm_forced, docs/progresion.md §6.2).
 func _track_battle(event: NetMessages.EntityEvent) -> void:
 	match event.event:
+		NetMessages.EntityEvent.Kind.RESPAWN:
+			var respawned: NetEntity = _registry.get_entity(event.net_id)
+			if respawned != null:
+				respawned.gm_forced = false
 		NetMessages.EntityEvent.Kind.DEATH:
 			var victim: NetEntity = _registry.get_entity(event.net_id)
 			if victim == null:
@@ -2944,6 +2984,7 @@ func _presence_candidates(_tick_now: int) -> Array:
 				queue.get_last_real_tick())
 		candidate.alive = combatant.is_alive()
 		candidate.connected = not _lingering.has(entity.net_id)
+		candidate.gm_forced = entity.gm_forced
 		candidates.append(candidate)
 	return candidates
 
@@ -3325,8 +3366,11 @@ func _poll_platform() -> void:
 				PlatformEvent.KIND_ID_BLOCK, PlatformEvent.KIND_PROGRESS_OP, PlatformEvent.KIND_PROGRESS_LEDGER:
 					if _progress != null:
 						_progress.on_platform_event(event)
+				PlatformEvent.KIND_FORTRESS:
+					if _fortress_persistence != null:
+						_fortress_persistence.on_platform_event(event)
 				_:
-					# fortress (P6), ignore, report y sanction (P7b): sin consumidor todavía.
+					# ignore, report y sanction (P7b): sin consumidor todavía.
 					pass
 		if not closed_code.is_empty():
 			_log("La plataforma ha cerrado esta instancia (%s)" % closed_code)
@@ -4187,6 +4231,7 @@ func _war_report() -> Dictionary:
 		fortresses = _war_fortresses_at_stop
 	return {
 		"fortresses": fortresses,
+		"persistence": _fortress_persistence.get_stats() if _fortress_persistence != null else {},
 		"object_states_sent": _object_states_sent,
 		"scoreboards_sent": _scoreboards_sent,
 		"lingering_total": _lingering_total,

@@ -67,6 +67,8 @@ const MIN_TICKET_KEY_BYTES: int = 32
 
 ## Plazo de cada intento (s); se aplica al cliente en [method start].
 var timeout_s: float = 3.0
+## Tope de cada paso del arranque y de [code]live[/code] (s): [constant STARTUP_LIMIT_S]; las pruebas lo bajan.
+var startup_limit_s: float = STARTUP_LIMIT_S
 ## Jugadores para el latido: un [Callable] sin argumentos que devuelve un int ([method ZoneServer.get_player_count]).
 var player_count_source: Callable = Callable()
 ## Registro de la zona (un [Callable] con un texto); sin él, print.
@@ -212,7 +214,7 @@ func start(config: ServerConfig, secrets: Dictionary) -> void:
 	_client.token = String(secrets.get("token", ""))
 	_client.timeout_s = timeout_s
 	add_child(_client)
-	_startup_deadline_msec = Time.get_ticks_msec() + int(STARTUP_LIMIT_S * 1000.0)
+	_startup_deadline_msec = Time.get_ticks_msec() + int(startup_limit_s * 1000.0)
 	_register(0)
 
 
@@ -311,7 +313,7 @@ static func env_guard_error(config: ServerConfig, env: StringName, secrets: Dict
 
 func _load_fortresses() -> void:
 	# Cada paso del arranque tiene sus 60 s (§8).
-	_startup_deadline_msec = Time.get_ticks_msec() + int(STARTUP_LIMIT_S * 1000.0)
+	_startup_deadline_msec = Time.get_ticks_msec() + int(startup_limit_s * 1000.0)
 	var request := _request(HTTPClient.METHOD_GET, "/internal/v1/fortresses?zone_instance_id=%s" % _instance_id,
 			null, PlatformClient.PRIORITY_CONTROL, KIND_FORTRESSES, null, PlatformClient.Retry.STARTUP,
 			_on_fortresses)
@@ -337,7 +339,7 @@ func _on_fortresses(_request: PlatformClient.Request, event: PlatformEvent) -> v
 		_fortress_versions[StringName(fortress_id)] = version
 		_fortress_records.append({"fortress_id": StringName(fortress_id), "record": entry["record"],
 				"version": version})
-	_startup_deadline_msec = Time.get_ticks_msec() + int(STARTUP_LIMIT_S * 1000.0)
+	_startup_deadline_msec = Time.get_ticks_msec() + int(startup_limit_s * 1000.0)
 	var request := _request(HTTPClient.METHOD_POST, "/internal/v1/id-blocks", {"zone_instance_id": _instance_id},
 			PlatformClient.PRIORITY_CONTROL,
 			PlatformEvent.KIND_ID_BLOCK, null, PlatformClient.Retry.STARTUP, _on_first_block)
@@ -370,7 +372,7 @@ func go_live() -> void:
 		return
 	var request := _request(HTTPClient.METHOD_POST, "/internal/v1/zone-instances/%s/live" % _instance_id, null,
 			PlatformClient.PRIORITY_CONTROL, KIND_LIVE, null, PlatformClient.Retry.STARTUP, _on_live)
-	request.deadline_msec = Time.get_ticks_msec() + int(STARTUP_LIMIT_S * 1000.0)
+	request.deadline_msec = Time.get_ticks_msec() + int(startup_limit_s * 1000.0)
 	_client.submit(request)
 
 

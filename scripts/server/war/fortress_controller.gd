@@ -40,6 +40,15 @@ extends RefCounted
 ## Al arrancar, el fuerte es neutral y está guardado por los Huecos y su Capitán: no hay señal, el
 ## generador de PNJ lo lee de [method get_fortress_state].
 ## [br][br]
+## [b]Guerra persistente[/b] (docs/plataforma.md §8, GUE-19): [method restore_state] pone el estado cargado de la
+## plataforma al arrancar ([FortressPersistence]); en cada captura de verdad, la lista de quien estaba en el círculo
+## (del reino captor, presente, vivo y conectado, sin personajes marcados con [member NetEntity.gm_forced]) suma
+## [code]captures[/code] en el [ScoreKeeper] y sale por [signal fortress_captured]; y los del reino dueño presentes
+## con el círculo activo suman [code]defend_ticks[/code]. [b]Cambio forzado[/b] (docs/progresion.md §6.2): lo que
+## provoca un comando del fuerte ([code]fort_owner[/code], [code]fort_reset[/code], [code]fort_kill_captain[/code],
+## una captura con [member FortressState.capture_rate_multiplier] distinto de 1) no suma capturas ni tiempo
+## defendiendo y [method is_forced] lo dice a quien paga recompensas (progresion.md P5c).
+## [br][br]
 ## No toca la red ni el reloj: avisa con señales y recibe de quien lo lleva ([ZoneServer]) los
 ## candidatos a la presencia, los cuerpos que pueden ocupar el vano y cómo matar al capitán.
 
@@ -58,6 +67,12 @@ signal garrison_due(fortress_id: StringName, owner_realm: int, tick: int, full: 
 signal guards_respawn_due(fortress_id: StringName, tick: int)
 ## Alguien golpea por primera vez la puerta entera de la fortaleza (para la telemetría).
 signal gate_damage_started(fortress_id: StringName, tick: int)
+## [param fortress_id] ha pasado a [param owner_realm] por una captura de verdad (no forzada) en el tick
+## [param tick]: [param in_circle] es la lista de docs/plataforma.md §8 (los net_id del reino captor presentes, vivos
+## y conectados en el círculo en ese tick, sin [member NetEntity.gm_forced]), la misma que ya ha sumado
+## [code]captures[/code] en el [ScoreKeeper]. Una captura forzada no sale (progresion.md §6.2): aquí se conecta
+## [code]ProgressService.on_capture[/code] (progresion.md P5c).
+signal fortress_captured(fortress_id: StringName, owner_realm: int, in_circle: PackedInt32Array, tick: int)
 
 ## Ticks entre dos OBJECT_STATE de una misma fortaleza.
 const OBJECT_STATE_INTERVAL_TICKS: int = 6
@@ -96,6 +111,9 @@ class PlayerCandidate:
 	extends FortressPresence.Candidate
 
 	var net_id: int = 0
+	## Marcado por un comando de GM ([member NetEntity.gm_forced]): cuenta en la presencia, pero no entra en la
+	## lista de capturas ni suma tiempo defendiendo.
+	var gm_forced: bool = false
 
 
 	static func make_player(player_id: int, realm_code: int, feet_position: Vector3,
@@ -143,6 +161,13 @@ class Site:
 	var guards_due_notified: bool = false
 	# Ya se avisó del primer golpe a la puerta desde su última reparación.
 	var gate_damage_announced: bool = false
+	# El ciclo actual viene de un comando del fuerte (progresion.md §6.2): fort_owner, fort_reset,
+	# fort_kill_captain o fort_capture_speed distinto de 1. Lo quita el siguiente cambio de verdad: la muerte del
+	# capitán en combate, la vuelta a GARRISONED por sí sola o el reinicio periódico.
+	var forced: bool = false
+	# Fin de la consolidación cargada de la plataforma ([constant FortressState.NO_TICK] si no hay): el estado no
+	# guarda el fin, sino el inicio, que no puede ser negativo en OBJECT_STATE (restore_state).
+	var consolidation_ends_tick: int = FortressState.NO_TICK
 
 
 # --- Alta de fortalezas --------------------------------------------------------------------------
@@ -209,6 +234,32 @@ func add_fortress(node: Node3D, definition: FortressDefinition, tick: int) -> in
 	_sites_by_id[fortress_id] = site
 	_sites_by_net_id[entity.net_id] = site
 	return entity.net_id
+
+
+## Pone en [param fortress_id] el estado [param loaded] (el cargado de la plataforma al arrancar, docs/plataforma.md
+## §8; [FortressPersistence]) en el tick [param tick], antes de que nadie lo vea: se copia en el estado vivo (la
+## entidad y la puerta lo siguen), lo enviado se da por sabido (el alta lleva el estado entero) y las capas de la
+## puerta pasan a su dueño y rotura. [param consolidation_ends_tick] es el fin de una consolidación cargada
+## ([constant FortressState.NO_TICK] si no hay): el estado no puede llevar un inicio negativo, así que el fin lo
+## guarda el controlador. Devuelve false si la fortaleza no existe.
+func restore_state(fortress_id: StringName, loaded: FortressState, consolidation_ends_tick: int,
+		tick: int) -> bool:
+	var site: Site = _sites_by_id.get(fortress_id)
+	if site == null or loaded == null:
+		return false
+	site.state.copy_from(loaded)
+	site.consolidation_ends_tick = consolidation_ends_tick \
+			if loaded.phase == FortressState.Phase.CONSOLIDATING else FortressState.NO_TICK
+	site.forced = false
+	site.repair_pending = false
+	site.gate_damage_announced = loaded.gate_health < loaded.gate_max
+	site.presence = PackedInt32Array([0, 0, 0, 0])
+	site.last_sent = site.state.duplicate_state()
+	site.last_sent_tick = tick
+	site.sent_owner = site.state.owner
+	site.sent_broken = site.state.is_gate_broken()
+	_sync_gate(site)
+	return true
 
 
 ## Quita todas las fortalezas y libera sus entidades de red (cierre del servidor).
@@ -316,6 +367,26 @@ func is_repair_pending(fortress_id: StringName) -> bool:
 	return site != null and site.repair_pending
 
 
+## true si el ciclo actual de [param fortress_id] lo ha provocado un comando del fuerte (progresion.md §6.2): un
+## cambio de dueño o un reinicio por orden, el capitán muerto con [code]fort_kill_captain[/code] (y la captura que
+## lo sigue) o una velocidad de captura distinta de 1. Lo que pasa en él no suma capturas ni tiempo defendiendo y
+## no paga recompensas persistentes.
+func is_forced(fortress_id: StringName) -> bool:
+	var site: Site = _sites_by_id.get(fortress_id)
+	return site != null and (site.forced or site.state.capture_rate_multiplier != 1)
+
+
+## Tick en el que termina la consolidación de [param fortress_id] (la cargada de la plataforma o la de su inicio más
+## [method FortressDefinition.consolidation_ticks]); [constant FortressState.NO_TICK] si no está consolidando.
+func get_consolidation_end_tick(fortress_id: StringName) -> int:
+	var site: Site = _sites_by_id.get(fortress_id)
+	if site == null or site.state.phase != FortressState.Phase.CONSOLIDATING:
+		return FortressState.NO_TICK
+	if site.consolidation_ends_tick != FortressState.NO_TICK:
+		return site.consolidation_ends_tick
+	return site.state.phase_tick + site.definition.consolidation_ticks()
+
+
 ## El PNJ capitán registrado de [param fortress_id] (0 = ninguno).
 func get_captain_net_id(fortress_id: StringName) -> int:
 	var site: Site = _sites_by_id.get(fortress_id)
@@ -373,7 +444,10 @@ func on_captain_died(fortress_id: StringName, tick: int, killer_realm: int) -> b
 	var site: Site = _sites_by_id.get(fortress_id)
 	if site == null:
 		return false
-	return _captain_died(site, tick, killer_realm)
+	if not _captain_died(site, tick, killer_realm):
+		return false
+	site.forced = false
+	return true
 
 
 ## Dice cuántos guardias de la guarnición de [param fortress_id] están vivos. Los que faltan
@@ -426,6 +500,8 @@ func reset_fortress(fortress_id: StringName, tick: int) -> bool:
 	var health_before: int = site.state.gate_health
 	var last_damage_before: int = site.state.gate_last_damage_tick
 	var events: PackedInt32Array = site.state.reset_to_neutral(site.definition, tick)
+	site.forced = true
+	site.consolidation_ends_tick = FortressState.NO_TICK
 	_after_hard_reset(site, tick, events, health_before, last_damage_before)
 	return true
 
@@ -441,6 +517,8 @@ func set_owner(fortress_id: StringName, realm: int, tick: int) -> bool:
 	var last_damage_before: int = site.state.gate_last_damage_tick
 	var events: PackedInt32Array = site.state.reset_to_neutral(site.definition, tick)
 	site.state.owner = realm
+	site.forced = true
+	site.consolidation_ends_tick = FortressState.NO_TICK
 	if realm != RealmCatalog.NEUTRAL_CODE:
 		events = PackedInt32Array([WarEvents.FORT_CAPTURED])
 	_after_hard_reset(site, tick, events, health_before, last_damage_before)
@@ -458,12 +536,18 @@ func kill_captain(fortress_id: StringName, tick: int, killer_realm: int) -> bool
 	var state: FortressState = site.state
 	if state.phase != FortressState.Phase.GARRISONED or not state.captain_alive:
 		return false
+	# Forzado antes de matar: la muerte sale en esta misma llamada y quien la paga (progresion.md P5c) ya la ve así.
+	var was_forced: bool = site.forced
+	site.forced = true
 	if site.captain_net_id != 0 and captain_killer.is_valid():
 		site.pending_killer_realm = killer_realm
 		if bool(captain_killer.call(site.captain_net_id)):
 			return true
 		site.pending_killer_realm = -1
-	return _captain_died(site, tick, killer_realm)
+	if not _captain_died(site, tick, killer_realm):
+		site.forced = was_forced
+		return false
+	return true
 
 
 ## Multiplica por [param factor] (1 a 255) la velocidad de captura de [param fortress_id]
@@ -473,6 +557,8 @@ func set_capture_speed(fortress_id: StringName, factor: int) -> bool:
 	if site == null or factor < 1 or factor > 255:
 		return false
 	site.state.capture_rate_multiplier = factor
+	if factor != 1:
+		site.forced = true
 	return true
 
 
@@ -499,8 +585,17 @@ func _step_site(site: Site, s: int) -> void:
 	var previous_phase: int = state.phase
 	var health_before: int = state.gate_health
 	var last_damage_before: int = state.gate_last_damage_tick
+	if site.consolidation_ends_tick != FortressState.NO_TICK:
+		if state.phase != FortressState.Phase.CONSOLIDATING:
+			site.consolidation_ends_tick = FortressState.NO_TICK
+		elif s >= site.consolidation_ends_tick:
+			# La consolidación cargada termina en su tick: advance la cierra con este inicio (que solo vive aquí).
+			state.phase_tick = s - site.definition.consolidation_ticks()
+			site.consolidation_ends_tick = FortressState.NO_TICK
 	var events: PackedInt32Array = state.advance(site.definition, s, site.presence)
 	_note_transitions(site, s, events, previous_owner, previous_phase)
+	if events.has(WarEvents.FORT_CAPTURED):
+		_on_captured(site, s)
 	_emit_war(site, s, events, RealmCatalog.NEUTRAL_CODE)
 	_hold_repair_if_blocked(site, health_before, last_damage_before)
 	_repair_if_due(site, s)
@@ -516,6 +611,8 @@ func _step_site(site: Site, s: int) -> void:
 func _recount(site: Site, candidates: Array, s: int) -> void:
 	var counts := PackedInt32Array([0, 0, 0, 0])
 	var active: bool = site.state.is_circle_active()
+	var owner: int = site.state.owner
+	var defending: bool = active and owner != RealmCatalog.NEUTRAL_CODE and not is_forced(site.id)
 	for candidate: FortressPresence.Candidate in candidates:
 		if not FortressPresence.is_present(site.definition, site.circle_center, site.circle_radius,
 				candidate, s):
@@ -524,7 +621,34 @@ func _recount(site: Site, candidates: Array, s: int) -> void:
 		var player: PlayerCandidate = candidate as PlayerCandidate
 		if active and score_keeper != null and player != null:
 			score_keeper.add_circle_ticks(player.net_id, FortressState.PRESENCE_RECOUNT_TICKS)
+			# El tiempo defendiendo (docs/plataforma.md §8): solo el reino dueño, y no en un ciclo forzado.
+			if defending and candidate.realm == owner and not player.gm_forced:
+				score_keeper.add_defend_ticks(player.net_id, FortressState.PRESENCE_RECOUNT_TICKS)
 	site.presence = counts
+
+
+# Captura de verdad en el tick [param s] (advance ha dado FORT_CAPTURED): si no es forzada, la lista de quien
+# estaba en el círculo suma una captura a cada uno y sale por fortress_captured (docs/plataforma.md §8). La lista se
+# calcula una vez, con los candidatos de este tick.
+func _on_captured(site: Site, s: int) -> void:
+	if is_forced(site.id):
+		# El dueño nuevo sale de un cambio forzado: el ciclo lo sigue siendo hasta que llegue su guarnición.
+		site.forced = true
+		return
+	var owner: int = site.state.owner
+	var in_circle := PackedInt32Array()
+	if candidates_source.is_valid():
+		for candidate: FortressPresence.Candidate in candidates_source.call(s):
+			var player: PlayerCandidate = candidate as PlayerCandidate
+			if player == null or player.realm != owner or player.gm_forced:
+				continue
+			if FortressPresence.is_present(site.definition, site.circle_center, site.circle_radius, player, s):
+				in_circle.append(player.net_id)
+	in_circle.sort()
+	if score_keeper != null:
+		for net_id: int in in_circle:
+			score_keeper.add_capture(net_id)
+	fortress_captured.emit(site.id, owner, in_circle, s)
 
 
 # Efectos de los cambios de fase y de dueño que ha hecho advance(): retirar a los PNJ, hacer aparecer
@@ -533,6 +657,8 @@ func _note_transitions(site: Site, tick: int, events: PackedInt32Array, previous
 		previous_phase: int) -> void:
 	var state: FortressState = site.state
 	if events.has(WarEvents.FORT_RESET):
+		# El reinicio periódico es un cambio de verdad: empieza un ciclo sin forzar.
+		site.forced = false
 		_retire_defenders(site, tick)
 		site.gate_damage_announced = false
 		garrison_due.emit(site.id, state.owner, tick, true)
@@ -542,6 +668,7 @@ func _note_transitions(site: Site, tick: int, events: PackedInt32Array, previous
 		site.gate_damage_announced = false
 	if previous_phase != FortressState.Phase.GARRISONED \
 			and state.phase == FortressState.Phase.GARRISONED:
+		site.forced = false
 		garrison_due.emit(site.id, state.owner, tick,
 				previous_phase == FortressState.Phase.CONSOLIDATING)
 
@@ -599,12 +726,16 @@ func _on_death(event: NetMessages.EntityEvent) -> void:
 			continue
 		site.defenders.erase(event.net_id)
 		if site.captain_net_id == event.net_id:
+			# Con fort_kill_captain, pending_killer_realm ya está puesto y kill_captain marca el ciclo como forzado;
+			# una muerte en combate es un cambio de verdad.
+			var by_command: bool = site.pending_killer_realm >= 0
 			var killer_realm: int = site.pending_killer_realm
 			if event.killer != 0 and _registry != null:
 				var killer: NetEntity = _registry.get_entity(event.killer)
 				if killer != null:
 					killer_realm = killer.realm
-			_captain_died(site, event.tick, maxi(killer_realm, 0))
+			if _captain_died(site, event.tick, maxi(killer_realm, 0)) and not by_command:
+				site.forced = false
 		return
 
 
