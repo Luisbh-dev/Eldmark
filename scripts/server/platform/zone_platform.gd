@@ -238,8 +238,11 @@ static func registration_body(config: ServerConfig) -> Dictionary:
 		"public_host": config.public_host(), "public_port": config.public_port(), "realms": realms,
 		"build_id": build_id(), "protocol_version": NetProtocol.PROTOCOL_VERSION,
 		"record_format": RECORD_FORMAT, "max_players": config.max_players,
-		# El certificado DTLS y su nombre los manda P9c (plataforma.md §10.2); sin ellos, null.
-		"dtls_cert_pem": null, "dtls_name": null, "replace": config.replace,
+		# El certificado DTLS de la zona y su CN (plataforma.md §10.2, P9c), que la plataforma da al cliente en enter;
+		# sin DTLS, null (en staging y production la plataforma no registra una zona sin certificado).
+		"dtls_cert_pem": config.dtls.certificate_pem if config.dtls != null else null,
+		"dtls_name": config.dtls.common_name if config.dtls != null else null,
+		"replace": config.replace,
 	}
 
 

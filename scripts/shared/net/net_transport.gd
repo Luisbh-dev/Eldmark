@@ -28,6 +28,8 @@ extends Node
 ## lo que sale y lo que entra. A la autenticación solo le añade retardo.
 ## [br]- Tras [signal connection_failed] o la pérdida del servidor, el cliente puede volver a llamar
 ## a [method connect_to] (o a [method close]).
+## [br]- Con DTLS ([method host] y [method connect_to] con [TLSOptions], docs/plataforma.md §10.2) el corte lo
+## empieza siempre el servidor: ver [method disconnect_after_flush].
 ## [br][br]
 ## Compartido: no lee el reloj. El tiempo es el tick que se pasa a [method poll].
 
@@ -109,6 +111,8 @@ var _enet: ENetMultiplayerPeer = null
 # Filtro de paquetes entre ENet y SceneMultiplayer (solo en el servidor; null en el cliente).
 var _guard: GuardedEnetPeer = null
 var _is_server: bool = false
+# La conexión va por DTLS (host o connect_to con TLSOptions).
+var _dtls: bool = false
 var _now_tick: int = 0
 # Sube con cada close(): corta el reparto de eventos si un oyente cierra el transporte.
 var _epoch: int = 0
@@ -175,7 +179,11 @@ func set_net_sim_spec(spec: String) -> void:
 
 ## Abre un servidor ENet en [param port] para [param max_peers] peers. El transporte debe estar en
 ## el árbol. Si el puerto está ocupado devuelve un error (y el motor lo registra).
-func host(port: int, max_peers: int) -> Error:
+## [br][br]Con [param dtls] ([method TLSOptions.server] con la clave y el certificado de la zona) todo el tráfico va
+## por DTLS (docs/plataforma.md §10.2): se llama a [method ENetConnection.dtls_server_setup] justo tras
+## [method ENetMultiplayerPeer.create_server] y antes de envolverlo en [GuardedEnetPeer], que filtra igual lo que ya
+## llega descifrado. Sin él, en claro, como siempre.
+func host(port: int, max_peers: int, dtls: TLSOptions = null) -> Error:
 	if _mp == null:
 		return ERR_UNCONFIGURED
 	if _is_active():
@@ -184,7 +192,13 @@ func host(port: int, max_peers: int) -> Error:
 	var err: Error = peer.create_server(port, max_peers, NetProtocol.CUSTOM_CHANNELS)
 	if err != OK:
 		return err
+	if dtls != null:
+		err = peer.host.dtls_server_setup(dtls)
+		if err != OK:
+			peer.close()
+			return err
 	_attach(peer, true)
+	_dtls = dtls != null
 	return OK
 
 
@@ -194,7 +208,8 @@ func host(port: int, max_peers: int) -> Error:
 ## solo comprueba el plazo al retransmitir el CONNECT). El transporte debe estar en el árbol.
 ## [br][br]Con [param dtls] (el certificado de la zona anclado con [method TLSOptions.client]) la conexión va por DTLS
 ## y [param dtls_name] es el nombre (CN) que se espera del certificado (docs/plataforma.md §10.2). Sin él, como
-## siempre.
+## siempre. El apretón de manos de DTLS retrasa la conexión (unos 0,6 s en vez de 0,2–0,3): ENet manda el CONNECT
+## cuando DTLS ya está listo, en su primera retransmisión.
 func connect_to(address: String, port: int, connect_timeout_ms: int = 3000, dtls_name: String = "",
 		dtls: TLSOptions = null) -> Error:
 	if _mp == null:
@@ -217,12 +232,18 @@ func connect_to(address: String, port: int, connect_timeout_ms: int = 3000, dtls
 	for packet_peer: ENetPacketPeer in peer.host.get_peers():
 		packet_peer.set_timeout(TIMEOUT_LIMIT, connect_timeout_ms, connect_timeout_ms)
 	_attach(peer, false)
+	_dtls = dtls != null
 	return OK
 
 
 ## true si este transporte es un servidor.
 func is_server() -> bool:
 	return _is_server
+
+
+## true si la conexión (o el servidor) va por DTLS.
+func is_dtls() -> bool:
+	return _dtls
 
 
 ## Envía [param bytes] al peer por [param channel] ([constant NetProtocol.CH_INPUT],
@@ -295,6 +316,14 @@ func complete_auth(peer_id: int) -> Error:
 ## (por ejemplo un REJECT o un NOTICE de expulsión). Como red de seguridad, si el peer sigue ahí
 ## a los [constant FORCE_DISCONNECT_TICKS] ticks, lo corta a la fuerza. Desde ese momento
 ## [method send] y [method send_auth] devuelven [constant ERR_UNAVAILABLE] para ese peer.
+## [br][br]
+## [b]Con DTLS, el cliente no empieza el corte[/b] (docs/plataforma.md §19.18, P9c): vacía lo suyo y espera a que lo
+## corte el servidor, que contesta así al CLIENT_LEAVE. El servidor de DTLS de Godot olvida la sesión de un peer en
+## cuanto ENet lo da por desconectado; si el corte lo empieza el cliente, su aviso de cierre de DTLS llega una ida y
+## vuelta después, el servidor lo toma por un apretón de manos nuevo y el motor registra un error
+## ([code]TLS handshake error: -30464[/code], medido en 6 de 6 cortes así y en 0 de 6 empezados por el servidor). Si
+## el servidor no corta en [constant FORCE_DISCONNECT_TICKS] ticks, el cliente cierra la conexión entera: el
+## DISCONNECT y el cierre de DTLS salen en el mismo envío y llegan juntos (también 0 de 6).
 func disconnect_after_flush(peer_id: int) -> void:
 	if _enet == null or not _is_known(peer_id) or _closing.has(peer_id):
 		return
@@ -303,7 +332,7 @@ func disconnect_after_flush(peer_id: int) -> void:
 			_send_packet_now(packet)
 	_flush_host()
 	var packet_peer: ENetPacketPeer = _enet.get_peer(peer_id)
-	if packet_peer != null:
+	if packet_peer != null and (_is_server or not _dtls):
 		packet_peer.peer_disconnect_later()
 	if _guard != null:
 		# Ya se le está cortando: lo que siga mandando se descarta sin contarlo.
@@ -464,6 +493,7 @@ func _reset_state() -> void:
 	_enet = null
 	_guard = null
 	_is_server = false
+	_dtls = false
 	_client_connected = false
 	_client_failed = false
 	_authenticating.clear()
@@ -562,6 +592,16 @@ func _force_pending_disconnects() -> void:
 	for peer_id: int in _closing.keys():
 		if _now_tick < int(_closing[peer_id]):
 			continue
+		if _enet == null:
+			_closing.erase(peer_id)
+			continue
+		if not _is_server and _dtls and _is_known(peer_id):
+			# Con DTLS, el cliente cierra la conexión entera (ver disconnect_after_flush).
+			var was_mp_connected: bool = _mp_connected.has(peer_id)
+			_forget_peer(peer_id)
+			_queue_disconnect(peer_id, was_mp_connected)
+			_close_enet_keeping_events()
+			continue
 		var packet_peer: ENetPacketPeer = _enet.get_peer(peer_id) if _is_known(peer_id) else null
 		if packet_peer != null:
 			packet_peer.peer_disconnect_now()
@@ -571,6 +611,17 @@ func _force_pending_disconnects() -> void:
 			_queue_disconnect(peer_id, was_connected)
 		else:
 			_closing.erase(peer_id)
+
+
+# Cierra el peer de ENet (ENetMultiplayerPeer.close: DISCONNECT y, con DTLS, el aviso de cierre en el mismo envío) sin
+# perder los eventos pendientes de entregar, que salen en este mismo poll(). Después el transporte queda como tras
+# perder la conexión: close() lo deja listo para reutilizarse.
+func _close_enet_keeping_events() -> void:
+	_sample_wire_stats()
+	if _mp != null:
+		_mp.multiplayer_peer = null
+	_enet.close()
+	_enet = null
 
 
 func _forget_peer(peer_id: int) -> void:

@@ -332,7 +332,10 @@ Reglas:
   - un `net_id` liberado no se reutiliza en 10 s.
 - **Tamaño.** Ningún paquete pasa de **1200 B**. Si ENet fragmenta un paquete no fiable, perder
   un fragmento tira el paquete entero. El snapshot lo garantiza su constructor
-  ([9.3](#93-construcción-del-snapshot)) y los demás mensajes son pequeños por formato.
+  ([9.3](#93-construcción-del-snapshot)) y los demás mensajes son pequeños por formato. Con DTLS (plataforma.md
+  P9c) cada datagrama lleva 29 B más, que ENet no ve (aplica su MTU de 1392 B al texto en claro): el snapshot lleno
+  sale en 1240 B de UDP (1211 en claro) y el datagrama más grande que puede armar ENet, en 1421 B, por debajo de los
+  1500 de Ethernet con las cabeceras de IPv4 o IPv6. El tope no cambia ([14](#14-presupuesto-de-ancho-de-banda-y-cpu)).
 - **Nada antes de `peer_connected`.** No se envía nada con `send_bytes` a un peer hasta que ha
   llegado `peer_connected` para él en ese lado (en el cliente, el peer 1). Enviar justo después
   de `complete_auth()` da `ERR_BUG` («Condition !connected_peers.has(p_to)», comprobado por los
@@ -410,6 +413,14 @@ Cliente                                         Servidor (tick S)
    - `P0 = S + rtt_ticks + target_margin + 1`.
 
    Y arranca la predicción ([6.3](#63-arranque)).
+
+**Con DTLS** ([plataforma.md](plataforma.md) §10.2, P9c). El apretón de manos va antes que todo lo de arriba: ENet
+manda el CONNECT cuando DTLS ya está listo, en su primera retransmisión, así que conectar tarda unos 0,6 s con un
+cliente solo (16 a la vez, 1,6 s) en lugar de 0,2–0,3 s; `peer_authenticating`, el plazo del HELLO y
+`auth_timeout` cuentan desde después. La salida cambia en un detalle: el cliente manda CLIENT_LEAVE y **no** empieza
+el corte de ENet; lo empieza el servidor al recibirlo (si no llega en 60 ticks, el cliente cierra la conexión
+entera). Si lo empezase el cliente, su aviso de cierre de DTLS llegaría cuando el servidor ya ha olvidado la sesión
+y el motor del servidor registraría un error por cada salida.
 
 **Conexiones ociosas (hallazgo S2).** Las plazas de ENet (`max_players + 4`) son limitadas, y una
 conexión que nunca manda el HELLO ocupaba una hasta los 5 s de `auth_timeout` (y se reabre en un
@@ -1663,7 +1674,12 @@ reino salen del personaje del billete y ese rechazo desaparece (detalle en
     reino sale del personaje, no del billete.
 - **DTLS** (`host.dtls_server_setup(TLSOptions.server(…))`), obligatorio antes de las pruebas
   públicas: en staging y producción la plataforma no registra una zona sin certificado
-  (plataforma.md §10.2).
+  (plataforma.md §10.2). Hecho en plataforma.md P9c (§19.18): `NetTransport.host(…, dtls)` por debajo de
+  `GuardedEnetPeer`, `--dtls-cert --dtls-key` en la zona y `--dtls-cert --dtls-name` en `--connect`, `--bot` y
+  `--bots`; con DTLS el corte lo empieza siempre el servidor (el cliente manda CLIENT_LEAVE y espera). Lo que queda:
+  un datagrama basura de una dirección nueva es un apretón de manos fallido y un error del motor en el registro, por
+  debajo del filtro de S1 (lo acotan journald y el cortafuegos, TEC-40), y cada apretón de manos cuesta de 2 a 4 ms
+  del hilo de la zona (§14).
 
 El hueco ya existe en HELLO y la interfaz `AuthProvider` ya está.
 
@@ -2009,6 +2025,58 @@ en el fuerte con el kit queda en 40 (20 contra 20), medido y sin margen**: no se
 criterio (del orden del ruido entre dos pasadas iguales, ~1 ms), y la palanca para tener margen sigue siendo la 6 (`simulate()`,
 TEC-35). Detalle de la batalla en cada pasada, en [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones)
 («Revisión de la integración de las habilidades»).
+
+**Medidas de la fase 5: DTLS** (TEC-27, [plataforma.md](plataforma.md) §10.2 y §19.18, P9c). `tools/load_test.gd
+--dtls-compare --repeat=3`: el Vado Gris con su Terrain3D y sus PNJ, **64 bots reales** (`--bots`, dos enjambres de 32
+agrupados en el campamento de Vardheim: cada snapshot va lleno) y ningún falso, 60 s de medida, el mismo escenario sin
+y con DTLS (`--dtls-cert --dtls-key` en la zona, `--dtls-cert --dtls-name` en los enjambres, con el certificado RSA
+2048 de las pruebas) alternados, en la misma máquina de 4 núcleos sin otra suite (carga de 0,5 a 0,8 al empezar).
+Tick en ms del último tramo de 34 s; secciones, p50 (p99):
+
+| Pasada | Tick p50 / p95 / p99 / máx | `net` | `snapshot` | Bajada por cliente | Sustituidas (ventana) |
+|---|---|---|---|---|---|
+| sin DTLS, 1.ª | 14,9 / 21,8 / 26,5 / 36,5 | 2,16 (5,95) | 6,79 (11,99) | 35,5 KB/s | 0,00 % |
+| con DTLS, 1.ª | 15,2 / 22,5 / 27,2 / 44,8 | 2,42 (7,10) | 6,92 (12,61) | 35,4 KB/s | 0,08 % |
+| sin DTLS, 2.ª | 15,3 / 22,8 / 28,2 / 40,1 | 2,17 (7,05) | 7,03 (12,62) | 35,4 KB/s | 0,00 % |
+| con DTLS, 2.ª | 15,6 / 23,7 / 29,8 / 66,4 | 2,50 (8,36) | 7,17 (14,29) | 33,3 KB/s | 1,70 % |
+| sin DTLS, 3.ª | 14,7 / 21,6 / 26,2 / 90,4 | 2,09 (6,20) | 6,71 (11,82) | 35,5 KB/s | 0,00 % |
+| con DTLS, 3.ª | 15,8 / 23,6 / 28,6 / 36,7 | 2,51 (8,07) | 7,24 (12,84) | 34,6 KB/s | 0,00 % |
+| **media sin / con** | **15,0 / 26,9** → **15,5 / 28,5** (p50 / p99) | 2,14 → 2,48 (+16 %) | 6,84 → 7,11 (+4 %) | 35,5 → 34,4 KB/s | |
+
+- **Criterio de TEC-27 (provisional, pendiente del usuario): cumplido.** DTLS sube el p99 del tick un **5,9 %** (de
+  26,9 a 28,5 ms de media) y el p50 un 3,7 % (de 15,0 a 15,5 ms). Es del orden del ruido entre pasadas iguales (el
+  p99 sin DTLS va de 26,2 a 28,2 ms), pero las tres pasadas con DTLS quedan por encima de su pareja. **La cifra
+  absoluta: p99 de 28,5 ms con DTLS y 64 clientes reales**, lejos de los 8 ms del criterio de la fase 2 y por encima
+  de los 16,7 ms del tick: 64 clientes de verdad (cada uno con su snapshot) saturan el servidor sin cifrar nada (p50
+  de 15 ms; `snapshot`, 6,8 ms). El aforo del Vado Gris sigue en 40 (arriba); con 40, la medida de abajo.
+- **Con 40 bots reales, el aforo del Vado Gris** (`--dtls-compare --bots=40 --repeat=2`, misma sesión): p99 del tick
+  de 15,9 a **15,4 ms con DTLS** (−3,3 %: dentro del ruido; pasadas de 16,2 y 15,6 sin y de 15,4 y 15,3 con), p50 de
+  9,0 a 9,0 ms (+0,6 %) y `net` +8 %. Con el aforo, DTLS no se distingue del ruido y el p99 cabe en el tick.
+- **Dónde va el coste.** Recibir y descifrar está en `net` (+0,34 ms de p50 con 64 clientes que mandan una entrada por
+  tick); cifrar, en la sección que envía, porque `ENetMultiplayerPeer.put_packet` vacía el host en cada paquete:
+  `snapshot` (+0,27 ms con 32 snapshots por tick) y `combat_events`; `flush` sigue en unos µs. Por paquete (sonda en un
+  proceso, 16 clientes, 1200 ticks, tres rondas, sin esperas): recibir una entrada de 60 B, de 6,8 a 9,0 µs (+2,2 µs);
+  enviar un snapshot de 1200 B, de 7,2 a 12,3 µs (+5,1 µs); en el cliente, de 7,5 a 10,6 µs por paquete. Con 64
+  clientes salen unos 0,3 ms por tick, la mitad de lo que sube la mediana en la prueba de carga.
+- **Bytes.** Medidos con un relé de UDP entre cliente y servidor: **29 B más por datagrama**, siempre los mismos
+  (cabecera de registro de 13 B y etiqueta de 16 B: ChaCha20-Poly1305, la suite que negocian mbedtls y Godot). El
+  snapshot lleno sale en 1240 B de UDP (1211 en claro), 1268 B de IPv4 o 1288 de IPv6: cabe en los 1500 de
+  Ethernet, y el mayor datagrama que puede armar ENet (su MTU de 1392 B se aplica al texto en claro) sale en 1421 B.
+  **El tope de 1200 B no cambia.** Por cliente, la bajada real sube 1,1 KB/s (unos 39 datagramas por segundo) y la
+  subida 2,0 KB/s (unos 69): las cifras de KB/s de esta sección, de los contadores de ENet, no lo ven (el criterio de
+  37 KB/s se mide con ellos; en el cable serían unos 36,5 KB/s con DTLS).
+- **Apretón de manos.** Lo hace el hilo principal de la zona, dentro de `poll`: **4,3 ms de CPU del servidor por
+  cliente con RSA 2048 y 2,0 ms con EC P-256** (el cliente, 1,9 y 2,7 ms). Una tanda de entradas a la vez se nota en
+  el tick: para producción, certificados EC P-256 (la orden está en `platform/deploy/docker-compose.yml`). Conectar
+  tarda unos 0,6 s con un cliente solo y 1,6 s con 16 a la vez (0,2–0,3 s en claro): ENet manda el CONNECT en su
+  primera retransmisión, cuando DTLS ya está listo.
+- **De paso: el búfer de UDP del servidor se llena.** Con 64 clientes reales en la misma máquina, en cada parón de
+  40–70 ms del servidor el búfer de recepción (212 KB por defecto en Linux) se desborda y el sistema tira datagramas
+  (`RcvbufErrors` de `/proc/net/snmp` sube unos 60 por pasada). Las entradas sobran (van con redundancia) y lo fiable
+  se reenvía, pero así se perdía alguna confirmación de la autenticación y su CLIENT_READY, que va por otro canal de
+  ENet, llegaba antes y se tiraba: en 2 de 3 pasadas un bot se quedaba cargando hasta que lo echaban. Desde P9c,
+  `SwarmBot` manda CLIENT_READY 1 s después de conectar, como un cliente que carga la zona. Para el VPS (TEC-20):
+  subir `net.core.rmem_default` (Godot no deja tocar el búfer del socket de ENet).
 
 **Palancas para Eldrun, por orden,** decididas con las medidas del final de la fase 2:
 
@@ -2640,16 +2708,20 @@ signal packets_discarded(peer_id: int, count: int)
 const AUTH_TIMEOUT_SECONDS: float = 10.0     # v7 (5.0 hasta la v6): en los dos lados, desde la conexión
 ## Antes de host()/connect_to(). Vacío = sin simulador.
 func set_net_sim_spec(spec: String) -> void
-func host(port: int, max_peers: int) -> Error
+## Con dtls (plataforma.md §10.2, P9c), dtls_server_setup(dtls) tras create_server y antes de GuardedEnetPeer.
+func host(port: int, max_peers: int, dtls: TLSOptions = null) -> Error
 ## Con dtls (plataforma.md §10.2), dtls_client_setup(dtls_name, dtls) tras create_client; sin él, en claro.
 func connect_to(address: String, port: int, connect_timeout_ms: int = 3000, dtls_name: String = "",
 		dtls: TLSOptions = null) -> Error
 func is_server() -> bool
+func is_dtls() -> bool                       # P9c
 ## ERR_UNAVAILABLE si el peer aún no está conectado.
 func send(peer_id: int, channel: int, bytes: PackedByteArray) -> Error
 func send_auth(peer_id: int, bytes: PackedByteArray) -> Error
 func complete_auth(peer_id: int) -> Error
-## Vacía la cola y llama a peer_disconnect_later(); disconnect_peer forzado a los 60 ticks.
+## Vacía la cola y llama a peer_disconnect_later(); disconnect_peer forzado a los 60 ticks. Un cliente con DTLS no
+## empieza el corte: espera el del servidor (que contesta así al CLIENT_LEAVE) y a los 60 ticks cierra la conexión
+## entera (P9c, plataforma.md §19.18).
 func disconnect_after_flush(peer_id: int) -> void
 func poll(now_tick: int) -> void
 func flush() -> void
@@ -3061,15 +3133,16 @@ func setup(default_address: String, default_name: String, allowed: PackedInt32Ar
 
 # bot_swarm.gd (+ scenes/client/bot_swarm.tscn)
 class_name BotSwarm extends Node
-## Crea config.bot_count SwarmBot, uno cada 5 ticks, cada uno con su NetTransport.
+## Crea config.bot_count SwarmBot, uno cada 5 ticks, cada uno con su NetTransport. Con --dtls-cert y --dtls-name
+## (plataforma.md P9c) ancla el certificado una vez y se lo da a todos; sin nombre o ilegible, sale con 1.
 func start(config: ClientConfig) -> void
 
 # swarm_bot.gd
 ## Bot ligero que no simula ni carga la zona. Usa TickSync e InterpolationClock reales, genera
 ## entradas con BotBrain (guiado por la posición de su estado en el snapshot) y confirma
-## snapshots.
+## snapshots. CLIENT_READY sale 1 s después de conectar (P9c, READY_DELAY_TICKS).
 class_name SwarmBot extends Node
-func setup(index: int, config: ClientConfig) -> void
+func setup(index: int, config: ClientConfig, dtls: TLSOptions = null) -> void
 ```
 
 ### 17.6 Escenas nuevas

@@ -158,7 +158,7 @@ static func start_server(viewport: SubViewport, config: ServerConfig) -> ZoneSer
 ## local y al [RemoteWorld]) y, tras aparecer, [code]bot_brain[/code] ([BotBrain]).
 static func start_bot(viewport: SubViewport, port: int, realm: int, bot_seed: int,
 		net_sim_spec: String = "", bot_cheat: String = "", bot_brain: String = "",
-		loadout: String = "") -> NetClient:
+		loadout: String = "", configure: Callable = Callable()) -> NetClient:
 	var zone_root: ZoneRoot = get_world(viewport) as ZoneRoot
 	if zone_root != null:
 		zone_root.strip_for_server()
@@ -188,6 +188,9 @@ static func start_bot(viewport: SubViewport, port: int, realm: int, bot_seed: in
 	config.bot_cheat = bot_cheat
 	config.bot_brain = bot_brain
 	config.loadout = loadout
+	if configure.is_valid():
+		# El resto de la configuración (por ejemplo, el certificado DTLS de la zona y su nombre).
+		configure.call(config)
 	client.welcomed.connect(func(_welcome: NetMessages.Welcome) -> void:
 		client.notify_zone_ready(entities))
 	client.local_spawned.connect(func(character: PlayerCharacter) -> void:

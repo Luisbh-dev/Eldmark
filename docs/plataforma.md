@@ -1321,11 +1321,13 @@ por su cuenta. Las normas se aceptan al crear la cuenta (§11.4).
   públicas» se cumple solo.
 - Comprobado con `ENetMultiplayerPeer` en un proceso: conecta y entrega un paquete por DTLS. Salir sin `close()`
   hace que el motor registre un error de `bio_send`: se cierran los peers antes.
-- **Sin comprobar:** DTLS con `GuardedEnetPeer` y la autenticación de `SceneMultiplayer`, y su coste. TEC-27 mide la
-  CPU por paquete, los bytes de más por datagrama y el tope de 1200 B frente al MTU de ENet, con `--bots=64` con y
-  sin `--dtls-cert` contra la misma zona. **Criterio** (provisional, tomado de noche; pregunta para el usuario, §0):
+- **Comprobado en P9c** (§19.18): DTLS con `GuardedEnetPeer` y la autenticación de `SceneMultiplayer`, en un proceso
+  y con el servidor dedicado; el corte lo empieza siempre el servidor (un cliente con DTLS que lo empezase haría que
+  el motor del servidor registrase un error por cada salida). TEC-27 mide la CPU por paquete, los bytes de más por
+  datagrama y el tope de 1200 B frente al MTU de ENet, con `--bots=64` con y sin `--dtls-cert` contra la misma zona
+  (`tools/load_test.gd --dtls-compare`). **Criterio** (provisional, tomado de noche; pregunta para el usuario, §0):
   DTLS no sube el p99 del tick más de un 10 % y la cifra absoluta se anota en red.md §14. El del backlog (p99 < 8 ms
-  con 64 bots) no se cumple ni sin DTLS (15,9 ms).
+  con 64 bots) no se cumple ni sin DTLS (15,9 ms). Lo medido, en red.md §14 y §19.18.
 
 ### 10.3 Secretos
 | Secreto | Dónde vive | Rotación |
@@ -1812,7 +1814,7 @@ con su texto.
 | Partición entre zona y plataforma con el cliente llegando a las dos: el personaje entra en otra zona | Cercado a los 10 s (nadie nuevo entra); a los 15 s, `lost`; al volver, la vieja se cierra y sus guardados finales solo valen para quien nadie reclamó; se pierde lo jugado allí por quien entró en otra. Raro en un mismo centro de datos; se revisa con TEC-29 |
 | `HTTPRequest` en el servidor de zona: coste y orden de las señales | Colas por prioridad, plaza propia del latido, lotes, resultados solo en «poll»; `ServerMetrics` mide la sección `platform`; `FakeHttpServer` lo prueba de verdad |
 | Un fallo de TLS registra un ERROR del motor | Ninguna prueba de Godot lo provoca (§10.1); TLS se prueba en Go |
-| DTLS con `GuardedEnetPeer` y `SceneMultiplayer`, y su coste, sin comprobar | P9c lo prueba en un proceso; TEC-27 lo mide con el criterio relativo de §10.2; sin DTLS no hay pruebas públicas (la plataforma lo impone) |
+| DTLS con `GuardedEnetPeer` y `SceneMultiplayer`, y su coste | Comprobado y medido en P9c (§19.18, red.md §14); sin DTLS no hay pruebas públicas (la plataforma lo impone). **Riesgo que queda:** cada datagrama basura de una dirección nueva es un apretón de manos fallido y un error del motor en el registro (por debajo de `GuardedEnetPeer`); lo acota el límite de journald y, fuera del proceso, el cortafuegos (TEC-40). Cada apretón de manos cuesta 2 ms (EC P-256) o 4 ms (RSA 2048) del hilo principal de la zona |
 | Versiones de Go y PostgreSQL de la CI (`ubuntu-latest`, sin comprobar) | Versiones fijas y `GOTOOLCHAIN=local` (§2.2); `ELDMARK_REQUIRE_PG=1` hace evidente que falta PostgreSQL |
 | Una sola instancia de la plataforma (punto único de fallo; límites y fallos de contraseña en memoria) | Vale para pruebas cerradas; quien juega sigue si cae (§7.4); reiniciar la plataforma reinicia los contadores. Varias instancias con TEC-38 |
 | Una zona comprometida (Godot recibe UDP de Internet) | Token con alcance, `public_host` de una lista, autorización de sanciones en la plataforma, lotes validados contra la instancia (§6), ids solo de sus bloques, S1–S8 en Go (progresion.md §13.3). **Riesgo que queda:** S1–S8 acotan la forma, los topes, los ids y el actor de las GM, no las cantidades; son la red contra una zona con un error, no contra una comprometida, que aún puede acuñar oro, méritos y XP con GAMEPLAY o con `source = console` sobre los personajes que tiene dentro. Lo detectan PRG-30 y PRG-39 |
@@ -3633,3 +3635,96 @@ distintas de 118 archivos, todas correctas a la primera. La suite entera de Godo
 `test_progress_platform_loopback`, `--bot-scenario=progress` y `platform/e2e/progress_test.go`), DTLS en la zona
 (P9c) y la prueba de extremo a extremo en la CI (P10); lo pendiente del usuario de cada paquete (revisión visual,
 textos legales, el VPS).
+
+### 19.18 P9c · DTLS (TEC-27)
+
+**Qué hay.** El lado de la zona del contrato de §10.2 (el del cliente lo dejó P8, §19.16), el enjambre con
+certificado y la campaña de medida de TEC-27:
+
+| Pieza | Contenido |
+|---|---|
+| `NetTransport` | `host(port, max_peers, dtls: TLSOptions = null)`: `dtls_server_setup(dtls)` justo tras `create_server` y antes de `GuardedEnetPeer`, que filtra igual lo que llega ya descifrado. `is_dtls()`. **Un cliente con DTLS no empieza el corte** (abajo) |
+| `ZoneDtls` (`scripts/server/zone_dtls.gd`, nuevo) | `load_files(cert, key)` y `from_pem`: el PEM tal cual (`certificate_pem`, con su cadena si la trae), el CN (`common_name`) y `server_options` (`TLSOptions.server`), o `error` con el motivo. Lee el CN del DER con un lector mínimo de ASN.1 (`certificate_fields`, `pem_blocks`), comprueba que la clave es la del certificado (la `subjectPublicKeyInfo` contra `CryptoKey.save_to_string(true)`) y no le pasa a Godot un PEM que no ha entendido antes (Godot registra un error del motor con uno roto) |
+| `ServerConfig` · `ServerMain` · `ZoneServer` | `ServerConfig.dtls: ZoneDtls` (no sale de los argumentos). `ServerMain._load_dtls` lo carga de `--dtls-cert` y `--dtls-key` antes de cargar la zona, con o sin plataforma; si falta uno, no se lee, no tiene CN o la clave no es la suya, sale con código 1. `ZoneServer.start` abre el puerto con `config.dtls.server_options`; su informe gana `dtls`; la línea «escuchando en el puerto» dice «con DTLS» |
+| `ZonePlatform.registration_body` | `dtls_cert_pem` (el PEM) y `dtls_name` (el CN); sin DTLS, null como antes |
+| `BotSwarm` · `SwarmBot` | `--bots` admite `--dtls-cert=<pem> --dtls-name=<cn>`: el enjambre ancla el certificado una vez (`NetClient.dtls_options`) y cada `SwarmBot.setup(index, config, dtls)` lo pasa a `connect_to`. Sin `--dtls-name` o con un certificado ilegible, código 1 sin conectar en claro. El informe gana `dtls` |
+| `tools/load_test.gd` | `--dtls` (con el certificado de las pruebas, o `--dtls-cert`, `--dtls-key` y `--dtls-name`) y `--dtls-compare`, la campaña: el escenario sin y con DTLS, alternados, `--repeat` veces (por defecto, 64 bots reales agrupados en dos enjambres, sin falsos, 60 s, dos de cada), y `dtls_comparison` con el criterio |
+| `tests/fixtures/dtls/` | PEM de prueba (OpenSSL 3.0, 100 años): `zone_*` (RSA 2048, CN y SAN `zona-pruebas.eldmark.test`), `other_*` (EC P-256) y `no_cn_cert.pem`. `.gitignore` ya los deja entrar (`!tests/fixtures/**/*.pem`) y `check_secrets.sh` no mira `tests/` |
+| `platform/deploy/docker-compose.yml` | Ya pasaba `--dtls-*` (P9b); el comentario de los secretos dice cómo hacer el certificado |
+
+**El corte lo empieza el servidor.** El servidor de DTLS de Godot (`ENetDTLSServer` en `thirdparty/enet/enet_godot.cpp`)
+olvida la sesión de un peer en cuanto ENet lo da por desconectado. Si el corte lo empieza el cliente
+(`peer_disconnect_later`), el servidor recibe su DISCONNECT, lo confirma y olvida la sesión; una ida y vuelta después
+llega el aviso de cierre de DTLS del cliente (al cerrarse su `ENetMultiplayerPeer`), el servidor lo toma por un
+apretón de manos nuevo y el motor registra `TLS handshake error: -30464` (`MBEDTLS_ERR_SSL_UNEXPECTED_MESSAGE`).
+Medido con la sonda de un proceso: 6 de 6 cortes empezados por el cliente dan el error; 0 de 6 empezados por el
+servidor (su DISCONNECT, la confirmación del cliente y su aviso de cierre llegan juntos) y 0 de 6 con el cliente
+cerrando de golpe (`close`: el DISCONNECT y el aviso salen en el mismo envío). Por eso, en `NetTransport`, **un
+cliente con DTLS no llama a `peer_disconnect_later`**: `disconnect_after_flush` vacía lo suyo y espera; el servidor
+contesta al CLIENT_LEAVE con su propio `disconnect_after_flush` (lo hacía ya). Si el servidor no corta en
+`FORCE_DISCONNECT_TICKS` (60), el cliente cierra la conexión entera (`_close_enet_keeping_events`: el
+`ENetMultiplayerPeer.close()` de verdad, sin perder el `peer_disconnected` que sale en ese `poll`). En claro no cambia
+nada. Lo mismo en las pruebas: cerrar el servidor antes que sus clientes hace que el aviso de cierre del cliente vaya
+a un puerto ya cerrado y el siguiente envío falle con `bio_send` (el error que ya avisaba §10.2): se cierran primero
+los clientes.
+
+**Desviaciones y decisiones de la implementación:**
+
+- **El nombre se lee del DER** (§19.8 dejaba elegir entre eso y pedir `--dtls-name` a la zona): la zona solo tiene
+  `--dtls-cert` y `--dtls-key`, como dice §10.2, y no hay forma de que el nombre del registro y el del certificado
+  no coincidan. Un certificado sin CN no vale, aunque traiga `subjectAltName` (mbedtls compararía con el SAN, pero
+  §10.2 manda el CN).
+- **`ServerConfig.dtls`** (§14.3 no lo nombra): el certificado cargado viaja con la configuración, que ya llega a
+  `ZoneServer.start` y a `ZonePlatform.registration_body`; `ZoneServer.start` no cambia de firma. Es el único cambio
+  en `zone_server.gd` (la llamada a `host` y el campo del informe), después de progresion.md P5d.
+- **API de más** (§14.3 y red.md §17 no la nombran): `NetTransport.is_dtls()`, `SwarmBot.setup(…, dtls)`,
+  `ZoneDtls` entero, el campo `dtls` de los informes de la zona y del enjambre, y en `NetHarness.start_bot` un
+  `configure: Callable` al final (para el certificado del bot de las pruebas).
+- **`SwarmBot` manda CLIENT_READY 1 s después de conectar** (`READY_DELAY_TICKS`), como un cliente que carga la
+  zona. La campaña lo destapó, en claro: en 2 de 3 pasadas de 64 bots, un bot se quedaba cargando hasta que la zona
+  lo echaba a los 60 s («se agotó el tiempo de carga») con un aviso de «paquete ajeno al protocolo». La confirmación
+  de la autenticación de SceneMultiplayer va por el canal 0 de ENet y CLIENT_READY por el 3, que no se ordenan entre
+  sí; con 64 bots en la máquina el búfer de UDP del servidor (212 KB por defecto) se llena en sus parones de 40–70 ms
+  (el contador `RcvbufErrors` de `/proc/net/snmp` sube durante la campaña), una confirmación perdida llega después
+  de su CLIENT_READY y `GuardedEnetPeer` (como haría SceneMultiplayer) tira el CLIENT_READY. Un cliente de verdad
+  manda CLIENT_READY tras cargar la zona, segundos después. No es de DTLS, pero invalidaba las pasadas (63 jugadores
+  frente a 64).
+- **El cifrado de lo que se envía cae en la sección que envía**, no en `flush`: `ENetMultiplayerPeer.put_packet`
+  vacía el host en cada paquete. En la zona, el de los snapshots está en la sección `snapshot` y el de los eventos en
+  `combat_events`; `flush` sigue en unos µs.
+
+**Pruebas** (Godot, nuevas):
+
+| Archivo | Pruebas | Qué |
+|---|---|---|
+| `test_dtls_loopback.gd` | 7 | **Loopback con DTLS y `GuardedEnetPeer`** (§15): apretón de manos, paquetes de 1200 B por los canales no fiables y uno fiable de 3000 B (fragmentado) en los dos sentidos, intactos y sin descartes del filtro; la salida con CLIENT_LEAVE (corta el servidor, antes del plazo) y 30 ticks más sin errores del motor. Un cliente cuya salida nadie contesta no empieza el corte, cierra todo a los 60 ticks, los dos lo ven y vuelve a conectar. Otro certificado, otro nombre o en claro: no conecta y el servidor no llega a ver un peer (la única que admite errores del motor: los del apretón de manos). `ZoneServer` con `config.dtls` y un `NetClient` que predice (`--dtls-cert`/`--dtls-name`): juega, recibe snapshots y sale con CLIENT_LEAVE. **El enjambre con certificado** (§15): 4 bots entran, juegan, el informe dice `dtls`, salen con código 0 y la zona queda vacía. Sin `--dtls-name` o con un certificado ilegible, código 1 y ningún bot. **El servidor dedicado de verdad** en otro proceso con `--dtls-cert --dtls-key` (y `--stop-file`): carga el certificado, escucha «con DTLS», un enjambre de 2 entra, el informe dice `dtls` y su registro no tiene ningún error |
+| `test_zone_dtls.gd` | 11 | `ZoneDtls`: el CN y la clave del certificado de las pruebas; uno EC con el CN delante; clave que no es la suya (en los dos sentidos); sin CN; archivos que faltan y PEM rotos, cada uno con su motivo y sin errores del motor; un DER cortado cada 7 B o con una longitud imposible no rompe el lector; cadenas y base64 malo. El registro con el PEM y el CN (y null sin DTLS), ida y vuelta por JSON. Dos servidores en otro proceso que salen con 1 y lo dicen (falta la clave; clave de otro certificado). `dtls_comparison` (medias, subida, criterio, sin pasadas) y las opciones que pasa `load_test` |
+
+Siguen correctas las que tocan lo cambiado: `test_net_sim` (30), `test_net_loopback` (14), `test_net_client` (34),
+`test_bot_swarm` (8), `test_siege_clients` (3), `test_bot_threat_sight`, `test_progress_messages`,
+`test_server_config`, `test_server_main` (15), `test_net_processes` (10), `test_account_flow` (16),
+`test_zone_process_shutdown`, `test_war_platform_process`, `test_platform_client` (14),
+`test_zone_server_platform` (13), `test_load_test` (18) y `test_architecture` (19). La suite entera de Godot no se ha
+pasado. Go no cambia (la plataforma ya validaba y guardaba el certificado, P3).
+
+**Medido** (esta máquina, 4 núcleos, Godot 4.7.2 headless; detalle en red.md §14). El coste por paquete, los
+bytes, el apretón de manos y los cortes, con sondas de un proceso que no están en el repositorio (`scratchpad/p9c/`:
+`probe_cost.gd`, `probe_relay.gd` y `probe_loopback.gd`); la carga, con `tools/load_test.gd --dtls-compare`:
+
+| Qué | Resultado |
+|---|---|
+| TEC-27: 64 bots reales, tres pasadas sin y tres con DTLS (`--dtls-compare --repeat=3`) | p99 del tick de 26,9 a **28,5 ms (+5,9 %, cumple el criterio provisional del 10 %)**; p50 de 15,0 a 15,5 ms; `net` +16 %, `snapshot` +4 % |
+| Lo mismo con 40 bots (el aforo del Vado Gris), dos pasadas de cada | p99 de 15,9 a 15,4 ms (−3,3 %, ruido); p50 de 9,0 a 9,0 ms |
+| CPU por paquete (sonda, 16 clientes) | recibir una entrada: +2,2 µs (6,8 → 9,0); enviar un snapshot de 1200 B: +5,1 µs (7,2 → 12,3) |
+| Bytes por datagrama (relé de UDP) | +29 B (ChaCha20-Poly1305); snapshot lleno en 1240 B de UDP; el tope de 1200 B no cambia |
+| Apretón de manos | CPU de la zona por cliente: 4,3 ms con RSA 2048, 2,0 ms con EC P-256; conectar, 0,6 s (16 a la vez, 1,6 s) |
+| `--filter=dtls` (estos dos archivos y las 2 de P8) | 20 pruebas en 35 s con la carga del ejecutor; la más larga, el servidor dedicado con el enjambre, 7 s |
+
+**Sin comprobar:** contra la plataforma de Go de verdad con `staging` (el registro con certificado lo prueban P3 en
+Go y aquí `registration_body`; el `enter` que lo devuelve, P2); el cliente con ventana conectando por DTLS a una zona
+remota (la red de verdad, con pérdidas: el corte que empieza el servidor está pensado para eso, pero solo se ha
+medido en loopback); IPv6.
+
+**Queda para después:** que el usuario elija el criterio de TEC-27 (§0: relativo, cumplido; absoluto, no se cumple
+ni sin DTLS); los certificados de verdad de cada zona en el VPS (TEC-20, con la orden del compose) y
+`net.core.rmem_default` alto allí; la prueba de extremo a extremo (P10).

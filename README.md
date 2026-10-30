@@ -201,6 +201,14 @@ entera). Con plataforma, la zona sale con 1 si no puede registrarse y con 3 si l
 instancia. `--console` lee comandos de la entrada estándar, también los del progreso (`item_give`, `xp_add`,
 `inv_show`…, `docs/progresion.md` §10).
 
+Con `--dtls-cert=<pem> --dtls-key=<pem>` (con o sin plataforma, `docs/plataforma.md` §10.2) la zona abre el puerto
+por DTLS y, con plataforma, manda el certificado y su CN en el registro: el cliente lo recibe en `enter` y lo ancla.
+El certificado es autofirmado, con CN y con la clave sin contraseña (EC P-256 hace el apretón de manos más barato;
+la orden de OpenSSL está en `platform/deploy/docker-compose.yml`); si falta uno de los dos, no se lee, no tiene CN o
+la clave no es la suya, la zona sale con 1. Sin plataforma, un cliente o un enjambre entran con `--dtls-cert=<pem>
+--dtls-name=<cn>` (el certificado y el nombre de la zona); en staging y producción la plataforma no registra una
+zona sin certificado.
+
 El servidor se defiende de los clientes (docs/red.md, sección 12): limita los paquetes por tick y
 por segundo y los bytes de cada peer, cuenta un aviso por cada paquete mal formado, de un tipo
 inesperado para el estado de la sesión o por encima del ritmo, y expulsa con un NOTICE al que
@@ -427,7 +435,8 @@ Cada bot se llama `Bot` más cuatro letras según `--bot-seed` más su índice, 
 contra el mismo servidor necesitan semillas distintas. Sin `--realm` se reparten entre Vardheim y
 Solmarch. El informe trae los bytes de subida y de bajada de cada cliente, los snapshots recibidos
 y su tamaño medio. Código de salida 0 si todos jugaban al terminar y 1 si alguno fue rechazado o se
-cayó.
+cayó. Contra una zona con DTLS, `--dtls-cert=<pem> --dtls-name=<cn>` (sin el nombre, o con un certificado que no
+se puede leer, sale con 1 sin conectar en claro).
 
 ### Bot tramposo (`--bot-cheat`)
 
@@ -473,6 +482,15 @@ godot --headless --path . -s res://tools/load_test.gd -- --matrix
 ```
 
 Los informes quedan en `build/load_test/` (`summary.txt` y `summary.json`).
+
+Con `--dtls` el servidor y los enjambres van por DTLS (con el certificado de las pruebas, o con `--dtls-cert`,
+`--dtls-key` y `--dtls-name`). `--dtls-compare` es la campaña de TEC-27: el mismo escenario sin y con DTLS,
+alternados (por defecto 64 bots reales agrupados en dos enjambres, 60 s, `--repeat=2`), y al final cuánto sube cada
+cifra y el criterio (el p99 del tick no sube más de un 10 %). Resultados en `docs/red.md` §14:
+
+```bash
+godot --headless --path . -s res://tools/load_test.gd -- --dtls-compare --repeat=3
+```
 
 Con combate (TEC-15), `--scenario=brawl` junta a los falsos con el cerebro de combate
 (`--fake-brain=combat`, en un corro alrededor de `--fake-center=x,z`) y a bots reales que pelean

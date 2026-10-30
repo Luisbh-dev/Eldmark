@@ -18,7 +18,13 @@
 #   ticket_keys         1:<base64 de 32 B>[,2:<…>]           (la plataforma y cada zona)
 #   zone_tokens         1:vado_gris:0:<SHA-256 en hex del token>[,…]   (solo la plataforma)
 #   zone_token_vado_gris                el token en claro            (solo esa zona)
-#   vado_gris_dtls_cert, vado_gris_dtls_key   PEM del DTLS de esa zona (P9c)
+#   vado_gris_dtls_cert, vado_gris_dtls_key   PEM del DTLS de esa zona (P9c): autofirmado, con CN (el
+#                       nombre que comprueba el cliente) y clave sin contraseña; la zona no arranca si
+#                       la clave no es la del certificado. Por ejemplo (EC P-256, el apretón de manos
+#                       más barato; docs/plataforma.md §19.18):
+#     openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 825 \
+#       -keyout vado_gris_dtls_key -out vado_gris_dtls_cert \
+#       -subj "/CN=vado-gris.<dominio>" -addext "subjectAltName=DNS:vado-gris.<dominio>"
 #   email_hmac_key      base64 de 32 B
 #   smtp_url            smtp://usuario:clave@host:587
 #

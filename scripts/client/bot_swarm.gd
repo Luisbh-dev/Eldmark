@@ -12,8 +12,11 @@ extends Node
 ## [br][br]
 ## Opciones ([ClientConfig]): [code]--bots=N --connect=<host>[:<puerto>] [--realm=<reino>]
 ## [--bot-seed=N] [--bot-brain=combat] [--net-sim=…] [--quit-after-ticks=N] [--quit-at-server-tick=N]
-## [--report=<ruta.json>][/code]. Con [code]--platform[/code] no arranca: sale con código 1 y un error claro
-## (docs/plataforma.md §5.5). El bot [i]i[/i]
+## [--dtls-cert=<pem> --dtls-name=<cn>] [--report=<ruta.json>][/code]. Con [code]--platform[/code] no arranca: sale
+## con código 1 y un error claro (docs/plataforma.md §5.5). Con [code]--dtls-cert[/code] (una zona con
+## [code]--dtls-cert --dtls-key[/code], §10.2) cada [SwarmBot] conecta por DTLS con ese certificado anclado y ese
+## nombre; sin [code]--dtls-name[/code] o con un certificado que no se puede leer sale con código 1 (nunca en claro).
+## El bot [i]i[/i]
 ## se llama [code]NameRules.bot_name(bot_seed + i)[/code]: dos enjambres contra el mismo servidor
 ## necesitan semillas distintas (los nombres no se pueden repetir en una zona). Sin [code]--realm[/code]
 ## los bots se reparten entre Vardheim y Solmarch.
@@ -39,6 +42,8 @@ const LEAVE_WAIT_TICKS: int = 30
 const MAX_FPS: int = 120
 ## Error de [code]--bots[/code] con [code]--platform[/code].
 const TEXT_NO_PLATFORM: String = "--bots no admite --platform: el enjambre solo va contra zonas sin plataforma (para entrar con cuenta, --bot --platform=<url> --login=<correo> --password-file=<ruta>)"
+## Error de [code]--dtls-cert[/code] sin [code]--dtls-name[/code] o con un certificado que no se puede leer.
+const TEXT_BAD_DTLS: String = "DTLS: el enjambre necesita --dtls-cert=<pem> legible y --dtls-name=<cn> (el nombre del certificado de la zona); no conecta en claro"
 
 ## Configuración del enjambre. La rellena [ClientLauncher]; si es null al arrancar, se lee de
 ## los argumentos de usuario.
@@ -48,6 +53,8 @@ static var config: ClientConfig
 static var quit_hook: Callable = Callable()
 
 var _config: ClientConfig = null
+# El certificado de la zona anclado (--dtls-cert y --dtls-name), el mismo para todos los bots; null = en claro.
+var _dtls: TLSOptions = null
 var _bots: Array[SwarmBot] = []
 var _created_ticks: Array[int] = []
 var _tick: int = 0
@@ -83,8 +90,16 @@ func start(p_config: ClientConfig) -> void:
 		printerr("[Eldmark] %s" % TEXT_NO_PLATFORM)
 		_quit(1)
 		return
-	print("[Eldmark] Enjambre: %d bots hacia %s:%d (uno cada %d ticks, semilla %d)" % [
+	if _config.has_dtls():
+		# Un solo certificado anclado para todos los bots; sin él no se conecta en claro (docs/plataforma.md §10.2).
+		_dtls = NetClient.dtls_options(_config) if not _config.dtls_name.is_empty() else null
+		if _dtls == null:
+			printerr("[Eldmark] %s" % TEXT_BAD_DTLS)
+			_quit(1)
+			return
+	print("[Eldmark] Enjambre: %d bots hacia %s:%d (uno cada %d ticks, semilla %d%s)" % [
 		_config.bot_count, _config.address, _config.port, SPAWN_INTERVAL_TICKS, _config.bot_seed,
+		", DTLS con «%s»" % _config.dtls_name if _dtls != null else "",
 	])
 	_running = true
 	_spawn_bot()
@@ -170,6 +185,7 @@ func build_report() -> Dictionary:
 		"address": _config.address if _config != null else "",
 		"port": _config.port if _config != null else 0,
 		"net_sim": _config.net_sim_spec if _config != null else "",
+		"dtls": _dtls != null,
 		"seed": _config.bot_seed if _config != null else 0,
 		"ticks": _tick,
 		"bots": {
@@ -247,7 +263,7 @@ func newest_server_tick() -> int:
 func _spawn_bot() -> void:
 	var bot := SwarmBot.new()
 	add_child(bot)
-	bot.setup(_bots.size(), _config)
+	bot.setup(_bots.size(), _config, _dtls)
 	_bots.append(bot)
 	_created_ticks.append(_tick)
 

@@ -56,9 +56,14 @@ extends Node
 ## (docs/plataforma.md §7.2); después sale lo pendiente y la baja de la instancia. Si la plataforma cierra la
 ## instancia ([signal ZoneServer.instance_closed]), el cierre de §6.1 ([method ZoneServer.close_instance]: los
 ## finales antes de echar a nadie) y el proceso sale con código 3 para que el orquestador arranque otra.
+## [br]- [b]Con [code]--dtls-cert=<pem> --dtls-key=<pem>[/code][/b] (docs/plataforma.md §10.2, con o sin plataforma):
+## carga el certificado y la clave ([ZoneDtls], en [member ServerConfig.dtls]) antes de cargar la zona, abre el puerto
+## por DTLS y, con la plataforma, manda el certificado y su CN en el registro. Si falta uno de los dos, no se pueden
+## leer, el certificado no tiene CN o la clave no es la suya, sale con código 1.
 ## [br][br]
 ## El código de salida es 0 en un cierre normal, 1 si no puede arrancar (zona desconocida, puerto
-## ocupado, plataforma que no responde o que no admite la zona...) y 3 si la plataforma cerró la instancia.
+## ocupado, certificado DTLS que no vale, plataforma que no responde o que no admite la zona...) y 3 si la
+## plataforma cerró la instancia.
 
 ## Archivo de bloqueo de [code]--dev-lock[/code] si no se da [code]--dev-lock-path[/code].
 const DEV_LOCK_PATH: String = "user://dev_server.json"
@@ -141,6 +146,9 @@ func _ready() -> void:
 				", ".join(Zones.get_zone_ids())])
 		get_tree().quit(1)
 		return
+	if not _load_dtls():
+		get_tree().quit(1)
+		return
 	print("[Eldmark] Servidor de zona: arrancando la zona '%s'" % config.zone_id)
 	var packed: PackedScene = load(scene_path) as PackedScene
 	_world = packed.instantiate() as Node3D if packed != null else null
@@ -193,8 +201,9 @@ func _ready() -> void:
 		_platform.go_live()
 	print("[Eldmark] Servidor de la zona '%s' escuchando en el puerto UDP %d (hasta %d jugadores, "
 			% [config.zone_id, config.port, config.max_players]
-			+ "%d ticks/s, huella de la simulación 0x%08X)"
-			% [Engine.physics_ticks_per_second, _zone_server.get_sim_hash()])
+			+ "%d ticks/s, huella de la simulación 0x%08X%s)"
+			% [Engine.physics_ticks_per_second, _zone_server.get_sim_hash(),
+			", con DTLS" if config.dtls != null else ""])
 	if not config.net_sim_spec.is_empty():
 		print("[Eldmark] Simulador de red: %s" % config.net_sim_spec)
 	if config.debug_commands:
@@ -234,6 +243,22 @@ func _notification(what: int) -> void:
 		if _zone_server != null and is_instance_valid(_zone_server):
 			_zone_server.stop(SHUTDOWN_TEXT)
 		_remove_lock()
+
+
+# --- DTLS (docs/plataforma.md §10.2) ------------------------------------------------------------
+
+# Con --dtls-cert o --dtls-key, carga los dos en config.dtls (ZoneDtls). Devuelve false si la zona no puede arrancar:
+# falta uno, no se pueden leer, el certificado no tiene CN o la clave no es la suya (el motivo, en el registro).
+func _load_dtls() -> bool:
+	if config.dtls != null or (config.dtls_cert_path.is_empty() and config.dtls_key_path.is_empty()):
+		return true
+	var dtls: ZoneDtls = ZoneDtls.load_files(config.dtls_cert_path, config.dtls_key_path)
+	if not dtls.is_valid():
+		push_error("[Eldmark] %s" % dtls.error)
+		return false
+	config.dtls = dtls
+	print("[Eldmark] DTLS: certificado de «%s» (%s)" % [dtls.common_name, config.dtls_cert_path])
+	return true
 
 
 # --- Plataforma (docs/plataforma.md §8) ---------------------------------------------------------

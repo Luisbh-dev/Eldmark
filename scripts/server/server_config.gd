@@ -20,7 +20,8 @@ extends RefCounted
 ## el alcance del token de la zona; [code]--public-address[/code] es el host (y puerto) al que conectan los
 ## clientes (127.0.0.1 y [member port] por defecto); [code]--save-interval[/code] el punto de control de
 ## [code]CharacterSaver[/code] (60 s, P5); [code]--replace[/code] sustituye a una instancia viva de la misma zona y
-## canal; [code]--dtls-cert[/code] y [code]--dtls-key[/code] el certificado de DTLS (P9c). Con un
+## canal; [code]--dtls-cert[/code] y [code]--dtls-key[/code] el certificado de DTLS y su clave (P9c, con o sin
+## plataforma; ver [member dtls]). Con un
 ## [code]env[/code] de [code]staging[/code] o [code]production[/code] las opciones de desarrollo
 ## ([method platform_dev_options]) hacen salir a la zona.
 ## [code]--combat-log=<ruta>[/code] escribe un CSV con una línea por golpe resuelto
@@ -141,9 +142,14 @@ var public_address: String = ""
 var save_interval_s: int = 60
 ## Sustituye a la instancia viva de la misma zona y canal al registrarse ([code]--replace[/code]).
 var replace: bool = false
-## Certificado y clave de DTLS en PEM ([code]--dtls-cert[/code], [code]--dtls-key[/code]; los usa P9c).
+## Rutas del certificado y la clave de DTLS en PEM ([code]--dtls-cert[/code], [code]--dtls-key[/code];
+## docs/plataforma.md §10.2). Las lee [code]ServerMain[/code] con [method ZoneDtls.load_files].
 var dtls_cert_path: String = ""
 var dtls_key_path: String = ""
+## El certificado y la clave ya cargados: no sale de los argumentos, lo pone [code]ServerMain[/code] (o una prueba).
+## Con él, [ZoneServer] abre el puerto con DTLS y [ZonePlatform] manda el certificado y su nombre en el registro;
+## null = sin DTLS.
+var dtls: ZoneDtls = null
 ## Escribe [code]user://dev_server.json[/code] para que [code]--local[/code] reutilice el servidor.
 var dev_lock: bool = false
 ## Dónde se escribe el bloqueo de [member dev_lock] en lugar de [code]user://dev_server.json[/code]

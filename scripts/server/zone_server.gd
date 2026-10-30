@@ -620,7 +620,8 @@ func _exit_tree() -> void:
 ## [br]- Calcula el [code]sim_hash[/code] sobre una instancia del personaje dentro del árbol.
 ## [br]- Si [param transport] todavía no escucha, aplica [member ServerConfig.net_sim_spec] y abre
 ## [member ServerConfig.port] con sitio para [member ServerConfig.max_players] más 4 conexiones (las
-## 4 de más permiten contestar «servidor lleno» con un REJECT). Si ya escucha, lo usa tal cual.
+## 4 de más permiten contestar «servidor lleno» con un REJECT), por DTLS si hay [member ServerConfig.dtls]
+## (docs/plataforma.md §10.2). Si ya escucha, lo usa tal cual.
 ## [br]- [param transport] puede ser null: el servidor corre sin red, solo con jugadores falsos
 ## ([method add_fake_player]), que es lo que usan las pruebas.
 ## [br]- [param auth_provider] decide la identidad de los clientes ([DevAuthProvider] sin plataforma,
@@ -704,7 +705,9 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 		_connect_transport()
 		if not _transport.is_server():
 			_transport.set_net_sim_spec(config.net_sim_spec)
-			var error: Error = _transport.host(config.port, config.max_players + 4)
+			# Con el certificado de la zona, por DTLS (docs/plataforma.md §10.2, P9c).
+			var error: Error = _transport.host(config.port, config.max_players + 4,
+					config.dtls.server_options if config.dtls != null else null)
 			if error != OK:
 				_disconnect_transport()
 				_transport = null
@@ -4340,6 +4343,8 @@ func _build_report() -> Dictionary:
 		"ticks": _tick,
 		"tick_rate": Engine.physics_ticks_per_second,
 		"sim_hash": _sim_hash,
+		# Si el puerto se abrió por DTLS (docs/plataforma.md §10.2; el transporte ya está cerrado en el informe final).
+		"dtls": _config != null and _config.dtls != null and _transport != null,
 		"closed": _run_state == _RunState.STOPPING or _run_state == _RunState.STOPPED,
 		"players": {
 			"current": get_player_count(),
