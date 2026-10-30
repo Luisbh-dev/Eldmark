@@ -10,7 +10,7 @@ extends RefCounted
 ## --bot-cheat=<modo>  --bot-brain=<wander|combat|siege>  --quit-after-ticks=N  --quit-at-server-tick=N
 ## --report=<ruta.json>  --state-log=<ruta.csv>  --dev-lock-path=<ruta.json>  --loadout=<plantilla>
 ## --title  --platform=<url>  --login=<correo>  --password-file=<ruta>  --character=<nombre>  --world=N
-## --dtls-cert=<pem>  --dtls-name=<cn>
+## --dtls-cert=<pem>  --dtls-name=<cn>  --bot-scenario=<escenario>
 ## [/codeblock]
 ## [br]El modo ([enum Mode]) sale de ellos con esta prioridad (docs/plataforma.md §13.3): [code]--bots[/code]
 ## ([constant SWARM]) > [code]--bot[/code] ([constant BOT]) > [code]--local[/code] ([constant LOCAL]) >
@@ -54,6 +54,10 @@ const BOT_BRAIN_WANDER: String = "wander"
 const BOT_BRAIN_COMBAT: String = "combat"
 const BOT_BRAIN_SIEGE: String = "siege"
 const BOT_BRAINS: Array[String] = [BOT_BRAIN_WANDER, BOT_BRAIN_COMBAT, BOT_BRAIN_SIEGE]
+## Escenarios del bot ([member bot_scenario], [code]--bot-scenario[/code]): [code]progress[/code] equipa el arco, se da
+## 50 de oro y una poción por DEBUG_COMMAND y sale ([BotProgressScenario], docs/progresion.md §15 P8).
+const BOT_SCENARIO_PROGRESS: String = "progress"
+const BOT_SCENARIOS: Array[String] = [BOT_SCENARIO_PROGRESS]
 ## Prefijo de los nombres por defecto: «Jugadorabcd» (ver [method NameRules.default_name]).
 const DEFAULT_NAME_PREFIX: String = NameRules.DEFAULT_PREFIX
 ## Máximo de ticks, bots y semilla que se aceptan.
@@ -88,6 +92,10 @@ var bot_cheat: String = ""
 ## [constant BOT_BRAIN_SIEGE] sigue la ruta de su reino hasta el fuerte, rompe la puerta, captura el círculo y
 ## lo defiende ([constant BotBrain.Pattern.SIEGE]).
 var bot_brain: String = ""
+## Escenario guionizado del bot ([constant BOT_SCENARIOS], [code]--bot-scenario=<escenario>[/code]; solo en
+## [constant Mode.BOT]): vacío = ninguno. Con uno, el bot lo corre al aparecer y, si no hay
+## [member quit_after_ticks], sale al terminarlo; con él, sigue hasta esos ticks. Si falla, sale con código 1.
+var bot_scenario: String = ""
 var quit_after_ticks: int = 0
 ## Solo el enjambre ([constant Mode.SWARM]): sale cuando alguno de sus bots ha recibido un snapshot de este tick del
 ## servidor o posterior ([code]--quit-at-server-tick=N[/code]; 0 = no). Las pruebas de carga cierran así el enjambre
@@ -103,7 +111,9 @@ var dev_lock_path: String = ""
 ## Plantilla de equipo para la siguiente aparición ([code]--loadout=<plantilla>[/code], el
 ## [member EquipmentTemplate.id] de una que se pueda elegir, como [code]marksman[/code]; docs/habilidades.md,
 ## sección 4.6): [NetClient] la manda en un LOADOUT_SELECT nada más llegar el WELCOME. Vacía = la de por
-## defecto (no se manda nada). La cambian también la elección de reino y la pantalla de muerte.
+## defecto (no se manda nada). La cambian también la elección de reino y la pantalla de muerte. Un bot con
+## [code]--platform[/code] no la manda: es la plantilla de inicio del personaje que crea si aún no existe
+## ([method AccountFlow.ensure_character], docs/progresion.md §2.5).
 var loadout: String = ""
 ## Avisos para el usuario sobre argumentos de red que no se han podido interpretar.
 var warnings: PackedStringArray = PackedStringArray()
@@ -169,6 +179,11 @@ static func from_args(args: PackedStringArray, exported: bool = false) -> Client
 		config.warnings.append("Cerebro de bot desconocido '%s' (hay: %s); se usa %s" % [
 				config.bot_brain, ", ".join(BOT_BRAINS), BOT_BRAIN_WANDER])
 		config.bot_brain = ""
+	config.bot_scenario = _string_option(args, "--bot-scenario=").to_lower()
+	if not config.bot_scenario.is_empty() and not BOT_SCENARIOS.has(config.bot_scenario):
+		config.warnings.append("Escenario de bot desconocido '%s' (hay: %s); se juega sin escenario" % [
+				config.bot_scenario, ", ".join(BOT_SCENARIOS)])
+		config.bot_scenario = ""
 	config.report_path = _clean_path(_string_option(args, "--report="))
 	config.state_log_path = _clean_path(_string_option(args, "--state-log="))
 	config.dev_lock_path = _clean_path(_string_option(args, "--dev-lock-path="))

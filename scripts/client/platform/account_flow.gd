@@ -7,8 +7,9 @@ extends RefCounted
 ## Todas las llamadas son corrutinas sobre [PlatformApi] y devuelven un [ApiResult]:
 ## [br]- [method login] guarda la [AccountSession] en [member PlatformApi.session].
 ## [br]- [method ensure_character] busca el personaje por nombre (con la clave de [NameRules]: «Anéira» es «aneira»)
-## en el mundo y, si no está, lo crea con el pueblo de su reino, [method CharacterAppearance.default_for] y la primera
-## plantilla de inicio por id ([method first_starter_template]); uno borrado que aún se puede restaurar se restaura.
+## en el mundo y, si no está, lo crea con el pueblo de su reino, [method CharacterAppearance.default_for] y la
+## plantilla de inicio que se pida (el [code]--loadout[/code] del bot) o, sin ella, la primera por id
+## ([method first_starter_template]); uno borrado que aún se puede restaurar se restaura.
 ## [code]data.character[/code] es el personaje y [code]data.created[/code] si se acaba de crear.
 ## [br]- [method enter] pide [code]enter[/code] y devuelve en [code]data.config[/code] un [ClientConfig] nuevo (copia
 ## del de partida) con la zona, el billete, el personaje y el certificado DTLS. Con [code]character_busy[/code] (el
@@ -97,8 +98,11 @@ func create_character(world_id: int, display_name: String, realm: StringName, ra
 
 
 ## El personaje [param display_name] de la cuenta en [param world_id]; si no existe, lo crea en [param realm] (id de
-## [RealmCatalog]; vacío = el reino de la cuenta en ese mundo o, si aún no tiene, Vardheim). Corrutina.
-func ensure_character(world_id: int, display_name: String, realm: StringName) -> ApiResult:
+## [RealmCatalog]; vacío = el reino de la cuenta en ese mundo o, si aún no tiene, Vardheim) con la plantilla de inicio
+## [param starter_template] (vacía, o una que no se puede elegir = [method first_starter_template]; docs/progresion.md
+## §2.5). Uno que ya existe se queda con la suya. Corrutina.
+func ensure_character(world_id: int, display_name: String, realm: StringName,
+		starter_template: StringName = &"") -> ApiResult:
 	var listed: ApiResult = await list_characters(world_id)
 	if not listed.ok:
 		return listed
@@ -124,8 +128,11 @@ func ensure_character(world_id: int, display_name: String, realm: StringName) ->
 		realm_id = StringName(listed.text_of("realm"))
 	if not RealmCatalog.is_realm(realm_id):
 		realm_id = RealmCatalog.VARDHEIM
+	var template_id: StringName = starter_template
+	if template_id.is_empty() or not ClientConfig.is_selectable_template(String(template_id)):
+		template_id = first_starter_template()
 	var created: ApiResult = await create_character(world_id, display_name, realm_id, race_id_for(realm_id),
-			default_appearance(realm_id), first_starter_template())
+			default_appearance(realm_id), template_id)
 	if not created.ok:
 		return created
 	return ApiResult.success({"character": created.data.get("character", {}), "created": true}, created.status)
