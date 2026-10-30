@@ -231,8 +231,11 @@ jobs:
   # Servicio de plataforma en Go (docs/plataforma.md §2.6 y §10.3), independiente de los trabajos de
   # Godot: comprobación de secretos del índice, gofmt, go vet y go test con un PostgreSQL efímero
   # (initdb del PostgreSQL de ubuntu-latest; ELDMARK_REQUIRE_PG=1 hace que las pruebas fallen si
-  # falta, en lugar de saltarse). Para que bloquee el merge hay que marcar también «Plataforma» como
-  # comprobación obligatoria en la protección de la rama.
+  # falta, en lugar de saltarse). Las pruebas de platform/deploy (P9b) corren además los scripts de
+  # copias y restauración, shellcheck y «docker compose config» (sin demonio), que la imagen de
+  # ubuntu-latest trae; ELDMARK_REQUIRE_DEPLOY_TOOLS=1 hace que fallen si falta alguna herramienta.
+  # Para que bloquee el merge hay que marcar también «Plataforma» como comprobación obligatoria en la
+  # protección de la rama.
   platform:
     name: Plataforma
     runs-on: ubuntu-latest
@@ -240,6 +243,7 @@ jobs:
     env:
       GOTOOLCHAIN: local
       ELDMARK_REQUIRE_PG: "1"
+      ELDMARK_REQUIRE_DEPLOY_TOOLS: "1"
     defaults:
       run:
         shell: bash
@@ -279,11 +283,117 @@ jobs:
             exit 1
           fi
 
+      # Las pruebas de extremo a extremo (platform/e2e, etiqueta e2e) se compilan y se revisan aquí también; las
+      # corre el trabajo «Plataforma e2e».
       - name: go vet
         working-directory: platform
-        run: go vet ./...
+        run: |
+          go vet ./...
+          go vet -tags e2e ./e2e
 
       - name: go test
         working-directory: platform
         timeout-minutes: 10
         run: go test -p 2 ./...
+
+  # Extremo a extremo (docs/plataforma.md P10, §15): la plataforma de Go de verdad en el proceso de la prueba, con
+  # un PostgreSQL efímero, contra zonas test_world con --platform y bots con cuenta de Godot de verdad
+  # (platform/e2e, etiqueta e2e: TestEnterAndSave y TestZoneCrash, y las de progresion.md P8 cuando lleguen).
+  # Reutiliza las cachés de LFS y de Godot de los trabajos de Godot (las mismas claves) y exporta ELDMARK_GODOT;
+  # TestMain importa el proyecto. Si falla, sube los registros de la plataforma, las zonas y los bots. Para que
+  # bloquee el merge hay que marcar «Plataforma e2e» como comprobación obligatoria en la protección de la rama.
+  platform-e2e:
+    name: Plataforma e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GOTOOLCHAIN: local
+      ELDMARK_REQUIRE_PG: "1"
+      ELDMARK_REQUIRE_GODOT: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+        env:
+          GIT_LFS_SKIP_SMUDGE: "1"
+
+      - name: Lista de objetos LFS
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-assets-id
+
+      - name: Caché de objetos LFS
+        uses: actions/cache@v4
+        with:
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-assets-id') }}
+          restore-keys: |
+            lfs-
+
+      - name: Descargar objetos LFS
+        run: git lfs pull
+
+      - name: Caché de Godot
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/godot
+          key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_SHA512 }}
+
+      - name: Descargar Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/godot"
+          curl -fsSL --retry 3 --retry-delay 5 -o "$RUNNER_TEMP/godot.zip" \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/${GODOT_FILE}.zip"
+          echo "${GODOT_SHA512}  $RUNNER_TEMP/godot.zip" | sha512sum --check -
+          unzip -q "$RUNNER_TEMP/godot.zip" -d "$HOME/godot"
+          chmod +x "$HOME/godot/${GODOT_FILE}"
+
+      - name: Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: platform/go.mod
+          cache-dependency-path: platform/go.sum
+
+      - name: PostgreSQL
+        run: |
+          if ! ls /usr/lib/postgresql/*/bin/initdb > /dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-16
+          fi
+          ls -d /usr/lib/postgresql/*/bin
+
+      - name: Versiones
+        run: |
+          go version
+          "$HOME/godot/${GODOT_FILE}" --headless --version
+
+      # Los registros de cada prueba quedan en $RUNNER_TEMP/e2e (fuera del proyecto, que Godot importa).
+      - name: Pruebas de extremo a extremo
+        working-directory: platform
+        timeout-minutes: 15
+        run: |
+          set -o pipefail
+          export ELDMARK_GODOT="$HOME/godot/${GODOT_FILE}"
+          export ELDMARK_E2E_ARTIFACTS="$RUNNER_TEMP/e2e"
+          mkdir -p "$ELDMARK_E2E_ARTIFACTS"
+          go test -tags e2e -count=1 -v -timeout 14m ./e2e 2>&1 | tee "$ELDMARK_E2E_ARTIFACTS/go-test.log"
+
+      - name: Resumen
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/e2e/go-test.log" ]; then
+            grep -E "^(--- |ok|FAIL)|: Test[A-Za-z]+: [0-9.]+ s" "$RUNNER_TEMP/e2e/go-test.log" | tee -a "$GITHUB_STEP_SUMMARY" || true
+          fi
+
+      - name: Subir registros
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-e2e-logs
+          path: ${{ runner.temp }}/e2e/
+          if-no-files-found: ignore
+          retention-days: 14

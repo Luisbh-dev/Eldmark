@@ -265,9 +265,15 @@ func test_unknown_commands_and_help() -> void:
 	_chat.submit("/xyz")
 	assert_eq(_chat.get_log().get_lines().back().text, "Comando desconocido. Escribe /ayuda.", "desconocido")
 	assert_eq(_chat.get_log().get_lines().back().channel, ChatChannel.Id.SYSTEM, "en el canal del sistema")
-	_chat.submit("/GM hola")
-	assert_eq(_chat.get_log().get_lines().back().text, ChatCommandParser.TEXT_UNKNOWN, "/gm también")
 	assert_true(_client.sent.is_empty(), "nada de eso sale por la red")
+	# /gm, /ignorar, /designorar y /reportar los atiende el servidor (docs/plataforma.md §9): van por el canal GM y la
+	# respuesta llega por el del sistema (a quien no tiene rol, «Comando desconocido» igual).
+	_chat.submit("/GM hola")
+	_chat.submit("/ignorar Bruno")
+	assert_eq(_client.sent, [{"channel": ChatChannel.Id.GM, "recipient": "", "text": "gm hola"},
+			{"channel": ChatChannel.Id.GM, "recipient": "", "text": "ignorar Bruno"}] as Array[Dictionary],
+			"los comandos del servidor salen por el canal GM")
+	_client.sent.clear()
 	var before: int = _chat.get_log().get_count()
 	_chat.submit("/AYUDA")
 	assert_eq(_chat.get_log().get_count() - before, ChatCommandParser.COMMANDS.size() + 1,

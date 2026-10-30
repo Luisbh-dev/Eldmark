@@ -14,9 +14,8 @@ import (
 )
 
 // MemoryProgressStore es el falso de [ProgressStore] (plataforma.md §7.5): guarda el progreso en
-// memoria, sin tablas. Lo usan las pruebas de la plataforma y, hasta que exista el almacén de
-// progresion.md P7, serve en dev y test (en staging y production no arranca con él): lo que guarda
-// se pierde al reiniciar.
+// memoria, sin tablas. Solo lo usan las pruebas de la plataforma (platformtest); serve y la orden
+// admin usan el almacén de verdad de progresion.md P7 (internal/progress).
 //
 // No ve las transacciones: si la de quien llama se deshace, lo escrito aquí se queda. Al crear un
 // personaje no importa (una creación reintentada recibe otro character_id); las pruebas que lo

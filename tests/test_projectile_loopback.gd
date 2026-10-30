@@ -207,9 +207,14 @@ func test_twenty_drawn_shots_at_30_m_on_a_running_target_with_150_ms_of_rtt() ->
 	var runner: NetClient = _clients[1]
 	_archer_id = archer.get_net_id()
 	_target_id = runner.get_net_id()
+	# Sin plataforma, un personaje efímero con inventario (progresion.md §9.4, P5b): la plantilla elegida antes de
+	# CLIENT_READY es su kit de inicio, con el arco en la ranura 1, y lo equipa su inventario (plantilla vigente 0).
 	var archer_combatant: Combatant = _server.get_combat().get_combatant(_archer_id)
-	assert_eq(archer_combatant.template_id, CombatCatalog.template_id(&"marksman"),
-			"la plantilla elegida antes de CLIENT_READY vale ya para la primera aparición")
+	assert_eq(archer_combatant.template_id, 0, "el equipo de su inventario")
+	var archer_weapon: ItemInstance = _server.get_progress().get_player(_archer_id).record.inventory.get_item(
+			InventoryState.ContainerId.EQUIPMENT, 0)
+	assert_true(archer_weapon != null and archer_weapon.def_id == &"bow_vado",
+			"la plantilla elegida antes de CLIENT_READY vale ya para la primera aparición: el kit del tirador")
 	assert_eq(archer.get_character().combat.weapon_id, CombatCatalog.weapon_id(&"bow"), "con el arco en la mano")
 	_server.get_combat().get_combatant(_target_id).immortal = true
 	_server.get_combat().projectiles.spawned.connect(_on_spawned)

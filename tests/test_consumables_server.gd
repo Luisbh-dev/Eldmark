@@ -321,8 +321,9 @@ func test_the_loadout_of_another_player_goes_out_with_zero_charges() -> void:
 	assert_eq(seen_by_observer[0].charges, 0, "el otro, con 0")
 	for event: NetMessages.EntityEvent in [seen_by_owner[0], seen_by_observer[0]]:
 		assert_eq(event.weapon_1, CombatCatalog.weapon_id(&"bow"), "las armas, las mismas")
-		assert_eq(event.template_id, CombatCatalog.template_id(&"squire"))
-	# Una recarga (comando 16) no cambia las armas: solo el dueño.
+		# Sin plataforma, un bot es un personaje efímero con inventario (progresion.md §9.4): plantilla 0.
+		assert_eq(event.template_id, 0, "el equipo del inventario")
+	# Una recarga (comando 16; con inventario, un CAMP_REFILL forzado) no cambia las armas: solo el dueño.
 	server.console_command("refill %s" % owner_name)
 	for _i: int in 60:
 		await tree.physics_frame

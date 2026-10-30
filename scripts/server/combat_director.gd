@@ -35,6 +35,9 @@ extends RefCounted
 ## [b]Plantillas[/b] (docs/habilidades.md, sección 4.6): [method equip_template] al dar de alta,
 ## [method _respawn] con la pendiente del peer en cada reaparición, la recarga del campamento y los comandos
 ## 5 [code]set_weapon[/code] y 16 [code]refill[/code]; cada cambio manda LOADOUT ([method announce_loadout]).
+## Quien tiene inventario (docs/progresion.md §4.1, §4.4 y §8, progresion.md P5b) aparece con su equipo
+## ([method equip_inventory]), reaparece con él ([member loadout_source]) y repone su bolsa en el campamento
+## ([member camp_step]): su plantilla vigente es 0.
 ## Todo estado de combate que impone el servidor pasa por
 ## [code]PlayerState.decode(PlayerState.encode())[/code] ([method commit_state]), el mismo redondeo
 ## que sufre en el cliente al reconciliar.
@@ -112,6 +115,14 @@ var stats: Dictionary[StringName, int] = {
 ## [code]() -> Dictionary[/code]: los [FortressState] vivos por id de fortaleza, para decidir qué puntos
 ## de reaparición valen ([method RespawnRules.points_for]). Sin esto no hay fortalezas.
 var fortress_states: Callable = Callable()
+## Inventario (docs/progresion.md §4.1, §4.4 y §8; lo pone el [ZoneServer] con su [ProgressService]):
+## [code](net_id: int) -> ProgressService.Loadout[/code], el equipo con el que reaparece quien tiene inventario (null
+## sin él: la plantilla, como siempre). Con él, la reaparición no mira la plantilla ni la pendiente del peer.
+var loadout_source: Callable = Callable()
+## [code](entity: NetEntity, tick: int) -> void[/code]: CAMP_REFILL de quien tiene inventario ([method
+## ProgressService.camp_step]); la recarga del campamento lo llama en lugar de la de la plantilla, con las mismas
+## condiciones (vivo, fuera de combate y en la zona segura de su reino) y la misma cadencia.
+var camp_step: Callable = Callable()
 
 var _history: StateHistory
 var _zone_id: StringName
@@ -386,6 +397,23 @@ func equip_template(combatant: Combatant, template_id: int, tick: int = -1) -> i
 	if tick >= 0:
 		announce_loadout(combatant, tick, true)
 	return resolved
+
+
+## Equipa a [param combatant] con el equipo de su inventario (docs/progresion.md §8) al aparecer por primera vez:
+## [method ActionMachine.set_loadout] con [param weapon_1] y [param weapon_2] (las ranuras 0 y 1 del equipo; 0 =
+## vacía) y [param charges] y, con [param second_active], [method ActionMachine.set_weapons] con la ranura 1 activa
+## (sin reutilizaciones). La plantilla vigente pasa a 0 («el equipo del inventario» en LOADOUT). Con [param tick] ≥ 0
+## manda LOADOUT, como [method equip_template].
+func equip_inventory(combatant: Combatant, weapon_1: int, weapon_2: int, second_active: bool, charges: int,
+		tick: int = -1) -> void:
+	combatant.template_id = 0
+	var character: PlayerCharacter = combatant.get_character()
+	ActionMachine.set_loadout(character.combat, weapon_1, weapon_2, charges)
+	if second_active:
+		ActionMachine.set_weapons(character.combat, weapon_1, weapon_2, true, PackedInt64Array(), PackedInt64Array())
+	commit_state(character)
+	if tick >= 0:
+		announce_loadout(combatant, tick, true)
 
 
 ## LOADOUT de [param combatant] en [param tick] (docs/habilidades.md, sección 5.4): su plantilla, sus armas
@@ -793,7 +821,7 @@ func _fire(shooter: Combatant, source: int, s: int, space: PhysicsDirectSpaceSta
 # autor del efecto como atacante, sin bloqueo ni crítico, con el más daño del autor. Puede matar o, si el
 # autor es un jugador de otro reino que sigue en la zona, derribar; no interrumpe ni impone controles.
 func _apply_pulse(target: Combatant, author_id: int, effect: StatusTicks, amount: int, s: int) -> void:
-	if not target.is_alive():
+	if not target.is_alive() or target.is_gm_invisible():
 		return
 	var author: Combatant = _combatants.get(author_id) if author_id > 0 else null
 	var rules: CombatRules = CombatCatalog.rules()
@@ -895,7 +923,10 @@ func _process_environment(s: int, list: Array[Combatant]) -> void:
 		if combatant.is_dead() or combatant.immortal:
 			continue
 		var character: PlayerCharacter = combatant.get_character()
-		if _in_lethal_volume(character, volumes):
+		# Un GM invisible no recibe daño (docs/plataforma.md §9.1): ni volúmenes letales ni caídas; el vacío sí, que
+		# solo devuelve el cuerpo al mundo.
+		var invisible: bool = combatant.is_gm_invisible()
+		if not invisible and _in_lethal_volume(character, volumes):
 			stats[&"lethal_volumes"] += 1
 			_die(combatant, s, _credited_killer(combatant, s), 0)
 			continue
@@ -905,7 +936,7 @@ func _process_environment(s: int, list: Array[Combatant]) -> void:
 			_die_in_the_void(combatant, s)
 			continue
 		var speed: float = character.last_landing_speed
-		if speed > rules.fall_damage_threshold:
+		if not invisible and speed > rules.fall_damage_threshold:
 			_apply_fall(combatant, s, roundi((speed - rules.fall_damage_threshold)
 					* float(rules.fall_damage_per_mps)))
 
@@ -999,20 +1030,32 @@ func _respawn(combatant: Combatant, point_index: int, s: int) -> void:
 		yaw = _yaw_of(transform)
 	var character: PlayerCharacter = combatant.get_character()
 	var combat: CombatState = character.combat
-	# La plantilla (docs/habilidades.md, sección 4.6): la pendiente del peer, si eligió otra, pasa a ser la
-	# vigente; reaparece con sus armas (la de la ranura 1 activa) y sus cargas. Sin plantilla (PNJ y luchadores
-	# montados a mano) reaparece con las armas y las cargas que llevaba.
 	var before: PackedInt32Array = weapons_in_slot_order(combat)
-	if combatant.peer != null and combatant.peer.pending_template_id >= 0:
-		combatant.template_id = resolve_template(combatant.peer.pending_template_id)
-		combatant.peer.pending_template_id = -1
-	var weapons: PackedInt32Array = CombatCatalog.template_weapons(combatant.template_id) \
-			if combatant.template_id > 0 else PackedInt32Array()
-	if weapons.is_empty():
-		ActionMachine.reset_for_respawn(combat, s, before[0], before[1], combat.consumable_charges)
+	# Quien tiene inventario (docs/progresion.md §8) reaparece con las armas de su equipo y las cargas de su bolsa,
+	# sin mirar plantillas: WEAPON_1 activa o, si está vacía, la 2 (set_weapons justo después, sin reutilizaciones).
+	var loadout: ProgressService.Loadout = loadout_source.call(combatant.get_id()) \
+			if loadout_source.is_valid() else null
+	var weapons: PackedInt32Array = PackedInt32Array()
+	if loadout != null:
+		combatant.template_id = 0
+		ActionMachine.reset_for_respawn(combat, s, loadout.weapon_1, loadout.weapon_2, loadout.charges)
+		if loadout.second_active:
+			ActionMachine.set_weapons(combat, loadout.weapon_1, loadout.weapon_2, true, PackedInt64Array(),
+					PackedInt64Array())
 	else:
-		ActionMachine.reset_for_respawn(combat, s, weapons[0], weapons[1] if weapons.size() > 1 else 0,
-				CombatCatalog.template_charges(combatant.template_id))
+		# La plantilla (docs/habilidades.md, sección 4.6): la pendiente del peer, si eligió otra, pasa a ser la
+		# vigente; reaparece con sus armas (la de la ranura 1 activa) y sus cargas. Sin plantilla (PNJ y
+		# luchadores montados a mano) reaparece con las armas y las cargas que llevaba.
+		if combatant.peer != null and combatant.peer.pending_template_id >= 0:
+			combatant.template_id = resolve_template(combatant.peer.pending_template_id)
+			combatant.peer.pending_template_id = -1
+		weapons = CombatCatalog.template_weapons(combatant.template_id) \
+				if combatant.template_id > 0 else PackedInt32Array()
+		if weapons.is_empty():
+			ActionMachine.reset_for_respawn(combat, s, before[0], before[1], combat.consumable_charges)
+		else:
+			ActionMachine.reset_for_respawn(combat, s, weapons[0], weapons[1] if weapons.size() > 1 else 0,
+					CombatCatalog.template_charges(combatant.template_id))
 	# Ya no debería quedar ninguno (se quitan al morir), pero reaparecer empieza siempre limpio.
 	status.clear(combatant)
 	combatant.mark_respawned(s)
@@ -1021,14 +1064,15 @@ func _respawn(combatant: Combatant, point_index: int, s: int) -> void:
 	stats[&"respawns"] += 1
 	_emit(NetMessages.EntityEvent.respawn(combatant.get_id(), s, index),
 			_ids([combatant.get_id()]))
-	if not weapons.is_empty():
+	if not weapons.is_empty() or loadout != null:
 		announce_loadout(combatant, s, before != weapons_in_slot_order(character.combat))
 
 
 # Recarga de los consumibles (docs/habilidades.md, sección 4.6), cada RECHARGE_INTERVAL_TICKS: quien está
 # vivo, fuera de combate, en la zona segura de su reino y con menos cargas que su plantilla las recupera todas
 # ([method ActionMachine.set_charges]: arma, reutilizaciones, ranuras y acción en curso no cambian) y su
-# dueño recibe LOADOUT.
+# dueño recibe LOADOUT. Para quien tiene inventario, con las mismas condiciones y la misma cadencia, el
+# CAMP_REFILL de su bolsa ([member camp_step], docs/progresion.md §4.4) en lugar de la plantilla.
 func _process_recharge(s: int, list: Array[Combatant]) -> void:
 	if s % RECHARGE_INTERVAL_TICKS != 0:
 		return
@@ -1036,7 +1080,13 @@ func _process_recharge(s: int, list: Array[Combatant]) -> void:
 	if safe == null:
 		return
 	for combatant: Combatant in list:
-		if combatant.template_id <= 0 or not combatant.is_alive() or combatant.is_in_combat(s):
+		if not combatant.is_alive() or combatant.is_in_combat(s):
+			continue
+		if combatant.template_id <= 0:
+			# Sin plantilla: quien tiene inventario repone su bolsa (camp_step no hace nada sin él).
+			if camp_step.is_valid() and combatant.entity.kind == NetProtocol.EntityKind.PLAYER \
+					and safe.contains_own(combatant.get_realm(), combatant.entity.get_position()):
+				camp_step.call(combatant.entity, s)
 			continue
 		var full: int = CombatCatalog.template_charges(combatant.template_id)
 		var combat: CombatState = combatant.get_character().combat

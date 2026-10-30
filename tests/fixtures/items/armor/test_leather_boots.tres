@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="ItemDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/progression/item_definition.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+id = &"test_leather_boots"
+display_name = "Botas de prueba"
+description = "Objeto de prueba (tests/fixtures/items): la regla de ARMOR de docs/progresion.md §2.1."
+category = 2
+equip_slot = 6
+ref_id = &""
+max_stack = 1
+required_level = 1
+base_value = 10
+bind_rule = 1
+destroyable = true
+has_durability = true
+starter = false
+camp_refill = 0
+icon_path = ""
+visual_paths = PackedStringArray()

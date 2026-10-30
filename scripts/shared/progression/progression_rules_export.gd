@@ -13,51 +13,21 @@ extends RefCounted
 ## [br][br]
 ## Secciones de docs/plataforma.md: [code]protocol_version[/code] (el
 ## [code]ELDMARK_MIN_PROTOCOL[/code] por defecto en dev y test) y [code]names[/code]. De
-## docs/progresion.md (P3): [code]races[/code] y [code]appearance[/code] ([AppearanceCatalog]),
-## [code]level_curve[/code] ([LevelCurve]), [code]currencies[/code], [code]reasons[/code],
-## [code]containers[/code] y [code]combat[/code] ([CombatRules]). [code]items[/code] (de
-## [code]ItemDatabase[/code], progresion.md P1) y [code]starter_templates[/code] (de las
-## [code]EquipmentTemplate[/code] de habilidades.md) entran con esos paquetes, cada una con su función.
+## docs/progresion.md: [code]races[/code] y [code]appearance[/code] ([AppearanceCatalog]),
+## [code]level_curve[/code] ([LevelCurve]), [code]currencies[/code] ([Currency]), [code]reasons[/code]
+## ([EconomyReason] y [constant OP_KINDS]), [code]containers[/code] ([InventoryState]) y [code]combat[/code]
+## ([CombatRules]), de P3 (P2 las hizo leer de sus clases sin cambiar el archivo); [code]items[/code]
+## ([ItemDatabase]) y [code]starter_templates[/code] (las [EquipmentTemplate] elegibles), de P1.
 ## Sin estado, reloj ni azar: dos llamadas dan lo mismo.
 
 ## Ruta del archivo, relativa a la raíz del proyecto.
 const OUTPUT_PATH: String = "res://platform/internal/gamedata/progression_rules.json"
 
-## Monedas (§5.1): código → id y tope. Hasta que progresion.md P2 cree [code]Currency[/code]; entonces
-## [method _currencies] lee de ahí ([code]Currency.Code[/code], [code]Currency.CAP[/code]) y el archivo
-## no cambia.
-const CURRENCIES: Array[Dictionary] = [
-	{"code": 1, "id": "gold", "cap": 1_000_000_000},
-	{"code": 2, "id": "merits", "cap": 1_000_000_000},
-]
-## Rangos de los motivos (§5.3): fuentes ([code]delta > 0[/code]), sumideros ([code]delta < 0[/code]) e
-## internos (cualquier signo). Los lee [code]EconomyReason[/code] de progresion.md P2.
-const REASON_RANGES: Dictionary = {
-	"source": {"min": 1, "max": 63},
-	"sink": {"min": 64, "max": 127},
-	"internal": {"min": 128, "max": 191},
-}
-## Motivos (§5.3), fijos: nunca se reutilizan. Los de fases siguientes ya tienen su número.
-const REASON_CODES: Dictionary = {
-	"starter_kit": 1, "camp_refill": 2, "pvp_kill": 3, "pvp_assist": 4, "objective": 5, "npc_kill": 6,
-	"gm_grant": 7, "loot": 8, "quest": 9, "vendor_sell": 10, "trade_in": 11, "mail_in": 12,
-	"craft_output": 13,
-	"player_destroy": 64, "consume": 65, "gm_remove": 66, "vendor_buy": 67, "repair": 68, "respec": 69,
-	"trade_out": 70, "mail_out": 71, "craft_input": 72, "quartermaster": 73, "market_fee": 74,
-	"reversal": 128, "migration": 129,
-}
 ## Tipos de operación ([code]economy_ops.kind[/code], [code]EconomyOp.Kind[/code] del servidor, §5.3);
 ## del 9 al 15, reservados. [code]EconomyOp[/code] (progresion.md P5a) tiene que dar los mismos números.
 const OP_KINDS: Dictionary = {
 	"player": 1, "gameplay": 2, "starter_kit": 3, "gm": 4, "reversal": 5, "migration": 6, "trade": 7,
 	"mail": 8,
-}
-## Contenedores y ranuras (§4.1). Hasta que progresion.md P2 cree [code]InventoryState[/code]; entonces
-## [method _containers] lee sus constantes y el archivo no cambia.
-const CONTAINERS: Dictionary = {
-	"bag": {"code": 0, "default_slots": 30, "max_slots": 120},
-	"equipment": {"code": 1, "slots": 7, "open_slots": 2},
-	"open": [0, 1],
 }
 
 
@@ -73,6 +43,8 @@ static func build() -> Dictionary:
 		"reasons": _reasons(),
 		"containers": _containers(),
 		"combat": _combat(),
+		"items": _items(),
+		"starter_templates": _starter_templates(),
 	}
 
 
@@ -148,28 +120,88 @@ static func _level_curve() -> Dictionary:
 	}
 
 
-## Sección [code]currencies[/code] (§5.1): código, id y tope de cada moneda.
+## Sección [code]currencies[/code] (§5.1): código, id y tope de cada moneda ([Currency]).
 static func _currencies() -> Array:
-	return CURRENCIES.duplicate(true)
+	var result: Array = []
+	for code: int in Currency.codes():
+		result.append({"code": code, "id": Currency.id_of(code), "cap": Currency.cap_of(code)})
+	return result
 
 
-## Sección [code]reasons[/code] (§5.3): rangos, motivos y tipos de operación.
+## Sección [code]reasons[/code] (§5.3): rangos y motivos ([EconomyReason]) y tipos de operación
+## ([constant OP_KINDS]).
 static func _reasons() -> Dictionary:
+	var codes: Dictionary = {}
+	for reason_name: String in EconomyReason.CODES:
+		codes[reason_name] = EconomyReason.CODES[reason_name]
 	return {
-		"ranges": REASON_RANGES.duplicate(true),
-		"codes": REASON_CODES.duplicate(),
+		"ranges": EconomyReason.ranges(),
+		"codes": codes,
 		"op_kinds": OP_KINDS.duplicate(),
 	}
 
 
-## Sección [code]containers[/code] (§4.1): la bolsa, el equipo y los contenedores abiertos en la fase 5.
+## Sección [code]containers[/code] (§4.1): la bolsa, el equipo y los contenedores abiertos en la fase 5
+## ([InventoryState]).
 static func _containers() -> Dictionary:
-	return CONTAINERS.duplicate(true)
+	var open: Array = []
+	for container: int in InventoryState.OPEN_CONTAINERS:
+		open.append(container)
+	return {
+		"bag": {
+			"code": InventoryState.ContainerId.BAG,
+			"default_slots": InventoryState.BAG_SLOTS_DEFAULT,
+			"max_slots": InventoryState.BAG_SLOTS_MAX,
+		},
+		"equipment": {
+			"code": InventoryState.ContainerId.EQUIPMENT,
+			"slots": InventoryState.EQUIPMENT_SLOTS,
+			"open_slots": InventoryState.OPEN_EQUIPMENT_SLOTS,
+		},
+		"open": open,
+	}
 
 
 ## Sección [code]combat[/code]: la vida máxima, para la comprobación S6 de [code]health[/code].
 static func _combat() -> Dictionary:
 	return {"health_max": CombatCatalog.rules().health_max}
+
+
+## Sección [code]items[/code] (§2.1, §13.4): por definición, en orden de net id (alfabético), lo que la
+## plataforma comprueba en un guardado (S5): id, categoría y ranura (los números de [ItemDefinition]), pila,
+## durabilidad y nivel requerido.
+static func _items() -> Array:
+	var db: ItemDatabase = ItemDatabase.shared()
+	var result: Array = []
+	for id: StringName in db.all_ids():
+		var definition: ItemDefinition = db.get_definition(id)
+		result.append({
+			"id": String(definition.id),
+			"category": int(definition.category),
+			"equip_slot": int(definition.equip_slot),
+			"max_stack": definition.max_stack,
+			"has_durability": definition.has_durability,
+			"required_level": definition.required_level,
+		})
+	return result
+
+
+## Sección [code]starter_templates[/code] (§2.5, §13.4): las [EquipmentTemplate] con
+## [code]selectable = true[/code], en el orden de su id, con los objetos de sus armas en orden de ranura
+## ([method ItemDatabase.for_ref]; un arma sin objeto sale como cadena vacía, y la plataforma rechaza el
+## archivo). Con ellas la plataforma valida [code]starter_template_id[/code] al crear el personaje.
+static func _starter_templates() -> Array:
+	var db: ItemDatabase = ItemDatabase.shared()
+	var result: Array = []
+	for template: EquipmentTemplate in CombatCatalog.tables().templates:
+		if not template.selectable:
+			continue
+		var weapons: Array = []
+		for weapon: WeaponDefinition in template.weapons:
+			var item: ItemDefinition = db.for_ref(ItemDefinition.Category.WEAPON, weapon.id) if weapon != null else null
+			weapons.append(String(item.id) if item != null else "")
+		result.append({"id": String(template.id), "weapons": weapons})
+	return result
 
 
 ## Un [PackedInt32Array] como [Array] de enteros (JSON con números enteros).

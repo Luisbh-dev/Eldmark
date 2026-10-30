@@ -827,6 +827,20 @@ func test_dead_and_protected_targets_are_not_candidates() -> void:
 	assert_eq(_resolve().size(), 0, "un muerto no recibe golpes")
 
 
+func test_an_invisible_gm_neither_hits_nor_is_hit() -> void:
+	# docs/plataforma.md §9.1 (P7b): el Combatant de un GM invisible no hace ni recibe daño.
+	var duel: Array[Combatant] = _duel(1.5)
+	CombatFixture.start_light_active(duel[0], S)
+	duel[1].entity.gm_invisible = true
+	assert_true(duel[1].is_gm_invisible())
+	assert_eq(_resolve().size(), 0, "el invisible no es candidato")
+	duel[1].entity.gm_invisible = false
+	duel[0].entity.gm_invisible = true
+	assert_eq(_resolve().size(), 0, "ni golpea")
+	duel[0].entity.gm_invisible = false
+	assert_eq(_resolve().size(), 1, "visibles, el golpe vuelve a entrar")
+
+
 func test_target_dead_at_view_tick_is_discarded() -> void:
 	var peer: ServerPeer = _lagged_peer()
 	var attacker: Combatant = _fighter(1, VARDHEIM, Vector3.ZERO, 0.0, peer)

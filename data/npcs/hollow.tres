@@ -10,3 +10,5 @@ max_health = 2500
 weapon_id = &"npc_hollow"
 attack_gap_s = Vector2(0.7, 1.4)
 garrison_id = &"realm_guard"
+xp_reward = 40
+gold_reward = 2

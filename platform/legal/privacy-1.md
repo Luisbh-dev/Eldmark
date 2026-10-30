@@ -26,17 +26,17 @@ fallos solo se envían si das tu consentimiento, que puedes retirar en Ajustes.
 | Dato | Se conserva |
 |---|---|
 | Chat (todos los canales, también los susurros) | 30 días |
-| Fragmentos de chat copiados a un reporte, reportes cerrados y auditoría | 1 año (en los reportes, desde el cierre; uno sin cerrar se cierra al año) |
+| Fragmentos de chat copiados a un reporte, reportes cerrados y auditoría | 1 año (en los reportes, desde el cierre; uno sin cerrar se cierra solo al año y cuenta desde entonces) |
 | Accesos (IP y agente de las sesiones y de los registros de acceso) | 30 días |
-| Sesiones y enlaces caducados · billetes de entrada · instancias de zona paradas · correos de prueba | 7 días · 1 día · 30 días · 7 días |
+| Sesiones y enlaces caducados · billetes de entrada · instancias de zona terminadas · correos de prueba | 7 días · 1 día · 30 días · 7 días |
 | Cuenta sin verificar el correo | 7 días |
-| Personaje borrado | Se puede restaurar 7 días; después queda solo una lápida sin nombre; el nombre, reservado 30 días más |
-| Historial de objetos y monedas de un personaje vivo | Mientras exista el personaje |
-| Historial de objetos y monedas de un personaje borrado | 1 año desde que se borra, sin nombres; ligado a tu cuenta mientras exista |
+| Personaje borrado | Se puede restaurar 7 días; después se purga y queda solo una lápida sin nombre. El nombre sigue reservado 30 días más (uno borrado en sus primeras 24 horas y con menos de una hora jugada, solo mientras se puede restaurar) |
+| Historial de objetos y monedas de un personaje vivo, y las correcciones que el personal del juego haga en él (quién, con qué nota y qué orden) | Mientras exista el personaje |
+| Historial de objetos y monedas de un personaje purgado, y esas correcciones | 1 año desde que se purga, sin nombres; ligado a tu cuenta mientras exista. Las notas de las correcciones se guardan como dato de moderación |
 | Cuenta borrada | 14 días de gracia; después se purga |
 | Sanciones | Mientras exista la cuenta; al purgarla, sin el motivo, 1 año más |
-| Huella (HMAC) del correo de una cuenta sancionada que se borra | Hasta el fin de la sanción o 90 días tras ella; 1 año como mucho |
-| Copias de seguridad | 35 días; al restaurar una, se vuelven a aplicar las purgas |
+| Huella (HMAC) del correo de una cuenta sancionada que se borra | Hasta 90 días después del fin de la última sanción (una expulsión permanente, el año entero); 1 año como mucho desde que se purga |
+| Copias de seguridad | 35 días; al restaurar una, se vuelven a aplicar las purgas con su fecha original |
 | Registros de los servidores | 30 días |
 | Estado de las fortalezas y recursos de los reinos | Sin límite: no son datos personales |
 
@@ -44,8 +44,12 @@ fallos solo se envían si das tu consentimiento, que puedes retirar en Ajustes.
 
 Desde el juego, con tu contraseña, puedes **descargar tus datos** (una vez al día) y **pedir el
 borrado de la cuenta** (se purga a los 14 días; hasta entonces puedes cancelarlo). Funciona también
-con la cuenta suspendida o expulsada. La descarga no incluye los reportes que otros hicieron sobre
-ti ni las notas de moderación.
+con la cuenta suspendida o expulsada. La descarga lleva tu cuenta, tus accesos de los últimos 30
+días, tus personajes con su progreso, sus objetos y el historial de sus monedas y objetos (también
+el que aún se conserva de los personajes purgados), tus ignorados, tus sanciones, los reportes que
+has hecho y el chat que has enviado. No incluye los reportes que otros hicieron sobre ti ni las notas
+de moderación: de una corrección del personal sobre tus personajes ves qué cambió y cuándo, pero no
+quién la hizo ni su nota.
 
 Si borras una cuenta con una sanción vigente o reciente, guardamos una huella del correo (no el
 correo) para que la sanción no se pueda evitar creando otra cuenta con él.

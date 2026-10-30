@@ -30,6 +30,9 @@ func TestAdminUsage(t *testing.T) {
 		{"admin", "--actor", "a@example.org", "create-account", "b@example.org"},
 		{"admin", "--actor", "a@example.org", "bootstrap", "b@example.org", "--password-file", "x"},
 		{"admin", "--actor", "a@example.org", "names", "rename", "Bran"},
+		{"admin", "--actor", "a@example.org", "reapply-purges"},
+		{"admin", "--actor", "a@example.org", "reapply-purges", "a.txt", "b.txt"},
+		{"admin", "reapply-purges", "purges.txt"},
 	} {
 		code, _, stderr := runWith(t, map[string]string{}, args...)
 		if code != exitUsage {
@@ -146,6 +149,24 @@ func TestAdminCommands(t *testing.T) {
 		status != "purged" {
 		t.Fatalf("purge-now: %q %v", status, err)
 	}
+	// reapply-purges sobre la misma base: lo de purge_log ya está purgado (nada cambia, 0); un
+	// purges.txt mal formado o que no existe, 1.
+	dir := t.TempDir()
+	purges := filepath.Join(dir, "purges.txt")
+	if err := os.WriteFile(purges, []byte("account\t"+strconv.FormatInt(bran, 10)+"\t2026-10-30 09:46:00.5+00\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out := run(exitOK, "--actor", "jefa@example.org", "reapply-purges", purges); !strings.Contains(out,
+		"ya purgados o sin fila en la copia: 1") || !strings.Contains(out, "Todo lo de purges.txt está purgado") {
+		t.Fatalf("reapply-purges:\n%s", out)
+	}
+	if err := os.WriteFile(purges, []byte("cuenta 1 ayer\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out := run(exitError, "--actor", "jefa@example.org", "reapply-purges", purges); !strings.Contains(out, "línea 1") {
+		t.Fatalf("purges.txt mal formado:\n%s", out)
+	}
+	run(exitError, "--actor", "jefa@example.org", "reapply-purges", filepath.Join(dir, "no-existe.txt"))
 	var cli, withOSUser int
 	if err := pool.QueryRow(ctx, `select count(*), count(*) filter (where args->>'os_user' = 'operadora')
 		from audit_log where source = 'cli'`).Scan(&cli, &withOSUser); err != nil || cli < 10 || cli != withOSUser {
@@ -219,5 +240,47 @@ func TestServeRunsTheChatRetention(t *testing.T) {
 	var key string
 	if err := pool.QueryRow(ctx, `select message_key from chat_messages`).Scan(&key); err != nil || key != "k1" {
 		t.Fatalf("queda el de hace 29 días: %q %v", key, err)
+	}
+}
+
+// serve corre las retenciones de §11.1 (privacy_retention) al arrancar: un acceso de hace 31 días y una lápida
+// purgada hace más de un año sin libro desaparecen; el acceso de ayer se queda.
+func TestServeRunsThePrivacyRetention(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	now := time.Now()
+	var account, tomb int64
+	if err := pool.QueryRow(ctx, `insert into accounts (email, age_confirmed_at) values ('a@example.org', $1)
+		returning account_id`, now).Scan(&account); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `insert into characters (world_id, account_id, realm, purged_at) values (1, $1, 1, $2)
+		returning character_id`, account, now.Add(-366*24*time.Hour)).Scan(&tomb); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `insert into auth_events (account_id, kind, user_agent, at) values ($1, 'login', 'viejo', $2),
+		($1, 'login', 'ayer', $3)`, account, now.Add(-31*24*time.Hour), now.Add(-24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	startServe(t, pool, serveEnv(pool))
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var events, tombs int
+		if err := pool.QueryRow(ctx, `select (select count(*) from auth_events where user_agent in ('viejo', 'ayer')),
+			(select count(*) from characters where character_id = $1)`, tomb).Scan(&events, &tombs); err != nil {
+			t.Fatal(err)
+		}
+		if events == 1 && tombs == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("accesos %d, lápida %d", events, tombs)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	var agent string
+	if err := pool.QueryRow(ctx, `select user_agent from auth_events where user_agent in ('viejo', 'ayer')`).Scan(&agent); err != nil ||
+		agent != "ayer" {
+		t.Fatalf("queda el de ayer: %q %v", agent, err)
 	}
 }

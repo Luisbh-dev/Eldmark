@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"os"
 	"strconv"
@@ -22,6 +21,7 @@ import (
 	"eldmark/platform/internal/gamedata"
 	"eldmark/platform/internal/logx"
 	"eldmark/platform/internal/migrate"
+	"eldmark/platform/internal/services"
 	"eldmark/platform/internal/testdb"
 )
 
@@ -68,18 +68,19 @@ func TestMigrateCommands(t *testing.T) {
 		t.Fatalf("status de una base vacía (pendientes → código 1): %d\n%s", code, stdout)
 	}
 	code, stdout, stderr := runWith(t, env, "migrate", "up")
-	if code != exitOK || !strings.Contains(stdout, "Aplicada 0001_accounts") || !strings.Contains(stdout, "Aplicada 0006_privacy") {
+	if code != exitOK || !strings.Contains(stdout, "Aplicada 0001_accounts") || !strings.Contains(stdout, "Aplicada 0006_privacy") ||
+		!strings.Contains(stdout, "Aplicada 0010_progress") {
 		t.Fatalf("up: %d\n%s%s", code, stdout, stderr)
 	}
 	if code, stdout, _ = runWith(t, env, "migrate", "up"); code != exitOK || !strings.Contains(stdout, "No hay migraciones pendientes") {
 		t.Fatalf("segundo up: %d %s", code, stdout)
 	}
 	code, stdout, _ = runWith(t, env, "migrate", "status")
-	if code != exitOK || strings.Count(stdout, "aplicada") != 6 || !strings.Contains(stdout, "UTC") {
+	if code != exitOK || strings.Count(stdout, "aplicada") != 7 || !strings.Contains(stdout, "UTC") {
 		t.Fatalf("status al día: %d\n%s", code, stdout)
 	}
 	if code, stdout, _ = runWith(t, env, "migrate", "down", "2"); code != exitOK ||
-		!strings.Contains(stdout, "Deshecha 0006_privacy\nDeshecha 0005_social") {
+		!strings.Contains(stdout, "Deshecha 0010_progress\nDeshecha 0006_privacy") {
 		t.Fatalf("down 2: %d %s", code, stdout)
 	}
 	for _, e := range []string{"staging", "production"} {
@@ -125,7 +126,7 @@ func startServeApp(t *testing.T, pool *pgxpool.Pool, env map[string]string) *app
 	if err != nil {
 		t.Fatal(err)
 	}
-	closeServices, err := mountServices(a, cfg, pool, logx.Discard())
+	closeServices, err := services.Mount(a, cfg, pool, logx.Discard())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +204,8 @@ func TestServeMountsTheAccounts(t *testing.T) {
 	}
 }
 
-// serve monta los personajes (P2) con el almacén del progreso en memoria y el protocolo mínimo de
+// serve monta los personajes (P2) con el almacén del progreso de verdad (progresion.md P7: la
+// validación de las reglas exportadas y las tablas de 0010_progress) y el protocolo mínimo de
 // progression_rules.json.
 func TestServeMountsTheCharacters(t *testing.T) {
 	pool := testdb.New(t)
@@ -217,10 +219,22 @@ func TestServeMountsTheCharacters(t *testing.T) {
 	if status != 200 || token == "" {
 		t.Fatalf("inicio de sesión: %d %v", status, body)
 	}
+	// 8 B que la validación provisional admitía y las reglas no (otra raza en el byte 0).
 	status, body = request(t, http.MethodPost, base+"/v1/worlds/1/characters", token, `{"name": "Servida",
 		"realm": "solmarch", "race_id": "race_solmarch", "appearance": "AQACAQADAiE=", "starter_template_id": "squire"}`)
+	if errBody, _ := body["error"].(map[string]any); status != 400 || errBody["code"] != "validation" {
+		t.Fatalf("apariencia que no vale: %d %v", status, body)
+	}
+	status, body = request(t, http.MethodPost, base+"/v1/worlds/1/characters", token, `{"name": "Servida",
+		"realm": "solmarch", "race_id": "race_solmarch", "appearance": "AgAAAAAHAAA=", "starter_template_id": "squire"}`)
 	if status != 201 {
 		t.Fatalf("crear: %d %v", status, body)
+	}
+	var stored int
+	if err := pool.QueryRow(context.Background(), `select count(*) from character_progress p
+		join character_wallets w using (character_id) where p.race_id = 'race_solmarch'`).Scan(&stored); err != nil ||
+		stored != 2 {
+		t.Fatalf("el progreso no está en la base: %d %v", stored, err)
 	}
 	status, body = request(t, http.MethodGet, base+"/v1/worlds/1/characters", token, "")
 	if status != 200 || body["realm"] != "solmarch" || body["used"] != 1.0 {
@@ -244,23 +258,27 @@ func TestServeMountsTheCharacters(t *testing.T) {
 	}
 }
 
-// En staging y production, serve no arranca con el almacén del progreso en memoria.
-func TestServeRefusesTheMemoryStoreWhenDeployed(t *testing.T) {
+// En staging y production, serve monta lo mismo: el almacén del progreso ya no es el falso en memoria
+// (hasta progresion.md P7, no arrancaba).
+func TestServeMountsTheStoreWhenDeployed(t *testing.T) {
 	pool := testdb.New(t)
 	env := serveEnv(pool)
 	cfg, err := config.Load(func(k string) (string, bool) { v, ok := env[k]; return v, ok })
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, err := app.New(cfg, pool, logx.Discard(), migrate.FS())
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, e := range []config.Env{config.EnvStaging, config.EnvProduction} {
 		cfg.Env = e
-		if _, err := mountServices(a, cfg, pool, logx.Discard()); !errors.Is(err, errNoProgressStore) {
-			t.Errorf("%s: %v", e, err)
+		a, err := app.New(cfg, pool, logx.Discard(), migrate.FS())
+		if err != nil {
+			t.Fatal(err)
 		}
+		closeServices, err := services.Mount(a, cfg, pool, logx.Discard())
+		if err != nil {
+			t.Errorf("%s: %v", e, err)
+			continue
+		}
+		closeServices()
 	}
 }
 

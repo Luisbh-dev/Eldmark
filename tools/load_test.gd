@@ -32,6 +32,13 @@ extends SceneTree
 ## godot --headless --path . -s res://tools/load_test.gd -- --scenario=siege --fakes=54 --bots=10 --seconds=60
 ## # Lo mismo con los PNJ de verdad y el fuerte sin ayudas (F6b): 32 contra 32, 120 s de medida
 ## godot --headless --path . -s res://tools/load_test.gd -- --scenario=siege --fakes=54 --bots=10 --seconds=120 --npcs
+##
+## # TEC-27 (docs/plataforma.md §10.2): 64 bots reales agrupados sin DTLS y con DTLS contra la misma zona, alternados
+## # (sin, con, sin, con), 60 s de medida cada pasada, y la comparación con el criterio (el p99 del tick no sube más
+## # de un 10 %)
+## godot --headless --path . -s res://tools/load_test.gd -- --dtls-compare
+## # Un escenario cualquiera por DTLS (con el certificado de las pruebas, o con --dtls-cert, --dtls-key y --dtls-name)
+## godot --headless --path . -s res://tools/load_test.gd -- --scenario=cluster --fakes=0 --bots=64 --swarms=2 --dtls
 ## [/codeblock]
 ## [b]Opciones[/b] (después de [code]--[/code]):
 ## [br]- [code]--scenario=cluster|spread|churn[/code] (por defecto [code]cluster[/code]):
@@ -80,6 +87,14 @@ extends SceneTree
 ## [br]- [code]--npcs[/code] (solo en los asedios, también con [code]--siege[/code]): con los PNJ de la zona y sin la
 ## orden que mata al capitán (ver [code]siege[/code] arriba). En los demás escenarios no cambia nada.
 ## [br]- [code]--brawl[/code] lanza la batería de refriegas de [constant BRAWL_MATRIX] (60 s de medida cada una).
+## [br]- [code]--dtls[/code] el servidor abre el puerto por DTLS ([code]--dtls-cert --dtls-key[/code]) y los
+## enjambres conectan con el certificado anclado ([code]--dtls-cert --dtls-name[/code]): por defecto, los de las pruebas
+## ([constant DTLS_TEST_CERT]); con [code]--dtls-cert=<pem> --dtls-key=<pem> --dtls-name=<cn>[/code], otros.
+## [br]- [code]--dtls-compare[/code] la campaña de TEC-27: el escenario (por defecto [code]cluster[/code] con
+## [constant DTLS_COMPARE_BOTS] bots en [constant DTLS_COMPARE_SWARMS] enjambres y [constant DTLS_COMPARE_FAKES]
+## falsos, [constant DTLS_COMPARE_SECONDS] s) sin y con DTLS, alternados, [code]--repeat=N[/code] veces cada uno
+## ([constant DTLS_COMPARE_REPEAT]); al final, la comparación ([method dtls_comparison]) y el criterio. Sale con 1 si no
+## se cumple y lleva [code]--check[/code].
 ## [br]- [code]--check[/code] sale con código 1 si algún escenario incumple el criterio de la fase 2.
 ## [br][br]
 ## [b]Qué mide[/b] (del [code]--report[/code] del servidor, de [method ZoneServer.write_report], y del de cada
@@ -203,6 +218,21 @@ const SIEGE_SECONDS: int = 120
 const SIEGE_EXTRA_SETTLE_SECONDS: float = 50.0
 ## Segundos de medida de un escenario suelto.
 const DEFAULT_SECONDS: int = 30
+## Certificado, clave y nombre DTLS de [code]--dtls[/code] si no se dan otros: los de las pruebas
+## (docs/plataforma.md §10.2).
+const DTLS_TEST_CERT: String = "res://tests/fixtures/dtls/zone_cert.pem"
+const DTLS_TEST_KEY: String = "res://tests/fixtures/dtls/zone_key.pem"
+const DTLS_TEST_NAME: String = "zona-pruebas.eldmark.test"
+## Campaña de [code]--dtls-compare[/code] (TEC-27, docs/plataforma.md §10.2): por defecto, 64 bots reales sin falsos
+## en dos enjambres, agrupados ([code]cluster[/code]: cada snapshot va lleno), 60 s de medida, y dos pasadas de cada
+## (sin, con, sin, con).
+const DTLS_COMPARE_FAKES: int = 0
+const DTLS_COMPARE_BOTS: int = 64
+const DTLS_COMPARE_SWARMS: int = 2
+const DTLS_COMPARE_SECONDS: int = 60
+const DTLS_COMPARE_REPEAT: int = 2
+## Criterio de TEC-27 (provisional, pendiente del usuario): DTLS no sube el p99 del tick más de esta fracción.
+const MAX_DTLS_P99_RISE: float = 0.10
 
 var _pids: Array[int] = []
 var _out_dir: String = ""
@@ -216,7 +246,19 @@ func _initialize() -> void:
 func _run() -> void:
 	var args: PackedStringArray = OS.get_cmdline_user_args()
 	var runs: Array[Dictionary] = []
-	if args.has("--matrix"):
+	if args.has("--dtls-compare"):
+		# TEC-27: el mismo escenario sin DTLS y con DTLS, alternados, --repeat veces cada uno.
+		var repeat: int = maxi(_int_option(args, "--repeat=", DTLS_COMPARE_REPEAT), 1)
+		for i: int in repeat:
+			for with_dtls: bool in [false, true]:
+				var run: Dictionary = _make_run(args, _option(args, "--scenario=", "cluster"),
+						_int_option(args, "--fakes=", DTLS_COMPARE_FAKES), _int_option(args, "--bots=", DTLS_COMPARE_BOTS), "",
+						DTLS_COMPARE_SECONDS)
+				run["swarms"] = maxi(_int_option(args, "--swarms=", DTLS_COMPARE_SWARMS), 1)
+				run["dtls"] = with_dtls
+				run["pass"] = i + 1
+				runs.append(run)
+	elif args.has("--matrix"):
 		for entry: Array in MATRIX:
 			runs.append(_make_run(args, entry[0], entry[1], entry[2], entry[3], MATRIX_SECONDS))
 	elif args.has("--brawl"):
@@ -245,9 +287,16 @@ func _run() -> void:
 		_print_summary(summary)
 		if not bool(summary.get("ok", false)) or not bool(summary.get("criterion_met", true)):
 			failed = true
+	var output: Variant = summaries
+	if args.has("--dtls-compare"):
+		var comparison: Dictionary = dtls_comparison(summaries)
+		_print_lines(_dtls_comparison_lines(comparison))
+		output = {"runs": summaries, "dtls_comparison": comparison}
+		if not bool(comparison.get("criterion_met", false)):
+			failed = true
 	var file: FileAccess = FileAccess.open(_out_dir.path_join("summary.json"), FileAccess.WRITE)
 	if file != null:
-		file.store_string(JSON.stringify(summaries, "\t"))
+		file.store_string(JSON.stringify(output, "\t"))
 		file.close()
 		print("Resumen JSON: %s" % _out_dir.path_join("summary.json"))
 	for pid: int in _pids:
@@ -274,6 +323,10 @@ func _make_run(args: PackedStringArray, scenario: String, fakes: int, bots: int,
 		"npcs": args.has("--npcs") and scenario == "siege",
 		"loadout": _option(args, "--fake-loadout=", BRAWL_LOADOUT if scenario == "brawl" else ""),
 		"sky_archers": _int_option(args, "--sky-archers=", BRAWL_SKY_ARCHERS_PERCENT),
+		"dtls": args.has("--dtls"),
+		"dtls_cert": _option(args, "--dtls-cert=", ProjectSettings.globalize_path(DTLS_TEST_CERT)),
+		"dtls_key": _option(args, "--dtls-key=", ProjectSettings.globalize_path(DTLS_TEST_KEY)),
+		"dtls_name": _option(args, "--dtls-name=", DTLS_TEST_NAME),
 	}
 
 
@@ -290,6 +343,10 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 		tag += "_" + String(run["net_sim"]).replace("=", "").replace(",", "_")
 	if bool(run.get("npcs", false)):
 		tag += "_npcs"
+	if bool(run.get("dtls", false)):
+		tag += "_dtls"
+	if run.has("pass"):
+		tag += "_%d" % int(run["pass"])
 	var port: int = _free_port()
 	var summary: Dictionary = {"tag": tag, "run": run, "port": port, "ok": false}
 	if port < 0:
@@ -339,11 +396,13 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 			server_args.append("--fake-archers=%d" % int(run["sky_archers"]))
 	if scenario == "siege":
 		server_args.append_array(siege_server_args(bool(run.get("npcs", false)), battle_log, settle_ticks))
+	if bool(run.get("dtls", false)):
+		server_args.append_array(dtls_server_args(run))
 	DirAccess.remove_absolute(server_report)
 	DirAccess.remove_absolute(server_log)
-	print("\n== %s%s: %d falsos, %d bots en %d proceso(s), %d s de medida (servidor %d ticks, puerto %d) ==" % [
-		scenario, " con PNJ" if bool(run.get("npcs", false)) else "", fakes, bots, swarms if bots > 0 else 0,
-		run["seconds"], server_ticks, port])
+	print("\n== %s%s%s: %d falsos, %d bots en %d proceso(s), %d s de medida (servidor %d ticks, puerto %d) ==" % [
+		scenario, " con PNJ" if bool(run.get("npcs", false)) else "", " con DTLS" if bool(run.get("dtls", false)) else "",
+		fakes, bots, swarms if bots > 0 else 0, run["seconds"], server_ticks, port])
 	var server_pid: int = _launch(server_args, server_log)
 	if server_pid <= 0:
 		summary["error"] = "no se pudo lanzar el servidor"
@@ -379,6 +438,8 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 			swarm_args.append("--bot-brain=siege")
 		if not str(run["net_sim"]).is_empty():
 			swarm_args.append("--net-sim=%s" % run["net_sim"])
+		if bool(run.get("dtls", false)):
+			swarm_args.append_array(dtls_swarm_args(run))
 		var pid: int = _launch(swarm_args, _out_dir.path_join("%s_swarm%d.log" % [tag, k]))
 		if pid > 0:
 			all_pids.append(pid)
@@ -450,6 +511,14 @@ func _summarise(summary: Dictionary, server: Dictionary, swarms: Array[Dictionar
 	summary["left_total"] = int(players.get("left_total", 0))
 	summary["server_kb_out_per_s"] = float(metrics.get("kb_out_per_s", 0.0))
 	summary["server_kb_in_per_s"] = float(metrics.get("kb_in_per_s", 0.0))
+	# Si el servidor abrió el puerto con DTLS y si todos los enjambres conectaron con él (TEC-27).
+	summary["server_dtls"] = bool(server.get("dtls", false))
+	var swarms_dtls: bool = not swarms.is_empty()
+	for data: Dictionary in swarms:
+		swarms_dtls = swarms_dtls and bool(data.get("dtls", false))
+	summary["swarms_dtls"] = swarms_dtls
+	if bool((summary["run"] as Dictionary).get("dtls", false)) and not bool(summary["server_dtls"]):
+		summary["error"] = "se pidió DTLS y el servidor no lo usó"
 
 	# Lo que miden los propios bots.
 	var played: int = 0
@@ -593,6 +662,11 @@ func _print_summary(summary: Dictionary) -> void:
 		lines.append("   ERROR: %s" % summary["error"])
 	if summary.has("sections_us"):
 		lines.append_array(_summary_lines(summary))
+	_print_lines(lines)
+
+
+# Imprime [param lines] y las añade a summary.txt.
+func _print_lines(lines: PackedStringArray) -> void:
 	for line: String in lines:
 		print(line)
 	var file: FileAccess = FileAccess.open(_out_dir.path_join("summary.txt"),
@@ -641,6 +715,8 @@ func _summary_lines(summary: Dictionary) -> PackedStringArray:
 	var run: Dictionary = summary["run"]
 	if not str(run["net_sim"]).is_empty():
 		lines.append("   Simulador de red de los bots: %s" % run["net_sim"])
+	if bool(summary.get("server_dtls", false)):
+		lines.append("   DTLS: el servidor sí; los enjambres %s" % ("también" if bool(summary.get("swarms_dtls", false)) else "NO"))
 	if int(summary["bots_measured"]) > 0:
 		lines.append("   Por cliente (%d bots):       bajada %.1f KB/s de media (máx %.1f), subida %.1f KB/s, snapshot de %.0f B" % [
 			summary["bots_measured"], summary["client_kb_down_per_s_avg"],
@@ -764,6 +840,91 @@ static func siege_server_args(with_npcs: bool, battle_log: String, open_circle_t
 	if not with_npcs:
 		args.append_array(PackedStringArray(["--no-npcs", "--run-at=%d:fort_kill_captain" % open_circle_tick]))
 	return args
+
+
+## Opciones DTLS del servidor de [param run] (las rutas de su certificado y su clave).
+static func dtls_server_args(run: Dictionary) -> PackedStringArray:
+	return PackedStringArray(["--dtls-cert=%s" % run["dtls_cert"], "--dtls-key=%s" % run["dtls_key"]])
+
+
+## Opciones DTLS de un enjambre de [param run]: el certificado que ancla y el nombre que comprueba.
+static func dtls_swarm_args(run: Dictionary) -> PackedStringArray:
+	return PackedStringArray(["--dtls-cert=%s" % run["dtls_cert"], "--dtls-name=%s" % run["dtls_name"]])
+
+
+## Comparación de [code]--dtls-compare[/code] (TEC-27): de los resúmenes de [param summaries] que salieron bien, la media
+## de cada cifra sin DTLS y con DTLS y lo que sube, con el criterio (el p99 del tick con DTLS no pasa en más de
+## [constant MAX_DTLS_P99_RISE] el de sin DTLS). Las cifras: p50 y p99 del tick y de las secciones [code]net[/code]
+## (recibir y descifrar) y [code]flush[/code] (cifrar y enviar), KB/s de entrada y salida del servidor y bajada por
+## cliente; [code]pairs[/code] trae los p99 del tick de cada pasada, para ver el ruido entre pasadas iguales.
+static func dtls_comparison(summaries: Array[Dictionary]) -> Dictionary:
+	var groups: Dictionary = {false: [], true: []}
+	for summary: Dictionary in summaries:
+		if not bool(summary.get("ok", false)) or not summary.has("sections_us"):
+			continue
+		(groups[bool((summary["run"] as Dictionary).get("dtls", false))] as Array).append(summary)
+	var result: Dictionary = {"plain_runs": (groups[false] as Array).size(), "dtls_runs": (groups[true] as Array).size()}
+	if (groups[false] as Array).is_empty() or (groups[true] as Array).is_empty():
+		result["criterion_met"] = false
+		result["error"] = "hacen falta pasadas buenas con y sin DTLS"
+		return result
+	var figures: Dictionary = {}
+	for section: String in ["tick", "net", "flush"]:
+		for stat: String in ["p50", "p99"]:
+			var key: String = "%s_%s_us" % [section, stat]
+			figures[key] = _compare(groups, func(summary: Dictionary) -> float:
+				return float(((summary["sections_us"] as Dictionary)[section] as Dictionary)[stat]))
+	figures["server_kb_in_per_s"] = _compare(groups, func(summary: Dictionary) -> float:
+		return float(summary["server_kb_in_per_s"]))
+	figures["server_kb_out_per_s"] = _compare(groups, func(summary: Dictionary) -> float:
+		return float(summary["server_kb_out_per_s"]))
+	figures["client_kb_down_per_s"] = _compare(groups, func(summary: Dictionary) -> float:
+		return float(summary["client_kb_down_per_s_avg"]))
+	figures["players_peak"] = _compare(groups, func(summary: Dictionary) -> float:
+		return float(summary["players_peak"]))
+	result["figures"] = figures
+	var pairs: Array[Dictionary] = []
+	for summary: Dictionary in summaries:
+		if bool(summary.get("ok", false)) and summary.has("sections_us"):
+			pairs.append({"tag": summary["tag"], "dtls": bool((summary["run"] as Dictionary).get("dtls", false)),
+					"tick_p99_us": int(((summary["sections_us"] as Dictionary)["tick"] as Dictionary)["p99"])})
+	result["passes"] = pairs
+	var tick_p99: Dictionary = figures["tick_p99_us"]
+	result["tick_p99_rise"] = float(tick_p99["rise"])
+	result["criterion_met"] = float(tick_p99["rise"]) <= MAX_DTLS_P99_RISE
+	return result
+
+
+# Media de [param figure] (un Callable sobre un resumen) sin y con DTLS, y lo que sube en fracción de la de sin.
+static func _compare(groups: Dictionary, figure: Callable) -> Dictionary:
+	var means: Array[float] = []
+	for with_dtls: bool in [false, true]:
+		var total: float = 0.0
+		for summary: Dictionary in groups[with_dtls]:
+			total += float(figure.call(summary))
+		means.append(total / float((groups[with_dtls] as Array).size()))
+	return {"plain": means[0], "dtls": means[1],
+			"rise": (means[1] - means[0]) / means[0] if means[0] > 0.0 else 0.0}
+
+
+# Líneas del resumen de --dtls-compare.
+func _dtls_comparison_lines(comparison: Dictionary) -> PackedStringArray:
+	var lines := PackedStringArray()
+	lines.append("== DTLS (TEC-27): %d pasadas sin y %d con ==" % [comparison["plain_runs"], comparison["dtls_runs"]])
+	if comparison.has("error"):
+		lines.append("   ERROR: %s" % comparison["error"])
+		return lines
+	lines.append("   Cifra                              sin DTLS    con DTLS    sube")
+	var figures: Dictionary = comparison["figures"]
+	for key: String in figures:
+		var data: Dictionary = figures[key]
+		lines.append("     %-30s %9.1f   %9.1f   %+5.1f %%" % [key, data["plain"], data["dtls"], 100.0 * float(data["rise"])])
+	for entry: Dictionary in comparison["passes"]:
+		lines.append("     pasada %-40s p99 del tick %6d µs" % [entry["tag"], entry["tick_p99_us"]])
+	lines.append("   Criterio de TEC-27 (DTLS no sube el p99 del tick más de un %.0f %%): %s (%+.1f %%)" % [
+		100.0 * MAX_DTLS_P99_RISE, "CUMPLIDO" if bool(comparison["criterion_met"]) else "NO CUMPLIDO",
+		100.0 * float(comparison["tick_p99_rise"])])
+	return lines
 
 
 # true si el escenario es aquel para el que se define el criterio de la fase 2 (docs/red.md, 16): 64

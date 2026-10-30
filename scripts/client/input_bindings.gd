@@ -65,6 +65,9 @@ static func ensure_defaults() -> void:
 	# Menú de jugador (SOC-07). Era T, provisional: T es la poción de resistencia desde la fase 4
 	# (docs/habilidades.md, sección 0, y sección 11.7).
 	_ensure_key(&"social_menu", KEY_G)
+	# Inventario y ventana de personaje (docs/progresion.md §11.1, UI-26).
+	_ensure_key(&"open_inventory", KEY_I)
+	_ensure_key(&"open_character", KEY_C)
 	# Espacio es saltar: no pulsa el botón que tenga el foco.
 	_erase_key(&"ui_accept", KEY_SPACE)
 

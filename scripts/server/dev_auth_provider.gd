@@ -1,9 +1,9 @@
 class_name DevAuthProvider
 extends AuthProvider
-## Proveedor de la fase 2: acepta el reino y el nombre que declara el cliente, sin cuentas ni
-## billetes (docs/red.md, sección 12). Desde la fase 5 el reino saldrá del personaje guardado o
-## del billete, y este proveedor solo servirá para desarrollo.
+## Proveedor sin plataforma (fase 2 y [code]--server[/code] sin [code]--platform[/code]): acepta en el acto el
+## reino y el nombre que declara el cliente, sin cuentas ni billetes (docs/red.md, sección 12). Los personajes son
+## efímeros y nada se guarda (docs/progresion.md §9.4). Con la plataforma, [TicketAuthProvider].
 
 
-func authenticate(_hello: NetMessages.Hello) -> int:
+func authenticate(_peer_id: int, _hello: NetMessages.Hello) -> int:
 	return NetProtocol.Result.OK

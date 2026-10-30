@@ -659,6 +659,7 @@ func test_npc_debug_writes_state_target_and_path_every_second() -> void:
 			CommandRegistry.Result.OK, "encender por la red")
 	assert_true(_rig.npcs().is_debug_enabled())
 	assert_true(hollow > 0)
-	# Los del protocolo 6: 13 y 14 llegaron con H3a; 15 y 16, con H3c (docs/habilidades.md §7.1).
+	# Los del protocolo 6: 13 y 14 llegaron con H3a; 15 y 16, con H3c (docs/habilidades.md §7.1). Los cuatro de la
+	# progresión del protocolo 7 (40 a 43), con progresion.md P5d.
 	assert_eq(_rig.server.get_commands().missing_network_commands(), PackedStringArray(),
 			"con npc_debug ya están todos los comandos de red")

@@ -286,7 +286,9 @@ Tamaños máximos: 821 B el CHAT_SEND y 875 B el CHAT_MESSAGE.
 
 Canales (`ChatChannel.Id`, no se reordenan): `0` decir, `1` zona, `2` susurro, `3` grupo, `4` banda, `5`
 gremio, `6` reino, `7` sistema, `8` GM. En la fase 4 el servidor reparte decir, zona, susurro, grupo y
-sistema; los otros contestan «Ese canal aún no está disponible».
+sistema; los otros contestan «Ese canal aún no está disponible». Desde el protocolo 7 (fase 5, plataforma.md §9 y
+§19.12), el `8` lleva los comandos que atiende el servidor: el cliente manda `/gm …`, `/ignorar`, `/designorar` y
+`/reportar` tal cual, sin la barra, y la respuesta llega por el canal del sistema.
 
 `decode` devuelve `null` (y no registra ningún error del motor) si el tamaño no cuadra con las longitudes,
 si el canal no existe, si un cliente manda el del sistema, si un susurro no lleva destinatario o cualquier
@@ -675,7 +677,9 @@ falso y nadie.
   personaje del billete, el campo del HELLO se ignora y la unicidad la garantiza la base de datos al crear el
   personaje; contra los conectados solo queda la sesión duplicada del mismo personaje, cuya respuesta solo ve
   su dueño. Prueba prevista entonces: `test_hello_cannot_probe_an_enemy_name` (con ENet, un HELLO con billete de
-  otro personaje y el nombre de un enemigo conectado no recibe `NAME`).
+  otro personaje y el nombre de un enemigo conectado no recibe `NAME`). **Cerrada en la fase 5** (plataforma.md P4, su §19.8): con
+  `--platform`, `ServerAuth` no mira el nombre ni el reino del HELLO y la prueba está en
+  `tests/test_zone_server_platform.gd` (sin plataforma, en desarrollo, el `REJECT NAME` sigue como en la fase 4).
 
 **Pendiente del usuario** (provisional, a la espera de ART-12 y de probarlo jugando): los colores de cada canal,
 las medidas y el desvanecimiento de la caja de chat, el aspecto y la posición de los marcos y del aviso de

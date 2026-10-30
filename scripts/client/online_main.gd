@@ -38,6 +38,15 @@ extends Node
 ## cliente sin pantalla (headless) no tiene a quién preguntar: entra como Vardheim con un aviso, y en
 ## un fallo escribe el informe y cierra con código 1.
 ## [br][br]
+## [b]Con cuenta[/b] (docs/plataforma.md §5.5 y §13). Con billete ([method ClientConfig.has_ticket]) el reino y el
+## nombre son los del personaje y no hay elección de reino. Si la sesión sale de [FrontMain]
+## ([member ClientConfig.from_front]), un rechazo o una desconexión vuelven a la selección de personaje con el motivo
+## (la sesión de la cuenta sigue). Un bot con [code]--platform[/code] hace antes el camino de la cuenta con
+## [AccountFlow]: inicia sesión con [code]--login[/code] y la contraseña de [code]--password-file[/code], crea el
+## personaje si falta ([code]--character[/code] o [method NameRules.bot_name] de la semilla), pide [code]enter[/code]
+## y conecta con el billete. Un fallo de ese camino (credenciales, [code]character_busy[/code] tras 30 s,
+## [code]zone_unavailable[/code]…) sale con código 1 y el [code]code[/code] en el informe ([code]platform[/code]).
+## [br][br]
 ## [b]Modo LOCAL[/b] ([code]--local[/code], sección 1.4): antes de conectar, si
 ## [code]user://dev_server.json[/code] describe un servidor vivo se usa su puerto; si no, se lanza uno
 ## ([LocalServerLauncher]) y se reintenta conectar durante [constant LocalServerLauncher.CONNECT_RETRY_MS]
@@ -70,6 +79,8 @@ const BOT_RESPAWN_RETRY_TICKS: int = 60
 ## Ancho (píxeles de la ventana base) de la columna de texto de la pantalla de carga.
 const OVERLAY_WIDTH: float = 900.0
 const REALM_SELECT_SCENE_PATH: String = "res://scenes/ui/realm_select.tscn"
+## Escena del título y la selección de personaje (vuelta de una sesión con [member ClientConfig.from_front]).
+const FRONT_MAIN_SCENE_PATH: String = "res://scenes/client/front_main.tscn"
 ## Capas de la pantalla de elección de reino (por debajo de la de carga, que es la 100).
 const REALM_SELECT_LAYER: int = 90
 
@@ -86,6 +97,11 @@ static var lock_path: String = LocalServerLauncher.LOCK_PATH
 ## [RealmSelect] si falta el reino y vuelve a ella tras un fallo (en headless, sin esto, entra como
 ## Vardheim y un fallo cierra el proceso con código 1).
 static var force_interactive: bool = false
+## Solo para pruebas: si es válido, la vuelta a [FrontMain] llama a este gancho con el motivo en lugar de cambiar de
+## escena.
+static var front_hook: Callable = Callable()
+## Solo para pruebas: gancho de [member PlatformApi.request_hook] para el camino de la cuenta del bot.
+static var account_request_hook: Callable = Callable()
 
 var _transport: NetTransport = null
 var _client: NetClient = null
@@ -119,6 +135,9 @@ var _leave_wait_ticks: int = 0
 var _quitting: bool = false
 var _report_written: bool = false
 var _exit_code: int = 0
+# Camino de la cuenta del bot con --platform: la API y lo que va al informe (clave «platform»).
+var _api: PlatformApi = null
+var _account_report: Dictionary = {}
 
 
 func _ready() -> void:
@@ -132,7 +151,10 @@ func _ready() -> void:
 	if not _is_bot():
 		InputBindings.ensure_defaults()
 		_create_overlay()
-	if config.realm == NetProtocol.Realm.NONE:
+	if _uses_account():
+		_enter_with_account()
+		return
+	if config.realm == NetProtocol.Realm.NONE and not config.has_ticket():
 		if _is_interactive():
 			_show_realm_select("")
 			return
@@ -180,6 +202,17 @@ func get_bot_brain() -> BotBrain:
 ## Código con el que se cerrará (o se cerró) el proceso.
 func get_exit_code() -> int:
 	return _exit_code
+
+
+## La API de la plataforma del bot con cuenta (null si no la usa).
+func get_platform_api() -> PlatformApi:
+	return _api
+
+
+## Lo que va al informe bajo [code]platform[/code] (vacío sin cuenta): [code]code[/code] (vacío si entró),
+## [code]status[/code], [code]message[/code], [code]character_id[/code] y [code]created[/code].
+func get_account_report() -> Dictionary:
+	return _account_report
 
 
 # Carga de la zona en un hilo: se sondea el estado en cada fotograma.
@@ -261,6 +294,92 @@ func _is_local() -> bool:
 	return config.mode == ClientConfig.Mode.LOCAL
 
 
+# Un bot con --platform que aún no tiene billete: primero el camino de la cuenta.
+func _uses_account() -> bool:
+	return _is_bot() and not config.platform_url.is_empty() and not config.has_ticket()
+
+
+# --- Bot con cuenta (docs/plataforma.md §5.5 y §13.3) ---------------------------------------------
+
+# Inicia sesión, asegura el personaje, pide enter y conecta con el billete. Cualquier fallo cierra con código 1.
+func _enter_with_account() -> void:
+	if config.login.is_empty() or config.password_file.is_empty():
+		_fail_account("missing_login", 0,
+				"El bot con --platform necesita --login=<correo> y --password-file=<ruta>")
+		return
+	var password: String = read_password_file(config.password_file)
+	if password.is_empty():
+		_fail_account("password_file", 0, "No se puede leer la contraseña de %s" % config.password_file)
+		return
+	_api = PlatformApi.new()
+	_api.base_url = config.platform_url
+	_api.request_hook = account_request_hook
+	add_child(_api)
+	var flow := AccountFlow.new(_api)
+	var started_msec: int = Time.get_ticks_msec()
+	print("[Eldmark] Iniciando sesión en %s como %s" % [config.platform_url, config.login])
+	var login: ApiResult = await flow.login(config.login, password)
+	if _quitting:
+		return
+	if not login.ok:
+		_fail_account_result(login)
+		return
+	if flow.get_session().is_privacy():
+		var restriction: Dictionary = flow.get_session().restriction
+		var code: String = str(restriction.get("code", "account_suspended"))
+		_fail_account(code, 403, PlatformErrors.text_for(ApiResult.failure(403, code, "", restriction)))
+		return
+	var character_name: String = config.character_name
+	if character_name.is_empty():
+		character_name = NameRules.bot_name(config.bot_seed)
+	var realm_id: StringName = RealmCatalog.id_of_code(config.realm) \
+			if RealmCatalog.is_realm_code(config.realm) else &""
+	var ensured: ApiResult = await flow.ensure_character(config.world_id, character_name, realm_id)
+	if _quitting:
+		return
+	if not ensured.ok:
+		_fail_account_result(ensured)
+		return
+	var character: Dictionary = ensured.data.get("character", {})
+	var character_id: int = AccountFlow.parse_id(character.get("character_id"))
+	_account_report = {"code": "", "status": 0, "message": "", "character_id": str(character_id),
+			"created": bool(ensured.data.get("created", false))}
+	var entered: ApiResult = await flow.enter(character_id, config)
+	if _quitting:
+		return
+	if not entered.ok:
+		_fail_account_result(entered)
+		return
+	config = entered.data["config"] as ClientConfig
+	print("[Eldmark] Personaje %s (%s): billete para %s:%d en %d ms" % [config.display_name, character_id,
+			config.address, config.port, Time.get_ticks_msec() - started_msec])
+	_begin_session()
+
+
+## La contraseña del archivo [param path] (la primera línea, sin el salto final); vacío si no se puede leer.
+static func read_password_file(path: String) -> String:
+	if path.is_empty() or not FileAccess.file_exists(path):
+		return ""
+	var file: FileAccess = FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return ""
+	var text: String = file.get_as_text()
+	file.close()
+	var line: String = text.get_slice("\n", 0).trim_suffix("\r")
+	return line
+
+
+func _fail_account_result(result: ApiResult) -> void:
+	_fail_account(result.code, result.status, PlatformErrors.text_for(result))
+
+
+func _fail_account(code: String, status: int, text: String) -> void:
+	_account_report["code"] = code
+	_account_report["status"] = status
+	_account_report["message"] = text
+	_fail("Cuenta: %s (%s)" % [text, code])
+
+
 # --- Sesión -----------------------------------------------------------------------------------
 
 # Empieza una sesión: transporte, controlador, nodo de entidades y cliente de red, y la conexión. En
@@ -288,6 +407,8 @@ func _create_session_nodes() -> void:
 	_entities.name = "Entities"
 	add_child(_entities)
 	_client = NetClient.new()
+	if not _account_report.is_empty():
+		_client.report_extra = {"platform": _account_report}
 	add_child(_client)
 	_client.welcomed.connect(_on_welcomed)
 	_client.rejected.connect(_on_rejected)
@@ -486,9 +607,13 @@ func _on_local_spawned(character: PlayerCharacter) -> void:
 		_controller.set_bot(_brain)
 		return
 
-	# Aspecto visual: el humanoide animado sustituye a la cápsula provisional.
-	if HumanoidVisual.install_replacing_placeholder(character) == null:
+	# Aspecto visual: el humanoide animado sustituye a la cápsula provisional, con la apariencia del SPAWN propio (la
+	# de por defecto de su pueblo si no vale o la zona no tiene progreso; docs/progresion.md §7.3).
+	var visual: HumanoidVisual = HumanoidVisual.install_replacing_placeholder(character)
+	if visual == null:
 		push_warning("[Eldmark] Sin visual del humanoide: se usa la cápsula provisional")
+	else:
+		AppearanceApplier.apply_bytes(visual, _client.get_own_appearance(), config.realm)
 
 	# Cámara de acción por encima del hombro, mirando hacia donde mira el personaje.
 	_camera_rig = _instantiate_scene(CAMERA_RIG_SCENE_PATH, CameraRig) as CameraRig
@@ -576,6 +701,9 @@ func _on_realm_chosen(realm: int, address: String, display_name: String) -> void
 		config.port = int(parsed["port"]) if int(parsed["port"]) > 0 else NetProtocol.DEFAULT_PORT
 	config.realm = realm
 	config.display_name = display_name
+	# Elegir reino es entrar sin cuenta: nunca con un billete viejo.
+	config.ticket = PackedByteArray()
+	config.character_id = 0
 	# La plantilla elegida sale en un LOADOUT_SELECT nada más llegar el WELCOME (NetClient); la de por
 	# defecto no hace falta pedirla.
 	var template_id: int = _realm_select.get_selected_template()
@@ -646,8 +774,25 @@ func _fail(text: String) -> void:
 	if _returning_to_menu:
 		return
 	_returning_to_menu = true
+	if config.from_front:
+		# La sesión salió de la selección de personaje: se vuelve a ella con el motivo (la cuenta sigue).
+		_return_to_front.call_deferred(text)
+		return
 	# Casi siempre se llama desde una señal del cliente, que no se puede liberar en ese momento.
 	_return_to_realm_select.call_deferred(text)
+
+
+# Vuelve a FrontMain (selección de personaje) con [param notice] como aviso.
+func _return_to_front(notice: String) -> void:
+	if _quitting:
+		return
+	_loading_path = ""
+	set_process(false)
+	FrontMain.return_notice = notice
+	if front_hook.is_valid():
+		front_hook.call(notice)
+		return
+	get_tree().change_scene_to_file(FRONT_MAIN_SCENE_PATH)
 
 
 func _quit(code: int) -> void:
@@ -664,7 +809,13 @@ func _quit(code: int) -> void:
 
 
 func _write_report() -> void:
-	if _report_written or config.report_path.is_empty() or _client == null:
+	if _report_written or config.report_path.is_empty():
+		return
+	if _client == null:
+		# El bot con cuenta que no llegó a conectar: solo lo de la cuenta.
+		if not _account_report.is_empty():
+			_report_written = true
+			_write_account_report()
 		return
 	_report_written = true
 	var error: Error = _client.write_report(config.report_path)
@@ -673,6 +824,24 @@ func _write_report() -> void:
 	else:
 		push_warning("[Eldmark] No se pudo escribir el informe '%s' (error %d)"
 				% [config.report_path, error])
+
+
+# Informe de un bot con cuenta que no llegó a conectar con la zona.
+func _write_account_report() -> void:
+	var report: Dictionary = {
+		"version": 1, "name": config.character_name, "mode": ClientConfig.Mode.keys()[config.mode],
+		"state": "ACCOUNT", "rejected": false, "platform": _account_report,
+	}
+	var directory: String = config.report_path.get_base_dir()
+	if not directory.is_empty() and not DirAccess.dir_exists_absolute(directory):
+		DirAccess.make_dir_recursive_absolute(directory)
+	var file: FileAccess = FileAccess.open(config.report_path, FileAccess.WRITE)
+	if file == null:
+		push_warning("[Eldmark] No se pudo escribir el informe '%s'" % config.report_path)
+		return
+	file.store_string(JSON.stringify(report, "\t"))
+	file.close()
+	print("[Eldmark] Informe escrito en %s" % config.report_path)
 
 
 # --- Pantalla de carga y avisos ---------------------------------------------------------------

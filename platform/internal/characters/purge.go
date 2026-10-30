@@ -46,12 +46,12 @@ const (
 	pathAccount                  // con la cuenta: solo purged_at nulo (manda la cuenta)
 )
 
-// errBusy es un personaje con un arrendamiento vivo: no se purga.
-var errBusy = errors.New("characters: el personaje tiene un arrendamiento vivo")
+// ErrBusy es un personaje con un arrendamiento vivo: no se purga (§11.2, paso 3).
+var ErrBusy = errors.New("characters: el personaje tiene un arrendamiento vivo")
 
 // purge purga un personaje dentro de tx, con los bloqueos de §11.2 en el orden del guardado
 // (primero el arrendamiento, después la fila de characters): devuelve si lo purgó. Con un
-// arrendamiento vivo devuelve errBusy y no toca nada.
+// arrendamiento vivo devuelve ErrBusy y no toca nada.
 func (p *Purger) purge(ctx context.Context, tx pgx.Tx, characterID int64, at time.Time, path purgePath) (bool, error) {
 	// 1. El arrendamiento, si hay fila.
 	var leaseInstance *[16]byte
@@ -83,7 +83,7 @@ func (p *Purger) purge(ctx context.Context, tx pgx.Tx, characterID int64, at tim
 	}
 	// 3. Con un arrendamiento vivo no se purga: la vuelta siguiente lo reintenta.
 	if leaseInstance != nil && leaseExpires != nil && leaseExpires.After(at) {
-		return false, errBusy
+		return false, ErrBusy
 	}
 	// 4. El progreso, la identidad y la lápida.
 	if err := p.progress.Purge(ctx, tx, characterID); err != nil {
@@ -134,13 +134,29 @@ func (p *Purger) PurgeAccountCharacters(ctx context.Context, tx pgx.Tx, accountI
 	}
 	for _, id := range ids {
 		if _, err := p.purge(ctx, tx, id, at, pathAccount); err != nil {
-			if errors.Is(err, errBusy) {
+			if errors.Is(err, ErrBusy) {
 				return fmt.Errorf("%w (personaje %d)", accounts.ErrCharactersBusy, id)
 			}
 			return err
 		}
 	}
 	return nil
+}
+
+// ReapplyPurge vuelve a purgar, tras restaurar una copia, un personaje que purge_log da por purgado
+// (admin reapply-purges, §11.2), en su propia transacción: el camino de la cuenta (basta purged_at
+// nulo, aunque la copia lo traiga vivo o borrado y aún restaurable) con at, el purged_at original
+// de purges.txt, en lugar de la hora; de él salen el año del libro y los 30 días del nombre.
+// Devuelve false si el personaje no existe en la copia o ya estaba purgado. reapply-purges borra
+// antes todos los arrendamientos; si aun así hay uno vivo, devuelve [ErrBusy] y no toca nada.
+func (p *Purger) ReapplyPurge(ctx context.Context, characterID int64, at time.Time) (bool, error) {
+	var done bool
+	err := db.InTx(ctx, p.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		var err error
+		done, err = p.purge(ctx, tx, characterID, at, pathAccount)
+		return err
+	})
+	return done, err
 }
 
 // PurgeExpired es el trabajo horario de los personajes borrados (§11.1): purga, cada uno en su
@@ -169,7 +185,7 @@ func (p *Purger) PurgeExpired(ctx context.Context) error {
 			return err
 		})
 		switch {
-		case errors.Is(err, errBusy):
+		case errors.Is(err, ErrBusy):
 			p.log.Warn("personaje sin purgar: está en el mundo; se reintenta en la vuelta siguiente", "character", id)
 		case err != nil:
 			errs = append(errs, fmt.Errorf("personaje %d: %w", id, err))

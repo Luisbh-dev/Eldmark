@@ -55,8 +55,8 @@ type Options struct {
 	Clock    clock.Clock // por defecto, el del sistema
 	Accounts *accounts.Service
 	Progress persistence.ProgressStore
-	// Validator valida raza, apariencia y plantilla al crear; nil: persistence.ProvisionalValidator
-	// (hasta progresion.md P7, que aporta *progress.Rules).
+	// Validator valida raza, apariencia y plantilla al crear (serve: *progress.Rules, de
+	// progresion.md P7); nil: persistence.ProvisionalValidator, la de las pruebas.
 	Validator persistence.CreateValidator
 	// Names son las reglas de los nombres; nil: las de progression_rules.json.
 	Names *names.Rules

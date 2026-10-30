@@ -54,12 +54,16 @@ func test_names_section() -> void:
 
 # --- Secciones de progresion.md (P3) --------------------------------------------------------------
 
-## Las secciones de progresion.md §13.4 que ya existen. [code]items[/code] y [code]starter_templates[/code]
-## llegan con ItemDatabase (progresion.md P1) y las plantillas de habilidades.md (progresion.md §19).
+## Las secciones de progresion.md §13.4, todas desde P1 ([code]items[/code] y [code]starter_templates[/code]).
 func test_progression_sections_present() -> void:
 	var data: Dictionary = ProgressionRulesExport.build()
-	for section: String in ["races", "appearance", "level_curve", "currencies", "reasons", "containers", "combat"]:
+	for section: String in ["races", "appearance", "level_curve", "currencies", "reasons", "containers", "combat",
+			"items", "starter_templates"]:
 		assert_true(data.has(section), "sección %s (progresion.md §13.4)" % section)
+	var keys: Array = data.keys()
+	keys.sort()
+	assert_eq(keys, ["appearance", "combat", "containers", "currencies", "items", "level_curve", "names",
+			"protocol_version", "races", "reasons", "starter_templates"], "ni más ni menos secciones")
 
 
 ## Las tres razas, en el orden del catálogo, con el reino en código y la regla entera de la apariencia.
@@ -132,3 +136,41 @@ func test_currencies_reasons_containers_combat() -> void:
 	assert_eq(data["containers"], {"bag": {"code": 0, "default_slots": 30, "max_slots": 120},
 			"equipment": {"code": 1, "slots": 7, "open_slots": 2}, "open": [0, 1]}, "contenedores de §4.1")
 	assert_eq(data["combat"], {"health_max": CombatCatalog.rules().health_max}, "vida máxima de CombatRules")
+
+
+# --- Secciones de progresion.md (P1) --------------------------------------------------------------
+
+## Una entrada por definición de ItemDatabase, en orden de net id, con lo que mira S5.
+func test_items_section() -> void:
+	var items: Array = ProgressionRulesExport.build()["items"]
+	var db: ItemDatabase = ItemDatabase.shared()
+	var ids: Array[StringName] = db.all_ids()
+	assert_eq(items.size(), ids.size(), "una entrada por objeto")
+	for i: int in range(mini(items.size(), ids.size())):
+		var definition: ItemDefinition = db.get_definition(ids[i])
+		assert_eq(items[i], {"id": String(definition.id), "category": int(definition.category),
+				"equip_slot": int(definition.equip_slot), "max_stack": definition.max_stack,
+				"has_durability": definition.has_durability, "required_level": definition.required_level},
+				"items[%d] es %s (net id %d)" % [i, ids[i], i + 1])
+	assert_eq(items[0]["id"], "bow_vado", "el arco primero (alfabético)")
+	assert_eq(items[1], {"id": "potion_health", "category": 3, "equip_slot": 0, "max_stack": 15,
+			"has_durability": false, "required_level": 1}, "la poción de vida con los números de §2.1")
+
+
+## Las plantillas elegibles (hoy marksman y squire) con los objetos de sus armas en orden de ranura.
+func test_starter_templates_section() -> void:
+	var templates: Array = ProgressionRulesExport.build()["starter_templates"]
+	assert_eq(templates, [{"id": "marksman", "weapons": ["bow_vado", "sword_shield_vado"]},
+			{"id": "squire", "weapons": ["sword_shield_vado"]}], "marksman y squire con sus armas")
+	var selectable: Array[String] = []
+	for template: EquipmentTemplate in CombatCatalog.tables().templates:
+		if template.selectable:
+			selectable.append(String(template.id))
+	var exported: Array[String] = []
+	for entry: Dictionary in templates:
+		exported.append(String(entry["id"]))
+		for item_id: String in entry["weapons"]:
+			var item: ItemDefinition = ItemDatabase.shared().get_definition(StringName(item_id))
+			assert_true(item != null and item.category == ItemDefinition.Category.WEAPON,
+					"%s: %s es un arma de ItemDatabase" % [entry["id"], item_id])
+	assert_eq(exported, selectable, "todas las elegibles y solo ellas")

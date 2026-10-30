@@ -1,6 +1,7 @@
 extends TestCase
 ## Pruebas de [ClientConfig]: los argumentos de usuario del cliente en red (docs/red.md, 1.2), y de
-## cómo [code]boot.gd[/code] los deja pasar sin avisos de «argumento desconocido».
+## cómo [code]boot.gd[/code] los deja pasar sin avisos de «argumento desconocido». Desde la fase 5, también los
+## modos con cuenta y su prioridad, el modo TITLE y [code]--dtls-*[/code] (docs/plataforma.md §5.5, §13.3 y §15 P8).
 
 const BootScript = preload("res://scripts/boot.gd")
 
@@ -212,3 +213,150 @@ func test_loadout_option_takes_a_selectable_template_by_name() -> void:
 	assert_eq(_parse([]).get_loadout_template_id(), 0, "sin --loadout, la de por defecto (no se pide nada)")
 	assert_true(ClientConfig.is_selectable_template("squire"))
 	assert_false(ClientConfig.is_selectable_template(""))
+
+
+# --- Fase 5: cuenta y plataforma (docs/plataforma.md §13.3) -----------------------------------------
+
+func test_account_defaults_without_arguments() -> void:
+	var config: ClientConfig = _parse([])
+	assert_eq(config.platform_url, "", "sin plataforma")
+	assert_eq(config.login, "")
+	assert_eq(config.password_file, "")
+	assert_eq(config.character_name, "")
+	assert_eq(config.world_id, 1)
+	assert_false(config.title)
+	assert_eq(config.dtls_cert_path, "")
+	assert_eq(config.dtls_name, "")
+	assert_eq(config.character_id, 0)
+	assert_false(config.has_ticket())
+	assert_false(config.has_dtls())
+	assert_false(config.from_front)
+
+
+func test_without_arguments_the_editor_opens_the_sandbox_and_an_export_the_title() -> void:
+	assert_eq(ClientConfig.from_args(PackedStringArray()).mode, ClientConfig.Mode.OFFLINE, "editor: el sandbox")
+	var exported: ClientConfig = ClientConfig.from_args(PackedStringArray(), true)
+	assert_eq(exported.mode, ClientConfig.Mode.TITLE, "exportación: el título")
+	assert_eq(exported.platform_url, ClientConfig.default_platform_url(), "contra el ajuste del proyecto")
+	assert_eq(ClientConfig.default_platform_url(), "http://127.0.0.1:24680",
+			"el ajuste eldmark/platform/url del proyecto")
+	var sandbox_args: ClientConfig = ClientConfig.from_args(PackedStringArray(["--zone=test_world"]), true)
+	assert_eq(sandbox_args.mode, ClientConfig.Mode.TITLE, "las opciones del sandbox no cambian eso")
+
+
+func test_title_and_platform_open_the_title() -> void:
+	var title: ClientConfig = _parse(["--title"])
+	assert_eq(title.mode, ClientConfig.Mode.TITLE)
+	assert_true(title.title)
+	assert_eq(title.platform_url, ClientConfig.DEFAULT_PLATFORM_URL, "sin --platform, el del proyecto")
+	var platform: ClientConfig = _parse(["--platform=https://cuentas.eldmark.example"])
+	assert_eq(platform.mode, ClientConfig.Mode.TITLE, "--platform solo también es el título")
+	assert_eq(platform.platform_url, "https://cuentas.eldmark.example")
+	assert_true(platform.warnings.is_empty())
+	var both: ClientConfig = _parse(["--title", "--platform=http://127.0.0.1:9000"])
+	assert_eq(both.mode, ClientConfig.Mode.TITLE)
+	assert_eq(both.platform_url, "http://127.0.0.1:9000")
+
+
+func test_mode_priority_with_the_account_options() -> void:
+	var with_platform: Callable = func(extra: Array) -> ClientConfig:
+		var args := PackedStringArray(["--platform=http://127.0.0.1:24680", "--title"])
+		for arg: Variant in extra:
+			args.append(str(arg))
+		return ClientConfig.from_args(args)
+	var swarm: ClientConfig = with_platform.call(["--bots=4", "--bot", "--connect=h", "--local"])
+	assert_eq(swarm.mode, ClientConfig.Mode.SWARM, "--bots gana a todo")
+	var bot: ClientConfig = with_platform.call(["--bot", "--connect=h", "--local"])
+	assert_eq(bot.mode, ClientConfig.Mode.BOT, "--bot > --connect/--local > --title/--platform")
+	assert_eq(bot.platform_url, "http://127.0.0.1:24680", "y el bot conserva la plataforma")
+	var local: ClientConfig = with_platform.call(["--local", "--connect=h"])
+	assert_eq(local.mode, ClientConfig.Mode.LOCAL)
+	var online: ClientConfig = with_platform.call(["--connect=h"])
+	assert_eq(online.mode, ClientConfig.Mode.ONLINE, "--connect > --title/--platform")
+	var exported_bot: ClientConfig = ClientConfig.from_args(PackedStringArray(["--bot"]), true)
+	assert_eq(exported_bot.mode, ClientConfig.Mode.BOT, "una exportación con modo no abre el título")
+
+
+func test_bot_account_options() -> void:
+	var config: ClientConfig = _parse(["--bot", "--platform=http://localhost:24680", "--login=Bot1@Eldmark.test",
+			"--password-file=build\\secretos\\bot.txt", "--character=Aneira", "--world=3", "--realm=solmarch"])
+	assert_eq(config.mode, ClientConfig.Mode.BOT)
+	assert_eq(config.platform_url, "http://localhost:24680")
+	assert_eq(config.login, "Bot1@Eldmark.test", "el correo tal cual (lo normaliza AccountFlow)")
+	assert_eq(config.password_file, "build/secretos/bot.txt", "barras normales")
+	assert_eq(config.character_name, "Aneira")
+	assert_eq(config.world_id, 3)
+	assert_eq(config.realm, NetProtocol.Realm.SOLMARCH)
+	assert_true(config.warnings.is_empty(), "%s" % [config.warnings])
+	var bad_world: ClientConfig = _parse(["--bot", "--world=0"])
+	assert_eq(bad_world.world_id, 1, "un mundo fuera de rango se ignora")
+	assert_eq(bad_world.warnings.size(), 1)
+	var huge_world: ClientConfig = _parse(["--bot", "--world=70000"])
+	assert_eq(huge_world.world_id, 1, "el mundo cabe en un u16")
+
+
+func test_dtls_options() -> void:
+	var config: ClientConfig = _parse(["--bot", "--connect=127.0.0.1", "--dtls-cert=build\\zona.pem",
+			"--dtls-name=vado-gris.eldmark"])
+	assert_eq(config.dtls_cert_path, "build/zona.pem")
+	assert_eq(config.dtls_name, "vado-gris.eldmark")
+	assert_true(config.has_dtls())
+	assert_true(config.warnings.is_empty())
+	var without_name: ClientConfig = _parse(["--connect=127.0.0.1", "--dtls-cert=zona.pem"])
+	assert_true(without_name.has_dtls())
+	assert_eq(without_name.warnings.size(), 1, "--dtls-cert sin --dtls-name avisa")
+	var pem_only := ClientConfig.new()
+	pem_only.dtls_cert_pem = "-----BEGIN CERTIFICATE-----"
+	assert_true(pem_only.has_dtls(), "el PEM de enter también es DTLS")
+
+
+func test_platform_url_rules() -> void:
+	assert_eq(ClientConfig.platform_url_error("https://cuentas.eldmark.example"), "")
+	assert_eq(ClientConfig.platform_url_error("https://cuentas.eldmark.example:8443/base"), "")
+	assert_eq(ClientConfig.platform_url_error("http://127.0.0.1:24680"), "", "http:// hacia esta máquina vale")
+	assert_eq(ClientConfig.platform_url_error("http://localhost:24680"), "")
+	assert_eq(ClientConfig.platform_url_error("http://[::1]:24680"), "")
+	assert_eq(ClientConfig.platform_url_error("http://127.8.9.10"), "", "todo 127.0.0.0/8")
+	assert_false(ClientConfig.platform_url_error("http://cuentas.eldmark.example").is_empty(),
+			"http:// fuera de esta máquina no")
+	assert_false(ClientConfig.platform_url_error("http://127.0.0.1.example.org").is_empty(),
+			"un nombre que empieza por 127. no es loopback")
+	assert_false(ClientConfig.platform_url_error("ftp://cuentas.eldmark.example").is_empty())
+	assert_false(ClientConfig.platform_url_error("cuentas.eldmark.example").is_empty())
+	assert_false(ClientConfig.platform_url_error("https://").is_empty())
+	assert_false(ClientConfig.platform_url_error("").is_empty())
+	assert_eq(ClientConfig.url_host("https://usuario@cuentas.example:443/v1?x=1"), "cuentas.example")
+	assert_eq(ClientConfig.url_host("http://[::1]:24680/"), "::1")
+	var insecure: ClientConfig = _parse(["--platform=http://cuentas.eldmark.example"])
+	assert_eq(insecure.platform_url, "http://cuentas.eldmark.example",
+			"una URL que no vale se conserva: quien la use falla con su motivo")
+	assert_eq(insecure.warnings.size(), 1, "y se avisa")
+	var empty: ClientConfig = _parse(["--platform="])
+	assert_eq(empty.warnings.size(), 1, "--platform vacío avisa")
+
+
+func test_duplicate_config_copies_everything_independently() -> void:
+	var config: ClientConfig = _parse(["--bot", "--platform=http://127.0.0.1:24680", "--login=a@b.c",
+			"--report=build/r.json", "--bot-seed=5", "--world=2"])
+	config.ticket = PackedByteArray([1, 2, 3])
+	config.warnings.append("aviso")
+	var copy: ClientConfig = config.duplicate_config()
+	assert_eq(copy.mode, ClientConfig.Mode.BOT)
+	assert_eq(copy.platform_url, config.platform_url)
+	assert_eq(copy.login, "a@b.c")
+	assert_eq(copy.report_path, "build/r.json")
+	assert_eq(copy.bot_seed, 5)
+	assert_eq(copy.world_id, 2)
+	assert_eq(copy.ticket, PackedByteArray([1, 2, 3]))
+	copy.ticket.append(4)
+	copy.warnings.append("otro")
+	assert_eq(config.ticket.size(), 3, "el billete de la copia no es el mismo")
+	assert_eq(config.warnings.size(), 1, "ni los avisos")
+
+
+func test_account_arguments_are_not_reported_as_unknown_by_boot() -> void:
+	var options: Dictionary = BootScript.parse_client_options(PackedStringArray([
+		"--title", "--platform=http://127.0.0.1:24680", "--login=a@b.c", "--password-file=p.txt",
+		"--character=Aneira", "--world=1", "--dtls-cert=zona.pem", "--dtls-name=zona",
+	]))
+	assert_eq(options["warnings"], PackedStringArray(), "ningún argumento de la cuenta es desconocido")
