@@ -1,0 +1,10 @@
+drop table outbound_mail;
+drop table entitlements;
+drop table consents;
+drop table legal_acceptances;
+drop table legal_documents;
+drop table auth_events;
+drop table account_tokens;
+drop table sessions;
+drop table accounts;
+drop table worlds;

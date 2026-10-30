@@ -1,0 +1,153 @@
+package characters_test
+
+import (
+	"context"
+	"net/http"
+	"strings"
+	"testing"
+	"time"
+)
+
+// La purga horaria deja como lápida al personaje cuyo plazo de restaurar venció (§11.2): sin
+// nombre, con purged_at y su fila en purge_log, sin progreso, estadísticas ni billetes; el nombre
+// sigue reservado lo que le tocaba.
+func TestPurgeExpiredLeavesATombstone(t *testing.T) {
+	h := newHarness(t)
+	p := h.newPlayer("ana@example.org")
+	id := h.mustCreate(p, "Brenna", "vardheim")
+	keep := h.mustCreate(p, "Aneira", "vardheim")
+	zone := h.zone("vado_gris", 0, []int16{1, 2}, 0, 64, "live")
+	h.expect(h.enter(p, id), http.StatusOK, "")
+	h.advance(2*day, p)
+	h.expect(h.remove(p, id, "Brenna"), http.StatusOK, "")
+	purger := h.svc.Purger()
+	ctx := context.Background()
+
+	// En plazo, no se purga.
+	if err := purger.PurgeExpired(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if h.count(`select count(*) from characters where purged_at is not null`) != 0 {
+		t.Fatal("purgado en plazo")
+	}
+	// Vencido, pero con un arrendamiento vivo (el borrado no lo deja, pero la purga lo mira).
+	h.clock.Advance(7*day + time.Second)
+	h.lease(id, zone, h.clock.Now().Add(20*time.Second))
+	if err := purger.PurgeExpired(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if h.count(`select count(*) from characters where purged_at is not null`) != 0 ||
+		!strings.Contains(h.logs.String(), "personaje sin purgar") {
+		t.Fatal("se purgó con un arrendamiento vivo")
+	}
+	h.clock.Advance(21 * time.Second)
+	if err := purger.PurgeExpired(ctx); err != nil {
+		t.Fatal(err)
+	}
+	purgedAt := h.clock.Now()
+	var name, key *string
+	var at time.Time
+	h.scalar(&name, `select name from characters where character_id = $1`, id)
+	h.scalar(&key, `select name_key from characters where character_id = $1`, id)
+	h.scalar(&at, `select purged_at from characters where character_id = $1`, id)
+	if name != nil || key != nil || !at.Equal(purgedAt) {
+		t.Fatalf("lápida: %v %v %v", name, key, at)
+	}
+	if h.count(`select count(*) from purge_log where kind = 'character' and id = $1 and purged_at = $2`, id, purgedAt) != 1 ||
+		h.count(`select count(*) from character_pvp_stats where character_id = $1`, id) != 0 ||
+		h.count(`select count(*) from character_leases where character_id = $1`, id) != 0 ||
+		h.count(`select count(*) from enter_tickets where character_id = $1`, id) != 0 {
+		t.Fatal("la purga deja filas")
+	}
+	if h.progress.Has(id) || !h.progress.Has(keep) {
+		t.Fatal("ProgressStore.Purge de quien no toca")
+	}
+	// El nombre sigue reservado (hasta restore_until + 30 días), ya sin personaje.
+	if h.count(`select count(*) from character_names where name_key = 'brenna' and status = 'reserved'
+		and character_id is null and reserved_until > $1`, h.clock.Now()) != 1 {
+		t.Fatal("el nombre no sigue reservado")
+	}
+	// Ni sale en la lista ni se restaura; el otro sigue entero.
+	h.login(p)
+	l := h.list(p)
+	if l.body["used"] != 1.0 {
+		t.Errorf("lista tras la purga: %s", l.raw)
+	}
+	h.expect(h.restore(p, id), http.StatusNotFound, "not_found")
+	if h.count(`select count(*) from characters where character_id = $1 and name = 'Aneira' and purged_at is null`, keep) != 1 {
+		t.Error("el otro personaje no debería cambiar")
+	}
+	// Otra vuelta no hace nada más.
+	if err := purger.PurgeExpired(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if h.count(`select count(*) from purge_log`) != 1 {
+		t.Error("purga repetida")
+	}
+}
+
+// Una restauración justo antes de la purga gana: la purga vuelve a mirar con la fila bloqueada.
+func TestRestoredCharacterIsNotPurged(t *testing.T) {
+	h := newHarness(t)
+	p := h.newPlayer("ana@example.org")
+	id := h.mustCreate(p, "Brenna", "vardheim")
+	h.expect(h.remove(p, id, "Brenna"), http.StatusOK, "")
+	h.advance(7*day-time.Second, p)
+	h.expect(h.restore(p, id), http.StatusOK, "")
+	h.clock.Advance(2 * time.Second)
+	if err := h.svc.Purger().PurgeExpired(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h.count(`select count(*) from characters where purged_at is null and deleted_at is null and character_id = $1`, id) != 1 {
+		t.Fatal("se purgó un personaje restaurado")
+	}
+}
+
+// La purga de una cuenta (P1) deja como lápida a todos sus personajes, también a los vivos, cuyos
+// nombres quedan reservados 30 días; con un personaje en el mundo no purga nada.
+func TestAccountPurgeWithCharacters(t *testing.T) {
+	h := newHarness(t)
+	p := h.newPlayer("ana@example.org")
+	alive := h.mustCreate(p, "Aneira", "vardheim")
+	deleted := h.mustCreate(p, "Brenna", "vardheim")
+	h.advance(2*day, p)
+	h.expect(h.remove(p, deleted, "Brenna"), http.StatusOK, "")
+	zone := h.zone("vado_gris", 0, []int16{1, 2}, 0, 64, "live")
+	h.expect(h.do(call{method: "POST", path: "/v1/account/deletion", token: p.token, body: map[string]any{"password": password}}),
+		http.StatusAccepted, "")
+	h.clock.Advance(14*day + time.Second)
+	h.lease(alive, zone, h.clock.Now().Add(20*time.Second))
+	ctx := context.Background()
+	if err := h.accounts.PurgeDue(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if h.count(`select count(*) from accounts where account_id = $1 and status = 'pending_deletion'`, p.id) != 1 ||
+		h.count(`select count(*) from characters where purged_at is not null`) != 0 ||
+		!strings.Contains(h.logs.String(), "un personaje está en el mundo") {
+		t.Fatal("con un personaje en el mundo no se purga nada")
+	}
+	h.clock.Advance(21 * time.Second)
+	if err := h.accounts.PurgeDue(ctx); err != nil {
+		t.Fatal(err)
+	}
+	at := h.clock.Now()
+	if h.count(`select count(*) from accounts where account_id = $1 and status = 'purged'`, p.id) != 1 {
+		t.Fatal("la cuenta no se purgó")
+	}
+	if h.count(`select count(*) from characters where account_id = $1 and purged_at = $2 and name is null`, p.id, at) != 2 ||
+		h.count(`select count(*) from purge_log where kind = 'character'`) != 2 ||
+		h.progress.Has(alive) || h.progress.Has(deleted) {
+		t.Fatal("los personajes de la cuenta no quedan como lápida")
+	}
+	var reserved time.Time
+	h.scalar(&reserved, `select reserved_until from character_names where name_key = 'aneira' and status = 'reserved'
+		and character_id is null`)
+	if !reserved.Equal(at.Add(30 * day)) {
+		t.Errorf("el nombre del vivo, reservado hasta %v", reserved)
+	}
+	// El del borrado conserva su reserva (restore_until + 30 días).
+	h.scalar(&reserved, `select reserved_until from character_names where name_key = 'brenna'`)
+	if !reserved.After(at.Add(15 * day)) {
+		t.Errorf("el nombre del borrado, reservado hasta %v", reserved)
+	}
+}

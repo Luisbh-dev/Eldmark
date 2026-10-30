@@ -1,0 +1,135 @@
+{
+	"comment": "Billete de 52 B de docs/plataforma.md §5.1. Generado por platform/internal/tickets (go test ./internal/tickets -run TestSharedVectors -update); lo leen las pruebas de Go y de HandoffTicket.",
+	"keys": [
+		{
+			"key_id": 1,
+			"hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+		},
+		{
+			"key_id": 2,
+			"hex": "02b7825be38fdd5396a4a058286884eaf93a9df85b874f78b4010a76103fb858"
+		}
+	],
+	"zone_keys": [
+		{
+			"zone_id": "vado_gris",
+			"zone_key": 435142675
+		},
+		{
+			"zone_id": "test_world",
+			"zone_key": 3399201048
+		},
+		{
+			"zone_id": "eldrun",
+			"zone_key": 2239529452
+		},
+		{
+			"zone_id": "a",
+			"zone_key": 310482890
+		},
+		{
+			"zone_id": "",
+			"zone_key": 1120186595
+		}
+	],
+	"valid": [
+		{
+			"name": "vector de plataforma.md §5.1",
+			"key_id": 1,
+			"world_id": 1,
+			"ticket_id": "72623859790382856",
+			"character_id": "42",
+			"zone_id": "vado_gris",
+			"zone_key": 435142675,
+			"channel": 0,
+			"realm": 1,
+			"arrival": 0,
+			"flags": 1,
+			"issued_at": 1800000000,
+			"expires_at": 1800000010,
+			"hex": "0101010008070605040302012a0000000000000013c0ef190001000100d2496b0ad2496b7061e2f54ab1a096f66024437123d9d1",
+			"base64": "AQEBAAgHBgUEAwIBKgAAAAAAAAATwO8ZAAEAAQDSSWsK0klrcGHi9UqxoJb2YCRDcSPZ0Q=="
+		},
+		{
+			"name": "ids de 63 bits, por encima de 2^53",
+			"key_id": 2,
+			"world_id": 1,
+			"ticket_id": "9223372036854775807",
+			"character_id": "9007199254740993",
+			"zone_id": "test_world",
+			"zone_key": 3399201048,
+			"channel": 3,
+			"realm": 2,
+			"arrival": 0,
+			"flags": 1,
+			"issued_at": 1800000100,
+			"expires_at": 1800000110,
+			"hex": "01020100ffffffffffffff7f010000000000200018b19bca0302000164d2496b6ed2496bb6081b818e62798ab029e77d60bd3b37",
+			"base64": "AQIBAP////////9/AQAAAAAAIAAYsZvKAwIAAWTSSWtu0klrtggbgY5ieYqwKed9YL07Nw=="
+		},
+		{
+			"name": "traspaso: mundo de dos bytes, canal 255 y fechas al final del u32",
+			"key_id": 1,
+			"world_id": 513,
+			"ticket_id": "1",
+			"character_id": "1",
+			"zone_id": "eldrun",
+			"zone_key": 2239529452,
+			"channel": 255,
+			"realm": 3,
+			"arrival": 2,
+			"flags": 2,
+			"issued_at": 4294967285,
+			"expires_at": 4294967295,
+			"hex": "0101010201000000000000000100000000000000ec817c85ff030202f5ffffffffffffff1b16036dea9e93f9354ad910146650b1",
+			"base64": "AQEBAgEAAAAAAAAAAQAAAAAAAADsgXyF/wMCAvX/////////GxYDbeqek/k1StkQFGZQsQ=="
+		}
+	],
+	"invalid": [
+		{
+			"name": "firma alterada (último byte)",
+			"hex": "0101010008070605040302012a0000000000000013c0ef190001000100d2496b0ad2496b7061e2f54ab1a096f66024437123d9d0",
+			"error": "mac"
+		},
+		{
+			"name": "cuerpo alterado (personaje 43 con la firma del 42)",
+			"hex": "0101010008070605040302012b0000000000000013c0ef190001000100d2496b0ad2496b7061e2f54ab1a096f66024437123d9d1",
+			"error": "mac"
+		},
+		{
+			"name": "cuerpo alterado (caduca 1 s después)",
+			"hex": "0101010008070605040302012a0000000000000013c0ef190001000100d2496b0bd2496b7061e2f54ab1a096f66024437123d9d1",
+			"error": "mac"
+		},
+		{
+			"name": "firmado con la clave 2 pero con key_id 1",
+			"hex": "0101010008070605040302012a0000000000000013c0ef190001000100d2496b0ad2496b0d286c0129d139986a762d7cf617adc1",
+			"error": "mac"
+		},
+		{
+			"name": "clave desconocida (key_id 9)",
+			"hex": "0109010008070605040302012a0000000000000013c0ef190001000100d2496b0ad2496bf17620637cbd36674cb798c0cdb99919",
+			"error": "key"
+		},
+		{
+			"name": "versión 2",
+			"hex": "0201010008070605040302012a0000000000000013c0ef190001000100d2496b0ad2496ba98e5b3ce88b402cec7f40feaa09c4f6",
+			"error": "version"
+		},
+		{
+			"name": "51 B",
+			"hex": "0101010008070605040302012a0000000000000013c0ef190001000100d2496b0ad2496b7061e2f54ab1a096f66024437123d9",
+			"error": "size"
+		},
+		{
+			"name": "53 B",
+			"hex": "0101010008070605040302012a0000000000000013c0ef190001000100d2496b0ad2496b7061e2f54ab1a096f66024437123d9d100",
+			"error": "size"
+		},
+		{
+			"name": "vacío",
+			"hex": "",
+			"error": "size"
+		}
+	]
+}

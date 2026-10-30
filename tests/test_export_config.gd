@@ -1,7 +1,8 @@
 extends TestCase
 ## Pruebas de la configuración de exportación (TEC-12): los dos presets de [code]export_presets.cfg[/code]
 ## (cliente Windows y servidor dedicado Linux), que sus filtros dejan fuera [code]build/[/code],
-## [code]docs/[/code] y [code]tests/[/code] sin quitar nada de lo que el juego carga, que los
+## [code]docs/[/code], [code]tests/[/code] y [code]platform/[/code] (el servicio en Go, que Godot ni
+## escanea por su [code].gdignore[/code]) sin quitar nada de lo que el juego carga, que los
 ## scripts [code]tools/export.sh[/code] y [code]tools/export.ps1[/code] usan los mismos presets, y,
 ## en un proceso aparte, que exportar el paquete del servidor ([code]--export-pack[/code], que no necesita
 ## las plantillas de exportación) da un paquete recortado, con lo que hace falta y sin lo que sobra.
@@ -15,7 +16,7 @@ const SERVER_PRESET: String = "Servidor Linux"
 const SCRIPT_SH: String = "res://tools/export.sh"
 const SCRIPT_PS1: String = "res://tools/export.ps1"
 ## Carpetas que ningún paquete debe llevar.
-const FORBIDDEN_DIRS: Array[String] = ["build/", "docs/", "tests/", "tools/", "exports/", ".github/"]
+const FORBIDDEN_DIRS: Array[String] = ["build/", "docs/", "tests/", "tools/", "exports/", ".github/", "platform/"]
 ## Carpetas y archivos que el juego carga y que ningún filtro puede quitar.
 const REQUIRED_PATHS: Array[String] = [
 	"project.godot", "default_bus_layout.tres", "export_presets.cfg",
@@ -23,6 +24,8 @@ const REQUIRED_PATHS: Array[String] = [
 	"scripts/client/client_main.gd", "scenes/boot.tscn", "scenes/server/server_main.tscn",
 	"scenes/client/client_main.tscn", "scenes/ui/hud.tscn",
 	"scenes/world/zones/vado_gris/vado_gris.tscn", "data/combat/combat_rules.tres",
+	"data/characters/appearance_catalog.tres", "data/characters/races/race_vardheim.tres",
+	"data/progression/level_curve.tres",
 	"assets/ui/theme/eldmark_theme.tres", "assets/emblems/vardheim.svg",
 	"addons/terrain_3d/terrain.gdextension", "addons/terrain_3d/LICENSE.txt",
 	"addons/proton_scatter/LICENSE", "assets/LICENCIAS.md",
@@ -163,6 +166,7 @@ func test_no_filter_removes_what_the_game_loads() -> void:
 	var sample: PackedStringArray = _excludes(_section_of(SERVER_PRESET))
 	assert_true(_matches_any("tests/test_case.gd", sample))
 	assert_true(_matches_any("docs/social.md", sample))
+	assert_true(_matches_any("platform/internal/migrate/migrations/0001_accounts.up.sql", sample))
 	assert_false(_matches_any("scripts/client/audio/audio_director.gd", sample))
 
 
@@ -170,6 +174,12 @@ func test_exports_are_not_tracked() -> void:
 	var ignore: String = FileAccess.get_file_as_string("res://.gitignore")
 	assert_true(ignore.contains("/exports/"), "lo exportado no se versiona")
 	assert_true(ignore.contains("/build/"))
+
+
+func test_godot_does_not_scan_the_platform_service() -> void:
+	# platform/ es el servicio en Go (docs/plataforma.md §2.1): Godot no lo importa ni lo exporta.
+	assert_true(FileAccess.file_exists("res://platform/.gdignore"), "platform/ lleva .gdignore")
+	assert_true(FileAccess.file_exists("res://platform/go.mod"), "y es el módulo de Go")
 
 
 # --- Los scripts de exportación ---------------------------------------------------------------
@@ -269,7 +279,8 @@ func test_the_server_pack_exports_trimmed_and_without_development_folders() -> v
 			"addons/terrain_3d/LICENSE.txt", "assets/LICENCIAS.md",
 			"scenes/world/zones/vado_gris/vado_gris.tscn.remap",
 			"scenes/world/zones/vado_gris/terrain/terrain3d_00_00.res",
-			"scenes/server/server_main.tscn.remap", "scripts/server/zone_server.gd.remap"]:
+			"scenes/server/server_main.tscn.remap", "scripts/server/zone_server.gd.remap",
+			"data/characters/appearance_catalog.tres.remap", "data/progression/level_curve.tres.remap"]:
 		assert_true(files.has(required), "el paquete lleva %s" % required)
 	assert_true(files.size() > 500, "y no está vacío (%d archivos)" % files.size())
 	# Recortado: la exportación completa del proyecto pasa de los 80 MB; el servidor ronda los 17.
