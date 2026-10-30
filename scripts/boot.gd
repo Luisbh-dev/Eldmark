@@ -55,7 +55,7 @@ const NETWORK_ARG_PREFIXES: Array[String] = [
 	"--connect=", "--bots=", "--name=", "--port=", "--net-sim=", "--quit-after-ticks=",
 	"--quit-at-server-tick=", "--report=", "--state-log=", "--bot-seed=", "--bot-cheat=", "--bot-brain=",
 	"--loadout=", "--platform=", "--login=", "--password-file=", "--character=", "--world=", "--dtls-cert=",
-	"--dtls-name=",
+	"--dtls-name=", "--bot-scenario=",
 ]
 
 
