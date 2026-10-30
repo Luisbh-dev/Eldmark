@@ -206,6 +206,8 @@ func test_reappearing_with_the_same_template_only_tells_the_owner() -> void:
 	await _start()
 	var ana: int = _server().add_fake_player(CombatFixture.ScriptBrain.new(1), VARDHEIM)
 	var combatant: Combatant = _server().get_combat().get_combatant(ana)
+	# Que la pida la prueba, como una persona (un falso la pide solo al morir).
+	combatant.requests_respawn_on_death = false
 	_server().console_command("kill %d" % ana)
 	await _rig.advance(2)
 	await _rig.advance(maxi(combatant.respawn_tick - _server().get_tick(), 0) + 2)

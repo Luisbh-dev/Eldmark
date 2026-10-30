@@ -473,6 +473,44 @@ func test_respawns_come_in_waves_every_ten_seconds() -> void:
 	assert_eq(_events_of(NetMessages.EntityEvent.Kind.RESPAWN).size(), 1)
 
 
+# Revisión de la fase 4 (guerra): la reaparición automática de quien no la pide también sale en oleada (antes, a los
+# 30 s justos de la muerte: tick 1901 con la muerte en el 101).
+func test_the_automatic_respawn_of_someone_who_does_not_ask_also_comes_in_a_wave() -> void:
+	await _start_server()
+	var player: int = _idle_player(VARDHEIM, Vector3(-20.0, 0.05, 6.0))
+	# Como una persona que no pulsa el botón: sin la petición de los falsos.
+	_combatant(player).requests_respawn_on_death = false
+	await _advance(100)
+	_server.console_command("kill %d" % player)
+	await _advance(2)
+	var death_tick: int = _combatant(player).death_tick
+	assert_eq(_combatant(player).pending_respawn_point, -1, "no lo pide")
+	await _advance(2500)
+	var respawns: Array[NetMessages.EntityEvent] = _respawn_events(player)
+	if not assert_eq(respawns.size(), 1, "reaparece sola"):
+		return
+	assert_eq(respawns[0].tick % CombatTiming.WAVE_TICKS, 0, "en una oleada (tick %d)" % respawns[0].tick)
+	assert_true(respawns[0].tick >= death_tick + 1800, "a 30 s o más de la muerte")
+	assert_true(respawns[0].tick < death_tick + 1800 + CombatTiming.WAVE_TICKS, "en la primera oleada desde ahí")
+	assert_eq(respawns[0].point, 0, "en su campamento")
+
+
+func test_a_fake_player_asks_for_its_respawn_and_comes_back_in_its_first_wave() -> void:
+	await _start_server()
+	var player: int = _idle_player(VARDHEIM, Vector3(-20.0, 0.05, 6.0))
+	await _advance(100)
+	_server.console_command("kill %d" % player)
+	await _advance(2)
+	var respawn_tick: int = _combatant(player).respawn_tick
+	assert_eq(respawn_tick % CombatTiming.WAVE_TICKS, 0)
+	await _advance(2500)
+	var respawns: Array[NetMessages.EntityEvent] = _respawn_events(player)
+	if not assert_eq(respawns.size(), 1, "reaparece una vez"):
+		return
+	assert_eq(respawns[0].tick, respawn_tick, "en su primera oleada, como quien pulsa el botón en cuanto puede")
+	assert_eq(respawns[0].point, 0, "en su campamento")
+
+
 # --- Marcador y registro de batalla -----------------------------------------------------------
 
 func test_kills_deaths_assists_and_the_scoreboard_rows() -> void:

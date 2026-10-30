@@ -2312,7 +2312,10 @@ interrumpir beber, la reutilización compartida es `s + REARM_TICKS` en vez de 0
 - 40 combatientes (30 falsos y 10 bots, la mitad tiradores): tick 7,5 / 12,4 / 16,2 ms (p50, p99, máximo),
   `combat_projectiles` 0,25 ms de mediana y 0,90 de p99, 97 disparos con un pico de 18 flechas, 35,4 KB/s por
   cliente, 0,00 % de entradas sustituidas en la ventana y ningún rebobinado rechazado: **cumple** el criterio de la
-  fase 4, con poco margen en los proyectiles.
+  fase 4, con poco margen en los proyectiles. *(Revisión de la fase 4: los falsos del servidor piden ahora la reaparición
+  al morir y vuelven a los 10 s, no a los 30. Repetida con el código de antes y el de ahora en la misma sesión, da lo mismo
+  —14,5 y 14,6 ms de p99 del tick; 1,28 y 1,01 ms de los proyectiles, las dos sobre el milisegundo en esa pasada—, porque en
+  el minuto de medida casi nadie muere: [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones).)*
 - El tope lleno (54 falsos tiradores, arqueros puros y al cielo, y 10 bots): 4755 disparos (57 por segundo), pico de
   64 vivas y 4603 echadas por el tope sin errores; `combat_projectiles` 1,29 / 3,09 ms y el tick 23,2 ms de p99. El
   tope acota las flechas vivas, no el coste por disparo.

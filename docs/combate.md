@@ -472,7 +472,8 @@ ninguno debe hacer daño de más.
   DEATH (víctima, autor, ataque) y un KILL (asesino, ataque, asistentes con ≥ 10 % del daño en 900
   ticks; no cuentan aliados ni autolesiones).
 - **Reaparición**: desde `respawn_tick` el cliente puede pedirla con **RESPAWN_REQUEST**
-  (`point_index`); a los 30 s sin pedirla, automática en el primer punto. Puntos: nodos del grupo
+  (`point_index`); a los 30 s sin pedirla, automática en el primer punto (con las oleadas de la fase 4, en
+  la primera oleada desde ahí: [fuerte.md 5](fuerte.md#5-avisos-reaparición-salida-y-atascado)). Puntos: nodos del grupo
   `respawn_points` (o, si la zona no tiene, `spawn_points`) con metadato `realm`, en el orden de la
   escena, que el cliente conoce porque carga la misma zona; en la fase 4 el índice pasa a ser el de la
   lista **estática** de todos los puntos y se añade la condición (el fuerte propio, sin atacar:
@@ -765,6 +766,12 @@ Cerrado durante K3 (servidor) y K4 (cliente):
   en servidor y cliente (`RespawnPointList` la usa tal cual). Un índice que ya no vale usa el
   primer punto, sin aviso. Una petición hasta 12 ticks antes de `respawn_tick` queda pendiente;
   antes de eso, o estando vivo, es aviso. La automática llega a los 30 s **desde la muerte**.
+  *(Revisión de la fase 4: con oleadas (`respawn_wave_ticks`), la automática también cae en una, la primera ≥
+  muerte + 30 s (`Combatant.auto_respawn_tick`, `CombatTiming.auto_respawn_tick_for`); antes salía a los 30 s
+  justos, fuera de oleada. Los jugadores falsos del servidor piden la reaparición al morir
+  (`Combatant.requests_respawn_on_death`, punto 0) y el `--bot` en cuanto el tick estimado del servidor llega a
+  `respawn_tick` (lo repite cada segundo mientras siga muerto), como el `SwarmBot`: todos reaparecen como
+  quien pulsa el botón en cuanto puede, a los 10 s (o en su oleada) y no a los 30.)*
   *(Cambiado en F3, fase 4: el índice va sobre `NetZones.get_all_respawn_points(zona)`, la lista estática
   de todos los puntos; el servidor valida con `RespawnRules.points_for` y, si no vale, usa el primer
   campamento válido del reino; ver [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones).

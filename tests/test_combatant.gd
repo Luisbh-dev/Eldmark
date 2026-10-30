@@ -158,6 +158,32 @@ func test_dummy_heals_fully_after_five_seconds_without_damage() -> void:
 	assert_eq(fighter.health, fighter.max_health, "a los 300 ticks se cura del todo")
 
 
+# Revisión de la fase 4 (guerra): con oleadas, nadie reaparece fuera de una, tampoco por la vía automática.
+func test_with_waves_both_the_requested_and_the_automatic_respawn_fall_on_a_wave() -> void:
+	_timing.respawn_wave_ticks = 600
+	assert_eq(_timing.respawn_tick_for(101), 1200, "pedida: la primera oleada a 10 s o más")
+	assert_eq(_timing.auto_respawn_tick_for(101), 2400, "automática: la primera oleada a 30 s o más (no 1901)")
+	assert_eq(_timing.auto_respawn_tick_for(600), 2400, "a 30 s justos de una oleada, en ella")
+	assert_eq(_timing.auto_respawn_tick_for(438), 2400)
+	var fighter: Combatant = _fighter()
+	fighter.mark_dead(101, 0, 0)
+	assert_eq(fighter.respawn_tick, 1200)
+	assert_eq(fighter.auto_respawn_tick, 2400)
+	_timing.respawn_wave_ticks = 0
+	assert_eq(_timing.auto_respawn_tick_for(101), 1901, "sin oleadas, a los 30 s justos")
+
+
+func test_a_combatant_that_asks_on_death_has_its_request_ready_for_its_respawn_tick() -> void:
+	var fighter: Combatant = _fighter()
+	fighter.requests_respawn_on_death = true
+	fighter.mark_dead(100, 0, 0)
+	assert_eq(fighter.pending_respawn_point, 0, "pide el primer punto al morir")
+	fighter.mark_respawned(800)
+	assert_eq(fighter.pending_respawn_point, -1)
+	fighter.mark_dead(900, 0, 0)
+	assert_eq(fighter.pending_respawn_point, 0, "y en cada muerte")
+
+
 func test_death_and_respawn_bookkeeping() -> void:
 	var fighter: Combatant = _fighter()
 	fighter.take_damage(400, 5)
@@ -168,6 +194,8 @@ func test_death_and_respawn_bookkeeping() -> void:
 	assert_true(fighter.is_dead())
 	assert_eq(fighter.death_tick, 100)
 	assert_eq(fighter.respawn_tick, 100 + _timing.respawn)
+	assert_eq(fighter.auto_respawn_tick, 100 + _timing.auto_respawn, "sin oleadas, la automática a los 30 s")
+	assert_eq(fighter.pending_respawn_point, -1, "sin pedir nada")
 	assert_eq(fighter.killer_id, 9)
 	assert_eq(fighter.death_attack_id, 3)
 	fighter.mark_respawned(800)
@@ -175,6 +203,7 @@ func test_death_and_respawn_bookkeeping() -> void:
 	assert_eq(fighter.health, fighter.max_health, "vida llena")
 	assert_eq(fighter.death_tick, -1)
 	assert_eq(fighter.respawn_tick, 0)
+	assert_eq(fighter.auto_respawn_tick, 0)
 	assert_eq(fighter.protected_until, 800 + _timing.protection, "3 s de protección")
 	assert_true(fighter.is_protected(800 + 179))
 	assert_false(fighter.is_protected(800 + 180))

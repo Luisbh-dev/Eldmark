@@ -969,7 +969,8 @@ func _process_respawns(s: int, list: Array[Combatant]) -> void:
 		if combatant.entity.kind == NetProtocol.EntityKind.NPC:
 			continue
 		var requested: bool = combatant.pending_respawn_point >= 0 and s >= combatant.respawn_tick
-		var automatic: bool = s >= combatant.death_tick + timing.auto_respawn
+		# Con oleadas, la automática también cae en una (Combatant.auto_respawn_tick).
+		var automatic: bool = s >= combatant.auto_respawn_tick
 		if requested or automatic:
 			_respawn(combatant, combatant.pending_respawn_point if requested else 0, s)
 

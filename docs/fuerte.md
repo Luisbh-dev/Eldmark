@@ -214,7 +214,8 @@ aplica un cambio de `collision_layer` en el siguiente `move_and_slide` del mismo
   la fortaleza. La línea de visión no cuenta la propia puerta. Golpearla pone «en combate» y
   actualiza `gate_last_damage_tick` y `under_attack_until_tick`.
 - **Reparación** al cambiar de dueño, con `fort_reset` o tras 5 min sin daño, pero **no mientras
-  un personaje solape el vano**: se aplaza tick a tick hasta que quede libre.
+  un personaje solape el vano de la puerta rota**: se aplaza tick a tick hasta que quede libre. La de
+  una puerta entera (dañada) no cambia la colisión y se hace en el acto (revisión de la fase 4).
 - Queda **cerrada por defecto** (corrige `docs/zonas/vado_gris.md`).
 
 ---
@@ -291,7 +292,8 @@ de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D
 - **Capitán del Vado** (MUN-11): `CaptainSpawn` (dentro del círculo: no cuenta, los PNJ no cuentan).
   Barrido amplio bloqueable; golpe imbloqueable (`AttackDefinition.unblockable`, solo servidor)
   con aviso TELEGRAPH; grito que alerta a los Huecos vivos; 2 Huecos de refuerzo al 50 % si
-  quedan Huecos. Al morir: `on_captain_died`.
+  quedan Huecos, una vez por vida (la reaparición completa los retira y le devuelve la llamada). Al
+  morir: `on_captain_died`.
 - **Guarnición del reino** (GUE-11): 4 guardias y un capitán del dueño en los mismos marcadores al
   pasar a `GARRISONED`.
 - **Guardianes de la Puerta** (MUN-12): 2 por campamento, `ignores_safe_area`, daño alto y alcance
@@ -317,7 +319,10 @@ de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D
     `GARRISONED` con `s ≥ under_attack_until_tick`. El cliente calcula lo mismo con
     `RespawnRules.points_for(realm, fortresses, tick) -> PackedInt32Array` (compartido).
   - Si el punto pedido ya no vale, el servidor usa el campamento, sin aviso.
-  - Oleadas: `respawn_tick` = primer múltiplo de 600 ticks ≥ muerte + `respawn_s`.
+  - Oleadas: `respawn_tick` = primer múltiplo de 600 ticks ≥ muerte + `respawn_s`. Quien no la pide
+    reaparece solo en el primer múltiplo de 600 ≥ muerte + 30 s (`auto_respawn_tick`): con oleadas
+    nadie reaparece fuera de una. Los jugadores falsos del servidor la piden al morir y el `--bot` en
+    cuanto puede, como el `SwarmBot` y como quien pulsa el botón (revisión de la fase 4).
   - Los marcadores del fuerte, fuera del cilindro del círculo.
 - **Salida en combate** (GUE-41): CLIENT_LEAVE o desconexión «en combate» dejan el cuerpo 15 s
   desde la baja (CLIENT_LEAVE o timeout de ENet) con entradas **neutras de verdad** (sin botones):
@@ -637,12 +642,16 @@ toque a los PNJ) encontrará esto:
   HIT lleva el `net_id` de la fortaleza y solo se manda al atacante (y a quien lo tenga relevante), no a toda
   la zona. Un atacante dentro de la zona segura de su reino no golpea la puerta.
 - **Reparación y vano libre**: cuando la reparación que hace el estado (captura, `fort_reset`, `fort_owner`)
-  o el plazo de 5 min cae con alguien solapando el vano, el controlador **deshace la reparación**: la puerta
-  conserva la vida rota (y la colisión abierta) en el estado y en el OBJECT_STATE, y se repara en el primer
-  tick con el vano libre (`is_repair_pending`). Así cliente y servidor siguen simulando lo mismo. Solo
-  cuentan personajes vivos (jugadores y PNJ) cuyos pies solapen la caja; quien pisa la pasarela de encima no
-  la retiene. Un cambio de dueño con la puerta entera cambia las capas sin esperar (nadie queda atrapado en
-  una puerta entera: solo cambia a quién para).
+  o el plazo de 5 min cae sobre la **puerta rota** con alguien solapando el vano, el controlador **deshace la
+  reparación**: la puerta conserva la vida rota (y la colisión abierta) en el estado y en el OBJECT_STATE, y
+  se repara en el primer tick con el vano libre (`is_repair_pending`). Así cliente y servidor siguen simulando
+  lo mismo. Solo cuentan personajes vivos (jugadores y PNJ) cuyos pies solapen la caja; quien pisa la pasarela
+  de encima no la retiene. Una puerta entera (dañada o no) se repara en el acto aunque haya alguien en el vano:
+  cerrarla no cambia su colisión. Un cambio de dueño con la puerta entera cambia las capas sin esperar (nadie
+  queda atrapado en una puerta entera: solo cambia a quién para). *(Revisión de la fase 4: antes también se
+  aplazaba la de la puerta entera, y la reparación aplazada se aplicaba al quedar libre el vano aunque la
+  puerta hubiera recibido golpes después; un defensor quieto en el vano de su propia puerta la devolvía entera
+  justo tras un asalto.)*
 - **OBJECT_STATE**: como mucho uno por fortaleza cada 6 ticks con los campos cambiados; **desviación**: si lo
   que cambia es la colisión de la puerta (dueño o rotura), sale en ese mismo tick, para que la historia de
   cambios del cliente tenga el tick exacto del cambio (con el estado agrupado, la puerta habría cambiado hasta
@@ -702,7 +711,7 @@ toque a los PNJ) encontrará esto:
   `garrison_due` (con el dueño 0 y `completa`: los Huecos y el Capitán del Vado vuelven enteros). Pasa en
   cualquier fase, también con una captura a medias, y **no mueve a nadie**: quien está en el círculo sigue donde
   estaba. La puerta se repara y las capas vuelven a las de neutral en ese mismo tick (valen desde `s + 1`), pero si
-  alguien solapa el vano la reparación se aplaza como en cualquier otro cambio de dueño. `reset_to_neutral_s = 0`
+  la puerta está rota y alguien solapa el vano la reparación se aplaza como en cualquier otro cambio de dueño. `reset_to_neutral_s = 0`
   lo desactiva. El Vado Gris (1800 s = 108 000 ticks) lo trae activo
   mientras sea un mapa de pruebas; `tools/war/summarize_battle.gd` empieza un ciclo nuevo en cada `fort_reset` del
   registro, así que su resumen es el de cada partida de 30 min.
@@ -766,7 +775,9 @@ toque a los PNJ) encontrará esto:
   `npc_died(net_id, spawner, killer)` avisa de cada muerte (la fortaleza ya se entera sola por los DEATH).
 - **Capitán**: el especial (`special_every = 3`) es el fuerte imbloqueable, que el `ZoneServer` avisa con un TELEGRAPH (sector, alcance
   3,5 m, `impact_in_ticks` = 60) en el tick en que lo lanza; grita al entrar en combate (alerta a todo su grupo a 60 m, solo si hay
-  compañeros vivos) y al bajar al 50 % de vida llama a dos Huecos junto a él, una vez y también solo si queda alguno. El TELEGRAPH se
+  compañeros vivos) y al bajar al 50 % de vida llama a dos Huecos junto a él, una vez por vida (volver regenerado a su puesto no
+  rearma la llamada; la reaparición completa de los Huecos retira los refuerzos que queden y se la rearma) y también solo si queda
+  alguno; nunca hay vivos más de dos refuerzos por fortaleza (los de un Capitán anterior cuentan). El TELEGRAPH se
   manda para **todo** fuerte de un PNJ (no solo el imbloqueable): los ligeros no se avisan.
 - **Decisiones donde el documento callaba**: la reaparición completa mide la distancia desde el centro del círculo y solo cuenta con el
   fuerte neutral y faltando algo; los Guardianes ven 38 m (toda su zona segura desde su puesto) y su correa es de 40 m; `--no-npcs` apaga
@@ -899,7 +910,8 @@ pruebas en `test_realm_balance`, `test_bot_brain_siege`, `test_siege_zone`, `tes
   (117,7 s de disputa dentro y 18,1 s capturando). Con 10 contra 10, 527 s (8,8 min; la puerta, 398,6 s). Los **dos bandos son
   iguales pero los defensores ganan por mucho**: 140 muertes de jugadores en esos 416 s, 108 de Solmarch y 32 de Vardheim (131 en la
   explanada y el patio, 9 en el vado, ninguna en el puente). Causa: los refuerzos del atacante llegan a cuentagotas (30 s de
-  reaparición en oleadas de 10 s más 25–37 s de marcha) y el defensor, que está en el círculo a 11,5 m de la puerta, sale a por ellos
+  reaparición más 25–37 s de marcha; *revisión de la fase 4: decía «en oleadas de 10 s», pero los falsos del servidor no
+  pedían la reaparición y salían por la automática, a los 30 s justos de morir y cada uno por su lado*) y el defensor, que está en el círculo a 11,5 m de la puerta, sale a por ellos
   a cada paquete (hallazgo, más abajo).
 - **Versión corta de la suite** (`test_siege_zone`, seis bots por bando con la captura x30 de la orden 11, el Vado Gris real): neutral →
   Vardheim con `fort_kill_captain` en 64,0 s y → Solmarch 121,0 s después (la consolidación, 120 s, es casi todo); con el doble del
@@ -1094,7 +1106,7 @@ tiempos de la recaptura cuentan desde que salen los de Solmarch:
   atacantes, volvía a su puesto regenerado (lo que hace un jefe cuando pierde a todos sus enemigos); con 15 000, una recaptura de tres en el
   ciclo de 30 min del Vado Gris (`reset_to_neutral_s`). Con 7500, las tres, pero dos tardan 25–28 min: el capitán cae enseguida y lo que cuesta
   es quedarse solo en el círculo frente a los 20 defensores, que ganan las peleas 3 a 1 en muertes porque los atacantes llegan por partes (30 s
-  de reaparición en oleadas de 10 s más 25–37 s de marcha) y entran de uno en uno por un vano de 4 m. Es GUE-44, que decide si el atacante
+  de reaparición, cada uno por su lado y fuera de oleada, más 25–37 s de marcha: revisión de la fase 4) y entran de uno en uno por un vano de 4 m. Es GUE-44, que decide si el atacante
   espera a los suyos o si es un efecto deseado; hasta entonces no se tocan los tiempos de `vado_gris.tres`.
 - **Ajuste provisional (F6b)**: `data/npcs/realm_captain.tres`, vida **15 000 → 7500** (la mitad; un cuarto de la del Capitán del Vado). Es el
   único cambio de datos: con él la recaptura cabe en el ciclo de 30 min con las tres semillas, y sin él no. Las filas de 7500 se midieron con
@@ -1130,7 +1142,9 @@ tiempos de la recaptura cuentan desde que salen los de Solmarch:
   - hay **3 de los suyos a menos de 25 m del círculo** (`SIEGE_RALLY_JOIN_COUNT`, `SIEGE_RALLY_FORT_RADIUS`): un asalto en marcha no se
     deja sin refuerzos, porque entre una oleada y la siguiente el capitán se cura y la puerta se repara;
   - llega la siguiente **salida del reloj común**: una cada 30 s de partida (`SIEGE_RALLY_PERIOD_TICKS`), 5 s después de una oleada de
-    reaparición (`SIEGE_RALLY_OFFSET_TICKS`; las oleadas caen en múltiplos de 600 ticks). El tick es común a todos los bots, así que los
+    reaparición (`SIEGE_RALLY_OFFSET_TICKS`; las oleadas caen en múltiplos de 600 ticks). *Revisión de la fase 4: hasta entonces los
+    falsos del servidor no reaparecían en oleada (salían por la automática, a los 30 s justos), así que el desfase de 5 s no les servía
+    de nada; ahora piden la reaparición al morir y sí.* El tick es común a todos los bots, así que los
     que esperan salen juntos sin hablarse (`next_rally_departure`).
   Todo el grupo va por **la misma ruta**: la de la vuelta del reloj en la que sale (`rally_route_index`, alternan), no la del generador de
   cada uno; las salidas del reloj caen a mitad de vuelta, así que unos ticks de diferencia entre clientes no la cambian. El dueño no espera
@@ -1622,6 +1636,81 @@ Tick en ms del último tramo de 34 s; «ventana», las marcas de 10 s de la vent
   sin medir (GUE-47). Las flechas al mundo de una pelea así son fallos: en esa sonda, de 308, la mayoría en el suelo y en las laderas
   y unas 60 en la cara de fuera de la empalizada y en la puerta, delante de las cuales se pelea; con la línea de tiro ninguno tira a
   quien está detrás de ellas (en las sondas de la empalizada y de la puerta, 0 al mundo).
+
+**Revisión de la fase 4 (lente «guerra»)** (revisión adversarial de la fase 4, con refutación; cada arreglo lleva una prueba que falla
+sin él):
+
+- **La reaparición automática sale en oleada, y los bots piden la suya.** `_process_respawns` hacía la automática a los
+  `death_tick + auto_respawn` (1800) justos, sin mirar `respawn_wave_ticks`: con oleadas, quien no pedía la reaparición salía fuera de
+  ellas (muerte en el tick 101: reaparición en el 1901). Y nadie más que el botón del HUD y el `SwarmBot` la pedía: los falsos del
+  servidor (`--fake-players`, `SiegeRunner` y `siege_battle.gd`, `load_test`, el relleno de GUE-42) y el `--bot` reaparecían siempre
+  por la automática, a los 30 s, cada uno por su lado. **Todas las medidas de 20 por bando de F6a, F6b y la integración se hicieron
+  así**, no con las oleadas de GUE-14 que tiene una persona que pulsa el botón (10–20 s). Ahora:
+  - `CombatTiming.auto_respawn_tick_for(muerte)`: el primer múltiplo de la oleada ≥ muerte + 30 s (sin oleadas, muerte + 30 s), que
+    `Combatant.mark_dead` guarda en `auto_respawn_tick` junto a `respawn_tick`; `_process_respawns` usa ese tick. Con oleadas nadie
+    reaparece fuera de una, como dice el contrato de `respawn_wave_ticks`.
+  - Los falsos del servidor piden la reaparición al morir: `Combatant.requests_respawn_on_death` (lo pone `add_fake_player`) deja
+    `pending_respawn_point = 0` en `mark_dead`, así que reaparecen en `respawn_tick` (su oleada) y en el mismo sitio que la automática (el
+    punto 0 o, si no vale para su reino, el primer campamento válido). Fuera de las zonas con fortaleza, a los 10 s en lugar de 30, como
+    un `SwarmBot`.
+  - El `--bot` (`OnlineMain`, también sin `--quit-after-ticks`) manda RESPAWN_REQUEST (punto 0) en cuanto el tick estimado del servidor
+    llega al `respawn_tick` del bloque extra, y lo repite cada segundo (`BOT_RESPAWN_RETRY_TICKS`) mientras siga muerto.
+  - Pruebas: `test_fortress_server` (quien no la pide reaparece solo en una oleada; un falso reaparece en su primera oleada),
+    `test_combatant` (las cuentas de las dos oleadas y la petición al morir) y `test_online_main` (el `--bot` muerto reaparece al pedirlo,
+    sin avisos del servidor). `test_combat_server` y `test_loadout_server`, que miden la automática o piden a mano, apagan la petición
+    del falso.
+- **Solo se aplaza la reparación de la puerta rota.** `_repair_if_due` aplazaba la reparación de los 5 min si alguien solapaba el vano
+  y, desde entonces, reparaba en cuanto quedaba libre **sin volver a mirar el plazo**; `on_structure_hit` no anulaba el aplazamiento.
+  El dueño cruza su propia puerta cerrada y dentro de la caja no le golpean: bastaba un defensor quieto en el vano cuando vencía el
+  plazo para que los atacantes bajaran la puerta casi a 0 y, al salir él, volviera entera al tick siguiente (o se cerrara una puerta
+  recién rota sin esperar sus 5 min). `_hold_repair_if_blocked` hacía lo mismo tras una captura o un reinicio con la puerta entera.
+  Aplazar solo tiene sentido si reparar cambia la colisión, es decir, con la puerta rota (que ya no recibe daño, así que lo pendiente no
+  se queda viejo): ahora la entera se repara en el acto, y un golpe que quita vida anula lo pendiente. `test_fortress_controller`
+  (tres: plazo vencido con alguien en el vano y golpe nuevo; rotura después de que venciera el plazo; cambio de dueño con la puerta
+  entera dañada y alguien en el vano).
+- **Los refuerzos del Capitán del Vado, una vez por vida.** `_arrive_home` rearmaba la llamada cada vez que el Capitán volvía
+  regenerado, y los refuerzos (`_extras`) solo se iban al morir o con `defenders_retired`: cada asalto fallido que le bajaba de la mitad
+  sumaba dos Huecos más (2 → 4 → 6 → 8 en tres asaltos, y la reaparición completa los dejaba en 8), y como los refuerzos están en su
+  grupo de alerta, contaban para el «solo si queda alguno». Ahora la llamada es una por vida del Capitán; la reaparición completa (los
+  Huecos «vuelven enteros») retira los refuerzos que queden y le rearma la llamada (`HfsmBrain.rearm_reinforcements`); y
+  `_spawn_reinforcements` no crea más de los que faltan para `reinforcement_count` vivos por fortaleza (los de un Capitán anterior
+  cuentan). `test_npc_system` (dos: tres asaltos y la reaparición completa; un Capitán nuevo con los refuerzos del anterior vivos).
+
+**Medido otra vez con los tres arreglos** (`siege_battle.gd --npcs --per-side=20 --minutes=28 --seed=N --battle-log`, las cinco semillas
+de GUE-44; deterministas: el código de antes repite exactamente las cifras de la tabla de la integración con la semilla 1000; de dos en
+dos, de 84 a 144 s de reloj por batalla). «Antes» es el código anterior a la revisión: las semillas 1000, 4000 y 5000 medidas otra vez
+en esta revisión y la 2000 y la 3000, de la tabla de la integración. Recaptura, desde que salen los de Solmarch:
+
+| Semilla | Antes: recaptura (muertes S / V) | Ahora: puerta rota / capitán del reino / **recaptura** | Ahora: muertes de jugadores S / V (pasarela) | Salidas en grupo de Solmarch |
+|---|---|---|---|---|
+| 1000 | 156,1 s (31 / 25) | 39,4 / 135,3 / **158,8 s** | 23 / 30 (2) | 3 (antes 4) |
+| 2000 | 146,9 s (33 en total) | 40,7 / 126,8 / **162,8 s** | 15 / 42 (3) | 6 |
+| 3000 | 295,6 s (91 en total) | 44,6 / 134,2 / **161,8 s** | 14 / 44 (3) | 6 |
+| 4000 | 303,7 s (72 / 35) | 41,3 / 138,5 / **156,6 s** | 27 / 25 (1) | 4 (antes 14) |
+| 5000 | 157,4 s (3 / 32) | 44,6 / 134,0 / **286,9 s** | 47 / 72 (2) | 14 (antes 3) |
+
+- **Recaptura de 2,6 a 4,8 min, mediana 161,8 s (2,7 min; antes 157,4 con las mismas cinco semillas)**, con cuatro de cinco en el
+  régimen rápido (antes tres): el que gana el primer grupo, que espera a la guarnición durante la consolidación (120 s, el suelo). La
+  captura del neutral no cambia (80,0–82,4 s, sin muertes de Vardheim: nadie reaparece en esa fase). Muertes de jugadores 53, 57, 58,
+  52 y 119 (antes 56, 33, 91, 107 y 35). La batalla sigue siendo caótica (§9): con la reaparición de verdad dos semillas pasan de lento a
+  rápido y una de rápido a lento.
+- Las conclusiones de GUE-44 y del paquete B se tomaron con la reaparición de antes. Repetida la comparación que decidió GUE-44, sin
+  reunión ni formación (`--rally=0`) y con la reaparición nueva: 413,4 / 220,5 / 234,5 / 142,6 / 213,0 s (**mediana 220,5 s**; 112,
+  85, 92, 41 y 91 muertes de jugadores). La reunión sigue ganando en cuatro de cinco semillas (todas salvo la 4000), así que la decisión
+  de GUE-44 se mantiene. Las demás variantes de la tabla del paquete C (grupos de 12 y de 20, la reunión solo al empezar) no se han
+  repetido; ahora los que reaparecen en la misma oleada salen juntos de verdad, y el reloj de la reunión, 5 s después de una oleada,
+  hace lo que decía.
+- `vado_gris.tres` y el capitán del reino (7500) no cambian: ninguna recaptura antes de 156 s y todas dentro del ciclo de 30 min.
+- **La carga de 20 contra 20 con el kit y los PNJ, otra vez** (también usa falsos del servidor, que ahora vuelven a la pelea en su
+  oleada y no a los 30 s): `load_test.gd --scenario=siege --fakes=30 --bots=10 --seconds=120 --npcs`, plantilla por defecto, el código
+  de antes y el de ahora seguidos en la misma sesión y sin otras suites en marcha (carga media de 0,6 a 0,9). Último tramo de 34 s,
+  p50 / p95 / p99 / máx: **8,2 / 12,1 / 14,6 / 32,7 ms antes y 8,7 / 13,4 / 17,5 / 29,9 ms ahora**; marcas de la ventana, p50 y p99:
+  8,6 y 17,6 ms (la peor, 19,0) antes y 8,9 y 16,5 ms (19,8) ahora; 89 y 68 muertes de jugadores, ninguna entrada sustituida en la
+  ventana, 34–35 KB/s por cliente. Cada una pasa del criterio (16,7 ms) en una de sus dos medidas y no en la otra: con una pasada de
+  cada código la diferencia queda dentro del ruido (1–3 ms entre pasadas iguales), y **el límite de 40 por batalla en el fuerte sigue en
+  el filo y sin margen**, ahora con la reaparición de verdad. La refriega de 40 (`--scenario=brawl --fakes=30 --bots=10 --seconds=60`)
+  casi no tiene muertes en su minuto (15, casi todas rematadas) y da lo mismo: 14,5 y 14,6 ms de p99 del tick y 1,28 y 1,01 ms de
+  `combat_projectiles` (las dos, por encima del milisegundo en esta pasada; en la revisión de H5, 0,90).
 
 ---
 

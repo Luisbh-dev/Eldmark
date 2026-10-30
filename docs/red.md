@@ -92,7 +92,7 @@ ajustes y el audio): para el cliente instancia por su ruta `scenes/client/client
 | `--server [--port=24600] [--zone=<id>] [--max-players=N] [--max-per-ip=4] [--idle-quit=<s>] [--fake-players=N [--fake-layout=cluster\|spread] [--fake-churn=<ticks>]] [--debug-commands] [--dev-lock [--dev-lock-path=<ruta>]] [--stop-file=<ruta>]` | Servidor dedicado (siempre con `--headless`) | `scenes/server/server_main.tscn` |
 | `--connect=<host>[:<puerto>] [--realm=<reino>] [--name=<nombre>]` | Cliente en red | `scenes/client/online_main.tscn` |
 | `--local [--realm=…] [--name=…]` | Cliente contra un servidor local, que se lanza si no hay ninguno | `scenes/client/online_main.tscn` |
-| `--bot --connect=… [--bot-seed=N] [--bot-brain=wander\|combat] [--bot-cheat=<modo>]` | Un cliente que predice, sin cámara ni HUD, guiado por `BotBrain` (pasea, o pelea con el cerebro de combate) | `scenes/client/online_main.tscn` |
+| `--bot --connect=… [--bot-seed=N] [--bot-brain=wander\|combat] [--bot-cheat=<modo>]` | Un cliente que predice, sin cámara ni HUD, guiado por `BotBrain` (pasea, o pelea con el cerebro de combate); muerto, pide reaparecer en cuanto puede | `scenes/client/online_main.tscn` |
 | `--bots=N --connect=… [--bot-seed=N] [--bot-brain=combat] [--quit-at-server-tick=N]` | Enjambre de N clientes ligeros que no simulan, para pruebas de carga (con `combat`, pelean; con `--quit-at-server-tick`, se van cuando alguno ve ese tick del servidor) | `scenes/client/bot_swarm.tscn` |
 | Comunes | `--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1`, `--quit-after-ticks=N`, `--report=<ruta.json>`, `--state-log=<ruta.csv>` | |
 
@@ -750,7 +750,10 @@ reaparecer en el punto `point_index` de la lista de puntos de su reino (desde la
 estática de todos los puntos de la zona, `NetZones.get_all_respawn_points`; el servidor comprueba
 que valga para su reino, [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones))
 ([combate.md 5](combate.md#5-vida-eventos-muerte-y-reaparición-cmb-10-cmb-15-cmb-41-gue-03-gue-05)).
-Fuera de plazo o con un índice inválido, el servidor cuenta un aviso.
+Fuera de plazo o con un índice inválido, el servidor cuenta un aviso. La mandan el botón de la pantalla de
+muerte, el `SwarmBot` y, desde la revisión de la fase 4, el `--bot` (punto 0, en cuanto el tick estimado del
+servidor llega al `respawn_tick` del bloque extra, y cada segundo mientras siga muerto); los jugadores falsos
+del servidor no tienen red y la piden al morir (`Combatant.requests_respawn_on_death`).
 
 **UNSTUCK_REQUEST** (`0x06`, canal 3, v3): 1 B, solo `u8 type`. El jugador pide `/atascado`
 ([fuerte.md 5](fuerte.md#5-avisos-reaparición-salida-y-atascado)). Vale sin `--debug-commands`. Antes

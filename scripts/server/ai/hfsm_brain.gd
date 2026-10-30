@@ -20,7 +20,8 @@ extends BotBrain
 ## [b]Correa[/b]: más allá de [member NpcDefinition.leash_radius] de su puesto, regresa. [b]Fichas[/b]: solo ataca
 ## con una ficha de [AttackTokens] (como mucho dos PNJ a la vez contra el mismo objetivo); sin ella lo rodea a 3 o
 ## 4 m. [b]Alerta de grupo[/b]: al entrar en combate avisa a los de su grupo a [member NpcDefinition.alert_radius];
-## un jefe ([member NpcDefinition.shouts]) grita y, al bajar de vida, llama refuerzos.
+## un jefe ([member NpcDefinition.shouts]) grita y, al bajar de vida, llama refuerzos una vez por vida (volver a su
+## puesto regenerado no rearma la llamada; solo [method rearm_reinforcements]).
 ## [br][br]
 ## [b]Derribados[/b] (docs/habilidades.md, sección 4.5; H3c): los PNJ no quedan derribados, pero rematan. Un
 ## jugador derribado hostil a menos de [constant DOWNED_PRIORITY_RADIUS] m es el objetivo preferido (antes que el
@@ -288,6 +289,17 @@ func next_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 	return input
 
 
+## true si ya ha llamado a sus refuerzos en esta vida (o no le toca llamarlos hasta que se rearme).
+func has_called_reinforcements() -> bool:
+	return _reinforced
+
+
+## Le devuelve la llamada a los refuerzos: la reaparición completa de los Huecos (docs/fuerte.md 4.3), que deja el
+## fuerte neutral como recién creado, se la rearma al Capitán que sigue vivo.
+func rearm_reinforcements() -> void:
+	_reinforced = false
+
+
 ## Un aviso de un compañero del grupo: hay un enemigo ([param target_id]). Solo lo atiende quien está en reposo o
 ## patrullando. Devuelve true si pasa a la alerta.
 func receive_alert(target_id: int, tick: int) -> bool:
@@ -519,7 +531,8 @@ func _arrive_home(tick: int, yaw: float) -> void:
 	_target_id = 0
 	_rest_yaw = yaw if _route.size() >= 2 else _rest_yaw
 	_rest_until = tick + _rng.randi_range(PATROL_REST_TICKS.x, PATROL_REST_TICKS.y)
-	_reinforced = false
+	# La llamada a los refuerzos no se rearma: es una por vida (revisión de la fase 4). Si se rearmara aquí, cada
+	# asalto fallido que le baja la mitad de la vida sumaría dos Huecos más a la guarnición.
 	_enter(State.REST, tick)
 
 
@@ -755,8 +768,8 @@ func _start_block(tick: int) -> void:
 	_plan_sprint = false
 
 
-# Al bajar de la fracción de vida de su definición llama a los refuerzos, una sola vez y solo si quedan compañeros
-# vivos en su grupo.
+# Al bajar de la fracción de vida de su definición llama a los refuerzos, una sola vez por vida y solo si quedan
+# compañeros vivos en su grupo (el generador no deja que haya vivos más de los que llama: NpcSpawnerSystem).
 func _maybe_call_reinforcements(_tick: int) -> void:
 	if _reinforced or definition.reinforcement_id == &"" or definition.reinforcement_count <= 0:
 		return

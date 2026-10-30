@@ -81,11 +81,19 @@ var immortal: bool = false
 var ignores_safe_area: bool = false
 var in_combat_until: int = 0
 var protected_until: int = 0
-## Tick de la muerte (-1 si está vivo) y primer tick en que puede reaparecer.
+## Tick de la muerte (-1 si está vivo), primer tick en que puede reaparecer si lo pide y tick en que
+## reaparece solo si no lo pide (los dos en oleada si la zona las tiene: [method CombatTiming.respawn_tick_for]
+## y [method CombatTiming.auto_respawn_tick_for]).
 var death_tick: int = -1
 var respawn_tick: int = 0
+var auto_respawn_tick: int = 0
 ## Punto de reaparición pedido con RESPAWN_REQUEST (-1 = ninguna petición pendiente).
 var pending_respawn_point: int = -1
+## Pide la reaparición al morir, en el punto 0 (si ya no vale para su reino, el primer campamento válido): la
+## tiene en cuanto llega [member respawn_tick], como quien pulsa el botón de la pantalla de muerte en cuanto
+## puede o un [code]SwarmBot[/code]. Lo llevan los jugadores falsos del servidor
+## ([method ZoneServer.add_fake_player]); sin él, reaparecería por la vía automática.
+var requests_respawn_on_death: bool = false
 ## Quién dio el golpe mortal (0 = el entorno) y con qué ataque.
 var killer_id: int = 0
 var death_attack_id: int = 0
@@ -396,13 +404,15 @@ func heal_full() -> void:
 	_regen_carry = 0
 
 
-## Marca la muerte en [param tick]: vida a 0, plazo de reaparición y autor. Un derribado deja de estarlo.
+## Marca la muerte en [param tick]: vida a 0, plazos de reaparición (pedida y automática), la petición de
+## quien la pide al morir ([member requests_respawn_on_death]) y autor. Un derribado deja de estarlo.
 func mark_dead(tick: int, killer: int, attack_id: int) -> void:
 	health = 0
 	clear_downed()
 	death_tick = tick
 	respawn_tick = timing.respawn_tick_for(tick)
-	pending_respawn_point = -1
+	auto_respawn_tick = timing.auto_respawn_tick_for(tick)
+	pending_respawn_point = 0 if requests_respawn_on_death else -1
 	killer_id = killer
 	death_attack_id = attack_id
 
@@ -416,6 +426,7 @@ func mark_respawned(tick: int) -> void:
 	clear_interaction()
 	death_tick = -1
 	respawn_tick = 0
+	auto_respawn_tick = 0
 	pending_respawn_point = -1
 	killer_id = 0
 	death_attack_id = 0
