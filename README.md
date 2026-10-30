@@ -216,13 +216,14 @@ En desarrollo (`ELDMARK_MAIL=log`, por defecto) los correos de las cuentas no sa
 Los textos legales que se aceptan al registrarse son los borradores de `platform/legal/`, que van dentro del
 binario (`ELDMARK_LEGAL_DIR` los cambia por los de otra carpeta).
 
-Los personajes (`/v1/worlds/{w}/characters`, `POST /v1/characters/{id}/enter`) guardan su progreso, hasta que
-llegue el almacén de `docs/progresion.md` P7, en memoria: se pierde al reiniciar, y por eso `serve` no arranca
-en `staging` ni en `production`. `enter` solo da billete si hay una instancia de zona viva que admite el reino.
+Los personajes (`/v1/worlds/{w}/characters`, `POST /v1/characters/{id}/enter`) guardan su progreso en
+PostgreSQL (las tablas de `0010_progress` y `platform/internal/progress`, `docs/progresion.md` P7): al crearlos se
+validan raza, apariencia y plantilla con las reglas exportadas, y cada guardado de la zona pasa las comprobaciones
+S1–S8 (`docs/progresion.md` §13.3). `enter` solo da billete si hay una instancia de zona viva que admite el reino.
 Las reglas de los nombres y el protocolo mínimo por defecto salen de
 `platform/internal/gamedata/progression_rules.json`, que se genera desde Godot, igual que las razas, la apariencia
-(`data/characters/`), la curva de niveles (`data/progression/`), las monedas, los motivos, los contenedores y la
-vida máxima. Tras cambiar cualquiera de esos datos hay que volver a exportarlo (la prueba
+(`data/characters/`), la curva de niveles (`data/progression/`), los objetos (`data/items/`), las plantillas de
+inicio, las monedas, los motivos, los contenedores y la vida máxima. Tras cambiar cualquiera de esos datos hay que volver a exportarlo (la prueba
 `test_progression_rules_export.gd` avisa si se ha quedado viejo):
 
 ```bash
@@ -247,6 +248,11 @@ Una instancia que deja de latir 3 × `ELDMARK_HEARTBEAT_S` se da por perdida y s
 `ELDMARK_LEASE_TTL_S` tiene que pasar de 3 × `ELDMARK_HEARTBEAT_S` + min(5, `ELDMARK_HEARTBEAT_S`) segundos (con 5 y
 30, los valores por defecto, sobra); si no, `serve` no arranca.
 
+Cada hora, `serve` purga las cuentas y los personajes que han cumplido su plazo y borra lo caducado según la tabla de
+retenciones de `docs/plataforma.md` §11.1 (el chat a los 30 días, la auditoría y los reportes cerrados al año, el
+libro de un personaje al año de purgarlo…). La exportación de datos de una cuenta (`POST /v1/account/export`) lleva
+también el progreso de sus personajes.
+
 La moderación y las cuentas del equipo van por la orden `admin`, con la misma configuración que `serve`. Toda
 orden lleva `--actor` con el correo de una cuenta `admin` (o `moderator` para las de lectura) y deja su fila en
 la auditoría (`audit_log`, sin correos ni nombres); la primera cuenta `admin` se crea con `bootstrap`. La
@@ -261,6 +267,30 @@ go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test chat --character B
 go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test sanction add Bran mute --duration 24h --reason "insultos"
 go run ./cmd/eldmark-platform admin help                                                       # todas las órdenes
 ```
+
+### Plataforma en local y despliegue
+
+`platform/deploy/dev.sh` levanta la plataforma de desarrollo sin Docker (Linux, macOS o WSL, con los binarios de
+PostgreSQL 16 y Go): un PostgreSQL propio en `build/dev_pg` (en 127.0.0.1:24682), las migraciones, claves y un
+token por zona de desarrollo (`vado_gris` y `test_world`) en `build/dev_secrets/`, una cuenta `admin@eldmark.test`
+y otra `prueba@eldmark.test` (contraseñas `eldmark-admin-dev` y `eldmark-prueba-dev`), y escribe la orden de la
+zona con `--platform`. Los datos se conservan entre arranques:
+
+```bash
+platform/deploy/dev.sh                # lo prepara todo y arranca serve; Ctrl-C para serve y PostgreSQL
+platform/deploy/dev.sh prepare        # lo mismo sin serve (PostgreSQL queda en marcha; dev.sh stop lo para)
+eval "$(platform/deploy/dev.sh env)"  # las variables para usar eldmark-platform a mano
+platform/deploy/dev.sh reset          # borra la base, las claves y las cuentas de desarrollo
+```
+
+Staging y producción van con `platform/deploy/docker-compose.yml` (base, plataforma, Caddy con HTTPS de Let's
+Encrypt, zonas y copias), un `staging.env` o `production.env` sacado de su `.example` y los secretos como archivos
+en `platform/deploy/secrets/` (ignorada por git); la cabecera del compose tiene las órdenes y la lista de
+secretos, y `docs/plataforma.md` §12 y §19.13, el resto. Las copias: `backup.sh` (diaria, con `purges.txt`),
+`restore_check.sh` (restauración de prueba semanal, con `reapply-purges`) y `pitr_check.sh` (recuperación a un
+instante); los tres corren en local contra un PostgreSQL efímero o en el contenedor `ops` del compose. Tras
+restaurar una copia de verdad, y antes de arrancar `serve`:
+`eldmark-platform admin --actor <correo> reapply-purges <carpeta de copias>/purges.txt`.
 
 ## Exportación (cliente Windows y servidor Linux)
 

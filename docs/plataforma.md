@@ -1359,9 +1359,9 @@ auditoría. Ni nombre real, ni dirección, ni pagos (si los hay, son del proveed
 | `chat_messages` | 30 días | Trabajo horario, lotes de 10 000 |
 | `report_evidence`, reportes cerrados, `audit_log` | 1 año (desde el cierre en los reportes) | Trabajo horario. Un reporte sin cerrar al año de crearse pasa a `dismissed` (`closed_at = now()`, `resolution = 'caducado'`) y cuenta desde ahí |
 | `auth_events`; IP y agente de `sessions` | 30 días | Trabajo horario (la IP de la sesión pasa a null) |
-| `sessions` y `account_tokens` caducados · `enter_tickets` · `zone_instances` paradas · `outbound_mail` | 7 días · 1 día · 30 días · 7 días | Trabajo horario |
+| `sessions` y `account_tokens` caducados · `enter_tickets` · `zone_instances` terminadas (paradas, perdidas o sustituidas) · `outbound_mail` | 7 días · 1 día · 30 días · 7 días | Trabajo horario |
 | Cuenta sin verificar (`staging`, `production`) | 7 días | Purga (§11.2) |
-| Personaje borrado | 7 días restaurable; luego lápida; el nombre, 30 días más (o nada, §4.4) | Purga horaria |
+| Personaje borrado | 7 días restaurable; luego lápida; el nombre, 30 días más (o nada, §4.4) | Purga horaria; la fila `reserved` de `character_names`, el trabajo horario al vencer |
 | Libro, operaciones y eventos de objeto de un personaje vivo, también el `actor_account_id`, la `note` y el `detail` de las operaciones GM y REVERSAL (una segunda huella de esos comandos de GM, aparte de `audit_log`) | Mientras exista el personaje; tras su purga, la fila de abajo | Ninguno: son de solo añadir (progresion.md §3.5). La exportación los da sin los datos del personal (§11.2). **Revisión legal** (también de `note` y de que no tenga plazo) |
 | Libro, operaciones y eventos de objeto de un personaje purgado | **1 año** desde la purga. Sin nombres: la lápida no lo tiene y `detail.args` nombra al objetivo por id (progresion.md §10). Mientras la cuenta exista, ligados a ella y exportables (§11.2); seudónimos solo tras purgarla. La `note` de las operaciones GM y REVERSAL se conserva como dato de moderación | Retención horaria: `ProgressStore.PurgeRetention` (progresion.md §3.5), con `set local eldmark.retention_purge = 'on'`; luego se borran las lápidas que devuelve vacías. **Revisión legal** (también de `note`) |
 | Cuenta borrada | 14 días de gracia | Purga (§11.2) |
@@ -1370,6 +1370,9 @@ auditoría. Ni nombre real, ni dirección, ni pagos (si los hay, son del proveed
 | Copias diarias y semanales, WAL | 35 días; al restaurar se vuelven a aplicar las purgas (§12) | `backup.sh` y WAL-G |
 | Registros de los contenedores (zona, plataforma) | 30 días: la zona escribe nombre e IP en cada conexión y rechazo | journald (`MaxRetentionSec=30day`, §12) |
 | `fortress_events`, `realm_resources` | Sin límite: no son personales | — |
+
+El «trabajo horario» de la tabla es `privacy_retention` (`internal/privacy`, P9a, §19.15), salvo el chat
+(`chat_retention`, P7a) y las purgas (`accounts_purge` y `characters_purge`, P1 y P2).
 
 En `staging` y `production` con `--platform`, la zona no admite `--battle-log`, `--combat-log` ni `--state-log`
 (escriben nombres sin plazo; §5.5).
@@ -3193,3 +3196,267 @@ vea a un GM invisible (no hace falta en la fase 5).
 **Queda para después:** los comandos de progresion.md §10 con `admin` en el 5, el 13 y el 16 y la regla de los
 propios personajes (progresion.md P5d); las opciones de ignorar y reportar del menú social y la lista de ignorados
 en el cliente (SOC-07); el extremo a extremo (P10).
+
+
+### 19.13 P9b · operación (TEC-28)
+
+**Qué hay.** `platform/deploy/` con lo de §10.1, §10.3 y §12 que se puede automatizar aquí, más `admin
+reapply-purges`, que se trae de P9a (abajo):
+
+| Pieza | Contenido |
+|---|---|
+| `dev.sh` | `up` (por defecto), `prepare`, `env`, `stop` y `reset`. Un PostgreSQL propio en `build/dev_pg` (`initdb`, y `runuser -u postgres` como root, como `testdb`) que se conserva entre arranques, en 127.0.0.1:24682 (`ELDMARK_DEV_PG_PORT`). Claves del billete, un token por zona de desarrollo (`1:vado_gris:0` y `1:test_world:0`) y las contraseñas en `build/dev_secrets/` (0600), y `build/dev_platform.env` con las variables `*_FILE`. `migrate up`, `admin bootstrap admin@eldmark.test` si no hay ninguna admin y `admin --actor … create-account prueba@eldmark.test`. Escribe la orden de la zona con `--platform` (y las del cliente y el bot de P8). `up` arranca `serve` en primer plano: Ctrl-C o TERM paran `serve` y PostgreSQL. Compila el binario con Go o usa `ELDMARK_PLATFORM_BIN` |
+| `backup.sh` | `pg_dump -Fc` a `daily/eldmark-<UTC con ms>.dump` (comprobado con `pg_restore --list`) y después `purge_log` a su `.purges.txt` y a `<carpeta>/purges.txt` (cambiado de golpe con `mv`, nunca rotado): `kind<TAB>id<TAB>purged_at`, el texto de COPY en UTC con microsegundos, sin datos personales. Semanal (enlace duro) si la última semanal tiene casi 7 días o no hay; rota 7 diarias y 4 semanales (`ELDMARK_BACKUP_DAILY`, `…_WEEKLY`), cada una con su `purges.txt`. La base, de `ELDMARK_DATABASE_URL` o `…_FILE` (o las `PG*`), sin escribirla nunca en la salida. Si algo falla no deja archivos a medias y sale con 1 |
+| `restore_check.sh` | `<copia> <purges.txt>`, o `--dir <carpeta>` (la copia más reciente de `daily/` y `weekly/` y su `purges.txt`). Clúster efímero (como `testdb`, solo socket), `pg_restore`, los correos que la copia aún tiene de las cuentas de `purges.txt` (en un esquema aparte del clúster de prueba), `migrate up` si a la copia le faltan migraciones, `admin --actor <admin de la copia> reapply-purges`, `migrate status` y las consultas de integridad, que tienen que dar 0 (abajo). Sale con 1 si algo falla y con 2 si el uso no vale; borra el clúster al salir |
+| `pitr_check.sh` | El de §12: un primario con `archive_command` a una carpeta, `pg_basebackup`, 500 filas que solo están en el WAL, la hora objetivo, un borrado y `pg_switch_wal` (espera a que el segmento esté archivado); la copia base con `restore_command`, `recovery_target_time`, `recovery_target_action = 'promote'` y `recovery.signal` tiene que tener las 1500 filas de antes del borrado y ninguna otra. Solo `fsync=off`: el WAL y las escrituras de página completa, como en el VPS |
+| `pglib.sh` | Lo común de los tres que levantan PostgreSQL: los binarios (`ELDMARK_PG_BIN`, `pg_config` o el mayor `/usr/lib/postgresql/*/bin`), `runuser` como root (`ELDMARK_PG_USER`), `initdb`, arranque, parada y la ruta del socket (107 B) |
+| `Dockerfile` | `build` (golang:1.24.7-bookworm, `CGO_ENABLED=0`, `GOTOOLCHAIN=local`), `platform` (debian:bookworm-slim con `ca-certificates` y `tzdata`, usuario 10001, `serve`, las dos API en 0.0.0.0 dentro del contenedor) y `ops` (postgres:16-bookworm con el binario y los scripts). Contexto `platform/`, con `platform/.dockerignore` (secretos, copias, `*.env`, `*.pem`, `*.key` y el binario fuera) |
+| `docker-compose.yml` | `db` (postgres:16), `platform`, `caddy`, `zone-vado-gris` (perfil `zonas`) y `backup`, `restore-check` y `pitr-check` (perfil `ops`; los dos últimos sin red). Todos con `logging: {driver: journald, options: {tag: "{{.Name}}"}}`; los de servicio, `restart: unless-stopped`. Nueve secretos de archivo en `ELDMARK_SECRETS_DIR`, montados en `/run/secrets` y leídos con las `*_FILE`. Redes `edge` (Caddy, con IP fija: la única de `ELDMARK_TRUSTED_PROXIES`), `zones` (las zonas y la API interna) y `data` (interna: la base no sale a Internet). Solo Caddy (80, 443 y 443/udp) y la zona (24600/udp) publican puertos. WAL con WAL-G configurable (`ELDMARK_DB_IMAGE`, `ELDMARK_PG_ARCHIVE_MODE`, `ELDMARK_PG_ARCHIVE_COMMAND`); nombre de proyecto `eldmark-<entorno>` |
+| `Caddyfile` | §10.1: `reverse_proxy platform:24680 { header_up X-Real-IP {remote_host} }` (pisa cualquier `X-Real-IP` del cliente), sin directiva `log` (sin registro de accesos), HSTS, `nosniff` y sin `Server`. Validado con Caddy 2.10.2 (`caddy validate` y `adapt`: sin `logs`) |
+| `staging.env.example`, `production.env.example` | Las variables del compose: entorno, dominio y correo ACME, imágenes de GHCR, `public_host` y `ELDMARK_ZONE_HOSTS`, protocolo mínimo, remitente, reinos, carpetas de secretos y copias, WAL y la red de Caddy. Ningún secreto (la CI lo comprueba) |
+| `journald-eldmark.conf` | `Storage=persistent`, `MaxRetentionSec=30day` y `SystemMaxUse=2G` (§11.1), para `/etc/systemd/journald.conf.d/` |
+| CI | `ELDMARK_REQUIRE_DEPLOY_TOOLS=1` en «Plataforma»: sin bash, git, shellcheck o `docker compose`, las pruebas de `deploy` fallan en lugar de saltarse (Caddy es opcional: la CI no lo trae) |
+
+**`reapply-purges` llega aquí** (§14.1 lo pone en P9a, de la que depende P9b): sin él no se puede probar
+`restore_check.sh`. `eldmark-platform admin --actor <correo> reapply-purges <purges.txt>` (pide `admin`; deja la
+fila `reapply-purges` con los recuentos y sin ids) hace lo de §11.2: en una transacción borra todos los
+`character_leases` y `enter_tickets` de la copia; después, en orden de `purged_at` (a igual hora, los personajes
+antes que su cuenta), purga cada línea en su propia transacción con el `purged_at` del archivo: las cuentas con la
+purga de P1 (`accounts.Service.ReapplyPurge`, motivo nuevo `reapply-purges`: basta que no esté purgada, como en
+`purge-now`) y los personajes con el camino de la cuenta (`characters.Purger.ReapplyPurge`). La huella del correo,
+el año de las sanciones y del libro y los 30 días del nombre salen de ese `purged_at`. Al final comprueba que no
+queda ningún id sin purgar (`admin.UnpurgedError`, código 1); uno que la copia no tiene cuenta como purgado. Es
+idempotente. `admin.ParsePurges` lee el formato de `backup.sh` (y RFC 3339) y nombra la línea mala. Como
+`purge-now`, en `staging` y `production` se niega mientras no exista el almacén del progreso (progresion.md P7). El
+paso 3 de la purga (no con un arrendamiento vivo) se sigue mirando, aunque no encuentra nada: si aparece uno, hay
+una zona o `serve` en marcha contra la base, y la orden para con un error que lo dice. **A P9a le queda** lo demás:
+la exportación con el progreso, las retenciones horarias que faltan, la del libro con el borrado de las lápidas
+vacías y sus pruebas que no son de `reapply-purges`; las de `reapply-purges` de §15 P9a ya están (abajo).
+
+**Desviaciones y decisiones de la implementación:**
+
+- **`dev.sh` escucha en TCP** (127.0.0.1, sin socket): la ruta de `build/dev_pg` en un repositorio con una ruta larga
+  pasa de los 107 B del socket. Tiene más órdenes que §12 (`prepare`, `env`, `stop` y `reset`) y contraseñas
+  fijas de desarrollo (`eldmark-admin-dev` y `eldmark-prueba-dev`, también en `build/dev_secrets/`), que se
+  teclean en la revisión visual de §15. Las cuentas se crean con `bootstrap` y `create-account` (§19.5).
+- **`restore_check.sh` migra antes de `reapply-purges`** si a la copia le faltan migraciones del binario (una copia
+  de antes de un despliegue; `admin` se niega con el esquema sin migrar; expandir y contraer lo permite, §2.4), y
+  después `migrate status` tiene que salir con 0. El binario corre con una configuración de usar y tirar
+  (`env -i`, `ELDMARK_ENV=dev` y claves aleatorias): solo ve la base de prueba. El `--actor` es
+  `ELDMARK_RESTORE_ACTOR` o la primera cuenta admin activa, sin suspensión ni expulsión, que no está en
+  `purges.txt`; si la copia no tiene ninguna admin, una de usar y tirar con `bootstrap`.
+- **Las consultas de integridad** de §12, más las que comprueban `reapply-purges`: personajes sin cuenta;
+  arrendamientos de instancias inexistentes; arrendamientos y billetes que siguen de la copia; líneas de
+  `purges.txt` sin fila en `purge_log` (de las cuentas y personajes que la copia tiene); `purged_at` distinto del
+  de `purges.txt`; cuentas de `purge_log` o de `purges.txt` con datos personales (correo, hash o estado, o filas
+  en sesiones, enlaces, accesos, consentimientos, aceptaciones, derechos, reinos, ignorados en los dos sentidos,
+  chat enviado o sanciones con motivo: lo que borra la purga de P1); sus personajes, o los purgados sueltos, con
+  nombre, estadísticas, arrendamiento, billete o nombre ligado; correos de esas cuentas en `outbound_mail`; y filas
+  de `audit_log` con el correo de una cuenta de `purges.txt` (solo se busca en las filas con «@»). Van por
+  conjuntos: con un `exists` por fila, 1000 purgas sobre 100 000 mensajes tardaban 22 s.
+- **`backup.sh`:** el nombre lleva milisegundos (dos copias seguidas no se pisan y el nombre ordena por fecha); la
+  semanal sale de la antigüedad de la última semanal, no de un día fijo (aguanta días sin copia); el
+  `purges.txt` de cada copia rota con ella y el de la carpeta no rota nunca. Subirlas a S3 es del VPS.
+- **La imagen `ops`** (§12 no la tiene): PostgreSQL 16 con los scripts y el mismo binario, para correr las copias
+  y sus comprobaciones en un contenedor desechable con la versión de la base. `docker compose run --rm
+  restore-check` es la restauración semanal de TEC-28.
+- **Las zonas en el compose** van con el perfil `zonas` hasta que existan su imagen (TEC-20) y sus opciones
+  (`--platform`, `--world`, `--channel` y `--public-address` de P4; `--dtls-*` de P9c).
+- **Permisos de los secretos:** Compose sin swarm monta cada archivo con sus permisos del host y dentro lo leen
+  usuarios sin privilegios (eldmark 10001, postgres 999): 0444 dentro de una carpeta 0700 de root.
+- **`platformtest.Attach`** (la plataforma sobre una base ya hecha, como una restaurada) y **`testdb.BinDir`** (la
+  carpeta de `pg_dump` y `pg_restore` de las pruebas) son nuevos, para las pruebas.
+
+**Pruebas.** `platform/deploy` es un paquete de Go sin código (`doc.go`) con sus pruebas, que corren los scripts
+con bash: `TestBackupAndRestoreCheck` (la de §15 P9b: copia antes de un `purge-now` y del borrado de un personaje,
+restaurada con el `purges.txt` más reciente → purgada y las consultas a 0; la más reciente con `--dir`; una copia
+cuya auditoría guarda el correo de una cuenta purgada después → 1 y lo nombra; rotación), `TestRestoreCheckUsage`,
+`TestPitrCheck`, `TestDevScript` (`prepare` dos veces, `env`, `up` hasta `/ready` y TERM con PostgreSQL parado,
+`reset`), `TestComposeConfig` (`docker compose config -q` con los dos ejemplos y no sin ellos; journald en todos,
+puertos solo en Caddy y la zona, la base sola en `data`, ningún secreto en claro, `ELDMARK_TRUSTED_PROXIES` con
+la IP de Caddy), `TestCaddyfile`, `TestCheckSecrets` (la de §15 P9b: los ejemplos de verdad pasan; un
+`staging.env`, un `secrets/ticket_keys` o un ejemplo con el valor de un secreto en el índice → 1, sin repetir el
+valor; y el índice de este repositorio pasa) y `TestScriptsPassShellcheck` (`bash -n` y shellcheck 0.10 sin
+avisos). En `internal/admin`: `TestParsePurges`, `TestReapplyPurgesAfterRestore` (las dos de §15 P9a sobre
+`reapply-purges`: con `pg_dump` y `pg_restore` de verdad, el `purged_at` original en las lápidas, también la de un
+personaje que nunca se borró; sin arrendamientos ni billetes de la copia; `purge_log`, la huella del correo y la
+reserva del nombre como en la base original; la fila de auditoría; y una segunda vuelta que no cambia nada) y
+`TestReapplyPurgesReportsWhatStaysUnpurged` (con una purga que no purga, `UnpurgedError` con el id). En `cmd`, la
+orden por la línea de órdenes (uso, un `purges.txt` mal formado o que no existe → 1).
+
+**Medido** (esta máquina, 4 núcleos, Go 1.24.7, PostgreSQL 16.15):
+
+| Qué | Resultado |
+|---|---|
+| `pitr_check.sh` | 3,0–3,2 s (copia base 0,65 s, recuperación 0,15 s) |
+| `backup.sh` | 0,1 s con una base de prueba (76 KB); 0,3 s con 10 000 cuentas, 20 000 personajes, 100 000 mensajes y 50 000 filas de auditoría (43 MB de base, 1,6 MB de copia) |
+| `restore_check.sh` | 1,3–1,5 s con una base de prueba. Con la grande y 1000 cuentas en `purges.txt`: `pg_restore` 0,64 s, `reapply-purges` 18,6 s, todo 20,3 s |
+| `reapply-purges`, por cuenta con 2 personajes | 18 ms; 10 ms con un índice en `chat_messages (sender_account_id)`, que el esquema no tiene: la purga de una cuenta borra su chat recorriendo la tabla entera (igual en la purga horaria y en `purge-now`). **Para una migración futura** (fuera de la fase 5, §2.4) |
+| `go test -race -count=1 ./...` | 34 s, sin carreras; `deploy`, 14 s (con la compilación del binario) |
+| Binario | 20,5 MB |
+
+Godot: fuera de `platform/` solo cambian la documentación y la CI (`platform/` lleva `.gdignore` y está fuera de las
+exportaciones).
+
+**Sin comprobar (en el VPS, del usuario):** construir las imágenes (aquí el demonio de Docker no corre: `docker
+compose config` sí, `build` no) y arrancar el compose; Let's Encrypt con un dominio de verdad; los secretos
+montados y leídos por usuarios sin privilegios; journald con `MaxRetentionSec` (aquí no hay systemd); la imagen de
+la base con WAL-G, S3 y el `restore_command` de verdad; el cron de `backup` y `restore-check` con su alerta
+(TEC-31); `dev.sh` en macOS y en WSL con la zona en Windows; `serve`, `purge-now` y `reapply-purges` en staging y
+producción, que esperan al almacén del progreso (progresion.md P7); la zona en el compose (TEC-20, P4 y P9c); y el
+trabajo «Plataforma» en GitHub con las herramientas obligatorias (shellcheck y `docker compose` de
+`ubuntu-latest`).
+
+**Queda para después:** `admin maintenance` y `deploy.sh` (copia previa, parar, `migrate up`, versión nueva, quitar
+el mantenimiento), de TEC-28 y sin paquete aquí; publicar las imágenes en GHCR; la imagen y el despliegue de las
+zonas (TEC-20); el resto de P9a.
+
+### 19.14 Lo que deja progresion.md P7
+
+progresion.md P7 (su §19.17) pone el almacén del progreso de verdad (`internal/progress` sobre `0010_progress`) y la
+validación de la creación con las reglas exportadas, y cambia lo de aquí que lo esperaba:
+
+- **`serve` y la orden `admin`** usan `progress.Store` y `*progress.Rules` en todos los entornos. Ya no hay
+  `errNoProgressStore`: `serve` arranca en `staging` y `production`, y `purge-now` y `reapply-purges` purgan allí
+  el estado del progreso con `ProgressStore.Purge`. `MemoryProgressStore` y `ProvisionalValidator` quedan para las
+  pruebas.
+- **`platformtest.NewWithProgress(t, newStore, validator)`** monta la plataforma con el almacén de verdad
+  (`ProgressStore` es el que esté en uso; `Progress`, el falso, es nil entonces) y `NewCharacter` crea con
+  `platformtest.ValidAppearances`. `TestBackupAndRestoreCheck` (P9b) ya la usa, y `restore_check.sh` comprueba que
+  los personajes purgados no tienen filas en `character_progress`, `character_wallets`, `item_instances` ni
+  `character_timers`.
+- **P9a:** el trabajo horario de la retención del libro llama a `ProgressStore.PurgeRetention` en una transacción
+  mientras devuelva `deleted > 0` y borra en ella las filas de `characters` de `emptied`; la exportación pone
+  `ProgressStore.Export` (`{"record", "ops"}`, sin datos del personal) bajo `characters[i].progress`, también de las
+  lápidas con libro.
+- **P7b y progresion.md P5d (auditoría):** la fila de `audit_log` que escribe S8 lleva en `args` el `detail` de la
+  operación sin `command`, `source`, `actor_character_id` ni `at_unix` (`{"args": [...]}`, y las claves de nivel y
+  XP si las hay); la entrada del lote con `key = "op:<op_id>"` tiene que llevar lo mismo.
+- **P10:** las pruebas de extremo a extremo pueden comparar con `Load` (el registro de progresion.md §3.4).
+
+**Sin comprobar:** con una zona de verdad (P10).
+
+### 19.15 P9a · privacidad (TEC-43)
+
+**Qué hay.** Lo que le quedaba a §11 tras P1 (exportación de la cuenta, purga de cuentas y huella del correo), P2
+(purga de personajes), P7a (`purge-now` y retención del chat), P9b (`reapply-purges`) y progresion.md P7 (`Purge`,
+`PurgeRetention` y `Export` de verdad):
+
+| Pieza | Contenido |
+|---|---|
+| `internal/privacy` | Nuevo (el de §2.1): `Service` con `Run` (una vuelta de las retenciones de §11.1 con la hora del reloj inyectable), `Job` (el trabajo horario `privacy_retention`, que registra cuánto borró cada paso, sin ids) y `PurgeLedger` (la retención del libro). Los plazos son constantes (`AuthEventsRetention`, `ReportRetention`…); `Result` da lo que tocó cada paso de `Steps` |
+| `internal/accounts` | `Options.Progress` (`ProgressExporter`, la parte `Export` de `ProgressStore`) y `characters[i].progress` en la exportación (abajo) |
+| `cmd/eldmark-platform` | `serve` pasa el almacén a la exportación y añade el trabajo `privacy_retention`, cada hora (el quinto: el pool de 16 conexiones de §19.5 sobra) |
+| `internal/platformtest` | `Platform.Privacy` (con el reloj falso) y el almacén en la exportación |
+| `platform/legal/privacy-1.md` | Revisado (abajo); `TestEmbeddedDrafts` busca algunas cifras y frases más |
+
+**Las retenciones.** Una vuelta hace los pasos en este orden, cada uno en sus propias sentencias (los de tablas que
+crecen, en lotes de 10 000 hasta que no queda nada); uno que falla no para a los demás y la vuelta devuelve los
+errores juntos:
+
+| Paso | Qué borra (o cambia) |
+|---|---|
+| `reports_closed` | Los reportes `open` o `in_review` creados hace más de un año pasan a `dismissed`, `closed_at` = ahora y `resolution = 'caducado'`: cuentan desde ahí |
+| `reports` | Los cerrados (`actioned` o `dismissed`) hace más de un año, con su `report_evidence` y sus `sanction_reports` (en cascada) |
+| `audit_log` | Lo de hace más de un año (`at`) |
+| `sanctions` | Las de las cuentas purgadas hace más de un año (con sus `sanction_reports`); las de una cuenta viva no caducan |
+| `sanctioned_emails` | Las huellas con `until ≤ ahora`, que el registro ya no mira |
+| `auth_events` | Lo de hace más de 30 días |
+| `session_access` | IP y agente a null en las sesiones abiertas hace más de 30 días |
+| `sessions` | Las caducadas (`refresh_expires_at`) hace más de 7 días; sus billetes caen en cascada y el arrendamiento que la tenga se queda sin sesión |
+| `account_tokens` | Los caducados (`expires_at`) hace más de 7 días |
+| `enter_tickets` | Los caducados hace más de un día |
+| `zone_instances` | Las terminadas (`stopped`, `lost` o `replaced`, las tres con `ended_at`) hace más de 30 días, con sus `id_blocks` y billetes en cascada; los arrendamientos, fortalezas y eventos de guerra que las nombran quedan a null |
+| `outbound_mail` | Lo de hace más de 7 días |
+| `character_names` | Las filas `reserved` con `reserved_until ≤ ahora` |
+| `ledger` y `ledger_tombstones` | `ProgressStore.PurgeRetention` en una transacción mientras borre algo y, en ella, `delete from characters` de las de `emptied` (con `purged_at`: un personaje vivo nunca se borra aquí). El año lo mide el reloj del almacén |
+
+**La exportación.** `characters[i].progress` es `ProgressStore.Export` del personaje, en la misma transacción
+(`repeatable read`, de solo lectura) que el resto del archivo: de uno sin purgar, `{"record", "ops"}`; de una lápida,
+`{"record": null, "ops"}` si le queda libro y `null` si ya no. De las operaciones GM y REVERSAL salen el tipo, la
+fecha, los apuntes y los eventos, sin actor, `note` ni `detail` (los quita `Export`).
+
+**Lo revisado** (§14.1 lo ponía todo en P9a):
+
+- **Purgas** (bloqueos, lápidas, `purge_log`): las de P1 y P2 tal cual. Sus pruebas de §15 P9a ya estaban (abajo) y
+  faltaba la de la restauración en el límite, que ahora está.
+- **`sanctioned_email_hashes`:** se queda la regla de P1 (cada sanción sin revocar cuenta hasta 90 días después de su
+  fin; un aviso o un renombrado, desde que se puso; una expulsión permanente, el tope), con el año como mucho desde la
+  purga (en `reapply-purges`, la original). Es la lectura de «hasta el fin de la sanción, o 90 días tras ella» de §11.1
+  que casa con «una sanción de los últimos 90 días» de §11.2 y con la reincidencia de social.md §9. Lo que faltaba era
+  borrar las vencidas (`sanctioned_emails`).
+- **`reapply-purges`** (P9b): sin cambios. Como la retención del libro y la de las sanciones cuentan desde
+  `purged_at`, una copia restaurada no alarga ninguna.
+- **`privacy-1.md`:** «instancias de zona terminadas»; el historial de un personaje purgado dura un año desde la
+  purga (decía «desde que se borra»); el nombre de un personaje de prueba solo se reserva mientras se puede
+  restaurar; las correcciones del personal (actor, nota y orden) siguen al historial y su nota se guarda como dato de
+  moderación; la huella del correo, 90 días tras el fin de la última sanción (la expulsión, el año entero); las
+  copias vuelven a purgar con la fecha original; y qué lleva la descarga (el progreso y el historial, también el de
+  los personajes purgados que se conserva) y qué no (quién hizo una corrección y su nota). Sigue siendo la versión 1:
+  no se ha publicado en staging (§19.2).
+
+**Desviaciones y decisiones de la implementación:**
+
+- **«`zone_instances` paradas» son las terminadas:** `stopped`, `lost` y `replaced` ponen `ended_at` y ninguna vuelve
+  a servir; la tabla de §11.1 lo dice ya así. Un arrendamiento cuyo `claimed_by` era una de ellas no cambia (no tiene
+  clave ajena) y solo vale para `Apply` mientras su instancia vive.
+- **Nombres reservados:** §11.1 decía «el nombre, 30 días más» sin mecanismo. Crear y restaurar ya tratan como libre
+  una fila `reserved` vencida, pero la fila guardaba el nombre para siempre; ahora el trabajo la borra (§11.1
+  corregida).
+- **Sesiones:** «caducadas» es `refresh_expires_at` (12 h desde el inicio de sesión; revocar no lo cambia), así que
+  una sesión vive como mucho 7 días y medio. Con eso, la regla de los 30 días de la IP y el agente no llega a aplicarse
+  hoy (se queda por si las sesiones se alargan), y la exportación da las sesiones de esos 7 días y medio. Un
+  arrendamiento de un personaje que lleva más de eso en el mundo se queda sin sesión (el latido ya no puede expulsarlo
+  por ella; tampoco podía: caducada no se revoca).
+- **La prueba de un reporte va con su reporte** (`report_evidence` cae en cascada): la de uno que estuvo abierto un año
+  dura hasta dos, como dice la tabla («desde el cierre»).
+- **Una lápida sin libro** da `progress: null` en la exportación (§11.2 solo pide las que lo tienen).
+- **`audit_log` a un año** borra también las filas `set-role` viejas que lee `sanctions.RoleAt` (S2): solo cambia algo
+  para una operación GM con `detail.at_unix` de hace más de un año, que se comprobaría con el rol de después.
+- **Relojes:** la retención del libro usa el del almacén (`progress.New`) y el resto el del servicio; en `serve` los dos
+  son la hora del sistema y en `platformtest`, el mismo reloj falso.
+
+**Pruebas.** `internal/privacy` (5, la plataforma entera con el almacén de verdad): `TestExportHasEverySectionAndTheProgress`
+(las doce secciones con datos; Aneira con registro y sus dos operaciones, la GM con solo sus siete claves y su apunte;
+la lápida de Brenna con libro y sin registro; la de Cora, sin libro, `null`; ni el correo del GM, ni su nota, ni
+`currency_add`, ni `detail`); `TestRetentionsDeleteWhatExpiredAndNothingElse` (cada fila de la tabla con una fila un
+minuto fuera del plazo y otra un minuto dentro: lo de cada paso exacto, las cascadas y los null, el reporte abierto que
+se cierra y el que no, las sanciones de una cuenta purgada hace un año y un minuto, de otra a la que le falta un minuto
+para el año y de una viva, el chat que no es de este trabajo; una segunda vuelta no borra nada; el reporte caducado se borra al año de cerrarse);
+`TestLedgerRetentionEmptiesAndRemovesTombstones` (10 050 apuntes en tres pasadas, la operación compartida con un vivo
+que se queda, una lápida sin libro, la purgada dos días después que se queda, antes del año nada y la marca que no
+sobrevive); `TestRestoreAtTheLimitRacesTheHourlyPurge` (10 rondas con la restauración en el último segundo y la purga,
+con su propio reloj, en el primero después; en la ejecución medida, 2 restaurados y 8 purgados, todos enteros o lápida);
+y `TestSanctionedAccountsArePurgedAndTheirEmailWaits` (la expulsada exporta con la sesión de privacidad, con el
+progreso, pide la supresión y se purga; su correo no se registra hasta el año, cuando la retención borra la huella; la
+suspendida, con `purge-now`, hasta 90 días tras el fin). En `cmd`, `TestServeRunsThePrivacyRetention` (`serve` borra al
+arrancar un acceso de hace 31 días y una lápida sin libro de hace 366, y deja el de ayer). Comprobadas con la mutación
+que deberían pillar: sin `exportProgress`, sin el trabajo en `serve`, sin el borrado de las lápidas vacías y sin el cierre
+de los reportes al año, fallan.
+
+Las de §15 P9a, una a una: exportación (`TestExportHasEverySectionAndTheProgress`); la purga deja las lápidas
+(`TestPurgeExpiredLeavesATombstone`, P2); arrendamiento vivo y `character_busy` (la misma y `TestPurgeNow`, P7a);
+restauración y purga a la vez (`TestRestoreAtTheLimitRacesTheHourlyPurge`); retenciones
+(`TestRetentionsDeleteWhatExpiredAndNothingElse`, `TestLedgerRetentionEmptiesAndRemovesTombstones`); las dos de
+`reapply-purges` (`TestReapplyPurgesAfterRestore` y `TestReapplyPurgesReportsWhatStaysUnpurged`, P9b); purgar una
+cuenta deja lápidas a sus vivos (`TestAccountPurgeWithCharacters`, P2); la suspendida y su correo y la expulsada que
+exporta, se suprime y se purga (`TestSanctionedAccountsArePurgedAndTheirEmailWaits`); y la auditoría sin su correo tras
+`purge-now` (`TestAuditHasNoPersonalData`, P7a) con `restore_check.sh` que falla si la tiene (`TestBackupAndRestoreCheck`,
+P9b).
+
+**Medido** (esta máquina, 4 núcleos, Go 1.24.7, PostgreSQL 16 con `fsync` apagado):
+
+| Qué | Resultado |
+|---|---|
+| Una vuelta con 200 000 accesos y 100 000 filas de auditoría caducadas (y otras 150 000 que se quedan) y una lápida con 60 000 filas de libro | 1,2 s; la vuelta siguiente, sin nada que borrar, 7,5 ms |
+| Borrar sesiones caducadas con 50 000 arrendamientos · instancias terminadas con 200 000 eventos de guerra | 3 ms por sesión · 15 ms por instancia: la clave ajena con `on delete set null` recorre entera `character_leases` (sin índice en `session_id`) o `fortress_events` (sin índice en `zone_instance_id`) por cada fila borrada. Unas mil sesiones por hora son 3 s de trabajo. **Para una migración futura** (fuera de la fase 5, §2.4): esos dos índices |
+| `go test -count=1 ./internal/privacy` | 2,5 s (3,9 s con `-race`) |
+| `go test -race -count=1 ./...` | 51 s, sin carreras |
+| Binario | 20,9 MB (20,8 MB antes) |
+
+Godot: fuera de `platform/` solo cambia la documentación.
+
+**Sin comprobar:** la retención con millones de filas (los lotes de 10 000 sí, con 200 000); el trabajo en staging.
+
+**Queda para después:** la revisión legal de los textos, de la edad mínima y de los plazos marcados en §11.1 (usuario,
+§16); el contacto del responsable en `privacy-1.md`.

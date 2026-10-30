@@ -425,6 +425,11 @@ func freePort() (int, error) {
 	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
+// BinDir devuelve la carpeta de los binarios de PostgreSQL que usan las pruebas (la de [Main]:
+// ELDMARK_PG_BIN, pg_config --bindir o el mayor /usr/lib/postgresql/*/bin), o "" si no hay. Para
+// las pruebas que corren pg_dump, pg_restore o los scripts de platform/deploy.
+func BinDir() string { return findBinDir() }
+
 // findBinDir busca los binarios: ELDMARK_PG_BIN, pg_config --bindir o el mayor
 // /usr/lib/postgresql/*/bin.
 func findBinDir() string {

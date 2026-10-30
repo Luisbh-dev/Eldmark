@@ -1,0 +1,8 @@
+# Contexto de deploy/Dockerfile (platform/): nada de secretos, copias ni binarios locales.
+deploy/secrets
+deploy/backups
+deploy/*.env
+**/*.pem
+**/*.key
+eldmark-platform
+eldmark-platform.exe

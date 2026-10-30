@@ -87,7 +87,8 @@ func TestEmbeddedMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"0001_accounts", "0002_characters", "0003_zones", "0004_war", "0005_social", "0006_privacy"}
+	want := []string{"0001_accounts", "0002_characters", "0003_zones", "0004_war", "0005_social", "0006_privacy",
+		"0010_progress"}
 	if len(ms) < len(want) {
 		t.Fatalf("faltan migraciones: %d", len(ms))
 	}
@@ -202,8 +203,8 @@ func TestMigrationsKeepTheRows(t *testing.T) {
 			}
 		}
 	}
-	if seeded < 6 {
-		t.Fatalf("hay semilla para 0001–0006: %d", seeded)
+	if seeded < 7 {
+		t.Fatalf("hay semilla para 0001–0006 y 0010: %d", seeded)
 	}
 }
 

@@ -24,7 +24,7 @@ type appearanceCase struct {
 	Valid      bool   `json:"valid"`
 }
 
-func embedded(t *testing.T) *progress.Rules {
+func embedded(t testing.TB) *progress.Rules {
 	t.Helper()
 	r, err := progress.LoadRules(gamedata.Raw())
 	if err != nil {

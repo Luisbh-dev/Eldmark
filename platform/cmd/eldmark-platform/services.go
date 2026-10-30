@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -19,33 +18,33 @@ import (
 	"eldmark/platform/internal/mail"
 	"eldmark/platform/internal/names"
 	"eldmark/platform/internal/persistence"
+	"eldmark/platform/internal/privacy"
+	"eldmark/platform/internal/progress"
 	"eldmark/platform/internal/social"
 	"eldmark/platform/internal/war"
 	"eldmark/platform/internal/zones"
 	"eldmark/platform/legal"
 )
 
-// Cada cuánto corren las purgas de cuentas y de personajes (§2.5: retenciones y purgas, cada hora).
+// Cada cuánto corren las purgas de cuentas y de personajes y las retenciones (§2.5: retenciones y
+// purgas, cada hora).
 const purgeEvery = time.Hour
 
-// errNoProgressStore impide arrancar en staging y production mientras el almacén del progreso sea
-// el falso en memoria.
-var errNoProgressStore = errors.New("el almacén del progreso (docs/progresion.md P7) aún no existe: " +
-	"en staging y production serve no arranca con el falso en memoria, que pierde el progreso al reiniciar")
-
-// progressStore elige el almacén del progreso y la validación de la creación (plataforma.md §7.5):
-// hasta progresion.md P7, el falso en memoria y la validación provisional, solo en dev y test.
-func progressStore(cfg *config.Config, log *slog.Logger) (persistence.ProgressStore, persistence.CreateValidator, error) {
-	if cfg.Env.Deployed() {
-		return nil, nil, errNoProgressStore
+// progressStore da el almacén del progreso y la validación de la creación (plataforma.md §7.5): los de
+// progresion.md P7 (internal/progress, sobre 0010_progress) con las reglas exportadas de
+// progression_rules.json, en todos los entornos. El falso en memoria y la validación provisional
+// quedan para las pruebas.
+func progressStore() (*progress.Store, *progress.Rules, error) {
+	rules, err := progress.LoadRules(gamedata.Raw())
+	if err != nil {
+		return nil, nil, err
 	}
-	log.Warn("el progreso de los personajes se guarda en memoria hasta tener el almacén de progresion.md P7: " +
-		"se pierde al reiniciar")
-	return persistence.NewMemoryProgressStore(), persistence.ProvisionalValidator{}, nil
+	return progress.New(rules, nil), rules, nil
 }
 
 // mountServices monta en el proceso los servicios de los paquetes: cuentas y sesiones (P1),
-// personajes (P2) y la API interna (P3). Devuelve lo que hay que cerrar al parar (la cola de correo).
+// personajes (P2), la API interna (P3) y las retenciones (P9a). Devuelve lo que hay que cerrar al parar
+// (la cola de correo).
 func mountServices(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger) (func(), error) {
 	rules, err := gamedata.Load()
 	if err != nil {
@@ -55,12 +54,12 @@ func mountServices(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog
 	if err != nil {
 		return nil, err
 	}
-	progress, validator, err := progressStore(cfg, log)
+	progressRepo, validator, err := progressStore()
 	if err != nil {
 		return nil, err
 	}
 	minProtocol := cfg.ResolveMinProtocol(rules.ProtocolVersion)
-	purger := characters.NewPurger(pool, progress, clock.System{}, log)
+	purger := characters.NewPurger(pool, progressRepo, clock.System{}, log)
 	var texts fs.FS = legal.Embedded()
 	if cfg.LegalDir != "" {
 		texts = os.DirFS(cfg.LegalDir)
@@ -79,12 +78,17 @@ func mountServices(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog
 		sender = smtp
 	}
 	svc, err := accounts.New(accounts.Options{Config: cfg, Pool: pool, Log: log, Mail: sender, Legal: documents,
-		Characters: purger, MinProtocol: minProtocol})
+		Characters: purger, Progress: progressRepo, MinProtocol: minProtocol})
 	if err != nil {
 		mail.Close(sender)
 		return nil, err
 	}
-	chars, err := characters.New(characters.Options{Config: cfg, Pool: pool, Log: log, Accounts: svc, Progress: progress,
+	retention, err := privacy.New(privacy.Options{Pool: pool, Progress: progressRepo, Log: log})
+	if err != nil {
+		mail.Close(sender)
+		return nil, err
+	}
+	chars, err := characters.New(characters.Options{Config: cfg, Pool: pool, Log: log, Accounts: svc, Progress: progressRepo,
 		Validator: validator, Names: nameRules, Purger: purger, MinProtocol: minProtocol})
 	if err != nil {
 		mail.Close(sender)
@@ -100,12 +104,13 @@ func mountServices(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog
 	auth := accounts.NewAPI(svc)
 	auth.Mount(a)
 	characters.NewAPI(chars).Mount(a, auth)
-	if err := mountInternal(a, cfg, pool, log, progress, nameRules, minProtocol); err != nil {
+	if err := mountInternal(a, cfg, pool, log, progressRepo, nameRules, minProtocol); err != nil {
 		mail.Close(sender)
 		return nil, err
 	}
 	a.AddJob("accounts_purge", purgeEvery, svc.PurgeDue)
 	a.AddJob("characters_purge", purgeEvery, purger.PurgeExpired)
+	a.AddJob("privacy_retention", purgeEvery, retention.Job)
 	return func() {
 		svc.Wait() // las recuperaciones de contraseña en curso mandan su correo antes de cerrar la cola
 		mail.Close(sender)
@@ -117,12 +122,12 @@ func mountServices(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog
 // guerra, y los lotes de chat y auditoría con ignorados, reportes y sanciones; el trabajo de
 // instancias perdidas, cada min(5 s, HEARTBEAT_S), y la retención del chat (30 días), cada hora.
 func mountInternal(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger,
-	progress persistence.ProgressStore, nameRules *names.Rules, minProtocol int) error {
+	progressRepo persistence.ProgressStore, nameRules *names.Rules, minProtocol int) error {
 	zoneSvc, err := zones.New(zones.Options{Config: cfg, Pool: pool, Log: log, MinProtocol: minProtocol})
 	if err != nil {
 		return err
 	}
-	store, err := persistence.NewStore(persistence.StoreOptions{Pool: pool, Progress: progress, LeaseTTL: cfg.LeaseTTL,
+	store, err := persistence.NewStore(persistence.StoreOptions{Pool: pool, Progress: progressRepo, LeaseTTL: cfg.LeaseTTL,
 		Log: log})
 	if err != nil {
 		return err

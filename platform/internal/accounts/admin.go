@@ -45,6 +45,16 @@ func (s *Service) PurgeNow(ctx context.Context, accountID int64) (bool, error) {
 	return s.purgeAccount(ctx, accountID, purgeRequested, s.clock.Now())
 }
 
+// ReapplyPurge vuelve a purgar, tras restaurar una copia, una cuenta que purge_log da por purgada
+// (admin reapply-purges, §11.2): como [Service.PurgeNow], pero con at, el purged_at original de
+// purges.txt, en lugar de la hora, para que restaurar no alargue ninguna retención (la de las
+// sanciones y el tope de sanctioned_email_hashes salen de él). Devuelve false si la cuenta no
+// existe en la copia o ya estaba purgada. Corre sin arrendamientos (reapply-purges los borra
+// antes); si aun así alguno sigue vivo, el error envuelve [ErrCharactersBusy] y no purga nada.
+func (s *Service) ReapplyPurge(ctx context.Context, accountID int64, at time.Time) (bool, error) {
+	return s.purgeAccount(ctx, accountID, purgeReapplied, at)
+}
+
 // NewAccount es una cuenta que crea la orden admin (cuentas de prueba o del equipo).
 type NewAccount struct {
 	Email    string

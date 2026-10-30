@@ -28,7 +28,8 @@ func TestEmbeddedDrafts(t *testing.T) {
 	}
 	// privacy-1.md recoge la tabla de retenciones de plataforma.md §11.1.
 	privacy := string(s.Current("privacy").Text)
-	for _, want := range []string{"30 días", "1 año", "14 días", "35 días", "HMAC"} {
+	for _, want := range []string{"30 días", "1 año", "14 días", "35 días", "HMAC", "7 días", "1 día", "90 días",
+		"desde que se purga", "instancias de zona terminadas", "dato de moderación"} {
 		if !bytes.Contains([]byte(privacy), []byte(want)) {
 			t.Errorf("privacy-1.md no dice %q", want)
 		}
