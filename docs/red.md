@@ -1461,9 +1461,27 @@ PNJ del fuerte, 73 ajenos, también; pasa a uno de cada tres con más de 100). L
   ```
   view_tick = T − view_offset_q / 16
   allowed   = min(MAX_REWIND_TICKS (24),
-                  rtt_ticks + lead(T) + clamp(interp_delay_q / 8, 4, 12) + 2)
+                  rtt_ticks + lead(T) + clamp(ceil(interp_delay_q / 8), 4, 12) + 2)
+  si view_offset_q / 16 > allowed + 8: el golpe no se prueba (sospecha + 1)
   view_tick = clamp(view_tick, T − allowed, T)
   ```
+  - **Holgura del rechazo** (`CombatResolver.REWIND_REJECT_SLACK_TICKS` = 8; revisión de la fase 4, lente
+    «trampas»): lo que pasa del tope hasta `allowed + 8` se **recorta** al tope; solo por encima se rechaza y
+    suma sospecha. Antes era `allowed + 1` y un cliente honrado con un tirón del proceso o pocos FPS lo pasaba:
+    cuando el motor encadena varios pasos de física en un fotograma (hasta `max_physics_steps_per_frame` = 8),
+    el paso k declara la vista del último fotograma dibujado (`RemoteWorld.get_last_drawn_render_tick`, lo que
+    el jugador vio de verdad), k ticks más vieja, y las entradas de ese fotograma llegan con menos antelación
+    (`lead(T)` y el tope bajan). El golpe entero se rechazaba (o la flecha salía inofensiva) y sumaba sospecha:
+    con un `SIGSTOP` de 150–200 ms al proceso del bot «rate» de `test_net_processes`, de 2 a 5 golpes
+    rechazados por pasada, la firma exacta de su fallo intermitente (`s=647`, `vq=385` con un tope de 23); con
+    la holgura, 0 en cuatro pasadas. Quien declara de más se queda en el tope, como un honrado, sin ganar nada;
+    el tramposo `rewind` (40 ticks) sigue por encima de `24 + 8`. Medir en el cliente con el render del propio
+    paso no bastaría (no cubre la caída de la antelación) y falsearía lo que vio el jugador. De rebote, un
+    honrado con más RTT del que cubre el tope de 24 (unos 200 ms) ya no ve sus golpes rechazados hasta los 32
+    ticks: se prueban con 24, sin sospecha (pueden fallar contra quien se mueve; no medido). La sospecha solo
+    sale en el informe (`ZoneServer`): no expulsa ni sanciona a nadie.
+  - **`ceil` en la interpolación** (misma revisión): truncar `interp_delay_q / 8` perdía hasta 7/8 de tick de
+    la vista de un honrado.
   - **`rtt_ticks`** lo mide el servidor sin reloj: es el mínimo, en los últimos 120 ticks, de
     `s − ack_snapshot_tick` al llegar cada INPUT_BATCH, **acotado por una fuente que el cliente no
     controla** (hallazgo S4): `ceil(PEER_ROUND_TRIP_TIME · 60 / 1000) + retardo máximo del

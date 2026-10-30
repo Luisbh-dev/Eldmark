@@ -478,8 +478,11 @@ baja de un derribado es antes una muerte (§4.5).
 **Disparo** (paso 3), por cada proyectil del ataque o la habilidad que compromete en `s`:
 
 1. **Rebobinado**: el de combate.md §4.3 paso 2, fijado ahora para todo el vuelo y **redondeado a ticks
-   enteros** (`rewind` y `defense_rewind`; se factoriza de `CombatResolver._swing_rewind`). Rechazado →
-   flecha **inofensiva** (vuela y choca con el mundo, no prueba personajes), sospecha + 1 y registro.
+   enteros** (`rewind` y `defense_rewind`; se factoriza de `CombatResolver._swing_rewind`). Rechazado (más de
+   `allowed + 8` ticks; hasta ahí se recorta al tope) → flecha **inofensiva** (vuela y choca con el mundo, no
+   prueba personajes), sospecha + 1 y registro. *(Revisión de la fase 4, lente «trampas»: el rechazo empezaba
+   en `allowed + 1` y la flecha de un honrado que disparaba en un fotograma retrasado salía inofensiva;
+   red.md §10.)*
    También es inofensiva si el tirador está en la zona segura de su reino. Falsos y PNJ: sin rebobinado.
 2. **Puntería** con la entrada de `s` (`InputQueue.get_applied(s)`): `AimRay.canonical(pies, look_yaw,
    look_pitch, AIM_LEFT)` da el rayo de la cámara canónica: base `B = Basis(UP, yaw) · Basis(RIGHT,

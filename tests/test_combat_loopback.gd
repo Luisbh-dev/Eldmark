@@ -16,7 +16,8 @@ extends TestCase
 ## sección 10) y dos atacantes golpean a un objetivo que corre en lateral. [SwingRecorder] guarda, en cada
 ## entrada que genera el atacante, dónde dibuja al objetivo (su [code]render_tick[/code]) y, con su estado
 ## predicho, calcula qué golpes [i]veía[/i] dentro del arco; el servidor debe confirmar al menos el 95 %.
-## Con un [code]view_offset_q[/code] de 30 ticks contra un objetivo quieto, ningún golpe entra (tope de 24).
+## Con un [code]view_offset_q[/code] de 40 ticks contra un objetivo quieto, ningún golpe entra (tope de 24 más la
+## holgura de 8 que se recorta sin rechazar).
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
@@ -45,8 +46,9 @@ const REWIND_MEASURED_TICKS: int = 900
 const REWIND_MIN_SEEN_SWINGS: int = 16
 ## Fracción de los golpes vistos que el servidor debe confirmar.
 const REWIND_MIN_CONFIRMED: float = 0.95
-## Ticks de rebobinado que falsea el atacante de la prueba del tope (el tope es de 24).
-const CHEAT_VIEW_TICKS: int = 30
+## Ticks de rebobinado que falsea el atacante de la prueba del tope: más que el tope de 24 y su holgura
+## ([constant CombatResolver.REWIND_REJECT_SLACK_TICKS]), que se recorta sin rechazar (revisión de la fase 4: eran 30).
+const CHEAT_VIEW_TICKS: int = 40
 
 var _root: Node
 var _server_viewport: SubViewport
@@ -539,7 +541,7 @@ func test_the_server_confirms_at_least_95_percent_of_the_hits_attackers_saw_on_a
 			NetProtocol.MAX_REWIND_TICKS])
 
 
-func test_a_view_offset_of_30_ticks_against_a_still_target_is_rejected_by_the_cap() -> void:
+func test_a_view_offset_of_40_ticks_against_a_still_target_is_rejected_by_the_cap() -> void:
 	await _start_server(func(config: ServerConfig) -> void: config.net_sim_spec = REWIND_NET_SIM)
 	var attacker: NetClient = _add_bot(VARDHEIM, 1)
 	var target: NetClient = _add_bot(SOLMARCH, 2)
@@ -568,7 +570,7 @@ func test_a_view_offset_of_30_ticks_against_a_still_target_is_rejected_by_the_ca
 	assert_true(await _wait_until(func() -> bool: return _listeners[0].hits().size() >= 3, 600),
 			"con la vista de verdad, los golpes entran")
 	assert_eq(peer.suspicion_score, 0)
-	# Ahora el atacante falsea su vista: 30 ticks atrás en todas sus entradas, más que el tope.
+	# Ahora el atacante falsea su vista: 40 ticks atrás en todas sus entradas, más que el tope y su holgura.
 	script_state["armed"] = false
 	await wait_physics_frames(REWIND_CYCLE_TICKS)
 	var honest_hits: int = _listeners[0].hits().size()

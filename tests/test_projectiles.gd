@@ -642,6 +642,32 @@ func test_a_rejected_rewind_or_the_safe_area_make_a_harmless_arrow() -> void:
 	assert_eq(_director.projectiles.stats[&"projectiles_harmless"], 2)
 
 
+## Revisión de la fase 4 (lente «trampas»): la flecha de un honrado que dispara en un fotograma retrasado (siete
+## pasos de física de más sobre el tope + 1 de antes) se recorta al tope y no es inofensiva ni suma sospecha.
+func test_an_arrow_shot_in_a_late_frame_is_clamped_to_the_cap_not_made_harmless() -> void:
+	var peer := ServerPeer.new(7)
+	peer.rtt_ticks = 4
+	peer.interp_delay_q = 48
+	var archer: Combatant = _body(1, VARDHEIM, Vector3.ZERO, 0.0, peer)
+	var target: Combatant = _body(2, SOLMARCH, Vector3(0.0, 0.0, -8.0), PI)
+	for tick: int in range(S - 30, S):
+		for fighter: Combatant in _director.get_sorted():
+			CombatFixture.record(_history, fighter, tick)
+	var allowed: int = CombatResolver.allowed_rewind(peer.rtt_ticks, 0, peer.interp_delay_q)
+	assert_eq(allowed, 12)
+	_shoot(archer, &"bow_quick", S, _center_of(target), 0, allowed + 1 + 7)
+	for tick: int in range(S, S + 30):
+		_tick(tick)
+		for fighter: Combatant in _director.get_sorted():
+			CombatFixture.record(_history, fighter, tick)
+	if assert_eq(_spawns.size(), 1):
+		assert_false(_spawns[0].is_harmless(), "no es inofensiva")
+	assert_eq(_hits_on(2).size(), 1, "y acierta")
+	assert_eq(peer.suspicion_score, 0, "sin sospecha")
+	assert_eq(peer.rewind_rejects, 0)
+	assert_eq(_director.projectiles.stats[&"projectiles_harmless"], 0)
+
+
 # --- Abanico, carga, efectos ------------------------------------------------------------------
 
 func test_the_volley_the_drawn_shot_and_the_slowing_shot() -> void:

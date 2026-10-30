@@ -370,10 +370,14 @@ Para cada atacante en golpe activo en `s`:
    más la holgura de su ventana). Un honrado no pierde nada (su vista es `rtt + antelación de la
    entrada + interpolación`, así que con la antelación de esa entrada nunca queda por encima del
    tope), pero un cliente que adelanta solo las entradas de su golpe 14 ticks ya no sube el tope de
-   12 a 24 con RTT de LAN. Si `view_offset_q / 16 > allowed + 1`, el golpe **no se prueba**: suma a
-   la puntuación de sospecha y va al `--combat-log`. Si no, `view_tick = clamp(s − view_offset_q /
-   16, s − allowed, s)`. **Mínimo para la defensa:** las defensas retroactivas (invulnerable,
-   parada, bloqueo; paso 6) miran al menos `max(0, rtt_floor + 4 − 2)` ticks atrás
+   12 a 24 con RTT de LAN. Si `view_offset_q / 16 > allowed + 8`
+   (`CombatResolver.REWIND_REJECT_SLACK_TICKS`), el golpe **no se prueba**: suma a la puntuación de
+   sospecha y va al `--combat-log`. Si no, `view_tick = clamp(s − view_offset_q / 16, s − allowed, s)`:
+   lo que pasa del tope sin llegar al rechazo se recorta. *(Revisión de la fase 4, lente «trampas»: el
+   rechazo empezaba en `allowed + 1` y un honrado con un tirón o pocos FPS, que encadena hasta 8 pasos de
+   física en un fotograma y declara la vista del último dibujado, perdía el golpe y sumaba sospecha; ver
+   red.md §10. La interpolación del tope se redondea ahora hacia arriba.)* **Mínimo para la defensa:**
+   las defensas retroactivas (invulnerable, parada, bloqueo; paso 6) miran al menos `max(0, rtt_floor + 4 − 2)` ticks atrás
    (`ServerPeer.rtt_floor_ticks` es el RTT de ENet, que el cliente no controla, y 4 el retardo de
    interpolación mínimo), aunque el golpe pida menos: un honrado nunca ve el mundo con menos
    retraso, y pedir 0 ya no libra de ellas. La geometría (paso 3) sigue en el `view_tick` pedido.
@@ -621,7 +625,7 @@ comandos de depuración 13 `cooldowns_off`, 14 `apply_status`, 15 `down` y 16 `r
 | **K2 · protocolo** | `PROTOCOL_VERSION = 2`, registro de 21 B, bloque extra, ENTITY_EVENT, RESPAWN_REQUEST, ids de comandos, red.md actualizado | fase 2 (usa `PlayerState.encode()` sea cual sea su tamaño) |
 | **K3 · servidor** | `Combatant`, orden del tick (§4.2), `CombatResolver` (§4.3), `InputQueue.get_rewind_params`, banderas en `StateHistory`, muerte, reaparición y RESPAWN_REQUEST, caída, volúmenes letales, zonas seguras, NPC y maniquí, `CommandRegistry` y consola, `--combat-log`, puntuación de sospecha | K1a, K1b, K2 |
 | **K4 · cliente** | eventos por `render_tick`, `CombatFeedback`, HUD de vida y resistencia, marcador y números, placas con vida, pantalla de muerte con reaparición, capa de animación, armas provisionales, DPS en F3 | K1a, K2 |
-| **K5 · integración** | loopback con NetSim rtt=150 (≥ 95 % de acierto contra un objetivo que se mueve en lateral; 0 impactos con `view_offset_q` de 30 ticks contra un objetivo quieto), bot tramposo `rewind`/`reach`/`rate`, `BotBrain` de combate, reconciliación con rtt=120 y 5 % de pérdida, carga con refriegas de 32, 64 y 128 bots, límite de jugadores anotado en red.md, demo del sandbox con el combo | K3, K4 |
+| **K5 · integración** | loopback con NetSim rtt=150 (≥ 95 % de acierto contra un objetivo que se mueve en lateral; 0 impactos con `view_offset_q` de 30 ticks contra un objetivo quieto; 40 desde la revisión de la fase 4, por la holgura del rechazo), bot tramposo `rewind`/`reach`/`rate`, `BotBrain` de combate, reconciliación con rtt=120 y 5 % de pérdida, carga con refriegas de 32, 64 y 128 bots, límite de jugadores anotado en red.md, demo del sandbox con el combo | K3, K4 |
 
 K1a, K1b y K2 van en paralelo; después K3 y K4 en paralelo; al final K5.
 

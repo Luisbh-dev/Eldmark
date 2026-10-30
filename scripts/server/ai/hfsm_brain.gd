@@ -27,6 +27,10 @@ extends BotBrain
 ## jugador derribado hostil a menos de [constant DOWNED_PRIORITY_RADIUS] m es el objetivo preferido (antes que el
 ## más cercano en pie, también al notarlo en reposo o patrulla) y se ataca con el ligero (PRIMARY), sin levantar el
 ## escudo ni cargar; pide su ficha de [AttackTokens] como cualquier objetivo.
+## [br][br]
+## [b]Atacado desde lejos[/b] (revisión de la fase 4): quien le golpea desde más allá de su radio de pérdida (un
+## arquero a 33 m) le sube el radio hasta él, como el aviso de un compañero, y lo persigue; si no lo alcanza, la correa
+## o el atasco lo mandan al regreso inmune. Antes se quedaba quieto sin objetivo y se curaba cada 3 s.
 
 ## Estados de la máquina.
 enum State { REST, PATROL, ALERT, COMBAT, RETURN }
@@ -77,6 +81,12 @@ const SHOUT_RADIUS: float = 60.0
 ## Distancia (m, en horizontal) a la que un derribado hostil es el objetivo preferido (docs/habilidades.md,
 ## sección 4.5).
 const DOWNED_PRIORITY_RADIUS: float = 6.0
+## Transiciones que guarda como mínimo [method get_state_log]: al llegar al doble se queda con las últimas
+## [constant STATE_LOG_MAX] (un PNJ que patrulla cambia de estado unas 10 veces por minuto y vive días).
+const STATE_LOG_MAX: int = 256
+## Margen (m) sobre la distancia a quien le ha golpeado desde más allá de su radio de pérdida (un arquero) con el que
+## se le sube el radio para ir a por él.
+const ATTACKER_RADIUS_MARGIN: float = 4.0
 
 ## La definición del PNJ.
 var definition: NpcDefinition = null
@@ -235,8 +245,10 @@ func get_home() -> Vector3:
 	return _post
 
 
-## Las transiciones de estado hasta ahora: [code]Vector2i(tick, estado)[/code] en orden. Es lo que se compara para
-## comprobar que dos ejecuciones con la misma semilla hacen lo mismo.
+## Las últimas transiciones de estado: [code]Vector2i(tick, estado)[/code] en orden. Es lo que se compara para
+## comprobar que dos ejecuciones con la misma semilla hacen lo mismo. Está acotado: guarda entre
+## [constant STATE_LOG_MAX] y el doble (las más viejas se descartan de golpe al llegar al doble; revisión de la
+## fase 4: antes crecía sin límite durante toda la vida del PNJ).
 func get_state_log() -> Array[Vector2i]:
 	return _state_log
 
@@ -322,7 +334,7 @@ func _think(tick: int, position: Vector3, yaw: float) -> void:
 	_think_count += 1
 	_world.tick = tick
 	if _state_log.is_empty():
-		_state_log.append(Vector2i(tick, state))
+		_log_state(tick, state)
 	_track_attack(tick)
 	match state:
 		State.REST:
@@ -381,6 +393,8 @@ func _think_combat(tick: int, position: Vector3, yaw: float) -> void:
 		_begin_return(tick)
 		return
 	var target: Combatant = _choose_target(tick, position)
+	if target == null and _reach_for_attacker(tick, position):
+		target = _choose_target(tick, position)
 	if target == null:
 		_plan_sprint = false
 		_plan_move = Vector2.ZERO
@@ -471,7 +485,15 @@ func _enter(new_state: int, tick: int) -> void:
 	_stuck_count = 0
 	_stuck_tick = tick
 	_stuck_reference = _position
-	_state_log.append(Vector2i(tick, new_state))
+	_log_state(tick, new_state)
+
+
+# Anota una transición en el registro acotado de [method get_state_log] (recorta a la mitad al llegar al doble del
+# tope, para no copiar en cada transición).
+func _log_state(tick: int, value: int) -> void:
+	_state_log.append(Vector2i(tick, value))
+	if _state_log.size() >= STATE_LOG_MAX * 2:
+		_state_log = _state_log.slice(_state_log.size() - STATE_LOG_MAX)
 
 
 # Si ve a un enemigo (o le han hecho daño) pasa a la alerta; true si ha cambiado de estado.
@@ -480,6 +502,7 @@ func _react_to_threat(tick: int, position: Vector3, yaw: float) -> bool:
 	if attacker != null:
 		_target_id = attacker.get_id()
 		_lose_radius = definition.lose_radius
+		_reach_for_attacker(tick, position)
 		_enter(State.COMBAT, tick)
 		_begin_engagement(tick, position)
 		return true
@@ -503,6 +526,20 @@ func _recent_attacker(tick: int) -> Combatant:
 	if attacker != null and _world.is_valid_target(attacker, _realm, definition.ignores_safe_area):
 		return attacker
 	return null
+
+
+# Si quien le ha golpeado hace nada ([method _recent_attacker]) está más allá de su radio de pérdida, sube el radio
+# hasta él (con [constant ATTACKER_RADIUS_MARGIN]), como el aviso de un compañero: un arquero no le desgasta sin que
+# vaya a por él. Devuelve true si lo ha subido.
+func _reach_for_attacker(tick: int, position: Vector3) -> bool:
+	var attacker: Combatant = _recent_attacker(tick)
+	if attacker == null:
+		return false
+	var distance: float = _horizontal_distance(position, attacker.entity.get_position())
+	if distance < _lose_radius:
+		return false
+	_lose_radius = distance + ATTACKER_RADIUS_MARGIN
+	return true
 
 
 func _begin_engagement(tick: int, position: Vector3) -> void:

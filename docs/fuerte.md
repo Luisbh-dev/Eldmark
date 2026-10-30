@@ -757,13 +757,16 @@ toque a los PNJ) encontrará esto:
   simular a nadie). Percepción: radio, cono y rayo de línea de visión (más el «oído» de `awareness_radius`, que también necesita
   línea de visión); quien está a salvo en la zona segura de su reino no cuenta, y los Guardianes (`ignores_safe_area`) solo ven a los
   enemigos que están dentro de la del suyo. Amenaza: daño recibido de cada enemigo (el `DamageLedger`) más cercanía, con 60 puntos de
-  ventaja al objetivo actual. Un golpe recibido sin ver a nadie lleva derecho al combate. Ataca solo con una ficha
+  ventaja al objetivo actual. Un golpe recibido sin ver a nadie lleva derecho al combate; si quien le ha golpeado está más
+  allá de su radio de pérdida (un arquero), le sube el radio hasta él más 4 m y va a por él (la correa o el atasco lo mandan al
+  regreso inmune si no lo alcanza). Ataca solo con una ficha
   (`AttackTokens`, 2 por objetivo, caducan a 1 s sin renovar); sin ella rodea a 3,5 m (retrocede por debajo de 3,1 y se acerca por
   encima de 4,0). Antes de atacar decide el siguiente ataque (el especial cada `special_every`, si no bloqueo, fuerte o ligero según sus
   probabilidades) y lo recuerda hasta hacerlo; el fuerte se pide manteniendo PRIMARY durante la carga mínima. La correa es el radio
   desde su puesto: al pasarla (o al perder al objetivo, a los 3 s) pasa a REGRESO, **inmune** (`protected_until`) hasta llegar, y al
   llegar o al perder el combate junto a su puesto queda **regenerado**; si no llega en 60 s o se atasca tres veces, se teletransporta.
-  Alertado desde lejos (grito) no pierde al objetivo hasta los 60 m.
+  Alertado desde lejos (grito) no pierde al objetivo hasta los 60 m. Su registro de estados (`get_state_log`, para las pruebas
+  de determinismo) guarda las últimas 256 a 511 transiciones (`STATE_LOG_MAX`).
 - **Generadores** (`NpcSpawnerSystem`): un puesto por `NpcSpawner`; ALWAYS siempre, FORT_NEUTRAL con el fuerte neutral y FORT_OWNER con
   dueño (y fuera de CONSOLIDATING). Si el fuerte no tiene generadores FORT_OWNER, la guarnición sale de **los puestos de los Huecos**
   con la definición que cada una nombra en `garrison_id` (`hollow` → `realm_guard`, `ford_captain` → `realm_captain`), con su misma
@@ -1711,6 +1714,34 @@ en esta revisión y la 2000 y la 3000, de la tabla de la integración. Recaptura
   el filo y sin margen**, ahora con la reaparición de verdad. La refriega de 40 (`--scenario=brawl --fakes=30 --bots=10 --seconds=60`)
   casi no tiene muertes en su minuto (15, casi todas rematadas) y da lo mismo: 14,5 y 14,6 ms de p99 del tick y 1,28 y 1,01 ms de
   `combat_projectiles` (las dos, por encima del milisegundo en esta pasada; en la revisión de H5, 0,90).
+
+**Revisión de la fase 4 (lente «trampas»)** (misma revisión; cada arreglo lleva una prueba que falla sin él):
+
+- **Un PNJ al que disparan desde más allá de su radio de pérdida va a por el arquero.** En COMBATE, `_choose_target` solo
+  miraba a menos de `_lose_radius` (28 m el Hueco, 30 el guardia, 34 los capitanes; la flecha llega a unos 90 m): con el
+  arquero más lejos no había objetivo, el PNJ se quedaba quieto y a los 3 s (`LOST_TARGET_TICKS`) volvía a REPOSO en su
+  puesto **curado del todo** (`_arrive_home`), y el siguiente flechazo lo devolvía a COMBATE. Medido antes del arreglo: un
+  Hueco con 6 arqueros a 33 m recibía 173 flechazos en 20 s sin moverse ni un centímetro (6 curas completas, 0 de daño a los
+  arqueros); con 10, moría en 3,6 s sin moverse; el guardia del reino y el Capitán, igual (el Capitán, con 30 000 de vida y una
+  cura cada 3,2 s, no bajaba de 28 200). Dos resultados degenerados: por debajo de unos 830 de DPS a distancia no se le podía
+  matar y por encima moría sin reaccionar. Ahora (`HfsmBrain._reach_for_attacker`) quien le ha golpeado en el último segundo
+  (`_recent_attacker`) desde más allá del radio se lo sube a su distancia más 4 m (`ATTACKER_RADIUS_MARGIN`), como el aviso de
+  un compañero, al entrar en combate y en cada pensamiento de COMBATE sin objetivo; lo persigue, y si no lo alcanza la correa o
+  el atasco lo mandan al regreso inmune, como contra quien huye. `test_hfsm_brain` (dos: tres arqueros a 33 m, a los que llega
+  y hace daño sin volver curado a su puesto; tres a 55 m, más allá de la correa, que lo hacen perseguirlos hasta ella y
+  regresar inmune).
+- **El registro de estados de cada PNJ, acotado.** `_state_log` sumaba una entrada por transición durante toda la vida del
+  PNJ y solo lo leen las pruebas: los dos Huecos que patrullan el fuerte neutral suman unas 10,5 por minuto cada uno (del
+  orden de 1 MB al día por zona mientras nadie los mate). Ahora guarda entre `STATE_LOG_MAX` (256) y el doble: al llegar al
+  doble se queda con las 256 últimas de golpe (sin copiar en cada transición). `test_hfsm_brain` (2560 transiciones).
+- Los refuerzos del Capitán que se acumulaban con cada asalto fallido (otro hallazgo de esta lente) ya los arregló la lente
+  «guerra» (más arriba: una llamada por vida y nunca más de dos vivos por fortaleza).
+- El rebobinado que rechazaba los golpes y las flechas de un honrado con un tirón o pocos FPS (el fallo intermitente del
+  tramposo «rate») está en red.md §10.
+- **Medido**: la batalla de asedio con PNJ (`siege_battle.gd --npcs --per-side=20 --minutes=28`) repite al décimo de segundo las
+  cifras de la tabla de la lente «guerra» con las semillas 1000 (39,4 / 135,3 / **158,8 s**, 23 / 30 muertes, 2 en la pasarela,
+  3 salidas en grupo) y 5000 (44,6 / 134,0 / **286,9 s**, 47 / 72, 2, 14 salidas): los bots de asedio pelean a menos del radio
+  de pérdida de los PNJ y el arreglo no les cambia nada.
 
 ---
 
