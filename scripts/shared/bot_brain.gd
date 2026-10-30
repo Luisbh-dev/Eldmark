@@ -74,6 +74,29 @@ extends RefCounted
 ## sector llega de 0,2 a 2 m sobre los pies y la pasarela está a 3,35 m, tras la empalizada): dentro del recinto, quien
 ## está más de [constant SIEGE_LEVEL_TOLERANCE] m más arriba o más abajo no es un blanco ni un golpe avisado que haya que
 ## evitar, así que en la pasarela se pelea con quien sube, sin salirse del eje en las esquinas y sin esquivar de lado.
+## [br][br]
+## [b]Kit de la fase 4 (H5; docs/habilidades.md, sección 7.1).[/b] Si quien lleva el bot le da su estado de
+## combate ([method set_combat_source]: el predicho en un cliente, el del servidor en un jugador falso), los
+## patrones [constant COMBAT] y [constant SIEGE] pelean con todo el equipo: las habilidades del arma activa
+## según para qué sirven por sus datos ([enum KitRole]: golpe corto, embestida para acercarse, muro que se
+## mantiene pulsado mientras dura la canalización, salto atrás, disparo), el cambio de arma (al arco de lejos, a
+## la espada de cerca), las pociones (vida por debajo de [constant KIT_HEALTH_POTION_BELOW] con
+## [method set_health_source], resistencia por debajo de [constant KIT_STAMINA_POTION_BELOW]) y el arco: guarda
+## la distancia, alterna disparos rápidos y tensados y apunta con el tiro adelantado ([method lead_look]:
+## [method Ballistics.solve_lead] y [method AimRay.look_for]), con el bit [constant PlayerInput.AIM_LEFT] de su
+## hombro (el izquierdo si la semilla es impar). Remata a un enemigo derribado (el buscador devuelve un
+## [BotTarget]) y levanta a un aliado derribado ([method set_ally_finder]) manteniendo INTERACT. Solo pulsa lo
+## que su estado deja usar ([method ActionMachine.ability_status]): el servidor decide igual, pero un bot
+## honrado no machaca botones (eso es del tramposo, [BotCheatBrain]). Sin estado (o con [member use_kit] en
+## false) pelea como en la fase 3, con la misma secuencia de entradas que antes.
+## [br]En [constant SIEGE] (integración con F6b) el kit pelea en el paso 1 del plan con el blanco que toque, el PNJ
+## defensor o el enemigo (a él apunta el arco, con la velocidad que dé su buscador), pero no levanta a nadie: sigue su
+## plan. La puerta se golpea como en la fase 3. Con el arco en la mano no persigue (todo
+## [constant SIEGE_FIGHT_RANGE] es distancia de tiro, así que la regla de dejar una persecución no se aplica). En la
+## pasarela, como no esquiva de lado, el arquero no se mueve de lado y nadie usa las habilidades que avanzan en línea
+## recta (la embestida, que además empuja, y el salto atrás): sacaban a los dos de ella. Peleando en ella mira por su eje
+## hacia el blanco (también sin el kit), así que la esquiva hacia atrás, el paso de un golpe y acercarse van por el eje; el
+## arquero, que mira al blanco para apuntar, se queda quieto y no esquiva.
 
 ## [constant SIEGE] va al final para no mover los valores de los demás patrones.
 enum Pattern { WANDER, CIRCLE, IDLE, JUMPY, COMBAT, SIEGE }
@@ -83,6 +106,11 @@ enum Pattern { WANDER, CIRCLE, IDLE, JUMPY, COMBAT, SIEGE }
 ## en el punto de reunión de su campamento. [constant WALKWAY] (GUE-45, la última): sube a la pasarela, va por ella o
 ## guarda su puesto.
 enum SiegeTask { NONE, FIGHT, MARCH, ASSAULT, HOLD, EVADE, RALLY, WALKWAY }
+
+## Para qué usa el kit una habilidad, según sus datos ([method kit_role]): golpe corto con forma
+## ([constant CLOSE]), avance hacia delante para acercarse ([constant GAP_CLOSER]), canalización que bloquea
+## ([constant GUARD], el muro), avance hacia atrás ([constant ESCAPE]) o disparo ([constant SHOT]).
+enum KitRole { NONE, CLOSE, GAP_CLOSER, GUARD, ESCAPE, SHOT }
 
 ## Duración mínima de un tramo de paseo (ticks).
 const SEGMENT_MIN_TICKS: int = 60
@@ -244,9 +272,53 @@ const SIEGE_LEVEL_TOLERANCE: float = 1.6
 ## ([method target_distance_squared]): con 4, la pasarela (3,35 m por encima) queda a más de 13 m, más lejos que el
 ## alcance de pelea ([constant SIEGE_FIGHT_RANGE]), y cualquier enemigo a tiro en su mismo nivel va antes.
 const SIEGE_LEVEL_WEIGHT: float = 4.0
+## Kit: con el arco en la mano y el enemigo a menos de esta distancia (m) cambia a la espada si la lleva, y con la
+## espada y el enemigo a más de la otra, al arco.
+const KIT_SWAP_TO_MELEE_DISTANCE: float = 5.0
+const KIT_SWAP_TO_RANGED_DISTANCE: float = 11.0
+## Kit: distancias (m) entre las que se queda el arquero (se aleja por debajo y se acerca por encima).
+const KIT_BOW_KEEP_MIN: float = 9.0
+const KIT_BOW_KEEP_MAX: float = 26.0
+## Kit: probabilidad de que un disparo sea tensado y ticks que mantiene PRIMARY (desde la pulsación; la carga
+## del tensado va de 21 a 60).
+const KIT_BOW_DRAWN_CHANCE: float = 0.45
+const KIT_BOW_DRAW_TICKS: Vector2i = Vector2i(24, 60)
+## Kit: probabilidad de usar una habilidad de disparo lista y distancia (m) por debajo de la cual el arquero
+## salta atrás.
+const KIT_SHOT_ABILITY_CHANCE: float = 0.3
+const KIT_ESCAPE_DISTANCE: float = 5.0
+## Kit: probabilidad de esquivar en una decisión del arquero con el enemigo cerca.
+const KIT_BOW_DODGE_CHANCE: float = 0.08
+## Kit: golpe corto (el de escudo) a esta distancia (m) como mucho y con esta probabilidad por decisión.
+const KIT_CLOSE_DISTANCE: float = 2.2
+const KIT_CLOSE_CHANCE: float = 0.22
+## Kit: embestida para acercarse entre estas distancias (m) y con esta probabilidad por decisión.
+const KIT_GAP_CLOSER_RANGE: Vector2 = Vector2(3.5, 7.0)
+const KIT_GAP_CLOSER_CHANCE: float = 0.3
+## Kit: probabilidad de levantar el muro en una decisión y ticks que mantiene su botón (la canalización acaba al
+## soltarlo o en su tope).
+const KIT_GUARD_CHANCE: float = 0.08
+const KIT_GUARD_HOLD_TICKS: Vector2i = Vector2i(60, 200)
+## Kit: bebe la poción de vida por debajo de esta fracción de vida y la de resistencia por debajo de esta
+## fracción de resistencia.
+const KIT_HEALTH_POTION_BELOW: float = 0.5
+const KIT_STAMINA_POTION_BELOW: float = 0.3
+## Kit: se acerca hasta esta distancia (m) de un derribado para levantarlo o rematarlo (el servidor llega a 2 m)
+## y mantiene INTERACT lo que dura la acción más este margen (ticks).
+const KIT_INTERACT_REACH: float = 1.3
+const KIT_INTERACT_MARGIN_TICKS: int = 8
+## Kit: busca aliados derribados hasta esta distancia (m) y solo va a levantarlos si no hay un enemigo más
+## cerca que la otra.
+const KIT_REVIVE_SEARCH: float = 15.0
+const KIT_REVIVE_ENEMY_CLEARANCE: float = 6.0
+## Kit: ticks entre dos decisiones de más tras acabar una acción, y lo que dura cada tramo lateral del arquero.
+const KIT_DECISION_GAP_TICKS: Vector2i = Vector2i(4, 12)
+const KIT_STRAFE_TICKS: Vector2i = Vector2i(40, 100)
 
 # Cómo se desatasca un bot de asedio.
 enum _Unstick { NONE, JUMP, DETOUR }
+# Pitch máximo (rad) de la puntería del arco (por debajo de la vertical).
+const _MAX_AIM_PITCH: float = 1.4
 
 
 ## Un golpe avisado (TELEGRAPH, docs/fuerte.md sección 5) que un bot de [constant SIEGE] evita: un sector de
@@ -324,9 +396,12 @@ var _hold_aims_gate: bool = false
 # SIEGE: quién da los golpes avisados que hay que evitar, y desde qué tick está saliendo de uno (-1 = no lo está).
 var _siege_threat_finder: Callable = Callable()
 var _siege_evade_since: int = -1
-# SIEGE: quién da el PNJ defensor más cercano, el último visto y cuándo se miró.
+# SIEGE: quién da el PNJ defensor más cercano, el último visto (con su velocidad y su derribo si el buscador da un
+# BotTarget, para el kit) y cuándo se miró.
 var _siege_defender_finder: Callable = Callable()
 var _siege_defender_position: Variant = null
+var _siege_defender_velocity: Vector3 = Vector3.ZERO
+var _siege_defender_downed: bool = false
 var _siege_defender_checked_tick: int = -1000
 # SIEGE: la persecución en curso (distancia y tick de referencia; -1 = ninguna), hasta cuándo no persigue, y a quién
 # perseguía en la última comprobación (si era el PNJ defensor y dónde estaba): otro blanco es otra persecución.
@@ -357,6 +432,40 @@ var _siege_climb_ramp: int = -1
 var _siege_climb_index: int = -1
 var _siege_on_walkway_now: bool = false
 
+## Kit (H5): false lo apaga aunque haya estado de combate (el bot pelea como en la fase 3). Lo usan las medidas
+## de referencia de [code]tools/combat_balance.gd[/code].
+var use_kit: bool = true
+## Kit, para las pruebas de carga ([code]--fake-archers[/code]): con el arco en la mano no cambia nunca a la espada
+## (guarda la distancia y dispara), y con la espada vuelve al arco en cuanto puede.
+var kit_ranged_only: bool = false
+## Kit, para las pruebas de carga: radianes que sube la puntería del arco por encima del tiro bueno. Con un valor
+## alto, las flechas van al cielo y viven sus 2 s (llenan el tope de la zona; docs/habilidades.md, sección 4.4).
+var kit_aim_raise: float = 0.0
+# Kit: de dónde saca su estado de combate, su vida y los aliados derribados.
+var _combat_source: Callable = Callable()
+var _health_source: Callable = Callable()
+var _ally_finder: Callable = Callable()
+# Kit: velocidad y derribo del enemigo que sigue (del BotTarget; cero y false con una posición sola).
+var _enemy_velocity: Vector3 = Vector3.ZERO
+var _enemy_downed: bool = false
+# Kit: el blanco de la pelea en curso es el PNJ defensor de SIEGE (y no el enemigo de set_enemy_finder): a él
+# apunta el arco y su derribo decide el remate.
+var _fight_defender: bool = false
+# Kit: el aliado derribado más cercano (Vector3 o null) y cuándo se buscó.
+var _ally_position: Variant = null
+var _ally_checked_tick: int = -1000
+# Kit: qué mantiene (&"" un toque o nada; &"execute", &"revive", &"guard", &"draw").
+var _hold_kind: StringName = &""
+# Kit: velocidad (m/s) y gravedad del disparo que apunta (0 = nada que apuntar).
+var _aim_speed: float = 0.0
+var _aim_gravity: float = 0.0
+# Kit: hombro de la puntería (el izquierdo con semilla impar) y tramo lateral del arquero.
+var _aim_left: bool = false
+var _kit_strafe_sign: float = 1.0
+var _kit_strafe_until: int = -1
+# Kit: cuántas veces ha hecho cada cosa (get_kit_counts).
+var _kit_counts: Dictionary[StringName, int] = {}
+
 
 ## [param rng_seed] fija la secuencia. [param home] y [param radius] delimitan la zona por la
 ## que se mueve el bot (en el plano horizontal).
@@ -371,6 +480,8 @@ func _init(rng_seed: int, pattern: Pattern = Pattern.WANDER, home: Vector3 = Vec
 	_siege_seed = rng_seed
 	_siege_walkway_role = is_walkway_seed(rng_seed)
 	_siege_walkway_sweeper = is_walkway_seed(rng_seed, SIEGE_WALKWAY_SWEEP_SHARE)
+	# Sin sacar números del generador: la secuencia de los patrones de antes no cambia.
+	_aim_left = posmod(rng_seed, 2) == 1
 
 
 ## Entrada sin cuantizar para [param tick] (la cuantiza quien llama). [param position] y
@@ -468,7 +579,8 @@ func set_threat_finder(finder: Callable) -> void:
 
 ## Función con la que el patrón [constant SIEGE] busca primero a los PNJ que defienden el fuerte (los Huecos, el
 ## Capitán y la guarnición del dueño): [code](position: Vector3) -> Variant[/code] devuelve la posición del PNJ enemigo
-## vivo más cercano, o null. Mientras el círculo no está activo (el capitán vive), si hay uno a tiro pelea con él antes
+## vivo más cercano (un [Vector3] o, como el de [method set_enemy_finder], un [BotTarget] con su velocidad, para el
+## tiro adelantado del kit), o null. Mientras el círculo no está activo (el capitán vive), si hay uno a tiro pelea con él antes
 ## que con el enemigo de [method set_enemy_finder] (un jugador que le pegue no le aparta de él), y como el buscador da
 ## siempre el más cercano, sigue con el mismo hasta que muere o se aleja. Con el círculo activo, o sin ella, pelea con
 ## el más cercano de todos.
@@ -678,9 +790,93 @@ func get_siege_task() -> SiegeTask:
 	return _siege_task
 
 
+## Kit (H5): de dónde saca el bot su estado de combate, [code]() -> CombatState[/code] (null = no lo sabe): el
+## de después del último tick simulado, con el que decide la entrada del siguiente (el predicho en un cliente, el
+## del servidor en un jugador falso). Lo lee sin cambiarlo. Con él, [constant COMBAT] y [constant SIEGE] usan el
+## kit (ver la documentación de la clase).
+func set_combat_source(source: Callable) -> void:
+	_combat_source = source
+
+
+## true si el bot ya sabe de dónde sacar su estado de combate ([method set_combat_source]).
+func has_combat_source() -> bool:
+	return _combat_source.is_valid()
+
+
+## Kit: de dónde saca su vida, [code]() -> float[/code] (fracción de 0 a 1). Sin ella, el bot no bebe la poción
+## de vida.
+func set_health_source(source: Callable) -> void:
+	_health_source = source
+
+
+## Kit: cómo encuentra aliados derribados, [code](position: Vector3) -> Variant[/code]: los pies (un
+## [Vector3]) del más cercano a [param position], o null. Sin él, el bot no levanta a nadie.
+func set_ally_finder(finder: Callable) -> void:
+	_ally_finder = finder
+	_ally_checked_tick = -1000
+
+
+## Kit: cuántas veces ha hecho cada cosa desde que se creó: [code]ability_0[/code]..[code]ability_2[/code]
+## (habilidades por ranura), [code]potion_0[/code] y [code]potion_1[/code], [code]swap[/code],
+## [code]quick[/code] y [code]drawn[/code] (disparos del arco), [code]guard[/code] (muros levantados),
+## [code]execute[/code] y [code]revive[/code] (INTERACT mantenido) y [code]dodge[/code]. Es una copia.
+func get_kit_counts() -> Dictionary[StringName, int]:
+	return _kit_counts.duplicate()
+
+
+## Para qué usa el kit [param ability] ([enum KitRole]), por sus datos: una canalización que bloquea es
+## [constant KitRole.GUARD]; un avance hacia atrás, [constant KitRole.ESCAPE] (aunque dispare); un disparo,
+## [constant KitRole.SHOT]; un avance hacia delante, [constant KitRole.GAP_CLOSER]; un golpe con forma,
+## [constant KitRole.CLOSE].
+static func kit_role(ability: AbilityTicks) -> KitRole:
+	if ability == null:
+		return KitRole.NONE
+	if ability.channel and ability.blocks:
+		return KitRole.GUARD
+	if ability.dash_distance_m > 0.0 and ability.dash_direction == 1:
+		return KitRole.ESCAPE
+	if ability.projectile_id != 0:
+		return KitRole.SHOT
+	if ability.dash_distance_m > 0.0:
+		return KitRole.GAP_CLOSER
+	if ability.hit != null and ability.hit.shape != null:
+		return KitRole.CLOSE
+	return KitRole.NONE
+
+
+## true si el arma [param weapon_id] dispara con el ligero (el arco).
+static func is_ranged_weapon(weapon_id: int) -> bool:
+	var weapon: WeaponTicks = CombatCatalog.weapon(weapon_id)
+	if weapon == null or weapon.light_ids.is_empty():
+		return false
+	var light: AttackTicks = CombatCatalog.attack(weapon.light_ids[0])
+	return light != null and light.projectile_id != 0
+
+
+## Vista [code](yaw, pitch)[/code] de un tirador con los pies en [param feet] y el hombro
+## [param left_shoulder] para que una flecha de [param speed] m/s y [param gravity] m/s² dé en el centro de un
+## blanco con los pies en [param target_feet] que va a [param target_velocity] m/s (docs/habilidades.md, sección
+## 4.4): la dirección de [method Ballistics.solve_lead] desde la boca [code]O[/code], el punto
+## [code]O + dir · |blanco − O|[/code] y el rayo canónico que pasa por él ([method AimRay.look_for]). El yaw queda
+## en [0, TAU).
+static func lead_look(feet: Vector3, target_feet: Vector3, target_velocity: Vector3, speed: float,
+		gravity: float, left_shoulder: bool) -> Vector2:
+	var center: Vector3 = target_feet + Vector3(0.0, AimRay.TARGET_CENTER_HEIGHT, 0.0)
+	var muzzle: Vector3 = AimRay.muzzle(feet)
+	var direction: Vector3 = Ballistics.solve_lead(muzzle, center, target_velocity, speed, gravity)
+	var point: Vector3 = muzzle + direction * muzzle.distance_to(center)
+	var look: Vector2 = AimRay.look_for(feet, point, left_shoulder)
+	return Vector2(fposmod(look.x, TAU), look.y)
+
+
 # Entrada del patrón COMBAT, o null si no hay enemigo a la vista (entonces pasea).
 func _combat_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 	_refresh_enemy(tick, position)
+	var kit: CombatState = _kit_state()
+	if kit != null:
+		var reviving: PlayerInput = _revive_input(tick, position, yaw, kit)
+		if reviving != null:
+			return reviving
 	if not _enemy_position is Vector3:
 		_hold_until = -1
 		return null
@@ -690,19 +886,52 @@ func _combat_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 	if distance > COMBAT_SIGHT_RANGE:
 		_hold_until = -1
 		return null
-	return _fight_input(tick, to_enemy, distance, yaw)
+	return _fight_input(tick, position, to_enemy, distance, yaw)
 
 
-# Vuelve a buscar al enemigo más cercano cada COMBAT_RETARGET_TICKS ticks.
+# Vuelve a buscar al enemigo más cercano cada COMBAT_RETARGET_TICKS ticks. El buscador puede devolver la
+# posición (un Vector3) o un BotTarget (con la velocidad y el derribo, que usa el kit).
 func _refresh_enemy(tick: int, position: Vector3) -> void:
 	if tick - _enemy_checked_tick >= COMBAT_RETARGET_TICKS:
 		_enemy_checked_tick = tick
-		_enemy_position = _enemy_finder.call(position) if _enemy_finder.is_valid() else null
+		var found: Variant = _enemy_finder.call(position) if _enemy_finder.is_valid() else null
+		_enemy_velocity = Vector3.ZERO
+		_enemy_downed = false
+		if found is BotTarget:
+			var target: BotTarget = found as BotTarget
+			_enemy_position = target.position
+			_enemy_velocity = target.velocity
+			_enemy_downed = target.downed
+		else:
+			_enemy_position = found
+
+
+# SIEGE: vuelve a buscar al PNJ defensor más cercano cada COMBAT_RETARGET_TICKS ticks (como _refresh_enemy: una
+# posición o un BotTarget).
+func _refresh_defender(tick: int, position: Vector3) -> void:
+	if tick - _siege_defender_checked_tick >= COMBAT_RETARGET_TICKS:
+		_siege_defender_checked_tick = tick
+		var found: Variant = _siege_defender_finder.call(position)
+		_siege_defender_velocity = Vector3.ZERO
+		_siege_defender_downed = false
+		if found is BotTarget:
+			var target: BotTarget = found as BotTarget
+			_siege_defender_position = target.position
+			_siege_defender_velocity = target.velocity
+			_siege_defender_downed = target.downed
+		else:
+			_siege_defender_position = found
 
 
 # Pelea con un enemigo que está a [param distance] metros en la dirección [param to_enemy]: mantiene el
-# botón que tocaba, decide qué hacer a distancia de combate o se acerca.
-func _fight_input(tick: int, to_enemy: Vector3, distance: float, yaw: float) -> PlayerInput:
+# botón que tocaba, decide qué hacer a distancia de combate o se acerca. Con estado de combate, con el kit
+# ([param defender]: el blanco es el PNJ defensor de SIEGE y no el enemigo de set_enemy_finder).
+func _fight_input(tick: int, position: Vector3, to_enemy: Vector3, distance: float,
+		yaw: float, defender: bool = false) -> PlayerInput:
+	var kit: CombatState = _kit_state()
+	if kit != null:
+		_fight_defender = defender
+		return _kit_fight_input(tick, position, to_enemy, distance, yaw, kit)
 	var input := PlayerInput.new()
 	input.tick = tick
 	input.look_yaw = _yaw_toward(to_enemy, yaw)
@@ -767,6 +996,338 @@ func _start_light_attack(tick: int) -> void:
 			COMBAT_ATTACK_GAP_TICKS.y)
 
 
+# --- Kit (H5) -----------------------------------------------------------------------------------
+
+# Estado de combate con el que decide el kit, o null si no hay (o el kit está apagado).
+func _kit_state() -> CombatState:
+	if not use_kit or not _combat_source.is_valid():
+		return null
+	return _combat_source.call() as CombatState
+
+
+# El blanco de la pelea en curso (_fight_defender: el PNJ defensor de SIEGE; si no, el enemigo): su posición vista
+# (un Vector3 o null), su velocidad, si está derribado y el tick en que se miró.
+func _target_position() -> Variant:
+	return _siege_defender_position if _fight_defender else _enemy_position
+
+
+func _target_velocity() -> Vector3:
+	return _siege_defender_velocity if _fight_defender else _enemy_velocity
+
+
+func _target_downed() -> bool:
+	return _siege_defender_downed if _fight_defender else _enemy_downed
+
+
+func _target_seen_tick() -> int:
+	return _siege_defender_checked_tick if _fight_defender else _enemy_checked_tick
+
+
+# Pelea con el kit: mantiene lo que mantenía (apuntando, con el arco), decide cuando toca y, entre medias, se
+# acerca, guarda la distancia o va a rematar.
+func _kit_fight_input(tick: int, position: Vector3, to_enemy: Vector3, distance: float, yaw: float,
+		state: CombatState) -> PlayerInput:
+	var input := PlayerInput.new()
+	input.tick = tick
+	input.look_yaw = _yaw_toward(to_enemy, yaw)
+	if state.action == CombatState.Action.DOWNED or state.action == CombatState.Action.DEAD:
+		_hold_until = -1
+		_hold_kind = &""
+		return input
+	var ranged: bool = is_ranged_weapon(state.weapon_id)
+	# Un remate se deja si el objetivo ya no está derribado.
+	if _hold_kind == &"execute" and not _target_downed():
+		_hold_until = -1
+	if tick >= _hold_until:
+		_hold_kind = &""
+		if tick >= _next_decision_tick:
+			_decide_kit_action(tick, state, ranged, distance)
+	if tick < _hold_until:
+		input.buttons = _hold_buttons
+		input.move = _hold_move
+	elif _target_downed():
+		if distance > KIT_INTERACT_REACH:
+			input.move = Vector2(0.0, 1.0)
+			if distance > COMBAT_SPRINT_DISTANCE:
+				input.buttons |= PlayerInput.SPRINT
+	elif ranged:
+		_keep_bow_distance(input, tick, distance)
+	elif distance > COMBAT_ATTACK_DISTANCE:
+		input.move = Vector2(0.0, 1.0)
+		if distance > COMBAT_SPRINT_DISTANCE:
+			input.buttons |= PlayerInput.SPRINT
+	if ranged:
+		_aim(input, position, tick, state)
+	return input
+
+
+# Decide qué hace el kit: rematar, beber, cambiar de arma o, según el arma, una habilidad, un disparo o lo de la
+# fase 3. Lo que decide queda en _hold_* y _next_decision_tick.
+func _decide_kit_action(tick: int, state: CombatState, ranged: bool, distance: float) -> void:
+	_hold_move = Vector2.ZERO
+	_hold_buttons = 0
+	_aim_speed = 0.0
+	var data: CombatTables = CombatCatalog.tables()
+	if _target_downed():
+		if distance <= KIT_INTERACT_REACH and _can_interact(state):
+			_hold(tick, PlayerInput.INTERACT, data.execute_ticks + KIT_INTERACT_MARGIN_TICKS, &"execute")
+			_count(&"execute")
+		return
+	if _health_fraction() < KIT_HEALTH_POTION_BELOW \
+			and _slot_ready(state, ActionMachine.STATUS_SLOT_CONSUMABLE_1, tick):
+		_tap_consumable(tick, 0)
+		return
+	if float(state.stamina) < KIT_STAMINA_POTION_BELOW * float(data.rules.stamina_max) \
+			and _slot_ready(state, ActionMachine.STATUS_SLOT_CONSUMABLE_2, tick):
+		_tap_consumable(tick, 1)
+		return
+	if state.alt_weapon_id != 0 and state.action == CombatState.Action.NONE:
+		var alt_ranged: bool = is_ranged_weapon(state.alt_weapon_id)
+		if (ranged and not alt_ranged and distance < KIT_SWAP_TO_MELEE_DISTANCE and not kit_ranged_only) \
+				or (not ranged and alt_ranged and (distance > KIT_SWAP_TO_RANGED_DISTANCE or kit_ranged_only)):
+			_tap(tick, PlayerInput.SWAP_WEAPON, data.swap_ticks + _gap())
+			_count(&"swap")
+			return
+	if ranged:
+		_decide_bow_action(tick, state, distance)
+	else:
+		_decide_melee_action(tick, state, distance)
+
+
+# Cuerpo a cuerpo: embestida para acercarse, golpe corto de cerca, el muro o, si no, lo de la fase 3.
+func _decide_melee_action(tick: int, state: CombatState, distance: float) -> void:
+	var slots: Dictionary[int, int] = _ready_roles(state, tick)
+	if slots.has(KitRole.GAP_CLOSER) and distance >= KIT_GAP_CLOSER_RANGE.x \
+			and distance <= KIT_GAP_CLOSER_RANGE.y and _rng.randf() < KIT_GAP_CLOSER_CHANCE:
+		_use_ability(tick, state, slots[KitRole.GAP_CLOSER])
+		return
+	if distance > COMBAT_ENGAGE_DISTANCE:
+		return
+	var roll: float = _rng.randf()
+	if slots.has(KitRole.CLOSE) and distance <= KIT_CLOSE_DISTANCE and roll < KIT_CLOSE_CHANCE:
+		_use_ability(tick, state, slots[KitRole.CLOSE])
+	elif slots.has(KitRole.GUARD) and roll >= KIT_CLOSE_CHANCE \
+			and roll < KIT_CLOSE_CHANCE + KIT_GUARD_CHANCE:
+		_use_ability(tick, state, slots[KitRole.GUARD])
+	else:
+		_decide_combat_action(tick)
+		if (_hold_buttons & PlayerInput.DODGE) != 0:
+			_count(&"dodge")
+
+
+# Arco: salto atrás si el enemigo se acerca, alguna esquiva, una habilidad de disparo o un disparo (rápido o
+# tensado).
+func _decide_bow_action(tick: int, state: CombatState, distance: float) -> void:
+	var data: CombatTables = CombatCatalog.tables()
+	var weapon: WeaponTicks = data.weapon(state.weapon_id)
+	var slots: Dictionary[int, int] = _ready_roles(state, tick)
+	if slots.has(KitRole.ESCAPE) and distance < KIT_ESCAPE_DISTANCE:
+		_use_ability(tick, state, slots[KitRole.ESCAPE])
+		return
+	# En la pasarela de SIEGE el arquero no esquiva: mira al blanco y no por el eje (el generador se usa igual).
+	if distance < KIT_ESCAPE_DISTANCE and _rng.randf() < KIT_BOW_DODGE_CHANCE and not _siege_on_walkway_now:
+		_hold_move = Vector2(0.0, -1.0)
+		_tap(tick, PlayerInput.DODGE, (weapon.dodge.duration_ticks if weapon.dodge != null else 30) + _gap())
+		_count(&"dodge")
+		return
+	var shots: Array[int] = _ready_shot_slots(state, tick)
+	if not shots.is_empty() and _rng.randf() < KIT_SHOT_ABILITY_CHANCE:
+		_use_ability(tick, state, shots[_rng.randi() % shots.size()])
+		return
+	var light: AttackTicks = data.attack(weapon.light_ids[0])
+	var heavy: AttackTicks = data.attack(weapon.heavy_id)
+	if heavy != null and not state.is_exhausted() and _rng.randf() < KIT_BOW_DRAWN_CHANCE:
+		var held: int = _rng.randi_range(KIT_BOW_DRAW_TICKS.x, KIT_BOW_DRAW_TICKS.y)
+		_hold(tick, PlayerInput.PRIMARY, held, &"draw")
+		var launched: int = maxi(held, heavy.charge_min_ticks)
+		_next_decision_tick = tick + launched + heavy.total_ticks + _gap()
+		var launch: ProjectileLaunch = ProjectileLaunch.for_attack(heavy, mini(launched, heavy.charge_max_ticks))
+		_set_aim(launch.speed if launch != null else heavy.projectile_speed_mps, heavy.projectile_id)
+		_count(&"drawn")
+		return
+	_tap(tick, PlayerInput.PRIMARY, light.total_ticks + _gap())
+	_set_aim(light.projectile_speed_mps, light.projectile_id)
+	_count(&"quick")
+
+
+# Usa la habilidad de la ranura [param slot] del arma activa: el muro se mantiene; el resto, un toque.
+func _use_ability(tick: int, state: CombatState, slot: int) -> void:
+	var data: CombatTables = CombatCatalog.tables()
+	var ability: AbilityTicks = data.ability(data.weapon(state.weapon_id).ability_id(slot))
+	var button: int = [PlayerInput.ABILITY_1, PlayerInput.ABILITY_2, PlayerInput.ABILITY_3][slot]
+	if kit_role(ability) == KitRole.GUARD:
+		var held: int = mini(_rng.randi_range(KIT_GUARD_HOLD_TICKS.x, KIT_GUARD_HOLD_TICKS.y),
+				ability.active_to())
+		_hold(tick, button, held, &"guard")
+		_count(&"guard")
+	else:
+		_tap(tick, button, ability.total_ticks + _gap())
+	if ability.projectile_id != 0:
+		_set_aim(ability.projectile_speed_mps, ability.projectile_id)
+	_count(StringName("ability_%d" % slot))
+
+
+# Las habilidades listas del arma activa por su papel (la primera ranura de cada papel). En la pasarela de SIEGE (sin
+# barandilla por dentro), sin las que avanzan en línea recta (la embestida, que además empuja, y el salto atrás): como
+# la esquiva de lado, sacaban de ella a los dos al patio.
+func _ready_roles(state: CombatState, tick: int) -> Dictionary[int, int]:
+	var roles: Dictionary[int, int] = {}
+	var weapon: WeaponTicks = CombatCatalog.weapon(state.weapon_id)
+	if weapon == null:
+		return roles
+	for slot: int in CombatState.ABILITY_SLOTS:
+		if not _slot_ready(state, slot, tick):
+			continue
+		var role: int = kit_role(CombatCatalog.ability(weapon.ability_id(slot)))
+		if _siege_on_walkway_now and (role == KitRole.GAP_CLOSER or role == KitRole.ESCAPE):
+			continue
+		if role != KitRole.NONE and not roles.has(role):
+			roles[role] = slot
+	return roles
+
+
+# Ranuras listas con una habilidad de disparo (sin el salto atrás, que es para huir).
+func _ready_shot_slots(state: CombatState, tick: int) -> Array[int]:
+	var found: Array[int] = []
+	var weapon: WeaponTicks = CombatCatalog.weapon(state.weapon_id)
+	if weapon == null:
+		return found
+	for slot: int in CombatState.ABILITY_SLOTS:
+		if _slot_ready(state, slot, tick) \
+				and kit_role(CombatCatalog.ability(weapon.ability_id(slot))) == KitRole.SHOT:
+			found.append(slot)
+	return found
+
+
+func _slot_ready(state: CombatState, slot: int, tick: int) -> bool:
+	return ActionMachine.ability_status(state, slot, tick) == ActionMachine.AbilityStatus.READY
+
+
+func _tap_consumable(tick: int, index: int) -> void:
+	var ability: AbilityTicks = CombatCatalog.ability(CombatCatalog.consumable_ids()[index])
+	_tap(tick, PlayerInput.CONSUMABLE_1 if index == 0 else PlayerInput.CONSUMABLE_2,
+			(ability.total_ticks if ability != null else 60) + _gap())
+	_count(StringName("potion_%d" % index))
+
+
+# Un toque de [param button] y la siguiente decisión dentro de [param busy_ticks].
+func _tap(tick: int, button: int, busy_ticks: int) -> void:
+	_hold_buttons = button
+	_hold_until = tick + COMBAT_TAP_TICKS
+	_hold_kind = &""
+	_next_decision_tick = tick + maxi(busy_ticks, COMBAT_TAP_TICKS)
+
+
+# [param button] mantenido [param ticks] ticks ([param kind]: qué es) y la siguiente decisión al soltarlo.
+func _hold(tick: int, button: int, ticks: int, kind: StringName) -> void:
+	_hold_buttons = button
+	_hold_until = tick + ticks
+	_hold_kind = kind
+	_next_decision_tick = _hold_until + 1
+
+
+func _gap() -> int:
+	return _rng.randi_range(KIT_DECISION_GAP_TICKS.x, KIT_DECISION_GAP_TICKS.y)
+
+
+func _count(key: StringName) -> void:
+	_kit_counts[key] = int(_kit_counts.get(key, 0)) + 1
+
+
+# Velocidad y gravedad del disparo que se apunta.
+func _set_aim(speed: float, projectile_id: int) -> void:
+	_aim_speed = speed
+	var projectile: ProjectileTicks = CombatCatalog.projectile(projectile_id)
+	_aim_gravity = projectile.gravity if projectile != null else 0.0
+
+
+# Apunta [param input] al enemigo con el tiro adelantado del disparo que toca (el rápido si no hay otro), con
+# su posición extrapolada desde que se buscó.
+func _aim(input: PlayerInput, position: Vector3, tick: int, state: CombatState) -> void:
+	var seen: Variant = _target_position()
+	if not seen is Vector3:
+		return
+	if _aim_speed <= 0.0:
+		var weapon: WeaponTicks = CombatCatalog.weapon(state.weapon_id)
+		var light: AttackTicks = CombatCatalog.attack(weapon.light_ids[0])
+		_set_aim(light.projectile_speed_mps, light.projectile_id)
+	var velocity: Vector3 = _target_velocity()
+	var target: Vector3 = (seen as Vector3) + velocity * (float(tick - _target_seen_tick()) / Ballistics.TICK_RATE)
+	var look: Vector2 = lead_look(position, target, velocity, _aim_speed, _aim_gravity, _aim_left)
+	input.look_yaw = look.x
+	input.look_pitch = minf(look.y + kit_aim_raise, _MAX_AIM_PITCH)
+	if _aim_left:
+		input.buttons |= PlayerInput.AIM_LEFT
+
+
+# El arquero se queda entre KIT_BOW_KEEP_MIN y KIT_BOW_KEEP_MAX del enemigo, moviéndose de lado entre medias. En la
+# pasarela de SIEGE (sin barandilla por dentro) se queda quieto en el eje y dispara: mira al blanco y no por el eje, y
+# cualquier paso le podría tirar al patio.
+func _keep_bow_distance(input: PlayerInput, tick: int, distance: float) -> void:
+	if _siege_on_walkway_now:
+		return
+	if distance < KIT_BOW_KEEP_MIN:
+		input.move = Vector2(0.0, -1.0)
+	elif distance > KIT_BOW_KEEP_MAX:
+		input.move = Vector2(0.0, 1.0)
+		if distance > KIT_BOW_KEEP_MAX + COMBAT_SPRINT_DISTANCE:
+			input.buttons |= PlayerInput.SPRINT
+	else:
+		if tick >= _kit_strafe_until:
+			_kit_strafe_until = tick + _rng.randi_range(KIT_STRAFE_TICKS.x, KIT_STRAFE_TICKS.y)
+			_kit_strafe_sign = 1.0 if _rng.randi() % 2 == 0 else -1.0
+		input.move = Vector2(_kit_strafe_sign, 0.0)
+
+
+func _can_interact(state: CombatState) -> bool:
+	return state.action == CombatState.Action.NONE or state.action == CombatState.Action.BLOCK
+
+
+func _health_fraction() -> float:
+	return float(_health_source.call()) if _health_source.is_valid() else 1.0
+
+
+# Levantar a un aliado derribado (patrón COMBAT con kit): sigue manteniendo INTERACT si ya lo hacía; si hay un
+# aliado derribado cerca y ningún enemigo en pie encima, va hacia él y mantiene INTERACT. null si no toca.
+func _revive_input(tick: int, position: Vector3, yaw: float, state: CombatState) -> PlayerInput:
+	var input := PlayerInput.new()
+	input.tick = tick
+	input.look_yaw = yaw
+	if _hold_kind == &"revive":
+		if tick < _hold_until:
+			input.buttons = _hold_buttons
+			return input
+		_hold_kind = &""
+	if not _ally_finder.is_valid() or state.action == CombatState.Action.DOWNED \
+			or state.action == CombatState.Action.DEAD:
+		return null
+	if tick - _ally_checked_tick >= COMBAT_RETARGET_TICKS:
+		_ally_checked_tick = tick
+		_ally_position = _ally_finder.call(position)
+	if not _ally_position is Vector3:
+		return null
+	var to_ally: Vector3 = (_ally_position as Vector3) - position
+	to_ally.y = 0.0
+	var distance: float = to_ally.length()
+	if distance > KIT_REVIVE_SEARCH or tick < _hold_until:
+		return null
+	if _enemy_position is Vector3 and not _enemy_downed \
+			and position.distance_to(_enemy_position as Vector3) < KIT_REVIVE_ENEMY_CLEARANCE:
+		return null
+	input.look_yaw = _yaw_toward(to_ally, yaw)
+	if distance <= KIT_INTERACT_REACH:
+		if _can_interact(state):
+			_hold(tick, PlayerInput.INTERACT,
+					CombatCatalog.tables().revive_ticks + KIT_INTERACT_MARGIN_TICKS, &"revive")
+			_count(&"revive")
+			input.buttons = PlayerInput.INTERACT
+		return input
+	input.move = Vector2(0.0, 1.0)
+	if distance > COMBAT_SPRINT_DISTANCE:
+		input.buttons |= PlayerInput.SPRINT
+	return input
+
+
 # --- Asedio -------------------------------------------------------------------------------------
 
 # Entrada del patrón SIEGE (siempre hay una).
@@ -792,9 +1353,7 @@ func _siege_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 	# 1. Un PNJ defensor a tiro que se pueda alcanzar (lo que guarda el fuerte mientras el círculo no está activo) y,
 	# si no hay, un enemigo cualquiera.
 	if _siege_defender_finder.is_valid() and not _siege.is_circle_active():
-		if tick - _siege_defender_checked_tick >= COMBAT_RETARGET_TICKS:
-			_siege_defender_checked_tick = tick
-			_siege_defender_position = _siege_defender_finder.call(position)
+		_refresh_defender(tick, position)
 		var fighting_defender: PlayerInput = _siege_fight_if_in_range(tick, position, yaw,
 				_siege_defender_position, true)
 		if fighting_defender != null:
@@ -855,7 +1414,7 @@ func _siege_fight_if_in_range(tick: int, position: Vector3, yaw: float, target: 
 	var distance: float = to_enemy.length()
 	if distance > SIEGE_FIGHT_RANGE or not _can_reach(position, target as Vector3):
 		return null
-	if distance <= COMBAT_ENGAGE_DISTANCE:
+	if distance <= _siege_engage_distance():
 		# Ha llegado: si el otro se vuelve a alejar (una esquiva, un paso atrás) es otra persecución, que se mide desde
 		# entonces y no desde la distancia a la que empezó la de antes.
 		_siege_chase_ref_tick = -1
@@ -871,7 +1430,23 @@ func _siege_fight_if_in_range(tick: int, position: Vector3, yaw: float, target: 
 		if corner is Vector2:
 			var to_corner := Vector3((corner as Vector2).x - position.x, 0.0, (corner as Vector2).y - position.z)
 			return _walk_input(tick, position, yaw, to_corner, to_corner.length())
-	return _fight_input(tick, to_enemy, distance, yaw)
+	if _siege_on_walkway_now:
+		# En la pasarela mira por su eje hacia el blanco: lo que hace hacia delante o hacia atrás (acercarse, el paso de un
+		# golpe, la esquiva hacia atrás) va por el eje y no hacia el patio, también pegado a él (integración con el kit:
+		# en las peleas largas, una esquiva «hacia atrás» con el otro casi al lado le tiraba al patio).
+		var heading: Vector3 = _siege_walkway_heading(position, target as Vector3, yaw)
+		if heading != Vector3.ZERO:
+			to_enemy = heading * distance
+	return _fight_input(tick, position, to_enemy, distance, yaw, defender)
+
+
+# Distancia (m) hasta la que pelea sin perseguir: la de la pelea cuerpo a cuerpo o, con el kit y el arco en la mano,
+# todo SIEGE_FIGHT_RANGE (el arquero guarda la distancia y dispara: no se acerca, así que no persigue a nadie).
+func _siege_engage_distance() -> float:
+	var kit: CombatState = _kit_state()
+	if kit != null and is_ranged_weapon(kit.weapon_id):
+		return SIEGE_FIGHT_RANGE
+	return COMBAT_ENGAGE_DISTANCE
 
 
 # Una persecución (alguien a [param distance] metros, en [param target], más lejos que la distancia de pelea; con
@@ -911,7 +1486,12 @@ func _note_siege_position(position: Vector3) -> void:
 		_enemy_position = null
 		_enemy_checked_tick = -1000
 		_siege_defender_position = null
+		_siege_defender_velocity = Vector3.ZERO
+		_siege_defender_downed = false
 		_siege_defender_checked_tick = -1000
+		_enemy_velocity = Vector3.ZERO
+		_enemy_downed = false
+		_hold_kind = &""
 		_siege_chase_ref_tick = -1
 		_siege_chase_blocked_until = -1
 		_siege_rally_until = -1
@@ -1463,6 +2043,24 @@ func _siege_climb_target(here: Vector2, post_offset: float) -> Vector2:
 	if _siege_climb_index < last and here.distance_to(points[_siege_climb_index]) <= SIEGE_WALKWAY_REACHED:
 		_siege_climb_index += 1
 	return points[mini(_siege_climb_index, last)]
+
+
+# La dirección (horizontal y unitaria) del eje de la pasarela en [param position] hacia [param target]: hacia donde crece
+# su distancia a lo largo del eje si el blanco está más allá, o hacia atrás si está más acá; con los dos a la par (a
+# menos de 0,25 m a lo largo del eje), hacia el lado al que mira con [param yaw]. Cero si no hay eje.
+func _siege_walkway_heading(position: Vector3, target: Vector3, yaw: float) -> Vector3:
+	var mine: float = _siege_routes.walkway_offset(Vector2(position.x, position.z))
+	var theirs: float = _siege_routes.walkway_offset(Vector2(target.x, target.z))
+	var length: float = _siege_routes.walkway_length()
+	var from: Vector2 = _siege_routes.walkway_point(clampf(mine - 0.25, 0.0, length))
+	var to: Vector2 = _siege_routes.walkway_point(clampf(mine + 0.25, 0.0, length))
+	var tangent := Vector3(to.x - from.x, 0.0, to.y - from.y)
+	if tangent.length_squared() < 0.0001:
+		return Vector3.ZERO
+	tangent = tangent.normalized()
+	var side: float = signf(theirs - mine) if absf(theirs - mine) >= 0.25 \
+			else signf(Vector3(-sin(yaw), 0.0, -cos(yaw)).dot(tangent))
+	return tangent * (side if side != 0.0 else 1.0)
 
 
 # true si [param here] está en el eje de la rampa que va de [param foot] a [param top] (con SIEGE_RAMP_AXIS_TOLERANCE de

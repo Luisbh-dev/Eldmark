@@ -108,9 +108,10 @@ func encode_record(bytes: PackedByteArray, offset: int) -> void:
 ## Mensaje ENTITY_SPAWN de la entidad con su estado actual, que se da como el estado «tras
 ## [param tick]». [param for_owner] pone el bit «es tu personaje» (el SPAWN propio), que lleva el
 ## [PlayerState] entero; el de una entidad ajena solo lleva lo que ya enseña su registro de 21 B
-## (posición, velocidad, giro, suelo, acción y arma): ni su resistencia exacta, agotamiento,
-## enfriamiento de la parada, búfer, controles ni botones mantenidos (docs/combate.md, secciones 1
-## y 6).
+## (posición, velocidad, giro, suelo, acción, las dos armas y la ranura activa): ni su resistencia
+## exacta, agotamiento, enfriamiento de la parada, búfer, controles, botones mantenidos,
+## reutilizaciones, cargas ni efectos de movimiento (docs/combate.md, secciones 1 y 6, y
+## docs/habilidades.md, sección 5.2).
 func encode_spawn(tick: int, for_owner: bool) -> PackedByteArray:
 	if kind == NetProtocol.EntityKind.STRUCTURE:
 		if fortress_state == null:
@@ -141,12 +142,14 @@ func encode_spawn(tick: int, for_owner: bool) -> PackedByteArray:
 
 
 # Deja en [param state] solo lo público de un personaje ajeno: el combate vuelve a los valores
-# iniciales del arma (resistencia llena, sin banderas, búfer, controles ni parada) salvo la acción en
-# curso, que el registro de 21 B ya muestra, y se borran los botones del último tick y los contadores de
-# salto.
+# iniciales de sus armas (resistencia llena, sin banderas, búfer, controles, parada, reutilizaciones,
+# cargas, consumible ni ranuras de movimiento) salvo la acción en curso, que el registro de 21 B ya
+# muestra, y las armas: la de la otra ranura y la ranura activa (bit 0 de combat_flags2) se ven
+# (docs/habilidades.md, sección 5.2). Se borran los botones del último tick y los contadores de salto.
 static func _hide_private_state(state: PlayerState) -> void:
 	var own: CombatState = state.combat
-	var public := CombatState.initial(CombatCatalog.rules(), own.weapon_id)
+	var public := CombatState.initial(CombatCatalog.rules(), own.weapon_id, own.alt_weapon_id)
+	public.combat_flags2 = own.combat_flags2 & CombatState.FLAG2_SECOND_SLOT
 	public.action = own.action
 	if own.action != CombatState.Action.NONE:
 		public.action_id = own.action_id

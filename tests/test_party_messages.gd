@@ -295,8 +295,15 @@ func test_status_malformed_is_null() -> void:
 	six[1] = 6
 	assert_null(NetMessages.PartyStatus.decode(six), "seis miembros")
 	var bad_status: PackedByteArray = valid.duplicate()
-	bad_status[6] = 0b1000
+	bad_status[6] = 0b10000
 	assert_null(NetMessages.PartyStatus.decode(bad_status), "un bit de estado desconocido")
+	# El bit 3 (derribado) existe desde el protocolo 6 (docs/habilidades.md, sección 5.2).
+	var downed: PackedByteArray = valid.duplicate()
+	downed[6] = NetMessages.STATUS_DOWNED
+	var downed_back: NetMessages.PartyStatus = NetMessages.PartyStatus.decode(downed)
+	if assert_not_null(downed_back, "un miembro derribado"):
+		assert_true(downed_back.members[0].is_downed(), "is_downed")
+		assert_false(downed_back.members[0].is_dead(), "derribado no es muerto")
 	var nan_position: PackedByteArray = valid.duplicate()
 	nan_position.encode_float(7, NAN)
 	assert_null(NetMessages.PartyStatus.decode(nan_position), "una posición NaN")

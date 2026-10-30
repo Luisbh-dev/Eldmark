@@ -33,6 +33,8 @@ extends Resource
 @export var duration_s: float = 0.0
 ## Se queda en la última pose mientras dura la acción (bloqueo, carga, muerte).
 @export var hold_end: bool = false
+## Repite el tramo mientras dura la acción (arrastrarse derribado).
+@export var loop: bool = false
 ## Segundos que tarda la capa en aparecer al empezar la acción y en irse al acabar.
 @export var blend_in_s: float = 0.06
 @export var blend_out_s: float = 0.12

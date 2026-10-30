@@ -24,6 +24,18 @@ static func scene_path(zone_id: String) -> String:
 	return Zones.get_scene_path(StringName(zone_id))
 
 
+## true si [param zone_id] es una zona RVR (reino contra reino, [method Zones.get_pvp_mode]): donde los reinos
+## enemigos se dañan y un jugador derribado por otro queda derribado (docs/habilidades.md, sección 4.5).
+static func is_rvr(zone_id: String) -> bool:
+	return Zones.get_pvp_mode(StringName(zone_id)) == Zones.PvpMode.RVR
+
+
+## Aforo por defecto del servidor de [param zone_id] cuando no se pasa [code]--max-players[/code]
+## ([method Zones.get_max_players]); 0 si la zona no tiene uno propio.
+static func max_players(zone_id: String) -> int:
+	return Zones.get_max_players(StringName(zone_id))
+
+
 ## Códigos de [enum NetProtocol.Realm] admitidos en [param zone_id], según [RealmCatalog]. Vacío
 ## = todos: es lo que devuelve para una zona sin restricción registrada.
 static func allowed_realms(zone_id: String) -> PackedInt32Array:

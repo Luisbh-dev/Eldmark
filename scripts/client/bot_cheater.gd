@@ -23,10 +23,15 @@ extends RefCounted
 ## rate     machaca PRIMARY (un flanco cada dos ticks,   -> no pega más rápido que el combo de los
 ##          lo máximo que se puede pulsar)                  datos: la máquina de acciones del servidor
 ##                                                          decide el ritmo
+## reuse    machaca la habilidad 1 (el golpe de escudo)  -> una habilidad en reutilización no sale: un
+##          pegado al enemigo, un flanco cada dos ticks     golpe cada cooldown + cast ticks (CMB-19)
+## potion   machaca las dos pociones                     -> sin cargas o en la reutilización compartida
+##                                                          no se bebe: ni curación ni resistencia de más
+## interact machaca INTERACT lejos de nadie              -> ni levanta ni remata a nadie
 ## [/codeblock]
-## Los modos de combate ([constant MODE_REWIND], [constant MODE_REACH], [constant MODE_RATE]) no mandan
-## tráfico de más: el bot juega con las reglas del juego ([method make_brain]) y el servidor tiene que
-## dejarlo sin ventaja. Las semillas son de la configuración ([member ClientConfig.bot_seed]), así que lo
+## Los modos de combate ([constant COMBAT_MODES]: rewind, reach, rate y los de la fase 4, reuse, potion e
+## interact; docs/habilidades.md, sección 4.7) no mandan tráfico de más: el bot juega con las reglas del juego
+## ([method make_brain]), sin sospecha posible, y el servidor tiene que dejarlo sin ventaja. Las semillas son de la configuración ([member ClientConfig.bot_seed]), así que lo
 ## que envía es reproducible. Esto es solo cliente: el servidor no sabe quién hace trampa, solo valida.
 
 const MODE_VERSION: String = "version"
@@ -37,11 +42,15 @@ const MODE_FLOOD: String = "flood"
 const MODE_REWIND: String = "rewind"
 const MODE_REACH: String = "reach"
 const MODE_RATE: String = "rate"
+const MODE_REUSE: String = "reuse"
+const MODE_POTION: String = "potion"
+const MODE_INTERACT: String = "interact"
 ## Los modos admitidos de [code]--bot-cheat[/code].
 const MODES: Array[String] = [MODE_VERSION, MODE_FUTURE, MODE_DUPES, MODE_GARBAGE, MODE_FLOOD,
-		MODE_REWIND, MODE_REACH, MODE_RATE]
+		MODE_REWIND, MODE_REACH, MODE_RATE, MODE_REUSE, MODE_POTION, MODE_INTERACT]
 ## Los modos que cambian cómo juega el bot (tienen cerebro propio, [method make_brain]).
-const COMBAT_MODES: Array[String] = [MODE_REWIND, MODE_REACH, MODE_RATE]
+const COMBAT_MODES: Array[String] = [MODE_REWIND, MODE_REACH, MODE_RATE, MODE_REUSE, MODE_POTION,
+		MODE_INTERACT]
 
 ## Versión del protocolo que miente el modo [constant MODE_VERSION].
 const FAKE_PROTOCOL_VERSION: int = NetProtocol.PROTOCOL_VERSION + 1
@@ -118,8 +127,9 @@ func is_combat_mode() -> bool:
 ## El cerebro con el que juega un bot de un modo de combate, o null si el modo es de tráfico.
 ## [param enemy_finder] es [code](position: Vector3) -> Variant[/code] (ver
 ## [method BotBrain.set_enemy_finder]). El modo [constant MODE_REWIND] pelea con el cerebro de combate
-## de siempre (lo tramposo es la vista que declara, [method tamper_batch]); [constant MODE_REACH] y
-## [constant MODE_RATE] usan [BotCheatBrain].
+## de siempre (lo tramposo es la vista que declara, [method tamper_batch]); [constant MODE_REACH],
+## [constant MODE_RATE], [constant MODE_REUSE], [constant MODE_POTION] y [constant MODE_INTERACT] usan
+## [BotCheatBrain].
 func make_brain(enemy_finder: Callable, home: Vector3, radius: float) -> BotBrain:
 	var brain: BotBrain = null
 	match _mode:
@@ -129,6 +139,12 @@ func make_brain(enemy_finder: Callable, home: Vector3, radius: float) -> BotBrai
 			brain = BotCheatBrain.new(_seed, BotCheatBrain.Style.REACH, home, radius)
 		MODE_RATE:
 			brain = BotCheatBrain.new(_seed, BotCheatBrain.Style.RATE, home, radius)
+		MODE_REUSE:
+			brain = BotCheatBrain.new(_seed, BotCheatBrain.Style.REUSE, home, radius)
+		MODE_POTION:
+			brain = BotCheatBrain.new(_seed, BotCheatBrain.Style.POTION, home, radius)
+		MODE_INTERACT:
+			brain = BotCheatBrain.new(_seed, BotCheatBrain.Style.INTERACT, home, radius)
 	if brain != null:
 		brain.set_enemy_finder(enemy_finder)
 	return brain

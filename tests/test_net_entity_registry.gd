@@ -1,6 +1,7 @@
 extends TestCase
 ## Pruebas del registro de entidades de red ([NetEntityRegistry]): ids de 1 a 65535, cuarentena
-## de 600 ticks y orden por net_id (docs/red.md, sección 9.1).
+## de 600 ticks y orden por net_id (docs/red.md, sección 9.1); y los ids pasajeros de los proyectiles
+## (docs/habilidades.md, sección 4.4), del mismo espacio y con la misma cuarentena.
 
 const PLAYER: int = NetProtocol.EntityKind.PLAYER
 
@@ -144,3 +145,34 @@ func test_ids_wrap_around_to_free_slots() -> void:
 	# El cursor sigue por 65535 y da la vuelta: primero llega al 5 y luego al 60000.
 	assert_eq(first.net_id, 5, "tras dar la vuelta aparece el id bajo libre")
 	assert_eq(second.net_id, 60000, "y después el otro")
+
+
+func test_transient_ids_share_the_space_and_the_quarantine_without_entities() -> void:
+	var registry := NetEntityRegistry.new()
+	var player: NetEntity = registry.allocate(PLAYER, 0)
+	var arrow: int = registry.allocate_transient_id(0)
+	assert_eq([player.net_id, arrow], [1, 2], "del mismo espacio, en círculo")
+	assert_true(registry.is_transient(arrow))
+	assert_eq(registry.transient_count(), 1)
+	assert_null(registry.get_entity(arrow), "sin entidad")
+	assert_eq(registry.size(), 1, "ni en la lista de entidades")
+	assert_eq(registry.get_sorted().size(), 1, "ni en el orden de simulación")
+	var next: NetEntity = registry.allocate(PLAYER, 0)
+	assert_eq(next.net_id, 3, "una entidad no toma un id pasajero en uso")
+	registry.release_transient_id(arrow, 100)
+	assert_false(registry.is_transient(arrow))
+	assert_true(registry.is_quarantined(arrow, 699), "la misma cuarentena de 600 ticks")
+	registry.release_transient_id(arrow, 100)
+	registry.release_transient_id(77, 100)
+	assert_eq(registry.transient_count(), 0, "soltar uno que no está no hace nada")
+	# Con todo el espacio ocupado, el id liberado solo vuelve tras la cuarentena (y lo puede tomar una entidad).
+	while registry.allocate_transient_id(100) != 0:
+		pass
+	assert_eq(registry.allocate_transient_id(699), 0, "en cuarentena")
+	assert_null(registry.allocate(PLAYER, 699))
+	var reused: NetEntity = registry.allocate(PLAYER, 700)
+	if assert_not_null(reused, "a los 600 ticks"):
+		assert_eq(reused.net_id, arrow, "una entidad puede tomar el id de una flecha que ya cumplió")
+	registry.release(reused.net_id, 800)
+	assert_eq(registry.allocate_transient_id(1399), 0)
+	assert_eq(registry.allocate_transient_id(1400), arrow, "y una flecha, el de una entidad")

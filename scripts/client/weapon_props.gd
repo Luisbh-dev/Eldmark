@@ -10,6 +10,12 @@ extends RefCounted
 ## UAL el eje local +Y de la mano apunta por el antebrazo hacia los dedos; la hoja sale por +X y el
 ## escudo se agarra con su disco perpendicular a Z, por delante de la mano (hacia -Z). Si al verlo
 ## no encaja, los desplazamientos y giros de más abajo son lo único que hay que tocar.
+## [br][br]
+## [b]Arco provisional[/b] (fase 4, docs/habilidades.md, sección 6.6): tres cilindros finos en arco (las
+## dos palas y la empuñadura) y una cuerda, en la mano izquierda (cuelga del mismo [BoneAttachment3D] que
+## el escudo, como segundo hijo; se crea la primera vez que hace falta). [method show_weapon] enseña los
+## accesorios del arma que se lleva (el arco, o la espada y el escudo) también en los remotos: el arma
+## activa sale de la pareja de armas y del bit de ranura de su registro (PRG-07 se ve).
 
 ## Nombres de los nodos que se crean.
 const SWORD_ATTACHMENT: StringName = &"SwordAttachment"
@@ -32,6 +38,18 @@ const GUARD_OFFSET: float = 0.1
 const SHIELD_RADIUS: float = 0.26
 const SHIELD_THICKNESS: float = 0.045
 const SHIELD_FORWARD: float = 0.12
+## Arco: nombre del nodo, largo de cada pala y de la empuñadura (m), grosor, curvatura (grados de cada
+## pala respecto a la empuñadura) y cuánto se adelanta de la mano.
+const BOW_MESH: StringName = &"BowPlaceholder"
+const BOW_LIMB_LENGTH: float = 0.5
+const BOW_GRIP_LENGTH: float = 0.16
+const BOW_THICKNESS: float = 0.025
+const BOW_BEND_DEG: float = 22.0
+const BOW_FORWARD: float = 0.05
+const BOW_COLOR: Color = Color(0.42, 0.27, 0.12, 1.0)
+const STRING_COLOR: Color = Color(0.85, 0.82, 0.72, 1.0)
+## Nombre (en el catálogo de combate) del arma que se ve como arco.
+const BOW_WEAPON: StringName = &"bow"
 const STEEL_COLOR: Color = Color(0.72, 0.74, 0.8, 1.0)
 const GUARD_COLOR: Color = Color(0.45, 0.33, 0.12, 1.0)
 const SHIELD_COLOR: Color = Color(0.4, 0.26, 0.14, 1.0)
@@ -53,6 +71,33 @@ static func install(skeleton: Skeleton3D) -> Array[BoneAttachment3D]:
 	if skeleton.find_bone(SHIELD_BONE) >= 0:
 		result[1] = _attach(skeleton, SHIELD_ATTACHMENT, SHIELD_BONE, _make_shield())
 	return result
+
+
+## Enseña en [param skeleton] los accesorios del arma [param weapon_id] del catálogo de combate: el arco
+## (y nada en la mano derecha) si es el arco; la espada y el escudo con cualquier otra (las de los PNJ
+## también). Crea el arco la primera vez. Sin las armas instaladas ([method install]) no hace nada.
+## Devuelve true si se ve el arco.
+static func show_weapon(skeleton: Skeleton3D, weapon_id: int) -> bool:
+	if skeleton == null:
+		return false
+	var sword: BoneAttachment3D = skeleton.get_node_or_null(NodePath(SWORD_ATTACHMENT)) as BoneAttachment3D
+	var left: BoneAttachment3D = skeleton.get_node_or_null(NodePath(SHIELD_ATTACHMENT)) as BoneAttachment3D
+	var weapon: WeaponTicks = CombatCatalog.weapon(weapon_id)
+	var bow: bool = weapon != null and weapon.name == BOW_WEAPON
+	if sword != null:
+		sword.visible = not bow
+	if left == null:
+		return bow
+	var shield: Node3D = left.get_node_or_null(NodePath(SHIELD_MESH)) as Node3D
+	if shield != null:
+		shield.visible = not bow
+	var bow_node: Node3D = left.get_node_or_null(NodePath(BOW_MESH)) as Node3D
+	if bow_node == null and bow:
+		bow_node = _make_bow()
+		left.add_child(bow_node)
+	if bow_node != null:
+		bow_node.visible = bow
+	return bow
 
 
 static func _attach(skeleton: Skeleton3D, node_name: StringName, bone: StringName,
@@ -115,6 +160,57 @@ static func _make_shield() -> Node3D:
 	disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	root.add_child(disc)
 	return root
+
+
+# El arco: la empuñadura recta a lo largo de +X de la mano (hacia arriba con el brazo extendido) y una
+# pala a cada lado, inclinadas hacia atrás (+Z) para dar la curva; la cuerda une las puntas.
+static func _make_bow() -> Node3D:
+	var root := Node3D.new()
+	root.name = BOW_MESH
+	root.set_meta(&"placeholder", true)
+	root.position = Vector3(0.0, 0.0, -BOW_FORWARD)
+	var material: StandardMaterial3D = _material(BOW_COLOR, 0.0, 0.7)
+	var grip := MeshInstance3D.new()
+	grip.name = "Empunadura"
+	grip.mesh = _bow_rod(BOW_GRIP_LENGTH, material)
+	grip.rotation = Vector3(0.0, 0.0, PI * 0.5)
+	grip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(grip)
+	var bend: float = deg_to_rad(BOW_BEND_DEG)
+	var tips: Array[Vector3] = []
+	for side: float in [1.0, -1.0]:
+		var limb := MeshInstance3D.new()
+		limb.name = "Pala" if side > 0.0 else "PalaInferior"
+		limb.mesh = _bow_rod(BOW_LIMB_LENGTH, material)
+		var direction := Vector3(side * cos(bend), 0.0, sin(bend))
+		var start := Vector3(side * BOW_GRIP_LENGTH * 0.5, 0.0, 0.0)
+		limb.position = start + direction * BOW_LIMB_LENGTH * 0.5
+		# El cilindro va en Y: se gira para que siga la dirección de la pala.
+		limb.basis = Basis(Quaternion(Vector3.UP, direction.normalized()))
+		limb.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(limb)
+		tips.append(start + direction * BOW_LIMB_LENGTH)
+	var string := MeshInstance3D.new()
+	string.name = "Cuerda"
+	var string_mesh := BoxMesh.new()
+	string_mesh.size = Vector3(tips[0].distance_to(tips[1]), 0.006, 0.006)
+	string_mesh.material = _material(STRING_COLOR, 0.0, 0.9)
+	string.mesh = string_mesh
+	string.position = (tips[0] + tips[1]) * 0.5
+	string.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(string)
+	return root
+
+
+static func _bow_rod(length: float, material: StandardMaterial3D) -> CylinderMesh:
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = BOW_THICKNESS * 0.5
+	mesh.bottom_radius = BOW_THICKNESS * 0.5
+	mesh.height = length
+	mesh.radial_segments = 8
+	mesh.rings = 1
+	mesh.material = material
+	return mesh
 
 
 static func _material(color: Color, metallic: float, roughness: float) -> StandardMaterial3D:

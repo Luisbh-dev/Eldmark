@@ -16,8 +16,11 @@ extends SceneTree
 ## godot --headless --path . -s res://tools/load_test.gd -- --fakes=128 --bots=100 --swarms=2
 ## godot --headless --path . -s res://tools/load_test.gd -- --fakes=156 --bots=100 --swarms=2 --seconds=20
 ##
-## # La batería de la fase 3 (ver BRAWL_MATRIX): refriegas agrupadas de 32, 64 y 128 combatientes con el
-## # cerebro de combate (falsos del servidor y bots reales que pelean); 60 s de medida cada una
+## # La batería de la fase 3 (ver BRAWL_MATRIX): refriegas agrupadas de 32, 40, 64 y 128 combatientes con el
+## # cerebro de combate (falsos del servidor y bots reales que pelean); 60 s de medida cada una. Desde H5 (fase 4,
+## # docs/habilidades.md, sección 7.3) los falsos pelean con el kit y la mitad lleva la plantilla del tirador
+## # (--fake-loadout=marksman:50), arqueros puros de los que la mitad dispara al cielo (--fake-archers=50: sus flechas
+## # viven 2 s): flechas, habilidades, pociones y derribos, con los PNJ del fuerte en la zona
 ## godot --headless --path . -s res://tools/load_test.gd -- --brawl
 ## # Una refriega suelta: 54 falsos de combate y 10 clientes reales de combate (64 en total)
 ## godot --headless --path . -s res://tools/load_test.gd -- --scenario=brawl --fakes=54 --bots=10
@@ -66,6 +69,12 @@ extends SceneTree
 ## lo fija cada escenario de [constant MATRIX] (el de 100 ms de RTT); la opción solo vale para los que no
 ## llevan uno.
 ## [br]- [code]--zone=<id>[/code] zona del servidor (por defecto la de siempre, el Vado Gris).
+## [br]- [code]--fake-loadout=<plantilla>[:<porcentaje>][/code] plantilla de equipo de los falsos (la pasa al
+## servidor). En las refriegas, por defecto [constant BRAWL_LOADOUT].
+## [br]- [code]--sky-archers=<porcentaje>[/code] en las refriegas con tiradores: qué parte de ellos dispara al cielo
+## (por defecto [constant BRAWL_SKY_ARCHERS_PERCENT]; con 100, un pico de 54 de las 64 del tope con 64 combatientes;
+## para llenar el tope y medir los desalojos, todos tiradores: [code]--fake-loadout=marksman:100
+## --sky-archers=100[/code]: pico de 64 y unas 4600 echadas en toda la ejecución).
 ## [br]- [code]--out=<carpeta>[/code] dónde van los informes y los registros (por defecto [code]build/load_test[/code]).
 ## [br]- [code]--siege[/code] lanza la batería de [constant SIEGE_MATRIX] (120 s de medida cada una).
 ## [br]- [code]--npcs[/code] (solo en los asedios, también con [code]--siege[/code]): con los PNJ de la zona y sin la
@@ -97,6 +106,10 @@ extends SceneTree
 ## acumulado al empezar ([LoadTestSummary]; sale de las líneas de métricas que el servidor escribe cada
 ## 600 ticks, así que la ventana va de la primera tras entrar los bots a la última antes de que se
 ## vayan). El criterio usa la de la ventana.
+## [br][br]
+## [b]Criterio de la fase 4[/b] (docs/habilidades.md, secciones 7.3 y 8): en la refriega de 64 con la mitad de
+## tiradores, el p99 del tick por debajo de 16,7 ms y la sección [code]combat_projectiles[/code] por debajo de
+## 1 ms (p99); se muestra con el pico de flechas vivas frente al tope de la zona y las que el tope echó.
 ## [br][br]
 ## [b]Criterio de la fase 2[/b] (docs/red.md, 14 y 16), con 64 jugadores agrupados y 100 ms de RTT en los
 ## bots: p99 del tick por debajo de 8 ms, como mucho 37 KB/s de bajada por cliente y menos de un 1 % de
@@ -132,8 +145,15 @@ const MAX_P99_TICK_US: int = 8000
 const MAX_KB_PER_CLIENT: float = 37.0
 const MAX_SUBSTITUTED_PERCENT: float = 1.0
 ## Secciones del tick que se muestran (las de combate van dentro de [code]combat[/code]).
-const SECTIONS: Array[String] = ["tick", "net", "npc_brains", "sim", "combat", "combat_resolve", "combat_events",
-		"war", "npc", "history", "snapshot", "flush"]
+const SECTIONS: Array[String] = ["tick", "net", "npc_brains", "sim", "combat", "combat_resolve", "combat_projectiles",
+		"combat_events", "war", "npc", "history", "snapshot", "flush"]
+## Plantilla de los falsos de una refriega (fase 4, H5): la mitad tiradores, arqueros puros, de los que este
+## porcentaje dispara al cielo ([code]--fake-archers[/code]).
+const BRAWL_LOADOUT: String = "marksman:50"
+const BRAWL_SKY_ARCHERS_PERCENT: int = 50
+## Criterio de la fase 4 (docs/habilidades.md, secciones 7.3 y 8): p99 del tick y de la sección de proyectiles.
+const MAX_P99_TICK_US_PHASE_4: int = 16700
+const MAX_P99_PROJECTILES_US: int = 1000
 ## Batería de [code]--matrix[/code]: [escenario, jugadores falsos, bots, simulador de red de los bots].
 ## Los tres primeros son los de siempre (sin retardo); el cuarto es el criterio de la fase 2 medido como
 ## pide docs/red.md, 16 (64 agrupados y 100 ms de RTT); después disperso, altas y bajas y los tamaños
@@ -152,9 +172,11 @@ const MATRIX: Array[Array] = [
 ## Segundos de medida de cada escenario de [constant MATRIX] (docs/red.md, 16: 120 s cada uno).
 const MATRIX_SECONDS: int = 120
 ## Batería de [code]--brawl[/code] (TEC-15): [escenario, jugadores falsos, bots reales, simulador de red de los
-## bots]. Los combatientes son los falsos más los diez bots reales: 32, 64 y 128 en total.
+## bots]. Los combatientes son los falsos más los diez bots reales: 32, 40, 64 y 128 en total. La de 40 es el
+## límite de jugadores por batalla con el kit de la fase 4 (docs/red.md, sección 14) y el aforo del Vado Gris.
 const BRAWL_MATRIX: Array[Array] = [
 	["brawl", 22, 10, ""],
+	["brawl", 30, 10, ""],
 	["brawl", 54, 10, ""],
 	["brawl", 118, 10, ""],
 ]
@@ -250,6 +272,8 @@ func _make_run(args: PackedStringArray, scenario: String, fakes: int, bots: int,
 		"net_sim": net_sim if not net_sim.is_empty() else _option(args, "--net-sim=", ""),
 		"zone": _option(args, "--zone=", ""),
 		"npcs": args.has("--npcs") and scenario == "siege",
+		"loadout": _option(args, "--fake-loadout=", BRAWL_LOADOUT if scenario == "brawl" else ""),
+		"sky_archers": _int_option(args, "--sky-archers=", BRAWL_SKY_ARCHERS_PERCENT),
 	}
 
 
@@ -288,7 +312,7 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 	var server_log: String = _out_dir.path_join("%s_server.log" % tag)
 	var battle_log: String = _out_dir.path_join("%s_battle.jsonl" % tag)
 	var server_args := PackedStringArray([
-		"--server", "--port=%d" % port, "--max-players=%d" % (fakes + bots + 8),
+		"--server", "--port=%d" % port, "--max-players=%d" % server_max_players(fakes, bots),
 		"--quit-after-ticks=%d" % server_ticks, "--report=%s" % server_report,
 	])
 	if not str(run["zone"]).is_empty():
@@ -307,6 +331,12 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 				server_args.append("--fake-brain=siege")
 		if scenario == "churn":
 			server_args.append("--fake-churn=%d" % _tick_rate)
+		if not str(run["loadout"]).is_empty():
+			server_args.append("--fake-loadout=%s" % run["loadout"])
+		if scenario == "brawl" and not str(run["loadout"]).is_empty():
+			# Los tiradores son arqueros puros y una parte dispara al cielo: flechas que viven sus 2 s, para acercarse al
+			# tope de la zona (docs/habilidades.md, secciones 7.3 y 8).
+			server_args.append("--fake-archers=%d" % int(run["sky_archers"]))
 	if scenario == "siege":
 		server_args.append_array(siege_server_args(bool(run.get("npcs", false)), battle_log, settle_ticks))
 	DirAccess.remove_absolute(server_report)
@@ -493,7 +523,12 @@ func _summarise_combat(summary: Dictionary, server: Dictionary, swarms: Array[Di
 	figures["rewind_rejected"] = int((server.get("combat", {}) as Dictionary).get("rewind_rejected", 0))
 	figures["suspicious"] = ((server.get("combat", {}) as Dictionary).get("suspicious", []) as Array).size()
 	figures["seconds"] = seconds
+	figures["phase_4"] = LoadTestSummary.phase_4_figures(server, seconds)
 	summary["combat"] = figures
+	# Criterio de la fase 4: tick y proyectiles por debajo de su presupuesto.
+	var sections: Dictionary = summary["sections_us"]
+	summary["phase_4_criterion_met"] = int((sections["tick"] as Dictionary)["p99"]) <= MAX_P99_TICK_US_PHASE_4 \
+			and int((sections["combat_projectiles"] as Dictionary)["p99"]) <= MAX_P99_PROJECTILES_US
 
 
 # Cifras del asedio (GUE-16): cómo se comporta el tick a lo largo de la ventana de medida (las marcas de
@@ -613,6 +648,12 @@ func _summary_lines(summary: Dictionary) -> PackedStringArray:
 			summary["client_snapshot_avg_bytes"]])
 		lines.append("   Servidor, total:            salida %.1f KB/s, entrada %.1f KB/s" % [
 			summary["server_kb_out_per_s"], summary["server_kb_in_per_s"]])
+	if summary.has("phase_4_criterion_met"):
+		var sections_now: Dictionary = summary["sections_us"]
+		lines.append("   Criterio de la fase 4 (p99 del tick <= 16,7 ms y de combat_projectiles <= 1 ms): %s (%.1f ms y %.2f ms)" % [
+			"CUMPLIDO" if bool(summary["phase_4_criterion_met"]) else "NO CUMPLIDO",
+			float((sections_now["tick"] as Dictionary)["p99"]) / 1000.0,
+			float((sections_now["combat_projectiles"] as Dictionary)["p99"]) / 1000.0])
 	lines.append("   Criterio de la fase 2 (p99 < 8 ms, <= 37 KB/s por cliente, < 1 %% sustituidas en la ventana): %s%s" % [
 		"CUMPLIDO" if bool(summary["criterion_met"]) else "NO CUMPLIDO",
 		"" if _is_reference_run(run) else " (solo como referencia: se define con 64 agrupados y 100 ms de RTT)"])
@@ -678,11 +719,30 @@ func _combat_lines(figures: Dictionary) -> PackedStringArray:
 		100.0 * float(figures["resolve_share"]), figures["rewind_rejected"], figures["suspicious"]])
 	lines.append("   Eventos:                    %.1f µs de envío por evento; servidor, %.1f KB/s de eventos" % [
 		figures["events_us_per_event"], figures["event_kb_per_s"]])
+	var kit: Dictionary = figures.get("phase_4", {})
+	if not kit.is_empty():
+		lines.append("   Flechas (fase 4):           %d disparos (%.1f/s), %d a personajes, %d al mundo, %d bloqueadas, %d inofensivas; pico de %d vivas (tope %d), %d echadas por el tope; %d rebobinados rechazados" % [
+			kit["fired"], kit["fired_per_s"], kit["character_hits"], kit["world_hits"], kit["arrow_blocked"],
+			kit["harmless"], kit["peak"], kit["zone_cap"], kit["evicted"], kit["rewind_rejected"]])
+		lines.append("   Flechas, coste:             %.1f µs por tick ocupado (%d ticks), %d segmentos y %d pruebas de cápsula; %d SPAWN/DESPAWN, %.1f KB/s" % [
+			kit["projectile_us_per_busy_tick"], kit["busy_ticks"], kit["segments"], kit["capsule_tests"],
+			kit["messages"], kit["kb_per_s"]])
+		lines.append("   Kit:                        %d efectos aplicados, %d pulsos, %d curado, %d interrupciones; %d derribos, %d levantados, %d rematados, %d desangrados" % [
+			kit["status_applied"], kit["pulses"], kit["healed"], kit["interrupts"], kit["downs"], kit["revives"],
+			kit["executions"], kit["bled_out"]])
 	if int(figures["clients_measured"]) > 0:
 		lines.append("   Bajada en detalle (%d bots): snapshots %.1f KB/s + eventos %.1f KB/s (de aplicación); bajada de ENet %.1f KB/s" % [
 			figures["clients_measured"], figures["client_snapshot_kb_per_s"],
 			figures["client_event_kb_per_s"], figures["client_wire_kb_per_s"]])
 	return lines
+
+
+## El aforo con el que se lanza el servidor de un escenario de [param fakes] falsos y [param bots] bots reales: todos y un
+## margen de 8, siempre con [code]--max-players[/code] explícito. Sin él, el Vado Gris tendría su aforo propio (40, el
+## límite por batalla medido con el kit de la fase 4: [method NetZones.max_players], docs/red.md, sección 14) y los
+## asedios de 32 contra 32 y 64 contra 64 de [constant SIEGE_MATRIX], o las refriegas de 64 y 128, no cabrían.
+static func server_max_players(fakes: int, bots: int) -> int:
+	return fakes + bots + 8
 
 
 ## Las opciones con las que se cierra un enjambre: cuando alguno de sus bots ve el tick [param swarm_ticks] del servidor

@@ -464,3 +464,37 @@ func test_view_exposes_the_drawn_action_and_health() -> void:
 	assert_eq(view.get_drawn_action() & 15, CombatState.Action.LIGHT, "la acción del registro")
 	assert_eq((view.get_drawn_action() >> 4) & 3, ActionMachine.PHASE_ACTIVE, "y su fase")
 	assert_eq(view.get_drawn_health_q(), 100, "y la vida cuantizada")
+
+
+# --- Armas (fase 4) -----------------------------------------------------------------------------
+
+func test_the_weapon_pair_comes_from_the_spawn_and_the_loadout_and_the_slot_bit_picks_one() -> void:
+	var sword: int = CombatCatalog.weapon_id(&"sword_shield")
+	var bow: int = CombatCatalog.weapon_id(&"bow")
+	var spawn: NetMessages.EntitySpawn = _spawn(7, 10, Vector3.ZERO)
+	# El SPAWN ajeno lleva la otra arma y la ranura activa (docs/habilidades.md, sección 5.2): aquí, el
+	# arco en la ranura 2 y activo.
+	spawn.state.combat = CombatState.initial(CombatCatalog.rules(), bow, sword)
+	spawn.state.combat.combat_flags2 |= CombatState.FLAG2_SECOND_SLOT
+	_world.on_spawn(spawn)
+	var view: RemotePlayerView = _world.get_view(7)
+	assert_eq(view.get_weapons(), Vector2i(sword, bow), "en orden de ranura")
+	assert_true(view.is_drawn_second_slot(), "la ranura 2 activa, del SPAWN")
+	assert_eq(view.get_active_weapon_id(), bow)
+	# El registro dibujado manda: el bit 3 de flags a 0 es la ranura 1.
+	_push(12, _record(7, Vector3.ZERO))
+	_clock.render = 12.0
+	_world.draw(12.0, 0.0)
+	assert_false(view.is_drawn_second_slot())
+	assert_eq(view.get_active_weapon_id(), sword, "cambió a la espada")
+	var second: EntityRecord = _record(7, Vector3.ZERO)
+	second.flags |= EntityRecord.FLAG_SECOND_SLOT
+	_push(14, second)
+	_world.draw(14.0, 0.0)
+	assert_eq(view.get_active_weapon_id(), bow, "y vuelve al arco")
+	# Un LOADOUT (al reaparecer con otra plantilla) le da otra pareja.
+	_world.on_loadout(NetMessages.EntityEvent.loadout(7, 20, CombatCatalog.template_id(&"squire"), sword, 0, 0))
+	assert_eq(view.get_weapons(), Vector2i(sword, 0))
+	assert_eq(view.get_active_weapon_id(), sword, "sin segunda arma, la de la ranura 1 aunque llegue el bit")
+	_world.on_loadout(NetMessages.EntityEvent.loadout(99, 20, 1, bow, 0, 0))
+	assert_eq(view.get_weapons(), Vector2i(sword, 0), "el LOADOUT de otro id no la toca")

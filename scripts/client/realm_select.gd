@@ -22,6 +22,11 @@ extends Control
 ## WELCOME solo llega al conectar, así que el recuento es el de la última conexión (y no hay ninguno antes de
 ## la primera). Si el servidor rechaza el reino elegido por desequilibrio (REJECT 9, [constant
 ## NetProtocol.Result.IMBALANCE]) [method set_rejected_realm] lo quita de la elección y lo deja marcado.
+## [br][br]
+## [b]Plantilla de equipo[/b] (PRG-07, docs/habilidades.md, sección 6.5): bajo el nombre, el
+## [TemplateSelector]. La elegida ([method get_selected_template]) la guarda [OnlineMain] en
+## [member ClientConfig.loadout] y [NetClient] la manda en un LOADOUT_SELECT nada más llegar el WELCOME, así
+## que vale ya para la primera aparición.
 
 ## Se emite al pulsar «Entrar» con todo válido: [param realm] es un código de
 ## [enum NetProtocol.Realm], [param address] el texto del campo de dirección
@@ -59,6 +64,8 @@ var _configured: bool = false
 var _group: ButtonGroup = ButtonGroup.new()
 var _counts: PackedInt32Array = PackedInt32Array()
 var _rejected_realm: int = NetProtocol.Realm.NONE
+var _templates: TemplateSelector = null
+var _pending_template: int = -1
 
 @onready var _notice_label: Label = %NoticeLabel
 @onready var _vardheim_button: Button = %VardheimButton
@@ -95,6 +102,12 @@ func _ready() -> void:
 	_address_edit.text_submitted.connect(_on_text_submitted)
 	_enter_button.pressed.connect(_try_enter)
 	_quit_button.pressed.connect(func() -> void: quit_requested.emit())
+	_templates = TemplateSelector.new()
+	var column: Node = _hint_label.get_parent()
+	column.add_child(_templates)
+	column.move_child(_templates, _hint_label.get_index())
+	if _pending_template >= 0:
+		_templates.select(_pending_template)
 	_apply()
 
 
@@ -147,6 +160,26 @@ func get_selected_realm() -> int:
 ## true si la zona admite [param realm] (la lista de admitidos vacía admite todos).
 func is_realm_allowed(realm: int) -> bool:
 	return _allowed.is_empty() or _allowed.has(realm)
+
+
+## Marca la plantilla de equipo [param template_id] (0 = la de por defecto). Se puede llamar antes de añadir
+## la pantalla al árbol.
+func set_selected_template(template_id: int) -> void:
+	_pending_template = template_id
+	if _templates != null:
+		_templates.select(template_id)
+
+
+## Plantilla de equipo elegida (id del catálogo de combate; la de por defecto si no se ha tocado).
+func get_selected_template() -> int:
+	if _templates != null:
+		return _templates.get_selected()
+	return _pending_template if _pending_template > 0 else CombatCatalog.default_template_id()
+
+
+## El selector de plantilla de equipo (null antes de entrar en el árbol).
+func get_template_selector() -> TemplateSelector:
+	return _templates
 
 
 ## Botón del reino [param realm] (null si no es un reino jugable).

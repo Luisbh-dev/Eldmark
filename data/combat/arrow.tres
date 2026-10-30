@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="ProjectileDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/combat/projectile_definition.gd" id="1_projectile"]
+
+[resource]
+script = ExtResource("1_projectile")
+id = &"arrow"
+gravity = 6.0
+radius_m = 0.05
+lifetime_s = 2.0

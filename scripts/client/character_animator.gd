@@ -39,6 +39,11 @@ extends Node
 ## jugador local y el sandbox) o, en un remoto, del byte [code]action[/code] de su registro
 ## ([method set_remote_source]). Cada clip se reescala a la duración de la fase en los datos de
 ## combate; ver [CombatClipPlanner]. La pose la pone el [CombatPoseModifier] después del árbol.
+## [br][br]
+## [b]Arma activa[/b] (fase 4): la del estado del personaje o, en un remoto, la que da su vista (pareja de
+## armas y bit de ranura del registro, [method set_remote_source]). Elige el juego de clips del arma y,
+## cuando cambia, avisa por [signal weapon_shown] (el [HumanoidVisual] cambia los accesorios de las manos,
+## [WeaponProps]).
 
 ## Ruta de los parámetros del árbol (ver humanoid_visual.tscn).
 const PARAM_LOCOMOTION_BLEND: StringName = &"parameters/locomotion/blend_position"
@@ -53,8 +58,13 @@ const PARAM_AIR: StringName = &"parameters/air/blend_amount"
 ## Nodo BlendSpace1D de locomoción dentro del árbol.
 const LOCOMOTION_NODE: StringName = &"locomotion"
 
+## El arma que se ve en las manos ha cambiado (id del catálogo de combate; 0 = ninguna conocida).
+signal weapon_shown(weapon_id: int)
+
 ## Fases del aire.
 enum AirState { GROUNDED, JUMPING, FALLING }
+## Velocidad horizontal (m/s) por encima de la cual un derribado se arrastra.
+const CRAWL_MIN_SPEED: float = 0.2
 
 ## Árbol de animación que se conduce.
 @export var animation_tree: AnimationTree
@@ -155,6 +165,9 @@ var _combat_modifier: CombatPoseModifier = null
 ## Origen del byte action de un remoto: devuelve el byte del registro dibujado. Si no es válido, la
 ## acción sale del [member PlayerCharacter.combat] del personaje.
 var _remote_source: Callable = Callable()
+## Arma activa de un remoto (devuelve su id); si no es válido, la del estado del personaje.
+var _remote_weapon_source: Callable = Callable()
+var _shown_weapon: int = -1
 
 
 func _ready() -> void:
@@ -220,12 +233,18 @@ func set_combat_modifier(modifier: CombatPoseModifier) -> void:
 
 
 ## Hace que la acción de combate salga del byte [code]action[/code] que devuelve [param source]
-## (el registro dibujado de un remoto) en lugar del estado del personaje. Un [Callable] no válido
-## vuelve al estado del personaje.
-func set_remote_source(source: Callable) -> void:
+## (el registro dibujado de un remoto) en lugar del estado del personaje, y el arma activa de
+## [param weapon_source] (el id que dice su vista). Un [Callable] no válido vuelve al estado del personaje.
+func set_remote_source(source: Callable, weapon_source: Callable = Callable()) -> void:
 	_remote_source = source
+	_remote_weapon_source = weapon_source
 	if _combat_layer != null:
 		_combat_layer.reset()
+
+
+## Arma que se ve ahora en las manos (-1 antes del primer fotograma).
+func get_shown_weapon() -> int:
+	return _shown_weapon
 
 
 ## Capa de animación de combate (null hasta [method set_combat_modifier]).
@@ -278,13 +297,20 @@ func _process(delta: float) -> void:
 
 # Alimenta la capa de combate con la acción de este fotograma.
 func _update_combat(delta: float) -> void:
+	var weapon_id: int = _character.combat.weapon_id
+	if _remote_source.is_valid() and _remote_weapon_source.is_valid():
+		weapon_id = int(_remote_weapon_source.call())
+	if weapon_id != _shown_weapon:
+		_shown_weapon = weapon_id
+		weapon_shown.emit(weapon_id)
 	if _combat_layer == null:
 		return
+	var moving: bool = _character.get_horizontal_speed() > CRAWL_MIN_SPEED
 	if _remote_source.is_valid():
-		_combat_layer.update_remote(int(_remote_source.call()), delta)
+		_combat_layer.update_remote(int(_remote_source.call()), delta, weapon_id, moving)
 	else:
 		_combat_layer.update_local(_character.combat, _character.last_input_tick,
-				Engine.get_physics_interpolation_fraction(), delta)
+				Engine.get_physics_interpolation_fraction(), delta, moving)
 
 
 func _combat_debug() -> Dictionary:

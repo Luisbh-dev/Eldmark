@@ -11,7 +11,7 @@ encontraron los jueces; el resumen está en el [anexo](#anexo-correcciones-respe
 Se apoya en el código de la fase 1:
 
 - `PlayerInput`: 12 B cuantizados.
-- `PlayerState`: 35 B (69 B con el estado de combate de la fase 3, [combate.md 3.1](combate.md#31-combatstate-en-playerstate-entra-en-encode); las cifras de este documento son las de la fase 3).
+- `PlayerState`: 35 B (69 B con el estado de combate de la fase 3, [combate.md 3.1](combate.md#31-combatstate-en-playerstate-entra-en-encode), y 111 B con las habilidades del protocolo 6, [habilidades.md 3.1](habilidades.md#31-combatstate-v5); las cifras de este documento son las del protocolo 6 donde se marcan «v6» y, si no, las de la fase 3).
 - `PlayerCharacter.simulate()`: determinista, un tick de física por llamada.
 - `LocalPlayerController`.
 
@@ -89,7 +89,7 @@ ajustes y el audio): para el cliente instancia por su ruta `scenes/client/client
 | Argumentos | Modo | Escena |
 |---|---|---|
 | ninguno, `--demo`, `--shots=`, `--quit-after-demo` | Sandbox sin red de la fase 1, sin cambios | `scenes/client/client_main.tscn` |
-| `--server [--port=24600] [--zone=<id>] [--max-players=64] [--max-per-ip=4] [--idle-quit=<s>] [--fake-players=N [--fake-layout=cluster\|spread] [--fake-churn=<ticks>]] [--debug-commands] [--dev-lock [--dev-lock-path=<ruta>]] [--stop-file=<ruta>]` | Servidor dedicado (siempre con `--headless`) | `scenes/server/server_main.tscn` |
+| `--server [--port=24600] [--zone=<id>] [--max-players=N] [--max-per-ip=4] [--idle-quit=<s>] [--fake-players=N [--fake-layout=cluster\|spread] [--fake-churn=<ticks>]] [--debug-commands] [--dev-lock [--dev-lock-path=<ruta>]] [--stop-file=<ruta>]` | Servidor dedicado (siempre con `--headless`) | `scenes/server/server_main.tscn` |
 | `--connect=<host>[:<puerto>] [--realm=<reino>] [--name=<nombre>]` | Cliente en red | `scenes/client/online_main.tscn` |
 | `--local [--realm=…] [--name=…]` | Cliente contra un servidor local, que se lanza si no hay ninguno | `scenes/client/online_main.tscn` |
 | `--bot --connect=… [--bot-seed=N] [--bot-brain=wander\|combat] [--bot-cheat=<modo>]` | Un cliente que predice, sin cámara ni HUD, guiado por `BotBrain` (pasea, o pelea con el cerebro de combate) | `scenes/client/online_main.tscn` |
@@ -97,6 +97,9 @@ ajustes y el audio): para el cliente instancia por su ruta `scenes/client/client
 | Comunes | `--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1`, `--quit-after-ticks=N`, `--report=<ruta.json>`, `--state-log=<ruta.csv>` | |
 
 - **`--zone` y `--realm`** se leen con las utilidades de `zones.gd`, a través de `NetZones`.
+- **`--max-players`** es el aforo del proceso (los falsos cuentan). Sin él, el de la zona
+  (`NetZones.max_players`: 40 en el Vado Gris, el límite de jugadores por batalla con el kit de la fase 4 de la
+  sección 14) o, si la zona no tiene uno propio, 64 (revisión de H5, habilidades.md §11.10).
 - **Elección de reino.** Si un modo en red arranca sin `--realm`, `OnlineMain` muestra
   `RealmSelect`: tres botones (Vardheim, Solmarch, Askarra), el campo de dirección y «Entrar»,
   con los textos en español.
@@ -609,11 +612,12 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 | `0x04` | DEBUG_COMMAND | C→S | 3 | 2 B + datos |
 | `0x05` | RESPAWN_REQUEST | C→S | 3 | 2 B |
 | `0x06` | UNSTUCK_REQUEST (v3) | C→S | 3 | 1 B |
-| `0x10` | SNAPSHOT | S→C | 2 | ≤ 1200 B (cabecera de 14 B, o de 92 B con estado y bloque extra propios, + 2 B por sección + 21 B por registro) |
-| `0x20` | ENTITY_SPAWN | S→C | 3 | 10 B + datos |
-| `0x21` | ENTITY_DESPAWN | S→C | 3 | 8 B |
+| `0x07` | LOADOUT_SELECT (v6) | C→S | 3 | 2 B |
+| `0x10` | SNAPSHOT | S→C | 2 | ≤ 1200 B (cabecera de 14 B, o de 134 B con estado y bloque extra propios (v6; 92 B hasta la v5), + 2 B por sección + 21 B por registro) |
+| `0x20` | ENTITY_SPAWN | S→C | 3 | 10 B + datos (PROJECTILE, v6: 32 B en total) |
+| `0x21` | ENTITY_DESPAWN | S→C | 3 | 8 B (motivos 4 y 5 de los proyectiles, v6) |
 | `0x22` | OBJECT_STATE (v3) | S→C | 3 | 8 B + campos (de 1 a 32; 3, 4 o 6 B cada uno: ≤ 200 B) |
-| `0x23` | ENTITY_EVENT | S→C | 3 | 9 B + datos (HIT 17 B, DEATH 13 B, RESPAWN 10 B, KILL 14 + 2·n B, WAR 11 B, TELEGRAPH 26 B) |
+| `0x23` | ENTITY_EVENT | S→C | 3 | 9 B + datos (HIT 17 B, DEATH 13 B, RESPAWN 10 B, KILL 14 + 2·n B, WAR 11 B, TELEGRAPH 26 B; v6: STATUS 18 B, HEAL 15 B, LOADOUT 15 B, DOWNED 13 B, INTERACT 16 B) |
 | `0x30` | NOTICE | S→C | 3 | 3 B + texto |
 | `0x31` | HANDOFF (reservado, fase 6) | S→C | 3 | — |
 | `0x32` | SCOREBOARD (v3) | S→C | 3 | 4 B + 18 B por fila (hasta 66 filas por mensaje: ≤ 1192 B) |
@@ -630,6 +634,8 @@ exacto, sin el sesgo de medio tick que tendría aplicarlos en el tick de física
 
 «v3» marca lo que añade el protocolo 3 (fase 4, [fuerte.md](fuerte.md#2-replicación-con-estado-object_state-gue-09)).
 «v5» marca lo que añade el protocolo 5 (chat y grupos, [social.md](social.md#12-implementación-fase-4)).
+«v6» marca lo que añade o cambia el protocolo 6 (habilidades, efectos, cambio de arma, proyectiles, derribado
+y plantillas, [habilidades.md 5](habilidades.md#5-protocolo-protocol_version--6)).
 El tamaño de un ENTITY_SPAWN depende de `kind` (ver 5.5).
 
 ### 5.3 Autenticación
@@ -639,7 +645,7 @@ El tamaño de un ENTITY_SPAWN depende de `kind` (ver 5.5).
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
 | 0 | u32 | magic | `0x4D444C45` |
-| 4 | u16 | protocol_version | `NetProtocol.PROTOCOL_VERSION` (= 5: 2 combate, 3 su revisión, 4 el fuerte, 5 el chat y los grupos) |
+| 4 | u16 | protocol_version | `NetProtocol.PROTOCOL_VERSION` (= 6: 2 combate, 3 su revisión, 4 el fuerte, 5 el chat y los grupos, 6 las habilidades) |
 | 6 | u32 | sim_hash | ver [3](#3-conexión) |
 | 10 | u8 | realm | 0 ninguno (se rechaza), 1 Vardheim, 2 Solmarch, 3 Askarra |
 | 11 | u8 | flags | bit0 = bot; resto, 0 |
@@ -700,7 +706,7 @@ Cada registro de entrada (10 B):
 | +1 | s8 | move.y | `[5]` |
 | +2 | u16 | look_yaw | `[6..7]` |
 | +4 | s16 | look_pitch | `[8..9]` |
-| +6 | u16 | buttons | `[10..11]`; el servidor aplica `& NetProtocol.VALID_BUTTONS` |
+| +6 | u16 | buttons | `[10..11]`; el servidor aplica `& NetProtocol.VALID_BUTTONS`: bits 0–12 (v6: 9 cambiar de arma, 10 hombro izquierdo de la puntería, 11 y 12 las pociones; 0–8 hasta la v5). Los bits 13–14 están reservados y el 15 es la marca de sustituida, que el cliente no puede poner |
 | +8 | u16 | view_offset_q | `(tick − render_tick visto) × 16`, limitado a 0..65535. Va por entrada: una copia redundante de un ataque conserva su propio valor |
 
 - **Ticks implícitos.** Los ticks de los registros salen de `newest_tick` y van seguidos, así
@@ -725,12 +731,15 @@ inmediata sin esperar al timeout.
 - **Ids fijos** (`NetProtocol.DEBUG_*`), que no se reutilizan ni se reordenan: 1 `teleport`,
   2 `heal`, 3 `kill`, 4 `stamina_inf`, 5 `set_weapon`, 6 `spawn_dummy` y, desde la versión 4
   ([fuerte.md 1.6](fuerte.md#16-controlador-gue-08-gue-12)), 7 `unstuck`, 8 `fort_reset`, 9
-  `fort_owner`, 10 `fort_kill_captain`, 11 `fort_capture_speed` y 12 `npc_debug`. Los datos de 2 a 6
-  los define el servidor ([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)); el
-  `decode` solo exige 64 B de datos como mucho. Los de 7 a 12 los valida el `decode`: 7, 8 y 10, sin
-  datos; 9, `u8` con el reino (0 a 3); 11, `u8` con el factor (1 a 255); 12, `u8` (0 apaga, 1
-  activa). Un id fijo cuyo manejador aún no existe en el servidor se acepta sin aviso y sin efecto
-  (los de 7 a 12 hasta que lleguen F3 y F4). `NetProtocol.DEBUG_COMMAND_IDS` es la tabla
+  `fort_owner`, 10 `fort_kill_captain`, 11 `fort_capture_speed` y 12 `npc_debug` y, desde la versión
+  6 ([habilidades.md 5.1](habilidades.md#51-entradas-y-mensajes-cs)), 13 `cooldowns_off`, 14
+  `apply_status`, 15 `down` y 16 `refill`. Los datos de 2 a 6 los define el servidor
+  ([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)); el `decode` solo exige 64 B de
+  datos como mucho. Los de 7 a 16 los valida el `decode`: 7, 8, 10, 15 y 16, sin datos; 9, `u8` con el
+  reino (0 a 3); 11, `u8` con el factor (1 a 255); 12 y 13, `u8` (0 apaga, 1 activa); 14, `u8
+  status_id` (1 a 255) y `u16` ticks (0 = la duración del dato). Un id fijo cuyo manejador aún no
+  existe en el servidor se acepta sin aviso y sin efecto (los de 7 a 12 hasta que llegaron F3 y F4; 13
+  y 14 hasta H3a, 15 y 16 hasta H3c). `NetProtocol.DEBUG_COMMAND_IDS` es la tabla
   nombre → id con la que el registro de comandos del servidor comprueba que todo comando de red
   tiene su id. `announce`, `kick` y `shutdown` son solo de consola.
 - Solo se acepta si el servidor arrancó con `--debug-commands`; si no, cuenta un aviso
@@ -748,6 +757,13 @@ Fuera de plazo o con un índice inválido, el servidor cuenta un aviso.
 de entrar en el mundo, o con algún byte más, cuenta un aviso; la canalización de 10 s, la
 reutilización y el teletransporte son de F3.
 
+**LOADOUT_SELECT** (`0x07`, canal 3, v6): `u8 type`, `u8 template_id`. La plantilla de equipo para la
+siguiente aparición ([habilidades.md 4.6](habilidades.md#46-equipo-plantillas-y-consumibles)). Vale desde
+el WELCOME, también antes de CLIENT_READY (LOADING e IN_WORLD), y pasa por el limitador de fiables. 0 = la
+de por defecto, sin aviso; un id que no existe o no es `selectable` cuenta un aviso. El `decode` solo
+exige los 2 B y el tipo. El servidor (H3c) la guarda en `ServerPeer.pending_template_id` y la aplica al dar de
+alta al jugador (el SPAWN ya sale con sus armas) y en cada reaparición, con un ENTITY_EVENT LOADOUT.
+
 ### 5.5 Servidor → cliente
 
 **SNAPSHOT** (`0x10`, canal 2)
@@ -760,9 +776,9 @@ reutilización y el teletransporte son de F3.
 | 9 | s8 | input_margin | ver [4.1](#41-tick-del-servidor-y-regla-de-aplicación); −128 = sin datos |
 | 10 | u16 | substitutions | total acumulado de entradas sustituidas de este jugador (mod 65536). Robusto a snapshots perdidos |
 | 12 | u8 | flags | bit0 = incluye el estado propio; bits 1–2 = contador de teletransporte propio (mod 4); bit3 = incluye el bloque extra propio; resto, 0 |
-| 13 | 69 B | own_state | `PlayerState.encode()` sin cuantizar, si bit0. Base de la reconciliación |
-| 82 | 9 B | own_extra | bloque extra propio, si bit3 (ver abajo) |
-| 91 (o 13) | u8 | section_count | |
+| 13 | 111 B | own_state | `PlayerState.encode()` sin cuantizar, si bit0. Base de la reconciliación (v6; 69 B hasta la v5) |
+| 124 | 9 B | own_extra | bloque extra propio, si bit3 (ver abajo); en el 82 hasta la v5 |
+| 133 (o 13) | u8 | section_count | en el 91 hasta la v5 |
 | … | | secciones | cada una: `u8 kind`, `u8 count` y `count` registros del tamaño fijo de ese `kind` |
 
 **Bloque extra propio** (9 B). Lleva lo que el servidor decide y no entra en `PlayerState`
@@ -772,13 +788,14 @@ porque no cambia la simulación ([combate.md 1](combate.md#1-qué-se-predice-y-q
 |---|---|---|---|
 | +0 | u16 | health | vida actual |
 | +2 | u16 | max_health | vida máxima; `health ≤ max_health` |
-| +4 | u8 | status | bit0 en combate, bit1 protegido (reaparición), bit2 muerto |
+| +4 | u8 | status | bit0 en combate, bit1 protegido (reaparición), bit2 muerto, bit3 derribado (v6; nunca con el bit2). Derribado, `health` es la vida de derribado y `max_health` la de derribado de las reglas (400) |
 | +5 | u32 | respawn_tick | primer tick en que se puede pedir la reaparición; 0 si está vivo |
 
 - **El bit 3 va si y solo si va el bit 0.** `Snapshot.decode` devuelve `null` si uno falta sin el
   otro, o si `health > max_health`.
-- **Capacidad.** Con estado propio y bloque extra, la cabecera (con `section_count`) ocupa 92 B.
-  Con una sección de jugadores caben ⌊(1200 − 92 − 2) / 21⌋ = **52 registros**.
+- **Capacidad.** Con estado propio y bloque extra, la cabecera (con `section_count`) ocupa 134 B (v6;
+  92 B hasta la v5). Con una sección de jugadores caben ⌊(1200 − 134 − 2) / 21⌋ = **50 registros** (52
+  hasta la v5).
 - **El propio jugador** nunca aparece entre los registros: para eso está su estado.
 
 **Registro de entidad** (`kind` 1 PLAYER; 2 NPC reutiliza el formato), 21 B:
@@ -789,12 +806,16 @@ porque no cambia la simulación ([combate.md 1](combate.md#1-qué-se-predice-y-q
 | 2 | u64 | position | 20 bits por eje: `q = round(v · 100) + 2^19`, saturado a [0, 2^20 − 1]. x en los bits 0–19, y en 20–39, z en 40–59; los bits 60–63 a 0. 1 cm de resolución, ±5,24 km |
 | 10 | u16 | yaw | [0, TAU) → 0..65535, igual que `PlayerInput.look_yaw` |
 | 12 | s16 × 3 | velocity | cm/s, saturado (±327 m/s) |
-| 18 | u8 | flags | bit0 = grounded; bits 1–2 = contador de teletransporte (mod 4); resto, 0 |
+| 18 | u8 | flags | bit0 = grounded; bits 1–2 = contador de teletransporte (mod 4); bit3 = ranura de arma 2 activa (v6); resto, 0 |
 | 19 | u8 | action | acción y fase del combate (ataque, bloqueo, esquiva...; 0 = ninguna). Los bits los define `ActionMachine.action_byte` |
 | 20 | u8 | health_q | vida cuantizada: 0 si está muerto y, si no, `clampi((vida · 255 + máx − 1) / máx, 1, 255)` (hacia arriba, nunca 0 con vida). Las entidades sin vida anuncian 255 |
 
 - **Teletransporte.** El contador de 2 bits sustituye a un flag de un solo snapshot, que se
   perdería con ese snapshot. Si cambia entre dos muestras, no se interpola entre ellas.
+- **Arma activa (v6).** El remoto sabe qué arma lleva con la pareja de armas (SPAWN o LOADOUT) y el bit 3:
+  la de la ranura 2 si está puesto. El byte `action` no tiene bits libres. El historial de la compensación
+  de latencia no toma este bit: allí el bit 3 es `DEFENSE_BLOCKING` y el byte del historial es `(flags &
+  0b111) | defensa` ([habilidades.md 3.6](habilidades.md#36-consultas)).
 - **Animación.** El esprint no viaja: el cliente lo deduce de la velocidad.
 
 **ENTITY_SPAWN** (`0x20`, canal 3)
@@ -806,32 +827,55 @@ porque no cambia la simulación ([combate.md 1](combate.md#1-qué-se-predice-y-q
 | 3 | u8 | kind | 1 PLAYER, 2 NPC, 3 PROJECTILE, 4 STRUCTURE |
 | 4 | u32 | spawn_tick | tick del estado incluido |
 | 8 | u8 | realm | |
-| 9 | u8 | flags | bit0 = es tu personaje; bits 1–2 = contador de teletransporte |
+| 9 | u8 | flags | bit0 = es tu personaje; bits 1–2 = contador de teletransporte. En un proyectil (v6), 0 |
 | 10 | … | payload | según `kind` (abajo) |
 
 Payload según `kind`:
 
-- **PLAYER** (1): `PlayerState` (69 B, estado tras `spawn_tick`), `u8 name_len` y el nombre (≤ 48 B).
+- **PLAYER** (1): `PlayerState` (111 B desde la v6, 69 B hasta la v5; estado tras `spawn_tick`), `u8
+  name_len` y el nombre (≤ 48 B).
 - **NPC** (2): lo mismo que un jugador y, tras el nombre, `u16 npc_def_id` (v3): el id del catálogo
   de PNJ (`NpcCatalog`, ids alfabéticos 1..n; 0 = sin definición) para que el cliente elija modelo,
-  tabardo y barra de jefe. Tamaño: 10 + 69 + 1 + n + 2 B.
+  tabardo y barra de jefe. Tamaño: 10 + 111 + 1 + n + 2 B (v6).
 - **STRUCTURE** (4, v3): `u8 def_len` (1–32), el id de la definición en ASCII imprimible (por
   ejemplo `vado_gris_fort`), `u8 field_count` (1–32) y los campos completos, cada uno `u8 field_id,
   u8 value_type` y el valor, como en OBJECT_STATE (sin repetir type, net_id ni tick). No lleva
   estado de jugador ni nombre. El `realm` de la cabecera es 0: manda el campo `owner`. Para una
   fortaleza son 98 B con el id del Vado Gris (10 + 1 + 14 + 1 + 72).
-- **PROJECTILE** (3): sin formato todavía.
+- **PROJECTILE** (3, v6; [habilidades.md 5.3](habilidades.md#53-projectile-kind-3)): 22 B tras la cabecera,
+  **32 B** en total. `net_id` es el proyectil (del espacio de ids de `NetEntityRegistry`, sin ser una
+  entidad), `realm` el del tirador, `spawn_tick` el tick del disparo y los flags de la cabecera van a 0
+  (`is_yours` nunca: la flecha propia es la de `owner` igual a tu `net_id`). El cliente calcula el vuelo
+  con `Ballistics.position`; el snapshot no lleva registros de proyectiles. **Destinatarios** (H3b): el
+  SPAWN va al dueño del tirador y a quien lo tiene relevante en el tick del disparo; su DESPAWN (motivo 4
+  o 5), exactamente a quienes recibieron el SPAWN, aunque ya no tengan relevante al tirador. Quien empieza
+  a ver al tirador después no recibe las flechas que ya están en el aire (viven 2 s como mucho).
+
+| Offset | Tipo | Campo | Notas |
+|---|---|---|---|
+| 10 | u16 | owner | `net_id` del tirador |
+| 12 | u16 | projectile_def_id | `ProjectileDefinition` del catálogo de combate |
+| 14 | u16 | source | fuente del ataque o la habilidad (`CombatSource`, ver ENTITY_EVENT) |
+| 16 | u8 | volley_index | 0..n−1 dentro del disparo (el abanico lanza tres) |
+| 17 | u8 | proj_flags | bit0 inofensiva (vuela y choca con el mundo, no prueba personajes); resto, 0 |
+| 18 | u64 | position | `p0`, 20 bits por eje como el registro (1 cm) |
+| 26 | s16 × 3 | velocity | `v0` en cm/s (±327,67 m/s) |
 
 `decode` devuelve `null` si el tamaño no cuadra con las longitudes, un texto no es válido, el `kind`
 no tiene formato o, en una estructura, el id de definición no es ASCII imprimible de 1 a 32 B, el
-contador no está entre 1 y 32, un campo trae un `value_type` desconocido o se repite un `field_id`.
+contador no está entre 1 y 32, un campo trae un `value_type` desconocido o se repite un `field_id`; en
+un proyectil (v6), si no ocupa exactamente 32 B, trae algún flag en la cabecera o un bit de
+`proj_flags` que no existe.
 
 El `PlayerState` del SPAWN **propio** (bit0 = 1) va entero. El de una entidad **ajena** es público: lleva
 posición, velocidad, giro y suelo, y del combate solo la acción en curso (con su ataque y su tick de inicio)
 y el arma; el resto del `CombatState` (resistencia exacta, agotamiento, enfriamiento de la parada, búfer,
 paso del combo, controles, empuje), los botones del último tick y los contadores de salto vuelven a sus
 valores iniciales. Lo contrario volcaba a cualquiera que entrara en la zona el estado privado de cada
-enemigo (combate.md 6).
+enemigo (combate.md 6). Desde la v6 es público además el arma de la otra ranura (`alt_weapon_id`) y la
+ranura activa (bit 0 de `combat_flags2`): las armas se ven. Reutilizaciones, cargas, la reutilización de
+los consumibles, las ranuras de efectos de movimiento y los bits de botones pulsados vuelven a sus valores
+iniciales ([habilidades.md 5.2](habilidades.md#52-estado-snapshot-y-registro)).
 
 **ENTITY_DESPAWN** (`0x21`, canal 3)
 
@@ -840,7 +884,7 @@ enemigo (combate.md 6).
 | 0 | u8 | type | `0x21` |
 | 1 | u16 | net_id | |
 | 3 | u32 | despawn_tick | el cliente lo quita cuando su `render_tick` llega aquí |
-| 7 | u8 | reason | 0 fuera de interés, 1 desconexión, 2 muerte, 3 traspaso |
+| 7 | u8 | reason | 0 fuera de interés, 1 desconexión, 2 muerte, 3 traspaso; v6, de los proyectiles: 4 impacto (en `despawn_tick`, en el segmento `[pos(n), pos(n + 1)]` con `n = despawn_tick − spawn_tick`) y 5 caducado o retirado |
 
 **ENTITY_EVENT** (`0x23`, canal 3). Hechos del combate que no caben en un registro de flujo
 ([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)). Fiable y ordenado con los
@@ -849,9 +893,9 @@ demás mensajes del canal 3.
 | Offset | Tipo | Campo | Notas |
 |---|---|---|---|
 | 0 | u8 | type | `0x23` |
-| 1 | u16 | net_id | la entidad a la que se ata: la víctima en HIT, DEATH y KILL; la que reaparece en RESPAWN; la fortaleza en WAR; el PNJ en TELEGRAPH |
+| 1 | u16 | net_id | la entidad a la que se ata: la víctima en HIT, DEATH y KILL; la que reaparece en RESPAWN; la fortaleza en WAR; el PNJ en TELEGRAPH; v6: el afectado en STATUS, el curado en HEAL, el jugador en LOADOUT y el derribado en DOWNED e INTERACT |
 | 3 | u32 | tick | tick del servidor en que ocurrió |
-| 7 | u8 | event | 1 HIT, 2 DEATH, 3 KILL, 4 RESPAWN, 5 WAR, 6 TELEGRAPH |
+| 7 | u8 | event | 1 HIT, 2 DEATH, 3 KILL, 4 RESPAWN, 5 WAR, 6 TELEGRAPH; v6: 7 STATUS, 8 HEAL, 9 LOADOUT, 10 DOWNED, 11 INTERACT |
 | 8 | u8 | len | bytes de datos que siguen |
 | 9 | len B | datos | según `event` |
 
@@ -863,6 +907,11 @@ demás mensajes del canal 3.
 | 4 RESPAWN | `u8 point` | 1 | 10 B |
 | 5 WAR (v3) | `u8 war_event` (1–7, `WarEvents`), `u8 realm` (0–3) | 2 | 11 B |
 | 6 TELEGRAPH (v3) | `u16 attack_id`, `u8 shape` (0 círculo, 1 sector), `u64 position`, `u16 yaw`, `u16 radius_cm`, `u16 impact_in_ticks` | 17 | 26 B |
+| 7 STATUS (v6) | `u16 source_entity` (0 = sin autor), `u8 op` (1 aplicado o renovado, 2 quitado), `u8 status_id`, `u8 stacks`, `u32 until_tick` (exclusivo) | 9 | 18 B |
+| 8 HEAL (v6) | `u16 healer` (0 = sí mismo), `u16 amount`, `u16 source` | 6 | 15 B |
+| 9 LOADOUT (v6) | `u8 template_id`, `u16 weapon_1`, `u16 weapon_2` (en orden de ranura; 0 = ninguna), `u8 charges` (bits 0–3 poción 1, 4–7 poción 2; 0 para quien no es el dueño) | 6 | 15 B |
+| 10 DOWNED (v6) | `u16 attacker`, `u16 source` | 4 | 13 B |
+| 11 INTERACT (v6) | `u16 actor`, `u8 op` (1 levantar, 2 levantar cortado, 3 levantado, 4 rematar, 5 rematar cortado), `u32 end_tick` | 7 | 16 B |
 
 - **WAR**: el `net_id` es la fortaleza y el `realm` el reino que acompaña al aviso
   (`FortressState.event_realm`). Va a toda la zona y se aplica en el tick de dibujo
@@ -873,11 +922,21 @@ demás mensajes del canal 3.
   llegar: es un aviso.
 
 - **Flags de HIT:** bit0 crítico, bit1 bloqueado, bit2 parado, bit3 rotura de guardia, bit4
-  mortal.
+  mortal; v6: bit5 interrumpido (beber, un lanzamiento marcado, levantar o rematar) y bit6 derriba.
+- **Fuente (v6).** Los `u16 attack_id` de HIT, DEATH, KILL y TELEGRAPH, y el `u16 source` de HEAL, DOWNED
+  y del SPAWN de un proyectil, son una fuente (`CombatSource`): bits 14–15 la clase y 0–13 el id. 0 =
+  ninguna (el entorno); `0x0000 | id` ataque (los de la fase 3 conservan su número); `0x4000 | id`
+  habilidad; `0x8000 | id` efecto (un pulso); `0xC000 | 1` remate y `0xC000 | 2` desangrado. Los ids
+  se piden al catálogo por nombre: ninguno es fijo.
+- **STATUS, HEAL, LOADOUT, DOWNED e INTERACT (v6)**: destinatarios, temporización y qué explican en la
+  predicción, en [habilidades.md 5.4](habilidades.md#54-entity_event-y-fuentes). DOWNED va a toda la zona
+  (registro de bajas); LOADOUT, al dueño y, si cambian las armas, a quien lo tenga relevante con
+  `charges` = 0.
 - **Validación.** `decode` devuelve `null` si el tipo no es `0x23`, el `event` es desconocido,
   `len` no cuadra con el evento o con el tamaño real del mensaje, `n` no cuadra con `len` o
   `n > 16` (los asistentes hacen al menos el 10 % del daño, así que nunca son más de 10), un WAR trae
-  un aviso fuera de 1–7 o un reino mayor que 3, o un TELEGRAPH trae una forma que no es 0 ni 1.
+  un aviso fuera de 1–7 o un reino mayor que 3, un TELEGRAPH trae una forma que no es 0 ni 1, un STATUS
+  o un INTERACT traen un `op` fuera de rango, o un STATUS aplicado trae 0 acumulaciones (v6).
   `encode` recorta un KILL a 16 asistentes.
 - **Destinatarios y temporización:** ver [combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2).
 
@@ -1204,8 +1263,9 @@ func _physics_process(delta: float) -> void:
 ```
 
 Es un esbozo de la fase 2: el orden normativo, con todos los pasos que se han ido sumando (cerebros de
-PNJ, combate, fuertes, PNJ, el paso social y las métricas por sección), es el de la cabecera de
-`scripts/server/zone_server.gd`.
+PNJ, combate con las habilidades, los proyectiles, los efectos y el derribado de la fase 4
+([habilidades.md 4.1](habilidades.md#41-orden-del-tick-completa-fuertemd-17)), fuertes, PNJ, el paso social y las
+métricas por sección), es el de la cabecera de `scripts/server/zone_server.gd`.
 
 - **Envíos escalonados.** Cada cliente recibe su snapshot en los ticks de la paridad de su
   `net_id`, así que el coste se reparte entre los dos ticks del intervalo. El PARTY_STATUS de cada grupo
@@ -1369,8 +1429,10 @@ O(entidades); por cliente solo hay copias de memoria.
 4. Pone a 0 la prioridad de las escritas y agrupa los registros por `kind` en secciones.
 
 **Garantía:** con N candidatas y C plazas, ninguna pasa más de ⌈N/C⌉ snapshots sin enviarse. Con
-63 jugadores visibles y 52 plazas (la capacidad de [5.5](#55-servidor--cliente) con el estado de
-69 B), cada entidad sale al menos uno de cada dos snapshots. Lo comprueba `test_snapshot_builder`.
+63 jugadores visibles y 50 plazas (la capacidad de [5.5](#55-servidor--cliente) con el estado de
+111 B de la v6; 52 con el de 69 B), cada entidad sale al menos uno de cada dos snapshots (con los ~10
+PNJ del fuerte, 73 ajenos, también; pasa a uno de cada tres con más de 100). Lo comprueba
+`test_snapshot_builder`.
 
 ### 9.4 Lado del cliente
 
@@ -1478,7 +1540,7 @@ El servidor nunca acepta estado del cliente, y todo valor decodificado está aco
 |---|---|
 | Ventana de entradas | Se aceptan los ticks en `(último consumido, s + 30]`. Gana la primera copia aunque la segunda sea distinta |
 | Una entrada por tick | No hay speedhack; las sustitutas nunca inventan acciones |
-| Botones | `buttons &= VALID_BUTTONS` (bits 0–8) |
+| Botones | `buttons &= VALID_BUTTONS` (bits 0–12 desde la v6; 0–8 hasta la v5) |
 | Lotes | Ticks consecutivos por formato; `count` de 1 a 8 |
 | Limitador por peer (`RateLimiter`, en ticks) | No fiables: 2 por tick (120/s), ráfaga de 30. Fiables: 10/s, ráfaga de 20. Bytes: 16 KB/s, ráfaga de 4 KB. Lo que sobra se descarta y suma un aviso. Con crédito por parón (ver abajo) |
 | Avisos | Paquete malformado, tipo inesperado para el estado de la sesión o exceso de ritmo. 50 avisos en 600 ticks → NOTICE de expulsión y desconexión |
@@ -1616,17 +1678,23 @@ Sobrecoste por paquete UDP: unos 40 B (IPv4 20, UDP 8, ENet ~12).
 |---|---|---|
 | Subida, normal (R = 4) | (11 + 4·10 + 40) B × 60/s | ~5,5 KB/s |
 | Subida, con pérdida (R = 8) | (11 + 8·10 + 40) B × 60/s | ~7,9 KB/s |
-| Bajada, 10 visibles | (94 + 10·21 + 40) B × 30/s | ~10,3 KB/s |
-| Bajada, 30 visibles | (94 + 30·21 + 40) B × 30/s | ~22,9 KB/s |
-| Bajada, ≥ 52 visibles (tope) | (1186 + 40) B × 30/s | ~36,8 KB/s (~295 kbit/s) |
-| Salida del servidor, 64 jugadores y todos visibles | 64 × 37 KB/s | ~2,4 MB/s (~19 Mbit/s) |
+| Bajada, 10 visibles (v6) | (136 + 10·21 + 40) B × 30/s | ~11,6 KB/s (~10,3 con la v5) |
+| Bajada, 30 visibles (v6) | (136 + 30·21 + 40) B × 30/s | ~24,2 KB/s (~22,9 con la v5) |
+| Bajada, ≥ 50 visibles (tope, v6; ≥ 52 con la v5) | (1186 + 40) B × 30/s | ~36,8 KB/s (~295 kbit/s) |
+| Proyectiles (v6) | (32 + 8 + ~10 de ENet) B por flecha y destinatario; 20 flechas por segundo a la vista | ~1 KB/s |
+| Salida del servidor, 64 jugadores y todos visibles | 64 × 37 KB/s (+ los proyectiles, v6) | ~2,4 MB/s (~19 Mbit/s); ~2,5 MB/s con flechas |
 | Entrada del servidor, 64 jugadores | 64 × 5,5 KB/s | ~350 KB/s |
 | Eldrun, 300 jugadores sin más palancas | 300 × 37 KB/s | ~11 MB/s (~89 Mbit/s): demasiado |
 
-La bajada de esta tabla es la de la fase 3: 94 B son los 92 de la cabecera con estado y bloque
-extra propios más los 2 de la cabecera de la sección. A ella se suman los ENTITY_EVENT, unos 27 B
-por destinatario y golpe ([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)). Las
-medidas de abajo son de la fase 2 (registro de 20 B y estado de 35 B).
+La bajada de esta tabla es la del protocolo 6 ([habilidades.md 5.6](habilidades.md#56-ancho-de-banda)):
+136 B son los 134 de la cabecera con estado (111 B) y bloque extra propios más los 2 de la cabecera de la
+sección; con la v5 eran 94 (92 y 2). Por debajo del tope, el estado de 111 B suma +42 B × 30/s = +1,26 KB/s
+por cliente; en el tope el paquete ya iba lleno y lo que se pierde son 2 registros por snapshot (50 en vez de
+52). A la bajada se suman los ENTITY_EVENT, unos 27 B por destinatario y golpe
+([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)), y los SPAWN y DESPAWN de los proyectiles
+(v6). Las medidas de abajo son de la fase 2 (registro de 20 B y estado de 35 B), de las fases 3 y 4 (estado de 69 B)
+y, la última, de la v6 con el kit de la fase 4 (H5, [habilidades.md 7.3](habilidades.md#73-pruebas-cada-una--30-s)): con
+el estado de 111 B, cada cliente baja 36,1 KB/s con 64 combatientes (35,3 con la v5).
 
 **CPU (fase 2):** el p99 del tick debe quedar por debajo de 8 ms (la mitad de los 16,7 ms) con
 64 bots agrupados. Se mide por sección: red, simulación (µs por personaje), historial,
@@ -1763,7 +1831,7 @@ Los resultados completos y lo que pasa en la batalla están en [fuerte.md 8.3](f
 el criterio de 8 ms de p99 **no se cumple** (19,1 ms, con la mediana ya en 10,6), igual que en la refriega de la fase 3 (15,9 ms con 64
 combatientes en una máquina en reposo), los KB/s por cliente se cumplen (36,1 de 37) y no se sustituye ni una entrada; con 128 el
 servidor no sostiene el tiempo real (la mitad de las entradas de los clientes se sustituye y el rebobinado falla a los honrados).
-**El primer límite de jugadores por batalla en el fuerte sigue siendo 64 (32 contra 32)**. El coste de las fortalezas (la sección `war`)
+**El primer límite de jugadores por batalla en el fuerte sigue siendo 64 (32 contra 32)** (sin el kit de la fase 4; con él, 40: abajo). El coste de las fortalezas (la sección `war`)
 es de 0,1 ms de mediana: el cuello es `simulate()` (palanca 6).
 
 Desde GUE-44 (F6b) los bots de asedio esperan a los suyos en la salida de su campamento y van en formación (fuerte.md 8.3, F6b,
@@ -1797,8 +1865,70 @@ ellos. Los criterios no cambian: con 64 jugadores, **p99 de 15,2 a 17,4 ms, NO s
 cliente y como mucho un 0,03 % de entradas sustituidas, sí; con 128, no: el p99 pasa de 29 ms, el servidor no llega al tiempo real
 (81 y 87 %), las entradas de los clientes se sustituyen o no según cuánto se retrasa (38,6 % y 0,00 % en las dos pasadas) y el
 rebobinado falla a los honrados en las dos.
-**El primer límite de jugadores por batalla en el fuerte sigue en 64 (32 contra 32), también con los PNJ.** La batalla de cada pasada
+**El primer límite de jugadores por batalla en el fuerte sigue en 64 (32 contra 32), también con los PNJ** (sin el kit de la fase 4;
+con él, 40: abajo). La batalla de cada pasada
 y la sesión de telemetría de 20 contra 20, en [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones) (F6b, paquete E).
+
+**Medidas de la fase 4: refriegas con el kit** (`tools/load_test.gd --brawl`, H5;
+[habilidades.md 7.3](habilidades.md#73-pruebas-cada-una--30-s)). Como las de la fase 3 (Vado Gris con su Terrain3D, 10
+bots reales `--bot-brain=combat` y el resto falsos de combate en el corro de `--fake-center=0,-96`, 60 s de medida tras
+12 s de aproximación), con el protocolo 6 y el kit de la fase 4: los falsos usan habilidades, pociones, derribos y
+remates, **la mitad lleva la plantilla del tirador** (`--fake-loadout=marksman:50`) y son arqueros puros
+(`--fake-archers`: en una refriega densa todos tienen un enemigo a menos de 5 m y un tirador normal saca la espada; la
+primera medida dio 0 flechas), de los que la mitad dispara al cielo (`--sky-archers=50`: sus flechas viven 2 s). Los PNJ
+del fuerte (Huecos, capitán, guarnición y Guardianes) están en la zona. Misma máquina de 4 núcleos, con otros agentes
+en marcha a ratos (carga media de 0,5 a 0,7 al empezar cada escenario). Tick en ms, p50 / p99 / máximo; el resto, p50
+(p99 entre paréntesis en `combat_projectiles`); flechas: disparos en los 83 s del servidor y pico de vivas (tope 64):
+
+| Combatientes | Tick | `sim` | `combat` | `combat_projectiles` | `snapshot` | Bajada por cliente | Sustituidas (ventana) | Flechas | Rebobinados rechazados |
+|---|---|---|---|---|---|---|---|---|---|
+| 32 (22 falsos y 10 bots) | 6,5 / 11,3 / 27,2 | 3,5 | 0,55 | 0,25 (0,98) | 1,14 | 30,7 KB/s | 0,00 % | 105, pico 13 | 0 |
+| **40** (30 y 10; revisión, máquina en reposo) | 7,5 / **12,4** / 16,2 | 4,3 | 0,62 | 0,25 (**0,90**) | 1,21 | 35,4 KB/s | 0,00 % | 97, pico 18 | 0 |
+| 48 (38 y 10) | 9,7 / **17,0** / 50,6 | 6,2 | 0,80 | 0,27 (0,89) | 1,34 | 35,9 KB/s | 0,00 % | 256, pico 24 | 0 |
+| **64** (54 y 10) | 10,7 / **19,3** / 30,1 | 6,5 | 1,00 | 0,43 (**1,68**) | 1,18 | 36,1 KB/s | 0,00 % | 286, pico 37 | 0 |
+| 64, todos los arqueros al cielo (`--sky-archers=100`) | 11,4 / 19,5 / 28,8 | 7,0 | 1,09 | 0,51 (2,04) | 1,74 | 36,2 KB/s | 0,00 % | 374, pico 54 | 0 |
+| 64, **el tope lleno**: todos tiradores y al cielo (`--fake-loadout=marksman:100 --sky-archers=100`; revisión) | 13,7 / 23,2 / 53,8 | 8,1 | 2,52 | 1,29 (3,09) | 1,55 | 39,2 KB/s | 0,00 % | 4755, pico **64**, 4603 echadas por el tope | 4 de golpe, 0 de flecha |
+| 128 (118 y 10) | 16,9 / 28,9 / 38,1 | 12,5 | 1,50 | 0,90 (2,94) | 0,00 | 27,4 KB/s | 100 % | 572, pico 51 | 0 |
+
+- **El criterio de la fase 4 no se cumple con 64** (p99 del tick ≤ 16,7 ms y de `combat_projectiles` ≤ 1 ms,
+  habilidades.md §7.3 y §8): 19,3 ms y 1,68 ms. Con 32 se cumple con holgura (11,3 y 0,98 ms) y con 48 el tick roza el
+  límite (17,0 ms; proyectiles 0,89 ms). Con 40, medido en la revisión (habilidades.md §11.10), se cumple: 12,4 y
+  0,90 ms (otra ejecución de la revisión, 14,1 y 0,84 ms); el margen de los proyectiles es corto. En las refriegas de
+  la batería el tope de 64 flechas no llega a llenarse: ni con todos los arqueros disparando al cielo (pico de 54) ni
+  con 128 combatientes (51), porque los arqueros también caen y tardan 30 s en volver; el coste ya pasa de la reserva
+  antes.
+- **Con el tope lleno** (medida forzada de la revisión: los 54 falsos tiradores, arqueros puros y al cielo, 57
+  disparos por segundo): pico de 64 vivas y 4603 echadas por el tope (DESPAWN 5 de la más vieja de la zona) sin
+  errores; `combat_projectiles` 1,29 ms de mediana y 3,09 de p99 (1,36 ms por tick con flechas: unos 315 000 segmentos
+  y 89 000 SPAWN/DESPAWN, 21 KB/s del servidor entero), y el tick, 23,2 ms de p99 con picos de 54 ms, en los que el
+  servidor rechaza 4 rebobinados de golpes. El tope acota las flechas vivas pero no el coste por disparo: con muchos
+  arqueros la reserva de 1 ms no da, sea cual sea el tope.
+- **Lo que cuestan las flechas sobre el Terrain3D**: de 0,30 a 1,05 ms de media por tick con flechas vivas (32 y 128
+  combatientes), creciendo sobre todo con los combatientes (preparar las cajas barridas de todos los candidatos, unos
+  6–8 µs por jugador o PNJ y tick) y menos con las flechas (unos 10 µs por flecha viva: de 11 a 19 de media con 64, de
+  544 a 628 µs). Un rayo contra el terreno cuesta de 1,2 a 2,8 µs (sonda aparte): no es el mundo. Disparar (punto
+  apuntado y convergencia) se reparte en pocos ticks.
+- **El resto del kit no se nota**: `combat` pasa de 0,77 ms (fase 3) a 1,00 ms de mediana con 64; habilidades,
+  pociones, efectos, derribos y remates (29 derribos, 14 rematados y 3 desangrados en la de 64) caben ahí. La bajada por
+  cliente no cambia (36 KB/s, los snapshots; las flechas suman ~1 KB/s en el servidor entero) y no se rechaza ningún
+  rebobinado hasta 64.
+- **Límite de jugadores por batalla con el kit de la fase 4: 40** (era 64 en la fase 3), **medido**: 12,4 ms de p99
+  del tick y 0,90 de los proyectiles (cumple). Con arqueros, 64 pasa de los 16,7 ms de p99 y de la reserva de 1 ms de
+  los proyectiles; 48 ya roza el tick y 32 cumple con holgura. Es el aforo por defecto del servidor del Vado Gris
+  (`Zones.MAX_PLAYERS`, `NetZones.max_players`: lo usa `ServerConfig` si no se pasa `--max-players`; una zona sin
+  aforo propio sigue en 64), y la refriega de 40 está en la batería `--brawl`. Para volver a 64 hacen falta la palanca 6 (`simulate()`, que sigue siendo el 60 % del tick) y abaratar la
+  preparación de los candidatos de las flechas (rehacer las cajas solo de quien se ha movido, o una rejilla en lugar del
+  barrido en x). Los asedios del fuerte (F6a y F6b) se midieron sin el kit; con él, por la misma cuenta y **sin medir**
+  (estimación), el fuerte pasaría de 32 contra 32 a unos 20 contra 20.
+
+**Integración de las habilidades sobre F6b** (fusión de la fase 4 con F6b): los asedios de F6b de arriba (32 contra 32 y 64 contra
+64, con y sin PNJ) son de antes del kit. Desde la fusión los falsos y los bots de asedio pelean con él (el paso 1 de su plan,
+[habilidades.md 11.9](habilidades.md#119-h5--integración)), así que **el límite de jugadores por batalla en el fuerte con el kit es
+40 (20 contra 20), pendiente de volver a medir** los asedios con el kit y los PNJ (`load_test.gd --siege --npcs`). El aforo por defecto
+del servidor del Vado Gris es ese 40 (`Zones.MAX_PLAYERS`); las herramientas y las pruebas de F6b que miden más jugadores (los asedios
+de `SIEGE_MATRIX`, 32 contra 32 y 64 contra 64; `siege_battle.gd` y `SiegeRunner`) piden su aforo con `--max-players` o
+`ServerConfig.max_players` explícitos (`load_test.gd`: `server_max_players`, los jugadores más 8). Nota también en
+[fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones).
 
 **Palancas para Eldrun, por orden,** decididas con las medidas del final de la fase 2:
 
@@ -2049,6 +2179,13 @@ todas las copias del proyecto.
   puerta y el círculo; los falsos llevan `--fake-brain=siege`, los bots reales `--bot-brain=siege` y el servidor, sin PNJ, abre el círculo
   con `--run-at=<tick>:fort_kill_captain` y escribe un registro de batalla. Con `--npcs` (F6b), con los PNJ de la zona y sin esa orden.
   Cifras en 14.
+  puerta y el círculo; los falsos llevan `--fake-brain=siege`, los bots reales `--bot-brain=siege` y el servidor abre el círculo con
+  `--run-at=<tick>:fort_kill_captain` y escribe un registro de batalla. Cifras en 14.
+- Refriegas con el kit de la fase 4 (H5, [habilidades.md 7.3](habilidades.md#73-pruebas-cada-una--30-s)): `--brawl` lleva desde
+  entonces la mitad de los falsos con la plantilla del tirador (`--fake-loadout=marksman:50`), arqueros puros (`--fake-archers`) de los
+  que una parte dispara al cielo (`--sky-archers=<porcentaje>`, 50 por defecto; con 100, el máximo de flechas vivas), y los
+  PNJ del fuerte en la zona. El resumen añade la sección `combat_projectiles`, las flechas y el kit, y el criterio de la fase 4: p99 del
+  tick ≤ 16,7 ms y de `combat_projectiles` ≤ 1 ms. Cifras y límite en 14.
 
 ### Arquitectura (`test_architecture`, ampliado)
 
@@ -2119,7 +2256,7 @@ func set_idle_from(tick: int) -> void
 ```gdscript
 # net_protocol.gd
 class_name NetProtocol extends RefCounted
-const PROTOCOL_VERSION: int = 3
+const PROTOCOL_VERSION: int = 6                      # 5 el chat y los grupos (social.md 12), 6 las habilidades
 const MAGIC: int = 0x4D444C45
 const DEFAULT_PORT: int = 24600
 const CUSTOM_CHANNELS: int = 3
@@ -2138,7 +2275,7 @@ const INTERP_DELAY_Q_SCALE: int = 8                  # interp_delay_q = retardo 
 const MAX_INTERP_DELAY_TICKS: int = 12
 const MAX_INTERP_DELAY_Q: int = 96                   # lo que pase es un aviso (S4)
 const NO_MARGIN: int = -128
-const VALID_BUTTONS: int = (1 << 9) - 1
+const VALID_BUTTONS: int = (1 << 13) - 1             # bits 0-12 (v6; 0-8 hasta la v5)
 const MAX_NAME_BYTES: int = 48
 const MIN_NAME_CHARS: int = 3
 const MAX_NAME_CHARS: int = 24
@@ -2151,6 +2288,7 @@ const MSG_CLIENT_LEAVE: int = 0x03
 const MSG_DEBUG_COMMAND: int = 0x04
 const MSG_RESPAWN_REQUEST: int = 0x05
 const MSG_UNSTUCK_REQUEST: int = 0x06
+const MSG_LOADOUT_SELECT: int = 0x07                 # v6
 const MSG_SNAPSHOT: int = 0x10
 const MSG_ENTITY_SPAWN: int = 0x20
 const MSG_ENTITY_DESPAWN: int = 0x21
@@ -2171,12 +2309,17 @@ const DEBUG_FORT_OWNER: int = 9
 const DEBUG_FORT_KILL_CAPTAIN: int = 10
 const DEBUG_FORT_CAPTURE_SPEED: int = 11
 const DEBUG_NPC_DEBUG: int = 12
+const DEBUG_COOLDOWNS_OFF: int = 13                  # v6: u8 0 o 1
+const DEBUG_APPLY_STATUS: int = 14                   # v6: u8 status_id, u16 ticks
+const DEBUG_DOWN: int = 15                           # v6: sin datos
+const DEBUG_REFILL: int = 16                         # v6: sin datos
 const DEBUG_COMMAND_IDS: Dictionary[StringName, int]   # nombre -> id de cada comando de red
 enum Realm { NONE = 0, VARDHEIM = 1, SOLMARCH = 2, ASKARRA = 3 }
 enum EntityKind { NONE = 0, PLAYER = 1, NPC = 2, PROJECTILE = 3, STRUCTURE = 4 }
 enum Result { OK = 0, VERSION = 1, SIM_HASH = 2, REALM = 3, FULL = 4, TICKET = 5, MALFORMED = 6,
 		TOO_MANY_CONNECTIONS = 7, NAME = 8, IMBALANCE = 9 }
-enum DespawnReason { OUT_OF_INTEREST = 0, DISCONNECTED = 1, DEATH = 2, HANDOFF = 3 }
+enum DespawnReason { OUT_OF_INTEREST = 0, DISCONNECTED = 1, DEATH = 2, HANDOFF = 3, IMPACT = 4,
+		EXPIRED = 5 }                                    # 4 y 5: proyectiles (v6)
 enum NoticeCode { INFO = 0, KICK = 1, SHUTDOWN = 2 }
 static func channel_for_type(msg_type: int) -> int
 static func transfer_mode(channel: int) -> MultiplayerPeer.TransferMode
@@ -2219,6 +2362,8 @@ const SIZE: int = 21
 const FLAG_GROUNDED: int = 1 << 0
 const TELEPORT_SHIFT: int = 1
 const TELEPORT_MASK: int = 0b11
+const FLAG_SECOND_SLOT: int = 1 << 3                 # v6: ranura de arma 2 activa
+const HISTORY_FLAGS_MASK: int = 0b111                # lo que toma el historial (allí el bit 3 es el bloqueo)
 const HEALTH_Q_DEAD: int = 0
 const HEALTH_Q_FULL: int = 255
 var net_id: int = 0
@@ -2231,6 +2376,7 @@ var action: int = 0
 var health_q: int = HEALTH_Q_FULL
 func is_grounded() -> bool
 func get_teleport_counter() -> int
+func is_second_slot() -> bool                        # v6
 ## 0 si no queda vida; si no, clampi((health · 255 + max − 1) / max, 1, 255).
 static func quantize_health(health: int, max_health: int) -> int
 static func health_fraction(quantized: int) -> float
@@ -2269,11 +2415,14 @@ class ClientLeave:
 	var reason: int
 class DebugCommand:
 	var command: int; var payload: PackedByteArray
-	## Valida los datos de los comandos 1 (12 B) y 7 a 12 (v3); el resto, hasta 64 B.
+	## Valida los datos de los comandos 1 (12 B), 7 a 12 (v3) y 13 a 16 (v6); el resto, hasta 64 B.
 	static func simple(command_id: int) -> DebugCommand
 	static func fort_owner(realm_code: int) -> DebugCommand
 	static func fort_capture_speed(factor: int) -> DebugCommand
 	static func npc_debug(enabled: bool) -> DebugCommand
+	static func cooldowns_off(enabled: bool) -> DebugCommand                     # v6
+	static func apply_status(status_id: int, ticks: int = 0) -> DebugCommand     # v6
+	func get_status_id() -> int; func get_status_ticks() -> int
 class Snapshot:
 	var server_tick: int; var input_ack_tick: int; var input_margin: int
 	var substitutions: int; var own_teleport: int
@@ -2282,6 +2431,7 @@ class Snapshot:
 	var status: int; var respawn_tick: int
 	var records: Array[EntityRecord]
 	func is_in_combat() -> bool; func is_protected() -> bool; func is_dead() -> bool
+	func is_downed() -> bool                             # v6: bit 3 de status
 	## Lo usa SnapshotBuilder para escribir la cabecera sin crear el objeto. Devuelve el
 	## offset donde empieza section_count. Con estado propio escribe también el bloque extra.
 	static func write_header(bytes: PackedByteArray, server_tick: int, input_ack_tick: int,
@@ -2293,8 +2443,15 @@ class EntitySpawn:
 	var is_yours: bool; var teleport_counter: int; var state: PlayerState; var display_name: String
 	var npc_def_id: int                                  # NPC (v3): u16 tras el nombre
 	var definition_id: String; var fields: Array[ObjectField]   # STRUCTURE (v3)
+	const PROJECTILE_SIZE: int = 32; const PROJECTILE_FLAG_HARMLESS: int = 1 << 0   # PROJECTILE (v6)
+	var owner_id: int; var projectile_def_id: int; var source: int; var volley_index: int
+	var projectile_flags: int; var origin: Vector3; var velocity: Vector3
 	static func for_fortress(net_id: int, spawn_tick: int, definition_id: String,
 			state: FortressState) -> EntitySpawn         # reino 0, los 17 campos
+	static func for_projectile(net_id: int, spawn_tick: int, shooter_realm: int, shooter_id: int,
+			definition: int, source_of_shot: int, index_in_volley: int, harmless: bool, p0: Vector3,
+			v0: Vector3) -> EntitySpawn
+	func is_harmless() -> bool
 	func to_object_state() -> ObjectState
 class ObjectField:                                       # u8 field_id, u8 value_type, valor
 	enum ValueType { U8 = 1, U16 = 2, U32 = 3, S32 = 4 }
@@ -2318,20 +2475,28 @@ class EntityDespawn:
 class Notice:
 	var code: int; var text: String
 class EntityEvent:
-	enum Kind { HIT = 1, DEATH = 2, KILL = 3, RESPAWN = 4, WAR = 5, TELEGRAPH = 6 }
+	enum Kind { HIT = 1, DEATH = 2, KILL = 3, RESPAWN = 4, WAR = 5, TELEGRAPH = 6, STATUS = 7, HEAL = 8,
+			LOADOUT = 9, DOWNED = 10, INTERACT = 11 }                               # 7 a 11: v6
+	enum StatusOp { APPLIED = 1, REMOVED = 2 }                                     # v6
+	enum InteractOp { REVIVE = 1, REVIVE_CUT = 2, REVIVED = 3, EXECUTE = 4, EXECUTE_CUT = 5 }   # v6
 	const SHAPE_CIRCLE: int = 0; const SHAPE_SECTOR: int = 1
 	const MAX_ASSISTANTS: int = 16
 	const HIT_FLAG_CRITICAL: int = 1 << 0; const HIT_FLAG_BLOCKED: int = 1 << 1
 	const HIT_FLAG_PARRIED: int = 1 << 2; const HIT_FLAG_GUARD_BREAK: int = 1 << 3
 	const HIT_FLAG_LETHAL: int = 1 << 4
+	const HIT_FLAG_INTERRUPTED: int = 1 << 5; const HIT_FLAG_DOWNED: int = 1 << 6  # v6
 	var net_id: int; var tick: int; var event: int
-	var attacker: int; var amount: int; var damage_type: int; var hit_flags: int   # HIT
-	var attack_id: int                                                              # HIT, DEATH, KILL
+	var attacker: int; var amount: int; var damage_type: int; var hit_flags: int   # HIT (DOWNED: attacker; HEAL: amount)
+	var attack_id: int                                    # la fuente (CombatSource, v6) de HIT, DEATH, KILL, TELEGRAPH, HEAL y DOWNED
 	var killer: int; var assistants: PackedInt32Array                               # DEATH, KILL
 	var point: int                                                                  # RESPAWN
 	var war_event: int; var war_realm: int                                          # WAR (v3)
 	var shape: int; var position: Vector3; var yaw: float                           # TELEGRAPH (v3),
 	var radius_cm: int; var impact_in_ticks: int                                    # con attack_id
+	var source_entity: int; var op: int; var status_id: int; var stacks: int        # STATUS (v6)
+	var until_tick: int; var healer: int                                            # STATUS, HEAL (v6)
+	var template_id: int; var weapon_1: int; var weapon_2: int; var charges: int    # LOADOUT (v6)
+	var actor: int; var end_tick: int                                               # INTERACT (v6), con op
 	static func hit(victim_id: int, event_tick: int, attacker_id: int, damage: int,
 			type_of_damage: int, flags: int, id_of_attack: int) -> EntityEvent
 	static func death(victim_id: int, event_tick: int, killer_id: int, id_of_attack: int) -> EntityEvent
@@ -2341,10 +2506,23 @@ class EntityEvent:
 	static func war(fortress_id: int, event_tick: int, war_event_id: int, realm_code: int) -> EntityEvent
 	static func telegraph(npc_id: int, event_tick: int, id_of_attack: int, area_shape: int,
 			origin: Vector3, area_yaw: float, area_radius_cm: int, ticks_to_impact: int) -> EntityEvent
+	static func status(target_id: int, event_tick: int, author_id: int, operation: int, id_of_status: int,
+			stack_count: int, ends_at: int) -> EntityEvent                         # v6
+	static func heal(target_id: int, event_tick: int, healer_id: int, healed_amount: int,
+			source: int) -> EntityEvent                                            # v6
+	static func loadout(player_id: int, event_tick: int, id_of_template: int, first_weapon: int,
+			second_weapon: int, consumable_charges: int) -> EntityEvent            # v6
+	static func downed(victim_id: int, event_tick: int, attacker_id: int, source: int) -> EntityEvent   # v6
+	static func interact(downed_id: int, event_tick: int, actor_id: int, operation: int,
+			ends_at: int) -> EntityEvent                                           # v6
+	func get_source() -> int                                                        # 0 en los que no la llevan
 class RespawnRequest:
 	var point_index: int
 class UnstuckRequest:                                    # UNSTUCK_REQUEST (v3), 1 B
 	pass
+class LoadoutSelect:                                     # LOADOUT_SELECT (v6), 2 B
+	var template_id: int
+	static func make(id_of_template: int) -> LoadoutSelect
 class ScoreRow:                                          # 18 B
 	var net_id: int; var kills: int; var deaths: int; var assists: int
 	var gate_damage: int; var circle_seconds: int; var merits: int
@@ -2418,7 +2596,8 @@ func get_discarded_total() -> int
 class_name ServerConfig extends RefCounted
 var port: int = NetProtocol.DEFAULT_PORT
 var zone_id: String = ""
-var max_players: int = 64
+const DEFAULT_MAX_PLAYERS: int = 64
+var max_players: int = DEFAULT_MAX_PLAYERS   # from_args: el de NetZones.max_players(zona) si lo tiene
 var max_connections_per_ip: int = 4
 var idle_quit_seconds: int = 0
 var quit_after_ticks: int = 0
@@ -2464,7 +2643,7 @@ func get_history() -> StateHistory
 func get_metrics() -> ServerMetrics
 func get_cooldown_count() -> int                        # S6: enfriamientos tras expulsiones sin purgar
 ## Jugador sin red: sus entradas salen de brain y entran directamente en su InputQueue.
-func add_fake_player(brain: BotBrain, realm: int) -> int
+func add_fake_player(brain: BotBrain, realm: int, template_id: int = 0) -> int   # v6: su plantilla (0 = la de por defecto)
 ## Teletransporte autoritativo: sube el contador de teletransporte.
 func teleport(net_id: int, position: Vector3) -> void
 func write_report(path: String) -> Error
@@ -2489,6 +2668,7 @@ var loading_since_tick: int = 0
 var limiter_unreliable: RateLimiter
 var limiter_reliable: RateLimiter
 var limiter_bytes: RateLimiter
+var pending_template_id: int = -1   # v6: la plantilla de LOADOUT_SELECT para la siguiente aparición (-1 = ninguna)
 ## Suma un aviso; devuelve true si hay que expulsar (50 en 600 ticks).
 func add_strike(now_tick: int, reason: String) -> bool
 ## N2: crédito de los ticks que el servidor no ha simulado (un parón) para los tres limitadores.
@@ -2572,6 +2752,9 @@ func release(net_id: int, now_tick: int) -> void
 func get_entity(net_id: int) -> NetEntity
 func get_sorted() -> Array[NetEntity]
 func size() -> int
+# v6 (habilidades.md 4.4, H3b): ids de los proyectiles, del mismo espacio y con la misma cuarentena
+func allocate_transient_id(now_tick: int) -> int    # 0 si no queda
+func release_transient_id(net_id: int, now_tick: int) -> void
 
 # spawn_picker.gd
 class_name SpawnPicker extends RefCounted
@@ -2601,6 +2784,9 @@ func forget(net_id: int) -> void
 func record(tick: int, net_id: int, position: Vector3, yaw: float, flags: int) -> void
 func has_tick(net_id: int, tick: int) -> bool
 func sample(net_id: int, tick: float) -> StateHistory.Sample     # null si está fuera de rango
+# v6 (habilidades.md 4.4, H3b): proyectiles
+func position_at(net_id: int, tick: int) -> Vector3     # Vector3.INF si no está; sin crear objetos
+func swept_box(net_id: int) -> AABB     # 4 bloques de 8 ticks hasta el último grabado; size.x < 0 sin nada
 
 # server_metrics.gd
 class_name ServerMetrics extends RefCounted
@@ -2631,6 +2817,7 @@ var bot_cheat: String = ""
 var quit_after_ticks: int = 0
 var report_path: String = ""
 var state_log_path: String = ""
+var loadout: String = ""        # v6: --loadout=<plantilla>; sale en un LOADOUT_SELECT tras el WELCOME
 static func from_args(args: PackedStringArray) -> ClientConfig
 
 # online_main.gd (+ scenes/client/online_main.tscn)
@@ -2648,8 +2835,18 @@ signal welcomed(welcome: NetMessages.Welcome)
 signal rejected(result: int, text: String)
 signal local_spawned(character: PlayerCharacter)
 signal disconnected(text: String)
+## v6 (habilidades.md 5.3): el SPAWN se reparte por kind antes que por is_yours; los proyectiles no son
+## personajes y salen por aquí, con su DESPAWN.
+signal projectile_spawned(spawn: NetMessages.EntitySpawn)
+signal projectile_despawned(projectile_id: int, tick: int, reason: int)
 func start(config: ClientConfig, transport: NetTransport,
 		controller: LocalPlayerController) -> Error
+## v6 (habilidades.md 6, H4): LOADOUT_SELECT desde el WELCOME; los STATUS de cada entidad en su
+## StatusTracker; las flechas en el ProjectileWorld (que entra en la zona con el RemoteWorld).
+func send_loadout_select(template_id: int) -> bool
+func get_status_tracker(net_id: int) -> StatusTracker
+func get_projectile_world() -> ProjectileWorld
+func is_downed() -> bool
 ## Envía CLIENT_READY (solo tras peer_connected(1)). world_root recibe al personaje local
 ## y a RemoteWorld.
 func notify_zone_ready(world_root: Node3D) -> void
@@ -2670,6 +2867,8 @@ func write_report(path: String) -> Error
 
 # client_prediction.gd
 class_name ClientPrediction extends RefCounted
+## v6 (H4): tras cada step() (nunca en las repeticiones); ProjectileWorld mira ahí el compromiso.
+signal stepped(tick: int, input: PlayerInput, state: PlayerState)
 enum Result { IGNORED, MATCH, CORRECTED, HARD_RESET }
 const HISTORY_SIZE: int = 256
 const SNAP_DISTANCE: float = 3.0
@@ -2902,7 +3101,7 @@ Los remotos reutilizan `scenes/characters/player_character.tscn`.
 
 | Problema detectado por los jueces | Corrección en este diseño |
 |---|---|
-| Snapshot de más de 1200 B con 64 jugadores visibles (A y C) | Presupuesto con acumulador de prioridad (57 registros por paquete en la fase 2, 52 desde la fase 3); garantía de envío al menos cada ⌈N/C⌉ snapshots |
+| Snapshot de más de 1200 B con 64 jugadores visibles (A y C) | Presupuesto con acumulador de prioridad (57 registros por paquete en la fase 2, 52 desde la fase 3, 50 desde el protocolo 6); garantía de envío al menos cada ⌈N/C⌉ snapshots |
 | `input_ack_tick` atascado tras una sustitución (A) | `max(contiguo recibido, último consumido)` |
 | Reconciliación con `is_close_to`, sin `prev_buttons` (A) | `equals_exact` sobre `encode()`, posible gracias al yaw en f32 |
 | Yaw en f64 frente a f32 en la red (B y C no lo veían) | Redondeo en el setter de `PlayerCharacter.yaw` |

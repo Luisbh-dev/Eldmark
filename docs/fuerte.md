@@ -141,6 +141,14 @@ dueño (con un fuerte neutral, `D` es falso).
    historial, snapshots, OBJECT_STATE y eventos. El orden completo y normativo es el de la cabecera de
    `ZoneServer`.
 
+Las habilidades lo completan ([habilidades.md 4.1](habilidades.md#41-orden-del-tick-completa-fuertemd-17),
+paquete H3a): tras congelar, los disparos (H3b) y los efectos propios de quien está en su
+compromiso; resolver incluye el vuelo de los proyectiles (H3b), y aplicar, los golpes de las habilidades y
+de las flechas, los efectos al objetivo y las interrupciones; después, los pulsos y caducidades de los efectos de estado y (H3c) el derribado
+(desangrado, levantar y rematar), antes del entorno, las reapariciones con su plantilla y la recarga de los consumibles en
+el campamento. Todo dentro de `CombatDirector.process_tick`, antes de 4b. Un derribado no cuenta en el círculo (§1.2: no
+está vivo) y sí impide reparar la puerta si está en el vano.
+
 ---
 
 ## 2. Replicación con estado: OBJECT_STATE (GUE-09)
@@ -263,6 +271,11 @@ de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D
   **Fichas**: como mucho 2 PNJ atacan a la vez al mismo jugador; el resto lo rodea a 3–4 m.
 - Depuración: comando 12 `npc_debug` escribe estado, objetivo y ruta de los PNJ cercanos en el
   registro del servidor cada segundo (sin mensaje de red en la fase 4).
+- **Derribados** (H3c, [habilidades.md 4.5](habilidades.md#45-derribado-levantar-y-rematar-downedsystem-scriptsserverdowned_systemgd)):
+  los PNJ no quedan derribados (su golpe mortal mata), pero rematan. En `HfsmBrain`, un jugador derribado
+  hostil a ≤ 6 m es el objetivo preferido, antes que el más cercano en pie (también al notarlo en reposo o
+  patrulla), y se le ataca con el ligero, sin escudo ni carga; pide su ficha de `AttackTokens` como cualquier
+  objetivo. `NpcWorld` no cambia: un derribado ya es un objetivo válido (no está muerto).
 
 ### 4.3 Generadores y defensores (MUN-09 … MUN-12, GUE-11)
 
@@ -373,7 +386,9 @@ de navegación del reino dueño; cada consulta (`NavigationPathQueryParameters3D
 - **Carga** (GUE-16): escenario de `load_test` con 32 contra 32 y 64 contra 64 en la puerta y el
   círculo durante 120 s (`--siege`; resultados en 8.3). Desde F6b, `--npcs` lo repite con los PNJ de la zona y el fuerte sin
   ayudas: los 9 PNJ de guerra (los 5 del fuerte y los 4 Guardianes de los campamentos) cuestan alrededor de 1 ms del tick, del orden de
-  la diferencia entre dos pasadas iguales, y el límite sigue en 32 contra 32 (8.3, F6b, paquete E y su revisión).
+  la diferencia entre dos pasadas iguales, y el límite sigue en 32 contra 32 (8.3, F6b, paquete E y su revisión). Medido sin el kit de
+  la fase 4: con él, el límite en el fuerte es 40 (20 contra 20), pendiente de volver a medir (8.3, «Integración de las habilidades
+  sobre F6b»).
 - **Equilibrio** (GUE-42, hecho en F6a): `--max-realm-diff=N` (por defecto 0 = sin límite); un REJECT nuevo,
   **9 IMBALANCE**, con texto propio. El recuento por reino para RealmSelect llega en el WELCOME (`u8 × 3` al
   final; lo rellena el servidor desde F6a). Regla exacta (`RealmBalance`, `FillerKeeper`, `ServerAuth`,
@@ -901,7 +916,8 @@ pruebas en `test_realm_balance`, `test_bot_brain_siege`, `test_siege_zone`, `tes
     64 el servidor no llega a mandar todos (28,5).
   - **< 1 % de entradas sustituidas: se cumple con 64 jugadores (0,00 %) y no con 128 (50,76 %)**, y con 128 el rebobinado empieza a
     fallar a los honrados (25 rechazos, 6 sospechosos), como ya pasaba con 128 en la refriega. **Primer límite de jugadores por batalla
-    en el fuerte: 64 (32 contra 32)**; 64 contra 64 queda fuera de lo que el servidor sostiene hoy.
+    en el fuerte: 64 (32 contra 32)**; 64 contra 64 queda fuera de lo que el servidor sostiene hoy. (Medido sin el kit de la fase 4;
+    con arqueros y habilidades, la refriega de H5 baja el límite por batalla a 40: [red.md 14](red.md#14-presupuesto-de-ancho-de-banda-y-cpu).)
   - **El coste de las fortalezas es despreciable**: la sección `war` (paso 4b) cuesta de mediana 0,10–0,11 ms y de p99 1,4–2,4 ms
     (la presencia se recuenta cada 6 ticks con todos en el círculo), unos 300 `OBJECT_STATE` y 90 marcadores en los 3 minutos. El
     combate (`combat`) cuesta 0,9 ms de mediana con 64 y 1,5 con 128; los golpes con rebobinado, de 57 a 70 µs por comprobación.
@@ -1325,7 +1341,8 @@ anteriores); secciones de los PNJ y de las fortalezas en ms, con la media de la 
   contra 64), no: con los 128 presentes el p99 del tick es de 29 a 35 ms y el servidor no llega al tiempo real (un 81 y un 87 % en las dos
   pasadas), así que los clientes van por delante y las entradas les llegan antes de tiempo; en la primera pasada se sustituyó el 38,6 %
   de sus entradas y en la segunda casi ninguna, y en las dos el rebobinado falla a los honrados (83 y 44 rechazos). **El primer límite
-  de jugadores por batalla en el fuerte sigue en 64 (32 contra 32), también con los PNJ.** (La primera fila de 64 contra 64 se publicó
+  de jugadores por batalla en el fuerte sigue en 64 (32 contra 32), también con los PNJ** (sin el kit de la fase 4; con él, 40: ver
+«Integración de las habilidades sobre F6b», abajo). (La primera fila de 64 contra 64 se publicó
   como de 128 jugadores; la revisión de F6b vio que no lo era: ver abajo.)
 - Frente a F6a sin PNJ (10,6 / 15,3 / 19,1 / 27,8 ms, con otra suite en marcha), las dos pasadas sin PNJ de ahora dan 9,1–9,9 /
   12,8–14,2 / 15,0–16,9 ms con la máquina tranquila: la diferencia es de la carga de la máquina, no del código.
@@ -1442,6 +1459,47 @@ vez); los de la recaptura, desde que salen los de Solmarch, que es cuando Vardhe
   GUE-46; no bloquea GUE-15, cuyo criterio se lee con los falsos del servidor desde F6a).
 - La pasarela con armas a distancia (CMB-23) y que los guardias bajen a disputar el círculo.
 - La recaptura sigue dependiendo de la semilla (riesgo de §9): cualquier ajuste se mide con cinco semillas o más.
+
+**Integración de las habilidades sobre F6b** (la fase 4 de habilidades, H1a–H5, fusionada sobre F6b;
+[habilidades.md 11.9](habilidades.md#119-h5--integración)). Las dos ramas salieron de la misma base y se tocaban en el cerebro de los
+bots, el servidor de zona y la carga. Cómo quedan juntas:
+
+- **Los bots de asedio pelean con el kit** en el paso 1 de su plan, como pedía H5 (habilidades por su papel, cambio de arma,
+  pociones, arco con el tiro adelantado y remate de derribados), sin perder nada de F6b: golpes avisados, defensores primero,
+  persecuciones, reunión, formación, pasarela y recinto. No levantan a nadie (siguen su plan) y la puerta se golpea como en la fase 3.
+  Los falsos de asedio del servidor reciben a la vez los sentidos de F6b (`_find_threats`, el buscador de defensores,
+  `_count_allies`) y los del kit (estado de combate, vida, `BotTarget` y aliados derribados); los `--bot` del cliente, los de
+  `ClientBotBrains._make_siege` más `give_kit_senses`.
+- **El blanco del kit es el de la pelea**: el PNJ defensor o el enemigo. El buscador de defensores devuelve también un `BotTarget`
+  (`ZoneServer._find_enemy_target` con `npcs_only`, `BotEnemySight.find_target` con `war_npcs_only`) y el arco apunta al defensor con
+  su velocidad; antes de la fusión el kit habría apuntado al enemigo de `set_enemy_finder` aunque peleara con el defensor.
+- **El arquero no persigue**: con el arco en la mano todo `SIEGE_FIGHT_RANGE` (12 m) es distancia de tiro (guarda de 9 a 26 m), así
+  que la regla de dejar una persecución que no le acerca no se le aplica; con la espada, igual que antes.
+- **La pasarela con el kit**: el arquero no se mueve en ella (ni de lado ni para guardar la distancia) y no esquiva, y nadie usa en
+  ella las habilidades que avanzan en línea recta (la embestida, que avanza 6 m y empuja, y el salto atrás). Peleando en la pasarela
+  el bot mira por su eje hacia el blanco (también sin el kit), así que acercarse, el paso de los golpes y la esquiva hacia atrás van
+  por el eje. Lo destapó `test_siege_zone` (la pelea en la pasarela): con el kit, la embestida del guardia los sacaba a los dos al
+  patio y, sin ella, en las peleas largas (el muro, las pociones) una esquiva «hacia atrás» con el otro casi al lado, en perpendicular
+  al eje, tiraba al atacante; la muerte salía en el patio. La regla de F6b («sin esquivar de lado») suponía que el blanco estaba
+  delante, por el eje.
+- **Un derribado no cuenta como aliado** en la reunión ni peleando en el fuerte (`_rebuild_ally_cache` usa `is_alive`): es lo que
+  ya ve el cliente, para el que su vida dibujada es 0 (`BotAllySight`).
+- **La puerta cerrada corta los golpes en los dos sentidos**: las dos ramas habían hecho el mismo arreglo
+  (`HitShapes.is_ray_clear` con `hit_from_inside`); queda uno, con la explicación de las dos.
+- **El orden del tick** de la cabecera de `ZoneServer` lleva los pasos de las dos (§1.7 y habilidades.md 4.1): los falsos piensan
+  justo antes de su simulación con su estado tras `s − 1`, y los TELEGRAPH salen al final del paso de combate, no en el de los PNJ.
+- **Aforo**: el kit bajó el límite medido por batalla a 40 y el servidor del Vado Gris tiene ese aforo por defecto
+  (`Zones.MAX_PLAYERS`). Los asedios de F6b se midieron sin el kit, con 32 contra 32 y 64 contra 64. **Con el kit, el límite en el
+  fuerte es 40 (20 contra 20), pendiente de volver a medir** (`load_test.gd --siege --npcs`; la batalla de telemetría ya era de 20
+  contra 20). Las herramientas y las pruebas de F6b que llevan más de 40 jugadores piden su aforo explícito: `load_test.gd` lanza el
+  servidor con `--max-players` (`server_max_players`, los jugadores más 8; `test_load_test` comprueba que cabe cada escenario de las
+  baterías) y `SiegeRunner` (`siege_battle.gd` y las pruebas de asedio) pone `ServerConfig.max_players`. Nota en
+  [red.md 14](red.md#14-presupuesto-de-ancho-de-banda-y-cpu).
+- **Pruebas**: `test_bot_brain_siege_kit` (nueva, 7: el kit contra el defensor, el arco que apunta al defensor por delante de él, el
+  arquero que no deja de disparar y la espada que sí deja la persecución, la pasarela sin pasos de lado del arquero, mirando por el
+  eje y sin embestidas, sin levantar a nadie, determinista; cada arreglo, comprobado deshaciéndolo) y `test_load_test` (+1, el aforo).
+  Pasan las de asedio de F6b (`test_bot_brain_siege`, `test_bot_brain_rally`, `test_bot_brain_walkway`, `test_siege_zone`,
+  `test_siege_npcs`, `test_siege_clients`) y las del kit (`test_bot_brain_kit` y las de habilidades, proyectiles y derribado).
 
 ---
 

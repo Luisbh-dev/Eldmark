@@ -10,26 +10,36 @@ extends Node
 ## [b]Orden del tick[/b] ([method _physics_process], prioridad -100; es normativo):
 ## [codeblock]
 ## poll             recibir: autenticación, READY, LEAVE, INPUT_BATCH -> InputQueue.push(),
-##                  RESPAWN_REQUEST, DEBUG_COMMAND, el chat y los grupos (SocialService); y las
-##                  líneas de la consola
+##                  RESPAWN_REQUEST, DEBUG_COMMAND, LOADOUT_SELECT (la plantilla pendiente), el chat y
+##                  los grupos (SocialService); y las líneas de la consola
 ## tick += 1        s es el tick que se simula
 ## bajas            desconexión, LEAVE o expulsión -> SocialService.on_peer_left (sale de su grupo, el
 ##                  mando pasa al más antiguo, se cancelan sus invitaciones), DESPAWN (motivo 1) y el id
-##                  en cuarentena
+##                  en cuarentena; la baja de un derribado es antes su muerte (DEATH y KILL)
 ## cerebros (paso 0) los PNJ piensan con el estado tras s - 1 y empujan su entrada de s a su InputQueue
 ##                  (cada 6 ticks; entre medias repiten su plan)
 ## simular          todas las entidades con cuerpo (jugadores, falsos y PNJ) por net_id ascendente,
-##                  con la entrada de InputQueue.take(s); _check_motion
-## combate          CombatDirector.process_tick(): congelar, resolver los golpes (también contra las
-##                  puertas de los fuertes), aplicar (daño, controles, muertes), entorno (caída,
-##                  volúmenes letales, y < -100), reapariciones y publicar la vida; los ENTITY_EVENT
-##                  salen aquí
+##                  con la entrada de InputQueue.take(s); _check_motion. Justo antes de la suya, cada
+##                  falso piensa (su BotBrain, con su estado de combate tras s - 1 para el kit de H5) y
+##                  empuja su entrada de s; las vistas de asedio, sus objetivos y, para los de asedio
+##                  (F6b), los golpes avisados en curso y los aliados se reúnen una vez por tick
+## combate          CombatDirector.process_tick(), pasos 2 a 9 de docs/habilidades.md, sección 4.1:
+##                  congelar (golpe activo, compromiso y muro de cada uno), disparos y efectos propios
+##                  de quien compromete un ataque o una habilidad, resolver los golpes de ataques y
+##                  habilidades (también contra las puertas de los fuertes) y el vuelo de los
+##                  proyectiles, aplicar (daño, bloqueo, controles, efectos al objetivo, interrupciones,
+##                  derribos y muertes), efectos de estado (pulsos y caducidades), el derribado
+##                  (desangrado, levantar y rematar), entorno (caída, volúmenes letales, y < -100),
+##                  reapariciones con su plantilla, la recarga del campamento y publicar la vida; los
+##                  ENTITY_EVENT y los ENTITY_SPAWN y ENTITY_DESPAWN de los proyectiles salen aquí, y
+##                  al final, los avisos TELEGRAPH de los ataques fuertes de PNJ que empiezan en s
 ## fuertes          FortressController.step() (paso 4b): presencia en el círculo, avance del estado de
 ##                  cada fortaleza, capas de la puerta (valen desde s + 1), avisos WAR y OBJECT_STATE;
 ##                  /atascado; cuerpos que se quedan tras una baja en combate
 ## PNJ              NpcSpawnerSystem.step(): altas y retiradas de PNJ según los generadores y las
-##                  fortalezas, cadáveres, avisos TELEGRAPH de los ataques fuertes
-## altas            los READY pendientes: el jugador aparece con el estado «tras s»
+##                  fortalezas, cadáveres
+## altas            los READY pendientes: el jugador aparece con el estado «tras s» y el equipo de su
+##                  plantilla (la pendiente o la de por defecto), SPAWN y LOADOUT
 ## social           SocialService.step(): caducan las invitaciones de grupo (PARTY_INVITATION caducada y
 ##                  aviso a quien invitó) y cada grupo manda su PARTY_STATUS (2 Hz, escalonado por el id
 ##                  del grupo) con el estado ya tras las altas
@@ -57,7 +67,11 @@ extends Node
 ## [BotBrain] y entran directamente en su [InputQueue]; sirven para las pruebas y la carga. Con un
 ## [FillerKeeper] ([method set_filler_keeper], [code]--max-realm-diff[/code]) los de relleno siguen las altas y
 ## bajas de personas y no ocupan sus plazas: un HELLO que llega con el servidor lleno solo por ellos entra, uno le aparta
-## la suya y se va cuando esa persona entra en el mundo (GUE-43; docs/fuerte.md, sección 7).
+## la suya y se va cuando esa persona entra en el mundo (GUE-43; docs/fuerte.md, sección 7). Los de combate y
+## asedio ven a sus enemigos (y los de asedio, a los PNJ que defienden el fuerte) con su velocidad y su derribo
+## ([BotTarget]) y, desde H5, pelean con el kit de la fase 4 (docs/habilidades.md, sección 7.1): leen su estado de
+## combate y su vida del servidor y los de combate levantan a los aliados derribados (los de asedio siguen su plan).
+## Los de asedio, además, evitan los golpes avisados de los PNJ y cuentan a los suyos en la reunión (F6b).
 ## [br][br]
 ## [b]Combate[/b] (docs/combate.md): un [CombatDirector] lleva la vida, los golpes con rebobinado, las
 ## muertes y las reapariciones; los PNJ ([method add_npc], el maniquí de entrenamiento) son cuerpos
@@ -118,7 +132,7 @@ const HELLO_CHECK_TICKS: int = 10
 const STOP_DRAIN_TICKS: int = 30
 ## Secciones del tick que aparecen en la línea de métricas (las mismas que mide el bucle).
 const LOGGED_SECTIONS: Array[StringName] = [&"net", &"npc_brains", &"sim", &"combat", &"combat_resolve",
-		&"combat_events", &"war", &"npc", &"social", &"history", &"snapshot", &"flush"]
+		&"combat_projectiles", &"combat_events", &"war", &"npc", &"social", &"history", &"snapshot", &"flush"]
 ## Secciones de [ServerMetrics] de los PNJ: los cerebros (paso 0) y el sistema de generadores.
 const SECTION_NPC_BRAINS: StringName = &"npc_brains"
 const SECTION_NPC: StringName = &"npc"
@@ -256,6 +270,11 @@ var _shutdown_tick: int = -1
 var _shutdown_announced: Dictionary[int, bool] = {}
 var _events_sent: int = 0
 var _event_bytes_sent: int = 0
+# Proyectiles (docs/habilidades.md, sección 4.4): los peers que recibieron el ENTITY_SPAWN de cada uno (los
+# mismos reciben su ENTITY_DESPAWN) y lo enviado.
+var _projectile_viewers: Dictionary[int, PackedInt32Array] = {}
+var _projectile_messages_sent: int = 0
+var _projectile_bytes_sent: int = 0
 var _dummies_created: int = 0
 # Caché de objetivos de los bots de combate: tick de la última vez, posiciones e ids por reino, y qué
 # reinos son hostiles entre sí.
@@ -264,6 +283,9 @@ var _targets_by_realm: Dictionary = {}
 var _targets_ids_by_realm: Dictionary = {}
 # Por reino, 1 si el objetivo del mismo índice es un PNJ (lo que buscan primero los falsos SIEGE).
 var _targets_npc_by_realm: Dictionary = {}
+# Kit de los falsos (H5): la velocidad de cada objetivo y si está derribado, en el mismo orden.
+var _targets_velocity_by_realm: Dictionary = {}
+var _targets_downed_by_realm: Dictionary = {}
 var _hostile_cache: Dictionary = {}
 # Asedio de los falsos con cerebro SIEGE (GUE-15): la vista de cada fortaleza, que comparten todos y se pone al
 # día en cada tick, y las rutas de aproximación de la zona (data/routes/<zona>.tres; null si no hay).
@@ -511,6 +533,11 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 			Callable(self, "_place"), Callable(self, "_pick_spawn_point"))
 	_combat.event_emitted.connect(_on_combat_event)
 	_combat.metrics = _metrics
+	# Los proyectiles toman su id del espacio de las entidades (con su cuarentena).
+	_combat.projectiles.registry = _registry
+	_combat.projectiles.spawned.connect(_on_projectile_spawned)
+	_combat.projectiles.despawned.connect(_on_projectile_despawned)
+	_projectile_viewers.clear()
 	_war_fortresses_at_stop = []
 	_setup_fortresses(world)
 	_setup_npcs(world)
@@ -759,11 +786,12 @@ func get_sim_hash() -> int:
 
 ## Crea un jugador sin red de [param realm] (un código de [enum NetProtocol.Realm]): en cada tick,
 ## antes de simular, su entrada sale de [code]brain.next_input()[/code], cuantizada y con el tick
-## correspondiente, y entra directamente en su [InputQueue]. Devuelve su [code]net_id[/code], o -1
-## si el servidor no está en marcha, está lleno ([member ServerConfig.max_players]) o no quedan ids.
-## Se puede llamar entre dos ticks; el jugador aparece con el estado «tras el último tick» y su
-## primera simulación es la del siguiente.
-func add_fake_player(brain: BotBrain, realm: int) -> int:
+## correspondiente, y entra directamente en su [InputQueue]. Aparece con la plantilla de equipo
+## [param template_id] (0 = la de por defecto; [code]--fake-loadout[/code]) y la conserva al reaparecer.
+## Devuelve su [code]net_id[/code], o -1 si el servidor no está en marcha, está lleno
+## ([member ServerConfig.max_players]) o no quedan ids. Se puede llamar entre dos ticks; el jugador aparece
+## con el estado «tras el último tick» y su primera simulación es la del siguiente.
+func add_fake_player(brain: BotBrain, realm: int, template_id: int = 0) -> int:
 	if _run_state != _RunState.RUNNING or brain == null:
 		return -1
 	if _occupied_seats() >= _config.max_players:
@@ -772,22 +800,32 @@ func add_fake_player(brain: BotBrain, realm: int) -> int:
 	var entity: NetEntity = _create_player(FAKE_NAME_FORMAT % _fake_counter, realm, 0, _tick)
 	if entity == null:
 		return -1
+	var combatant: Combatant = _combat.get_combatant(entity.net_id)
+	_combat.equip_template(combatant, template_id)
 	_fakes[entity.net_id] = brain
 	var pattern: BotBrain.Pattern = brain.get_pattern()
-	if (pattern == BotBrain.Pattern.COMBAT or pattern == BotBrain.Pattern.SIEGE) \
-			and not brain.has_enemy_finder():
-		brain.set_enemy_finder(_find_enemy_position.bind(entity.net_id))
+	var fighter: bool = pattern == BotBrain.Pattern.COMBAT or pattern == BotBrain.Pattern.SIEGE
+	if fighter and not brain.has_enemy_finder():
+		brain.set_enemy_finder(_find_enemy_target.bind(entity.net_id))
+	if fighter and not brain.has_combat_source():
+		# El kit de la fase 4 (H5): el estado de combate del servidor tras el último tick, la vida y los aliados
+		# derribados.
+		brain.set_combat_source(_fake_combat_state.bind(entity.net_id))
+		brain.set_health_source(_fake_health_fraction.bind(entity.net_id))
+		brain.set_ally_finder(_find_downed_ally.bind(entity.net_id))
 	if pattern == BotBrain.Pattern.SIEGE and not brain.has_siege():
 		brain.set_siege(get_siege_view(), get_approach_routes(), realm)
 	if pattern == BotBrain.Pattern.SIEGE and not brain.has_threat_finder():
 		brain.set_threat_finder(_find_threats.bind(entity.net_id))
 	if pattern == BotBrain.Pattern.SIEGE and not brain.has_defender_finder():
-		brain.set_defender_finder(_find_enemy_position.bind(entity.net_id, true))
+		brain.set_defender_finder(_find_enemy_target.bind(entity.net_id, true))
 	if pattern == BotBrain.Pattern.SIEGE and not brain.has_ally_counter():
 		brain.set_ally_counter(_count_allies.bind(entity.net_id))
 	var record: _PlayerRecord = _player_by_net[entity.net_id]
 	record.is_fake = true
 	_announce_arrival(entity, null, _tick)
+	if combatant.template_id > 0:
+		_combat.announce_loadout(combatant, _tick, true)
 	_log("Alta de %s (jugador falso, net_id %d, %s); jugadores: %d" % [entity.display_name,
 			entity.net_id, NetProtocol.realm_display_name(realm), get_player_count()])
 	return entity.net_id
@@ -1278,7 +1316,14 @@ func _process_arrivals(s: int) -> void:
 		var record: _PlayerRecord = _player_by_net[entity.net_id]
 		record.peer = peer
 		_world_peers.append(peer)
+		# La plantilla pendiente (LOADOUT_SELECT, también antes de CLIENT_READY) o la de por defecto: el SPAWN ya
+		# sale con sus armas y sus cargas, y el LOADOUT detrás.
+		var combatant: Combatant = _combat.get_combatant(entity.net_id)
+		_combat.equip_template(combatant, maxi(peer.pending_template_id, 0))
+		peer.pending_template_id = -1
 		_announce_arrival(entity, peer, s)
+		if combatant.template_id > 0:
+			_combat.announce_loadout(combatant, s, true)
 		player_joined.emit(peer_id, entity.net_id)
 		if _filler_keeper != null:
 			_filler_keeper.on_person_joined(peer.realm, peer_id)
@@ -1416,12 +1461,13 @@ func _process_departures(s: int) -> void:
 				_filler_keeper.release_seat(peer_id)
 			continue
 		var entity: NetEntity = peer.entity
+		# Fuera de la lista antes de nada: lo que salga de su baja (la muerte de un derribado) ya no es para él.
+		_world_peers.erase(peer)
 		var lingers: bool = _should_linger(entity, s)
 		if lingers:
 			_start_lingering(entity, s)
 		else:
 			_remove_player(entity, s, NetProtocol.DespawnReason.DISCONNECTED)
-		_world_peers.erase(peer)
 		_left_total += 1
 		player_left.emit(peer_id, entity.net_id)
 		if _filler_keeper != null:
@@ -1452,9 +1498,14 @@ func _process_fake_departures(s: int) -> void:
 				get_player_count()])
 
 
-# Quita al jugador del mundo: DESPAWN a quien lo veía, id en cuarentena y personaje liberado.
+# Quita al jugador del mundo: DESPAWN a quien lo veía, id en cuarentena y personaje liberado. La baja de un
+# derribado (salida, desconexión, --fake-churn, fin del cuerpo de GUE-41) es antes una muerte en ese tick: DEATH
+# y KILL con quien le hizo el último daño o lo derribó, y la fuente «desangrado» (docs/habilidades.md, 4.5).
 func _remove_player(entity: NetEntity, s: int, reason: int) -> void:
 	var net_id: int = entity.net_id
+	var leaving: Combatant = _combat.get_combatant(net_id)
+	if leaving != null and leaving.is_downed():
+		_combat.kill_downed(leaving, s)
 	var despawn := NetMessages.EntityDespawn.new()
 	despawn.net_id = net_id
 	despawn.despawn_tick = s
@@ -1475,7 +1526,7 @@ func _remove_player(entity: NetEntity, s: int, reason: int) -> void:
 	_npcs.erase(net_id)
 	_lingering.erase(net_id)
 	_scores.forget(net_id)
-	_combat.remove(net_id)
+	_combat.remove(net_id, s)
 	_history.forget(net_id)
 	_substituted_now.erase(net_id)
 	var character: PlayerCharacter = entity.get_character()
@@ -1509,6 +1560,7 @@ func _clear_players() -> void:
 		_fortresses.clear()
 	if _combat != null:
 		_combat.clear()
+	_projectile_viewers.clear()
 	_player_by_net.clear()
 	_substituted_now.clear()
 	for peer: ServerPeer in _peers.values():
@@ -1563,8 +1615,11 @@ func _record_history(s: int) -> void:
 			yaw = character.yaw
 			if character.grounded:
 				flags |= EntityRecord.FLAG_GROUNDED
-			# Banderas defensivas (bloqueo, parada, invulnerable, muerto) para el rebobinado.
-			flags |= ActionMachine.defense_flags(character.combat, s)
+			# Banderas defensivas (bloqueo, parada, invulnerable, muerto, bloqueo ancho) para el
+			# rebobinado, sobre los bits 0-2 del registro: el bit 3 del registro (ranura 2, que aquí no se
+			# escribe) nunca entra, porque en el historial es DEFENSE_BLOCKING (docs/habilidades.md, 3.6).
+			flags = (flags & EntityRecord.HISTORY_FLAGS_MASK) \
+					| ActionMachine.defense_flags(character.combat, s)
 		else:
 			flags |= EntityRecord.FLAG_GROUNDED
 			if is_instance_valid(entity.node):
@@ -1660,20 +1715,35 @@ func _social_send(peer_id: int, bytes: PackedByteArray) -> void:
 # --- Combate: eventos, enemigos, suelo ----------------------------------------------------------
 
 # Un evento de combate: ENTITY_EVENT (canal fiable) a los dueños de las entidades implicadas
-# (víctima, atacante, asesino y asistentes) y a quien tenga relevante a cualquiera de ellas. Los KILL
-# van a toda la zona (el registro de bajas lo ve todo el mundo, docs/fuerte.md sección 6). Antes de
-# enviarlo se apunta en el marcador y en el registro de batalla.
+# (víctima, atacante, asesino y asistentes) y a quien tenga relevante a cualquiera de ellas. Los KILL y los
+# DOWNED van a toda la zona (el registro de bajas lo ve todo el mundo, docs/fuerte.md sección 6, y
+# docs/habilidades.md, sección 5.4). STATUS, HEAL e INTERACT van a los dueños de los implicados y a quien
+# tenga relevante al afectado (no al autor). LOADOUT ([signal CombatDirector.event_emitted]): la del dueño
+# ([param involved] con el jugador) solo a él; la pública ([param involved] vacío, cargas 0) a quien tenga
+# relevante al jugador, sin el dueño. Antes de enviarlo se apunta en el marcador y en el registro de batalla.
 func _on_combat_event(event: NetMessages.EntityEvent, involved: PackedInt32Array) -> void:
 	_track_battle(event)
 	if _transport == null or _world_peers.is_empty():
 		return
 	_metrics.begin_section(SECTION_COMBAT_EVENTS)
 	var bytes: PackedByteArray = event.encode()
-	var to_everyone: bool = event.event == NetMessages.EntityEvent.Kind.KILL
+	var kind: int = event.event
+	var to_everyone: bool = kind == NetMessages.EntityEvent.Kind.KILL \
+			or kind == NetMessages.EntityEvent.Kind.DOWNED
+	var seen_by: PackedInt32Array = involved
+	if kind == NetMessages.EntityEvent.Kind.STATUS or kind == NetMessages.EntityEvent.Kind.HEAL \
+			or kind == NetMessages.EntityEvent.Kind.INTERACT:
+		seen_by = PackedInt32Array([event.net_id])
+	elif kind == NetMessages.EntityEvent.Kind.LOADOUT:
+		# La del dueño no la ve nadie más; la pública, quien lo tenga relevante.
+		seen_by = PackedInt32Array() if not involved.is_empty() else PackedInt32Array([event.net_id])
 	for peer: ServerPeer in _world_peers:
+		if kind == NetMessages.EntityEvent.Kind.LOADOUT and involved.is_empty() \
+				and peer.entity.net_id == event.net_id:
+			continue
 		var receives: bool = to_everyone or involved.has(peer.entity.net_id)
 		if not receives:
-			for net_id: int in involved:
+			for net_id: int in seen_by:
 				if peer.relevant.get(net_id, false):
 					receives = true
 					break
@@ -1682,6 +1752,53 @@ func _on_combat_event(event: NetMessages.EntityEvent, involved: PackedInt32Array
 			_events_sent += 1
 			_event_bytes_sent += bytes.size()
 	_metrics.end_section(SECTION_COMBAT_EVENTS)
+
+
+# Alta de un proyectil (docs/habilidades.md, sección 4.4): ENTITY_SPAWN de kind 3 (canal fiable) al dueño del
+# tirador y a quien lo tenga relevante, en ese momento. Se apunta quién lo recibió para mandarle la baja.
+func _on_projectile_spawned(spawn: NetMessages.EntitySpawn, involved: PackedInt32Array) -> void:
+	if _transport == null or _world_peers.is_empty():
+		return
+	_metrics.begin_section(SECTION_COMBAT_EVENTS)
+	var bytes: PackedByteArray = spawn.encode()
+	var viewers := PackedInt32Array()
+	for peer: ServerPeer in _world_peers:
+		var receives: bool = involved.has(peer.entity.net_id)
+		if not receives:
+			for net_id: int in involved:
+				if peer.relevant.get(net_id, false):
+					receives = true
+					break
+		if receives:
+			_transport.send(peer.peer_id, NetProtocol.CH_RELIABLE, bytes)
+			viewers.append(peer.peer_id)
+			_projectile_messages_sent += 1
+			_projectile_bytes_sent += bytes.size()
+	if not viewers.is_empty():
+		_projectile_viewers[spawn.net_id] = viewers
+	_metrics.end_section(SECTION_COMBAT_EVENTS)
+
+
+# Baja de un proyectil: ENTITY_DESPAWN (motivo 4 impacto o 5 caducado) a los que recibieron su alta y siguen
+# en el mundo, aunque ya no tengan relevante al tirador.
+func _on_projectile_despawned(projectile_id: int, tick: int, reason: int,
+		_involved: PackedInt32Array) -> void:
+	var viewers: PackedInt32Array = _projectile_viewers.get(projectile_id, PackedInt32Array())
+	_projectile_viewers.erase(projectile_id)
+	if _transport == null or viewers.is_empty():
+		return
+	var despawn := NetMessages.EntityDespawn.new()
+	despawn.net_id = projectile_id
+	despawn.despawn_tick = tick
+	despawn.reason = reason
+	var bytes: PackedByteArray = despawn.encode()
+	for peer_id: int in viewers:
+		var peer: ServerPeer = _peers.get(peer_id)
+		if peer == null or peer.state != ServerPeer.State.IN_WORLD:
+			continue
+		_transport.send(peer_id, NetProtocol.CH_RELIABLE, bytes)
+		_projectile_messages_sent += 1
+		_projectile_bytes_sent += bytes.size()
 
 
 # Marcador y registro de batalla: una muerte suma una muerte a la víctima (si es un jugador) y queda en el
@@ -1716,20 +1833,22 @@ func _pick_spawn_point(realm: int) -> Transform3D:
 	return _spawn_picker.pick(realm)
 
 
-# Posición del enemigo vivo más cercano a [param position] para el jugador falso [param net_id] (el
-# cerebro de combate de BotBrain), o null si no hay ninguno que pueda atacar o ser atacado: los
-# maniquíes, los protegidos y los que están en la zona segura de su reino no cuentan, y quien está en
-# la zona segura de su reino no ataca. Las posiciones objetivo se reúnen una vez por tick y por reino
-# (con muchos bots, cada uno recorre solo los candidatos de los reinos que le son hostiles). Con
-# [param npcs_only], solo los PNJ (el buscador de defensores del cerebro SIEGE, F6b). «Más cercano» con la altura pesada
-# (BotBrain.target_distance_squared, GUE-45): el de su nivel antes que el de la pasarela.
-func _find_enemy_position(position: Vector3, net_id: int, npcs_only: bool = false) -> Variant:
+# El enemigo vivo (o derribado) más cercano a [param position] para el jugador falso [param net_id] (el cerebro de
+# combate de BotBrain): un BotTarget con sus pies, su velocidad y si está derribado (lo que usa el kit para el tiro
+# adelantado del arco y para rematar, H5), o null si no hay ninguno que pueda atacar o ser atacado: los maniquíes,
+# los protegidos y los que están en la zona segura de su reino no cuentan, y quien está en la zona segura de su
+# reino (o no está en pie) no ataca. Los objetivos se reúnen una vez por tick y por reino (con muchos bots, cada uno
+# recorre solo los candidatos de los reinos que le son hostiles). Con [param npcs_only], solo los PNJ (el buscador de
+# defensores del cerebro SIEGE, F6b). «Más cercano» con la altura pesada (BotBrain.target_distance_squared, GUE-45):
+# el de su nivel antes que el de la pasarela.
+func _find_enemy_target(position: Vector3, net_id: int, npcs_only: bool = false) -> Variant:
 	var me: Combatant = _combat.get_combatant(net_id)
-	if me == null or me.is_dead() or _safe_areas.contains_own(me.get_realm(), position):
+	if me == null or not me.is_alive() or _safe_areas.contains_own(me.get_realm(), position):
 		return null
 	if _targets_tick != _tick:
 		_rebuild_target_cache()
-	var best: Variant = null
+	var best_realm: int = -1
+	var best_index: int = -1
 	var best_distance: float = INF
 	for realm: int in _targets_by_realm:
 		if not _is_hostile_realm(me.get_realm(), realm):
@@ -1742,7 +1861,51 @@ func _find_enemy_position(position: Vector3, net_id: int, npcs_only: bool = fals
 			var distance: float = BotBrain.target_distance_squared(position, positions[index])
 			if distance < best_distance:
 				best_distance = distance
-				best = positions[index]
+				best_realm = realm
+				best_index = index
+	if best_index < 0:
+		return null
+	return BotTarget.new(_targets_by_realm[best_realm][best_index],
+			_targets_velocity_by_realm[best_realm][best_index],
+			_targets_downed_by_realm[best_realm][best_index] != 0,
+			_targets_ids_by_realm[best_realm][best_index])
+
+
+# Kit de los falsos (H5): el estado de combate del jugador falso [param net_id] tras el último tick (null si ya
+# no está).
+func _fake_combat_state(net_id: int) -> CombatState:
+	var entity: NetEntity = _registry.get_entity(net_id)
+	var character: PlayerCharacter = entity.get_character() if entity != null else null
+	return character.combat if character != null else null
+
+
+# Kit de los falsos: la fracción de vida del jugador falso [param net_id] (0 derribado o muerto).
+func _fake_health_fraction(net_id: int) -> float:
+	var combatant: Combatant = _combat.get_combatant(net_id)
+	if combatant == null or combatant.max_health <= 0:
+		return 1.0
+	return float(combatant.health) / float(combatant.max_health)
+
+
+# Kit de los falsos: los pies del aliado derribado (un jugador de su reino) más cercano a [param position] para el
+# jugador falso [param net_id], o null. Sin derribados en la zona no recorre a nadie.
+func _find_downed_ally(position: Vector3, net_id: int) -> Variant:
+	if _combat.downed.downed_count() == 0:
+		return null
+	var me: Combatant = _combat.get_combatant(net_id)
+	if me == null or not me.is_alive():
+		return null
+	var best: Variant = null
+	var best_distance: float = INF
+	for other: Combatant in _combat.get_sorted():
+		if other == me or not other.is_downed() or other.get_realm() != me.get_realm() \
+				or not _is_player(other.get_id()):
+			continue
+		var feet: Vector3 = other.entity.get_position()
+		var distance: float = position.distance_squared_to(feet)
+		if distance < best_distance:
+			best_distance = distance
+			best = feet
 	return best
 
 
@@ -1790,13 +1953,15 @@ func _count_allies(center: Vector3, radius: float, net_id: int) -> int:
 	return count
 
 
-# Reúne, por reino, las posiciones de los jugadores vivos (personas y falsos) en este tick.
+# Reúne, por reino, las posiciones de los jugadores vivos (personas y falsos) en este tick. Un derribado (H3c) no está
+# vivo: no cuenta en la reunión ni como uno de los suyos peleando en el fuerte (lo mismo que el cliente, para el que su
+# vida dibujada es 0; BotAllySight).
 func _rebuild_ally_cache() -> void:
 	_allies_tick = _tick
 	_allies_by_realm.clear()
 	_ally_ids_by_realm.clear()
 	for other: Combatant in _combat.get_sorted():
-		if other.is_dead() or other.entity.kind != NetProtocol.EntityKind.PLAYER or _lingering.has(other.get_id()):
+		if not other.is_alive() or other.entity.kind != NetProtocol.EntityKind.PLAYER or _lingering.has(other.get_id()):
 			continue
 		var realm: int = other.get_realm()
 		if not _allies_by_realm.has(realm):
@@ -1833,6 +1998,8 @@ func _rebuild_target_cache() -> void:
 	_targets_by_realm.clear()
 	_targets_ids_by_realm.clear()
 	_targets_npc_by_realm.clear()
+	_targets_velocity_by_realm.clear()
+	_targets_downed_by_realm.clear()
 	for other: Combatant in _combat.get_sorted():
 		if other.is_dead() or other.immortal or other.is_protected(_tick):
 			continue
@@ -1844,9 +2011,14 @@ func _rebuild_target_cache() -> void:
 			_targets_by_realm[realm] = PackedVector3Array()
 			_targets_ids_by_realm[realm] = PackedInt32Array()
 			_targets_npc_by_realm[realm] = PackedByteArray()
+			_targets_velocity_by_realm[realm] = PackedVector3Array()
+			_targets_downed_by_realm[realm] = PackedByteArray()
+		var character: PlayerCharacter = other.entity.get_character()
 		_targets_by_realm[realm].append(other_position)
 		_targets_ids_by_realm[realm].append(other.get_id())
 		_targets_npc_by_realm[realm].append(1 if _npcs.has(other.get_id()) else 0)
+		_targets_velocity_by_realm[realm].append(character.velocity if character != null else Vector3.ZERO)
+		_targets_downed_by_realm[realm].append(1 if other.is_downed() else 0)
 
 
 # true si un bot de [param my_realm] puede dañar a uno de [param other_realm] en esta zona.
@@ -1911,6 +2083,12 @@ func _register_commands() -> void:
 			_net_set_weapon)
 	_commands.register(&"spawn_dummy", "spawn_dummy <x> <y> <z> [quieto|bloqueando|girando]",
 			_console_spawn_dummy, _net_spawn_dummy)
+	_commands.register(&"cooldowns_off", "cooldowns_off <jugador> [on|off]", _console_cooldowns_off,
+			_net_cooldowns_off)
+	_commands.register(&"apply_status", "apply_status <jugador> <efecto> [ticks]", _console_apply_status,
+			_net_apply_status)
+	_commands.register(&"down", "down <jugador>", _console_down, _net_down)
+	_commands.register(&"refill", "refill <jugador>", _console_refill, _net_refill)
 	_fortresses.register_commands(_commands, Callable(self, "_next_tick"))
 	if _npc_system != null:
 		_npc_system.register_commands(_commands)
@@ -1982,7 +2160,7 @@ func _net_teleport(ctx: CommandRegistry.Context) -> int:
 
 func _net_heal(ctx: CommandRegistry.Context) -> int:
 	var combatant: Combatant = _combatant_of_peer(ctx)
-	if combatant == null or combatant.is_dead():
+	if combatant == null or not combatant.is_alive():
 		return CommandRegistry.Result.REFUSED
 	_combat.heal(combatant)
 	return CommandRegistry.Result.OK
@@ -2021,9 +2199,65 @@ func _net_set_weapon(ctx: CommandRegistry.Context) -> int:
 	if ctx.payload.size() != 2:
 		return CommandRegistry.Result.BAD_ARGUMENTS
 	var weapon_id: int = ctx.payload.decode_u16(0)
-	if not _combat.set_weapon(combatant, weapon_id):
+	if CombatCatalog.weapon(weapon_id) == null:
 		ctx.note = "arma %d inexistente" % weapon_id
 		return CommandRegistry.Result.BAD_ARGUMENTS
+	# El 5 es set_loadout con el arma en la ranura 1 (docs/habilidades.md, sección 3.5), con su LOADOUT.
+	if not _combat.set_weapon(combatant, weapon_id, _tick + 1):
+		return CommandRegistry.Result.REFUSED
+	return CommandRegistry.Result.OK
+
+
+# 13 cooldowns_off (docs/habilidades.md, sección 5.1): u8 0 o 1, el bit 7 de combat_flags2.
+func _net_cooldowns_off(ctx: CommandRegistry.Context) -> int:
+	var combatant: Combatant = _combatant_of_peer(ctx)
+	if combatant == null:
+		return CommandRegistry.Result.REFUSED
+	if ctx.payload.size() != 1 or ctx.payload[0] > 1:
+		return CommandRegistry.Result.BAD_ARGUMENTS
+	var enabled: bool = ctx.payload[0] == 1
+	_combat.set_cooldowns_off(combatant, enabled)
+	ctx.note = "sin reutilizaciones" if enabled else "con reutilizaciones"
+	return CommandRegistry.Result.OK
+
+
+# 14 apply_status: u8 status_id y u16 ticks (0 = los del dato). Se lo aplica quien lo envía, sin autor, en
+# el tick que va a simular el servidor.
+func _net_apply_status(ctx: CommandRegistry.Context) -> int:
+	var combatant: Combatant = _combatant_of_peer(ctx)
+	if combatant == null:
+		return CommandRegistry.Result.REFUSED
+	if ctx.payload.size() != NetMessages.DebugCommand.APPLY_STATUS_PAYLOAD_SIZE:
+		return CommandRegistry.Result.BAD_ARGUMENTS
+	var status_id: int = ctx.payload.decode_u8(0)
+	var ticks: int = ctx.payload.decode_u16(1)
+	if CombatCatalog.status(status_id) == null:
+		ctx.note = "efecto %d inexistente" % status_id
+		return CommandRegistry.Result.BAD_ARGUMENTS
+	if not _combat.apply_status(combatant, status_id, _tick + 1, ticks):
+		return CommandRegistry.Result.REFUSED
+	ctx.note = "%s, %d ticks" % [CombatCatalog.status(status_id).name, ticks]
+	return CommandRegistry.Result.OK
+
+
+# 15 down (docs/habilidades.md, sección 4.5): se derriba a sí mismo sin autor (al desangrarse, DEATH sin KILL), en
+# el tick que va a simular el servidor. Rechazado fuera de las zonas RVR, en la zona segura propia o sin estar vivo.
+func _net_down(ctx: CommandRegistry.Context) -> int:
+	if not ctx.payload.is_empty():
+		return CommandRegistry.Result.BAD_ARGUMENTS
+	var combatant: Combatant = _combatant_of_peer(ctx)
+	if combatant == null or not _combat.down(combatant, _tick + 1):
+		return CommandRegistry.Result.REFUSED
+	return CommandRegistry.Result.OK
+
+
+# 16 refill: repone las cargas de los consumibles de su plantilla (set_charges, con LOADOUT al dueño).
+func _net_refill(ctx: CommandRegistry.Context) -> int:
+	if not ctx.payload.is_empty():
+		return CommandRegistry.Result.BAD_ARGUMENTS
+	var combatant: Combatant = _combatant_of_peer(ctx)
+	if combatant == null or not _combat.refill(combatant, _tick + 1):
+		return CommandRegistry.Result.REFUSED
 	return CommandRegistry.Result.OK
 
 
@@ -2096,6 +2330,8 @@ func _console_heal(ctx: CommandRegistry.Context) -> String:
 		return "No hay ningún jugador «%s»" % ctx.args[0]
 	if combatant.is_dead():
 		return "%s está muerto" % combatant.entity.display_name
+	if combatant.is_downed():
+		return "%s está derribado" % combatant.entity.display_name
 	_combat.heal(combatant)
 	return "%s curado" % combatant.entity.display_name
 
@@ -2142,9 +2378,76 @@ func _console_set_weapon(ctx: CommandRegistry.Context) -> String:
 	var weapon_id: int = CombatCatalog.weapon_id(StringName(ctx.args[1]))
 	if weapon_id == 0 and ctx.args[1].is_valid_int():
 		weapon_id = ctx.args[1].to_int()
-	if not _combat.set_weapon(combatant, weapon_id):
+	if CombatCatalog.weapon(weapon_id) == null:
 		return "No existe el arma «%s»" % ctx.args[1]
+	if not _combat.set_weapon(combatant, weapon_id, _tick + 1):
+		return "%s está derribado" % combatant.entity.display_name
 	return "%s lleva ahora %s" % [combatant.entity.display_name, ctx.args[1]]
+
+
+func _console_cooldowns_off(ctx: CommandRegistry.Context) -> String:
+	if ctx.args.is_empty() or ctx.args.size() > 2:
+		return "Uso: cooldowns_off <jugador> [on|off]"
+	var combatant: Combatant = _combatant_by_name(ctx.args[0])
+	if combatant == null:
+		return "No hay ningún jugador «%s»" % ctx.args[0]
+	var enabled: bool = (combatant.get_character().combat.combat_flags2
+			& CombatState.FLAG2_NO_COOLDOWNS) == 0
+	if ctx.args.size() == 2:
+		match ctx.args[1].to_lower():
+			"on", "1", "si", "sí":
+				enabled = true
+			"off", "0", "no":
+				enabled = false
+			_:
+				return "Uso: cooldowns_off <jugador> [on|off]"
+	_combat.set_cooldowns_off(combatant, enabled)
+	return "%s para %s" % ["Sin reutilizaciones" if enabled else "Con reutilizaciones",
+			combatant.entity.display_name]
+
+
+func _console_apply_status(ctx: CommandRegistry.Context) -> String:
+	if ctx.args.size() < 2 or ctx.args.size() > 3:
+		return "Uso: apply_status <jugador> <efecto> [ticks]"
+	var combatant: Combatant = _combatant_by_name(ctx.args[0])
+	if combatant == null:
+		return "No hay ningún jugador «%s»" % ctx.args[0]
+	var status_id: int = CombatCatalog.status_id(StringName(ctx.args[1]))
+	if status_id == 0 and ctx.args[1].is_valid_int():
+		status_id = ctx.args[1].to_int()
+	if CombatCatalog.status(status_id) == null:
+		return "No existe el efecto «%s»" % ctx.args[1]
+	var ticks: int = 0
+	if ctx.args.size() == 3:
+		if not ctx.args[2].is_valid_int() or ctx.args[2].to_int() < 0 \
+				or ctx.args[2].to_int() > 0xFFFF:
+			return "Uso: apply_status <jugador> <efecto> [ticks]"
+		ticks = ctx.args[2].to_int()
+	if not _combat.apply_status(combatant, status_id, _tick + 1, ticks):
+		return "%s no está en pie" % combatant.entity.display_name
+	return "%s aplicado a %s" % [CombatCatalog.status(status_id).name, combatant.entity.display_name]
+
+
+func _console_down(ctx: CommandRegistry.Context) -> String:
+	if ctx.args.size() != 1:
+		return "Uso: down <jugador>"
+	var combatant: Combatant = _combatant_by_name(ctx.args[0])
+	if combatant == null:
+		return "No hay ningún jugador «%s»" % ctx.args[0]
+	if not _combat.down(combatant, _tick + 1):
+		return "%s no puede quedar derribado aquí" % combatant.entity.display_name
+	return "%s derribado" % combatant.entity.display_name
+
+
+func _console_refill(ctx: CommandRegistry.Context) -> String:
+	if ctx.args.size() != 1:
+		return "Uso: refill <jugador>"
+	var combatant: Combatant = _combatant_by_name(ctx.args[0])
+	if combatant == null:
+		return "No hay ningún jugador «%s»" % ctx.args[0]
+	if not _combat.refill(combatant, _tick + 1):
+		return "%s no tiene cargas que reponer" % combatant.entity.display_name
+	return "Cargas de %s repuestas" % combatant.entity.display_name
 
 
 func _console_spawn_dummy(ctx: CommandRegistry.Context) -> String:
@@ -2319,14 +2622,15 @@ func _presence_candidates(_tick_now: int) -> Array:
 	return candidates
 
 
-# Los pies de los personajes vivos (jugadores y PNJ): los que impiden cerrar la puerta si solapan el vano.
+# Los pies de los personajes vivos o derribados (jugadores y PNJ): los que impiden cerrar la puerta si solapan
+# el vano (docs/habilidades.md, sección 4.5: la puerta no se repara con un derribado en el vano).
 func _gate_blockers() -> PackedVector3Array:
 	var positions := PackedVector3Array()
 	for entity: NetEntity in _registry.get_sorted():
 		if entity.get_character() == null:
 			continue
 		var combatant: Combatant = _combat.get_combatant(entity.net_id)
-		if combatant != null and combatant.is_alive():
+		if combatant != null and not combatant.is_dead():
 			positions.append(entity.get_position())
 	return positions
 
@@ -2710,6 +3014,8 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 			_handle_respawn_request(peer, bytes)
 		NetProtocol.MSG_UNSTUCK_REQUEST:
 			_handle_unstuck_request(peer, bytes)
+		NetProtocol.MSG_LOADOUT_SELECT:
+			_handle_loadout_select(peer, bytes)
 		_:
 			# El chat y los grupos (0x40 a 0x4F) los atiende el servicio social.
 			if not _social.handle_packet(peer, msg_type, bytes, _tick):
@@ -2832,6 +3138,25 @@ func _handle_unstuck_request(peer: ServerPeer, bytes: PackedByteArray) -> void:
 		_add_strike(peer, "petición de /atascado mal formada")
 		return
 	_request_unstuck(peer)
+
+
+# LOADOUT_SELECT (docs/habilidades.md, secciones 4.6 y 5.1): la plantilla de la siguiente aparición. Vale en
+# LOADING (desde el WELCOME, antes de CLIENT_READY) e IN_WORLD; ya ha pasado por el limitador de fiables. 0 = la
+# de por defecto, sin aviso; un id que no existe o no se puede elegir cuenta un aviso y no cambia nada.
+func _handle_loadout_select(peer: ServerPeer, bytes: PackedByteArray) -> void:
+	if peer.state != ServerPeer.State.LOADING and peer.state != ServerPeer.State.IN_WORLD:
+		_add_strike(peer, "LOADOUT_SELECT inesperado")
+		return
+	var select: NetMessages.LoadoutSelect = NetMessages.LoadoutSelect.decode(bytes)
+	if select == null:
+		_add_strike(peer, "LOADOUT_SELECT mal formado")
+		return
+	if select.template_id != 0:
+		var template: EquipmentTemplate = CombatCatalog.template(select.template_id)
+		if template == null or not template.selectable:
+			_add_strike(peer, "plantilla de equipo no válida (%d)" % select.template_id)
+			return
+	peer.pending_template_id = select.template_id
 
 
 # Suma un aviso y expulsa al peer si llega al límite (50 en 600 ticks).
@@ -3206,6 +3531,19 @@ func _combat_report() -> Dictionary:
 	if _combat != null:
 		for stat: StringName in _combat.stats:
 			report[String(stat)] = _combat.stats[stat]
+		# Los efectos de estado (docs/habilidades.md, 4.3): aplicados, quitados, pulsos y vida curada.
+		for stat: StringName in _combat.status.stats:
+			report[String(stat)] = _combat.status.stats[stat]
+		# Los proyectiles (docs/habilidades.md, 4.4): disparos, impactos, bajas, criba y pico de vivos.
+		for stat: StringName in _combat.projectiles.stats:
+			report[String(stat)] = _combat.projectiles.stats[stat]
+		report["projectiles_live"] = _combat.projectiles.live_count()
+		# El derribado (docs/habilidades.md, 4.5): derribos, levantados, rematados, desangrados e interacciones.
+		for stat: StringName in _combat.downed.stats:
+			report[String(stat)] = _combat.downed.stats[stat]
+		report["downed_now"] = _combat.downed.downed_count()
+	report["projectile_messages_sent"] = _projectile_messages_sent
+	report["projectile_bytes_sent"] = _projectile_bytes_sent
 	report["events_sent"] = _events_sent
 	report["event_bytes_sent"] = _event_bytes_sent
 	report["dummies"] = get_dummy_count() if _combat != null else 0

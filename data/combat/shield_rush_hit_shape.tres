@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="HitShape" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/combat/hit_shape.gd" id="1_shape"]
+
+[resource]
+script = ExtResource("1_shape")
+range_m = 1.8
+inner_m = 0.0
+angle_deg = 140.0
+height_min = 0.2
+height_max = 2.0

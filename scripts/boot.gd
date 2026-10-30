@@ -52,6 +52,7 @@ const NETWORK_ARGS: Array[String] = ["--local", "--bot"]
 const NETWORK_ARG_PREFIXES: Array[String] = [
 	"--connect=", "--bots=", "--name=", "--port=", "--net-sim=", "--quit-after-ticks=",
 	"--quit-at-server-tick=", "--report=", "--state-log=", "--bot-seed=", "--bot-cheat=", "--bot-brain=",
+	"--loadout=",
 ]
 
 

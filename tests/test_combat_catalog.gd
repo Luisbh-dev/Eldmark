@@ -1,7 +1,8 @@
 extends TestCase
-## Pruebas de [CombatCatalog] (docs/combate.md sección 2): carga de data/combat/, IDs, ids
-## repetidos, validación de rangos, conversión a ticks, curva de la esquiva horneada y huella de
-## la parte predicha.
+## Pruebas de [CombatCatalog] (docs/combate.md sección 2; docs/habilidades.md sección 2.2): carga de
+## data/combat/, IDs de cada espacio pedidos por nombre, ids repetidos, validación de rangos y de las
+## reglas de la sección 2.2, conversión a ticks, curvas horneadas (esquiva y avances), golpe
+## sintetizado de las habilidades, huella de la parte predicha y el camino rápido de simulate().
 
 const DATA_DIR: String = "res://data/combat"
 
@@ -21,8 +22,14 @@ func test_data_directory_loads_without_errors() -> void:
 	assert_eq(_names_starting_with(tables.weapon_ids, "sword_").size(), 1, "un arma de jugador: espada y escudo")
 	assert_eq(_names_starting_with(tables.attack_ids, "npc_").size(), 8, "8 ataques de PNJ (ligero y fuerte de 4 armas)")
 	assert_eq(_names_starting_with(tables.weapon_ids, "npc_").size(), 4, "4 armas de PNJ")
-	assert_eq(tables.attacks.size(), 12, "12 ataques en total")
-	assert_eq(tables.weapons.size(), 5, "5 armas en total")
+	assert_eq(_names_starting_with(tables.attack_ids, "bow_").size(), 2, "2 ataques de arco: rápido y tensado")
+	assert_eq(_names_starting_with(tables.weapon_ids, "bow").size(), 1, "el arco")
+	assert_eq(tables.attacks.size(), 14, "14 ataques en total")
+	assert_eq(tables.weapons.size(), 6, "6 armas en total")
+	assert_eq(tables.abilities.size(), 8, "6 habilidades (3 de espada y escudo, 3 de arco) y 2 pociones")
+	assert_eq(tables.statuses.size(), 4, "4 efectos: bleed, potion_regen, rooted y slowed")
+	assert_eq(tables.projectiles.size(), 1, "un proyectil: la flecha")
+	assert_eq(tables.templates.size(), 2, "2 plantillas: escudero y tirador")
 	assert_not_null(tables.rules, "hay reglas")
 
 
@@ -185,7 +192,7 @@ func test_heavy_attack_validation_checks_the_charge() -> void:
 
 func test_weapon_validation_detects_bad_values() -> void:
 	var cases: Dictionary[String, String] = {
-		"el combo ligero debe tener 3 golpes": "combo",
+		"el combo ligero debe tener de 1 a 3 golpes": "combo",
 		"falta el ataque fuerte": "heavy",
 		"falta la esquiva": "dodge",
 		"block_mitigation fuera de rango": "mitigation",
@@ -195,7 +202,7 @@ func test_weapon_validation_detects_bad_values() -> void:
 		var weapon: WeaponDefinition = _weapon(&"arma")
 		match cases[expected]:
 			"combo":
-				weapon.light_combo.pop_back()
+				weapon.light_combo.clear()
 			"heavy":
 				weapon.heavy_attack = null
 			"dodge":
@@ -457,6 +464,383 @@ func test_sim_hash_includes_the_combat_hash() -> void:
 	assert_true(changed != with_data, "otra huella del catálogo, otro sim_hash")
 
 
+# --- Fase 4: habilidades, efectos, proyectiles y plantillas (docs/habilidades.md, sección 2) ---
+
+func test_every_id_space_is_alphabetical_and_asked_by_name() -> void:
+	var tables: CombatTables = CombatCatalog.build_from_directory(DATA_DIR)
+	var spaces: Dictionary[String, Dictionary] = {
+		"habilidad": tables.ability_ids, "efecto": tables.status_ids,
+		"proyectil": tables.projectile_ids, "plantilla": tables.template_ids,
+	}
+	for space: String in spaces:
+		var ids: Dictionary = spaces[space]
+		var names: Array[String] = _sorted_names(ids)
+		for i: int in names.size():
+			assert_eq(ids[StringName(names[i])], i + 1, "%s %s es la número %d" % [space, names[i], i + 1])
+	for i: int in tables.abilities.size():
+		assert_eq(tables.abilities[i].id, i + 1, "la habilidad del índice %d lleva el ID %d" % [i, i + 1])
+	# Por nombre, en el catálogo global (nadie escribe un ID a mano).
+	CombatCatalog.reload()
+	var global: CombatTables = CombatCatalog.tables()
+	for ability_name: StringName in [&"shield_bash", &"shield_rush", &"shield_wall", &"bow_volley",
+			&"bow_slowing_shot", &"bow_evasive_shot", &"potion_health", &"potion_stamina"]:
+		var id: int = CombatCatalog.ability_id(ability_name)
+		assert_true(id > 0, "ability_id(%s)" % ability_name)
+		assert_eq(CombatCatalog.ability(id).name, ability_name, "ability(ability_id(%s))" % ability_name)
+	for status_name: StringName in [&"slowed", &"potion_regen", &"bleed", &"rooted"]:
+		var id: int = CombatCatalog.status_id(status_name)
+		assert_true(id > 0 and id <= 255, "status_id(%s) cabe en u8" % status_name)
+		assert_eq(CombatCatalog.status(id).name, status_name, "status(status_id(%s))" % status_name)
+	assert_eq(CombatCatalog.projectile(CombatCatalog.projectile_id(&"arrow")).name, &"arrow", "la flecha")
+	assert_eq(CombatCatalog.template(CombatCatalog.template_id(&"squire")).id, &"squire", "el escudero")
+	assert_eq(CombatCatalog.template(CombatCatalog.template_id(&"marksman")).id, &"marksman", "el tirador")
+	assert_eq(CombatCatalog.template_count(), 2, "dos plantillas")
+	assert_eq(CombatCatalog.default_template_id(), CombatCatalog.template_id(&"squire"),
+			"la plantilla por defecto es el escudero")
+	assert_eq(CombatCatalog.consumable_ids(), PackedInt32Array([
+		CombatCatalog.ability_id(&"potion_health"), CombatCatalog.ability_id(&"potion_stamina"),
+	]), "consumibles en orden de botón: vida (R) y resistencia (T)")
+	for missing: int in [CombatCatalog.ability_id(&"no_existe"), CombatCatalog.status_id(&"no_existe"),
+			CombatCatalog.projectile_id(&"no_existe"), CombatCatalog.template_id(&"no_existe")]:
+		assert_eq(missing, 0, "un nombre que no existe da 0")
+	assert_null(global.ability(0), "0 es «ninguna» en las habilidades")
+	assert_null(global.status(0), "en los efectos")
+	assert_null(global.projectile(0), "en los proyectiles")
+	assert_null(global.template(0), "y en las plantillas")
+	assert_null(global.ability(global.abilities.size() + 1), "una habilidad que no existe")
+
+
+func test_sword_and_shield_abilities_in_ticks() -> void:
+	var tables: CombatTables = CombatCatalog.build_from_directory(DATA_DIR)
+	var sword_id: int = tables.weapon_ids[&"sword_shield"]
+	var weapon: WeaponTicks = tables.weapon(sword_id)
+	var bash_id: int = tables.ability_ids[&"shield_bash"]
+	var rush_id: int = tables.ability_ids[&"shield_rush"]
+	var wall_id: int = tables.ability_ids[&"shield_wall"]
+	assert_eq(weapon.ability_ids, PackedInt32Array([bash_id, rush_id, wall_id]), "ranuras 1, 2 y 3")
+	assert_eq(weapon.ability_id(1), rush_id, "ability_id(1)")
+	assert_eq(weapon.ability_id(3), 0, "fuera de rango, 0")
+	assert_true(weapon.can_block, "la espada y escudo bloquea")
+	# [lanzamiento, activo, recuperación, reutilización, ranura] (docs/habilidades.md, 2.3).
+	var expected: Dictionary[StringName, Array] = {
+		&"shield_bash": [18, 6, 24, 720, 0],
+		&"shield_rush": [9, 24, 21, 960, 1],
+		&"shield_wall": [12, 360, 0, 1080, 2],
+	}
+	for ability_name: StringName in expected:
+		var ability: AbilityTicks = tables.ability(tables.ability_ids[ability_name])
+		var want: Array = expected[ability_name]
+		assert_eq(ability.cast_ticks, want[0], "%s: lanzamiento" % ability_name)
+		assert_eq(ability.active_ticks, want[1], "%s: activo" % ability_name)
+		assert_eq(ability.recovery_ticks, want[2], "%s: recuperación" % ability_name)
+		assert_eq(ability.cooldown_ticks, want[3], "%s: reutilización" % ability_name)
+		assert_eq(ability.slot, want[4], "%s: ranura" % ability_name)
+		assert_eq(ability.total_ticks, want[0] + want[1] + want[2], "%s: duración" % ability_name)
+		assert_eq(ability.weapon_id, sword_id, "%s: la lleva la espada y escudo" % ability_name)
+		assert_false(ability.is_consumable(), "%s: no es un consumible" % ability_name)
+		assert_true(ability.cooldown_ticks >= ability.total_ticks + AbilityTicks.REARM_TICKS,
+				"%s: reutilización ≥ duración + el margen del byte de acción" % ability_name)
+	var bash: AbilityTicks = tables.ability(bash_id)
+	assert_eq(bash.hit.stun_ticks, 48, "el golpe de escudo aturde 0,8 s")
+	assert_true(bash.hit.unblockable, "imbloqueable")
+	assert_eq(bash.hit.base_damage, 60, "60 de daño")
+	assert_eq(bash.hit.damage_type, DamageFormula.DamageType.BLUNT, "contundente")
+	assert_near(bash.hit.shape.range_m, 2.2, 1e-9, "sector de 2,2 m")
+	assert_near(bash.hit.shape.angle_deg, 90.0, 1e-9, "de 90 grados")
+	assert_near(bash.lunge_speed, 1.0, 1e-9, "avance 1 m/s")
+	assert_near(bash.move_speed_scale, 0.2, 1e-9, "movimiento ×0,2")
+	var rush: AbilityTicks = tables.ability(rush_id)
+	assert_eq(rush.dash_from_ticks, 9, "la embestida avanza desde el compromiso")
+	assert_eq(rush.dash_to_ticks, 33, "durante todo el activo")
+	assert_eq(rush.dash_speeds.size(), 24, "una velocidad por tick del avance")
+	var distance: float = 0.0
+	for speed: float in rush.dash_speeds:
+		distance += speed / float(CombatCatalog.TICK_RATE)
+		assert_near(speed, 15.0, 1e-4, "curva plana: 6 m en 0,4 s son 15 m/s")
+		assert_eq(speed, PlayerState.to_f32(speed), "exacta en f32")
+	assert_near(distance, 6.0, 1e-4, "avance de 6 m")
+	assert_eq(rush.dash_direction, 0, "hacia look_yaw")
+	assert_true(rush.is_dashing(9) and rush.is_dashing(32), "avanza en [9, 33)")
+	assert_false(rush.is_dashing(8) or rush.is_dashing(33), "y fuera no")
+	assert_eq(rush.dash_speed_at(9), rush.dash_speeds[0], "dash_speed_at(9)")
+	assert_eq(rush.dash_speed_at(33), 0.0, "sin velocidad fuera de la ventana")
+	assert_true(rush.hit.hyper_armor, "entereza en el activo")
+	assert_eq(rush.hit.stagger_ticks, 24, "tambaleo 0,4 s")
+	assert_near(rush.hit.knockback_speed, 6.0, 1e-9, "empuje 6 m/s")
+	assert_near(rush.hit.shape.range_m, 1.8, 1e-9, "sector de 1,8 m")
+	assert_near(rush.hit.shape.angle_deg, 140.0, 1e-9, "de 140 grados")
+	var wall: AbilityTicks = tables.ability(wall_id)
+	assert_true(wall.channel and wall.channel_hold and wall.blocks, "el muro es una canalización que bloquea y se suelta")
+	assert_false(wall.channel_breaks_on_move, "moverse no lo acaba")
+	assert_eq(wall.cancel_to_dodge_from_ticks, 12, "a esquiva desde el fin del lanzamiento")
+	assert_eq(wall.cancel_to_attack_from_ticks, 372, "sin recuperación: -1 es el final")
+	assert_near(wall.move_speed_scale, 0.3, 1e-9, "movimiento ×0,3")
+	assert_near(wall.turn_rate, 4.0, 1e-9, "giro 4")
+	assert_vec_near(wall.wall_half_extents, Vector3(1.3, 1.0, 0.15), 1e-6, "caja de 2,6 × 2,0 × 0,3 m")
+	assert_near(wall.wall_forward_m, 0.7, 1e-9, "a 0,7 m delante")
+	assert_null(wall.hit.shape, "el muro no golpea")
+
+
+func test_bow_and_arrow_in_ticks() -> void:
+	var tables: CombatTables = CombatCatalog.build_from_directory(DATA_DIR)
+	var bow_id: int = tables.weapon_ids[&"bow"]
+	var bow: WeaponTicks = tables.weapon(bow_id)
+	var arrow_id: int = tables.projectile_ids[&"arrow"]
+	assert_eq(bow.light_ids, PackedInt32Array([tables.attack_ids[&"bow_quick"]]), "el ligero es el disparo rápido (combo de 1)")
+	assert_eq(bow.heavy_id, tables.attack_ids[&"bow_drawn"], "el fuerte es el tensado")
+	assert_false(bow.can_block, "el arco no bloquea")
+	assert_eq(bow.dodge.duration_ticks, 27, "la esquiva de la espada")
+	assert_eq(bow.ability_ids, PackedInt32Array([tables.ability_ids[&"bow_volley"],
+			tables.ability_ids[&"bow_slowing_shot"], tables.ability_ids[&"bow_evasive_shot"]]),
+			"abanico, lastrante y salto atrás")
+	var quick: AttackTicks = tables.attack(tables.attack_ids[&"bow_quick"])
+	assert_eq([quick.windup_ticks, quick.active_ticks, quick.recovery_ticks], [15, 1, 21], "rápido: 15 + 1 + 21")
+	assert_eq(quick.total_ticks, 37, "37 ticks")
+	assert_eq(quick.cancel_to_dodge_from_ticks, 16, "a esquiva desde 0,27 s")
+	assert_eq(quick.projectile_id, arrow_id, "dispara una flecha")
+	assert_near(quick.projectile_speed_mps, 45.0, 1e-9, "a 45 m/s")
+	assert_eq(quick.base_damage, 60, "60")
+	assert_eq(quick.damage_type, DamageFormula.DamageType.PIERCE, "perforante")
+	assert_null(quick.shape, "sin forma: con proyectil puede ser nula")
+	assert_near(quick.move_speed_scale, 0.5, 1e-9, "movimiento ×0,5")
+	assert_near(quick.turn_rate, 8.0, 1e-9, "giro 8")
+	var drawn: AttackTicks = tables.attack(tables.attack_ids[&"bow_drawn"])
+	assert_true(drawn.heavy, "el tensado es un fuerte")
+	assert_eq([drawn.windup_ticks, drawn.active_ticks, drawn.recovery_ticks], [3, 1, 18], "tras soltar: 3 + 1 + 18")
+	assert_eq([drawn.charge_min_ticks, drawn.charge_max_ticks], [21, 60], "carga 0,35-1,0 s")
+	assert_near(drawn.projectile_speed_mps, 40.0, 1e-9, "40 m/s a carga mínima")
+	assert_near(drawn.charge_speed_scale, 1.75, 1e-9, "70 m/s a carga máxima")
+	assert_near(drawn.charge_damage_scale, 2.0, 1e-9, "90 → 180")
+	assert_eq(drawn.stamina_cost, 0, "sin resistencia")
+	assert_near(drawn.charge_move_scale, 0.5, 1e-9, "carga: movimiento ×0,5")
+	assert_near(drawn.charge_turn_rate, 8.0, 1e-9, "carga: giro 8")
+	# [lanzamiento, activo, recuperación, reutilización, velocidad, daño]
+	var expected: Dictionary[StringName, Array] = {
+		&"bow_volley": [18, 1, 24, 600, 45.0, 55],
+		&"bow_slowing_shot": [21, 1, 18, 720, 55.0, 60],
+		&"bow_evasive_shot": [18, 1, 15, 840, 50.0, 60],
+	}
+	for ability_name: StringName in expected:
+		var ability: AbilityTicks = tables.ability(tables.ability_ids[ability_name])
+		var want: Array = expected[ability_name]
+		assert_eq([ability.cast_ticks, ability.active_ticks, ability.recovery_ticks], want.slice(0, 3),
+				"%s: fases" % ability_name)
+		assert_eq(ability.cooldown_ticks, want[3], "%s: reutilización" % ability_name)
+		assert_near(ability.projectile_speed_mps, want[4], 1e-9, "%s: velocidad" % ability_name)
+		assert_eq(ability.hit.base_damage, want[5], "%s: daño" % ability_name)
+		assert_eq(ability.projectile_id, arrow_id, "%s: flecha" % ability_name)
+		assert_eq(ability.hit.projectile_id, arrow_id, "%s: el golpe sintetizado lleva la flecha" % ability_name)
+		assert_eq(ability.weapon_id, bow_id, "%s: del arco" % ability_name)
+	var volley: AbilityTicks = tables.ability(tables.ability_ids[&"bow_volley"])
+	assert_eq(volley.projectile_count, 3, "abanico de 3 flechas")
+	assert_near(volley.projectile_spread_deg, 7.0, 1e-9, "a ±7 grados")
+	var slowing: AbilityTicks = tables.ability(tables.ability_ids[&"bow_slowing_shot"])
+	assert_eq(slowing.hit.on_hit_status_id, tables.status_ids[&"slowed"], "la lastrante ralentiza")
+	var evasive: AbilityTicks = tables.ability(tables.ability_ids[&"bow_evasive_shot"])
+	assert_eq([evasive.dash_from_ticks, evasive.dash_to_ticks, evasive.dash_direction], [0, 18, 1],
+			"salto atrás en [0, 0,3 s)")
+	var distance: float = 0.0
+	for speed: float in evasive.dash_speeds:
+		distance += speed / float(CombatCatalog.TICK_RATE)
+	assert_near(distance, 4.0, 1e-4, "de 4 m")
+	assert_true(evasive.dash_speeds[0] > evasive.dash_speeds[evasive.dash_speeds.size() - 1],
+			"más rápido al principio")
+	var arrow: ProjectileTicks = tables.projectile(arrow_id)
+	assert_near(arrow.gravity, 6.0, 1e-9, "gravedad 6 m/s²")
+	assert_near(arrow.radius_m, 0.05, 1e-9, "radio 5 cm")
+	assert_eq(arrow.lifetime_ticks, 120, "2 s de vida")
+
+
+func test_consumables_statuses_templates_and_rules_in_ticks() -> void:
+	var tables: CombatTables = CombatCatalog.build_from_directory(DATA_DIR)
+	assert_eq(tables.consumable_cooldown_ticks, 1200, "reutilización compartida de 20 s")
+	assert_eq(tables.swap_ticks, 24, "cambio de arma 0,4 s")
+	assert_eq(tables.revive_ticks, 180, "levantar 3 s")
+	assert_eq(tables.execute_ticks, 60, "rematar 1 s")
+	assert_eq(tables.downed_ticks, 1200, "desangrarse 20 s")
+	var health: AbilityTicks = tables.ability(tables.ability_ids[&"potion_health"])
+	var stamina: AbilityTicks = tables.ability(tables.ability_ids[&"potion_stamina"])
+	assert_eq([health.cast_ticks, health.active_ticks, health.recovery_ticks], [36, 1, 12], "beber vida: 36 + 1 + 12")
+	assert_eq([stamina.cast_ticks, stamina.active_ticks, stamina.recovery_ticks], [24, 1, 12], "beber resistencia: 24 + 1 + 12")
+	assert_eq([health.consumable_index, stamina.consumable_index], [0, 1], "R y T")
+	assert_eq([health.slot, health.weapon_id], [-1, 0], "sin ranura ni arma")
+	assert_true(health.is_consumable() and stamina.is_consumable(), "son consumibles")
+	assert_eq(health.cooldown_ticks, 0, "usan la reutilización compartida")
+	assert_true(health.interrupt_on_damage and stamina.interrupt_on_damage, "un golpe interrumpe")
+	assert_eq(health.self_status_id, tables.status_ids[&"potion_regen"], "la de vida cura en el tiempo")
+	assert_eq(stamina.stamina_restore, 400, "+400 de resistencia")
+	assert_near(health.move_speed_scale, 0.4, 1e-9, "movimiento ×0,4")
+	var slowed: StatusTicks = tables.status(tables.status_ids[&"slowed"])
+	assert_eq(slowed.kind, StatusEffectDefinition.Kind.SLOW, "slowed ralentiza")
+	assert_near(slowed.move_speed_scale, 0.6, 1e-9, "×0,6")
+	assert_eq(slowed.duration_ticks, 180, "3 s")
+	assert_eq(slowed.stacking, StatusEffectDefinition.Stacking.STRONGEST, "el más fuerte gana")
+	assert_true(slowed.is_movement() and slowed.is_harmful(), "de movimiento y perjudicial")
+	var regen: StatusTicks = tables.status(tables.status_ids[&"potion_regen"])
+	assert_eq([regen.pulse_ticks, regen.pulse_amount, regen.duration_ticks], [30, 50, 180], "50 cada 0,5 s durante 3 s")
+	assert_eq(regen.duration_ticks / regen.pulse_ticks, 6, "6 pulsos")
+	assert_false(regen.is_harmful(), "la curación no perjudica")
+	var bleed: StatusTicks = tables.status(tables.status_ids[&"bleed"])
+	assert_eq([bleed.pulse_ticks, bleed.pulse_amount, bleed.duration_ticks, bleed.max_stacks], [60, 15, 360, 3],
+			"15 por acumulación cada 1 s durante 6 s, hasta 3")
+	assert_eq(bleed.stacking, StatusEffectDefinition.Stacking.STACK, "se acumula")
+	assert_true(bleed.has_pulses() and not bleed.is_movement(), "pulsos, sin movimiento")
+	var rooted: StatusTicks = tables.status(tables.status_ids[&"rooted"])
+	assert_eq(rooted.kind, StatusEffectDefinition.Kind.ROOT, "rooted enraíza")
+	assert_eq(rooted.move_speed_scale, 0.0, "escala 0")
+	assert_eq(rooted.duration_ticks, 90, "1,5 s")
+	var squire: int = tables.template_ids[&"squire"]
+	var marksman: int = tables.template_ids[&"marksman"]
+	assert_eq(tables.template_weapons(squire), PackedInt32Array([tables.weapon_ids[&"sword_shield"]]),
+			"escudero: espada y escudo")
+	assert_eq(tables.template_weapons(marksman), PackedInt32Array([tables.weapon_ids[&"bow"],
+			tables.weapon_ids[&"sword_shield"]]), "tirador: arco y espada y escudo")
+	assert_eq(tables.template_charges_of(squire), CombatState.pack_charges(3, 2), "cargas [3, 2]")
+	assert_eq(tables.template_charges_of(marksman), CombatState.pack_charges(2, 3), "cargas [2, 3]")
+	assert_true(tables.template(squire).selectable and tables.template(marksman).selectable, "elegibles")
+	assert_eq(tables.default_template_id, squire, "por defecto, el escudero")
+	assert_eq(tables.template_weapons(0), PackedInt32Array(), "una plantilla que no existe no tiene armas")
+	assert_eq(tables.template_charges_of(99), 0, "ni cargas")
+
+
+func test_the_synthesized_hit_has_the_ability_windows_and_its_source() -> void:
+	var tables: CombatTables = CombatCatalog.build_from_directory(DATA_DIR)
+	for ability: AbilityTicks in tables.abilities:
+		var hit: AttackTicks = ability.hit
+		if not assert_not_null(hit, "%s tiene golpe sintetizado" % ability.name):
+			continue
+		assert_eq(hit.id, CombatSource.make(CombatSource.Kind.ABILITY, ability.id), "%s: su id es la fuente" % ability.name)
+		assert_eq(CombatSource.kind_of(hit.id), CombatSource.Kind.ABILITY, "%s: de habilidad" % ability.name)
+		assert_eq(CombatSource.id_of(hit.id), ability.id, "%s: con su id" % ability.name)
+		assert_eq(hit.name, ability.name, "%s: nombre" % ability.name)
+		assert_eq(hit.windup_ticks, ability.cast_ticks, "%s: anticipación = lanzamiento" % ability.name)
+		assert_eq(hit.active_ticks, ability.active_ticks, "%s: activo" % ability.name)
+		assert_eq(hit.recovery_ticks, ability.recovery_ticks, "%s: recuperación" % ability.name)
+		assert_eq(hit.total_ticks, ability.total_ticks, "%s: total" % ability.name)
+		assert_eq(hit.active_from(), ability.active_from(), "%s: el golpe empieza en el compromiso" % ability.name)
+		assert_false(tables.attacks.has(hit), "%s: no está en la tabla de ataques" % ability.name)
+
+
+func test_ability_validation_follows_section_2_2() -> void:
+	var base: Array[Resource] = _ability_resources("")
+	assert_eq(CombatCatalog.build_from_resources(base).errors, PackedStringArray(),
+			"el catálogo de prueba es válido")
+	var cases: Dictionary[String, String] = {
+		"está en más de un arma": "two_weapons",
+		"en los consumibles": "weapon_and_consumable",
+		"la reutilización debe ser al menos la duración + 6 ticks": "cooldown",
+		"la reutilización debe ser al menos la duración +": "cooldown_rearm",
+		"una canalización no lleva recuperación": "channel_recovery",
+		"un consumible no lleva reutilización propia": "consumable_cooldown",
+		"la reutilización compartida debe ser al menos su duración + 6 ticks": "shared_cooldown",
+		"la reutilización compartida debe ser al menos su duración +": "shared_cooldown_rearm",
+		"un consumible lleva interrupt_on_damage": "consumable_interrupt",
+		"consumables debe tener exactamente 2": "one_consumable",
+		"la duración debe ser múltiplo exacto de los pulsos": "pulses",
+		"ROOT lleva move_speed_scale 0": "root",
+		"SLOW lleva move_speed_scale > 0": "slow",
+		"la ventana del avance debe caber": "dash",
+		"lifetime_ticks debe ser al menos 1": "lifetime",
+		"projectile_count fuera de rango": "count",
+		"es elegible y lleva el arma de PNJ": "npc_template",
+		"debe llevar una o dos armas": "template_weapons",
+		"cargas fuera de rango": "charges",
+		"el combo ligero debe tener de 1 a 3 golpes": "combo",
+		"tiene 4 habilidades y caben 3": "four_abilities",
+		"el activo debe durar al menos un tick": "active",
+		"id de habilidad repetido": "duplicate",
+	}
+	for expected: String in cases:
+		var resources: Array[Resource] = _ability_resources(cases[expected])
+		var tables: CombatTables = CombatCatalog.build_from_resources(resources)
+		assert_true(_has_error(tables.errors, expected), "«%s»: %s" % [expected, _errors_text(tables.errors)])
+	# Una plantilla que no es elegible sí puede llevar armas de PNJ (pruebas y PNJ).
+	var npc_ok: Array[Resource] = _ability_resources("npc_template_hidden")
+	assert_eq(CombatCatalog.build_from_resources(npc_ok).errors, PackedStringArray(),
+			"selectable = false admite armas npc_*")
+	# Con cast = 0 el compromiso es el primer tick y un combo de 1 golpe vale.
+	var single: Array[Resource] = _ability_resources("single_light")
+	assert_eq(CombatCatalog.build_from_resources(single).errors, PackedStringArray(), "combo de 1 golpe")
+
+
+func test_status_and_template_ids_fit_in_a_byte() -> void:
+	var resources: Array[Resource] = [CombatRules.new()]
+	for i: int in 256:
+		var effect := StatusEffectDefinition.new()
+		effect.id = StringName("efecto_%03d" % i)
+		resources.append(effect)
+	var tables: CombatTables = CombatCatalog.build_from_resources(resources)
+	assert_true(_has_error(tables.errors, "hay 256 efectos y caben 255"), _errors_text(tables.errors))
+	resources.pop_back()
+	assert_eq(CombatCatalog.build_from_resources(resources).errors, PackedStringArray(), "255 sí caben")
+
+
+func test_prediction_hash_covers_every_predicted_ability_field() -> void:
+	var base_hash: int = CombatCatalog.build_from_resources(_ability_resources("")).prediction_hash
+	var predicted: Array[String] = [
+		"ability_cast", "ability_active", "ability_recovery", "ability_cooldown", "ability_channel",
+		"ability_hold", "ability_breaks", "ability_cancel_dodge", "ability_cancel_attack",
+		"ability_move", "ability_turn", "ability_lunge", "ability_dash", "ability_dash_window",
+		"ability_dash_curve", "ability_dash_direction", "ability_air", "ability_stamina",
+		"ability_blocks", "ability_projectile_count", "ability_spread", "ability_projectile_speed",
+		"slot_order", "can_block", "swap", "swap_move", "downed_move_scale", "downed_turn_rate",
+		"revive", "execute", "consumable_cooldown", "consumable_order", "aim_pivot", "aim_shoulder",
+		"aim_v_offset", "aim_range", "aim_converge", "muzzle", "status_kind", "status_scale",
+		"status_name", "arrow_gravity", "arrow_radius", "arrow_lifetime", "attack_projectile_speed",
+		"attack_charge_speed", "attack_projectile",
+	]
+	for what: String in predicted:
+		var changed: int = CombatCatalog.build_from_resources(_ability_resources(what)).prediction_hash
+		assert_true(changed != base_hash, "cambiar «%s» debe cambiar la huella" % what)
+
+
+func test_prediction_hash_ignores_server_only_ability_fields() -> void:
+	var base_hash: int = CombatCatalog.build_from_resources(_ability_resources("")).prediction_hash
+	var server_only: Array[String] = [
+		"ability_damage", "ability_damage_type", "ability_shape", "ability_stagger", "ability_stun",
+		"ability_knockback", "ability_hyper_armor", "ability_unblockable", "ability_target_status",
+		"ability_self_heal", "ability_interrupt", "ability_wall", "status_duration", "status_pulse",
+		"status_amount", "status_stacking", "status_magnitude", "downed_health", "downed_s",
+		"revived_health", "interact_range", "ability_block", "max_projectiles", "template_charges",
+		"template_selectable", "attack_stun", "attack_on_hit_status",
+	]
+	for what: String in server_only:
+		var changed: int = CombatCatalog.build_from_resources(_ability_resources(what)).prediction_hash
+		assert_eq(changed, base_hash, "cambiar «%s» (solo servidor) no debe cambiar la huella" % what)
+
+
+func test_the_fast_path_of_simulate_does_not_look_up_the_catalog() -> void:
+	# El camino rápido de ActionMachine.step (sin acción, sin botones de combate, nada pendiente)
+	# no busca el arma ni recorre las ranuras de habilidades: lo cuentan los contadores de
+	# CombatTables (el coste, el microbanco de tools/combat_balance.gd).
+	CombatCatalog.reload()
+	var tables: CombatTables = CombatCatalog.tables()
+	var scene: PackedScene = load("res://scenes/characters/player_character.tscn") as PackedScene
+	var character: PlayerCharacter = scene.instantiate() as PlayerCharacter
+	tree.root.add_child(character)
+	# Dentro de un tick de física, como la predicción cuando repite entradas.
+	await wait_physics_frames(1)
+	var weapons_before: int = tables.weapon_lookups
+	var abilities_before: int = tables.ability_lookups
+	var dt: float = 1.0 / float(Engine.physics_ticks_per_second)
+	for tick: int in range(1, 61):
+		var input := PlayerInput.new()
+		input.tick = tick
+		input.move = Vector2(0.0, 1.0) if tick % 3 != 0 else Vector2.ZERO
+		input.look_yaw = tick * 0.01
+		input.buttons = PlayerInput.SPRINT | PlayerInput.AIM_LEFT if tick % 2 == 0 else 0
+		character.simulate(input.quantized(), dt)
+	assert_eq(tables.weapon_lookups, weapons_before, "60 ticks quietos o corriendo: ninguna búsqueda de arma")
+	assert_eq(tables.ability_lookups, abilities_before, "ni de habilidades")
+	# Control: un botón de combate sí sale del camino rápido y busca el arma.
+	var attack := PlayerInput.new()
+	attack.tick = 61
+	attack.buttons = PlayerInput.PRIMARY
+	character.simulate(attack, dt)
+	assert_true(tables.weapon_lookups > weapons_before, "PRIMARY sí busca el arma (el contador funciona)")
+	character.queue_free()
+
+
 # --- Utilidades -------------------------------------------------------------------------------
 
 ## Nombres (ordenados) de [param ids] (nombre -> ID).
@@ -612,3 +996,201 @@ func _errors_text(errors: PackedStringArray) -> String:
 
 func assert_same(actual: Variant, expected: Variant, message: String = "") -> bool:
 	return assert_true(is_same(actual, expected), message)
+
+
+func _ability(ability_id: StringName) -> AbilityDefinition:
+	var ability := AbilityDefinition.new()
+	ability.id = ability_id
+	ability.cast_s = 0.1
+	ability.active_s = 0.1
+	ability.recovery_s = 0.1
+	ability.cooldown_s = 2.0
+	return ability
+
+
+func _potion(potion_id: StringName) -> AbilityDefinition:
+	var potion: AbilityDefinition = _ability(potion_id)
+	potion.cooldown_s = 0.0
+	potion.interrupt_on_damage = true
+	return potion
+
+
+## Un catálogo de prueba completo de la fase 4 (reglas con dos pociones y una plantilla por defecto,
+## un arma con un golpe con avance, un disparo y un muro, una flecha y dos efectos) tras aplicar el
+## cambio [param what] (vacío = ninguno; los casos los usan las pruebas de validación y de huella).
+func _ability_resources(what: String) -> Array[Resource]:
+	var rules := CombatRules.new()
+	var weapon: WeaponDefinition = _weapon(&"arma")
+	var heavy: AttackDefinition = weapon.heavy_attack
+	var arrow := ProjectileDefinition.new()
+	arrow.id = &"flecha"
+	var slow := StatusEffectDefinition.new()
+	slow.id = &"lento"
+	slow.kind = StatusEffectDefinition.Kind.SLOW
+	slow.duration_s = 2.0
+	slow.move_speed_scale = 0.5
+	slow.stacking = StatusEffectDefinition.Stacking.STRONGEST
+	var regen := StatusEffectDefinition.new()
+	regen.id = &"cura"
+	regen.kind = StatusEffectDefinition.Kind.HEAL_OVER_TIME
+	regen.duration_s = 2.0
+	regen.pulse_every_s = 0.5
+	regen.pulse_amount = 10
+	var strike: AbilityDefinition = _ability(&"golpe")
+	strike.shape = HitShape.new()
+	strike.base_damage = 40
+	strike.stun_s = 0.5
+	strike.dash_distance_m = 2.0
+	strike.dash_from_s = 0.1
+	strike.dash_to_s = 0.2
+	var dash_curve := Curve.new()
+	dash_curve.add_point(Vector2(0.0, 1.0))
+	dash_curve.add_point(Vector2(1.0, 0.5))
+	strike.dash_curve = dash_curve
+	var shot: AbilityDefinition = _ability(&"disparo")
+	shot.projectile = arrow
+	shot.projectile_count = 2
+	shot.projectile_spread_deg = 5.0
+	shot.target_status = slow
+	var wall: AbilityDefinition = _ability(&"muro")
+	wall.channel = true
+	wall.active_s = 2.0
+	wall.recovery_s = 0.0
+	wall.cooldown_s = 5.0
+	wall.blocks = true
+	wall.wall_half_extents = Vector3(1.0, 1.0, 0.1)
+	weapon.abilities.assign([strike, shot, wall])
+	heavy.projectile = arrow
+	heavy.projectile_speed_mps = 30.0
+	heavy.charge_speed_scale = 1.5
+	var potion_a: AbilityDefinition = _potion(&"pocion_a")
+	potion_a.self_status = regen
+	var potion_b: AbilityDefinition = _potion(&"pocion_b")
+	potion_b.stamina_restore = 100
+	rules.consumables.assign([potion_a, potion_b])
+	var template := EquipmentTemplate.new()
+	template.id = &"plantilla"
+	template.weapons.assign([weapon])
+	template.consumable_charges = PackedInt32Array([2, 1])
+	rules.default_template = template
+	var resources: Array[Resource] = [rules, weapon, arrow, slow, regen]
+	match what:
+		# Validación (sección 2.2).
+		"two_weapons":
+			var other: WeaponDefinition = _weapon(&"otra", &"_b")
+			other.abilities.assign([strike])
+			resources.append(other)
+		"weapon_and_consumable": rules.consumables.assign([potion_a, strike])
+		"cooldown": strike.cooldown_s = 0.3
+		# Duración + 1 tick ya no basta: el byte de acción pide REARM_TICKS en NONE entre dos usos.
+		"cooldown_rearm": strike.cooldown_s = 0.3 + float(AbilityTicks.REARM_TICKS - 1) / 60.0
+		"channel_recovery": wall.recovery_s = 0.1
+		"consumable_cooldown": potion_a.cooldown_s = 1.0
+		"shared_cooldown": rules.consumable_cooldown_s = 0.2
+		"shared_cooldown_rearm": rules.consumable_cooldown_s = 0.3 + float(AbilityTicks.REARM_TICKS - 1) / 60.0
+		"consumable_interrupt": potion_b.interrupt_on_damage = false
+		"one_consumable": rules.consumables.assign([potion_a])
+		"pulses": regen.duration_s = 2.2
+		"root": slow.kind = StatusEffectDefinition.Kind.ROOT
+		"slow": slow.move_speed_scale = 0.0
+		"dash": strike.dash_to_s = 5.0
+		"lifetime": arrow.lifetime_s = 0.0
+		"count": shot.projectile_count = 6
+		"npc_template": template.weapons.append(_weapon(&"npc_bicho", &"_n"))
+		"npc_template_hidden":
+			template.weapons.append(_weapon(&"npc_bicho", &"_n"))
+			template.selectable = false
+		"template_weapons": template.weapons.clear()
+		"charges": template.consumable_charges = PackedInt32Array([16, 0])
+		"combo": weapon.light_combo.clear()
+		"four_abilities": weapon.abilities.append(_ability(&"cuarta"))
+		"active": strike.active_s = 0.0
+		"duplicate": shot.id = &"golpe"
+		"single_light":
+			weapon.light_combo.resize(1)
+			strike.cast_s = 0.0
+		# Huella: predichos.
+		"ability_cast": strike.cast_s += 0.05
+		"ability_active": shot.active_s += 0.05
+		"ability_recovery": shot.recovery_s += 0.05
+		"ability_cooldown": strike.cooldown_s += 1.0
+		"ability_channel": wall.channel = false
+		"ability_hold": wall.channel_hold = false
+		"ability_breaks": wall.channel_breaks_on_move = true
+		"ability_cancel_dodge": strike.cancel_to_dodge_from_s = 0.15
+		"ability_cancel_attack": strike.cancel_to_attack_from_s = 0.15
+		"ability_move": strike.move_speed_scale += 0.1
+		"ability_turn": strike.turn_rate += 1.0
+		"ability_lunge": strike.lunge_speed += 1.0
+		"ability_dash": strike.dash_distance_m += 1.0
+		"ability_dash_window": strike.dash_from_s = 0.05
+		"ability_dash_curve": dash_curve.set_point_value(1, 0.2)
+		"ability_dash_direction": strike.dash_direction = 2
+		"ability_air": strike.usable_in_air = true
+		"ability_stamina": potion_b.stamina_restore += 50
+		"ability_blocks": wall.blocks = false
+		"ability_projectile_count": shot.projectile_count = 3
+		"ability_spread": shot.projectile_spread_deg += 1.0
+		"ability_projectile_speed": shot.projectile_speed_mps += 5.0
+		"slot_order": weapon.abilities.assign([shot, strike, wall])
+		"can_block": weapon.can_block = false
+		"swap": rules.swap_s = 0.5
+		"swap_move": rules.swap_move_scale = 0.7
+		"downed_move_scale": rules.downed_move_scale = 0.2
+		"downed_turn_rate": rules.downed_turn_rate = 4.0
+		"revive": rules.revive_s = 4.0
+		"execute": rules.execute_s = 2.0
+		"consumable_cooldown": rules.consumable_cooldown_s = 25.0
+		"consumable_order": rules.consumables.assign([potion_b, potion_a])
+		"aim_pivot": rules.aim_pivot_height = 1.7
+		"aim_shoulder": rules.aim_shoulder_offset = 0.5
+		"aim_v_offset": rules.aim_camera_v_offset = 0.2
+		"aim_range": rules.aim_range_m = 120.0
+		"aim_converge": rules.aim_converge_deg = 10.0
+		"muzzle": rules.muzzle_height = 1.3
+		"status_kind": regen.kind = StatusEffectDefinition.Kind.DAMAGE_OVER_TIME
+		"status_scale": slow.move_speed_scale = 0.7
+		"status_name": slow.id = &"lentitud"
+		"arrow_gravity": arrow.gravity = 9.0
+		"arrow_radius": arrow.radius_m = 0.1
+		"arrow_lifetime": arrow.lifetime_s = 3.0
+		"attack_projectile_speed": heavy.projectile_speed_mps += 5.0
+		"attack_charge_speed": heavy.charge_speed_scale = 1.6
+		"attack_projectile": weapon.light_combo[0].projectile = arrow
+		# Huella: solo servidor.
+		"ability_damage": strike.base_damage += 10
+		"ability_damage_type": strike.damage_type = 1
+		"ability_shape": strike.shape.range_m += 1.0
+		"ability_stagger": strike.stagger_s = 0.3
+		"ability_stun": strike.stun_s += 0.5
+		"ability_knockback": strike.knockback_speed = 3.0
+		"ability_hyper_armor": strike.hyper_armor = true
+		"ability_unblockable": strike.unblockable = true
+		"ability_target_status": shot.target_status = regen
+		"ability_self_heal": potion_a.self_heal = 20
+		"ability_interrupt": strike.interrupt_on_damage = true
+		"ability_wall":
+			wall.wall_half_extents = Vector3(2.0, 1.0, 0.2)
+			wall.wall_forward_m = 1.0
+		"status_duration": slow.duration_s = 3.0
+		"status_pulse": regen.pulse_every_s = 0.25
+		"status_amount": regen.pulse_amount = 20
+		"status_stacking": slow.stacking = StatusEffectDefinition.Stacking.REFRESH
+		"status_magnitude": regen.magnitude = 0.2
+		"downed_health": rules.downed_health = 500
+		"downed_s": rules.downed_s = 30.0
+		"revived_health": rules.revived_health = 200
+		"interact_range":
+			rules.interact_range_m = 1.5
+			rules.interact_keep_range_m = 2.0
+		"ability_block":
+			rules.ability_block_angle_deg = 160.0
+			rules.ability_block_stamina_per_damage = 0.8
+		"max_projectiles":
+			rules.max_projectiles_per_shooter = 4
+			rules.max_projectiles_per_zone = 32
+		"template_charges": template.consumable_charges = PackedInt32Array([1, 1])
+		"template_selectable": template.selectable = false
+		"attack_stun": heavy.stun_s = 0.5
+		"attack_on_hit_status": heavy.on_hit_status = slow
+	return resources

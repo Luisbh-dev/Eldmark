@@ -7,6 +7,10 @@
 [ext_resource type="Resource" path="res://data/combat/sword_light_3.tres" id="5_light3"]
 [ext_resource type="Resource" path="res://data/combat/sword_heavy.tres" id="6_heavy"]
 [ext_resource type="Resource" path="res://data/combat/sword_dodge.tres" id="7_dodge"]
+[ext_resource type="Script" path="res://scripts/shared/combat/ability_definition.gd" id="8_ability"]
+[ext_resource type="Resource" path="res://data/combat/shield_bash.tres" id="9_bash"]
+[ext_resource type="Resource" path="res://data/combat/shield_rush.tres" id="10_rush"]
+[ext_resource type="Resource" path="res://data/combat/shield_wall.tres" id="11_wall"]
 
 [resource]
 script = ExtResource("1_weapon")
@@ -19,3 +23,5 @@ block_move_scale = 0.5
 block_turn_rate = 8.0
 block_stamina_per_damage = 1.0
 dodge = ExtResource("7_dodge")
+abilities = Array[ExtResource("8_ability")]([ExtResource("9_bash"), ExtResource("10_rush"), ExtResource("11_wall")])
+can_block = true

@@ -663,7 +663,7 @@ func test_animator_follows_the_local_combat_state_and_a_remote_byte() -> void:
 	assert_true(bool(local["upper_body"]))
 	# Remoto: la acción sale del byte que devuelve el origen.
 	var holder: Array[int] = [_byte(CombatState.Action.BLOCK, ActionMachine.PHASE_NONE)]
-	character.combat.copy_from(CombatState.initial(CombatCatalog.rules(), 1))
+	character.combat.copy_from(CombatState.initial(CombatCatalog.rules(), CombatCatalog.default_weapon_id()))
 	animator.set_remote_source(func() -> int: return holder[0])
 	await wait_process_frames(3)
 	var remote: Dictionary = animator.get_debug_state()["combat"]
@@ -717,3 +717,152 @@ class RemoteWorldClock extends InterpolationClock:
 
 	func get_render_tick() -> float:
 		return render
+
+
+# --- Fase 4: habilidades, arco, derribado (provisional, docs/habilidades.md, sección 6.6) ----------
+
+const BOW_CLIPS_PATH: String = "res://data/animation/bow_clips.tres"
+
+
+func test_each_weapon_has_its_clip_set_with_the_phase_4_entries() -> void:
+	var bow_clips: CombatClipSet = load(BOW_CLIPS_PATH) as CombatClipSet
+	if not assert_not_null(bow_clips, "el arco tiene su juego de clips"):
+		return
+	var sword_id: int = CombatCatalog.weapon_id(&"sword_shield")
+	var bow_id: int = CombatCatalog.weapon_id(&"bow")
+	assert_eq(CombatAnimationLayer.clips_for(bow_id, _clips), bow_clips, "el de su arma")
+	assert_eq(CombatAnimationLayer.clips_for(sword_id, null).resource_path, CLIPS_PATH)
+	var npc: int = CombatCatalog.weapon_id(&"npc_guard")
+	assert_eq(CombatAnimationLayer.clips_for(npc, _clips), _clips, "un arma sin juego usa el de por defecto")
+	var common: Array[StringName] = [&"drink", &"swap", &"downed", &"downed_crawl", &"revive", &"execute",
+			&"get_up", &"dodge", &"stagger", &"stun", &"dead"]
+	for key: StringName in common + ([&"shield_bash", &"shield_rush", &"shield_wall", &"block", &"charge"]
+			as Array[StringName]):
+		assert_not_null(_clips.find(key), "espada y escudo: %s" % key)
+	for key: StringName in common + ([&"bow_quick", &"bow_drawn", &"bow_volley", &"bow_slowing_shot",
+			&"bow_evasive_shot", &"charge"] as Array[StringName]):
+		assert_not_null(bow_clips.find(key), "arco: %s" % key)
+	assert_null(bow_clips.find(&"block"), "el arco no bloquea")
+	assert_true(_clips.find(&"downed_crawl").loop, "arrastrarse se repite")
+	assert_true(_clips.find(&"downed").hold_end, "derribado quieto, en la última pose")
+	# Todos los tramos del arco existen y caben en su clip (los de la espada ya los mira otra prueba).
+	for entry: CombatActionAnim in bow_clips.entries:
+		for segment: CombatClipSegment in [entry.windup, entry.active, entry.recovery]:
+			if segment == null:
+				continue
+			var animation: Animation = bow_clips.get_animation(segment.animation)
+			if not assert_not_null(animation, "%s: el clip %s existe" % [entry.key, segment.animation]):
+				continue
+			assert_true(segment.from_s >= 0.0 and segment.to_s <= animation.length + 0.0001
+					and segment.to_s > segment.from_s, "%s: el tramo cabe en %s" % [entry.key, segment.animation])
+	for name_of_attack: StringName in [&"bow_quick", &"bow_drawn"]:
+		var attack: AttackTicks = _attack(name_of_attack)
+		var contact: float = CombatClipPlanner.contact_tick(bow_clips.find(name_of_attack), attack)
+		assert_true(contact >= float(attack.active_from()) - 1.0 and contact <= float(attack.active_to()) + 1.0,
+				"%s: el disparo cae en su tick activo (%.1f)" % [name_of_attack, contact])
+
+
+func test_the_planner_animates_abilities_potions_swap_and_downed() -> void:
+	var bash: AbilityTicks = CombatCatalog.ability(CombatCatalog.ability_id(&"shield_bash"))
+	var potion: int = CombatCatalog.consumable_ids()[1]
+	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.ABILITY, 0, bash.id), &"shield_bash",
+			"una habilidad, por su nombre")
+	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.ABILITY, 0, potion), &"drink",
+			"una poción, beber")
+	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.SWAP, 0), &"swap")
+	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.DOWNED, 0), &"downed")
+	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.DOWNED, 0, 0, true), &"downed_crawl",
+			"derribado y moviéndose, se arrastra")
+	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.REVIVE, 0), &"revive")
+	assert_eq(CombatClipPlanner.key_for(_weapon, CombatState.Action.EXECUTE, 0), &"execute")
+	assert_eq(CombatClipPlanner.ability_of_slot(_weapon, 0), bash.id, "la ranura 1 del byte de un remoto")
+	assert_eq(CombatClipPlanner.ability_of_slot(_weapon, 3), CombatCatalog.consumable_ids()[0],
+			"la 3 es beber")
+	# Cada fase de la habilidad se estira a la suya: lanzamiento, activo y recuperación.
+	var entry: CombatActionAnim = _clips.find(&"shield_bash")
+	var lengths: Array[int] = [bash.cast_ticks, bash.active_ticks, bash.recovery_ticks]
+	for phase: int in 3:
+		var plan: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, CombatState.Action.ABILITY,
+				phase, 0, 0.0, 0, bash.id)
+		assert_eq(plan.animation, entry.segment_for_phase(phase).animation)
+		assert_near(plan.duration_s, float(lengths[phase]) / _tick_rate, 0.0001,
+				"fase %d del golpe de escudo, en su duración" % phase)
+	var swap: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, CombatState.Action.SWAP,
+			ActionMachine.PHASE_NONE, 0, 0.0)
+	assert_near(swap.duration_s, float(CombatCatalog.tables().swap_ticks) / _tick_rate, 0.0001,
+			"el cambio de arma dura sus 0,4 s")
+	var revive: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, CombatState.Action.REVIVE,
+			ActionMachine.PHASE_NONE, 0, 0.0)
+	assert_eq(revive.animation, &"ual1/Fixing_Kneeling")
+	assert_near(revive.duration_s, float(CombatCatalog.tables().revive_ticks) / _tick_rate, 0.0001)
+	# Arrastrarse se repite: pasada su duración vuelve al principio.
+	var crawl: CombatActionAnim = _clips.find(&"downed_crawl")
+	var crawl_ticks: float = crawl.duration_s * _tick_rate
+	var later: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, CombatState.Action.DOWNED,
+			ActionMachine.PHASE_NONE, 0, crawl_ticks * 1.25, 0, 0, true)
+	assert_near(later.time_s, lerpf(crawl.windup.from_s, crawl.windup.to_s, 0.25), 0.0001)
+
+
+func test_the_layer_uses_the_weapons_clips_the_remote_ability_and_gets_up_after_being_revived() -> void:
+	var layer := CombatAnimationLayer.new(_clips)
+	var dt: float = 1.0 / _tick_rate
+	var bow: int = CombatCatalog.weapon_id(&"bow")
+	# Local con el arco: el disparo rápido sale de su juego.
+	var state := CombatState.initial(CombatCatalog.rules(), bow)
+	state.action = CombatState.Action.LIGHT
+	state.action_id = CombatCatalog.attack_id(&"bow_quick")
+	state.action_tick = START_TICK
+	layer.update_local(state, START_TICK + 1, 0.0, dt)
+	assert_eq(layer.get_current().key, &"bow_quick")
+	assert_eq(layer.get_current().animation_name, &"ual1/Pistol_Aim_Neutral")
+	# Un remoto con la espada y escudo en la ranura 2 de su byte: la embestida.
+	var remote := CombatAnimationLayer.new(_clips)
+	remote.update_remote(_byte(CombatState.Action.ABILITY, ActionMachine.PHASE_ACTIVE, 1), dt,
+			CombatCatalog.weapon_id(&"sword_shield"))
+	assert_eq(remote.get_current().key, &"shield_rush", "la habilidad de la ranura del byte")
+	assert_false(remote.get_current().upper_body, "de cuerpo entero")
+	remote.update_remote(_byte(CombatState.Action.ABILITY, ActionMachine.PHASE_WINDUP, 3), dt)
+	assert_eq(remote.get_current().key, &"drink", "la ranura 3 es beber")
+	# Derribado, levantado y de pie: se levanta una vez.
+	for _i: int in 10:
+		remote.update_remote(_byte(CombatState.Action.DOWNED, ActionMachine.PHASE_NONE), dt, 0, true)
+	assert_eq(remote.get_current().key, &"downed_crawl")
+	remote.update_remote(_byte(CombatState.Action.NONE, ActionMachine.PHASE_NONE), dt)
+	assert_eq(remote.get_current().key, &"get_up", "lo han levantado: se levanta")
+	for _i: int in roundi(_clips.find(&"get_up").duration_s * _tick_rate) + 2:
+		remote.update_remote(_byte(CombatState.Action.NONE, ActionMachine.PHASE_NONE), dt)
+	assert_eq(remote.get_plan(), null, "y luego, nada")
+	remote.update_remote(0x0E, dt)
+	assert_null(remote.get_plan(), "la acción 14 (libre) no se anima")
+
+
+func test_the_props_follow_the_weapon_in_the_hands() -> void:
+	var visual: HumanoidVisual = _make_visual()
+	if not assert_not_null(visual):
+		return
+	var skeleton: Skeleton3D = visual.get_skeleton()
+	var animator: CharacterAnimator = visual.get_animator()
+	var character: PlayerCharacter = animator.get_character()
+	var sword: BoneAttachment3D = skeleton.get_node(NodePath(WeaponProps.SWORD_ATTACHMENT)) as BoneAttachment3D
+	var left: BoneAttachment3D = skeleton.get_node(NodePath(WeaponProps.SHIELD_ATTACHMENT)) as BoneAttachment3D
+	await wait_process_frames(2)
+	assert_eq(animator.get_shown_weapon(), character.combat.weapon_id)
+	assert_true(sword.visible, "con la espada y escudo, la espada")
+	assert_null(left.get_node_or_null(NodePath(WeaponProps.BOW_MESH)), "el arco aún no existe")
+	# Cambia al arco (el estado predicho): se ve el arco y no la espada ni el escudo.
+	character.combat.weapon_id = CombatCatalog.weapon_id(&"bow")
+	await wait_process_frames(2)
+	assert_eq(animator.get_shown_weapon(), CombatCatalog.weapon_id(&"bow"))
+	assert_false(sword.visible, "sin espada")
+	var bow_node: Node3D = left.get_node_or_null(NodePath(WeaponProps.BOW_MESH)) as Node3D
+	if not assert_not_null(bow_node, "el arco provisional en la mano izquierda"):
+		return
+	assert_true(bow_node.visible)
+	assert_false((left.get_node(NodePath(WeaponProps.SHIELD_MESH)) as Node3D).visible, "sin escudo")
+	assert_true(bool(bow_node.get_meta(&"placeholder", false)), "marcado como provisional")
+	# Un remoto: el arma sale de su vista (pareja y bit de ranura).
+	var holder: Array[int] = [CombatCatalog.weapon_id(&"sword_shield")]
+	animator.set_remote_source(func() -> int: return 0x30, func() -> int: return holder[0])
+	await wait_process_frames(2)
+	assert_true(sword.visible, "el remoto lleva la espada")
+	assert_false(bow_node.visible)

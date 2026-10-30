@@ -22,6 +22,11 @@ extends Node
 ## datos se convierte en un desfase que decae con una semivida de [constant OFFSET_HALF_LIFE] s
 ## (tiempo real) si está entre [constant MIN_BLEND_DISTANCE] y [constant MAX_BLEND_DISTANCE]
 ## metros; si pasa de ahí, o hay un teletransporte, se salta directamente.
+## [br][br]
+## [b]Armas[/b] (docs/habilidades.md, sección 5.2; PRG-07): la pareja de armas en orden de ranura sale del
+## SPAWN (y la cambia un LOADOUT, [method set_weapons]) y la ranura activa, del bit 3 de [code]flags[/code]
+## del registro dibujado: [method get_active_weapon_id] es el arma que se ve en sus manos y con la que se
+## anima.
 
 ## Señal de que un remoto despegó subiendo: velocidad vertical mínima (m/s) para considerarlo un
 ## salto y no una caída por un borde.
@@ -60,6 +65,10 @@ var _landed_count: int = 0
 # Byte action (acción, fase y paso del combo o contador de reinicio) y vida cuantizada del último registro dibujado.
 var _drawn_action: int = 0
 var _drawn_health_q: int = EntityRecord.HEALTH_Q_FULL
+# Armas en orden de ranura (0 = ninguna) y si el registro dibujado lleva la ranura 2 activa.
+var _weapon_1: int = 0
+var _weapon_2: int = 0
+var _drawn_second_slot: bool = false
 
 
 ## Toma el control de [param body] (un [PlayerCharacter] recién instanciado) y le pone como primera
@@ -90,6 +99,12 @@ func setup(body: PlayerCharacter, spawn: NetMessages.EntitySpawn) -> void:
 	_was_grounded = first.is_grounded()
 	_drawn_action = first.action
 	_drawn_health_q = first.health_q
+	_drawn_second_slot = first.is_second_slot()
+	var combat: CombatState = spawn.state.combat
+	if combat.is_second_slot():
+		set_weapons(combat.alt_weapon_id, combat.weapon_id)
+	else:
+		set_weapons(combat.weapon_id, combat.alt_weapon_id)
 
 
 ## Guarda la muestra del snapshot [param tick]. Se ignora si cae fuera de
@@ -143,6 +158,7 @@ func apply(render_time: float, real_delta: float) -> void:
 	_last_sample_position = record.position
 	_drawn_action = record.action
 	_drawn_health_q = record.health_q
+	_drawn_second_slot = record.is_second_slot()
 	_place(record)
 	if _has_drawn and should_show:
 		_emit_flanks(record)
@@ -234,6 +250,31 @@ func get_drawn_action() -> int:
 ## vivo. Lo leen las placas de nombre.
 func get_drawn_health_q() -> int:
 	return _drawn_health_q
+
+
+## Pareja de armas del remoto en orden de ranura ([param weapon_1] la de la ranura 1; 0 = ninguna): la del
+## SPAWN o la de un LOADOUT.
+func set_weapons(weapon_1: int, weapon_2: int) -> void:
+	_weapon_1 = weapon_1
+	_weapon_2 = weapon_2
+
+
+## Armas en orden de ranura (x la 1, y la 2).
+func get_weapons() -> Vector2i:
+	return Vector2i(_weapon_1, _weapon_2)
+
+
+## true si el registro dibujado lleva la ranura 2 activa (bit 3 de [code]flags[/code]).
+func is_drawn_second_slot() -> bool:
+	return _drawn_second_slot
+
+
+## Arma que lleva en las manos según lo dibujado: la de la ranura 2 si su bit está puesto (y la tiene), si
+## no la de la ranura 1.
+func get_active_weapon_id() -> int:
+	if _drawn_second_slot and _weapon_2 != 0:
+		return _weapon_2
+	return _weapon_1
 
 
 ## Desfase de vuelta tras extrapolar que se suma ahora a la muestra (m, en el mundo).

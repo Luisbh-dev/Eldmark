@@ -9,13 +9,28 @@ extends BotBrain
 ## [br]- [constant Style.RATE]: se pega al enemigo y machaca PRIMARY, pulsado un tick de cada dos
 ## (un flanco cada dos ticks, lo máximo que se puede pulsar). El servidor tiene que dejarlo pegar solo
 ## al ritmo del combo de los datos.
-## [br]Sin enemigo a la vista pasea como [constant BotBrain.Pattern.WANDER].
+## [br]- [constant Style.REUSE] (CMB-19; docs/habilidades.md, sección 4.7): se pega al enemigo y machaca la
+## habilidad 1 (el golpe de escudo) un tick de cada dos, también mientras está en reutilización. El servidor
+## tiene que dejarlo usarla solo cuando vuelve a valer: un golpe cada [code]cooldown + cast[/code] ticks.
+## [br]- [constant Style.POTION]: machaca las dos pociones (R y T, alternas, un flanco cada dos ticks) esté
+## donde esté. El servidor solo deja beber con cargas y fuera de la reutilización compartida.
+## [br]- [constant Style.INTERACT]: machaca INTERACT un tick de cada dos sin moverse, lejos de nadie. Sin un
+## derribado a su alcance, el servidor no empieza ni levantar ni rematar.
+## [br]Sin enemigo a la vista, [constant Style.REACH], [constant Style.RATE] y [constant Style.REUSE] pasean
+## como [constant BotBrain.Pattern.WANDER]; [constant Style.POTION] y [constant Style.INTERACT] no necesitan
+## enemigo y se quedan quietos.
 
 enum Style {
 	## Ataca desde [constant REACH_DISTANCE] m.
 	REACH,
 	## Machaca PRIMARY pegado al enemigo.
 	RATE,
+	## Machaca la habilidad 1 pegado al enemigo.
+	REUSE,
+	## Machaca las pociones.
+	POTION,
+	## Machaca INTERACT lejos de nadie.
+	INTERACT,
 }
 
 ## Distancia (m) a la que se queda el modo [constant Style.REACH] y holgura antes de moverse.
@@ -44,7 +59,11 @@ func get_style() -> Style:
 
 
 func next_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
+	if _style == Style.POTION or _style == Style.INTERACT:
+		return _mash_in_place(tick, yaw)
 	var enemy: Variant = _enemy_finder.call(position) if _enemy_finder.is_valid() else null
+	if enemy is BotTarget:
+		enemy = (enemy as BotTarget).position
 	if not enemy is Vector3:
 		return super.next_input(tick, position, yaw)
 	var to_enemy: Vector3 = (enemy as Vector3) - position
@@ -57,7 +76,24 @@ func next_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 		Style.REACH:
 			_reach(input, tick, distance)
 		Style.RATE:
-			_rate(input, tick, distance)
+			_rate(input, tick, distance, PlayerInput.PRIMARY)
+		Style.REUSE:
+			_rate(input, tick, distance, PlayerInput.ABILITY_1)
+	return input
+
+
+# POTION e INTERACT: quieto, mirando adonde mira, machacando sus botones un tick de cada dos (las pociones,
+# alternas: R en los múltiplos de 4 y T en los demás pares).
+func _mash_in_place(tick: int, yaw: float) -> PlayerInput:
+	var input := PlayerInput.new()
+	input.tick = tick
+	input.look_yaw = yaw
+	if tick % 2 != 0:
+		return input
+	if _style == Style.INTERACT:
+		input.buttons = PlayerInput.INTERACT
+	else:
+		input.buttons = PlayerInput.CONSUMABLE_1 if tick % 4 == 0 else PlayerInput.CONSUMABLE_2
 	return input
 
 
@@ -75,11 +111,11 @@ func _reach(input: PlayerInput, tick: int, distance: float) -> void:
 		input.buttons |= PlayerInput.PRIMARY
 
 
-# Se pega al enemigo y pulsa PRIMARY un tick de cada dos.
-func _rate(input: PlayerInput, tick: int, distance: float) -> void:
+# Se pega al enemigo y pulsa [param button] un tick de cada dos.
+func _rate(input: PlayerInput, tick: int, distance: float, button: int) -> void:
 	if distance > MELEE_DISTANCE:
 		input.move = Vector2(0.0, 1.0)
 		if distance > SPRINT_DISTANCE:
 			input.buttons |= PlayerInput.SPRINT
 	if distance <= MELEE_DISTANCE + 0.5 and tick % 2 == 0:
-		input.buttons |= PlayerInput.PRIMARY
+		input.buttons |= button

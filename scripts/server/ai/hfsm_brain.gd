@@ -21,6 +21,11 @@ extends BotBrain
 ## con una ficha de [AttackTokens] (como mucho dos PNJ a la vez contra el mismo objetivo); sin ella lo rodea a 3 o
 ## 4 m. [b]Alerta de grupo[/b]: al entrar en combate avisa a los de su grupo a [member NpcDefinition.alert_radius];
 ## un jefe ([member NpcDefinition.shouts]) grita y, al bajar de vida, llama refuerzos.
+## [br][br]
+## [b]Derribados[/b] (docs/habilidades.md, sección 4.5; H3c): los PNJ no quedan derribados, pero rematan. Un
+## jugador derribado hostil a menos de [constant DOWNED_PRIORITY_RADIUS] m es el objetivo preferido (antes que el
+## más cercano en pie, también al notarlo en reposo o patrulla) y se ataca con el ligero (PRIMARY), sin levantar el
+## escudo ni cargar; pide su ficha de [AttackTokens] como cualquier objetivo.
 
 ## Estados de la máquina.
 enum State { REST, PATROL, ALERT, COMBAT, RETURN }
@@ -68,6 +73,9 @@ const CIRCLE_OUTER_MARGIN: float = 0.5
 const STRAFE_FLIP_TICKS: Vector2i = Vector2i(120, 300)
 ## Radio (m) de la alerta de un jefe que grita.
 const SHOUT_RADIUS: float = 60.0
+## Distancia (m, en horizontal) a la que un derribado hostil es el objetivo preferido (docs/habilidades.md,
+## sección 4.5).
+const DOWNED_PRIORITY_RADIUS: float = 6.0
 
 ## La definición del PNJ.
 var definition: NpcDefinition = null
@@ -395,11 +403,14 @@ func _think_combat(tick: int, position: Vector3, yaw: float) -> void:
 		return
 
 	var ready: bool = tick >= _next_attack_tick
-	if ready and _planned_attack() == Attack.BLOCK:
+	# A un derribado se le remata con el ligero: ni escudo ni carga.
+	var finishing: bool = target.is_downed()
+	if ready and not finishing and _planned_attack() == Attack.BLOCK:
 		_start_block(tick)
 		return
 	var has_token: bool = false
-	var heavy_next: bool = _planned_attack() == Attack.HEAVY or _planned_attack() == Attack.SPECIAL
+	var heavy_next: bool = not finishing \
+			and (_planned_attack() == Attack.HEAVY or _planned_attack() == Attack.SPECIAL)
 	var reach: float = _heavy_reach if heavy_next else _light_reach
 	if ready and distance <= reach + TOKEN_REQUEST_MARGIN:
 		has_token = _world.tokens.try_claim(target.get_id(), _net_id, tick)
@@ -534,15 +545,19 @@ func _advance_route() -> void:
 
 # --- Percepción y amenaza ----------------------------------------------------------------------
 
-# El enemigo más cercano que ve o nota (radio, cono y línea de visión), o null.
+# El enemigo más cercano que ve o nota (radio, cono y línea de visión), o null. Un derribado a menos de
+# DOWNED_PRIORITY_RADIUS m va antes que cualquiera en pie.
 func _scan(position: Vector3, yaw: float) -> Combatant:
 	var radius: float = maxf(definition.perception_radius, definition.awareness_radius)
 	var best: Combatant = null
 	var best_distance: float = INF
+	var best_downed: Combatant = null
+	var best_downed_distance: float = INF
 	for candidate: Combatant in _world.query_targets(position, radius, _realm, definition.ignores_safe_area):
 		var other: Vector3 = candidate.entity.get_position()
 		var distance: float = _horizontal_distance(position, other)
-		if distance >= best_distance:
+		var preferred: bool = candidate.is_downed() and distance <= DOWNED_PRIORITY_RADIUS
+		if distance >= (best_downed_distance if preferred else best_distance):
 			continue
 		var noticed: bool = distance <= definition.awareness_radius
 		if not noticed:
@@ -551,19 +566,29 @@ func _scan(position: Vector3, yaw: float) -> Combatant:
 				continue
 		if not _world.line_of_sight(position, other):
 			continue
-		best = candidate
-		best_distance = distance
-	return best
+		if preferred:
+			best_downed = candidate
+			best_downed_distance = distance
+		else:
+			best = candidate
+			best_distance = distance
+	return best_downed if best_downed != null else best
 
 
 # El objetivo de mayor amenaza (daño recibido de cada enemigo más su cercanía) entre los que hay a menos de su
-# radio de pérdida, o null si no hay ninguno.
+# radio de pérdida, o null si no hay ninguno. Un derribado a menos de DOWNED_PRIORITY_RADIUS m va antes (el más
+# cercano; empate por net_id: la lista viene ordenada).
 func _choose_target(tick: int, position: Vector3) -> Combatant:
 	var best: Combatant = null
 	var best_score: float = -INF
+	var best_downed: Combatant = null
+	var best_downed_distance: float = INF
 	for candidate: Combatant in _world.query_targets(position, _lose_radius, _realm,
 			definition.ignores_safe_area):
 		var distance: float = _horizontal_distance(position, candidate.entity.get_position())
+		if candidate.is_downed() and distance <= DOWNED_PRIORITY_RADIUS and distance < best_downed_distance:
+			best_downed = candidate
+			best_downed_distance = distance
 		var score: float = float(_combatant.ledger.damage_by(candidate.get_id(), tick)) \
 				+ (definition.perception_radius - distance) * PROXIMITY_WEIGHT
 		if candidate.get_id() == _target_id:
@@ -571,7 +596,7 @@ func _choose_target(tick: int, position: Vector3) -> Combatant:
 		if score > best_score:
 			best_score = score
 			best = candidate
-	return best
+	return best_downed if best_downed != null else best
 
 
 func _in_cone(position: Vector3, yaw: float, other: Vector3, cone_deg: float) -> bool:

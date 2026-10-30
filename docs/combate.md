@@ -200,6 +200,10 @@ bit 6 de `combat_flags`, carga cancelada tras el silencio del cliente, combo rei
 el enlace y movimiento aéreo de los controles). Los ticks absolutos hacen que el estado se restaure
 sin ambigüedad.
 
+**Fase 4.** La versión 5 de `CombatState` (76 B, `PlayerState` de 111 B) añade al final la otra arma,
+las reutilizaciones, los consumibles y los efectos de movimiento, y `buffered` pasa a bits 0–3 tipo
+y 4–7 ticks: [habilidades.md 3.1](habilidades.md#31-combatstate-v5).
+
 ### 3.2 Entradas sustituidas (cierra la nota de red.md §8.2)
 
 `PlayerInput.SUBSTITUTED = 1 << 15`, fuera de `VALID_BUTTONS` (el cliente no puede ponerlo: el
@@ -285,6 +289,11 @@ empuja hacia delante no se aplica con ellas, así que el stick no dirige a un ca
 ni un tambaleado en pleno salto. Ni ataques, ni esquiva, ni bloqueo en el aire: un PRIMARY o DODGE en el
 aire va al búfer.
 
+**Fase 4.** La máquina gana habilidades, consumibles, cambio de arma, canalizaciones, derribado,
+levantar y rematar y los efectos de movimiento, con el orden 0–6 de
+[habilidades.md 3.3](habilidades.md#33-reglas-por-tick) y la tabla de movimiento de su §3.4; esa
+parte vive en `scripts/shared/combat/ability_rules.gd` (`ActionMachine` sigue siendo la entrada).
+
 ### 3.4 Lo que impone el servidor
 
 API de `ActionMachine` (estática, sobre `CombatState`), siempre seguida de redondeo por
@@ -294,7 +303,8 @@ API de `ActionMachine` (estática, sobre `CombatState`), siempre seguida de redo
   con `action_tick = t`, `cc_until_tick = until`.
 - `impose_death(c, t)`: DEAD.
 - `reset_for_respawn(c, t, rules)`: todo a los valores iniciales (resistencia llena) salvo el
-  arma.
+  arma. En la fase 4 pasa a `reset_for_respawn(c, t, weapon_1, weapon_2, charges)`, con el equipo
+  de la plantilla, y se suman las imposiciones de [habilidades.md 3.5](habilidades.md#35-lo-que-impone-el-servidor).
 - `drain_stamina(c, amount, t)`: resta, pone el retardo y, si llega a 0, el agotamiento.
 
 Consultas (las usan el servidor y el animador): `phase(c, t)` (0 anticipación o carga, 1 activo,
@@ -399,10 +409,23 @@ Para cada atacante en golpe activo en `s`:
      atacante veía. Sin esto, un aturdido que bloqueaba hace 20 ticks «bloqueaba» el ligero de un
      segundo atacante con rebobinado: con 0 de resistencia eso es una rotura de guardia que le
      alargaba el aturdimiento.
+     **Fase 4** ([habilidades.md 4.2](habilidades.md#42-habilidades), paquete H3a): la regla pasa a
+     ser «no cuenta si la acción en `s` no es BLOCK y su `action_tick > view_tick`, **sea NONE o
+     no**». NONE conserva el `action_tick` de lo que acaba (`_to_none` e `impose_interrupt`): soltar
+     el escudo sin más sigue contando, pero volver a NONE tras beber, una poción interrumpida o un
+     REVIVE soltado (empezados después de `view_tick`) ya no. El muro de escudos (bit 7 del historial,
+     `DEFENSE_WIDE_BLOCK`) bloquea con el cono de `ability_block_angle_deg` en la muestra que lo
+     lleve.
+     **Proyectiles** ([habilidades.md 4.4](habilidades.md#44-proyectiles-projectilesystem-scriptsserverprojectile_systemgd),
+     paquete H3b): el rebobinado del paso 2 sale de `CombatResolver.compute_rewind` (factorizado de
+     `_swing_rewind`), se redondea a ticks enteros y se fija una vez por disparo para todo el vuelo; las
+     defensas son las de aquí sin parada, con el cono frente a la dirección de la que viene la flecha.
    - Si nada aplica: **impacto**.
 
 `StateHistory` añade a sus banderas por tick: bit 3 bloqueando, bit 4 ventana de parada, bit 5
-invulnerable, bit 6 muerto (`ActionMachine.defense_flags`).
+invulnerable, bit 6 muerto (`ActionMachine.defense_flags`); en la fase 4, bit 7 bloqueo ancho (el muro
+de escudos). Los bits 0–2 son los del registro (`EntityRecord.HISTORY_FLAGS_MASK`): su bit 3 (ranura de
+arma 2) no entra nunca ([habilidades.md 3.6](habilidades.md#36-consultas)).
 
 ### 4.4 Daño (`scripts/shared/combat/damage_formula.gd`)
 
@@ -455,6 +478,12 @@ ninguno debe hacer daño de más.
   lista **estática** de todos los puntos y se añade la condición (el fuerte propio, sin atacar:
   [fuerte.md 5](fuerte.md#5-avisos-reaparición-salida-y-atascado)). Al reaparecer: teletransporte (contador), `reset_for_respawn`, vida llena,
   `protected_until = s + 3 s` (se pierde al empezar un ataque), evento RESPAWN.
+- **Fase 4** ([habilidades.md 4.5 y 4.6](habilidades.md#45-derribado-levantar-y-rematar-downedsystem-scriptsserverdowned_systemgd),
+  H3c): el golpe mortal de un **jugador** de otro reino a un jugador en una zona RVR no mata, **derriba**
+  (DOWNED, 20 s de desangrado, levantar y rematar); contra PNJ, el entorno o los Huecos, muerte directa. Un
+  derribado no es ni vivo ni muerto (`Combatant.is_downed`), no reaparece ni se cura, y su baja es antes una
+  muerte. La reaparición pone las armas y las cargas de su **plantilla** (la que eligió con LOADOUT_SELECT o la
+  de por defecto) con LOADOUT.
 - **Caída**: `PlayerCharacter.last_landing_speed = −velocity.y` medido **antes** de
   `move_and_slide()` en el tick en que `grounded` pasa a true (0 en los demás). Daño
   `(v − 15) × 70` por encima de 15 m/s: saltar desde la pasarela de 3 m (14,0 m/s) no hace daño; la
@@ -518,6 +547,17 @@ ninguno debe hacer daño de más.
 - **Ancho de banda**: bajada = (94 + n · 21 + 40) B × 30/s (10 visibles: ~10,3 KB/s; tope desde 52
   visibles: ~37 KB/s) más los ENTITY_EVENT (~27 B por destinatario y golpe). Hay que actualizar
   red.md §5.5, §5.6, §9.3, §14 y `test_snapshot_builder`.
+
+**Fase 4: protocolo 6** ([habilidades.md 5](habilidades.md#5-protocolo-protocol_version--6), paquete H2).
+El `PlayerState` pasa a 111 B (cabecera con estado y bloque extra de 134 B, **50 registros** por snapshot;
+bajada de ~11,6 KB/s con 10 visibles y el mismo tope de ~36,8 KB/s desde 50); los botones válidos, a los bits
+0–12; los `u16 attack_id` de HIT, DEATH, KILL y TELEGRAPH pasan a ser una **fuente** (`CombatSource`: los
+ataques de esta fase conservan su número); HIT gana los bits 5 (interrumpido) y 6 (derriba); el bit 3 del
+`status` del bloque extra es «derribado» y el bit 3 de los `flags` del registro, la ranura de arma 2; el SPAWN
+ajeno enseña también la otra arma y la ranura activa; hay eventos 7–11 (STATUS, HEAL, LOADOUT, DOWNED,
+INTERACT), LOADOUT_SELECT (`0x07`), el SPAWN de proyectiles (kind 3, 32 B) con los DESPAWN 4 y 5, y los
+comandos de depuración 13 `cooldowns_off`, 14 `apply_status`, 15 `down` y 16 `refill`. Formatos en red.md
+§5 (marcados «v6»).
 
 ---
 
@@ -801,7 +841,9 @@ Cerrado durante K5 (integración):
   en los 12 siguientes (`COMBAT_EXPLAIN_TICKS`); el evento va por el canal fiable y puede llegar
   después del snapshot, así que una diferencia espera 90 ticks (`DIFF_SETTLE_TICKS`) a su evento
   antes de contar como fallo (mientras tanto `get_stats()` la cuenta según lo que sabe). Estadística
-  nueva: `combat_diffs`. Medido en una refriega de 6 bots de combate con rtt=120, jitter=20 y 5 % de
+  nueva: `combat_diffs`. Fase 4 (H4, [habilidades.md 5.4](habilidades.md#54-entity_event-y-fuentes)): también
+  un STATUS de movimiento sobre uno mismo, su DOWNED, un INTERACT donde es el derribado o quien actúa y su
+  LOADOUT. Medido en una refriega de 6 bots de combate con rtt=120, jitter=20 y 5 % de
   pérdida (`test_combat_reconciliation`): 40 golpes, 4 muertes, 2-4 correcciones por bot, todas
   explicadas (sustitución o combate), ningún reinicio duro ni resincronización y convergencia exacta
   al quedarse quietos.
@@ -830,7 +872,7 @@ Cerrado durante K5 (integración):
 ## 12. Primera pasada de equilibrio (CMB-29)
 
 Primera pasada con **espada y escudo**, el único kit de la fase 3. Se repite cuando lleguen las habilidades
-(CMB-21) y el arco (CMB-23); las dos partes que dependen de contenido que aún no existe, la puerta del
+(CMB-21) y el arco (CMB-23) —hecho en H5: 12.8—; las dos partes que dependen de contenido que aún no existe, la puerta del
 fuerte (GUE-10) y el capitán (MUN-11), quedan pendientes (12.7). Las cifras salen de
 `tools/combat_balance.gd`, no de una cuenta a mano: monta un `ZoneServer` sin red sobre `test_world`
 (llano, sin terreno ni zonas seguras: el daño no depende de ellos), lo avanza tick a tick sin esperar
@@ -965,3 +1007,109 @@ llegar CMB-21 y GUE-15.
   no funciona, la parada pasa a habilidad del escudo).
 - **Personas:** todas las cifras son de bots que no reaccionan. Falta una sesión de 2 contra 2 y 5 contra 5
   con jugadores en el Vado Gris para fijar el TTK real.
+
+### 12.8 Kits de la fase 4 (H5; docs/habilidades.md, sección 2.4)
+
+La hoja calculada de [habilidades.md 2.4](habilidades.md#24-entrada-para-la-hoja-de-equilibrio-combatemd-12),
+medida. Sale de la misma herramienta, ampliada en H5 (determinista: el mismo JSON en cada ejecución):
+
+```
+godot --headless --path . -s res://tools/combat_balance.gd -- --duels=60 --seconds=30 --reference --out=build/combat_balance.json
+```
+
+(unos 3 min; `tests/test_combat_balance.gd` la lanza en pequeño y comprueba el DPS del arco, los alcances y el
+muro). Los bots de combate usan ya el kit (`BotBrain` con su estado de combate, habilidades.md 11.9): golpe de
+escudo de cerca, embestida para acercarse, muro mantenido de 1 a 3,3 s, pociones por debajo de la mitad de la
+vida o del 30 % de la resistencia, cambio de arma, arco con tiro adelantado, y rematar y levantar derribados.
+
+**Arco contra el maniquí a 10 m** (30 s, ciclos completos, apuntado como un bot):
+
+| Acción | Ciclo | Daño | DPS calculado (2.4) | Medido | Flechas que dan |
+|---|---|---|---|---|---|
+| Disparo rápido repetido | 37 ticks | 60 | 97,3 | **97,3** | 48 de 48 |
+| Tensado mínimo | 21 + 22 = 43 ticks | 90 | 125,6 | **125,6** | 41 de 41 |
+| Tensado máximo | 60 + 22 = 82 ticks | 180 | 131,7 | **131,7** | 21 de 21 |
+
+**Alcances** (5 flechas por distancia y tipo; «apunta» es cuánto pasa la mira por encima del centro del blanco
+para compensar la caída; el vuelo medido va del compromiso al tick del impacto, en la cara de la cápsula):
+
+| Distancia | Rápido (45 m/s): aciertos, vuelo, apunta | Tensado máximo (70 m/s): aciertos, vuelo, apunta | Calculado en 2.4 |
+|---|---|---|---|
+| 10 m | 5 de 5, 0,20 s, 0,15 m | 5 de 5, 0,13 s, 0,06 m | tensado 0,14 s |
+| 30 m | 5 de 5, 0,65 s, 1,33 m | 5 de 5, 0,42 s, 0,55 m | tensado 0,43 s |
+| 50 m | 5 de 5, 1,10 s, 3,71 m | 5 de 5, 0,70 s, 1,53 m | tensado 0,71 s (1,5 m); rápido 1,11 s (3,7 m) |
+
+**Habilidades** (un uso contra el maniquí):
+
+| Habilidad | Distancia | Golpes | Daño (datos) | A reutilización |
+|---|---|---|---|---|
+| Golpe de escudo | 1,6 m | 1 | 60 (60), aturde 48 ticks | +5,0 DPS (12 s) |
+| Embestida | 5 m | 1 | 50 (50) | +3,1 DPS (16 s) |
+| Muro de escudos | 2 m | 0 | 0 | — |
+| Abanico | 2 / 3 / 10 m | 3 / 2 / 1 | 165 / 110 / 55 (165) | +16,5 / +11,0 / +5,5 DPS (10 s) |
+| Flecha lastrante | 10 m | 1 | 60 (60) y `slowed` | +5,0 DPS (12 s) |
+| Salto atrás con disparo | 10 m | 1 | 60 (60) | +4,3 DPS (14 s) |
+
+- Espada y escudo a reutilización: **+8,1 DPS** medidos (5,0 + 3,1), lo calculado, y 0,8 s de aturdimiento cada
+  12 s. Arco: **+25,8** solo con el abanico entero, que contra un blanco solo pasa a 2 m (a ±7° las flechas de
+  los lados se abren ±0,37 m a 3 m y ±1,2 m a 10 m): a 10 m suma +14,8. El abanico es un arma de grupos, no de
+  duelo.
+
+**Muro de escudos** contra el combo perfecto (156,3 DPS por atacante), sus 6 s levantado:
+
+| Atacantes | Resistencia que le quitan | ¿Lo rompen? | Calculado en 2.4 |
+|---|---|---|---|
+| 1 | 558 en 6 s (9 golpes bloqueados) | no | 563, no |
+| 2 | 1000 (18 bloqueados) | **sí, a los 5,4 s** | 1000 a los 5,3 s |
+
+**Duelos de bots** (60 de cada, de reinos enemigos, hasta la caída):
+
+| Duelo | Distancia | TTK mín / p10 / **mediana** / p90 / máx | Golpes por duelo | DPS mediano del ganador |
+|---|---|---|---|---|
+| Escudero contra escudero, sin habilidades (el cerebro de la fase 3, referencia) | 4 m | 5,8 / 7,3 / **10,7** / 16,4 / 20,7 s | 15,0 | 92,6 |
+| Escudero contra escudero, con el kit | 4 m | 8,7 / 12,8 / **18,4** / 24,8 / 29,8 s | 20,4 (3,5 bloqueados) | 63,6 |
+| Escudero contra escudero, con el kit y sin pociones | 4 m | 7,7 / 10,5 / **14,9** / 18,4 / 23,1 s | 17,6 (2,9 bloqueados) | 67,0 |
+| Tirador contra tirador | 20 m | 10,1 / 15,3 / **18,9** / 24,2 / 36,1 s | 26,0 | 68,5 |
+| Escudero contra tirador | 20 m | 9,1 / 11,0 / **18,9** / 24,1 / 28,7 s | 20,8 | 62,6 (gana el tirador 39 de 60) |
+
+La referencia sin habilidades da exactamente las cifras de 12.3: el cerebro de la fase 3 no ha cambiado.
+
+**Equipos** (20 combates de cada, en fila a 4 m, con el kit):
+
+| | Primera baja (mediana, p10 / p90) | Un bando sin nadie en pie (mediana, p10 / p90) | Bajas por combate |
+|---|---|---|---|
+| 2 escuderos contra 2 | 7,3 s (5,6 / 13,6) | 15,0 s (6,3 / 20,9) | 2,4 |
+| 5 escuderos contra 5 | 4,0 s (2,4 / 6,0) | 14,8 s (6,9 / 21,9) | 6,6 |
+| **2 contra 2 con las dos plantillas** (un escudero y un tirador por bando) | 9,5 s (5,0 / 14,9) | 16,8 s (10,6 / 18,6) | 2,2 |
+
+**Lectura.**
+
+- **Lo que dicen los datos se cumple**: DPS del arco, alcances, daño de cada habilidad, aturdimiento y gasto del
+  muro, todo como en la hoja calculada.
+- **El kit alarga los duelos de bots**: la mediana pasa de 10,7 s a 18,4 s, por encima del objetivo de 12.5 (10–15
+  s), y el DPS del ganador baja de 92,6 a 63,6. Lo que lo alarga no es el daño (las habilidades suman +8,1 DPS) sino
+  el tiempo que el bot no ataca —bebe (0,8 s por poción), mantiene el muro (1 a 3,3 s) o se lanza con la
+  embestida— y lo que cura: sin pociones (el mismo cerebro, con las cargas a 0) la mediana baja a 14,9 s, dentro del objetivo, y el
+  daño que hace falta por duelo, de 2058 a 1750: en cada duelo se bebe de media una poción (300 de vida), unos 3,5 s
+  de mediana. En el 2 contra 2 con las dos plantillas la primera baja llega a los 9,5 s
+  (dentro del objetivo) y el combate acaba a los 16,8 s.
+- **El tirador gana al escudero a 20 m** (39 de 60): empieza haciendo daño gratis mientras el escudero se acerca, y
+  de cerca saca la espada y el escudo. Con personas el escudero bloquea las flechas de frente (los bots solo
+  bloquean un 14 % de sus decisiones) y la embestida cierra 6 m en 0,4 s.
+
+**Decisiones de esta pasada.**
+
+| Decisión | Motivo |
+|---|---|
+| **El coste del muro se queda en 0,6 por punto.** | Dos atacantes lo rompen (a los 5,4 s): el contrajuego de 2.4 (superioridad numérica, golpe de escudo imbloqueable, flanco) funciona; habilidades.md 2.4 pedía subirlo a 0,8–1,0 solo si dos tampoco lo rompían. |
+| **No se cambia ningún `.tres` del kit.** | Todo lo medido coincide con lo calculado; el TTK de los bots sube por cómo gastan el tiempo (beber, muro), que con personas cambia del todo. Como en 12.5, retocar contra bots que no reaccionan sería ajustar al ruido. |
+| **El TTK objetivo (12.5) se mantiene** y se vuelve a medir con personas. | Primera baja del 2 contra 2 con las dos plantillas: 9,5 s; duelos con el kit: 18,4 s (14,9 s sin pociones). |
+
+**Propuestas sin aplicar.**
+
+- **P4. Pociones.** Si con personas los duelos también pasan de 15 s de mediana, bajar `potion_regen` de 300 a 200
+  (o la reutilización compartida de 20 a 30 s) antes que tocar el daño: sin pociones los duelos de bots con el kit ya bajan a 14,9 s.
+- **P5. Abanico.** Si el arco se queda corto en duelos, cerrar el abanico de ±7° a ±4° (a 10 m acertaría 2 de 3 en vez
+  de 1, +11 DPS a reutilización); hoy es un arma contra grupos.
+- **Pendiente**: la parada y el bloqueo de flechas con personas; el TTK con jugadores (2 contra 2 y 5 contra 5 en el
+  Vado Gris, con las dos plantillas); las cifras del fuerte (12.7).

@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="WeaponDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/shared/combat/weapon_definition.gd" id="1_weapon"]
+[ext_resource type="Script" path="res://scripts/shared/combat/attack_definition.gd" id="2_attack"]
+[ext_resource type="Script" path="res://scripts/shared/combat/ability_definition.gd" id="3_ability"]
+[ext_resource type="Resource" path="res://data/combat/bow_quick.tres" id="4_quick"]
+[ext_resource type="Resource" path="res://data/combat/bow_drawn.tres" id="5_drawn"]
+[ext_resource type="Resource" path="res://data/combat/sword_dodge.tres" id="6_dodge"]
+[ext_resource type="Resource" path="res://data/combat/bow_volley.tres" id="7_volley"]
+[ext_resource type="Resource" path="res://data/combat/bow_slowing_shot.tres" id="8_slowing"]
+[ext_resource type="Resource" path="res://data/combat/bow_evasive_shot.tres" id="9_evasive"]
+
+[resource]
+script = ExtResource("1_weapon")
+id = &"bow"
+light_combo = Array[ExtResource("2_attack")]([ExtResource("4_quick")])
+heavy_attack = ExtResource("5_drawn")
+block_angle_deg = 120.0
+block_mitigation = 1.0
+block_move_scale = 0.5
+block_turn_rate = 8.0
+block_stamina_per_damage = 1.0
+dodge = ExtResource("6_dodge")
+abilities = Array[ExtResource("3_ability")]([ExtResource("7_volley"), ExtResource("8_slowing"), ExtResource("9_evasive")])
+can_block = false

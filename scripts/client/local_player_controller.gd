@@ -6,6 +6,9 @@ extends Node
 ## guionizado, o un [BotBrain]), construye un [PlayerInput], lo cuantiza
 ## exactamente igual que viajará por la red, lo guarda en el historial, emite
 ## [signal input_generated] y llama a [method PlayerCharacter.simulate].
+## [br][br]Fase 4 (docs/habilidades.md, secciones 0 y 3.2): Q cambia de arma, R y T beben las
+## pociones, y el bit [constant PlayerInput.AIM_LEFT] (hombro izquierdo de la puntería) sale del hombro
+## efectivo de la cámara en cada entrada del dispositivo.
 ## [br][br]Fase 2: con [member auto_step] en false el controlador no avanza solo.
 ## [method ClientPrediction.step] llama a [method build_input] (que construye la
 ## entrada del tick pedido sin simular) y simula el personaje él mismo, y las
@@ -34,6 +37,9 @@ const BUTTON_ACTIONS: Dictionary[StringName, int] = {
 	&"ability_2": PlayerInput.ABILITY_2,
 	&"ability_3": PlayerInput.ABILITY_3,
 	&"interact": PlayerInput.INTERACT,
+	&"swap_weapon": PlayerInput.SWAP_WEAPON,
+	&"consumable_1": PlayerInput.CONSUMABLE_1,
+	&"consumable_2": PlayerInput.CONSUMABLE_2,
 }
 
 ## true (sandbox): el controlador avanza un tick por paso de física, como en la fase 1. false:
@@ -213,6 +219,11 @@ func _device_input() -> PlayerInput:
 	if is_input_blocked():
 		input.move = Vector2.ZERO
 		input.buttons = 0
+	# Hombro de la puntería (docs/habilidades.md, sección 3.2): un nivel que describe la vista, no una
+	# pulsación. Sale del hombro efectivo de la cámara (tras el cambio automático por una pared), que es
+	# el que da el rayo canónico de las flechas ([method AimRay.canonical]).
+	if is_instance_valid(_camera_rig) and _camera_rig.get_effective_shoulder() < 0:
+		input.buttons |= PlayerInput.AIM_LEFT
 	return input
 
 

@@ -5,10 +5,14 @@ extends RefCounted
 ## medidor de DPS, la interfaz de equilibrado) usen la misma.
 ## [br][br]
 ## [codeblock]
-## bruto   = base × carga × crítico
-## mitig.  = bruto × block_mitigation              (solo si se bloquea)
+## bruto   = base × carga × crítico × damage_scale
+## mitig.  = bruto × max(block_mitigation − mitigation_penalty, 0)    (solo si se bloquea)
 ## final   = roundi((bruto − mitig.) × 1000 / (1000 + armadura)), mínimo 1 si queda algo
 ## [/codeblock]
+## [code]damage_scale[/code] y [code]mitigation_penalty[/code] son los modificadores de los efectos de
+## estado (docs/habilidades.md, sección 4.3): [code]1 + Σ DAMAGE_UP[/code] del atacante y
+## [code]Σ MITIGATION_DOWN[/code] de la víctima; sin efectos valen 1 y 0 y el resultado es el de
+## siempre.
 ## Bloqueo: el defensor gasta [code]roundi(mitig. × block_stamina_per_damage)[/code] de
 ## resistencia. Si no le alcanza, el escudo solo absorbe la parte proporcional a la resistencia
 ## que tenía, el resto pasa como daño y hay rotura de guardia.
@@ -70,19 +74,26 @@ static func charge_factor(charge_ticks: int, charge_min_ticks: int, charge_max_t
 ## absorbe el escudo a cambio de [param block_stamina_per_damage] de resistencia por punto
 ## absorbido; [param defender_stamina] es la que tiene el defensor. [param armor] (0 o más) reduce
 ## el daño que pasa.
+## [br][br]
+## [param damage_scale] (0 o más) multiplica el bruto (más daño del atacante) y
+## [param mitigation_penalty] baja la fracción que absorbe el bloqueo (menos mitigación de la
+## víctima), sin pasar de 0.
 static func compute(base_damage: int, charge_ticks: int, charge_min_ticks: int,
 		charge_max_ticks: int, charge_damage_scale: float, critical: bool, blocked: bool,
 		block_mitigation: float, block_stamina_per_damage: float, defender_stamina: int,
-		armor: int, crit_multiplier: float = CRIT_MULTIPLIER) -> DamageFormula.Result:
+		armor: int, crit_multiplier: float = CRIT_MULTIPLIER, damage_scale: float = 1.0,
+		mitigation_penalty: float = 0.0) -> DamageFormula.Result:
 	var result := Result.new()
 	result.critical = critical
 	var gross: float = float(base_damage) \
 			* charge_factor(charge_ticks, charge_min_ticks, charge_max_ticks, charge_damage_scale)
 	if critical:
 		gross *= crit_multiplier
+	gross *= maxf(damage_scale, 0.0)
 	var absorbed: float = 0.0
 	if blocked:
-		var mitigated: float = gross * clampf(block_mitigation, 0.0, 1.0)
+		var mitigation: float = clampf(block_mitigation - maxf(mitigation_penalty, 0.0), 0.0, 1.0)
+		var mitigated: float = gross * mitigation
 		var needed: int = roundi(mitigated * block_stamina_per_damage)
 		var available: int = maxi(defender_stamina, 0)
 		if available >= needed:

@@ -1,6 +1,7 @@
 class_name AttackDefinition
 extends Resource
-## Un ataque cuerpo a cuerpo (docs/combate.md, sección 2). Todos los tiempos están en segundos y
+## Un ataque cuerpo a cuerpo o un disparo (docs/combate.md, sección 2; docs/habilidades.md, sección
+## 2.1). Todos los tiempos están en segundos y
 ## [CombatCatalog] los convierte a ticks con [code]roundi(s * 60)[/code] al cargar.
 ## [br][br]
 ## Las ventanas se cuentan desde el inicio de la acción ([code]action_tick[/code]): anticipación
@@ -29,7 +30,8 @@ extends Resource
 @export var turn_rate: float = 6.0
 ## Fracción de la velocidad de carrera permitida mientras dura el ataque.
 @export var move_speed_scale: float = 0.3
-## Forma del golpe (solo servidor).
+## Forma del golpe (solo servidor). Con [member projectile] puede ser null: el ataque dispara en su
+## primer tick activo.
 @export var shape: HitShape
 ## Daño base (entero, solo servidor).
 @export var base_damage: int = 0
@@ -55,3 +57,14 @@ extends Resource
 @export var charge_move_scale: float = 0.4
 ## Solo fuertes: giro hacia la cámara (rad/s) mientras se carga.
 @export var charge_turn_rate: float = 4.0
+## Proyectil que sale en el primer tick activo (null = ninguno; docs/habilidades.md, sección 4.4).
+@export var projectile: ProjectileDefinition
+## Velocidad de salida del proyectil (m/s); en el fuerte, a carga mínima.
+@export var projectile_speed_mps: float = 45.0
+## Solo fuertes con proyectil: multiplicador de la velocidad de salida a carga máxima (lineal desde
+## x1 en la mínima).
+@export var charge_speed_scale: float = 1.0
+## Aturdimiento que causa (s; 0 = ninguno; solo servidor).
+@export var stun_s: float = 0.0
+## Efecto a quien golpea (null = ninguno; solo servidor).
+@export var on_hit_status: StatusEffectDefinition

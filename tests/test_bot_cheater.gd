@@ -24,7 +24,7 @@ func _honest_batch(newest: int) -> NetMessages.InputBatch:
 
 func test_modes_are_the_documented_ones() -> void:
 	assert_eq(BotCheater.MODES, ["version", "future", "dupes", "garbage", "flood", "rewind", "reach",
-			"rate"] as Array[String])
+			"rate", "reuse", "potion", "interact"] as Array[String])
 	for mode: String in BotCheater.MODES:
 		assert_true(BotCheater.is_valid_mode(mode), "%s es un modo válido" % mode)
 	assert_true(BotCheater.is_valid_mode("FLOOD"), "sin distinguir mayúsculas")
@@ -138,8 +138,8 @@ func test_same_seed_same_traffic() -> void:
 
 # --- Modos de combate ---------------------------------------------------------------------------
 
-func test_combat_modes_are_the_three_new_ones() -> void:
-	assert_eq(BotCheater.COMBAT_MODES, ["rewind", "reach", "rate"] as Array[String])
+func test_combat_modes_are_the_three_of_phase_3_and_the_three_of_phase_4() -> void:
+	assert_eq(BotCheater.COMBAT_MODES, ["rewind", "reach", "rate", "reuse", "potion", "interact"] as Array[String])
 	for mode: String in BotCheater.MODES:
 		assert_eq(BotCheater.new(mode, 1).is_combat_mode(), BotCheater.COMBAT_MODES.has(mode),
 				"%s: solo los de combate cambian cómo juega el bot" % mode)
@@ -168,7 +168,8 @@ func test_rewind_mode_claims_forty_ticks_of_view_in_every_input() -> void:
 
 
 func test_other_modes_leave_the_batch_as_it_was() -> void:
-	for mode: String in ["version", "future", "dupes", "garbage", "flood", "reach", "rate"]:
+	for mode: String in ["version", "future", "dupes", "garbage", "flood", "reach", "rate", "reuse", "potion",
+			"interact"]:
 		var batch: NetMessages.InputBatch = _honest_batch(300)
 		var before: PackedByteArray = batch.encode()
 		BotCheater.new(mode, 2).tamper_batch(batch)
@@ -186,3 +187,12 @@ func test_combat_modes_make_a_brain_and_the_traffic_modes_do_not() -> void:
 	assert_true(reach is BotCheatBrain and (reach as BotCheatBrain).get_style() == BotCheatBrain.Style.REACH)
 	var rate: BotBrain = BotCheater.new("rate", 1).make_brain(finder, Vector3.ZERO, 10.0)
 	assert_true(rate is BotCheatBrain and (rate as BotCheatBrain).get_style() == BotCheatBrain.Style.RATE)
+	# Los de la fase 4 (docs/habilidades.md, sección 4.7).
+	var styles: Dictionary[String, BotCheatBrain.Style] = {"reuse": BotCheatBrain.Style.REUSE,
+			"potion": BotCheatBrain.Style.POTION, "interact": BotCheatBrain.Style.INTERACT}
+	for mode: String in styles:
+		var brain: BotBrain = BotCheater.new(mode, 1).make_brain(finder, Vector3.ZERO, 10.0)
+		assert_true(brain is BotCheatBrain and (brain as BotCheatBrain).get_style() == styles[mode],
+				"%s tiene su estilo" % mode)
+		assert_true(brain.has_enemy_finder(), "%s sabe dónde están los enemigos" % mode)
+		assert_false(brain.has_combat_source(), "%s no usa el kit: juega con sus botones" % mode)
