@@ -22,3 +22,5 @@ attack_gap_s = Vector2(0.5, 1.0)
 special_every = 3
 circle_distance = 4.0
 shouts = true
+xp_reward = 400
+gold_reward = 50

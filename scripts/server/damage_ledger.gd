@@ -86,6 +86,23 @@ func get_assistants(killer_id: int, tick: int) -> PackedInt32Array:
 	return result
 
 
+## Contribuyentes de la muerte en [param tick] (docs/progresion.md §0 y §6.2): quienes hicieron al menos el
+## [constant ASSIST_PERCENT] % del daño total de la ventana, el autor del golpe de gracia incluido si llega, por id
+## ascendente. Son los que cobran la recompensa de un PNJ (cada uno, entera). Con un 10 % mínimo nunca son más de 10.
+func contributors(tick: int) -> PackedInt32Array:
+	var by_attacker: Dictionary[int, int] = {}
+	var total: int = 0
+	for i: int in range(_first_valid(tick), _ticks.size()):
+		by_attacker[_attackers[i]] = by_attacker.get(_attackers[i], 0) + _amounts[i]
+		total += _amounts[i]
+	var result := PackedInt32Array()
+	for attacker_id: int in by_attacker:
+		if by_attacker[attacker_id] * 100 >= total * ASSIST_PERCENT:
+			result.append(attacker_id)
+	result.sort()
+	return result
+
+
 ## Último atacante que le hizo daño (id), o 0 si no hay ninguno en la ventana.
 func last_attacker(tick: int) -> int:
 	if _ticks.size() > _first_valid(tick):

@@ -12,6 +12,8 @@ extends Node
 ## Prioridad de los modos: [code]--bots=N[/code] (enjambre, [BotSwarm]) >
 ## [code]--connect[/code] / [code]--bot[/code] / [code]--local[/code] (cliente en red, [OnlineMain];
 ## [code]--local[/code] lanza antes un servidor local si no hay ninguno, ver [LocalServerLauncher]) >
+## [code]--title[/code] / [code]--platform[/code] (título con cuenta, [FrontMain]; docs/plataforma.md §5.5) >
+## sin argumentos: el título en una exportación y, desde el editor, el
 ## sandbox sin red ([ClientMain], con [code]--zone[/code], [code]--realm[/code], [code]--demo[/code],
 ## [code]--shots[/code] y [code]--quit-after-demo[/code]). Los argumentos del sandbox los interpreta la
 ## función que pasa [code]boot.gd[/code] en el metadato [constant PARSER_META] (la misma de siempre,
@@ -25,12 +27,15 @@ const CLIENT_MAIN_SCENE: String = "res://scenes/client/client_main.tscn"
 const ONLINE_MAIN_SCENE: String = "res://scenes/client/online_main.tscn"
 ## Escena del enjambre de clientes ligeros ([code]--bots=N[/code]).
 const SWARM_SCENE: String = "res://scenes/client/bot_swarm.tscn"
+## Escena del título con cuenta ([code]--title[/code], [code]--platform[/code] o una exportación sin argumentos).
+const FRONT_MAIN_SCENE: String = "res://scenes/client/front_main.tscn"
 
 
 func _ready() -> void:
 	var args: PackedStringArray = OS.get_cmdline_user_args()
-	# Prioridad de la sección 1.2: --bots > --connect/--local/--bot > sandbox.
-	var config: ClientConfig = ClientConfig.from_args(args)
+	# Prioridad de la sección 1.2 y de docs/plataforma.md §13.3: --bots > --bot > --connect/--local >
+	# --title/--platform > sandbox (en el editor) o título (en una exportación).
+	var config: ClientConfig = ClientConfig.from_args(args, not OS.has_feature("editor"))
 	match config.mode:
 		ClientConfig.Mode.SWARM:
 			BotSwarm.config = config
@@ -40,6 +45,9 @@ func _ready() -> void:
 			# docs/red.md 1.4) y apunta el cliente a su puerto.
 			OnlineMain.config = config
 			_change_scene(ONLINE_MAIN_SCENE)
+		ClientConfig.Mode.TITLE:
+			FrontMain.config = config
+			_change_scene(FRONT_MAIN_SCENE)
 		_:
 			_start_sandbox(args)
 

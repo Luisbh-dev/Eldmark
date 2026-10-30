@@ -248,6 +248,61 @@ func test_hello_carries_the_clients_identity() -> void:
 	probe.free()
 
 
+## Con billete (docs/plataforma.md §5.4 y §15 P8): el HELLO lleva el personaje y los 52 B de enter, con el reino y el
+## nombre del personaje.
+func test_hello_carries_the_ticket_and_the_character_of_enter() -> void:
+	_port = NetHarness.free_udp_port()
+	_fake = FakeServer.new()
+	_root.add_child(_fake)
+	assert_eq(_fake.listen(_port), OK)
+	_viewport = NetHarness.make_world_viewport(_root, "")
+	var transport := NetTransport.new()
+	_viewport.add_child(transport)
+	var controller := LocalPlayerController.new()
+	_viewport.add_child(controller)
+	_client = NetClient.new()
+	_viewport.add_child(_client)
+	var config := ClientConfig.new()
+	config.mode = ClientConfig.Mode.ONLINE
+	config.port = _port
+	config.realm = NetProtocol.Realm.SOLMARCH
+	config.display_name = "Anéira"
+	config.character_id = 9007199254740993
+	config.ticket = PackedByteArray(range(52))
+	config.from_front = true
+	assert_eq(_client.start(config, transport, controller), OK)
+	assert_true(await _wait_until(func() -> bool: return _fake.hello != null), "llega el HELLO")
+	var hello: NetMessages.Hello = _fake.hello
+	assert_eq(hello.character_id, 9007199254740993, "el personaje de enter (más de 2^53)")
+	assert_eq(hello.ticket, PackedByteArray(range(52)), "el billete tal cual")
+	assert_eq(hello.realm, NetProtocol.Realm.SOLMARCH, "el reino del personaje")
+	assert_eq(hello.display_name, "Anéira", "y su nombre")
+	assert_false(hello.is_bot(), "un jugador no es un bot")
+	assert_true(await _wait_until(func() -> bool: return _client.get_state() == NetClient.State.WELCOMED),
+			"y entra como siempre")
+
+
+func test_a_dtls_certificate_that_cannot_be_read_does_not_connect() -> void:
+	_viewport = NetHarness.make_world_viewport(_root, "")
+	var transport := NetTransport.new()
+	_viewport.add_child(transport)
+	var controller := LocalPlayerController.new()
+	_viewport.add_child(controller)
+	_client = NetClient.new()
+	_viewport.add_child(_client)
+	var config := ClientConfig.new()
+	config.mode = ClientConfig.Mode.ONLINE
+	config.port = NetHarness.free_udp_port()
+	config.realm = VARDHEIM
+	config.dtls_cert_path = "res://no/existe.pem"
+	config.dtls_name = "zona"
+	assert_null(NetClient.dtls_options(config), "sin certificado no hay opciones de DTLS")
+	assert_eq(_client.start(config, transport, controller), ERR_INVALID_DATA,
+			"no se conecta en claro cuando se pidió DTLS")
+	assert_eq(_client.get_state(), NetClient.State.IDLE)
+	assert_null(NetClient.dtls_options(ClientConfig.new()), "sin DTLS pedido, nada")
+
+
 func test_the_welcome_carries_the_realm_counts_for_the_realm_select() -> void:
 	await _start(func(fake: FakeServer) -> void: fake.realm_counts = PackedInt32Array([12, 3, 40]))
 	assert_true(await _wait_until(_in_world))

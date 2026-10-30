@@ -647,7 +647,8 @@ func test_console_commands() -> void:
 	var commands: CommandRegistry = _server.get_commands()
 	# Los ids 7 a 12 (protocolo 4) son fijos y todos tienen ya su manejador: el /atascado y los cuatro comandos del
 	# fuerte los registró F3 y npc_debug, F4. De los del protocolo 6 (13 a 16, docs/habilidades.md §5.1),
-	# cooldowns_off y apply_status llegaron con H3a y down y refill, con H3c.
+	# cooldowns_off y apply_status llegaron con H3a y down y refill, con H3c. Los cuatro de la progresión del
+	# protocolo 7 (40 a 43, docs/progresion.md §10), con progresion.md P5d.
 	assert_eq(commands.missing_network_commands(), PackedStringArray(),
 			"todos los comandos de red tienen manejador")
 	assert_true(_server.console_command("help").contains("teleport"))
@@ -665,7 +666,8 @@ func test_console_commands() -> void:
 	assert_true(_server.console_command("teleport Bot-02 10 0.5 -4").contains("teletransportado"))
 	assert_vec_near(_server.get_registry().get_entity(respawn_id).get_position(),
 			Vector3(10.0, 0.5, -4.0), 1e-4)
-	assert_eq(_server.console_command("teleport Bot-02 1 2"), "Uso: teleport <jugador> <x> <y> <z>")
+	assert_eq(_server.console_command("teleport Bot-02 1 2"),
+			"Uso: teleport <jugador> <x> <y> <z> | teleport <jugador> <otro jugador>")
 	assert_eq(_server.console_command("teleport Bot-02 1e9 0 0"), "Destino fuera de rango")
 	assert_eq(_server.console_command("teleport Nadie 1 2 3"), "No hay ningún jugador «Nadie»")
 	# Resistencia infinita y arma.

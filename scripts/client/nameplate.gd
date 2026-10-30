@@ -7,6 +7,9 @@ extends Control
 ## Fase 4 (UI-45, docs/habilidades.md, sección 6.4): encima del nombre, hasta 4 iconos de sus efectos
 ## (primero los perjudiciales, [method set_statuses]); derribado ([method set_downed]), la barra es la de
 ## su vida de derribado, en naranja, con un icono de derribado a su izquierda.
+## [br][br]
+## Fase 5 (docs/progresion.md §7.3): delante del nombre, el nivel del jugador ([method set_level]) en gris, solo si
+## se conoce (el de un enemigo no cruza y llega a 0).
 
 ## Tamaño de la placa (px) y de la barra.
 const PLATE_SIZE: Vector2 = Vector2(160.0, 56.0)
@@ -20,6 +23,9 @@ const BAR_BACK_COLOR: Color = Color(0.03, 0.03, 0.04, 0.75)
 const ALLY_BAR_COLOR: Color = Color(0.36, 0.8, 0.38, 1.0)
 const ENEMY_BAR_COLOR: Color = Color(0.86, 0.2, 0.18, 1.0)
 const OUTLINE_COLOR: Color = Color(0.0, 0.0, 0.0, 0.85)
+## Color del nivel delante del nombre. # TODO(arte): provisional.
+const LEVEL_COLOR: Color = Color(0.78, 0.76, 0.7, 1.0)
+const TEXT_LEVEL: String = "Nv %d"
 
 var _text: String = ""
 var _color: Color = Color.WHITE
@@ -31,6 +37,7 @@ var _alpha: float = 1.0
 var _net_id: int = 0
 var _downed: bool = false
 var _statuses: StatusIcons = null
+var _level: int = 0
 
 
 func _init() -> void:
@@ -75,6 +82,7 @@ func release() -> void:
 	visible = false
 	_net_id = 0
 	_downed = false
+	_level = 0
 	var none: Array[StatusTracker.Entry] = []
 	_statuses.show_entries(none, 0)
 
@@ -99,6 +107,22 @@ func set_downed(downed: bool) -> void:
 
 func is_downed() -> bool:
 	return _downed
+
+
+## Nivel que se enseña delante del nombre (0 = ninguno).
+func set_level(level: int) -> void:
+	if _level != level:
+		_level = maxi(level, 0)
+		queue_redraw()
+
+
+func get_level() -> int:
+	return _level
+
+
+## Texto del nivel («Nv 12»; vacío sin nivel).
+func get_level_text() -> String:
+	return TEXT_LEVEL % _level if _level > 0 else ""
 
 
 func get_net_id() -> int:
@@ -138,10 +162,27 @@ func _draw() -> void:
 	var bar_top: float = size.y - BAR_SIZE.y - 2.0
 	if _show_name and not _text.is_empty():
 		var baseline: float = bar_top - 5.0 if _show_bar else size.y - 6.0
-		draw_string_outline(font, Vector2(0.0, baseline), _text, HORIZONTAL_ALIGNMENT_CENTER,
-				size.x, FONT_SIZE, OUTLINE_SIZE, OUTLINE_COLOR)
-		draw_string(font, Vector2(0.0, baseline), _text, HORIZONTAL_ALIGNMENT_CENTER, size.x,
-				FONT_SIZE, _color)
+		var level_text: String = get_level_text()
+		if level_text.is_empty():
+			draw_string_outline(font, Vector2(0.0, baseline), _text, HORIZONTAL_ALIGNMENT_CENTER,
+					size.x, FONT_SIZE, OUTLINE_SIZE, OUTLINE_COLOR)
+			draw_string(font, Vector2(0.0, baseline), _text, HORIZONTAL_ALIGNMENT_CENTER, size.x,
+					FONT_SIZE, _color)
+		else:
+			# «Nv 12 Nombre» centrado: el nivel en gris y el nombre con su color.
+			var prefix: String = level_text + " "
+			var prefix_width: float = font.get_string_size(prefix, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONT_SIZE).x
+			var name_width: float = font.get_string_size(_text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONT_SIZE).x
+			var start: float = maxf((size.x - prefix_width - name_width) * 0.5, 0.0)
+			draw_string_outline(font, Vector2(start, baseline), prefix, HORIZONTAL_ALIGNMENT_LEFT, -1.0,
+					FONT_SIZE, OUTLINE_SIZE, OUTLINE_COLOR)
+			draw_string(font, Vector2(start, baseline), prefix, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONT_SIZE,
+					LEVEL_COLOR)
+			var name_x: float = start + prefix_width
+			draw_string_outline(font, Vector2(name_x, baseline), _text, HORIZONTAL_ALIGNMENT_LEFT, -1.0,
+					FONT_SIZE, OUTLINE_SIZE, OUTLINE_COLOR)
+			draw_string(font, Vector2(name_x, baseline), _text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONT_SIZE,
+					_color)
 	if _show_bar:
 		var rect := Rect2(Vector2((size.x - BAR_SIZE.x) * 0.5, bar_top), BAR_SIZE)
 		draw_rect(rect, BAR_BACK_COLOR)

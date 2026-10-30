@@ -1137,7 +1137,7 @@ func test_foreign_packets_before_the_hello_get_the_sender_kicked() -> void:
 		attacker.send(PackedByteArray([3, 1]), 1)
 	attacker.flush()
 	var gone: bool = await _run_until(func() -> bool: return _server.get_peer_ids().is_empty(), 300)
-	assert_true(gone, "el peer se expulsa en cuanto suma 50 avisos, sin esperar a los 5 s")
+	assert_true(gone, "el peer se expulsa en cuanto suma 50 avisos, sin esperar al auth_timeout")
 	var reasons: Dictionary = _strike_reasons()
 	assert_eq(int(reasons.get(ZoneServer.DISCARDED_REASON, 0)), ServerPeer.STRIKE_LIMIT,
 			"cada paquete ajeno es un aviso, hasta los 50")
@@ -1315,7 +1315,7 @@ func test_client_that_never_sends_ready_is_kicked_after_the_loading_timeout() ->
 
 func test_client_that_never_sends_hello_is_dropped_by_the_auth_timeout() -> void:
 	await _start_server()
-	# Se anula el plazo propio del servidor para el HELLO: aquí actúa el de NetTransport (5 s).
+	# Se anula el plazo propio del servidor para el HELLO: aquí actúa el de NetTransport (10 s).
 	_server.hello_timeout_ticks = 100000
 	# Sin HELLO: el cliente conecta pero no envía nada en la autenticación.
 	var client: RawClient = _connect_client(PackedByteArray())
@@ -1325,7 +1325,7 @@ func test_client_that_never_sends_hello_is_dropped_by_the_auth_timeout() -> void
 	assert_eq(_server.get_player_count(), 0, "un peer que se autentica no ocupa sitio")
 	var dropped: bool = await _run_until(func() -> bool: return _server.get_peer_ids().is_empty(),
 			int(NetTransport.AUTH_TIMEOUT_SECONDS * 60.0) + 240)
-	assert_true(dropped, "pasado el tiempo de autenticación (5 s) el peer se da de baja")
+	assert_true(dropped, "pasado el tiempo de autenticación (10 s) el peer se da de baja")
 	assert_true(client.failed or client.disconnected, "y el cliente ve que se corta")
 
 
@@ -1375,7 +1375,7 @@ func test_idle_connections_cannot_exhaust_the_slots_of_one_ip() -> void:
 
 
 ## Un cliente que conecta y no manda el HELLO se corta en cuanto vence el plazo propio del servidor
-## (90 ticks), mucho antes que los 5 s de la autenticación de SceneMultiplayer.
+## (90 ticks), mucho antes que los 10 s de la autenticación de SceneMultiplayer.
 func test_a_connection_without_hello_is_dropped_after_the_hello_deadline() -> void:
 	await _start_server()
 	assert_eq(_server.hello_timeout_ticks, ZoneServer.HELLO_TIMEOUT_TICKS, "90 ticks por defecto")
@@ -1390,7 +1390,7 @@ func test_a_connection_without_hello_is_dropped_after_the_hello_deadline() -> vo
 	assert_true(_server.get_tick() - seen_at >= ZoneServer.HELLO_TIMEOUT_TICKS - 10,
 			"no antes de tiempo (%d ticks)" % (_server.get_tick() - seen_at))
 	assert_true(_server.get_tick() - seen_at < int(NetTransport.AUTH_TIMEOUT_SECONDS * 60.0),
-			"y bastante antes de los 5 s de la autenticación")
+			"y bastante antes de los 10 s de la autenticación")
 	var closed: bool = await _run_until(func() -> bool: return client.failed or client.disconnected, 120)
 	assert_true(closed, "el cliente ve que se corta")
 	var rejects: Dictionary = _read_report().get("rejects", {})

@@ -246,6 +246,10 @@ func submit(text: String) -> void:
 		ChatCommandParser.Kind.INVITE, ChatCommandParser.Kind.LEAVE, ChatCommandParser.Kind.KICK, \
 				ChatCommandParser.Kind.LEADER:
 			_party(command)
+		ChatCommandParser.Kind.SERVER:
+			# Lo atiende el servidor (docs/plataforma.md §9): la línea va por el canal GM y la respuesta llega por el
+			# canal del sistema.
+			_send(ChatChannel.Id.GM, "", command.text)
 		ChatCommandParser.Kind.UNKNOWN:
 			add_system_text(ChatCommandParser.TEXT_UNKNOWN)
 		ChatCommandParser.Kind.INVALID:

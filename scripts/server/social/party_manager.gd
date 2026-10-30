@@ -7,7 +7,9 @@ extends RefCounted
 ## reino[/b]: invitar a un jugador de otro reino, o a quien no existe, contesta lo mismo que un susurro
 ## («no está conectado»), no avisa al invitado ni revela que existe. El primero es el líder y puede expulsar y
 ## ceder el mando; cualquier miembro puede invitar. Si el líder se va, el siguiente más antiguo hereda el
-## mando; un grupo de uno se disuelve. Una invitación caduca a los [constant PartyRules.INVITE_TTL_TICKS]
+## mando; un grupo de uno se disuelve. La invitación a quien ignora la cuenta de quien invita (docs/plataforma.md §9.3)
+## se descarta en silencio: quien invita ve lo de siempre y caduca, y al invitado no le llega nada ni la puede
+## aceptar. Una invitación caduca a los [constant PartyRules.INVITE_TTL_TICKS]
 ## ticks (60 s), cada jugador puede tener como mucho [constant PartyRules.MAX_PENDING_PER_INVITER] enviadas
 ## y, al formarse o crecer el grupo, se cancelan las demás que tuvieran quien acepta y, si el grupo es nuevo,
 ## quien invitó. Invitar tiene su cubo (1 cada 2 s, ráfaga de 3); lo que se descarta avisa al jugador (como
@@ -76,6 +78,8 @@ class Invitation:
 	var inviter: ServerPeer = null
 	var target: ServerPeer = null
 	var expire_tick: int = 0
+	## El invitado ignora la cuenta de quien invita: no se le manda nada y no la puede aceptar.
+	var hidden: bool = false
 
 
 var _peers_source: Callable
@@ -88,7 +92,7 @@ var _party_of: Dictionary[int, Party] = {}
 var _invitations: Array[Invitation] = []
 var _next_party_id: int = 1
 var _stats: Dictionary = {"parties_created": 0, "invitations": 0, "accepted": 0, "declined": 0,
-		"expired": 0, "kicks": 0, "status_sent": 0, "rate_limited": 0}
+		"expired": 0, "kicks": 0, "status_sent": 0, "rate_limited": 0, "ignored": 0}
 
 
 func _init(peers_source: Callable, send_sink: Callable, strike_sink: Callable, notify: Callable) -> void:
@@ -182,10 +186,15 @@ func invite(peer: ServerPeer, target_name: String, now_tick: int) -> void:
 	invitation.inviter = peer
 	invitation.target = target
 	invitation.expire_tick = now_tick + PartyRules.INVITE_TTL_TICKS
+	# Quien ignora la cuenta del que invita no recibe nada, y el que invita no lo sabe (§9.3).
+	invitation.hidden = SocialPeers.ignores(target, peer)
 	_invitations.append(invitation)
 	_stats["invitations"] += 1
-	_send_invitation(target, NetMessages.PartyInvitation.State.OFFERED, invitation.expire_tick, peer)
 	_notify.call(peer, TEXT_INVITED % target.display_name, now_tick)
+	if invitation.hidden:
+		_stats["ignored"] += 1
+		return
+	_send_invitation(target, NetMessages.PartyInvitation.State.OFFERED, invitation.expire_tick, peer)
 	_notify.call(target, TEXT_INVITED_YOU % peer.display_name, now_tick)
 
 
@@ -194,7 +203,7 @@ func respond(peer: ServerPeer, inviter_name: String, accept: bool, now_tick: int
 	var key: String = NameRules.normalize_key(inviter_name)
 	var invitation: Invitation = null
 	for candidate: Invitation in _invitations:
-		if candidate.target == peer and SocialPeers.name_key_of(candidate.inviter) == key:
+		if candidate.target == peer and not candidate.hidden and SocialPeers.name_key_of(candidate.inviter) == key:
 			invitation = candidate
 			break
 	if invitation == null:
@@ -280,7 +289,8 @@ func on_peer_left(peer: ServerPeer, now_tick: int) -> void:
 	for invitation: Invitation in _invitations.duplicate():
 		if invitation.inviter == peer:
 			_invitations.erase(invitation)
-			_send_invitation(invitation.target, NetMessages.PartyInvitation.State.CANCELLED, now_tick, peer)
+			if not invitation.hidden:
+				_send_invitation(invitation.target, NetMessages.PartyInvitation.State.CANCELLED, now_tick, peer)
 		elif invitation.target == peer:
 			_invitations.erase(invitation)
 	var party: Party = _party_of.get(peer.peer_id)
@@ -295,8 +305,9 @@ func step(now_tick: int) -> void:
 		if invitation.expire_tick <= now_tick:
 			_invitations.erase(invitation)
 			_stats["expired"] += 1
-			_send_invitation(invitation.target, NetMessages.PartyInvitation.State.EXPIRED, now_tick,
-					invitation.inviter)
+			if not invitation.hidden:
+				_send_invitation(invitation.target, NetMessages.PartyInvitation.State.EXPIRED, now_tick,
+						invitation.inviter)
 			_notify.call(invitation.inviter, TEXT_EXPIRED % invitation.target.display_name, now_tick)
 	for party: Party in _parties:
 		if is_status_tick(party.id, now_tick):
@@ -346,8 +357,9 @@ func get_pending_from(peer: ServerPeer) -> int:
 	return _pending_from(peer)
 
 
-## Estadísticas para el informe: grupos creados, invitaciones enviadas, aceptadas, rechazadas, caducadas y
-## descartadas por ritmo, expulsiones y estados enviados.
+## Estadísticas para el informe: grupos creados, invitaciones enviadas, aceptadas, rechazadas, caducadas,
+## descartadas por ritmo y descartadas en silencio porque el invitado ignora a quien invita, expulsiones y estados
+## enviados.
 func get_stats() -> Dictionary:
 	var stats: Dictionary = _stats.duplicate()
 	stats["parties"] = _parties.size()
@@ -404,8 +416,9 @@ func _cancel_invitations_to(target: ServerPeer, now_tick: int) -> void:
 	for invitation: Invitation in _invitations.duplicate():
 		if invitation.target == target:
 			_invitations.erase(invitation)
-			_send_invitation(target, NetMessages.PartyInvitation.State.CANCELLED, now_tick,
-					invitation.inviter)
+			if not invitation.hidden:
+				_send_invitation(target, NetMessages.PartyInvitation.State.CANCELLED, now_tick,
+						invitation.inviter)
 
 
 func _create_party(leader: ServerPeer) -> Party:

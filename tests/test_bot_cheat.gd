@@ -463,7 +463,14 @@ func test_potion_cheater_drinks_only_with_charges_and_off_the_shared_cooldown() 
 		# Herido desde el principio, para que la poción de vida tenga algo que curar.
 		combatant.take_damage(600, _server.get_tick())
 		if joined.size() == 2:
-			# El segundo: 1 de vida y 0 de resistencia, con su LOADOUT (el cliente lo explica, como el comando 16).
+			# El segundo: 1 de vida y 0 de resistencia, con su LOADOUT (el cliente lo explica, como el comando 16). Sin
+			# plataforma es un personaje efímero con inventario (progresion.md §9.4, P5b) y sus cargas son las pociones de
+			# su bolsa: se le quitan antes las que sobran.
+			var progress: PlayerProgress = _server.get_progress().get_player(net_id)
+			progress.lose_items(&"potion_health", progress.record.inventory.count_of(&"potion_health") - 1,
+					EconomyReason.CONSUME)
+			progress.lose_items(&"potion_stamina", progress.record.inventory.count_of(&"potion_stamina"),
+					EconomyReason.CONSUME)
 			var character: PlayerCharacter = combatant.get_character()
 			ActionMachine.set_charges(character.combat, CombatState.pack_charges(1, 0))
 			CombatDirector.commit_state(character)

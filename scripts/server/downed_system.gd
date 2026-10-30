@@ -279,8 +279,11 @@ func _try_start(actor: Combatant, s: int, space: PhysicsDirectSpaceState3D, tabl
 
 
 # Qué puede hacer [param actor] con el derribado [param target]: REVIVE a un aliado al que nadie levanta,
-# EXECUTE a un enemigo sin zonas seguras de por medio, o 0.
+# EXECUTE a un enemigo sin zonas seguras de por medio, o 0 (siempre 0 para un GM invisible).
 func _interaction_for(actor: Combatant, target: Combatant) -> int:
+	# Un GM invisible no levanta ni remata (docs/plataforma.md §9.1).
+	if actor.is_gm_invisible():
+		return 0
 	if target.get_realm() == actor.get_realm():
 		return 0 if _being_revived(target) else _REVIVE
 	if not _is_hostile(actor.get_realm(), target.get_realm()):

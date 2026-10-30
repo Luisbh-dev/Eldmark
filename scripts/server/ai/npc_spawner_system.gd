@@ -424,6 +424,11 @@ func _step_slot(slot: Slot, tick: int) -> void:
 # Crea los PNJ que faltan hasta el máximo del puesto.
 func _fill_slot(slot: Slot, tick: int) -> void:
 	var spawner: NpcSpawner = slot.marker as NpcSpawner
+	# Con el capitán caído (un fuerte cargado de la plataforma en VULNERABLE o CAPTURING, docs/plataforma.md §8) su
+	# puesto se queda vacío: vuelve con la guarnición (garrison_due) o con la reaparición completa de los Huecos.
+	if slot.state != null and not slot.state.captain_alive and _is_captain_slot(slot):
+		slot.due.clear()
+		return
 	while slot.live_count() < spawner.max_alive:
 		if _spawn(slot, tick) == null:
 			break

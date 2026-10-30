@@ -100,6 +100,7 @@ platform/            go.mod: module eldmark/platform, go 1.24.0, toolchain go1.2
   internal/  config logx db httpx (enrutador, errores, límites) jsonx (enteros e ids del JSON, §4.1) migrate
              (+ migrations/*.sql con embed) testdb passwords accounts names gamedata (progression_rules.json, §4.4)
              characters tickets zones persistence progress (progresion.md P7) war social privacy mail
+             services (lo que monta serve; también el arnés de e2e/, P10)
   e2e/  legal/ (terms-1.md, privacy-1.md, rules-1.md)  deploy/ (Dockerfile, docker-compose.yml, Caddyfile,
         journald-eldmark.conf, *.env.example, secrets/ (ignorada), dev.sh, backup.sh, restore_check.sh, pitr_check.sh)
 ```
@@ -1321,11 +1322,13 @@ por su cuenta. Las normas se aceptan al crear la cuenta (§11.4).
   públicas» se cumple solo.
 - Comprobado con `ENetMultiplayerPeer` en un proceso: conecta y entrega un paquete por DTLS. Salir sin `close()`
   hace que el motor registre un error de `bio_send`: se cierran los peers antes.
-- **Sin comprobar:** DTLS con `GuardedEnetPeer` y la autenticación de `SceneMultiplayer`, y su coste. TEC-27 mide la
-  CPU por paquete, los bytes de más por datagrama y el tope de 1200 B frente al MTU de ENet, con `--bots=64` con y
-  sin `--dtls-cert` contra la misma zona. **Criterio** (provisional, tomado de noche; pregunta para el usuario, §0):
+- **Comprobado en P9c** (§19.18): DTLS con `GuardedEnetPeer` y la autenticación de `SceneMultiplayer`, en un proceso
+  y con el servidor dedicado; el corte lo empieza siempre el servidor (un cliente con DTLS que lo empezase haría que
+  el motor del servidor registrase un error por cada salida). TEC-27 mide la CPU por paquete, los bytes de más por
+  datagrama y el tope de 1200 B frente al MTU de ENet, con `--bots=64` con y sin `--dtls-cert` contra la misma zona
+  (`tools/load_test.gd --dtls-compare`). **Criterio** (provisional, tomado de noche; pregunta para el usuario, §0):
   DTLS no sube el p99 del tick más de un 10 % y la cifra absoluta se anota en red.md §14. El del backlog (p99 < 8 ms
-  con 64 bots) no se cumple ni sin DTLS (15,9 ms).
+  con 64 bots) no se cumple ni sin DTLS (15,9 ms). Lo medido, en red.md §14 y §19.18.
 
 ### 10.3 Secretos
 | Secreto | Dónde vive | Rotación |
@@ -1359,9 +1362,9 @@ auditoría. Ni nombre real, ni dirección, ni pagos (si los hay, son del proveed
 | `chat_messages` | 30 días | Trabajo horario, lotes de 10 000 |
 | `report_evidence`, reportes cerrados, `audit_log` | 1 año (desde el cierre en los reportes) | Trabajo horario. Un reporte sin cerrar al año de crearse pasa a `dismissed` (`closed_at = now()`, `resolution = 'caducado'`) y cuenta desde ahí |
 | `auth_events`; IP y agente de `sessions` | 30 días | Trabajo horario (la IP de la sesión pasa a null) |
-| `sessions` y `account_tokens` caducados · `enter_tickets` · `zone_instances` paradas · `outbound_mail` | 7 días · 1 día · 30 días · 7 días | Trabajo horario |
+| `sessions` y `account_tokens` caducados · `enter_tickets` · `zone_instances` terminadas (paradas, perdidas o sustituidas) · `outbound_mail` | 7 días · 1 día · 30 días · 7 días | Trabajo horario |
 | Cuenta sin verificar (`staging`, `production`) | 7 días | Purga (§11.2) |
-| Personaje borrado | 7 días restaurable; luego lápida; el nombre, 30 días más (o nada, §4.4) | Purga horaria |
+| Personaje borrado | 7 días restaurable; luego lápida; el nombre, 30 días más (o nada, §4.4) | Purga horaria; la fila `reserved` de `character_names`, el trabajo horario al vencer |
 | Libro, operaciones y eventos de objeto de un personaje vivo, también el `actor_account_id`, la `note` y el `detail` de las operaciones GM y REVERSAL (una segunda huella de esos comandos de GM, aparte de `audit_log`) | Mientras exista el personaje; tras su purga, la fila de abajo | Ninguno: son de solo añadir (progresion.md §3.5). La exportación los da sin los datos del personal (§11.2). **Revisión legal** (también de `note` y de que no tenga plazo) |
 | Libro, operaciones y eventos de objeto de un personaje purgado | **1 año** desde la purga. Sin nombres: la lápida no lo tiene y `detail.args` nombra al objetivo por id (progresion.md §10). Mientras la cuenta exista, ligados a ella y exportables (§11.2); seudónimos solo tras purgarla. La `note` de las operaciones GM y REVERSAL se conserva como dato de moderación | Retención horaria: `ProgressStore.PurgeRetention` (progresion.md §3.5), con `set local eldmark.retention_purge = 'on'`; luego se borran las lápidas que devuelve vacías. **Revisión legal** (también de `note`) |
 | Cuenta borrada | 14 días de gracia | Purga (§11.2) |
@@ -1370,6 +1373,9 @@ auditoría. Ni nombre real, ni dirección, ni pagos (si los hay, son del proveed
 | Copias diarias y semanales, WAL | 35 días; al restaurar se vuelven a aplicar las purgas (§12) | `backup.sh` y WAL-G |
 | Registros de los contenedores (zona, plataforma) | 30 días: la zona escribe nombre e IP en cada conexión y rechazo | journald (`MaxRetentionSec=30day`, §12) |
 | `fortress_events`, `realm_resources` | Sin límite: no son personales | — |
+
+El «trabajo horario» de la tabla es `privacy_retention` (`internal/privacy`, P9a, §19.15), salvo el chat
+(`chat_retention`, P7a) y las purgas (`accounts_purge` y `characters_purge`, P1 y P2).
 
 En `staging` y `production` con `--platform`, la zona no admite `--battle-log`, `--combat-log` ni `--state-log`
 (escriben nombres sin plazo; §5.5).
@@ -1635,16 +1641,20 @@ var fake_env: StringName = &"test"                                # el env del r
 var next_block_first: int = 1025                                  # cada bloque (uno dentro de start, antes de
 		# startup_finished, y uno por request_id_block) sale como evento id_block {first, count: 1024} y sube 1024
 func add_character(character_id: int, account_id: int, role: StringName, realm: int, progress: Dictionary,
-		pvp: Dictionary = {}) -> void   # lo que devuelve su reclamación (lease_id nuevo en cada una); sin él, 409 ticket_invalid
+		pvp: Dictionary = {}, display_name: String = "") -> void   # lo que devuelve su reclamación (lease_id nuevo en
+		# cada una; sin nombre, NameRules.bot_name(id)); sin él, 409 ticket_invalid
 func script_next(kind: StringName, status: int, body: Variant, delay_s: float = 0.0) -> void
 		# la siguiente petición de ese kind (claim, save, release, heartbeat, id_block, progress_op, progress_ledger,
-		# ignore, report, sanction…) recibe esa respuesta, una vez; status 0 = sin conexión (transport_ok false)
+		# ignore, report, sanction…) recibe esa respuesta, una vez; status 0 = sin conexión (transport_ok false);
+		# body FakeZonePlatform.DEFAULT = la respuesta por defecto con ese estado y ese retraso (P4, §19.8)
 func set_fenced(fenced: bool) -> void                             # is_fenced() lo devuelve hasta cambiarlo
 func applied(character_id: int) -> Dictionary                     # el último cuerpo aplicado; {} si ninguno
 func sent(kind: StringName) -> Array[Dictionary]                  # los cuerpos recibidos de ese kind, en orden
 ## Por defecto: claim → 200 con lo de add_character y, si hubo guardados, lo último aplicado de cada sección (§14.1);
 ## save → 200 applied con save_version que sube; release → 204; heartbeat → 200 sin revoked; progress_op y
-## progress_ledger → 404; lotes → 204. progresion.md P5a añade solo la parte progress de la reclamación siguiente y
+## progress_ledger → 404; lotes → 204; ignore, report y sanction resuelven target_name entre los personajes dados de
+## alta (P7b, §19.12: con set_account_state(character_id, muted_until_unix, ignored, warnings) y queued(kind)).
+## progresion.md P5a añade solo la parte progress de la reclamación siguiente y
 ## static func claim_progress(race_id: StringName, appearance: PackedByteArray, starter_template_id: StringName)
 ## -> Dictionary, que la construye con ProgressRecord.new_character() y to_claim_dictionary(now_unix()).
 # scripts/server/platform/character_saver.gd (P5)
@@ -1687,7 +1697,7 @@ func pending_count() -> int
   | `&"heartbeat"` | Respuesta del latido: `revoked`, `mutes` y `maintenance` | `ZoneServer` (P5: expulsiones y la cuenta atrás del mantenimiento de §7.2; P7b: silencios) |
   | `&"id_block"`, `&"progress_op"`, `&"progress_ledger"` | Bloques de ids, operación y libro | `ProgressService` (progresion.md P5a y P5d) |
   | `&"fortress"` | Respuesta de un PUT de fortaleza | `FortressPersistence` (P6) |
-  | `&"ignore"`, `&"report"`, `&"sanction"` | Respuestas de `/ignorar`, `/reportar` y `/gm` | `ChatRouter` y la moderación (P7b) |
+  | `&"ignore"`, `&"report"`, `&"sanction"` | Respuestas de `/ignorar` y `/designorar`, `/reportar` y las sanciones de `/gm` | `ModerationService` (P7b) |
   | `&"instance_closed"` | `instance_lost`, `instance_replaced` o `instance_stopped` en cualquier respuesta o en `instance_status` (una vez) | `ServerMain`: el cierre de §6.1 (P5) |
 
   Las respuestas de la liberación y de los lotes no salen de `ZonePlatform`: reintenta hasta una definitiva y
@@ -1716,7 +1726,8 @@ func pending_count() -> int
   crítico sale al instante. Una baja en `VERIFYING` llama a `auth_provider.cancel(peer_id)`; una en `LOADING`, a
   `platform.release(character_id, lease_id)` y `progress.cancel_prepared(peer_id)` (§5.2); una en el mundo, a la
   salida de §7.2, y una por `save_rejected` o `revoked` `lease_lost`, a la baja sin guardado de §7.2.
-  `ZoneServer.stop` hace lo de §7.2 («Cierre ordenado») antes de `begin_flush`.
+  `ZoneServer.stop` hace lo de §7.2 («Cierre ordenado») antes de `begin_flush`; el cierre de §6.1 es
+  `ZoneServer.close_instance(code)`, que `ServerMain` llama con el código de `instance_closed` (P5, §19.9).
 
 ### 14.4 Contratos en GDScript (cliente)
 ```gdscript
@@ -1787,8 +1798,9 @@ instancia, intercambio diferido, purga con lápida, retención al año, `delete`
   instancia nueva. El primer bot no hace falta que reconecte.
 - **CI:** trabajo «Plataforma e2e» en `tests.yml`, que reutiliza la caché de Godot y de LFS del trabajo de Godot y
   exporta `ELDMARK_GODOT`.
-- **Tiempo: sin medir.** Dos arranques de zona y uno o dos de bot: la meta es < 30 s por prueba. Si P10 mide más,
-  el tope de P10 sube a 60 s y se anota aquí y en la entrada del backlog.
+- **Tiempo** (medido en P10, §19.19): `TestEnterAndSave` 11–13 s y `TestZoneCrash` 25–27 s, dentro de la meta de
+  < 30 s por prueba; no hace falta el tope de 60 s. Si un cambio lo pasa, el tope de P10 sube a 60 s y se anota aquí
+  y en la entrada del backlog.
 
 **Revisión visual de UI-22 a UI-24 (usuario).** Contra `deploy/dev.sh`: el título arranca con el estado y las
 noticias; se crea una cuenta y se inicia sesión; se crean dos personajes (reino, apariencia, plantilla y nombre con
@@ -1804,13 +1816,13 @@ con su texto.
 | Partición entre zona y plataforma con el cliente llegando a las dos: el personaje entra en otra zona | Cercado a los 10 s (nadie nuevo entra); a los 15 s, `lost`; al volver, la vieja se cierra y sus guardados finales solo valen para quien nadie reclamó; se pierde lo jugado allí por quien entró en otra. Raro en un mismo centro de datos; se revisa con TEC-29 |
 | `HTTPRequest` en el servidor de zona: coste y orden de las señales | Colas por prioridad, plaza propia del latido, lotes, resultados solo en «poll»; `ServerMetrics` mide la sección `platform`; `FakeHttpServer` lo prueba de verdad |
 | Un fallo de TLS registra un ERROR del motor | Ninguna prueba de Godot lo provoca (§10.1); TLS se prueba en Go |
-| DTLS con `GuardedEnetPeer` y `SceneMultiplayer`, y su coste, sin comprobar | P9c lo prueba en un proceso; TEC-27 lo mide con el criterio relativo de §10.2; sin DTLS no hay pruebas públicas (la plataforma lo impone) |
+| DTLS con `GuardedEnetPeer` y `SceneMultiplayer`, y su coste | Comprobado y medido en P9c (§19.18, red.md §14); sin DTLS no hay pruebas públicas (la plataforma lo impone). **Riesgo que queda:** cada datagrama basura de una dirección nueva es un apretón de manos fallido y un error del motor en el registro (por debajo de `GuardedEnetPeer`); lo acota el límite de journald y, fuera del proceso, el cortafuegos (TEC-40). Cada apretón de manos cuesta 2 ms (EC P-256) o 4 ms (RSA 2048) del hilo principal de la zona |
 | Versiones de Go y PostgreSQL de la CI (`ubuntu-latest`, sin comprobar) | Versiones fijas y `GOTOOLCHAIN=local` (§2.2); `ELDMARK_REQUIRE_PG=1` hace evidente que falta PostgreSQL |
 | Una sola instancia de la plataforma (punto único de fallo; límites y fallos de contraseña en memoria) | Vale para pruebas cerradas; quien juega sigue si cae (§7.4); reiniciar la plataforma reinicia los contadores. Varias instancias con TEC-38 |
 | Una zona comprometida (Godot recibe UDP de Internet) | Token con alcance, `public_host` de una lista, autorización de sanciones en la plataforma, lotes validados contra la instancia (§6), ids solo de sus bloques, S1–S8 en Go (progresion.md §13.3). **Riesgo que queda:** S1–S8 acotan la forma, los topes, los ids y el actor de las GM, no las cantidades; son la red contra una zona con un error, no contra una comprometida, que aún puede acuñar oro, méritos y XP con GAMEPLAY o con `source = console` sobre los personajes que tiene dentro. Lo detectan PRG-30 y PRG-39 |
 | Textos legales, edad, retenciones (libro, correos sancionados) y exportación | Borradores marcados; revisión humana antes de cualquier prueba pública |
 | `zone_server.gd` lo tocan nueve paquetes de los dos documentos (y antes habilidades.md) | Orden conjunto fijo, que empieza tras habilidades.md H3c (§14.1), y pasos del tick con nombre (§14.3) |
-| P10 puede pasar de 30 s | Se mide; si pasa, tope explícito de 60 s (§15) |
+| P10 puede pasar de 30 s | Medido en P10 (§19.19): unos 12 s y 25 s; si pasa, tope explícito de 60 s (§15) |
 
 ## 17. Interfaz con progresion.md (conciliada)
 
@@ -2653,3 +2665,1153 @@ solo cambia la documentación.
 **Sin comprobar:** el vigilante de `testdb` fuera de Linux (usa `sh` y `Setpgid`, que macOS también tiene); la
 reserva del correo con una `account_tokens` grande; el envío con un servidor SMTP de verdad (STARTTLS sigue
 probándose con el falso).
+
+### 19.8 P4 · billete en la zona (TEC-24)
+
+**Qué hay.** El lado de la zona de §5 y §6: el billete, la reclamación antes del WELCOME, la `ZonePlatform` con su
+cliente HTTP y el protocolo 7. Sin `--platform` todo sigue como antes (`DevAuthProvider`, personajes efímeros):
+
+| Pieza | Contenido |
+|---|---|
+| `scripts/server/platform/` | `HandoffTicket` (§5.1: `decode`, `verify` en tiempo constante, `sign`, `zone_key_of`), `TicketAuthProvider` (los cinco pasos de §5.2 y la tabla de respuestas de la reclamación), `ZonePlatform` (arranque de §8, latido con su conjunto, cercado, reloj, reclamación, liberación, guardado, bloques, fortalezas, lotes, `request` y los `kind` de `PlatformEvent`), `PlatformClient` (las plazas y prioridades de §6 con los reintentos de cada clase), `PlatformEvent`, `ClaimedCharacter`, `AuthOutcome` y `PlatformJson` (ids de 0 a 2^63 − 1 y enteros exactos, como `jsonx`) |
+| `auth_provider.gd` · `dev_auth_provider.gd` · `server_auth.gd` | La API de §14.3 (`PENDING`, `authenticate(peer_id, hello)`, `on_platform_event`, `take_completed`, `cancel`, `uses_tickets`); `validate(peer_id, …)`, que con billetes no mira reino ni nombre (sin `REJECT NAME` ni `IMBALANCE`) |
+| `server_peer.gd` | `State.VERIFYING`, `connected_at_msec` (tiempo real), `character_id`, `claimed` y `drop_body_at_once` |
+| `zone_server.gd` | `start(…, platform)`; en «poll», los eventos por `kind` (`claim` al proveedor, `heartbeat` a la zona, `instance_closed` al final, como la señal `instance_closed`), los finales (reino → cupo → WELCOME con el reino y el nombre del personaje) y los `VERIFYING` vencidos a los 7 s; `get_player_count()` con `VERIFYING`; bajas en `VERIFYING` (`cancel`) y en `LOADING` (`release`); los `revoked` del latido; el bit del personal en el SPAWN; el enfriamiento por `character:<id>`; la sección `platform` de las métricas |
+| `server_config.gd` · `server_main.gd` | `--platform`, `--world`, `--channel`, `--public-address`, `--save-interval`, `--replace`, `--dtls-cert`, `--dtls-key` y `platform_dev_options()`; con plataforma, los secretos del entorno, el arranque, `TicketAuthProvider`, `go_live`, la salida con código 1 (arranque) o 3 (`instance_closed`) y, al cerrar, lo pendiente y la baja |
+| Protocolo 7 | `PROTOCOL_VERSION = 7` con la línea entera de §5.4, REJECT 10–12 con sus textos, `NetTransport.AUTH_TIMEOUT_SECONDS = 10.0`, bit 3 del `flags` de la cabecera del ENTITY_SPAWN (`NetMessages.SPAWN_FLAG_STAFF`, `EntitySpawn.is_staff`, `NetEntity.is_staff`); `progression_rules.json` reexportado con `protocol_version` 7; red.md con sus marcas «v7» |
+| Pruebas | `tests/fake_zone_platform.gd` (`FakeZonePlatform`, la API de §14.3) y `tests/support/fake_http_server.gd` (`FakeHttpServer`, un `TCPServer` con respuestas y retrasos guionizados) |
+
+**Para los paquetes siguientes.**
+
+- **progresion.md P4:** la versión ya es la 7 y la línea de `net_protocol.gd` ya nombra lo suyo; añade su código sin
+  subirla y sus filas «v7» en red.md (la leyenda de §5.2 ya está).
+- **P5:** `CharacterSaver` llama a `ZonePlatform.save(character_id, lease_id, bytes, release_lease, context)`; la
+  respuesta definitiva sale como evento `save` (el `match` de `_poll_platform` le deja el sitio) y saca al personaje
+  del latido si llevaba `release_lease`. Hasta entonces, **provisional**: quien sale del mundo libera su arrendamiento
+  cuando se va el cuerpo (`_claims_by_net`, en `_remove_player`, también tras la salida en combate y en
+  `_clear_players`); un `revoked` que no es `lease_lost` expulsa con su NOTICE y sin guardado final; `instance_closed`
+  cierra como cualquier otro cierre y sale con código 3 (el cierre de §6.1, con los finales primero y su NOTICE, es de
+  P5); el `maintenance` del latido no se mira; `SHUTDOWN_MAX_FRAMES` sigue en 90 y `_drain_platform` espera a
+  `is_flushed()` como mucho eso antes y después de la baja.
+- **progresion.md P5a:** el paso (3) de `_apply_auth_outcome` es el sitio de `ProgressService.prepare` y
+  `_leave_auth_states` (LOADING) el de `cancel_prepared`; `ZonePlatform.RECORD_FORMAT` ya existe; en
+  `FakeZonePlatform`, `_claim_answer` y `_remember_save` son donde entra la parte `progress` y `claim_progress`.
+- **P6:** `ZonePlatform.fortress_records()` trae lo del GET del arranque (`{fortress_id, record, version}`), que
+  `ZoneServer.start` aún no aplica; `put_fortress` ya lleva una en vuelo por fortaleza con `expected_version` y el
+  reenvío tras `version_conflict`; el falso tiene `fake_fortresses`.
+- **P7b:** `ClaimedCharacter` trae `role`, `muted_until_unix`, `ignored_accounts` y `warnings`; `ServerPeer.claimed`
+  sigue puesto en el mundo; los `mutes` del latido no tienen consumidor; `enqueue_batch` y `request` ya están.
+- **P9c:** el registro manda `dtls_cert_pem` y `dtls_name` a null: el `X509Certificate` de Godot no da el CN, así que
+  P9c tendrá que leerlo del DER o pedir `--dtls-name`.
+
+**Desviaciones y decisiones de la implementación:**
+
+- **Los reintentos viven en `PlatformClient`** y el transporte de un intento es un método aparte (`_perform`): el
+  `HTTPRequest` de verdad o, en `FakeZonePlatform`, un `FakeClient` que contesta sin red. Así el falso corre toda la
+  lógica de `ZonePlatform` (conjunto del latido, `instance_closed`, reintentos, lotes) y solo cambia el cable; sus
+  reintentos van 20 veces más rápido (`fake_retry_scale` 0,05).
+- **API de más en `ZonePlatform`** (§14.3 no la nombra): la señal `fatal_error` (`live` agotado), `deregister()`
+  (la baja), `get_client()`, `heartbeat_set()`, `heartbeat_interval_s()`, `send_heartbeat_now()`, `log_sink`,
+  `player_count_source` y las estáticas `read_secrets()`, `parse_ticket_keys()`, `env_guard_error()`,
+  `registration_body()`, `build_id()` y `describe()`. Las clases de petición propias, que no salen como evento:
+  `register`, `live`, `fortresses`, `release`, `stop` y los lotes (`chat`, `audit`, `war`).
+- **El paso 2 de §8 lo hace `ZonePlatform`**, tras el registro: con un `env` de `staging` o `production` y alguna opción
+  de desarrollo, o con la clave del vector de §5.1 fuera de `test` (la regla de §2.3 en la zona), se da de baja y
+  emite `startup_finished(false, motivo)`; `ServerMain` vacía la cola y sale con código 1.
+- **`ClaimedCharacter`** añade `instance_status` y `warnings` (los `account.warnings` de §19.5) a los campos de §14.3
+  e `is_staff()`. Un cuerpo que no se entiende es `UNAVAILABLE` con alerta, y el `lease_id` que traiga se libera.
+- **`FakeZonePlatform`:** `script_next(kind, status, FakeZonePlatform.DEFAULT, delay_s)` contesta lo de por defecto con
+  ese estado y retraso; `add_character` admite un `display_name` al final (§14.3 no da el nombre; sin él,
+  `NameRules.bot_name(id)`); `fake_heartbeat_s` (1 s), `fake_now_unix`, `fake_fortresses`; `sent()` de un GET es
+  `{"path": …}`; `ignore`, `report` y `sanction` dan 404 por defecto, como `progress_op`.
+- **El latido:** solo los 200 salen como evento `heartbeat`; un `revoked` `lease_lost` saca al personaje del conjunto
+  (si no, se latiría por él para siempre); `players` es `get_player_count()` (con `VERIFYING` y los falsos); la zona
+  está cercada también antes del registro.
+- **Bajas:** la de `VERIFYING` y la de `LOADING` se hacen en `_mark_leaving`, por donde pasan todas (desconexión,
+  CLIENT_LEAVE, expulsión, REJECT, plazo de carga), y en `stop()`. Un `lease_lost` no libera nada y saca el cuerpo en el
+  acto (`drop_body_at_once`), también en `LOADING` (§6 dice «sin release»).
+- **Con plataforma, `--max-realm-diff` no se aplica** (§5.4): `ServerAuth` no da `IMBALANCE` con billetes y
+  `ServerMain` no crea los falsos de relleno (lo dice en el registro).
+- **REJECT:** el informe cuenta los rechazos por el texto de `result_text`, no por el propio (el de `BANNED` lleva el
+  motivo de cada cuenta); un HELLO sin billete recibe `TICKET` con «Entra desde el menú con tu cuenta». El WELCOME
+  lleva el `channel` de la configuración (antes, siempre 0).
+- **`build_id`** del registro: `eldmark-<versión del proyecto>-p<protocolo>`.
+- **`FakeHttpServer`** contesta con `Connection: close` y descarta la respuesta si el cliente ya cortó (plazo
+  vencido): no escribe en un socket cerrado.
+
+**Pruebas** (Godot): `test_handoff_ticket.gd` (15: los vectores de Go, las huellas, los 9 inválidos, y
+`TicketAuthProvider` con firma alterada, clave desconocida, sin billete, otra zona, mundo o canal, caducado y el
+desfase de 5 s a los dos lados, reutilizado durante 30 s, otro personaje, zona cercada, la tabla de respuestas de la
+reclamación, el 200 que llega tarde y se libera, un cuerpo que no se entiende, `from_claim` con ids de más de 2^53 y
+cuerpos rotos, `ELDMARK_TICKET_KEYS` y la guardia del `env`, y el falso que devuelve el `pvp` aplicado y sube los
+bloques); `test_zone_server_platform.gd` (13, con ENet: billete → `VERIFYING` → WELCOME con el reino y el nombre del
+personaje, el `ticket_id` > 2^53 en la reclamación y el bit del personal; sin billete → `TICKET`; cupo de 4 con 5 en
+`VERIFYING` → `FULL`; HELLO a 1,4 s con la reclamación a 5 s → WELCOME; plataforma muda → `UNAVAILABLE` a los 7 s y
+liberación de la que llega tarde; zona cercada; bajas en `VERIFYING` y en `LOADING`; `revoked` en `LOADING`; en el
+mundo, un `lease_id` viejo no expulsa, el de ahora sí y `lease_lost` no libera; `BUSY` y `BANNED` en suspensión,
+expulsión y borrado pendiente; `test_hello_cannot_probe_an_enemy_name`; `--debug-commands` con `production`);
+`test_platform_client.gd` (14, con `FakeHttpServer`: el arranque, plazo vencido y reintento con los mismos bytes, la
+reclamación sin reintento, el latido y la reclamación con cuatro guardados lentos en vuelo, el orden por prioridad,
+204, vacío, roto y sin UTF-8 → `body` null sin errores del motor, `zone_instance_id` y `key`, el conjunto del latido,
+un solo `instance_closed`, la liberación con 403 que no se repite y con 503 que sí, el registro que reintenta cada 2 s
+con `instance_alive`, y el servidor de zona de verdad en otro proceso: registro, fortalezas, bloque, `live`, latidos y
+baja con código 0, y con `production` y `--debug-commands`, baja y código 1); además dos en `test_net_messages.gd`
+(REJECT 10–12 y bit 3), una en `test_server_auth.gd` y otra en `test_server_config.gd`. Go: la suite entera pasa con
+`protocol_version` 7 (`internal/gamedata` lo compara con `net_protocol.gd`); el `ticket_id` > 2^53 en la reclamación
+ya lo probaba P3 (`TestClaimBigTicketID`).
+
+**Medido** (esta máquina, 4 núcleos, Godot 4.7.2):
+
+| Qué | Resultado |
+|---|---|
+| `test_zone_server_platform.gd` | 32 s las 13; la del HELLO tardío, 6,6 s (WELCOME a ~6,4 s de la conexión) y la de la plataforma muda, 8,1 s (REJECT a ~7,0 s) |
+| `test_platform_client.gd` | 26 s las 14; el proceso de zona con `--platform`, 3,1 s de arranque a baja, y el de `production`, 1,9 s |
+| `test_handoff_ticket.gd` | 15 pruebas en menos de 1 s (sin contar la carga del ejecutor) |
+
+**Sin comprobar:** contra la plataforma de Go de verdad (P10; aquí, el falso y `FakeHttpServer` con las rutas y los
+cuerpos de §6); `PlatformClient` con cientos de personajes en el latido y lotes llenos; DTLS (P9c).
+
+**Queda para después:** `CharacterSaver` y el cierre de §6.1 (P5); `prepare` y la sección `progress` (progresion.md
+P5a); las fortalezas cargadas y la sección `pvp` (P6); silencios, avisos, `/gm` y lotes de chat y auditoría (P7b);
+`NetClient` con billete y `AccountFlow` (P8); DTLS (P9c); la prueba de extremo a extremo (P10).
+
+### 19.9 P5 · guardado en la zona (TEC-25)
+
+**Qué hay.** `CharacterSaver` y lo que lo rodea en la zona (§7.2, §7.3 y el cierre de §6.1). Sin `--platform` no
+cambia nada: no hay `CharacterSaver` y los personajes siguen siendo efímeros (progresion.md §9.4).
+
+| Pieza | Contenido |
+|---|---|
+| `scripts/server/platform/character_saver.gd` | `CharacterSaver` de §14.3: secciones en el orden en que se registran (una con el mismo nombre sustituye a la anterior); entradas por `lease_id` con los índices `character_id` → `lease_id` y, hasta `finish` o `drop`, `net_id` → `lease_id`; el sobre entero de §7.3 serializado una vez; el punto de control en la fase del personaje (`tick % interval == character_id % interval`) solo con alguna sección sucia; los críticos en el primer `step` sin nada en vuelo; una escritura en vuelo; el final construido en `finish`, que espera detrás del que vuela; `drop`; la tabla de respuestas de §7.3 y `save_rejected`. Además, `pending_count`, `tracked_net_ids`, `is_tracked`, `net_id_of`, `lease_of`, `entry_count`, `section_names`, `interval_ticks`, `get_stats` y `log_sink` |
+| `zone_server.gd` | Con plataforma, `CharacterSaver` (cada `--save-interval` × 60 ticks) y `get_saver()`. `track` en cuanto existe la entidad; `step(s)` tras «altas»; los eventos `save` en «poll». La «Salida» en `_remove_player`: `finish` antes de `ScoreKeeper.forget`, también cuando se retira el cuerpo de una salida en combate. La baja sin guardado: `_on_save_rejected` y el `revoked` `lease_lost`, también del cuerpo que se queda. Los demás `revoked`, con guardado final. La cuenta atrás del `maintenance` del latido. `stop()` con los finales de todos y la espera; `close_instance(code)`, el cierre de §6.1. `saves` en el informe |
+| `server_peer.gd` · `server_main.gd` | `ServerPeer.kicked` (el motivo 5 del final). `SHUTDOWN_MAX_FRAMES` 720; `instance_closed` → `close_instance` y salida con código 3 |
+| Pruebas | `tests/support/fake_save_section.gd` (`FakeSaveSection`, la sección falsa con la forma de `pvp`, que `FakeZonePlatform` devuelve en la reclamación siguiente), `tests/support/raw_ticket_client.gd` (`RawTicketClient`, el cliente con billete que vivía dentro de `test_zone_server_platform.gd`) y `FakeZonePlatform.fake_maintenance` (el `maintenance` de los latidos por defecto) |
+
+**Para los paquetes siguientes.**
+
+- **progresion.md P5a:** `ProgressService.setup` registra `&"progress"` con `zone.get_saver().register_section(…)`
+  **la primera** (es la única que puede devolver `{}`, y `CharacterSaver` no deshace lo que haya construido una
+  sección anterior en ese intento). `on_arrival` va detrás de `track` en `_process_arrivals` (el sitio ya está), y
+  un `mark_critical(net_id, &"starter_kit")` hecho ahí sale en el `step` de ese mismo tick. `on_departure(net_id)` va
+  en `_remove_player` justo después de `_scores.forget(net_id)`: por ahí pasan la «Salida», el cuerpo que se retira
+  tras una salida en combate y la baja sin guardado, cuyo `finish` ya no hace nada tras el `drop`. En los dos
+  cierres, `_wind_down` hace los `finish` antes de `_clear_players()`. Mientras no haya ninguna sección,
+  `CharacterSaver` libera sin guardar (abajo). En `FakeZonePlatform`, la parte `progress` de lo aplicado se guarda
+  en `_remember_save` (lo llama `_answer` con cada 200 `applied`).
+- **P6:** `ScoreKeeper` registra `&"pvp"`. Las pruebas de P5 registran después su `FakeSaveSection` con ese mismo
+  nombre, que sustituye a la de verdad: siguen valiendo sin tocarlas.
+- **P7b y progresion.md P5d:** con la zona cercada, `mark_critical` y los guardados siguen saliendo; rechazar los
+  comandos que piden guardado crítico es de ellos.
+- **P10:** `--save-interval=5` da puntos de control cada 300 ticks; el `kill -9` pierde lo posterior al último
+  aplicado.
+
+**Desviaciones y decisiones de la implementación:**
+
+- **Sin secciones no hay nada que guardar.** Hasta progresion.md P5a (`progress`) y P6 (`pvp`) la zona no registra
+  ninguna, y la plataforma exige `progress` (un sobre sin ella es `invalid_save` `envelope`). Así que, sin
+  secciones, el punto de control nunca está sucio, un crítico no manda nada y `finish` libera sin guardar: contra
+  la plataforma de verdad la zona hace lo mismo que en P4 (`_claims_by_net`, que desaparece).
+- **El cierre de §6.1 es `ZoneServer.close_instance(code)`** (§14.3 solo nombraba a `ServerMain`). Los de
+  AUTHENTICATING y VERIFYING reciben REJECT `UNAVAILABLE` (aún no pueden recibir un NOTICE) y los de LOADING se
+  liberan. Después salen los finales de todos con el motivo 4 y la zona espera, como mucho `save_drain_ticks` (600).
+  Solo entonces manda el NOTICE de expulsión (código 1) a todos. `ServerMain._shutdown` recibe el código y elige
+  `close_instance` en lugar de `stop`.
+- **La espera vive en `ZoneServer`.** `_drain_stop` sondea la red y la plataforma hasta que `pending_count()` es 0 y
+  `is_flushed()` (o pasan 600 ticks) y los peers se han ido (o pasan 30 ticks desde su NOTICE). En ese tiempo
+  atiende las respuestas de los guardados y las reclamaciones que llegan tarde, que se liberan; el latido ya no
+  expulsa ni avisa. `stop()` sin peers y sin nada pendiente sigue terminando en el acto, así que las pruebas sin
+  plataforma no cambian. `ServerMain` espera después, como antes, a `is_flushed()` y a la baja.
+- **Un cierre a mitad de tick corta el tick.** `instance_closed` (en «poll»), la cuenta atrás de la consola o la del
+  mantenimiento pueden cerrar el servidor dentro del tick. Desde ahí, el resto del tick no corre sobre el mundo ya
+  vaciado.
+- **Motivo del final:** 3 (salida); 5 si la zona echó al jugador (`ServerPeer.kicked`: avisos, consola, `revoked`,
+  plazo de carga); 4 en los dos cierres. El cuerpo que se queda tras una salida en combate conserva el motivo hasta
+  que se retira.
+- **Un 409 `instance_*` en un guardado** no culpa al jugador. La plataforma no lo da: los guardados valen en
+  cualquier estado y el cierre llega en `instance_status`. Si aun así llega, se reenvía el mismo cuerpo hasta 3
+  veces (`MAX_CLOSING_RESENDS`) y después es definitivo: un final de una instancia cerrada no se pierde por eso.
+- **Liberar después de lo que vuela.** Un final que no se puede construir y la baja sin guardado liberan cuando el
+  guardado en vuelo, si lo hay, tiene respuesta: si no, otra zona podría reclamar y cargar el estado de antes de
+  ese guardado. Tras un `lease_lost` (del latido, de un guardado o en `drop`), esa entrada ya no libera nunca.
+- **`save_rejected` sin baja:** si nadie llama a `drop` al recibirla, `CharacterSaver` la hace solo, y la entrada no
+  se queda atada a un cuerpo que ya no guarda. Un `track` sobre un `net_id` que aún tenía entrada (la zona no llamó
+  a `finish` ni a `drop`) suelta la vieja con `drop` y una alerta.
+- **Alertas:** van al registro y además con `push_warning`. Son el definitivo de un guardado (con `check` y `detail`
+  de un `invalid_save`), el final que no se pudo construir y un `track` que no cuadra. El ejecutor de pruebas no
+  cuenta los WARNING como fallos.
+- **Textos.** La baja sin guardado manda «No se ha podido guardar tu personaje; vuelve a entrar» y un `lease_lost`
+  de un guardado, «Tu personaje ha entrado en otro servidor»; el de un `revoked` lleva el `text` de la plataforma.
+  El mantenimiento dice «El servidor se cerrará por mantenimiento en 10 min: <message>» (minutos redondeados hacia
+  arriba desde 60 s). Los avisos que ya pasaron cuando llega el anuncio se juntan en uno con lo que queda.
+  Un `maintenance` que vuelve a null tras algún aviso da «Mantenimiento cancelado: el servidor sigue abierto», y
+  uno cuya hora ya llegó no se dispara otra vez aunque el latido lo repita. La hora es `ZonePlatform.now_unix()`.
+- **Los cinco disparadores con el proceso de verdad** (`--platform` contra `FakeHttpServer`): como la zona aún no
+  tiene secciones, lo que esperan es la liberación de cada uno, también la del final de quien está en el mundo. Los
+  guardados de verdad con su espera se prueban en el proceso de las pruebas, con `FakeSaveSection`.
+
+**Pruebas** (Godot):
+
+- **`test_character_saver.gd`** (14, sin red, con `FakeZonePlatform`): el punto de control en su fase y solo con
+  algo sucio (tres personajes, intervalo de 120 ticks); el crítico al instante, también justo tras `track`; una
+  escritura en vuelo; el final que espera detrás de la que vuela sin rehacerse; el sobre entero (con un
+  `character_id` > 2^53) y el mismo cuerpo en los reintentos; `duplicate` como aplicado; una sección que devuelve
+  `{}` sin gastar `seq`. Además: el final que no se puede construir, sin secciones, ocho respuestas definitivas
+  antes de `finish` (`invalid_save`, `stale_seq`, `seq_conflict`, 403, 413, 404, un 409 desconocido y `lease_lost`,
+  este sin liberar) y la baja que hace solo; los
+  409 `instance_*` con su tope; tras `finish`, un definitivo que solo se registra y libera; un `net_id` reutilizado
+  con el final del anterior en vuelo; el mismo personaje que vuelve mientras su final se reintenta.
+- **`test_zone_server_saves.gd`** (10, con ENet): el crítico del alta en el tick del alta y los puntos de control en
+  su fase; la salida en combate que guarda al irse el cuerpo; la baja sin guardado (un `invalid_save` en combate:
+  el cuerpo fuera en el acto, una liberación, la «Salida» sin nada y la sección sin más llamadas; y un `revoked`
+  `lease_lost` en combate, sin liberar); un `revoked` con guardado final y motivo 5. El cierre de §6.1 con
+  `instance_lost` en el latido y con `instance_replaced` en el `instance_status` de un guardado: los finales antes
+  del NOTICE, la liberación del de LOADING, y quien vuelve a entrar carga su final. El cierre ordenado espera la
+  respuesta del final a los 2 s y libera a los de LOADING y VERIFYING. El `maintenance` da los cinco avisos, el
+  cierre y la cancelación. La reconexión trae lo último aplicado, y el mismo personaje vuelve mientras su final se
+  reintenta.
+- **`test_zone_process_shutdown.gd`** (5, el servidor de zona en otro proceso): `--stop-file`,
+  `--quit-after-ticks`, `--idle-quit`, `shutdown` de la consola (con `--run-at`) y `maintenance`. En cada uno, la
+  baja de la instancia llega después de la última respuesta (a los 2 s) de lo que quedaba de cada uno (en el
+  mundo, en LOADING y en VERIFYING), con código 0 y sin errores.
+
+`test_zone_server_platform.gd` (13) pasa igual con `RawTicketClient`. Comprobadas con la mutación que deberían pillar:
+sin la espera de `_drain_stop` fallan el cierre ordenado y los dos de §6.1, y con `SHUTDOWN_MAX_FRAMES` en 90 y la
+espera de la zona en 30 ticks falla el de `--stop-file`.
+
+**Medido** (esta máquina, 4 núcleos, Godot 4.7.2 headless):
+
+| Qué | Resultado |
+|---|---|
+| `test_character_saver.gd` | 14 pruebas en 3,9 s (la más lenta, 1,1 s: ocho respuestas con sus esperas) |
+| `test_zone_server_saves.gd` | 10 pruebas en 11,7 s; la del cierre ordenado, 2,3 s (termina tras la respuesta del final, a los 2 s de `stop`) |
+| `test_zone_process_shutdown.gd` | 5 pruebas en 35 s: de 5 a 8 s cada una, con el arranque del proceso |
+| `CharacterSaver.step` con 64 cuerpos y nada que guardar | 0,4 µs por tick: solo mira la fase del tick y los pendientes (recorrer las 64 entradas en cada tick costaba ~40 µs) |
+| `JSON.stringify` del sobre de un personaje grande (120 objetos y 256 operaciones, 89 KB) | 3,7–4,6 ms (con otra carga en la máquina) |
+
+**Sin comprobar:** contra la plataforma de Go de verdad (P10); con cientos de personajes y la sección `progress` de
+verdad (progresion.md P5a), cuyo `JSON.stringify` es lo caro del guardado (arriba): con 64 jugadores sale uno por
+segundo y en el tick.
+
+**Queda para después:** las secciones `progress` (progresion.md P5a) y `pvp` (P6); rechazar con la zona cercada los
+comandos que piden guardado crítico (progresion.md P5d, P7b); el `kill -9` de extremo a extremo (P10); el
+`maintenance` que pone `admin maintenance` en la plataforma (TEC-28).
+
+### 19.10 Lo que deja progresion.md P5a
+
+progresion.md P5a (su §19.11) registra la sección `progress` y prepara el registro antes del WELCOME. Lo que cambia aquí:
+
+- **Siempre hay una sección.** `ZoneServer.start` crea `ProgressService`, que registra `progress` la primera; con
+  plataforma, todo final lleva el guardado y libera con `release_lease` (la liberación sin guardar de §19.9 queda para
+  la baja en LOADING, la baja sin guardado y un final que no se pueda construir). El primer guardado de un personaje
+  nuevo es el crítico del kit, en el tick de su alta.
+- **`prepare` en el paso (3).** Un registro que no se puede leer da REJECT `UNAVAILABLE` con «No se ha podido cargar el
+  personaje», una alerta y la liberación; la baja en LOADING llama a `cancel_prepared`.
+- **`FakeZonePlatform`:** la parte `progress` de la reclamación siguiente (§14.1), `claim_progress` y
+  `default_progress(realm)`; `add_character` con `progress` vacío da un personaje recién creado de su reino (antes, un
+  `{}` que ahora `prepare` rechazaría).
+- **Pruebas de aquí ajustadas:** `test_zone_server_saves` cuenta los guardados desde después del kit;
+  `test_zone_server_platform`, en `test_revoked_in_the_world_only_with_the_current_lease`, espera el final con
+  `release_lease` en lugar de la liberación; `test_zone_process_shutdown` reclama con `default_progress` y cuenta como
+  liberación de quien estaba en el mundo su final con `release_lease` (contestado con el mismo retraso).
+- **P6:** `pvp` se registra detrás de `progress`. **P10:** los guardados de extremo a extremo llevan ya la sección
+  `progress` (con el almacén de verdad, progresion.md P7).
+
+### 19.11 P6 · guerra (GUE-19)
+
+**Qué hay.** La guerra persistente en la zona (§8): el registro de cada fortaleza en la plataforma, su carga al
+arrancar, el historial, las capturas y el tiempo defendiendo por personaje y la sección `pvp` de los guardados. Sin
+`--platform` no hay `FortressPersistence` ni sección `pvp`; el marcador, las capturas y la marca de cambio forzado
+funcionan igual en memoria.
+
+| Pieza | Contenido |
+|---|---|
+| `scripts/server/war/fortress_persistence.gd` | `FortressPersistence`: el registro de §8 (`to_record`, `from_record` con su `Loaded` y el motivo si no vale), los ticks y la hora Unix (`unix_of` = `now_unix + ceili((t − tick) / 60.0)`; `tick_until` = `tick + max(0, at − now) · 60` para los plazos; `tick_since` = `tick − max(0, now − at) · 60` para el último reinicio, que es pasado), `load_records` (dentro de `ZoneServer.start`, antes del puerto y de los PNJ), `step` (cambio de dueño, de fase o de ciclo enseguida; lo demás cada 60 s), `flush` (cierre ordenado), `close` (cierre de §6.1), `on_platform_event` (kind `fortress`), `on_war_event` (3, 6 y 7 al lote `war`), `describe` y `get_stats` |
+| `fortress_controller.gd` | `restore_state` (el estado cargado, con la puerta y lo enviado al día), `get_consolidation_end_tick`, la marca de cambio forzado (`is_forced`), la lista de la captura con la señal `fortress_captured(fortress_id, owner_realm, in_circle, tick)`, `captures` y `defend_ticks` en el `ScoreKeeper` y `PlayerCandidate.gm_forced` |
+| `score_keeper.gd` | `Entry.captures`, `Entry.defend_ticks`, `add_capture`, `add_defend_ticks`; la sección `pvp`: `SECTION`, `attach`, `load_totals` (la base de la reclamación), `pvp_totals`, `build_section`, `acknowledge_section` e `is_section_dirty`, con los topes de las columnas |
+| `net_entity.gd` | `gm_forced` (falso por defecto) |
+| `zone_server.gd` | `ScoreKeeper.attach` detrás de `progress`; `FortressPersistence` en `start` (tras crear las fortalezas, antes de los PNJ y de abrir el puerto); su `step` tras `FortressController.step`; los eventos `fortress` en «poll»; `load_totals` en el alta, antes de `track`; la reaparición (RESPAWN) quita `gm_forced`; `_presence_candidates` con `gm_forced`; `flush` en `stop` y `close` en `close_instance`; `get_fortress_persistence()`; `war.persistence` en el informe |
+| `npc_spawner_system.gd` | El puesto del capitán no se llena con el capitán caído (un fuerte cargado en VULNERABLE o CAPTURING): vuelve con la guarnición o con la reaparición completa de los Huecos |
+| `zone_platform.gd` | `startup_limit_s` (60 s; las pruebas lo bajan) |
+| Pruebas | `tests/test_war_persistence.gd` (15) y `tests/test_war_platform_process.gd` (1, con el Vado Gris en otro proceso) |
+
+**El registro.** Esquema 1 con los campos de §8. `phase_ends_at_unix` es el fin de la consolidación o, en VULNERABLE,
+la vuelta del capitán; `captain_respawn_at_unix`, esa vuelta; los dos son null cuando no corre ningún plazo.
+`capture_realm` y `capture_progress` (el progreso del tick en que se escribe) solo en CAPTURING. Al leer, cada campo
+se comprueba (enteros exactos, como `jsonx`; las horas, null o de 0 a 253402300799); uno que falta o no cuadra
+(CONSOLIDATING sin dueño, CAPTURING sin captor o con el dueño de captor) es como otro esquema: el estado inicial con
+un aviso. `captain_alive` se comprueba pero sale de la fase. Una vida de la puerta mayor que la de la definición se
+recorta.
+
+**Cuándo se escribe.** Lo que sale enseguida: dueño, fase, el inicio de la fase y el último reinicio (un reinicio de
+un fuerte neutral no cambia ni el dueño ni la fase, pero empieza otro ciclo de 30 min). Lo que sale cada 60 s si
+cambió: la vida de la puerta, el capitán, el captor, el progreso y el fin de la consolidación. Se compara en ticks,
+no en hora Unix, que se mueve con el reloj. Solo con la instancia `live`: lo que cambia antes sale al quedar viva.
+El primer arranque (sin registro) escribe el estado inicial en cuanto la instancia está viva; un registro que no vale
+no se pisa hasta el primer cambio, con la versión que trajo el GET. El cierre ordenado escribe lo que quede; el de
+§6.1 no escribe nada más (la que manda es otra instancia).
+
+**Desviaciones y decisiones de la implementación:**
+
+- **CAPTURING vuelve como CAPTURING, no como VULNERABLE.** §8 dice «`CAPTURING` vuelve como `VULNERABLE` con su
+  progreso (el círculo está vacío y decae)», pero en la máquina de fuerte.md §1.5 un progreso que decae solo existe en
+  CAPTURING: en VULNERABLE la captura empieza en 0. Así que vuelve con su captor y su progreso, el círculo vacío
+  (`empty_since_tick` en el tick de la carga): espera el retardo de `decay_after_empty_s`, decae a −4 y, si nadie
+  vuelve, a 0 pasa a VULNERABLE con un plazo nuevo para el capitán (la prueba lo comprueba). Si vuelven los captores,
+  siguen desde lo que quede; si vuelve otro reino, lo que manda la tabla de §1.5.
+- **El fin de la consolidación lo lleva el controlador.** `phase_tick` viaja en OBJECT_STATE como u32 y el inicio de
+  una consolidación cargada a medias sería negativo: el estado lleva el tick de la carga y
+  `FortressController` guarda el fin (`restore_state`); en ese tick pone el inicio que hace que `advance` la cierre y
+  la guarnición llega por `garrison_due`, como siempre. No hay cambios en `scripts/shared`.
+- **La puerta dañada** se repara a los `gate_repair_after_s` del arranque (la hora del último golpe no se guarda).
+  `under_attack_until_tick`, los avisos y la presencia empiezan de cero; `capture_rate_multiplier` (comando de
+  depuración) no se guarda.
+- **Cambio forzado** (progresion.md §6.2; `is_forced`): marcan el ciclo `fort_owner`, `fort_reset`,
+  `fort_kill_captain` (antes de matar, así la muerte del capitán ya sale forzada para quien la paga) y
+  `fort_capture_speed` con un factor distinto de 1; además, con `capture_rate_multiplier ≠ 1` todo es forzado. La
+  marca la quita el siguiente cambio de verdad: la muerte del capitán en combate (o por `on_captain_died`), la
+  guarnición que llega sola (fin de la consolidación o vuelta del capitán) o el reinicio periódico. **Decisión:** la
+  captura que sigue a un `fort_kill_captain` también es forzada, y la consolidación que sigue a una captura forzada
+  también (hasta su guarnición): «lo que provoca un comando del fuerte no paga nada persistente», y sin el comando el
+  círculo no se habría abierto. En un ciclo forzado no se suman capturas ni `defend_ticks` (`circle_ticks`, que es
+  del marcador en memoria, sí). La marca no se guarda: un reinicio la pierde.
+- **La lista de la captura** se calcula una vez, en el tick de la captura, con los candidatos de ese tick (no con el
+  último recuento, que puede ser de hasta 5 ticks antes): del reino captor, presentes según `FortressPresence` (vivos,
+  no derribados, conectados y con entrada reciente) y sin `gm_forced`. Suma `captures` y sale por
+  `fortress_captured`, ordenada por `net_id`; una captura forzada no suma ni sale. Los GM invisibles los quitará P7b
+  de los candidatos.
+- **`defend_ticks`:** el reino dueño (nunca los Huecos) presente con el círculo activo, cada recuento (6 ticks), sin
+  `gm_forced` y fuera de un ciclo forzado. `defend_s` = cargado + `defend_ticks / 60` (entero).
+- **La sección `pvp`** nunca devuelve `{}`; está sucia mientras los totales no son los del último cuerpo confirmado (o
+  los cargados), así que entrar no ensucia. Cada total se recorta a 2^31 − 1 (`gate_damage`, a 2^53 − 1): un total
+  mayor sería `envelope` en la plataforma, y con `greatest` recortar no baja nada.
+- **Historial:** los avisos 3, 6 y 7 van al lote `war` también cuando los provoca un comando (es historia, no
+  recompensa), con la hora de `ZonePlatform.now_unix()`. Antes de quedar viva la instancia también se mandan (los lotes
+  valen en `starting`).
+- **API de más** (§14.3 no la detalla): `FortressPersistence.Loaded`, `describe`, `get_stats`, `flush` y `close`;
+  `FortressController.restore_state`, `get_consolidation_end_tick`, `is_forced` y la señal `fortress_captured`;
+  `ScoreKeeper.SECTION`, `attach`, `load_totals`, `pvp_totals` y las tres funciones de la sección;
+  `ZoneServer.get_fortress_persistence()`; `ZonePlatform.startup_limit_s`.
+
+**Para los paquetes siguientes.**
+
+- **progresion.md P5c:** `on_capture` se conecta a `FortressController.fortress_captured` (la misma lista que suma
+  `ScoreKeeper.captures`; una captura forzada no sale). Para `on_npc_killed` y los méritos de objetivo,
+  `FortressController.is_forced(fortress_id)` (la muerte del capitán con `fort_kill_captain` ya sale forzada) y
+  `NetEntity.gm_forced` de cada contribuyente.
+- **P7b:** pone `NetEntity.gm_forced` (la reaparición ya lo quita) y quita a los GM invisibles de
+  `ZoneServer._presence_candidates` (no cuentan en el círculo ni en la lista).
+- **P10:** el reinicio de la zona con el almacén de verdad (aquí, `FakeHttpServer` con versiones como la plataforma).
+
+**Pruebas** (Godot):
+
+- **`test_war_persistence.gd`** (15, sin red, con `FakeZonePlatform` y el reloj fijo): la ida y vuelta del registro
+  (CONSOLIDATING a 50,5 s de 120 escribe el fin a 70 s y vuelve a los 60 s diez segundos después, por JSON; VULNERABLE
+  con el plazo del capitán, también uno que ya pasó; CAPTURING con su progreso; GARRISONED sin plazos) y ocho
+  registros que no valen con su motivo; arrancar con CONSOLIDATING a medias (dueño, fase, puerta, plazo de 60 ticks,
+  la puerta de Solmarch, el alta de la fortaleza que se codifica, nada escrito al cargar y el PUT del cambio de fase
+  con la versión del GET y el último reinicio de antes); CAPTURING que vuelve con su progreso, espera el retardo y, sin
+  nadie, decae a VULNERABLE con un plazo nuevo; los captores que vuelven y terminan desde lo guardado; la plataforma
+  que no contesta el GET (el arranque falla tras reintentarlo, sin primer bloque ni PUT); la lista vacía (estado
+  inicial sin aviso, escrito una vez al quedar viva); otro esquema (estado inicial con aviso, sin pisarlo hasta un
+  cambio, y entonces con la versión que había); `version_conflict` (reenvío del mismo registro con la versión del
+  error y el siguiente con la del 200); capturas y `defend_ticks` (los dos del captor en el círculo suman, el marcado
+  y el de fuera no; la lista sale una vez; el dueño defiende con el círculo activo y el atacante no; la reaparición
+  quita `gm_forced`); capturas forzadas por `fort_capture_speed`, `fort_owner` y `fort_kill_captain` frente a una de
+  verdad, y la marca que quitan la guarnición que llega sola y la muerte del capitán en combate; la muerte del capitán
+  con `fort_kill_captain` que ya sale forzada; la sección `pvp` (la base de la reclamación, el crítico del kit con
+  `progress` y `pvp`, la sesión, el final construido antes de `forget`, la reconexión que la trae y sigue); la sección
+  limpia tras su `acknowledge` y los topes; y el lote de eventos reenviado tras un 503 con las mismas claves, solo los
+  avisos 3, 6 y 7.
+- **`test_war_platform_process.gd`** (1, el Vado Gris en otro proceso contra `FakeHttpServer`): un primer proceso
+  escribe el estado inicial, el dueño (`fort_owner solmarch` en el tick 30) y la fase (`fort_kill_captain` en el 60);
+  un segundo arranca con la plataforma sin contestar dos veces al GET de las fortalezas: con ella muda el puerto UDP
+  sigue cerrado, después abre y se da por viva, carga «dueño Solmarch, fase vulnerable; el capitán reaparece en
+  292 s» y no escribe nada (el dueño guardado no se pisa).
+
+Además siguen correctas `test_fortress_*` (151), `test_npc_system`, `test_zone_server_saves` (su sección falsa se
+llama `pvp` y sustituye a la de verdad), `test_character_saver`, `test_zone_server_platform`,
+`test_zone_process_shutdown`, `test_platform_client`, `test_progress_service`, `test_score*` y `test_architecture`.
+Comprobadas con la mutación que deberían pillar: sin el filtro de `gm_forced` en la lista, sin `load_totals` en el
+alta, con `forget` antes de `finish`, sin saltarse las capturas forzadas, sin el fin de la consolidación del
+controlador, sin quitar `gm_forced` al reaparecer y sin la marca de `fort_kill_captain` antes de matar, fallan.
+
+**Medido** (esta máquina, 4 núcleos compartidos, Godot 4.7.2 headless; los costes, con una sonda que no se sube):
+
+| Qué | Resultado |
+|---|---|
+| `test_war_persistence.gd` | 15 pruebas en unos 31 s con el arranque del ejecutor; las más lentas, la de las capturas forzadas (6,4 s de pasos de 2 ticks con fotogramas entre medias) y la de capturas y `defend_ticks` (3,9 s) |
+| `test_war_platform_process.gd` | 14,4 s: dos procesos del Vado Gris (el segundo espera 3 s de reintentos) |
+| `FortressPersistence.step` sin cambios (una fortaleza) | 1,8 µs por tick |
+| La lista de una captura con 64 jugadores en el círculo | 77 µs (una vez por captura: los candidatos de ese tick) |
+| `to_record` · `from_record` | 4 µs · 16 µs |
+| Sección `pvp`: `is_dirty` · `build` | 5 µs · 5 µs por personaje (uno por punto de control o crítico) |
+
+**Sin comprobar:** contra la plataforma de Go de verdad (P10; aquí, `FakeZonePlatform` y `FakeHttpServer` con la
+misma regla de versiones que `internal/war`); con varias fortalezas por zona (GUE-20, fase 7).
+
+**Queda para después:** la recompensa de captura y lo que paga o no un ciclo forzado (progresion.md P5c); poner
+`gm_forced` y los GM invisibles (P7b); el extremo a extremo (P10).
+
+### 19.12 P7b · moderación en la zona (SOC-14 a SOC-18)
+
+**Qué hay.** La mitad de la zona de §9: roles por comando, `/gm`, el GM invisible, la marca `gm_forced` de los
+comandos, los ignorados, los reportes con su prueba, los silencios, los avisos al entrar y los lotes de chat y
+auditoría. Sin `--platform` todo sigue como en la fase 4: no hay roles, `/gm` contesta «Comando desconocido» y el
+chat es por conexión.
+
+| Pieza | Contenido |
+|---|---|
+| `command_registry.gd` | Roles (`ROLES`, `role_rank`, `role_allows`), `min_role` en `register` (`gm` por defecto), `get_min_role`, `can_use`, `get_names_for`; `Result.FORBIDDEN`; `Origin` (consola, chat, red) en el `Context`, con `role`, `target`, `audit_args` y `audit_key`; `execute_network(…, role)` (vacío: sin plataforma, no mira el rol); `execute_chat(peer, line, role)` (`/gm`: el manejador de consola; desconocido o sin permiso, «Comando desconocido. Escribe /ayuda.»; `ayuda` lista los del rol); `audit_entry_sink`, con cada uso que llega a ejecutarse |
+| `social/moderation_service.gd` (nuevo) | `ModerationService`: el canal GM del chat (`handle_command`: `gm`, `ignorar`, `designorar`, `reportar`), los comandos de moderación de `/gm`, las respuestas `ignore`, `report` y `sanction`, los `mutes` del latido, los avisos al entrar, la entrada del lote de auditoría y la del lote de chat; `parse_minutes` y `date_text` |
+| `social/chat_router.gd` | `command_sink` (el canal GM, tras gastar su ficha y sin la comprobación de repetición), el silencio («Estás silenciado N min más.», `MUTED`), el filtro de ignorados en todos los canales (en un susurro sale la copia del emisor), el anillo de lo recibido (`keep_received`), `log_sink` y `clock_unix` |
+| `social/chat_peer_state.gd` | `account_id`, `ignored_accounts`, `ignored_by_name`, `muted_until_unix`, `mute_changed_msec`, el anillo `received` (100 por receptor, `Received`, `received_from`) y los reportes recientes |
+| `social/social_service.gd` · `social_peers.gd` · `party_manager.gd` | `on_peer_joined` (el estado del chat por personaje, conservado `KNOWN_RECIPIENT_TICKS` tras la baja y reenganchado; cuenta, ignorados y silencio de la reclamación) y la purga en `step`; `find_any_by_name` e `ignores`; la invitación a quien ignora a quien invita, descartada en silencio |
+| Combate | `NetEntity.gm_invisible` y `Combatant.is_gm_invisible()`: `CombatResolver` lo salta como atacante y como candidato (también las puertas), `ProjectileSystem` no le deja disparar ni lo toma por blanco, `CombatDirector` no le aplica pulsos, caídas ni volúmenes letales (el vacío sí, que solo devuelve el cuerpo), `DownedSystem` no le deja levantar ni rematar y `NpcWorld` no lo da por objetivo; `ProgressService._collector` no le paga |
+| `zone_server.gd` | `ModerationService` en `start` (tras `SocialService`); `ignore`, `report` y `sanction` en «poll»; los `mutes` del latido; `on_peer_joined` y los avisos en el alta; `_is_relevant` deja fuera al invisible con cualquier política; fuera también de `_presence_candidates`, del marcador, de los objetivos y aliados de los bots y de los cuerpos que impiden cerrar la puerta; `set_gm_invisible` (DESPAWN o SPAWN en el acto), `kick_peer`, `send_notice`, `get_world_peers` y `get_moderation`; `min_role` de cada comando, `anuncio` y `apagar`; DEBUG_COMMAND con el rol de la reclamación (sin él, aviso); `_mark_gm_forced` en los DEBUG_COMMAND 1, 2 y 4 y en `teleport`, `heal`, `stamina_inf` y `unstuck` de la consola y de `/gm`; `teleport <jugador> <otro>`; el objetivo de cada comando en `ctx.target`; `moderation` en el informe |
+| `zone_platform.gd` | El contexto del latido: `{characters, sent_msec}` (por quién se latió y cuándo) |
+| Cliente | `ChatCommandParser.Kind.SERVER`: `/ignorar`, `/designorar` y `/reportar` (en la ayuda) y `/gm` (no sale en ella) se mandan tal cual por el canal GM; `ChatBox` los envía |
+| Pruebas | `FakeZonePlatform`: `set_account_state` (silencio, ignorados y avisos de la reclamación), `queued(kind)` y respuestas por defecto de `ignore`, `report` y `sanction` que resuelven el nombre entre los personajes dados de alta (antes, 404) |
+
+Comandos de `/gm` (los que no son de moderación son los de la consola y los del fuerte, con `gm` por defecto):
+
+| Comando | Rol | Hace |
+|---|---|---|
+| `aviso <jugador> <motivo>` | moderator | Sanción `warning`; si está en la zona, NOTICE con el motivo ya |
+| `silenciar <jugador> <duración> <motivo>` | moderator | Sanción `mute` (`30`, `30m`, `2h`, `7d`; más de 7 días, la plataforma pide admin); si está en la zona, silenciado ya y NOTICE |
+| `expulsar <jugador> [motivo]` | moderator | Lo echa de la zona con guardado final y enfriamiento; por `/gm`, solo a quien tiene un rol menor |
+| `suspender <jugador> <duración> <motivo>` | gm | Sanción `suspension`; pide un latido en el acto (su `revoked` lo echa) |
+| `renombrar <jugador> <motivo>` | gm | Sanción `rename`; si está en la zona, lo echa con guardado final para que elija otro nombre |
+| `invisible` · `visible` | gm | Sobre quien lo escribe (desde la consola, `invisible <jugador>`); `visible` marca con `gm_forced` |
+| `teleport <jugador> <x> <y> <z>` · `teleport <jugador> <otro>` | gm | Marca al que mueve con `gm_forced` |
+| `banear <jugador> <motivo>` · `anuncio <texto>` · `apagar <s>\|cancelar` | admin | Sanción `ban` (latido en el acto) · `announce` · `shutdown` (`kick`, `announce` y `shutdown` también son de admin) |
+
+**Desviaciones y decisiones:**
+
+- **Los comandos van por el canal 8 (GM) del CHAT_SEND.** El protocolo 7 no tenía mensaje para `/gm`, `/ignorar`,
+  `/designorar` ni `/reportar`, y la versión ya no sube. El cliente manda la línea sin la barra por ese canal (sin
+  cambiar los bytes) y la respuesta llega por el canal del sistema. Gasta la ficha de hablar, no pasa por la
+  comprobación de repetición y un silenciado puede usarlo (no es chat). red.md y social.md lo dicen.
+- **Las sanciones no salen de la consola** («Desde la consola, usa «admin sanction» de la plataforma»): la
+  plataforma exige un autor con arrendamiento en la instancia (§9.5) y la consola no tiene personaje.
+- **Lo que hace la zona con el 200 de una sanción** (§9.5 no lo decía para quien está dentro): el silencio se aplica
+  ya, sin esperar al latido, con un NOTICE «Un moderador te ha silenciado 30 min: motivo»; el aviso sale ya en un
+  NOTICE (y otra vez en la siguiente entrada, porque la plataforma lo da por visto con el primer guardado del
+  arrendamiento siguiente, §19.7); el renombrado echa al personaje con su guardado final; la suspensión y la expulsión
+  piden un latido en el acto, cuyo `revoked` lo echa con el texto de la plataforma.
+- **`mutes` del latido.** La respuesta trae los silencios vigentes de las cuentas por las que se latió; sin la
+  cuenta, no está silenciada (una sanción levantada). Para no levantar el silencio de quien entró después de salir
+  el latido ni deshacer una sanción de esta zona posterior, `ZonePlatform` pasa como contexto del latido
+  `{characters, sent_msec}` y la zona solo toca a esos personajes con su `lease_id` y si no hubo un cambio local
+  después.
+- **Reportes.** La zona frena ya 1 por objetivo cada 10 min y 10 por hora (por personaje, en su `ChatPeerState`;
+  la plataforma lo vuelve a mirar por cuenta y su 429 dice cuánto esperar); uno que la plataforma no acepta (nombre
+  que no existe, error) no gasta el límite. La prueba son los últimos 20 mensajes del reportado en el anillo de 100
+  de quien reporta, en 10 min (en una zona con mucho chat puede quedarse corta: el anillo es por receptor, no por
+  emisor). `context` lleva `zone_id`, `zone_channel`, `tick`, `reporter_position` y, si está en la zona,
+  `target_position`. Las categorías se escriben en español (`lenguaje`, `acoso`, `trampas`, `bot`, `nombre`, `otro`).
+- **Ignorados.** La respuesta del POST da la cuenta, que entra en el filtro ya; el DELETE contesta 204 sin ella, así
+  que `/designorar` quita la que se ignoró en esta sesión con ese nombre y la del personaje si está en la zona (lo
+  demás, con la reclamación siguiente). El filtro vale en todos los canales, también el de grupo; un susurro a quien
+  te ignora sale como siempre para el emisor, y una invitación se queda pendiente hasta caducar sin llegar al
+  invitado, que no la puede aceptar: quien ignora no se delata.
+- **Auditoría.** Va al lote cada uso que llega a ejecutarse (no los desconocidos ni los que no tienen permiso, que
+  solo quedan en el registro de la zona). `args` nunca lleva texto libre ni nombres: lo que pone el manejador
+  (`{kind, minutes}` en una sanción, `{position}` en un teletransporte) o, si no pone nada, los argumentos numéricos
+  (`values`) o, en un DEBUG_COMMAND, el `payload` en hexadecimal. El objetivo, por id, si está en la zona (un
+  DEBUG_COMMAND actúa sobre quien lo manda); el de una sanción a alguien de fuera queda en la fila `sanction` de la
+  plataforma. `Context.audit_key` es para la `op:<op_id>` de progresion.md P5d.
+- **Invisible.** Lo aplica `ZoneServer._is_relevant` y no `InterestPolicy`, para que valga con cualquier política
+  (la rejilla de Eldrun la sustituirá). Además de lo de §9.1, no es blanco de los PNJ ni de los bots, no cuenta como
+  aliado en sus reuniones ni impide cerrar la puerta, no levanta ni remata y no sufre caídas ni volúmenes letales.
+  Sigue en `PARTY_STATUS` de su propio grupo y su `/decir` lo oyen los cercanos: son decisiones suyas. No se guarda
+  (volver a entrar lo deja visible) y la reaparición no lo quita.
+- **`gm_forced`** lo ponen también la consola y `/gm` con `teleport`, `heal`, `stamina_inf` y `unstuck` (§9.1 nombra
+  `/gm teleport`, `/gm visible` y los DEBUG_COMMAND 1, 2 y 4: son los mismos manejadores). Solo con plataforma.
+- **Estado del chat por personaje.** Al reengancharlo se recalcula la clave del nombre y se toman de la reclamación
+  nueva la cuenta, los ignorados y el silencio; el anillo y los reportes recientes vuelven con él. Sin reclamación
+  (sin plataforma) no se conserva nada.
+- **El 5, el 13 y el 16 siguen en `gm`**: subirlos a `admin` es de progresion.md P5d, con sus pruebas.
+- **`FakeZonePlatform`** contesta por defecto a `ignore`, `report` y `sanction` resolviendo el nombre entre los
+  personajes dados de alta (404 si no está; 400 con la propia cuenta en ignorar y reportar), en lugar del 404 de P4.
+- **Cliente mínimo.** Solo el analizador y el envío del chat; las opciones de ignorar y reportar del menú social
+  (SOC-07) y la etiqueta del personal (P8) quedan fuera.
+
+**Para los paquetes siguientes.**
+
+- **progresion.md P5d:** registra sus comandos con `_commands.register(nombre, uso, consola, red, min_role)` y sube a
+  `admin` el 5, el 13 y el 16 (`register` de `zone_server.gd`). La regla de los propios personajes tiene en el
+  `Context` el rol (`ctx.role`), quien lo manda (`ctx.peer.claimed`) y el objetivo que resuelva el manejador
+  (`ctx.target`, que además pone el objetivo en la auditoría). Un comando que crea una operación pone
+  `ctx.audit_key = "op:<op_id>"` y sus `ctx.audit_args` con el objetivo por id; `ModerationService._audit_entry`
+  arma el resto (actor, `source`, `at_unix`). Con la zona cercada, `ModerationService` ya contesta «El servicio de
+  cuentas no responde» a ignorar, reportar y sancionar.
+- **P10:** `/gm silenciar` contra el almacén de verdad y el lote de chat que lee `admin chat`.
+
+**Pruebas** (Godot):
+
+- **`test_zone_moderation.gd`** (10, la zona sin red con `FakeZonePlatform`): `/gm` de un jugador (y `ayuda`, un
+  comando que no existe y uno de otro rol) → «Comando desconocido» y nada a la plataforma; un moderador silencia
+  (cuerpo de §6, texto con la fecha, silenciado ya con su NOTICE y «Estás silenciado 30 min más.») y la entrada de
+  auditoría (`source` `zone`, actor, objetivo por id, `args`, sin nombres ni motivo); DEBUG_COMMAND 1 sin rol →
+  aviso y no se mueve, y con `gm` se mueve, se marca y se audita sobre sí mismo, y 2 y 4 también marcan; `/gm
+  teleport` (a unas coordenadas y junto a otro) marca a quien mueve, `/gm invisible` manda el DESPAWN a todos y el
+  interés no lo vuelve a meter, fuera del círculo, del marcador y de los objetivos de los bots, y `/gm visible` lo
+  devuelve con su SPAWN y lo marca, y la reaparición quita las marcas; un ignorado no susurra, no invita ni llega a la
+  zona (y el emisor no lo nota), `/designorar`, a sí misma, un nombre que no existe, la lista llena y los ignorados de
+  la reclamación; el reporte con su prueba (lo recibido del reportado, sin lo de otros), el contexto, el límite de
+  la zona, el 429 de la plataforma, el nombre que no existe sin gastar el límite y el uso; los `mutes` del latido
+  (levanta, pone, no toca a quien no latió y no deshace una sanción posterior); el renombrado forzado con su guardado
+  final (motivo 5), `/gm expulsar` con el rol del objetivo y el 403 de la plataforma; el aviso de la reclamación al
+  entrar y uno nuevo al momento; el susurro en el lote de chat y salir y volver sin rellenar las ráfagas; sin
+  plataforma, `/gm` desconocido y ignorar y reportar sin servicio de cuentas, y una sanción desde la consola.
+- **`test_chat_moderation.gd`** (7, `SocialService` sin red): el ignorado en decir, zona y susurro; la invitación
+  descartada en silencio; el silencio en cada canal con los minutos y sin fin; el canal GM al `command_sink` sin la
+  repetición y con la ficha de hablar; el anillo (orden, ventana, límite, lo propio no) y el lote; el estado por
+  personaje (salir y volver no rellena, pasados 5 min sí, la purga) y lo que se toma de la reclamación nueva.
+- **`test_command_registry.gd`** (+3: roles, `min_role` en la red con la auditoría, `/gm` con su ayuda),
+  **`test_combat_resolver.gd`** (+1: el invisible ni golpea ni es golpeado), **`test_progress_rewards.gd`** (+1, la
+  de progresion.md §15 P5c que faltaba: un GM invisible en el círculo no cobra la captura, ni una baja),
+  **`test_chat_command_parser.gd`** (+1) y **`test_chat_box.gd`** (ajustada: `/gm` sale por el canal GM).
+
+Comprobadas con la mutación que deberían pillar: sin quitar al invisible de `_presence_candidates` o del interés, sin
+el rol en `execute_network`, sin el filtro de ignorados del chat o de las invitaciones, sin reenganchar el
+`ChatPeerState`, sin `gm_forced` en `/gm teleport`, sin el límite local de reportes y sin la guarda de
+`mute_changed_msec` del latido, fallan. Siguen correctas `test_zone_server*` (86, con las de plataforma y guardados),
+`test_chat_*` (111), `test_party_*`, `test_combat_*` (290), `test_downed`, `test_npc_*`,
+`test_hfsm_brain`, `test_character_saver`, `test_war_*`, `test_platform_client`, `test_progress_*`, `test_score*`,
+`test_unstuck*`, `test_loadout*`, `test_consumables*`, `test_ability*`, `test_fortress_*` (151), `test_net_loopback`,
+`test_net_client`, `test_bot_swarm`, `test_bot_cheat`, `test_online_main`, `test_handoff_ticket`,
+`test_zone_process_shutdown` y `test_architecture`; `test_combat_server` con el uso nuevo de `teleport` en la consola.
+La suite entera de Godot no se ha pasado; Go no cambia.
+
+**Medido** (esta máquina, 4 núcleos compartidos, Godot 4.7.2 headless; una sonda que no se sube, dos pasadas):
+
+| Qué | Resultado |
+|---|---|
+| Un mensaje de zona a 64 receptores (`ChatRouter.route`: ritmo, silencio, saneado, filtro y 64 envíos) | 135–155 µs sin anillo ni lote, con o sin 100 cuentas ignoradas por receptor (el filtro es una consulta a un diccionario por copia y no se nota); 180–210 µs con el anillo y el lote (un `Received` por mensaje apuntado en 64 anillos) |
+| `SocialService.on_peer_joined` con 100 ignorados | 20 µs |
+| `ChatPeerState.received_from` sobre un anillo lleno | 25–31 µs (una vez por reporte) |
+| `test_zone_moderation.gd` · `test_chat_moderation.gd` | 10 pruebas en unos 18 s y 7 en unos 15 s, con el arranque del ejecutor |
+
+**Sin comprobar:** contra la plataforma de Go de verdad (P10; aquí, `FakeZonePlatform` con los cuerpos de las rutas
+de §6 y los errores de `internal/social`); el chat de Eldrun con cientos de receptores y su anillo; que el personal
+vea a un GM invisible (no hace falta en la fase 5).
+
+**Queda para después:** los comandos de progresion.md §10 con `admin` en el 5, el 13 y el 16 y la regla de los
+propios personajes (progresion.md P5d); las opciones de ignorar y reportar del menú social y la lista de ignorados
+en el cliente (SOC-07); el extremo a extremo (P10).
+
+### 19.13 P9b · operación (TEC-28)
+
+**Qué hay.** `platform/deploy/` con lo de §10.1, §10.3 y §12 que se puede automatizar aquí, más `admin
+reapply-purges`, que se trae de P9a (abajo):
+
+| Pieza | Contenido |
+|---|---|
+| `dev.sh` | `up` (por defecto), `prepare`, `env`, `stop` y `reset`. Un PostgreSQL propio en `build/dev_pg` (`initdb`, y `runuser -u postgres` como root, como `testdb`) que se conserva entre arranques, en 127.0.0.1:24682 (`ELDMARK_DEV_PG_PORT`). Claves del billete, un token por zona de desarrollo (`1:vado_gris:0` y `1:test_world:0`) y las contraseñas en `build/dev_secrets/` (0600), y `build/dev_platform.env` con las variables `*_FILE`. `migrate up`, `admin bootstrap admin@eldmark.test` si no hay ninguna admin y `admin --actor … create-account prueba@eldmark.test`. Escribe la orden de la zona con `--platform` (y las del cliente y el bot de P8). `up` arranca `serve` en primer plano: Ctrl-C o TERM paran `serve` y PostgreSQL. Compila el binario con Go o usa `ELDMARK_PLATFORM_BIN` |
+| `backup.sh` | `pg_dump -Fc` a `daily/eldmark-<UTC con ms>.dump` (comprobado con `pg_restore --list`) y después `purge_log` a su `.purges.txt` y a `<carpeta>/purges.txt` (cambiado de golpe con `mv`, nunca rotado): `kind<TAB>id<TAB>purged_at`, el texto de COPY en UTC con microsegundos, sin datos personales. Semanal (enlace duro) si la última semanal tiene casi 7 días o no hay; rota 7 diarias y 4 semanales (`ELDMARK_BACKUP_DAILY`, `…_WEEKLY`), cada una con su `purges.txt`. La base, de `ELDMARK_DATABASE_URL` o `…_FILE` (o las `PG*`), sin escribirla nunca en la salida. Si algo falla no deja archivos a medias y sale con 1 |
+| `restore_check.sh` | `<copia> <purges.txt>`, o `--dir <carpeta>` (la copia más reciente de `daily/` y `weekly/` y su `purges.txt`). Clúster efímero (como `testdb`, solo socket), `pg_restore`, los correos que la copia aún tiene de las cuentas de `purges.txt` (en un esquema aparte del clúster de prueba), `migrate up` si a la copia le faltan migraciones, `admin --actor <admin de la copia> reapply-purges`, `migrate status` y las consultas de integridad, que tienen que dar 0 (abajo). Sale con 1 si algo falla y con 2 si el uso no vale; borra el clúster al salir |
+| `pitr_check.sh` | El de §12: un primario con `archive_command` a una carpeta, `pg_basebackup`, 500 filas que solo están en el WAL, la hora objetivo, un borrado y `pg_switch_wal` (espera a que el segmento esté archivado); la copia base con `restore_command`, `recovery_target_time`, `recovery_target_action = 'promote'` y `recovery.signal` tiene que tener las 1500 filas de antes del borrado y ninguna otra. Solo `fsync=off`: el WAL y las escrituras de página completa, como en el VPS |
+| `pglib.sh` | Lo común de los tres que levantan PostgreSQL: los binarios (`ELDMARK_PG_BIN`, `pg_config` o el mayor `/usr/lib/postgresql/*/bin`), `runuser` como root (`ELDMARK_PG_USER`), `initdb`, arranque, parada y la ruta del socket (107 B) |
+| `Dockerfile` | `build` (golang:1.24.7-bookworm, `CGO_ENABLED=0`, `GOTOOLCHAIN=local`), `platform` (debian:bookworm-slim con `ca-certificates` y `tzdata`, usuario 10001, `serve`, las dos API en 0.0.0.0 dentro del contenedor) y `ops` (postgres:16-bookworm con el binario y los scripts). Contexto `platform/`, con `platform/.dockerignore` (secretos, copias, `*.env`, `*.pem`, `*.key` y el binario fuera) |
+| `docker-compose.yml` | `db` (postgres:16), `platform`, `caddy`, `zone-vado-gris` (perfil `zonas`) y `backup`, `restore-check` y `pitr-check` (perfil `ops`; los dos últimos sin red). Todos con `logging: {driver: journald, options: {tag: "{{.Name}}"}}`; los de servicio, `restart: unless-stopped`. Nueve secretos de archivo en `ELDMARK_SECRETS_DIR`, montados en `/run/secrets` y leídos con las `*_FILE`. Redes `edge` (Caddy, con IP fija: la única de `ELDMARK_TRUSTED_PROXIES`), `zones` (las zonas y la API interna) y `data` (interna: la base no sale a Internet). Solo Caddy (80, 443 y 443/udp) y la zona (24600/udp) publican puertos. WAL con WAL-G configurable (`ELDMARK_DB_IMAGE`, `ELDMARK_PG_ARCHIVE_MODE`, `ELDMARK_PG_ARCHIVE_COMMAND`); nombre de proyecto `eldmark-<entorno>` |
+| `Caddyfile` | §10.1: `reverse_proxy platform:24680 { header_up X-Real-IP {remote_host} }` (pisa cualquier `X-Real-IP` del cliente), sin directiva `log` (sin registro de accesos), HSTS, `nosniff` y sin `Server`. Validado con Caddy 2.10.2 (`caddy validate` y `adapt`: sin `logs`) |
+| `staging.env.example`, `production.env.example` | Las variables del compose: entorno, dominio y correo ACME, imágenes de GHCR, `public_host` y `ELDMARK_ZONE_HOSTS`, protocolo mínimo, remitente, reinos, carpetas de secretos y copias, WAL y la red de Caddy. Ningún secreto (la CI lo comprueba) |
+| `journald-eldmark.conf` | `Storage=persistent`, `MaxRetentionSec=30day` y `SystemMaxUse=2G` (§11.1), para `/etc/systemd/journald.conf.d/` |
+| CI | `ELDMARK_REQUIRE_DEPLOY_TOOLS=1` en «Plataforma»: sin bash, git, shellcheck o `docker compose`, las pruebas de `deploy` fallan en lugar de saltarse (Caddy es opcional: la CI no lo trae) |
+
+**`reapply-purges` llega aquí** (§14.1 lo pone en P9a, de la que depende P9b): sin él no se puede probar
+`restore_check.sh`. `eldmark-platform admin --actor <correo> reapply-purges <purges.txt>` (pide `admin`; deja la
+fila `reapply-purges` con los recuentos y sin ids) hace lo de §11.2: en una transacción borra todos los
+`character_leases` y `enter_tickets` de la copia; después, en orden de `purged_at` (a igual hora, los personajes
+antes que su cuenta), purga cada línea en su propia transacción con el `purged_at` del archivo: las cuentas con la
+purga de P1 (`accounts.Service.ReapplyPurge`, motivo nuevo `reapply-purges`: basta que no esté purgada, como en
+`purge-now`) y los personajes con el camino de la cuenta (`characters.Purger.ReapplyPurge`). La huella del correo,
+el año de las sanciones y del libro y los 30 días del nombre salen de ese `purged_at`. Al final comprueba que no
+queda ningún id sin purgar (`admin.UnpurgedError`, código 1); uno que la copia no tiene cuenta como purgado. Es
+idempotente. `admin.ParsePurges` lee el formato de `backup.sh` (y RFC 3339) y nombra la línea mala. Como
+`purge-now`, en `staging` y `production` se niega mientras no exista el almacén del progreso (progresion.md P7). El
+paso 3 de la purga (no con un arrendamiento vivo) se sigue mirando, aunque no encuentra nada: si aparece uno, hay
+una zona o `serve` en marcha contra la base, y la orden para con un error que lo dice. **A P9a le queda** lo demás:
+la exportación con el progreso, las retenciones horarias que faltan, la del libro con el borrado de las lápidas
+vacías y sus pruebas que no son de `reapply-purges`; las de `reapply-purges` de §15 P9a ya están (abajo).
+
+**Desviaciones y decisiones de la implementación:**
+
+- **`dev.sh` escucha en TCP** (127.0.0.1, sin socket): la ruta de `build/dev_pg` en un repositorio con una ruta larga
+  pasa de los 107 B del socket. Tiene más órdenes que §12 (`prepare`, `env`, `stop` y `reset`) y contraseñas
+  fijas de desarrollo (`eldmark-admin-dev` y `eldmark-prueba-dev`, también en `build/dev_secrets/`), que se
+  teclean en la revisión visual de §15. Las cuentas se crean con `bootstrap` y `create-account` (§19.5).
+- **`restore_check.sh` migra antes de `reapply-purges`** si a la copia le faltan migraciones del binario (una copia
+  de antes de un despliegue; `admin` se niega con el esquema sin migrar; expandir y contraer lo permite, §2.4), y
+  después `migrate status` tiene que salir con 0. El binario corre con una configuración de usar y tirar
+  (`env -i`, `ELDMARK_ENV=dev` y claves aleatorias): solo ve la base de prueba. El `--actor` es
+  `ELDMARK_RESTORE_ACTOR` o la primera cuenta admin activa, sin suspensión ni expulsión, que no está en
+  `purges.txt`; si la copia no tiene ninguna admin, una de usar y tirar con `bootstrap`.
+- **Las consultas de integridad** de §12, más las que comprueban `reapply-purges`: personajes sin cuenta;
+  arrendamientos de instancias inexistentes; arrendamientos y billetes que siguen de la copia; líneas de
+  `purges.txt` sin fila en `purge_log` (de las cuentas y personajes que la copia tiene); `purged_at` distinto del
+  de `purges.txt`; cuentas de `purge_log` o de `purges.txt` con datos personales (correo, hash o estado, o filas
+  en sesiones, enlaces, accesos, consentimientos, aceptaciones, derechos, reinos, ignorados en los dos sentidos,
+  chat enviado o sanciones con motivo: lo que borra la purga de P1); sus personajes, o los purgados sueltos, con
+  nombre, estadísticas, arrendamiento, billete o nombre ligado; correos de esas cuentas en `outbound_mail`; y filas
+  de `audit_log` con el correo de una cuenta de `purges.txt` (solo se busca en las filas con «@»). Van por
+  conjuntos: con un `exists` por fila, 1000 purgas sobre 100 000 mensajes tardaban 22 s.
+- **`backup.sh`:** el nombre lleva milisegundos (dos copias seguidas no se pisan y el nombre ordena por fecha); la
+  semanal sale de la antigüedad de la última semanal, no de un día fijo (aguanta días sin copia); el
+  `purges.txt` de cada copia rota con ella y el de la carpeta no rota nunca. Subirlas a S3 es del VPS.
+- **La imagen `ops`** (§12 no la tiene): PostgreSQL 16 con los scripts y el mismo binario, para correr las copias
+  y sus comprobaciones en un contenedor desechable con la versión de la base. `docker compose run --rm
+  restore-check` es la restauración semanal de TEC-28.
+- **Las zonas en el compose** van con el perfil `zonas` hasta que existan su imagen (TEC-20) y sus opciones
+  (`--platform`, `--world`, `--channel` y `--public-address` de P4; `--dtls-*` de P9c).
+- **Permisos de los secretos:** Compose sin swarm monta cada archivo con sus permisos del host y dentro lo leen
+  usuarios sin privilegios (eldmark 10001, postgres 999): 0444 dentro de una carpeta 0700 de root.
+- **`platformtest.Attach`** (la plataforma sobre una base ya hecha, como una restaurada) y **`testdb.BinDir`** (la
+  carpeta de `pg_dump` y `pg_restore` de las pruebas) son nuevos, para las pruebas.
+
+**Pruebas.** `platform/deploy` es un paquete de Go sin código (`doc.go`) con sus pruebas, que corren los scripts
+con bash: `TestBackupAndRestoreCheck` (la de §15 P9b: copia antes de un `purge-now` y del borrado de un personaje,
+restaurada con el `purges.txt` más reciente → purgada y las consultas a 0; la más reciente con `--dir`; una copia
+cuya auditoría guarda el correo de una cuenta purgada después → 1 y lo nombra; rotación), `TestRestoreCheckUsage`,
+`TestPitrCheck`, `TestDevScript` (`prepare` dos veces, `env`, `up` hasta `/ready` y TERM con PostgreSQL parado,
+`reset`), `TestComposeConfig` (`docker compose config -q` con los dos ejemplos y no sin ellos; journald en todos,
+puertos solo en Caddy y la zona, la base sola en `data`, ningún secreto en claro, `ELDMARK_TRUSTED_PROXIES` con
+la IP de Caddy), `TestCaddyfile`, `TestCheckSecrets` (la de §15 P9b: los ejemplos de verdad pasan; un
+`staging.env`, un `secrets/ticket_keys` o un ejemplo con el valor de un secreto en el índice → 1, sin repetir el
+valor; y el índice de este repositorio pasa) y `TestScriptsPassShellcheck` (`bash -n` y shellcheck 0.10 sin
+avisos). En `internal/admin`: `TestParsePurges`, `TestReapplyPurgesAfterRestore` (las dos de §15 P9a sobre
+`reapply-purges`: con `pg_dump` y `pg_restore` de verdad, el `purged_at` original en las lápidas, también la de un
+personaje que nunca se borró; sin arrendamientos ni billetes de la copia; `purge_log`, la huella del correo y la
+reserva del nombre como en la base original; la fila de auditoría; y una segunda vuelta que no cambia nada) y
+`TestReapplyPurgesReportsWhatStaysUnpurged` (con una purga que no purga, `UnpurgedError` con el id). En `cmd`, la
+orden por la línea de órdenes (uso, un `purges.txt` mal formado o que no existe → 1).
+
+**Medido** (esta máquina, 4 núcleos, Go 1.24.7, PostgreSQL 16.15):
+
+| Qué | Resultado |
+|---|---|
+| `pitr_check.sh` | 3,0–3,2 s (copia base 0,65 s, recuperación 0,15 s) |
+| `backup.sh` | 0,1 s con una base de prueba (76 KB); 0,3 s con 10 000 cuentas, 20 000 personajes, 100 000 mensajes y 50 000 filas de auditoría (43 MB de base, 1,6 MB de copia) |
+| `restore_check.sh` | 1,3–1,5 s con una base de prueba. Con la grande y 1000 cuentas en `purges.txt`: `pg_restore` 0,64 s, `reapply-purges` 18,6 s, todo 20,3 s |
+| `reapply-purges`, por cuenta con 2 personajes | 18 ms; 10 ms con un índice en `chat_messages (sender_account_id)`, que el esquema no tiene: la purga de una cuenta borra su chat recorriendo la tabla entera (igual en la purga horaria y en `purge-now`). **Para una migración futura** (fuera de la fase 5, §2.4) |
+| `go test -race -count=1 ./...` | 34 s, sin carreras; `deploy`, 14 s (con la compilación del binario) |
+| Binario | 20,5 MB |
+
+Godot: fuera de `platform/` solo cambian la documentación y la CI (`platform/` lleva `.gdignore` y está fuera de las
+exportaciones).
+
+**Sin comprobar (en el VPS, del usuario):** construir las imágenes (aquí el demonio de Docker no corre: `docker
+compose config` sí, `build` no) y arrancar el compose; Let's Encrypt con un dominio de verdad; los secretos
+montados y leídos por usuarios sin privilegios; journald con `MaxRetentionSec` (aquí no hay systemd); la imagen de
+la base con WAL-G, S3 y el `restore_command` de verdad; el cron de `backup` y `restore-check` con su alerta
+(TEC-31); `dev.sh` en macOS y en WSL con la zona en Windows; `serve`, `purge-now` y `reapply-purges` en staging y
+producción, que esperan al almacén del progreso (progresion.md P7); la zona en el compose (TEC-20, P4 y P9c); y el
+trabajo «Plataforma» en GitHub con las herramientas obligatorias (shellcheck y `docker compose` de
+`ubuntu-latest`).
+
+**Queda para después:** `admin maintenance` y `deploy.sh` (copia previa, parar, `migrate up`, versión nueva, quitar
+el mantenimiento), de TEC-28 y sin paquete aquí; publicar las imágenes en GHCR; la imagen y el despliegue de las
+zonas (TEC-20); el resto de P9a.
+
+### 19.14 Lo que deja progresion.md P7
+
+progresion.md P7 (su §19.17) pone el almacén del progreso de verdad (`internal/progress` sobre `0010_progress`) y la
+validación de la creación con las reglas exportadas, y cambia lo de aquí que lo esperaba:
+
+- **`serve` y la orden `admin`** usan `progress.Store` y `*progress.Rules` en todos los entornos. Ya no hay
+  `errNoProgressStore`: `serve` arranca en `staging` y `production`, y `purge-now` y `reapply-purges` purgan allí
+  el estado del progreso con `ProgressStore.Purge`. `MemoryProgressStore` y `ProvisionalValidator` quedan para las
+  pruebas.
+- **`platformtest.NewWithProgress(t, newStore, validator)`** monta la plataforma con el almacén de verdad
+  (`ProgressStore` es el que esté en uso; `Progress`, el falso, es nil entonces) y `NewCharacter` crea con
+  `platformtest.ValidAppearances`. `TestBackupAndRestoreCheck` (P9b) ya la usa, y `restore_check.sh` comprueba que
+  los personajes purgados no tienen filas en `character_progress`, `character_wallets`, `item_instances` ni
+  `character_timers`.
+- **P9a:** el trabajo horario de la retención del libro llama a `ProgressStore.PurgeRetention` en una transacción
+  mientras devuelva `deleted > 0` y borra en ella las filas de `characters` de `emptied`; la exportación pone
+  `ProgressStore.Export` (`{"record", "ops"}`, sin datos del personal) bajo `characters[i].progress`, también de las
+  lápidas con libro.
+- **P7b y progresion.md P5d (auditoría):** la fila de `audit_log` que escribe S8 lleva en `args` el `detail` de la
+  operación sin `command`, `source`, `actor_character_id` ni `at_unix` (`{"args": [...]}`, y las claves de nivel y
+  XP si las hay); la entrada del lote con `key = "op:<op_id>"` tiene que llevar lo mismo.
+- **P10:** las pruebas de extremo a extremo pueden comparar con `Load` (el registro de progresion.md §3.4).
+
+**Sin comprobar:** con una zona de verdad (P10).
+
+### 19.15 P9a · privacidad (TEC-43)
+
+**Qué hay.** Lo que le quedaba a §11 tras P1 (exportación de la cuenta, purga de cuentas y huella del correo), P2
+(purga de personajes), P7a (`purge-now` y retención del chat), P9b (`reapply-purges`) y progresion.md P7 (`Purge`,
+`PurgeRetention` y `Export` de verdad):
+
+| Pieza | Contenido |
+|---|---|
+| `internal/privacy` | Nuevo (el de §2.1): `Service` con `Run` (una vuelta de las retenciones de §11.1 con la hora del reloj inyectable), `Job` (el trabajo horario `privacy_retention`, que registra cuánto borró cada paso, sin ids) y `PurgeLedger` (la retención del libro). Los plazos son constantes (`AuthEventsRetention`, `ReportRetention`…); `Result` da lo que tocó cada paso de `Steps` |
+| `internal/accounts` | `Options.Progress` (`ProgressExporter`, la parte `Export` de `ProgressStore`) y `characters[i].progress` en la exportación (abajo) |
+| `cmd/eldmark-platform` | `serve` pasa el almacén a la exportación y añade el trabajo `privacy_retention`, cada hora (el quinto: el pool de 16 conexiones de §19.5 sobra) |
+| `internal/platformtest` | `Platform.Privacy` (con el reloj falso) y el almacén en la exportación |
+| `platform/legal/privacy-1.md` | Revisado (abajo); `TestEmbeddedDrafts` busca algunas cifras y frases más |
+
+**Las retenciones.** Una vuelta hace los pasos en este orden, cada uno en sus propias sentencias (los de tablas que
+crecen, en lotes de 10 000 hasta que no queda nada); uno que falla no para a los demás y la vuelta devuelve los
+errores juntos:
+
+| Paso | Qué borra (o cambia) |
+|---|---|
+| `reports_closed` | Los reportes `open` o `in_review` creados hace más de un año pasan a `dismissed`, `closed_at` = ahora y `resolution = 'caducado'`: cuentan desde ahí |
+| `reports` | Los cerrados (`actioned` o `dismissed`) hace más de un año, con su `report_evidence` y sus `sanction_reports` (en cascada) |
+| `audit_log` | Lo de hace más de un año (`at`) |
+| `sanctions` | Las de las cuentas purgadas hace más de un año (con sus `sanction_reports`); las de una cuenta viva no caducan |
+| `sanctioned_emails` | Las huellas con `until ≤ ahora`, que el registro ya no mira |
+| `auth_events` | Lo de hace más de 30 días |
+| `session_access` | IP y agente a null en las sesiones abiertas hace más de 30 días |
+| `sessions` | Las caducadas (`refresh_expires_at`) hace más de 7 días; sus billetes caen en cascada y el arrendamiento que la tenga se queda sin sesión |
+| `account_tokens` | Los caducados (`expires_at`) hace más de 7 días |
+| `enter_tickets` | Los caducados hace más de un día |
+| `zone_instances` | Las terminadas (`stopped`, `lost` o `replaced`, las tres con `ended_at`) hace más de 30 días, con sus `id_blocks` y billetes en cascada; los arrendamientos, fortalezas y eventos de guerra que las nombran quedan a null |
+| `outbound_mail` | Lo de hace más de 7 días |
+| `character_names` | Las filas `reserved` con `reserved_until ≤ ahora` |
+| `ledger` y `ledger_tombstones` | `ProgressStore.PurgeRetention` en una transacción mientras borre algo y, en ella, `delete from characters` de las de `emptied` (con `purged_at`: un personaje vivo nunca se borra aquí). El año lo mide el reloj del almacén |
+
+**La exportación.** `characters[i].progress` es `ProgressStore.Export` del personaje, en la misma transacción
+(`repeatable read`, de solo lectura) que el resto del archivo: de uno sin purgar, `{"record", "ops"}`; de una lápida,
+`{"record": null, "ops"}` si le queda libro y `null` si ya no. De las operaciones GM y REVERSAL salen el tipo, la
+fecha, los apuntes y los eventos, sin actor, `note` ni `detail` (los quita `Export`).
+
+**Lo revisado** (§14.1 lo ponía todo en P9a):
+
+- **Purgas** (bloqueos, lápidas, `purge_log`): las de P1 y P2 tal cual. Sus pruebas de §15 P9a ya estaban (abajo) y
+  faltaba la de la restauración en el límite, que ahora está.
+- **`sanctioned_email_hashes`:** se queda la regla de P1 (cada sanción sin revocar cuenta hasta 90 días después de su
+  fin; un aviso o un renombrado, desde que se puso; una expulsión permanente, el tope), con el año como mucho desde la
+  purga (en `reapply-purges`, la original). Es la lectura de «hasta el fin de la sanción, o 90 días tras ella» de §11.1
+  que casa con «una sanción de los últimos 90 días» de §11.2 y con la reincidencia de social.md §9. Lo que faltaba era
+  borrar las vencidas (`sanctioned_emails`).
+- **`reapply-purges`** (P9b): sin cambios. Como la retención del libro y la de las sanciones cuentan desde
+  `purged_at`, una copia restaurada no alarga ninguna.
+- **`privacy-1.md`:** «instancias de zona terminadas»; el historial de un personaje purgado dura un año desde la
+  purga (decía «desde que se borra»); el nombre de un personaje de prueba solo se reserva mientras se puede
+  restaurar; las correcciones del personal (actor, nota y orden) siguen al historial y su nota se guarda como dato de
+  moderación; la huella del correo, 90 días tras el fin de la última sanción (la expulsión, el año entero); las
+  copias vuelven a purgar con la fecha original; y qué lleva la descarga (el progreso y el historial, también el de
+  los personajes purgados que se conserva) y qué no (quién hizo una corrección y su nota). Sigue siendo la versión 1:
+  no se ha publicado en staging (§19.2).
+
+**Desviaciones y decisiones de la implementación:**
+
+- **«`zone_instances` paradas» son las terminadas:** `stopped`, `lost` y `replaced` ponen `ended_at` y ninguna vuelve
+  a servir; la tabla de §11.1 lo dice ya así. Un arrendamiento cuyo `claimed_by` era una de ellas no cambia (no tiene
+  clave ajena) y solo vale para `Apply` mientras su instancia vive.
+- **Nombres reservados:** §11.1 decía «el nombre, 30 días más» sin mecanismo. Crear y restaurar ya tratan como libre
+  una fila `reserved` vencida, pero la fila guardaba el nombre para siempre; ahora el trabajo la borra (§11.1
+  corregida).
+- **Sesiones:** «caducadas» es `refresh_expires_at` (12 h desde el inicio de sesión; revocar no lo cambia), así que
+  una sesión vive como mucho 7 días y medio. Con eso, la regla de los 30 días de la IP y el agente no llega a aplicarse
+  hoy (se queda por si las sesiones se alargan), y la exportación da las sesiones de esos 7 días y medio. Un
+  arrendamiento de un personaje que lleva más de eso en el mundo se queda sin sesión (el latido ya no puede expulsarlo
+  por ella; tampoco podía: caducada no se revoca).
+- **La prueba de un reporte va con su reporte** (`report_evidence` cae en cascada): la de uno que estuvo abierto un año
+  dura hasta dos, como dice la tabla («desde el cierre»).
+- **Una lápida sin libro** da `progress: null` en la exportación (§11.2 solo pide las que lo tienen).
+- **`audit_log` a un año** borra también las filas `set-role` viejas que lee `sanctions.RoleAt` (S2): solo cambia algo
+  para una operación GM con `detail.at_unix` de hace más de un año, que se comprobaría con el rol de después.
+- **Relojes:** la retención del libro usa el del almacén (`progress.New`) y el resto el del servicio; en `serve` los dos
+  son la hora del sistema y en `platformtest`, el mismo reloj falso.
+
+**Pruebas.** `internal/privacy` (5, la plataforma entera con el almacén de verdad): `TestExportHasEverySectionAndTheProgress`
+(las doce secciones con datos; Aneira con registro y sus dos operaciones, la GM con solo sus siete claves y su apunte;
+la lápida de Brenna con libro y sin registro; la de Cora, sin libro, `null`; ni el correo del GM, ni su nota, ni
+`currency_add`, ni `detail`); `TestRetentionsDeleteWhatExpiredAndNothingElse` (cada fila de la tabla con una fila un
+minuto fuera del plazo y otra un minuto dentro: lo de cada paso exacto, las cascadas y los null, el reporte abierto que
+se cierra y el que no, las sanciones de una cuenta purgada hace un año y un minuto, de otra a la que le falta un minuto
+para el año y de una viva, el chat que no es de este trabajo; una segunda vuelta no borra nada; el reporte caducado se borra al año de cerrarse);
+`TestLedgerRetentionEmptiesAndRemovesTombstones` (10 050 apuntes en tres pasadas, la operación compartida con un vivo
+que se queda, una lápida sin libro, la purgada dos días después que se queda, antes del año nada y la marca que no
+sobrevive); `TestRestoreAtTheLimitRacesTheHourlyPurge` (10 rondas con la restauración en el último segundo y la purga,
+con su propio reloj, en el primero después; en la ejecución medida, 2 restaurados y 8 purgados, todos enteros o lápida);
+y `TestSanctionedAccountsArePurgedAndTheirEmailWaits` (la expulsada exporta con la sesión de privacidad, con el
+progreso, pide la supresión y se purga; su correo no se registra hasta el año, cuando la retención borra la huella; la
+suspendida, con `purge-now`, hasta 90 días tras el fin). En `cmd`, `TestServeRunsThePrivacyRetention` (`serve` borra al
+arrancar un acceso de hace 31 días y una lápida sin libro de hace 366, y deja el de ayer). Comprobadas con la mutación
+que deberían pillar: sin `exportProgress`, sin el trabajo en `serve`, sin el borrado de las lápidas vacías y sin el cierre
+de los reportes al año, fallan.
+
+Las de §15 P9a, una a una: exportación (`TestExportHasEverySectionAndTheProgress`); la purga deja las lápidas
+(`TestPurgeExpiredLeavesATombstone`, P2); arrendamiento vivo y `character_busy` (la misma y `TestPurgeNow`, P7a);
+restauración y purga a la vez (`TestRestoreAtTheLimitRacesTheHourlyPurge`); retenciones
+(`TestRetentionsDeleteWhatExpiredAndNothingElse`, `TestLedgerRetentionEmptiesAndRemovesTombstones`); las dos de
+`reapply-purges` (`TestReapplyPurgesAfterRestore` y `TestReapplyPurgesReportsWhatStaysUnpurged`, P9b); purgar una
+cuenta deja lápidas a sus vivos (`TestAccountPurgeWithCharacters`, P2); la suspendida y su correo y la expulsada que
+exporta, se suprime y se purga (`TestSanctionedAccountsArePurgedAndTheirEmailWaits`); y la auditoría sin su correo tras
+`purge-now` (`TestAuditHasNoPersonalData`, P7a) con `restore_check.sh` que falla si la tiene (`TestBackupAndRestoreCheck`,
+P9b).
+
+**Medido** (esta máquina, 4 núcleos, Go 1.24.7, PostgreSQL 16 con `fsync` apagado):
+
+| Qué | Resultado |
+|---|---|
+| Una vuelta con 200 000 accesos y 100 000 filas de auditoría caducadas (y otras 150 000 que se quedan) y una lápida con 60 000 filas de libro | 1,2 s; la vuelta siguiente, sin nada que borrar, 7,5 ms |
+| Borrar sesiones caducadas con 50 000 arrendamientos · instancias terminadas con 200 000 eventos de guerra | 3 ms por sesión · 15 ms por instancia: la clave ajena con `on delete set null` recorre entera `character_leases` (sin índice en `session_id`) o `fortress_events` (sin índice en `zone_instance_id`) por cada fila borrada. Unas mil sesiones por hora son 3 s de trabajo. **Para una migración futura** (fuera de la fase 5, §2.4): esos dos índices |
+| `go test -count=1 ./internal/privacy` | 2,5 s (3,9 s con `-race`) |
+| `go test -race -count=1 ./...` | 51 s, sin carreras |
+| Binario | 20,9 MB (20,8 MB antes) |
+
+Godot: fuera de `platform/` solo cambia la documentación.
+
+**Sin comprobar:** la retención con millones de filas (los lotes de 10 000 sí, con 200 000); el trabajo en staging.
+
+**Queda para después:** la revisión legal de los textos, de la edad mínima y de los plazos marcados en §11.1 (usuario,
+§16); el contacto del responsable en `privacy-1.md`.
+
+### 19.16 P8 · cliente (UI-22, UI-23, UI-24)
+
+**Qué hay.** El lado del jugador de §13: el título con cuenta, la selección y la creación de personaje, la entrada con
+billete y el bot con cuenta. Sin plataforma, el cliente sigue como antes (sandbox desde el editor, `--connect`,
+`--local`, `--bot`, `--bots`):
+
+| Pieza | Contenido |
+|---|---|
+| `scripts/client/platform/` | `PlatformApi` (§14.4: cabeceras de §4.1, refresco un minuto antes de caducar o tras un 401 `unauthorized` con la llamada repetida, **un solo refresco en vuelo** con la señal `refreshed`, `session_lost` si el refresco da 401, `request_hook` para las pruebas, `parse_response` sin errores del motor), `ApiResult` (más `text` y `headers`, y `success`, `failure` y `no_response` para las pruebas), `AccountSession` (más `scope`, `restriction`, `refresh_expires_msec` y `realm_in`), `AccountFlow` (`login`, `logout`, `fetch_account`, `list_characters`, `create_character`, `ensure_character`, `enter` con los reintentos de `character_busy`, `config_from_enter`, `parse_id`, `decode_base64`, `starter_templates`) y `PlatformErrors` (los textos de §4.1 por `code`, con fechas en hora local) |
+| `scripts/client/front_main.gd` · `scenes/client/front_main.tscn` | `FrontMain`: las pantallas, la `AccountSession` entre escenas (`FrontMain.session`), el correo recordado, la exportación de datos, la entrada hacia `OnlineMain` y la vuelta con el motivo (`return_notice`); con `ClientServices` (F10) |
+| `scripts/client/ui/` · `scenes/ui/` | `TitleScreen` (con el panel de recuperar), `RegisterPanel`, `TermsPanel`, `SanctionedPanel`, `CharacterSelect`, `CharacterCreate`, `RenameDialog`, y además `FrontScreen` (la base común) y `CharacterFigure` (la figura 3D con cámara orbital de la selección y la creación) |
+| `ClientConfig` | `--title`, `--platform`, `--login`, `--password-file`, `--character`, `--world`, `--dtls-cert`, `--dtls-name`; `character_id`, `ticket`, `dtls_cert_pem` y `from_front`; el modo `TITLE` con la prioridad de §13.3 (`from_args(args, exported)`); `platform_url_error`, `url_host`, `is_loopback_host`, `has_ticket`, `has_dtls` y `duplicate_config` |
+| `ClientLauncher` · `boot.gd` · `project.godot` | `TITLE` lleva a `FrontMain`; una exportación sin argumentos abre el título (el editor, el sandbox); `boot.gd` no avisa de las opciones nuevas; ajustes `eldmark/platform/url` (`http://127.0.0.1:24680`) y `eldmark/platform/ca_cert` |
+| `NetClient` · `NetTransport` | El HELLO con `character_id` y billete; el certificado DTLS de `enter` (o de `--dtls-cert`) a `connect_to(…, dtls_name, dtls)`, que llama a `dtls_client_setup`; `report_extra` y `character_id` en el informe |
+| `OnlineMain` · `BotSwarm` | Con billete no hay elección de reino; con `from_front`, un rechazo o una desconexión vuelven a `FrontMain` con el motivo; el bot con `--platform` hace el camino de la cuenta y sale con código 1 y `platform.code` en el informe si falla; `--bots --platform` sale con código 1 |
+| Pruebas | `tests/fake_public_platform.gd` (`FakePublicPlatform`: la API pública de mentira para `request_hook`) y cinco archivos (abajo) |
+
+**Para los paquetes siguientes.**
+
+- **P9c:** el cliente ya pasa el certificado a `NetTransport.connect_to` con el contrato de §10.2 (el lado del cliente
+  está hecho, sin probar contra una zona con DTLS): queda `host(…, dtls)`, `SwarmBot` y la medida.
+- **P10:** el bot con cuenta es `--bot --platform=<url> --login=<correo> --password-file=<ruta>
+  [--character=<nombre>] [--realm=…] --quit-after-ticks=N --report=<ruta>`; el informe trae `character_id` y
+  `platform` (`code` vacío si entró, `created`, `character_id`). Sale con 0 si llegó a jugar.
+- **progresion.md P5a:** con billete, el cliente pinta la apariencia del SPAWN propio (P6); la creación manda los 8 B
+  elegidos y la plantilla, así que el criterio de UI-24 (otro cliente la ve igual) depende de que la zona la cargue.
+- **Revisión visual (usuario):** la lista de §15 con `deploy/dev.sh` (P9b) y `--title`.
+
+**Desviaciones y decisiones de la implementación:**
+
+- **Las pantallas se construyen en código** (como `UIWindow` y `TemplateSelector`) sobre una base común,
+  `FrontScreen`; sus escenas de `scenes/ui/` son solo la raíz con el script. Así se prueban sin ventana y `FrontMain`
+  las monta por su ruta. Dos archivos que §13.3 no nombra: `front_screen.gd` y `character_figure.gd`; y
+  `sanctioned_panel.gd`, la pantalla de cuenta sancionada de §13.2, que §13.3 no listaba.
+- **API de más** (§14.4 no la nombra): `PlatformApi.session` (la sesión vive en la API; `AccountFlow` la pone al
+  iniciar sesión), `clock` (pruebas), `timeout_s` (15 s), `build_id()` (el mismo formato que el de la zona: el
+  cliente no puede depender de `scripts/server/`), `request_headers`, `parse_response`, `get_refresh_count`;
+  `ApiResult.text` (el Markdown de `/v1/legal/{kind}` y el JSON de la exportación) y `headers`. Con un error,
+  `ApiResult.data` es el objeto `error` del cuerpo (con `until`, `reason`, `fields`, `realm`…).
+- **El refresco se da por imposible solo con un 401**: sin respuesta (red, plazo) la llamada falla con `network`
+  («No se puede conectar con el servidor de cuentas») y la sesión sigue.
+- **El correo va en minúsculas y sin espacios** desde el cliente (como `NormalizeEmail` en Go).
+- **Crear cuenta inicia sesión solo contra una plataforma en esta máquina** (`FrontMain.is_dev_platform`: la URL es
+  de loopback), que es como el cliente sabe que está en `dev` o `test` (§13.2): `/v1/status` no dice el entorno.
+  Fuera, iniciar sesión con lo escrito delataría si el correo ya tenía cuenta (con la contraseña de otro daría
+  `invalid_credentials`).
+- **La espera de `character_busy`** la hace `AccountFlow.enter` (cada `busy_retry_s` = 3 s durante `busy_timeout_s`
+  = 30 s, con la señal `busy_waiting` para la cuenta atrás y `cancel_enter`), para la selección y para el bot.
+- **`ensure_character`** busca el personaje por la clave de `NameRules` («aneira» encuentra «Anéira») y restaura uno
+  borrado en plazo en lugar de intentar crearlo (daría `name_taken`). Sin reino pedido usa el de la cuenta en ese
+  mundo y, si no tiene, Vardheim.
+- **La exportación** se guarda en Descargas (o, si no hay, en `user://`) con el nombre de `Content-Disposition`
+  limpio (solo letras, números, `.`, `-` y `_`, terminado en `.json`; si no, `eldmark-datos.json`).
+- **Una URL de plataforma que no vale** (`http://` fuera de esta máquina, sin esquema…) se conserva en
+  `ClientConfig` con un aviso: el bot falla con su motivo (`bad_url`) en lugar de entrar sin plataforma, y el título
+  lo dice. Ninguna llamada sale.
+- **DTLS sin certificado legible:** `NetClient.start` devuelve `ERR_INVALID_DATA` y no conecta en claro.
+- **Askarra sale «Próximamente» siempre** en la creación (§0): el cliente no conoce `ELDMARK_OPEN_REALMS`; si la
+  plataforma lo abre antes que el cliente, la creación da `realm_closed`.
+- **Emblemas, capital y lore** de la creación son texto provisional (de mundo.md) con el color de bando: los SVG de
+  `RealmCatalog.emblem_path` aún no existen (UI-02, ART-21).
+- **Zona del personaje en la lista:** «Vado Gris» y «Mundo de pruebas» por id; otra, el id capitalizado (no hay aún
+  nombres de zona en los datos compartidos).
+
+**Pruebas** (Godot, todas nuevas o ampliadas):
+
+| Archivo | Pruebas | Qué |
+|---|---|---|
+| `test_client_config.gd` | 9 nuevas (26) | Modos y prioridad con `--title`/`--platform` (editor: sandbox; exportación: título), opciones del bot con cuenta, `--world`, `--dtls-*`, reglas de la URL (https, http solo a loopback, «127.0.0.1.example.org» no lo es), `duplicate_config` y que `boot.gd` no avisa |
+| `test_platform_api.gd` | 14 | Refresco ante 401 y llamada repetida; refresco anticipado; **dos llamadas que caducan a la vez** (y dos con 401 a la vez) hacen un solo refresco; refresco rechazado → `session_lost` una vez y sesión olvidada; sin red, la sesión sigue; sin sesión no sale; `AccountSession`; el mapa de errores de §4.1; respuestas raras (204, JSON roto, no UTF-8, Markdown, `Retry-After`) sin errores del motor; con `FakeHttpServer`, las cabeceras (`Authorization`, `X-Eldmark-Protocol`, `X-Eldmark-Build`, `Content-Type`) y los cuerpos; `http://` fuera de esta máquina no sale; puerto cerrado → `network` |
+| `test_account_flow.gd` | 16 | `login` (correo normalizado), `ensure_character` (por la clave del nombre, crea con pueblo, apariencia por defecto válida y la primera plantilla, reino de la cuenta o el pedido, restaura un borrado), `enter` → `ClientConfig` con billete (id > 2^53, DTLS, sin `loadout`, la de partida intacta), `character_busy` reintentado, plazo y cancelación, respuestas que no se entienden, ids y base64 estrictos; el bot: sin `--login` → 1 y `missing_login`, contraseña ilegible, credenciales malas y `zone_unavailable` → 1 con el `code`, cuenta suspendida → 1; **de extremo a extremo en el proceso**: el bot crea su personaje y entra con el billete firmado en un `ZoneServer` con `FakeZonePlatform` y `TicketAuthProvider` (la reclamación lleva su id) y sale con 0; `--bots --platform` → 1 |
+| `test_front_screens.gd` | 13 | Título (Entrar solo con correo y contraseña, Intro, estado, recuperar y Esc), crear cuenta (contraseña, edad, los tres textos y el cuerpo exacto), textos nuevos, cuenta sancionada, selección (nombres, nivel y zona, borrados en gris, huecos, figura con su apariencia, **Entrar desactivado sin personaje**, **borrar escribiendo el nombre**, restaurar, flechas, Intro, Supr, cuenta atrás), creación (reino fijado, Askarra, apariencias válidas al cambiar cada campo y 50 aleatorias por pueblo, **plantilla**, nombre con `NameRules` y `name-check`, Esc) y renombrado |
+| `test_front_main.gd` | 12 | Con la escena de verdad: título → selección y el correo recordado sin la contraseña ni los tokens; contraseña mala; cuenta sancionada (exportar a un archivo, borrar, cerrar sesión); textos nuevos aceptados con las versiones de `/v1/legal`; Entrar → `OnlineMain` con billete y `from_front`; renombrado forzado; cuenta atrás de `character_busy`; crear (con `name-check`), borrar y restaurar; cerrar sesión y sesión perdida; registro que solo inicia sesión contra una plataforma local; la vuelta desde la zona con el motivo; `OnlineMain` con `from_front` que vuelve a `FrontMain` y nunca a `RealmSelect` |
+| `test_net_client.gd` | 2 nuevas | **El HELLO lleva el billete**, el `character_id` (> 2^53), el reino y el nombre del personaje; un certificado DTLS ilegible no conecta |
+| `test_client_launcher.gd` | 1 nueva | El proyecto arrancado con `--title --platform=<puerto cerrado>` monta `FrontMain` sin errores y dice «Sin conexión con el servidor» |
+
+Comprobada con la mutación que debía pillar: sin la guarda del refresco en vuelo, las dos pruebas de las llamadas
+simultáneas fallan (dos refrescos). Siguen correctas las que tocan lo cambiado: `test_online_main`,
+`test_realm_select`, `test_bot_swarm`, `test_architecture`, `test_export_config`, `test_client_settings`,
+`test_ui_components`, `test_net_loopback`, `test_net_harness`, `test_net_processes`, `test_local_server_launcher`,
+`test_bot_cheat`, `test_loadout_net`, `test_server_main`, `test_zone_server_platform`, `test_platform_client` y
+`test_handoff_ticket`. La suite entera de Godot no se ha pasado. Go no cambia (`gofmt` y `go vet` limpios).
+
+**Contra la plataforma de verdad** (a mano, `scratchpad/p8/real_platform.sh`, no está en el repositorio):
+PostgreSQL 16 efímero, `migrate up`, `admin bootstrap` y `create-account`, `serve` con `ELDMARK_HEARTBEAT_S=1`, una
+zona `test_world` con `--platform` y tres bots `--bot --platform`: el primero inicia sesión, crea «Probador» en
+Solmarch (`--realm=solmarch`) y entra; el segundo lo encuentra y entra otra vez (dos billetes, los dos consumidos; al
+salir, el arrendamiento queda libre); el tercero, con una contraseña mala, sale con 1 y `invalid_credentials` en el
+informe. El título sin ventana contra esa plataforma lee el estado («En línea · Eld»). Todas las peticiones del
+cliente dan 2xx (salvo el 401 buscado).
+
+**Medido** (esta máquina, 4 núcleos, Godot 4.7.2 headless, Go 1.24.7, PostgreSQL 16.15):
+
+| Qué | Resultado |
+|---|---|
+| Inicio de sesión, lista, creación y `enter` del bot contra la plataforma de verdad (argon2id de producción) | 229 ms; con el personaje ya creado, 145 ms |
+| `test_account_flow.gd` | 16 pruebas en 21 s; la de extremo a extremo, 6,9 s |
+| `test_front_main.gd` · `test_front_screens.gd` · `test_platform_api.gd` | 20 s · 14 s · 14 s (cada archivo con el arranque del ejecutor, unos 11 s) |
+| La vuelta de `OnlineMain` a `FrontMain` tras no poder conectar | 3,5 s (el plazo de conexión de ENet) |
+
+**Sin comprobar:** el título con ventana y ratón (en headless no se dibuja: la figura, el arrastre y el foco con
+Tab son de la revisión visual de §15); TLS con el certificado anclado (`eldmark/platform/ca_cert`: un fallo de TLS
+registra un error del motor, §10.1, así que no tiene prueba en Godot); DTLS de verdad (P9c); el refresco contra la
+plataforma de Go (el token dura 15 min y las pruebas usan la de mentira).
+
+**Queda para después:** el fondo, el logotipo y la música del título (ART-21) y su revisión visual (usuario); más
+piezas de apariencia y cuerpos (ART-20); que la zona cargue la apariencia elegida (progresion.md P5a, criterio de
+UI-24); DTLS en la zona y su medida (P9c); la prueba de extremo a extremo con la plataforma en Go (P10).
+
+### 19.17 Integración de los carriles de la fase 5
+
+**Qué hay.** `wip/fase5-zona` (P4, P5, P6 y P7b de aquí; P1, P2, P4 y P5a–P5d de progresion.md) junta los otros dos
+carriles con dos fusiones `--no-ff`: `wip/fase5-almacen` (P9b, progresion.md P7 y P9a, hasta `1972199`) y
+`wip/fase5-cliente` (progresion.md P6 y P8, hasta `c755f7b`). Ningún archivo de código cambiaba en dos carriles a la
+vez: los conflictos fueron todos de documentación y se resolvieron conservando lo de los dos lados.
+
+- **Apartados de §19.** Los de cada carril se numeraban desde el último que veían; quedan en el orden de las
+  fusiones y con sus referencias al día (en este documento, en progresion.md, en backlog.md, en README.md y en los
+  comentarios de progresion.md §14.3). Aquí: §19.13 P9b (era §19.11), §19.14 lo que deja progresion.md P7 (§19.12),
+  §19.15 P9a (§19.13) y §19.16 P8 (§19.9); en progresion.md, §19.17 P7 (§19.12), §19.18 lo que deja P9a (§19.13) y
+  §19.19 P6 (§19.10). Las citas «plataforma.md §19, «P8 · cliente»» del backlog pasan a §19.16.
+- **Backlog.** Donde los dos carriles añadían su «Hecho» al mismo elemento (PRG-07, PRG-12, PRG-16, SOC-14, SOC-17,
+  SOC-18, TEC-25 y TEC-27) van los dos, en el orden de los paquetes; en TEC-25 los dos «Faltan» se quedan en uno
+  («Falta la prueba del kill -9»). Con los tres carriles juntos se cumplen tres «Terminado cuando» que ninguno
+  cumplía solo y se cierran: PRG-13 (el nivel ya se guarda), PRG-14 (la creación ofrece el pueblo de cada reino) y
+  ART-19 (aplicar 100 al azar y que el servidor no deje pasar índices fuera de rango). UI-24 y TEC-25 ganan su nota y
+  siguen abiertos.
+- **Arreglos.** No hizo falta tocar el código del juego ni el de la plataforma: `--import` no cambia nada (los `.uid`
+  venían de cada carril) y todas las pruebas pasan tal cual. Lo que se queda viejo al juntar: la ayuda de
+  `platform/deploy/dev.sh` decía que `--platform` de la zona y el cliente con cuenta «llegaban» con P4 y P8, y
+  README.md no contaba las opciones de la zona con plataforma (`--platform`, `--world`, `--channel`,
+  `--public-address`, `--save-interval`, `--replace`, los secretos y los códigos de salida 1 y 3), que ahora tiene en
+  «Servidor dedicado».
+
+**Comprobado a mano contra la plataforma de verdad** (`scratchpad/int/real_platform.sh`, no está en el repositorio:
+el de §19.16 sobre esta rama, con la consola de la zona por una FIFO): PostgreSQL 16 efímero con `migrate up` (hasta
+`0010_progress`), `serve` con el almacén del progreso de verdad, una zona `test_world` con `--platform`, `--console` y
+`--save-interval=5`, y tres bots `--bot --platform`.
+
+1. El primero inicia sesión, crea «Probador» en Solmarch (`race_solmarch` y sus 8 B en `character_progress`) y entra:
+   la zona le da el kit (operación STARTER_KIT con sus cuatro eventos de objeto) y el bot recibe el INVENTORY_FULL,
+   dos WALLET_UPDATE y un PROGRESS_UPDATE, sin ningún paquete mal formado.
+2. Con el bot dentro, la consola de la zona manda `xp_add Probador 30000`, `item_give Probador potion_health 2` y
+   `currency_add Probador gold 75`: tres operaciones GM con `source: console`, nota y `detail` (en `xp_add`,
+   `level_before` 1 y `level_after` 11), que salen en el guardado crítico y pasan S1–S8. La base queda con nivel 11 y
+   30 000 de XP, las dos pociones nuevas en la ranura 2 de la bolsa (evento con su uid), 75 de oro con su apunte y
+   sus tres filas `op:<op_id>` en `audit_log` (objetivo por `character_id`, `args` sin nombres); el bot recibe un
+   INVENTORY_DELTA, un WALLET_UPDATE y un PROGRESS_UPDATE más.
+3. Al salir, el guardado final y la liberación (`save_version` 4, arrendamiento libre). El segundo bot encuentra el
+   personaje, entra con otro billete y la reclamación trae lo guardado: mismo nivel, objetos y saldos, y la salida
+   lo vuelve a guardar sin cambiar nada más que el tiempo jugado (`save_version` 7).
+4. El tercero, con una contraseña mala, sale con 1 e `invalid_credentials`; el título sin ventana lee el estado.
+
+**Pruebas.** Go: `gofmt -l` y `go vet` limpios y `go test -race -count=1 ./...` entero en verde (28 paquetes con
+pruebas; el más lento, `platform/deploy`, 17–19 s), tras la primera fusión y al final, con el `dev.sh` retocado.
+Godot, tras `--import`, por filtros (cada ejecución carga todos los archivos de prueba, así que ninguno deja de
+compilar): las áreas que tocan los carriles, `platform` (67), `progress` (109), `save` (41), `auth` (31),
+`test_zone_server` (86), `inventory` (48), `net_messages` (95), `test_front` (26), `test_account_flow` (16),
+`test_client_` (74), `test_online_main` (15), `test_net_client` (34), `test_appearance` (6), `hud` (82),
+`test_character_` (36) y `test_architecture` (19); y los archivos que cambió algún carril o que usan lo cambiado,
+`test_loadout`, `test_consumables_server`, `test_bot_cheat`, `test_projectile_loopback`, `test_combat_resolver`,
+`test_combat_server`, `test_hfsm_brain`, `test_chat`, `test_command_registry`, `test_war_`, `test_zone_moderation`,
+`test_zone_process_shutdown`, `test_handoff_ticket`, `test_server_`, `test_item_`, `test_currency_rules`,
+`test_action_machine_weapons`, `test_level_curve`, `test_progression`, `test_bot_swarm`, `test_net_processes`,
+`test_realm_select`, `test_remote_world`, `test_nameplates`, `test_export_config`, `test_local_server_launcher`,
+`test_net_loopback`, `test_net_harness`, `test_siege_clients`, `test_ui_`, `test_social_menu`, `test_hints`,
+`test_ability_input`, `test_party_`, `test_combat_loopback` y `test_fortress_loopback`. En total, 1317 pruebas
+distintas de 118 archivos, todas correctas a la primera. La suite entera de Godot no se ha pasado.
+
+**Queda para después:** las pruebas de punta a punta del progreso (progresion.md P8: `test_progress_loopback`,
+`test_progress_platform_loopback`, `--bot-scenario=progress` y `platform/e2e/progress_test.go`), DTLS en la zona
+(P9c) y la prueba de extremo a extremo en la CI (P10); lo pendiente del usuario de cada paquete (revisión visual,
+textos legales, el VPS).
+
+### 19.18 P9c · DTLS (TEC-27)
+
+**Qué hay.** El lado de la zona del contrato de §10.2 (el del cliente lo dejó P8, §19.16), el enjambre con
+certificado y la campaña de medida de TEC-27:
+
+| Pieza | Contenido |
+|---|---|
+| `NetTransport` | `host(port, max_peers, dtls: TLSOptions = null)`: `dtls_server_setup(dtls)` justo tras `create_server` y antes de `GuardedEnetPeer`, que filtra igual lo que llega ya descifrado. `is_dtls()`. **Un cliente con DTLS no empieza el corte** (abajo) |
+| `ZoneDtls` (`scripts/server/zone_dtls.gd`, nuevo) | `load_files(cert, key)` y `from_pem`: el PEM tal cual (`certificate_pem`, con su cadena si la trae), el CN (`common_name`) y `server_options` (`TLSOptions.server`), o `error` con el motivo. Lee el CN del DER con un lector mínimo de ASN.1 (`certificate_fields`, `pem_blocks`), comprueba que la clave es la del certificado (la `subjectPublicKeyInfo` contra `CryptoKey.save_to_string(true)`) y no le pasa a Godot un PEM que no ha entendido antes (Godot registra un error del motor con uno roto) |
+| `ServerConfig` · `ServerMain` · `ZoneServer` | `ServerConfig.dtls: ZoneDtls` (no sale de los argumentos). `ServerMain._load_dtls` lo carga de `--dtls-cert` y `--dtls-key` antes de cargar la zona, con o sin plataforma; si falta uno, no se lee, no tiene CN o la clave no es la suya, sale con código 1. `ZoneServer.start` abre el puerto con `config.dtls.server_options`; su informe gana `dtls`; la línea «escuchando en el puerto» dice «con DTLS» |
+| `ZonePlatform.registration_body` | `dtls_cert_pem` (el PEM) y `dtls_name` (el CN); sin DTLS, null como antes |
+| `BotSwarm` · `SwarmBot` | `--bots` admite `--dtls-cert=<pem> --dtls-name=<cn>`: el enjambre ancla el certificado una vez (`NetClient.dtls_options`) y cada `SwarmBot.setup(index, config, dtls)` lo pasa a `connect_to`. Sin `--dtls-name` o con un certificado ilegible, código 1 sin conectar en claro. El informe gana `dtls` |
+| `tools/load_test.gd` | `--dtls` (con el certificado de las pruebas, o `--dtls-cert`, `--dtls-key` y `--dtls-name`) y `--dtls-compare`, la campaña: el escenario sin y con DTLS, alternados, `--repeat` veces (por defecto, 64 bots reales agrupados en dos enjambres, sin falsos, 60 s, dos de cada), y `dtls_comparison` con el criterio |
+| `tests/fixtures/dtls/` | PEM de prueba (OpenSSL 3.0, 100 años): `zone_*` (RSA 2048, CN y SAN `zona-pruebas.eldmark.test`), `other_*` (EC P-256) y `no_cn_cert.pem`. `.gitignore` ya los deja entrar (`!tests/fixtures/**/*.pem`) y `check_secrets.sh` no mira `tests/` |
+| `platform/deploy/docker-compose.yml` | Ya pasaba `--dtls-*` (P9b); el comentario de los secretos dice cómo hacer el certificado |
+
+**El corte lo empieza el servidor.** El servidor de DTLS de Godot (`ENetDTLSServer` en `thirdparty/enet/enet_godot.cpp`)
+olvida la sesión de un peer en cuanto ENet lo da por desconectado. Si el corte lo empieza el cliente
+(`peer_disconnect_later`), el servidor recibe su DISCONNECT, lo confirma y olvida la sesión; una ida y vuelta después
+llega el aviso de cierre de DTLS del cliente (al cerrarse su `ENetMultiplayerPeer`), el servidor lo toma por un
+apretón de manos nuevo y el motor registra `TLS handshake error: -30464` (`MBEDTLS_ERR_SSL_UNEXPECTED_MESSAGE`).
+Medido con la sonda de un proceso: 6 de 6 cortes empezados por el cliente dan el error; 0 de 6 empezados por el
+servidor (su DISCONNECT, la confirmación del cliente y su aviso de cierre llegan juntos) y 0 de 6 con el cliente
+cerrando de golpe (`close`: el DISCONNECT y el aviso salen en el mismo envío). Por eso, en `NetTransport`, **un
+cliente con DTLS no llama a `peer_disconnect_later`**: `disconnect_after_flush` vacía lo suyo y espera; el servidor
+contesta al CLIENT_LEAVE con su propio `disconnect_after_flush` (lo hacía ya). Si el servidor no corta en
+`FORCE_DISCONNECT_TICKS` (60), el cliente cierra la conexión entera (`_close_enet_keeping_events`: el
+`ENetMultiplayerPeer.close()` de verdad, sin perder el `peer_disconnected` que sale en ese `poll`). En claro no cambia
+nada. Lo mismo en las pruebas: cerrar el servidor antes que sus clientes hace que el aviso de cierre del cliente vaya
+a un puerto ya cerrado y el siguiente envío falle con `bio_send` (el error que ya avisaba §10.2): se cierran primero
+los clientes.
+
+**Desviaciones y decisiones de la implementación:**
+
+- **El nombre se lee del DER** (§19.8 dejaba elegir entre eso y pedir `--dtls-name` a la zona): la zona solo tiene
+  `--dtls-cert` y `--dtls-key`, como dice §10.2, y no hay forma de que el nombre del registro y el del certificado
+  no coincidan. Un certificado sin CN no vale, aunque traiga `subjectAltName` (mbedtls compararía con el SAN, pero
+  §10.2 manda el CN).
+- **`ServerConfig.dtls`** (§14.3 no lo nombra): el certificado cargado viaja con la configuración, que ya llega a
+  `ZoneServer.start` y a `ZonePlatform.registration_body`; `ZoneServer.start` no cambia de firma. Es el único cambio
+  en `zone_server.gd` (la llamada a `host` y el campo del informe), después de progresion.md P5d.
+- **API de más** (§14.3 y red.md §17 no la nombran): `NetTransport.is_dtls()`, `SwarmBot.setup(…, dtls)`,
+  `ZoneDtls` entero, el campo `dtls` de los informes de la zona y del enjambre, y en `NetHarness.start_bot` un
+  `configure: Callable` al final (para el certificado del bot de las pruebas).
+- **`SwarmBot` manda CLIENT_READY 1 s después de conectar** (`READY_DELAY_TICKS`), como un cliente que carga la
+  zona. La campaña lo destapó, en claro: en 2 de 3 pasadas de 64 bots, un bot se quedaba cargando hasta que la zona
+  lo echaba a los 60 s («se agotó el tiempo de carga») con un aviso de «paquete ajeno al protocolo». La confirmación
+  de la autenticación de SceneMultiplayer va por el canal 0 de ENet y CLIENT_READY por el 3, que no se ordenan entre
+  sí; con 64 bots en la máquina el búfer de UDP del servidor (212 KB por defecto) se llena en sus parones de 40–70 ms
+  (el contador `RcvbufErrors` de `/proc/net/snmp` sube durante la campaña), una confirmación perdida llega después
+  de su CLIENT_READY y `GuardedEnetPeer` (como haría SceneMultiplayer) tira el CLIENT_READY. Un cliente de verdad
+  manda CLIENT_READY tras cargar la zona, segundos después. No es de DTLS, pero invalidaba las pasadas (63 jugadores
+  frente a 64).
+- **El cifrado de lo que se envía cae en la sección que envía**, no en `flush`: `ENetMultiplayerPeer.put_packet`
+  vacía el host en cada paquete. En la zona, el de los snapshots está en la sección `snapshot` y el de los eventos en
+  `combat_events`; `flush` sigue en unos µs.
+
+**Pruebas** (Godot, nuevas):
+
+| Archivo | Pruebas | Qué |
+|---|---|---|
+| `test_dtls_loopback.gd` | 7 | **Loopback con DTLS y `GuardedEnetPeer`** (§15): apretón de manos, paquetes de 1200 B por los canales no fiables y uno fiable de 3000 B (fragmentado) en los dos sentidos, intactos y sin descartes del filtro; la salida con CLIENT_LEAVE (corta el servidor, antes del plazo) y 30 ticks más sin errores del motor. Un cliente cuya salida nadie contesta no empieza el corte, cierra todo a los 60 ticks, los dos lo ven y vuelve a conectar. Otro certificado, otro nombre o en claro: no conecta y el servidor no llega a ver un peer (la única que admite errores del motor: los del apretón de manos). `ZoneServer` con `config.dtls` y un `NetClient` que predice (`--dtls-cert`/`--dtls-name`): juega, recibe snapshots y sale con CLIENT_LEAVE. **El enjambre con certificado** (§15): 4 bots entran, juegan, el informe dice `dtls`, salen con código 0 y la zona queda vacía. Sin `--dtls-name` o con un certificado ilegible, código 1 y ningún bot. **El servidor dedicado de verdad** en otro proceso con `--dtls-cert --dtls-key` (y `--stop-file`): carga el certificado, escucha «con DTLS», un enjambre de 2 entra, el informe dice `dtls` y su registro no tiene ningún error |
+| `test_zone_dtls.gd` | 11 | `ZoneDtls`: el CN y la clave del certificado de las pruebas; uno EC con el CN delante; clave que no es la suya (en los dos sentidos); sin CN; archivos que faltan y PEM rotos, cada uno con su motivo y sin errores del motor; un DER cortado cada 7 B o con una longitud imposible no rompe el lector; cadenas y base64 malo. El registro con el PEM y el CN (y null sin DTLS), ida y vuelta por JSON. Dos servidores en otro proceso que salen con 1 y lo dicen (falta la clave; clave de otro certificado). `dtls_comparison` (medias, subida, criterio, sin pasadas) y las opciones que pasa `load_test` |
+
+Siguen correctas las que tocan lo cambiado: `test_net_sim` (30), `test_net_loopback` (14), `test_net_client` (34),
+`test_bot_swarm` (8), `test_siege_clients` (3), `test_bot_threat_sight`, `test_progress_messages`,
+`test_server_config`, `test_server_main` (15), `test_net_processes` (10), `test_account_flow` (16),
+`test_zone_process_shutdown`, `test_war_platform_process`, `test_platform_client` (14),
+`test_zone_server_platform` (13), `test_load_test` (18) y `test_architecture` (19). La suite entera de Godot no se ha
+pasado. Go no cambia (la plataforma ya validaba y guardaba el certificado, P3).
+
+**Medido** (esta máquina, 4 núcleos, Godot 4.7.2 headless; detalle en red.md §14). El coste por paquete, los
+bytes, el apretón de manos y los cortes, con sondas de un proceso que no están en el repositorio (`scratchpad/p9c/`:
+`probe_cost.gd`, `probe_relay.gd` y `probe_loopback.gd`); la carga, con `tools/load_test.gd --dtls-compare`:
+
+| Qué | Resultado |
+|---|---|
+| TEC-27: 64 bots reales, tres pasadas sin y tres con DTLS (`--dtls-compare --repeat=3`) | p99 del tick de 26,9 a **28,5 ms (+5,9 %, cumple el criterio provisional del 10 %)**; p50 de 15,0 a 15,5 ms; `net` +16 %, `snapshot` +4 % |
+| Lo mismo con 40 bots (el aforo del Vado Gris), dos pasadas de cada | p99 de 15,9 a 15,4 ms (−3,3 %, ruido); p50 de 9,0 a 9,0 ms |
+| CPU por paquete (sonda, 16 clientes) | recibir una entrada: +2,2 µs (6,8 → 9,0); enviar un snapshot de 1200 B: +5,1 µs (7,2 → 12,3) |
+| Bytes por datagrama (relé de UDP) | +29 B (ChaCha20-Poly1305); snapshot lleno en 1240 B de UDP; el tope de 1200 B no cambia |
+| Apretón de manos | CPU de la zona por cliente: 4,3 ms con RSA 2048, 2,0 ms con EC P-256; conectar, 0,6 s (16 a la vez, 1,6 s) |
+| `--filter=dtls` (estos dos archivos y las 2 de P8) | 20 pruebas en 35 s con la carga del ejecutor; la más larga, el servidor dedicado con el enjambre, 7 s |
+
+**Sin comprobar:** contra la plataforma de Go de verdad con `staging` (el registro con certificado lo prueban P3 en
+Go y aquí `registration_body`; el `enter` que lo devuelve, P2); el cliente con ventana conectando por DTLS a una zona
+remota (la red de verdad, con pérdidas: el corte que empieza el servidor está pensado para eso, pero solo se ha
+medido en loopback); IPv6.
+
+**Queda para después:** que el usuario elija el criterio de TEC-27 (§0: relativo, cumplido; absoluto, no se cumple
+ni sin DTLS); los certificados de verdad de cada zona en el VPS (TEC-20, con la orden del compose) y
+`net.core.rmem_default` alto allí; la prueba de extremo a extremo (P10).
+
+### 19.19 P10 · extremo a extremo
+
+**Qué hay.** Las dos pruebas de §15 con la plataforma de verdad (la de `serve`) en el proceso de la prueba, un
+PostgreSQL efímero y procesos de Godot de verdad (una zona `test_world` con `--platform` y bots con cuenta), y su
+trabajo de CI. Ningún cambio en Godot ni en lo que hace la plataforma:
+
+| Pieza | Contenido |
+|---|---|
+| `platform/e2e/` | Etiqueta de compilación `e2e` (`go test -tags e2e ./e2e`): `harness_test.go` (el arnés), `platform_test.go` (`TestEnterAndSave` y `TestZoneCrash`) y `proc_linux_test.go` (`Pdeathsig`: el núcleo mata las zonas y los bots si la prueba muere sin pararlos; fuera de Linux, `proc_other_test.go` no hace nada). `doc.go`, sin etiqueta, para que el paquete exista con `go vet ./...` |
+| `TestMain` | `ELDMARK_GODOT` (sin ella, `t.Skip`; con `ELDMARK_REQUIRE_GODOT=1`, la CI, falla), `godot --headless --path <raíz> --import` una vez (si falla, todas las pruebas fallan con el final de su registro) y `testdb.Main` |
+| `New(t)` | Base nueva (`testdb.New`) y la configuración de §15 por `config.Load`: `ELDMARK_ENV=test`, un token aleatorio de `1:test_world:0`, una clave de billete aleatoria, `ELDMARK_ENTRY_ZONES=vardheim=test_world,solmarch=test_world`, `ELDMARK_HEARTBEAT_S=1`, `ELDMARK_LEASE_TTL_S=6` (y las `Option` que cambien alguna). Monta los servicios de `serve` (`services.Mount`), abre las dos API en puertos libres y vuelve con el arranque hecho. Al acabar la prueba para, en este orden, los procesos de Godot que sigan vivos, la plataforma y la base; si la prueba ha fallado, copia en su salida el final de cada registro |
+| Cuentas, zonas y bots | `NewAccount` (registro por la API pública con los tres textos aceptados y la contraseña en un archivo 0600); `StartZone(args…)` (`--server --zone=test_world --world=1 --port=<UDP libre> --platform=<API interna> --stop-file --report`, con `ELDMARK_ZONE_TOKEN` y `ELDMARK_TICKET_KEYS` en el entorno y sin ninguna otra `ELDMARK_*` heredada); `Zone.WaitLive` (la instancia `live` con su `public_port`); `Zone.Stop` (el cierre ordenado por `--stop-file`, con su código de salida); `Process.Kill` (SIGKILL, devuelve la hora de antes de la señal); `StartBot(acc, args…)` (`--bot --platform=<API pública> --login --password-file --report`); `Bot.ReadReport` (`platform` del informe y el informe entero en `Raw`) |
+| Consultas | `WaitFor` (cada 100 ms, con plazo), `WaitCharacter`, `Scalar`, `Exists`, `PlatformLogContains`, `Process.LogContains` y **`CheckBooks`**: por definición, Σ `count_delta` de `item_events` = Σ `count` de los objetos vivos; por moneda, Σ `delta` de `ledger_entries` = saldo; una sola operación STARTER_KIT y algún objeto vivo |
+| Registros | Cada prueba deja `plataforma.log` (JSON de `slog`, nivel INFO), `zonaN.log`/`.json` y `botN.log`/`.json` en una carpeta temporal o, con `ELDMARK_E2E_ARTIFACTS=<carpeta>`, en `<carpeta>/<prueba>/` (vaciada al empezar), donde se quedan |
+| `internal/services` (nuevo) | `Mount` y `ProgressStore`, que eran `mountServices` y `progressStore` de `cmd/eldmark-platform/services.go` (archivo movido; `serve`, `admin` y sus pruebas los llaman ahí): así el arnés monta exactamente lo de `serve`, sin copiarlo. §2.1 lo nombra |
+| CI | Trabajo «Plataforma e2e» en `tests.yml`: checkout sin LFS, las cachés de LFS y de Godot con las claves de los trabajos de Godot (`git lfs pull` baja lo que falte; Godot solo se descarga si falla la caché), `setup-go`, el PostgreSQL de `ubuntu-latest`, `ELDMARK_GODOT`, `ELDMARK_REQUIRE_PG=1`, `ELDMARK_REQUIRE_GODOT=1` y `go test -tags e2e -count=1 -v -timeout 14m ./e2e`; los registros, en `$RUNNER_TEMP/e2e` (fuera del proyecto, que Godot importa), suben como artefacto si falla y las líneas de resultado y de tiempo van al resumen. El trabajo «Plataforma» añade `go vet -tags e2e ./e2e` |
+
+**Las pruebas.**
+
+- **`TestEnterAndSave`:** la zona pasa a `live`; un bot crea «Viajera», entra, juega 300 ticks y sale con código 0
+  (informe sin `code` y con `created`). Después, sin plazo de más que 20 s: el arrendamiento queda libre
+  (`zone_instance_id` nulo, `released_at` puesto) con `last_save_version > 0`; `character_progress` con
+  `save_version > 0`, `saved_at` puesto y `last_zone_id = 'test_world'`; el arrendamiento lo reclamó esa instancia;
+  un solo billete consumido; `CheckBooks`; y el cierre ordenado sale con 0 y deja la instancia en `stopped`.
+- **`TestZoneCrash`:** zona con `--save-interval=5`; un bot crea «Superviviente» y juega. Tras su primer `saved_at`
+  (el guardado crítico del kit, al llegar) se esperan 7 s (más que 5 s + 1 s), `kill -9` a la zona (y al bot, que no
+  tiene que reconectar) y se arranca otra con `--save-interval=5`. Con la nueva en `live`: es otra instancia, la vieja
+  está `lost`, y el último `saved_at` es **posterior al primero** (salió de un punto de control) y **`kill − saved_at` <
+  5 s + 1 s**; `CheckBooks` (lo que quedó de la vieja, sin nada a medias). Un segundo bot con la misma cuenta entra y
+  su personaje queda arrendado **por la instancia nueva**; sale con 0, su informe trae el mismo `character_id` sin
+  `created`; el cierre ordenado de la nueva sale con 0 y `CheckBooks` otra vez (el kit no se repite al volver).
+- **Que pillan lo que deben** (mutaciones a mano, no se quedan en el repositorio): con `--save-interval=60` en la zona
+  vieja, `TestZoneCrash` falla («no hubo ningún punto de control tras el primer guardado», `kill − saved_at` = 7,1 s);
+  con un objeto vivo de más insertado a mano, `CheckBooks` falla («potion_health: 3 en el libro y 4 guardados»).
+
+**Para los paquetes siguientes.**
+
+- **progresion.md P8:** `platform/e2e/progress_test.go` va en este paquete, con la etiqueta `e2e`, y usa el arnés tal
+  cual: `New(t)`, `NewAccount`, `StartZone("--debug-commands", …)`, `StartBot(acc, "--bot-scenario=progress", …)`,
+  `Bot.ReadReport` (el informe entero en `Raw`), `Process.Kill` y `CheckBooks` (las cuentas de su
+  `TestProgressCrash`). La cuenta `admin` no tiene ayuda: SQL sobre `h.Pool` o la orden `admin` con `--actor`. `Load`
+  se compara con `progress.New(rules, nil).Load` sobre `h.Pool` (o con la reclamación siguiente).
+
+**Desviaciones y decisiones de la implementación:**
+
+- **`--path`:** §15 dice `godot --headless --path ..`, pero las pruebas corren en `platform/e2e/`; el arnés usa la raíz
+  del repositorio (`../..`, donde está `project.godot`) para la importación, las zonas y los bots.
+- **El kill no va justo tras el primer `saved_at`:** ese primero es el guardado crítico de la llegada (el kit), y un
+  kill enseguida cumpliría `kill − saved_at < 6 s` sin ningún punto de control. La prueba espera 7 s y exige además un
+  `saved_at` posterior al primero, así que sin puntos de control falla (comprobado arriba).
+- **Quién pasa la vieja a `lost`:** en todas las pasadas el registro de la nueva dio un 409 `instance_alive` y
+  reintentó a los 2 s, pero antes el trabajo de perdidas (cada `min(5 s, HEARTBEAT_S)` = 1 s) ya la había dado por
+  perdida («instancia perdida: sin latido»); el camino en el que el propio registro la pasa a `lost` (§5.3) no se da
+  con `HEARTBEAT_S=1`. Las dos cosas valen y la prueba no exige ninguna: la anota en su salida. Ese camino lo prueba P3
+  en Go.
+- **De más, que §15 no pedía:** `CheckBooks` en las dos pruebas (el «sin duplicar nada» de TEC-25), la liberación, el
+  billete consumido, la instancia que reclamó y el cierre ordenado con `stopped` en `TestEnterAndSave`, y el informe
+  del segundo bot en `TestZoneCrash`. Variables nuevas: `ELDMARK_REQUIRE_GODOT` y `ELDMARK_E2E_ARTIFACTS`.
+- **Los bots solo juegan lo justo:** 300 ticks el de `TestEnterAndSave` y 240 el segundo de `TestZoneCrash` (con 600,
+  la prueba tardaba 32 s).
+
+**Pruebas.** Las dos nuevas pasan en siete pasadas seguidas (una con `-race`, sin carreras). Sin `ELDMARK_GODOT` se
+saltan, y con `ELDMARK_REQUIRE_GODOT=1` fallan. La suite de Go entera pasa con el arreglo de `internal/services`
+(`gofmt -l` y `go vet` limpios, también con `-tags e2e`; `go test -race -count=1 ./...` en verde, 28 paquetes con
+pruebas). Godot no cambia: la importación de `TestMain` no toca ningún archivo del repositorio.
+
+**Medido** (esta máquina, 4 núcleos, Go 1.24.7, PostgreSQL 16, Godot 4.7.2 headless):
+
+| Qué | Resultado |
+|---|---|
+| `TestEnterAndSave` | 11,2–12,5 s (siete pasadas): plataforma lista en 0,1–1,1 s, zona en `live` unos 2 s después de lanzarla, el bot de 300 ticks de lanzarlo a salir 8–9 s, cierre ordenado 0,3–0,9 s |
+| `TestZoneCrash` | 24,8–26,2 s (seis pasadas con el segundo bot de 240 ticks): primer guardado unos 3,5–4 s tras lanzar el bot; la nueva en `live` unos 4,3 s tras el kill (un 409 y el reintento a los 2 s); `kill − saved_at` de 0,47 a 1,14 s; el segundo bot, dentro unos 3,5 s después de lanzarlo |
+| Las dos con `-race` | 12,5 s y 25,1 s |
+| Importación de `TestMain` | 6,5–10,7 s con el proyecto ya importado (en la CI, sin `.godot/`, sin medir) |
+| `go test -tags e2e ./e2e` entero | 44–46 s con la compilación en caché y la importación |
+
+Las dos quedan por debajo de la meta de 30 s por prueba (§15): no hace falta el tope de 60 s.
+
+**Sin comprobar:** el trabajo «Plataforma e2e» en GitHub (`ubuntu-latest` sin raíz, la importación entera sin la caché
+de `.godot/` y los tiempos allí); DTLS de extremo a extremo (la zona con `--dtls-*` y el bot que lo ancla: P9c lo probó
+contra el falso y un servidor dedicado, no contra la plataforma de Go).
+
+**Queda para después:** `platform/e2e/progress_test.go` (progresion.md P8); ver «Plataforma e2e» en verde en GitHub y
+marcarlo como comprobación obligatoria en la protección de la rama (usuario).

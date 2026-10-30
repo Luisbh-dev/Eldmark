@@ -1,8 +1,8 @@
 // Package platformtest monta la plataforma entera en el proceso de una prueba (solo para pruebas):
 // la base efímera de testdb, el reloj falso, el progreso en memoria
-// (persistence.MemoryProgressStore), la API pública (cuentas y personajes), la interna (zonas,
-// reclamación y guardado, guerra y lo social) y la orden admin, con ayudas para hacer de cliente y
-// de zona.
+// (persistence.MemoryProgressStore; con [NewWithProgress], el almacén de verdad de progresion.md P7),
+// la API pública (cuentas y personajes), la interna (zonas, reclamación y guardado, guerra y lo
+// social), la orden admin y las retenciones, con ayudas para hacer de cliente y de zona.
 //
 // Lo usan las pruebas de zones, persistence, war y social: la API interna solo se entiende con
 // cuentas, personajes y billetes de verdad delante.
@@ -28,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"eldmark/platform/internal/accounts"
@@ -35,10 +36,12 @@ import (
 	"eldmark/platform/internal/characters"
 	"eldmark/platform/internal/clock"
 	"eldmark/platform/internal/config"
+	"eldmark/platform/internal/db"
 	"eldmark/platform/internal/httpx"
 	"eldmark/platform/internal/logx"
 	"eldmark/platform/internal/mail"
 	"eldmark/platform/internal/persistence"
+	"eldmark/platform/internal/privacy"
 	"eldmark/platform/internal/social"
 	"eldmark/platform/internal/testdb"
 	"eldmark/platform/internal/tickets"
@@ -117,21 +120,24 @@ const Protocol = 7
 
 // Platform es la plataforma en el proceso de la prueba.
 type Platform struct {
-	T          testing.TB
-	Pool       *pgxpool.Pool
-	Cfg        *config.Config
-	Clock      *clock.Fake
-	Progress   *persistence.MemoryProgressStore
-	Accounts   *accounts.Service
-	Characters *characters.Service
-	Zones      *zones.Service
-	Store      *persistence.Store
-	War        *war.Service
-	Social     *social.Service
-	Admin      *admin.Service // la orden admin (P7a), con os_user «prueba»
-	Public     http.Handler
-	Internal   http.Handler
-	Logs       *SyncBuffer
+	T        testing.TB
+	Pool     *pgxpool.Pool
+	Cfg      *config.Config
+	Clock    *clock.Fake
+	Progress *persistence.MemoryProgressStore // el falso; nil con [NewWithProgress]
+	// ProgressStore es el almacén que usa la plataforma: Progress o el de [NewWithProgress].
+	ProgressStore persistence.ProgressStore
+	Accounts      *accounts.Service
+	Characters    *characters.Service
+	Zones         *zones.Service
+	Store         *persistence.Store
+	War           *war.Service
+	Social        *social.Service
+	Admin         *admin.Service   // la orden admin (P7a), con os_user «prueba»
+	Privacy       *privacy.Service // las retenciones de §11.1 (P9a), con el reloj falso
+	Public        http.Handler
+	Internal      http.Handler
+	Logs          *SyncBuffer
 
 	ip atomic.Int32
 }
@@ -147,7 +153,28 @@ func (r internalRouter) HandleInternal(pattern string, h http.Handler) { r.Handl
 // New monta la plataforma sobre una base nueva. opts cambian la configuración antes de montar.
 func New(t testing.TB, opts ...func(*config.Config)) *Platform {
 	t.Helper()
-	pool := testdb.New(t)
+	return Attach(t, testdb.New(t), opts...)
+}
+
+// NewWithProgress monta la plataforma sobre una base nueva con el almacén del progreso y la validación de
+// la creación dados (los de verdad, internal/progress) en lugar del falso y la provisional. newStore recibe
+// el reloj falso de la plataforma.
+func NewWithProgress(t testing.TB, newStore func(now func() time.Time) persistence.ProgressStore,
+	validator persistence.CreateValidator, opts ...func(*config.Config)) *Platform {
+	t.Helper()
+	return attach(t, testdb.New(t), newStore, validator, opts...)
+}
+
+// Attach monta la plataforma sobre una base que ya tiene el esquema (una restaurada con
+// pg_restore, por ejemplo), con un reloj y un progreso en memoria nuevos.
+func Attach(t testing.TB, pool *pgxpool.Pool, opts ...func(*config.Config)) *Platform {
+	t.Helper()
+	return attach(t, pool, nil, nil, opts...)
+}
+
+func attach(t testing.TB, pool *pgxpool.Pool, newStore func(now func() time.Time) persistence.ProgressStore,
+	validator persistence.CreateValidator, opts ...func(*config.Config)) *Platform {
+	t.Helper()
 	cfg := Config()
 	for _, o := range opts {
 		o(cfg)
@@ -157,7 +184,13 @@ func New(t testing.TB, opts ...func(*config.Config)) *Platform {
 		t.Fatal(err)
 	}
 	p := &Platform{T: t, Pool: pool, Cfg: cfg, Clock: clock.NewFake(time.Now().Truncate(time.Second)),
-		Progress: persistence.NewMemoryProgressStore(), Logs: &SyncBuffer{}}
+		Logs: &SyncBuffer{}}
+	if newStore == nil {
+		p.Progress = persistence.NewMemoryProgressStore()
+		p.ProgressStore = p.Progress
+	} else {
+		p.ProgressStore = newStore(p.Clock.Now)
+	}
 	set, err := legal.Load(legal.Embedded())
 	if err != nil {
 		t.Fatal(err)
@@ -166,7 +199,7 @@ func New(t testing.TB, opts ...func(*config.Config)) *Platform {
 		t.Fatal(err)
 	}
 	log := logx.New(p.Logs, slog.LevelDebug)
-	purger := characters.NewPurger(pool, p.Progress, p.Clock, log)
+	purger := characters.NewPurger(pool, p.ProgressStore, p.Clock, log)
 	must := func(err error) {
 		t.Helper()
 		if err != nil {
@@ -174,22 +207,24 @@ func New(t testing.TB, opts ...func(*config.Config)) *Platform {
 		}
 	}
 	p.Accounts, err = accounts.New(accounts.Options{Config: cfg, Pool: pool, Log: log, Clock: p.Clock, Legal: set,
-		Mail: &mail.LogSender{DB: pool, Log: log}, Characters: purger, MinProtocol: Protocol})
+		Mail: &mail.LogSender{DB: pool, Log: log}, Characters: purger, Progress: p.ProgressStore, MinProtocol: Protocol})
 	must(err)
 	p.Characters, err = characters.New(characters.Options{Config: cfg, Pool: pool, Log: log, Clock: p.Clock,
-		Accounts: p.Accounts, Progress: p.Progress, Purger: purger, MinProtocol: Protocol})
+		Accounts: p.Accounts, Progress: p.ProgressStore, Validator: validator, Purger: purger, MinProtocol: Protocol})
 	must(err)
 	p.Zones, err = zones.New(zones.Options{Config: cfg, Pool: pool, Log: log, Clock: p.Clock, MinProtocol: Protocol})
 	must(err)
-	p.Store, err = persistence.NewStore(persistence.StoreOptions{Pool: pool, Progress: p.Progress, Clock: p.Clock,
+	p.Store, err = persistence.NewStore(persistence.StoreOptions{Pool: pool, Progress: p.ProgressStore, Clock: p.Clock,
 		LeaseTTL: cfg.LeaseTTL, Log: log})
 	must(err)
 	p.War, err = war.New(war.Options{Pool: pool, Guard: p.Zones.Guard(), Clock: p.Clock, Log: log})
 	must(err)
 	p.Social, err = social.New(social.Options{Pool: pool, Guard: p.Zones.Guard(), Clock: p.Clock, Log: log})
 	must(err)
-	p.Admin, err = admin.New(admin.Options{Pool: pool, Accounts: p.Accounts, Legal: set, Clock: p.Clock, Log: log,
+	p.Admin, err = admin.New(admin.Options{Pool: pool, Accounts: p.Accounts, Characters: purger, Legal: set, Clock: p.Clock, Log: log,
 		OSUser: "prueba", PurgePoll: 10 * time.Millisecond})
+	must(err)
+	p.Privacy, err = privacy.New(privacy.Options{Pool: pool, Progress: p.ProgressStore, Clock: p.Clock, Log: log})
 	must(err)
 
 	public := publicRouter{http.NewServeMux()}
@@ -354,14 +389,23 @@ func (p *Platform) RefreshSession(pl *Player) *Response {
 	return res
 }
 
-// Appearance son 8 B de apariencia en base64.
+// Appearance son 8 B de apariencia en base64 (la validación provisional no los mira).
 var Appearance = base64.StdEncoding.EncodeToString([]byte{1, 0, 2, 1, 0, 3, 2, 0x21})
+
+// ValidAppearances son 8 B que valen con las reglas de verdad en cada reino abierto (los de
+// tests/fixtures/progression/appearance_cases.json): los que usa [Platform.NewCharacter] con
+// [NewWithProgress].
+var ValidAppearances = map[string]string{"vardheim": "AQAAAQEDAgE=", "solmarch": "AgAAAAAHAAA="}
 
 // NewCharacter crea un personaje en el mundo 1 y devuelve su id.
 func (p *Platform) NewCharacter(pl *Player, name, realm string) int64 {
 	p.T.Helper()
+	appearance := Appearance
+	if p.Progress == nil {
+		appearance = ValidAppearances[realm]
+	}
 	res := p.PublicDo("POST", "/v1/worlds/1/characters", pl.Token, map[string]any{"name": name, "realm": realm,
-		"race_id": "race_" + realm, "appearance": Appearance, "starter_template_id": "squire"})
+		"race_id": "race_" + realm, "appearance": appearance, "starter_template_id": "squire"})
 	if res.Status != http.StatusCreated {
 		p.T.Fatalf("crear %s: %d %s", name, res.Status, res.Raw)
 	}
@@ -374,7 +418,7 @@ func (p *Platform) NewCharacter(pl *Player, name, realm string) int64 {
 }
 
 // NewCharacterIn crea a mano un personaje en otro mundo (la API pública de la fase 5 crea en el 1),
-// con su progreso en el falso.
+// con su progreso en el almacén de la plataforma.
 func (p *Platform) NewCharacterIn(pl *Player, worldID int16, name string, realm int16) int64 {
 	p.T.Helper()
 	var id int64
@@ -384,8 +428,15 @@ func (p *Platform) NewCharacterIn(pl *Player, worldID int16, name string, realm 
 	p.Exec(`insert into character_names (world_id, name_key, character_id, status) values ($1, $2, $3, 'active')`,
 		worldID, key, id)
 	p.Exec(`insert into character_pvp_stats (character_id, world_id) values ($1, $2)`, id, worldID)
-	if err := p.Progress.Create(context.Background(), nil, worldID, id, persistence.CreateParams{RaceID: "race_vardheim",
-		StarterTemplateID: "squire"}); err != nil {
+	appearance, err := base64.StdEncoding.DecodeString(ValidAppearances["vardheim"])
+	if err != nil {
+		p.T.Fatal(err)
+	}
+	params := persistence.CreateParams{RaceID: "race_vardheim", Appearance: [8]byte(appearance),
+		StarterTemplateID: "squire"}
+	if err := db.InTx(context.Background(), p.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		return p.ProgressStore.Create(context.Background(), tx, worldID, id, params)
+	}); err != nil {
 		p.T.Fatal(err)
 	}
 	return id

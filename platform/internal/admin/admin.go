@@ -53,6 +53,9 @@ const (
 type Options struct {
 	Pool     *pgxpool.Pool
 	Accounts *accounts.Service
+	// Characters vuelve a purgar personajes en reapply-purges (characters.Purger); nil: la orden se
+	// niega (staging y production mientras no exista el almacén del progreso, como purge-now).
+	Characters CharacterReapplier
 	// Legal son los textos vigentes: create-account y bootstrap los publican en legal_documents si
 	// faltan (como serve al arrancar) antes de dar la cuenta por aceptada. StrictLegal (staging y
 	// production) se niega si un texto ya publicado ha cambiado.
@@ -71,6 +74,7 @@ type Options struct {
 type Service struct {
 	pool        *pgxpool.Pool
 	accounts    *accounts.Service
+	characters  CharacterReapplier
 	legal       *legal.Set
 	strictLegal bool
 	names       *names.Rules
@@ -100,7 +104,7 @@ func New(o Options) (*Service, error) {
 	if o.PurgePoll <= 0 {
 		o.PurgePoll = purgePoll
 	}
-	return &Service{pool: o.Pool, accounts: o.Accounts, legal: o.Legal, strictLegal: o.StrictLegal, names: o.Names,
+	return &Service{pool: o.Pool, accounts: o.Accounts, characters: o.Characters, legal: o.Legal, strictLegal: o.StrictLegal, names: o.Names,
 		clock: o.Clock, log: o.Log, osUser: o.OSUser, purgePoll: o.PurgePoll}, nil
 }
 

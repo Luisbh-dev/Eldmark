@@ -83,6 +83,9 @@ type Options struct {
 	Clock      clock.Clock // por defecto, el del sistema
 	Legal      *legal.Set
 	Characters CharacterPurger // characters.Purger (P2); nil: las cuentas con personajes no se purgan
+	// Progress da el progreso de cada personaje en la exportación (ProgressStore.Export, §11.2); nil: la
+	// exportación no lo lleva (las pruebas de este paquete).
+	Progress ProgressExporter
 	// MinProtocol es el protocolo mínimo del cliente para la regla del 426 (ya resuelto con
 	// config.ResolveMinProtocol; 0 mientras no haya progression_rules.json: basta la cabecera).
 	MinProtocol int
@@ -97,6 +100,7 @@ type Service struct {
 	clock       clock.Clock
 	legal       *legal.Set
 	characters  CharacterPurger
+	progress    ProgressExporter
 	params      passwords.Params
 	filler      string
 	failures    *failureTracker
@@ -131,7 +135,7 @@ func New(o Options) (*Service, error) {
 	capacity := ratelimit.DefaultCapacity
 	return &Service{
 		cfg: o.Config, pool: o.Pool, log: o.Log, mail: o.Mail, clock: o.Clock, legal: o.Legal,
-		characters: o.Characters, params: params, filler: filler, failures: newFailureTracker(capacity),
+		characters: o.Characters, progress: o.Progress, params: params, filler: filler, failures: newFailureTracker(capacity),
 		minProtocol: o.MinProtocol,
 		limits: limits{
 			login:       ratelimit.New(10, time.Minute, 10, capacity),

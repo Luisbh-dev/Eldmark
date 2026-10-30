@@ -213,6 +213,12 @@ func is_protected(tick: int) -> bool:
 	return tick < protected_until
 
 
+## true si es un GM invisible ([member NetEntity.gm_invisible], docs/plataforma.md §9.1): no hace ni recibe daño,
+## no es blanco de nadie y no interactúa con los derribados.
+func is_gm_invisible() -> bool:
+	return entity != null and entity.gm_invisible
+
+
 ## Bits de estado del bloque extra del snapshot ([constant NetMessages.STATUS_IN_COMBAT]...). Un derribado
 ## lleva [constant NetMessages.STATUS_DOWNED] (nunca con [constant NetMessages.STATUS_DEAD]) y, si sigue en
 ## combate, [constant NetMessages.STATUS_IN_COMBAT].

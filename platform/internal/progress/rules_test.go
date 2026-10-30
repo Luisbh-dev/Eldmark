@@ -24,7 +24,7 @@ type appearanceCase struct {
 	Valid      bool   `json:"valid"`
 }
 
-func embedded(t *testing.T) *progress.Rules {
+func embedded(t testing.TB) *progress.Rules {
 	t.Helper()
 	r, err := progress.LoadRules(gamedata.Raw())
 	if err != nil {
@@ -176,6 +176,39 @@ func TestEmbeddedRules(t *testing.T) {
 	}
 }
 
+// Los objetos de progresion.md §2.4 y las plantillas elegibles de habilidades.md, como los exporta Godot.
+func TestEmbeddedItemsAndTemplates(t *testing.T) {
+	r := embedded(t)
+	want := []progress.Item{
+		{ID: "bow_vado", Category: progress.CategoryWeapon, EquipSlot: progress.SlotWeapon, MaxStack: 1, RequiredLevel: 1},
+		{ID: "potion_health", Category: progress.CategoryConsumable, EquipSlot: progress.SlotNone, MaxStack: 15, RequiredLevel: 1},
+		{ID: "potion_stamina", Category: progress.CategoryConsumable, EquipSlot: progress.SlotNone, MaxStack: 15, RequiredLevel: 1},
+		{ID: "sword_shield_vado", Category: progress.CategoryWeapon, EquipSlot: progress.SlotWeapon, MaxStack: 1, RequiredLevel: 1},
+	}
+	if len(r.Items) != len(want) {
+		t.Fatalf("%d objetos, se esperaban %d: %+v", len(r.Items), len(want), r.Items)
+	}
+	for i, w := range want {
+		got, ok := r.Item(w.ID)
+		if !ok || got != w || r.Items[i] != w {
+			t.Errorf("objeto %d: %+v (Item: %+v, %v), se esperaba %+v", i, r.Items[i], got, ok, w)
+		}
+	}
+	if _, ok := r.Item("potion_regen"); ok {
+		t.Error("Item de un objeto que no existe")
+	}
+	if len(r.Templates) != 2 || r.Templates[0].ID != "marksman" || r.Templates[1].ID != "squire" ||
+		strings.Join(r.Templates[0].Weapons, ",") != "bow_vado,sword_shield_vado" ||
+		strings.Join(r.Templates[1].Weapons, ",") != "sword_shield_vado" {
+		t.Errorf("plantillas: %+v", r.Templates)
+	}
+	for id, want := range map[string]bool{"marksman": true, "squire": true, "": false, "npc_guard": false, "Squire": false} {
+		if got := r.SelectableTemplate(id); got != want {
+			t.Errorf("SelectableTemplate(%q) = %v", id, got)
+		}
+	}
+}
+
 // Cada byte, uno a uno, fuera de lo que permiten las reglas incrustadas (lo mismo que
 // test_validate_rejects_each_index_out_of_range en Godot).
 func TestEachIndexOutOfRange(t *testing.T) {
@@ -273,6 +306,41 @@ func TestLoadRulesRejectsBrokenFiles(t *testing.T) {
 		"rangos al revés":       mutate(func(m map[string]any) { obj(m, "reasons", "ranges", "sink")["min"] = 10 }),
 		"bolsa vacía":           mutate(func(m map[string]any) { obj(m, "containers", "bag")["default_slots"] = 0 }),
 		"vida 0":                mutate(func(m map[string]any) { obj(m, "combat")["health_max"] = 0 }),
+		"sin items":             mutate(func(m map[string]any) { delete(m, "items") }),
+		"sin starter_templates": mutate(func(m map[string]any) { delete(m, "starter_templates") }),
+		"items vacía":           mutate(func(m map[string]any) { m["items"] = []any{} }),
+		"objeto con un campo desconocido": mutate(func(m map[string]any) {
+			obj(m, "items", 0)["camp_refill"] = 3
+		}),
+		"id de objeto corto":   mutate(func(m map[string]any) { obj(m, "items", 0)["id"] = "bo" }),
+		"objeto repetido":      mutate(func(m map[string]any) { obj(m, "items", 1)["id"] = "bow_vado" }),
+		"objetos desordenados": mutate(func(m map[string]any) { obj(m, "items", 0)["id"] = "zzz_bow" }),
+		"categoría 7":          mutate(func(m map[string]any) { obj(m, "items", 1)["category"] = 7 }),
+		"categoría 0":          mutate(func(m map[string]any) { obj(m, "items", 1)["category"] = 0 }),
+		"ranura 7":             mutate(func(m map[string]any) { obj(m, "items", 0)["equip_slot"] = 7 }),
+		"arma sin ranura":      mutate(func(m map[string]any) { obj(m, "items", 0)["equip_slot"] = 0 }),
+		"poción equipable":     mutate(func(m map[string]any) { obj(m, "items", 1)["equip_slot"] = 1 }),
+		"armadura en el arma": mutate(func(m map[string]any) {
+			obj(m, "items", 0)["category"] = 2
+		}),
+		"pila 1000":            mutate(func(m map[string]any) { obj(m, "items", 1)["max_stack"] = 1000 }),
+		"pila 0":               mutate(func(m map[string]any) { obj(m, "items", 1)["max_stack"] = 0 }),
+		"arma apilable":        mutate(func(m map[string]any) { obj(m, "items", 0)["max_stack"] = 2 }),
+		"durabilidad apilable": mutate(func(m map[string]any) { obj(m, "items", 1)["has_durability"] = true }),
+		"nivel 41":             mutate(func(m map[string]any) { obj(m, "items", 1)["required_level"] = 41 }),
+		"nivel 0":              mutate(func(m map[string]any) { obj(m, "items", 1)["required_level"] = 0 }),
+		"plantilla repetida":   mutate(func(m map[string]any) { obj(m, "starter_templates", 1)["id"] = "marksman" }),
+		"plantilla sin armas":  mutate(func(m map[string]any) { obj(m, "starter_templates", 1)["weapons"] = []any{} }),
+		"plantilla con tres armas": mutate(func(m map[string]any) {
+			obj(m, "starter_templates", 1)["weapons"] = []any{"bow_vado", "bow_vado", "sword_shield_vado"}
+		}),
+		"plantilla con un arma sin objeto": mutate(func(m map[string]any) {
+			obj(m, "starter_templates", 1)["weapons"] = []any{""}
+		}),
+		"plantilla con una poción": mutate(func(m map[string]any) {
+			obj(m, "starter_templates", 1)["weapons"] = []any{"potion_health"}
+		}),
+		"plantilla con un id que no vale": mutate(func(m map[string]any) { obj(m, "starter_templates", 0)["id"] = "Marksman" }),
 	}
 	for name, text := range cases {
 		_, err := progress.LoadRules(text)
@@ -282,9 +350,13 @@ func TestLoadRulesRejectsBrokenFiles(t *testing.T) {
 		}
 		t.Logf("%s: %v", name, strings.ReplaceAll(err.Error(), "\n", " | "))
 	}
-	// Otras secciones (items, starter_templates, las de plataforma.md) no molestan.
-	if _, err := progress.LoadRules(mutate(func(m map[string]any) { m["items"] = []any{map[string]any{"id": "x"}} })); err != nil {
+	// Las secciones que este paquete no lee (las de plataforma.md, las de fases siguientes) no molestan.
+	if _, err := progress.LoadRules(mutate(func(m map[string]any) { m["vendors"] = []any{map[string]any{"id": "x"}} })); err != nil {
 		t.Errorf("una sección más no debería romper nada: %v", err)
+	}
+	// Sin plantillas elegibles el archivo vale (ninguna creación pasaría la validación de P7).
+	if _, err := progress.LoadRules(mutate(func(m map[string]any) { m["starter_templates"] = []any{} })); err != nil {
+		t.Errorf("starter_templates vacía: %v", err)
 	}
 	if _, err := progress.LoadRules(mutate(func(map[string]any) {})); err != nil {
 		t.Errorf("el archivo pasado por map[string]any sigue valiendo: %v", err)

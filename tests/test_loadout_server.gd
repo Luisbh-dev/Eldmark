@@ -2,9 +2,10 @@ extends TestCase
 ## Pruebas de las plantillas de equipo en el servidor (PRG-07, PRG-04; docs/habilidades.md, secciones 3.5, 4.6 y
 ## 5.1; paquete H3c): el jugador aparece con la plantilla de por defecto o con la que le dan
 ## ([code]--fake-loadout[/code]) y lo anuncia con LOADOUT (la del dueño con cargas y la pública sin ellas);
-## LOADOUT_SELECT antes de CLIENT_READY decide la plantilla del alta, en el mundo la de la siguiente reaparición, y
-## un id que no existe o no se puede elegir cuenta un aviso; el comando 5 pone el arma en la ranura 1 y conserva la
-## 2, con su LOADOUT, y no vale con un derribado.
+## LOADOUT_SELECT antes de CLIENT_READY decide la plantilla del alta (desde progresion.md P5b, el kit de inicio del
+## personaje efímero, que va con el equipo de su inventario y ya no cambia en el mundo), y un id que no existe o no se
+## puede elegir cuenta un aviso; el comando 5 pone el arma en la ranura 1 y conserva la 2, con su LOADOUT, y no vale
+## con un derribado.
 ## [br][br]
 ## Jugadores falsos y peers montados a mano (sin red) sobre la zona plana de [ZoneFixture] (montaje de [NpcRig]).
 
@@ -166,24 +167,29 @@ func test_loadout_select_before_client_ready_decides_the_template_of_the_arrival
 	assert_eq(peer.pending_template_id, marksman)
 	_server()._on_packet_received(PEER_ID, PackedByteArray([NetProtocol.MSG_LOADOUT_SELECT]))
 	assert_eq(peer.strikes_total, strikes + 3, "mal formado, otro")
-	# CLIENT_READY: aparece al final del siguiente tick con el arco.
+	# CLIENT_READY: aparece al final del siguiente tick con el arco. Sin plataforma es un personaje efímero con
+	# inventario (progresion.md §9.4, P5b): la plantilla pedida es su kit de inicio y lo equipa su inventario
+	# (plantilla vigente 0 en LOADOUT, «el equipo del inventario»), con las cargas de las pociones de su bolsa.
 	_server()._pending_ready.append(PEER_ID)
 	await _rig.advance(1)
 	if not assert_not_null(peer.entity, "en el mundo"):
 		return
 	var net_id: int = peer.entity.net_id
 	var combatant: Combatant = _server().get_combat().get_combatant(net_id)
-	assert_eq(combatant.template_id, marksman, "con la plantilla pedida")
+	assert_true(_server().get_progress().has_inventory(net_id), "con inventario")
+	assert_eq(combatant.template_id, 0, "el equipo del inventario, con el kit de la plantilla pedida")
 	assert_eq(peer.pending_template_id, -1, "que deja de estar pendiente")
 	assert_eq([_combat_of(net_id).weapon_id, _combat_of(net_id).alt_weapon_id],
 			[_weapon(&"bow"), _weapon(&"sword_shield")])
-	_assert_pair(_loadouts(net_id), net_id, marksman, [_weapon(&"bow"), _weapon(&"sword_shield")],
-			CombatState.pack_charges(2, 3))
-	# En el mundo, 0 = la de por defecto para la siguiente aparición; la de ahora no cambia.
+	_assert_pair(_loadouts(net_id), net_id, 0, [_weapon(&"bow"), _weapon(&"sword_shield")],
+			CombatState.pack_charges(3, 2))
+	# Con inventario, LOADOUT_SELECT ya no cambia nada tras el alta (progresion.md §2.5), tampoco la siguiente
+	# aparición; un id que no existe sigue sumando su aviso.
 	_select(0)
-	assert_eq(peer.pending_template_id, 0)
+	assert_eq(peer.pending_template_id, -1, "no queda pendiente")
 	assert_eq(peer.strikes_total, strikes + 3, "0 no cuenta aviso")
-	assert_eq(_combat_of(net_id).weapon_id, _weapon(&"bow"), "hasta reaparecer, el arco")
+	_select(200)
+	assert_eq(peer.strikes_total, strikes + 4, "uno que no existe, sí")
 	_server().console_command("kill %d" % net_id)
 	await _rig.advance(2)
 	var wait: int = combatant.respawn_tick - _server().get_tick()
@@ -194,12 +200,14 @@ func test_loadout_select_before_client_ready_decides_the_template_of_the_arrival
 			CombatDirector.RespawnRequestResult.ACCEPTED)
 	await _rig.advance(3)
 	assert_true(combatant.is_alive(), "reaparece")
-	var squire: int = _template(&"squire")
-	assert_eq(combatant.template_id, squire, "con la de por defecto")
-	assert_eq(peer.pending_template_id, -1)
-	assert_eq([_combat_of(net_id).weapon_id, _combat_of(net_id).alt_weapon_id], [_weapon(&"sword_shield"), 0])
+	assert_eq(combatant.template_id, 0, "con su equipo")
+	assert_eq([_combat_of(net_id).weapon_id, _combat_of(net_id).alt_weapon_id],
+			[_weapon(&"bow"), _weapon(&"sword_shield")], "las mismas armas")
 	assert_eq(_combat_of(net_id).consumable_charges, CombatState.pack_charges(3, 2))
-	_assert_pair(_loadouts(net_id), net_id, squire, [_weapon(&"sword_shield"), 0], CombatState.pack_charges(3, 2))
+	var loadouts: Array[NetMessages.EntityEvent] = _loadouts(net_id)
+	if assert_eq(loadouts.size(), 1, "sin cambio de armas, LOADOUT solo al dueño"):
+		assert_eq([loadouts[0].template_id, loadouts[0].weapon_1, loadouts[0].weapon_2],
+				[0, _weapon(&"bow"), _weapon(&"sword_shield")])
 
 
 func test_reappearing_with_the_same_template_only_tells_the_owner() -> void:

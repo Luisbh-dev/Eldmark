@@ -84,6 +84,9 @@ func on_spawn(msg: NetMessages.EntitySpawn) -> void:
 	if visual != null:
 		visual.get_animator().set_remote_source(Callable(view, "get_drawn_action"),
 				Callable(view, "get_active_weapon_id"))
+		# Su apariencia (protocolo 7): la del SPAWN si vale para su reino y, si no, la de por defecto de su pueblo.
+		if msg.kind == NetProtocol.EntityKind.PLAYER:
+			AppearanceApplier.apply_bytes(visual, msg.appearance, msg.realm)
 	_views[msg.net_id] = view
 	_spawn_count += 1
 
@@ -107,6 +110,16 @@ func on_loadout(event: NetMessages.EntityEvent) -> void:
 	var view: RemotePlayerView = _views.get(event.net_id)
 	if view != null:
 		view.set_weapons(event.weapon_1, event.weapon_2)
+
+
+## LEVEL_UP de un remoto (ya en su tick de dibujo; solo llega de los de tu reino): su nivel nuevo, para su placa.
+## Ignora ids desconocidos.
+func on_level_up(event: NetMessages.EntityEvent) -> void:
+	if event == null or event.event != NetMessages.EntityEvent.Kind.LEVEL_UP:
+		return
+	var view: RemotePlayerView = _views.get(event.net_id)
+	if view != null:
+		view.set_level(event.level)
 
 
 ## Reparte los registros de un SNAPSHOT entre las vistas. Ignora los de ids que no conoce y los

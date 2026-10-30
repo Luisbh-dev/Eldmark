@@ -34,7 +34,8 @@ var completed_count: int = 0
 var interrupted_count: int = 0
 
 
-## [param player] (la clave de su nombre, para que volver a entrar no salte la reutilización) pide
+## [param player] (la clave de su nombre, para que volver a entrar no salte la reutilización; con la plataforma,
+## [code]"character:<id>"[/code], docs/progresion.md §8) pide
 ## /atascado en el tick [param tick], estando [param alive] y [param in_combat]. Si procede, empieza la
 ## canalización ([constant RequestResult.STARTED]).
 func request(player: String, tick: int, alive: bool, in_combat: bool) -> int:
@@ -95,6 +96,21 @@ func channel_remaining(player: String, tick: int) -> int:
 ## reutilización se conserva: volver a entrar no la salta.
 func cancel(player: String) -> void:
 	_channel_end.erase(player)
+
+
+## Primer tick en que [param player] puede volver a usarlo (0 si nunca lo ha usado o ya venció y se olvidó).
+## Con la plataforma lo guarda el progreso como el temporizador [code]unstuck[/code] (docs/progresion.md §8).
+func get_ready_at(player: String) -> int:
+	return _ready_at.get(player, 0)
+
+
+## Pone la reutilización de [param player] hasta el tick [param tick] (la restaura el alta desde el temporizador
+## guardado, docs/progresion.md §8); con 0 o menos, la quita.
+func set_ready_at(player: String, tick: int) -> void:
+	if tick <= 0:
+		_ready_at.erase(player)
+	else:
+		_ready_at[player] = tick
 
 
 # Olvida las reutilizaciones vencidas, para que el diccionario no crezca con cada nombre que lo usó.

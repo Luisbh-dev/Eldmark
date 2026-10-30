@@ -50,6 +50,13 @@ extends CanvasLayer
 ## ([DownedNotice]); en la pantalla de muerte, el selector de plantilla, que manda el LOADOUT_SELECT. Tensando
 ## el arco, la cámara cierra el campo de visión ([method CameraRig.set_aim_zoom]) y la retícula se cierra
 ## con la carga ([method Crosshair.set_tension]).
+## [br][br]
+## [b]Inventario y personaje (fase 5, docs/progresion.md §11, UI-26).[/b] En red, I abre la [InventoryWindow] (a la
+## derecha) y C la [CharacterWindow] (a la izquierda), con el [ClientInventory] y el [ClientProgress] del cliente; se
+## abren a la vez, liberan el cursor y se arrastra de una a otra. Los diálogos de dividir ([SplitDialog]) y de
+## destruir ([UIConfirmDialog]) van por encima de las dos. Los avisos de una petición rechazada salen en el chat.
+## Con inventario (llega con el primer INVENTORY_FULL), la pantalla de muerte ya no enseña el selector de plantilla:
+## la reaparición toma las armas del equipo (§2.5).
 
 ## Cada cuánto se refresca el texto del panel de depuración, en segundos.
 ## Refrescarlo cada frame hace que las cifras parpadeen y sean ilegibles.
@@ -69,7 +76,11 @@ const NET_HINTS_EXTRA: Array[Dictionary] = [
 	{"action": &"scoreboard", "text": "Marcador"},
 	{"action": &"chat_open", "text": "Chat"},
 	{"action": &"social_menu", "text": "Jugador"},
+	{"action": &"open_inventory", "text": "Inventario"},
+	{"action": &"open_character", "text": "Personaje"},
 ]
+## Margen (px) de las ventanas de inventario y personaje con el borde de la pantalla.
+const INVENTORY_WINDOW_MARGIN: int = 48
 
 var _character: PlayerCharacter = null
 var _camera_rig: CameraRig = null
@@ -103,6 +114,11 @@ var _death_signature: String = ""
 var _action_bar: ActionBar = null
 var _status_row: StatusIcons = null
 var _downed_notice: DownedNotice = null
+# Fase 5: ventanas de inventario y personaje y sus diálogos (null en el sandbox).
+var _inventory_window: InventoryWindow = null
+var _character_window: CharacterWindow = null
+var _split_dialog: SplitDialog = null
+var _destroy_dialog: UIConfirmDialog = null
 
 @onready var _nameplates: Nameplates = $Nameplates
 @onready var _crosshair: Crosshair = $Crosshair
@@ -186,6 +202,7 @@ func bind_net(client: NetClient, world: Node) -> void:
 		_setup_chat()
 		_setup_party()
 		_setup_social_menu()
+		_setup_inventory()
 		var hints: Array[Dictionary] = UIHintBar.DEFAULT_HINTS.duplicate()
 		hints.append_array(NET_HINTS_EXTRA)
 		_hint.set_hints(hints)
@@ -196,6 +213,7 @@ func _process(delta: float) -> void:
 	_update_crosshair()
 	_update_vitals()
 	_update_ability_hud()
+	_update_inventory_windows()
 	if is_instance_valid(_camera_rig):
 		_indicator.set_camera_yaw(_camera_rig.get_yaw())
 	if not _debug_panel.visible:
@@ -224,6 +242,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif InputMap.has_action(&"social_menu") and event.is_action_pressed(&"social_menu"):
 		if open_social_menu():
+			get_viewport().set_input_as_handled()
+	elif InputMap.has_action(&"open_inventory") and event.is_action_pressed(&"open_inventory"):
+		if toggle_inventory_window():
+			get_viewport().set_input_as_handled()
+	elif InputMap.has_action(&"open_character") and event.is_action_pressed(&"open_character"):
+		if toggle_character_window():
 			get_viewport().set_input_as_handled()
 
 
@@ -325,6 +349,43 @@ func open_social_menu() -> bool:
 		if is_instance_valid(_chat):
 			_chat.add_system_text(TEXT_NO_SOCIAL_TARGET)
 		return false
+	return true
+
+
+## Ventana de inventario, I (null sin red).
+func get_inventory_window() -> InventoryWindow:
+	return _inventory_window
+
+
+## Ventana de personaje, C (null sin red).
+func get_character_window() -> CharacterWindow:
+	return _character_window
+
+
+## Diálogo de dividir una pila (null sin red).
+func get_split_dialog() -> SplitDialog:
+	return _split_dialog
+
+
+## Diálogo de confirmar una destrucción (null sin red).
+func get_destroy_dialog() -> UIConfirmDialog:
+	return _destroy_dialog
+
+
+## Abre o cierra la ventana de inventario. Devuelve false, sin hacer nada, sin red o con la pantalla de muerte o la
+## línea del chat abiertas.
+func toggle_inventory_window() -> bool:
+	if not _can_toggle_inventory_windows():
+		return false
+	_inventory_window.toggle()
+	return true
+
+
+## Abre o cierra la ventana de personaje (las mismas condiciones que [method toggle_inventory_window]).
+func toggle_character_window() -> bool:
+	if not _can_toggle_inventory_windows():
+		return false
+	_character_window.toggle()
 	return true
 
 
@@ -470,6 +531,71 @@ func _setup_social_menu() -> void:
 	add_child(_social_menu)
 	move_child(_social_menu, _death.get_index())
 	_social_menu.setup(_client, _chat, _camera_rig)
+
+
+# --- Inventario y personaje (fase 5) ---------------------------------------------------------------
+
+# Crea (de nuevo, si ya había) las ventanas de inventario y personaje y sus diálogos, por debajo de la pantalla de
+# muerte (los diálogos encima de las ventanas), enlazadas con el inventario, el progreso y la cámara.
+func _setup_inventory() -> void:
+	for node: Node in [_inventory_window, _character_window, _split_dialog, _destroy_dialog]:
+		if is_instance_valid(node):
+			remove_child(node)
+			node.free()
+	_character_window = CharacterWindow.new()
+	_character_window.centered = false
+	_add_below_death(_character_window)
+	_character_window.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE,
+			INVENTORY_WINDOW_MARGIN)
+	_inventory_window = InventoryWindow.new()
+	_inventory_window.centered = false
+	_add_below_death(_inventory_window)
+	_inventory_window.set_anchors_and_offsets_preset(Control.PRESET_CENTER_RIGHT, Control.PRESET_MODE_MINSIZE,
+			INVENTORY_WINDOW_MARGIN)
+	_split_dialog = SplitDialog.new()
+	_split_dialog.name = "DividirPila"
+	_add_below_death(_split_dialog)
+	_destroy_dialog = UIConfirmDialog.new()
+	_destroy_dialog.name = "DestruirObjeto"
+	_add_below_death(_destroy_dialog)
+	for item: Control in [_inventory_window, _character_window]:
+		item.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_inventory_window.bind_camera(_camera_rig)
+	_character_window.bind_camera(_camera_rig)
+	_split_dialog.bind_camera(_camera_rig)
+	_destroy_dialog.bind_camera(_camera_rig)
+	var inventory: ClientInventory = _client.get_inventory()
+	_inventory_window.bind(inventory, _client.get_progress(), _split_dialog, _destroy_dialog)
+	_character_window.bind(inventory, _client.get_progress(), _inventory_window)
+	var config: ClientConfig = _client.get_config()
+	_character_window.set_identity(config.display_name if config != null else "",
+			config.realm if config != null else NetProtocol.Realm.NONE, _client.get_own_appearance())
+	if not inventory.request_rejected.is_connected(_on_inventory_rejected):
+		inventory.request_rejected.connect(_on_inventory_rejected)
+
+
+func _add_below_death(control: Control) -> void:
+	add_child(control)
+	move_child(control, _death.get_index())
+
+
+func _can_toggle_inventory_windows() -> bool:
+	if not is_instance_valid(_inventory_window) or not is_instance_valid(_character_window) or _death.is_open():
+		return false
+	return not (is_instance_valid(_chat) and _chat.is_open())
+
+
+# Con la ventana de personaje abierta, su figura lleva las armas del estado del personaje (las del LOADOUT y el
+# cambio de arma, no las de la vista optimista del inventario).
+func _update_inventory_windows() -> void:
+	if is_instance_valid(_character_window) and _character_window.is_open() and is_instance_valid(_character):
+		_character_window.set_weapons(_character.combat.weapon_id, _character.combat.alt_weapon_id)
+
+
+# Una petición del inventario que no se envió o que el servidor rechazó: su aviso, en el chat.
+func _on_inventory_rejected(_result: int, text: String) -> void:
+	if is_instance_valid(_chat) and not text.is_empty():
+		_chat.add_system_text(text)
 
 
 # --- Habilidades (fase 4) ------------------------------------------------------------------------
@@ -640,9 +766,11 @@ func _open_death_screen() -> void:
 	var own_id: int = _client.get_net_id()
 	_death.set_point_indices(RespawnPointList.option_indices(options, own_id))
 	_death_signature = _options_signature(options, own_id)
-	# La plantilla marcada es la que se pidió la última vez (o la de por defecto).
+	# La plantilla marcada es la que se pidió la última vez (o la de por defecto). Con inventario no se enseña: la
+	# reaparición toma las armas del equipo y LOADOUT_SELECT ya no cambia nada (docs/progresion.md §2.5).
 	if _client.get_config() != null:
 		_death.get_template_selector().select(_client.get_config().get_loadout_template_id())
+	_death.get_template_selector().visible = not _client.get_inventory().has_inventory()
 
 
 # Las opciones de reaparición que valen ahora para el jugador: su campamento y un fuerte suyo en calma

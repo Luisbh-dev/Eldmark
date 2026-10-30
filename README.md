@@ -146,6 +146,8 @@ Opciones de arranque (van después de `--`):
 - `--connect=<host>[:<puerto>]`, `--local` y `--bot`: cliente en red (ver «Cliente en red» más
   abajo).
 - `--bots=N`: enjambre de N clientes ligeros para pruebas de carga (ver «Enjambre de bots»).
+- `--title` y `--platform=<url>`: la pantalla de título con cuenta (ver «Cliente con cuenta»). Una
+  exportación sin argumentos también la abre; desde el editor, sin argumentos sigue el sandbox.
 
 Las capturas y otros ficheros temporales pueden ir en `build/`, que Godot ignora.
 
@@ -188,6 +190,25 @@ ancho de banda. El informe lleva, además de los contadores, el p50/p99/máximo 
 sección, los µs de cada `simulate()` y el tamaño y el coste de construir los snapshots. El código
 de salida es 0 en un cierre normal y 1 si no puede arrancar (zona desconocida, puerto ocupado).
 
+Con la plataforma (`docs/plataforma.md` §8 y «Servicio de plataforma», abajo) la zona se registra en la API
+interna y solo admite clientes con billete: `--platform=<url interna>` (sin ella, cada cliente entra con un
+personaje efímero que se pierde al salir, `docs/progresion.md` §9.4), `--world=<id>` (1) y `--channel=<n>` (0),
+`--public-address=<host>[:<puerto>]` (a dónde conectan los clientes), `--save-interval=<s>` (el punto de control
+de los guardados, 60) y `--replace` (sustituye a una instancia viva de la misma zona y canal). El token de la zona
+y las claves de los billetes van en `ELDMARK_ZONE_TOKEN` y `ELDMARK_TICKET_KEYS` o en los archivos que nombran
+`ELDMARK_ZONE_TOKEN_FILE` y `ELDMARK_TICKET_KEYS_FILE` (`platform/deploy/dev.sh` los prepara y escribe la orden
+entera). Con plataforma, la zona sale con 1 si no puede registrarse y con 3 si la plataforma cierra la
+instancia. `--console` lee comandos de la entrada estándar, también los del progreso (`item_give`, `xp_add`,
+`inv_show`…, `docs/progresion.md` §10).
+
+Con `--dtls-cert=<pem> --dtls-key=<pem>` (con o sin plataforma, `docs/plataforma.md` §10.2) la zona abre el puerto
+por DTLS y, con plataforma, manda el certificado y su CN en el registro: el cliente lo recibe en `enter` y lo ancla.
+El certificado es autofirmado, con CN y con la clave sin contraseña (EC P-256 hace el apretón de manos más barato;
+la orden de OpenSSL está en `platform/deploy/docker-compose.yml`); si falta uno de los dos, no se lee, no tiene CN o
+la clave no es la suya, la zona sale con 1. Sin plataforma, un cliente o un enjambre entran con `--dtls-cert=<pem>
+--dtls-name=<cn>` (el certificado y el nombre de la zona); en staging y producción la plataforma no registra una
+zona sin certificado.
+
 El servidor se defiende de los clientes (docs/red.md, sección 12): limita los paquetes por tick y
 por segundo y los bytes de cada peer, cuenta un aviso por cada paquete mal formado, de un tipo
 inesperado para el estado de la sesión o por encima del ritmo, y expulsa con un NOTICE al que
@@ -211,18 +232,29 @@ Las pruebas necesitan los binarios de PostgreSQL (`ELDMARK_PG_BIN`, `pg_config` 
 `/usr/lib/postgresql/*/bin`; si no hay, se saltan) o un servidor en `ELDMARK_TEST_DATABASE_URL`. Como root,
 `initdb` corre con `runuser -u postgres`, que tiene que poder entrar en `TMPDIR`.
 
+Las de extremo a extremo (`platform/e2e`, `docs/plataforma.md` P10) llevan la etiqueta `e2e` y arrancan la
+plataforma en el proceso de la prueba contra una zona `test_world` y bots de Godot de verdad; sin `ELDMARK_GODOT` se
+saltan. Importan el proyecto al empezar (con los objetos de LFS bajados) y tardan menos de un minuto:
+
+```bash
+cd platform
+ELDMARK_GODOT=<ruta de Godot 4.7.2> go test -tags e2e -count=1 -v ./e2e
+# ELDMARK_E2E_ARTIFACTS=<carpeta> conserva los registros de la plataforma, las zonas y los bots
+```
+
 En desarrollo (`ELDMARK_MAIL=log`, por defecto) los correos de las cuentas no salen: van a la tabla
 `outbound_mail` y al registro con el enlace entero (`/verify`, `/reset` o `/revert` sobre `ELDMARK_PUBLIC_URL`).
 Los textos legales que se aceptan al registrarse son los borradores de `platform/legal/`, que van dentro del
 binario (`ELDMARK_LEGAL_DIR` los cambia por los de otra carpeta).
 
-Los personajes (`/v1/worlds/{w}/characters`, `POST /v1/characters/{id}/enter`) guardan su progreso, hasta que
-llegue el almacén de `docs/progresion.md` P7, en memoria: se pierde al reiniciar, y por eso `serve` no arranca
-en `staging` ni en `production`. `enter` solo da billete si hay una instancia de zona viva que admite el reino.
+Los personajes (`/v1/worlds/{w}/characters`, `POST /v1/characters/{id}/enter`) guardan su progreso en
+PostgreSQL (las tablas de `0010_progress` y `platform/internal/progress`, `docs/progresion.md` P7): al crearlos se
+validan raza, apariencia y plantilla con las reglas exportadas, y cada guardado de la zona pasa las comprobaciones
+S1–S8 (`docs/progresion.md` §13.3). `enter` solo da billete si hay una instancia de zona viva que admite el reino.
 Las reglas de los nombres y el protocolo mínimo por defecto salen de
 `platform/internal/gamedata/progression_rules.json`, que se genera desde Godot, igual que las razas, la apariencia
-(`data/characters/`), la curva de niveles (`data/progression/`), las monedas, los motivos, los contenedores y la
-vida máxima. Tras cambiar cualquiera de esos datos hay que volver a exportarlo (la prueba
+(`data/characters/`), la curva de niveles (`data/progression/`), los objetos (`data/items/`), las plantillas de
+inicio, las monedas, los motivos, los contenedores y la vida máxima. Tras cambiar cualquiera de esos datos hay que volver a exportarlo (la prueba
 `test_progression_rules_export.gd` avisa si se ha quedado viejo):
 
 ```bash
@@ -247,6 +279,11 @@ Una instancia que deja de latir 3 × `ELDMARK_HEARTBEAT_S` se da por perdida y s
 `ELDMARK_LEASE_TTL_S` tiene que pasar de 3 × `ELDMARK_HEARTBEAT_S` + min(5, `ELDMARK_HEARTBEAT_S`) segundos (con 5 y
 30, los valores por defecto, sobra); si no, `serve` no arranca.
 
+Cada hora, `serve` purga las cuentas y los personajes que han cumplido su plazo y borra lo caducado según la tabla de
+retenciones de `docs/plataforma.md` §11.1 (el chat a los 30 días, la auditoría y los reportes cerrados al año, el
+libro de un personaje al año de purgarlo…). La exportación de datos de una cuenta (`POST /v1/account/export`) lleva
+también el progreso de sus personajes.
+
 La moderación y las cuentas del equipo van por la orden `admin`, con la misma configuración que `serve`. Toda
 orden lleva `--actor` con el correo de una cuenta `admin` (o `moderator` para las de lectura) y deja su fila en
 la auditoría (`audit_log`, sin correos ni nombres); la primera cuenta `admin` se crea con `bootstrap`. La
@@ -261,6 +298,30 @@ go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test chat --character B
 go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test sanction add Bran mute --duration 24h --reason "insultos"
 go run ./cmd/eldmark-platform admin help                                                       # todas las órdenes
 ```
+
+### Plataforma en local y despliegue
+
+`platform/deploy/dev.sh` levanta la plataforma de desarrollo sin Docker (Linux, macOS o WSL, con los binarios de
+PostgreSQL 16 y Go): un PostgreSQL propio en `build/dev_pg` (en 127.0.0.1:24682), las migraciones, claves y un
+token por zona de desarrollo (`vado_gris` y `test_world`) en `build/dev_secrets/`, una cuenta `admin@eldmark.test`
+y otra `prueba@eldmark.test` (contraseñas `eldmark-admin-dev` y `eldmark-prueba-dev`), y escribe la orden de la
+zona con `--platform`. Los datos se conservan entre arranques:
+
+```bash
+platform/deploy/dev.sh                # lo prepara todo y arranca serve; Ctrl-C para serve y PostgreSQL
+platform/deploy/dev.sh prepare        # lo mismo sin serve (PostgreSQL queda en marcha; dev.sh stop lo para)
+eval "$(platform/deploy/dev.sh env)"  # las variables para usar eldmark-platform a mano
+platform/deploy/dev.sh reset          # borra la base, las claves y las cuentas de desarrollo
+```
+
+Staging y producción van con `platform/deploy/docker-compose.yml` (base, plataforma, Caddy con HTTPS de Let's
+Encrypt, zonas y copias), un `staging.env` o `production.env` sacado de su `.example` y los secretos como archivos
+en `platform/deploy/secrets/` (ignorada por git); la cabecera del compose tiene las órdenes y la lista de
+secretos, y `docs/plataforma.md` §12 y §19.13, el resto. Las copias: `backup.sh` (diaria, con `purges.txt`),
+`restore_check.sh` (restauración de prueba semanal, con `reapply-purges`) y `pitr_check.sh` (recuperación a un
+instante); los tres corren en local contra un PostgreSQL efímero o en el contenedor `ops` del compose. Tras
+restaurar una copia de verdad, y antes de arrancar `serve`:
+`eldmark-platform admin --actor <correo> reapply-purges <carpeta de copias>/purges.txt`.
 
 ## Exportación (cliente Windows y servidor Linux)
 
@@ -343,6 +404,29 @@ fue rechazado, se desconectó o no llegó a entrar en la zona.
 Las rutas de `--report` y `--state-log` pueden ir en `build/`, pero con `--state-log` dentro del
 proyecto usa la extensión `.txt`: el importador de Godot convierte los `.csv` en traducciones.
 
+### Cliente con cuenta (`--title`, `--bot --platform`)
+
+Contra la plataforma (docs/plataforma.md §13), el cliente arranca en la pantalla de título: inicio de
+sesión, selección y creación de personaje, y «Entrar» pide el billete y conecta con la zona que diga la
+plataforma. Sin `--platform` usa el ajuste de proyecto `eldmark/platform/url` (`http://127.0.0.1:24680`).
+Solo admite `https://` o, hacia esta máquina, `http://`; `eldmark/platform/ca_cert` ancla un certificado
+propio (staging).
+
+```bash
+# El título contra la plataforma local
+godot --path . -- --title --platform=http://127.0.0.1:24680
+
+# Un bot con cuenta: inicia sesión, crea «Probador» si no existe, pide el billete y entra
+godot --headless --path . -- --bot --platform=http://127.0.0.1:24680 --login=bot@eldmark.test \
+    --password-file=build/bot.pw --character=Probador --realm=solmarch --quit-after-ticks=1500 \
+    --report=build/bot.json
+```
+
+La contraseña del bot va siempre en un archivo (`--password-file`), nunca en la línea de órdenes. Sin
+`--login` o `--password-file`, o si la cuenta falla (credenciales, `character_busy` tras 30 s,
+`zone_unavailable`), el bot sale con código 1 y el `code` de la plataforma en el informe
+(`platform.code`). `--world=N` elige el mundo (1). `--bots` no admite `--platform`.
+
 ### Enjambre de bots (`--bots=N`)
 
 `--bots=N` lanza un proceso con N clientes ligeros (`BotSwarm`/`SwarmBot`) que no cargan la zona ni
@@ -361,7 +445,8 @@ Cada bot se llama `Bot` más cuatro letras según `--bot-seed` más su índice, 
 contra el mismo servidor necesitan semillas distintas. Sin `--realm` se reparten entre Vardheim y
 Solmarch. El informe trae los bytes de subida y de bajada de cada cliente, los snapshots recibidos
 y su tamaño medio. Código de salida 0 si todos jugaban al terminar y 1 si alguno fue rechazado o se
-cayó.
+cayó. Contra una zona con DTLS, `--dtls-cert=<pem> --dtls-name=<cn>` (sin el nombre, o con un certificado que no
+se puede leer, sale con 1 sin conectar en claro).
 
 ### Bot tramposo (`--bot-cheat`)
 
@@ -407,6 +492,15 @@ godot --headless --path . -s res://tools/load_test.gd -- --matrix
 ```
 
 Los informes quedan en `build/load_test/` (`summary.txt` y `summary.json`).
+
+Con `--dtls` el servidor y los enjambres van por DTLS (con el certificado de las pruebas, o con `--dtls-cert`,
+`--dtls-key` y `--dtls-name`). `--dtls-compare` es la campaña de TEC-27: el mismo escenario sin y con DTLS,
+alternados (por defecto 64 bots reales agrupados en dos enjambres, 60 s, `--repeat=2`), y al final cuánto sube cada
+cifra y el criterio (el p99 del tick no sube más de un 10 %). Resultados en `docs/red.md` §14:
+
+```bash
+godot --headless --path . -s res://tools/load_test.gd -- --dtls-compare --repeat=3
+```
 
 Con combate (TEC-15), `--scenario=brawl` junta a los falsos con el cerebro de combate
 (`--fake-brain=combat`, en un corro alrededor de `--fake-center=x,z`) y a bots reales que pelean

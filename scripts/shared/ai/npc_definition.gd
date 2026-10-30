@@ -80,3 +80,10 @@ extends Resource
 ## Definición que lo sustituye en el mismo puesto cuando el fuerte tiene dueño (los Huecos dan paso a los
 ## guardias del reino, el Capitán del Vado al capitán del reino). Vacío = nadie.
 @export var garrison_id: StringName = &""
+
+@export_group("Recompensas")
+## XP que recibe cada contribuyente cuando muere: quien hizo al menos el 10 % del daño de los últimos 900 ticks
+## (docs/progresion.md §6.2, PRG-13). 0 = ninguna. La paga el servidor ([code]ProgressService.on_npc_killed[/code]).
+@export_range(0, 100000) var xp_reward: int = 0
+## Oro que recibe cada contribuyente cuando muere (motivo NPC_KILL, docs/progresion.md §5.3). 0 = ninguno.
+@export_range(0, 100000) var gold_reward: int = 0

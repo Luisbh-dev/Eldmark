@@ -3,12 +3,21 @@ package accounts
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	"eldmark/platform/internal/db"
+	"eldmark/platform/internal/persistence"
 )
+
+// ProgressExporter es lo que la exportación usa del almacén del progreso: ProgressStore.Export
+// (progresion.md §3.5), {"record": …, "ops": […]} con record null en una lápida y sin datos del personal.
+type ProgressExporter interface {
+	Export(ctx context.Context, q persistence.Querier, characterID int64) (json.RawMessage, error)
+}
 
 // exportFormat versiona el archivo de la exportación.
 const exportFormat = 1
@@ -20,9 +29,11 @@ const accessRetention = 30 * 24 * time.Hour
 // también con la sesión de privacidad) y el nombre del archivo, eldmark-datos-<fecha>.json.
 //
 // Lleva la cuenta (sin el hash), las aceptaciones, los consentimientos, las sesiones y los accesos
-// de 30 días, los derechos, los reinos, los personajes (con sus estadísticas), los ignorados (por
-// nombre), las sanciones propias (sin autor), los reportes hechos y el chat enviado en plazo. El
-// progreso de cada personaje (ProgressStore.Export) lo añade la privacidad (P9a).
+// de 30 días, los derechos, los reinos, los personajes (con sus estadísticas y su progreso), los
+// ignorados (por nombre), las sanciones propias (sin autor), los reportes hechos y el chat enviado en
+// plazo. El progreso es characters[i].progress, de ProgressStore.Export (P9a): el registro y lo propio
+// del libro de cada personaje no purgado y, de cada lápida de la cuenta, lo que queda de su libro (sin
+// registro; null si ya no le queda nada). Todo sale de la misma foto de la base.
 func (s *Service) Export(ctx context.Context, sess *Session, password string, meta ClientMeta) ([]byte, string, error) {
 	if password == "" || len(password) > maxPasswordBytes {
 		return nil, "", errValidation(map[string]string{"password": "required"})
@@ -89,7 +100,8 @@ func (s *Service) Export(ctx context.Context, sess *Session, password string, me
 			}
 			out[q.key] = list
 		}
-		return nil
+		chars, _ := out["characters"].([]map[string]any)
+		return s.exportProgress(ctx, tx, chars)
 	})
 	if err != nil {
 		return nil, "", err
@@ -102,6 +114,40 @@ func (s *Service) Export(ctx context.Context, sess *Session, password string, me
 		return nil, "", err
 	}
 	return body, "eldmark-datos-" + now.UTC().Format("2006-01-02") + ".json", nil
+}
+
+// exportProgress pone characters[i].progress (§11.2) con ProgressStore.Export, en la transacción de la
+// exportación: el de un personaje sin purgar, entero; el de una lápida, solo si le queda libro (la
+// retención de un año lo vacía y después borra la lápida). Sin almacén no hace nada.
+func (s *Service) exportProgress(ctx context.Context, tx pgx.Tx, chars []map[string]any) error {
+	if s.progress == nil {
+		return nil
+	}
+	for _, c := range chars {
+		text, _ := c["character_id"].(string)
+		id, err := strconv.ParseInt(text, 10, 64)
+		if err != nil {
+			return fmt.Errorf("accounts: exportación: character_id %q", text)
+		}
+		raw, err := s.progress.Export(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if c["purged_at"] != nil {
+			var tomb struct {
+				Ops []json.RawMessage `json:"ops"`
+			}
+			if err := json.Unmarshal(raw, &tomb); err != nil {
+				return fmt.Errorf("accounts: exportación del progreso de %d: %w", id, err)
+			}
+			if len(tomb.Ops) == 0 {
+				c["progress"] = nil
+				continue
+			}
+		}
+		c["progress"] = raw
+	}
+	return nil
 }
 
 // collectExport lee las filas como mapas, con las fechas en RFC 3339 y UTC.
