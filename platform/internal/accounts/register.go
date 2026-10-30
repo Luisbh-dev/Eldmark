@@ -24,7 +24,8 @@ type RegisterRequest struct {
 
 // Register crea una cuenta sin delatar cuáles existen (§4.2): con el cuerpo válido, la respuesta
 // es siempre la misma (202 {}). Un correo nuevo crea la cuenta y recibe verify_email; uno que ya
-// tiene cuenta no crea nada y recibe register_existing; uno de sanctioned_email_hashes no crea nada
+// tiene cuenta, o que reserva el revert_email vivo de una (§4.3), no crea nada y recibe
+// register_existing; uno de sanctioned_email_hashes no crea nada
 // y recibe register_blocked. Los tres caminos gastan del mismo límite de correos y calculan el hash
 // de la contraseña, así que tardan lo mismo.
 func (s *Service) Register(ctx context.Context, req RegisterRequest, meta ClientMeta) error {
@@ -78,6 +79,16 @@ func (s *Service) register(ctx context.Context, email, phc string, consents Cons
 	err := db.InTx(ctx, s.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		var existing int64
 		err := tx.QueryRow(ctx, `select account_id from accounts where email = $1`, email).Scan(&existing)
+		if err == nil {
+			tpl, data = mail.RegisterExisting, mail.Data{}
+			return s.event(ctx, tx, existing, "register_existing", meta, now)
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		// Un correo reservado por un revert_email vivo es de su dueño (§4.3): como uno con cuenta.
+		err = tx.QueryRow(ctx, `select account_id from account_tokens where purpose = 'revert_email' and used_at is null
+			and expires_at > $2 and email = $1 limit 1`, email, now).Scan(&existing)
 		if err == nil {
 			tpl, data = mail.RegisterExisting, mail.Data{}
 			return s.event(ctx, tx, existing, "register_existing", meta, now)

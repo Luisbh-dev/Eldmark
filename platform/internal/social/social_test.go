@@ -1,8 +1,10 @@
 package social_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -25,8 +27,11 @@ func auditEntry(key, source string, actor any, command string) map[string]any {
 
 // Un lote de auditoría con entradas malas inserta las demás y devuelve sus claves: una sin un
 // campo; con source cli; con la key <uuid>:<n> de otra instancia; con un op:<op_id> de un bloque de
-// otra instancia; con un command de la CLI o de la plataforma; console con actor o zone sin él.
-// Reenviar no duplica, y la entrada op:<op_id> de un bloque propio vale.
+// otra instancia; con un command de la CLI o de la plataforma; console con actor o zone sin él; con
+// datos que PostgreSQL rechaza (un NUL o UTF-8 roto en args, una fecha fuera de rango), que antes
+// tumbaban el lote entero con 500 y la zona lo reintentaba sin fin. Reenviar no duplica, la entrada
+// op:<op_id> de un bloque propio vale y no pisa la fila que ya escribió el guardado (S8) con esa
+// clave.
 func TestAuditBatch(t *testing.T) {
 	p := platformtest.New(t)
 	z := p.NewZone(1, "vado_gris", 0).Start()
@@ -39,10 +44,23 @@ func TestAuditBatch(t *testing.T) {
 	own := blockOf(z)         // 1
 	foreign := blockOf(other) // 1025
 	ownOp, _ := strconv.Atoi(own)
+	opKey := "op:" + strconv.Itoa(ownOp+5)
+	// El guardado (S8) ya escribió la fila de esa operación, con sus campos.
+	p.Exec(`insert into audit_log (world_id, zone_id, source, actor_account_id, command, args, at, event_key)
+		values (1, 'vado_gris', 'zone', 99, 'op_revert', '{"s8": true}', to_timestamp(1700000000), $1)`, opKey)
 	missing := map[string]any{"key": z.ID + ":9", "source": "zone"}
+	withArgs := func(key string, args any) map[string]any {
+		e := auditEntry(key, "zone", "7", "item_give")
+		e["args"] = args
+		return e
+	}
+	farFuture := auditEntry(z.ID+":13", "zone", "7", "item_give")
+	farFuture["at_unix"] = 9000000000000000
+	overflow := auditEntry(z.ID+":14", "zone", "7", "item_give")
+	overflow["at_unix"] = int64(1)<<53 - 1
 	entries := []any{
 		auditEntry(z.ID+":1", "zone", "7", "item_give"),
-		auditEntry("op:"+strconv.Itoa(ownOp+5), "zone", "7", "op_revert"),
+		auditEntry(opKey, "zone", "7", "op_revert"),
 		auditEntry(z.ID+":2", "console", nil, "fort_reset"),
 		auditEntry(z.ID+":3", "cli", "7", "item_give"),
 		auditEntry(other.ID+":4", "zone", "7", "item_give"),
@@ -54,13 +72,20 @@ func TestAuditBatch(t *testing.T) {
 		auditEntry(z.ID+":8", "zone", nil, "item_give"),
 		missing,
 		auditEntry(z.ID+":10", "platform", "7", "item_give"),
+		withArgs(z.ID+":11", map[string]any{"note": "a\x00b"}),
+		withArgs(z.ID+":12", map[string]any{"note": "@@ROTO@@"}),
+		farFuture,
+		overflow,
+		withArgs(z.ID+":15", map[string]any{"note": "@@SURROGATE@@"}),
 	}
-	body := map[string]any{"zone_instance_id": z.ID, "entries": entries}
-	res := z.Do("POST", "/internal/v1/audit", body)
+	raw := platformtest.Marshal(map[string]any{"zone_instance_id": z.ID, "entries": entries})
+	raw = bytes.Replace(raw, []byte("@@ROTO@@"), []byte{'a', 0xff, 0xfe, 'b'}, 1)
+	raw = bytes.Replace(raw, []byte("@@SURROGATE@@"), []byte(`\ud800`), 1)
+	res := z.Do("POST", "/internal/v1/audit", raw)
 	platformtest.Expect(t, res, 200, "")
 	got := res.Body["rejected"].([]any)
 	want := []string{z.ID + ":3", other.ID + ":4", "op:" + foreign, "op:99999", z.ID + ":5", z.ID + ":6", z.ID + ":7",
-		z.ID + ":8", z.ID + ":9", z.ID + ":10"}
+		z.ID + ":8", z.ID + ":9", z.ID + ":10", z.ID + ":11", z.ID + ":12", z.ID + ":13", z.ID + ":14", z.ID + ":15"}
 	if len(got) != len(want) {
 		t.Fatalf("rejected: %v", got)
 	}
@@ -70,19 +95,27 @@ func TestAuditBatch(t *testing.T) {
 		}
 	}
 	if n := p.Count(`select count(*) from audit_log where world_id = 1 and zone_id = 'vado_gris'
-		and at = to_timestamp(1800000000)`); n != 3 {
+		and at = to_timestamp(1800000000)`); n != 2 {
 		t.Fatalf("insertadas: %d", n)
 	}
 	if n := p.Count(`select count(*) from audit_log where source = 'console' and actor_account_id is null`); n != 1 {
 		t.Fatal("la de la consola")
 	}
-	// La fila op:<op_id> es la misma que escribiría el guardado (S8): on conflict do nothing.
-	p.Exec(`insert into audit_log (world_id, source, command, event_key) values (1, 'zone', 'item_give', 'op:77777')
-		on conflict (event_key) do nothing`)
-	z.Do("POST", "/internal/v1/audit", body)
+	// La fila op:<op_id> del guardado sigue como estaba: on conflict do nothing, ni se pisa ni se rechaza.
+	intact := func() {
+		t.Helper()
+		if n := p.Count(`select count(*) from audit_log where event_key = $1 and actor_account_id = 99
+			and args = '{"s8": true}' and at = to_timestamp(1700000000)`, opKey); n != 1 {
+			t.Fatal("el lote pisó la fila op:<op_id> del guardado")
+		}
+	}
+	intact()
+	res = z.Do("POST", "/internal/v1/audit", raw)
+	platformtest.Expect(t, res, 200, "")
 	if n := p.Count(`select count(*) from audit_log where zone_id = 'vado_gris'`); n != 3 {
 		t.Fatalf("reenviar no duplica: %d", n)
 	}
+	intact()
 }
 
 // Un lote de chat: world_id, zone_id y zone_channel de la instancia y sender_account_id de
@@ -101,6 +134,8 @@ func TestChatBatch(t *testing.T) {
 	whisper := msg(z.ID+":2", id, "hola")
 	whisper["target_character_id"] = idStr(far)
 	whisper["channel"] = 3
+	late := msg(z.ID+":8", id, "del año 285 millones")
+	late["sent_at_unix"] = 9000000000000000 // fuera de rango: antes, 500 y el lote atascado
 	res := z.Do("POST", "/internal/v1/chat", map[string]any{"zone_instance_id": z.ID, "messages": []any{
 		msg(z.ID+":1", id, "¡Hola, Vado Gris!"),
 		whisper,
@@ -108,10 +143,11 @@ func TestChatBatch(t *testing.T) {
 		msg(z.ID+":4", id, strings.Repeat("a", 256)),
 		msg(zones.FormatUUID(zones.NewUUID())+":5", id, "ajena"),
 		msg(z.ID+":6", id, strings.Repeat("ñ", 255)),
+		late,
 	}})
 	platformtest.Expect(t, res, 200, "")
 	got := res.Body["rejected"].([]any)
-	if len(got) != 3 {
+	if len(got) != 4 || !slices.Contains(got, any(z.ID+":8")) {
 		t.Fatalf("rejected: %v", got)
 	}
 	var zoneChannel, account int64
@@ -282,6 +318,17 @@ func TestReportLimits(t *testing.T) {
 	platformtest.Expect(t, z.Do("POST", "/internal/v1/reports", bad), 400, "validation")
 	bad["category"], bad["context"] = "bot", []any{}
 	platformtest.Expect(t, z.Do("POST", "/internal/v1/reports", bad), 400, "validation")
+	// Un contexto que jsonb no admite (un NUL) o una prueba con la fecha fuera de rango: 400, no un
+	// 500 que la zona reintenta.
+	bad["context"] = map[string]any{"nota": "a\x00b"}
+	if res := z.Do("POST", "/internal/v1/reports", bad); res.Status != 400 || res.Field("context") != "invalid" {
+		t.Fatal(res.Raw)
+	}
+	bad["context"] = map[string]any{}
+	bad["evidence"] = []any{map[string]any{"sender_name": "Objetivob", "channel": 2, "text": "…", "sent_at_unix": 9000000000000000}}
+	if res := z.Do("POST", "/internal/v1/reports", bad); res.Status != 400 || res.Field("evidence") != "invalid" {
+		t.Fatal(res.Raw)
+	}
 }
 
 // Sanciones (§9.5): la plataforma autoriza. Un moderador que pide ban → 403 y fila

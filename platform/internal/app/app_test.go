@@ -213,7 +213,8 @@ func TestServeStartsWithALaterMigration(t *testing.T) {
 }
 
 // La gracia de arranque (§2.5): latido de las instancias vivas a ahora y arrendamientos vivos con
-// al menos el TTL; lo demás no se toca.
+// al menos el TTL; lo demás no se toca. Un arrendamiento que ya había caducado antes del último
+// latido de su instancia (la zona dejó de renovarlo: el personaje se fue) no resucita.
 func TestStartupGrace(t *testing.T) {
 	pool := testdb.New(t)
 	testdb.Exec(t, pool, `
@@ -221,15 +222,16 @@ insert into accounts (email, age_confirmed_at) values ('gracia@eldmark.test', no
 insert into sessions (account_id, access_hash, access_expires_at, refresh_hash, refresh_expires_at)
   select account_id, '\x01', now(), '\x02', now() + interval '12 h' from accounts;
 insert into characters (world_id, account_id, name, name_key, realm)
-  select 1, account_id, n, lower(n), 1 from accounts, (values ('Aneira'), ('Brand')) as v(n);
+  select 1, account_id, n, lower(n), 1 from accounts, (values ('Aneira'), ('Brand'), ('Cora')) as v(n);
 insert into zone_instances (zone_instance_id, world_id, zone_id, public_host, public_port, realms, build_id,
   protocol_version, record_format, max_players, status, last_heartbeat_at) values
   ('00000000-0000-4000-8000-000000000001', 1, 'vado_gris', '127.0.0.1', 24600, '{1,2}', 'b', 7, 1, 64, 'live', now() - interval '1 hour'),
   ('00000000-0000-4000-8000-000000000002', 1, 'test_world', '127.0.0.1', 24601, '{1,2}', 'b', 7, 1, 64, 'stopped', now() - interval '1 hour');
 insert into character_leases (character_id, world_id, lease_id, zone_instance_id, claimed_by, expires_at)
   select character_id, 1, gen_random_uuid(),
-    case when name = 'Aneira' then '00000000-0000-4000-8000-000000000001'::uuid end,
-    '00000000-0000-4000-8000-000000000001', now() - interval '1 minute'
+    case when name in ('Aneira', 'Cora') then '00000000-0000-4000-8000-000000000001'::uuid end,
+    '00000000-0000-4000-8000-000000000001',
+    case when name = 'Cora' then now() - interval '2 hours' else now() - interval '1 minute' end
   from characters;`)
 	a, _ := newApp(t, pool, migrate.FS())
 	serve(t, a)
@@ -245,15 +247,17 @@ insert into character_leases (character_id, world_id, lease_id, zone_instance_id
 	if !liveFresh || !stoppedOld {
 		t.Fatalf("latidos: la viva renovada %v, la parada igual %v", liveFresh, stoppedOld)
 	}
-	var heldLong, freeOld bool
+	var heldLong, freeOld, expiredBefore bool
 	if err := pool.QueryRow(ctx, `select
 		(select expires_at > now() + interval '25 s' from character_leases l join characters c using (character_id) where c.name = 'Aneira'),
-		(select expires_at < now() from character_leases l join characters c using (character_id) where c.name = 'Brand')`).
-		Scan(&heldLong, &freeOld); err != nil {
+		(select expires_at < now() from character_leases l join characters c using (character_id) where c.name = 'Brand'),
+		(select expires_at < now() - interval '1 hour' from character_leases l join characters c using (character_id) where c.name = 'Cora')`).
+		Scan(&heldLong, &freeOld, &expiredBefore); err != nil {
 		t.Fatal(err)
 	}
-	if !heldLong || !freeOld {
-		t.Fatalf("arrendamientos: el vivo alargado %v, el libre igual %v", heldLong, freeOld)
+	if !heldLong || !freeOld || !expiredBefore {
+		t.Fatalf("arrendamientos: el vivo alargado %v, el libre igual %v, el caducado antes del último latido igual %v",
+			heldLong, freeOld, expiredBefore)
 	}
 }
 

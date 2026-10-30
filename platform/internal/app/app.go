@@ -343,23 +343,28 @@ func (a *App) runJobOnce(ctx context.Context, j job) {
 }
 
 // startupGrace da a las zonas el margen de §2.5: una plataforma que vuelve tras caerse no da por
-// perdidas a las instancias que no pudieron latir ni por libres a sus arrendamientos.
+// perdidas a las instancias que no pudieron latir ni por libres a sus arrendamientos. Alarga solo
+// los arrendamientos que seguían vivos en el último latido de su instancia (starting o live): uno
+// que ya había caducado antes (la zona dejó de renovarlo porque el personaje se fue) no resucita.
+// Por eso los arrendamientos van antes que el latido de las instancias.
 func (a *App) startupGrace(ctx context.Context) error {
 	return db.InTx(ctx, a.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		res, err := tx.Exec(ctx, `update zone_instances set last_heartbeat_at = greatest(last_heartbeat_at, now())
+		res, err := tx.Exec(ctx, `update character_leases l
+			set expires_at = greatest(l.expires_at, now() + make_interval(secs => $1))
+			from zone_instances zi
+			where zi.zone_instance_id = l.zone_instance_id and zi.status in ('starting', 'live')
+			  and l.expires_at >= zi.last_heartbeat_at`, a.cfg.LeaseTTL.Seconds())
+		if err != nil {
+			return err
+		}
+		leases := res.RowsAffected()
+		res, err = tx.Exec(ctx, `update zone_instances set last_heartbeat_at = greatest(last_heartbeat_at, now())
 			where status in ('starting', 'live')`)
 		if err != nil {
 			return err
 		}
-		instances := res.RowsAffected()
-		res, err = tx.Exec(ctx, `update character_leases
-			set expires_at = greatest(expires_at, now() + make_interval(secs => $1))
-			where zone_instance_id is not null`, a.cfg.LeaseTTL.Seconds())
-		if err != nil {
-			return err
-		}
-		if instances > 0 || res.RowsAffected() > 0 {
-			a.log.Info("gracia de arranque", "instances", instances, "leases", res.RowsAffected())
+		if instances := res.RowsAffected(); instances > 0 || leases > 0 {
+			a.log.Info("gracia de arranque", "instances", instances, "leases", leases)
 		}
 		return nil
 	})

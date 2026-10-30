@@ -244,6 +244,8 @@ curl -s -H 'Authorization: Bearer secreto' -d '{"world_id": 1, "zone_id": "vado_
 ```
 
 Una instancia que deja de latir 3 × `ELDMARK_HEARTBEAT_S` se da por perdida y sus personajes quedan libres.
+`ELDMARK_LEASE_TTL_S` tiene que pasar de 3 × `ELDMARK_HEARTBEAT_S` + min(5, `ELDMARK_HEARTBEAT_S`) segundos (con 5 y
+30, los valores por defecto, sobra); si no, `serve` no arranca.
 
 La moderación y las cuentas del equipo van por la orden `admin`, con la misma configuración que `serve`. Toda
 orden lleva `--actor` con el correo de una cuenta `admin` (o `moderator` para las de lectura) y deja su fila en

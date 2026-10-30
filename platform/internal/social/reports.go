@@ -54,8 +54,7 @@ func (req *ReportRequest) validate() map[string]string {
 	if utf8.RuneCountInString(req.Comment) > MaxReportComment || strings.ContainsRune(req.Comment, 0) {
 		fields["comment"] = "too_long"
 	}
-	var ctxObject map[string]json.RawMessage
-	if len(req.Context) == 0 || req.Context[0] != '{' || json.Unmarshal(req.Context, &ctxObject) != nil {
+	if !zones.IsJSONObject(req.Context) {
 		fields["context"] = "invalid"
 	}
 	if len(req.Evidence) > MaxEvidence {
@@ -63,6 +62,7 @@ func (req *ReportRequest) validate() map[string]string {
 	}
 	for _, e := range req.Evidence {
 		if e.SenderName == "" || len(e.SenderName) > 64 || e.Channel < 0 || e.Channel > 255 || e.SentAtUnix < 0 ||
+			e.SentAtUnix > zones.MaxUnix ||
 			utf8.RuneCountInString(e.Text) > maxChatText || strings.ContainsRune(e.Text, 0) ||
 			strings.ContainsRune(e.SenderName, 0) {
 			fields["evidence"] = "invalid"

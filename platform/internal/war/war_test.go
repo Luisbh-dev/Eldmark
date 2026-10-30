@@ -84,6 +84,10 @@ func TestFortresses(t *testing.T) {
 	platformtest.Expect(t, put(vado, "Fuerte", 2, record(1)), 400, "validation")
 	platformtest.Expect(t, put(vado, "fuerte_norte", 2, []int{1}), 400, "validation")
 	platformtest.Expect(t, put(vado, "fuerte_norte", -1, record(1)), 400, "validation")
+	// Un registro que jsonb no admite (un NUL): 400 validation, no un 500 que la zona reintenta.
+	if res := put(vado, "fuerte_norte", 2, map[string]any{"owner": "a\x00b"}); res.Status != 400 || res.Field("record") != "invalid" {
+		t.Fatal(res.Raw)
+	}
 	// Una zona de otro mundo con el mismo zone_id no ve las del mundo 1.
 	w2 := p.NewZone(2, "vado_gris", 0).Start()
 	if got := list(t, w2); len(got) != 0 {
@@ -102,6 +106,11 @@ func TestWarEvents(t *testing.T) {
 	ev := func(key, fortress string, event int) map[string]any {
 		return map[string]any{"key": key, "fortress_id": fortress, "event": event, "realm": 1, "at_unix": 1800000000}
 	}
+	far := func(key string, at int64) map[string]any {
+		e := ev(key, "fuerte_norte", 3)
+		e["at_unix"] = at
+		return e
+	}
 	batch := map[string]any{"zone_instance_id": vado.ID, "events": []any{
 		ev(vado.ID+":1", "fuerte_norte", 3),
 		ev(vado.ID+":2", "fuerte_norte", 6),
@@ -112,11 +121,14 @@ func TestWarEvents(t *testing.T) {
 		ev("op:5", "fuerte_norte", 3),              // op: no vale en la guerra
 		ev(vado.ID+":07", "fuerte_norte", 3),       // secuencia con un cero delante
 		map[string]any{"key": 5, "fortress_id": 1}, // sin key legible
+		far(vado.ID+":8", 9000000000000000),        // fecha fuera de rango (antes, 500 y el lote atascado)
+		far(vado.ID+":9", 1<<53-1),                 // pgx la desbordaba sin decir nada
 	}}
 	res := vado.Do("POST", "/internal/v1/war-events", batch)
 	platformtest.Expect(t, res, 200, "")
 	rejected := res.Body["rejected"].([]any)
-	want := []string{other.ID + ":3", vado.ID + ":4", vado.ID + ":5", vado.ID + ":6", "op:5", vado.ID + ":07", ""}
+	want := []string{other.ID + ":3", vado.ID + ":4", vado.ID + ":5", vado.ID + ":6", "op:5", vado.ID + ":07", "",
+		vado.ID + ":8", vado.ID + ":9"}
 	if len(rejected) != len(want) {
 		t.Fatalf("rejected: %v", rejected)
 	}

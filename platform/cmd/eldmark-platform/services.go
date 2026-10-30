@@ -106,7 +106,10 @@ func mountServices(a *app.App, cfg *config.Config, pool *pgxpool.Pool, log *slog
 	}
 	a.AddJob("accounts_purge", purgeEvery, svc.PurgeDue)
 	a.AddJob("characters_purge", purgeEvery, purger.PurgeExpired)
-	return func() { mail.Close(sender) }, nil
+	return func() {
+		svc.Wait() // las recuperaciones de contraseña en curso mandan su correo antes de cerrar la cola
+		mail.Close(sender)
+	}, nil
 }
 
 // mountInternal monta la API interna (P3, §6): las instancias de zona y los bloques de ids, la

@@ -28,7 +28,7 @@ import (
 var supportedRecordFormats = []int64{1}
 
 // LostAfter es cuántos latidos se pueden perder antes de dar una instancia por perdida (§5.3).
-const LostAfter = 3
+const LostAfter = config.LostAfterHeartbeats
 
 // Topes del registro.
 const (
@@ -84,7 +84,7 @@ func New(o Options) (*Service, error) {
 func (s *Service) Guard() *Guard { return s.guard }
 
 // LostEvery es cada cuánto corre el trabajo de instancias perdidas: min(5 s, HEARTBEAT_S) (§2.5).
-func (s *Service) LostEvery() time.Duration { return min(5*time.Second, s.cfg.Heartbeat) }
+func (s *Service) LostEvery() time.Duration { return s.cfg.LostEvery() }
 
 // lostCutoff es la hora antes de la cual el último latido deja a una instancia por perdida.
 func (s *Service) lostCutoff(now time.Time) time.Time { return now.Add(-LostAfter * s.cfg.Heartbeat) }
@@ -473,7 +473,9 @@ func sessionText(reason *string) string {
 }
 
 // Heartbeat es el latido (§5.3, §6): apunta la hora y los jugadores, renueva los arrendamientos del
-// conjunto que casan con un arrendamiento de esta instancia (character_id y lease_id) y devuelve en
+// conjunto que casan con un arrendamiento vivo de esta instancia (character_id, lease_id y
+// expires_at > ahora: uno caducado ya lo dan por libre la reclamación, enter y el borrado, y
+// renovarlo dejaba dos personajes de la cuenta en el mundo o uno borrado dentro) y devuelve en
 // revoked los que no casan (lease_lost, con el lease_id del latido) y los renovados cuya cuenta
 // está suspendida, expulsada o con el borrado pedido, o cuya sesión está revocada (con el lease_id
 // del arrendamiento); en mutes, los silencios vigentes de sus cuentas. Una instancia que ya no está
@@ -519,7 +521,8 @@ func (s *Service) Heartbeat(ctx context.Context, inst *Instance, req HeartbeatRe
 		rows, err := tx.Query(ctx, `update character_leases l set expires_at = $4
 			from unnest($2::bigint[], $3::uuid[]) as h(character_id, lease_id)
 			where l.character_id = h.character_id and l.lease_id = h.lease_id and l.zone_instance_id = $1
-			returning l.character_id`, inst.ID, charIDs, leaseIDs, now.Add(s.cfg.LeaseTTL))
+			  and l.expires_at > $5
+			returning l.character_id`, inst.ID, charIDs, leaseIDs, now.Add(s.cfg.LeaseTTL), now)
 		if err != nil {
 			return err
 		}

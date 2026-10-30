@@ -52,8 +52,17 @@ func (w *sanctionWorld) claim(t *testing.T) *platformtest.Response {
 	return res
 }
 
-// leave libera el arrendamiento del personaje (la zona, tras su guardado final).
+// leave es la salida del mundo: el guardado final, que libera el arrendamiento.
 func (w *sanctionWorld) leave(t *testing.T, claim *platformtest.Response) {
+	t.Helper()
+	body := w.z.SaveBody(w.id, claim.String("lease_id"), 1)
+	body["release_lease"] = true
+	platformtest.Expect(t, w.z.Save(w.id, body), 200, "")
+}
+
+// reject es la zona que libera al personaje sin que llegue al mundo (REALM, FULL, un prepare que
+// falla o la baja en LOADING, §5.2): sin guardado.
+func (w *sanctionWorld) reject(t *testing.T, claim *platformtest.Response) {
 	t.Helper()
 	platformtest.Expect(t, w.z.Release(w.id, claim.String("lease_id")), 204, "")
 }
@@ -116,6 +125,33 @@ func TestWarningIsShownOnce(t *testing.T) {
 	}
 	if s := w.state(t, id); s != admin.StateNoted {
 		t.Fatal(s)
+	}
+}
+
+// Un aviso no se da por visto si la zona libera al personaje sin que llegue al mundo (§5.2: REALM,
+// FULL, prepare o la baja en LOADING; ninguno guarda): la reclamación siguiente lo vuelve a traer.
+// Lo da por visto el primer guardado del arrendamiento.
+func TestWarningSurvivesARejectedEntry(t *testing.T) {
+	w := newSanctionWorld(t)
+	id := w.sanction(t, sanctions.KindWarning, 0)
+	w.p.Clock.Advance(time.Minute)
+	for i := 0; i < 2; i++ {
+		res := w.claim(t)
+		if warnings := account(res)["warnings"].([]any); len(warnings) != 1 ||
+			warnings[0].(map[string]any)["sanction_id"] != idStr(id) {
+			t.Fatalf("reclamación %d: %s", i, res.Raw)
+		}
+		w.reject(t, res)
+		w.p.Clock.Advance(time.Second)
+	}
+	res := w.claim(t)
+	if len(account(res)["warnings"].([]any)) != 1 {
+		t.Fatalf("tras dos rechazos: %s", res.Raw)
+	}
+	w.leave(t, res)
+	w.p.Clock.Advance(time.Second)
+	if res := w.claim(t); len(account(res)["warnings"].([]any)) != 0 {
+		t.Fatalf("visto tras entrar y guardar: %s", res.Raw)
 	}
 }
 

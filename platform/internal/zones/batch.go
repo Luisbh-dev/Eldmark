@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -123,18 +124,72 @@ func (e Entry) ID(field string, nullable bool) (*int64, bool) {
 	return &id, true
 }
 
-// Object lee un campo que tiene que ser un objeto JSON y lo devuelve crudo.
+// Object lee un campo que tiene que ser un objeto JSON que quepa en jsonb ([IsJSONObject]) y lo
+// devuelve crudo.
 func (e Entry) Object(field string) (json.RawMessage, bool) {
 	raw := bytes.TrimSpace(e[field])
-	if len(raw) == 0 || raw[0] != '{' {
-		return nil, false
-	}
-	var probe map[string]json.RawMessage
-	if json.Unmarshal(raw, &probe) != nil {
+	if !IsJSONObject(raw) {
 		return nil, false
 	}
 	return json.RawMessage(raw), true
 }
+
+// IsJSONObject dice si raw es un objeto JSON que PostgreSQL guarda en jsonb: UTF-8 válido, sin
+// \u0000 y sin \uD800–\uDFFF sueltos (22P05 en la base). encoding/json no mira nada de eso: lo
+// aceptaba y la base lo rechazaba al insertar.
+func IsJSONObject(raw []byte) bool {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || raw[0] != '{' || !utf8.Valid(raw) {
+		return false
+	}
+	var probe map[string]json.RawMessage
+	if json.Unmarshal(raw, &probe) != nil {
+		return false
+	}
+	return jsonbEscapes(raw)
+}
+
+// jsonbEscapes repasa los escapes \u de un JSON ya válido: ninguno es \u0000 y cada suplente alto
+// va seguido de uno bajo (y ninguno bajo va suelto). Fuera de las cadenas no hay barras, así que
+// no hace falta seguir las comillas.
+func jsonbEscapes(raw []byte) bool {
+	hex4 := func(i int) (rune, bool) {
+		if i+4 > len(raw) {
+			return 0, false
+		}
+		v, err := strconv.ParseUint(string(raw[i:i+4]), 16, 16)
+		return rune(v), err == nil
+	}
+	for i := 0; i < len(raw); i++ {
+		if raw[i] != '\\' {
+			continue
+		}
+		i++
+		if i >= len(raw) || raw[i] != 'u' {
+			continue // otro escape de un carácter
+		}
+		r, ok := hex4(i + 1)
+		i += 4
+		switch {
+		case !ok || r == 0 || (r >= 0xDC00 && r <= 0xDFFF):
+			return false
+		case r >= 0xD800 && r <= 0xDBFF:
+			if i+2 >= len(raw) || raw[i+1] != '\\' || raw[i+2] != 'u' {
+				return false
+			}
+			low, ok := hex4(i + 3)
+			if !ok || low < 0xDC00 || low > 0xDFFF {
+				return false
+			}
+			i += 6
+		}
+	}
+	return true
+}
+
+// MaxUnix es la fecha más tardía que admite un lote (9999-12-31T23:59:59Z, la de una sanción sin
+// fin): una posterior no cabe en timestamptz (22008) o pgx la desbordaba sin decir nada.
+const MaxUnix = 253402300799
 
 // BatchResponse escribe la respuesta de un lote: 204 si todas las entradas valían; si no, 200
 // {rejected: [key…]} (las demás ya se insertaron).
@@ -227,10 +282,11 @@ type Inserter interface {
 }
 
 // InsertEach inserta las filas de un lote con la misma sentencia (con on conflict do nothing, para
-// que reenviar no duplique), todas en una ida y vuelta. Si alguna choca con una restricción (un
-// error determinista: clase 23), ninguna queda escrita y se insertan de una en una para rechazar
-// solo esas: devuelve sus claves. Cualquier otro error de la base se devuelve (el lote entero se
-// reintenta).
+// que reenviar no duplique), todas en una ida y vuelta. Si alguna falla con un error determinista
+// (una restricción, clase 23, o un dato que PostgreSQL rechaza, clase 22: db.Deterministic),
+// ninguna queda escrita y se insertan de una en una para rechazar solo esas: devuelve sus claves.
+// Cualquier otro error de la base se devuelve (el lote entero se reintenta): un error de una sola
+// entrada nunca atasca la cola de la zona (§6).
 func InsertEach(ctx context.Context, q Inserter, sql string, rows [][]any, keys []string) ([]string, error) {
 	if len(rows) == 0 {
 		return nil, nil
@@ -243,13 +299,13 @@ func InsertEach(ctx context.Context, q Inserter, sql string, rows [][]any, keys 
 	if err == nil {
 		return nil, nil
 	}
-	if db.Classify(err) != db.KindIntegrity {
+	if !db.Deterministic(err) {
 		return nil, err
 	}
 	var rejected []string
 	for i, args := range rows {
 		if _, err := q.Exec(ctx, sql, args...); err != nil {
-			if db.Classify(err) != db.KindIntegrity {
+			if !db.Deterministic(err) {
 				return nil, err
 			}
 			rejected = append(rejected, keys[i])

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -118,6 +119,52 @@ func TestUnknownEmailsHaveTheirOwnCounters(t *testing.T) {
 	h.expect(b, 401, "invalid_credentials")
 	if b.raw != c.raw {
 		t.Fatalf("B y C, distinto:\n%s\n%s", b.raw, c.raw)
+	}
+}
+
+// burst lanza n inicios de sesión a la vez con la contraseña mala (cada uno desde ip()) y cuenta
+// las respuestas por estado.
+func (h *harness) burst(email string, n int, ip func() string) map[int]int {
+	h.t.Helper()
+	codes := make([]int, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		addr := ip()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			codes[i] = h.loginFrom(email, "contraseña mala", addr).status
+		}()
+	}
+	wg.Wait()
+	got := map[int]int{}
+	for _, c := range codes {
+		got[c]++
+	}
+	return got
+}
+
+// Intentos a la vez no se saltan el freno (§4.2): comprobar el freno, mirar la contraseña y anotar el
+// fallo van en una sola sección por cuenta. Tras 5 fallos y los 30 s, 30 intentos simultáneos desde
+// 30 IP miran la contraseña una sola vez; con una cuenta nueva, 10 a la vez desde un grupo, cinco.
+func TestConcurrentAttemptsRespectTheThrottle(t *testing.T) {
+	h := newHarness(t)
+	h.register("rafaga@example.org")
+	for i := 0; i < 5; i++ {
+		h.expect(h.loginFrom("rafaga@example.org", "contraseña mala", h.nextIP()), 401, "invalid_credentials")
+	}
+	h.clock.Advance(31 * time.Second)
+	if got := h.burst("rafaga@example.org", 30, h.nextIP); got[401] != 1 || got[429] != 29 {
+		t.Fatalf("freno de la cuenta con 30 a la vez: %v", got)
+	}
+	h.register("grupo@example.org")
+	ip := h.nextIP()
+	if got := h.burst("grupo@example.org", 10, func() string { return ip }); got[401] != 5 || got[429] != 5 {
+		t.Fatalf("bloqueo del grupo con 10 a la vez: %v", got)
+	}
+	// Un correo sin cuenta tiene el mismo freno.
+	if got := h.burst("nadie@example.org", 10, func() string { return h.nextIP() }); got[401] != 5 || got[429] != 5 {
+		t.Fatalf("correo sin cuenta: %v", got)
 	}
 }
 

@@ -88,6 +88,7 @@ func TestBuildMIME(t *testing.T) {
 type fakeSMTP struct {
 	ln   net.Listener
 	mu   sync.Mutex
+	from []string
 	rcpt []string
 	data []string
 }
@@ -127,6 +128,9 @@ func (f *fakeSMTP) serve(conn net.Conn) {
 			reply("250-prueba")
 			reply("250 8BITMIME")
 		case strings.HasPrefix(cmd, "MAIL FROM"):
+			f.mu.Lock()
+			f.from = append(f.from, strings.TrimSpace(line))
+			f.mu.Unlock()
 			reply("250 ok")
 		case strings.HasPrefix(cmd, "RCPT TO"):
 			f.mu.Lock()
@@ -191,9 +195,37 @@ func TestSMTPSenderDelivers(t *testing.T) {
 	}
 }
 
-// Sin STARTTLS, solo hacia loopback: hacia otra máquina no se manda nada en claro.
+// Sin STARTTLS, solo hacia loopback: hacia otra máquina no se manda nada en claro. La URL nombra
+// otra máquina y la conexión se desvía al servidor falso (que no ofrece STARTTLS): el envío se
+// niega antes de MAIL FROM. Con smtps://, un servidor sin TLS tampoco recibe nada.
 func TestSMTPRequiresStartTLSOutsideLoopback(t *testing.T) {
 	if isLoopback("smtp.example.org") || !isLoopback("127.0.0.1") || !isLoopback("::1") || !isLoopback("localhost") {
 		t.Fatal("isLoopback")
+	}
+	server := newFakeSMTP(t)
+	m, _ := Compose(ResetPassword, "aneira@example.org", Data{Link: "https://eldmark.example/reset?token=secreto"})
+	for _, raw := range []string{"smtp://smtp.example.org:25", "smtps://smtp.example.org"} {
+		u, _ := url.Parse(raw)
+		s, err := NewSMTP(u, "no-reply@eldmark.example", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var dialed string
+		s.dial = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			dialed = addr
+			return (&net.Dialer{}).DialContext(ctx, network, server.ln.Addr().String())
+		}
+		err = s.deliver(m)
+		if err == nil || (strings.HasPrefix(raw, "smtp:") && err.Error() != "el servidor SMTP no ofrece STARTTLS") {
+			t.Fatalf("%s: %v", raw, err)
+		}
+		if want := map[bool]string{true: "smtp.example.org:25", false: "smtp.example.org:465"}[strings.HasPrefix(raw, "smtp:")]; dialed != want {
+			t.Fatalf("%s: conectó a %q", raw, dialed)
+		}
+	}
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	if len(server.from)+len(server.rcpt)+len(server.data) != 0 {
+		t.Fatalf("salió en claro: %v %v %v", server.from, server.rcpt, server.data)
 	}
 }

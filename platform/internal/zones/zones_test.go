@@ -9,13 +9,17 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"math/big"
+	"net/http/httptest"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"eldmark/platform/internal/config"
 	"eldmark/platform/internal/platformtest"
@@ -467,16 +471,25 @@ func TestHeartbeatRevocations(t *testing.T) {
 		t.Fatalf("latido limpio: %s", res.Raw)
 	}
 
-	// 0: refresca la sesión (no expulsa) y después inicia otra (replaced: sí).
-	login := p.PublicDo("POST", "/v1/sessions", "", map[string]any{"email": all[0].pl.Email, "password": platformtest.Password})
-	_ = login
-	p.Exec(`update sessions set revoked_at = null, revoke_reason = null where account_id = $1`, all[0].pl.ID)
-	// El inicio de sesión de arriba revocó la del billete: se deshace para probar el refresco.
-	refresh := p.PublicDo("POST", "/v1/sessions/refresh", "", map[string]any{"refresh_token": login.String("refresh_token")})
-	platformtest.Expect(t, refresh, 200, "")
-	res = z.Heartbeat(5, leases...)
-	if len(res.Body["revoked"].([]any)) != 0 {
-		t.Fatalf("refrescar no expulsa: %s", res.Raw)
+	// 0: refresca la sesión del billete, la que guarda el arrendamiento (no expulsa: el refresco
+	// rota en la misma fila, §4.2), dos veces; después inicia otra (replaced: sí).
+	var session int64
+	p.Scalar(&session, `select session_id from character_leases where character_id = $1`, all[0].id)
+	for i := 0; i < 2; i++ {
+		platformtest.Expect(t, p.RefreshSession(all[0].pl), 200, "")
+		res = z.Heartbeat(5, leases...)
+		if len(res.Body["revoked"].([]any)) != 0 {
+			t.Fatalf("refrescar no expulsa: %s", res.Raw)
+		}
+	}
+	var rotated int
+	p.Scalar(&rotated, `select count(*) from sessions where session_id = $1 and rotated_at is not null and revoked_at is null`, session)
+	if rotated != 1 || p.Count(`select count(*) from character_leases where character_id = $1 and session_id = $2`,
+		all[0].id, session) != 1 {
+		t.Fatal("el refresco tenía que rotar la sesión del arrendamiento sin cambiarla")
+	}
+	if res := p.PublicDo("GET", "/v1/account", all[0].pl.Token, nil); res.Status != 200 {
+		t.Fatalf("el acceso refrescado vale: %s", res.Raw)
 	}
 	p.Login(all[0].pl)
 	// 1: suspendida con un motivo largo; 2: expulsada; 3: borrado pedido; 4: silenciada.
@@ -532,6 +545,47 @@ func TestHeartbeatRevocations(t *testing.T) {
 		z.ID, p.Clock.Now())
 	if alive != 5 {
 		t.Fatalf("renovados: %d", alive)
+	}
+}
+
+// Un latido tardío no resucita un arrendamiento caducado (§5.3: renueva solo lo vivo). Caducado, la
+// reclamación, enter y el borrado lo dan por libre; si el latido lo renovara, la cuenta tendría dos
+// personajes en el mundo, o uno borrado seguiría dentro. Sale en revoked con lease_lost.
+func TestLateHeartbeatDoesNotRenewExpiredLeases(t *testing.T) {
+	p := platformtest.New(t)
+	z := p.NewZone(1, "vado_gris", 0).Start()
+	pl := p.NewPlayer("a@example.org")
+	idA := p.NewCharacter(pl, "Aneira", "vardheim")
+	idB := p.NewCharacter(pl, "Bran", "vardheim")
+	leaseA := z.Join(pl, idA)
+	// La zona no late a tiempo y el trabajo de perdidas no pasa (se retrasa): A caduca con la instancia viva.
+	p.Clock.Advance(31 * time.Second)
+	leaseB := z.Join(pl, idB)
+	res := z.Heartbeat(2, platformtest.Lease{CharacterID: idA, LeaseID: leaseA}, platformtest.Lease{CharacterID: idB, LeaseID: leaseB})
+	platformtest.Expect(t, res, 200, "")
+	revoked := res.Body["revoked"].([]any)
+	if len(revoked) != 1 || revoked[0].(map[string]any)["character_id"] != strconv.FormatInt(idA, 10) ||
+		revoked[0].(map[string]any)["reason"] != "lease_lost" || revoked[0].(map[string]any)["lease_id"] != leaseA {
+		t.Fatalf("revoked: %s", res.Raw)
+	}
+	alive := func() int {
+		t.Helper()
+		return p.Count(`select count(*) from character_leases l join characters c using (character_id)
+			where c.account_id = $1 and l.zone_instance_id is not null and l.expires_at > $2`, pl.ID, p.Clock.Now())
+	}
+	if n := alive(); n != 1 {
+		t.Fatalf("arrendamientos vivos de la cuenta: %d", n)
+	}
+	// Con B fuera del latido y caducado, se puede borrar; el latido tardío no lo devuelve al mundo.
+	p.Clock.Advance(31 * time.Second)
+	res = p.PublicDo("DELETE", "/v1/characters/"+strconv.FormatInt(idB, 10), pl.Token, map[string]any{"confirm_name": "Bran"})
+	platformtest.Expect(t, res, 200, "")
+	res = z.Heartbeat(1, platformtest.Lease{CharacterID: idB, LeaseID: leaseB})
+	if revoked := res.Body["revoked"].([]any); len(revoked) != 1 || revoked[0].(map[string]any)["reason"] != "lease_lost" {
+		t.Fatalf("el borrado sigue en el mundo: %s", res.Raw)
+	}
+	if n := alive(); n != 0 {
+		t.Fatalf("arrendamientos vivos tras el borrado: %d", n)
 	}
 }
 
@@ -598,5 +652,53 @@ func TestInsertEachIsolatesTheBadRow(t *testing.T) {
 	rejected, err = zones.InsertEach(ctx, p.Pool, sql, [][]any{{"a", 1}, {"d", 4}}, []string{"a", "d"})
 	if err != nil || len(rejected) != 0 || p.Count(`select count(*) from lote`) != 3 {
 		t.Fatalf("%v %v", rejected, err)
+	}
+	// Un dato que PostgreSQL rechaza (SQLSTATE de clase 22: un NUL en jsonb, una fecha fuera de rango)
+	// es tan determinista como una restricción: se rechaza esa fila y no el lote (antes, 500 y la zona
+	// reintentaba el mismo lote sin fin).
+	p.Exec(`create table lote_datos (k text primary key, j jsonb, at timestamptz)`)
+	sql = `insert into lote_datos (k, j, at) values ($1, $2, to_timestamp($3)) on conflict (k) do nothing`
+	rows := [][]any{{"x", `{"n": 1}`, 1800000000}, {"nul", `{"n": "\u0000"}`, 1800000000}, {"fecha", `{}`, 9e15},
+		{"y", `{}`, 1800000000}}
+	rejected, err = zones.InsertEach(ctx, p.Pool, sql, rows, []string{"x", "nul", "fecha", "y"})
+	if err != nil || len(rejected) != 2 || rejected[0] != "nul" || rejected[1] != "fecha" ||
+		p.Count(`select count(*) from lote_datos`) != 2 {
+		t.Fatalf("%v %v", rejected, err)
+	}
+}
+
+// IsJSONObject: lo que jsonb guarda y lo que no (PostgreSQL rechaza \u0000, los suplentes sueltos y
+// el UTF-8 roto, que encoding/json deja pasar).
+func TestIsJSONObject(t *testing.T) {
+	cases := map[string]bool{
+		`{}`:                             true,
+		` {"a": [1, {"b": "ñ"}]} `:       true,
+		`{"cara": "\ud83d\ude00"}`:       true, // un par de suplentes
+		`{"barra": "\\u0000"}`:           true, // una barra escapada y el texto u0000
+		`{"a": "\"\u00e9"}`:              true,
+		`[]`:                             false,
+		`{"a": 1`:                        false,
+		`{"nul": "a\u0000b"}`:            false,
+		`{"a\u0000": 1}`:                 false,
+		`{"suelto": "\ud800"}`:           false,
+		`{"bajo": "\udc00"}`:             false,
+		`{"alto, alto": "\ud800\ud800"}`: false,
+		"{\"roto\": \"a\xffb\"}":         false,
+	}
+	for raw, want := range cases {
+		if got := zones.IsJSONObject([]byte(raw)); got != want {
+			t.Errorf("%q: %v", raw, got)
+		}
+	}
+}
+
+// Un error de datos (clase 22) que llega a la respuesta de una ruta interna es un 400 validation,
+// definitivo, y no un 500 que la zona reintenta.
+func TestFailDataErrorIs400(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/internal/v1/reports", nil)
+	zones.Fail(rec, req, nil, fmt.Errorf("insertar: %w", &pgconn.PgError{Code: "22P05", Message: "unsupported Unicode escape sequence"}))
+	if rec.Code != 400 || !strings.Contains(rec.Body.String(), `"validation"`) {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
 	}
 }

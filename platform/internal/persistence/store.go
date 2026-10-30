@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"slices"
 	"sort"
@@ -135,17 +136,20 @@ type ClaimResult struct {
 // share: el trabajo de perdidas y el latido esperan) → cuenta → billete → arrendamiento,
 //
 //  1. la instancia tiene que seguir live (si no, su 409);
-//  2. bloquea la fila de la cuenta del personaje y la comprueba: suspendida, expulsada o con el
-//     borrado pedido → 403 account_blocked;
+//  2. bloquea la fila de la cuenta del personaje y mira si está suspendida, expulsada o con el
+//     borrado pedido, sin responder todavía;
 //  3. el personaje tiene que estar vivo y ser del mundo de la instancia (si no, 409 ticket_invalid);
-//  4. consume el billete: de esta instancia y este personaje, sin usar, sin caducar (con 5 s de
+//  4. bloquea el billete: de esta instancia y este personaje, sin usar, sin caducar (con 5 s de
 //     margen) y de una sesión sin revocar (si no, 409 ticket_invalid);
-//  5. ningún otro personaje de la cuenta en el mundo con un arrendamiento vivo (409 character_busy);
-//  6. toma el arrendamiento si está libre o caducado (expires_at ≤ ahora, lo contrario de «vivo»; si
+//  5. solo ahora, con la cuenta bloqueada del paso 2, 403 account_blocked (con el motivo y la
+//     fecha): sin un billete válido nadie sabe nada de la cuenta (§5.3); si no, consume el billete;
+//  6. ningún otro personaje de la cuenta en el mundo con un arrendamiento vivo (409 character_busy);
+//  7. toma el arrendamiento si está libre o caducado (expires_at ≤ ahora, lo contrario de «vivo»; si
 //     no, 409 character_busy), con un lease_id nuevo, seq a 0 y sin hash;
-//  7. lee progress con ProgressStore.Load y los totales pvp en la misma transacción, y de la cuenta
+//  8. lee progress con ProgressStore.Load y los totales pvp en la misma transacción, y de la cuenta
 //     el silencio, los ignorados y los avisos que aún no ha visto (los de después de la última
-//     entrada al mundo de cualquiera de sus personajes, sanctions.PendingWarnings).
+//     entrada al mundo de cualquiera de sus personajes, sanctions.PendingWarnings; esa entrada la
+//     anota el primer guardado del arrendamiento, no la reclamación).
 //
 // Cualquier error deshace la transacción: el billete no queda consumido.
 func (s *Store) Claim(ctx context.Context, instance [16]byte, ticketID, characterID int64) (*ClaimResult, error) {
@@ -177,17 +181,12 @@ func (s *Store) Claim(ctx context.Context, instance [16]byte, ticketID, characte
 			for no key update`, r.AccountID).Scan(&status, &purgeAfter, &r.Role); err != nil {
 			return err
 		}
+		if status == "purged" {
+			return errTicketInvalid()
+		}
 		restriction, err := sanctions.Active(ctx, tx, r.AccountID, now)
 		if err != nil {
 			return err
-		}
-		switch {
-		case restriction != nil:
-			return errAccountBlocked(restriction.Kind, restriction.Until, restriction.Reason, restriction.Message())
-		case status == "pending_deletion":
-			return errAccountBlocked("pending_deletion", purgeAfter, "", sanctions.PendingDeletionMessage(purgeAfter))
-		case status != "active":
-			return errTicketInvalid()
 		}
 		var alive bool
 		var name *string
@@ -201,14 +200,27 @@ func (s *Store) Claim(ctx context.Context, instance [16]byte, ticketID, characte
 		}
 		r.Name = *name
 		var sessionID int64
-		err = tx.QueryRow(ctx, `update enter_tickets t set consumed_at = $4 from sessions s
+		err = tx.QueryRow(ctx, `select t.session_id from enter_tickets t join sessions s on s.session_id = t.session_id
 			where t.ticket_id = $1 and t.character_id = $2 and t.zone_instance_id = $3 and t.consumed_at is null
-			  and t.expires_at > $5 and s.session_id = t.session_id and s.revoked_at is null
-			returning t.session_id`, ticketID, characterID, instance, now, now.Add(-ticketGrace)).Scan(&sessionID)
+			  and t.expires_at > $4 and s.revoked_at is null
+			for update of t`, ticketID, characterID, instance, now.Add(-ticketGrace)).Scan(&sessionID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errTicketInvalid()
 		}
 		if err != nil {
+			return err
+		}
+		// El motivo y la fecha de una sanción solo los ve quien trae un billete válido de ese
+		// personaje para esta instancia; el error deshace la transacción y el billete sigue sin usar.
+		switch {
+		case restriction != nil:
+			return errAccountBlocked(restriction.Kind, restriction.Until, restriction.Reason, restriction.Message())
+		case status == "pending_deletion":
+			return errAccountBlocked("pending_deletion", purgeAfter, "", sanctions.PendingDeletionMessage(purgeAfter))
+		case status != "active":
+			return errTicketInvalid()
+		}
+		if _, err := tx.Exec(ctx, `update enter_tickets set consumed_at = $2 where ticket_id = $1`, ticketID, now); err != nil {
 			return err
 		}
 		var busy bool
@@ -267,10 +279,6 @@ func (s *Store) Claim(ctx context.Context, instance [16]byte, ticketID, characte
 		if r.Warnings, err = sanctions.PendingWarnings(ctx, tx, r.AccountID, r.WorldID, lastEntered, now); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `update characters set last_entered_at = $2 where character_id = $1`,
-			characterID, now); err != nil {
-			return err
-		}
 		res = r
 		return nil
 	})
@@ -318,10 +326,16 @@ type envelope struct {
 
 func envelopeError(detail string) error { return &InvalidSaveError{Check: "envelope", Detail: detail} }
 
+// maxPvPInt4 es el tope de los totales pvp que guarda character_pvp_stats en int (int4): kills,
+// deaths, assists, captures y defend_s; gate_damage es bigint (hasta el 2^53 − 1 de jsonx.Int).
+const maxPvPInt4 = math.MaxInt32
+
 // ParseEnvelope lee el sobre del guardado estricto (§7.3), sin tocar la base: claves conocidas,
 // save_format 1, character_id igual a routeID, ids y seq (≥ 1) válidos, reason de 1 a 5, progress
-// presente y, si llega, pvp con sus seis totales enteros ≥ 0. Cualquier fallo es
-// *InvalidSaveError con Check "envelope". routeID 0 no compara (un guardado dentro de un lote).
+// presente y, si llega, pvp con sus seis totales enteros ≥ 0 que caben en su columna (los int4,
+// hasta 2^31 − 1: si no, pgx no podía codificarlos y la respuesta era un 500 que la zona reintentaba
+// sin fin). Cualquier fallo es *InvalidSaveError con Check "envelope". routeID 0 no compara (un
+// guardado dentro de un lote).
 func ParseEnvelope(raw []byte, routeID int64) (SaveRequest, error) {
 	var env envelope
 	if err := jsonx.DecodeBytes(raw, &env); err != nil {
@@ -377,6 +391,11 @@ func ParseEnvelope(raw []byte, routeID int64) (SaveRequest, error) {
 				return req, envelopeError("un total de pvp es negativo")
 			}
 		}
+		for _, v := range []jsonx.Int{pvp.Kills, pvp.Deaths, pvp.Assists, pvp.Captures, pvp.DefendS} {
+			if v > maxPvPInt4 {
+				return req, envelopeError("un total de pvp no cabe en su columna (2147483647 como mucho; gate_damage, más)")
+			}
+		}
 		req.PvP = &pvp
 	}
 	return req, nil
@@ -390,11 +409,12 @@ type lease struct {
 	lastSeq     int64
 	lastHash    []byte
 	lastVersion int64
+	claimedAt   time.Time
 }
 
 func lockLeases(ctx context.Context, tx pgx.Tx, ids []int64) (map[int64]*lease, error) {
 	rows, err := tx.Query(ctx, `select character_id, world_id, lease_id, claimed_by, last_seq, last_save_hash,
-		last_save_version from character_leases where character_id = any($1) order by character_id for update`, ids)
+		last_save_version, claimed_at from character_leases where character_id = any($1) order by character_id for update`, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -403,7 +423,8 @@ func lockLeases(ctx context.Context, tx pgx.Tx, ids []int64) (map[int64]*lease, 
 	for rows.Next() {
 		var id int64
 		l := &lease{}
-		if err := rows.Scan(&id, &l.worldID, &l.leaseID, &l.claimedBy, &l.lastSeq, &l.lastHash, &l.lastVersion); err != nil {
+		if err := rows.Scan(&id, &l.worldID, &l.leaseID, &l.claimedBy, &l.lastSeq, &l.lastHash, &l.lastVersion,
+			&l.claimedAt); err != nil {
 			return nil, err
 		}
 		out[id] = l
@@ -438,6 +459,9 @@ func checkLease(l *lease, req SaveRequest, hash []byte) (seqState, error) {
 
 // apply hace el paso 4 de §7.3 de un guardado nuevo: ProgressStore.Apply (S1–S8), los totales pvp
 // con greatest y el arrendamiento (last_seq, hash, last_save_version y, con release_lease, libre).
+// El primer guardado del arrendamiento (last_seq 0) anota además la entrada al mundo:
+// characters.last_entered_at = la hora de su reclamación. Así un aviso (§9.5) se da por visto
+// cuando el personaje llegó al mundo, no cuando la zona lo reclamó y lo soltó sin dejarle entrar.
 func (s *Store) apply(ctx context.Context, tx pgx.Tx, inst *zones.Instance, l *lease, req SaveRequest, hash []byte,
 	now time.Time) (int64, error) {
 	key := SaveKey{WorldID: l.worldID, CharacterID: req.CharacterID, InstanceID: req.InstanceID, ZoneID: inst.ZoneID}
@@ -456,6 +480,12 @@ func (s *Store) apply(ctx context.Context, tx pgx.Tx, inst *zones.Instance, l *l
 				defend_s = greatest(p.defend_s, excluded.defend_s), updated_at = excluded.updated_at`,
 			req.CharacterID, l.worldID, int64(p.Kills), int64(p.Deaths), int64(p.Assists), int64(p.Captures),
 			int64(p.GateDamage), int64(p.DefendS), now); err != nil {
+			return 0, err
+		}
+	}
+	if l.lastSeq == 0 {
+		if _, err := tx.Exec(ctx, `update characters set last_entered_at = greatest(last_entered_at, $2)
+			where character_id = $1`, req.CharacterID, l.claimedAt); err != nil {
 			return 0, err
 		}
 	}
@@ -577,8 +607,8 @@ func withCharacter(err error, characterID int64, many bool) error {
 }
 
 // SaveError convierte un error del guardado en su respuesta con la regla de §7.3: el error del sobre
-// y *InvalidSaveError, 400 invalid_save con check y detail; SQLSTATE de clase 23 o P0001 (también
-// en el COMMIT), 400 invalid_save con check S8 y el SQLSTATE y la restricción en detail; 40001 y
+// y *InvalidSaveError, 400 invalid_save con check y detail; SQLSTATE de clase 22 o 23 o P0001
+// (también en el COMMIT), 400 invalid_save con check S8 y el SQLSTATE y la restricción en detail; 40001 y
 // 40P01 tras los reintentos, sin conexión o plazo vencido, 503 db_unavailable; un *httpx.Error, tal
 // cual; cualquier otro, nil (500 internal, que registra quien llama). En un lote, el cuerpo lleva
 // además el character_id del guardado que falló.
@@ -590,7 +620,7 @@ func SaveError(err error) *httpx.Error {
 		resp = cloneError(resp)
 	case errors.As(err, &invalid):
 		resp = invalidSave(invalid.Check, invalid.Detail)
-	case db.Classify(err) == db.KindIntegrity:
+	case db.Deterministic(err):
 		detail := "SQLSTATE " + db.SQLState(err)
 		if c := db.Constraint(err); c != "" {
 			detail += " (" + c + ")"

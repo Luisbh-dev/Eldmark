@@ -1137,7 +1137,7 @@ el otro la cita. La misma tabla está en plataforma.md §17.
 | Cuándo se guarda | Cada 60 s con alguna sección sucia, en fases; una escritura en vuelo; el final en `finish`. Salida: `finish` → `ScoreKeeper.forget` → `ProgressService.on_departure`; al parar, `release` de `LOADING`, `cancel` de `VERIFYING` y `finish` de todos antes de `_clear_players()` | plataforma.md §7.2 | progresion.md §9.2 |
 | Baja sin guardado | Un definitivo antes de `finish` o un `revoked` `lease_lost`: `CharacterSaver.drop(net_id, code)` (con `release` salvo en `lease_lost`), expulsión con el cuerpo fuera en el acto (sin salida en combate), `ScoreKeeper.forget` y `ProgressService.on_departure`. Todo gancho de `ProgressService` por `net_id` sin `PlayerProgress` no hace nada | plataforma.md §7.2 | progresion.md §9.2, §14.2 |
 | Baja en `LOADING` | Sin guardado: `ZonePlatform.release(character_id, lease_id)` y `ProgressService.cancel_prepared(peer_id)`, también con un `revoked` | plataforma.md §5.2, §14.3 | progresion.md §9.1, §14.2 |
-| Respuestas del guardado | Una tabla y una regla de errores. Contenido o base que no es pasajero (`*persistence.InvalidSaveError`, SQLSTATE de clase 23 o `P0001`, también en el COMMIT): 400 `invalid_save` con `fields.check` y `fields.detail`. `40001` y `40P01` tras reintentar, sin conexión o plazo: 503. Un error del sobre: `invalid_save` con `check = "envelope"`. No hay `invalid_progress` ni `progress.ErrFormat`. `instance_*`: cierre con guardados finales. Cualquier otro 4xx es definitivo, como `invalid_save`, también en la liberación. `progress` es obligatoria y `pvp`, opcional y sin bajar | plataforma.md §6.1, §7.3 | progresion.md §9.2, §13.3 |
+| Respuestas del guardado | Una tabla y una regla de errores. Contenido o base que no es pasajero (`*persistence.InvalidSaveError`, SQLSTATE de clase 22 o 23 o `P0001`, también en el COMMIT): 400 `invalid_save` con `fields.check` y `fields.detail`. `40001` y `40P01` tras reintentar, sin conexión o plazo: 503. Un error del sobre: `invalid_save` con `check = "envelope"`. No hay `invalid_progress` ni `progress.ErrFormat`. `instance_*`: cierre con guardados finales. Cualquier otro 4xx es definitivo, como `invalid_save`, también en la liberación. `progress` es obligatoria y `pvp`, opcional y sin bajar | plataforma.md §6.1, §7.3 | progresion.md §9.2, §13.3 |
 | Sin plataforma | Nada se guarda: personajes efímeros; no hay `--progress-file` ni repositorios de progreso. `CharacterSaver` solo existe con `--platform` y llama a `ZonePlatform.save` | progresion.md §0, §9.4 | plataforma.md §5.5, §7.5 |
 | Reclamación | `{lease_id, instance_status, account, character, progress, pvp}`, solo de un personaje no borrado, con la cuenta bloqueada, sin otro personaje de la cuenta en el mundo y con `Load` en su transacción; en la zona, `AuthOutcome.claimed: ClaimedCharacter` con `progress: Dictionary`. No hay clase `CharacterRecord` | plataforma.md §5.3, §6, §14.3 | progresion.md §3.4, §9.1 |
 | Antes del WELCOME | Reino → cupo → `ProgressService.prepare(peer_id, claimed)` → WELCOME con el reino del personaje; si algo falla, REJECT (`REALM`, `FULL` o `UNAVAILABLE`) y `release`. El WELCOME no cambia de bytes | plataforma.md §5.2 | progresion.md §9.1 |
@@ -1268,8 +1268,8 @@ func New(rules *Rules, now func() time.Time) *Store   // implementa persistence.
 Dentro del paso 4 de plataforma.md §7.3: el arrendamiento ya está bloqueado y comprobado y el `seq` es
 nuevo (pasos 2 y 3, sin número S). Cualquier fallo de S1–S7 devuelve `&persistence.InvalidSaveError{Check,
 Detail}` y el guardado entero se deshace. Un error de la base en S8 o en el COMMIT sigue la regla de errores de
-plataforma.md §7.3 (clase 23 y `P0001` → `invalid_save` con `check = "S8"`; `40001`, `40P01` y sin conexión →
-503 y reintento).
+plataforma.md §7.3 (clases 22 y 23 y `P0001` → `invalid_save` con `check = "S8"`; `40001`, `40P01` y sin
+conexión → 503 y reintento).
 
 | # | Comprobación |
 |---|---|
@@ -1728,8 +1728,11 @@ implementarla:
   a `Ledger(ctx, pool, …)`. Las dos exigen la instancia `live` (§6.1 de plataforma.md).
 - **Guardado.** `Apply(ctx, tx, key, progress)` corre en la transacción que ya tiene el arrendamiento
   bloqueado y el `seq` comprobado, con `key.ZoneID` de la instancia `claimed_by` y `key.WorldID` del
-  arrendamiento; un `*InvalidSaveError` o un SQLSTATE de clase 23 o `P0001` (también en el COMMIT) son 400
-  `invalid_save`, y un `40001` se reintenta con la transacción entera. Un `duplicate` no llama a `Apply`.
+  arrendamiento; un `*InvalidSaveError` o un SQLSTATE de clase 22 o 23 o `P0001` (también en el COMMIT) son 400
+  `invalid_save`, y un `40001` se reintenta con la transacción entera. Un `duplicate` no llama a `Apply`. Desde la
+  revisión de la implementación de plataforma.md (su §19.7), la clase 22 (un dato que la base no admite: un NUL en
+  un `jsonb`, un número o una fecha fuera de rango) cuenta como la 23: antes era un 500 que la zona reintentaba sin
+  fin.
 - **Reclamación.** `Load(ctx, tx, characterID)` corre en la transacción de la reclamación, con el
   arrendamiento recién tomado; un error de `Load` es un 500.
 - **El falso** (`MemoryProgressStore`) imita una S2 mínima (un `op_id` ya aplicado falla) y `Op` con la
@@ -1886,3 +1889,17 @@ ART-20).
 **Queda para después:** `items` (P1) y `starter_templates` (integración con habilidades.md) en las reglas
 exportadas; `ValidateCreate` y el resto del almacén en Go (P7); el uso de todo esto en la zona (P4, P5a, P5c) y en el
 cliente (P6, plataforma.md P8).
+
+### 19.5 Lo que cambia la revisión de la implementación de plataforma.md
+
+La revisión de plataforma.md (su §19.7) toca tres cosas que ve P7:
+
+- **La regla de errores del guardado** (§13.1, «Respuestas del guardado», cambiada igual en los dos documentos):
+  un SQLSTATE de clase 22 es, como uno de clase 23, 400 `invalid_save` con `check = "S8"` (`db.Deterministic`).
+  Un `progress` con `\u0000` en una cadena que `Apply` guarde en `jsonb`, o un número que no quepa en su columna,
+  ya no deja al personaje sin guardar para siempre. Aun así, S1–S7 deberían rechazar antes lo que no cabe, con su
+  propio `check`.
+- **`characters.last_entered_at`** ya no lo escribe la reclamación sino el primer guardado aplicado de cada
+  arrendamiento (con la hora de la reclamación); lo hace `persistence.Store` después de `Apply`, en la misma
+  transacción. P7 no tiene que hacer nada.
+- **`pvp`**: el sobre rechaza (`envelope`) los totales `int` de más de 2^31 − 1.

@@ -11,6 +11,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"eldmark/platform/internal/accounts"
 	"eldmark/platform/internal/config"
 	"eldmark/platform/legal"
 )
@@ -203,6 +204,59 @@ func TestLinksExpireAndAreSingleUse(t *testing.T) {
 	h.login("enlace@example.org", password) // nada cambió
 }
 
+// Pedir la recuperación hace el mismo trabajo exista o no la cuenta (§4.2): los dos caminos escriben
+// y confirman una fila password_reset en auth_events (con la cuenta o sin ella), así que el tiempo
+// de la respuesta no delata qué correos tienen cuenta.
+func TestPasswordResetWritesEitherWay(t *testing.T) {
+	h := newHarness(t)
+	id := h.register("tiene@example.org")
+	ip := h.nextIP()
+	for _, email := range []string{"tiene@example.org", "nadie@example.org"} {
+		if res := h.do(call{method: "POST", path: "/v1/account/password-reset", body: map[string]any{"email": email},
+			ip: ip}); res.status != 202 || res.raw != "{}\n" {
+			t.Fatal(res.raw)
+		}
+	}
+	var withAccount, without int
+	h.scalar(&withAccount, `select count(*) from auth_events where kind = 'password_reset' and account_id = $1 and ip = $2`, id, ip)
+	h.scalar(&without, `select count(*) from auth_events where kind = 'password_reset' and account_id is null and ip = $1`, ip)
+	if withAccount != 1 || without != 1 {
+		t.Fatalf("filas password_reset: con cuenta %d, sin cuenta %d", withAccount, without)
+	}
+	if h.mailCount("nadie@example.org", "reset_password") != 0 || h.mailCount("tiene@example.org", "reset_password") != 1 {
+		t.Fatal("correos")
+	}
+	// La respuesta no espera a la base: con la tabla de cuentas bloqueada, vuelve igual (y lo demás
+	// llega al soltarla).
+	ctx := context.Background()
+	lock, err := h.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lock.Exec(ctx, `lock table accounts in access exclusive mode`); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- h.svc.RequestPasswordReset(ctx, "tiene@example.org", accounts.ClientMeta{IP: h.nextIPAddr()})
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("la respuesta espera a la base")
+	}
+	if err := lock.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	h.svc.Wait()
+	if h.mailCount("tiene@example.org", "reset_password") != 2 {
+		t.Fatal("el segundo enlace no llegó")
+	}
+}
+
 // Recuperar la contraseña revoca todas las sesiones e invalida los enlaces.
 func TestPasswordReset(t *testing.T) {
 	h := newHarness(t)
@@ -340,6 +394,149 @@ func TestEmailChangeAndRevert(t *testing.T) {
 		t.Fatal(kinds)
 	}
 }
+
+// changeEmail cambia el correo de la sesión s (con su contraseña) de from a to y devuelve el enlace
+// revert_email que llega a from.
+func (h *harness) changeEmail(s session, from, to, pw string) string {
+	h.t.Helper()
+	if res := h.do(call{method: "POST", path: "/v1/account/email", token: s.access, ip: h.nextIP(),
+		body: map[string]any{"new_email": to, "password": pw}}); res.status != 202 {
+		h.t.Fatalf("cambio a %s: %s", to, res.raw)
+	}
+	_, change := h.mailTo(to, "change_email")
+	if res := h.do(call{method: "POST", path: "/v1/account/email/confirm", body: map[string]any{"token": change}}); res.status != 204 {
+		h.t.Fatalf("confirmar %s: %s", to, res.raw)
+	}
+	_, revert := h.mailTo(from, "email_changed")
+	if revert == "" {
+		h.t.Fatalf("sin revert_email a %s", from)
+	}
+	return revert
+}
+
+func (h *harness) revert(token string) *response {
+	h.t.Helper()
+	return h.do(call{method: "POST", path: "/v1/account/email/revert", body: map[string]any{"token": token}})
+}
+
+// Quien sabe la contraseña cambia el correo dos veces (A→B→C): al dueño le llega R1 en A y al ladrón
+// R2 en B. Gastar un revert_email anula los de la cuenta emitidos después, así que el del dueño (el
+// más antiguo) deja muerto el del ladrón, y el del ladrón, usado antes, no anula el del dueño (§4.3).
+func TestRevertEmailChain(t *testing.T) {
+	h := newHarness(t)
+	// El dueño revierte primero: R2 ya no vale y la cuenta sigue siendo suya.
+	id := h.register("dueno@example.org")
+	s := h.login("dueno@example.org", password)
+	r1 := h.changeEmail(s, "dueno@example.org", "ladron1@example.org", password)
+	thief := h.login("ladron1@example.org", password)
+	r2 := h.changeEmail(thief, "ladron1@example.org", "ladron2@example.org", password)
+	if res := h.revert(r1); res.status != 204 {
+		t.Fatal(res.raw)
+	}
+	_, reset := h.mailTo("dueno@example.org", "email_reverted")
+	if res := h.do(call{method: "POST", path: "/v1/account/password-reset/confirm",
+		body: map[string]any{"token": reset, "new_password": "la del dueño, nueva"}}); res.status != 204 {
+		t.Fatal(res.raw)
+	}
+	h.clock.Advance(3 * 24 * time.Hour)
+	if res := h.revert(r2); res.errField("token") != "used" {
+		t.Fatalf("el revert_email del ladrón sigue vivo: %s", res.raw)
+	}
+	var email string
+	h.scalar(&email, `select email from accounts where account_id = $1`, id)
+	if email != "dueno@example.org" {
+		t.Fatal(email)
+	}
+	h.login("dueno@example.org", "la del dueño, nueva")
+	h.expect(h.loginFrom("ladron1@example.org", password, h.nextIP()), 401, "invalid_credentials")
+
+	// El ladrón revierte primero con R2: R1 sigue vivo, el dueño vuelve con él y el enlace de
+	// recuperación que le llegó al ladrón deja de valer.
+	id = h.register("duena@example.org")
+	s = h.login("duena@example.org", password)
+	r1 = h.changeEmail(s, "duena@example.org", "ladrona1@example.org", password)
+	thief = h.login("ladrona1@example.org", password)
+	r2 = h.changeEmail(thief, "ladrona1@example.org", "ladrona2@example.org", password)
+	if res := h.revert(r2); res.status != 204 {
+		t.Fatal(res.raw)
+	}
+	_, thiefReset := h.mailTo("ladrona1@example.org", "email_reverted")
+	if res := h.revert(r1); res.status != 204 {
+		t.Fatalf("el revert_email del dueño tiene que seguir valiendo: %s", res.raw)
+	}
+	h.scalar(&email, `select email from accounts where account_id = $1`, id)
+	if email != "duena@example.org" {
+		t.Fatal(email)
+	}
+	if res := h.do(call{method: "POST", path: "/v1/account/password-reset/confirm",
+		body: map[string]any{"token": thiefReset, "new_password": "la de la ladrona"}}); res.errField("token") != "used" {
+		t.Fatalf("la recuperación del ladrón sigue viva: %s", res.raw)
+	}
+	if res := h.revert(r2); res.errField("token") != "used" {
+		t.Fatal(res.raw)
+	}
+}
+
+// Mientras vive un revert_email, su correo queda reservado para el dueño: ni un registro, ni el
+// cambio de correo de otra cuenta, ni un change_email a ese correo pedido antes lo toman (los dos
+// primeros reciben lo mismo que un correo con cuenta), y el dueño puede volver a él. Al caducar el
+// enlace, el correo queda libre (§4.3).
+func TestOldEmailIsReservedWhileRevertLives(t *testing.T) {
+	h := newHarness(t)
+	// Otra cuenta pide pasarse a dueno@ cuando aún no lo tiene nadie.
+	h.register("otro@example.org")
+	other := h.login("otro@example.org", password)
+	if res := h.do(call{method: "POST", path: "/v1/account/email", token: other.access, ip: h.nextIP(),
+		body: map[string]any{"new_email": "dueno@example.org", "password": password}}); res.status != 202 {
+		t.Fatal(res.raw)
+	}
+	_, early := h.mailTo("dueno@example.org", "change_email")
+
+	id := h.register("dueno@example.org")
+	s := h.login("dueno@example.org", password)
+	r1 := h.changeEmail(s, "dueno@example.org", "ladron@example.org", password)
+	res := h.do(call{method: "POST", path: "/v1/accounts", body: registerBody("dueno@example.org", "otra contraseña larga"),
+		ip: h.nextIP()})
+	if res.status != 202 || res.raw != "{}\n" {
+		t.Fatal(res.raw)
+	}
+	var squatters int
+	h.scalar(&squatters, `select count(*) from accounts where email = 'dueno@example.org'`)
+	if squatters != 0 || h.mailCount("dueno@example.org", "register_existing") != 1 {
+		t.Fatalf("el registro tomó el correo reservado: %d cuentas", squatters)
+	}
+	if res := h.do(call{method: "POST", path: "/v1/account/email/confirm", body: map[string]any{"token": early}}); res.errField("token") != "unavailable" {
+		t.Fatalf("el change_email de antes tomó el correo reservado: %s", res.raw)
+	}
+	h.clock.Advance(time.Hour) // el límite de correos de dueno@ (3 por hora)
+	other = h.login("otro@example.org", password)
+	if res := h.do(call{method: "POST", path: "/v1/account/email", token: other.access, ip: h.nextIP(),
+		body: map[string]any{"new_email": "dueno@example.org", "password": password}}); res.status != 202 {
+		t.Fatal(res.raw)
+	}
+	if h.mailCount("dueno@example.org", "change_email") != 1 || h.mailCount("dueno@example.org", "register_existing") != 2 {
+		t.Fatal("el cambio de otra cuenta tomó el correo reservado")
+	}
+	if res := h.revert(r1); res.status != 204 {
+		t.Fatalf("el dueño vuelve a su correo: %s", res.raw)
+	}
+	var email string
+	h.scalar(&email, `select email from accounts where account_id = $1`, id)
+	if email != "dueno@example.org" {
+		t.Fatal(email)
+	}
+	// Caducado el enlace, el correo que reservaba queda libre.
+	h.changeEmail(other, "otro@example.org", "otro2@example.org", password)
+	h.clock.Advance(accountsRevertTTL + time.Second)
+	if res := h.do(call{method: "POST", path: "/v1/accounts", body: registerBody("otro@example.org", password),
+		ip: h.nextIP()}); res.status != 202 {
+		t.Fatal(res.raw)
+	}
+	h.accountID("otro@example.org")
+}
+
+// accountsRevertTTL es accounts.RevertTTL (7 días).
+const accountsRevertTTL = 7 * 24 * time.Hour
 
 // Borrado y cancelación en plazo (§4.3); vencido, no se cancela y la purga lo borra.
 func TestDeletionAndCancellation(t *testing.T) {

@@ -1,7 +1,8 @@
 // Package db abre la base de la plataforma y clasifica sus errores con la regla de plataforma.md
-// §7.3: un error de integridad (SQLSTATE de clase 23, o P0001 del disparador de solo añadir) es
-// determinista y no se reintenta; 40001 y 40P01 se reintentan con la transacción entera; sin
-// conexión o con el plazo vencido, la base no está disponible (503).
+// §7.3: un error de integridad (SQLSTATE de clase 23, o P0001 del disparador de solo añadir) o de
+// datos (clase 22: un NUL en jsonb, una fecha o un número fuera de rango) es determinista y no se
+// reintenta; 40001 y 40P01 se reintentan con la transacción entera; sin conexión o con el plazo
+// vencido, la base no está disponible (503).
 package db
 
 import (
@@ -63,6 +64,7 @@ const (
 	KindIntegrity               // clase 23 o P0001: determinista, 400 invalid_save en el guardado
 	KindRetryable               // 40001 o 40P01: se reintenta la transacción; agotados, 503
 	KindUnavailable             // sin conexión, plazo vencido, servidor parándose: 503
+	KindData                    // clase 22 (excepción de datos): determinista, como la de integridad
 )
 
 func (k Kind) String() string {
@@ -73,6 +75,8 @@ func (k Kind) String() string {
 		return "conflicto"
 	case KindUnavailable:
 		return "no disponible"
+	case KindData:
+		return "datos"
 	}
 	return "otro"
 }
@@ -95,6 +99,12 @@ func Constraint(err error) string {
 	return ""
 }
 
+// Deterministic dice si el error es de los que reintentar no arregla: integridad o datos (§7.3).
+func Deterministic(err error) bool {
+	k := Classify(err)
+	return k == KindIntegrity || k == KindData
+}
+
 // Classify devuelve la clase del error.
 func Classify(err error) Kind {
 	if err == nil {
@@ -104,6 +114,8 @@ func Classify(err error) Kind {
 		switch {
 		case code[:2] == "23" || code == "P0001":
 			return KindIntegrity
+		case code[:2] == "22":
+			return KindData
 		case code == "40001" || code == "40P01":
 			return KindRetryable
 		case code[:2] == "08" || code == "57014" || code == "57P01" || code == "57P02" || code == "57P03" ||

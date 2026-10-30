@@ -22,6 +22,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -101,6 +102,7 @@ type Service struct {
 	failures    *failureTracker
 	limits      limits
 	minProtocol int
+	background  sync.WaitGroup // lo que sigue tras responder (Wait)
 }
 
 type limits struct {

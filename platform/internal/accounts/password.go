@@ -47,8 +47,17 @@ func (e *ThrottledError) Is(target error) bool { return target == ErrThrottled }
 // failureTracker lleva los fallos de contraseña en memoria (una sola instancia en la fase 5; LRU
 // de 100 000 claves de cuenta).
 type failureTracker struct {
-	mu   sync.Mutex
-	keys *ratelimit.LRU[string, *keyFailures]
+	mu    sync.Mutex
+	keys  *ratelimit.LRU[string, *keyFailures]
+	turns map[string]*keyTurn // las claves con algún intento en curso (fuera del LRU: no se expulsan)
+}
+
+// keyTurn es el turno de una clave: un intento a la vez por cuenta (§4.2), para que comprobar el
+// freno, mirar la contraseña y anotar el fallo sean una sola sección. Si no, los intentos
+// simultáneos pasaban todos la comprobación antes de que se anotara ningún fallo.
+type keyTurn struct {
+	slot    chan struct{} // capacidad 1
+	waiting int           // intentos que lo tienen o lo esperan; con 0 se borra
 }
 
 type keyFailures struct {
@@ -65,7 +74,33 @@ type groupFailures struct {
 }
 
 func newFailureTracker(capacity int) *failureTracker {
-	return &failureTracker{keys: ratelimit.NewLRU[string, *keyFailures](capacity)}
+	return &failureTracker{keys: ratelimit.NewLRU[string, *keyFailures](capacity), turns: map[string]*keyTurn{}}
+}
+
+// turn espera el turno de la clave (o a que venza ctx) y devuelve la función que lo suelta.
+func (f *failureTracker) turn(ctx context.Context, key string) (func(), error) {
+	f.mu.Lock()
+	t := f.turns[key]
+	if t == nil {
+		t = &keyTurn{slot: make(chan struct{}, 1)}
+		f.turns[key] = t
+	}
+	t.waiting++
+	f.mu.Unlock()
+	leave := func() {
+		f.mu.Lock()
+		if t.waiting--; t.waiting == 0 {
+			delete(f.turns, key)
+		}
+		f.mu.Unlock()
+	}
+	select {
+	case t.slot <- struct{}{}:
+		return func() { <-t.slot; leave() }, nil
+	case <-ctx.Done():
+		leave()
+		return nil, ctx.Err()
+	}
 }
 
 // check dice cuánto falta para que la clave pueda intentarlo desde el grupo (0: ya).
@@ -143,6 +178,11 @@ func (f *failureTracker) success(key string) {
 // y las rutas con sesión que piden contraseña, con los mismos contadores. accountID es 0 para un
 // correo sin cuenta y email es el normalizado (en las rutas con sesión, el actual de la cuenta).
 //
+// Los intentos de una misma clave van de uno en uno: el freno se comprueba con el turno tomado y el
+// fallo se anota antes de soltarlo, así que N intentos a la vez cuentan como N seguidos (sin el
+// turno, todos pasaban la comprobación antes de que se anotara el primer fallo). Los de claves
+// distintas no se esperan.
+//
 // La clave de los fallos es el accountID o, si es 0, el SHA-256 del correo: cada correo sin cuenta
 // tiene su propio contador y frenar uno no delata a los demás. Con un correo sin cuenta, o una
 // cuenta sin contraseña (password_hash nulo tras revertir el correo), se comprueba contra el hash
@@ -150,43 +190,13 @@ func (f *failureTracker) success(key string) {
 // (429), exista o no la cuenta. Si la cadena guardada no usa los parámetros actuales, la reescribe.
 func (s *Service) CheckPassword(ctx context.Context, accountID int64, email string, password string, ip netip.Addr) (bool, error) {
 	key := accountKey(accountID, email)
-	group := httpx.AddrGroup(ip)
-	now := s.clock.Now()
-	if wait := s.failures.check(key, group, now); wait > 0 {
-		return false, &ThrottledError{RetryAfter: wait}
-	}
-	// La misma consulta también sin cuenta (con el id 0, que no existe): el tiempo no cambia.
-	phc := s.filler
-	var stored *string
-	err := s.pool.QueryRow(ctx, `select password_hash from accounts where account_id = $1 and status <> 'purged'`,
-		accountID).Scan(&stored)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return false, err
-	}
-	if stored != nil && accountID != 0 {
-		phc = *stored
-	}
-	ok, rehash, err := passwords.VerifyContext(ctx, password, phc, s.params)
-	if errors.Is(err, passwords.ErrFormat) {
-		// Una cadena dañada en la base: se registra y cuenta como fallo, con el tiempo del relleno.
-		s.log.LogAttrs(ctx, slog.LevelError, "hash de contraseña no válido", slog.String("req", logx.RequestID(ctx)),
-			slog.String("account", strconv.FormatInt(accountID, 10)))
-		_, _, err = passwords.VerifyContext(ctx, password, s.filler, s.params)
-		ok, rehash = false, false
-	}
-	if err != nil {
-		return false, err
-	}
-	if phc == s.filler {
-		ok = false
-	}
-	if !ok {
-		if s.failures.fail(key, group, now) && accountID != 0 {
+	ok, rehash, phc, alert, err := s.checkInTurn(ctx, key, accountID, password, httpx.AddrGroup(ip))
+	if err != nil || !ok {
+		if alert && accountID != 0 {
 			s.sendMail(ctx, mail.LoginFailures, email, mail.Data{})
 		}
-		return false, nil
+		return false, err
 	}
-	s.failures.success(key)
 	if rehash {
 		if fresh, err := passwords.HashContext(ctx, password, s.params); err == nil {
 			// Solo si nadie la ha cambiado entre medias.
@@ -198,6 +208,51 @@ func (s *Service) CheckPassword(ctx context.Context, accountID int64, email stri
 		}
 	}
 	return true, nil
+}
+
+// checkInTurn es lo de [Service.CheckPassword] que va con el turno de la clave: el freno, la
+// consulta, argon2 y anotar el fallo o el acierto. alert dice si toca el correo login_failures.
+func (s *Service) checkInTurn(ctx context.Context, key string, accountID int64, password, group string) (
+	ok, rehash bool, phc string, alert bool, err error) {
+	release, err := s.failures.turn(ctx, key)
+	if err != nil {
+		return false, false, "", false, err
+	}
+	defer release()
+	now := s.clock.Now()
+	if wait := s.failures.check(key, group, now); wait > 0 {
+		return false, false, "", false, &ThrottledError{RetryAfter: wait}
+	}
+	// La misma consulta también sin cuenta (con el id 0, que no existe): el tiempo no cambia.
+	phc = s.filler
+	var stored *string
+	err = s.pool.QueryRow(ctx, `select password_hash from accounts where account_id = $1 and status <> 'purged'`,
+		accountID).Scan(&stored)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return false, false, "", false, err
+	}
+	if stored != nil && accountID != 0 {
+		phc = *stored
+	}
+	ok, rehash, err = passwords.VerifyContext(ctx, password, phc, s.params)
+	if errors.Is(err, passwords.ErrFormat) {
+		// Una cadena dañada en la base: se registra y cuenta como fallo, con el tiempo del relleno.
+		s.log.LogAttrs(ctx, slog.LevelError, "hash de contraseña no válido", slog.String("req", logx.RequestID(ctx)),
+			slog.String("account", strconv.FormatInt(accountID, 10)))
+		_, _, err = passwords.VerifyContext(ctx, password, s.filler, s.params)
+		ok, rehash = false, false
+	}
+	if err != nil {
+		return false, false, "", false, err
+	}
+	if phc == s.filler {
+		ok = false
+	}
+	if !ok {
+		return false, false, phc, s.failures.fail(key, group, now), nil
+	}
+	s.failures.success(key)
+	return true, rehash, phc, false, nil
 }
 
 // resetFailures olvida los fallos de una cuenta (tras recuperar la contraseña).

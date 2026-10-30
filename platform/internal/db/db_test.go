@@ -33,6 +33,9 @@ func TestClassifyRealErrors(t *testing.T) {
 		"interbloqueo":      {"do $$ begin raise exception 'choque' using errcode = '40P01'; end $$", db.KindRetryable, "40P01"},
 		"plazo":             {"set local statement_timeout = 1; select pg_sleep(1)", db.KindUnavailable, "57014"},
 		"error de sintaxis": {"selec 1", db.KindOther, "42601"},
+		"NUL en jsonb":      {`select '{"a": "\u0000"}'::jsonb`, db.KindData, "22P05"},
+		"fecha fuera":       {"select to_timestamp(9000000000000000)", db.KindData, "22008"},
+		"número fuera":      {"select 2147483648::int", db.KindData, "22003"},
 	}
 	for name, c := range cases {
 		err := db.InTx(ctx, pool, pgx.TxOptions{}, func(tx pgx.Tx) error {

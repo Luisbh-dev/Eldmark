@@ -133,7 +133,7 @@ que falta o no se entiende **impide arrancar** con un mensaje en español.
 | `ELDMARK_REQUIRE_VERIFIED_EMAIL` | `false` en dev y test; `true` en el resto | Para entrar al mundo |
 | `ELDMARK_MAIL` · `ELDMARK_SMTP_URL` | `log` · — | `log` (tabla `outbound_mail`) o `smtp`; secreto `smtp://usuario:clave@host:587` |
 | `ELDMARK_TLS_CERT_FILE` · `ELDMARK_TLS_KEY_FILE` | — | Opcional: HTTPS directo (pruebas del anclaje) |
-| `ELDMARK_HEARTBEAT_S` · `ELDMARK_LEASE_TTL_S` | `5` · `30` | Una instancia sin latido durante 3 × `HEARTBEAT_S` se da por perdida; la zona se cerca a 2 × (§5.3) |
+| `ELDMARK_HEARTBEAT_S` · `ELDMARK_LEASE_TTL_S` | `5` · `30` | Una instancia sin latido durante 3 × `HEARTBEAT_S` se da por perdida; la zona se cerca a 2 × (§5.3). `LEASE_TTL_S` tiene que pasar de 3 × `HEARTBEAT_S` + min(5 s, `HEARTBEAT_S`) (20 s con los valores por defecto): si no, un arrendamiento caduca antes de que su instancia sin latido se dé por perdida |
 | `ELDMARK_LEGAL_DIR` | `platform/legal` | Textos legales versionados |
 
 **Registro:** `log/slog` con `JSONHandler` a la salida estándar. Campos: `time`, `level`, `msg`, `req` (id de
@@ -168,8 +168,9 @@ petición, también en `X-Request-Id`), `route`, `status`, `ms`, y `account` y `
 - `GET /health`: 200 si el proceso vive (sin tocar la base). `GET /ready`: 200 si `select 1` responde en menos de 1
   s y las migraciones están al día; si no, 503 con el motivo.
 - Al arrancar, `serve` da 30 s de gracia: `last_heartbeat_at = greatest(…, now())` en las instancias `starting` y
-  `live`, y `expires_at = greatest(expires_at, now() + TTL)` en los arrendamientos. Una plataforma que vuelve tras
-  caerse no da por muertas a las zonas que no pudieron latir.
+  `live`, y `expires_at = greatest(expires_at, now() + TTL)` en sus arrendamientos que seguían vivos en el último
+  latido (`expires_at ≥ last_heartbeat_at`, mirado antes de subirlo): uno que ya había caducado antes de la caída no
+  resucita. Una plataforma que vuelve tras caerse no da por muertas a las zonas que no pudieron latir.
 - Trabajos periódicos en el mismo proceso (`time.Ticker` y `pg_try_advisory_lock`): zonas perdidas (cada
   `min(5 s, HEARTBEAT_S)`),
   retenciones y purgas (1 h; la del libro, `ProgressStore.PurgeRetention`, progresion.md §3.5).
@@ -187,7 +188,8 @@ Paquete `internal/testdb`. **No hace falta Docker** (aquí su demonio no corre).
 | Cada prueba | `create database t_<n> template tmpl` y `drop` al terminar | 60 ms |
 
 - `testdb.Main(m)` en el `TestMain`; `testdb.New(t)` da un `*pgxpool.Pool` limpio; al acabar, `pg_ctl stop -m
-  immediate` y se borra la carpeta. Sin binarios, `t.Skip`, salvo con `ELDMARK_REQUIRE_PG=1` (la CI), que falla;
+  immediate` y se borra la carpeta; si el proceso muere antes (un pánico, el plazo de `go test`, un Ctrl-C), lo hace
+  un vigilante: un `sh` en su propio grupo de procesos que espera en una tubería y limpia al cerrarse. Sin binarios, `t.Skip`, salvo con `ELDMARK_REQUIRE_PG=1` (la CI), que falla;
   `ELDMARK_TEST_DATABASE_URL` usa un servidor ya levantado. La primera compilación con pgx tarda ~18 s: los < 30 s
   por paquete son con la caché caliente.
 - Los esquemas de §3 (0001–0006) y del progreso (progresion.md §3.3) se aplicaron así en las revisiones: el
@@ -431,7 +433,10 @@ No hay `email_taken` ni `account_locked`: los dos delataban qué correos tienen 
 - **Una sola función comprueba contraseñas:** `accounts.CheckPassword(ctx, accountID, email, password, ip) (ok
   bool, err error)`, con `accountID` 0 para un correo inexistente y `email` el normalizado. La usan el inicio de
   sesión y las rutas con sesión que piden contraseña (`/v1/account/password`, `/email`, `/deletion`, `/export`, que
-  pasan el correo actual de la cuenta), con los mismos contadores.
+  pasan el correo actual de la cuenta), con los mismos contadores. **Los intentos de una misma clave van de uno en
+  uno:** el freno se mira, la contraseña se comprueba y el fallo se anota con el turno de la clave tomado, así que N
+  intentos a la vez cuentan como N seguidos. Sin el turno, todos pasaban la comprobación antes de que se anotara el
+  primer fallo, y el freno de 30 s y el bloqueo del grupo admitían ráfagas.
 - **Fallos de contraseña** (en memoria; una sola instancia en la fase 5; LRU de 100 000 claves). La clave de cuenta
   la calcula `CheckPassword`: el `account_id` si no es 0 o, si el correo no existe, el SHA-256 del correo
   normalizado. Así cada correo inexistente tiene su propio contador y frenar uno no delata a los demás:
@@ -483,13 +488,14 @@ No hay `email_taken` ni `account_locked`: los dos delataban qué correos tienen 
 | Crear personaje · borrar personaje | 5 por cuenta y día cada uno | `auth_events` (`character_create`, `character_delete`) |
 
 `auth_events.kind`: `register`, `register_existing`, `login_ok`, `login_fail`, `login_throttled`, `password_fail`,
-`refresh_reuse`, `character_create`, `character_delete`, `export`, `email_changed`, `email_reverted`.
+`refresh_reuse`, `character_create`, `character_delete`, `export`, `email_changed`, `email_reverted`,
+`password_reset` (con la cuenta o, sin ella, con `account_id` nulo).
 
 ### 4.3 Ciclo de vida (TEC-41)
 | Ruta | Cuerpo | Efecto |
 |---|---|---|
 | `POST /v1/account/verify-email` (sin token) · `…/verify-email/resend` | `{token}` · — | Verifica · 202, correo nuevo; los anteriores dejan de valer |
-| `POST /v1/account/password-reset` (sin token) | `{email}` | **Siempre 202**, exista o no la cuenta |
+| `POST /v1/account/password-reset` (sin token) | `{email}` | **Siempre 202**, exista o no la cuenta, y sin esperar a la base: tras el límite de correos, buscar la cuenta, guardar el enlace y mandarlo siguen en segundo plano (los dos caminos dejan su fila `password_reset` en `auth_events`). Así el tiempo tampoco delata qué correos tienen cuenta |
 | `POST /v1/account/password-reset/confirm` (sin token) | `{token, new_password}` | Cambia, revoca todas las sesiones (`password_changed`) e invalida los enlaces |
 | `POST /v1/account/password` | `{current_password, new_password}` | `CheckPassword`; cambia, revoca las demás sesiones (`password_changed`) e invalida los enlaces |
 | `POST /v1/account/email` | `{new_email, password}` | `CheckPassword`; **siempre 202**. Al nuevo, `change_email` (o `register_existing` si ya tiene cuenta) |
@@ -502,8 +508,17 @@ No hay `email_taken` ni `account_locked`: los dos delataban qué correos tienen 
   recuperar, **7 días** para `revert_email`. Usado o caducado: 400 `validation` con `fields.token = "used"` o
   `"expired"`, y nada cambia.
 - **Invalidar los enlaces** es, en la misma transacción que el cambio: `update account_tokens set used_at = now()
-  where account_id = $1 and used_at is null and purpose <> 'revert_email'`. Los `revert_email` solo caducan: quien
-  robó la cuenta no puede quitarle al dueño la vuelta atrás cambiando el correo otra vez.
+  where account_id = $1 and used_at is null and purpose <> 'revert_email'`. Los `revert_email` no se invalidan así:
+  quien robó la cuenta no puede quitarle al dueño la vuelta atrás cambiando el correo otra vez.
+- **Una cadena de cambios.** Gastar un `revert_email` anula, en la misma transacción, los de la cuenta emitidos
+  después (`created_at` mayor; en una cuenta no se repite: uno nuevo va como poco 1 µs detrás del anterior). Quien
+  sabe la contraseña y cambia el correo dos veces (A→B→C) recibe en B un `revert_email`; el del dueño, el que llegó
+  a A, es siempre el más antiguo, así que gastarlo deja muerto el de B, y el de B, gastado antes, no toca el de A.
+  Sin esta regla, el de B, vivo 7 días, devolvía la cuenta al ladrón después de que el dueño la recuperara.
+- **El correo viejo queda reservado** mientras viva su `revert_email` (sin usar y sin caducar): un registro o el
+  cambio de correo de otra cuenta hacia él reciben lo mismo que hacia un correo con cuenta (`register_existing`), y
+  un `change_email` pendiente hacia él, de otra cuenta, no vale (`fields.token = "unavailable"`). Si no, una cuenta
+  nueva sin verificar con ese correo bloqueaba la vuelta atrás hasta que el enlace caducaba.
 - Una cuenta con `password_hash` nulo no inicia sesión (`invalid_credentials`, con el hash de relleno) hasta
   recuperar la contraseña.
 - **Cuentas sin verificar:** en `staging` y `production`, una cuenta sin `email_verified_at` a los 7 días de crearla
@@ -677,21 +692,26 @@ preparado, pero no cuerpo ni entrada en `CharacterSaver`. Si el peer sale de `LO
 (progresion.md §9.1); un `revoked` expulsa con su NOTICE y sin guardado final, que aquí no existe.
 
 ### 5.3 Arrendamiento
-La reclamación, en una transacción: bloquea la fila de la cuenta y la comprueba (sanción o borrado → 403
-`account_blocked`), comprueba el personaje (`deleted_at` y `purged_at` nulos; si no, 409 `ticket_invalid`), consume
-el billete, mira que ningún otro personaje de la cuenta esté en el mundo, toma el arrendamiento y, tras el `insert …
+La reclamación, en una transacción: bloquea la fila de la cuenta y mira su estado y sus sanciones, comprueba el
+personaje (`deleted_at` y `purged_at` nulos y del mundo de la instancia; si no, 409 `ticket_invalid`), bloquea el
+billete (si no vale, 409 `ticket_invalid`) y **solo entonces**, con la cuenta suspendida, expulsada o con el borrado
+pedido, responde 403 `account_blocked`: sin un billete válido de ese personaje para esa instancia no se sabe nada de
+la cuenta (ni el motivo ni la fecha de una sanción, de este mundo o de otro). Si no, consume el billete, mira que
+ningún otro personaje de la cuenta esté en el mundo, toma el arrendamiento y, tras el `insert …
 on conflict`, lee la sección `progress` con `ProgressStore.Load` en la misma transacción (con la fila del
 arrendamiento bloqueada, ningún guardado se cruza). El orden de bloqueos es cuenta → billete → arrendamiento; la
 purga de una cuenta también bloquea antes su fila (§11.2). Comprobado en PostgreSQL 16, salvo los pasos 0 y 2:
 
 ```sql
 -- 0. La cuenta del personaje ($8): serializa las reclamaciones de una misma cuenta
-select status from accounts where account_id = $8 for no key update;   -- con sus sanciones: 403 account_blocked
+select status from accounts where account_id = $8 for no key update;   -- y sus sanciones, sin responder aún
 -- 1. El billete: de esta instancia, sin usar, sin caducar y de una sesión sin revocar
-update enter_tickets t set consumed_at = now() from sessions s
+select t.session_id from enter_tickets t join sessions s on s.session_id = t.session_id
 where t.ticket_id = $1 and t.character_id = $2 and t.zone_instance_id = $3 and t.consumed_at is null
-  and t.expires_at > now() - interval '5 s' and s.session_id = t.session_id and s.revoked_at is null
-returning t.session_id;                     -- sin fila: ticket_invalid y rollback
+  and t.expires_at > now() - interval '5 s' and s.revoked_at is null
+for update of t;                            -- sin fila: ticket_invalid y rollback
+-- (cuenta bloqueada: ahora el 403 account_blocked y rollback; si no:)
+update enter_tickets set consumed_at = now() where ticket_id = $1;
 -- 2. Un solo personaje en el mundo por cuenta y mundo
 select 1 from character_leases l join characters c using (character_id)
 where c.account_id = $8 and c.world_id = $4 and l.character_id <> $2
@@ -711,12 +731,14 @@ returning lease_id;                         -- sin fila: character_busy y rollba
   suya y sale con `release()` o con la respuesta definitiva (200 o definitivo) de un guardado con `release_lease`, si
   sigue siendo ese `lease_id`. Así cubre `LOADING`, el mundo, el cuerpo tras una salida en combate y el guardado
   final pendiente, y deja de latir por quien ya se fue. Los de `VERIFYING` no van: aún no tienen `lease_id`. Renueva
-  solo lo que casa:
+  solo lo que casa y sigue vivo (uno caducado ya lo dan por libre la reclamación, `enter` y el borrado; renovarlo
+  dejaba dos personajes de la cuenta en el mundo, o uno borrado dentro):
 
   ```sql
   update character_leases l set expires_at = now() + $4
   from unnest($2::bigint[], $3::uuid[]) as h(character_id, lease_id)
   where l.character_id = h.character_id and l.lease_id = h.lease_id and l.zone_instance_id = $1
+    and l.expires_at > now()
   returning l.character_id;                 -- los que faltan vuelven en revoked con reason lease_lost
   ```
 
@@ -853,7 +875,10 @@ cuerpo hasta tener una definitiva (§7.3).
   `"<uuid>:<n>"` cuyo uuid no es el `zone_instance_id` del lote; la de `key` `op:<op_id>` cuyo `op_id` no cae en un
   bloque de `id_blocks` dado a esa instancia; y, en la auditoría, la de `source` distinto de `zone` y `console`
   (las filas `cli` y `platform` solo las escribe la plataforma) o con un `command` de la CLI o de la plataforma
-  (`set-role`, `sanction_denied`). Lo rechazado se registra, las demás se insertan y la respuesta lista las
+  (`set-role`, `sanction_denied`). También la que trae algo que la base no guarda: un `args` con UTF-8 roto,
+  `\u0000` o un suplente suelto (como `context` en un reporte y `record` en una fortaleza, que dan 400), o una fecha
+  (`at_unix`, `sent_at_unix`) de más de 253402300799 (9999-12-31). Y si aun así una fila falla en la base con un
+  error determinista (SQLSTATE de clase 22 o 23), se rechaza solo esa. Lo rechazado se registra, las demás se insertan y la respuesta lista las
   claves rechazadas, que la zona no reintenta. Así una zona no escribe en nombre de otra instancia ni de la CLI,
   y un error de la zona no bloquea la cola de auditoría, que nunca se descarta.
 - **`revoked`** del latido. Cada entrada lleva el `lease_id` (el del latido en `lease_lost`; el del arrendamiento
@@ -997,6 +1022,7 @@ seq)`**, y solo ella.
 
 **Secciones.** `progress` es obligatoria. `pvp` es opcional: sin ella, `character_pvp_stats` no cambia; con ella,
 cada total se lee con `jsonx.Int` ≥ 0 y se escribe con `greatest(columna, nuevo)`, sin error: los totales no bajan.
+Cada uno tiene que caber en su columna: 2^31 − 1 en las cinco `int` (`gate_damage` es `bigint`); si no, `envelope`.
 **El sobre** se decodifica estricto (`DisallowUnknownFields`, `jsonx`): `save_format` = 1, `character_id` igual al
 `{id}` de la ruta, ids y `seq` válidos, `reason` 1–5 y `progress` presente. Cualquier fallo es 400 `invalid_save` con
 `check = "envelope"`, antes de tocar la base. Después, la plataforma, en una transacción:
@@ -1019,7 +1045,7 @@ cada total se lee con `jsonx.Int` ≥ 0 y se escribe con `greatest(columna, nuev
 |---|---|
 | Error del sobre (arriba) | 400 `invalid_save` con `check = "envelope"` |
 | `*persistence.InvalidSaveError` (S1–S7) | 400 `invalid_save` con su `check` y su `detail` |
-| SQLSTATE de clase 23 (clave primaria, único, clave ajena, CHECK, también los diferidos que salta el COMMIT, como el de ranuras) o `P0001` (el disparador de solo añadir) | 400 `invalid_save` con `check = "S8"` y en `detail` el SQLSTATE y la restricción: es un error determinista, reintentarlo no lo arregla |
+| SQLSTATE de clase 22 (un dato que la base no admite: un NUL en `jsonb`, un número o una fecha fuera de rango) o 23 (clave primaria, único, clave ajena, CHECK, también los diferidos que salta el COMMIT, como el de ranuras) o `P0001` (el disparador de solo añadir) | 400 `invalid_save` con `check = "S8"` y en `detail` el SQLSTATE y la restricción: es un error determinista, reintentarlo no lo arregla |
 | `40001` o `40P01` | Se reintenta la transacción entera dentro de la plataforma (tres veces, como al crear personajes); después, 503 `db_unavailable` |
 | Sin conexión con la base, plazo de sentencia vencido | 503 `db_unavailable` |
 | Cualquier otro | 500 `internal` |
@@ -1250,7 +1276,7 @@ zona contesta «Reporte enviado. Gracias.». Revisión: `admin --actor <correo> 
 ### 9.5 Sanciones (SOC-18)
 | Tipo | Dónde se aplica |
 |---|---|
-| Aviso | Al entrar, NOTICE con el motivo |
+| Aviso | Al entrar, NOTICE con el motivo: la reclamación trae los avisos que la cuenta no ha visto y el primer guardado del arrendamiento los da por vistos (`characters.last_entered_at` = la hora de la reclamación). Si la zona suelta al personaje sin que llegue al mundo (`REALM`, `FULL`, `prepare` o la baja en `LOADING`), salen en la reclamación siguiente |
 | Silencio | `ChatRouter` descarta y contesta «Estás silenciado N min más»; llega en la reclamación y en `mutes` del latido |
 | Suspensión, expulsión permanente | Inicio de sesión (tras la contraseña, solo la sesión de privacidad de §4.2) y `enter` (403 con fin y motivo), reclamación (`BANNED`) y latido (`revoked`: guardado final y expulsión) |
 | Renombrado forzado | `characters.must_rename`: `enter` → 409 `rename_required` |
@@ -1802,7 +1828,7 @@ documento dueño; el otro la cita. La misma tabla está en progresion.md §13.1.
 | Cuándo se guarda | Cada 60 s con alguna sección sucia, en fases; una escritura en vuelo; el final en `finish`. Salida: `finish` → `ScoreKeeper.forget` → `ProgressService.on_departure`; al parar, `release` de `LOADING`, `cancel` de `VERIFYING` y `finish` de todos antes de `_clear_players()` | plataforma.md §7.2 | progresion.md §9.2 |
 | Baja sin guardado | Un definitivo antes de `finish` o un `revoked` `lease_lost`: `CharacterSaver.drop(net_id, code)` (con `release` salvo en `lease_lost`), expulsión con el cuerpo fuera en el acto (sin salida en combate), `ScoreKeeper.forget` y `ProgressService.on_departure`. Todo gancho de `ProgressService` por `net_id` sin `PlayerProgress` no hace nada | plataforma.md §7.2 | progresion.md §9.2, §14.2 |
 | Baja en `LOADING` | Sin guardado: `ZonePlatform.release(character_id, lease_id)` y `ProgressService.cancel_prepared(peer_id)`, también con un `revoked` | plataforma.md §5.2, §14.3 | progresion.md §9.1, §14.2 |
-| Respuestas del guardado | Una tabla y una regla de errores. Contenido o base que no es pasajero (`*persistence.InvalidSaveError`, SQLSTATE de clase 23 o `P0001`, también en el COMMIT): 400 `invalid_save` con `fields.check` y `fields.detail`. `40001` y `40P01` tras reintentar, sin conexión o plazo: 503. Un error del sobre: `invalid_save` con `check = "envelope"`. No hay `invalid_progress` ni `progress.ErrFormat`. `instance_*`: cierre con guardados finales. Cualquier otro 4xx es definitivo, como `invalid_save`, también en la liberación. `progress` es obligatoria y `pvp`, opcional y sin bajar | plataforma.md §6.1, §7.3 | progresion.md §9.2, §13.3 |
+| Respuestas del guardado | Una tabla y una regla de errores. Contenido o base que no es pasajero (`*persistence.InvalidSaveError`, SQLSTATE de clase 22 o 23 o `P0001`, también en el COMMIT): 400 `invalid_save` con `fields.check` y `fields.detail`. `40001` y `40P01` tras reintentar, sin conexión o plazo: 503. Un error del sobre: `invalid_save` con `check = "envelope"`. No hay `invalid_progress` ni `progress.ErrFormat`. `instance_*`: cierre con guardados finales. Cualquier otro 4xx es definitivo, como `invalid_save`, también en la liberación. `progress` es obligatoria y `pvp`, opcional y sin bajar | plataforma.md §6.1, §7.3 | progresion.md §9.2, §13.3 |
 | Sin plataforma | Nada se guarda: personajes efímeros; no hay `--progress-file` ni repositorios de progreso. `CharacterSaver` solo existe con `--platform` y llama a `ZonePlatform.save` | progresion.md §0, §9.4 | plataforma.md §5.5, §7.5 |
 | Reclamación | `{lease_id, instance_status, account, character, progress, pvp}`, solo de un personaje no borrado, con la cuenta bloqueada, sin otro personaje de la cuenta en el mundo y con `Load` en su transacción; en la zona, `AuthOutcome.claimed: ClaimedCharacter` con `progress: Dictionary`. No hay clase `CharacterRecord` | plataforma.md §5.3, §6, §14.3 | progresion.md §3.4, §9.1 |
 | Antes del WELCOME | Reino → cupo → `ProgressService.prepare(peer_id, claimed)` → WELCOME con el reino del personaje; si algo falla, REJECT (`REALM`, `FULL` o `UNAVAILABLE`) y `release`. El WELCOME no cambia de bytes | plataforma.md §5.2 | progresion.md §9.1 |
@@ -1860,7 +1886,7 @@ revisión; lo que cambió después, al conciliar con progresion.md, está en las
 | PL-SEG4 | importante | Sin definir qué pasa con una instancia `lost` que vuelve; latido sin filtro por `lease_id`; latido en la cola común | Latido con `(character_id, lease_id)` y SQL (§5.3, comprobado), `instance_lost` y cierre (§6.1), cercado a los 10 s, plaza propia del latido (§6). Matiz: el cercado rechaza las operaciones que piden guardado crítico, no los guardados, que siguen saliendo |
 | PL-SEG5 | importante | La rotación del refresco con `family` expulsaba en el primer refresco; 12 h sin fijar; la SQL de la reclamación no miraba la sesión | Una fila por sesión rotada en el sitio con `prev_refresh_hash`, 12 h absolutos, un refresco a la vez en `PlatformApi`, reclamación con `join` a `sessions` y rollback sin arrendamiento (§3, §4.2, §5.3; comprobado); pruebas en P1, P3 y P8 |
 | PL-SEG6 | importante | La plataforma creaba la sanción sin comprobar el rol ni la zona; bajar de rol no quitaba el poder | Cuerpos con `zone_instance_id` y `world_id`; autorización en tres pasos y `sanction_denied` (§9.5); `set-role` revoca las sesiones (§9.1); pruebas en P7a |
-| PL-SEG7 | importante | Rutas con contraseña sin límite; cambios que no invalidaban enlaces; aviso al correo viejo sin vuelta atrás; exportar solo con el token | `CheckPassword` común, invalidación en la transacción (salvo `revert_email`), `revert_email` de 7 días, exportar con contraseña (§4.2, §4.3); pruebas en P1 |
+| PL-SEG7 | importante | Rutas con contraseña sin límite; cambios que no invalidaban enlaces; aviso al correo viejo sin vuelta atrás; exportar solo con el token | `CheckPassword` común, invalidación en la transacción (salvo `revert_email`), `revert_email` de 7 días, exportar con contraseña (§4.2, §4.3); pruebas en P1. En la revisión de la implementación (§19.7): gastar un `revert_email` anula los emitidos después, su correo queda reservado mientras vive y los intentos de contraseña de una cuenta van de uno en uno |
 | PL-SEG8 | importante | `email_taken` y `account_locked` delataban cuentas; el bloqueo por cuenta era un arma; sanciones antes de la contraseña; cuentas sin verificar eternas | Registro y cambio de correo siempre 202; fallos por cuenta y grupo de IP con freno en las demás y 429; estados solo tras una contraseña buena; correo de aviso; purga a los 7 días sin verificar (§4.1–§4.3, §11.1); pruebas en P1 |
 | PL-SEG9 | importante | Copias, WAL y registros guardaban datos purgados sin plazo | `purge_log`, `purges.txt` y `reapply-purges` (§11.2, §12); filas de copias, WAL y registros en §11.1; journald a 30 días; Caddy sin registro de accesos; sin `--battle-log` y similares en staging y producción; prueba en P9a |
 | PL-SEG10 | importante | El `.gitignore` solo ignoraba `.env` (comprobado) | Patrones nuevos en P0 (comprobados en un repositorio de prueba), secretos desde `secrets/` y comprobación en la CI (§10.3); prueba en P9b |
@@ -1977,7 +2003,8 @@ prueba de conservación la recoge sola y falla si alguna tabla se queda sin fila
   nada); `NewEmpty` da una base sin migrar (para migrate). Si la ruta del socket pasa de los 107 B (un `TMPDIR`
   largo), el servidor escucha en 127.0.0.1 con un puerto libre, y reintenta si otro proceso se lo quita
   (comprobado con una ruta de 137 B). Un `owner.pid` en la carpeta deja borrar al arrancar los clústeres de
-  ejecuciones que murieron sin llegar al final de `Main`. Un `ELDMARK_PG_BIN` sin `initdb` no busca en otro
+  ejecuciones que murieron sin llegar al final de `Main` (desde la revisión, §19.7, eso lo hace antes un vigilante;
+  `owner.pid` queda para un sistema sin `sh`). Un `ELDMARK_PG_BIN` sin `initdb` no busca en otro
   sitio. Las bases se llaman `eldt<pid>_tmpl` y `eldt<pid>_t<n>`, así que valen también contra un servidor
   compartido (`ELDMARK_TEST_DATABASE_URL`, comprobado), donde `Main` las borra al acabar. `DumpSchema` usa
   `pg_dump --schema-only --no-owner --no-privileges` y quita las líneas `\restrict`/`\unrestrict`, que
@@ -2082,7 +2109,8 @@ La purga de los personajes de una cuenta entra por `accounts.CharacterPurger` (P
 - **Fallos de contraseña.** Tras 5 fallos seguidos desde un grupo, cada fallo más vuelve a bloquear 15 min, y
   desde el 10.º, 1 h. El freno de la cuenta (un intento cada 30 s) cuenta desde el último fallo. Un intento
   frenado no mira la contraseña ni cuenta como fallo. Con el correo sin cuenta (o la cuenta sin contraseña)
-  se hace la misma consulta (con el id 0) y la comprobación contra el relleno.
+  se hace la misma consulta (con el id 0) y la comprobación contra el relleno. Desde la revisión (§19.7), los
+  intentos de una misma clave van de uno en uno.
 - **Límite de correos.** «3 por cuenta y hora» va por destinatario (el SHA-256 del correo), así que pesa igual
   exista o no la cuenta; el cambio de correo gasta además de la cuenta que lo pide. Cubo de fichas: ráfaga de 3
   y una ficha cada 20 min (igual con el resto de límites por hora).
@@ -2324,7 +2352,9 @@ ignorados) y el `not_found` de un nombre que no existe en el mundo de la instanc
   curso. Lee la cuenta del personaje antes de bloquearla y vuelve a mirar el personaje después. Un personaje de
   otro mundo que el de la instancia o de una cuenta purgada es `ticket_invalid`. Toma un arrendamiento con
   `expires_at ≤ ahora` (§5.3 decía `<`: así «caducado» es justo lo contrario de «vivo», `expires_at > ahora`,
-  que miran `enter`, borrar y la propia reclamación). Escribe `characters.last_entered_at`.
+  que miran `enter`, borrar y la propia reclamación). Escribía `characters.last_entered_at`; desde la revisión
+  (§19.7) lo escribe el primer guardado del arrendamiento, y el 403 `account_blocked` sale después de validar el
+  billete.
 - **Latido.** Prioridad de `revoked` por cuenta: `banned` > `suspended` > `pending_deletion` >
   `session_revoked`. Los textos de `session_revoked`: «Has iniciado sesión desde otro lugar» (`replaced`), «Has
   cerrado la sesión» (`logout`), «Un administrador ha cerrado tu sesión» (`admin`) y «Tu cuenta ha cambiado:
@@ -2399,7 +2429,8 @@ documentación).
 
 **Sin comprobar:** contra una zona de verdad (P4) y con el almacén de verdad (progresion.md P7: S1–S8, la
 restricción diferida de las ranuras de `0010_progress`, que aquí se simula con una tabla de prueba); lotes y
-latidos con cientos de personajes; el trabajo `zones_lost` dentro de `serve` (se prueba `MarkLost` directo).
+latidos con cientos de personajes. (El trabajo `zones_lost` dentro de `serve`, que aquí quedaba sin comprobar, tiene
+prueba desde la revisión, §19.7.)
 
 **Queda para después:** el mantenimiento en el latido (TEC-28); la zona (P4–P6, P7b); la CLI de P7a; las
 retenciones de P9a; la prueba de extremo a extremo (P10).
@@ -2471,7 +2502,9 @@ Un personaje se nombra por su nombre en el mundo (`--world`, 1) o por `#<id>`; l
 - **Avisos en la reclamación** (§6 no tenía campo y §9.5 pide el NOTICE al entrar): `account.warnings`, los avisos
   sin revocar de la cuenta (de ese mundo o de todos) puestos después de la última entrada al mundo de cualquiera
   de sus personajes (`characters.last_entered_at`, leída antes de escribir la de esta reclamación), los 5 más
-  recientes. Así cada aviso sale una vez; si el jugador se va en `LOADING`, no lo ve.
+  recientes. Así cada aviso sale una vez. Desde la revisión (§19.7), la marca la pone el primer guardado del
+  arrendamiento, con la hora de la reclamación: si la zona suelta al personaje sin que llegue al mundo (`REALM`,
+  `FULL`, `prepare` o la baja en `LOADING`), el aviso sale otra vez en la reclamación siguiente.
 - **La caducidad de cada sanción,** tal como se prueba: el aviso sale una vez y queda anotado (cuenta para la
   reincidencia y para `sanctioned_email_hashes`); el silencio y la suspensión acaban en `ends_at` (los mira cada
   consulta con la hora de Go); la expulsión no caduca (solo `sanction revoke`); el renombrado se cumple al
@@ -2560,3 +2593,63 @@ progresion.md P3 (su §19.4) añade sus secciones a `progression_rules.json` y e
   (`appearance` de `harness_test.go`: cabeza 2, sin barba en Vardheim y marcas 2). Al cambiar `progressStore()` por
   `*progress.Rules` hay que darles una que valga para cada reino, como las de los casos compartidos
   (`AQAAAQEDAgE=` en Vardheim, `AgAAAAAHAAA=` en Solmarch).
+
+### 19.7 Revisión de la implementación
+
+Una revisión con tres enfoques (seguridad, corrección y pruebas) sobre P0–P7a y progresion.md P3 (de72147) dejó 14
+hallazgos, todos confirmados con sondas. Cada uno se arregla con una prueba que fallaba antes del arreglo; en los de
+cobertura, con la mutación que el hallazgo dejaba pasar, que ahora falla. Cinco eran huecos de este documento, que
+se corrige donde toca: §2.3, §2.5, §2.6, §4.2, §4.3, §5.3, §6, §7.3, §9.5, §17 (y progresion.md §13.1, igual) y §18.
+
+| Hallazgo | Gravedad | Qué era | Qué se hizo | Prueba |
+|---|---|---|---|---|
+| `revert_email` en cadena | alta | Con A→B→C, el `revert_email` que llegaba a B vivía 7 días: después de que el dueño recuperara la cuenta con el suyo, el ladrón revertía a B, dejaba la cuenta sin contraseña y recibía la recuperación. Hueco de §4.3 («solo caducan») | Gastar uno anula los de la cuenta emitidos después (`invalidateLaterReverts`, por `created_at`). El de un `revert_email` nuevo va como poco 1 µs detrás del anterior de la cuenta (`revertCreatedAt`): sin empates aunque el reloj se repita o retroceda. §4.3 | `TestRevertEmailChain`: el dueño primero, el de B da `used`; el ladrón primero, el del dueño sigue valiendo y la recuperación que le llegó al ladrón muere |
+| Carrera en `CheckPassword` | alta | El freno se miraba con un cerrojo y el fallo se anotaba con otro tras argon2: los intentos simultáneos pasaban todos, y el freno de 30 s y el bloqueo de 15 min del grupo admitían ráfagas | Un turno por clave de cuenta (`failureTracker.turn`: un canal de capacidad 1, fuera del LRU para que no se expulse en uso, que respeta el contexto). Freno, consulta, argon2 y anotar van juntos; las claves distintas no se esperan. El correo `login_failures` y la reescritura del hash salen ya sin el turno. §4.2 | `TestConcurrentAttemptsRespectTheThrottle`: tras 5 fallos y 31 s, 30 a la vez desde 30 IP dan 1×401 y 29×429 (antes, 22×401); 10 a la vez desde un grupo, 5 y 5 (antes, 8 o 9×401); igual con un correo sin cuenta |
+| Correo viejo ocupado | media | Tras A→B, un `POST /v1/accounts` con A (sin autenticar, 202) creaba una cuenta sin verificar con A, y el `revert_email` del dueño daba `token=unavailable` hasta caducar (la purga de las sin verificar llega después) | El correo de un `revert_email` vivo queda reservado (`emailReserved`): el registro y el cambio de correo de otra cuenta lo tratan como con cuenta (`register_existing`), un `change_email` pendiente de otra cuenta da `unavailable` y `admin create-account`, `ErrEmailReserved`. Sin índice nuevo (abajo). §4.3 | `TestOldEmailIsReservedWhileRevertLives` (también con el `change_email` pedido antes y con el enlace ya caducado) y un caso en `TestCreateAccountAndBootstrap` |
+| La reclamación delataba sanciones | baja | El 403 `account_blocked` (con `reason`, `until_unix` y el texto) salía antes de mirar el mundo y el billete: con un `ticket_id` inventado, una zona leía las sanciones y la fecha de purga de cualquier personaje de cualquier mundo. Era el orden de §5.3 | El billete se bloquea y se valida antes (`select … for update of t`); el 403 sale solo con un billete válido de ese personaje para esa instancia, y el billete se consume después. Mismo orden de bloqueos: cuenta → billete → arrendamiento. §5.3 | `TestClaimRevealsNothingWithoutATicket`: billete inventado o de otro personaje, cuenta suspendida, expulsada (otro mundo) o con el borrado pedido dan el mismo cuerpo que un personaje que no existe |
+| Oráculo de tiempo en `password-reset` | baja | Con cuenta se confirmaba una escritura (y su fsync); sin ella, solo se leía. Con fsync, 572 µs frente a 202 µs de mediana, sin solaparse | La respuesta no espera a la base: tras validar y gastar el límite de correos, buscar la cuenta, guardar el enlace y mandarlo siguen en segundo plano (`Service.Wait`, que `serve` llama al parar antes de cerrar la cola de correo y el arnés tras cada petición). Los dos caminos dejan su fila `password_reset` en `auth_events` (sin cuenta, `account_id` nulo). Un fallo de la base ya no da 503: se registra. §4.2, §4.3 | `TestPasswordResetWritesEitherWay`: las dos filas, y con la tabla `accounts` bloqueada la respuesta vuelve igual |
+| El latido resucitaba arrendamientos | media | Renovaba un arrendamiento caducado que la reclamación, `enter` y el borrado ya daban por libre: dos personajes de una cuenta en el mundo, o uno borrado dentro. Lo evitaba solo que `zones_lost` llegara antes que el TTL, y la configuración admitía 10/20. La gracia de arranque alargaba también los caducados antes de la caída. Era la SQL de §5.3 y la regla de §2.5 | El latido renueva solo `expires_at > ahora` (lo demás, `lease_lost`). `config.Load` exige `LEASE_TTL_S > 3 × HEARTBEAT_S + min(5 s, HEARTBEAT_S)` (`Config.LostDetected`; `zones.LostAfter` y `LostEvery` salen de `config`). La gracia alarga solo los arrendamientos de las instancias `starting` y `live` con `expires_at ≥ last_heartbeat_at`, antes de subir el latido. §2.3, §2.5, §5.3 | `TestLateHeartbeatDoesNotRenewExpiredLeases` (también con el borrado), `TestLeaseTTLCoversLostInstances` y un caso en `TestStartupGrace` |
+| Datos que la base rechaza tumbaban los lotes | media | `InsertEach` solo aislaba la clase 23: un NUL en `args`, UTF-8 roto o una fecha fuera de rango daban 500 al lote entero, y la zona lo reintentaba sin fin (la auditoría y la guerra nunca se descartan) | `db.KindData` (clase 22) y `db.Deterministic`, que `InsertEach` aísla por fila igual que la 23. `zones.IsJSONObject` (UTF-8, sin `\u0000` ni suplentes sueltos) en `args`, `context` y `record`; fechas hasta `zones.MaxUnix` (253402300799) en chat, auditoría, guerra y las pruebas de un reporte. Un error de clase 22 que llegue a la respuesta es 400 `validation` en la API interna (`zones.Fail`) e `invalid_save` S8 en el guardado (`SaveError`). §6, §7.3, §17 | `TestAuditBatch`, `TestChatBatch`, `TestWarEvents`, `TestReportLimits`, `TestFortresses`, `TestInsertEachIsolatesTheBadRow`, `TestIsJSONObject`, `TestFailDataErrorIs400` y tres casos en `TestClassifyRealErrors` |
+| Totales pvp de más de `int4` | baja | `kills`, `deaths`, `assists`, `captures` y `defend_s` son `int`: un total de más de 2^31 − 1 no se podía codificar, daba 500 y la zona reintentaba ese guardado (o el lote) para siempre | `ParseEnvelope` los acota a 2^31 − 1 (`envelope`, definitivo); `gate_damage`, `bigint`, sigue hasta 2^53 − 1. §7.3 | `TestEnvelopeErrors`, `TestSavePvP` (el tope de cada columna vale) y `TestSaveMany` |
+| Avisos perdidos | baja | La reclamación escribía `last_entered_at`: si la zona soltaba al personaje sin dejarle entrar (`REALM`, `FULL`, `prepare` o la baja en `LOADING`), el aviso quedaba visto sin NOTICE | Lo escribe el primer guardado aplicado del arrendamiento (`last_seq` 0), con su `claimed_at`: un aviso puesto entre la reclamación y ese guardado sale en la siguiente. §9.5 y §19.5 | `TestWarningSurvivesARejectedEntry`; `TestClaim` y `TestWarningIsShownOnce`, cuya salida es ya un guardado final |
+| El refresco en el latido, sin probar | media | `TestHeartbeatRevocations` refrescaba otra sesión y quitaba a mano las revocaciones: «el latido expulsa una sesión rotada» o «el refresco revoca su fila» pasaban toda la suite | `Player.Refresh` y `Platform.RefreshSession` en `platformtest`; la prueba refresca dos veces la sesión del billete y comprueba que el arrendamiento sigue atado a ella | Las dos mutaciones fallan |
+| `zones_lost` en `serve`, sin probar | baja | Quitar `AddJob("zones_lost", …)` dejaba todo en verde (§19.4 lo daba por «sin comprobar») | `TestServeRunsTheLostInstances`: `serve` con `HEARTBEAT_S` 1 y `LEASE_TTL_S` 5; la instancia pasa a `lost` y el arrendamiento queda libre en unos 4 s | La mutación falla |
+| `TestAuditBatch` y la fila de S8 | baja | La fila «de S8» tenía otra clave: un `on conflict do update` que la pisara pasaba | La fila previa con la misma `op:<op_id>` y otros campos; sigue intacta tras el lote y el reenvío, y no va a `rejected` | La mutación falla |
+| STARTTLS, sin probar | baja | La prueba solo miraba `isLoopback`; sin la guarda de `deliver`, el correo (con enlaces de un solo uso) salía en claro | `SMTPSender.dial` inyectable (por defecto `net.Dialer.DialContext`; `smtps` hace el saludo TLS sobre esa conexión). La prueba manda a `smtp.example.org`, desviado al servidor falso: «el servidor SMTP no ofrece STARTTLS» y ni `MAIL FROM`, ni `RCPT`, ni `DATA`; con `smtps`, tampoco | La mutación falla |
+| `testdb` dejaba el servidor vivo | baja | Un pánico, el plazo de `go test` o un Ctrl-C dejaban el postmaster y su carpeta hasta otra ejecución con el mismo `TMPDIR` | Un vigilante por clúster (`watchdog_unix.go`, antes de `initdb`): un `sh` en su propio grupo de procesos con la entrada en una tubería que solo tiene abierta el proceso de pruebas; si se cierra sin «done», `pg_ctl stop -m immediate` y `rm -rf`. Fuera de Unix no hay vigilante (queda `reapStale`). §2.6 | `TestClusterDiesWithTheProcess`: un hijo que entra en pánico; su clúster desaparece en menos de un segundo (sin vigilante, sigue a los 15 s) |
+
+**Decisiones de los arreglos:**
+
+- **Turno por cuenta** (la opción B del hallazgo) frente a reservar intentos en vuelo: cuenta exacto y es corto. El
+  coste es que los intentos de una misma cuenta esperan al argon2 del anterior; una ráfaga contra una cuenta
+  frenada sale enseguida con 429 (el freno se mira con el turno y sin argon2), así que el dueño espera como mucho
+  unos pocos cálculos.
+- **`password-reset` en segundo plano** y no un trabajo de relleno: escribir en los dos caminos dejaba aún 519 µs
+  frente a 406 µs (la clave ajena del enlace y la fila con cuenta), con las distribuciones solapadas pero
+  distinguibles. La goroutine usa el contexto de la petición sin cancelación, con 30 s de plazo, y registra el
+  fallo con el id de la petición.
+- **Sin índice para la reserva del correo:** `account_tokens` es pequeña (lo caducado se borra a los 7 días, §11.1),
+  y una migración nueva tomaría el número 0007, que §2.4 deja sin usar en la fase 5. Si crece, el índice parcial
+  `(email) where purpose = 'revert_email' and used_at is null` va en la siguiente migración.
+- **La gracia de arranque ya no alarga los arrendamientos de una instancia `replaced`:** caducan con su TTL, como
+  dice §5.3; su guardado final vale mientras nadie reclame al personaje.
+- **El orden de los `revert_email`** va por `created_at` (la tabla no tiene id secuencial) con el empuje de 1 µs, en
+  lugar de una columna nueva.
+
+**Medido** (esta máquina, 4 núcleos, Go 1.24.7, PostgreSQL 16.15):
+
+| Qué | Resultado |
+|---|---|
+| `go test -race -count=1 ./...` | 33 s, sin carreras |
+| `go test -p 2 -count=1 ./...` | 37 s; el commit anterior, en la misma máquina y a la vez, 34 s (las dos pruebas nuevas que esperan de verdad, `serve` con `zones_lost` y el hijo de `testdb`, suman unos 7 s) |
+| Las pruebas nuevas de cuentas, 10 veces seguidas | Sin fallos; la de intentos simultáneos, además, con `-race` y argon2 de producción (3 de 3) |
+| `password-reset`, mediana de 200 pares con y sin cuenta (servidor con fsync) | Antes, 572 µs y 202 µs; escribiendo en los dos caminos, 519 y 406 µs; en segundo plano, 2,5 y 2,4 µs |
+| Binario | 20,5 MB |
+
+Godot: `--import` da el mismo registro que antes (las fugas al salir de siempre); `test_export_config` (10),
+`test_architecture` (19), `test_progression_rules_export` (10) y `test_name_rules` (12) pasan. Fuera de `platform/`
+solo cambia la documentación.
+
+**Sin comprobar:** el vigilante de `testdb` fuera de Linux (usa `sh` y `Setpgid`, que macOS también tiene); la
+reserva del correo con una `account_tokens` grande; el envío con un servidor SMTP de verdad (STARTTLS sigue
+probándose con el falso).

@@ -19,6 +19,7 @@ import (
 var (
 	ErrEmailInvalid    = errors.New("accounts: el correo no vale")
 	ErrEmailTaken      = errors.New("accounts: ya hay una cuenta con ese correo")
+	ErrEmailReserved   = errors.New("accounts: el correo lo reserva el enlace revert_email vivo de otra cuenta (§4.3)")
 	ErrPasswordInvalid = errors.New("accounts: la contraseña no vale (de 10 a 128 caracteres y distinta del correo)")
 	ErrRoleInvalid     = errors.New("accounts: rol desconocido")
 )
@@ -54,8 +55,8 @@ type NewAccount struct {
 // CreateAccount crea, en la transacción tx, una cuenta ya verificada, con la edad confirmada y los
 // textos legales vigentes aceptados (las crea el equipo: admin create-account y bootstrap, para
 // pruebas y para el personal), sin consentimientos y con el rol dado. El correo se normaliza.
-// Devuelve el account_id, o [ErrEmailInvalid], [ErrEmailTaken], [ErrPasswordInvalid] o
-// [ErrRoleInvalid].
+// Devuelve el account_id, o [ErrEmailInvalid], [ErrEmailTaken], [ErrEmailReserved],
+// [ErrPasswordInvalid] o [ErrRoleInvalid].
 func (s *Service) CreateAccount(ctx context.Context, tx pgx.Tx, a NewAccount) (int64, error) {
 	email := NormalizeEmail(a.Email)
 	if !ValidEmail(email) {
@@ -72,6 +73,11 @@ func (s *Service) CreateAccount(ctx context.Context, tx pgx.Tx, a NewAccount) (i
 		return 0, err
 	}
 	now := s.clock.Now()
+	if reserved, err := emailReserved(ctx, tx, email, 0, now); err != nil {
+		return 0, err
+	} else if reserved {
+		return 0, ErrEmailReserved
+	}
 	var accountID int64
 	err = tx.QueryRow(ctx, `insert into accounts (email, password_hash, email_verified_at, role, age_confirmed_at, created_at)
 		values ($1, $2, $3, $4, $3, $3) on conflict (email) do nothing returning account_id`,

@@ -129,7 +129,7 @@ func parseChat(ctx context.Context, keys *zones.KeyChecker, raw json.RawMessage)
 	sent, okSent := e.Int("sent_at_unix")
 	if !okKey || !okChannel || !okSender || !okTarget || !okText || !okSent || channel < 0 || channel > 255 ||
 		*sender < 1 || (target != nil && *target < 1) || utf8.RuneCountInString(text) > maxChatText ||
-		strings.ContainsRune(text, 0) || sent < 0 {
+		strings.ContainsRune(text, 0) || sent < 0 || sent > zones.MaxUnix {
 		return chatMessage{}, false, nil
 	}
 	valid, err := keys.Valid(ctx, key, false)
@@ -196,7 +196,7 @@ func parseAudit(ctx context.Context, keys *zones.KeyChecker, raw json.RawMessage
 	at, okAt := e.Int("at_unix")
 	source, okSource := e.String("source")
 	if !okKey || !okActor || !okActorChar || !okCommand || !okTargetChar || !okTargetAccount || !okArgs || !okAt ||
-		!okSource || at < 0 || !commandPattern.MatchString(command) || reservedCommands[command] {
+		!okSource || at < 0 || at > zones.MaxUnix || !commandPattern.MatchString(command) || reservedCommands[command] {
 		return nil, false, nil
 	}
 	switch source {

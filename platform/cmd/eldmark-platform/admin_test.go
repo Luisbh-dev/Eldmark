@@ -155,6 +155,42 @@ func TestAdminCommands(t *testing.T) {
 
 // serve corre la retención del chat (chat_retention, cada hora y al arrancar): lo de más de 30 días
 // desaparece y lo demás se queda.
+// serve corre el trabajo de instancias perdidas (§5.3, §2.5): una instancia viva que deja de latir
+// pasa a lost y sus arrendamientos quedan libres, sin llamar a MarkLost a mano (con HEARTBEAT_S 1,
+// a los 3 s y el trabajo cada segundo).
+func TestServeRunsTheLostInstances(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	testdb.Exec(t, pool, `
+insert into accounts (email, age_confirmed_at) values ('perdida@eldmark.test', now());
+insert into characters (world_id, account_id, name, name_key, realm) select 1, account_id, 'Aneira', 'aneira', 1 from accounts;
+insert into zone_instances (zone_instance_id, world_id, zone_id, public_host, public_port, realms, build_id,
+  protocol_version, record_format, max_players, status, last_heartbeat_at) values
+  ('00000000-0000-4000-8000-000000000001', 1, 'vado_gris', '127.0.0.1', 24600, '{1,2}', 'b', 7, 1, 64, 'live', now());
+insert into character_leases (character_id, world_id, lease_id, zone_instance_id, claimed_by, expires_at)
+  select character_id, 1, gen_random_uuid(), '00000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001', now() + interval '5 s' from characters;`)
+	env := serveEnv(pool)
+	env["ELDMARK_HEARTBEAT_S"], env["ELDMARK_LEASE_TTL_S"] = "1", "5"
+	startServe(t, pool, env)
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		var status string
+		var free bool
+		if err := pool.QueryRow(ctx, `select zi.status, l.zone_instance_id is null from zone_instances zi, character_leases l`).
+			Scan(&status, &free); err != nil {
+			t.Fatal(err)
+		}
+		if status == "lost" && free {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("sin latido, a los 15 s: %s, libre %v", status, free)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 func TestServeRunsTheChatRetention(t *testing.T) {
 	pool := testdb.New(t)
 	ctx := context.Background()

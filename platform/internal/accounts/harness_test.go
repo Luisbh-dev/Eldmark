@@ -213,6 +213,7 @@ func (h *harness) do(c call) *response {
 	}
 	rec := httptest.NewRecorder()
 	h.h.ServeHTTP(rec, r)
+	h.svc.Wait() // la recuperación de contraseña sigue en segundo plano
 	res := &response{status: rec.Code, header: rec.Header(), raw: rec.Body.String()}
 	if strings.HasPrefix(rec.Header().Get("Content-Type"), "application/json") && rec.Body.Len() > 0 {
 		if err := json.Unmarshal(rec.Body.Bytes(), &res.body); err != nil {

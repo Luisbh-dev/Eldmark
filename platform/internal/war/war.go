@@ -183,7 +183,7 @@ func (s *Service) put(w http.ResponseWriter, r *http.Request) {
 	if req.ExpectedVersion < 0 {
 		fields["expected_version"] = "invalid"
 	}
-	if !isObject(req.Record) {
+	if !zones.IsJSONObject(req.Record) {
 		fields["record"] = "invalid"
 	}
 	if len(fields) > 0 {
@@ -200,11 +200,6 @@ func (s *Service) put(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]int64{"version": version})
-}
-
-func isObject(raw json.RawMessage) bool {
-	var probe map[string]json.RawMessage
-	return len(raw) > 0 && raw[0] == '{' && json.Unmarshal(raw, &probe) == nil
 }
 
 // event es un evento de guerra válido del lote.
@@ -281,7 +276,7 @@ func (s *Service) parseEvent(ctx context.Context, keys *zones.KeyChecker, raw js
 	realm, okRealm := e.Int("realm")
 	at, okAt := e.Int("at_unix")
 	if !okKey || !okFortress || !okEvent || !okRealm || !okAt || !fortressIDPattern.MatchString(fortress) ||
-		kind < 1 || kind > 7 || realm < 0 || realm > 3 || at < 0 {
+		kind < 1 || kind > 7 || realm < 0 || realm > 3 || at < 0 || at > zones.MaxUnix {
 		return event{}, false, nil
 	}
 	valid, err := keys.Valid(ctx, key, false)

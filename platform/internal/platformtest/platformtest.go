@@ -296,11 +296,12 @@ func Expect(t testing.TB, res *Response, status int, code string) {
 // Password es la contraseña de las cuentas de prueba.
 const Password = "una contraseña larga"
 
-// Player es una cuenta con una sesión de juego.
+// Player es una cuenta con una sesión de juego: el token de acceso y el de refresco de la última.
 type Player struct {
-	ID    int64
-	Email string
-	Token string
+	ID      int64
+	Email   string
+	Token   string
+	Refresh string
 }
 
 func (p *Platform) nextIP() string {
@@ -340,7 +341,17 @@ func (p *Platform) Login(pl *Player) {
 	if res.Status != http.StatusOK {
 		p.T.Fatalf("inicio de sesión de %s: %d %s", pl.Email, res.Status, res.Raw)
 	}
-	pl.Token = res.String("access_token")
+	pl.Token, pl.Refresh = res.String("access_token"), res.String("refresh_token")
+}
+
+// RefreshSession refresca la sesión del jugador (rota los dos tokens en la misma fila, §4.2).
+func (p *Platform) RefreshSession(pl *Player) *Response {
+	p.T.Helper()
+	res := p.PublicDo("POST", "/v1/sessions/refresh", "", map[string]any{"refresh_token": pl.Refresh})
+	if res.Status == http.StatusOK {
+		pl.Token, pl.Refresh = res.String("access_token"), res.String("refresh_token")
+	}
+	return res
 }
 
 // Appearance son 8 B de apariencia en base64.

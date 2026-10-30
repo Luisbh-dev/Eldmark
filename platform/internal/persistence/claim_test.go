@@ -54,10 +54,11 @@ func TestClaim(t *testing.T) {
 		t.Fatalf("pvp: %v", pvp)
 	}
 	var consumed, entered bool
+	claimedAt := p.Clock.Now()
 	p.Scalar(&consumed, `select consumed_at is not null from enter_tickets where ticket_id = $1`, ticket)
-	p.Scalar(&entered, `select last_entered_at = $2 from characters where character_id = $1`, id, p.Clock.Now())
-	if !consumed || !entered {
-		t.Fatalf("billete consumido %v, last_entered_at %v", consumed, entered)
+	p.Scalar(&entered, `select last_entered_at is not null from characters where character_id = $1`, id)
+	if !consumed || entered {
+		t.Fatalf("billete consumido %v, last_entered_at %v (la reclamación no lo escribe)", consumed, entered)
 	}
 	var stored string
 	p.Scalar(&stored, `select lease_id::text from character_leases where character_id = $1 and zone_instance_id = $2
@@ -67,6 +68,13 @@ func TestClaim(t *testing.T) {
 	}
 	// Con el personaje dentro, enter da character_busy.
 	platformtest.Expect(t, p.Enter(pl, id), 409, "character_busy")
+	// El primer guardado anota la entrada al mundo con la hora de la reclamación (los avisos, §9.5).
+	p.Clock.Advance(time.Minute)
+	platformtest.Expect(t, z.Save(id, z.SaveBody(id, lease, 1)), 200, "")
+	p.Scalar(&entered, `select last_entered_at = $2 from characters where character_id = $1`, id, claimedAt)
+	if !entered {
+		t.Fatal("last_entered_at tras el primer guardado")
+	}
 }
 
 // Billete consumido, caducado, de otra instancia y de una sesión revocada: ticket_invalid, y el
@@ -222,6 +230,42 @@ func TestClaimAccountBlocked(t *testing.T) {
 }
 
 func ptr(t time.Time) *time.Time { return &t }
+
+// Sin un billete válido, la reclamación no dice nada de la cuenta (§5.3): con un ticket_id inventado
+// o el billete de otro personaje, uno suspendido o con el borrado pedido, de este mundo o de otro,
+// da el mismo 409 ticket_invalid que uno que no existe, sin kind, until_unix ni reason. Con su
+// billete, 403 account_blocked, y el billete sigue sin consumir.
+func TestClaimRevealsNothingWithoutATicket(t *testing.T) {
+	p := platformtest.New(t)
+	z := p.NewZone(1, "vado_gris", 0).Start()
+	now := p.Clock.Now()
+	suspended := p.NewPlayer("s@example.org")
+	idS := p.NewCharacter(suspended, "Aneira", "vardheim")
+	ticket, _ := p.MustEnter(suspended, idS)
+	p.Exec(`insert into sanctions (account_id, kind, reason, starts_at, ends_at) values ($1, 'suspension', 'motivo privado', $2, $3)`,
+		suspended.ID, now.Add(-time.Minute), now.Add(48*time.Hour))
+	elsewhere := p.NewPlayer("w@example.org")
+	idW := p.NewCharacterIn(elsewhere, 2, "Bran", 1)
+	p.Exec(`insert into sanctions (account_id, kind, reason, starts_at) values ($1, 'ban', 'otro motivo privado', $2)`,
+		elsewhere.ID, now.Add(-time.Minute))
+	leaving := p.NewPlayer("l@example.org")
+	idL := p.NewCharacter(leaving, "Cora", "vardheim")
+	p.Exec(`update accounts set status = 'pending_deletion', deletion_requested_at = $2, purge_after = $3
+		where account_id = $1`, leaving.ID, now, now.Add(14*24*time.Hour))
+	nobody := z.Claim(1, 999999)
+	for _, c := range []struct{ ticket, id int64 }{{1, idS}, {1, idW}, {1, idL}, {ticket, idW}, {ticket, idL}} {
+		res := z.Claim(c.ticket, c.id)
+		platformtest.Expect(t, res, 409, "ticket_invalid")
+		if res.Raw != nobody.Raw || strings.Contains(res.Raw, "motivo") || res.ErrValue("kind") != nil ||
+			res.ErrValue("until_unix") != nil {
+			t.Fatalf("billete %d, personaje %d: %s", c.ticket, c.id, res.Raw)
+		}
+	}
+	platformtest.Expect(t, z.Claim(ticket, idS), 403, "account_blocked")
+	if n := p.Count(`select count(*) from enter_tickets where ticket_id = $1 and consumed_at is null`, ticket); n != 1 {
+		t.Fatal("el billete quedó consumido")
+	}
+}
 
 // Un DELETE y una reclamación del mismo personaje a la vez dejan o un borrado sin arrendamiento o
 // un vivo con él (bloquean los dos la fila de la cuenta).

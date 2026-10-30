@@ -215,8 +215,10 @@ func ErrDBUnavailable() *httpx.Error {
 }
 
 // Fail escribe la respuesta de un error de la API interna: un *httpx.Error tal cual; uno de la
-// base no disponible o que agotó los reintentos, 503 db_unavailable; cualquier otro, 500 internal.
-// Los dos últimos se registran con el id de la petición.
+// base no disponible o que agotó los reintentos, 503 db_unavailable; un dato que la base rechaza
+// (clase 22: un NUL en jsonb, una fecha fuera de rango), 400 validation, porque reintentarlo no lo
+// arregla y la zona reintenta un 5xx; cualquier otro, 500 internal. Los tres últimos se registran
+// con el id de la petición.
 func Fail(w http.ResponseWriter, r *http.Request, log *slog.Logger, err error) {
 	var e *httpx.Error
 	if errors.As(err, &e) {
@@ -227,8 +229,11 @@ func Fail(w http.ResponseWriter, r *http.Request, log *slog.Logger, err error) {
 		return
 	}
 	resp := httpx.ErrInternal
-	if kind := db.Classify(err); kind == db.KindUnavailable || kind == db.KindRetryable {
+	switch db.Classify(err) {
+	case db.KindUnavailable, db.KindRetryable:
 		resp = ErrDBUnavailable()
+	case db.KindData:
+		resp = Validation(map[string]string{"body": "invalid"})
 	}
 	if log != nil {
 		log.LogAttrs(r.Context(), slog.LevelError, "error en una petición interna",

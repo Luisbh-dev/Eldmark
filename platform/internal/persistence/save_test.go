@@ -177,22 +177,26 @@ func TestSaveWithReleaseLease(t *testing.T) {
 func TestEnvelopeErrors(t *testing.T) {
 	w := newInWorld(t)
 	cases := map[string]func(map[string]any){
-		"campo desconocido":   func(b map[string]any) { b["world_id"] = 1 },
-		"save_format 2":       func(b map[string]any) { b["save_format"] = 2 },
-		"otro personaje":      func(b map[string]any) { b["character_id"] = strconv.FormatInt(w.id+1, 10) },
-		"id sin comillas":     func(b map[string]any) { b["character_id"] = w.id },
-		"seq 0":               func(b map[string]any) { b["seq"] = 0 },
-		"seq 1.5":             func(b map[string]any) { b["seq"] = 1.5 },
-		"reason 6":            func(b map[string]any) { b["reason"] = 6 },
-		"sin progress":        func(b map[string]any) { delete(b, "progress") },
-		"progress null":       func(b map[string]any) { b["progress"] = nil },
-		"sin lease_id":        func(b map[string]any) { delete(b, "lease_id") },
-		"lease_id roto":       func(b map[string]any) { b["lease_id"] = "x" },
-		"pvp incompleto":      func(b map[string]any) { b["pvp"] = map[string]any{"kills": 1} },
-		"pvp negativo":        func(b map[string]any) { b["pvp"] = pvp(-1) },
-		"pvp con otra clave":  func(b map[string]any) { p := pvp(1); p["score"] = 1; b["pvp"] = p },
-		"instancia rota":      func(b map[string]any) { b["zone_instance_id"] = strings.ToUpper(w.z.ID) },
-		"release_lease texto": func(b map[string]any) { b["release_lease"] = "sí" },
+		"campo desconocido":  func(b map[string]any) { b["world_id"] = 1 },
+		"save_format 2":      func(b map[string]any) { b["save_format"] = 2 },
+		"otro personaje":     func(b map[string]any) { b["character_id"] = strconv.FormatInt(w.id+1, 10) },
+		"id sin comillas":    func(b map[string]any) { b["character_id"] = w.id },
+		"seq 0":              func(b map[string]any) { b["seq"] = 0 },
+		"seq 1.5":            func(b map[string]any) { b["seq"] = 1.5 },
+		"reason 6":           func(b map[string]any) { b["reason"] = 6 },
+		"sin progress":       func(b map[string]any) { delete(b, "progress") },
+		"progress null":      func(b map[string]any) { b["progress"] = nil },
+		"sin lease_id":       func(b map[string]any) { delete(b, "lease_id") },
+		"lease_id roto":      func(b map[string]any) { b["lease_id"] = "x" },
+		"pvp incompleto":     func(b map[string]any) { b["pvp"] = map[string]any{"kills": 1} },
+		"pvp negativo":       func(b map[string]any) { b["pvp"] = pvp(-1) },
+		"pvp con otra clave": func(b map[string]any) { p := pvp(1); p["score"] = 1; b["pvp"] = p },
+		// Los cinco totales int4 de character_pvp_stats (solo gate_damage es bigint): más de 2^31 − 1
+		// era un 500 que la zona reintentaba sin fin.
+		"kills de más de int4":    func(b map[string]any) { p := pvp(1); p["kills"] = int64(1) << 31; b["pvp"] = p },
+		"defend_s de más de int4": func(b map[string]any) { p := pvp(1); p["defend_s"] = 3000000000; b["pvp"] = p },
+		"instancia rota":          func(b map[string]any) { b["zone_instance_id"] = strings.ToUpper(w.z.ID) },
+		"release_lease texto":     func(b map[string]any) { b["release_lease"] = "sí" },
 	}
 	for name, mutate := range cases {
 		b := w.body(1)
@@ -249,14 +253,19 @@ func TestSavePvP(t *testing.T) {
 	if got := stats(); !equal(got, []int64{4, 5, 0, 1, 450, 130}) {
 		t.Fatalf("greatest: %v", got)
 	}
-	// La reclamación siguiente trae los totales.
+	// El tope de cada columna vale: 2^31 − 1 en las int4 y más en gate_damage (bigint).
 	b = w.body(4)
-	b["release_lease"] = true
+	b["pvp"] = map[string]any{"kills": 1<<31 - 1, "deaths": 1<<31 - 1, "assists": 1<<31 - 1, "captures": 1<<31 - 1,
+		"gate_damage": int64(1) << 40, "defend_s": 1<<31 - 1}
 	expectSave(t, w.z.Save(w.id, b), true, false, 4)
+	// La reclamación siguiente trae los totales.
+	b = w.body(5)
+	b["release_lease"] = true
+	expectSave(t, w.z.Save(w.id, b), true, false, 5)
 	ticket, _ := w.p.MustEnter(w.pl, w.id)
 	res := w.z.Claim(ticket, w.id)
 	platformtest.Expect(t, res, 200, "")
-	if res.Body["pvp"].(map[string]any)["deaths"].(json.Number).String() != "5" {
+	if res.Body["pvp"].(map[string]any)["deaths"].(json.Number).String() != "2147483647" {
 		t.Fatal(res.Raw)
 	}
 }
@@ -479,6 +488,14 @@ func TestSaveMany(t *testing.T) {
 	other := w.body(2)
 	other["zone_instance_id"] = zones.FormatUUID(zones.NewUUID())
 	platformtest.Expect(t, w.z.Do("POST", "/internal/v1/saves", batch(other)), 400, "invalid_save")
+	// Un total pvp que no cabe en su columna: envelope (definitivo), no un 500 que tumba el lote.
+	big := w.body(2)
+	big["pvp"] = map[string]any{"kills": 3000000000, "deaths": 0, "assists": 0, "captures": 0, "gate_damage": 0, "defend_s": 0}
+	res = w.z.Do("POST", "/internal/v1/saves", batch(big, w.z.SaveBody(idB, leaseB, 2)))
+	platformtest.Expect(t, res, 400, "invalid_save")
+	if res.Field("check") != "envelope" {
+		t.Fatal(res.Raw)
+	}
 }
 
 // Operación y libro: solo con arrendamiento en la instancia (el del personaje para el libro; el de

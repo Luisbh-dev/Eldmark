@@ -312,11 +312,15 @@ func TestCreateAccountAndBootstrap(t *testing.T) {
 	if acc.Body["email_verified"] != true || acc.Body["role"] != "gm" || pending["terms_required"] != false {
 		t.Fatalf("cuenta creada: %s", acc.Raw)
 	}
+	// Un correo que reserva el revert_email vivo de otra cuenta (plataforma.md §4.3) tampoco vale.
+	p.Exec(`insert into account_tokens (token_hash, account_id, purpose, email, expires_at, created_at)
+		values ('\x01', $1, 'revert_email', 'reservado@example.org', $2, $3)`, gmID, p.Clock.Now().Add(time.Hour), p.Clock.Now())
 	for _, c := range []struct {
 		email, password, role string
 		want                  error
 	}{
 		{"gm@example.org", password, "player", accounts.ErrEmailTaken},
+		{"reservado@example.org", password, "player", accounts.ErrEmailReserved},
 		{"no es un correo", password, "player", accounts.ErrEmailInvalid},
 		{"x@example.org", "corta", "player", accounts.ErrPasswordInvalid},
 		{"x@example.org", password, "rey", accounts.ErrRoleInvalid},

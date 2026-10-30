@@ -148,6 +148,21 @@ type Config struct {
 	LegalDir string
 }
 
+// LostAfterHeartbeats es cuántos latidos se pueden perder antes de dar una instancia por perdida
+// (plataforma.md §5.3).
+const LostAfterHeartbeats = 3
+
+// LostEvery es cada cuánto corre el trabajo de instancias perdidas: min(5 s, HEARTBEAT_S) (§2.5).
+func (c *Config) LostEvery() time.Duration { return min(5*time.Second, c.Heartbeat) }
+
+// LostDetected es lo que puede tardar en darse por perdida una instancia desde su último latido:
+// 3 × HEARTBEAT_S más una vuelta del trabajo. El TTL de los arrendamientos tiene que pasar de ahí
+// (lo exige Load): si no, uno caduca con la instancia aún viva y un latido tardío lo encontraba
+// caducado mientras la reclamación, enter y el borrado ya lo daban por libre.
+func (c *Config) LostDetected() time.Duration {
+	return LostAfterHeartbeats*c.Heartbeat + c.LostEvery()
+}
+
 // ResolveMinProtocol devuelve el protocolo mínimo: el de ELDMARK_MIN_PROTOCOL o, si no se dio
 // (solo en dev y test), el protocol_version de las reglas exportadas.
 func (c *Config) ResolveMinProtocol(rulesProtocol int) int {
@@ -337,8 +352,9 @@ func Load(lookup Lookup) (*Config, error) {
 
 	c.Heartbeat = l.seconds("ELDMARK_HEARTBEAT_S", 5)
 	c.LeaseTTL = l.seconds("ELDMARK_LEASE_TTL_S", 30)
-	if c.Heartbeat > 0 && c.LeaseTTL > 0 && c.LeaseTTL <= c.Heartbeat {
-		l.fail("ELDMARK_LEASE_TTL_S", "tiene que ser mayor que ELDMARK_HEARTBEAT_S (el latido renueva los arrendamientos antes de que caduquen)")
+	if floor := c.LostDetected(); c.Heartbeat > 0 && c.LeaseTTL > 0 && c.LeaseTTL <= floor {
+		l.fail("ELDMARK_LEASE_TTL_S", "tiene que ser mayor que %d × ELDMARK_HEARTBEAT_S + min(5 s, ELDMARK_HEARTBEAT_S) (%v): "+
+			"un arrendamiento no puede caducar antes de que su instancia sin latido se dé por perdida", LostAfterHeartbeats, floor)
 	}
 	if v, ok := l.get("ELDMARK_LEGAL_DIR"); ok {
 		if st, err := os.Stat(v); err != nil || !st.IsDir() {

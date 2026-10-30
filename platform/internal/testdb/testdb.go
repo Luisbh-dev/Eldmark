@@ -13,7 +13,8 @@
 // La primera prueba que pide una base levanta un clúster con initdb en una carpeta temporal
 // (os.MkdirTemp("", "eldpg-")) y crea la plantilla tmpl con todas las migraciones; cada prueba
 // recibe «create database t_<n> template tmpl», que se borra al terminar. Main para el clúster y
-// borra la carpeta. El servidor escucha solo en un socket Unix dentro de esa carpeta, así que dos
+// borra la carpeta; si el proceso muere antes de llegar ahí (un pánico, el plazo de go test, un
+// Ctrl-C), lo hace un vigilante (en Unix, un sh aparte que espera en una tubería). El servidor escucha solo en un socket Unix dentro de esa carpeta, así que dos
 // paquetes que corren a la vez no chocan; si la ruta del socket pasa de los 107 B que admite el
 // sistema (un TMPDIR largo), escucha en 127.0.0.1 con un puerto libre.
 //
@@ -70,6 +71,9 @@ type cluster struct {
 	admin   *pgxpool.Pool
 	created []string
 	mu      sync.Mutex
+
+	watchdog     *exec.Cmd // el vigilante (startWatchdog), o nil
+	watchdogPipe *os.File  // su entrada: «done» al acabar bien; cerrada al morir el proceso
 }
 
 // state es el clúster del paquete, que levanta la primera prueba que pide una base.
@@ -305,6 +309,18 @@ func (c *cluster) removeDir() {
 		_ = os.RemoveAll(c.dir)
 		c.dir = ""
 	}
+	c.stopWatchdog()
+}
+
+// stopWatchdog despide al vigilante cuando ya se ha limpiado: «done» y espera a que salga.
+func (c *cluster) stopWatchdog() {
+	if c.watchdog == nil {
+		return
+	}
+	_, _ = c.watchdogPipe.WriteString("done\n")
+	_ = c.watchdogPipe.Close()
+	_ = c.watchdog.Wait()
+	c.watchdog, c.watchdogPipe = nil, nil
 }
 
 // initCluster crea el clúster con initdb y lo arranca con pg_ctl.
@@ -331,6 +347,10 @@ func (c *cluster) initCluster() error {
 		if err := os.Chown(dir, uid, gid); err != nil {
 			return err
 		}
+	}
+	// El vigilante, antes de initdb: limpia también si el proceso muere arrancando el clúster.
+	if err := c.startWatchdog(); err != nil {
+		return fmt.Errorf("vigilante del clúster: %w", err)
 	}
 	data := filepath.Join(dir, "data")
 	out, err := c.run("initdb", "-D", data, "-U", superuser, "--auth=trust", "-E", "UTF8", "--no-locale", "--no-sync", "--no-instructions")
@@ -376,15 +396,19 @@ func (c *cluster) serverLog() string {
 	return "\n" + string(data)
 }
 
+// argv es la orden de un binario de PostgreSQL, con runuser si hace falta.
+func (c *cluster) argv(bin string, args ...string) []string {
+	path := filepath.Join(c.binDir, bin)
+	if c.runAs != "" {
+		return append([]string{"runuser", "-u", c.runAs, "--", path}, args...)
+	}
+	return append([]string{path}, args...)
+}
+
 // run ejecuta un binario de PostgreSQL, con runuser si hace falta, desde la carpeta temporal.
 func (c *cluster) run(bin string, args ...string) (string, error) {
-	path := filepath.Join(c.binDir, bin)
-	var cmd *exec.Cmd
-	if c.runAs != "" {
-		cmd = exec.Command("runuser", append([]string{"-u", c.runAs, "--", path}, args...)...)
-	} else {
-		cmd = exec.Command(path, args...)
-	}
+	argv := c.argv(bin, args...)
+	cmd := exec.Command(argv[0], argv[1:]...)
 	if c.dir != "" {
 		cmd.Dir = c.dir
 	}

@@ -36,7 +36,7 @@ type SMTPSender struct {
 	from     netmail.Address
 	log      *slog.Logger
 	queue    chan Message
-	dialer   net.Dialer
+	dial     func(ctx context.Context, network, addr string) (net.Conn, error) // net.Dialer; las pruebas lo cambian
 	timeout  time.Duration
 	wg       sync.WaitGroup
 	start    sync.Once
@@ -54,8 +54,10 @@ func NewSMTP(smtpURL *url.URL, from string, log *slog.Logger) (*SMTPSender, erro
 	if err != nil || addr.Name != "" || strings.ContainsAny(from, "\r\n") {
 		return nil, errors.New("mail: el remitente no es una dirección válida")
 	}
+	const timeout = 30 * time.Second
 	return &SMTPSender{url: smtpURL, from: netmail.Address{Name: "Eldmark", Address: addr.Address}, log: log,
-		queue: make(chan Message, QueueSize), timeout: 30 * time.Second, stop: make(chan struct{})}, nil
+		queue: make(chan Message, QueueSize), dial: (&net.Dialer{Timeout: timeout}).DialContext, timeout: timeout,
+		stop: make(chan struct{})}, nil
 }
 
 // Start arranca el envío en segundo plano hasta Close.
@@ -142,19 +144,22 @@ func (s *SMTPSender) deliver(m Message) error {
 	}
 	addr := net.JoinHostPort(host, port)
 	deadline := time.Now().Add(s.timeout)
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
 	tlsConfig := &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}
-	var conn net.Conn
-	var err error
-	if s.url.Scheme == "smtps" {
-		conn, err = tls.DialWithDialer(&net.Dialer{Timeout: s.timeout}, "tcp", addr, tlsConfig)
-	} else {
-		conn, err = s.dialer.Dial("tcp", addr)
-	}
+	conn, err := s.dial(ctx, "tcp", addr)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 	_ = conn.SetDeadline(deadline)
+	if s.url.Scheme == "smtps" {
+		secure := tls.Client(conn, tlsConfig)
+		if err := secure.HandshakeContext(ctx); err != nil {
+			return err
+		}
+		conn = secure
+	}
 	c, err := smtp.NewClient(conn, host)
 	if err != nil {
 		return err

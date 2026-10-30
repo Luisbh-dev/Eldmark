@@ -292,6 +292,27 @@ func TestMalformedValues(t *testing.T) {
 	}
 }
 
+// El TTL de los arrendamientos tiene que cubrir lo que tarda en darse por perdida una instancia sin
+// latido (3 × HEARTBEAT_S) más una vuelta del trabajo (min(5 s, HEARTBEAT_S)): si no, un arrendamiento
+// caduca con la instancia aún viva y un latido tardío lo renovaba (plataforma.md §2.3, §5.3).
+func TestLeaseTTLCoversLostInstances(t *testing.T) {
+	for _, c := range []struct {
+		heartbeat, ttl string
+		ok             bool
+	}{
+		{"5", "30", true}, {"5", "20", false}, {"5", "21", true}, {"10", "20", false}, {"10", "30", false},
+		{"10", "36", true}, {"1", "4", false}, {"1", "5", true},
+	} {
+		env := minimal()
+		env["ELDMARK_HEARTBEAT_S"], env["ELDMARK_LEASE_TTL_S"] = c.heartbeat, c.ttl
+		if c.ok {
+			mustLoad(t, env)
+		} else {
+			mustFail(t, env, "ELDMARK_LEASE_TTL_S")
+		}
+	}
+}
+
 func TestZoneTokens(t *testing.T) {
 	env := minimal()
 	env["ELDMARK_ZONE_TOKENS"] = zoneEntry("1:vado_gris:0", "a") + "," + zoneEntry("1:test_world:3", "b")

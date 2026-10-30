@@ -3,8 +3,13 @@ package testdb_test
 import (
 	"context"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"eldmark/platform/internal/migrate"
 	"eldmark/platform/internal/testdb"
@@ -50,5 +55,57 @@ func TestDumpSchemaIsStable(t *testing.T) {
 	}
 	if strings.Contains(first, "OWNER TO") || strings.Contains(first, "GRANT ") {
 		t.Fatal("sin dueños ni privilegios")
+	}
+}
+
+// Si el proceso de pruebas muere sin volver de m.Run (aquí, un pánico; igual con el plazo de go test
+// o un Ctrl-C), el vigilante para el servidor y borra la carpeta del clúster: no hace falta otra
+// ejecución con el mismo TMPDIR para limpiarlo (§2.6).
+func TestClusterDiesWithTheProcess(t *testing.T) {
+	if os.Getenv("ELDMARK_TESTDB_CHILD") == "1" {
+		testdb.New(t)
+		panic("el proceso de pruebas muere sin pasar por el final de Main")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("el vigilante es de Unix")
+	}
+	if os.Getenv("ELDMARK_TEST_DATABASE_URL") != "" {
+		t.Skip("con un servidor compartido no hay clúster")
+	}
+	testdb.New(t) // sin PostgreSQL, se salta (o falla con ELDMARK_REQUIRE_PG=1) como las demás
+	// Una carpeta temporal propia para el hijo (el usuario postgres tiene que poder entrar).
+	tmp, err := os.MkdirTemp("", "eldwd-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tmp) })
+	if err := os.Chmod(tmp, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestClusterDiesWithTheProcess$", "-test.count=1")
+	cmd.Env = append(os.Environ(), "ELDMARK_TESTDB_CHILD=1", "TMPDIR="+tmp)
+	out, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "muere sin pasar") {
+		t.Fatalf("el hijo tenía que morir con el pánico: %v\n%s", err, out)
+	}
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		left, _ := filepath.Glob(filepath.Join(tmp, "eldpg-*"))
+		if len(left) == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			// Sin vigilante que valga, se mata a mano el servidor huérfano del hijo.
+			for _, dir := range left {
+				pid, _ := os.ReadFile(filepath.Join(dir, "data", "postmaster.pid"))
+				if n, err := strconv.Atoi(strings.SplitN(string(pid), "\n", 2)[0]); err == nil {
+					if p, err := os.FindProcess(n); err == nil {
+						_ = p.Kill()
+					}
+				}
+			}
+			t.Fatalf("el clúster del hijo sigue ahí: %v", left)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }
