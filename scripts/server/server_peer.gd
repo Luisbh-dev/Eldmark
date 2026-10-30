@@ -61,9 +61,11 @@ var connected_at_msec: int = 0
 var character_id: int = 0
 ## Con la plataforma, lo que trajo la reclamación (desde el WELCOME; null sin plataforma o antes).
 var claimed: ClaimedCharacter = null
-## Sale sin la salida en combate (GUE-41): la baja sin guardado de docs/plataforma.md §7.2 (un
-## [code]revoked[/code] [code]lease_lost[/code]) saca el cuerpo en el acto.
+## Sale sin la salida en combate (GUE-41): la baja sin guardado de docs/plataforma.md §7.2 (un guardado
+## rechazado o un [code]revoked[/code] [code]lease_lost[/code]) saca el cuerpo en el acto.
 var drop_body_at_once: bool = false
+## Expulsado por la zona: su guardado final lleva el motivo 5 (docs/plataforma.md §7.3) en lugar del 3.
+var kicked: bool = false
 ## Tick en el que empezó la carga de la zona (para el límite de CLIENT_READY).
 var loading_since_tick: int = 0
 var limiter_unreliable: RateLimiter

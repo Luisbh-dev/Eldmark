@@ -1327,7 +1327,12 @@ métricas por sección), es el de la cabecera de `scripts/server/zone_server.gd`
   porcentaje de entradas sustituidas.
 - **Cierre.** `--quit-after-ticks`, `--idle-quit` y `--stop-file` envían un NOTICE con el código 2,
   hacen `flush()` y cierran. `SIGTERM` y `SIGINT` no llegan a GDScript y no cierran de forma
-  ordenada (ver [1.3](#13-ajustes-del-servidor-headless)).
+  ordenada (ver [1.3](#13-ajustes-del-servidor-headless)). Con `--platform` (docs/plataforma.md §7.2 y
+  §19.9), el cierre manda además el guardado final de cada personaje y espera hasta 10 s a que la
+  plataforma lo conteste; el `maintenance` del latido es un quinto disparador, con avisos por NOTICE
+  (código 0). Cuando la plataforma cierra la instancia (§6.1), los finales salen antes y el NOTICE es
+  de expulsión (código 1): «El servidor de la zona se ha reiniciado: vuelve a entrar». Ni los
+  mensajes ni sus bytes cambian.
 
 ### 8.2 Cola de entradas (`InputQueue`)
 

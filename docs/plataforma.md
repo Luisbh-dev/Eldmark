@@ -1718,7 +1718,8 @@ func pending_count() -> int
   crítico sale al instante. Una baja en `VERIFYING` llama a `auth_provider.cancel(peer_id)`; una en `LOADING`, a
   `platform.release(character_id, lease_id)` y `progress.cancel_prepared(peer_id)` (§5.2); una en el mundo, a la
   salida de §7.2, y una por `save_rejected` o `revoked` `lease_lost`, a la baja sin guardado de §7.2.
-  `ZoneServer.stop` hace lo de §7.2 («Cierre ordenado») antes de `begin_flush`.
+  `ZoneServer.stop` hace lo de §7.2 («Cierre ordenado») antes de `begin_flush`; el cierre de §6.1 es
+  `ZoneServer.close_instance(code)`, que `ServerMain` llama con el código de `instance_closed` (P5, §19.9).
 
 ### 14.4 Contratos en GDScript (cliente)
 ```gdscript
@@ -2764,3 +2765,124 @@ cuerpos de §6); `PlatformClient` con cientos de personajes en el latido y lotes
 **Queda para después:** `CharacterSaver` y el cierre de §6.1 (P5); `prepare` y la sección `progress` (progresion.md
 P5a); las fortalezas cargadas y la sección `pvp` (P6); silencios, avisos, `/gm` y lotes de chat y auditoría (P7b);
 `NetClient` con billete y `AccountFlow` (P8); DTLS (P9c); la prueba de extremo a extremo (P10).
+
+### 19.9 P5 · guardado en la zona (TEC-25)
+
+**Qué hay.** `CharacterSaver` y lo que lo rodea en la zona (§7.2, §7.3 y el cierre de §6.1). Sin `--platform` no
+cambia nada: no hay `CharacterSaver` y los personajes siguen siendo efímeros (progresion.md §9.4).
+
+| Pieza | Contenido |
+|---|---|
+| `scripts/server/platform/character_saver.gd` | `CharacterSaver` de §14.3: secciones en el orden en que se registran (una con el mismo nombre sustituye a la anterior); entradas por `lease_id` con los índices `character_id` → `lease_id` y, hasta `finish` o `drop`, `net_id` → `lease_id`; el sobre entero de §7.3 serializado una vez; el punto de control en la fase del personaje (`tick % interval == character_id % interval`) solo con alguna sección sucia; los críticos en el primer `step` sin nada en vuelo; una escritura en vuelo; el final construido en `finish`, que espera detrás del que vuela; `drop`; la tabla de respuestas de §7.3 y `save_rejected`. Además, `pending_count`, `tracked_net_ids`, `is_tracked`, `net_id_of`, `lease_of`, `entry_count`, `section_names`, `interval_ticks`, `get_stats` y `log_sink` |
+| `zone_server.gd` | Con plataforma, `CharacterSaver` (cada `--save-interval` × 60 ticks) y `get_saver()`. `track` en cuanto existe la entidad; `step(s)` tras «altas»; los eventos `save` en «poll». La «Salida» en `_remove_player`: `finish` antes de `ScoreKeeper.forget`, también cuando se retira el cuerpo de una salida en combate. La baja sin guardado: `_on_save_rejected` y el `revoked` `lease_lost`, también del cuerpo que se queda. Los demás `revoked`, con guardado final. La cuenta atrás del `maintenance` del latido. `stop()` con los finales de todos y la espera; `close_instance(code)`, el cierre de §6.1. `saves` en el informe |
+| `server_peer.gd` · `server_main.gd` | `ServerPeer.kicked` (el motivo 5 del final). `SHUTDOWN_MAX_FRAMES` 720; `instance_closed` → `close_instance` y salida con código 3 |
+| Pruebas | `tests/support/fake_save_section.gd` (`FakeSaveSection`, la sección falsa con la forma de `pvp`, que `FakeZonePlatform` devuelve en la reclamación siguiente), `tests/support/raw_ticket_client.gd` (`RawTicketClient`, el cliente con billete que vivía dentro de `test_zone_server_platform.gd`) y `FakeZonePlatform.fake_maintenance` (el `maintenance` de los latidos por defecto) |
+
+**Para los paquetes siguientes.**
+
+- **progresion.md P5a:** `ProgressService.setup` registra `&"progress"` con `zone.get_saver().register_section(…)`
+  **la primera** (es la única que puede devolver `{}`, y `CharacterSaver` no deshace lo que haya construido una
+  sección anterior en ese intento). `on_arrival` va detrás de `track` en `_process_arrivals` (el sitio ya está), y
+  un `mark_critical(net_id, &"starter_kit")` hecho ahí sale en el `step` de ese mismo tick. `on_departure(net_id)` va
+  en `_remove_player` justo después de `_scores.forget(net_id)`: por ahí pasan la «Salida», el cuerpo que se retira
+  tras una salida en combate y la baja sin guardado, cuyo `finish` ya no hace nada tras el `drop`. En los dos
+  cierres, `_wind_down` hace los `finish` antes de `_clear_players()`. Mientras no haya ninguna sección,
+  `CharacterSaver` libera sin guardar (abajo). En `FakeZonePlatform`, la parte `progress` de lo aplicado se guarda
+  en `_remember_save` (lo llama `_answer` con cada 200 `applied`).
+- **P6:** `ScoreKeeper` registra `&"pvp"`. Las pruebas de P5 registran después su `FakeSaveSection` con ese mismo
+  nombre, que sustituye a la de verdad: siguen valiendo sin tocarlas.
+- **P7b y progresion.md P5d:** con la zona cercada, `mark_critical` y los guardados siguen saliendo; rechazar los
+  comandos que piden guardado crítico es de ellos.
+- **P10:** `--save-interval=5` da puntos de control cada 300 ticks; el `kill -9` pierde lo posterior al último
+  aplicado.
+
+**Desviaciones y decisiones de la implementación:**
+
+- **Sin secciones no hay nada que guardar.** Hasta progresion.md P5a (`progress`) y P6 (`pvp`) la zona no registra
+  ninguna, y la plataforma exige `progress` (un sobre sin ella es `invalid_save` `envelope`). Así que, sin
+  secciones, el punto de control nunca está sucio, un crítico no manda nada y `finish` libera sin guardar: contra
+  la plataforma de verdad la zona hace lo mismo que en P4 (`_claims_by_net`, que desaparece).
+- **El cierre de §6.1 es `ZoneServer.close_instance(code)`** (§14.3 solo nombraba a `ServerMain`). Los de
+  AUTHENTICATING y VERIFYING reciben REJECT `UNAVAILABLE` (aún no pueden recibir un NOTICE) y los de LOADING se
+  liberan. Después salen los finales de todos con el motivo 4 y la zona espera, como mucho `save_drain_ticks` (600).
+  Solo entonces manda el NOTICE de expulsión (código 1) a todos. `ServerMain._shutdown` recibe el código y elige
+  `close_instance` en lugar de `stop`.
+- **La espera vive en `ZoneServer`.** `_drain_stop` sondea la red y la plataforma hasta que `pending_count()` es 0 y
+  `is_flushed()` (o pasan 600 ticks) y los peers se han ido (o pasan 30 ticks desde su NOTICE). En ese tiempo
+  atiende las respuestas de los guardados y las reclamaciones que llegan tarde, que se liberan; el latido ya no
+  expulsa ni avisa. `stop()` sin peers y sin nada pendiente sigue terminando en el acto, así que las pruebas sin
+  plataforma no cambian. `ServerMain` espera después, como antes, a `is_flushed()` y a la baja.
+- **Un cierre a mitad de tick corta el tick.** `instance_closed` (en «poll»), la cuenta atrás de la consola o la del
+  mantenimiento pueden cerrar el servidor dentro del tick. Desde ahí, el resto del tick no corre sobre el mundo ya
+  vaciado.
+- **Motivo del final:** 3 (salida); 5 si la zona echó al jugador (`ServerPeer.kicked`: avisos, consola, `revoked`,
+  plazo de carga); 4 en los dos cierres. El cuerpo que se queda tras una salida en combate conserva el motivo hasta
+  que se retira.
+- **Un 409 `instance_*` en un guardado** no culpa al jugador. La plataforma no lo da: los guardados valen en
+  cualquier estado y el cierre llega en `instance_status`. Si aun así llega, se reenvía el mismo cuerpo hasta 3
+  veces (`MAX_CLOSING_RESENDS`) y después es definitivo: un final de una instancia cerrada no se pierde por eso.
+- **Liberar después de lo que vuela.** Un final que no se puede construir y la baja sin guardado liberan cuando el
+  guardado en vuelo, si lo hay, tiene respuesta: si no, otra zona podría reclamar y cargar el estado de antes de
+  ese guardado. Tras un `lease_lost` (del latido, de un guardado o en `drop`), esa entrada ya no libera nunca.
+- **`save_rejected` sin baja:** si nadie llama a `drop` al recibirla, `CharacterSaver` la hace solo, y la entrada no
+  se queda atada a un cuerpo que ya no guarda. Un `track` sobre un `net_id` que aún tenía entrada (la zona no llamó
+  a `finish` ni a `drop`) suelta la vieja con `drop` y una alerta.
+- **Alertas:** van al registro y además con `push_warning`. Son el definitivo de un guardado (con `check` y `detail`
+  de un `invalid_save`), el final que no se pudo construir y un `track` que no cuadra. El ejecutor de pruebas no
+  cuenta los WARNING como fallos.
+- **Textos.** La baja sin guardado manda «No se ha podido guardar tu personaje; vuelve a entrar» y un `lease_lost`
+  de un guardado, «Tu personaje ha entrado en otro servidor»; el de un `revoked` lleva el `text` de la plataforma.
+  El mantenimiento dice «El servidor se cerrará por mantenimiento en 10 min: <message>» (minutos redondeados hacia
+  arriba desde 60 s). Los avisos que ya pasaron cuando llega el anuncio se juntan en uno con lo que queda.
+  Un `maintenance` que vuelve a null tras algún aviso da «Mantenimiento cancelado: el servidor sigue abierto», y
+  uno cuya hora ya llegó no se dispara otra vez aunque el latido lo repita. La hora es `ZonePlatform.now_unix()`.
+- **Los cinco disparadores con el proceso de verdad** (`--platform` contra `FakeHttpServer`): como la zona aún no
+  tiene secciones, lo que esperan es la liberación de cada uno, también la del final de quien está en el mundo. Los
+  guardados de verdad con su espera se prueban en el proceso de las pruebas, con `FakeSaveSection`.
+
+**Pruebas** (Godot):
+
+- **`test_character_saver.gd`** (14, sin red, con `FakeZonePlatform`): el punto de control en su fase y solo con
+  algo sucio (tres personajes, intervalo de 120 ticks); el crítico al instante, también justo tras `track`; una
+  escritura en vuelo; el final que espera detrás de la que vuela sin rehacerse; el sobre entero (con un
+  `character_id` > 2^53) y el mismo cuerpo en los reintentos; `duplicate` como aplicado; una sección que devuelve
+  `{}` sin gastar `seq`. Además: el final que no se puede construir, sin secciones, ocho respuestas definitivas
+  antes de `finish` (`invalid_save`, `stale_seq`, `seq_conflict`, 403, 413, 404, un 409 desconocido y `lease_lost`,
+  este sin liberar) y la baja que hace solo; los
+  409 `instance_*` con su tope; tras `finish`, un definitivo que solo se registra y libera; un `net_id` reutilizado
+  con el final del anterior en vuelo; el mismo personaje que vuelve mientras su final se reintenta.
+- **`test_zone_server_saves.gd`** (10, con ENet): el crítico del alta en el tick del alta y los puntos de control en
+  su fase; la salida en combate que guarda al irse el cuerpo; la baja sin guardado (un `invalid_save` en combate:
+  el cuerpo fuera en el acto, una liberación, la «Salida» sin nada y la sección sin más llamadas; y un `revoked`
+  `lease_lost` en combate, sin liberar); un `revoked` con guardado final y motivo 5. El cierre de §6.1 con
+  `instance_lost` en el latido y con `instance_replaced` en el `instance_status` de un guardado: los finales antes
+  del NOTICE, la liberación del de LOADING, y quien vuelve a entrar carga su final. El cierre ordenado espera la
+  respuesta del final a los 2 s y libera a los de LOADING y VERIFYING. El `maintenance` da los cinco avisos, el
+  cierre y la cancelación. La reconexión trae lo último aplicado, y el mismo personaje vuelve mientras su final se
+  reintenta.
+- **`test_zone_process_shutdown.gd`** (5, el servidor de zona en otro proceso): `--stop-file`,
+  `--quit-after-ticks`, `--idle-quit`, `shutdown` de la consola (con `--run-at`) y `maintenance`. En cada uno, la
+  baja de la instancia llega después de la última respuesta (a los 2 s) de lo que quedaba de cada uno (en el
+  mundo, en LOADING y en VERIFYING), con código 0 y sin errores.
+
+`test_zone_server_platform.gd` (13) pasa igual con `RawTicketClient`. Comprobadas con la mutación que deberían pillar:
+sin la espera de `_drain_stop` fallan el cierre ordenado y los dos de §6.1, y con `SHUTDOWN_MAX_FRAMES` en 90 y la
+espera de la zona en 30 ticks falla el de `--stop-file`.
+
+**Medido** (esta máquina, 4 núcleos, Godot 4.7.2 headless):
+
+| Qué | Resultado |
+|---|---|
+| `test_character_saver.gd` | 14 pruebas en 3,9 s (la más lenta, 1,1 s: ocho respuestas con sus esperas) |
+| `test_zone_server_saves.gd` | 10 pruebas en 11,7 s; la del cierre ordenado, 2,3 s (termina tras la respuesta del final, a los 2 s de `stop`) |
+| `test_zone_process_shutdown.gd` | 5 pruebas en 35 s: de 5 a 8 s cada una, con el arranque del proceso |
+| `CharacterSaver.step` con 64 cuerpos y nada que guardar | 0,4 µs por tick: solo mira la fase del tick y los pendientes (recorrer las 64 entradas en cada tick costaba ~40 µs) |
+| `JSON.stringify` del sobre de un personaje grande (120 objetos y 256 operaciones, 89 KB) | 3,7–4,6 ms (con otra carga en la máquina) |
+
+**Sin comprobar:** contra la plataforma de Go de verdad (P10); con cientos de personajes y la sección `progress` de
+verdad (progresion.md P5a), cuyo `JSON.stringify` es lo caro del guardado (arriba): con 64 jugadores sale uno por
+segundo y en el tick.
+
+**Queda para después:** las secciones `progress` (progresion.md P5a) y `pvp` (P6); rechazar con la zona cercada los
+comandos que piden guardado crítico (progresion.md P5d, P7b); el `kill -9` de extremo a extremo (P10); el
+`maintenance` que pone `admin maintenance` en la plataforma (TEC-28).

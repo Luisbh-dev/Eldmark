@@ -2255,3 +2255,31 @@ entera de Godot no se ha pasado.
 
 **Queda para después:** el inventario en la zona y el envío de 0x51–0x55 (P5b), LEVEL_UP y PROGRESS_UPDATE de las
 recompensas (P5c), los comandos 40–43 (P5d) y la interfaz (P6).
+
+### 19.10 Lo que deja plataforma.md P5
+
+plataforma.md P5 (su §19.9) pone `CharacterSaver` en la zona con la API de plataforma.md §14.3, sin ninguna sección
+registrada:
+
+- **P5a:** `ZoneServer.get_saver()` da el `CharacterSaver` (null sin plataforma). `ProgressService.setup` registra
+  `&"progress"` **la primera**: es la única que puede devolver `{}`, y `CharacterSaver` no deshace lo que haya
+  construido otra sección antes en ese intento. `build`, `acknowledge` e `is_dirty` reciben el `net_id`, y nunca se
+  llaman tras `finish` o `drop`. `track` va en `_process_arrivals` en cuanto existe la entidad, antes del sitio de
+  `on_arrival`, y un `mark_critical(net_id, &"starter_kit")` hecho en `on_arrival` sale en el `step` de ese mismo
+  tick (tras «altas»). `on_departure(net_id)` va en `ZoneServer._remove_player` justo después de
+  `_scores.forget(net_id)`. Por ahí pasan la «Salida», el cuerpo que se retira tras una salida en combate y la baja
+  sin guardado (`_on_save_rejected` y el `revoked` `lease_lost`), cuyo `finish` ya no hace nada tras el `drop`. En
+  los dos cierres (`stop` y `close_instance`), los `finish` están en `ZoneServer._wind_down`, antes de
+  `_clear_players()`. Mientras no haya ninguna sección, `finish` libera sin guardar, y con la de `progress`
+  registrada el final lleva la sección. En `FakeZonePlatform`, cada guardado con un 200 `applied` pasa por
+  `_remember_save`: ahí entra la parte `progress` que devuelve la reclamación siguiente (la primera la da
+  `claim_progress`).
+- **P5c:** el crítico de la subida de nivel y el de la captura son `mark_critical(net_id, &"level_up")` y
+  `&"capture"`. Salen en el `step` del tick en que se marcan, o en cuanto el que vuela tenga respuesta.
+- **P5d:** con la zona cercada (`ZonePlatform.is_fenced()`) `CharacterSaver` sigue mandando: rechazar los comandos que
+  piden guardado crítico es de aquí. Un comando marca `&"gm"`.
+- **Pruebas:** `tests/support/fake_save_section.gd` (`FakeSaveSection`) es la sección falsa de plataforma.md
+  (se registra como `pvp`); las de progreso usan la de verdad.
+
+**Sin comprobar:** con la sección `progress` de verdad. Su `JSON.stringify` es lo caro del guardado (plataforma.md
+§19.9: unos 4 ms con 120 objetos y 256 operaciones, 89 KB).

@@ -11,7 +11,8 @@ extends ZonePlatform
 ## con lo de [method add_character] (un [code]lease_id[/code] nuevo en cada una) y, si hubo guardados, lo último
 ## aplicado de cada sección (aquí [code]pvp[/code]; la parte [code]progress[/code] la añade progresion.md P5a);
 ## sin [method add_character], 409 [code]ticket_invalid[/code]. save → 200 applied con un
-## [code]save_version[/code] que sube; release → 204; heartbeat → 200 sin [code]revoked[/code];
+## [code]save_version[/code] que sube; release → 204; heartbeat → 200 sin [code]revoked[/code] y con
+## [member fake_maintenance];
 ## progress_op y progress_ledger → 404; lotes → 204; live y la baja → 204; PUT de fortaleza → 200 con la versión
 ## siguiente; ignore, report y sanction → 404. [method script_next] cambia la respuesta de la siguiente petición de
 ## un kind.
@@ -36,6 +37,8 @@ var fake_fortresses: Array = []
 var fake_now_unix: int = 0
 ## Escala de las esperas de los reintentos del cliente falso (1 s de la tabla son 50 ms).
 var fake_retry_scale: float = 0.05
+## El [code]maintenance[/code] de cada latido por defecto ([code]{at_unix, message}[/code] o null; plataforma.md P5).
+var fake_maintenance: Variant = null
 
 var _characters: Dictionary[int, Dictionary] = {}
 var _applied: Dictionary[int, Dictionary] = {}
@@ -191,7 +194,7 @@ func _default_answer(kind: StringName, request: PlatformClient.Request, body: Di
 		ZonePlatform.KIND_LIVE, ZonePlatform.KIND_STOP, ZonePlatform.KIND_RELEASE, &"chat", &"audit", &"war":
 			return [204, null]
 		PlatformEvent.KIND_HEARTBEAT:
-			return [200, {"now_unix": now_unix(), "revoked": [], "mutes": [], "maintenance": null}]
+			return [200, {"now_unix": now_unix(), "revoked": [], "mutes": [], "maintenance": fake_maintenance}]
 		PlatformEvent.KIND_CLAIM:
 			return _claim_answer(body)
 		PlatformEvent.KIND_SAVE:

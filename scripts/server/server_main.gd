@@ -49,9 +49,13 @@ extends Node
 ## primer bloque de ids) y espera [signal ZonePlatform.startup_finished] antes de abrir el puerto; los clientes
 ## entran con [TicketAuthProvider] y, ya con el puerto abierto, [method ZonePlatform.go_live]. Con un
 ## [code]env[/code] de staging o production, las opciones de desarrollo hacen salir a la zona con código 1, y
-## [code]--max-realm-diff[/code] no se aplica (el reino sale del personaje). Al cerrar, espera a que salga lo
-## pendiente y da la instancia de baja. Si la plataforma cierra la instancia ([signal ZoneServer.instance_closed]),
-## el proceso sale con código 3 para que el orquestador arranque otra.
+## [code]--max-realm-diff[/code] no se aplica (el reino sale del personaje). Todo cierre ordenado (los cinco
+## disparadores: [code]--stop-file[/code], [code]--quit-after-ticks[/code], [code]--idle-quit[/code], el
+## [code]shutdown[/code] de la consola y el mantenimiento que anuncia el latido) pasa por [method _shutdown] →
+## [method ZoneServer.stop], que manda el guardado final de cada personaje y espera a que la plataforma lo conteste
+## (docs/plataforma.md §7.2); después sale lo pendiente y la baja de la instancia. Si la plataforma cierra la
+## instancia ([signal ZoneServer.instance_closed]), el cierre de §6.1 ([method ZoneServer.close_instance]: los
+## finales antes de echar a nadie) y el proceso sale con código 3 para que el orquestador arranque otra.
 ## [br][br]
 ## El código de salida es 0 en un cierre normal, 1 si no puede arrancar (zona desconocida, puerto
 ## ocupado, plataforma que no responde o que no admite la zona...) y 3 si la plataforma cerró la instancia.
@@ -64,9 +68,10 @@ const MAX_FPS: int = 120
 ## jugadores falsos: los cuerpos de colisión (el Terrain3D, sobre todo) entran en el espacio de
 ## física en los primeros pasos.
 const WARMUP_PHYSICS_FRAMES: int = 3
-## Pasos de física como mucho que se espera, al cerrar, a que los clientes se vayan (y, con la plataforma, a
-## que salga lo pendiente y la baja).
-const SHUTDOWN_MAX_FRAMES: int = 90
+## Pasos de física como mucho que se espera, al cerrar, a que los clientes se vayan y la plataforma conteste los
+## guardados finales (el [constant ZoneServer.SAVE_DRAIN_TICKS] de 10 s y la espera de los peers), y después, cada
+## vez, a que salga lo pendiente y la baja.
+const SHUTDOWN_MAX_FRAMES: int = 720
 ## Código de salida cuando la plataforma cierra la instancia (docs/plataforma.md §6.1).
 const EXIT_INSTANCE_CLOSED: int = 3
 ## Semilla del primer jugador falso; cada uno suma su índice.
@@ -269,7 +274,7 @@ func _drain_platform() -> void:
 
 
 func _on_instance_closed(code: String) -> void:
-	_shutdown("la plataforma ha cerrado la instancia (%s)" % code, EXIT_INSTANCE_CLOSED)
+	_shutdown("la plataforma ha cerrado la instancia (%s)" % code, EXIT_INSTANCE_CLOSED, code)
 
 
 func _on_platform_fatal(error: String) -> void:
@@ -572,14 +577,18 @@ func _churn_fake_players(tick: int) -> void:
 		_add_fake_player()
 
 
-# NOTICE de cierre y corte ordenado de los clientes (ZoneServer.stop), informe, y salida con
-# [param exit_code]. Con la plataforma, antes de salir sale lo pendiente (las liberaciones) y la baja.
-func _shutdown(reason: String, exit_code: int = 0) -> void:
+# NOTICE de cierre, guardados finales y corte ordenado de los clientes (ZoneServer.stop; con
+# [param closed_code], el cierre de la instancia de §6.1, ZoneServer.close_instance), informe, y salida con
+# [param exit_code]. Con la plataforma, antes de salir sale lo pendiente (guardados y liberaciones) y la baja.
+func _shutdown(reason: String, exit_code: int = 0, closed_code: String = "") -> void:
 	if _shutting_down:
 		return
 	_shutting_down = true
 	print("[Eldmark] Cierre del servidor: %s" % reason)
-	_zone_server.stop(SHUTDOWN_TEXT)
+	if closed_code.is_empty():
+		_zone_server.stop(SHUTDOWN_TEXT)
+	else:
+		_zone_server.close_instance(closed_code)
 	var waited: int = 0
 	while not _zone_server.is_stopped() and waited < SHUTDOWN_MAX_FRAMES:
 		await get_tree().physics_frame

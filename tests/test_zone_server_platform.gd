@@ -21,97 +21,11 @@ var _platform: FakeZonePlatform
 var _provider: TicketAuthProvider
 var _keys: Dictionary[int, PackedByteArray] = {}
 var _port: int = 0
-var _clients: Array[RawClient] = []
+var _clients: Array[RawTicketClient] = []
 var _client_tick: int = 0
 var _next_client_index: int = 0
 var _next_ticket_id: int = FIRST_TICKET_ID
 var _sim_hash: int = -1
-
-
-## Un cliente que habla el protocolo a mano (como el de test_zone_server_net.gd), con el HELLO retrasable.
-class RawClient:
-	extends RefCounted
-
-	var transport: NetTransport
-	var hello: PackedByteArray
-	var auto_ready: bool = true
-	## Milisegundos tras la conexión antes de mandar el HELLO.
-	var hello_delay_ms: int = 0
-	var connected_at_msec: int = -1
-	var welcome_at_msec: int = -1
-	var reject_at_msec: int = -1
-	var welcome: NetMessages.Welcome = null
-	var reject: NetMessages.Reject = null
-	var connected: bool = false
-	var disconnected: bool = false
-	var failed: bool = false
-	var own_spawn: NetMessages.EntitySpawn = null
-	var spawns: Array[NetMessages.EntitySpawn] = []
-	var notices: Array[NetMessages.Notice] = []
-	var _auth_peer: int = -1
-	var _hello_sent: bool = false
-
-	func _init(p_transport: NetTransport, p_hello: PackedByteArray) -> void:
-		transport = p_transport
-		hello = p_hello
-		transport.peer_authenticating.connect(_on_authenticating)
-		transport.auth_received.connect(_on_auth_received)
-		transport.peer_connected.connect(_on_connected)
-		transport.peer_disconnected.connect(func(_peer_id: int) -> void: disconnected = true)
-		transport.packet_received.connect(_on_packet)
-		transport.connection_failed.connect(func() -> void: failed = true)
-
-	func _on_authenticating(peer_id: int) -> void:
-		_auth_peer = peer_id
-		connected_at_msec = Time.get_ticks_msec()
-		step()
-
-	## Manda el HELLO cuando toca.
-	func step() -> void:
-		if _hello_sent or _auth_peer < 0 or Time.get_ticks_msec() - connected_at_msec < hello_delay_ms:
-			return
-		_hello_sent = true
-		transport.send_auth(_auth_peer, hello)
-
-	func _on_auth_received(peer_id: int, bytes: PackedByteArray) -> void:
-		var result: int = NetMessages.peek_auth_result(bytes)
-		if result == NetProtocol.Result.OK:
-			welcome = NetMessages.Welcome.decode(bytes)
-			welcome_at_msec = Time.get_ticks_msec()
-			transport.complete_auth(peer_id)
-		elif result > 0:
-			reject = NetMessages.Reject.decode(bytes)
-			reject_at_msec = Time.get_ticks_msec()
-
-	func _on_connected(_peer_id: int) -> void:
-		connected = true
-		if auto_ready:
-			transport.send(1, NetProtocol.CH_RELIABLE, NetMessages.ClientReady.new().encode())
-
-	func _on_packet(_peer_id: int, bytes: PackedByteArray) -> void:
-		match NetMessages.peek_type(bytes):
-			NetProtocol.MSG_ENTITY_SPAWN:
-				var spawn: NetMessages.EntitySpawn = NetMessages.EntitySpawn.decode(bytes)
-				if spawn != null:
-					spawns.append(spawn)
-					if spawn.is_yours:
-						own_spawn = spawn
-			NetProtocol.MSG_NOTICE:
-				var notice: NetMessages.Notice = NetMessages.Notice.decode(bytes)
-				if notice != null:
-					notices.append(notice)
-
-	func kick_notice() -> NetMessages.Notice:
-		for notice: NetMessages.Notice in notices:
-			if notice.code == NetProtocol.NoticeCode.KICK:
-				return notice
-		return null
-
-	func spawn_named(display_name: String) -> NetMessages.EntitySpawn:
-		for spawn: NetMessages.EntitySpawn in spawns:
-			if spawn.display_name == display_name:
-				return spawn
-		return null
 
 
 func before_each() -> void:
@@ -120,7 +34,7 @@ func before_each() -> void:
 
 
 func after_each() -> void:
-	for client: RawClient in _clients:
+	for client: RawTicketClient in _clients:
 		if is_instance_valid(client.transport):
 			client.transport.free()
 	_clients.clear()
@@ -229,12 +143,12 @@ func _client_sim_hash() -> int:
 	return _sim_hash
 
 
-func _connect(hello: PackedByteArray, auto_ready: bool = true, hello_delay_ms: int = 0) -> RawClient:
+func _connect(hello: PackedByteArray, auto_ready: bool = true, hello_delay_ms: int = 0) -> RawTicketClient:
 	var transport := NetTransport.new()
 	transport.name = "ClientTransport%d" % _next_client_index
 	_next_client_index += 1
 	_viewport.add_child(transport)
-	var client := RawClient.new(transport, hello)
+	var client := RawTicketClient.new(transport, hello)
 	client.auto_ready = auto_ready
 	client.hello_delay_ms = hello_delay_ms
 	_clients.append(client)
@@ -245,7 +159,7 @@ func _connect(hello: PackedByteArray, auto_ready: bool = true, hello_delay_ms: i
 func _step() -> void:
 	await tree.physics_frame
 	_client_tick += 1
-	for client: RawClient in _clients:
+	for client: RawTicketClient in _clients:
 		if not is_instance_valid(client.transport):
 			continue
 		client.transport.poll(_client_tick)
@@ -279,8 +193,8 @@ func _server_peer_in(state: ServerPeer.State) -> ServerPeer:
 
 
 ## Entra con billete el personaje [param character_id] y espera su alta.
-func _join(character_id: int) -> RawClient:
-	var client: RawClient = _connect(_hello(character_id, _ticket(character_id)))
+func _join(character_id: int) -> RawTicketClient:
+	var client: RawTicketClient = _connect(_hello(character_id, _ticket(character_id)))
 	var joined: bool = await _run_until(func() -> bool: return client.own_spawn != null or client.reject != null)
 	if not assert_true(joined and client.own_spawn != null, "el personaje %d entra en el mundo" % character_id):
 		return null
@@ -298,7 +212,7 @@ func test_ticket_goes_through_verifying_to_welcome() -> void:
 			platform.add_character(43, 8, &"player", VARDHEIM, {}, {}, "Brais")):
 		return
 	_platform.script_next(PlatformEvent.KIND_CLAIM, 200, FakeZonePlatform.DEFAULT, 0.5)
-	var client: RawClient = _connect(_hello(42, _ticket(42), SOLMARCH, "Impostor"))
+	var client: RawTicketClient = _connect(_hello(42, _ticket(42), SOLMARCH, "Impostor"))
 	var verifying: bool = await _run_until(func() -> bool:
 		return _server_peer_in(ServerPeer.State.VERIFYING) != null)
 	if not assert_true(verifying, "el peer espera la reclamación en VERIFYING"):
@@ -322,7 +236,7 @@ func test_ticket_goes_through_verifying_to_welcome() -> void:
 	var beats: Array[Dictionary] = _platform.sent(PlatformEvent.KIND_HEARTBEAT)
 	assert_eq(beats.back()["characters"], [{"character_id": "42", "lease_id": claimed.lease_id}],
 			"y el latido late por él")
-	var other: RawClient = await _join(43)
+	var other: RawTicketClient = await _join(43)
 	if other != null:
 		assert_false(other.own_spawn.is_staff, "un player no")
 		var seen: NetMessages.EntitySpawn = other.spawn_named("Aneira")
@@ -335,12 +249,12 @@ func test_ticket_goes_through_verifying_to_welcome() -> void:
 func test_hello_without_ticket_gets_ticket_with_the_menu_text() -> void:
 	if not await _start():
 		return
-	var client: RawClient = _connect(_hello(42, PackedByteArray()))
+	var client: RawTicketClient = _connect(_hello(42, PackedByteArray()))
 	var answered: bool = await _run_until(func() -> bool: return client.reject != null or client.welcome != null)
 	if assert_true(answered and client.reject != null, "REJECT"):
 		assert_eq(client.reject.result, NetProtocol.Result.TICKET, "TICKET")
 		assert_eq(client.reject.text, TicketAuthProvider.NO_TICKET_TEXT, "«Entra desde el menú con tu cuenta»")
-	var forged: RawClient = _connect(_hello(42, _ticket(42, "vado_gris")))
+	var forged: RawTicketClient = _connect(_hello(42, _ticket(42, "vado_gris")))
 	await _run_until(func() -> bool: return forged.reject != null)
 	if assert_not_null(forged.reject, "un billete de otra zona"):
 		assert_eq(forged.reject.result, NetProtocol.Result.TICKET, "TICKET")
@@ -357,18 +271,18 @@ func test_quota_of_four_with_five_verifying_rejects_one_with_full() -> void:
 		return
 	for _i: int in 4:
 		_platform.script_next(PlatformEvent.KIND_CLAIM, 200, FakeZonePlatform.DEFAULT, 1.0)
-	var clients: Array[RawClient] = []
+	var clients: Array[RawTicketClient] = []
 	for character_id: int in range(11, 16):
 		clients.append(_connect(_hello(character_id, _ticket(character_id)), false))
 	var one_full: bool = await _run_until(func() -> bool:
-		return clients.filter(func(c: RawClient) -> bool: return c.reject != null).size() == 1)
+		return clients.filter(func(c: RawTicketClient) -> bool: return c.reject != null).size() == 1)
 	if not assert_true(one_full, "uno recibe REJECT enseguida"):
 		return
-	var rejected: RawClient = clients.filter(func(c: RawClient) -> bool: return c.reject != null)[0]
+	var rejected: RawTicketClient = clients.filter(func(c: RawTicketClient) -> bool: return c.reject != null)[0]
 	assert_eq(rejected.reject.result, NetProtocol.Result.FULL, "FULL: los cuatro que verifican ocupan el cupo")
 	assert_eq(_server.get_player_count(), 4, "cuatro en VERIFYING")
 	var welcomed: bool = await _run_until(func() -> bool:
-		return clients.filter(func(c: RawClient) -> bool: return c.welcome != null).size() == 4)
+		return clients.filter(func(c: RawTicketClient) -> bool: return c.welcome != null).size() == 4)
 	assert_true(welcomed, "los cuatro reciben su WELCOME con el 200")
 	assert_eq(_platform.sent(PlatformEvent.KIND_CLAIM).size(), 4, "solo cuatro reclamaciones")
 
@@ -380,7 +294,7 @@ func test_late_hello_and_slow_claim_still_get_welcome() -> void:
 			platform.add_character(42, 7, &"player", VARDHEIM, {})):
 		return
 	_platform.script_next(PlatformEvent.KIND_CLAIM, 200, FakeZonePlatform.DEFAULT, 5.0)
-	var client: RawClient = _connect(_hello(42, _ticket(42)), true, 1400)
+	var client: RawTicketClient = _connect(_hello(42, _ticket(42)), true, 1400)
 	var joined: bool = await _run_until(func() -> bool:
 		return client.own_spawn != null or client.reject != null or client.failed, 9000)
 	if not assert_true(joined and client.own_spawn != null, "entra en el mundo (rechazo: %s)"
@@ -397,7 +311,7 @@ func test_mute_platform_rejects_with_unavailable_after_seven_seconds() -> void:
 			platform.add_character(42, 7, &"player", VARDHEIM, {})):
 		return
 	_platform.script_next(PlatformEvent.KIND_CLAIM, 200, FakeZonePlatform.DEFAULT, 8.0)
-	var client: RawClient = _connect(_hello(42, _ticket(42)))
+	var client: RawTicketClient = _connect(_hello(42, _ticket(42)))
 	var rejected: bool = await _run_until(func() -> bool: return client.reject != null, 9000)
 	if not assert_true(rejected, "REJECT"):
 		return
@@ -419,13 +333,13 @@ func test_fenced_zone_rejects_with_unavailable() -> void:
 			platform.add_character(42, 7, &"player", VARDHEIM, {})):
 		return
 	_platform.set_fenced(true)
-	var client: RawClient = _connect(_hello(42, _ticket(42)))
+	var client: RawTicketClient = _connect(_hello(42, _ticket(42)))
 	await _run_until(func() -> bool: return client.reject != null)
 	if assert_not_null(client.reject, "REJECT"):
 		assert_eq(client.reject.result, NetProtocol.Result.UNAVAILABLE, "zona cercada: UNAVAILABLE")
 	assert_eq(_platform.sent(PlatformEvent.KIND_CLAIM).size(), 0, "sin reclamación")
 	_platform.set_fenced(false)
-	var later: RawClient = _connect(_hello(42, _ticket(42)))
+	var later: RawTicketClient = _connect(_hello(42, _ticket(42)))
 	await _run_until(func() -> bool: return later.own_spawn != null)
 	assert_not_null(later.own_spawn, "con el latido de vuelta, entra")
 
@@ -435,7 +349,7 @@ func test_leaving_while_verifying_releases_the_late_claim() -> void:
 			platform.add_character(42, 7, &"player", VARDHEIM, {})):
 		return
 	_platform.script_next(PlatformEvent.KIND_CLAIM, 200, FakeZonePlatform.DEFAULT, 1.0)
-	var client: RawClient = _connect(_hello(42, _ticket(42)))
+	var client: RawTicketClient = _connect(_hello(42, _ticket(42)))
 	await _run_until(func() -> bool: return _server_peer_in(ServerPeer.State.VERIFYING) != null)
 	client.transport.close()
 	var gone: bool = await _run_until(func() -> bool: return _server.get_peer_ids().is_empty())
@@ -453,7 +367,7 @@ func test_leaving_while_loading_releases_without_saving() -> void:
 	if not await _start(Callable(), func(platform: FakeZonePlatform) -> void:
 			platform.add_character(42, 7, &"player", VARDHEIM, {})):
 		return
-	var client: RawClient = _connect(_hello(42, _ticket(42)), false)
+	var client: RawTicketClient = _connect(_hello(42, _ticket(42)), false)
 	var loading: bool = await _run_until(func() -> bool:
 		return client.connected and _server_peer_in(ServerPeer.State.LOADING) != null)
 	if not assert_true(loading, "WELCOME y LOADING"):
@@ -475,7 +389,7 @@ func test_revoked_while_loading_kicks_and_releases() -> void:
 	if not await _start(Callable(), func(platform: FakeZonePlatform) -> void:
 			platform.add_character(42, 7, &"player", VARDHEIM, {})):
 		return
-	var client: RawClient = _connect(_hello(42, _ticket(42)), false)
+	var client: RawTicketClient = _connect(_hello(42, _ticket(42)), false)
 	await _run_until(func() -> bool: return client.connected and _server_peer_in(ServerPeer.State.LOADING) != null)
 	await _run_ms(100)
 	var lease_id: String = _platform.claimed(42).lease_id
@@ -500,8 +414,8 @@ func test_revoked_in_the_world_only_with_the_current_lease() -> void:
 			platform.add_character(42, 7, &"player", VARDHEIM, {})
 			platform.add_character(43, 8, &"player", SOLMARCH, {})):
 		return
-	var first: RawClient = await _join(42)
-	var second: RawClient = await _join(43)
+	var first: RawTicketClient = await _join(42)
+	var second: RawTicketClient = await _join(43)
 	if first == null or second == null:
 		return
 	var lease_42: String = _platform.claimed(42).lease_id
@@ -555,7 +469,7 @@ func test_busy_and_banned_rejections_carry_their_text() -> void:
 	]
 	for entry: Array in cases:
 		_platform.script_next(PlatformEvent.KIND_CLAIM, entry[0], entry[1])
-		var client: RawClient = _connect(_hello(42, _ticket(42)))
+		var client: RawTicketClient = _connect(_hello(42, _ticket(42)))
 		await _run_until(func() -> bool: return client.reject != null or client.welcome != null)
 		if assert_not_null(client.reject, "REJECT para %s" % entry[3]):
 			assert_eq([client.reject.result, client.reject.text], [entry[2], entry[3]], entry[3])
@@ -570,25 +484,25 @@ func test_hello_cannot_probe_an_enemy_name() -> void:
 			platform.add_character(2, 20, &"player", SOLMARCH, {}, {}, "Bruna")
 			platform.add_character(3, 30, &"player", VARDHEIM, {}, {}, "Ana")):
 		return
-	var enemy: RawClient = await _join(2)
+	var enemy: RawTicketClient = await _join(2)
 	if enemy == null:
 		return
 	assert_true(_server.get_connected_names().has("Bruna"), "Bruna está en la zona")
-	var probe: RawClient = _connect(_hello(3, _ticket(3), SOLMARCH, "Bruna"))
+	var probe: RawTicketClient = _connect(_hello(3, _ticket(3), SOLMARCH, "Bruna"))
 	await _run_until(func() -> bool: return probe.own_spawn != null or probe.reject != null)
 	assert_null(probe.reject, "ni NAME ni ningún otro REJECT")
 	if assert_not_null(probe.own_spawn, "entra con su personaje"):
 		assert_eq(probe.own_spawn.display_name, "Ana", "con su nombre")
 		assert_eq(probe.welcome.realm, VARDHEIM, "y su reino")
-	var forged: RawClient = _connect(_hello(3, _ticket(2), SOLMARCH, "Bruna"))
+	var forged: RawTicketClient = _connect(_hello(3, _ticket(2), SOLMARCH, "Bruna"))
 	await _run_until(func() -> bool: return forged.reject != null or forged.welcome != null)
 	if assert_not_null(forged.reject, "el billete de otro personaje"):
 		assert_eq(forged.reject.result, NetProtocol.Result.TICKET, "TICKET, no NAME")
-	var bare: RawClient = _connect(_hello(0, PackedByteArray(), SOLMARCH, "Bruna"))
+	var bare: RawTicketClient = _connect(_hello(0, PackedByteArray(), SOLMARCH, "Bruna"))
 	await _run_until(func() -> bool: return bare.reject != null or bare.welcome != null)
 	if assert_not_null(bare.reject, "sin billete"):
 		assert_eq(bare.reject.result, NetProtocol.Result.TICKET, "TICKET, no NAME")
-	var absent: RawClient = _connect(_hello(3, PackedByteArray(), SOLMARCH, "Nadie"))
+	var absent: RawTicketClient = _connect(_hello(3, PackedByteArray(), SOLMARCH, "Nadie"))
 	await _run_until(func() -> bool: return absent.reject != null or absent.welcome != null)
 	if assert_not_null(absent.reject, "con un nombre que no está"):
 		assert_eq([absent.reject.result, absent.reject.text], [bare.reject.result, bare.reject.text],

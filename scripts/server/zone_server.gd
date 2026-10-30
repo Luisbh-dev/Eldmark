@@ -43,8 +43,11 @@ extends Node
 ## PNJ              NpcSpawnerSystem.step(): altas y retiradas de PNJ según los generadores y las
 ##                  fortalezas, cadáveres
 ## altas            los READY pendientes: el jugador aparece con el estado «tras s» y el equipo de su
-##                  plantilla (la pendiente o la de por defecto), SPAWN y LOADOUT
-## social           SocialService.step(): caducan las invitaciones de grupo (PARTY_INVITATION caducada y
+##                  plantilla (la pendiente o la de por defecto), SPAWN y LOADOUT; con la plataforma,
+##                  CharacterSaver.track en cuanto existe la entidad
+## guardados        con la plataforma, CharacterSaver.step(s): los críticos marcados y los puntos de
+##                  control que tocan (docs/plataforma.md §7.2); la foto se toma aquí, tras las altas
+## social          SocialService.step(): caducan las invitaciones de grupo (PARTY_INVITATION caducada y
 ##                  aviso a quien invitó) y cada grupo manda su PARTY_STATUS (2 Hz, escalonado por el id
 ##                  del grupo) con el estado ya tras las altas
 ## historial        StateHistory.record() de todas las entidades, ya con lo impuesto
@@ -67,10 +70,18 @@ extends Node
 ## billete válido deja al peer en [constant ServerPeer.State.VERIFYING] (cuenta para el cupo) mientras la
 ## plataforma lo reclama; con el 200, la zona mira que admite su reino (REALM) y que cabe (FULL) y le manda el
 ## WELCOME con el reino y el nombre del personaje, nunca los del HELLO. Una baja en VERIFYING cancela la espera
-## (si la reclamación llega después, se libera); una en LOADING libera el arrendamiento sin guardar. Hasta
-## [code]CharacterSaver[/code] (P5), un jugador que sale del mundo libera su arrendamiento cuando su cuerpo se
-## va. El latido trae los [code]revoked[/code], que expulsan con su texto (uno con otro lease_id no expulsa a
-## nadie).
+## (si la reclamación llega después, se libera); una en LOADING libera el arrendamiento sin guardar.
+## [br][br]
+## [b]Guardados[/b] (docs/plataforma.md §7.2, [CharacterSaver], [method get_saver]): cada cuerpo con arrendamiento
+## se guarda en su punto de control y en los eventos críticos; al irse el cuerpo (CLIENT_LEAVE, desconexión o fin
+## de la salida en combate) sale su final con [code]release_lease[/code], en el orden [code]finish[/code] →
+## [code]ScoreKeeper.forget[/code] → (progresion.md) [code]on_departure[/code]. Un guardado rechazado de forma
+## definitiva o un [code]revoked[/code] [code]lease_lost[/code] es la baja sin guardado: [code]drop[/code],
+## expulsión con el cuerpo fuera en el acto (sin salida en combate) y lo demás de la salida. Los demás
+## [code]revoked[/code] del latido expulsan con su texto y guardado final (uno con otro lease_id no expulsa a
+## nadie); su [code]maintenance[/code] avisa a los 10, 5 y 1 min, a los 30 s y a los 10 s y pide el cierre a su
+## hora. [method stop] (el cierre ordenado de los cinco disparadores) y [method close_instance] (el de §6.1) mandan
+## los finales de todos y esperan a que la plataforma los conteste antes de terminar.
 ## [br][br]
 ## [b]Seguridad[/b] (sección 12): limitadores por peer, avisos con expulsión a los 50 en 600 ticks
 ## (NOTICE de expulsión y corte), tope de conexiones por IP, tipos de mensaje inesperados según el
@@ -151,6 +162,16 @@ const VERIFY_TIMEOUT_MS: int = 7000
 const VERIFY_TIMEOUT_REASON: String = "la plataforma no ha contestado a tiempo"
 ## Ticks que se espera, tras [method stop], a que los peers se vayan antes de cerrar el transporte.
 const STOP_DRAIN_TICKS: int = 30
+## Ticks que se espera como mucho, tras [method stop] o [method close_instance], a que la plataforma conteste los
+## guardados finales y no quede nada en cola ni en vuelo (10 s, docs/plataforma.md §7.2 y §6.1).
+const SAVE_DRAIN_TICKS: int = 600
+## NOTICE de expulsión del cierre de §6.1, tras los guardados finales.
+const INSTANCE_CLOSED_TEXT: String = "El servidor de la zona se ha reiniciado: vuelve a entrar"
+## NOTICE de la baja sin guardado (§7.3): un guardado rechazado y un lease_lost.
+const SAVE_REJECTED_TEXT: String = "No se ha podido guardar tu personaje; vuelve a entrar"
+const LEASE_LOST_TEXT: String = "Tu personaje ha entrado en otro servidor"
+## Segundos antes del mantenimiento de la plataforma en los que se avisa (docs/plataforma.md §7.2 y §12).
+const MAINTENANCE_NOTICE_SECONDS: Array[int] = [600, 300, 60, 30, 10]
 ## Secciones del tick que aparecen en la línea de métricas (las mismas que mide el bucle).
 const LOGGED_SECTIONS: Array[StringName] = [&"net", &"platform", &"npc_brains", &"sim", &"combat", &"combat_resolve",
 		&"combat_projectiles", &"combat_events", &"war", &"npc", &"social", &"history", &"snapshot", &"flush"]
@@ -242,6 +263,8 @@ var linger_ticks: int = LINGER_TICKS
 ## [constant MAX_LOGGED_KICKS] por defecto; las pruebas los acortan).
 var max_logged_players: int = MAX_LOGGED_PLAYERS
 var max_logged_kicks: int = MAX_LOGGED_KICKS
+## Tope de la espera de los guardados al cerrar ([constant SAVE_DRAIN_TICKS] por defecto; las pruebas lo cambian).
+var save_drain_ticks: int = SAVE_DRAIN_TICKS
 
 var _run_state: _RunState = _RunState.IDLE
 var _config: ServerConfig
@@ -251,12 +274,24 @@ var _auth: ServerAuth
 var _auth_provider: AuthProvider = null
 ## La plataforma (null sin [code]--platform[/code]: personajes efímeros, docs/progresion.md §9.4).
 var _platform: ZonePlatform = null
-## Arrendamientos de los cuerpos en el mundo (net_id -> reclamación): hasta CharacterSaver (P5) se liberan sin
-## guardar cuando el cuerpo se va (también tras la salida en combate).
-var _claims_by_net: Dictionary[int, ClaimedCharacter] = {}
+## Los guardados de los cuerpos con arrendamiento (solo con la plataforma).
+var _saver: CharacterSaver = null
 var _sim_hash: int = 0
 var _tick: int = 0
 var _drain_ticks: int = 0
+# Ticks de la espera a que los peers se vayan (desde el NOTICE de cierre).
+var _peer_drain_ticks: int = 0
+# Cierre de §6.1: el NOTICE de expulsión sale cuando los guardados finales ya tienen respuesta.
+var _kick_after_saves: bool = false
+# Motivo del guardado final (CharacterSaver.Reason) del cuerpo que se queda tras una salida en combate.
+var _lingering_save_reasons: Dictionary[int, int] = {}
+# Mantenimiento anunciado por el latido: su hora Unix (0 = ninguno), su texto y los avisos ya dados (segundos de
+# MAINTENANCE_NOTICE_SECONDS).
+var _maintenance_at_unix: int = 0
+var _maintenance_message: String = ""
+var _maintenance_announced: Array[int] = []
+# El último mantenimiento cuya hora ya llegó: el latido puede seguir anunciándolo hasta que la zona se para.
+var _maintenance_fired_at_unix: int = 0
 var _registry: NetEntityRegistry = NetEntityRegistry.new()
 var _history: StateHistory = StateHistory.new()
 var _metrics: ServerMetrics = ServerMetrics.new()
@@ -561,6 +596,9 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_platform = platform
 	if _platform != null:
 		_platform.player_count_source = get_player_count
+		_saver = CharacterSaver.new(_platform, maxi(config.save_interval_s, 1) * Engine.physics_ticks_per_second)
+		_saver.log_sink = Callable(self, "_log")
+		_saver.save_rejected.connect(_on_save_rejected)
 	_players_root = Node3D.new()
 	_players_root.name = "Players"
 	add_child(_players_root)
@@ -610,12 +648,14 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	return OK
 
 
-## Cierra el servidor: avisa a todos los clientes con un NOTICE de cierre (código
-## [constant NetProtocol.NoticeCode.SHUTDOWN]) con [param notice_text] (por defecto, un texto
-## estándar), vacía lo enviado, pide el corte ordenado de cada peer y libera a todos los
-## personajes. Los datos del informe se conservan ([method write_report]). El transporte se cierra
-## cuando los peers se han ido o pasados [constant STOP_DRAIN_TICKS] ticks; [method is_stopped]
-## dice cuándo.
+## Cierra el servidor (el cierre ordenado de docs/plataforma.md §7.2, el de los cinco disparadores): avisa a
+## todos los clientes con un NOTICE de cierre (código [constant NetProtocol.NoticeCode.SHUTDOWN]) con
+## [param notice_text] (por defecto, un texto estándar), libera a los peers en LOADING y cancela a los de
+## VERIFYING, pide el corte ordenado de cada peer, manda el guardado final de cada cuerpo con arrendamiento
+## (también los que se quedan tras una salida en combate) y libera a todos los personajes. Los datos del informe
+## se conservan ([method write_report]). Termina cuando los peers se han ido (o pasados
+## [constant STOP_DRAIN_TICKS] ticks) y la plataforma ha contestado los guardados y no tiene nada en cola ni en
+## vuelo (o pasados [member save_drain_ticks]); [method is_stopped] dice cuándo.
 func stop(notice_text: String = "") -> void:
 	if _run_state != _RunState.RUNNING:
 		return
@@ -635,32 +675,50 @@ func stop(notice_text: String = "") -> void:
 			_transport.disconnect_after_flush(peer_id)
 			peer.state = ServerPeer.State.LEAVING
 		_transport.flush()
-	for record: _PlayerRecord in _player_by_net.values():
-		record.close(_tick)
-	_war_fortresses_at_stop = _fortress_entries()
-	_clear_players()
-	_pending_ready.clear()
-	_leaving.clear()
-	_fake_leaving.clear()
-	_fake_leaving_quietly.clear()
-	_sync_byte_counters()
-	_close_state_log()
-	_close_combat_log()
-	_close_battle_log()
-	if _console != null:
-		_console.stop()
-	_metrics.unregister_monitors()
-	_drain_ticks = 0
-	if _transport == null or _peers.is_empty():
-		_finish_stop()
-	else:
-		_run_state = _RunState.STOPPING
+	_wind_down()
+	_begin_drain(false)
 
 
-## true cuando [method stop] ha terminado: los peers se han ido (o se agotó la espera) y el
-## transporte está cerrado.
+## El cierre de docs/plataforma.md §6.1, cuando la plataforma da la instancia por perdida, sustituida o parada
+## ([param code]; lo llama [ServerMain] con [signal instance_closed]): primero el guardado final de todos y la
+## liberación de los de LOADING, sin echar a nadie (la zona deja de leer sus entradas y de dar recompensas); los
+## de VERIFYING reciben REJECT UNAVAILABLE. Cuando la plataforma ha contestado los finales y no queda nada
+## pendiente (o pasados [member save_drain_ticks]), NOTICE de expulsión «El servidor de la zona se ha reiniciado:
+## vuelve a entrar» a todos y desconexión: quien vuelve a entrar enseguida carga su final, no el anterior.
+func close_instance(code: String) -> void:
+	if _run_state != _RunState.RUNNING:
+		return
+	_log("La plataforma ha cerrado esta instancia (%s): guardados finales antes de echar a nadie (tick %d)"
+			% [code, _tick])
+	_players_at_stop = get_player_count()
+	if _transport != null:
+		for peer_id: int in get_peer_ids():
+			var peer: ServerPeer = _peers[peer_id]
+			match peer.state:
+				ServerPeer.State.AUTHENTICATING, ServerPeer.State.VERIFYING:
+					_reject(peer, NetProtocol.Result.UNAVAILABLE)
+				ServerPeer.State.LOADING:
+					_leave_auth_states(peer)
+		_transport.flush()
+	_wind_down()
+	_begin_drain(true)
+
+
+## true cuando [method stop] o [method close_instance] han terminado: los peers se han ido y los guardados
+## tienen respuesta (o se agotó la espera) y el transporte está cerrado.
 func is_stopped() -> bool:
 	return _run_state == _RunState.STOPPED
+
+
+## Los guardados de la zona (null sin plataforma): [code]ProgressService[/code] registra aquí su sección y marca
+## los críticos (docs/progresion.md §9.2).
+func get_saver() -> CharacterSaver:
+	return _saver
+
+
+## La hora Unix del mantenimiento anunciado por el latido (0 = ninguno).
+func get_maintenance_at_unix() -> int:
+	return _maintenance_at_unix
 
 
 ## Tick actual: el último que se ha simulado (0 antes de empezar). El primero es el 1.
@@ -1150,6 +1208,9 @@ func _physics_process(delta: float) -> void:
 	_poll_platform()
 	_metrics.end_section(SECTION_PLATFORM)
 	_metrics.end_section(&"net")
+	if _run_state != _RunState.RUNNING:
+		# El cierre de la instancia (instance_closed) ya ha vaciado el mundo: no queda nada que simular.
+		return
 
 	_tick += 1
 	var s: int = _tick
@@ -1182,8 +1243,14 @@ func _physics_process(delta: float) -> void:
 		_npc_system.step(s)
 		_metrics.end_section(SECTION_NPC)
 	_check_shutdown_countdown(s)
+	_check_maintenance()
+	if _run_state != _RunState.RUNNING:
+		# Una cuenta atrás cumplida ha cerrado el servidor en este tick (stop ya ha vaciado el mundo).
+		return
 
 	_process_arrivals(s)
+	if _saver != null:
+		_saver.step(s)
 	_metrics.begin_section(SECTION_SOCIAL)
 	_social.step(s)
 	_metrics.end_section(SECTION_SOCIAL)
@@ -1382,9 +1449,11 @@ func _process_arrivals(s: int) -> void:
 			_kick(peer, "no queda sitio en la zona", false)
 			continue
 		if peer.claimed != null:
-			# Desde aquí el arrendamiento es del cuerpo: se libera cuando se va (P5: con su guardado final).
+			# Desde aquí el arrendamiento es del cuerpo: se guarda (track antes de ProgressService.on_arrival, que
+			# puede marcarlo crítico) y su final sale cuando se va (docs/plataforma.md §7.2).
 			entity.is_staff = peer.claimed.is_staff()
-			_claims_by_net[entity.net_id] = peer.claimed
+			if _saver != null:
+				_saver.track(entity.net_id, peer.claimed.character_id, peer.claimed.lease_id, s)
 		peer.entity = entity
 		peer.input_queue = _queues[entity.net_id]
 		peer.state = ServerPeer.State.IN_WORLD
@@ -1542,11 +1611,13 @@ func _process_departures(s: int) -> void:
 		var entity: NetEntity = peer.entity
 		# Fuera de la lista antes de nada: lo que salga de su baja (la muerte de un derribado) ya no es para él.
 		_world_peers.erase(peer)
+		var save_reason: int = CharacterSaver.Reason.KICK if peer.kicked else CharacterSaver.Reason.LOGOUT
 		var lingers: bool = not peer.drop_body_at_once and _should_linger(entity, s)
 		if lingers:
 			_start_lingering(entity, s)
+			_lingering_save_reasons[entity.net_id] = save_reason
 		else:
-			_remove_player(entity, s, NetProtocol.DespawnReason.DISCONNECTED)
+			_remove_player(entity, s, NetProtocol.DespawnReason.DISCONNECTED, true, save_reason)
 		_left_total += 1
 		player_left.emit(peer_id, entity.net_id)
 		if _filler_keeper != null:
@@ -1582,8 +1653,11 @@ func _process_fake_departures(s: int) -> void:
 # Quita al jugador del mundo: DESPAWN a quien lo veía, id en cuarentena y personaje liberado. La baja de un
 # derribado (salida, desconexión, --fake-churn, fin del cuerpo de GUE-41) es antes una muerte en ese tick: DEATH
 # y KILL con quien le hizo el último daño o lo derribó, y la fuente «desangrado» (docs/habilidades.md, 4.5). Sin
-# [param bleed] (el falso de relleno que cede su sitio a una persona, retire_filler), no: solo el DESPAWN.
-func _remove_player(entity: NetEntity, s: int, reason: int, bleed: bool = true) -> void:
+# [param bleed] (el falso de relleno que cede su sitio a una persona, retire_filler), no: solo el DESPAWN. Con la
+# plataforma, la «Salida» de docs/plataforma.md §7.2: el guardado final ([param save_reason]) antes de
+# ScoreKeeper.forget; tras una baja sin guardado (drop) ese finish no hace nada.
+func _remove_player(entity: NetEntity, s: int, reason: int, bleed: bool = true,
+		save_reason: int = CharacterSaver.Reason.LOGOUT) -> void:
 	var net_id: int = entity.net_id
 	var leaving: Combatant = _combat.get_combatant(net_id)
 	if bleed and leaving != null and leaving.is_downed():
@@ -1603,11 +1677,13 @@ func _remove_player(entity: NetEntity, s: int, reason: int, bleed: bool = true) 
 	if record != null:
 		record.close(s)
 		_player_by_net.erase(net_id)
-	_release_claim_of(net_id)
+	if _saver != null:
+		_saver.finish(net_id, save_reason)
 	_queues.erase(net_id)
 	_fakes.erase(net_id)
 	_npcs.erase(net_id)
 	_lingering.erase(net_id)
+	_lingering_save_reasons.erase(net_id)
 	_scores.forget(net_id)
 	_combat.remove(net_id, s)
 	_history.forget(net_id)
@@ -1623,10 +1699,9 @@ func _remove_player(entity: NetEntity, s: int, reason: int, bleed: bool = true) 
 		_metrics.add_counter(ServerMetrics.COUNTER_PLAYERS, -1)
 
 
-# Libera a todos los jugadores (cierre del servidor), sin enviar DESPAWN.
+# Libera a todos los jugadores (cierre del servidor), sin enviar DESPAWN. Los guardados finales ya han salido
+# (_wind_down).
 func _clear_players() -> void:
-	for net_id: int in _claims_by_net.keys():
-		_release_claim_of(net_id)
 	for entity: NetEntity in _registry.get_sorted().duplicate():
 		var character: PlayerCharacter = entity.get_character()
 		if character != null:
@@ -1640,6 +1715,7 @@ func _clear_players() -> void:
 	_fakes.clear()
 	_npcs.clear()
 	_lingering.clear()
+	_lingering_save_reasons.clear()
 	_scores.clear()
 	if _fortresses != null:
 		_fortresses.clear()
@@ -2655,6 +2731,66 @@ func _check_shutdown_countdown(s: int) -> void:
 		_broadcast_notice("El servidor se cerrará en %d s" % seconds_left)
 
 
+# El mantenimiento que trae el latido (docs/plataforma.md §6 y §12): {at_unix, message} o null (ninguno, o
+# cancelado). Un at_unix nuevo vuelve a empezar los avisos.
+func _set_maintenance(value: Variant) -> void:
+	var maintenance: Dictionary = value if value is Dictionary else {}
+	if maintenance.is_empty() or not PlatformJson.is_int(maintenance.get("at_unix"), 1, PlatformJson.MAX_SAFE_INT):
+		if _maintenance_at_unix > 0:
+			_log("La plataforma ya no anuncia el mantenimiento")
+			if not _maintenance_announced.is_empty():
+				_broadcast_notice("Mantenimiento cancelado: el servidor sigue abierto")
+		_maintenance_at_unix = 0
+		_maintenance_message = ""
+		_maintenance_announced.clear()
+		return
+	var at_unix: int = int(maintenance["at_unix"])
+	if at_unix == _maintenance_fired_at_unix:
+		return
+	_maintenance_message = PlatformJson.text_in(maintenance, "message").left(200)
+	if at_unix == _maintenance_at_unix:
+		return
+	_maintenance_at_unix = at_unix
+	_maintenance_announced.clear()
+	_log("La plataforma anuncia mantenimiento a las %s UTC (dentro de %d s)" % [
+			Time.get_datetime_string_from_unix_time(at_unix, true), at_unix - _platform.now_unix()])
+
+
+# Avisos del mantenimiento a los 10, 5 y 1 min, a los 30 s y a los 10 s (los que ya han pasado al anunciarse se
+# juntan en un aviso con lo que queda) y, a su hora, el cierre ordenado (shutdown_requested), como el resto de
+# disparadores. La hora es la de la plataforma (ZonePlatform.now_unix).
+func _check_maintenance() -> void:
+	if _maintenance_at_unix <= 0 or _platform == null:
+		return
+	var remaining: int = _maintenance_at_unix - _platform.now_unix()
+	if remaining <= 0:
+		_maintenance_fired_at_unix = _maintenance_at_unix
+		_maintenance_at_unix = 0
+		_maintenance_announced.clear()
+		_log("Hora del mantenimiento de la plataforma: cierre ordenado")
+		shutdown_requested.emit("mantenimiento de la plataforma")
+		return
+	var due: bool = false
+	for seconds: int in MAINTENANCE_NOTICE_SECONDS:
+		if remaining <= seconds and not _maintenance_announced.has(seconds):
+			_maintenance_announced.append(seconds)
+			due = true
+	if due:
+		_broadcast_notice(maintenance_notice_text(remaining, _maintenance_message))
+
+
+## El NOTICE del mantenimiento a [param remaining] segundos (en minutos desde 60 s), con el texto de la
+## plataforma si lo hay.
+static func maintenance_notice_text(remaining: int, message: String) -> String:
+	var left: String = "%d s" % remaining
+	if remaining >= 60:
+		left = "%d min" % ceili(float(remaining) / 60.0)
+	var text: String = "El servidor se cerrará por mantenimiento en %s" % left
+	if not message.is_empty():
+		text += ": " + message
+	return text
+
+
 # --- Fortalezas, marcador, salida en combate y /atascado -------------------------------------------
 
 # Crea el controlador de las fortalezas de la zona y lo conecta con el combate: los golpes a la puerta,
@@ -2826,7 +2962,9 @@ func _process_lingering(s: int) -> void:
 		var combatant: Combatant = _combat.get_combatant(net_id)
 		if s >= _lingering[net_id] or combatant == null or combatant.is_dead():
 			_log("Se retira el cuerpo de %s (net_id %d)" % [entity.display_name, net_id])
-			_remove_player(entity, s, NetProtocol.DespawnReason.DISCONNECTED)
+			# Ahora sale su guardado final (docs/plataforma.md §7.2: «al irse el cuerpo»).
+			_remove_player(entity, s, NetProtocol.DespawnReason.DISCONNECTED, true,
+					_lingering_save_reasons.get(net_id, CharacterSaver.Reason.LOGOUT))
 
 
 # -- /atascado (MUN-41) --
@@ -3064,8 +3202,10 @@ func _welcome(peer: ServerPeer, realm: int, display_name: String) -> void:
 # --- Plataforma (docs/plataforma.md §5.2 y §14.3) ------------------------------------------------
 
 # Paso «poll» con la plataforma: los eventos, por kind y en orden de llegada (instance_closed al final), los
-# finales del AuthProvider y los VERIFYING vencidos.
+# finales del AuthProvider y los VERIFYING vencidos. Mientras se cierra (STOPPING) solo cuentan las respuestas de
+# los guardados y de las reclamaciones (las que llegan tarde se liberan): el latido ya no expulsa ni avisa.
 func _poll_platform() -> void:
+	var running: bool = _run_state == _RunState.RUNNING
 	if _platform != null:
 		var closed_code: String = ""
 		for event: PlatformEvent in _platform.take_events():
@@ -3073,22 +3213,27 @@ func _poll_platform() -> void:
 				PlatformEvent.KIND_CLAIM:
 					if _auth_provider != null:
 						_auth_provider.on_platform_event(event)
+				PlatformEvent.KIND_SAVE:
+					if _saver != null:
+						_saver.on_platform_event(event)
 				PlatformEvent.KIND_HEARTBEAT:
-					_on_heartbeat_event(event)
+					if running:
+						_on_heartbeat_event(event)
 				PlatformEvent.KIND_INSTANCE_CLOSED:
 					closed_code = event.error_code
 				_:
-					# save (CharacterSaver, P5), id_block, progress_op y progress_ledger (ProgressService,
-					# progresion.md P5a y P5d), fortress (P6), ignore, report y sanction (P7b): sin consumidor
-					# todavía.
+					# id_block, progress_op y progress_ledger (ProgressService, progresion.md P5a y P5d), fortress
+					# (P6), ignore, report y sanction (P7b): sin consumidor todavía.
 					pass
 		if not closed_code.is_empty():
 			_log("La plataforma ha cerrado esta instancia (%s)" % closed_code)
-			instance_closed.emit(closed_code)
+			if running:
+				instance_closed.emit(closed_code)
 	if _auth_provider != null:
 		for outcome: AuthOutcome in _auth_provider.take_completed():
 			_apply_auth_outcome(outcome)
-	_check_verify_timeouts()
+	if running:
+		_check_verify_timeouts()
 
 
 # El final de una reclamación (tabla de §5.2). Con OK, en orden: (1) la zona admite el reino del personaje
@@ -3135,14 +3280,14 @@ func _check_verify_timeouts() -> void:
 			_reject(peer, NetProtocol.Result.UNAVAILABLE)
 
 
-# Respuesta del latido: los revoked (§6). Cada entrada lleva el lease_id; la que no casa con el arrendamiento
-# actual del personaje en esta zona no expulsa a nadie. lease_lost es la baja sin guardado (sin liberar: el
-# arrendamiento ya no es de la zona); los demás expulsan con el texto de la plataforma (hasta P5, sin guardado
-# final: se libera al irse el cuerpo, o en el acto si estaba cargando). Los silencios son de P7b y el
-# mantenimiento, de P5.
+# Respuesta del latido: los revoked (§6) y el mantenimiento (§12). Cada revoked lleva el lease_id; el que no casa
+# con el arrendamiento actual del personaje en esta zona no expulsa a nadie. lease_lost es la baja sin guardado
+# (sin liberar: el arrendamiento ya no es de la zona); los demás expulsan con el texto de la plataforma y guardado
+# final al irse el cuerpo (en LOADING, liberación sin guardar). Los silencios son de P7b.
 func _on_heartbeat_event(event: PlatformEvent) -> void:
 	if not event.is_success():
 		return
+	_set_maintenance(event.body_dict().get("maintenance"))
 	for value: Variant in PlatformJson.array_in(event.body_dict(), "revoked"):
 		var revoked: Dictionary = value if value is Dictionary else {}
 		var character_id: int = PlatformJson.id_of(revoked.get("character_id"))
@@ -3155,7 +3300,7 @@ func _on_heartbeat_event(event: PlatformEvent) -> void:
 
 
 func _revoke(character_id: int, lease_id: String, reason: String, text: String) -> void:
-	var lease_lost: bool = reason == "lease_lost"
+	var lease_lost: bool = reason == CharacterSaver.LEASE_LOST
 	for peer: ServerPeer in _peers.values():
 		if peer.claimed == null or peer.claimed.character_id != character_id \
 				or peer.claimed.lease_id != lease_id:
@@ -3164,29 +3309,47 @@ func _revoke(character_id: int, lease_id: String, reason: String, text: String) 
 			continue
 		_log("La plataforma revoca a %s (personaje %d): %s" % [peer.display_name, character_id, reason])
 		if lease_lost:
-			# El arrendamiento ya no es de esta zona: ni se libera ni se guarda, y el cuerpo sale en el acto.
+			# La baja sin guardado (§7.2): el arrendamiento ya no es de esta zona, así que ni se libera ni se
+			# guarda, y el cuerpo sale en el acto (sin salida en combate).
+			if peer.entity != null and _saver != null:
+				_saver.drop(peer.entity.net_id, CharacterSaver.LEASE_LOST)
 			peer.claimed = null
-			if peer.entity != null:
-				_claims_by_net.erase(peer.entity.net_id)
 			peer.drop_body_at_once = true
 		_kick(peer, reason, false, text if not text.is_empty() else "Tu sesión ha terminado: vuelve a entrar")
 		return
-	# Un cuerpo que se queda tras una salida en combate: un lease_lost no se libera al irse.
-	if lease_lost:
-		for net_id: int in _claims_by_net.keys():
-			var claim: ClaimedCharacter = _claims_by_net[net_id]
-			if claim.character_id == character_id and claim.lease_id == lease_id:
-				_claims_by_net.erase(net_id)
+	# Un cuerpo que se queda tras una salida en combate: con lease_lost sale ya, sin guardado ni liberación. Con los
+	# demás motivos su dueño ya se fue: el final sale cuando se retire.
+	if lease_lost and _saver != null:
+		var net_id: int = _saver.net_id_of(character_id, lease_id)
+		if net_id > 0 and _lingering.has(net_id):
+			_log("La plataforma revoca el cuerpo que queda del personaje %d: lease_lost" % character_id)
+			_saver.drop(net_id, CharacterSaver.LEASE_LOST)
+			_lingering[net_id] = 0
 
 
-# Libera sin guardar el arrendamiento del cuerpo [param net_id], si tiene uno.
-func _release_claim_of(net_id: int) -> void:
-	var claim: ClaimedCharacter = _claims_by_net.get(net_id)
-	if claim == null:
+# Un guardado rechazado de forma definitiva antes de su final (CharacterSaver.save_rejected, docs/plataforma.md
+# §7.2 y §7.3): la baja sin guardado. (1) drop, que libera salvo con lease_lost; (2) NOTICE y expulsión con el
+# cuerpo fuera en el acto, sin salida en combate (el que se quedaba tras una salida en combate se retira ya); (3)
+# ScoreKeeper.forget y ProgressService.on_departure, en la baja del cuerpo, cuyo finish ya no hace nada.
+func _on_save_rejected(net_id: int, character_id: int, code: String) -> void:
+	if _saver != null:
+		_saver.drop(net_id, code)
+	var text: String = LEASE_LOST_TEXT if code == CharacterSaver.LEASE_LOST else SAVE_REJECTED_TEXT
+	var entity: NetEntity = _registry.get_entity(net_id)
+	if entity == null:
 		return
-	_claims_by_net.erase(net_id)
-	if _platform != null:
-		_platform.release(claim.character_id, claim.lease_id)
+	if _lingering.has(net_id):
+		_log("Se retira ya el cuerpo del personaje %d: su guardado se ha rechazado (%s)" % [character_id, code])
+		_lingering[net_id] = 0
+		return
+	var peer: ServerPeer = _peers.get(entity.owner_peer)
+	if peer == null or peer.entity != entity:
+		return
+	peer.drop_body_at_once = true
+	if _transport != null:
+		_kick(peer, "guardado rechazado (%s)" % code, false, text)
+	else:
+		_mark_leaving(peer)
 
 
 # Un peer que deja VERIFYING o LOADING sin llegar al mundo (§5.2): en VERIFYING se cancela la espera de su
@@ -3426,6 +3589,7 @@ func _kick(peer: ServerPeer, reason: String, cooldown: bool = true, notice_text:
 		return
 	if cooldown:
 		_start_cooldown(peer)
+	peer.kicked = true
 	var notice := NetMessages.Notice.new()
 	notice.code = NetProtocol.NoticeCode.KICK
 	notice.text = notice_text if not notice_text.is_empty() else "Expulsado del servidor: %s" % reason
@@ -3567,14 +3731,87 @@ func _connections_from(peer: ServerPeer) -> int:
 	return count
 
 
-# Tras stop(): sigue sondeando hasta que los peers se han ido o pasan STOP_DRAIN_TICKS ticks.
+# Lo común a stop() y close_instance(): cierra las fichas del informe, manda el guardado final de cada cuerpo con
+# arrendamiento (con el motivo SHUTDOWN) antes de vaciar el mundo, cierra los registros y pide a la plataforma que
+# saque ya lo pendiente (begin_flush).
+func _wind_down() -> void:
+	for record: _PlayerRecord in _player_by_net.values():
+		record.close(_tick)
+	_war_fortresses_at_stop = _fortress_entries()
+	if _saver != null:
+		for net_id: int in _saver.tracked_net_ids():
+			_saver.finish(net_id, CharacterSaver.Reason.SHUTDOWN)
+	_clear_players()
+	_pending_ready.clear()
+	_leaving.clear()
+	_fake_leaving.clear()
+	_fake_leaving_quietly.clear()
+	_maintenance_at_unix = 0
+	_maintenance_announced.clear()
+	_shutdown_tick = -1
+	_sync_byte_counters()
+	_close_state_log()
+	_close_combat_log()
+	_close_battle_log()
+	if _console != null:
+		_console.stop()
+	_metrics.unregister_monitors()
+	if _platform != null:
+		_platform.begin_flush()
+
+
+# Pasa a STOPPING, o termina ya si no hay peers ni nada pendiente en la plataforma. Con [param kick_after_saves]
+# (el cierre de §6.1) los peers reciben su NOTICE de expulsión cuando los guardados ya tienen respuesta.
+func _begin_drain(kick_after_saves: bool) -> void:
+	_drain_ticks = 0
+	_peer_drain_ticks = 0
+	_kick_after_saves = kick_after_saves
+	if (_transport == null or _peers.is_empty()) and _saves_settled():
+		_kick_after_saves = false
+		_finish_stop()
+	else:
+		_run_state = _RunState.STOPPING
+
+
+# true si los guardados tienen todos su respuesta definitiva y la plataforma no tiene nada en cola ni en vuelo.
+func _saves_settled() -> bool:
+	return (_saver == null or _saver.pending_count() == 0) and (_platform == null or _platform.is_flushed())
+
+
+# Tras stop() o close_instance(): sigue sondeando la red y la plataforma (las respuestas de los guardados finales y
+# las reclamaciones que llegan tarde) hasta que los guardados están contestados (o pasan save_drain_ticks) y los
+# peers se han ido (o pasan STOP_DRAIN_TICKS desde su NOTICE).
 func _drain_stop() -> void:
 	_drain_ticks += 1
 	if _transport != null:
 		_transport.poll(_tick + _drain_ticks)
+	_poll_platform()
+	var saves_done: bool = _saves_settled() or _drain_ticks >= save_drain_ticks
+	if _kick_after_saves:
+		if not saves_done:
+			return
+		_kick_after_saves = false
+		_kick_everyone(INSTANCE_CLOSED_TEXT)
+	else:
+		_peer_drain_ticks += 1
+	if _transport != null:
 		_transport.flush()
-	if _peers.is_empty() or _drain_ticks >= STOP_DRAIN_TICKS:
+	if saves_done and (_peers.is_empty() or _peer_drain_ticks >= STOP_DRAIN_TICKS):
+		if not _saves_settled():
+			push_warning("[Eldmark] Cierre de la zona: la plataforma no ha contestado a tiempo (%d guardados sin respuesta)"
+					% (_saver.pending_count() if _saver != null else 0))
 		_finish_stop()
+
+
+# NOTICE de expulsión con [param text] y corte ordenado de todos los peers que quedan (el cierre de §6.1).
+func _kick_everyone(text: String) -> void:
+	if _transport == null:
+		return
+	for peer_id: int in get_peer_ids():
+		var peer: ServerPeer = _peers[peer_id]
+		if peer.state != ServerPeer.State.LEAVING:
+			_kick(peer, "la plataforma ha cerrado la instancia", false, text)
+	_transport.flush()
 
 
 func _finish_stop() -> void:
@@ -3752,6 +3989,7 @@ func _build_report() -> Dictionary:
 		"war": _war_report(),
 		"npcs": _npc_report(),
 		"social": _social.get_stats() if _social != null else {},
+		"saves": _saver.get_stats() if _saver != null else {},
 		"simulate": {
 			"calls": _simulate_calls,
 			"total_us": _simulate_usec_total,
