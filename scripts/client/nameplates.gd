@@ -287,6 +287,8 @@ func _show(plate: Nameplate, candidate: Dictionary, camera: Camera3D) -> void:
 	plate.configure(net_id, view.get_display_name(), realm_color, show_name, show_bar, fraction,
 			ally, alpha)
 	plate.set_downed((view.get_drawn_action() & 15) == CombatState.Action.DOWNED)
+	# El nivel solo de los aliados (el de un enemigo llega a 0 y no se enseña, docs/progresion.md §7.3).
+	plate.set_level(view.get_level() if ally else 0)
 	if is_instance_valid(_client):
 		plate.set_statuses(_client.get_status_tracker(net_id),
 				int(_client.get_interpolation_clock().get_render_tick()))

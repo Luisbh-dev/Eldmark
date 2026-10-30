@@ -12,7 +12,8 @@ extends Node
 ## [br][br]
 ## Opciones ([ClientConfig]): [code]--bots=N --connect=<host>[:<puerto>] [--realm=<reino>]
 ## [--bot-seed=N] [--bot-brain=combat] [--net-sim=…] [--quit-after-ticks=N] [--quit-at-server-tick=N]
-## [--report=<ruta.json>][/code]. El bot [i]i[/i]
+## [--report=<ruta.json>][/code]. Con [code]--platform[/code] no arranca: sale con código 1 y un error claro
+## (docs/plataforma.md §5.5). El bot [i]i[/i]
 ## se llama [code]NameRules.bot_name(bot_seed + i)[/code]: dos enjambres contra el mismo servidor
 ## necesitan semillas distintas (los nombres no se pueden repetir en una zona). Sin [code]--realm[/code]
 ## los bots se reparten entre Vardheim y Solmarch.
@@ -36,6 +37,8 @@ const SPAWN_INTERVAL_TICKS: int = 5
 const LEAVE_WAIT_TICKS: int = 30
 ## Fotogramas por segundo máximos en headless (sección 1.3).
 const MAX_FPS: int = 120
+## Error de [code]--bots[/code] con [code]--platform[/code].
+const TEXT_NO_PLATFORM: String = "--bots no admite --platform: el enjambre solo va contra zonas sin plataforma (para entrar con cuenta, --bot --platform=<url> --login=<correo> --password-file=<ruta>)"
 
 ## Configuración del enjambre. La rellena [ClientLauncher]; si es null al arrancar, se lee de
 ## los argumentos de usuario.
@@ -73,6 +76,11 @@ func start(p_config: ClientConfig) -> void:
 		push_warning("[Eldmark] %s" % warning)
 	if _config.bot_count <= 0:
 		push_error("[Eldmark] El enjambre necesita --bots=N con N > 0")
+		_quit(1)
+		return
+	if not _config.platform_url.is_empty():
+		# Los bots del enjambre no tienen cuenta: solo contra zonas sin plataforma (docs/plataforma.md §5.5).
+		printerr("[Eldmark] %s" % TEXT_NO_PLATFORM)
 		_quit(1)
 		return
 	print("[Eldmark] Enjambre: %d bots hacia %s:%d (uno cada %d ticks, semilla %d)" % [

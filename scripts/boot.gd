@@ -13,6 +13,8 @@ extends Node
 ## [code]ClientConfig[/code]). Tiene prioridad sobre el sandbox.
 ## [br]    - [code]--local[/code]: cliente en red contra un servidor local que se lanza solo si no
 ## hay ninguno ([code]LocalServerLauncher[/code]).
+## [br]    - [code]--title[/code] o [code]--platform=<url>[/code]: la pantalla de título con cuenta
+## ([code]FrontMain[/code], docs/plataforma.md §5.5 y §13). Una exportación sin argumentos también la abre.
 ## [br]    - Sin nada de lo anterior, el sandbox sin red ([code]ClientMain[/code]; también en modo
 ## headless), con las opciones de [method parse_client_options]:
 ## [br]        - [code]--zone=<id>[/code]: zona que se carga ([code]vado_gris[/code] por defecto,
@@ -48,11 +50,12 @@ const ZONE_ARG_PREFIX: String = "--zone="
 const REALM_ARG_PREFIX: String = "--realm="
 ## Argumentos de los modos en red (docs/red.md, sección 1.2) que el sandbox ignora sin avisar: los
 ## interpretan [ServerConfig] y los modos de cliente en red, no [method parse_client_options].
-const NETWORK_ARGS: Array[String] = ["--local", "--bot"]
+const NETWORK_ARGS: Array[String] = ["--local", "--bot", "--title"]
 const NETWORK_ARG_PREFIXES: Array[String] = [
 	"--connect=", "--bots=", "--name=", "--port=", "--net-sim=", "--quit-after-ticks=",
 	"--quit-at-server-tick=", "--report=", "--state-log=", "--bot-seed=", "--bot-cheat=", "--bot-brain=",
-	"--loadout=",
+	"--loadout=", "--platform=", "--login=", "--password-file=", "--character=", "--world=", "--dtls-cert=",
+	"--dtls-name=",
 ]
 
 

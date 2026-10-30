@@ -146,6 +146,8 @@ Opciones de arranque (van después de `--`):
 - `--connect=<host>[:<puerto>]`, `--local` y `--bot`: cliente en red (ver «Cliente en red» más
   abajo).
 - `--bots=N`: enjambre de N clientes ligeros para pruebas de carga (ver «Enjambre de bots»).
+- `--title` y `--platform=<url>`: la pantalla de título con cuenta (ver «Cliente con cuenta»). Una
+  exportación sin argumentos también la abre; desde el editor, sin argumentos sigue el sandbox.
 
 Las capturas y otros ficheros temporales pueden ir en `build/`, que Godot ignora.
 
@@ -372,6 +374,29 @@ fue rechazado, se desconectó o no llegó a entrar en la zona.
 
 Las rutas de `--report` y `--state-log` pueden ir en `build/`, pero con `--state-log` dentro del
 proyecto usa la extensión `.txt`: el importador de Godot convierte los `.csv` en traducciones.
+
+### Cliente con cuenta (`--title`, `--bot --platform`)
+
+Contra la plataforma (docs/plataforma.md §13), el cliente arranca en la pantalla de título: inicio de
+sesión, selección y creación de personaje, y «Entrar» pide el billete y conecta con la zona que diga la
+plataforma. Sin `--platform` usa el ajuste de proyecto `eldmark/platform/url` (`http://127.0.0.1:24680`).
+Solo admite `https://` o, hacia esta máquina, `http://`; `eldmark/platform/ca_cert` ancla un certificado
+propio (staging).
+
+```bash
+# El título contra la plataforma local
+godot --path . -- --title --platform=http://127.0.0.1:24680
+
+# Un bot con cuenta: inicia sesión, crea «Probador» si no existe, pide el billete y entra
+godot --headless --path . -- --bot --platform=http://127.0.0.1:24680 --login=bot@eldmark.test \
+    --password-file=build/bot.pw --character=Probador --realm=solmarch --quit-after-ticks=1500 \
+    --report=build/bot.json
+```
+
+La contraseña del bot va siempre en un archivo (`--password-file`), nunca en la línea de órdenes. Sin
+`--login` o `--password-file`, o si la cuenta falla (credenciales, `character_busy` tras 30 s,
+`zone_unavailable`), el bot sale con código 1 y el `code` de la plataforma en el informe
+(`platform.code`). `--world=N` elige el mundo (1). `--bots` no admite `--platform`.
 
 ### Enjambre de bots (`--bots=N`)
 

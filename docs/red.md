@@ -2641,7 +2641,9 @@ const AUTH_TIMEOUT_SECONDS: float = 10.0     # v7 (5.0 hasta la v6): en los dos 
 ## Antes de host()/connect_to(). Vacío = sin simulador.
 func set_net_sim_spec(spec: String) -> void
 func host(port: int, max_peers: int) -> Error
-func connect_to(address: String, port: int, connect_timeout_ms: int = 3000) -> Error
+## Con dtls (plataforma.md §10.2), dtls_client_setup(dtls_name, dtls) tras create_client; sin él, en claro.
+func connect_to(address: String, port: int, connect_timeout_ms: int = 3000, dtls_name: String = "",
+		dtls: TLSOptions = null) -> Error
 func is_server() -> bool
 ## ERR_UNAVAILABLE si el peer aún no está conectado.
 func send(peer_id: int, channel: int, bytes: PackedByteArray) -> Error

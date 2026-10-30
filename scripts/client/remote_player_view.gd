@@ -69,6 +69,10 @@ var _drawn_health_q: int = EntityRecord.HEALTH_Q_FULL
 var _weapon_1: int = 0
 var _weapon_2: int = 0
 var _drawn_second_slot: bool = false
+# Nivel (protocolo 7): el del SPAWN (0 si el remoto es de otro reino) o el de su último LEVEL_UP.
+var _level: int = 0
+# Los 8 B de la apariencia del SPAWN (protocolo 7; sin validar).
+var _appearance: PackedByteArray = PackedByteArray()
 
 
 ## Toma el control de [param body] (un [PlayerCharacter] recién instanciado) y le pone como primera
@@ -83,6 +87,8 @@ func setup(body: PlayerCharacter, spawn: NetMessages.EntitySpawn) -> void:
 	_realm = spawn.realm
 	_spawn_tick = spawn.spawn_tick
 	_despawn_tick = -1
+	_level = spawn.level
+	_appearance = spawn.appearance.duplicate()
 	if body.is_node_ready():
 		_configure_body()
 	else:
@@ -250,6 +256,22 @@ func get_drawn_action() -> int:
 ## vivo. Lo leen las placas de nombre.
 func get_drawn_health_q() -> int:
 	return _drawn_health_q
+
+
+## Nivel del remoto (docs/progresion.md §7.3): el de su SPAWN o su último LEVEL_UP; 0 si es de otro reino (el nivel
+## del enemigo no cruza) o la zona no tiene progreso.
+func get_level() -> int:
+	return _level
+
+
+## Un LEVEL_UP del remoto (ya en su tick de dibujo): su nivel nuevo.
+func set_level(level: int) -> void:
+	_level = clampi(level, 0, ProgressMessages.MAX_LEVEL)
+
+
+## Los 8 B de la apariencia de su SPAWN, tal cual llegaron (los valida [method AppearanceApplier.resolve]).
+func get_appearance() -> PackedByteArray:
+	return _appearance
 
 
 ## Pareja de armas del remoto en orden de ranura ([param weapon_1] la de la ranura 1; 0 = ninguna): la del

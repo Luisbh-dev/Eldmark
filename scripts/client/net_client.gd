@@ -73,6 +73,13 @@ extends Node
 ## [method send_inventory_request] y [method send_inventory_sync_request] mandan las peticiones (solo en el
 ## mundo). El nivel y la apariencia de cada jugador vienen en su ENTITY_SPAWN.
 ## [br][br]
+## [b]Inventario del jugador[/b] (docs/progresion.md §11.3, P6): un [ClientInventory] ([method get_inventory]) recibe
+## los INVENTORY_DELTA y las páginas de INVENTORY_FULL antes de su señal, envía por aquí sus peticiones y toma el
+## contexto de cada una ([method inventory_context]: nivel, ranura activa, «puede tocar el equipo» y «bebiendo»)
+## del estado predicho del personaje local y del bloque extra; su plazo de 5 s corre en cada tick. Un
+## [ClientProgress] ([method get_progress]) guarda los WALLET_UPDATE, los PROGRESS_UPDATE y el nivel del SPAWN propio.
+## El LEVEL_UP de un aliado sube el nivel de su vista ([method RemoteWorld.on_level_up]).
+## [br][br]
 ## [b]Bot tramposo[/b] ([member ClientConfig.bot_cheat], solo en modo BOT): un [BotCheater] falsea
 ## el HELLO ([code]version[/code]), envía tráfico de más tras el lote honrado de cada tick
 ## ([code]future[/code], [code]dupes[/code], [code]garbage[/code], [code]flood[/code]) o falsea la vista
@@ -186,6 +193,9 @@ var hello_hook: Callable = Callable()
 ## puede modificarlo (por ejemplo, falsear los [code]view_offsets_q[/code] del rebobinado). Lo mismo que
 ## hace el modo [code]rewind[/code] del bot tramposo ([BotCheater]), pero a medida para una prueba.
 var batch_hook: Callable = Callable()
+## Campos de más para el informe ([method write_report]): [OnlineMain] pone aquí lo de la cuenta de un bot con
+## [code]--platform[/code] (docs/plataforma.md §13.3).
+var report_extra: Dictionary = {}
 ## Tiempo de espera de ENet al conectar (ms). [constant CONNECT_TIMEOUT_MS] salvo que quien llama a
 ## [method start] ponga otro antes (el modo [code]--local[/code] usa uno corto para reintentar).
 var connect_timeout_ms: int = CONNECT_TIMEOUT_MS
@@ -275,6 +285,10 @@ var _inventory_deltas: int = 0
 var _inventory_fulls: int = 0
 var _wallet_updates: int = 0
 var _progress_updates: int = 0
+# Inventario, monedas y progreso del jugador local (P6) y los 8 B de la apariencia de su SPAWN.
+var _inventory: ClientInventory = ClientInventory.new()
+var _progress: ClientProgress = ClientProgress.new()
+var _own_appearance: PackedByteArray = PackedByteArray()
 
 # Envío de entradas.
 var _view_offsets_q: PackedInt32Array = PackedInt32Array()
@@ -319,6 +333,11 @@ func _init() -> void:
 	_projectile_world.setup(_interp_clock, _remote_world)
 	# La puerta del fuerte que tenía cada tick simulado, también en las repeticiones (fuerte.md, 3.2).
 	_prediction.before_simulate = _fortress_view.before_simulate
+	# El inventario envía por aquí y toma el contexto de cada petición del estado predicho.
+	_inventory.send_request = send_inventory_request
+	_inventory.send_sync = send_inventory_sync_request
+	_inventory.context_provider = inventory_context
+	_inventory.in_combat_provider = is_in_combat
 
 
 func _ready() -> void:
@@ -367,13 +386,38 @@ func start(config: ClientConfig, transport: NetTransport,
 	_cheater = _make_cheater(config)
 	_connect_transport()
 	_transport.set_net_sim_spec(config.net_sim_spec)
-	var error: Error = _transport.connect_to(config.address, config.port, connect_timeout_ms)
+	var dtls: TLSOptions = dtls_options(config)
+	if dtls == null and config.has_dtls():
+		_disconnect_transport()
+		return ERR_INVALID_DATA
+	var error: Error = _transport.connect_to(config.address, config.port, connect_timeout_ms, config.dtls_name,
+			dtls)
 	if error != OK:
 		_disconnect_transport()
 		return error
 	_state = State.CONNECTING
 	set_physics_process(true)
 	return OK
+
+
+## El certificado DTLS de la zona anclado ([method TLSOptions.client]) que dice [param config]: el PEM de
+## [code]enter[/code] ([member ClientConfig.dtls_cert_pem]) o, sin plataforma, el archivo de [code]--dtls-cert[/code].
+## Null sin DTLS o si el certificado no se puede leer (docs/plataforma.md §10.2).
+static func dtls_options(config: ClientConfig) -> TLSOptions:
+	if config == null or not config.has_dtls():
+		return null
+	var certificate := X509Certificate.new()
+	var error: Error = OK
+	if not config.dtls_cert_pem.is_empty():
+		error = certificate.load_from_string(config.dtls_cert_pem)
+	elif FileAccess.file_exists(config.dtls_cert_path):
+		error = certificate.load(config.dtls_cert_path)
+	else:
+		error = ERR_FILE_NOT_FOUND
+	if error != OK:
+		push_warning("[Eldmark] No se puede leer el certificado DTLS de la zona (%s)" % error_string(error))
+		return null
+	return TLSOptions.client(certificate)
 
 
 ## Envía CLIENT_READY (solo tras [signal welcomed]) y apunta el tick local. [param world_root]
@@ -532,7 +576,7 @@ func send_party_leave() -> bool:
 ## lleva sus [code]request_id[/code] y su estado optimista (§11.3). Devuelve false, sin enviar nada, si no hay
 ## sesión en el mundo (antes sería un aviso del servidor) o el mensaje no se puede codificar.
 func send_inventory_request(message: ProgressMessages.InventoryRequest) -> bool:
-	if _state != State.IN_WORLD or message == null:
+	if _state != State.IN_WORLD or message == null or not is_instance_valid(_transport):
 		return false
 	var bytes: PackedByteArray = message.encode()
 	if bytes.is_empty() or _transport.send(SERVER_PEER_ID, NetProtocol.CH_RELIABLE, bytes) != OK:
@@ -544,13 +588,48 @@ func send_inventory_request(message: ProgressMessages.InventoryRequest) -> bool:
 ## Pide el inventario entero (INVENTORY_SYNC_REQUEST, protocolo 7): uno cada 5 s como mucho, o el servidor
 ## cuenta un aviso. Devuelve false si no hay sesión en el mundo o no se pudo enviar.
 func send_inventory_sync_request() -> bool:
-	if _state != State.IN_WORLD:
+	if _state != State.IN_WORLD or not is_instance_valid(_transport):
 		return false
 	if _transport.send(SERVER_PEER_ID, NetProtocol.CH_RELIABLE,
 			ProgressMessages.InventorySyncRequest.new().encode()) != OK:
 		return false
 	_inventory_syncs_sent += 1
 	return true
+
+
+## Inventario del jugador local (docs/progresion.md §11.3): vacío hasta el primer INVENTORY_FULL.
+func get_inventory() -> ClientInventory:
+	return _inventory
+
+
+## Monedas, nivel y XP del jugador local (WALLET_UPDATE, PROGRESS_UPDATE y el nivel del SPAWN propio).
+func get_progress() -> ClientProgress:
+	return _progress
+
+
+## Los 8 B de la apariencia del SPAWN propio (vacío antes de aparecer; a 0 si la zona no tiene progreso).
+func get_own_appearance() -> PackedByteArray:
+	return _own_appearance
+
+
+## El contexto de una petición del inventario ahora (docs/progresion.md §4.1 y §11.3): el nivel de
+## [method get_progress]; la ranura de arma activa, el bit0 de [code]combat_flags2[/code] del estado predicho; y «puede
+## tocar el equipo» solo vivo, sin derribar, fuera de combate (bloque extra) y sin acción predicha. «Bebiendo», con
+## una ABILITY de consumible en curso.
+func inventory_context() -> InventoryOps.Context:
+	var context := InventoryOps.Context.new()
+	context.level = _progress.get_level()
+	if is_instance_valid(_character):
+		var combat: CombatState = _character.combat
+		context.active_weapon_slot = 1 if (combat.combat_flags2 & CombatState.FLAG2_SECOND_SLOT) != 0 else 0
+		context.can_touch_equipment = combat.action == CombatState.Action.NONE and not is_dead() \
+				and not is_downed() and not is_in_combat()
+		var ability: AbilityTicks = CombatCatalog.ability(combat.action_id) \
+				if combat.action == CombatState.Action.ABILITY else null
+		context.drinking = ability != null and ability.is_consumable()
+	else:
+		context.can_touch_equipment = false
+	return context
 
 
 ## Vida del jugador local según el último snapshot reconciliado (vida máxima por defecto hasta que
@@ -928,6 +1007,7 @@ func _physics_process(_delta: float) -> void:
 	_interp_clock.advance(_local_tick)
 	_fortress_view.advance(_interp_clock.get_render_tick())
 	_deliver_due_events()
+	_inventory.tick(Time.get_ticks_msec())
 	_smoother.physics_step()
 	_transport.flush()
 
@@ -995,6 +1075,11 @@ func _deliver_combat_event(event: NetMessages.EntityEvent, is_own: bool) -> void
 	_track_status(event)
 	if event.event == NetMessages.EntityEvent.Kind.LOADOUT and event.net_id != _net_id:
 		_remote_world.on_loadout(event)
+	elif event.event == NetMessages.EntityEvent.Kind.LEVEL_UP:
+		if event.net_id == _net_id:
+			_progress.on_level_up(event.level)
+		else:
+			_remote_world.on_level_up(event)
 	combat_event.emit(event, is_own)
 
 
@@ -1209,6 +1294,11 @@ func _on_peer_authenticating(peer_id: int) -> void:
 	if _config.mode == ClientConfig.Mode.BOT:
 		hello.flags |= NetMessages.Hello.FLAG_BOT
 	hello.display_name = _config.display_name
+	# Con billete (docs/plataforma.md §5.4): el personaje y los 52 B de enter; el reino y el nombre son los del
+	# personaje, que la zona ignora (mandan los de la reclamación).
+	if _config.has_ticket():
+		hello.character_id = _config.character_id
+		hello.ticket = _config.ticket
 	if _cheater != null:
 		_cheater.tamper_hello(hello)
 	if hello_hook.is_valid():
@@ -1391,6 +1481,7 @@ func _on_progress_message(bytes: PackedByteArray) -> void:
 				_malformed_packets += 1
 				return
 			_inventory_deltas += 1
+			_inventory.on_delta(delta)
 			inventory_delta_received.emit(delta)
 		NetProtocol.MSG_INVENTORY_FULL:
 			var page: ProgressMessages.InventoryFull = ProgressMessages.InventoryFull.decode(bytes)
@@ -1398,6 +1489,7 @@ func _on_progress_message(bytes: PackedByteArray) -> void:
 				_malformed_packets += 1
 				return
 			_inventory_fulls += 1
+			_inventory.on_full_page(page)
 			inventory_full_received.emit(page)
 		NetProtocol.MSG_WALLET_UPDATE:
 			var wallet: ProgressMessages.WalletUpdate = ProgressMessages.WalletUpdate.decode(bytes)
@@ -1405,6 +1497,7 @@ func _on_progress_message(bytes: PackedByteArray) -> void:
 				_malformed_packets += 1
 				return
 			_wallet_updates += 1
+			_progress.on_wallet(wallet)
 			wallet_updated.emit(wallet)
 		NetProtocol.MSG_PROGRESS_UPDATE:
 			var progress: ProgressMessages.ProgressUpdate = ProgressMessages.ProgressUpdate.decode(bytes)
@@ -1412,6 +1505,7 @@ func _on_progress_message(bytes: PackedByteArray) -> void:
 				_malformed_packets += 1
 				return
 			_progress_updates += 1
+			_progress.on_progress(progress)
 			progress_updated.emit(progress)
 
 
@@ -1532,6 +1626,8 @@ func _on_own_spawn(spawn: NetMessages.EntitySpawn) -> void:
 	_net_id = spawn.net_id
 	_spawn_tick = spawn.spawn_tick
 	_own_teleport = spawn.teleport_counter
+	_own_appearance = spawn.appearance.duplicate()
+	_progress.set_spawn_level(spawn.level)
 	_controller.auto_step = false
 	_controller.setup(character, null)
 	var targets: Array[Node3D] = []
@@ -1637,6 +1733,9 @@ func _build_report() -> Dictionary:
 	report["reject_result"] = _reject_result
 	report["reject_text"] = _reject_text
 	report["disconnect_text"] = _last_disconnect_text
+	report["character_id"] = str(_config.character_id) if _config != null else "0"
+	for key: Variant in report_extra:
+		report[key] = report_extra[key]
 	var final_state: Dictionary = {
 		"predicted_tick": _prediction.get_predicted_tick(),
 		"server_tick": _last_snapshot_tick,

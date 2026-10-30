@@ -3460,3 +3460,113 @@ Godot: fuera de `platform/` solo cambia la documentación.
 
 **Queda para después:** la revisión legal de los textos, de la edad mínima y de los plazos marcados en §11.1 (usuario,
 §16); el contacto del responsable en `privacy-1.md`.
+
+
+### 19.16 P8 · cliente (UI-22, UI-23, UI-24)
+
+**Qué hay.** El lado del jugador de §13: el título con cuenta, la selección y la creación de personaje, la entrada con
+billete y el bot con cuenta. Sin plataforma, el cliente sigue como antes (sandbox desde el editor, `--connect`,
+`--local`, `--bot`, `--bots`):
+
+| Pieza | Contenido |
+|---|---|
+| `scripts/client/platform/` | `PlatformApi` (§14.4: cabeceras de §4.1, refresco un minuto antes de caducar o tras un 401 `unauthorized` con la llamada repetida, **un solo refresco en vuelo** con la señal `refreshed`, `session_lost` si el refresco da 401, `request_hook` para las pruebas, `parse_response` sin errores del motor), `ApiResult` (más `text` y `headers`, y `success`, `failure` y `no_response` para las pruebas), `AccountSession` (más `scope`, `restriction`, `refresh_expires_msec` y `realm_in`), `AccountFlow` (`login`, `logout`, `fetch_account`, `list_characters`, `create_character`, `ensure_character`, `enter` con los reintentos de `character_busy`, `config_from_enter`, `parse_id`, `decode_base64`, `starter_templates`) y `PlatformErrors` (los textos de §4.1 por `code`, con fechas en hora local) |
+| `scripts/client/front_main.gd` · `scenes/client/front_main.tscn` | `FrontMain`: las pantallas, la `AccountSession` entre escenas (`FrontMain.session`), el correo recordado, la exportación de datos, la entrada hacia `OnlineMain` y la vuelta con el motivo (`return_notice`); con `ClientServices` (F10) |
+| `scripts/client/ui/` · `scenes/ui/` | `TitleScreen` (con el panel de recuperar), `RegisterPanel`, `TermsPanel`, `SanctionedPanel`, `CharacterSelect`, `CharacterCreate`, `RenameDialog`, y además `FrontScreen` (la base común) y `CharacterFigure` (la figura 3D con cámara orbital de la selección y la creación) |
+| `ClientConfig` | `--title`, `--platform`, `--login`, `--password-file`, `--character`, `--world`, `--dtls-cert`, `--dtls-name`; `character_id`, `ticket`, `dtls_cert_pem` y `from_front`; el modo `TITLE` con la prioridad de §13.3 (`from_args(args, exported)`); `platform_url_error`, `url_host`, `is_loopback_host`, `has_ticket`, `has_dtls` y `duplicate_config` |
+| `ClientLauncher` · `boot.gd` · `project.godot` | `TITLE` lleva a `FrontMain`; una exportación sin argumentos abre el título (el editor, el sandbox); `boot.gd` no avisa de las opciones nuevas; ajustes `eldmark/platform/url` (`http://127.0.0.1:24680`) y `eldmark/platform/ca_cert` |
+| `NetClient` · `NetTransport` | El HELLO con `character_id` y billete; el certificado DTLS de `enter` (o de `--dtls-cert`) a `connect_to(…, dtls_name, dtls)`, que llama a `dtls_client_setup`; `report_extra` y `character_id` en el informe |
+| `OnlineMain` · `BotSwarm` | Con billete no hay elección de reino; con `from_front`, un rechazo o una desconexión vuelven a `FrontMain` con el motivo; el bot con `--platform` hace el camino de la cuenta y sale con código 1 y `platform.code` en el informe si falla; `--bots --platform` sale con código 1 |
+| Pruebas | `tests/fake_public_platform.gd` (`FakePublicPlatform`: la API pública de mentira para `request_hook`) y cinco archivos (abajo) |
+
+**Para los paquetes siguientes.**
+
+- **P9c:** el cliente ya pasa el certificado a `NetTransport.connect_to` con el contrato de §10.2 (el lado del cliente
+  está hecho, sin probar contra una zona con DTLS): queda `host(…, dtls)`, `SwarmBot` y la medida.
+- **P10:** el bot con cuenta es `--bot --platform=<url> --login=<correo> --password-file=<ruta>
+  [--character=<nombre>] [--realm=…] --quit-after-ticks=N --report=<ruta>`; el informe trae `character_id` y
+  `platform` (`code` vacío si entró, `created`, `character_id`). Sale con 0 si llegó a jugar.
+- **progresion.md P5a:** con billete, el cliente pinta la apariencia del SPAWN propio (P6); la creación manda los 8 B
+  elegidos y la plantilla, así que el criterio de UI-24 (otro cliente la ve igual) depende de que la zona la cargue.
+- **Revisión visual (usuario):** la lista de §15 con `deploy/dev.sh` (P9b) y `--title`.
+
+**Desviaciones y decisiones de la implementación:**
+
+- **Las pantallas se construyen en código** (como `UIWindow` y `TemplateSelector`) sobre una base común,
+  `FrontScreen`; sus escenas de `scenes/ui/` son solo la raíz con el script. Así se prueban sin ventana y `FrontMain`
+  las monta por su ruta. Dos archivos que §13.3 no nombra: `front_screen.gd` y `character_figure.gd`; y
+  `sanctioned_panel.gd`, la pantalla de cuenta sancionada de §13.2, que §13.3 no listaba.
+- **API de más** (§14.4 no la nombra): `PlatformApi.session` (la sesión vive en la API; `AccountFlow` la pone al
+  iniciar sesión), `clock` (pruebas), `timeout_s` (15 s), `build_id()` (el mismo formato que el de la zona: el
+  cliente no puede depender de `scripts/server/`), `request_headers`, `parse_response`, `get_refresh_count`;
+  `ApiResult.text` (el Markdown de `/v1/legal/{kind}` y el JSON de la exportación) y `headers`. Con un error,
+  `ApiResult.data` es el objeto `error` del cuerpo (con `until`, `reason`, `fields`, `realm`…).
+- **El refresco se da por imposible solo con un 401**: sin respuesta (red, plazo) la llamada falla con `network`
+  («No se puede conectar con el servidor de cuentas») y la sesión sigue.
+- **El correo va en minúsculas y sin espacios** desde el cliente (como `NormalizeEmail` en Go).
+- **Crear cuenta inicia sesión solo contra una plataforma en esta máquina** (`FrontMain.is_dev_platform`: la URL es
+  de loopback), que es como el cliente sabe que está en `dev` o `test` (§13.2): `/v1/status` no dice el entorno.
+  Fuera, iniciar sesión con lo escrito delataría si el correo ya tenía cuenta (con la contraseña de otro daría
+  `invalid_credentials`).
+- **La espera de `character_busy`** la hace `AccountFlow.enter` (cada `busy_retry_s` = 3 s durante `busy_timeout_s`
+  = 30 s, con la señal `busy_waiting` para la cuenta atrás y `cancel_enter`), para la selección y para el bot.
+- **`ensure_character`** busca el personaje por la clave de `NameRules` («aneira» encuentra «Anéira») y restaura uno
+  borrado en plazo en lugar de intentar crearlo (daría `name_taken`). Sin reino pedido usa el de la cuenta en ese
+  mundo y, si no tiene, Vardheim.
+- **La exportación** se guarda en Descargas (o, si no hay, en `user://`) con el nombre de `Content-Disposition`
+  limpio (solo letras, números, `.`, `-` y `_`, terminado en `.json`; si no, `eldmark-datos.json`).
+- **Una URL de plataforma que no vale** (`http://` fuera de esta máquina, sin esquema…) se conserva en
+  `ClientConfig` con un aviso: el bot falla con su motivo (`bad_url`) en lugar de entrar sin plataforma, y el título
+  lo dice. Ninguna llamada sale.
+- **DTLS sin certificado legible:** `NetClient.start` devuelve `ERR_INVALID_DATA` y no conecta en claro.
+- **Askarra sale «Próximamente» siempre** en la creación (§0): el cliente no conoce `ELDMARK_OPEN_REALMS`; si la
+  plataforma lo abre antes que el cliente, la creación da `realm_closed`.
+- **Emblemas, capital y lore** de la creación son texto provisional (de mundo.md) con el color de bando: los SVG de
+  `RealmCatalog.emblem_path` aún no existen (UI-02, ART-21).
+- **Zona del personaje en la lista:** «Vado Gris» y «Mundo de pruebas» por id; otra, el id capitalizado (no hay aún
+  nombres de zona en los datos compartidos).
+
+**Pruebas** (Godot, todas nuevas o ampliadas):
+
+| Archivo | Pruebas | Qué |
+|---|---|---|
+| `test_client_config.gd` | 9 nuevas (26) | Modos y prioridad con `--title`/`--platform` (editor: sandbox; exportación: título), opciones del bot con cuenta, `--world`, `--dtls-*`, reglas de la URL (https, http solo a loopback, «127.0.0.1.example.org» no lo es), `duplicate_config` y que `boot.gd` no avisa |
+| `test_platform_api.gd` | 14 | Refresco ante 401 y llamada repetida; refresco anticipado; **dos llamadas que caducan a la vez** (y dos con 401 a la vez) hacen un solo refresco; refresco rechazado → `session_lost` una vez y sesión olvidada; sin red, la sesión sigue; sin sesión no sale; `AccountSession`; el mapa de errores de §4.1; respuestas raras (204, JSON roto, no UTF-8, Markdown, `Retry-After`) sin errores del motor; con `FakeHttpServer`, las cabeceras (`Authorization`, `X-Eldmark-Protocol`, `X-Eldmark-Build`, `Content-Type`) y los cuerpos; `http://` fuera de esta máquina no sale; puerto cerrado → `network` |
+| `test_account_flow.gd` | 16 | `login` (correo normalizado), `ensure_character` (por la clave del nombre, crea con pueblo, apariencia por defecto válida y la primera plantilla, reino de la cuenta o el pedido, restaura un borrado), `enter` → `ClientConfig` con billete (id > 2^53, DTLS, sin `loadout`, la de partida intacta), `character_busy` reintentado, plazo y cancelación, respuestas que no se entienden, ids y base64 estrictos; el bot: sin `--login` → 1 y `missing_login`, contraseña ilegible, credenciales malas y `zone_unavailable` → 1 con el `code`, cuenta suspendida → 1; **de extremo a extremo en el proceso**: el bot crea su personaje y entra con el billete firmado en un `ZoneServer` con `FakeZonePlatform` y `TicketAuthProvider` (la reclamación lleva su id) y sale con 0; `--bots --platform` → 1 |
+| `test_front_screens.gd` | 13 | Título (Entrar solo con correo y contraseña, Intro, estado, recuperar y Esc), crear cuenta (contraseña, edad, los tres textos y el cuerpo exacto), textos nuevos, cuenta sancionada, selección (nombres, nivel y zona, borrados en gris, huecos, figura con su apariencia, **Entrar desactivado sin personaje**, **borrar escribiendo el nombre**, restaurar, flechas, Intro, Supr, cuenta atrás), creación (reino fijado, Askarra, apariencias válidas al cambiar cada campo y 50 aleatorias por pueblo, **plantilla**, nombre con `NameRules` y `name-check`, Esc) y renombrado |
+| `test_front_main.gd` | 12 | Con la escena de verdad: título → selección y el correo recordado sin la contraseña ni los tokens; contraseña mala; cuenta sancionada (exportar a un archivo, borrar, cerrar sesión); textos nuevos aceptados con las versiones de `/v1/legal`; Entrar → `OnlineMain` con billete y `from_front`; renombrado forzado; cuenta atrás de `character_busy`; crear (con `name-check`), borrar y restaurar; cerrar sesión y sesión perdida; registro que solo inicia sesión contra una plataforma local; la vuelta desde la zona con el motivo; `OnlineMain` con `from_front` que vuelve a `FrontMain` y nunca a `RealmSelect` |
+| `test_net_client.gd` | 2 nuevas | **El HELLO lleva el billete**, el `character_id` (> 2^53), el reino y el nombre del personaje; un certificado DTLS ilegible no conecta |
+| `test_client_launcher.gd` | 1 nueva | El proyecto arrancado con `--title --platform=<puerto cerrado>` monta `FrontMain` sin errores y dice «Sin conexión con el servidor» |
+
+Comprobada con la mutación que debía pillar: sin la guarda del refresco en vuelo, las dos pruebas de las llamadas
+simultáneas fallan (dos refrescos). Siguen correctas las que tocan lo cambiado: `test_online_main`,
+`test_realm_select`, `test_bot_swarm`, `test_architecture`, `test_export_config`, `test_client_settings`,
+`test_ui_components`, `test_net_loopback`, `test_net_harness`, `test_net_processes`, `test_local_server_launcher`,
+`test_bot_cheat`, `test_loadout_net`, `test_server_main`, `test_zone_server_platform`, `test_platform_client` y
+`test_handoff_ticket`. La suite entera de Godot no se ha pasado. Go no cambia (`gofmt` y `go vet` limpios).
+
+**Contra la plataforma de verdad** (a mano, `scratchpad/p8/real_platform.sh`, no está en el repositorio):
+PostgreSQL 16 efímero, `migrate up`, `admin bootstrap` y `create-account`, `serve` con `ELDMARK_HEARTBEAT_S=1`, una
+zona `test_world` con `--platform` y tres bots `--bot --platform`: el primero inicia sesión, crea «Probador» en
+Solmarch (`--realm=solmarch`) y entra; el segundo lo encuentra y entra otra vez (dos billetes, los dos consumidos; al
+salir, el arrendamiento queda libre); el tercero, con una contraseña mala, sale con 1 y `invalid_credentials` en el
+informe. El título sin ventana contra esa plataforma lee el estado («En línea · Eld»). Todas las peticiones del
+cliente dan 2xx (salvo el 401 buscado).
+
+**Medido** (esta máquina, 4 núcleos, Godot 4.7.2 headless, Go 1.24.7, PostgreSQL 16.15):
+
+| Qué | Resultado |
+|---|---|
+| Inicio de sesión, lista, creación y `enter` del bot contra la plataforma de verdad (argon2id de producción) | 229 ms; con el personaje ya creado, 145 ms |
+| `test_account_flow.gd` | 16 pruebas en 21 s; la de extremo a extremo, 6,9 s |
+| `test_front_main.gd` · `test_front_screens.gd` · `test_platform_api.gd` | 20 s · 14 s · 14 s (cada archivo con el arranque del ejecutor, unos 11 s) |
+| La vuelta de `OnlineMain` a `FrontMain` tras no poder conectar | 3,5 s (el plazo de conexión de ENet) |
+
+**Sin comprobar:** el título con ventana y ratón (en headless no se dibuja: la figura, el arrastre y el foco con
+Tab son de la revisión visual de §15); TLS con el certificado anclado (`eldmark/platform/ca_cert`: un fallo de TLS
+registra un error del motor, §10.1, así que no tiene prueba en Godot); DTLS de verdad (P9c); el refresco contra la
+plataforma de Go (el token dura 15 min y las pruebas usan la de mentira).
+
+**Queda para después:** el fondo, el logotipo y la música del título (ART-21) y su revisión visual (usuario); más
+piezas de apariencia y cuerpos (ART-20); que la zona cargue la apariencia elegida (progresion.md P5a, criterio de
+UI-24); DTLS en la zona y su medida (P9c); la prueba de extremo a extremo con la plataforma en Go (P10).

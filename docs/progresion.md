@@ -1589,10 +1589,14 @@ func on_delta(delta: ProgressMessages.InventoryDelta) -> void
 func on_full_page(page: ProgressMessages.InventoryFull) -> void
 func get_view() -> InventoryState; func get_confirmed() -> InventoryState
 func tick(now_msec: int) -> void                              # plazo de 5 s
+# P6 añade (§19.19): has_inventory, validate, notify_rejected, equip_target, make_move/make_split/make_destroy,
+# current_context, is_provisional; send_request, send_sync, context_provider, in_combat_provider y db se inyectan
+# (NetClient lo posee: get_inventory, inventory_context); ClientProgress (saldos, nivel, XP) es nuevo
 class_name AppearanceApplier extends RefCounted
 static func apply(visual: HumanoidVisual, appearance: CharacterAppearance,
 		catalog: AppearanceCatalog) -> void
-# humanoid_visual.gd: set_part y clear_part de §7.4
+# P6 añade resolve(bytes, realm, catalog) y apply_bytes: la apariencia que vale o la de por defecto del reino
+# humanoid_visual.gd: set_part y clear_part de §7.4; P6 añade set_tint, get_part_meshes y part_slots (§19.19)
 ```
 
 `test_architecture` se amplía:
@@ -3042,3 +3046,130 @@ plataforma.md P9a (su §19.15) pone a trabajar lo de §3.5 que esperaba a la pla
 - **Exportación:** `characters[i].progress` del archivo de la cuenta es `Export`, en la transacción de la exportación;
   de una lápida sin operaciones, `null`. `accounts` solo ve `Export` (`accounts.ProgressExporter`).
 - **Nada cambia aquí:** ni `internal/progress` ni Godot.
+
+
+### 19.19 P6 · cliente (UI-26, ART-19, PRG-07)
+
+**Qué hay.** Lo de §14.1 P6, en `scripts/client/inventory/` salvo donde se dice:
+
+| Pieza | Contenido |
+|---|---|
+| `ClientInventory` | §11.3 tal cual: el confirmado, las pendientes (8 como mucho) y la vista rehecha con `InventoryOps.apply`; `request`, `on_delta`, `on_full_page`, `tick` (plazo de 5 s), `get_view`, `get_confirmed` y las tres señales. Además `has_inventory`, `validate` (lo que diría `request` sin enviar ni avisar), `notify_rejected`, los gestos (`make_move`, `make_split`, `make_destroy`, `equip_target`), `current_context`, `is_provisional`, `is_syncing`, `get_stats` y `clear`. Sin nodos ni red: envía por `send_request` y `send_sync`, y el contexto le llega por `context_provider` e `in_combat_provider` |
+| `ClientProgress` (nuevo) | Los saldos de WALLET_UPDATE y el nivel, la XP del nivel, los puntos de reino y de atributo de PROGRESS_UPDATE; antes del primero, el nivel del SPAWN propio; el LEVEL_UP propio sube el nivel al momento |
+| `InventorySlotView` | Un `UIIconSlot` con arrastrar y soltar (`make_drag_data`, `accepts`, `drop`; Mayúsculas al empezar = dividir), `activated` (doble clic o clic derecho) y `drag_cancelled` (nadie recogió el arrastre). `show_item` pone icono, pila, rareza, tooltip y la pila provisional apagada; `locked` para las ranuras 2–6. Estáticas: `icon_for`, `short_name`, `tooltip_for`, `weapon_damage` |
+| `SplitDialog` | Modal como `UIConfirmDialog`, con un `SpinBox` de 1 a la pila − 1 que empieza en la mitad (`default_amount`); `confirmed(amount)` y `canceled` |
+| `InventoryWindow` | Tecla I: rejilla de 6 columnas con `bag_slots` casillas (se desplaza a partir de 6 filas) y, al pie, oro y méritos con puntos de millar. Resuelve los gestos de sus casillas y de las de la ventana de personaje: `drop_item`, `activate_item`, `drop_outside` (con el `UIConfirmDialog` «¿Destruir Poción de vida ×3?»), `handle_drag_cancelled`, `is_over_drop_zone`, `present_slot` y `connect_slot` |
+| `CharacterWindow` | Tecla C: la figura (un `SubViewport` con mundo propio, un `PlayerCharacter` quieto con `HumanoidVisual`, su apariencia y sus armas, que gira al arrastrar y solo dibuja abierta), las siete ranuras (2–6 en gris con «Próximamente»), nombre, reino, nivel, barra y texto de XP, puntos de reino y de atributo, y la vida y la resistencia máximas de `CombatRules` |
+| `AppearanceApplier` (`scripts/client/appearance_applier.gd`) | `apply` (§7.4: piezas con `set_part`/`clear_part` y tintes de piel, pelo y ojos), `resolve` (los 8 B si valen para el pueblo del reino; si no, `default_for`), `apply_bytes` y `part_scene` |
+| `HumanoidVisual` | `set_part` y `clear_part` de §7.4 (las mallas del modelo base son la ranura `body`; las de `part_scenes`, las de `part_slots`), `get_part_meshes`, `get_part_path`, `set_tint`, `get_tint` y `clear_tints`. Lo pedido antes de `_ready` se aplica al entrar |
+| `NetClient` | Posee el `ClientInventory` y el `ClientProgress` (`get_inventory`, `get_progress`): les pasa los cuatro mensajes antes de su señal, corre el plazo en cada tick y da el contexto (`inventory_context`). Guarda los 8 B del SPAWN propio (`get_own_appearance`) y lleva el LEVEL_UP de un aliado a su vista. Las dos peticiones no salen sin transporte |
+| `RemoteWorld`, `RemotePlayerView`, `Nameplate`, `Nameplates` | La apariencia de cada jugador remoto (`AppearanceApplier.apply_bytes` con su reino), su nivel (el del SPAWN y el de sus LEVEL_UP: `on_level_up`, `get_level`, `set_level`) y «Nv N» en gris delante del nombre de los aliados |
+| `OnlineMain`, `HUD`, `InputBindings` | La apariencia del personaje propio; las dos ventanas (personaje a la izquierda, inventario a la derecha), los dos diálogos, los avisos de rechazo en el chat, las pistas «Inventario» y «Personaje», y las acciones `open_inventory` (I) y `open_character` (C) |
+
+**Desviaciones y decisiones de la implementación:**
+
+- **`ClientProgress` es nuevo** (no estaba en §14.2): las ventanas necesitan los saldos, el nivel y la XP, y el nivel
+  es también el de `InventoryOps.Context.level` de las peticiones. **`NetClient` posee los dos** (no el HUD): el
+  INVENTORY_FULL llega justo tras el SPAWN propio, antes de que nadie monte la interfaz, y así ningún mensaje se
+  pierde.
+- **El contexto de una petición** sale del estado predicho del personaje local: la ranura activa es el bit0 de
+  `combat_flags2`, «puede tocar el equipo» pide vivo, sin derribar, fuera de combate (el bit del bloque extra) y sin
+  acción, y «bebiendo» es una ABILITY de consumible en curso. Sin personaje, no se toca el equipo.
+- **Lo que se rechaza en local** avisa con el texto de `result_text` y no sale: además de los códigos de
+  `InventoryOps`, NOT_NOW sin inventario (antes del primer FULL), al tocar una pila provisional (de origen o de
+  destino) o si no se pudo enviar, y RATE («Más despacio») con 8 en vuelo: la interfaz espera. Desequipar con la
+  bolsa llena avisa «No cabe» (NO_ROOM) sin pedir nada; un doble clic en lo que no se equipa no hace nada.
+- **Una pendiente que deja de valer en local** (un cambio del servidor se llevó su objeto) deja de aplicarse en la
+  vista pero sigue en la lista hasta su respuesta: así su rechazo llega con su texto. DESTROY también toma su id
+  provisional (−`request_id`, el `op_id` de su operación PLAYER en `InventoryOps`), que no se ve en ninguna parte.
+- **Sincronía:** un INVENTORY_SYNC_REQUEST cada 5 s como mucho (lo que pide de más espera) y otro si el FULL no llega
+  en 5 s. Los deltas anteriores al primer FULL se ignoran (el FULL lo trae todo); las entradas de ranuras que el
+  cliente no tiene (banco, bolsa por encima de `bag_slots`), también.
+- **Los gestos con diálogo se validan antes** (`validate`): dividir no abre el `SplitDialog` si dividir la mitad no
+  vale (lo que no se apila, una casilla ocupada) y soltar fuera no pregunta si la destrucción no vale (lo
+  indestructible, lo equipado): sale el aviso y nada más. Al confirmar, la petición lleva el `uid` que se vio al
+  abrir el diálogo (si entretanto cambió, STALE en local). DESTROY manda la cantidad que se enseñó (la pila entera),
+  no 0.
+- **Soltar fuera** es un arrastre que nadie recoge (`gui_is_drag_successful` falso al acabar) con el ratón fuera de
+  las dos ventanas abiertas (`is_over_drop_zone`).
+- **Tooltip:** el daño de un arma son el `base_damage` de cada ligero, el del fuerte sin cargar y el de las
+  habilidades que golpean; la comparación (verde o roja) es la suma del combo y el fuerte frente al arma de la ranura
+  a la que iría con un doble clic (sin nada en ella, no hay comparación). El valor sale siempre («0 de oro» en el kit).
+- **Icono provisional** (§16): el nombre corto son las iniciales de la primera y la última palabra («PV», «AV»), sobre
+  el color de la categoría, con `PlaceholderIcon`.
+- **Los avisos de rechazo van al chat** como texto del sistema (no hay aún un aviso propio para el inventario).
+- **Selector de plantilla (§2.5):** la pantalla de muerte no lo enseña en cuanto el cliente tiene inventario (el
+  primer FULL), lo que cubre a quien entra con billete (la zona con plataforma siempre manda el FULL) y, sin
+  plataforma, a partir de la primera aparición. Contra una zona sin progreso (hasta P5b) se sigue enseñando.
+  `RealmSelect` lo conserva: sin plataforma cada sesión es un personaje efímero nuevo cuyo kit sale del LOADOUT_SELECT
+  de antes de CLIENT_READY; con billete no hay `RealmSelect` (es la `FrontMain` de plataforma.md P8, que no debe
+  rellenar `config.loadout`).
+- **`HumanoidVisual`:** las ranuras de `part_scenes` las dice el nuevo `part_slots` (por defecto `head`, `hair` y
+  `beard`, el orden de la escena, que no cambia); la escena que ya está en la ranura no se vuelve a montar (el cuerpo
+  y la cabeza del catálogo son los de la escena, así que aplicar una apariencia solo toca pelo, barba y tintes). Los
+  **tintes** van por el nombre del material base de Universal Base Characters (`MI_Regular_` y `MI_Superhero_` la
+  piel, `MI_Hair` pelo, barba y cejas, `MI_Eyes` los ojos): `albedo_color` = el color del catálogo, multiplicado por
+  la textura, en una copia compartida por material y color (nunca se cambia el material importado). `# TODO(arte)`
+  hasta los sombreadores de ART-20.
+- **Un fallo de Godot 4.7.2:** un `const Dictionary[StringName, PackedStringArray]` escrito con literales de array
+  guarda `Array` con el tipo de `PackedStringArray` y recorrerlo lee cadenas vacías o se cae (comprobado con una
+  sonda). `TINT_MATERIAL_PREFIXES` va sin tipar.
+- **`AppearanceApplier.resolve`** toma el pueblo del reino (`race_for_realm`: el SPAWN no lleva `race_id`) y exige
+  que el byte 0 sea el suyo, como `validate`. `apply` no valida: un índice que no existe deja esa ranura como estaba
+  y una pieza sin escena la vacía.
+- **La figura** lleva las armas del estado de combate del personaje (`combat.weapon_id` y `alt_weapon_id`, que el
+  LOADOUT impone), no las de la vista optimista: un rechazo no la hace parpadear. Su encuadre y su luz son
+  provisionales (`# TODO(arte)`).
+
+**Para los paquetes siguientes.**
+
+- **P5b:** el cliente solo tiene inventario desde el primer INVENTORY_FULL (tras el SPAWN propio) y sigue el orden de
+  revisiones de §4.6; su contexto es el mismo que pone `PlayerProgress.apply_request`, así que lo que el cliente da
+  por bueno el servidor no lo rechaza salvo por lo que el cliente aún no ve (combate, acción, un cambio del
+  servidor). `NetEntity.appearance` es lo que el cliente pinta; a 0, la de por defecto del reino.
+- **P5c:** WALLET_UPDATE y PROGRESS_UPDATE ya llegan a las dos ventanas; el LEVEL_UP de un aliado, a su placa.
+- **plataforma.md P8:** `CharacterAppearance.random` y `AppearanceApplier.apply` para la creación y la vista de la
+  selección; con billete, `config.realm` del personaje y sin `config.loadout`.
+- **P8 de aquí:** `test_progress_loopback` usa estas piezas (equipar el arco desde la bolsa por `InventoryWindow`, el
+  rechazo que devuelve el objeto, el nivel en las placas).
+
+**Pruebas.** En Godot: `test_client_inventory` (12: nada antes del primer FULL y las páginas que se juntan por
+revisión; MOVE optimista y confirmado; el rechazo que devuelve el objeto con su texto, también el de combate y «Necesitas
+nivel 12»; cambios del servidor intercalados con una petición en vuelo, y la que deja de valer y llega rechazada; la
+pila provisional de un SPLIT y DESTROY; el plazo de 5 s, la respuesta tardía y la sincronía repetida; los huecos de
+revisión con una sincronía cada 5 s y la vuelta del u32; el tope de 8 y los `request_id` que saltan el 0; 600 gestos
+al azar con un servidor de mentira que aplica la misma regla: el servidor no rechaza ninguno de los que el cliente da
+por buenos y la vista acaba igual; los destinos de los gestos; `ClientProgress`; y `NetClient`, que alimenta el
+inventario y da el contexto del estado predicho); `test_inventory_window` (9: la rejilla con la vista y las monedas;
+arrastrar y soltar en la bolsa y al equipo, el intercambio de armas y WEAPON_REQUIRED; Mayúsculas con el diálogo y su
+mitad, cancelar, y lo que no se divide; doble clic y clic derecho; soltar fuera con la confirmación, cancelar y lo
+indestructible o equipado; el tooltip con daño, nivel en rojo, comparación y efecto de la poción; la ventana de
+personaje con sus ranuras, nivel, XP, hoja y figura; el HUD con I y C, el aviso en el chat y el selector de plantilla
+oculto con inventario, y presente sin él); `test_appearance_visual` (5: todas las combinaciones de piezas del catálogo
+con colores al azar; 100 aleatorias por pueblo; `set_part` no recrea el nodo, el esqueleto ni el animador, la misma
+escena no toca las mallas, los tintes y la capucha valen para lo que se monta después; lo pedido antes de `_ready`;
+`resolve` con 8 B a 0, otro tamaño, otro pueblo y una válida).
+Comprobada con la mutación que debería pillar: con un contexto del cliente que ignora la ranura activa, el servidor de
+mentira rechaza 11 de los gestos del recorrido al azar y la prueba falla. Siguen correctas, entre otras, las que tocan
+lo cambiado: `test_hud_combat`, `test_net_client`, `test_remote_world`, `test_nameplates`, `test_online_main`,
+`test_character_visual` (el presupuesto de dibujo con las piezas por ranura), `test_progress_messages`,
+`test_ability_input`, `test_party_hud`, `test_social_menu`, `test_chat_box`, `test_hints`, `test_ui_components`,
+`test_ui_widgets`, `test_realm_select`, `test_architecture`, `test_export_config`, `test_combat_server`, los
+`*_loopback`, `test_loadout_net`, `test_bot_swarm`, `test_siege_clients` y `test_net_processes` (59 archivos en total).
+La suite entera de Godot no se ha pasado.
+
+**Medido** (esta máquina, 4 núcleos, Godot 4.7.2 headless):
+
+| Qué | Resultado |
+|---|---|
+| `test_client_inventory` | 12 pruebas; la más lenta, los 600 gestos al azar (57 ms); el archivo, unos 13 s con el arranque del ejecutor |
+| `test_inventory_window` | 9 pruebas; la más lenta, el HUD con las dos ventanas y la figura (174 ms); unos 13 s |
+| `test_appearance_visual` | 5 pruebas; las 300 apariencias aleatorias, 341 ms (aplicar una, ~1 ms con los tintes en caché); unos 12 s |
+
+**Sin comprobar:** con una zona que atienda las peticiones de verdad (P5b) y de extremo a extremo (P8); el arrastre
+con el ratón real (las pruebas llaman a lo que hacen `_get_drag_data`, `_drop_data` y el final del arrastre, no a la
+maquinaria de arrastre del visor); la figura dibujada (en headless el visor no pinta); el visto bueno visual de las dos
+ventanas, del icono provisional y de los tintes (§16).
+
+**Queda para después:** el inventario en la zona (P5b), las recompensas que llenan monedas y XP (P5c), la creación y la
+selección con apariencia (plataforma.md P8), los iconos (ART-12) y los sombreadores de piel y ojos (ART-20).

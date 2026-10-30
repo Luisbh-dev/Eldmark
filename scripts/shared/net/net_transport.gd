@@ -192,7 +192,11 @@ func host(port: int, max_peers: int) -> Error:
 ## [signal peer_authenticating] (peer 1) y [signal peer_connected], o por [signal connection_failed]
 ## pasado como mucho el doble de [param connect_timeout_ms] (en la práctica, entre 1 y 1,5 veces: ENet
 ## solo comprueba el plazo al retransmitir el CONNECT). El transporte debe estar en el árbol.
-func connect_to(address: String, port: int, connect_timeout_ms: int = 3000) -> Error:
+## [br][br]Con [param dtls] (el certificado de la zona anclado con [method TLSOptions.client]) la conexión va por DTLS
+## y [param dtls_name] es el nombre (CN) que se espera del certificado (docs/plataforma.md §10.2). Sin él, como
+## siempre.
+func connect_to(address: String, port: int, connect_timeout_ms: int = 3000, dtls_name: String = "",
+		dtls: TLSOptions = null) -> Error:
 	if _mp == null:
 		return ERR_UNCONFIGURED
 	if _is_active():
@@ -201,6 +205,11 @@ func connect_to(address: String, port: int, connect_timeout_ms: int = 3000) -> E
 	var err: Error = peer.create_client(address, port, NetProtocol.CUSTOM_CHANNELS)
 	if err != OK:
 		return err
+	if dtls != null:
+		err = peer.host.dtls_client_setup(dtls_name, dtls)
+		if err != OK:
+			peer.close()
+			return err
 	# Mientras conecta se usa un tiempo corto; al conectar pasa al normal (ver
 	# _on_peer_authenticating). El mínimo y el máximo son el mismo: ENet solo mira el plazo cuando
 	# vence una retransmisión del CONNECT (a los 0,5, 1,5, 3,5 y 7,5 s), y con un máximo del doble
