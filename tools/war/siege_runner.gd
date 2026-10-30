@@ -7,9 +7,13 @@ extends Node
 ## imprime el informe) y [code]tests/test_siege_zone.gd[/code] (una versión corta dentro de la suite).
 ## [br][br]
 ## Apunta lo que hace falta para medir: cuándo llega cada bot a la puerta y por qué ruta, los avisos de guerra y
-## las muertes de jugadores. El servidor no tiene PNJ en este paquete: [method kill_captain] da por muerto al
-## capitán como el comando [code]fort_kill_captain[/code], y [method spawn_captain_double] pone un PNJ mortal en
-## su sitio para que los bots lo maten ellos.
+## las muertes de jugadores y de PNJ. Sin PNJ (el asedio de F6a), [method kill_captain] da por muerto al capitán como
+## el comando [code]fort_kill_captain[/code] y [method spawn_captain_double] pone un PNJ mortal en su sitio para que
+## los bots lo maten ellos. Con ellos ([code]with_npcs[/code] en [method start], F6b) defienden el fuerte los
+## Huecos, el Capitán del Vado y la guarnición del dueño de verdad, y [method set_npc_health] los debilita para las
+## pruebas cortas sin tocar [code]data/npcs/[/code]. Los bots esperan a los suyos en su campamento y van en formación
+## (GUE-44); [method set_rally] lo cambia o lo quita, y [member rally_departures] apunta cada salida. Una parte sube a la
+## pasarela (GUE-45); [method set_walkway_share] cambia qué parte, y [method place_of] dice dónde ha caído cada muerto.
 
 ## Zona del asedio.
 const ZONE_ID: String = "vado_gris"
@@ -27,18 +31,31 @@ var ticks_per_frame: int = DEFAULT_TICKS_PER_FRAME
 ## El servidor de la zona (null antes de [method start]).
 var server: ZoneServer = null
 var world: Node3D = null
-## Avisos de guerra en el orden en que salieron (cada uno con su tick) y muertes de jugadores.
+## Avisos de guerra en el orden en que salieron (cada uno con su tick), muertes de jugadores
+## ([code]{tick, net_id, realm, position}[/code]) y muertes de PNJ ([code]{tick, net_id, npc, position}[/code], con el id
+## de su definición).
 var war_events: Array[NetMessages.EntityEvent] = []
 var deaths: Array[Dictionary] = []
+var npc_deaths: Array[Dictionary] = []
 ## net_id -> {realm, route, tick} de cada bot que ha llegado a la puerta.
 var arrivals: Dictionary[int, Dictionary] = {}
 ## net_id -> realm de los jugadores falsos de asedio.
 var bots: Dictionary[int, int] = {}
+## Salidas de la reunión (GUE-44), en el orden en que pasan: [code]{tick, net_id, realm, route}[/code] de cada bot que
+## sale del punto de reunión de su campamento con los suyos (también si no tuvo que esperar porque ya eran bastantes).
+var rally_departures: Array[Dictionary] = []
 
 # net_id -> cerebro de cada bot de asedio (para saber qué ruta sigue).
 var _brains: Dictionary[int, BotBrain] = {}
 var _remaining: int = 0
 var _running: bool = false
+# La reunión que se impone a los bots (set_rally; -1 = la de BotBrain) y la última salida de la reunión que se ha
+# apuntado de cada bot.
+var _rally_size: int = -1
+var _rally_period: int = BotBrain.SIEGE_RALLY_PERIOD_TICKS
+var _rally_seen: Dictionary[int, int] = {}
+# La parte de los bots con el papel de la pasarela que se impone (set_walkway_share; -1 = la de BotBrain).
+var _walkway_share: float = -1.0
 
 
 ## Carga la zona, arranca el servidor y lo deja listo (sin avanzar). [param battle_log_path] activa el
@@ -97,12 +114,59 @@ func add_siege_bots(realm: int, count: int, seed_base: int) -> Array[int]:
 	var ids: Array[int] = []
 	for i: int in count:
 		var brain := BotBrain.new(seed_base + i, BotBrain.Pattern.SIEGE)
+		if _rally_size >= 0:
+			brain.set_rally(_rally_size, _rally_period)
+		if _walkway_share >= 0.0:
+			brain.set_walkway_share(_walkway_share)
 		var net_id: int = server.add_fake_player(brain, realm)
 		if net_id > 0:
 			bots[net_id] = realm
 			_brains[net_id] = brain
 			ids.append(net_id)
 	return ids
+
+
+## Cambia la reunión de los bots de asedio (GUE-44; [method BotBrain.set_rally]), los que ya hay y los que se añadan:
+## salen de su campamento cuando hay [param group_size] de su reino o en la siguiente salida del reloj, que da una vuelta
+## cada [param period_ticks] ticks. Con [param group_size] 1 o menos no esperan (como antes de GUE-44).
+func set_rally(group_size: int, period_ticks: int = BotBrain.SIEGE_RALLY_PERIOD_TICKS) -> void:
+	_rally_size = group_size
+	_rally_period = period_ticks
+	for net_id: int in _brains:
+		_brains[net_id].set_rally(group_size, period_ticks)
+
+
+## Cambia qué parte de los bots de asedio tiene el papel de la pasarela (GUE-45; [method BotBrain.set_walkway_share]),
+## los que ya hay y los que se añadan. Con 0 nadie sube (como antes de GUE-45).
+func set_walkway_share(share: float) -> void:
+	_walkway_share = share
+	for net_id: int in _brains:
+		_brains[net_id].set_walkway_share(share)
+
+
+## Dónde ha caído un muerto en [param position], con la clasificación del resumen de batalla
+## ([method BattleSummary.classify_route]: [code]walkway[/code], [code]gate[/code], [code]bridge[/code],
+## [code]ford[/code] u [code]other[/code]), con el círculo de la fortaleza y las rutas de la zona.
+func place_of(position: Vector3) -> StringName:
+	var circle: Dictionary = server.get_fortresses().get_circle(fortress_id())
+	var center: Vector3 = circle["center"]
+	var fortress: Dictionary = {"circle": [center.x, center.y, center.z]}
+	return BattleSummary.classify_route([position.x, position.y, position.z], fortress, server.get_approach_routes())
+
+
+## Los PNJ de la definición [param npc_id] que aparezcan desde ahora tendrán [param health] de vida (una copia de la
+## definición con otra vida, solo en este servidor: [method NpcSpawnerSystem.set_definition_override]). Hay que
+## llamarlo justo después de [method start], antes de avanzar, para que valga ya para los primeros. Devuelve false si
+## el servidor no tiene PNJ o la definición no existe.
+func set_npc_health(npc_id: StringName, health: int) -> bool:
+	var system: NpcSpawnerSystem = server.get_npc_system()
+	var base: NpcDefinition = NpcCatalog.get_definition(npc_id)
+	if system == null or base == null or health <= 0:
+		return false
+	var weaker: NpcDefinition = base.duplicate() as NpcDefinition
+	weaker.max_health = health
+	system.set_definition_override(npc_id, weaker)
+	return true
 
 
 ## Pone en el sitio del capitán un PNJ mortal y quieto, registrado como capitán (ver
@@ -167,12 +231,26 @@ func war_ids() -> Array[int]:
 	return ids
 
 
-## Tick del primer aviso de guerra [param war_event] (-1 si no ha salido).
-func tick_of_war(war_event: int) -> int:
+## Tick del primer aviso de guerra [param war_event] desde el tick [param from_tick] (-1 si no ha salido).
+func tick_of_war(war_event: int, from_tick: int = 0) -> int:
 	for event: NetMessages.EntityEvent in war_events:
-		if event.war_event == war_event:
+		if event.war_event == war_event and event.tick >= from_tick:
 			return event.tick
 	return -1
+
+
+## Cuántas veces ha salido el aviso de guerra [param war_event] desde el tick [param from_tick].
+func count_war(war_event: int, from_tick: int = 0) -> int:
+	var count: int = 0
+	for event: NetMessages.EntityEvent in war_events:
+		if event.war_event == war_event and event.tick >= from_tick:
+			count += 1
+	return count
+
+
+## El cerebro del bot de asedio [param net_id] (null si no es uno de los suyos).
+func get_brain(net_id: int) -> BotBrain:
+	return _brains.get(net_id)
 
 
 ## Cuántos bots de [param realm] siguen vivos.
@@ -201,19 +279,25 @@ func _physics_process(delta: float) -> void:
 	_remaining -= count
 
 
-# Anota las muertes de jugadores (con el reino de la víctima y su sitio).
+# Anota las muertes de jugadores (con el reino de la víctima y su sitio) y de PNJ de guerra (con su definición).
 func _on_combat_event(event: NetMessages.EntityEvent, _involved: PackedInt32Array) -> void:
 	if event.event != NetMessages.EntityEvent.Kind.DEATH:
 		return
 	var victim: NetEntity = server.get_registry().get_entity(event.net_id)
+	if victim != null and victim.kind == NetProtocol.EntityKind.NPC and victim.npc_def_id > 0:
+		var definition: NpcDefinition = NpcCatalog.get_by_number(victim.npc_def_id)
+		npc_deaths.append({"tick": event.tick, "net_id": event.net_id,
+				"npc": definition.id if definition != null else &"", "position": victim.get_position()})
+		return
 	if victim == null or victim.kind != NetProtocol.EntityKind.PLAYER:
 		return
 	deaths.append({"tick": event.tick, "net_id": event.net_id, "realm": victim.realm,
 			"position": victim.get_position()})
 
 
-# Al terminar cada tick, anota quién acaba de llegar a la puerta y por qué ruta.
+# Al terminar cada tick, anota quién sale de la reunión y quién acaba de llegar a la puerta y por qué ruta.
 func _on_tick_finished(tick_now: int) -> void:
+	_note_rally_departures()
 	var gate: FortGate = server.get_fortresses().get_gate(fortress_id())
 	if gate == null:
 		return
@@ -227,6 +311,16 @@ func _on_tick_finished(tick_now: int) -> void:
 		var position: Vector3 = entity.get_position()
 		if Vector2(position.x, position.z).distance_to(gate_point) <= ARRIVAL_DISTANCE:
 			arrivals[net_id] = {"realm": bots[net_id], "route": _route_of(net_id), "tick": tick_now}
+
+
+# Los bots que acaban de salir del punto de reunión (GUE-44).
+func _note_rally_departures() -> void:
+	for net_id: int in _brains:
+		var left: int = _brains[net_id].get_last_rally_departure()
+		if left >= 0 and left != _rally_seen.get(net_id, -1):
+			_rally_seen[net_id] = left
+			rally_departures.append({"tick": left, "net_id": net_id, "realm": bots.get(net_id, 0),
+					"route": _route_of(net_id)})
 
 
 # La ruta que sigue el bot [param net_id] (el cerebro la elige al empezar).

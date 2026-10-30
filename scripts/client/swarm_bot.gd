@@ -34,11 +34,15 @@ extends Node
 ## fuerte, entra en el círculo y pelea con el enemigo más cercano. El [SiegeView] lo llena a mano con los campos
 ## del ENTITY_SPAWN de la fortaleza y de cada OBJECT_STATE ([method SiegeView.update_from_fields]), sin
 ## [FortressView] ni escena; las posiciones de la puerta y el círculo salen de las rutas
-## ([method SiegeView.set_places_from_routes]).
+## ([method SiegeView.set_places_from_routes]). Desde F6b busca primero a los PNJ de guerra
+## ([method BotBrain.set_defender_finder]) y sale de los golpes avisados con TELEGRAPH ([BotThreatSight]). Desde GUE-44
+## sigue también a los jugadores de su reino (altas y los mismos registros de los snapshots) para contar a los suyos en
+## el punto de reunión de su campamento ([method BotBrain.set_ally_counter]).
 ## [br][br]
 ## [b]Estadísticas[/b] ([method get_stats]): bytes de subida y de bajada de ENet desde que apareció
 ## (con las cabeceras de ENet, sin las de UDP/IP), snapshots recibidos y su tamaño medio, registros por
-## snapshot, y lo que [BotSwarm] vuelca en su informe.
+## snapshot, y lo que [BotSwarm] vuelca en su informe; con el cerebro de asedio, también el tick del servidor en que llegó
+## al fuerte ([code]fort_reached_tick[/code], GUE-16).
 
 ## Fase de la sesión.
 enum State {
@@ -95,8 +99,12 @@ var _combat: bool = false
 var _siege_mode: bool = false
 var _siege_view: SiegeView = null
 var _siege_routes: ApproachRoutes = null
+var _threat_sight: BotThreatSight = null
 var _fortress_net_id: int = 0
 var _object_states_applied: int = 0
+# Tick del servidor (el del snapshot) en que el bot de asedio llega por primera vez a menos de
+# BotBrain.SIEGE_RALLY_FORT_RADIUS del círculo; -1 mientras no llega (GUE-16: la carga mira que estén en el fuerte).
+var _fort_reached_tick: int = -1
 var _local_tick: int = 0
 var _hello_tick: int = 0
 var _ready_tick: int = 0
@@ -132,6 +140,12 @@ var _enemy_positions: Dictionary[int, Vector3] = {}
 # Máximo de enemigos conocidos a la vez durante la sesión (para el informe).
 var _enemies_known_max: int = 0
 var _enemy_alive: Dictionary[int, bool] = {}
+# Cerebro de asedio: los enemigos conocidos que son PNJ de guerra (los que busca primero).
+var _enemy_npcs: Dictionary[int, bool] = {}
+# Cerebro de asedio: los jugadores de su reino que conoce por los ENTITY_SPAWN (net_id -> última posición conocida) y
+# cuáles siguen vivos, para contarlos en la reunión (GUE-44).
+var _ally_positions: Dictionary[int, Vector3] = {}
+var _ally_alive: Dictionary[int, bool] = {}
 var _scan_phase: int = 0
 
 # Estadísticas.
@@ -178,6 +192,7 @@ func setup(index: int, config: ClientConfig) -> void:
 	_combat = config.bot_brain == ClientConfig.BOT_BRAIN_COMBAT or _siege_mode
 	if _siege_mode:
 		_siege_view = SiegeView.new()
+		_threat_sight = BotThreatSight.new(_is_enemy_npc)
 	_display_name = NameRules.bot_name(config.bot_seed + index)
 	_realm = config.realm if config.realm != NetProtocol.Realm.NONE \
 			else DEFAULT_REALMS[index % DEFAULT_REALMS.size()]
@@ -235,6 +250,11 @@ func is_in_world() -> bool:
 ## Id de red del personaje (0 hasta el SPAWN propio).
 func get_net_id() -> int:
 	return _net_id
+
+
+## El tick del servidor del snapshot más reciente que ha recibido (0 si aún ninguno).
+func get_newest_server_tick() -> int:
+	return _newest_snapshot_tick
 
 
 func get_local_tick() -> int:
@@ -358,7 +378,19 @@ func get_stats() -> Dictionary:
 		stats["siege_route"] = String(_brain.get_siege_route()) if _brain != null else ""
 		stats["fortress_known"] = _siege_view.known
 		stats["object_states_applied"] = _object_states_applied
+		stats["fort_reached_tick"] = _fort_reached_tick
 	return stats
+
+
+# Asedio: apunta el tick del servidor [param server_tick] la primera vez que el bot está a menos de
+# [constant BotBrain.SIEGE_RALLY_FORT_RADIUS] (en horizontal) del centro del círculo, la misma distancia con la que el
+# cerebro cuenta a los suyos «peleando en el fuerte».
+func _note_fort_reached(server_tick: int) -> void:
+	if not _siege_mode or _fort_reached_tick >= 0 or _siege_view.circle_radius <= 0.0:
+		return
+	var center: Vector3 = _siege_view.circle_center
+	if Vector2(_position.x - center.x, _position.z - center.z).length() <= BotBrain.SIEGE_RALLY_FORT_RADIUS:
+		_fort_reached_tick = server_tick
 
 
 # --- Bucle del tick ---------------------------------------------------------------------------
@@ -535,6 +567,11 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 				if despawn != null:
 					_enemy_positions.erase(despawn.net_id)
 					_enemy_alive.erase(despawn.net_id)
+					_enemy_npcs.erase(despawn.net_id)
+					_ally_positions.erase(despawn.net_id)
+					_ally_alive.erase(despawn.net_id)
+					if _threat_sight != null:
+						_threat_sight.forget(despawn.net_id)
 		NetProtocol.MSG_ENTITY_EVENT:
 			# Los eventos de combate no hacen nada a un bot, pero tienen que estar bien formados.
 			var event: NetMessages.EntityEvent = NetMessages.EntityEvent.decode(bytes)
@@ -545,6 +582,8 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 				_event_bytes += bytes.size()
 				if event.event == NetMessages.EntityEvent.Kind.HIT:
 					_hit_events_seen += 1
+				elif _threat_sight != null:
+					_threat_sight.note(event)
 		NetProtocol.MSG_NOTICE:
 			var notice: NetMessages.Notice = NetMessages.Notice.decode(bytes)
 			if notice == null:
@@ -632,14 +671,16 @@ func _on_snapshot(bytes: PackedByteArray) -> void:
 		if state != null:
 			_position = state.position
 			_yaw = state.yaw
+			_note_fort_reached(server_tick)
 		if _combat:
 			_note_extra_block(bytes, server_tick)
 
 
 # Cerebro de combate: decodifica la posición y la vida de uno de cada ENEMY_SCAN_STRIDE registros del
-# snapshot (rotando el desfase en cada snapshot) y actualiza solo a los enemigos que ya conoce.
+# snapshot (rotando el desfase en cada snapshot) y actualiza solo a los enemigos (y, con el de asedio, a los aliados)
+# que ya conoce.
 func _scan_enemies(bytes: PackedByteArray, section_offset: int) -> void:
-	if section_offset >= bytes.size() or _enemy_positions.is_empty():
+	if section_offset >= bytes.size() or (_enemy_positions.is_empty() and _ally_positions.is_empty()):
 		return
 	var sections: int = bytes.decode_u8(section_offset)
 	var offset: int = section_offset + 1
@@ -660,6 +701,9 @@ func _scan_enemies(bytes: PackedByteArray, section_offset: int) -> void:
 			if _enemy_positions.has(net_id):
 				_enemy_positions[net_id] = NetMath.unpack_position(bytes.decode_u64(record_offset + 2))
 				_enemy_alive[net_id] = bytes[record_offset + 20] != EntityRecord.HEALTH_Q_DEAD
+			elif _ally_positions.has(net_id):
+				_ally_positions[net_id] = NetMath.unpack_position(bytes.decode_u64(record_offset + 2))
+				_ally_alive[net_id] = bytes[record_offset + 20] != EntityRecord.HEALTH_Q_DEAD
 			record += ENEMY_SCAN_STRIDE
 		running += count
 		offset += count * EntityRecord.SIZE
@@ -683,7 +727,7 @@ func _note_extra_block(bytes: PackedByteArray, server_tick: int) -> void:
 
 
 # Cerebro de combate: el enemigo vivo más cercano a [param position] (la última posición que se sabe de
-# él), o null.
+# él; con la altura pesada, BotBrain.target_distance_squared), o null.
 func _find_enemy(position: Vector3) -> Variant:
 	var best: Variant = null
 	var best_distance: float = INF
@@ -691,11 +735,55 @@ func _find_enemy(position: Vector3) -> Variant:
 		if not _enemy_alive[net_id]:
 			continue
 		var enemy_position: Vector3 = _enemy_positions[net_id]
-		var distance: float = position.distance_squared_to(enemy_position)
+		var distance: float = BotBrain.target_distance_squared(position, enemy_position)
 		if distance < best_distance:
 			best_distance = distance
 			best = enemy_position
 	return best
+
+
+# Cerebro de asedio: el PNJ de guerra enemigo vivo más cercano a [param position], o null.
+func _find_defender(position: Vector3) -> Variant:
+	var best: Variant = null
+	var best_distance: float = INF
+	for net_id: int in _enemy_npcs:
+		if not _enemy_alive.get(net_id, false):
+			continue
+		var enemy_position: Vector3 = _enemy_positions[net_id]
+		var distance: float = BotBrain.target_distance_squared(position, enemy_position)
+		if distance < best_distance:
+			best_distance = distance
+			best = enemy_position
+	return best
+
+
+# Cerebro de asedio: cuántos jugadores de su reino, vivos y sin contarle a él, están a menos de [param radius] metros
+# (en horizontal) de [param center], según su última posición conocida (el contador de la reunión, GUE-44).
+func _count_allies(center: Vector3, radius: float) -> int:
+	var limit: float = radius * radius
+	var found: int = 0
+	for net_id: int in _ally_positions:
+		if not _ally_alive[net_id]:
+			continue
+		var ally: Vector3 = _ally_positions[net_id]
+		var dx: float = ally.x - center.x
+		var dz: float = ally.z - center.z
+		if dx * dx + dz * dz <= limit:
+			found += 1
+	return found
+
+
+# Cerebro de asedio: true si el PNJ [param net_id] es uno de los de guerra enemigos que conoce por sus altas (los únicos
+# cuyos golpes avisados evita: los de los PNJ de su reino no le dañan).
+func _is_enemy_npc(net_id: int) -> bool:
+	return _enemy_npcs.has(net_id)
+
+
+# Cerebro de asedio: los golpes avisados que siguen activos en el tick de la entrada que se decide.
+func _find_threats(_position: Vector3) -> Array[BotBrain.Threat]:
+	if _threat_sight == null:
+		return []
+	return _threat_sight.find(_predicted_tick)
 
 
 # Registros del snapshot, sumando los contadores de sus secciones sin decodificarlos.
@@ -743,6 +831,11 @@ func _on_spawn(bytes: PackedByteArray) -> void:
 			_enemy_positions[spawn.net_id] = spawn.state.position
 			_enemies_known_max = maxi(_enemies_known_max, _enemy_positions.size())
 			_enemy_alive[spawn.net_id] = true
+			if spawn.kind == NetProtocol.EntityKind.NPC:
+				_enemy_npcs[spawn.net_id] = true
+		elif _siege_mode and _is_ally_spawn(spawn):
+			_ally_positions[spawn.net_id] = spawn.state.position
+			_ally_alive[spawn.net_id] = true
 		return
 	if _state != State.READY_SENT:
 		return
@@ -757,6 +850,9 @@ func _on_spawn(bytes: PackedByteArray) -> void:
 	if _siege_mode:
 		_brain = BotBrain.new(_config.bot_seed + _index, BotBrain.Pattern.SIEGE, _position, BOT_RADIUS)
 		_brain.set_enemy_finder(_find_enemy)
+		_brain.set_defender_finder(_find_defender)
+		_brain.set_threat_finder(_find_threats)
+		_brain.set_ally_counter(_count_allies)
 		_brain.set_siege(_siege_view, _siege_routes, _realm)
 	elif _combat:
 		_brain = BotBrain.new(_config.bot_seed + _index, BotBrain.Pattern.COMBAT, _position, BOT_RADIUS)
@@ -779,6 +875,11 @@ func _is_enemy_spawn(spawn: NetMessages.EntitySpawn) -> bool:
 	var attackable_kind: bool = spawn.kind == NetProtocol.EntityKind.PLAYER \
 			or (_siege_mode and spawn.kind == NetProtocol.EntityKind.NPC and spawn.npc_def_id > 0)
 	return attackable_kind and FactionRules.can_damage(_realm, spawn.realm, StringName(_welcome.zone_id))
+
+
+# true si el alta [param spawn] es de un jugador de su reino (otro que él): los que cuenta en la reunión (GUE-44).
+func _is_ally_spawn(spawn: NetMessages.EntitySpawn) -> bool:
+	return spawn.state != null and spawn.kind == NetProtocol.EntityKind.PLAYER and spawn.realm == _realm
 
 
 # Las rutas de la zona del WELCOME y, con ellas, dónde están la puerta y el círculo del fuerte.

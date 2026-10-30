@@ -3,9 +3,9 @@ extends TestCase
 ## mismo proceso, con ENet sobre 127.0.0.1: la escena de verdad ([code]scenes/client/bot_swarm.tscn[/code])
 ## con [code]--bots=8[/code]. Se comprueba que entran todos (uno cada 5 ticks), que reciben snapshots,
 ## que sus entradas llegan a tiempo, que el informe trae los bytes por cliente y que el cierre por
-## [code]--quit-after-ticks[/code] y el rechazo por servidor lleno dan el código de salida esperado.
-## También, que el chat y los grupos del protocolo 5 que le llegan a un bot (docs/social.md, 12.7) se
-## decodifican y se descartan sin contar como paquetes mal formados.
+## [code]--quit-after-ticks[/code] (o [code]--quit-at-server-tick[/code]) y el rechazo por servidor lleno dan el código
+## de salida esperado. También, que el chat y los grupos del protocolo 5 que le llegan a un bot (docs/social.md,
+## 12.7) se decodifican y se descartan sin contar como paquetes mal formados.
 ## El enjambre en un proceso aparte lo prueba [code]test_net_processes[/code].
 
 const SWARM_SCENE: String = "res://scenes/client/bot_swarm.tscn"
@@ -197,6 +197,18 @@ func test_report_has_bytes_per_client_and_the_swarm_quits_on_its_own() -> void:
 	# Tras el cierre, los bots salen de la zona con CLIENT_LEAVE.
 	assert_true(await _wait_until(func() -> bool: return _server.get_player_count() == 0),
 			"y el servidor se queda sin jugadores")
+
+
+func test_the_swarm_can_quit_when_the_server_reaches_a_tick() -> void:
+	# Las pruebas de carga lo cierran así (revisión de F6b): un servidor cargado va más despacio que el tiempo real.
+	await _start_server()
+	var target: int = _server.get_tick() + 240
+	_start_swarm(2, func(config: ClientConfig) -> void: config.quit_at_server_tick = target)
+	assert_true(await _wait_until(_exited), "el enjambre se cierra solo (--quit-at-server-tick)")
+	assert_eq(_exit_codes[0], 0, "con código 0: todos jugaban")
+	assert_true(_swarm.newest_server_tick() >= target,
+			"cuando sus bots ven el tick %d del servidor (%d)" % [target, _swarm.newest_server_tick()])
+	assert_true(_server.get_tick() >= target, "y no antes")
 
 
 func test_bots_rejected_by_a_full_server_make_the_exit_code_one() -> void:

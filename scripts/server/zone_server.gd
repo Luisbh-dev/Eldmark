@@ -54,7 +54,10 @@ extends Node
 ## estado de la sesión y comandos de depuración solo con [code]--debug-commands[/code].
 ## [br][br]
 ## [b]Jugadores falsos[/b] ([method add_fake_player]): jugadores sin red cuyas entradas salen de un
-## [BotBrain] y entran directamente en su [InputQueue]; sirven para las pruebas y la carga.
+## [BotBrain] y entran directamente en su [InputQueue]; sirven para las pruebas y la carga. Con un
+## [FillerKeeper] ([method set_filler_keeper], [code]--max-realm-diff[/code]) los de relleno siguen las altas y
+## bajas de personas y no ocupan sus plazas: un HELLO que llega con el servidor lleno solo por ellos entra, uno le aparta
+## la suya y se va cuando esa persona entra en el mundo (GUE-43; docs/fuerte.md, sección 7).
 ## [br][br]
 ## [b]Combate[/b] (docs/combate.md): un [CombatDirector] lleva la vida, los golpes con rebobinado, las
 ## muertes y las reapariciones; los PNJ ([method add_npc], el maniquí de entrenamiento) son cuerpos
@@ -222,6 +225,8 @@ var _world_peers: Array[ServerPeer] = []
 var _queues: Dictionary[int, InputQueue] = {}
 # net_id -> cerebro de cada jugador falso.
 var _fakes: Dictionary[int, BotBrain] = {}
+# Los falsos de relleno de --max-realm-diff (null sin equilibrio; ver set_filler_keeper).
+var _filler_keeper: FillerKeeper = null
 # net_id -> cerebro de cada PNJ (maniquíes).
 var _npcs: Dictionary[int, BotBrain] = {}
 var _combat: CombatDirector
@@ -257,12 +262,24 @@ var _dummies_created: int = 0
 var _targets_tick: int = -1
 var _targets_by_realm: Dictionary = {}
 var _targets_ids_by_realm: Dictionary = {}
+# Por reino, 1 si el objetivo del mismo índice es un PNJ (lo que buscan primero los falsos SIEGE).
+var _targets_npc_by_realm: Dictionary = {}
 var _hostile_cache: Dictionary = {}
 # Asedio de los falsos con cerebro SIEGE (GUE-15): la vista de cada fortaleza, que comparten todos y se pone al
 # día en cada tick, y las rutas de aproximación de la zona (data/routes/<zona>.tres; null si no hay).
 var _siege_views: Dictionary[StringName, SiegeView] = {}
 var _siege_routes: ApproachRoutes = null
 var _siege_routes_loaded: bool = false
+# Golpes avisados (TELEGRAPH) que los falsos SIEGE evitan (F6b): tick de la lista, los golpes en curso de los PNJ y el
+# reino de cada PNJ que golpea.
+var _threats_tick: int = -1
+var _threats: Array[BotBrain.Threat] = []
+var _threat_realms: PackedInt32Array = PackedInt32Array()
+# Jugadores vivos por reino (posiciones e ids) con los que los falsos SIEGE cuentan a los suyos en el punto de reunión
+# (GUE-44), y el tick de la lista.
+var _allies_tick: int = -1
+var _allies_by_realm: Dictionary[int, PackedVector3Array] = {}
+var _ally_ids_by_realm: Dictionary[int, PackedInt32Array] = {}
 # peer_id -> medida del RTT en ticks.
 var _rtt: Dictionary[int, _RttWindow] = {}
 # Peers con CLIENT_READY recibido, en orden de llegada.
@@ -593,9 +610,12 @@ func get_peer_ids() -> PackedInt32Array:
 
 
 ## Jugadores que cuentan para el cupo: los peers aceptados (cargando la zona o ya dentro) más los
-## jugadores falsos. Los que se están autenticando o se van no cuentan.
+## jugadores falsos. Los que se están autenticando o se van (también los falsos con la baja pedida, que
+## desaparecen al empezar el siguiente tick) no cuentan. Los falsos de relleno sí cuentan aquí, pero ceden su
+## plaza a las personas (ver [method set_filler_keeper]): mientras una persona carga la zona en la plaza que le ha
+## apartado uno, cuentan los dos (uno de más), y el falso se va cuando ella entra en el mundo.
 func get_player_count() -> int:
-	var count: int = _fakes.size()
+	var count: int = _fakes.size() - _fake_leaving.size()
 	for peer: ServerPeer in _peers.values():
 		if peer.state == ServerPeer.State.LOADING or peer.state == ServerPeer.State.IN_WORLD:
 			count += 1
@@ -746,7 +766,7 @@ func get_sim_hash() -> int:
 func add_fake_player(brain: BotBrain, realm: int) -> int:
 	if _run_state != _RunState.RUNNING or brain == null:
 		return -1
-	if get_player_count() >= _config.max_players:
+	if _occupied_seats() >= _config.max_players:
 		return -1
 	_fake_counter += 1
 	var entity: NetEntity = _create_player(FAKE_NAME_FORMAT % _fake_counter, realm, 0, _tick)
@@ -759,6 +779,12 @@ func add_fake_player(brain: BotBrain, realm: int) -> int:
 		brain.set_enemy_finder(_find_enemy_position.bind(entity.net_id))
 	if pattern == BotBrain.Pattern.SIEGE and not brain.has_siege():
 		brain.set_siege(get_siege_view(), get_approach_routes(), realm)
+	if pattern == BotBrain.Pattern.SIEGE and not brain.has_threat_finder():
+		brain.set_threat_finder(_find_threats.bind(entity.net_id))
+	if pattern == BotBrain.Pattern.SIEGE and not brain.has_defender_finder():
+		brain.set_defender_finder(_find_enemy_position.bind(entity.net_id, true))
+	if pattern == BotBrain.Pattern.SIEGE and not brain.has_ally_counter():
+		brain.set_ally_counter(_count_allies.bind(entity.net_id))
 	var record: _PlayerRecord = _player_by_net[entity.net_id]
 	record.is_fake = true
 	_announce_arrival(entity, null, _tick)
@@ -786,6 +812,9 @@ func get_siege_view(fortress_id: StringName = &"") -> SiegeView:
 		var circle: Dictionary = _fortresses.get_circle(id)
 		view.set_places(gate.global_position if gate != null else circle["center"], circle["center"],
 				circle["radius"])
+		var routes: ApproachRoutes = get_approach_routes()
+		if routes != null:
+			view.enclosure_size = routes.enclosure_size
 		view.update_from_state(state)
 		_siege_views[id] = view
 	return view
@@ -799,6 +828,19 @@ func get_approach_routes() -> ApproachRoutes:
 		if ResourceLoader.exists(path):
 			_siege_routes = load(path) as ApproachRoutes
 	return _siege_routes
+
+
+## Le da al servidor los falsos de relleno de [code]--max-realm-diff[/code] (GUE-42 y GUE-43; los crea y los
+## conecta [ServerMain]; null los quita). Desde entonces el servidor le avisa de las altas
+## ([method FillerKeeper.on_person_joined]) y bajas ([method FillerKeeper.on_person_left]) de personas y de cada
+## falso que se va ([method FillerKeeper.forget]), y los falsos de relleno no ocupan plazas de personas: el FULL
+## solo cuenta a las personas y a los demás falsos ([method ServerAuth.validate]), y si un HELLO que se acepta
+## encuentra el servidor lleno, un falso de relleno le aparta su plaza ([method FillerKeeper.reserve_seat]) y se va
+## cuando esa persona entra en el mundo. Si se va antes, la plaza se libera ([method FillerKeeper.release_seat]) sin
+## que ningún falso se haya movido: un HELLO seguido de una desconexión, en bucle, no saca a nadie del combate ni manda
+## altas y bajas a los demás. Nunca entran más personas que [member ServerConfig.max_players].
+func set_filler_keeper(keeper: FillerKeeper) -> void:
+	_filler_keeper = keeper
 
 
 ## Da de baja al jugador falso [param net_id] al empezar el siguiente tick: DESPAWN (motivo 1) a quien
@@ -1238,6 +1280,8 @@ func _process_arrivals(s: int) -> void:
 		_world_peers.append(peer)
 		_announce_arrival(entity, peer, s)
 		player_joined.emit(peer_id, entity.net_id)
+		if _filler_keeper != null:
+			_filler_keeper.on_person_joined(peer.realm, peer_id)
 		_log("Alta de %s (peer %d, net_id %d, %s) en %s; jugadores: %d" % [entity.display_name,
 				peer_id, entity.net_id, NetProtocol.realm_display_name(peer.realm),
 				entity.get_position(), get_player_count()])
@@ -1366,6 +1410,10 @@ func _process_departures(s: int) -> void:
 		_rtt.erase(peer_id)
 		_social.on_peer_left(peer, s)
 		if peer.entity == null:
+			# Se va sin haber entrado: si el relleno le había apartado una plaza, se libera (GUE-43; ningún falso se
+			# había ido).
+			if _filler_keeper != null:
+				_filler_keeper.release_seat(peer_id)
 			continue
 		var entity: NetEntity = peer.entity
 		var lingers: bool = _should_linger(entity, s)
@@ -1376,6 +1424,8 @@ func _process_departures(s: int) -> void:
 		_world_peers.erase(peer)
 		_left_total += 1
 		player_left.emit(peer_id, entity.net_id)
+		if _filler_keeper != null:
+			_filler_keeper.on_person_left(peer.realm)
 		var linger_note: String = ""
 		if lingers:
 			linger_note = "; su cuerpo se queda %.0f s por estar en combate" \
@@ -1396,6 +1446,8 @@ func _process_fake_departures(s: int) -> void:
 			continue
 		_remove_player(entity, s, NetProtocol.DespawnReason.DISCONNECTED)
 		_left_total += 1
+		if _filler_keeper != null:
+			_filler_keeper.forget(net_id)
 		_log("Baja de %s (jugador falso, net_id %d); jugadores: %d" % [entity.display_name, net_id,
 				get_player_count()])
 
@@ -1668,8 +1720,10 @@ func _pick_spawn_point(realm: int) -> Transform3D:
 # cerebro de combate de BotBrain), o null si no hay ninguno que pueda atacar o ser atacado: los
 # maniquíes, los protegidos y los que están en la zona segura de su reino no cuentan, y quien está en
 # la zona segura de su reino no ataca. Las posiciones objetivo se reúnen una vez por tick y por reino
-# (con muchos bots, cada uno recorre solo los candidatos de los reinos que le son hostiles).
-func _find_enemy_position(position: Vector3, net_id: int) -> Variant:
+# (con muchos bots, cada uno recorre solo los candidatos de los reinos que le son hostiles). Con
+# [param npcs_only], solo los PNJ (el buscador de defensores del cerebro SIEGE, F6b). «Más cercano» con la altura pesada
+# (BotBrain.target_distance_squared, GUE-45): el de su nivel antes que el de la pasarela.
+func _find_enemy_position(position: Vector3, net_id: int, npcs_only: bool = false) -> Variant:
 	var me: Combatant = _combat.get_combatant(net_id)
 	if me == null or me.is_dead() or _safe_areas.contains_own(me.get_realm(), position):
 		return null
@@ -1681,14 +1735,96 @@ func _find_enemy_position(position: Vector3, net_id: int) -> Variant:
 		if not _is_hostile_realm(me.get_realm(), realm):
 			continue
 		var positions: PackedVector3Array = _targets_by_realm[realm]
+		var npc_flags: PackedByteArray = _targets_npc_by_realm[realm]
 		for index: int in positions.size():
-			if _targets_ids_by_realm[realm][index] == net_id:
+			if _targets_ids_by_realm[realm][index] == net_id or (npcs_only and npc_flags[index] == 0):
 				continue
-			var distance: float = position.distance_squared_to(positions[index])
+			var distance: float = BotBrain.target_distance_squared(position, positions[index])
 			if distance < best_distance:
 				best_distance = distance
 				best = positions[index]
 	return best
+
+
+# Los golpes avisados (TELEGRAPH) en curso que pueden dañar al jugador falso [param net_id] (el cerebro SIEGE, F6b):
+# los fuertes de los PNJ de un reino hostil desde que empiezan hasta que acaba su ventana activa, con la posición y el
+# rumbo del PNJ en este momento (gira y avanza un poco mientras carga) y el alcance del golpe. La lista se reúne una
+# vez por tick.
+func _find_threats(_position: Vector3, net_id: int) -> Array[BotBrain.Threat]:
+	var found: Array[BotBrain.Threat] = []
+	var me: Combatant = _combat.get_combatant(net_id)
+	if me == null or me.is_dead():
+		return found
+	if _threats_tick != _tick:
+		_rebuild_threats()
+	for index: int in _threats.size():
+		if _is_hostile_realm(_threat_realms[index], me.get_realm()):
+			found.append(_threats[index])
+	return found
+
+
+# Cuántos jugadores vivos del reino del jugador falso [param net_id], sin contarle a él, están a menos de [param radius]
+# metros en horizontal de [param center] (el contador de aliados del cerebro SIEGE para la reunión, GUE-44). Cuentan
+# personas y falsos, no los PNJ ni los cuerpos de quien salió en combate. Las posiciones se reúnen una vez por tick, así
+# que todos los que esperan en el mismo tick ven el mismo recuento y salen a la vez.
+func _count_allies(center: Vector3, radius: float, net_id: int) -> int:
+	var me: Combatant = _combat.get_combatant(net_id)
+	if me == null:
+		return 0
+	if _allies_tick != _tick:
+		_rebuild_ally_cache()
+	var realm: int = me.get_realm()
+	if not _allies_by_realm.has(realm):
+		return 0
+	var positions: PackedVector3Array = _allies_by_realm[realm]
+	var ids: PackedInt32Array = _ally_ids_by_realm[realm]
+	var limit: float = radius * radius
+	var count: int = 0
+	for index: int in positions.size():
+		if ids[index] == net_id:
+			continue
+		var dx: float = positions[index].x - center.x
+		var dz: float = positions[index].z - center.z
+		if dx * dx + dz * dz <= limit:
+			count += 1
+	return count
+
+
+# Reúne, por reino, las posiciones de los jugadores vivos (personas y falsos) en este tick.
+func _rebuild_ally_cache() -> void:
+	_allies_tick = _tick
+	_allies_by_realm.clear()
+	_ally_ids_by_realm.clear()
+	for other: Combatant in _combat.get_sorted():
+		if other.is_dead() or other.entity.kind != NetProtocol.EntityKind.PLAYER or _lingering.has(other.get_id()):
+			continue
+		var realm: int = other.get_realm()
+		if not _allies_by_realm.has(realm):
+			_allies_by_realm[realm] = PackedVector3Array()
+			_ally_ids_by_realm[realm] = PackedInt32Array()
+		_allies_by_realm[realm].append(other.entity.get_position())
+		_ally_ids_by_realm[realm].append(other.get_id())
+
+
+# Reúne los fuertes avisados de los PNJ que siguen en curso tras el último tick (los que avisa _emit_npc_telegraphs).
+func _rebuild_threats() -> void:
+	_threats_tick = _tick
+	_threats.clear()
+	_threat_realms.clear()
+	for net_id: int in _npcs:
+		var entity: NetEntity = _registry.get_entity(net_id)
+		var character: PlayerCharacter = entity.get_character() if entity != null else null
+		if character == null:
+			continue
+		var state: CombatState = character.combat
+		if state.action != CombatState.Action.HEAVY:
+			continue
+		var attack: AttackTicks = CombatCatalog.attack(state.action_id)
+		if attack == null or attack.shape == null \
+				or _tick - state.action_tick > attack.windup_ticks + attack.active_ticks:
+			continue
+		_threats.append(BotBrain.Threat.new(entity.get_position(), character.yaw, attack.shape.range_m))
+		_threat_realms.append(entity.realm)
 
 
 # Reúne, por reino, las posiciones de quien puede ser objetivo de un bot de combate en este tick.
@@ -1696,6 +1832,7 @@ func _rebuild_target_cache() -> void:
 	_targets_tick = _tick
 	_targets_by_realm.clear()
 	_targets_ids_by_realm.clear()
+	_targets_npc_by_realm.clear()
 	for other: Combatant in _combat.get_sorted():
 		if other.is_dead() or other.immortal or other.is_protected(_tick):
 			continue
@@ -1706,8 +1843,10 @@ func _rebuild_target_cache() -> void:
 		if not _targets_by_realm.has(realm):
 			_targets_by_realm[realm] = PackedVector3Array()
 			_targets_ids_by_realm[realm] = PackedInt32Array()
+			_targets_npc_by_realm[realm] = PackedByteArray()
 		_targets_by_realm[realm].append(other_position)
 		_targets_ids_by_realm[realm].append(other.get_id())
+		_targets_npc_by_realm[realm].append(1 if _npcs.has(other.get_id()) else 0)
 
 
 # true si un bot de [param my_realm] puede dañar a uno de [param other_realm] en esta zona.
@@ -2484,8 +2623,10 @@ func _on_auth_received(peer_id: int, bytes: PackedByteArray) -> void:
 		if _is_cooling_down(_cooldown_key_for_name(peer.remote_address, hello.display_name)):
 			_reject(peer, NetProtocol.Result.TOO_MANY_CONNECTIONS)
 			return
-		result = _auth.validate(hello, peer.remote_address, get_player_count(),
-				_connections_from(peer))
+		result = _auth.validate(hello, peer.remote_address, _occupied_seats(),
+				_connections_from(peer), _filler_seats())
+		if result == NetProtocol.Result.OK and not _make_room_for(peer, hello):
+			result = NetProtocol.Result.FULL
 	if result != NetProtocol.Result.OK:
 		_reject(peer, result)
 		return
@@ -2782,6 +2923,51 @@ func _reject(peer: ServerPeer, result: int) -> void:
 	_mark_leaving(peer)
 
 
+# Falsos de relleno vivos, sin los que ya tienen la baja pedida (esos ya no cuentan en get_player_count).
+func _live_fillers() -> int:
+	if _filler_keeper == null:
+		return 0
+	var count: int = 0
+	for net_id: int in _fakes:
+		if _filler_keeper.is_filler(net_id) and not _fake_leaving.has(net_id):
+			count += 1
+	return count
+
+
+# Plazas que el relleno tiene apartadas para personas que aún cargan la zona (GUE-43): como mucho, una por falso de
+# relleno vivo. Cada una es un jugador de más hasta que esa persona entra en el mundo y su falso se va.
+func _reserved_seats() -> int:
+	if _filler_keeper == null:
+		return 0
+	return mini(_filler_keeper.reserved_count(), _live_fillers())
+
+
+# Plazas ocupadas para el cupo: los jugadores de get_player_count() menos los falsos de relleno que ya han apartado su
+# plaza a alguien (se van cuando entra).
+func _occupied_seats() -> int:
+	return get_player_count() - _reserved_seats()
+
+
+# Falsos de relleno que aún pueden ceder su plaza a una persona (GUE-43): los vivos que no la han apartado ya.
+func _filler_seats() -> int:
+	return maxi(_live_fillers() - _reserved_seats(), 0)
+
+
+# Un HELLO aceptado con el servidor lleno solo por los falsos de relleno: el guardián le aparta la plaza de uno, que se
+# va cuando la persona entra en el mundo (FillerKeeper.on_person_joined). false si no hay sitio (no debería pasar:
+# ServerAuth ya ha comprobado que el relleno basta).
+func _make_room_for(peer: ServerPeer, hello: NetMessages.Hello) -> bool:
+	if _occupied_seats() < _config.max_players:
+		return true
+	if _filler_keeper == null or _filler_seats() <= 0:
+		return false
+	if not _filler_keeper.reserve_seat(peer.peer_id, hello.realm):
+		return false
+	_log("Servidor lleno de relleno: un falso de relleno aparta su plaza a %s (peer %d, %s); se irá cuando entre"
+			% [hello.display_name, peer.peer_id, NetProtocol.realm_display_name(hello.realm)])
+	return true
+
+
 # Conexiones abiertas desde la misma IP que [param peer], sin contarlo a él (las IPv6 se cuentan por
 # prefijo /64, ver ServerAuth.address_group).
 func _connections_from(peer: ServerPeer) -> int:
@@ -2900,7 +3086,9 @@ func _release_resources() -> void:
 	_disconnect_transport()
 
 
-# Línea de métricas cada 10 s: duración del tick, jugadores, entradas sustituidas y ancho de banda.
+# Línea de métricas cada 10 s: duración del tick, jugadores, entradas sustituidas, ancho de banda y, al final, los PNJ
+# que se simulan en ese momento (los de guerra y los maniquíes; GUE-16: la carga con PNJ los sigue a lo largo de la
+# batalla).
 func _log_metrics(s: int) -> void:
 	_sync_byte_counters()
 	var now_usec: int = Time.get_ticks_usec()
@@ -2920,7 +3108,7 @@ func _log_metrics(s: int) -> void:
 			_metrics.get_max_us(ServerMetrics.SECTION_TICK)]
 			+ "(p99 por sección: %s), entradas sustituidas %.2f %%, subida %.1f KB/s, "
 			% [", ".join(sections), _metrics.get_substituted_percent(), kb_out]
-			+ "bajada %.1f KB/s" % kb_in)
+			+ "bajada %.1f KB/s, %d PNJ" % [kb_in, _npcs.size()])
 
 
 func _build_report() -> Dictionary:

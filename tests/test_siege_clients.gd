@@ -116,8 +116,20 @@ func test_swarm_bots_read_the_fort_from_object_states_break_the_gate_and_capture
 		assert_true(view.circle_radius > 0.0, "y sabe dónde está (las rutas de la zona)")
 		assert_eq(bot.get_brain().get_pattern(), BotBrain.Pattern.SIEGE)
 		assert_true(bot.get_brain().has_siege())
+		assert_true(bot.get_brain().has_ally_counter(), "con quien le cuente a los suyos (GUE-44)")
+		assert_true(bot.get_brain().has_threat_finder(), "con quien le avise de los golpes (F6b)")
+		assert_true(bot.get_brain().has_defender_finder(), "y con quien le busque los PNJ defensores (F6b)")
+		assert_eq(int(bot.get_stats()["fort_reached_tick"]), -1, "en el campamento aún no ha llegado al fuerte (GUE-16)")
+	# Cada uno ve a los otros dos de su reino por sus altas y los snapshots (los cuenta en la reunión, GUE-44).
+	var counted: bool = await _wait_until(func() -> bool:
+		for bot: SwarmBot in bots:
+			if bot._count_allies(bot.get_position(), 60.0) != 2:
+				return false
+		return true)
+	assert_true(counted, "cada bot cuenta a los otros dos (%d)" % bots[0]._count_allies(bots[0].get_position(), 60.0))
 	# La puerta se queda en 600 de vida (llega como OBJECT_STATE) y los bots empiezan en la explanada.
 	_state().gate_health = 600
+	var teleport_tick: int = _server.get_tick()
 	var ground: float = _server.get_fortresses().get_gate(_server.get_fortresses().get_fortress_ids()[0]).global_position.y
 	for i: int in 3:
 		_server.teleport(bots[i].get_net_id(), Vector3(-25.0, ground + 0.4, -2.0 + 2.0 * float(i)))
@@ -131,6 +143,10 @@ func test_swarm_bots_read_the_fort_from_object_states_break_the_gate_and_capture
 	if not assert_true(inside, "los tres entran en el círculo (%d)" % _state().presence[VARDHEIM]):
 		return
 	assert_eq(String(bots[0].get_stats()["siege_task"]), "HOLD", "y se quedan en él")
+	for bot: SwarmBot in bots:
+		var reached: int = int(bot.get_stats()["fort_reached_tick"])
+		assert_true(reached > teleport_tick and reached <= _server.get_tick(),
+				"el informe del bot dice en qué tick del servidor llegó al fuerte (%d, tras el %d)" % [reached, teleport_tick])
 	assert_true(int(bots[0].get_stats()["object_states_applied"]) >= 2, "tras aplicar varios OBJECT_STATE")
 	# Cae el capitán y capturan.
 	_server.console_command("fort_capture_speed 30")
@@ -167,6 +183,26 @@ func test_a_predicting_bot_with_the_siege_brain_follows_the_fort_through_fortres
 	var brain: BotBrain = _client.get_meta(&"bot_brain") as BotBrain
 	assert_eq(brain.get_pattern(), BotBrain.Pattern.SIEGE, "con el cerebro de asedio")
 	assert_true(brain.has_siege() and brain.has_enemy_finder())
+	assert_true(brain.has_ally_counter(), "con quien le cuente a los suyos (BotAllySight, GUE-44)")
+	assert_true(brain.has_threat_finder() and brain.has_defender_finder(), "con los avisos y los defensores (F6b)")
+	# Los avisos que evita son solo los de quien le puede dañar (como los falsos del servidor): un aviso de uno de su reino
+	# no cuenta y uno del otro, sí (el filtro mira el reino del remoto, PNJ o no).
+	var friend: int = _server.add_fake_player(BotBrain.new(1, BotBrain.Pattern.IDLE), VARDHEIM)
+	var foe: int = _server.add_fake_player(BotBrain.new(2, BotBrain.Pattern.IDLE), SOLMARCH)
+	var seen: bool = await _wait_until(func() -> bool:
+		return _client.get_remote_world().get_view(friend) != null and _client.get_remote_world().get_view(foe) != null)
+	if not assert_true(seen, "el bot dibuja a uno de cada reino"):
+		return
+	var now: int = _client.get_prediction().get_predicted_tick()
+	_client.telegraph_received.emit(NetMessages.EntityEvent.telegraph(friend, now, 7,
+			NetMessages.EntityEvent.SHAPE_SECTOR, Vector3.ZERO, 0.0, 350, 60))
+	var own_threats: int = (brain._siege_threat_finder.call(Vector3.ZERO) as Array).size()
+	_client.telegraph_received.emit(NetMessages.EntityEvent.telegraph(foe, now, 7,
+			NetMessages.EntityEvent.SHAPE_SECTOR, Vector3.ZERO, 0.0, 350, 60))
+	assert_eq(own_threats, 0, "el aviso de uno de su reino no es una amenaza")
+	assert_eq((brain._siege_threat_finder.call(Vector3.ZERO) as Array).size(), 1, "el del otro reino, sí")
+	_server.remove_fake_player(friend)
+	_server.remove_fake_player(foe)
 	var view: SiegeView = brain.get_siege_view()
 	var fortress_known: bool = await _wait_until(func() -> bool: return view.known and view.circle_radius > 0.0)
 	if not assert_true(fortress_known, "FortressView le da el estado y las posiciones del fuerte"):

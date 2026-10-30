@@ -26,6 +26,12 @@ const FORD: Vector2 = Vector2(-62.0, 0.0)
 const GATE_OUTSIDE: Vector2 = Vector2(-30.0, 0.0)
 ## Medio lado de la empalizada (m), con un margen para el grosor de los troncos.
 const FORT_HALF: float = 20.3
+## Rutas de los bots de asedio, con la de la pasarela (GUE-45).
+const ROUTES_PATH: String = "res://data/routes/vado_gris.tres"
+## Un tramo de la ruta de la pasarela es andable si la ruta de la malla entre sus extremos no es más larga que el tramo
+## recto por este factor más este margen (m).
+const WALKWAY_DETOUR_FACTOR: float = 1.2
+const WALKWAY_DETOUR_MARGIN: float = 1.5
 
 var _zone: Node3D = null
 var _fort: Node3D = null
@@ -173,6 +179,53 @@ func test_the_deep_riverbed_is_not_reachable_on_foot() -> void:
 	var ford: Vector3 = _surface_at(FORD)
 	var to_ford: PackedVector3Array = NavigationServer3D.map_get_path(_map, spawns[0].global_position, ford, true)
 	assert_true(not to_ford.is_empty() and _reaches(to_ford[to_ford.size() - 1], ford), "el vado sí se alcanza")
+
+
+## GUE-45: los bots de asedio suben a la pasarela por una ruta de puntos precalculada (las rampas y el eje de la pasarela
+## de data/routes/vado_gris.tres), que siguen en línea recta. Cada tramo, del círculo al puesto encima de la puerta por
+## cada rampa, tiene que ser andable según la malla de los PNJ (MUN-06): la ruta de la malla entre sus extremos llega y
+## apenas es más larga que el tramo recto. Y la pasarela está a la altura que dicen los datos.
+func test_the_walkway_route_of_the_bots_follows_the_navigation_mesh() -> void:
+	if not assert_not_null(_fort, "la zona debe instanciarse"):
+		return
+	var routes: ApproachRoutes = load(ROUTES_PATH) as ApproachRoutes
+	if not assert_true(routes != null and routes.has_walkway(), "las rutas conocen la pasarela"):
+		return
+	var post: Vector2 = routes.walkway_post()
+	var yard: Vector3 = _fort.get_node(^"CaptureCircle").global_position
+	assert_near(_surface_at(post).y, routes.walkway_height, 0.05, "la pasarela está a la altura de los datos")
+	assert_near(routes.walkway_height - _surface_at(Vector2(yard.x, yard.z)).y, 3.35, 0.05, "3,35 m sobre el patio")
+	var post_offset: float = routes.walkway_offset(post)
+	var offsets: PackedFloat32Array = routes.walkway_vertex_offsets()
+	for index: int in routes.walkway_ramps.size():
+		var ramp: PackedVector2Array = routes.walkway_ramps[index]
+		var stops: Array[Vector2] = [Vector2(yard.x, yard.z)]
+		stops.append_array(Array(ramp))
+		# Por el eje de la pasarela, de la cima de la rampa a las esquinas que hay hasta el puesto, y el puesto.
+		var top_offset: float = routes.walkway_offset(ramp[ramp.size() - 1])
+		var corners: Array[Vector2] = []
+		for vertex: int in offsets.size():
+			if offsets[vertex] > minf(top_offset, post_offset) + 0.01 and offsets[vertex] < maxf(top_offset, post_offset) - 0.01:
+				corners.append(routes.walkway_path[vertex])
+		if top_offset > post_offset:
+			corners.reverse()
+		stops.append_array(corners)
+		stops.append(post)
+		for i: int in range(1, stops.size()):
+			var from: Vector3 = _surface_at(stops[i - 1])
+			var to: Vector3 = _surface_at(stops[i])
+			var path: PackedVector3Array = NavigationServer3D.map_get_path(_map, from, to, true)
+			if not assert_false(path.is_empty(), "rampa %d, tramo %d: hay ruta" % [index, i]):
+				continue
+			assert_true(_reaches(path[path.size() - 1], to), "rampa %d, tramo %d: llega a %s (acaba en %s)"
+					% [index, i, to.snapped(Vector3.ONE * 0.1), path[path.size() - 1].snapped(Vector3.ONE * 0.1)])
+			var length: float = 0.0
+			for p: int in range(1, path.size()):
+				length += path[p - 1].distance_to(path[p])
+			var straight: float = from.distance_to(to)
+			assert_true(length <= straight * WALKWAY_DETOUR_FACTOR + WALKWAY_DETOUR_MARGIN,
+					"rampa %d, tramo %d (%s -> %s): la malla va casi en línea recta (%.1f m frente a %.1f)"
+					% [index, i, stops[i - 1], stops[i], length, straight])
 
 
 # --- Ayudantes --------------------------------------------------------------------------------

@@ -70,9 +70,12 @@ func before_each() -> void:
 	_view.gate_max = 9000
 
 
+## Un cerebro de asedio sin el papel de la pasarela (GUE-45): el [Walker] no tiene altura y no puede subir a ella; la
+## pasarela se prueba en test_bot_brain_walkway.
 func _brain(realm: int, rng_seed: int = 1) -> BotBrain:
 	var brain := BotBrain.new(rng_seed, BotBrain.Pattern.SIEGE)
 	brain.set_siege(_view, _routes, realm)
+	brain.set_walkway_role(false)
 	return brain
 
 
@@ -372,6 +375,271 @@ func test_the_same_seed_and_the_same_world_give_the_same_inputs() -> void:
 	for _tick: int in 4000:
 		other_bytes.append_array(other_walker.step(other).encode())
 	assert_false(other_bytes == runs[0], "otra semilla, otras entradas")
+
+
+func test_a_threat_covers_the_front_half_plane_up_to_its_reach_plus_the_margin() -> void:
+	# Un golpe que mira hacia -Z (yaw 0) con 3,5 m de alcance desde el origen.
+	var threat := BotBrain.Threat.new(Vector3.ZERO, 0.0, 3.5)
+	var margin: float = BotBrain.SIEGE_THREAT_MARGIN
+	assert_true(threat.covers(Vector3(0.0, 0.0, -2.0), margin), "delante, dentro del alcance")
+	assert_true(threat.covers(Vector3(0.0, 0.0, -3.5 - margin + 0.05), margin), "y hasta el alcance más el margen")
+	assert_false(threat.covers(Vector3(0.0, 0.0, -3.5 - margin - 0.05), margin), "más allá, no")
+	assert_true(threat.covers(Vector3(3.0, 0.0, 0.0), margin), "de lado (el semiplano de delante, con el margen)")
+	assert_true(threat.covers(Vector3(1.0, 0.0, margin - 0.05), margin), "un poco por detrás, dentro del margen")
+	assert_false(threat.covers(Vector3(0.0, 0.0, margin + 0.5), margin), "detrás de quien golpea, a salvo")
+	assert_true(threat.covers(Vector3(0.0, 5.0, -1.0), margin), "la altura no cuenta")
+
+
+func test_it_dodges_out_of_a_telegraphed_hit_without_blocking() -> void:
+	var threats: Array[BotBrain.Threat] = []
+	var brain: BotBrain = _brain(V, 31)
+	brain.set_threat_finder(func(_position: Vector3) -> Array[BotBrain.Threat]: return threats)
+	# Pegando a la puerta.
+	var walker := Walker.new(Vector3(GATE.x - BotBrain.SIEGE_GATE_ATTACK_DISTANCE, 0.0, 0.3))
+	for _i: int in 60:
+		walker.step(brain)
+	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.ASSAULT, "golpea la puerta")
+	# Un PNJ a 2 m al norte que le mira (hacia +Z: yaw PI) avisa su golpe (3,5 m): sale de la zona.
+	var origin: Vector3 = walker.position + Vector3(0.0, 0.0, -2.0)
+	threats.append(BotBrain.Threat.new(origin, PI, 3.5))
+	assert_true(threats[0].covers(walker.position, BotBrain.SIEGE_THREAT_MARGIN), "está dentro")
+	var first: PlayerInput = walker.step(brain)
+	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.EVADE)
+	assert_true(first.has(PlayerInput.DODGE), "esquiva nada más verlo")
+	assert_true(first.has(PlayerInput.SPRINT), "y esprinta")
+	assert_false(first.has(PlayerInput.BLOCK), "sin bloquear")
+	assert_false(first.has(PlayerInput.PRIMARY), "ni seguir golpeando")
+	var blocked: bool = false
+	var dodges: int = 1
+	var ticks: int = 1
+	while threats[0].covers(walker.position, BotBrain.SIEGE_THREAT_MARGIN) and ticks < 120:
+		var input: PlayerInput = walker.step(brain)
+		blocked = blocked or input.has(PlayerInput.BLOCK)
+		dodges += 1 if input.has(PlayerInput.DODGE) else 0
+		ticks += 1
+	assert_false(blocked, "nunca bloquea dentro de la zona")
+	assert_true(ticks < 60, "sale antes del impacto (1 s): %d ticks" % ticks)
+	assert_true(walker.position.distance_to(origin) > 3.5 + BotBrain.SIEGE_THREAT_MARGIN - 0.2,
+			"lejos del golpe (%.2f m)" % walker.position.distance_to(origin))
+	# Fuera de la zona vuelve a lo suyo, aunque el aviso siga.
+	walker.step(brain)
+	assert_true(brain.get_siege_task() != BotBrain.SiegeTask.EVADE, "fuera, vuelve a su plan")
+	# Un golpe que mira hacia el otro lado (hacia -Z: yaw 0) no le aparta.
+	threats.clear()
+	threats.append(BotBrain.Threat.new(walker.position + Vector3(0.0, 0.0, -2.0), 0.0, 3.5))
+	assert_false(threats[0].covers(walker.position, BotBrain.SIEGE_THREAT_MARGIN))
+	walker.step(brain)
+	assert_true(brain.get_siege_task() != BotBrain.SiegeTask.EVADE, "un golpe que no le alcanza no cuenta")
+
+
+func test_a_defender_npc_in_range_comes_before_a_closer_player() -> void:
+	_view.gate_health = 0
+	var player: Array[Variant] = [null]
+	var defender: Array[Variant] = [null]
+	var brain: BotBrain = _brain(V, 32)
+	brain.set_enemy_finder(func(_position: Vector3) -> Variant: return player[0])
+	brain.set_defender_finder(func(_position: Vector3) -> Variant: return defender[0])
+	var walker := Walker.new(CIRCLE + Vector3(-3.0, 0.0, 0.0))
+	player[0] = walker.position + Vector3(0.0, 0.0, 1.5)
+	defender[0] = walker.position + Vector3(6.0, 0.0, 0.0)
+	var npc: Vector3 = defender[0]
+	for _i: int in 120:
+		walker.step(brain)
+	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.FIGHT)
+	assert_true(walker.position.distance_to(npc) < BotBrain.COMBAT_ENGAGE_DISTANCE,
+			"va a por el PNJ aunque el jugador esté más cerca (%.2f m)" % walker.position.distance_to(npc))
+	# Muerto el PNJ, el jugador.
+	defender[0] = null
+	player[0] = walker.position + Vector3(0.0, 0.0, 4.0)
+	var target: Vector3 = player[0]
+	for _i: int in 120:
+		walker.step(brain)
+	assert_true(walker.position.distance_to(target) < BotBrain.COMBAT_ENGAGE_DISTANCE, "luego, el jugador")
+	# Un PNJ tras la puerta cerrada no le distrae de la puerta.
+	_view.gate_health = 9000
+	var outside := Walker.new(Vector3(GATE.x - 6.0, 0.0, 0.0))
+	var other: BotBrain = _brain(V, 33)
+	other.set_defender_finder(func(_position: Vector3) -> Variant: return Vector3(GATE.x + 3.0, 0.0, 0.0))
+	for _i: int in 200:
+		outside.step(other)
+	assert_eq(other.get_siege_task(), BotBrain.SiegeTask.ASSAULT, "el PNJ de dentro no se alcanza: golpea la puerta")
+
+
+func test_it_gives_up_a_chase_that_does_not_get_closer() -> void:
+	# Un guardia tras un muro (o en la pasarela): el bot no se acerca por mucho que camine. Antes se quedaba pegado al
+	# muro para siempre (pelear no es estar atascado).
+	_view.gate_health = 0
+	var enemy: Array[Variant] = [null]
+	var brain: BotBrain = _brain(V, 35)
+	brain.set_enemy_finder(func(_position: Vector3) -> Variant: return enemy[0])
+	var walker := Walker.new(CIRCLE + Vector3(-1.0, 0.0, 0.0))
+	walker.blocked = true
+	enemy[0] = walker.position + Vector3(0.0, 0.0, -8.0)
+	var gave_up: int = _run(walker, brain, 600, func() -> bool:
+		return brain.get_siege_task() != BotBrain.SiegeTask.FIGHT)
+	assert_true(gave_up >= BotBrain.SIEGE_STUCK_TICKS and gave_up <= BotBrain.SIEGE_STUCK_TICKS + 2 * BotBrain.COMBAT_RETARGET_TICKS,
+			"deja la persecución a los %d ticks sin acercarse (%d)" % [BotBrain.SIEGE_STUCK_TICKS, gave_up])
+	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.HOLD, "y vuelve a su plan: el círculo")
+	walker.blocked = false
+	for _i: int in BotBrain.SIEGE_CHASE_GIVE_UP_TICKS - 60:
+		walker.step(brain)
+		if brain.get_siege_task() == BotBrain.SiegeTask.FIGHT:
+			break
+	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.HOLD, "un rato sin perseguir al de lejos")
+	# Uno que se le pone a menos de la distancia de pelea sí cuenta.
+	enemy[0] = walker.position + Vector3(0.0, 0.0, -2.0)
+	for _i: int in 6:
+		walker.step(brain)
+	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.FIGHT, "a 2 m pelea aunque haya dejado la persecución")
+	# Pasado el plazo vuelve a perseguir.
+	enemy[0] = walker.position + Vector3(0.0, 0.0, -8.0)
+	for _i: int in BotBrain.SIEGE_CHASE_GIVE_UP_TICKS:
+		walker.step(brain)
+		if brain.get_siege_task() == BotBrain.SiegeTask.FIGHT:
+			break
+	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.FIGHT, "pasado el plazo, persigue otra vez")
+
+
+func test_reaching_the_enemy_ends_the_chase_so_a_dodge_back_is_a_new_one() -> void:
+	# Revisión de F6b: la referencia de la persecución no se renovaba mientras peleaba a 3 m o menos, así que si el enemigo
+	# se apartaba justo cuando se cumplían los 180 ticks desde que empezó (una esquiva de 4,5 m hacia atrás) se comparaba con
+	# la distancia del principio y dejaba de perseguir 600 ticks a alguien de quien había estado pegado todo el rato.
+	_view.gate_health = 0
+	var enemy: Array[Variant] = [null]
+	var brain: BotBrain = _brain(V, 35)
+	brain.set_enemy_finder(func(_position: Vector3) -> Variant: return enemy[0])
+	var walker := Walker.new(CIRCLE + Vector3(-1.0, 0.0, 0.0))
+	var start: Vector3 = walker.position + Vector3(0.0, 0.0, -3.4)
+	enemy[0] = start
+	for _i: int in 149:
+		walker.step(brain)
+	assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.FIGHT, "pelea cuerpo a cuerpo")
+	assert_true(walker.position.distance_to(start) <= BotBrain.COMBAT_ENGAGE_DISTANCE,
+			"pegado al enemigo (%.2f m)" % walker.position.distance_to(start))
+	# En el tick 150 esquiva 4,5 m hacia atrás (en 27 ticks) y se queda allí.
+	var fighting: int = 0
+	for tick: int in range(150, 750):
+		var dodge: float = clampf(float(tick - 150) / 27.0, 0.0, 1.0) * 4.5
+		enemy[0] = start + Vector3(0.0, 0.0, -dodge)
+		walker.step(brain)
+		if brain.get_siege_task() == BotBrain.SiegeTask.FIGHT:
+			fighting += 1
+	assert_true(fighting >= 590, "sigue peleando con él: %d de 600 ticks" % fighting)
+	assert_true(walker.position.distance_to(enemy[0] as Vector3) <= BotBrain.COMBAT_ENGAGE_DISTANCE,
+			"y vuelve a estar pegado a él (%.2f m)" % walker.position.distance_to(enemy[0] as Vector3))
+
+
+func test_a_new_target_is_a_new_chase() -> void:
+	# Revisión de F6b: los dos buscadores (el de defensores y el de enemigos) compartían la persecución, y uno que no se
+	# acerca (huye a su paso) dejaba la referencia para el siguiente blanco, más lejos: a los 180 ticks del principio se
+	# comparaban distancias de blancos distintos y dejaba de perseguir al nuevo.
+	for change: String in ["defender_to_player", "player_to_player"]:
+		_view.gate_health = 0
+		var near: Array[Variant] = [null]
+		var other: Array[Variant] = [null]
+		var brain: BotBrain = _brain(V, 37)
+		if change == "defender_to_player":
+			brain.set_defender_finder(func(_position: Vector3) -> Variant: return near[0])
+			brain.set_enemy_finder(func(_position: Vector3) -> Variant: return other[0])
+		else:
+			brain.set_enemy_finder(func(_position: Vector3) -> Variant: return near[0] if near[0] != null else other[0])
+		var walker := Walker.new(CIRCLE + Vector3(-1.0, 0.0, 0.0))
+		# Los primeros 150 ticks persigue a uno que se aparta a su paso, a 5 m.
+		for _i: int in 150:
+			near[0] = walker.position + Vector3(5.0, 0.0, 0.0)
+			walker.step(brain)
+		assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.FIGHT, "%s: lo persigue" % change)
+		# Desaparece (muere) y hay otro a 9 m, quieto.
+		near[0] = null
+		other[0] = walker.position + Vector3(0.0, 0.0, -9.0)
+		var reached: int = _run(walker, brain, 300, func() -> bool:
+			return walker.position.distance_to(other[0] as Vector3) <= BotBrain.COMBAT_ENGAGE_DISTANCE)
+		assert_true(reached > 0, "%s: persigue al otro hasta alcanzarlo (a %.2f m)" % [change,
+				walker.position.distance_to(other[0] as Vector3)])
+		assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.FIGHT, "%s: y pelea con él" % change)
+
+
+func test_an_attacker_inside_the_fort_keeps_the_circle_when_the_gate_is_repaired() -> void:
+	# Revisión de F6b: con la puerta reparada (pasados gate_repair_after_s sin golpes, o al capturar) un atacante que ya
+	# estaba en el círculo volvía a «asaltar» la puerta desde dentro; en formación iba al hueco de fuera y golpeaba de
+	# espaldas a ella, hacia el patio. La captura no necesita la puerta: se queda en el círculo.
+	_view.owner = V
+	_view.gate_health = 0
+	for formation: bool in [true, false]:
+		_view.gate_health = 0
+		var brain: BotBrain = _brain(S, 7)
+		if formation:
+			brain.set_ally_counter(func(_center: Vector3, _radius: float) -> int: return 0)
+		var walker := Walker.new(CIRCLE + Vector3(0.0, 0.0, 0.5))
+		for _i: int in 120:
+			walker.step(brain)
+		assert_eq(brain.get_siege_task(), BotBrain.SiegeTask.HOLD, "formación %s: en el círculo" % formation)
+		_view.gate_health = 9000
+		var left: Array[bool] = [false]
+		_run(walker, brain, 900, func() -> bool:
+			left[0] = left[0] or brain.get_siege_task() != BotBrain.SiegeTask.HOLD or not _view.is_in_circle(walker.position)
+			return false)
+		assert_false(left[0], "formación %s: con la puerta reparada no deja el círculo (%s, tarea %d)" % [formation,
+				walker.position, brain.get_siege_task()])
+		assert_eq(walker.presses, 0, "formación %s: ni golpea nada" % formation)
+
+
+func test_outside_by_a_side_wall_it_walks_around_the_enclosure_instead_of_into_it() -> void:
+	# El recinto de 40 x 40 m (la empalizada va de x = -20 a 20 y de z = -20 a 20). Antes, un bot que una persecución
+	# dejaba pegado a la pared sur por fuera se creía dentro (a menos de 30 m del círculo) y caminaba contra ella.
+	_view.enclosure_size = Vector2(40.0, 40.0)
+	_view.gate_health = 0
+	assert_eq(_view.is_inside_enclosure(Vector3(-7.0, 0.0, 22.0), BotBrain.SIEGE_ENCLOSURE_MARGIN), 0, "fuera, junto a la pared sur")
+	assert_eq(_view.is_inside_enclosure(Vector3(-7.0, 0.0, 18.0), BotBrain.SIEGE_ENCLOSURE_MARGIN), 1, "dentro")
+	assert_eq(SiegeView.new().is_inside_enclosure(Vector3.ZERO), -1, "sin recinto no se sabe")
+	var brain: BotBrain = _brain(S, 36)
+	var walker := Walker.new(Vector3(GATE.x - 5.0, 0.0, 1.0))
+	for _i: int in 30:
+		walker.step(brain)
+	assert_eq(brain.get_siege_route_index(), _routes.get_points(brain.get_siege_route(), RealmCatalog.SOLMARCH).size(),
+			"en la explanada ya ha recorrido la ruta")
+	# Le lleva una persecución por fuera hasta la pared sur (pasos de 1 m: no es una reaparición).
+	for corner: Vector3 in [Vector3(-24.0, 0.0, 22.0), Vector3(-8.0, 0.0, 22.0)]:
+		while walker.position.distance_to(corner) > 1.0:
+			walker.position = walker.position.move_toward(corner, 1.0)
+			walker.step(brain)
+	assert_eq(brain.get_siege_route_index(), _routes.get_points(brain.get_siege_route(), RealmCatalog.SOLMARCH).size(),
+			"sigue con la ruta hecha")
+	# (Las lambdas copian las variables: la marca va en un Array.)
+	var crossed_wall: Array[bool] = [false]
+	var entered: int = _run(walker, brain, 1800, func() -> bool:
+		var p: Vector3 = walker.position
+		if p.x > GATE.x + 0.5 and absf(p.z) < 20.0 and absf(p.z) > 3.0:
+			crossed_wall[0] = true
+		return Vector2(p.x - CIRCLE.x, p.z - CIRCLE.z).length() <= CIRCLE_RADIUS * BotBrain.SIEGE_CIRCLE_HOLD_FRACTION)
+	assert_true(entered > 0, "llega al círculo")
+	assert_false(crossed_wall[0], "sin atravesar la empalizada: rodea la esquina y entra por la puerta")
+
+
+func test_the_threat_and_defender_finders_keep_it_deterministic() -> void:
+	var runs: Array[PackedByteArray] = []
+	for _run_index: int in 2:
+		_view.owner = 0
+		_view.gate_health = 9000
+		var threats: Array[BotBrain.Threat] = []
+		var defender: Array[Variant] = [null]
+		var brain: BotBrain = _brain(S, 34)
+		brain.set_defender_finder(func(_position: Vector3) -> Variant: return defender[0])
+		brain.set_threat_finder(func(_position: Vector3) -> Array[BotBrain.Threat]: return threats)
+		var walker := Walker.new(_camp(S))
+		var bytes := PackedByteArray()
+		for tick: int in 3000:
+			if tick == 2000:
+				defender[0] = walker.position + Vector3(2.0, 0.0, 1.0)
+			if tick == 2100:
+				threats.append(BotBrain.Threat.new(walker.position + Vector3(0.0, 0.0, 1.5), PI, 3.5))
+			if tick == 2160:
+				threats.clear()
+			if tick == 2400:
+				defender[0] = null
+			bytes.append_array(walker.step(brain).encode())
+		runs.append(bytes)
+	assert_true(runs[0] == runs[1], "mismas entradas en las dos ejecuciones")
 
 
 func test_combat_and_the_other_patterns_are_unchanged() -> void:
