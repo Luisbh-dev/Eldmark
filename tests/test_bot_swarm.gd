@@ -310,3 +310,28 @@ func _server_position(net_id: int) -> Vector3:
 	if entity == null:
 		return Vector3(INF, INF, INF)
 	return entity.get_position()
+
+
+func test_a_siege_bot_does_not_count_a_downed_ally_in_the_rally() -> void:
+	# Revisión de la integración de las habilidades: un derribado publica su vida de derribado, que nunca es 0
+	# (Combatant.publish), y el SwarmBot solo miraba la vida: contaba a los derribados en la reunión (GUE-44) y salía a
+	# «ayudarlos», cuando el servidor no los cuenta para sus falsos (is_alive). Mira también su acción, DOWNED.
+	var states: Dictionary[String, Array] = {"en pie": [CombatState.Action.NONE, 200, true],
+			"derribado": [CombatState.Action.DOWNED, 3, false], "muerto": [CombatState.Action.NONE, 0, false]}
+	for label: String in states:
+		var record := EntityRecord.from_state(7, NetProtocol.EntityKind.PLAYER, PlayerState.new(), 0)
+		record.action = int(states[label][0])
+		record.health_q = int(states[label][1])
+		# Una sección del snapshot con ese registro: (tipo, cuántos) y el registro.
+		var bytes := PackedByteArray([1, NetProtocol.EntityKind.PLAYER, 1])
+		record.encode_into(bytes, bytes.size())
+		assert_eq(SwarmBot.is_standing_record(bytes, 3), bool(states[label][2]), label)
+		var bot := SwarmBot.new()
+		bot._ally_positions[7] = Vector3.ZERO
+		bot._ally_alive[7] = true
+		# Cada snapshot decodifica uno de cada ENEMY_SCAN_STRIDE registros, rotando: en tantos, todos.
+		for _i: int in SwarmBot.ENEMY_SCAN_STRIDE:
+			bot._scan_enemies(bytes, 0)
+		assert_eq(bot._count_allies(Vector3.ZERO, 10.0), 1 if bool(states[label][2]) else 0,
+				"%s: en la reunión, %s" % [label, "cuenta" if bool(states[label][2]) else "no cuenta"])
+		bot.free()

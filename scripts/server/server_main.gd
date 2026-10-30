@@ -422,7 +422,8 @@ func _setup_fillers() -> void:
 	_fillers.creator = func(realm: int) -> int: return _add_fake_player(realm)
 	_fillers.remover = func(net_id: int) -> void:
 		_fake_ids.erase(net_id)
-		_zone_server.remove_fake_player(net_id)
+		_zone_server.retire_filler(net_id)
+	_fillers.calm_check = _zone_server.is_fake_calm
 	_zone_server.set_filler_keeper(_fillers)
 	print("[Eldmark] Equilibrio de reinos: diferencia máxima de %d personas; los falsos rellenan el bando corto"
 			% config.max_realm_diff)

@@ -347,8 +347,10 @@ var _log_last_wire_in: int = 0
 var _state_log: FileAccess = null
 # net_id -> 1 si la entrada del tick se sustituyó (solo se rellena con --state-log).
 var _substituted_now: Dictionary[int, int] = {}
-# Jugadores falsos que se van en el siguiente tick (remove_fake_player).
+# Jugadores falsos que se van en el siguiente tick (remove_fake_player), y los de relleno que se retiran sin muerte
+# aunque estén derribados (retire_filler).
 var _fake_leaving: Array[int] = []
+var _fake_leaving_quietly: Dictionary[int, bool] = {}
 # Medidas de la carga (informe): µs de simulate() por llamada y de construir snapshots.
 var _simulate_calls: int = 0
 var _simulate_usec_total: int = 0
@@ -599,6 +601,7 @@ func stop(notice_text: String = "") -> void:
 	_pending_ready.clear()
 	_leaving.clear()
 	_fake_leaving.clear()
+	_fake_leaving_quietly.clear()
 	_sync_byte_counters()
 	_close_state_log()
 	_close_combat_log()
@@ -821,6 +824,9 @@ func add_fake_player(brain: BotBrain, realm: int, template_id: int = 0) -> int:
 		brain.set_defender_finder(_find_enemy_target.bind(entity.net_id, true))
 	if pattern == BotBrain.Pattern.SIEGE and not brain.has_ally_counter():
 		brain.set_ally_counter(_count_allies.bind(entity.net_id))
+	if pattern == BotBrain.Pattern.SIEGE and not brain.has_line_of_sight():
+		# El arco del kit solo tira si la flecha llega (la empalizada, la puerta cerrada, también la propia).
+		brain.set_line_of_sight(_bot_line_of_sight)
 	var record: _PlayerRecord = _player_by_net[entity.net_id]
 	record.is_fake = true
 	_announce_arrival(entity, null, _tick)
@@ -883,12 +889,31 @@ func set_filler_keeper(keeper: FillerKeeper) -> void:
 
 ## Da de baja al jugador falso [param net_id] al empezar el siguiente tick: DESPAWN (motivo 1) a quien
 ## lo veía y el id en cuarentena, como si se hubiera desconectado. Devuelve false si no es un jugador
-## falso (o ya se va). Sirve para las altas y bajas de las pruebas de carga.
+## falso (o ya se va). Sirve para las altas y bajas de las pruebas de carga. Si está derribado, su baja es antes
+## una muerte (DEATH y KILL), como la de cualquiera que sale derribado.
 func remove_fake_player(net_id: int) -> bool:
 	if _run_state != _RunState.RUNNING or not _fakes.has(net_id) or _fake_leaving.has(net_id):
 		return false
 	_fake_leaving.append(net_id)
 	return true
+
+
+## Retira al falso de relleno [param net_id] que cede su sitio a una persona (GUE-42 y GUE-43; lo pide
+## [FillerKeeper]): como [method remove_fake_player], pero su baja nunca es una muerte, ni aunque esté derribado (solo
+## DESPAWN, sin DEATH ni KILL para quien lo derribó): que entre una persona no mata a nadie (revisión de la integración
+## de las habilidades). Devuelve false si no es un jugador falso (o ya se va).
+func retire_filler(net_id: int) -> bool:
+	if not remove_fake_player(net_id):
+		return false
+	_fake_leaving_quietly[net_id] = true
+	return true
+
+
+## true si retirar ya al jugador falso [param net_id] no corta nada: no está derribado ni levantando o rematando a
+## nadie (muerto esperando a reaparecer, también). El [member FillerKeeper.calm_check] de los falsos de relleno.
+func is_fake_calm(net_id: int) -> bool:
+	var combatant: Combatant = _combat.get_combatant(net_id)
+	return combatant == null or (not combatant.is_downed() and not combatant.is_interacting())
 
 
 ## Teletransporte autoritativo del jugador [param net_id] a [param position]: velocidad 0, estado
@@ -1485,12 +1510,14 @@ func _process_fake_departures(s: int) -> void:
 	if _fake_leaving.is_empty():
 		return
 	var leaving: Array[int] = _fake_leaving.duplicate()
+	var quietly: Dictionary[int, bool] = _fake_leaving_quietly.duplicate()
 	_fake_leaving.clear()
+	_fake_leaving_quietly.clear()
 	for net_id: int in leaving:
 		var entity: NetEntity = _registry.get_entity(net_id)
 		if entity == null or not _fakes.has(net_id):
 			continue
-		_remove_player(entity, s, NetProtocol.DespawnReason.DISCONNECTED)
+		_remove_player(entity, s, NetProtocol.DespawnReason.DISCONNECTED, not quietly.has(net_id))
 		_left_total += 1
 		if _filler_keeper != null:
 			_filler_keeper.forget(net_id)
@@ -1500,11 +1527,12 @@ func _process_fake_departures(s: int) -> void:
 
 # Quita al jugador del mundo: DESPAWN a quien lo veía, id en cuarentena y personaje liberado. La baja de un
 # derribado (salida, desconexión, --fake-churn, fin del cuerpo de GUE-41) es antes una muerte en ese tick: DEATH
-# y KILL con quien le hizo el último daño o lo derribó, y la fuente «desangrado» (docs/habilidades.md, 4.5).
-func _remove_player(entity: NetEntity, s: int, reason: int) -> void:
+# y KILL con quien le hizo el último daño o lo derribó, y la fuente «desangrado» (docs/habilidades.md, 4.5). Sin
+# [param bleed] (el falso de relleno que cede su sitio a una persona, retire_filler), no: solo el DESPAWN.
+func _remove_player(entity: NetEntity, s: int, reason: int, bleed: bool = true) -> void:
 	var net_id: int = entity.net_id
 	var leaving: Combatant = _combat.get_combatant(net_id)
-	if leaving != null and leaving.is_downed():
+	if bleed and leaving != null and leaving.is_downed():
 		_combat.kill_downed(leaving, s)
 	var despawn := NetMessages.EntityDespawn.new()
 	despawn.net_id = net_id
@@ -1879,6 +1907,11 @@ func _fake_combat_state(net_id: int) -> CombatState:
 	return character.combat if character != null else null
 
 
+# Kit de los falsos de asedio: la línea de tiro del arco (BotBrain.set_line_of_sight) en el mundo del servidor.
+func _bot_line_of_sight(from_feet: Vector3, to_feet: Vector3, left_shoulder: bool) -> bool:
+	return BotBrain.bow_sight_clear(get_physics_space(), from_feet, to_feet, left_shoulder)
+
+
 # Kit de los falsos: la fracción de vida del jugador falso [param net_id] (0 derribado o muerto).
 func _fake_health_fraction(net_id: int) -> float:
 	var combatant: Combatant = _combat.get_combatant(net_id)
@@ -1954,8 +1987,9 @@ func _count_allies(center: Vector3, radius: float, net_id: int) -> int:
 
 
 # Reúne, por reino, las posiciones de los jugadores vivos (personas y falsos) en este tick. Un derribado (H3c) no está
-# vivo: no cuenta en la reunión ni como uno de los suyos peleando en el fuerte (lo mismo que el cliente, para el que su
-# vida dibujada es 0; BotAllySight).
+# vivo: no cuenta en la reunión ni como uno de los suyos peleando en el fuerte. Lo mismo que los bots del cliente
+# (BotAllySight para --bot, SwarmBot.is_standing_record para --bots), que lo ven por su acción dibujada, DOWNED: su vida
+# publicada no es 0 (Combatant.publish la da como la de derribado).
 func _rebuild_ally_cache() -> void:
 	_allies_tick = _tick
 	_allies_by_realm.clear()

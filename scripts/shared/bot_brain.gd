@@ -72,8 +72,9 @@ extends RefCounted
 ## [method is_walkway_sweeper]): al entrar en el fuerte recorre la pasarela una vez hasta ese puesto (la limpia) y luego
 ## salta al patio y va al círculo. Desde la pasarela no se alcanza con el arma a nadie del suelo (el
 ## sector llega de 0,2 a 2 m sobre los pies y la pasarela está a 3,35 m, tras la empalizada): dentro del recinto, quien
-## está más de [constant SIEGE_LEVEL_TOLERANCE] m más arriba o más abajo no es un blanco ni un golpe avisado que haya que
-## evitar, así que en la pasarela se pelea con quien sube, sin salirse del eje en las esquinas y sin esquivar de lado.
+## está más de [constant SIEGE_LEVEL_TOLERANCE] m más arriba o más abajo no es un blanco cuerpo a cuerpo ni un golpe
+## avisado que haya que evitar, así que en la pasarela se pelea con quien sube, sin salirse del eje en las esquinas y sin
+## esquivar de lado (con el arco del kit sí se tira a otro nivel, si hay tiro: ver abajo).
 ## [br][br]
 ## [b]Kit de la fase 4 (H5; docs/habilidades.md, sección 7.1).[/b] Si quien lleva el bot le da su estado de
 ## combate ([method set_combat_source]: el predicho en un cliente, el del servidor en un jugador falso), los
@@ -91,12 +92,21 @@ extends RefCounted
 ## false) pelea como en la fase 3, con la misma secuencia de entradas que antes.
 ## [br]En [constant SIEGE] (integración con F6b) el kit pelea en el paso 1 del plan con el blanco que toque, el PNJ
 ## defensor o el enemigo (a él apunta el arco, con la velocidad que dé su buscador), pero no levanta a nadie: sigue su
-## plan. La puerta se golpea como en la fase 3. Con el arco en la mano no persigue (todo
-## [constant SIEGE_FIGHT_RANGE] es distancia de tiro, así que la regla de dejar una persecución no se aplica). En la
-## pasarela, como no esquiva de lado, el arquero no se mueve de lado y nadie usa las habilidades que avanzan en línea
-## recta (la embestida, que además empuja, y el salto atrás): sacaban a los dos de ella. Peleando en ella mira por su eje
-## hacia el blanco (también sin el kit), así que la esquiva hacia atrás, el paso de un golpe y acercarse van por el eje; el
-## arquero, que mira al blanco para apuntar, se queda quieto y no esquiva.
+## plan. [b]El arco en el asedio[/b] (revisión de la integración): tira a quien está a menos de
+## [constant SIEGE_BOW_FIGHT_RANGE] y [b]a tiro[/b], sin la regla de dejar una persecución (no persigue: guarda la distancia) y
+## sin el filtro de nivel, que es del cuerpo a cuerpo (desde la pasarela tira al patio y al revés). A tiro quiere decir
+## que la flecha llega: con lo que sabe del fuerte, la puerta entera corta el tiro entre un lado y otro de la empalizada
+## a todos los reinos, también al dueño (su cuerpo de vista para las flechas en los dos sentidos), y con la puerta rota
+## solo se tira de dentro afuera, o al revés, por el vano ([constant SIEGE_BOW_GAP_HALF_WIDTH]); y, si quien lo lleva se
+## la da, con la línea de tiro de verdad ([method set_line_of_sight]: el servidor y [code]--bot[/code], los rayos de su
+## cámara y de su boca al centro del blanco en su mundo, [method bow_sight_clear]). Sin tiro no pelea con el arco: sigue
+## su plan (o, de cerca, saca la espada). Con la espada en la mano y el arco a la espalda, saca el arco para quien está
+## lejos y a tiro, o más cerca si la espada no le llega (en la pasarela, por ejemplo). Ir a rematar a un derribado es
+## acercarse, así que lleva la regla de las persecuciones, como la espada. Para golpear la puerta saca la espada si la
+## lleva (las flechas le hacen poco). En la pasarela, como no esquiva de lado, el arquero no se mueve en ella y nadie
+## usa las habilidades que avanzan en línea recta (la embestida, que además empuja, y el salto atrás): sacaban a los dos
+## de ella. Peleando en ella mira al blanco (para que el arma le llegue aunque esté de través), pero lo que mueve
+## (acercarse y la esquiva hacia atrás) va por el eje de la pasarela, también sin el kit.
 
 ## [constant SIEGE] va al final para no mover los valores de los demás patrones.
 enum Pattern { WANDER, CIRCLE, IDLE, JUMPY, COMBAT, SIEGE }
@@ -155,7 +165,8 @@ const COMBAT_BLOCK_TICKS: Vector2i = Vector2i(30, 80)
 const COMBAT_HEAVY_HOLD_TICKS: Vector2i = Vector2i(24, 50)
 ## [constant COMBAT]: ticks que se recuerda la posición del enemigo antes de volver a buscarlo.
 const COMBAT_RETARGET_TICKS: int = 4
-## [constant SIEGE]: distancia (m) a la que un enemigo le hace dejar su plan para pelear.
+## [constant SIEGE]: distancia (m) a la que un enemigo le hace dejar su plan para pelear (cuerpo a cuerpo; con el arco
+## del kit, [constant SIEGE_BOW_FIGHT_RANGE]).
 const SIEGE_FIGHT_RANGE: float = 12.0
 ## [constant SIEGE]: radio (m) en el que se da por alcanzado un punto de la ruta.
 const SIEGE_WAYPOINT_RADIUS: float = 2.5
@@ -314,9 +325,20 @@ const KIT_REVIVE_ENEMY_CLEARANCE: float = 6.0
 ## Kit: ticks entre dos decisiones de más tras acabar una acción, y lo que dura cada tramo lateral del arquero.
 const KIT_DECISION_GAP_TICKS: Vector2i = Vector2i(4, 12)
 const KIT_STRAFE_TICKS: Vector2i = Vector2i(40, 100)
+## Kit en [constant SIEGE]: distancia (m) hasta la que tira con el arco (o lo saca) a quien tiene a tiro. Con
+## [constant SIEGE_FIGHT_RANGE] (12 m, la del cuerpo a cuerpo) el cambio al arco, que pide más de
+## [constant KIT_SWAP_TO_RANGED_DISTANCE], casi nunca llegaba y el arquero guardaba solo de 9 a 12 m: es esa distancia
+## más 9 m de margen, dentro de la que guarda el arquero ([constant KIT_BOW_KEEP_MAX]). Más lejos sigue su plan.
+const SIEGE_BOW_FIGHT_RANGE: float = 20.0
+## Kit en [constant SIEGE]: medio ancho (m) del vano de la puerta rota por el que pasa una flecha de fuera adentro o al
+## revés (el vano mide 4 m; un poco menos, por el grosor de la jamba).
+const SIEGE_BOW_GAP_HALF_WIDTH: float = 1.8
 
 # Cómo se desatasca un bot de asedio.
 enum _Unstick { NONE, JUMP, DETOUR }
+# Cómo pelea un bot de asedio con un blanco: no pelea, se acerca (el cuerpo a cuerpo, o ir a rematar) o le tira con el
+# arco.
+enum _Engage { SKIP, CLOSE, SHOOT }
 # Pitch máximo (rad) de la puntería del arco (por debajo de la vertical).
 const _MAX_AIM_PITCH: float = 1.4
 
@@ -465,6 +487,16 @@ var _kit_strafe_sign: float = 1.0
 var _kit_strafe_until: int = -1
 # Kit: cuántas veces ha hecho cada cosa (get_kit_counts).
 var _kit_counts: Dictionary[StringName, int] = {}
+# Kit en SIEGE: la pelea en curso es de tirar con el arco (_Engage.SHOOT): con la espada en la mano la cambia por el
+# arco y no se acerca, y con el arco no saca la espada.
+var _kit_shoot_plan: bool = false
+# Kit en SIEGE: quién dice si hay línea de tiro (set_line_of_sight) y la última respuesta para el PNJ defensor y para el
+# enemigo, con el tick de la búsqueda del blanco a la que corresponde (-1 = ninguna).
+var _line_of_sight: Callable = Callable()
+var _sight_defender_tick: int = -1
+var _sight_defender: bool = false
+var _sight_enemy_tick: int = -1
+var _sight_enemy: bool = false
 
 
 ## [param rng_seed] fija la secuencia. [param home] y [param radius] delimitan la zona por la
@@ -816,6 +848,46 @@ func set_ally_finder(finder: Callable) -> void:
 	_ally_checked_tick = -1000
 
 
+## Kit en [constant SIEGE]: cómo sabe si tiene tiro con el arco,
+## [code](from: Vector3, to: Vector3, left_shoulder: bool) -> bool[/code]: true si nada del mundo ni de las estructuras
+## (la empalizada, la puerta cerrada) corta el tiro de un tirador con los pies en [code]from[/code] y la mira en el hombro
+## izquierdo o el derecho al centro de un blanco con los pies en [code]to[/code] ([method bow_sight_clear] con el espacio
+## de su mundo: el del servidor para los falsos, el del cliente para [code]--bot[/code]). Se pregunta como mucho una vez
+## por búsqueda del blanco ([constant COMBAT_RETARGET_TICKS]). Sin ella decide solo con lo que sabe del fuerte (la
+## puerta, el recinto y la pasarela).
+func set_line_of_sight(query: Callable) -> void:
+	_line_of_sight = query
+	_sight_defender_tick = -1
+	_sight_enemy_tick = -1
+
+
+## true si el bot ya sabe preguntar por la línea de tiro ([method set_line_of_sight]).
+func has_line_of_sight() -> bool:
+	return _line_of_sight.is_valid()
+
+
+## La línea de tiro de [method set_line_of_sight] en [param space], la de un disparo del servidor (docs/habilidades.md,
+## sección 4.4) a un blanco quieto: el rayo de la cámara del hombro [param left_shoulder] que pasa por el centro
+## ([constant AimRay.TARGET_CENTER_HEIGHT]) del blanco con los pies en [param to_feet] ([method AimRay.look_for]), que es
+## el que elige el punto apuntado (si choca antes con una jamba, la flecha va a la jamba), y la línea de la boca
+## ([method AimRay.muzzle]) del tirador con los pies en [param from_feet] a ese centro, contra el mundo y las estructuras
+## ([constant HitShapes.LINE_OF_SIGHT_MASK]; la puerta cerrada las corta en los dos sentidos, también la del dueño).
+## Rectas: la caída de la flecha no cuenta. Sin espacio, true.
+static func bow_sight_clear(space: PhysicsDirectSpaceState3D, from_feet: Vector3, to_feet: Vector3,
+		left_shoulder: bool) -> bool:
+	if space == null:
+		return true
+	var center: Vector3 = to_feet + Vector3(0.0, AimRay.TARGET_CENTER_HEIGHT, 0.0)
+	var look: Vector2 = AimRay.look_for(from_feet, center, left_shoulder)
+	var camera: Vector3 = AimRay.canonical(from_feet, look.x, look.y, left_shoulder)[0]
+	# Como AimRay.aim_point: sin hit_from_inside (la cámara puede quedar dentro de una pared sin que cuente).
+	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(camera, center,
+			HitShapes.LINE_OF_SIGHT_MASK)
+	if not space.intersect_ray(query).is_empty():
+		return false
+	return HitShapes.is_ray_clear(space, AimRay.muzzle(from_feet), center)
+
+
 ## Kit: cuántas veces ha hecho cada cosa desde que se creó: [code]ability_0[/code]..[code]ability_2[/code]
 ## (habilidades por ranura), [code]potion_0[/code] y [code]potion_1[/code], [code]swap[/code],
 ## [code]quick[/code] y [code]drawn[/code] (disparos del arco), [code]guard[/code] (muros levantados),
@@ -1052,6 +1124,9 @@ func _kit_fight_input(tick: int, position: Vector3, to_enemy: Vector3, distance:
 				input.buttons |= PlayerInput.SPRINT
 	elif ranged:
 		_keep_bow_distance(input, tick, distance)
+	elif _kit_shoot_plan:
+		# SIEGE: va a tirarle con el arco (lo está sacando): no se acerca con la espada.
+		pass
 	elif distance > COMBAT_ATTACK_DISTANCE:
 		input.move = Vector2(0.0, 1.0)
 		if distance > COMBAT_SPRINT_DISTANCE:
@@ -1083,8 +1158,12 @@ func _decide_kit_action(tick: int, state: CombatState, ranged: bool, distance: f
 		return
 	if state.alt_weapon_id != 0 and state.action == CombatState.Action.NONE:
 		var alt_ranged: bool = is_ranged_weapon(state.alt_weapon_id)
-		if (ranged and not alt_ranged and distance < KIT_SWAP_TO_MELEE_DISTANCE and not kit_ranged_only) \
-				or (not ranged and alt_ranged and (distance > KIT_SWAP_TO_RANGED_DISTANCE or kit_ranged_only)):
+		# En SIEGE, si la pelea es de tirar (_kit_shoot_plan), el arco se queda en la mano y la espada se cambia por él
+		# aunque el blanco esté cerca (la espada no le llega: otro nivel, o la empalizada en medio).
+		if (ranged and not alt_ranged and distance < KIT_SWAP_TO_MELEE_DISTANCE and not kit_ranged_only
+					and not _kit_shoot_plan) \
+				or (not ranged and alt_ranged
+					and (distance > KIT_SWAP_TO_RANGED_DISTANCE or kit_ranged_only or _kit_shoot_plan)):
 			_tap(tick, PlayerInput.SWAP_WEAPON, data.swap_ticks + _gap())
 			_count(&"swap")
 			return
@@ -1124,7 +1203,8 @@ func _decide_bow_action(tick: int, state: CombatState, distance: float) -> void:
 	if slots.has(KitRole.ESCAPE) and distance < KIT_ESCAPE_DISTANCE:
 		_use_ability(tick, state, slots[KitRole.ESCAPE])
 		return
-	# En la pasarela de SIEGE el arquero no esquiva: mira al blanco y no por el eje (el generador se usa igual).
+	# En la pasarela de SIEGE el arquero no esquiva: no se mueve en ella (tirando, lo que mueve no va por el eje; el
+	# generador se usa igual).
 	if distance < KIT_ESCAPE_DISTANCE and _rng.randf() < KIT_BOW_DODGE_CHANCE and not _siege_on_walkway_now:
 		_hold_move = Vector2(0.0, -1.0)
 		_tap(tick, PlayerInput.DODGE, (weapon.dodge.duration_ticks if weapon.dodge != null else 30) + _gap())
@@ -1261,7 +1341,7 @@ func _aim(input: PlayerInput, position: Vector3, tick: int, state: CombatState) 
 
 
 # El arquero se queda entre KIT_BOW_KEEP_MIN y KIT_BOW_KEEP_MAX del enemigo, moviéndose de lado entre medias. En la
-# pasarela de SIEGE (sin barandilla por dentro) se queda quieto en el eje y dispara: mira al blanco y no por el eje, y
+# pasarela de SIEGE (sin barandilla por dentro) se queda quieto y dispara: tirando, lo que mueve no va por el eje, y
 # cualquier paso le podría tirar al patio.
 func _keep_bow_distance(input: PlayerInput, tick: int, distance: float) -> void:
 	if _siege_on_walkway_now:
@@ -1402,51 +1482,79 @@ func _siege_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 	return _hold_circle_input(tick, position, yaw)
 
 
-# Pelea con quien está en [param target] (una posición, o null; [param defender], si es el PNJ defensor) si está a menos
-# de SIEGE_FIGHT_RANGE y se puede alcanzar; null si no. Persiguiendo sin acercarse (SIEGE_CHASE_GIVE_UP_TICKS), deja de
-# perseguir un rato.
+# Pelea con quien está en [param target] (una posición, o null; [param defender], si es el PNJ defensor) si toca
+# (_siege_engagement); null si no. Si persiguiéndolo no se le acerca en SIEGE_STUCK_TICKS, deja de perseguir un rato
+# (SIEGE_CHASE_GIVE_UP_TICKS); tirándole con el arco no persigue.
 func _siege_fight_if_in_range(tick: int, position: Vector3, yaw: float, target: Variant,
 		defender: bool) -> PlayerInput:
 	if not target is Vector3:
 		return null
-	var to_enemy: Vector3 = (target as Vector3) - position
+	var target_feet: Vector3 = target
+	var to_enemy: Vector3 = target_feet - position
 	to_enemy.y = 0.0
 	var distance: float = to_enemy.length()
-	if distance > SIEGE_FIGHT_RANGE or not _can_reach(position, target as Vector3):
+	var engage: _Engage = _siege_engagement(position, target_feet, distance, defender)
+	_kit_shoot_plan = engage == _Engage.SHOOT
+	if engage == _Engage.SKIP:
 		return null
-	if distance <= _siege_engage_distance():
-		# Ha llegado: si el otro se vuelve a alejar (una esquiva, un paso atrás) es otra persecución, que se mide desde
-		# entonces y no desde la distancia a la que empezó la de antes.
+	if engage == _Engage.SHOOT or distance <= COMBAT_ENGAGE_DISTANCE:
+		# Ha llegado (o tira desde donde está): si el otro se vuelve a alejar (una esquiva, un paso atrás) es otra
+		# persecución, que se mide desde entonces y no desde la distancia a la que empezó la de antes.
 		_siege_chase_ref_tick = -1
-	elif not _siege_keeps_chasing(tick, distance, target as Vector3, defender):
+	elif not _siege_keeps_chasing(tick, distance, target_feet, defender):
 		return null
 	_siege_task = SiegeTask.FIGHT
 	_reset_stuck(tick, position)
-	if _siege_on_walkway_now and distance > COMBAT_ENGAGE_DISTANCE:
-		# En la pasarela, si hay una esquina entre los dos, primero la esquina: en línea recta se caería al patio.
-		var enemy_point := Vector2((target as Vector3).x, (target as Vector3).z)
-		var corner: Variant = _siege_walkway_corner(Vector2(position.x, position.z),
-				_siege_routes.walkway_offset(enemy_point))
-		if corner is Vector2:
-			var to_corner := Vector3((corner as Vector2).x - position.x, 0.0, (corner as Vector2).y - position.z)
-			return _walk_input(tick, position, yaw, to_corner, to_corner.length())
-	if _siege_on_walkway_now:
-		# En la pasarela mira por su eje hacia el blanco: lo que hace hacia delante o hacia atrás (acercarse, el paso de un
-		# golpe, la esquiva hacia atrás) va por el eje y no hacia el patio, también pegado a él (integración con el kit:
-		# en las peleas largas, una esquiva «hacia atrás» con el otro casi al lado le tiraba al patio).
-		var heading: Vector3 = _siege_walkway_heading(position, target as Vector3, yaw)
-		if heading != Vector3.ZERO:
-			to_enemy = heading * distance
-	return _fight_input(tick, position, to_enemy, distance, yaw, defender)
+	var heading: Vector3 = Vector3.ZERO
+	if _siege_on_walkway_now and engage == _Engage.CLOSE:
+		if distance > COMBAT_ENGAGE_DISTANCE:
+			# En la pasarela, si hay una esquina entre los dos, primero la esquina: en línea recta se caería al patio.
+			var enemy_point := Vector2(target_feet.x, target_feet.z)
+			var corner: Variant = _siege_walkway_corner(Vector2(position.x, position.z),
+					_siege_routes.walkway_offset(enemy_point))
+			if corner is Vector2:
+				var to_corner := Vector3((corner as Vector2).x - position.x, 0.0, (corner as Vector2).y - position.z)
+				return _walk_input(tick, position, yaw, to_corner, to_corner.length())
+		heading = _siege_walkway_heading(position, target_feet, yaw)
+	var input: PlayerInput = _fight_input(tick, position, to_enemy, distance, yaw, defender)
+	if heading != Vector3.ZERO:
+		# En la pasarela mira al blanco (el arma le llega aunque esté de través, pegado a él), pero lo que se mueve
+		# (acercarse, la esquiva hacia atrás) va por su eje y no hacia el patio: con el kit, en las peleas largas, una
+		# esquiva «hacia atrás» con el otro casi al lado le tiraba al patio. Antes de la revisión de la integración miraba
+		# por el eje y el de al lado era intocable para él.
+		input.move = _siege_move_along(input.move, heading, input.look_yaw)
+	return input
 
 
-# Distancia (m) hasta la que pelea sin perseguir: la de la pelea cuerpo a cuerpo o, con el kit y el arco en la mano,
-# todo SIEGE_FIGHT_RANGE (el arquero guarda la distancia y dispara: no se acerca, así que no persigue a nadie).
-func _siege_engage_distance() -> float:
+# Cómo pelea con el blanco que tiene los pies en [param target] a [param distance] metros en horizontal
+# ([param defender]: el PNJ defensor). Sin el kit, o para ir a rematar a un derribado (hay que llegar andando), se acerca
+# si está a menos de SIEGE_FIGHT_RANGE y lo puede alcanzar (_can_reach). Con el arco, le tira si está a menos de
+# SIEGE_BOW_FIGHT_RANGE y a tiro (_siege_has_shot): con el arco en la mano, salvo que esté tan cerca que el kit saque la
+# espada; con la espada en la mano y el arco a la espalda, si está más lejos que el cambio al arco o si la espada no le
+# llega. Con el arco en la mano y sin tiro no pelea (le tiraría a la empalizada o a la puerta).
+func _siege_engagement(position: Vector3, target: Vector3, distance: float, defender: bool) -> _Engage:
+	var close: bool = distance <= SIEGE_FIGHT_RANGE and _can_reach(position, target)
 	var kit: CombatState = _kit_state()
-	if kit != null and is_ranged_weapon(kit.weapon_id):
-		return SIEGE_FIGHT_RANGE
-	return COMBAT_ENGAGE_DISTANCE
+	var downed: bool = _siege_defender_downed if defender else _enemy_downed
+	if kit == null or downed:
+		return _Engage.CLOSE if close else _Engage.SKIP
+	var bow_in_hand: bool = is_ranged_weapon(kit.weapon_id)
+	var alt_ranged: bool = kit.alt_weapon_id != 0 and is_ranged_weapon(kit.alt_weapon_id)
+	if not bow_in_hand and not alt_ranged:
+		return _Engage.CLOSE if close else _Engage.SKIP
+	# Con el arco en la mano, de cerca el kit saca la espada si la lleva (KIT_SWAP_TO_MELEE_DISTANCE).
+	var to_sword: bool = bow_in_hand and kit.alt_weapon_id != 0 and not alt_ranged and not kit_ranged_only \
+			and distance < KIT_SWAP_TO_MELEE_DISTANCE
+	var shot: bool = distance <= SIEGE_BOW_FIGHT_RANGE and _siege_has_shot(position, target, defender)
+	if not shot:
+		if bow_in_hand and not to_sword:
+			return _Engage.SKIP
+		return _Engage.CLOSE if close else _Engage.SKIP
+	if not close:
+		return _Engage.SHOOT
+	if bow_in_hand:
+		return _Engage.CLOSE if to_sword else _Engage.SHOOT
+	return _Engage.SHOOT if distance > KIT_SWAP_TO_RANGED_DISTANCE or kit_ranged_only else _Engage.CLOSE
 
 
 # Una persecución (alguien a [param distance] metros, en [param target], más lejos que la distancia de pelea; con
@@ -1492,6 +1600,9 @@ func _note_siege_position(position: Vector3) -> void:
 		_enemy_velocity = Vector3.ZERO
 		_enemy_downed = false
 		_hold_kind = &""
+		_kit_shoot_plan = false
+		_sight_defender_tick = -1
+		_sight_enemy_tick = -1
 		_siege_chase_ref_tick = -1
 		_siege_chase_blocked_until = -1
 		_siege_rally_until = -1
@@ -1707,12 +1818,34 @@ func _assault_input(tick: int, position: Vector3, yaw: float) -> PlayerInput:
 	input.look_yaw = _yaw_toward(facing, yaw)
 	if tick >= _next_decision_tick:
 		_hold_aims_gate = true
+		if _kit_swaps_to_sword_for_gate(tick):
+			# Con el kit, la puerta se golpea con la espada si la lleva: a flechazos le quitaba unas 2,6 veces menos.
+			input.buttons = _hold_buttons
+			return input
 		if _rng.randf() < COMBAT_HEAVY_CHANCE:
 			_start_heavy_attack(tick)
 		else:
 			_start_light_attack(tick)
 		input.buttons = _hold_buttons
 	return input
+
+
+# Kit, asalto a la puerta: con el arco en la mano y la espada a la espalda (y sin ser un arquero puro, kit_ranged_only),
+# pulsa el cambio de arma en cuanto puede (sin acción en curso; mientras tanto no golpea). true si no toca golpear: ha
+# pulsado el cambio (queda en _hold_* y _next_decision_tick, como un toque) o lo espera.
+func _kit_swaps_to_sword_for_gate(tick: int) -> bool:
+	var kit: CombatState = _kit_state()
+	if kit == null or kit_ranged_only or kit.alt_weapon_id == 0:
+		return false
+	if not is_ranged_weapon(kit.weapon_id) or is_ranged_weapon(kit.alt_weapon_id):
+		return false
+	_hold_buttons = 0
+	if kit.action != CombatState.Action.NONE:
+		return true
+	_hold_move = Vector2.ZERO
+	_tap(tick, PlayerInput.SWAP_WEAPON, CombatCatalog.tables().swap_ticks + _gap())
+	_count(&"swap")
+	return true
 
 
 # Un ataque a la puerta que sigue: PRIMARY pulsado mirando a la puerta (en formación, de frente, como al empezarlo).
@@ -1914,8 +2047,8 @@ func _siege_inward() -> Vector3:
 	return inward.normalized() if inward.length_squared() > 0.0001 else Vector3.ZERO
 
 
-# true si el bot puede llegar hasta [param target]: está a su nivel (GUE-45) y no al otro lado de una puerta que le
-# cierra el paso.
+# true si el bot puede llegar andando hasta [param target] (para golpearle cuerpo a cuerpo o rematarle): está a su nivel
+# (GUE-45) y no al otro lado de una puerta que le cierra el paso. El tiro con el arco lo decide _siege_has_shot.
 func _can_reach(position: Vector3, target: Vector3) -> bool:
 	if not _siege_same_level(position, target):
 		return false
@@ -1929,6 +2062,86 @@ func _can_reach(position: Vector3, target: Vector3) -> bool:
 	mine.y = 0.0
 	theirs.y = 0.0
 	return (mine.dot(inward) > 0.0) == (theirs.dot(inward) > 0.0)
+
+
+# true si el bot tiene tiro con el arco al blanco con los pies en [param target] ([param defender]: el PNJ defensor):
+# lo deja lo que sabe del fuerte (_siege_open_shot) y la línea de tiro de set_line_of_sight, si la tiene. La línea se
+# pregunta una vez por búsqueda del blanco (su tick, que cambia cada COMBAT_RETARGET_TICKS).
+func _siege_has_shot(position: Vector3, target: Vector3, defender: bool) -> bool:
+	if not _siege_open_shot(position, target):
+		return false
+	if not _line_of_sight.is_valid():
+		return true
+	if defender:
+		if _sight_defender_tick != _siege_defender_checked_tick:
+			_sight_defender_tick = _siege_defender_checked_tick
+			_sight_defender = bool(_line_of_sight.call(position, target, _aim_left))
+		return _sight_defender
+	if _sight_enemy_tick != _enemy_checked_tick:
+		_sight_enemy_tick = _enemy_checked_tick
+		_sight_enemy = bool(_line_of_sight.call(position, target, _aim_left))
+	return _sight_enemy
+
+
+# Lo que sabe del fuerte sobre un tiro de [param position] a [param target]: la empalizada y la puerta entera cortan el
+# tiro entre dentro y fuera del recinto a todos los reinos (también al dueño: el cuerpo de vista de su puerta para las
+# flechas en los dos sentidos), y con la puerta rota solo se tira de un lado a otro por el vano. Desde la pasarela, o a
+# alguien que está en ella, decide la línea de tiro (el parapeto). Sin el tamaño del recinto, la puerta entera corta el
+# tiro entre los dos lados de su plano. Sin posiciones del fuerte, true.
+func _siege_open_shot(position: Vector3, target: Vector3) -> bool:
+	if not _siege_has_places():
+		return true
+	if _siege_on_walkway_now or is_on_walkway(target):
+		return true
+	var mine: int = _siege.is_inside_enclosure(position)
+	var theirs: int = _siege.is_inside_enclosure(target)
+	if mine < 0 or theirs < 0:
+		if _siege.is_gate_broken():
+			return true
+		var inward: Vector3 = _siege_inward()
+		var from_gate: Vector3 = position - _siege.gate_position
+		var to_gate: Vector3 = target - _siege.gate_position
+		from_gate.y = 0.0
+		to_gate.y = 0.0
+		return inward == Vector3.ZERO or (from_gate.dot(inward) > 0.0) == (to_gate.dot(inward) > 0.0)
+	if mine == theirs:
+		return true
+	if not _siege.is_gate_broken():
+		return false
+	return _siege_through_gap(position if mine == 1 else target, target if mine == 1 else position)
+
+
+# true si la línea (en planta) de [param inside] (dentro del recinto) a [param outside] (fuera) sale por el vano de la
+# puerta: cruza la pared de la puerta, y a menos de SIEGE_BOW_GAP_HALF_WIDTH de su centro. El recinto es convexo, así
+# que si cruza esa pared dentro de su ancho no cruza ninguna otra.
+func _siege_through_gap(inside: Vector3, outside: Vector3) -> bool:
+	var inward: Vector3 = _siege_inward()
+	if inward == Vector3.ZERO:
+		return false
+	var across := Vector3(-inward.z, 0.0, inward.x)
+	var a: Vector3 = inside - _siege.gate_position
+	var b: Vector3 = outside - _siege.gate_position
+	var a_along: float = a.x * inward.x + a.z * inward.z
+	var b_along: float = b.x * inward.x + b.z * inward.z
+	if a_along <= 0.0 or b_along >= 0.0:
+		return false
+	var t: float = a_along / (a_along - b_along)
+	var a_side: float = a.x * across.x + a.z * across.z
+	var b_side: float = b.x * across.x + b.z * across.z
+	return absf(a_side + (b_side - a_side) * t) <= SIEGE_BOW_GAP_HALF_WIDTH
+
+
+# [param move] (en el marco de un personaje que mirase hacia [param heading]: y adelante, x a su derecha) pasado al
+# marco de [param look_yaw], el que mira de verdad: el mismo desplazamiento en el mundo. La simulación mueve (y esquiva)
+# relativo al yaw de la cámara (PlayerCharacter.simulate y ActionMachine._dodge_yaw).
+static func _siege_move_along(move: Vector2, heading: Vector3, look_yaw: float) -> Vector2:
+	if move == Vector2.ZERO:
+		return move
+	var side := Vector3(-heading.z, 0.0, heading.x)
+	var world: Vector3 = heading * move.y + side * move.x
+	var forward := Vector3(-sin(look_yaw), 0.0, -cos(look_yaw))
+	var right := Vector3(cos(look_yaw), 0.0, -sin(look_yaw))
+	return Vector2(world.dot(right), world.dot(forward))
 
 
 # --- Pasarela (GUE-45) --------------------------------------------------------------------------

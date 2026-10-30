@@ -197,6 +197,28 @@ func test_people_replace_fillers_one_for_one_while_the_sides_stay_even() -> void
 	assert_eq(rig.removed, [101, 102] as Array[int], "el más antiguo de cada reino")
 
 
+func test_the_filler_that_leaves_is_the_oldest_calm_one_of_its_realm() -> void:
+	# Revisión de la integración de las habilidades: el más antiguo podía estar derribado, y su baja era una muerte con KILL
+	# para quien lo derribó; o levantando o rematando a alguien. Se va el más antiguo tranquilo (calm_check) y, si ninguno
+	# lo está, el más antiguo (su baja ya no es una muerte: ZoneServer.retire_filler).
+	var rig := Rig.new(8, BORDER)
+	rig.fill(8)
+	var busy: Dictionary[int, bool] = {101: true, 103: true}
+	rig.keeper.calm_check = func(net_id: int) -> bool: return not busy.has(net_id)
+	assert_true(rig.person_joins(V), "entra una persona en Vardheim")
+	assert_eq(rig.removed, [105] as Array[int], "el 101 y el 103 no están tranquilos: se va el 105")
+	assert_true(rig.keeper.is_filler(101) and rig.keeper.is_filler(103), "y ellos siguen")
+	# La lambda guarda el mismo diccionario: se cambia por dentro.
+	busy.clear()
+	for net_id: int in [102, 104, 106, 108]:
+		busy[net_id] = true
+	assert_true(rig.person_joins(S), "otra en Solmarch")
+	assert_eq(rig.removed, [105, 102] as Array[int], "ninguno de Solmarch está tranquilo: el más antiguo")
+	rig.keeper.calm_check = Callable()
+	assert_true(rig.person_joins(V), "sin calm_check, todos lo están")
+	assert_eq(rig.removed, [105, 102, 101] as Array[int])
+
+
 func test_a_person_entering_the_short_side_does_not_retire_anyone() -> void:
 	var rig := Rig.new(8, BORDER)
 	# Dos falsos de Vardheim y seis de Solmarch: Vardheim es el bando corto.

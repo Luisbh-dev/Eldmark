@@ -25,6 +25,11 @@ extends RefCounted
 ## su plaza puede cedérsela a otro HELLO.
 ## [br]5. Nada más retira ni añade falsos. El relleno no cuenta para rechazar a nadie ([RealmBalance.exceeds]), ni
 ## para llenar el servidor.
+## [br]6. [b]A quién se retira[/b] (revisión de la integración de las habilidades): el más antiguo del reino que esté
+## [b]tranquilo[/b] ([member calm_check]: ni derribado ni levantando o rematando a nadie; muerto esperando a reaparecer,
+## también). Si ninguno lo está, el más antiguo. La baja del relleno que se retira nunca es una muerte: [member remover]
+## lo da de baja sin DEATH ni KILL aunque esté derribado ([method ZoneServer.retire_filler]). Que entre una persona no
+## suma una muerte a un bando y una baja al otro, ni corta un levantar o un rematar si hay a quién retirar sin hacerlo.
 ## [br][br]
 ## [ZoneServer] llama a [method on_person_joined], [method on_person_left], [method reserve_seat] y
 ## [method release_seat] ([method ZoneServer.set_filler_keeper]) y le avisa de cada falso que se da de baja
@@ -34,8 +39,11 @@ extends RefCounted
 
 ## [code](realm: int) -> int[/code]: crea un jugador falso en el reino y devuelve su id de red (o -1).
 var creator: Callable = Callable()
-## [code](net_id: int) -> void[/code]: da de baja al jugador falso.
+## [code](net_id: int) -> void[/code]: da de baja al jugador falso (sin muerte aunque esté derribado: regla 6).
 var remover: Callable = Callable()
+## [code](net_id: int) -> bool[/code]: true si retirar ya al falso no corta nada (regla 6: ni derribado ni levantando o
+## rematando). Sin él, todos lo están.
+var calm_check: Callable = Callable()
 
 var _allowed: PackedInt32Array = PackedInt32Array()
 var _budget: int = 0
@@ -153,15 +161,24 @@ func on_person_left(realm: int) -> bool:
 	return true
 
 
-# Retira el falso de relleno más antiguo de [param realm]. false si ese reino no tiene.
+# Retira el falso de relleno más antiguo de [param realm] que esté tranquilo (calm_check) o, si ninguno lo está, el más
+# antiguo (regla 6). false si ese reino no tiene.
 func _retire_oldest_of(realm: int) -> bool:
+	var chosen: int = -1
 	for net_id: int in _ids:
-		if _realm_of[net_id] == realm:
-			forget(net_id)
-			if remover.is_valid():
-				remover.call(net_id)
-			return true
-	return false
+		if _realm_of[net_id] != realm:
+			continue
+		if not calm_check.is_valid() or bool(calm_check.call(net_id)):
+			chosen = net_id
+			break
+		if chosen < 0:
+			chosen = net_id
+	if chosen < 0:
+		return false
+	forget(chosen)
+	if remover.is_valid():
+		remover.call(chosen)
+	return true
 
 
 func _persons() -> PackedInt32Array:

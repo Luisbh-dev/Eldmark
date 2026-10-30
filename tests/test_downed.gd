@@ -496,6 +496,25 @@ func test_a_fake_that_leaves_while_downed_dies_first_with_death_and_kill() -> vo
 	assert_eq(_server().get_scores().get_entry(attacker).kills, 1)
 
 
+func test_a_filler_retired_while_downed_leaves_without_death_or_kill() -> void:
+	# Revisión de la integración de las habilidades: el falso de relleno que cede su sitio a una persona (GUE-43) se iba
+	# como cualquier falso, y si estaba derribado su baja era una muerte con KILL para quien lo derribó: la entrada de una
+	# persona sumaba una muerte a un bando. Retirado con retire_filler, solo el DESPAWN.
+	await _rig.start_flat(tree)
+	var ids: Array[int] = await _downed_pair()
+	var attacker: int = ids[0]
+	var victim: int = ids[1]
+	assert_false(_server().is_fake_calm(victim), "derribado no está tranquilo")
+	assert_true(_server().is_fake_calm(attacker), "quien lo derribó, sí")
+	assert_true(_server().retire_filler(victim))
+	await _rig.advance(2)
+	assert_null(_rig.server.get_registry().get_entity(victim), "se va")
+	assert_eq(_events_of(DEATH, victim).size(), 0, "sin DEATH")
+	assert_eq(_events_of(KILL, victim).size(), 0, "ni KILL")
+	var entry: Variant = _server().get_scores().get_entry(attacker)
+	assert_true(entry == null or entry.kills == 0, "ni muerte en el marcador")
+
+
 func test_a_player_who_leaves_while_downed_dies_and_comes_back_at_the_camp() -> void:
 	await _start_net_server()
 	var events: Array[NetMessages.EntityEvent] = []

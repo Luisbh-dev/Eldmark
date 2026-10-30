@@ -70,7 +70,7 @@ class HeightWalker:
 		var was_up: bool = is_up()
 		if input.has(PlayerInput.PRIMARY):
 			presses += 1
-		if was_up and input.has(PlayerInput.DODGE) and absf(input.move.x) > 0.01:
+		if was_up and input.has(PlayerInput.DODGE) and is_side_dodge(input):
 			side_dodges_up += 1
 		if input.move.length() > 0.0:
 			var forward := Vector3(-sin(yaw), 0.0, -cos(yaw))
@@ -84,6 +84,21 @@ class HeightWalker:
 			worst_on_walkway = maxf(worst_on_walkway, routes.walkway_distance(Vector2(position.x, position.z)))
 		position.y = FLOOR + elevation
 		return input
+
+
+	## true si la esquiva de [param input] va de través a la pasarela (hacia el patio o el parapeto) y no por su eje: su
+	## dirección en el mundo (la del movimiento respecto del yaw de la cámara, como ActionMachine._dodge_yaw) frente a la
+	## tangente del eje donde está. Desde la revisión de la integración el bot mira al enemigo y no por el eje, así que
+	## una esquiva por el eje puede llevar movimiento de lado en su marco: lo que cuenta es adónde va en el mundo.
+	func is_side_dodge(input: PlayerInput) -> bool:
+		var dodge_yaw: float = input.look_yaw + PI
+		if input.move.length() >= 0.1:
+			dodge_yaw = input.look_yaw + atan2(-input.move.x, input.move.y)
+		var direction := Vector2(-sin(dodge_yaw), -cos(dodge_yaw))
+		var offset: float = routes.walkway_offset(Vector2(position.x, position.z))
+		var a: Vector2 = routes.walkway_point(maxf(offset - 0.25, 0.0))
+		var b: Vector2 = routes.walkway_point(minf(offset + 0.25, routes.walkway_length()))
+		return absf((b - a).normalized().cross(direction)) > 0.1
 
 
 	## true si [param point] está sobre una de las dos rampas o en su desembarco, entre su cima y el eje de la

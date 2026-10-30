@@ -2201,9 +2201,10 @@ falsos de combate usan el kit: el registro de combate lleva también nombres de 
 - **Por su papel, no por su nombre**: el bot no conoce `shield_bash`; mira forma, avance, canalización y proyectil.
   Un arma nueva con habilidades parecidas se usa sin tocarlo.
 - **Asedio**: los bots de `SIEGE` usan el kit al pelear (el paso 1 de su plan) pero no levantan a nadie: siguen su
-  ruta. Las pruebas de asedio de F6b siguen en verde. Con F6b fusionada (sus defensores, la pasarela, la reunión y el aforo de 40
-  en el fuerte, pendiente de volver a medir), en [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones),
-  «Integración de las habilidades sobre F6b».
+  ruta. Las pruebas de asedio de F6b siguen en verde. Con F6b fusionada (sus defensores, la pasarela, la reunión y el aforo de 40,
+  que en el fuerte era una estimación y se midió en la revisión de la integración), en
+  [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones), «Integración de las habilidades
+  sobre F6b» y «Revisión de la integración de las habilidades» (el arco de los bots de asedio solo tira con línea de tiro).
 - **Red mala en el servidor** en `test_abilities_reconciliation`: §7.3 pedía el `NetSim` en cada bot, pero el tope del
   rebobinado cuenta el retardo del simulador del servidor y no el de un cliente (red.md §10), y con el simulador en
   los bots el servidor rechazaba 14 de 20 disparos (flechas inofensivas) y 20 golpes. Con 120 ms de RTT, 20 de jitter

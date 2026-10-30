@@ -706,10 +706,19 @@ func _scan_enemies(bytes: PackedByteArray, section_offset: int) -> void:
 				_enemy_alive[net_id] = bytes[record_offset + 20] != EntityRecord.HEALTH_Q_DEAD
 			elif _ally_positions.has(net_id):
 				_ally_positions[net_id] = NetMath.unpack_position(bytes.decode_u64(record_offset + 2))
-				_ally_alive[net_id] = bytes[record_offset + 20] != EntityRecord.HEALTH_Q_DEAD
+				_ally_alive[net_id] = is_standing_record(bytes, record_offset)
 			record += ENEMY_SCAN_STRIDE
 		running += count
 		offset += count * EntityRecord.SIZE
+
+
+## true si el registro de [param bytes] en [param record_offset] ([EntityRecord]) es de alguien vivo y en pie: su vida
+## no es [constant EntityRecord.HEALTH_Q_DEAD] y su acción (byte 19, los 4 bits bajos) no es DOWNED. Un derribado publica
+## su vida de derribado, que nunca es 0 ([code]Combatant.publish[/code]): sin mirar la acción contaría como vivo. Son los
+## aliados que cuenta en la reunión (GUE-44), como [code]ZoneServer._count_allies[/code] y [BotAllySight].
+static func is_standing_record(bytes: PackedByteArray, record_offset: int) -> bool:
+	return bytes[record_offset + 20] != EntityRecord.HEALTH_Q_DEAD \
+			and (bytes[record_offset + 19] & 15) != CombatState.Action.DOWNED
 
 
 # Cerebro de combate: lee el bloque extra del snapshot (vida, estado, tick de reaparición) y, estando
@@ -760,8 +769,9 @@ func _find_defender(position: Vector3) -> Variant:
 	return best
 
 
-# Cerebro de asedio: cuántos jugadores de su reino, vivos y sin contarle a él, están a menos de [param radius] metros
-# (en horizontal) de [param center], según su última posición conocida (el contador de la reunión, GUE-44).
+# Cerebro de asedio: cuántos jugadores de su reino, vivos y en pie (is_standing_record) y sin contarle a él, están a menos
+# de [param radius] metros (en horizontal) de [param center], según su última posición conocida (el contador de la
+# reunión, GUE-44).
 func _count_allies(center: Vector3, radius: float) -> int:
 	var limit: float = radius * radius
 	var found: int = 0

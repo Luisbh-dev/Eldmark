@@ -1831,7 +1831,7 @@ Los resultados completos y lo que pasa en la batalla están en [fuerte.md 8.3](f
 el criterio de 8 ms de p99 **no se cumple** (19,1 ms, con la mediana ya en 10,6), igual que en la refriega de la fase 3 (15,9 ms con 64
 combatientes en una máquina en reposo), los KB/s por cliente se cumplen (36,1 de 37) y no se sustituye ni una entrada; con 128 el
 servidor no sostiene el tiempo real (la mitad de las entradas de los clientes se sustituye y el rebobinado falla a los honrados).
-**El primer límite de jugadores por batalla en el fuerte sigue siendo 64 (32 contra 32)** (sin el kit de la fase 4; con él, 40: abajo). El coste de las fortalezas (la sección `war`)
+**El primer límite de jugadores por batalla en el fuerte sigue siendo 64 (32 contra 32)** (sin el kit de la fase 4; con él, la medida de 20 contra 20 de abajo). El coste de las fortalezas (la sección `war`)
 es de 0,1 ms de mediana: el cuello es `simulate()` (palanca 6).
 
 Desde GUE-44 (F6b) los bots de asedio esperan a los suyos en la salida de su campamento y van en formación (fuerte.md 8.3, F6b,
@@ -1866,7 +1866,7 @@ cliente y como mucho un 0,03 % de entradas sustituidas, sí; con 128, no: el p99
 (81 y 87 %), las entradas de los clientes se sustituyen o no según cuánto se retrasa (38,6 % y 0,00 % en las dos pasadas) y el
 rebobinado falla a los honrados en las dos.
 **El primer límite de jugadores por batalla en el fuerte sigue en 64 (32 contra 32), también con los PNJ** (sin el kit de la fase 4;
-con él, 40: abajo). La batalla de cada pasada
+con él, la medida de 20 contra 20 de abajo). La batalla de cada pasada
 y la sesión de telemetría de 20 contra 20, en [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones) (F6b, paquete E).
 
 **Medidas de la fase 4: refriegas con el kit** (`tools/load_test.gd --brawl`, H5;
@@ -1919,16 +1919,38 @@ en marcha a ratos (carga media de 0,5 a 0,7 al empezar cada escenario). Tick en 
   aforo propio sigue en 64), y la refriega de 40 está en la batería `--brawl`. Para volver a 64 hacen falta la palanca 6 (`simulate()`, que sigue siendo el 60 % del tick) y abaratar la
   preparación de los candidatos de las flechas (rehacer las cajas solo de quien se ha movido, o una rejilla en lugar del
   barrido en x). Los asedios del fuerte (F6a y F6b) se midieron sin el kit; con él, por la misma cuenta y **sin medir**
-  (estimación), el fuerte pasaría de 32 contra 32 a unos 20 contra 20.
+  (estimación), el fuerte pasaría de 32 contra 32 a unos 20 contra 20 (medido después, en la revisión de la integración:
+  abajo).
 
 **Integración de las habilidades sobre F6b** (fusión de la fase 4 con F6b): los asedios de F6b de arriba (32 contra 32 y 64 contra
 64, con y sin PNJ) son de antes del kit. Desde la fusión los falsos y los bots de asedio pelean con él (el paso 1 de su plan,
-[habilidades.md 11.9](habilidades.md#119-h5--integración)), así que **el límite de jugadores por batalla en el fuerte con el kit es
-40 (20 contra 20), pendiente de volver a medir** los asedios con el kit y los PNJ (`load_test.gd --siege --npcs`). El aforo por defecto
-del servidor del Vado Gris es ese 40 (`Zones.MAX_PLAYERS`); las herramientas y las pruebas de F6b que miden más jugadores (los asedios
-de `SIEGE_MATRIX`, 32 contra 32 y 64 contra 64; `siege_battle.gd` y `SiegeRunner`) piden su aforo con `--max-players` o
-`ServerConfig.max_players` explícitos (`load_test.gd`: `server_max_players`, los jugadores más 8). Nota también en
+[habilidades.md 11.9](habilidades.md#119-h5--integración)). La integración dio el límite en el fuerte con el kit como 40 (20 contra
+20), pero era la estimación de arriba, sin medir, y la medida que proponía (`load_test.gd --siege --npcs`) no llevaba arqueros: los
+falsos de asedio salen con la plantilla por defecto y los `SwarmBot` no tienen kit. El aforo por defecto del servidor del Vado Gris es
+40 (`Zones.MAX_PLAYERS`); las herramientas y las pruebas de F6b que miden más jugadores (los asedios de `SIEGE_MATRIX`, 32 contra 32 y
+64 contra 64; `siege_battle.gd` y `SiegeRunner`) piden su aforo con `--max-players` o `ServerConfig.max_players` explícitos
+(`load_test.gd`: `server_max_players`, los jugadores más 8), y también cualquier sesión a mano con más de 40 jugadores. Nota también en
 [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones).
+
+**Asedio de 20 contra 20 con el kit y los PNJ** (revisión de la integración; GUE-16): `load_test.gd --scenario=siege --fakes=30
+--bots=10 --seconds=120 --npcs`, con la plantilla por defecto y con la mitad de tiradores (`--fake-loadout=marksman:50`; el arco de
+los bots de asedio, desde la revisión, solo tira con línea de tiro). Misma máquina de 4 núcleos sin otra suite (carga de 0,5 a 0,9);
+la refriega de 40 de la tabla de arriba, repetida en la misma sesión, da 7,4 / 11,3 / 13,2 / 22,7 ms. Tick en ms del último tramo de
+34 s; secciones, p50 (p99):
+
+| Asedio de 20 contra 20 con PNJ | Tick p50 / p95 / p99 / máx | Ventana p50 / p99 | `sim` | `combat_projectiles` | Bajada por cliente | Sustituidas (ventana) | Flechas | Rebobinados rechazados |
+|---|---|---|---|---|---|---|---|---|
+| Plantilla por defecto (el escudero) | 8,2 / 12,8 / **16,2** / 32,6 | 8,9 / 17,1 | 4,9 (9,9) | 0 | 34,4 KB/s | 0,00 % | ninguna | 0 |
+| La mitad de tiradores | 9,6 / 14,3 / **16,9** / 38,7 | 9,6 / 17,2 | 5,8 (10,5) | 0,26 (**1,01**) | 36,1 KB/s | 0,00 % | 328, pico 11 | 0 |
+
+**El fuerte con el kit está en el filo del criterio de la fase 4** (p99 del tick ≤ 16,7 ms y de `combat_projectiles` ≤ 1 ms): con la
+plantilla por defecto lo cumple (16,2 ms) y con la mitad de tiradores se pasa por poco (16,9 y 1,01 ms); las marcas de la ventana
+dan 17,1–17,2 ms en las dos. Cuesta más que la refriega de 40 en campo abierto por `simulate()` (4,9–5,8 ms de mediana frente a 4,3,
+~70–74 µs por personaje en las laderas y la explanada del fuerte) y los cerebros de los PNJ (0,2–0,4 ms). **El límite por batalla
+en el fuerte con el kit queda en 40 (20 contra 20), medido y sin margen**: no se baja el aforo por lo que separa una pasada del
+criterio (del orden del ruido entre dos pasadas iguales, ~1 ms), y la palanca para tener margen sigue siendo la 6 (`simulate()`,
+TEC-35). Detalle de la batalla en cada pasada, en [fuerte.md 8.3](fuerte.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones)
+(«Revisión de la integración de las habilidades»).
 
 **Palancas para Eldrun, por orden,** decididas con las medidas del final de la fase 2:
 

@@ -2,7 +2,8 @@ extends TestCase
 ## A cuántos de los suyos ve un bot del cliente de [code]--bot[/code] cerca de un punto ([BotAllySight], el contador de
 ## la reunión de los bots de asedio, GUE-44), con un [RemoteWorld] de verdad y mensajes sintéticos: cuenta a los
 ## jugadores remotos de su reino, vivos, ya dibujados y a menos del radio en horizontal; no a los de otro reino, ni a los
-## muertos, ni a los PNJ (tampoco los de su reino), ni a los que están más lejos o aún no se dibujan.
+## muertos, ni a los PNJ (tampoco los de su reino), ni a los que están más lejos o aún no se dibujan. Tampoco a los
+## derribados, como el servidor con los falsos (revisión de la integración de las habilidades).
 
 const V: int = NetProtocol.Realm.VARDHEIM
 const S: int = NetProtocol.Realm.SOLMARCH
@@ -66,3 +67,22 @@ func test_it_counts_the_live_players_of_its_realm_within_the_radius() -> void:
 	_world.draw(200.0, 0.016)
 	assert_eq(BotAllySight.count_in(_world, V, center, 15.0), 3, "el 7, cuando ya se dibuja")
 	assert_eq(BotAllySight.count_in(null, V, center, 15.0), 0, "sin mundo, nadie")
+
+
+func test_a_downed_ally_does_not_count() -> void:
+	# Un derribado publica su vida de derribado, que nunca es 0 (Combatant.publish): solo su acción dibujada (DOWNED) dice
+	# que no está en pie. El servidor no lo cuenta (ZoneServer._rebuild_ally_cache, is_alive); el --bot tampoco.
+	var center := Vector3(10.0, 0.0, -130.0)
+	_spawn(1, NetProtocol.EntityKind.PLAYER, V, center + Vector3(3.0, 0.0, 0.0))
+	_spawn(2, NetProtocol.EntityKind.PLAYER, V, center + Vector3(-3.0, 0.0, 0.0))
+	var downed := EntityRecord.from_state(2, NetProtocol.EntityKind.PLAYER, PlayerState.new(), 0)
+	downed.position = center + Vector3(-3.0, 0.0, 0.0)
+	downed.action = CombatState.Action.DOWNED
+	downed.health_q = EntityRecord.quantize_health(300, CombatCatalog.rules().downed_health)
+	assert_true(downed.health_q != EntityRecord.HEALTH_Q_DEAD, "su vida publicada no es la de un muerto")
+	var snapshot := NetMessages.Snapshot.new()
+	snapshot.server_tick = 120
+	snapshot.records = [downed] as Array[EntityRecord]
+	_world.on_snapshot(snapshot)
+	_world.draw(120.0, 0.016)
+	assert_eq(BotAllySight.count_in(_world, V, center, 15.0), 1, "el 1; no el derribado")

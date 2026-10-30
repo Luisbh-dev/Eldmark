@@ -11,8 +11,9 @@ extends RefCounted
 ## respaldo, las posiciones de [code]data/routes/<zona>.tres[/code]; los enemigos son los remotos que dibuja su
 ## [RemoteWorld], también los PNJ de guerra ([BotEnemySight]), a los que busca primero, los golpes avisados
 ## (TELEGRAPH) que evita le llegan por [signal NetClient.telegraph_received] ([BotThreatSight], solo los de PNJ que le
-## pueden dañar: [method BotThreatSight.is_hostile_view]) y a los suyos los cuenta
-## en el punto de reunión de su campamento con [BotAllySight] (GUE-44);
+## pueden dañar: [method BotThreatSight.is_hostile_view]), a los suyos los cuenta
+## en el punto de reunión de su campamento con [BotAllySight] (GUE-44) y el arco del kit solo tira si la flecha llega,
+## con el rayo de [method BotBrain.bow_sight_clear] en el mundo del cliente ([method BotBrain.set_line_of_sight]);
 ## [br]- si no, [constant BotBrain.Pattern.WANDER]: pasea alrededor de su punto de aparición.
 ## [br][br]
 ## Los cerebros de combate y de asedio pelean con el kit de la fase 4 (H5; docs/habilidades.md, sección 7.1,
@@ -86,6 +87,14 @@ static func _make_siege(client: NetClient, config: ClientConfig, home: Vector3, 
 		return threats.find(prediction.get_predicted_tick()))
 	var allies := BotAllySight.new(client)
 	brain.set_ally_counter(func(center: Vector3, radius: float) -> int: return allies.count(center, radius))
+	# El arco solo tira si la flecha llega: el mismo rayo que el servidor, en el mundo del cliente (la puerta de su
+	# FortGate se cierra y se abre con el estado de la fortaleza).
+	brain.set_line_of_sight(func(from_feet: Vector3, to_feet: Vector3, left_shoulder: bool) -> bool:
+		var character: PlayerCharacter = client.get_character()
+		if not is_instance_valid(character) or not character.is_inside_tree():
+			return true
+		return BotBrain.bow_sight_clear(character.get_world_3d().direct_space_state, from_feet, to_feet,
+				left_shoulder))
 	brain.set_siege(view, routes, realm)
 	return brain
 
