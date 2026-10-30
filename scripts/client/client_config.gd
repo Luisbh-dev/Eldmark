@@ -9,11 +9,22 @@ extends RefCounted
 ## --port=<puerto>  --net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1  --bot-seed=N
 ## --bot-cheat=<modo>  --bot-brain=<wander|combat|siege>  --quit-after-ticks=N  --quit-at-server-tick=N
 ## --report=<ruta.json>  --state-log=<ruta.csv>  --dev-lock-path=<ruta.json>  --loadout=<plantilla>
+## --title  --platform=<url>  --login=<correo>  --password-file=<ruta>  --character=<nombre>  --world=N
+## --dtls-cert=<pem>  --dtls-name=<cn>
 ## [/codeblock]
-## [br]El modo ([enum Mode]) sale de ellos con esta prioridad: [code]--bots[/code] ([constant SWARM])
-## > [code]--bot[/code] ([constant BOT]) > [code]--local[/code] ([constant LOCAL]) >
-## [code]--connect[/code] ([constant ONLINE]) > nada ([constant OFFLINE], el sandbox de la fase 1).
-## [code]--server[/code] lo resuelve antes [code]boot.gd[/code] y no es un modo de cliente.
+## [br]El modo ([enum Mode]) sale de ellos con esta prioridad (docs/plataforma.md §13.3): [code]--bots[/code]
+## ([constant SWARM]) > [code]--bot[/code] ([constant BOT]) > [code]--local[/code] ([constant LOCAL]) >
+## [code]--connect[/code] ([constant ONLINE]) > [code]--title[/code] o [code]--platform[/code] ([constant TITLE], la
+## pantalla de título con cuenta) > nada: el sandbox de la fase 1 ([constant OFFLINE]) desde el editor y el título en
+## una exportación ([param exported] de [method from_args]). [code]--server[/code] lo resuelve antes
+## [code]boot.gd[/code] y no es un modo de cliente.
+## [br][br]
+## [b]Con cuenta[/b] (docs/plataforma.md §5.5 y §13.3): [code]--platform=<url>[/code] es la API pública de la
+## plataforma (sin él, el título usa el ajuste de proyecto [constant PLATFORM_URL_SETTING]); [code]--bot
+## --platform[/code] inicia sesión con [code]--login[/code] y la contraseña de [code]--password-file[/code], crea el
+## personaje [code]--character[/code] si falta y entra con billete. [member character_id], [member ticket] y
+## [member dtls_cert_pem] no salen de los argumentos: los rellena [AccountFlow] con la respuesta de
+## [code]enter[/code] para [OnlineMain] ([member from_front] si viene de [FrontMain]).
 ## [br][br]
 ## Un valor que no es válido (un puerto fuera de rango, un número mal escrito, un reino que no existe)
 ## se ignora, se queda el valor por defecto y se anota en [member warnings]: el cliente nunca
@@ -32,6 +43,9 @@ enum Mode {
 	BOT,
 	## Enjambre de [member bot_count] clientes ligeros que no simulan.
 	SWARM,
+	## Pantalla de título con cuenta ([FrontMain], docs/plataforma.md §13): inicio de sesión, personajes y entrada
+	## con billete.
+	TITLE,
 }
 
 ## Cerebros de los bots ([member bot_brain], [code]--bot-brain[/code]): pasear (por defecto), pelear o
@@ -46,6 +60,14 @@ const DEFAULT_NAME_PREFIX: String = NameRules.DEFAULT_PREFIX
 const _MAX_INT: int = 2147483647
 const _MAX_PORT: int = 65535
 const _MAX_BOTS: int = 4096
+const _MAX_WORLD: int = 65535
+## Ajuste de proyecto con la URL de la API pública de la plataforma (la que usa el título sin
+## [code]--platform[/code]).
+const PLATFORM_URL_SETTING: String = "eldmark/platform/url"
+## URL por defecto si el ajuste no existe: la plataforma de desarrollo en esta máquina.
+const DEFAULT_PLATFORM_URL: String = "http://127.0.0.1:24680"
+## Mundo por defecto (el único al lanzar, docs/plataforma.md §0).
+const DEFAULT_WORLD_ID: int = 1
 
 var mode: Mode = Mode.OFFLINE
 var address: String = "127.0.0.1"
@@ -86,16 +108,48 @@ var loadout: String = ""
 ## Avisos para el usuario sobre argumentos de red que no se han podido interpretar.
 var warnings: PackedStringArray = PackedStringArray()
 
+# --- Cuenta y plataforma (docs/plataforma.md §13.3) ---
+## URL de la API pública de la plataforma ([code]--platform=<url>[/code]). Vacía = sin plataforma (los modos de
+## siempre); en [constant Mode.TITLE] nunca está vacía (sin la opción, el ajuste [constant PLATFORM_URL_SETTING]).
+var platform_url: String = ""
+## Correo con el que inicia sesión el bot ([code]--login=<correo>[/code]).
+var login: String = ""
+## Archivo con la contraseña del bot ([code]--password-file=<ruta>[/code]): nunca en la línea de órdenes.
+var password_file: String = ""
+## Personaje del bot ([code]--character=<nombre>[/code]); vacío = [method NameRules.bot_name] de la semilla.
+var character_name: String = ""
+## Mundo ([code]--world=N[/code], 1 por defecto).
+var world_id: int = DEFAULT_WORLD_ID
+## [code]--title[/code]: la pantalla de título aunque haya otras opciones de cliente sin modo.
+var title: bool = false
+## Certificado DTLS de la zona en PEM ([code]--dtls-cert=<ruta>[/code], contra zonas sin plataforma; §10.2).
+var dtls_cert_path: String = ""
+## Nombre (CN) del certificado DTLS de la zona ([code]--dtls-name=<cn>[/code]).
+var dtls_name: String = ""
+## Personaje con el que se entra con billete (de [code]enter[/code]); 0 = sin billete.
+var character_id: int = 0
+## Billete de 52 B de [code]enter[/code] (va en el HELLO); vacío = sin billete.
+var ticket: PackedByteArray = PackedByteArray()
+## Certificado DTLS en PEM que dio [code]enter[/code] (gana a [member dtls_cert_path]); vacío = sin DTLS.
+var dtls_cert_pem: String = ""
+## true si la sesión sale de [FrontMain]: tras un rechazo o una desconexión [OnlineMain] vuelve a la selección de
+## personaje (la sesión de la cuenta sigue) en lugar de a [RealmSelect].
+var from_front: bool = false
+
 
 ## Lee [param args] (los argumentos de usuario) y devuelve la configuración. Los argumentos que no
-## son de red ([code]--zone[/code], [code]--demo[/code]...) se ignoran sin avisar.
-static func from_args(args: PackedStringArray) -> ClientConfig:
+## son de red ([code]--zone[/code], [code]--demo[/code]...) se ignoran sin avisar. [param exported]: el
+## cliente es una exportación (no el editor); sin ningún modo, una exportación abre el título y el editor el
+## sandbox (docs/plataforma.md §5.5).
+static func from_args(args: PackedStringArray, exported: bool = false) -> ClientConfig:
 	var config := ClientConfig.new()
 	var connect_text: String = _string_option(args, "--connect=")
 	var has_connect: bool = _has_option(args, "--connect=")
 	var is_local: bool = args.has("--local")
 	var is_bot: bool = args.has("--bot")
 	var has_swarm: bool = _has_option(args, "--bots=")
+	config.title = args.has("--title")
+	config._parse_account_options(args)
 
 	if has_connect:
 		config._parse_connect(connect_text)
@@ -144,7 +198,95 @@ static func from_args(args: PackedStringArray) -> ClientConfig:
 		config.mode = Mode.LOCAL
 	elif has_connect:
 		config.mode = Mode.ONLINE
+	elif config.title or not config.platform_url.is_empty() or exported:
+		config.mode = Mode.TITLE
+	if config.mode == Mode.TITLE and config.platform_url.is_empty():
+		config.platform_url = default_platform_url()
 	return config
+
+
+## URL de la plataforma del ajuste de proyecto [constant PLATFORM_URL_SETTING] (o
+## [constant DEFAULT_PLATFORM_URL] si no existe).
+static func default_platform_url() -> String:
+	var value: String = str(ProjectSettings.get_setting(PLATFORM_URL_SETTING, DEFAULT_PLATFORM_URL)).strip_edges()
+	return value if not value.is_empty() else DEFAULT_PLATFORM_URL
+
+
+## Motivo, en español, por el que [param url] no vale como URL de la plataforma (vacío si vale): tiene que
+## empezar por [code]https://[/code] o, solo hacia esta máquina (loopback), por [code]http://[/code]
+## (docs/plataforma.md §10.1), y llevar servidor.
+static func platform_url_error(url: String) -> String:
+	var clean: String = url.strip_edges()
+	if clean.is_empty():
+		return "Falta la dirección del servidor de cuentas"
+	var scheme_end: int = clean.find("://")
+	if scheme_end <= 0:
+		return "Dirección del servidor de cuentas mal escrita: «%s»" % clean
+	var scheme: String = clean.left(scheme_end).to_lower()
+	var host: String = url_host(clean)
+	if host.is_empty():
+		return "Dirección del servidor de cuentas sin servidor: «%s»" % clean
+	if scheme == "https":
+		return ""
+	if scheme == "http":
+		if is_loopback_host(host):
+			return ""
+		return "El servidor de cuentas tiene que usar https:// (http:// solo hacia esta máquina)"
+	return "Dirección del servidor de cuentas mal escrita: «%s»" % clean
+
+
+## El servidor de una URL ([code]http://host:puerto/ruta[/code] → [code]host[/code]; un IPv6 sin corchetes).
+static func url_host(url: String) -> String:
+	var clean: String = url.strip_edges()
+	var scheme_end: int = clean.find("://")
+	var rest: String = clean.substr(scheme_end + 3) if scheme_end >= 0 else clean
+	for separator: String in ["/", "?", "#"]:
+		var cut: int = rest.find(separator)
+		if cut >= 0:
+			rest = rest.left(cut)
+	var at: int = rest.rfind("@")
+	if at >= 0:
+		rest = rest.substr(at + 1)
+	if rest.begins_with("["):
+		var close: int = rest.find("]")
+		return rest.substr(1, close - 1) if close > 0 else ""
+	var colon: int = rest.rfind(":")
+	return rest.left(colon) if colon >= 0 else rest
+
+
+## true si [param host] es esta máquina: [code]localhost[/code], 127.0.0.0/8 o [code]::1[/code].
+static func is_loopback_host(host: String) -> bool:
+	var clean: String = host.strip_edges().to_lower()
+	if clean == "localhost" or clean == "::1":
+		return true
+	if clean.is_valid_ip_address() and clean.begins_with("127."):
+		return true
+	return false
+
+
+## true si la configuración entra con billete (de [code]enter[/code]).
+func has_ticket() -> bool:
+	return not ticket.is_empty()
+
+
+## true si la conexión con la zona va por DTLS: con el certificado de [code]enter[/code] o con
+## [code]--dtls-cert[/code].
+func has_dtls() -> bool:
+	return not dtls_cert_pem.is_empty() or not dtls_cert_path.is_empty()
+
+
+## Una copia de la configuración para la sesión de un personaje: los mismos ajustes de red, bot e informe, sin
+## billete ni personaje (los pone quien la pide). La usa [AccountFlow] para no tocar la de partida.
+func duplicate_config() -> ClientConfig:
+	var copy := ClientConfig.new()
+	for property: Dictionary in get_property_list():
+		if int(property["usage"]) & PROPERTY_USAGE_SCRIPT_VARIABLE == 0:
+			continue
+		var value: Variant = get(property["name"])
+		if value is PackedStringArray or value is PackedByteArray:
+			value = value.duplicate()
+		copy.set(property["name"], value)
+	return copy
 
 
 ## Nombre por defecto de un jugador: «Jugador» y cuatro letras al azar (siempre válido).
@@ -207,6 +349,26 @@ static func parse_address(text: String) -> Dictionary:
 		else:
 			result["error"] = "Puerto no válido «%s»" % port_text
 	return result
+
+
+# Opciones de la cuenta y de DTLS (docs/plataforma.md §13.3). Una URL de plataforma que no vale se conserva (quien
+# la use falla con su motivo, en lugar de entrar sin plataforma) y se avisa.
+func _parse_account_options(args: PackedStringArray) -> void:
+	platform_url = _string_option(args, "--platform=")
+	if _has_option(args, "--platform=") and platform_url.is_empty():
+		warnings.append("--platform necesita una dirección (por ejemplo --platform=http://127.0.0.1:24680)")
+	elif not platform_url.is_empty():
+		var error: String = platform_url_error(platform_url)
+		if not error.is_empty():
+			warnings.append(error)
+	login = _string_option(args, "--login=")
+	password_file = _clean_path(_string_option(args, "--password-file="))
+	character_name = _string_option(args, "--character=")
+	world_id = _int_option(args, "--world=", world_id, 1, _MAX_WORLD, warnings)
+	dtls_cert_path = _clean_path(_string_option(args, "--dtls-cert="))
+	dtls_name = _string_option(args, "--dtls-name=")
+	if not dtls_cert_path.is_empty() and dtls_name.is_empty():
+		warnings.append("--dtls-cert necesita --dtls-name=<cn> (el nombre del certificado de la zona)")
 
 
 # Interpreta el valor de --connect con [method parse_address]. Una dirección que no se entiende se

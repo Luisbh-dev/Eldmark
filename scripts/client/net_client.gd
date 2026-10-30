@@ -193,6 +193,9 @@ var hello_hook: Callable = Callable()
 ## puede modificarlo (por ejemplo, falsear los [code]view_offsets_q[/code] del rebobinado). Lo mismo que
 ## hace el modo [code]rewind[/code] del bot tramposo ([BotCheater]), pero a medida para una prueba.
 var batch_hook: Callable = Callable()
+## Campos de más para el informe ([method write_report]): [OnlineMain] pone aquí lo de la cuenta de un bot con
+## [code]--platform[/code] (docs/plataforma.md §13.3).
+var report_extra: Dictionary = {}
 ## Tiempo de espera de ENet al conectar (ms). [constant CONNECT_TIMEOUT_MS] salvo que quien llama a
 ## [method start] ponga otro antes (el modo [code]--local[/code] usa uno corto para reintentar).
 var connect_timeout_ms: int = CONNECT_TIMEOUT_MS
@@ -383,13 +386,38 @@ func start(config: ClientConfig, transport: NetTransport,
 	_cheater = _make_cheater(config)
 	_connect_transport()
 	_transport.set_net_sim_spec(config.net_sim_spec)
-	var error: Error = _transport.connect_to(config.address, config.port, connect_timeout_ms)
+	var dtls: TLSOptions = dtls_options(config)
+	if dtls == null and config.has_dtls():
+		_disconnect_transport()
+		return ERR_INVALID_DATA
+	var error: Error = _transport.connect_to(config.address, config.port, connect_timeout_ms, config.dtls_name,
+			dtls)
 	if error != OK:
 		_disconnect_transport()
 		return error
 	_state = State.CONNECTING
 	set_physics_process(true)
 	return OK
+
+
+## El certificado DTLS de la zona anclado ([method TLSOptions.client]) que dice [param config]: el PEM de
+## [code]enter[/code] ([member ClientConfig.dtls_cert_pem]) o, sin plataforma, el archivo de [code]--dtls-cert[/code].
+## Null sin DTLS o si el certificado no se puede leer (docs/plataforma.md §10.2).
+static func dtls_options(config: ClientConfig) -> TLSOptions:
+	if config == null or not config.has_dtls():
+		return null
+	var certificate := X509Certificate.new()
+	var error: Error = OK
+	if not config.dtls_cert_pem.is_empty():
+		error = certificate.load_from_string(config.dtls_cert_pem)
+	elif FileAccess.file_exists(config.dtls_cert_path):
+		error = certificate.load(config.dtls_cert_path)
+	else:
+		error = ERR_FILE_NOT_FOUND
+	if error != OK:
+		push_warning("[Eldmark] No se puede leer el certificado DTLS de la zona (%s)" % error_string(error))
+		return null
+	return TLSOptions.client(certificate)
 
 
 ## Envía CLIENT_READY (solo tras [signal welcomed]) y apunta el tick local. [param world_root]
@@ -1266,6 +1294,11 @@ func _on_peer_authenticating(peer_id: int) -> void:
 	if _config.mode == ClientConfig.Mode.BOT:
 		hello.flags |= NetMessages.Hello.FLAG_BOT
 	hello.display_name = _config.display_name
+	# Con billete (docs/plataforma.md §5.4): el personaje y los 52 B de enter; el reino y el nombre son los del
+	# personaje, que la zona ignora (mandan los de la reclamación).
+	if _config.has_ticket():
+		hello.character_id = _config.character_id
+		hello.ticket = _config.ticket
 	if _cheater != null:
 		_cheater.tamper_hello(hello)
 	if hello_hook.is_valid():
@@ -1700,6 +1733,9 @@ func _build_report() -> Dictionary:
 	report["reject_result"] = _reject_result
 	report["reject_text"] = _reject_text
 	report["disconnect_text"] = _last_disconnect_text
+	report["character_id"] = str(_config.character_id) if _config != null else "0"
+	for key: Variant in report_extra:
+		report[key] = report_extra[key]
 	var final_state: Dictionary = {
 		"predicted_tick": _prediction.get_predicted_tick(),
 		"server_tick": _last_snapshot_tick,

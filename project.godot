@@ -29,6 +29,11 @@ window/stretch/aspect="expand"
 
 enabled=PackedStringArray("res://addons/proton_scatter/plugin.cfg", "res://addons/terrain_3d/plugin.cfg")
 
+[eldmark]
+
+platform/url="http://127.0.0.1:24680"
+platform/ca_cert=""
+
 [gui]
 
 theme/custom="res://assets/ui/theme/eldmark_theme.tres"
