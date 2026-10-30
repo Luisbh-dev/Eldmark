@@ -13,11 +13,10 @@ extends RefCounted
 ## [br][br]
 ## Secciones de docs/plataforma.md: [code]protocol_version[/code] (el
 ## [code]ELDMARK_MIN_PROTOCOL[/code] por defecto en dev y test) y [code]names[/code]. De
-## docs/progresion.md (P3): [code]races[/code] y [code]appearance[/code] ([AppearanceCatalog]),
+## docs/progresion.md: [code]races[/code] y [code]appearance[/code] ([AppearanceCatalog]),
 ## [code]level_curve[/code] ([LevelCurve]), [code]currencies[/code], [code]reasons[/code],
-## [code]containers[/code] y [code]combat[/code] ([CombatRules]). [code]items[/code] (de
-## [code]ItemDatabase[/code], progresion.md P1) y [code]starter_templates[/code] (de las
-## [code]EquipmentTemplate[/code] de habilidades.md) entran con esos paquetes, cada una con su función.
+## [code]containers[/code] y [code]combat[/code] ([CombatRules]), de P3; [code]items[/code]
+## ([ItemDatabase]) y [code]starter_templates[/code] (las [EquipmentTemplate] elegibles), de P1.
 ## Sin estado, reloj ni azar: dos llamadas dan lo mismo.
 
 ## Ruta del archivo, relativa a la raíz del proyecto.
@@ -73,6 +72,8 @@ static func build() -> Dictionary:
 		"reasons": _reasons(),
 		"containers": _containers(),
 		"combat": _combat(),
+		"items": _items(),
+		"starter_templates": _starter_templates(),
 	}
 
 
@@ -170,6 +171,43 @@ static func _containers() -> Dictionary:
 ## Sección [code]combat[/code]: la vida máxima, para la comprobación S6 de [code]health[/code].
 static func _combat() -> Dictionary:
 	return {"health_max": CombatCatalog.rules().health_max}
+
+
+## Sección [code]items[/code] (§2.1, §13.4): por definición, en orden de net id (alfabético), lo que la
+## plataforma comprueba en un guardado (S5): id, categoría y ranura (los números de [ItemDefinition]), pila,
+## durabilidad y nivel requerido.
+static func _items() -> Array:
+	var db: ItemDatabase = ItemDatabase.shared()
+	var result: Array = []
+	for id: StringName in db.all_ids():
+		var definition: ItemDefinition = db.get_definition(id)
+		result.append({
+			"id": String(definition.id),
+			"category": int(definition.category),
+			"equip_slot": int(definition.equip_slot),
+			"max_stack": definition.max_stack,
+			"has_durability": definition.has_durability,
+			"required_level": definition.required_level,
+		})
+	return result
+
+
+## Sección [code]starter_templates[/code] (§2.5, §13.4): las [EquipmentTemplate] con
+## [code]selectable = true[/code], en el orden de su id, con los objetos de sus armas en orden de ranura
+## ([method ItemDatabase.for_ref]; un arma sin objeto sale como cadena vacía, y la plataforma rechaza el
+## archivo). Con ellas la plataforma valida [code]starter_template_id[/code] al crear el personaje.
+static func _starter_templates() -> Array:
+	var db: ItemDatabase = ItemDatabase.shared()
+	var result: Array = []
+	for template: EquipmentTemplate in CombatCatalog.tables().templates:
+		if not template.selectable:
+			continue
+		var weapons: Array = []
+		for weapon: WeaponDefinition in template.weapons:
+			var item: ItemDefinition = db.for_ref(ItemDefinition.Category.WEAPON, weapon.id) if weapon != null else null
+			weapons.append(String(item.id) if item != null else "")
+		result.append({"id": String(template.id), "weapons": weapons})
+	return result
 
 
 ## Un [PackedInt32Array] como [Array] de enteros (JSON con números enteros).

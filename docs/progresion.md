@@ -1903,3 +1903,102 @@ La revisión de plataforma.md (su §19.7) toca tres cosas que ve P7:
   arrendamiento (con la hora de la reclamación); lo hace `persistence.Store` después de `Apply`, en la misma
   transacción. P7 no tiene que hacer nada.
 - **`pvp`**: el sobre rechaza (`envelope`) los totales `int` de más de 2^31 − 1.
+
+### 19.6 P1 · objetos (PRG-02)
+
+**Qué hay.** Lo de §14.1 P1, en `scripts/shared/progression/` salvo donde se dice:
+
+| Pieza | Contenido |
+|---|---|
+| `ItemDefinition` | Los campos de §2.1 con sus enumerados (`Category`, `EquipSlot`, `BindRule`), `ID_PATTERN`, `MAX_STACK` e `is_equipable()`. Icono y escenas como rutas (`String`), nunca como recursos |
+| `ItemInstance` | Los campos de §2.1 y las constantes de §14.2; `encode`, `decode` y `encoded_size_at` (§2.3, little endian como el resto del protocolo), `to_dictionary`/`from_dictionary` (§3.4), `duplicate_instance`, `equals`; además `create(uid, definición, cantidad)` (durabilidad llena y ligada si la regla es `ON_PICKUP`), `is_valid(db)` (la regla de `decode` sobre una instancia en memoria) y `encoded_size()` |
+| `ItemDatabase` | `shared()`, `build_from_directory` (con subcarpetas y `.tres.remap`), `build_from_definitions(definiciones, combat)` (la que usan las pruebas y los casos), `get_definition`, `net_id_of`, `definition_by_net_id`, `for_ref`, `consumable_definition`, `all_ids`, `wire_hash` y `errors` |
+| `ProgressJson` | La lectura estricta del JSON del progreso, igual que `jsonx` en Go: `is_id` (cadena decimal canónica, ≤ 2^53 − 1), `id_value`, `id_text`, `is_int` (número exacto, admite `820.0`) e `is_bool`. La usarán también `ProgressRecord`, `EconomyOp` y `LedgerEntry` (P5a) |
+| `data/items/` | `weapon/sword_shield_vado.tres`, `weapon/bow_vado.tres`, `consumable/potion_health.tres` y `consumable/potion_stamina.tres` (§2.4) |
+| `tests/fixtures/items/` | `armor/` (tres armaduras que valen: yelmo y botas con durabilidad, peto sin ella) y `broken/` (tres que no: en la ranura de arma, sin ranura y apilable) |
+| `ProgressionRulesExport` | Las secciones `items` y `starter_templates`; el archivo exportado de nuevo |
+| `platform/internal/progress/rules.go` | `LoadRules` lee las dos secciones, estrictas como las demás, con las comprobaciones de `ItemDatabase` que tienen sentido sin el catálogo de combate; `Item(id)`, `SelectableTemplate(id)` y las constantes `Category*`, `Slot*` y `MaxStack` |
+
+**Formato de las secciones** (claves ordenadas):
+
+- `items`: `[{id, category, equip_slot, max_stack, has_durability, required_level}]` en orden de net id
+  (alfabético), con la categoría y la ranura en los números de §2.1. Go exige ese orden.
+- `starter_templates`: `[{id, weapons}]`, las `EquipmentTemplate` con `selectable = true` en el orden de su id
+  (hoy `marksman` y `squire`) y, en `weapons`, los **ids de objeto** de sus armas en orden de ranura
+  (`["bow_vado", "sword_shield_vado"]` y `["sword_shield_vado"]`): el kit de la regla 1 de §2.5. Un arma sin
+  objeto saldría como `""` y `LoadRules` rechaza el archivo.
+
+**Desviaciones y decisiones de la implementación:**
+
+- **`starter_templates` entra aquí.** §19.4 la dejaba para «la integración con habilidades.md», que no es un
+  paquete de §14.1; habilidades.md ya está en `main`, sus armas son objetos de esta base y P7 la necesita para
+  `ValidateCreate`. `*progress.Rules` sigue sin implementar `CreateValidator` (es de P7): ya tiene
+  `RaceIndex`, `ValidAppearance` y `SelectableTemplate`.
+- **Ids más estrictos que «`is_valid_int()` y `to_int()`»** (§14.2): `ProgressJson.is_id` pide la forma de
+  `jsonx.ParseID` (solo dígitos, sin signo ni ceros a la izquierda) y como mucho 16 cifras antes de llamar a
+  `to_int()`, que con 20 cifras registra un error del motor. `"+5"`, `"007"`, `" 5"` y `"5.0"` no valen en ninguno
+  de los dos lados.
+- **`from_dictionary` pide las diez claves de la entrada de §3.4**, también `container` y `slot` (enteros
+  exactos de 0 a 65 535): su rango depende del contenedor y de `bag_slots`, y lo mira `ProgressRecord` (P5a).
+  No exige las reglas de la fase 5 (rareza 0, sin afijos): el modelo es el general y esas las mira S5.
+- **`encode` de una instancia que no vale** (`is_valid` falso: definición desconocida, cantidad, durabilidad,
+  rareza, semilla o afijos fuera de rango) devuelve un array vacío sin registrar nada; quien construye el
+  mensaje (P4) lo trata como un fallo suyo. **`encoded_size_at`** da −1 también con otro formato o más de 6
+  afijos: así recorrer una lista nunca se salta mal una entrada.
+- **Reglas de coherencia además de las de §2.1:** `camp_refill` cabe en una pila (la regla 3 del kit la pone
+  en una); icono vacío o bajo `res://assets/icons/items/`; escenas solo en las armaduras y bajo `res://assets/`;
+  las categorías que no son arma, armadura ni consumible van sin ranura ni `ref_id`; y **dos objetos para la
+  misma arma o el mismo consumible son un error** («en la fase 5 hay uno por `ref_id`», §2.2): el kit y
+  CAMP_REFILL dependen de que `for_ref` no dude. Si la fase 6 trae variantes de un arma, la regla cambia con
+  ellas. `required_level` se comprueba contra `LevelCurve.shared().level_cap`.
+- **Un id repetido** se avisa y se queda el que llega antes (`build_from_directory` llega en orden de ruta):
+  `sort_custom` no es estable, así que el orden desempata por la posición.
+- **`wire_hash`** es el SHA-256 de `var_to_bytes` de la lista `[id, net_id, category, equip_slot, max_stack,
+  has_durability]` por objeto, sin versión. Aún no entra en `NetProtocol.compute_sim_hash`: lo hace P4 con el
+  resto de la versión 7.
+- **Carpetas en inglés** (`weapon/`, `consumable/`: el nombre del enumerado en minúsculas) y archivos con el
+  nombre del id; la prueba lo exige para `data/items/`. Las pociones son destruibles (§2.4 solo fija las armas).
+
+**Para los paquetes siguientes.**
+
+- **P2:** `StarterKit` con `for_ref(WEAPON, arma)` y las definiciones con `starter` y `camp_refill` de
+  `all_ids()`; `ItemInstance.create` da la instancia del kit (ligada, porque los objetos de inicio son
+  `ON_PICKUP`); el ligado al equipar es de `InventoryOps`.
+- **P4:** `ItemDatabase.wire_hash()` en `compute_sim_hash`; INVENTORY_DELTA e INVENTORY_FULL con `encode` y
+  `encoded_size_at`/`decode` (un `encode` vacío es un error del servidor).
+- **P5a:** `ProgressRecord.from_dictionary` lee `container` y `slot` y llama a `ItemInstance.from_dictionary`;
+  los demás ids del registro, con `ProgressJson`.
+- **P7:** `ValidateCreate` con `SelectableTemplate` para `{"starter_template_id": "not_selectable"}`; S5 con
+  `Item(def_id)` (definición en las reglas, pila, durabilidad, armas en el equipo).
+
+**Pruebas.** En Godot: `test_item_database` (10: los datos sin errores y en orden, ids únicos con formato y en
+texto en `data/items/` y en los casos, el contenido de §2.4, `ref_id` que existen, un objeto por arma de cada
+plantilla y por consumible, net ids alfabéticos también con las armaduras intercaladas, la huella estable que
+cambia con lo que la forma y no con lo demás, la regla de ARMOR con los casos, cada regla de coherencia una a una
+y una carpeta con lo que no es un objeto); `test_item_instance` (8: ida y vuelta de 1000 instancias con semilla,
+con y sin durabilidad y afijos, en binario, recorridas en un búfer con `encoded_size_at` y por el texto JSON;
+una codificación conocida byte a byte; null en cada caso de §2.3 y en cada truncado; `encode` vacío de lo que no
+vale; la entrada de §3.4 tal cual; `from_dictionary` con 38 entradas rotas, cada clave que falta, una de más y
+los enteros como `820.0`; `create`, `duplicate_instance` y `equals`; la base compartida por defecto);
+`test_progression_rules_export` (2 nuevas: `items` y `starter_templates`, y las secciones exactas);
+`test_export_config` (dos objetos entre lo que ningún filtro puede quitar y en el paquete del servidor). En Go,
+`internal/progress`: `TestEmbeddedItemsAndTemplates` y 25 archivos rotos más en
+`TestLoadRulesRejectsBrokenFiles`. Las pruebas de ida y vuelta, la de ARMOR y la de los ids se comprobaron con la
+mutación que deberían pillar (sin la comprobación de los flags, de la ranura de la armadura o de los ceros a la
+izquierda, fallan).
+
+**Medido** (esta máquina, 4 núcleos, Godot 4.7.2 headless, Go 1.24.7):
+
+| Qué | Resultado |
+|---|---|
+| `test_item_database` | 10 pruebas; la más lenta, 18 ms (la primera carga de `data/items` con el catálogo de combate); el archivo, unos 10 s con el arranque del ejecutor |
+| `test_item_instance` | 8 pruebas; la de 1000 instancias, 131 ms (codificar, decodificar y pasar por el JSON cada una); el archivo, unos 12 s |
+| `test_architecture`, `test_export_config` | 19 y 10 pruebas, correctas (18 y 27 s) |
+| `go test -race ./internal/progress` | 1,2 s; `go test -race -count=1 ./...` entero, correcto |
+| `progression_rules.json` | 5066 B (4286 antes) |
+
+**Sin comprobar:** `ItemDatabase` en un proyecto exportado de verdad (los `.tres.remap` de las subcarpetas): la
+prueba del paquete del servidor comprueba que los objetos van dentro, no que se cargan desde él.
+
+**Queda para después:** `ItemDatabase` en el `sim_hash` y los mensajes de inventario (P4); el inventario, el kit
+y las monedas (P2); el registro (P5a); `ValidateCreate` y S5 en Go (P7); los iconos (ART-12, §16).

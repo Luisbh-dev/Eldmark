@@ -2,12 +2,12 @@
 // exportadas por Godot y, con progresion.md P7, el almacén que implementa persistence.ProgressStore.
 //
 // De progresion.md P3 es [LoadRules]: lee de progression_rules.json (internal/gamedata) las secciones de
-// progresion.md §13.4 que ya existen (races, appearance, level_curve, currencies, reasons, containers y
-// combat) y aplica con ellas la regla de la apariencia de CharacterAppearance.validate
-// ([Rules.ValidAppearance]) y la curva de niveles ([Rules.LevelFor], [Rules.TotalTo]). Las dos
-// implementaciones dan lo mismo con los mismos datos: los casos de
-// tests/fixtures/progression/appearance_cases.json los leen test_character_appearance.gd y las pruebas de
-// este paquete. Las secciones items y starter_templates, y ValidateCreate, llegan con P1 y P7.
+// progresion.md §13.4 (races, appearance, level_curve, currencies, reasons, containers y combat; items y
+// starter_templates desde P1) y aplica con ellas la regla de la apariencia de CharacterAppearance.validate
+// ([Rules.ValidAppearance]), la curva de niveles ([Rules.LevelFor], [Rules.TotalTo]) y las búsquedas de
+// objetos y plantillas ([Rules.Item], [Rules.SelectableTemplate]). Las dos implementaciones dan lo mismo con
+// los mismos datos: los casos de tests/fixtures/progression/appearance_cases.json los leen
+// test_character_appearance.gd y las pruebas de este paquete. ValidateCreate llega con P7.
 package progress
 
 import (
@@ -112,6 +112,45 @@ type Combat struct {
 	HealthMax int `json:"health_max"`
 }
 
+// Categorías de objeto (ItemDefinition.Category, progresion.md §2.1).
+const (
+	CategoryWeapon     = 1
+	CategoryArmor      = 2
+	CategoryConsumable = 3
+	CategoryMaterial   = 4
+	CategoryQuest      = 5
+	CategoryMisc       = 6
+)
+
+// Ranuras de equipo de una definición (ItemDefinition.EquipSlot): SlotWeapon vale para las dos ranuras de
+// arma; las armaduras van de SlotHead a SlotFeet.
+const (
+	SlotNone   = 0
+	SlotWeapon = 1
+	SlotHead   = 2
+	SlotFeet   = 6
+)
+
+// MaxStack es el tope de una pila (ItemDefinition.MAX_STACK).
+const MaxStack = 999
+
+// Item es una definición de la sección items (progresion.md §2.1): lo que S5 mira de cada objeto.
+type Item struct {
+	ID            string `json:"id"`
+	Category      int    `json:"category"`
+	EquipSlot     int    `json:"equip_slot"`
+	MaxStack      int    `json:"max_stack"`
+	HasDurability bool   `json:"has_durability"`
+	RequiredLevel int    `json:"required_level"`
+}
+
+// StarterTemplate es una plantilla elegible de la sección starter_templates (progresion.md §2.5): su id y
+// los objetos de sus armas en orden de ranura.
+type StarterTemplate struct {
+	ID      string   `json:"id"`
+	Weapons []string `json:"weapons"`
+}
+
 // Rules son las reglas de progresion.md leídas de progression_rules.json. Son de solo lectura: valen
 // entre gorrutinas.
 type Rules struct {
@@ -122,6 +161,11 @@ type Rules struct {
 	Reasons    Reasons
 	Containers Containers
 	Combat     Combat
+	Items      []Item            // en orden de net id (alfabético)
+	Templates  []StarterTemplate // las EquipmentTemplate con selectable = true
+
+	items     map[string]int // id → posición en Items
+	templates map[string]int // id → posición en Templates
 }
 
 // Tamaños máximos de cada lista para que su índice quepa en los 8 B (AppearanceCatalog.MAX_SIZES).
@@ -136,7 +180,10 @@ const (
 	maxEyeColors = 16
 )
 
-var idPattern = regexp.MustCompile(`^[a-z0-9_]{1,32}$`)
+var (
+	idPattern     = regexp.MustCompile(`^[a-z0-9_]{1,32}$`)
+	itemIDPattern = regexp.MustCompile(`^[a-z0-9_]{3,32}$`) // ItemDefinition.ID_PATTERN
+)
 
 // LoadRules lee las secciones de progresion.md de un progression_rules.json (gamedata.Raw()) y
 // comprueba que tienen sentido. Cada sección se lee estricta (campos desconocidos y tipos que no casan
@@ -154,7 +201,7 @@ func LoadRules(raw []byte) (*Rules, error) {
 	}{
 		{"races", &r.Races}, {"appearance", &r.Appearance}, {"level_curve", &r.LevelCurve},
 		{"currencies", &r.Currencies}, {"reasons", &r.Reasons}, {"containers", &r.Containers},
-		{"combat", &r.Combat},
+		{"combat", &r.Combat}, {"items", &r.Items}, {"starter_templates", &r.Templates},
 	}
 	for _, s := range sections {
 		v, ok := top[s.key]
@@ -305,7 +352,95 @@ func (r *Rules) check() error {
 	if r.Combat.HealthMax < 1 {
 		fail("combat: health_max tiene que ser mayor que 0")
 	}
+	r.checkItems(fail)
 	return errors.Join(errs...)
+}
+
+// checkItems comprueba items y starter_templates con las reglas de ItemDatabase (progresion.md §2.1) y
+// rellena los índices de Item y SelectableTemplate.
+func (r *Rules) checkItems(fail func(format string, args ...any)) {
+	if len(r.Items) == 0 {
+		fail("items: no hay ningún objeto")
+	}
+	if len(r.Items) > 0xFFFF {
+		fail("items: hay %d objetos y caben %d", len(r.Items), 0xFFFF)
+	}
+	r.items = make(map[string]int, len(r.Items))
+	for i, it := range r.Items {
+		if !itemIDPattern.MatchString(it.ID) {
+			fail("items[%d]: el id %q no tiene el formato %s", i, it.ID, itemIDPattern)
+		}
+		if _, dup := r.items[it.ID]; dup {
+			fail("items: el id %q está repetido", it.ID)
+		}
+		if i > 0 && it.ID <= r.Items[i-1].ID {
+			fail("items: %q no sigue el orden alfabético (el de los net ids)", it.ID)
+		}
+		r.items[it.ID] = i
+		if it.Category < CategoryWeapon || it.Category > CategoryMisc {
+			fail("items: %s: categoría fuera de rango (%d)", it.ID, it.Category)
+		}
+		if it.EquipSlot < SlotNone || it.EquipSlot > SlotFeet {
+			fail("items: %s: ranura fuera de rango (%d)", it.ID, it.EquipSlot)
+		}
+		switch it.Category {
+		case CategoryWeapon:
+			if it.EquipSlot != SlotWeapon {
+				fail("items: %s: un arma va en la ranura WEAPON", it.ID)
+			}
+		case CategoryArmor:
+			if it.EquipSlot < SlotHead || it.EquipSlot > SlotFeet {
+				fail("items: %s: una armadura va en una ranura de HEAD a FEET", it.ID)
+			}
+		default:
+			if it.EquipSlot != SlotNone {
+				fail("items: %s: solo las armas y las armaduras se equipan", it.ID)
+			}
+		}
+		if it.MaxStack < 1 || it.MaxStack > MaxStack {
+			fail("items: %s: max_stack fuera de rango (1-%d): %d", it.ID, MaxStack, it.MaxStack)
+		}
+		if (it.EquipSlot != SlotNone || it.HasDurability) && it.MaxStack != 1 {
+			fail("items: %s: un equipable o un objeto con durabilidad no se apila", it.ID)
+		}
+		if it.RequiredLevel < 1 || it.RequiredLevel > r.LevelCurve.LevelCap {
+			fail("items: %s: required_level fuera de rango (1-%d): %d", it.ID, r.LevelCurve.LevelCap, it.RequiredLevel)
+		}
+	}
+	r.templates = make(map[string]int, len(r.Templates))
+	for i, t := range r.Templates {
+		if !idPattern.MatchString(t.ID) {
+			fail("starter_templates[%d]: el id %q no vale", i, t.ID)
+		}
+		if _, dup := r.templates[t.ID]; dup {
+			fail("starter_templates: el id %q está repetido", t.ID)
+		}
+		r.templates[t.ID] = i
+		if len(t.Weapons) < 1 || len(t.Weapons) > 2 {
+			fail("starter_templates: %s: debe llevar una o dos armas (lleva %d)", t.ID, len(t.Weapons))
+		}
+		for _, w := range t.Weapons {
+			if it, ok := r.Item(w); !ok || it.Category != CategoryWeapon {
+				fail("starter_templates: %s: %q no es un arma de items", t.ID, w)
+			}
+		}
+	}
+}
+
+// Item devuelve la definición del objeto id de la sección items.
+func (r *Rules) Item(id string) (Item, bool) {
+	i, ok := r.items[id]
+	if !ok {
+		return Item{}, false
+	}
+	return r.Items[i], true
+}
+
+// SelectableTemplate dice si id es una plantilla de inicio elegible (starter_templates), la regla de
+// starter_template_id al crear el personaje (plataforma.md §4.4 paso 5).
+func (r *Rules) SelectableTemplate(id string) bool {
+	_, ok := r.templates[id]
+	return ok
 }
 
 // ValidAppearance es CharacterAppearance.validate (progresion.md §7.2): true si los 8 B valen para un
