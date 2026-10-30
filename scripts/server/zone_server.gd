@@ -83,6 +83,12 @@ extends Node
 ## hora. [method stop] (el cierre ordenado de los cinco disparadores) y [method close_instance] (el de §6.1) mandan
 ## los finales de todos y esperan a que la plataforma los conteste antes de terminar.
 ## [br][br]
+## [b]Progreso[/b] (docs/progresion.md §9, [ProgressService], [method get_progress]): con plataforma, el registro de
+## la reclamación se prepara antes del WELCOME (si no se puede leer, REJECT UNAVAILABLE y liberación), la baja en
+## LOADING lo descarta y el alta lo ata al cuerpo y da el kit de la primera entrada (crítico). La sección
+## [code]progress[/code] de los guardados es la primera de [CharacterSaver]. Los bloques de ids llegan como eventos
+## [code]id_block[/code]. Sin plataforma (personajes efímeros) aún no hace nada: es de progresion.md P5b.
+## [br][br]
 ## [b]Seguridad[/b] (sección 12): limitadores por peer, avisos con expulsión a los 50 en 600 ticks
 ## (NOTICE de expulsión y corte), tope de conexiones por IP, tipos de mensaje inesperados según el
 ## estado de la sesión y comandos de depuración solo con [code]--debug-commands[/code].
@@ -276,6 +282,8 @@ var _auth_provider: AuthProvider = null
 var _platform: ZonePlatform = null
 ## Los guardados de los cuerpos con arrendamiento (solo con la plataforma).
 var _saver: CharacterSaver = null
+## El progreso de los personajes (docs/progresion.md §9); su sección es la primera de [member _saver].
+var _progress: ProgressService = null
 var _sim_hash: int = 0
 var _tick: int = 0
 var _drain_ticks: int = 0
@@ -599,6 +607,10 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 		_saver = CharacterSaver.new(_platform, maxi(config.save_interval_s, 1) * Engine.physics_ticks_per_second)
 		_saver.log_sink = Callable(self, "_log")
 		_saver.save_rejected.connect(_on_save_rejected)
+	# La sección progress se registra la primera (progresion.md §9.2): antes que ninguna otra.
+	_progress = ProgressService.new()
+	_progress.log_sink = Callable(self, "_log")
+	_progress.setup(self, _platform, _saver, _commands)
 	_players_root = Node3D.new()
 	_players_root.name = "Players"
 	add_child(_players_root)
@@ -643,6 +655,7 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_log_last_usec = Time.get_ticks_usec()
 	_clock_origin_usec = _log_last_usec
 	_last_poll_real_tick = 0
+	_progress.start(_tick)
 	_run_state = _RunState.RUNNING
 	set_physics_process(true)
 	return OK
@@ -714,6 +727,16 @@ func is_stopped() -> bool:
 ## los críticos (docs/progresion.md §9.2).
 func get_saver() -> CharacterSaver:
 	return _saver
+
+
+## El progreso de los personajes (docs/progresion.md §9); null antes de [method start].
+func get_progress() -> ProgressService:
+	return _progress
+
+
+## La configuración con la que se arrancó (null antes de [method start]).
+func get_config() -> ServerConfig:
+	return _config
 
 
 ## La hora Unix del mantenimiento anunciado por el latido (0 = ninguno).
@@ -1454,6 +1477,10 @@ func _process_arrivals(s: int) -> void:
 			entity.is_staff = peer.claimed.is_staff()
 			if _saver != null:
 				_saver.track(entity.net_id, peer.claimed.character_id, peer.claimed.lease_id, s)
+		# El progreso preparado se ata al cuerpo (y el kit de la primera entrada sale crítico en el step de este tick).
+		# El Loadout que devuelve sustituye a la plantilla desde progresion.md P5b; hasta entonces es null.
+		if _progress != null:
+			_progress.on_arrival(entity, peer, s)
 		peer.entity = entity
 		peer.input_queue = _queues[entity.net_id]
 		peer.state = ServerPeer.State.IN_WORLD
@@ -1685,6 +1712,8 @@ func _remove_player(entity: NetEntity, s: int, reason: int, bleed: bool = true,
 	_lingering.erase(net_id)
 	_lingering_save_reasons.erase(net_id)
 	_scores.forget(net_id)
+	if _progress != null:
+		_progress.on_departure(net_id)
 	_combat.remove(net_id, s)
 	_history.forget(net_id)
 	_substituted_now.erase(net_id)
@@ -1703,6 +1732,8 @@ func _remove_player(entity: NetEntity, s: int, reason: int, bleed: bool = true,
 # (_wind_down).
 func _clear_players() -> void:
 	for entity: NetEntity in _registry.get_sorted().duplicate():
+		if _progress != null:
+			_progress.on_departure(entity.net_id)
 		var character: PlayerCharacter = entity.get_character()
 		if character != null:
 			if character.get_parent() != null:
@@ -3221,9 +3252,11 @@ func _poll_platform() -> void:
 						_on_heartbeat_event(event)
 				PlatformEvent.KIND_INSTANCE_CLOSED:
 					closed_code = event.error_code
+				PlatformEvent.KIND_ID_BLOCK, PlatformEvent.KIND_PROGRESS_OP, PlatformEvent.KIND_PROGRESS_LEDGER:
+					if _progress != null:
+						_progress.on_platform_event(event)
 				_:
-					# id_block, progress_op y progress_ledger (ProgressService, progresion.md P5a y P5d), fortress
-					# (P6), ignore, report y sanction (P7b): sin consumidor todavía.
+					# fortress (P6), ignore, report y sanction (P7b): sin consumidor todavía.
 					pass
 		if not closed_code.is_empty():
 			_log("La plataforma ha cerrado esta instancia (%s)" % closed_code)
@@ -3237,8 +3270,9 @@ func _poll_platform() -> void:
 
 
 # El final de una reclamación (tabla de §5.2). Con OK, en orden: (1) la zona admite el reino del personaje
-# (REALM); (2) cabe (FULL); (3) ProgressService.prepare (progresion.md P5a); (4) WELCOME con el reino y el nombre
-# del personaje. Si falla alguno, REJECT y se libera el arrendamiento.
+# (REALM); (2) cabe (FULL); (3) ProgressService.prepare (progresion.md §9.1: si el registro no se puede leer,
+# UNAVAILABLE con «No se ha podido cargar el personaje» y alerta); (4) WELCOME con el reino y el nombre del
+# personaje. Si falla alguno, REJECT y se libera el arrendamiento.
 func _apply_auth_outcome(outcome: AuthOutcome) -> void:
 	var peer: ServerPeer = _peers.get(outcome.peer_id)
 	if peer == null or peer.state != ServerPeer.State.VERIFYING:
@@ -3262,6 +3296,12 @@ func _apply_auth_outcome(outcome: AuthOutcome) -> void:
 	if rejection != NetProtocol.Result.OK:
 		_platform.release(claimed.character_id, claimed.lease_id)
 		_reject(peer, rejection)
+		return
+	if not _progress.prepare(peer.peer_id, claimed):
+		_log("Alerta: no se ha podido cargar el personaje %d (peer %d): se rechaza y se libera"
+				% [claimed.character_id, peer.peer_id])
+		_platform.release(claimed.character_id, claimed.lease_id)
+		_reject(peer, NetProtocol.Result.UNAVAILABLE, ProgressService.PREPARE_FAILED_TEXT)
 		return
 	peer.claimed = claimed
 	_welcome(peer, claimed.realm, claimed.display_name)
@@ -3353,13 +3393,16 @@ func _on_save_rejected(net_id: int, character_id: int, code: String) -> void:
 
 
 # Un peer que deja VERIFYING o LOADING sin llegar al mundo (§5.2): en VERIFYING se cancela la espera de su
-# reclamación; en LOADING se libera su arrendamiento sin guardar (y ProgressService.cancel_prepared, P5a).
+# reclamación; en LOADING se libera su arrendamiento sin guardar y se descarta su progreso preparado
+# (ProgressService.cancel_prepared, progresion.md §9.1 paso 3).
 func _leave_auth_states(peer: ServerPeer) -> void:
 	match peer.state:
 		ServerPeer.State.VERIFYING:
 			if _auth_provider != null:
 				_auth_provider.cancel(peer.peer_id)
 		ServerPeer.State.LOADING:
+			if _progress != null:
+				_progress.cancel_prepared(peer.peer_id)
 			if peer.claimed != null and _platform != null:
 				_platform.release(peer.claimed.character_id, peer.claimed.lease_id)
 				peer.claimed = null

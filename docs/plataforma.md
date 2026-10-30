@@ -2886,3 +2886,23 @@ segundo y en el tick.
 **Queda para después:** las secciones `progress` (progresion.md P5a) y `pvp` (P6); rechazar con la zona cercada los
 comandos que piden guardado crítico (progresion.md P5d, P7b); el `kill -9` de extremo a extremo (P10); el
 `maintenance` que pone `admin maintenance` en la plataforma (TEC-28).
+
+### 19.10 Lo que deja progresion.md P5a
+
+progresion.md P5a (su §19.11) registra la sección `progress` y prepara el registro antes del WELCOME. Lo que cambia aquí:
+
+- **Siempre hay una sección.** `ZoneServer.start` crea `ProgressService`, que registra `progress` la primera; con
+  plataforma, todo final lleva el guardado y libera con `release_lease` (la liberación sin guardar de §19.9 queda para
+  la baja en LOADING, la baja sin guardado y un final que no se pueda construir). El primer guardado de un personaje
+  nuevo es el crítico del kit, en el tick de su alta.
+- **`prepare` en el paso (3).** Un registro que no se puede leer da REJECT `UNAVAILABLE` con «No se ha podido cargar el
+  personaje», una alerta y la liberación; la baja en LOADING llama a `cancel_prepared`.
+- **`FakeZonePlatform`:** la parte `progress` de la reclamación siguiente (§14.1), `claim_progress` y
+  `default_progress(realm)`; `add_character` con `progress` vacío da un personaje recién creado de su reino (antes, un
+  `{}` que ahora `prepare` rechazaría).
+- **Pruebas de aquí ajustadas:** `test_zone_server_saves` cuenta los guardados desde después del kit;
+  `test_zone_server_platform`, en `test_revoked_in_the_world_only_with_the_current_lease`, espera el final con
+  `release_lease` en lugar de la liberación; `test_zone_process_shutdown` reclama con `default_progress` y cuenta como
+  liberación de quien estaba en el mundo su final con `release_lease` (contestado con el mismo retraso).
+- **P6:** `pvp` se registra detrás de `progress`. **P10:** los guardados de extremo a extremo llevan ya la sección
+  `progress` (con el almacén de verdad, progresion.md P7).

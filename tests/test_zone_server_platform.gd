@@ -407,8 +407,9 @@ func test_revoked_while_loading_kicks_and_releases() -> void:
 	assert_eq(_platform.sent(PlatformEvent.KIND_SAVE).size(), 0, "sin guardar")
 
 
-## En el mundo: un revoked con un lease_id viejo no expulsa; con el de ahora, sí (y libera al irse el cuerpo); un
-## lease_lost expulsa sin liberar.
+## En el mundo: un revoked con un lease_id viejo no expulsa; con el de ahora, sí (y al irse el cuerpo sale su final
+## con release_lease, que libera: desde progresion.md P5a la sección progress siempre se construye); un lease_lost
+## expulsa sin liberar ni guardar.
 func test_revoked_in_the_world_only_with_the_current_lease() -> void:
 	if not await _start(Callable(), func(platform: FakeZonePlatform) -> void:
 			platform.add_character(42, 7, &"player", VARDHEIM, {})
@@ -433,10 +434,12 @@ func test_revoked_in_the_world_only_with_the_current_lease() -> void:
 	await _run_until(func() -> bool: return first.kick_notice() != null)
 	if assert_not_null(first.kick_notice(), "con el de ahora, expulsión"):
 		assert_eq(first.kick_notice().text, "Tu cuenta está expulsada: trampas", "con el texto de la plataforma")
-	var released: bool = await _run_until(func() -> bool:
-		return not _platform.sent(ZonePlatform.KIND_RELEASE).is_empty())
-	if assert_true(released, "al irse el cuerpo se libera"):
-		assert_eq(_platform.sent(ZonePlatform.KIND_RELEASE)[0]["lease_id"], lease_42, "su arrendamiento")
+	var final_of_42: Callable = func() -> Array[Dictionary]:
+		return _platform.sent(PlatformEvent.KIND_SAVE).filter(func(b: Dictionary) -> bool:
+			return bool(b["release_lease"]) and String(b["lease_id"]) == lease_42)
+	var finished: bool = await _run_until(func() -> bool: return not (final_of_42.call() as Array).is_empty())
+	assert_true(finished, "al irse el cuerpo sale su final con release_lease, que libera")
+	var saves_before: int = _platform.sent(PlatformEvent.KIND_SAVE).size()
 	revoke.call("43", lease_43, "lease_lost", "Tu personaje ha entrado en otro servidor")
 	await _run_until(func() -> bool: return second.kick_notice() != null)
 	if assert_not_null(second.kick_notice(), "lease_lost expulsa"):
@@ -444,7 +447,8 @@ func test_revoked_in_the_world_only_with_the_current_lease() -> void:
 	await _run_until(func() -> bool: return _server.get_registry().get_sorted().filter(
 			func(e: NetEntity) -> bool: return e.kind == NetProtocol.EntityKind.PLAYER).is_empty(), 2000)
 	await _run_ms(200)
-	assert_eq(_platform.sent(ZonePlatform.KIND_RELEASE).size(), 1, "lease_lost no libera (ya no es de la zona)")
+	assert_eq(_platform.sent(ZonePlatform.KIND_RELEASE).size(), 0, "lease_lost no libera (ya no es de la zona)")
+	assert_eq(_platform.sent(PlatformEvent.KIND_SAVE).size(), saves_before, "ni guarda")
 	assert_false(_platform.heartbeat_set().has(43), "ni se sigue latiendo por él")
 
 

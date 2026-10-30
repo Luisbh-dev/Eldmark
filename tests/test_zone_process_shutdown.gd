@@ -4,16 +4,18 @@ extends TestCase
 ## [code]--stop-file[/code], [code]--quit-after-ticks[/code], [code]--idle-quit[/code], el [code]shutdown[/code] de
 ## la consola (con [code]--run-at[/code]) y el [code]maintenance[/code] del latido. Con un jugador en el mundo, uno en
 ## LOADING y uno en VERIFYING, el proceso no se da de baja (DELETE) hasta que la plataforma ha contestado lo que
-## le queda de cada uno, y sale con código 0 sin errores. Hasta progresion.md P5a la zona no tiene secciones que
-## guardar: el final de quien está en el mundo es su liberación (CharacterSaver sin secciones); los guardados de
-## verdad con la espera se prueban en [code]test_zone_server_saves.gd[/code].
+## le queda de cada uno, y sale con código 0 sin errores. Desde progresion.md P5a la zona tiene la sección
+## [code]progress[/code]: quien está en el mundo guarda su kit al entrar y se libera con su final
+## ([code]release_lease[/code]); los de LOADING y VERIFYING, con la liberación. La plataforma falsa contesta los
+## guardados y las liberaciones con el mismo retraso.
 
 const INSTANCE_ID: String = "1f6a1c1e-5b9e-4c1a-9a51-6d2f0e3b7c44"
 const KEY_HEX: String = "02b7825be38fdd5396a4a058286884eaf93a9df85b874f78b4010a76103fb858"
 const PLAYER_SCENE: PackedScene = preload("res://scenes/characters/player_character.tscn")
 const ZONE_ID: String = "test_world"
 const NAMES: Dictionary[int, String] = {1: "Aneira", 2: "Brais", 3: "Carmela"}
-## Lo que tarda la plataforma falsa en contestar una liberación (menos que el plazo de 3 s del cliente).
+## Lo que tarda la plataforma falsa en contestar una liberación o un guardado (menos que el plazo de 3 s del
+## cliente).
 const RELEASE_DELAY_S: float = 2.0
 ## Lo que tarda en contestar la reclamación del tercero, que espera en VERIFYING (también menos de 3 s).
 const VERIFYING_CLAIM_DELAY_S: float = 2.5
@@ -93,10 +95,12 @@ func _answer(request: FakeHttpServer.Received) -> Array:
 						"ignored_account_ids": [], "warnings": []},
 				"character": {"character_id": str(character_id), "world_id": 1, "realm": 1,
 						"name": NAMES[character_id]},
-				"progress": {}, "pvp": {"kills": 0, "deaths": 0, "assists": 0, "captures": 0, "gate_damage": 0,
-						"defend_s": 0}}, VERIFYING_CLAIM_DELAY_S if character_id == 3 else 0.0]
+				"progress": FakeZonePlatform.default_progress(NetProtocol.Realm.VARDHEIM), "pvp": {"kills": 0,
+						"deaths": 0, "assists": 0, "captures": 0, "gate_damage": 0, "defend_s": 0}},
+				VERIFYING_CLAIM_DELAY_S if character_id == 3 else 0.0]
 	if request.method == "PUT" and path.ends_with("/state"):
-		return [200, {"applied": true, "duplicate": false, "save_version": 1, "instance_status": "live"}, 2.0]
+		return [200, {"applied": true, "duplicate": false, "save_version": 1, "instance_status": "live"},
+				_release_delay_s]
 	return [404, {"error": {"code": "not_found", "message": "No existe"}}, 0.0]
 
 
@@ -212,16 +216,21 @@ func _claims_of(character_id: int) -> int:
 	return count
 
 
+## Las liberaciones y los guardados que liberan (los finales, con release_lease), en orden de llegada.
 func _releases() -> Array[FakeHttpServer.Received]:
 	var found: Array[FakeHttpServer.Received] = []
 	for request: FakeHttpServer.Received in _http.received:
 		if request.method == "POST" and request.path.ends_with("/release"):
 			found.append(request)
+		elif request.method == "PUT" and request.path.ends_with("/state") and request.json() is Dictionary \
+				and bool((request.json() as Dictionary).get("release_lease", false)):
+			found.append(request)
 	return found
 
 
 ## Espera la salida del proceso y comprueba el cierre ordenado: código 0, cada arrendamiento de [param characters]
-## liberado una vez, la baja (DELETE) después de que la plataforma contestara cada liberación y sin errores.
+## liberado una vez (con la liberación o con el final), la baja (DELETE) después de que la plataforma contestara
+## cada guardado y cada liberación, y sin errores.
 func _expect_orderly_exit(characters: Array[int]) -> void:
 	var exited: bool = await _run_until(func() -> bool: return not OS.is_process_running(_pid), 25000)
 	if not assert_true(exited, "el proceso termina"):
@@ -237,7 +246,9 @@ func _expect_orderly_exit(characters: Array[int]) -> void:
 	for request: FakeHttpServer.Received in _releases():
 		var lease_id: String = String((request.json() as Dictionary).get("lease_id", ""))
 		released[lease_id] = released.get(lease_id, 0) + 1
-		last_answer_msec = maxi(last_answer_msec, request.at_msec + int(_release_delay_s * 1000.0))
+	for request: FakeHttpServer.Received in _http.received:
+		if request.path.ends_with("/release") or request.path.ends_with("/state"):
+			last_answer_msec = maxi(last_answer_msec, request.at_msec + int(_release_delay_s * 1000.0))
 	for character_id: int in characters:
 		assert_eq(released.get(_leases.get(character_id, "?"), 0), 1,
 				"el arrendamiento del personaje %d se libera una vez" % character_id)
@@ -296,7 +307,8 @@ func test_maintenance_waits_for_the_platform() -> void:
 	assert_true(players[0].notice_time(NetProtocol.NoticeCode.SHUTDOWN) >= 0, "y el NOTICE de cierre")
 
 
-## --idle-quit solo cuenta sin nadie dentro: el jugador sale y su liberación sigue pendiente al cerrar.
+## --idle-quit solo cuenta sin nadie dentro: el jugador sale y su final (detrás del guardado del kit) sigue pendiente
+## al cerrar.
 func test_idle_quit_waits_for_the_platform() -> void:
 	_release_delay_s = 2.8
 	if not await _launch(PackedStringArray(["--idle-quit=1"]), "shutdown_idle"):

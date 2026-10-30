@@ -9,7 +9,8 @@ extends ZonePlatform
 ## [b]Por defecto[/b]: registro con [member fake_env]; GET de fortalezas con [member fake_fortresses]; cada bloque
 ## de ids [code]{first: next_block_first, count: 1024}[/code] (y [member next_block_first] sube 1024); claim → 200
 ## con lo de [method add_character] (un [code]lease_id[/code] nuevo en cada una) y, si hubo guardados, lo último
-## aplicado de cada sección (aquí [code]pvp[/code]; la parte [code]progress[/code] la añade progresion.md P5a);
+## aplicado de cada sección: [code]pvp[/code] tal cual y [code]progress[/code] sin [code]ops[/code], con los campos
+## de solo lectura de la reclamación anterior y [code]location.saved_at_unix[/code] puesto (progresion.md P5a);
 ## sin [method add_character], 409 [code]ticket_invalid[/code]. save → 200 applied con un
 ## [code]save_version[/code] que sube; release → 204; heartbeat → 200 sin [code]revoked[/code] y con
 ## [member fake_maintenance];
@@ -88,15 +89,47 @@ static func error_body(code: String, message: String = "", extra: Dictionary = {
 
 ## Lo que devuelve la reclamación de [param character_id] (un [code]lease_id[/code] nuevo en cada una). Sin
 ## [param display_name], uno válido sacado del id ([method NameRules.bot_name]). [param pvp] vacío = todo a 0.
+## [param progress] vacío = el de un personaje recién creado de ese reino ([method default_progress]), como el que
+## devuelve [code]Load[/code] de la plataforma; uno roto se pasa tal cual (lo rechaza [code]prepare[/code]).
 func add_character(character_id: int, account_id: int, role: StringName, realm: int, progress: Dictionary,
 		pvp: Dictionary = {}, display_name: String = "") -> void:
 	var totals: Dictionary = {}
 	for key: String in ClaimedCharacter.PVP_KEYS:
 		totals[key] = int(pvp.get(key, 0))
 	_characters[character_id] = {
-		"account_id": account_id, "role": String(role), "realm": realm, "progress": progress.duplicate(true),
+		"account_id": account_id, "role": String(role), "realm": realm,
+		"progress": progress.duplicate(true) if not progress.is_empty() else default_progress(realm),
 		"pvp": totals, "name": display_name if not display_name.is_empty() else NameRules.bot_name(character_id),
 	}
+
+
+## La sección [code]progress[/code] de la reclamación de un personaje recién creado (progresion.md §3.4 y §14.3):
+## [method ProgressRecord.new_character] con [param race_id], los 8 B de [param appearance] y
+## [param starter_template_id], en la forma de [method ProgressRecord.to_claim_dictionary] (sin posición).
+static func claim_progress(race_id: StringName, appearance: PackedByteArray,
+		starter_template_id: StringName) -> Dictionary:
+	var record: ProgressRecord = ProgressRecord.new_character()
+	record.race_id = race_id
+	record.appearance = appearance.duplicate()
+	record.starter_template_id = starter_template_id
+	return record.to_claim_dictionary(0)
+
+
+## [method claim_progress] del pueblo de [param realm] (código de [enum NetProtocol.Realm]) con su apariencia por
+## defecto y la primera plantilla elegible por id: lo que da [method add_character] con un [code]progress[/code]
+## vacío.
+static func default_progress(realm: int) -> Dictionary:
+	var catalog: AppearanceCatalog = AppearanceCatalog.shared()
+	var race: RaceDefinition = catalog.race_for_realm(RealmCatalog.id_of_code(realm))
+	var race_id: StringName = race.id if race != null else &""
+	var appearance: CharacterAppearance = CharacterAppearance.default_for(catalog, catalog.race_index(race_id))
+	var template_id: StringName = &""
+	for template: EquipmentTemplate in CombatCatalog.tables().templates:
+		if template != null and template.selectable \
+				and (template_id.is_empty() or String(template.id) < String(template_id)):
+			template_id = template.id
+	return claim_progress(race_id, appearance.encode() if appearance != null else PackedByteArray([0, 0, 0, 0, 0,
+			0, 0, 0]), template_id)
 
 
 ## La siguiente petición de [param kind] (claim, save, release, heartbeat, id_block, progress_op,
@@ -224,12 +257,14 @@ func _claim_answer(body: Dictionary) -> Array:
 				"ignored_account_ids": [], "warnings": []},
 		"character": {"character_id": str(character_id), "world_id": _config.world_id if _config != null else 1,
 				"realm": data["realm"], "name": data["name"]},
-		"progress": data["progress"],
+		"progress": sections.get("progress", data["progress"]),
 		"pvp": sections.get("pvp", data["pvp"]),
 	}]
 
 
-# Guarda lo último aplicado de cada sección para la reclamación siguiente (§14.1: aquí pvp).
+# Guarda lo último aplicado de cada sección para la reclamación siguiente (plataforma.md §14.1): pvp tal cual y
+# progress como la daría Load (progresion.md §3.4): sin ops, con los campos de solo lectura de la reclamación
+# anterior y location.saved_at_unix con la hora del guardado.
 func _remember_save(body: Dictionary) -> void:
 	var character_id: int = PlatformJson.id_of(body.get("character_id"))
 	if character_id < 1:
@@ -238,4 +273,15 @@ func _remember_save(body: Dictionary) -> void:
 	var sections: Dictionary = _sections.get(character_id, {})
 	if body.get("pvp") is Dictionary:
 		sections["pvp"] = (body["pvp"] as Dictionary).duplicate(true)
+	if body.get("progress") is Dictionary:
+		var previous: Dictionary = sections.get("progress",
+				(_characters[character_id]["progress"] if _characters.has(character_id) else {}))
+		var progress: Dictionary = (body["progress"] as Dictionary).duplicate(true)
+		progress.erase("ops")
+		for key: String in ProgressRecord.CLAIM_ONLY_KEYS:
+			if previous.has(key):
+				progress[key] = previous[key]
+		if progress.get("location") is Dictionary:
+			(progress["location"] as Dictionary)[ProgressRecord.LOCATION_CLAIM_KEY] = now_unix()
+		sections["progress"] = progress
 	_sections[character_id] = sections

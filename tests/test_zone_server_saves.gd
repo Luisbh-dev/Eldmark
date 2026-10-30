@@ -304,6 +304,9 @@ func test_a_rejected_save_and_a_lease_lost_drop_the_body_at_once() -> void:
 		return
 	var net_42: int = first.own_spawn.net_id
 	var net_43: int = second.own_spawn.net_id
+	# El kit de la primera entrada de cada uno ya ha salido como crítico (progresion.md P5a): se cuenta desde aquí.
+	await _run_until(func() -> bool: return _server.get_saver().pending_count() == 0)
+	var saves_before: int = _saves().size()
 	_put_in_combat(net_42)
 	_put_in_combat(net_43)
 	_platform.script_next(PlatformEvent.KIND_SAVE, 400, FakeZonePlatform.error_body("invalid_save", "",
@@ -319,7 +322,7 @@ func test_a_rejected_save_and_a_lease_lost_drop_the_body_at_once() -> void:
 	assert_false(_server.is_lingering(net_42), "sin salida en combate")
 	var calls: int = _section.calls_for(net_42)
 	await _run_ms(300)
-	assert_eq(_saves().size(), 1, "la «Salida» no manda nada")
+	assert_eq(_saves().size(), saves_before + 1, "la «Salida» no manda nada")
 	assert_eq(_releases().map(func(b: Dictionary) -> String: return String(b["lease_id"])),
 			[_platform.claimed(42).lease_id], "se libera una vez")
 	assert_eq(_section.calls_for(net_42), calls, "la sección no recibe nada más del cuerpo que se fue")
@@ -332,7 +335,7 @@ func test_a_rejected_save_and_a_lease_lost_drop_the_body_at_once() -> void:
 	await _run_until(func() -> bool: return not _has_body(net_43), 1000)
 	assert_false(_has_body(net_43), "el cuerpo sale en el acto")
 	await _run_ms(300)
-	assert_eq(_saves().size(), 1, "sin guardado")
+	assert_eq(_saves().size(), saves_before + 1, "sin guardado")
 	assert_eq(_releases().size(), 1, "ni liberación")
 
 
