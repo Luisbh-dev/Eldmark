@@ -1,5 +1,8 @@
 # Informe de la sesión nocturna
 
+> Nota del 1 de noviembre de 2026: este informe describe el estado del 29 de octubre. Después, todas las ramas
+> se fusionaron en `main` (PR 1 a 9) y se hicieron las tareas que aquí figuran como pendientes de la fase 5.
+
 Sesión sin supervisión del 28 al 29 de octubre de 2026, **cerrada a petición del usuario** el 29 por
 la tarde. Este archivo está en la rama más reciente (`fase5-cuentas`) y en `fase4-fuerte`. Las ramas
 van encadenadas: `main` → `fase2-red` → `fase3-combate` → `fase4-fuerte` → `fase5-cuentas`, y nada
