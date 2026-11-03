@@ -55,6 +55,8 @@ static func ensure_defaults() -> void:
 
 	# Interfaz.
 	_ensure_key(&"open_settings", KEY_F10)
+	# Muestra u oculta la línea de ayuda de controles del HUD (UI-49).
+	_ensure_key(&"toggle_help", KEY_F1)
 	_ensure_key(&"open_map", KEY_M)
 	_ensure_key(&"map_zoom_in", KEY_EQUAL)
 	_ensure_key(&"map_zoom_out", KEY_MINUS)

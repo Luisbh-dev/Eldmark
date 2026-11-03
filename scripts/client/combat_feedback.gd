@@ -8,7 +8,8 @@ extends Node
 ## [DpsMeter]. Un golpe no confirmado por el servidor no produce nada: no se predice.
 ## [br]- [b]Daño recibido[/b]: sacudida de cámara ([method CameraRig.add_shake]), número rojo y la
 ## señal [signal damage_taken] (de la que cuelgan los arcos de dirección del HUD).
-## [br]- [b]Destello[/b] de la víctima: un [code]material_overlay[/code] breve sobre sus mallas.
+## [br]- [b]Destello[/b] de la víctima: un [code]material_overlay[/code] blanco y aditivo de unos 80 ms que cae a cero
+## (UI-50). A plena intensidad en los golpes en que interviene el jugador local y tenue en los ajenos.
 ## [br][br]
 ## [b]Temporización de la reacción de un remoto.[/b] Un evento propio llega nada más producirse en el
 ## servidor, pero los remotos se dibujan unos ticks por detrás (el retardo del [InterpolationClock]).
@@ -67,9 +68,12 @@ const SOUND_KILL: StringName = &"kill"
 const SOUND_DEATH: StringName = &"death"
 const SOUND_RESPAWN: StringName = &"respawn"
 
-## Duración (s) del destello de la víctima.
-const FLASH_SECONDS: float = 0.12
-const FLASH_COLOR: Color = Color(1.0, 0.25, 0.2, 0.5)
+## Duración (s) del destello de la víctima: breve, con la opacidad cayendo en línea recta hasta cero.
+const FLASH_SECONDS: float = 0.08
+## Destello blanco y aditivo (suma luz, no tiñe de rojo): su opacidad al empezar, a plena intensidad (golpes en los que
+## interviene el jugador local) y la fracción de esa intensidad que tienen los golpes ajenos.
+const FLASH_COLOR: Color = Color(1.0, 1.0, 1.0, 0.55)
+const FLASH_OTHERS_INTENSITY: float = 0.45
 ## Sacudida de cámara al recibir daño: amplitud base y por fracción de vida máxima perdida (m),
 ## tope y duración (s). Un golpe bloqueado sacude la mitad.
 const SHAKE_BASE: float = 0.03
@@ -110,9 +114,11 @@ var _last_event_tick: int = 0
 var _last_action_key: Vector3i = Vector3i(-1, -1, -1)
 var _last_action: int = CombatState.Action.NONE
 var _swing_active: bool = false
-var _flash_material: StandardMaterial3D = null
 var _flash_meshes: Array[MeshInstance3D] = []
 var _flash_left: Array[float] = []
+# Material y opacidad inicial de cada destello en curso (en el orden de _flash_meshes).
+var _flash_materials: Array[StandardMaterial3D] = []
+var _flash_peaks: Array[float] = []
 var _events_handled: int = 0
 # Reacciones visuales de eventos propios sobre un remoto que esperan a su tick de dibujo.
 var _deferred: CombatEventQueue = CombatEventQueue.new()
@@ -301,10 +307,13 @@ func _on_kill(event: NetMessages.EntityEvent, is_own: bool) -> void:
 			_react_to_kill(event)
 
 
-# Lo que se ve en la víctima de un HIT con daño: su placa enseña la vida y destella.
+# Lo que se ve en la víctima de un HIT con daño: su placa enseña la vida y destella (a plena intensidad si el golpe
+# es del jugador local o lo recibe él, tenue si es de otros).
 func _react_to_hit(event: NetMessages.EntityEvent) -> void:
 	entity_damaged.emit(event.net_id)
-	flash(event.net_id)
+	var own_id: int = get_own_net_id()
+	var involves_me: bool = own_id != 0 and (event.attacker == own_id or event.net_id == own_id)
+	flash(event.net_id, 1.0 if involves_me else FLASH_OTHERS_INTENSITY)
 
 
 func _react_to_death(event: NetMessages.EntityEvent) -> void:
@@ -387,42 +396,47 @@ func _request_sound(sound: StringName, position: Vector3) -> void:
 
 # --- Destello ---------------------------------------------------------------------------------
 
-## Destello breve (material_overlay) sobre las mallas de la entidad [param net_id]. Sin efecto con
-## [member flash_enabled] a false o si no se conoce su cuerpo.
-func flash(net_id: int) -> void:
+## Destello breve (material_overlay blanco y aditivo) sobre las mallas de la entidad [param net_id] con la fuerza
+## [param intensity] (1 = plena, la de [constant FLASH_COLOR]). Sin efecto con [member flash_enabled] a false o si no se
+## conoce su cuerpo.
+func flash(net_id: int, intensity: float = 1.0) -> void:
 	if not flash_enabled:
 		return
 	var body: PlayerCharacter = _body_of(net_id)
 	if body == null:
 		return
-	if _flash_material == null:
-		_flash_material = _make_flash_material()
+	var peak: float = FLASH_COLOR.a * clampf(intensity, 0.0, 1.0)
+	var material: StandardMaterial3D = _make_flash_material(peak)
 	for node: Node in body.find_children("*", "MeshInstance3D", true, false):
 		var mesh: MeshInstance3D = node as MeshInstance3D
 		if mesh == null or not mesh.visible:
 			continue
-		mesh.material_overlay = _flash_material
+		mesh.material_overlay = material
 		var index: int = _flash_meshes.find(mesh)
 		if index >= 0:
 			_flash_left[index] = FLASH_SECONDS
+			_flash_materials[index] = material
+			_flash_peaks[index] = peak
 		else:
 			_flash_meshes.append(mesh)
 			_flash_left.append(FLASH_SECONDS)
+			_flash_materials.append(material)
+			_flash_peaks.append(peak)
 
 
-## Avanza el destello [param delta] segundos y quita el overlay a las mallas que ya acabaron.
+## Avanza el destello [param delta] segundos, baja su opacidad y quita el overlay a las mallas que ya acabaron.
 func advance_flashes(delta: float) -> void:
 	var index: int = _flash_meshes.size() - 1
 	while index >= 0:
 		_flash_left[index] -= delta
 		var mesh: MeshInstance3D = _flash_meshes[index]
 		if not is_instance_valid(mesh):
-			_flash_meshes.remove_at(index)
-			_flash_left.remove_at(index)
+			_remove_flash(index)
 		elif _flash_left[index] <= 0.0:
 			mesh.material_overlay = null
-			_flash_meshes.remove_at(index)
-			_flash_left.remove_at(index)
+			_remove_flash(index)
+		else:
+			_flash_materials[index].albedo_color.a = _flash_peaks[index] * (_flash_left[index] / FLASH_SECONDS)
 		index -= 1
 
 
@@ -431,11 +445,24 @@ func get_flashing_count() -> int:
 	return _flash_meshes.size()
 
 
-func _make_flash_material() -> StandardMaterial3D:
+## Opacidad actual del destello de la primera malla que lo tiene (0 si ninguna): para las pruebas.
+func get_flash_alpha() -> float:
+	return _flash_materials[0].albedo_color.a if not _flash_materials.is_empty() else 0.0
+
+
+func _remove_flash(index: int) -> void:
+	_flash_meshes.remove_at(index)
+	_flash_left.remove_at(index)
+	_flash_materials.remove_at(index)
+	_flash_peaks.remove_at(index)
+
+
+func _make_flash_material(alpha: float) -> StandardMaterial3D:
 	var material := StandardMaterial3D.new()
-	material.albedo_color = FLASH_COLOR
+	material.albedo_color = Color(FLASH_COLOR.r, FLASH_COLOR.g, FLASH_COLOR.b, alpha)
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	material.no_depth_test = false
 	return material
 
@@ -447,6 +474,8 @@ func _exit_tree() -> void:
 			mesh.material_overlay = null
 	_flash_meshes.clear()
 	_flash_left.clear()
+	_flash_materials.clear()
+	_flash_peaks.clear()
 	_deferred.clear()
 
 

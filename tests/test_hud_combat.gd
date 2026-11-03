@@ -272,8 +272,8 @@ func test_vignette_flashes_on_a_hit_even_with_full_health() -> void:
 	vignette.set_health_fraction(1.0)
 	vignette.advance(0.0)
 	assert_false(vignette.visible, "invisible sin motivo")
-	vignette.flash()
-	assert_true(vignette.get_alpha() > 0.3, "el golpe la enciende")
+	vignette.flash(90, 1000)
+	assert_true(vignette.get_alpha() >= LowHealthVignette.FLASH_MIN_ALPHA, "el golpe la enciende")
 	assert_true(vignette.visible)
 	vignette.advance(LowHealthVignette.FLASH_SECONDS + 0.1)
 	assert_eq(vignette.get_alpha(), 0.0, "y se apaga")
@@ -550,6 +550,8 @@ func test_damage_indicator_points_at_the_attacker_relative_to_the_camera() -> vo
 	_step(h)
 	assert_near(indicator.get_arc_angle(0), PI * 0.5, 0.01, "al girar la cámara a la izquierda, queda a la derecha")
 	assert_true(h.hud.get_vignette().get_alpha() > 0.0, "y la viñeta destella")
+	assert_true(h.hud.get_war_hud().get_world_markers().is_in_combat(),
+			"y los marcadores del mundo se quedan con el objetivo (UI-54)")
 	# Un daño de un atacante desconocido (fuera de interés) no dibuja arco pero sí la viñeta.
 	feedback.position_resolver = func(net_id: int) -> Vector3:
 		return Vector3.INF if net_id == OTHER_ID else Vector3.ZERO
@@ -576,11 +578,12 @@ func test_a_parry_or_a_full_block_without_damage_does_not_flash_the_red_vignette
 		assert_false(vignette.visible, "y sigue oculta (flags %d)" % flag)
 	# Control: un golpe con daño sí la enciende, conozca o no al atacante.
 	feedback.handle_event(NetMessages.EntityEvent.hit(OWN_ID, 11, OTHER_ID, 90, 0, 0, 2), true)
-	assert_true(vignette.get_alpha() > 0.3, "con 90 de daño destella")
+	assert_true(vignette.get_alpha() >= LowHealthVignette.FLASH_MIN_ALPHA, "con 90 de daño destella")
+	assert_true(vignette.get_alpha() <= LowHealthVignette.FLASH_MAX_ALPHA, "pero con el alfa de un golpe pequeño")
 	vignette.advance(LowHealthVignette.FLASH_SECONDS + 0.1)
 	assert_eq(vignette.get_alpha(), 0.0)
 	feedback.handle_event(NetMessages.EntityEvent.hit(OWN_ID, 12, 0, 90, 0, 0, 2), true)
-	assert_true(vignette.get_alpha() > 0.3, "y también si el atacante no se conoce")
+	assert_true(vignette.get_alpha() >= LowHealthVignette.FLASH_MIN_ALPHA, "y también si el atacante no se conoce")
 
 
 func test_death_flow_opens_the_screen_frees_the_cursor_and_closes_on_respawn() -> void:
@@ -606,6 +609,8 @@ func test_death_flow_opens_the_screen_frees_the_cursor_and_closes_on_respawn() -
 	assert_eq(screen.get_point_count(), 2, "con la lista de puntos del reino")
 	assert_eq(screen.get_point_label(1), "Fuerte Norte")
 	assert_true(h.hud.is_dimmed(), "el resto de la interfaz se atenúa")
+	assert_true(h.hud.get_vignette().is_suppressed(), "y sin viñeta roja encima de la pantalla de muerte (UI-50)")
+	assert_eq(h.hud.get_vignette().get_alpha(), 0.0)
 	assert_true(h.rig.is_cursor_free(), "el cursor queda libre")
 	assert_false(h.hud.get_node(^"Crosshair").visible, "y sin punto de mira")
 	assert_eq(screen.get_remaining_seconds(), 10, "cuenta atrás de 600 ticks")
@@ -627,6 +632,7 @@ func test_death_flow_opens_the_screen_frees_the_cursor_and_closes_on_respawn() -
 	_step(h)
 	assert_false(screen.is_open())
 	assert_false(h.hud.is_dimmed(), "la interfaz vuelve a la normalidad")
+	assert_false(h.hud.get_vignette().is_suppressed(), "y la viñeta vuelve a poder dibujarse")
 	assert_false(h.rig.is_cursor_free(), "el cursor se recaptura")
 	assert_near(h.hud.get_vitals().get_ghost_fraction(), 1.0, 0.001, "sin restos de la vida anterior")
 

@@ -9,7 +9,22 @@ extends Control
 ## Los marcadores salen de [MarkerSource] (mapa horneado y estado del fuerte) y se calculan en cada
 ## fotograma con [method refresh]; [method project] es la proyección pura (cámara, tamaño de la
 ## pantalla y punto del mundo). Las distancias son horizontales, desde el jugador. Medidas y colores
-## provisionales. Solo cliente.
+## provisionales.
+## [br][br]
+## [b]Qué se dibuja (UI-54).[/b] Antes se rotulaban todos los lugares a la vez y bajo la mira se amontonaba una sopa de
+## nombres. Ahora ([method select_shown]):
+## [br]- Siempre, el [b]objetivo actual[/b] ([method pick_objective]: el círculo de captura si está activo y, si no, el
+## fuerte más cercano que no es del propio reino), con su distancia y, si cae fuera de la vista, pegado al borde con una
+## flecha.
+## [br]- El [b]nombre[/b] solo cuando la mira está a menos de [constant AIM_RADIUS] px del icono o con Alt pulsado
+## (que suelta el cursor para mirar a gusto).
+## [br]- Los demás lugares (puerta, campamentos, pasos) solo aparecen, con su nombre, al acercar la mira o con Alt; nunca
+## pegados al borde.
+## [br]- Hasta [constant MAX_SHOWN] a la vez, sin que dos iconos queden a menos de [constant LABEL_SPACING] (se
+## pisarían los rótulos) y, durante [constant COMBAT_SECONDS] s tras un golpe dado o recibido
+## ([method notify_combat]), solo el objetivo y sin nombres.
+## [br][br]
+## Solo cliente.
 
 ## Distancia (m) más allá de la cual no se marca un lugar, por tipo; el círculo de captura solo de cerca.
 const MAX_DISTANCE: float = 700.0
@@ -25,12 +40,23 @@ const ICON_SIZE: float = 9.0
 const FONT_SIZE: int = 14
 const TEXT_COLOR: Color = Color(1.0, 1.0, 1.0, 0.95)
 const TEXT_OUTLINE: Color = Color(0.0, 0.0, 0.0, 0.85)
+## Distancia (px) de la mira (el centro de la pantalla) a un icono por debajo de la cual enseña su nombre.
+const AIM_RADIUS: float = 80.0
+## Marcadores como mucho en pantalla a la vez.
+const MAX_SHOWN: int = 3
+## Segundos tras un golpe dado o recibido en los que solo se dibuja el objetivo, sin nombres.
+const COMBAT_SECONDS: float = 5.0
+## Separación mínima (px, en x y en y) entre los iconos de dos marcadores dibujados a la vez: más cerca, sus rótulos se
+## pisarían (el fuerte y un paso que cae detrás de él a lo lejos), y el que va después no se dibuja.
+const LABEL_SPACING: Vector2 = Vector2(240.0, 24.0)
 
 var _client: NetClient = null
 var _view: FortressView = null
 var _camera_rig: CameraRig = null
 var _map: ZoneMapDefinition = null
 var _items: Array[Dictionary] = []
+var _objective_id: StringName = &""
+var _combat_left: float = 0.0
 
 
 func _ready() -> void:
@@ -38,8 +64,19 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_combat_left = maxf(_combat_left - delta, 0.0)
 	refresh()
+
+
+## Avisa de que hubo un golpe dado o recibido: durante [constant COMBAT_SECONDS] s solo se dibuja el objetivo, sin nombres.
+func notify_combat() -> void:
+	_combat_left = COMBAT_SECONDS
+
+
+## true mientras dura el aviso de [method notify_combat].
+func is_in_combat() -> bool:
+	return _combat_left > 0.0
 
 
 ## Conecta los marcadores con el cliente (dónde está el jugador), la vista del fuerte, la cámara y el
@@ -50,9 +87,10 @@ func bind(client: NetClient, view: FortressView, camera_rig: CameraRig, map: Zon
 	_camera_rig = camera_rig
 	_map = map
 	_items.clear()
+	_objective_id = &""
 
 
-## Recalcula dónde cae cada marcador en la pantalla y redibuja.
+## Recalcula dónde cae cada marcador en la pantalla, cuáles se dibujan y redibuja.
 func refresh() -> void:
 	_items.clear()
 	var camera: Camera3D = _camera_rig.get_camera() if is_instance_valid(_camera_rig) else null
@@ -62,7 +100,11 @@ func refresh() -> void:
 		return
 	var here: Vector3 = character.global_position if character.is_inside_tree() else character.position
 	var screen_size: Vector2 = camera.get_viewport().get_visible_rect().size
-	for marker: WorldMarker in MarkerSource.build(_map, _view):
+	var markers: Array[WorldMarker] = MarkerSource.build(_map, _view)
+	var own_realm: int = _client.get_config().realm if _client.get_config() != null else NetProtocol.Realm.NONE
+	var objective: WorldMarker = pick_objective(markers, here, own_realm)
+	_objective_id = objective.id if objective != null else &""
+	for marker: WorldMarker in markers:
 		var distance: float = marker.distance_from(here)
 		if distance > max_distance_for(marker.kind):
 			continue
@@ -70,8 +112,11 @@ func refresh() -> void:
 		_items.append({
 			"marker": marker, "distance": distance, "screen": projected["screen"],
 			"on_edge": projected["on_edge"], "angle": projected["angle"],
-			"alpha": fade_alpha(distance),
+			"alpha": fade_alpha(distance), "objective": marker.id == _objective_id,
+			"shown": false, "label": false,
 		})
+	var alt_held: bool = InputMap.has_action(&"free_cursor") and Input.is_action_pressed(&"free_cursor")
+	select_shown(_items, screen_size * 0.5, alt_held, is_in_combat())
 	queue_redraw()
 
 
@@ -80,12 +125,88 @@ func get_items() -> Array[Dictionary]:
 	return _items.duplicate()
 
 
+## Los elementos que se dibujan ahora (los de [method get_items] con [code]shown[/code]).
+func get_shown_items() -> Array[Dictionary]:
+	var shown: Array[Dictionary] = []
+	for item: Dictionary in _items:
+		if bool(item["shown"]):
+			shown.append(item)
+	return shown
+
+
+## Id del marcador que es el objetivo actual (vacío si no hay).
+func get_objective_id() -> StringName:
+	return _objective_id
+
+
 ## El elemento del marcador con id [param id], o un diccionario vacío.
 func get_item(id: StringName) -> Dictionary:
 	for item: Dictionary in _items:
 		if (item["marker"] as WorldMarker).id == id:
 			return item
 	return {}
+
+
+## El objetivo actual entre [param markers] visto desde [param origin] y por alguien del reino [param own_realm]: el
+## círculo de captura más cercano si hay alguno activo; si no, el fuerte más cercano que no es de [param own_realm] (o el
+## más cercano si todos son suyos). null si no hay ni círculo ni fuerte.
+static func pick_objective(markers: Array[WorldMarker], origin: Vector3, own_realm: int) -> WorldMarker:
+	var circle: WorldMarker = _nearest(markers, origin, func(marker: WorldMarker) -> bool:
+		return marker.kind == WorldMarker.Kind.CIRCLE)
+	if circle != null:
+		return circle
+	var foreign: WorldMarker = _nearest(markers, origin, func(marker: WorldMarker) -> bool:
+		return marker.kind == WorldMarker.Kind.FORT \
+				and (own_realm == NetProtocol.Realm.NONE or marker.realm != own_realm))
+	if foreign != null:
+		return foreign
+	return _nearest(markers, origin, func(marker: WorldMarker) -> bool: return marker.kind == WorldMarker.Kind.FORT)
+
+
+## Decide cuáles de [param items] (los de [method refresh]: [code]marker[/code], [code]screen[/code], [code]on_edge[/code],
+## [code]alpha[/code] y [code]objective[/code]) se dibujan y con nombre, y lo anota en cada uno ([code]shown[/code],
+## [code]label[/code]). [param aim] es el punto de la mira en pantalla. Ver las reglas en la documentación de la clase.
+static func select_shown(items: Array[Dictionary], aim: Vector2, alt_held: bool, in_combat: bool) -> void:
+	var candidates: Array[Dictionary] = []
+	for item: Dictionary in items:
+		item["shown"] = false
+		item["label"] = false
+		if float(item["alpha"]) <= 0.01:
+			continue
+		var on_edge: bool = bool(item["on_edge"])
+		var near_aim: bool = not on_edge and (item["screen"] as Vector2).distance_to(aim) <= AIM_RADIUS
+		var wants_name: bool = not in_combat and (near_aim or (alt_held and not on_edge))
+		if bool(item["objective"]):
+			item["shown"] = true
+			item["label"] = wants_name
+		elif not in_combat and not on_edge and (near_aim or alt_held):
+			item["label"] = true
+			candidates.append(item)
+	# Con sitio para MAX_SHOWN en total (el objetivo ya cuenta), los más cercanos a la mira.
+	var room: int = MAX_SHOWN
+	for item: Dictionary in items:
+		if bool(item["shown"]):
+			room -= 1
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return (a["screen"] as Vector2).distance_to(aim) < (b["screen"] as Vector2).distance_to(aim))
+	var drawn: Array[Vector2] = []
+	for item: Dictionary in items:
+		if bool(item["shown"]):
+			drawn.append(item["screen"])
+	for candidate: Dictionary in candidates:
+		if room <= 0:
+			break
+		var screen: Vector2 = candidate["screen"]
+		var overlaps: bool = false
+		for other: Vector2 in drawn:
+			if absf(screen.x - other.x) < LABEL_SPACING.x and absf(screen.y - other.y) < LABEL_SPACING.y:
+				overlaps = true
+				break
+		if overlaps:
+			continue
+		candidate["shown"] = true
+		drawn.append(screen)
+		room -= 1
 
 
 ## Proyecta [param world] con [param camera] en una pantalla de [param screen_size] píxeles. Devuelve
@@ -133,9 +254,24 @@ static func max_distance_for(kind: int) -> float:
 	return CIRCLE_MAX_DISTANCE if kind == WorldMarker.Kind.CIRCLE else MAX_DISTANCE
 
 
+static func _nearest(markers: Array[WorldMarker], origin: Vector3, accept: Callable) -> WorldMarker:
+	var best: WorldMarker = null
+	var best_distance: float = INF
+	for marker: WorldMarker in markers:
+		if not bool(accept.call(marker)):
+			continue
+		var distance: float = marker.distance_from(origin)
+		if distance < best_distance:
+			best = marker
+			best_distance = distance
+	return best
+
+
 func _draw() -> void:
 	var font: Font = get_theme_default_font()
 	for item: Dictionary in _items:
+		if not bool(item["shown"]):
+			continue
 		var marker: WorldMarker = item["marker"]
 		var alpha: float = float(item["alpha"])
 		if alpha <= 0.01:
@@ -144,7 +280,7 @@ func _draw() -> void:
 		var tint: Color = Color(marker.color.r, marker.color.g, marker.color.b, alpha)
 		MarkerIcons.draw(self, marker.kind, screen, tint, ICON_SIZE)
 		var distance_text: String = "%d m" % roundi(float(item["distance"]))
-		var text: String = distance_text if bool(item["on_edge"]) else "%s · %s" % [marker.label, distance_text]
+		var text: String = "%s · %s" % [marker.label, distance_text] if bool(item["label"]) else distance_text
 		var size: Vector2 = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, FONT_SIZE)
 		var at := Vector2(screen.x - size.x * 0.5, screen.y + ICON_SIZE + 4.0 + size.y * 0.7)
 		at.x = clampf(at.x, 2.0, maxf(self.size.x - size.x - 2.0, 2.0))

@@ -323,8 +323,8 @@ func _ensure_built() -> void:
 
 func _build() -> void:
 	custom_minimum_size = Vector2(PANEL_WIDTH, 0.0)
-	set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 0)
-	position.y = TOP_MARGIN
+	# Centrado arriba (UI-49): con el preset de tamaño mínimo quedaba con el borde izquierdo en el centro.
+	UILayout.anchor_top_center(self, PANEL_WIDTH, TOP_MARGIN)
 	var column := VBoxContainer.new()
 	column.name = "Columna"
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE

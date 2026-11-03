@@ -71,6 +71,11 @@ func get_visual() -> HumanoidVisual:
 	return _visual
 
 
+## El [PlayerCharacter] quieto de la figura (null hasta que entra en el árbol o si no se pudo montar).
+func get_preview_character() -> PlayerCharacter:
+	return _preview
+
+
 ## Ángulo de la cámara alrededor de la figura (radianes).
 func get_yaw() -> float:
 	return _yaw
@@ -122,6 +127,8 @@ func _build() -> void:
 		push_warning("[Eldmark] No se pudo montar la figura del personaje")
 		return
 	_preview.name = "Personaje"
+	# Nadie simula a este personaje: sin esto el animador lo ve siempre en el aire y lo enseña en la pose de caída (UI-49).
+	_preview.grounded = true
 	_viewport.add_child(_preview)
 	_visual = HumanoidVisual.install_replacing_placeholder(_preview)
 	_place_camera()

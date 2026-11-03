@@ -201,11 +201,22 @@ func test_a_bound_control_shows_and_hides_the_tooltip() -> void:
 	assert_eq(tooltip.get_title_label().get_theme_color(&"font_color"), RealmCatalog.SOLMARCH_COLOR)
 	button.mouse_exited.emit()
 	assert_false(tooltip.visible, "al salir se oculta")
+	# El foco solo lo muestra con el teclado o el mando (UI-49).
+	button.focus_entered.emit()
+	assert_false(tooltip.is_pending(), "sin haber pulsado nada, el foco no abre tooltips")
+	var key: InputEventKey = InputEventKey.new()
+	key.pressed = true
+	key.keycode = KEY_RIGHT
+	tooltip.note_input(key)
 	button.focus_entered.emit()
 	tooltip.advance(UITooltip.DEFAULT_DELAY + 0.01)
 	assert_true(tooltip.visible, "el foco (teclado o mando) también lo muestra")
 	button.focus_exited.emit()
 	assert_false(tooltip.visible)
+	tooltip.note_input(InputEventMouseMotion.new())
+	button.focus_entered.emit()
+	assert_false(tooltip.is_pending(), "tras mover el ratón, el foco vuelve a no enseñar nada")
+	tooltip.note_input(key)
 	# Un proveedor sin contenido no muestra nada.
 	var silent: Button = _add(Button.new()) as Button
 	tooltip.bind_source(silent, func() -> Dictionary: return {})

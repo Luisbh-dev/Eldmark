@@ -7,9 +7,10 @@ extends Control
 ## cae fuera del círculo se pega al borde. Se acerca y aleja con [method zoom_in] y [method zoom_out]
 ## (teclas del mapa, por niveles).
 ## [br][br]
-## Los enemigos no se enseñan (solo si se revelan, con las atalayas de la fase 7). Se pinta con
-## [method _draw]: el trozo de mapa es un polígono circular con las coordenadas de textura que dan el
-## recorte, así que no necesita máscaras ni GPU especial. Medidas y colores provisionales. Solo cliente.
+## Los enemigos no se enseñan (solo si se revelan, con las atalayas de la fase 7). El trozo de mapa lo dibuja
+## [MinimapTerrain] (un shader de CanvasItem detrás de todo: disco con borde suave, coordenadas de textura limitadas a
+## la imagen, fundido a niebla cerca de su borde y mipmaps; UI-52), y [method _draw] pone encima el aro, los iconos y el
+## cono. Medidas y colores provisionales. Solo cliente.
 
 ## Diámetro del minimapa en píxeles.
 const DIAMETER: float = 200.0
@@ -29,7 +30,6 @@ const ICON_SIZE: float = 6.0
 ## Medio ángulo del cono de la cámara (grados) y su largo, como fracción del radio.
 const CONE_HALF_DEGREES: float = 40.0
 const CONE_LENGTH: float = 0.7
-const CIRCLE_SEGMENTS: int = 48
 
 var _client: NetClient = null
 var _view: FortressView = null
@@ -42,11 +42,15 @@ var _player_yaw: float = 0.0
 var _has_player: bool = false
 var _icons: Array[Dictionary] = []
 var _allies: Array[Vector3] = []
+var _terrain: MinimapTerrain = null
 
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	custom_minimum_size = Vector2(DIAMETER, DIAMETER)
+	_terrain = MinimapTerrain.new()
+	_terrain.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_terrain)
 
 
 func _ready() -> void:
@@ -80,6 +84,7 @@ func bind(client: NetClient, view: FortressView, camera_rig: CameraRig, map: Zon
 	_camera_rig = camera_rig
 	_map = map
 	_texture = map.load_texture() if map != null else null
+	_terrain.set_map(map, _texture)
 	_icons.clear()
 	_allies.clear()
 
@@ -98,6 +103,9 @@ func refresh() -> void:
 					pixels_per_meter(), center()), center(), radius() - ICON_SIZE)
 			_icons.append({"marker": marker, "point": point})
 		_collect_allies()
+		_terrain.set_view(_player_position, get_visible_meters())
+	else:
+		_terrain.visible = false
 	queue_redraw()
 
 
@@ -112,6 +120,8 @@ func zoom_out() -> void:
 ## Nivel de zoom (0 = el más cerca, hasta el último de [constant ZOOM_METERS]).
 func set_zoom_level(level: int) -> void:
 	_zoom = clampi(level, 0, ZOOM_METERS.size() - 1)
+	if _has_player:
+		_terrain.set_view(_player_position, get_visible_meters())
 	queue_redraw()
 
 
@@ -178,8 +188,14 @@ static func yaw_to_direction(yaw: float) -> Vector2:
 	return Vector2(-sin(yaw), -cos(yaw))
 
 
+## El terreno que se dibuja detrás de los iconos.
+func get_terrain() -> MinimapTerrain:
+	return _terrain
+
+
 ## Coordenadas de textura (0 a 1) del trozo de mapa que se ve alrededor de [param player] a la escala
-## [param p_pixels_per_meter] en el punto [param point_px] del minimapa.
+## [param p_pixels_per_meter] en el punto [param point_px] del minimapa. No las limita: fuera de la imagen salen
+## valores menores que 0 o mayores que 1 (el shader de [MinimapTerrain] los limita y funde a niebla).
 static func uv_at(map: ZoneMapDefinition, player: Vector3, p_pixels_per_meter: float, point_px: Vector2,
 		center_px: Vector2) -> Vector2:
 	var offset: Vector2 = (point_px - center_px) / p_pixels_per_meter
@@ -200,16 +216,9 @@ func _collect_allies() -> void:
 
 func _draw() -> void:
 	var c: Vector2 = center()
-	draw_circle(c, radius(), BACK_COLOR)
-	if _texture != null and _map != null and _has_player:
-		var points := PackedVector2Array()
-		var uvs := PackedVector2Array()
-		for i: int in CIRCLE_SEGMENTS:
-			var angle: float = TAU * float(i) / float(CIRCLE_SEGMENTS)
-			var point: Vector2 = c + Vector2(cos(angle), sin(angle)) * (radius() - 1.0)
-			points.append(point)
-			uvs.append(uv_at(_map, _player_position, pixels_per_meter(), point, c))
-		draw_colored_polygon(points, Color.WHITE, uvs, _texture)
+	# Sin terreno que enseñar (sin mapa o sin jugador) queda el fondo liso.
+	if not _terrain.visible:
+		draw_circle(c, radius(), BACK_COLOR)
 	draw_arc(c, radius() - 1.0, 0.0, TAU, 64, RING_COLOR, 2.0, true)
 	for icon: Dictionary in _icons:
 		var marker: WorldMarker = icon["marker"]
