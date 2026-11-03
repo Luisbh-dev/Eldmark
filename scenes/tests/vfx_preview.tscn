@@ -1,0 +1,55 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/client/tools/vfx_preview.gd" id="1_preview"]
+[ext_resource type="Environment" path="res://assets/environments/vado_gris_frontier.tres" id="2_env"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_floor"]
+albedo_color = Color(0.4, 0.41, 0.38, 1)
+roughness = 0.95
+
+[sub_resource type="BoxMesh" id="BoxMesh_floor"]
+material = SubResource("StandardMaterial3D_floor")
+size = Vector3(200, 1, 200)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
+size = Vector3(200, 1, 200)
+
+[sub_resource type="LabelSettings" id="LabelSettings_overlay"]
+font_size = 30
+outline_size = 8
+outline_color = Color(0, 0, 0, 1)
+
+[node name="VfxPreview" type="Node3D"]
+script = ExtResource("1_preview")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = ExtResource("2_env")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.819152, 0, 0.573576, 0.439385, 0.642788, 0.627507, -0.368688, 0.766044, -0.526541, 0, 10, 0)
+shadow_enabled = true
+directional_shadow_max_distance = 40.0
+
+[node name="Floor" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, -40)
+collision_mask = 0
+
+[node name="Collision" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("BoxShape3D_floor")
+
+[node name="Mesh" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("BoxMesh_floor")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.2, 1.6, 0.4)
+fov = 40.0
+physics_interpolation_mode = 2
+
+[node name="Overlay" type="CanvasLayer" parent="."]
+
+[node name="Label" type="Label" parent="Overlay"]
+offset_left = 24.0
+offset_top = 16.0
+offset_right = 1400.0
+offset_bottom = 200.0
+label_settings = SubResource("LabelSettings_overlay")

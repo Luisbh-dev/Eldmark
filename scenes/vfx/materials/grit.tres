@@ -1,0 +1,19 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://scenes/vfx/shaders/vfx_particle_mix.gdshader" id="1_2x8gj"]
+[ext_resource type="Texture2D" path="res://scenes/vfx/textures/soft_dot.png" id="2_eoend"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_2x8gj")
+shader_parameter/tex = ExtResource("2_eoend")
+shader_parameter/h_frames = null
+shader_parameter/v_frames = null
+shader_parameter/brightness = 0.9
+shader_parameter/shade_contrast = null
+shader_parameter/soft_distance = null
+shader_parameter/aligned_by_engine = null
+shader_parameter/fade_in = 0.02
+shader_parameter/fade_out_start = 0.75
+shader_parameter/hot_color = null
+shader_parameter/hot_decay = null

@@ -189,6 +189,18 @@ declara una licencia propia:
   `tools/terrain/generate_vado_gris.gd`.
 - Tema de interfaz `assets/ui/theme/eldmark_theme.tres` (generado por `tools/ui/build_theme.gd` a
   partir de `UIPalette`).
+- Efectos de golpe (ART-09) `scenes/vfx/`: escenas (`hit_metal_spark`, `hit_flesh`, `hit_block_wood`,
+  `parry_flash`, `dust_kick`, `weapon_trail` y `charge_aura`), sombreadores `scenes/vfx/shaders/*.gdshader`
+  (escritos a mano para Eldmark), materiales `scenes/vfx/materials/*.tres` y texturas
+  `scenes/vfx/textures/*.png`. No hay nada de terceros: las texturas se generan con
+  `tools/vfx/make_vfx_textures.py` (numpy y PIL, semillas fijas, 12 PNG: destellos, chispa, lengua de
+  energía, rayos, ruido, humo, salpicadura, esquirlas, astillas, gotas y anillo de polvo) y las escenas y
+  materiales con `tools/vfx/build_vfx_scenes.gd` (los números de cada efecto están ahí). Los scripts
+  que los mueven están en `scripts/client/vfx/` y la escena de vista previa es
+  `scenes/tests/vfx_preview.tscn` (`tools/vfx/render_strips.ps1` graba las tiras de fotogramas en
+  `build/vfx/`). Orden para regenerarlo todo: `python tools/vfx/make_vfx_textures.py`,
+  `godot --headless --path . --import`, `godot --headless --path . -s res://tools/vfx/build_vfx_scenes.gd`
+  y otra vez `--import`.
 - Emblemas de bando `assets/emblems/*.svg` (lobo, sol partido, yunque y corona rota):
   **provisionales**, formas geométricas hechas para Eldmark con `tools/assets/make_emblems.py`; los
   sustituirá el arte final de ART-03 con los mismos nombres de archivo.

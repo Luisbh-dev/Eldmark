@@ -1,0 +1,14 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://scenes/vfx/shaders/vfx_aura.gdshader" id="1_e3v2q"]
+[ext_resource type="Texture2D" path="res://scenes/vfx/textures/noise.png" id="2_7gdtj"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_e3v2q")
+shader_parameter/noise_tex = ExtResource("2_7gdtj")
+shader_parameter/intensity = null
+shader_parameter/cover = null
+shader_parameter/fresnel_power = null
+shader_parameter/rise_speed = null
+shader_parameter/vein_scale = null

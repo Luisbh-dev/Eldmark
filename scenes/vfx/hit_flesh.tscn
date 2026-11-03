@@ -1,0 +1,134 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/client/vfx/vfx_effect.gd" id="1_81otl"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/shape_flash_soft.tres" id="2_60l2u"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/shape_splat.tres" id="3_ffxcx"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/droplet.tres" id="4_c4kia"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/puff_pale.tres" id="5_yyx82"]
+
+[sub_resource type="QuadMesh" id="QuadMesh_l318j"]
+size = Vector2(0.55, 0.55)
+
+[sub_resource type="QuadMesh" id="QuadMesh_drsol"]
+size = Vector2(0.68, 0.68)
+
+[sub_resource type="Gradient" id="Gradient_bdr70"]
+offsets = PackedFloat32Array(0, 0.7, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_62n3j"]
+gradient = SubResource("Gradient_bdr70")
+width = 128
+
+[sub_resource type="Curve" id="Curve_32i4t"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.6, 0.85), 0.0, 0.0, 0, 0, Vector2(1, 0.35), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="CurveTexture" id="CurveTexture_rthh5"]
+width = 128
+curve = SubResource("Curve_32i4t")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_qwhqq"]
+lifetime_randomness = 0.3
+direction = Vector3(0, 0, 1)
+spread = 66.0
+initial_velocity_min = 1.4
+initial_velocity_max = 5.2
+gravity = Vector3(0, -13, 0)
+damping_min = 0.2
+damping_max = 0.7
+scale_min = 0.6
+scale_max = 1.2
+scale_curve = SubResource("CurveTexture_rthh5")
+color_ramp = SubResource("GradientTexture1D_62n3j")
+anim_offset_max = 1.0
+
+[sub_resource type="QuadMesh" id="QuadMesh_jk0d7"]
+material = ExtResource("4_c4kia")
+size = Vector2(0.07, 0.07)
+
+[sub_resource type="Gradient" id="Gradient_i08yc"]
+offsets = PackedFloat32Array(0, 0.1, 1)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 0.34, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_nh2ql"]
+gradient = SubResource("Gradient_i08yc")
+width = 128
+
+[sub_resource type="Curve" id="Curve_h2j46"]
+_limits = [0.0, 2.0, 0.0, 1.0]
+_data = [Vector2(0, 0.5), 0.0, 0.0, 0, 0, Vector2(1, 1.45), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_vy1vf"]
+width = 128
+curve = SubResource("Curve_h2j46")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_v5qqp"]
+angle_max = 360.0
+direction = Vector3(0, 0.3, 1)
+spread = 50.0
+initial_velocity_min = 0.4
+initial_velocity_max = 1.4
+angular_velocity_min = -60.0
+angular_velocity_max = 60.0
+damping_min = 1.5
+damping_max = 2.5
+scale_min = 0.6
+scale_curve = SubResource("CurveTexture_vy1vf")
+color_ramp = SubResource("GradientTexture1D_nh2ql")
+anim_offset_max = 1.0
+
+[sub_resource type="QuadMesh" id="QuadMesh_chbf4"]
+material = ExtResource("5_yyx82")
+size = Vector2(0.4, 0.4)
+
+[node name="HitFlesh" type="Node3D" unique_id=646646518]
+script = ExtResource("1_81otl")
+duration = 0.8
+tint = Color(0.82, 0.14, 0.11, 1)
+
+[node name="Pop" type="MeshInstance3D" parent="." unique_id=2067337160]
+material_override = ExtResource("2_60l2u")
+cast_shadow = 0
+mesh = SubResource("QuadMesh_l318j")
+metadata/vfx_time = Vector2(0, 0.11)
+metadata/vfx_tint = Color(1, 0.86, 0.78, 1)
+metadata/vfx_tint_weight = 0.3
+
+[node name="Splat" type="MeshInstance3D" parent="." unique_id=299614627]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.05)
+material_override = ExtResource("3_ffxcx")
+cast_shadow = 0
+mesh = SubResource("QuadMesh_drsol")
+metadata/vfx_time = Vector2(0, 0.42)
+metadata/vfx_tint = Color(1, 1, 1, 1)
+metadata/vfx_tint_weight = 1.0
+
+[node name="Drops" type="GPUParticles3D" parent="." unique_id=1927448770]
+cast_shadow = 0
+emitting = false
+amount = 16
+lifetime = 0.6
+one_shot = true
+explosiveness = 1.0
+randomness = 0.5
+fixed_fps = 60
+transform_align = 3
+process_material = SubResource("ParticleProcessMaterial_qwhqq")
+draw_pass_1 = SubResource("QuadMesh_jk0d7")
+
+[node name="Puff" type="GPUParticles3D" parent="." unique_id=642349100]
+cast_shadow = 0
+emitting = false
+amount = 4
+lifetime = 0.36
+one_shot = true
+explosiveness = 1.0
+randomness = 0.3
+fixed_fps = 60
+draw_order = 3
+process_material = SubResource("ParticleProcessMaterial_v5qqp")
+draw_pass_1 = SubResource("QuadMesh_chbf4")
+metadata/vfx_tint = Color(0.92, 0.86, 0.82, 1)
+metadata/vfx_tint_weight = 0.25

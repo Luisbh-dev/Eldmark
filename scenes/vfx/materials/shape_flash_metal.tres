@@ -1,0 +1,23 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://scenes/vfx/shaders/vfx_shape_add.gdshader" id="1_ry3h2"]
+[ext_resource type="Texture2D" path="res://scenes/vfx/textures/flare_star.png" id="2_eyqcs"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_ry3h2")
+shader_parameter/tex = ExtResource("2_eyqcs")
+shader_parameter/mode = 0
+shader_parameter/billboard = null
+shader_parameter/intensity = 3.0
+shader_parameter/cover = 0.15
+shader_parameter/start_scale = 0.35
+shader_parameter/end_scale = 1.25
+shader_parameter/spin = 0.7
+shader_parameter/fade_power = 2.2
+shader_parameter/attack = 0.06
+shader_parameter/ring_start_radius = null
+shader_parameter/ring_width_start = null
+shader_parameter/ring_width_end = null
+shader_parameter/ring_fill = null
+shader_parameter/runes = null

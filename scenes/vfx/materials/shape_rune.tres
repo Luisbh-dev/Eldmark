@@ -1,0 +1,21 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://scenes/vfx/shaders/vfx_shape_add.gdshader" id="1_sikqp"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_sikqp")
+shader_parameter/mode = 4
+shader_parameter/billboard = false
+shader_parameter/intensity = 2.4
+shader_parameter/cover = 0.45
+shader_parameter/start_scale = null
+shader_parameter/end_scale = null
+shader_parameter/spin = null
+shader_parameter/fade_power = null
+shader_parameter/attack = null
+shader_parameter/ring_start_radius = null
+shader_parameter/ring_width_start = null
+shader_parameter/ring_width_end = null
+shader_parameter/ring_fill = null
+shader_parameter/runes = 14.0

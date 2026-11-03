@@ -1,0 +1,19 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://scenes/vfx/shaders/vfx_particle_mix.gdshader" id="1_68obc"]
+[ext_resource type="Texture2D" path="res://scenes/vfx/textures/puffs.png" id="2_aeu77"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_68obc")
+shader_parameter/tex = ExtResource("2_aeu77")
+shader_parameter/h_frames = 2
+shader_parameter/v_frames = 2
+shader_parameter/brightness = 0.85
+shader_parameter/shade_contrast = null
+shader_parameter/soft_distance = 0.2
+shader_parameter/aligned_by_engine = null
+shader_parameter/fade_in = 0.05
+shader_parameter/fade_out_start = 0.45
+shader_parameter/hot_color = null
+shader_parameter/hot_decay = null

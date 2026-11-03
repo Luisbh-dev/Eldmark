@@ -1,0 +1,23 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://scenes/vfx/shaders/vfx_shape_mix.gdshader" id="1_7utjy"]
+[ext_resource type="Texture2D" path="res://scenes/vfx/textures/noise.png" id="2_r13n1"]
+[ext_resource type="Texture2D" path="res://scenes/vfx/textures/ring_dust.png" id="3_7eohd"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_7utjy")
+shader_parameter/tex = ExtResource("3_7eohd")
+shader_parameter/noise_tex = ExtResource("2_r13n1")
+shader_parameter/mode = 1
+shader_parameter/billboard = false
+shader_parameter/start_scale = 0.3
+shader_parameter/end_scale = 1.0
+shader_parameter/grow_speed = 2.6
+shader_parameter/spin = null
+shader_parameter/hold = 0.18
+shader_parameter/erosion = 0.5
+shader_parameter/brightness = 0.92
+shader_parameter/shade_contrast = 0.7
+shader_parameter/soft_distance = 0.12
+shader_parameter/opacity = 0.5

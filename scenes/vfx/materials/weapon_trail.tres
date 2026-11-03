@@ -1,0 +1,15 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://scenes/vfx/shaders/vfx_trail.gdshader" id="1_krr2r"]
+[ext_resource type="Texture2D" path="res://scenes/vfx/textures/noise.png" id="2_k8uob"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_krr2r")
+shader_parameter/noise_tex = ExtResource("2_k8uob")
+shader_parameter/intensity = null
+shader_parameter/cover = null
+shader_parameter/tail_power = null
+shader_parameter/inner_edge = null
+shader_parameter/scroll_speed = null
+shader_parameter/streak_scale = null

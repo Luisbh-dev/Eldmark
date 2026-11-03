@@ -1,0 +1,234 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/client/vfx/charge_aura.gd" id="1_m1bho"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/aura_shell.tres" id="2_w16xg"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/shape_rune.tres" id="3_a5daf"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/mote_streak.tres" id="4_tuea1"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/wisp_glow.tres" id="5_o60kd"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/shape_flash_aura.tres" id="6_geasm"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/shape_ring_aura.tres" id="7_aae4f"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/shape_flash_release.tres" id="8_cx5fq"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/shape_ring_release.tres" id="9_rjdbb"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/spark_streak_aura.tres" id="10_7jmvh"]
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_l8mxg"]
+radial_segments = 24
+rings = 10
+
+[sub_resource type="QuadMesh" id="QuadMesh_ib27d"]
+size = Vector2(2.6, 2.6)
+
+[sub_resource type="Gradient" id="Gradient_wg1aw"]
+offsets = PackedFloat32Array(0, 0.25, 0.9, 1)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 0.8, 1, 1, 1, 1, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_hk5yv"]
+gradient = SubResource("Gradient_wg1aw")
+width = 128
+
+[sub_resource type="Curve" id="Curve_7dmqo"]
+_data = [Vector2(0, 0.5), 0.0, 0.0, 0, 0, Vector2(0.6, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.6), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="CurveTexture" id="CurveTexture_cpyss"]
+width = 128
+curve = SubResource("Curve_7dmqo")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_f2wv5"]
+emission_shape_offset = Vector3(0, 0.95, 0)
+emission_shape = 2
+emission_sphere_radius = 1.45
+direction = Vector3(0, 0, 0)
+spread = 0.0
+radial_velocity_min = -2.4
+radial_velocity_max = -1.7
+scale_min = 0.5
+scale_max = 1.1
+scale_curve = SubResource("CurveTexture_cpyss")
+color_ramp = SubResource("GradientTexture1D_hk5yv")
+
+[sub_resource type="QuadMesh" id="QuadMesh_kvsr6"]
+material = ExtResource("4_tuea1")
+size = Vector2(0.04, 0.42)
+
+[sub_resource type="Gradient" id="Gradient_8xtm7"]
+offsets = PackedFloat32Array(0, 0.2, 0.7, 1)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 0.9, 1, 1, 1, 0.5, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_8ni31"]
+gradient = SubResource("Gradient_8xtm7")
+width = 128
+
+[sub_resource type="Curve" id="Curve_4h8ao"]
+_data = [Vector2(0, 0.5), 0.0, 0.0, 0, 0, Vector2(0.35, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.7), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="CurveTexture" id="CurveTexture_r2dlu"]
+width = 128
+curve = SubResource("Curve_4h8ao")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_bt2dk"]
+emission_shape = 6
+emission_ring_axis = Vector3(0, 1, 0)
+emission_ring_height = 0.05
+emission_ring_radius = 0.5
+emission_ring_inner_radius = 0.3
+emission_ring_cone_angle = 90.0
+direction = Vector3(0, 1, 0)
+spread = 6.0
+initial_velocity_min = 1.1
+initial_velocity_max = 2.0
+scale_min = 0.6
+scale_max = 1.1
+scale_curve = SubResource("CurveTexture_r2dlu")
+color_ramp = SubResource("GradientTexture1D_8ni31")
+
+[sub_resource type="QuadMesh" id="QuadMesh_r2muu"]
+material = ExtResource("5_o60kd")
+size = Vector2(0.3, 1)
+
+[sub_resource type="QuadMesh" id="QuadMesh_xdox1"]
+size = Vector2(1.4, 1.4)
+
+[sub_resource type="QuadMesh" id="QuadMesh_irb3v"]
+size = Vector2(2.1, 2.1)
+
+[sub_resource type="QuadMesh" id="QuadMesh_yjod4"]
+size = Vector2(2.2, 2.2)
+
+[sub_resource type="QuadMesh" id="QuadMesh_tddf3"]
+size = Vector2(3, 3)
+
+[sub_resource type="Gradient" id="Gradient_4mlwo"]
+offsets = PackedFloat32Array(0, 0.4, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0.9, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_b6frw"]
+gradient = SubResource("Gradient_4mlwo")
+width = 128
+
+[sub_resource type="Curve" id="Curve_ar5fy"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.2), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_8wqyr"]
+width = 128
+curve = SubResource("Curve_ar5fy")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_fd5hi"]
+emission_shape = 1
+emission_sphere_radius = 0.25
+direction = Vector3(0, 0, 1)
+spread = 180.0
+initial_velocity_min = 4.0
+initial_velocity_max = 10.0
+damping_min = 2.5
+damping_max = 5.0
+scale_min = 0.6
+scale_max = 1.2
+scale_curve = SubResource("CurveTexture_8wqyr")
+color_ramp = SubResource("GradientTexture1D_b6frw")
+
+[sub_resource type="QuadMesh" id="QuadMesh_uen2c"]
+material = ExtResource("10_7jmvh")
+size = Vector2(0.03, 0.3)
+
+[node name="ChargeAura" type="Node3D" unique_id=2118665889]
+script = ExtResource("1_m1bho")
+duration = 0.5
+looping = true
+
+[node name="Shell" type="MeshInstance3D" parent="." unique_id=1127208835]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, 0)
+material_override = ExtResource("2_w16xg")
+cast_shadow = 0
+mesh = SubResource("CapsuleMesh_l8mxg")
+metadata/vfx_charge = &"charge"
+
+[node name="Rune" type="MeshInstance3D" parent="." unique_id=2117536167]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0.04, 0)
+material_override = ExtResource("3_a5daf")
+cast_shadow = 0
+mesh = SubResource("QuadMesh_ib27d")
+metadata/vfx_charge = &"progress"
+
+[node name="Motes" type="GPUParticles3D" parent="." unique_id=157029558]
+cast_shadow = 0
+emitting = false
+amount = 46
+lifetime = 0.7
+randomness = 1.0
+fixed_fps = 60
+local_coords = true
+transform_align = 3
+process_material = SubResource("ParticleProcessMaterial_f2wv5")
+draw_pass_1 = SubResource("QuadMesh_kvsr6")
+metadata/vfx_charge_amount = true
+
+[node name="Wisps" type="GPUParticles3D" parent="." unique_id=2031112052]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, 0)
+cast_shadow = 0
+emitting = false
+amount = 24
+lifetime = 1.1
+randomness = 1.0
+fixed_fps = 60
+local_coords = true
+process_material = SubResource("ParticleProcessMaterial_bt2dk")
+draw_pass_1 = SubResource("QuadMesh_r2muu")
+metadata/vfx_charge_amount = true
+
+[node name="PulseFlash" type="MeshInstance3D" parent="." unique_id=1643012270]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0)
+material_override = ExtResource("6_geasm")
+cast_shadow = 0
+mesh = SubResource("QuadMesh_xdox1")
+metadata/vfx_time = Vector2(0, 0.22)
+metadata/vfx_tint = Color(1, 1, 1, 1)
+metadata/vfx_tint_weight = 0.85
+metadata/vfx_cue = &"pulse"
+
+[node name="PulseRing" type="MeshInstance3D" parent="." unique_id=748470252]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+material_override = ExtResource("7_aae4f")
+cast_shadow = 0
+mesh = SubResource("QuadMesh_irb3v")
+metadata/vfx_time = Vector2(0, 0.42)
+metadata/vfx_tint = Color(1, 1, 1, 1)
+metadata/vfx_tint_weight = 0.9
+metadata/vfx_cue = &"pulse"
+
+[node name="ReleaseFlash" type="MeshInstance3D" parent="." unique_id=393115328]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0)
+material_override = ExtResource("8_cx5fq")
+cast_shadow = 0
+mesh = SubResource("QuadMesh_yjod4")
+metadata/vfx_time = Vector2(0, 0.26)
+metadata/vfx_tint = Color(1, 1, 1, 1)
+metadata/vfx_tint_weight = 0.7
+metadata/vfx_cue = &"release"
+
+[node name="ReleaseRing" type="MeshInstance3D" parent="." unique_id=487712269]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+material_override = ExtResource("9_rjdbb")
+cast_shadow = 0
+mesh = SubResource("QuadMesh_tddf3")
+metadata/vfx_time = Vector2(0, 0.4)
+metadata/vfx_tint = Color(1, 1, 1, 1)
+metadata/vfx_tint_weight = 0.8
+metadata/vfx_cue = &"release"
+
+[node name="ReleaseSparks" type="GPUParticles3D" parent="." unique_id=81943845]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0)
+cast_shadow = 0
+emitting = false
+amount = 28
+lifetime = 0.5
+one_shot = true
+explosiveness = 1.0
+randomness = 0.5
+fixed_fps = 60
+transform_align = 3
+process_material = SubResource("ParticleProcessMaterial_fd5hi")
+draw_pass_1 = SubResource("QuadMesh_uen2c")
+metadata/vfx_cue = &"release"

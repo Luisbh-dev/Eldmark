@@ -1,0 +1,23 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://scenes/vfx/shaders/vfx_shape_add.gdshader" id="1_wewrv"]
+[ext_resource type="Texture2D" path="res://scenes/vfx/textures/soft_dot.png" id="2_bo7ax"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_wewrv")
+shader_parameter/tex = ExtResource("2_bo7ax")
+shader_parameter/mode = 3
+shader_parameter/billboard = null
+shader_parameter/intensity = 2.6
+shader_parameter/cover = 0.2
+shader_parameter/start_scale = 0.45
+shader_parameter/end_scale = 1.0
+shader_parameter/spin = null
+shader_parameter/fade_power = 2.2
+shader_parameter/attack = 0.08
+shader_parameter/ring_start_radius = null
+shader_parameter/ring_width_start = null
+shader_parameter/ring_width_end = null
+shader_parameter/ring_fill = null
+shader_parameter/runes = null

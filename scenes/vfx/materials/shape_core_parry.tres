@@ -1,0 +1,23 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://scenes/vfx/shaders/vfx_shape_add.gdshader" id="1_ung5q"]
+[ext_resource type="Texture2D" path="res://scenes/vfx/textures/soft_dot.png" id="2_8itfu"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_ung5q")
+shader_parameter/tex = ExtResource("2_8itfu")
+shader_parameter/mode = 3
+shader_parameter/billboard = null
+shader_parameter/intensity = 2.2
+shader_parameter/cover = 0.15
+shader_parameter/start_scale = 0.5
+shader_parameter/end_scale = 1.0
+shader_parameter/spin = null
+shader_parameter/fade_power = 1.4
+shader_parameter/attack = 0.06
+shader_parameter/ring_start_radius = null
+shader_parameter/ring_width_start = null
+shader_parameter/ring_width_end = null
+shader_parameter/ring_fill = null
+shader_parameter/runes = null
