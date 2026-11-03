@@ -1,33 +1,34 @@
 extends SceneTree
-## Rasteriza los SVG de los iconos de la interfaz (ART-12) a PNG con el rasterizador del propio motor.
-## Uso (el tamaño es el lado en píxeles; el SVG es de 128 x 128):
-##   godot --headless --path . -s res://tools/ui/icons/rasterize_icons.gd -- <carpeta_svg> <carpeta_png> [lado]
-## Sin argumentos lee assets/ui/icons y escribe assets/ui/icons/png a 128 px.
-
-const SVG_SIDE: float = 128.0
+## Rasteriza con el rasterizador del propio motor (ThorVG) las capas SVG de los iconos de la interfaz
+## (ART-12). Recorre una carpeta entera, subcarpetas incluidas, y deja un PNG junto a cada SVG con el
+## tamaño que declara su `width` (el SVG trae el lado en píxeles: 256 para los iconos grandes, 4 veces
+## el tamaño final en los pequeños).
+## Uso:
+##   godot --headless --path . -s res://tools/ui/icons/rasterize_icons.gd -- <carpeta_de_capas>
+## Sin argumentos usa res://build/iconos/capas.
 
 
 func _init() -> void:
 	var args: PackedStringArray = OS.get_cmdline_user_args()
-	var src: String = args[0] if args.size() > 0 else "res://assets/ui/icons"
-	var dst: String = args[1] if args.size() > 1 else "res://assets/ui/icons/png"
-	var side: int = int(args[2]) if args.size() > 2 else 128
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dst))
-	var failed: int = 0
-	var done: int = 0
-	var files: PackedStringArray = DirAccess.get_files_at(src)
-	files.sort()
-	for file: String in files:
+	var root: String = args[0] if args.size() > 0 else "res://build/iconos/capas"
+	var counts: Dictionary = {"done": 0, "failed": 0}
+	_walk(root, counts)
+	print("rasterizadas %d capas en %s (%d fallos)" % [counts["done"], root, counts["failed"]])
+	quit(1 if int(counts["failed"]) > 0 else 0)
+
+
+func _walk(dir: String, counts: Dictionary) -> void:
+	for sub: String in DirAccess.get_directories_at(dir):
+		_walk(dir.path_join(sub), counts)
+	for file: String in DirAccess.get_files_at(dir):
 		if file.get_extension() != "svg":
 			continue
-		var text: String = FileAccess.get_file_as_string(src.path_join(file))
+		var text: String = FileAccess.get_file_as_string(dir.path_join(file))
 		var image := Image.new()
-		var error: Error = image.load_svg_from_string(text, float(side) / SVG_SIDE)
+		var error: Error = image.load_svg_from_string(text, 1.0)
 		if error != OK:
-			push_error("No se pudo rasterizar %s (%d)" % [file, error])
-			failed += 1
+			push_error("No se pudo rasterizar %s (%d)" % [dir.path_join(file), error])
+			counts["failed"] = int(counts["failed"]) + 1
 			continue
-		image.save_png(dst.path_join(file.get_basename() + ".png"))
-		done += 1
-	print("rasterizados %d iconos a %d px en %s" % [done, side, dst])
-	quit(1 if failed > 0 else 0)
+		image.save_png(dir.path_join(file.get_basename() + ".png"))
+		counts["done"] = int(counts["done"]) + 1

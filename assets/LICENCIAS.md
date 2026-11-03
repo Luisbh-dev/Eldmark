@@ -192,15 +192,18 @@ declara una licencia propia:
 - Emblemas de bando `assets/emblems/*.svg` (lobo, sol partido, yunque y corona rota):
   **provisionales**, formas geométricas hechas para Eldmark con `tools/assets/make_emblems.py`; los
   sustituirá el arte final de ART-03 con los mismos nombres de archivo.
-- Iconos de la interfaz `assets/ui/icons/*.svg` y sus PNG de 128 px `assets/ui/icons/png/*.png`
-  (ART-12): 30 iconos de acciones, habilidades, consumibles, estados y mapa (ataque ligero y fuerte,
-  bloqueo, esquiva, las seis habilidades de espada y escudo y de arco, las dos pociones, cambiar de
-  arma, interactuar, sangrado, regeneración, aturdimiento, ralentización, empuje, derribado, fuerte,
-  puerta, campamento y estandartes). Dibujados enteros por código, sin nada de terceros: el kit de
-  geometría y materiales es `tools/ui/icons/svgkit.py`, los dibujos `tools/ui/icons/glyphs.py` y
-  `tools/ui/icons/make_icons.py` escribe los SVG. Los PNG los rasteriza el propio motor con
-  `tools/ui/icons/rasterize_icons.gd` (ThorVG). `tools/ui/icons/build_icons.sh` regenera todo, láminas
-  de muestra incluidas (`make_sheets.py`, salida en `build/iconos/`).
+- Iconos de la interfaz `assets/ui/icons/` (ART-12): 33 figuras de 128 px sin fondo
+  (`assets/ui/icons/<nombre>.png`: ataque ligero y fuerte, disparo rápido y tensado, bloqueo, esquiva,
+  las seis habilidades de espada y escudo y de arco, las dos pociones, cambiar de arma, los iconos de
+  arma (espada y escudo, arco), interactuar, sangrado, regeneración, aturdimiento, ralentización,
+  empuje, derribado, enraizado, fuerte, puerta, campamento y estandartes), las variantes pequeñas de
+  los siete estados a su tamaño nativo de 14 y 26 px (`small/<estado>_14.png`, `_26.png`) y siete
+  fondos por categoría a sangre y sin marco (`backgrounds/<categoría>.png`). Hechos enteros por código,
+  sin nada de terceros ni de generación con IA. Herramientas: Python con numpy y PIL, y el
+  rasterizador del propio motor (ThorVG). `tools/ui/icons/svgkit.py` (geometría, materiales y capas),
+  `glyphs.py` (los dibujos), `paint.py` (grano, oclusión entre piezas, luz de borde y fondos),
+  `make_icons.py` (orquestador) y `rasterize_icons.gd`; `build_icons.sh` lo regenera todo. Medidas
+  y láminas de muestra: `qa.py`, `make_sheets.py` y `engine_test.gd` (salida en `build/iconos/`).
 
 ## Créditos de cortesía
 

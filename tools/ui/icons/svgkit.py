@@ -1,23 +1,27 @@
-"""Kit de dibujo de los iconos de la interfaz (ART-12): geometría, materiales y montaje del SVG.
+"""Kit de dibujo de los iconos de la interfaz (ART-12): geometría, materiales y capas del SVG.
 
-Todo se dibuja en un lienzo de 128 x 128 (el icono final se muestra a 32 a 64 px) con un estilo
-único:
+Todo se dibuja en un lienzo de 128 x 128 con un estilo único:
 
-  - Fondo con bisel por categoría (ataque, defensa, habilidad, consumible, estado, mundo): marco
-    oscuro, degradado vertical, filo de luz arriba a la izquierda y de sombra abajo a la derecha.
-  - Un solo foco de luz, arriba a la izquierda: cada material es un degradado de claro a oscuro en esa
-    dirección y los filos de luz de los detalles también miran a ese lado.
-  - Silueta fuerte: cada figura lleva un contorno oscuro grueso (el color del fondo muy oscurecido) y
-    una sombra proyectada hacia abajo, para que se lea a 32 px sin importar el color del fondo.
+  - Una sola luz arriba a la izquierda: cada material es un degradado de claro a oscuro en esa
+    dirección, y la pasada de pintura (`paint.py`) añade luz de borde interior en ese mismo lado.
+  - Silueta fuerte: cada figura lleva un contorno oscuro de grosor único y una sombra proyectada
+    hacia abajo a la derecha, para que se lea pequeña sin importar el fondo.
+  - Colores de la paleta del juego (desaturados): ni un violeta ni materiales casi puros. Los fondos
+    por categoría no están aquí sino en `paint.py`, porque la figura se exporta sola, sin fondo.
 
-Las transformaciones se aplican a los puntos al construir el trazado, no con `transform`, así que
-los degradados siempre miran hacia el mismo lado aunque la figura esté girada.
+Este módulo no escribe el icono final: reparte cada figura en CAPAS (sombra, silueta y una por pieza)
+y las manda a rasterizar con el motor (`rasterize_icons.gd`). `paint.py` las compone con grano,
+oclusión entre piezas y luz de borde. Las transformaciones se aplican a los puntos al construir el
+trazado, no con `transform`, así que los degradados miran siempre al mismo lado aunque la figura
+esté girada.
 
-Solo usa lo que dibuja bien ThorVG (el rasterizador de Godot): trazados, degradados lineales y
-radiales, trazo y opacidad. Nada de filtros ni máscaras.
+Solo usa lo que dibuja bien ThorVG (el rasterizador de Godot): trazados, degradados lineales, trazo y
+grupos con transformación. Nada de filtros ni máscaras.
 """
 
 import math
+
+from PIL import Image, ImageDraw
 
 # --------------------------------------------------------------------------------------------
 # Geometría
@@ -84,12 +88,18 @@ def flip_h(cx=64.0):
 
 
 class Path:
-    """Trazado con comandos absolutos; cada punto pasa por la transformación `xf`."""
+    """Trazado con comandos absolutos; cada punto pasa por la transformación `xf`.
+
+    Además de la cadena SVG guarda una versión aplanada (`polys`) para medir la silueta sin
+    rasterizar con el motor.
+    """
 
     def __init__(self, xf=IDENT):
         self.xf = xf
         self.cmds = []
         self.cur = None
+        self.polys = []  # [[puntos], cerrado]
+        self._last = None
 
     def _p(self, x, y):
         px, py = self.xf(x, y)
@@ -98,25 +108,48 @@ class Path:
     def M(self, x, y):
         self.cmds.append("M" + self._p(x, y))
         self.cur = (x, y)
+        self._last = self.xf(x, y)
+        self.polys.append([[self._last], False])
         return self
 
     def L(self, x, y):
         self.cmds.append("L" + self._p(x, y))
         self.cur = (x, y)
+        self._last = self.xf(x, y)
+        self.polys[-1][0].append(self._last)
         return self
 
     def C(self, x1, y1, x2, y2, x, y):
         self.cmds.append("C%s %s %s" % (self._p(x1, y1), self._p(x2, y2), self._p(x, y)))
+        p0 = self._last
+        p1, p2, p3 = self.xf(x1, y1), self.xf(x2, y2), self.xf(x, y)
+        for i in range(1, 15):
+            t = i / 14.0
+            u = 1.0 - t
+            self.polys[-1][0].append((
+                u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
+                u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1]))
         self.cur = (x, y)
+        self._last = p3
         return self
 
     def Q(self, x1, y1, x, y):
         self.cmds.append("Q%s %s" % (self._p(x1, y1), self._p(x, y)))
+        p0 = self._last
+        p1, p2 = self.xf(x1, y1), self.xf(x, y)
+        for i in range(1, 11):
+            t = i / 10.0
+            u = 1.0 - t
+            self.polys[-1][0].append((u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0],
+                                      u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1]))
         self.cur = (x, y)
+        self._last = p2
         return self
 
     def Z(self):
         self.cmds.append("Z")
+        if self.polys:
+            self.polys[-1][1] = True
         return self
 
     def arc(self, cx, cy, rx, ry, a0, a1, rot_deg=0.0):
@@ -266,15 +299,28 @@ def lighten(color, t):
     return mix(color, "#FFFFFF", t)
 
 
-# Materiales: (claro, medio, oscuro). El degradado va de arriba a la izquierda (claro) a abajo a la
-# derecha (oscuro), el foco de luz único del juego de iconos.
-MATERIALS = {
-    "steel": ("#F4F8FC", "#B9C6D4", "#6F7F93"),
-    "steel_dark": ("#B9C6D4", "#7D8CA0", "#434F60"),
+def desaturate(color, amount):
+    """Acerca `color` a su gris de igual luminancia (amount = 0 no toca, 1 deja el gris)."""
+    r, g, b = hex_rgb(color)
+    gray = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    return rgb_hex([c + (gray - c) * amount for c in (r, g, b)])
+
+
+def hsv(color):
+    r, g, b = [c / 255.0 for c in hex_rgb(color)]
+    mx, mn = max(r, g, b), min(r, g, b)
+    return (0.0 if mx == 0 else (mx - mn) / mx), mx
+
+
+# Materiales en bruto: (claro, medio, oscuro). El degradado va de arriba a la izquierda (claro) a abajo
+# a la derecha (oscuro), el foco de luz único del juego de iconos.
+_MATERIALS_RAW = {
+    "steel": ("#F2F6FA", "#B4C1CF", "#66768A"),
+    "steel_dark": ("#B4C1CF", "#788799", "#424D5D"),
     "iron": ("#9AA3B0", "#646D7B", "#363C47"),
     "wood": ("#C98F55", "#97602F", "#5A3416"),
     "wood_dark": ("#9C6A3C", "#69401D", "#3A210C"),
-    "wood_light": ("#FBDCA0", "#DDA255", "#9A6122"),
+    "wood_light": ("#F3D39A", "#D39C55", "#92602A"),
     "leather": ("#B07A46", "#7D5028", "#432A12"),
     "gold": ("#FFE9A0", "#E3AE32", "#A5681A"),
     "bronze": ("#F0B672", "#C07A38", "#7C4318"),
@@ -295,33 +341,61 @@ MATERIALS = {
     "dust": ("#E9DFC8", "#C9BB9B", "#9B8C6D"),
     "white": ("#FFFFFF", "#F4F1E8", "#D6D0BF"),
     "black": ("#4A4A52", "#2A2A31", "#121216"),
+    "moss": ("#D6E8A0", "#8DAE4E", "#476B2A"),
+    "earth": ("#A58660", "#74583A", "#422F1D"),
+    "rust": ("#E39A72", "#B05A3A", "#6A2E1C"),
+}
+
+# Bajada de saturación de todos los materiales y extra de los casi puros (sangre, lima, oro...):
+# la paleta del juego es desaturada y los iconos no pueden ser lo más chillón de la pantalla.
+GLOBAL_DESAT = 0.12
+EXTRA_DESAT = {
+    "blood": 0.20, "lime": 0.32, "moss": 0.10, "gold": 0.18, "ember": 0.16, "cloth_red": 0.14,
+    "cloth_blue": 0.14, "cloth_gold": 0.16, "ice": 0.08, "bronze": 0.08, "rust": 0.06,
+}
+
+MATERIALS = {
+    name: tuple(desaturate(c, GLOBAL_DESAT + EXTRA_DESAT.get(name, 0.0)) for c in tones)
+    for name, tones in _MATERIALS_RAW.items()
 }
 
 
 # --------------------------------------------------------------------------------------------
-# Categorías (fondos con bisel)
+# Categorías (fondos): los dibuja paint.py
 # --------------------------------------------------------------------------------------------
 
-# top = color arriba, bottom = abajo, glow = halo detrás de la figura. El contorno de las figuras sale
-# del color de abajo muy oscurecido.
+# top/bottom: relleno del fondo (valor de 25 a 35 % arriba, saturación de 0,45 o menos). glow: halo
+# interior y filo de color de la categoría. El marco lo pone la casilla (UIPalette.BORDER y
+# BORDER_LIGHT, hierro y bronce cálido); aquí solo hay un filo fino de esos mismos tonos.
 CATEGORIES = {
-    "ataque": {"top": "#B5372C", "bottom": "#561812", "glow": "#FF7A4C", "label": "Ataque"},
-    "defensa": {"top": "#42679C", "bottom": "#1A2C4A", "glow": "#78AEE6", "label": "Defensa"},
-    "habilidad": {"top": "#7448A8", "bottom": "#2C1A4C", "glow": "#B88CF0", "label": "Habilidad"},
-    "consumible": {"top": "#8E6038", "bottom": "#3A2310", "glow": "#E0A868", "label": "Consumible"},
-    "estado": {"top": "#5E6C80", "bottom": "#232A36", "glow": "#9CB2CC", "label": "Estado"},
-    "mundo": {"top": "#7B7456", "bottom": "#34301F", "glow": "#D8CC98", "label": "Mundo"},
+    # ataque: carmesí oscuro y bronce (Askarra)
+    "ataque": {"top": "#573532", "bottom": "#36211F", "glow": "#C9704F", "label": "Ataque"},
+    # defensa: acero y azul hielo (Vardheim)
+    "defensa": {"top": "#34414F", "bottom": "#1F2831", "glow": "#86B1D1", "label": "Defensa"},
+    # habilidad: oro viejo / brasa (Eldrun)
+    "habilidad": {"top": "#524532", "bottom": "#322A1E", "glow": "#D3A94C", "label": "Habilidad"},
+    # consumible: cuero
+    "consumible": {"top": "#4F3D2E", "bottom": "#302419", "glow": "#C0905A", "label": "Consumible"},
+    # estado perjudicial: rojo óxido
+    "estado_malo": {"top": "#563730", "bottom": "#34231E", "glow": "#C0583A", "label": "Estado perjudicial"},
+    # estado beneficioso: verde musgo
+    "estado_bueno": {"top": "#38452B", "bottom": "#222B1B", "glow": "#92B15A", "label": "Estado beneficioso"},
+    # mundo: piedra cálida
+    "mundo": {"top": "#4A463D", "bottom": "#2C2A25", "glow": "#B2A88C", "label": "Mundo"},
 }
 
-FRAME_COLOR = "#0B0B10"
+# Contorno de las figuras: negro cálido, el mismo en todas (la figura se exporta sin fondo).
+INK = "#1B1511"
 OUTLINE_WIDTH = 3.6
 # Trazo fino oscuro que separa las piezas de una figura unas de otras (el contorno grueso solo rodea
 # la silueta completa).
 EDGE_WIDTH = 2.0
+# Desplazamiento de la sombra proyectada (en unidades de lienzo): abajo a la derecha.
+SHADOW_OFFSET = (1.6, 4.4)
 
 
 # --------------------------------------------------------------------------------------------
-# Figuras y montaje
+# Figuras
 # --------------------------------------------------------------------------------------------
 
 
@@ -334,7 +408,7 @@ class Sh:
     """
 
     def __init__(self, path, fill=None, stroke=None, sw=0.0, outline=True, op=1.0, cap="round",
-                 join="round", ow=None, edge=None):
+                 join="round", ow=None, edge=None, relief=None):
         self.path = path
         self.fill = fill
         self.stroke = stroke
@@ -345,6 +419,15 @@ class Sh:
         self.join = join
         self.ow = ow  # ancho propio del contorno (None = el general)
         self.edge = edge  # ancho del filo entre piezas (None = el general; 0 = sin filo)
+        self.relief = relief  # fuerza (True) o quita (False) el relieve de luz de borde y grano
+
+    @property
+    def role(self):
+        """body: pieza con relleno que aporta a la silueta; tube: trazo grueso con contorno; detail:
+        relleno suelto (brillos, marcas); line: trazo fino sin contorno."""
+        if self.stroke is not None:
+            return "tube" if self.outline else "line"
+        return "body" if self.outline and self.fill is not None else "detail"
 
 
 def shape(path, fill, **kw):
@@ -361,6 +444,132 @@ def detail(path, fill, **kw):
     """Relleno que no aporta a la silueta (brillos, sombras internas, marcas)."""
     kw["outline"] = False
     return Sh(path, fill=fill, **kw)
+
+
+# --------------------------------------------------------------------------------------------
+# Medida de la silueta (sin motor): cobertura y caja, para igualar el peso visual
+# --------------------------------------------------------------------------------------------
+
+INTERIOR = 112.0  # lado del interior útil de la casilla, en unidades de lienzo
+
+
+def silhouette_image(shapes, side=128, ss=4, ow_scale=1.0, fit=(1.0, 0.0, 0.0), pad=0.0):
+    """Máscara de la silueta (contorno incluido, sombra no) con PIL, a `side` x `side` px.
+
+    `fit` = (s, tx, ty) es la misma transformación que `layers`: escala y traslada la geometría, pero
+    el contorno conserva su ancho (por eso se compensa al emitir las capas). `pad` añade un margen (en
+    unidades de lienzo) por todos los lados para medir figuras que se salen del lienzo; con margen la
+    imagen mide `side * (128 + 2 pad) / 128` px.
+    """
+    unit = side * ss / 128.0
+    big = int(round(side * ss * (128.0 + 2.0 * pad) / 128.0))
+    img = Image.new("L", (big, big), 0)
+    draw = ImageDraw.Draw(img)
+    fs, ftx, fty = fit
+
+    def tr(pts):
+        return [((x * fs + ftx + pad) * unit, (y * fs + fty + pad) * unit) for x, y in pts]
+
+    for sh in shapes:
+        if not sh.outline:
+            if sh.op < 0.5:
+                continue
+            for pts, _closed in sh.path.polys:
+                xy = tr(pts)
+                if sh.fill is not None and len(xy) >= 3:
+                    draw.polygon(xy, fill=255)
+                if sh.stroke is not None and len(xy) >= 2:
+                    draw.line(xy, fill=255, width=max(1, int(round(sh.sw * fs * unit))), joint="curve")
+            continue
+        ow = (OUTLINE_WIDTH if sh.ow is None else sh.ow) * ow_scale
+        stroke_w = 2.0 * ow + sh.sw * fs
+        for pts, closed in sh.path.polys:
+            xy = tr(pts)
+            if len(xy) < 2:
+                continue
+            if sh.fill is not None and len(xy) >= 3:
+                draw.polygon(xy, fill=255)
+            width = max(1, int(round(stroke_w * unit)))
+            seq = xy + [xy[0]] if closed or sh.fill is not None else xy
+            draw.line(seq, fill=255, width=width, joint="curve")
+            r = width / 2.0
+            for ex, ey in ([xy[0], xy[-1]] if not (closed or sh.fill is not None) else xy[::6]):
+                draw.ellipse((ex - r, ey - r, ex + r, ey + r), fill=255)
+    out = int(round(side * (128.0 + 2.0 * pad) / 128.0))
+    return img.resize((out, out), Image.BOX)
+
+
+def measure(shapes, ow_scale=1.0, fit=(1.0, 0.0, 0.0)):
+    """(caja (x0, y0, x1, y1) en unidades de lienzo, cobertura 0..1 del interior de 112 x 112).
+
+    Mide la figura entera aunque se salga del lienzo (la caja puede tener coordenadas negativas).
+    """
+    pad = 64.0
+    img = silhouette_image(shapes, 128, 4, ow_scale, fit, pad)
+    mask = img.point(lambda v: 255 if v > 127 else 0)
+    bbox = mask.getbbox()
+    if bbox is None:
+        return (0, 0, 0, 0), 0.0
+    covered = sum(1 for v in mask.getdata() if v)
+    # px -> unidades: la imagen tiene 128 px por cada 128 unidades
+    box = (bbox[0] - pad, bbox[1] - pad, bbox[2] - pad, bbox[3] - pad)
+    return box, covered / (INTERIOR * INTERIOR)
+
+
+def _centered(shapes, s, center, ow_scale):
+    """Traslación que centra la caja de la figura escalada por `s` en `center`."""
+    bbox, _cover = measure(shapes, ow_scale, (s, 0.0, 0.0))
+    cx, cy = (bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0
+    return center[0] - cx, center[1] - cy
+
+
+def fit_transform(shapes, target=0.375, lo=0.6, hi=1.6, max_extent=110.0, center=(64.0, 62.0),
+                  ow_scale=1.0):
+    """Escala y traslación que dejan la figura centrada y con cobertura cercana a `target`.
+
+    Devuelve (s, tx, ty): x' = s * x + tx. El contorno no escala (se compensa al emitir las capas), así
+    que la cobertura no sigue exactamente a s al cuadrado: se refina en unas pasadas. La escala se limita
+    para que la caja (contorno incluido) quepa en `max_extent` y para no deformar el dibujo.
+    """
+    s = 1.0
+    for _ in range(4):
+        tx, ty = _centered(shapes, s, center, ow_scale)
+        bbox, cover = measure(shapes, ow_scale, (s, tx, ty))
+        if cover <= 0:
+            return 1.0, 0.0, 0.0
+        s = min(max(s * math.sqrt(target / cover), lo), hi)
+        extent = max(bbox[2] - bbox[0], bbox[3] - bbox[1], 1.0)
+        if extent > max_extent and s > 0.2:
+            # reduce hasta que la caja quepa
+            s *= max_extent / extent
+    tx, ty = _centered(shapes, s, center, ow_scale)
+    bbox, _cover = measure(shapes, ow_scale, (s, tx, ty))
+    extent = max(bbox[2] - bbox[0], bbox[3] - bbox[1], 1.0)
+    if extent > max_extent:
+        s *= max_extent / extent
+        tx, ty = _centered(shapes, s, center, ow_scale)
+        bbox, _cover = measure(shapes, ow_scale, (s, tx, ty))
+    # que la caja no se salga del lienzo (margen de 6 unidades)
+    dx = max(6 - bbox[0], 0) - max(bbox[2] - 122, 0)
+    dy = max(6 - bbox[1], 0) - max(bbox[3] - 122, 0)
+    return s, tx + dx, ty + dy
+
+
+def fit_square(shapes, fill=0.9, ow_scale=1.0):
+    """Ajuste para las variantes pequeñas: la caja (contorno incluido) llena `fill` del cuadrado."""
+    target = fill * 128.0
+    s = 1.0
+    for _ in range(6):
+        bbox, _cover = measure(shapes, ow_scale, (s, 0.0, 0.0))
+        extent = max(bbox[2] - bbox[0], bbox[3] - bbox[1], 1.0)
+        s *= target / extent
+    tx, ty = _centered(shapes, s, (64.0, 64.0), ow_scale)
+    return s, tx, ty
+
+
+# --------------------------------------------------------------------------------------------
+# Capas
+# --------------------------------------------------------------------------------------------
 
 
 def _fill_ref(fill, used):
@@ -381,83 +590,61 @@ def _defs_for(material):
     )
 
 
-def _tile(category):
-    cat = CATEGORIES[category]
-    top, bottom, glow = cat["top"], cat["bottom"], cat["glow"]
-    rim = mix(bottom, "#000000", 0.35)
-    defs = (
-        '<linearGradient id="t_fill" x1="0" y1="0" x2="0" y2="1">'
-        '<stop offset="0" stop-color="%s"/><stop offset="1" stop-color="%s"/></linearGradient>'
-        '<radialGradient id="t_glow" cx="62" cy="56" r="66" gradientUnits="userSpaceOnUse">'
-        '<stop offset="0" stop-color="%s" stop-opacity="0.55"/>'
-        '<stop offset="0.6" stop-color="%s" stop-opacity="0.14"/>'
-        '<stop offset="1" stop-color="%s" stop-opacity="0"/></radialGradient>'
-        '<linearGradient id="t_floor" x1="0" y1="0" x2="0" y2="1">'
-        '<stop offset="0" stop-color="#000000" stop-opacity="0"/>'
-        '<stop offset="1" stop-color="#000000" stop-opacity="0.34"/></linearGradient>'
-        % (top, bottom, glow, glow, glow)
+def _wrap(side, defs, body, fit):
+    """Monta un SVG de `side` px con un grupo de transformación `fit` = (s, tx, ty)."""
+    s, tx, ty = fit
+    group = '<g transform="translate(%s %s) scale(%s)">%s</g>' % (_num(tx), _num(ty), _num(s), body)
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 128 128">'
+        "<defs>%s</defs>%s</svg>\n" % (side, side, defs, group)
     )
-    body = (
-        '<rect x="0" y="0" width="128" height="128" rx="17" fill="%s"/>' % FRAME_COLOR
-        + '<rect x="2.5" y="2.5" width="123" height="123" rx="14.5" fill="%s"/>' % rim
-        + '<rect x="4" y="4" width="120" height="120" rx="13.5" fill="url(#t_fill)"/>'
-        + '<rect x="4" y="4" width="120" height="120" rx="13.5" fill="url(#t_glow)"/>'
-        + '<rect x="4" y="64" width="120" height="60" rx="13.5" fill="url(#t_floor)"/>'
-        # filo de luz (arriba e izquierda) y de sombra (abajo y derecha)
-        + '<path d="M5.5 112 L5.5 18 Q5.5 5.5 18 5.5 L112 5.5" fill="none" stroke="#FFFFFF" '
-        'stroke-opacity="0.42" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>'
-        + '<path d="M122.5 16 L122.5 110 Q122.5 122.5 110 122.5 L16 122.5" fill="none" stroke="#000000" '
-        'stroke-opacity="0.45" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>'
-        # marco interior fino: da la sensación de casilla hundida
-        + '<rect x="9" y="9" width="110" height="110" rx="9" fill="none" stroke="#000000" '
-        'stroke-opacity="0.22" stroke-width="1.6"/>'
-    )
-    return defs, body, darken(bottom, 0.62)
 
 
-def _path_el(sh, fill_attr, stroke_attr, sw, extra=""):
-    return '<path d="%s" fill="%s"%s%s%s/>' % (sh.path.d(), fill_attr, stroke_attr, extra, "")
+def layers(shapes, side=256, fit=(1.0, 0.0, 0.0), ow_scale=1.0, shadow=1.0):
+    """Reparte la figura en capas SVG: sombra, silueta y una por pieza.
 
+    Devuelve una lista de dicts: {"kind": "shadow"|"silhouette"|"piece", "svg": texto, ...}. Cada pieza
+    lleva además su `role` (ver `Sh.role`), el material o color plano, la opacidad y si tiene filo.
+    Los anchos de contorno y de filo se dividen por la escala para que no engorden ni adelgacen al
+    ajustar la figura al lienzo; `ow_scale` los multiplica (los estados pequeños llevan el contorno más
+    grueso en proporción) y `shadow` hace lo propio con el desplazamiento de la sombra.
+    """
+    s = fit[0]
+    comp = ow_scale / s
+    out = []
 
-def icon_svg(name, category, shapes, title):
-    """Monta el SVG completo de un icono: fondo con bisel, sombra, contorno y figuras."""
-    tile_defs, tile_body, outline_color = _tile(category)
-    used = set()
-    figure = []
+    def ow_of(sh):
+        return (OUTLINE_WIDTH if sh.ow is None else sh.ow) * comp
 
-    # 1) sombra proyectada hacia abajo (solo la silueta)
+    # 1) sombra proyectada (negro opaco; la opacidad y el desenfoque los pone paint.py)
+    body = []
+    dx, dy = SHADOW_OFFSET[0] * shadow / s, SHADOW_OFFSET[1] * shadow / s
     for sh in shapes:
         if not sh.outline:
             continue
-        ow = (OUTLINE_WIDTH if sh.ow is None else sh.ow) * 2.0
-        if sh.fill is not None:
-            figure.append(
-                '<path d="%s" transform="translate(1.5 4.5)" fill="#000000" fill-opacity="0.30" '
-                'stroke="#000000" stroke-opacity="0.30" stroke-width="%s" stroke-linejoin="round" '
-                'stroke-linecap="round"/>' % (sh.path.d(), _num(ow + sh.sw))
-            )
-        else:
-            figure.append(
-                '<path d="%s" transform="translate(1.5 4.5)" fill="none" stroke="#000000" '
-                'stroke-opacity="0.30" stroke-width="%s" stroke-linejoin="round" '
-                'stroke-linecap="round"/>' % (sh.path.d(), _num(ow + sh.sw))
-            )
+        w = _num(ow_of(sh) * 2.0 + sh.sw)
+        fill = "#000000" if sh.fill is not None else "none"
+        body.append('<path d="%s" transform="translate(%s %s)" fill="%s" stroke="#000000" '
+                    'stroke-width="%s" stroke-linejoin="round" stroke-linecap="round"/>'
+                    % (sh.path.d(), _num(dx), _num(dy), fill, w))
+    out.append({"kind": "shadow", "svg": _wrap(side, "", "".join(body), fit)})
 
-    # 2) contorno oscuro
+    # 2) silueta: contorno oscuro de todas las piezas con silueta
+    body = []
     for sh in shapes:
         if not sh.outline:
             continue
-        ow = (OUTLINE_WIDTH if sh.ow is None else sh.ow) * 2.0
-        fill = outline_color if sh.fill is not None else "none"
-        figure.append(
-            '<path d="%s" fill="%s" stroke="%s" stroke-width="%s" stroke-linejoin="round" '
-            'stroke-linecap="round"/>' % (sh.path.d(), fill, outline_color, _num(ow + sh.sw))
-        )
+        w = _num(ow_of(sh) * 2.0 + sh.sw)
+        fill = INK if sh.fill is not None else "none"
+        body.append('<path d="%s" fill="%s" stroke="%s" stroke-width="%s" stroke-linejoin="round" '
+                    'stroke-linecap="round"/>' % (sh.path.d(), fill, INK, w))
+    out.append({"kind": "silhouette", "svg": _wrap(side, "", "".join(body), fit)})
 
-    # 3) relleno y detalles, en el orden en que se dibujaron
+    # 3) una capa por pieza, en el orden en que se dibujaron
     for sh in shapes:
-        attrs = ""
+        used = set()
         fill = _fill_ref(sh.fill, used)
+        attrs = ""
         if sh.stroke is not None:
             attrs += ' stroke="%s" stroke-width="%s" stroke-linecap="%s" stroke-linejoin="%s"' % (
                 sh.stroke, _num(sh.sw), sh.cap, sh.join)
@@ -465,14 +652,20 @@ def icon_svg(name, category, shapes, title):
             edge = EDGE_WIDTH if sh.edge is None else sh.edge
             if edge > 0:
                 attrs += ' stroke="%s" stroke-width="%s" stroke-linejoin="round"' % (
-                    outline_color, _num(edge))
-        if sh.op < 1.0:
-            attrs += ' opacity="%s"' % _num(sh.op)
-        figure.append('<path d="%s" fill="%s"%s/>' % (sh.path.d(), fill, attrs))
-
-    defs = tile_defs + "".join(_defs_for(m) for m in sorted(used))
-    return (
-        '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">\n'
-        "<title>%s</title>\n<defs>%s</defs>\n%s\n%s\n</svg>\n"
-        % (title, defs, tile_body, "\n".join(figure))
-    )
+                    INK, _num(edge * comp))
+        defs = "".join(_defs_for(m) for m in sorted(used))
+        svg = _wrap(side, defs, '<path d="%s" fill="%s"%s/>' % (sh.path.d(), fill, attrs), fit)
+        flat = None
+        material = None
+        if sh.fill is not None:
+            if sh.fill.startswith("#"):
+                flat = sh.fill
+            else:
+                material = sh.fill
+        elif sh.stroke is not None:
+            flat = sh.stroke
+        out.append({"kind": "piece", "svg": svg, "role": sh.role, "material": material, "flat": flat,
+                    "op": sh.op, "relief": sh.relief, "edge": bool(sh.outline and sh.fill is not None
+                                              and (EDGE_WIDTH if sh.edge is None else sh.edge) > 0),
+                    "sw": sh.sw})
+    return out
