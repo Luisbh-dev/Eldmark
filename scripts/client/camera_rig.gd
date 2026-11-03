@@ -114,7 +114,7 @@ var _snap_pending: bool = true
 var _yaw: float = 0.0
 var _pitch: float = 0.0
 
-## Cursor liberado de forma persistente (Esc, pérdida de foco).
+## Cursor liberado de forma persistente (Esc, pérdida de foco, arranque sin foco).
 var _free_toggled: bool = false
 ## Cursor liberado mientras se mantiene la tecla (Alt).
 var _free_held: bool = false
@@ -191,6 +191,10 @@ func _ready() -> void:
 	_query.collide_with_bodies = true
 	_query.collide_with_areas = false
 
+	# Una ventana que se abre sin foco (una captura automática, otra instancia) no se queda con el
+	# ratón de quien está trabajando en otra ventana: empieza con el cursor suelto y un clic lo captura.
+	if starts_with_free_cursor(get_window()):
+		_free_toggled = true
 	_apply_look()
 	_refresh_mouse_mode()
 	# Lo que el jugador tiene guardado en los ajustes (solo lo que ha cambiado él).
@@ -677,6 +681,15 @@ static func _smoothing(sharpness: float, delta: float) -> float:
 ## el árbol; la colisión de la cámara se resuelve en [method _update_collision].
 func _disable_builtin_spring() -> void:
 	_arm.set_physics_process_internal(false)
+
+
+## true si el ratón no debe capturarse al arrancar: arranque con [code]--sin-raton[/code] o con
+## [code]ELDMARK_SIN_RATON=1[/code], o una ventana real que no tiene el foco. Sin ventana (pruebas
+## headless) se mantiene la captura de siempre.
+static func starts_with_free_cursor(window: Window) -> bool:
+	if OS.get_cmdline_user_args().has("--sin-raton") or OS.get_environment("ELDMARK_SIN_RATON") == "1":
+		return true
+	return DisplayServer.get_name() != "headless" and window != null and not window.has_focus()
 
 
 func _is_mouse_look_active() -> bool:

@@ -486,6 +486,18 @@ func test_escape_closes_the_window_before_anything_else_sees_it() -> void:
 	assert_false(window.is_open(), "cerrada, Esc no hace nada con ella")
 
 
+func test_the_camera_starts_with_the_cursor_free_when_asked_and_captured_headless() -> void:
+	# Sin ventana real (headless) se captura como siempre.
+	assert_false(CameraRig.starts_with_free_cursor(tree.root), "headless: se captura")
+	OS.set_environment("ELDMARK_SIN_RATON", "1")
+	assert_true(CameraRig.starts_with_free_cursor(tree.root), "con ELDMARK_SIN_RATON=1 empieza suelto")
+	var rig: CameraRig = (load(CAMERA_RIG_SCENE_PATH) as PackedScene).instantiate() as CameraRig
+	_add(rig)
+	OS.unset_environment("ELDMARK_SIN_RATON")
+	assert_true(rig.is_cursor_free(), "la cámara arranca con el cursor suelto")
+	assert_false(CameraRig.starts_with_free_cursor(tree.root), "sin la variable, vuelve a capturarse")
+
+
 func test_a_window_frees_and_recaptures_the_cursor_through_the_camera() -> void:
 	var rig: CameraRig = (load(CAMERA_RIG_SCENE_PATH) as PackedScene).instantiate() as CameraRig
 	_add(rig)
