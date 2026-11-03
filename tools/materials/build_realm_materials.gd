@@ -209,11 +209,69 @@ func _build_vegetation() -> void:
 		material.set_shader_parameter(&"roughness", 1.0)
 		material.set_shader_parameter(&"specular", 0.15)
 		_save(material, VEGETATION_DIR.path_join(spec[0] + ".tres"))
+	# Helechos y plantas del sotobosque (ART-59): las hojas del kit (un atlas con verdes muy vivos y
+	# algunas hojas azules y naranjas) llevadas al verde grisáceo de la hierba.
+	var leaves := ShaderMaterial.new()
+	leaves.shader = shader
+	leaves.set_shader_parameter(&"albedo_texture", load(NAT + "leaves.png"))
+	leaves.set_shader_parameter(&"reference_luminance", _mean_luminance(NAT + "leaves.png"))
+	leaves.set_shader_parameter(&"target_color", Color("#5b6844"))
+	leaves.set_shader_parameter(&"colorize", 0.7)
+	leaves.set_shader_parameter(&"saturation", 0.6)
+	leaves.set_shader_parameter(&"detail_strength", 0.8)
+	leaves.set_shader_parameter(&"alpha_scissor", 0.5)
+	leaves.set_shader_parameter(&"roughness", 1.0)
+	leaves.set_shader_parameter(&"specular", 0.15)
+	_save(leaves, VEGETATION_DIR.path_join("leaves_green.tres"))
 	var stones := StandardMaterial3D.new()
 	stones.albedo_texture = load(NAT + "path_rocks_diffuse.png") as Texture2D
 	stones.albedo_color = Color(0.58, 0.6, 0.56)
 	stones.roughness = 0.95
 	_save(stones, VEGETATION_DIR.path_join("path_stones.tres"))
+	_build_bark()
+	# Hojas de los árboles retorcidos (ART-59): el pack las trae rojas y rosas (otoño) y desentonan en
+	# el valle gris; se llevan a un verde oliva apagado conservando el detalle de la textura.
+	var twisted := ShaderMaterial.new()
+	twisted.shader = shader
+	var twisted_path: String = NAT + "leaves_twisted_tree_c.png"
+	twisted.set_shader_parameter(&"albedo_texture", load(twisted_path))
+	twisted.set_shader_parameter(&"reference_luminance", _mean_luminance(twisted_path))
+	twisted.set_shader_parameter(&"target_color", Color("#5d6445"))
+	twisted.set_shader_parameter(&"colorize", 0.95)
+	twisted.set_shader_parameter(&"saturation", 0.7)
+	twisted.set_shader_parameter(&"detail_strength", 0.8)
+	twisted.set_shader_parameter(&"alpha_scissor", 0.5)
+	twisted.set_shader_parameter(&"roughness", 1.0)
+	twisted.set_shader_parameter(&"specular", 0.15)
+	_save(twisted, VEGETATION_DIR.path_join("leaves_twisted.tres"))
+
+
+## Corteza de los árboles (ART-59). La del kit es terracota (media #8C5843): en el valle gris se
+## veía salmón. Se lleva a un pardo grisáceo de la paleta de Eldrun conservando el detalle de la
+## textura, con la variante de mallas cerradas (cull_back, la mitad de rasterizado en las sombras).
+## Los glTF de los árboles las usan como material externo (tools/assets/apply_nature_materials.gd).
+## Cada especie tiene su textura: [archivo, color objetivo, colorear].
+func _build_bark() -> void:
+	var shader: Shader = load(REALM_SHADER_CLOSED) as Shader
+	for spec: Array in [
+		["bark_tree", "bark_normal_tree", Color("#554a40"), 0.85],
+		["bark_twisted", "bark_twisted_tree", Color("#575049"), 0.7],
+		["bark_dead", "bark_dead_tree", Color("#575148"), 0.75],
+	]:
+		var albedo_path: String = NAT + spec[1] + ".png"
+		var material := ShaderMaterial.new()
+		material.shader = shader
+		material.set_shader_parameter(&"albedo_texture", load(albedo_path))
+		material.set_shader_parameter(&"normal_texture", load(NAT + spec[1] + "_normal.png"))
+		material.set_shader_parameter(&"use_normal_map", true)
+		material.set_shader_parameter(&"reference_luminance", _mean_luminance(albedo_path))
+		material.set_shader_parameter(&"target_color", spec[2])
+		material.set_shader_parameter(&"colorize", spec[3])
+		material.set_shader_parameter(&"saturation", 0.8)
+		material.set_shader_parameter(&"detail_strength", 0.9)
+		material.set_shader_parameter(&"roughness", 0.95)
+		material.set_shader_parameter(&"specular", 0.15)
+		_save(material, VEGETATION_DIR.path_join(spec[0] + ".tres"))
 
 
 func _make_wave_normal(noise_seed: int, frequency: float) -> NoiseTexture2D:

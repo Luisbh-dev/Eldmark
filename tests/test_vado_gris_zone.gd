@@ -26,8 +26,10 @@ const DECK_HALF_WIDTH: float = 1.95
 const BRIDGE_LANES: Array[float] = [-1.5, 0.0, 1.5]
 ## Máscara del jugador: mundo (1) + bloqueos invisibles del jugador (4).
 const PLAYER_MASK: int = 1 | 4
-## Ids de malla del instanciador que son árboles o rocas de juego (ver generate_vado_gris.gd).
-const COVER_MESH_IDS: Array[int] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+## Ids de malla del instanciador que son árboles o rocas (ver generate_vado_gris.gd): los tres primeros
+## pinos, caducifolios y árboles muertos con las rocas, las variantes extra de árbol (ART-59) y los
+## retorcidos. Dentro del área jugable todos llevan colisión; fuera hay bosque y canchal sin ella.
+const COVER_MESH_IDS: Array[int] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 16, 17, 18, 19, 20, 21, 22, 23, 24]
 const WALL_Z: float = 152.0
 
 var _zone: Node3D

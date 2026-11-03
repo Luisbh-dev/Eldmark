@@ -1,0 +1,152 @@
+{
+  "asset": {
+    "generator": "Khronos glTF Blender I/O v4.0.44",
+    "version": "2.0"
+  },
+  "scene": 0.0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0.0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0.0,
+      "name": "Fern_1"
+    }
+  ],
+  "materials": [
+    {
+      "alphaCutoff": 0.200000002980232,
+      "alphaMode": "MASK",
+      "doubleSided": true,
+      "name": "Leaves",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0.0
+        },
+        "metallicFactor": 0.0
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Plane.023",
+      "primitives": [
+        {
+          "attributes": {
+            "COLOR_0": 0.0,
+            "POSITION": 1.0,
+            "NORMAL": 2.0,
+            "TEXCOORD_0": 3.0
+          },
+          "indices": 4.0,
+          "material": 0.0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0.0,
+      "source": 0.0
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/png",
+      "name": "Leaves",
+      "uri": "leaves.png"
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0.0,
+      "componentType": 5123.0,
+      "count": 243.0,
+      "normalized": true,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 1.0,
+      "componentType": 5126.0,
+      "count": 243.0,
+      "max": [
+        4.62621307373047,
+        2.44130825996399,
+        4.39610815048218
+      ],
+      "min": [
+        -4.41997528076172,
+        -0.247470185160637,
+        -4.09131574630737
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2.0,
+      "componentType": 5126.0,
+      "count": 243.0,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 3.0,
+      "componentType": 5126.0,
+      "count": 243.0,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 4.0,
+      "componentType": 5123.0,
+      "count": 864.0,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0.0,
+      "byteLength": 1944.0,
+      "byteOffset": 0.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 2916.0,
+      "byteOffset": 1944.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 2916.0,
+      "byteOffset": 4860.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 1944.0,
+      "byteOffset": 7776.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 1728.0,
+      "byteOffset": 9720.0,
+      "target": 34963.0
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729.0,
+      "minFilter": 9987.0
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 11448.0,
+      "uri": "fern_1.bin"
+    }
+  ]
+}

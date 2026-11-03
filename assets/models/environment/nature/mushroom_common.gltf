@@ -1,0 +1,136 @@
+{
+  "asset": {
+    "generator": "Khronos glTF Blender I/O v4.0.44",
+    "version": "2.0"
+  },
+  "scene": 0.0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0.0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0.0,
+      "name": "Mushroom_Common"
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "Mushrooms",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0.0
+        },
+        "metallicFactor": 0.0
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Cube.032",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0.0,
+            "NORMAL": 1.0,
+            "TEXCOORD_0": 2.0
+          },
+          "indices": 3.0,
+          "material": 0.0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0.0,
+      "source": 0.0
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/png",
+      "name": "Mushrooms",
+      "uri": "mushrooms.png"
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0.0,
+      "componentType": 5126.0,
+      "count": 555.0,
+      "max": [
+        0.230325013399124,
+        0.446009755134583,
+        0.33390200138092
+      ],
+      "min": [
+        -0.333375871181488,
+        -0.0174709688872099,
+        -0.445210695266724
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1.0,
+      "componentType": 5126.0,
+      "count": 555.0,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2.0,
+      "componentType": 5126.0,
+      "count": 555.0,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3.0,
+      "componentType": 5123.0,
+      "count": 2640.0,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0.0,
+      "byteLength": 6660.0,
+      "byteOffset": 0.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 6660.0,
+      "byteOffset": 6660.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 4440.0,
+      "byteOffset": 13320.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 5280.0,
+      "byteOffset": 17760.0,
+      "target": 34963.0
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729.0,
+      "minFilter": 9987.0
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 23040.0,
+      "uri": "mushroom_common.bin"
+    }
+  ]
+}

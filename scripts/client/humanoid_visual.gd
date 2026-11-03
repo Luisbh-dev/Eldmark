@@ -40,6 +40,11 @@ const NO_SHADOW_MESH_PREFIXES: PackedStringArray = [
 	"Eyes", "Eyebrows", "Hair_Beard", "Male_Ranger_Body_Belt",
 ]
 
+## Distancia a la cámara (m) por debajo de la cual un visual ajeno con [member camera_fade] se oculta del
+## todo, y distancia a partir de la cual se ve entero. Entre las dos se difumina con tramado (ART-53).
+const CAMERA_FADE_HIDDEN: float = 0.5
+const CAMERA_FADE_SOLID: float = 1.2
+
 ## Ranuras de pieza que admite [method set_part].
 const PART_SLOTS: Array[StringName] = [&"body", &"head", &"hair", &"beard", &"marks"]
 ## Canales de tinte de [method set_tint] y el prefijo del nombre de los materiales de Universal Base
@@ -66,9 +71,22 @@ const TINT_MATERIAL_PREFIXES: Dictionary = {
 		if is_node_ready():
 			_apply_hood()
 
+## Difumina el visual con tramado cuando la cámara está a menos de [constant CAMERA_FADE_SOLID] m, y lo
+## oculta a menos de [constant CAMERA_FADE_HIDDEN] (ART-53). Es para los personajes ajenos: no hay colisión
+## entre personajes, y un torso o un escudo pegado a la cámara llenaba media pantalla en las refriegas. El
+## propio personaje no lo usa (la cámara ya oculta su visual al acercarse). Se aplica con los rangos de
+## visibilidad del motor en todas las mallas, también las de las piezas y las armas que se monten después.
+@export var camera_fade: bool = false:
+	set(value):
+		camera_fade = value
+		if is_node_ready():
+			_apply_camera_fade()
+
 @onready var _model: Node3D = $Pivot/Model
 
 var _skeleton: Skeleton3D = null
+# true si los rangos de visibilidad de camera_fade están puestos en las mallas.
+var _camera_fade_applied: bool = false
 # Ranura -> sus mallas (colgadas del esqueleto) y la ruta de la escena de la que salieron.
 var _part_meshes: Dictionary[StringName, Array] = {}
 var _part_paths: Dictionary[StringName, String] = {}
@@ -166,10 +184,14 @@ func _ready() -> void:
 	spine.name = "SpineTwist"
 	_skeleton.add_child(spine)
 	get_animator().set_spine_modifier(spine)
+	# Las armas y los modificadores ya están colgados: los rangos de visibilidad les llegan también.
+	_apply_camera_fade()
 
 
 func _on_weapon_shown(weapon_id: int) -> void:
 	WeaponProps.show_weapon(_skeleton, weapon_id)
+	# El arco se crea la primera vez que hace falta: sus mallas también se difuminan.
+	_apply_camera_fade()
 
 
 ## Esqueleto que anima todas las mallas (perfil humanoide de Godot: Hips, Head, RightHand...).
@@ -218,6 +240,7 @@ func set_part(slot: StringName, scene: PackedScene) -> void:
 	_apply_hood()
 	_apply_shadow_casting()
 	_apply_tints()
+	_apply_camera_fade()
 
 
 ## Quita las mallas de la ranura [param slot] (sin pelo, sin barba...). No hace nada si ya estaba vacía.
@@ -360,6 +383,27 @@ func _apply_shadow_casting() -> void:
 		for prefix: String in NO_SHADOW_MESH_PREFIXES:
 			if mesh.name.begins_with(prefix):
 				mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+# Pone (o quita) el rango de visibilidad de cada malla del visual. En el modo de fundido propio el motor
+# difumina con tramado a ambos lados de visibility_range_begin, a lo largo de su margen: con begin en el
+# punto medio y el margen en la mitad del tramo, la malla desaparece a CAMERA_FADE_HIDDEN y se ve entera a
+# CAMERA_FADE_SOLID.
+func _apply_camera_fade() -> void:
+	if not camera_fade and not _camera_fade_applied:
+		return
+	_camera_fade_applied = camera_fade
+	var meshes: Array[MeshInstance3D] = []
+	_collect_meshes(self, meshes)
+	for mesh: MeshInstance3D in meshes:
+		if camera_fade:
+			mesh.visibility_range_begin = (CAMERA_FADE_HIDDEN + CAMERA_FADE_SOLID) * 0.5
+			mesh.visibility_range_begin_margin = (CAMERA_FADE_SOLID - CAMERA_FADE_HIDDEN) * 0.5
+			mesh.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+		else:
+			mesh.visibility_range_begin = 0.0
+			mesh.visibility_range_begin_margin = 0.0
+			mesh.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 
 
 static func _find_skeleton(root: Node) -> Skeleton3D:

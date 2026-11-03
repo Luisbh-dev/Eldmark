@@ -1,0 +1,262 @@
+{
+  "asset": {
+    "generator": "Khronos glTF Blender I/O v4.0.44",
+    "version": "2.0"
+  },
+  "scene": 0.0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0.0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0.0,
+      "name": "TwistedTree_2"
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "Bark_TwistedTree",
+      "normalTexture": {
+        "index": 0.0
+      },
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1.0
+        },
+        "metallicFactor": 0.0
+      }
+    },
+    {
+      "alphaCutoff": 0.200000002980232,
+      "alphaMode": "MASK",
+      "doubleSided": true,
+      "name": "Leaves_TwistedTree",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 2.0
+        },
+        "metallicFactor": 0.0
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "tree.039",
+      "primitives": [
+        {
+          "attributes": {
+            "COLOR_0": 0.0,
+            "POSITION": 1.0,
+            "NORMAL": 2.0,
+            "TEXCOORD_0": 3.0
+          },
+          "indices": 4.0,
+          "material": 0.0
+        },
+        {
+          "attributes": {
+            "COLOR_0": 5.0,
+            "POSITION": 6.0,
+            "NORMAL": 7.0,
+            "TEXCOORD_0": 8.0
+          },
+          "indices": 9.0,
+          "material": 1.0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0.0,
+      "source": 0.0
+    },
+    {
+      "sampler": 0.0,
+      "source": 1.0
+    },
+    {
+      "sampler": 0.0,
+      "source": 2.0
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/png",
+      "name": "Bark_TwistedTree_Normal",
+      "uri": "bark_twisted_tree_normal.png"
+    },
+    {
+      "mimeType": "image/png",
+      "name": "Bark_TwistedTree",
+      "uri": "bark_twisted_tree.png"
+    },
+    {
+      "mimeType": "image/png",
+      "name": "Leaves_TwistedTree_C",
+      "uri": "leaves_twisted_tree_c.png"
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0.0,
+      "componentType": 5126.0,
+      "count": 8719.0,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 1.0,
+      "componentType": 5126.0,
+      "count": 8719.0,
+      "max": [
+        3.05952978134155,
+        17.5625896453857,
+        2.15221214294434
+      ],
+      "min": [
+        -5.44647550582886,
+        -0.20147468149662,
+        -4.33489227294922
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2.0,
+      "componentType": 5126.0,
+      "count": 8719.0,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 3.0,
+      "componentType": 5126.0,
+      "count": 8719.0,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 4.0,
+      "componentType": 5123.0,
+      "count": 20370.0,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 5.0,
+      "componentType": 5126.0,
+      "count": 4688.0,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 6.0,
+      "componentType": 5126.0,
+      "count": 4688.0,
+      "max": [
+        3.94290208816528,
+        18.7477283477783,
+        3.661869764328
+      ],
+      "min": [
+        -6.61997032165527,
+        4.4927978515625,
+        -5.54071807861328
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 7.0,
+      "componentType": 5126.0,
+      "count": 4688.0,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 8.0,
+      "componentType": 5126.0,
+      "count": 4688.0,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 9.0,
+      "componentType": 5123.0,
+      "count": 7032.0,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0.0,
+      "byteLength": 139504.0,
+      "byteOffset": 0.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 104628.0,
+      "byteOffset": 139504.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 104628.0,
+      "byteOffset": 244132.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 69752.0,
+      "byteOffset": 348760.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 40740.0,
+      "byteOffset": 418512.0,
+      "target": 34963.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 75008.0,
+      "byteOffset": 459252.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 56256.0,
+      "byteOffset": 534260.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 56256.0,
+      "byteOffset": 590516.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 37504.0,
+      "byteOffset": 646772.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 14064.0,
+      "byteOffset": 684276.0,
+      "target": 34963.0
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729.0,
+      "minFilter": 9987.0
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 698340.0,
+      "uri": "twisted_tree_2.bin"
+    }
+  ]
+}
