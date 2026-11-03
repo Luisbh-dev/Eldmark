@@ -127,6 +127,8 @@ El orden pone primero lo que permite demostrar la mejora, después lo barato y l
 
 **Capturas que lo demuestran.** El índice regenerado y una tira remota en la que el remoto seguido no queda tapado.
 
+**Estado.** Hecho: `tools/quality/` con `python tools/quality/run.py <área>` (animacion, mapa, interfaz, mundo, combate, video y todo), documentado en el README. Las tiras de remotos salen de un bot completo solo en el servidor (sin PNJ), de los PNJ del fuerte, de los guardias de reino y de los Guardianes de la Puerta; cada una lleva en su `meta.json` el clip que reproduce la capa de animación del remoto, una vista lateral propia y la marca de los fotogramas tapados. Hay tira de golpe recibido en bloqueo y el vídeo con `--write-movie`. El índice resume por tira cuántos fotogramas de acción tienen clip (por ejemplo, `0/9` en un ataque de PNJ que ataca andando).
+
 **Depende del usuario.** Nada.
 
 ### Oleada 1: lo barato (4 a 6 sesiones)

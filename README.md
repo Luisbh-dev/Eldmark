@@ -151,6 +151,74 @@ Opciones de arranque (van después de `--`):
 
 Las capturas y otros ficheros temporales pueden ir en `build/`, que Godot ignora.
 
+### Banco de capturas de calidad (`tools/quality/`)
+
+El plan de calidad visual ([docs/calidad.md](docs/calidad.md)) se comprueba con capturas, no a ojo: el banco regenera con
+una orden por área las capturas y tiras que demuestran cada criterio del listón, en la misma resolución y con los mismos
+encuadres, para poder enseñar un antes y un después. Necesita **ventana y GPU** (no sirve en `--headless`), Python 3 con
+Pillow (`pip install pillow`) y el ejecutable de consola de Godot (lo busca en `GODOT`, en la instalación de winget y en el
+`PATH`; o `--godot <ruta>`). Si existe `override.cfg` en la raíz (lo ignora Git), las ventanas se abren en la segunda pantalla.
+No usa cuentas ni contraseñas: el servidor va con `--debug-commands` y el cliente de captura entra con un personaje efímero.
+
+```bash
+# Una orden por área (todas escriben en build/calidad, o en la carpeta de --out, y regeneran su indice.md)
+python tools/quality/run.py animacion --out build/calidad    # tiras de 12 fotogramas en el sandbox: jugador y PNJ
+python tools/quality/run.py mapa                             # mapa M, minimapa y brújula
+python tools/quality/run.py interfaz                         # HUD, ventanas, título, creación, galería y chat
+python tools/quality/run.py mundo                            # 66 vistas a altura de jugador, cámaras de revisión y demo
+python tools/quality/run.py combate                          # refriegas, golpe en bloqueo y remotos aislados
+python tools/quality/run.py video --seconds 60               # un minuto de combate con --write-movie
+python tools/quality/run.py todo --port 24721                # las seis áreas seguidas
+python tools/quality/run.py indice --out build/calidad       # solo regenera el índice
+python tools/quality/run.py listar                           # áreas y pasos
+```
+
+Cada orden arranca lo que necesita (el sandbox, o un servidor del Vado Gris en `--port`, 24711 por defecto, con sus bots y el
+cliente conducido por `online_driver.gd`), recoge las capturas en `<out>/<área>/`, une las tiras en rejillas, escribe
+`<out>/indice.md` (qué enseña cada archivo, con qué clips, desde cuándo) y, al acabar o al interrumpirla, cierra los procesos de
+Godot que lanzó. Opciones: `--steps a,b` (solo algunos pasos del área, ver `listar`), `--only <ids>` (en `animacion`, solo esas
+acciones), `--phases hueco,capitan,guardia,guardian` (en `combate --steps pnj`, solo esas fases), `--bots N` (bots de asedio por reino), `--resolution WxH` (1920x1080), `--sin-capsulas` (en `mundo`, las cámaras de
+revisión sin las cápsulas de escala), `--clean-raw` (borra los fotogramas sueltos de `raw/` y deja sus `meta.json`) y `--godot`.
+
+| Área | Qué lanza | Qué deja en `<out>` |
+|---|---|---|
+| `animacion` | `anim_strips.gd` sobre `test_world` (personaje, `HumanoidVisual`, `CameraRig` y `LocalPlayerController` de verdad; los guiones de entradas están en `anim_actions.gd`) | `animacion/{camara_juego,lado,frente}/<acción>.png`: `loc_*`, `com_*`, `arc_*` y `npc_*` (Hueco, Capitán, guardia de reino y Guardián de la Puerta, con ataques, bloqueo, tambaleo y muerte) |
+| `mapa` | servidor con 2 x 6 bots de asedio y `sc_mapa.gd` | `mapa/minimapa_*`, `brujula_*`, `mapa_m_*` e `imagen_horneada_vado_gris.png` |
+| `interfaz` | el mismo servidor con `sc_interfaz.gd` y `sc_extras.gd`, y sin servidor `sc_front.gd` (título, selección y creación con datos de mentira), `sc_gallery.gd` y `chat_preview.tscn` | `interfaz/*.png` y los `recorte_*.png` de `crops.py` (las mismas regiones de píxeles de la auditoría) |
+| `mundo` | servidor sin PNJ ni bots (`--no-npcs --no-dummies`), `sc_mundo.gd` como Vardheim y como Solmarch, `tools/render/render_screenshot_points.gd` y la demo del sandbox | `mundo/jugador_{vardheim,solmarch}/` (33 vistas cada uno), `mundo/camaras_revision/` (con `metricas.txt`) y `mundo/demo_sandbox/` |
+| `combate` | `sc_combate.gd` con 2 x 6 bots; después un servidor sin PNJ con **un solo bot** de combate (`sc_remotos_bot.gd` y `sc_bloqueo.gd`) y otro con los PNJ del Vado Gris sin bots (`sc_remotos_pnj.gd`) | `combate/pelea_*` y `bloqueo_recibiendo_*`, y las tiras de remotos en `animacion/remoto/` y `animacion/remoto_lado/` |
+| `video` | servidor con los PNJ del fuerte y un bot de combate, y `sc_video.gd` con `--write-movie` | `video/combate.avi` (y `.mp4` con `--mp4` si hay ffmpeg) y `video/video.json` |
+
+**Tiras de otros personajes (`rem_*`).** El cliente de captura pelea con un bot o un PNJ ([`spar.gd`](tools/quality/spar.gd):
+ligeros, fuertes, bloqueo, retroceso...) y [`strip_recorder.gd`](tools/quality/strip_recorder.gd) guarda cada 50 ms los últimos
+4,5 s del personaje seguido. Cuando ocurre la acción buscada (el borde de subida de `BLOCK`, `DODGE`, `DEAD`...) la tira sale del
+anillo con el principio de la acción y se descarta si no cumple su validación (por ejemplo, un «ataque ligero» que se convierte en
+carga). El bot va **solo** (servidor sin PNJ ni maniquíes y un único bot completo, que usa habilidades, bloqueo y esquiva), así que
+nadie lo tapa; cada tira lleva además una vista lateral propia a 5 m (`remoto_lado`) y marca `TAPADO` los fotogramas con otro
+cuerpo delante de la cámara del juego. El `meta.json` de cada tira guarda por fotograma la acción de combate, la fase, la
+velocidad y **el clip que reproduce la capa de animación del remoto** (`clip`, `clip_t`, `clip_speed`), y el índice resume cuántos
+fotogramas de acción tienen clip (por ejemplo, `0/9` en el ataque de un PNJ que ataca andando). Las tiras que ya existen son las
+del bot (`rem_bot_*`), el Hueco, el Capitán, el guardia de reino, el Guardián de la Puerta y el golpe recibido en bloqueo
+(`com_bloqueo_recibir_golpe*`: lleva en cada fotograma la marca del golpe que vio el cliente: `BLOQUEADO`, `PARADA`...).
+
+**Vídeo (`video`).** `run.py video` lanza el cliente con el `--write-movie combate.avi --fixed-fps 60` del motor (Movie
+Maker: graba cada fotograma y el audio del bus maestro, PCM estéreo a 48 kHz). El vídeo sale al tamaño de la ventana del proyecto
+(1600x900, `window_width_override`), no al de `--resolution`. El motor avanza un fotograma de 1/60 s por iteración sin mirar el
+reloj, así que el vídeo sale a 60 fotogramas por segundo exactos aunque la grabación vaya más lenta que el tiempo real (en el
+equipo de desarrollo, al 34 %: el JPEG de cada fotograma pesa); el servidor, que no sabe que se graba, sigue en tiempo real y el
+cliente lo compensa como con cualquier mala conexión. Cuando la máquina llega, el conductor frena el juego a tiempo real. La
+duración es la del guion en fotogramas (`--seconds`, 60 por defecto; unos 8 MB por segundo de vídeo): la mitad contra los Huecos y
+el Capitán del patio del fuerte y el resto contra un bot enemigo, con ligeros, fuertes, habilidades, esquivas y bloqueos. A mano:
+
+```bash
+godot --path . --resolution 1600x900 --write-movie build/calidad/video/combate.avi --fixed-fps 60     -s res://tools/quality/online_driver.gd -- --connect=127.0.0.1:24711 --realm=vardheim --name=Cronista     --scenario=res://tools/quality/sc_video.gd --out=build/calidad --tag=video --seconds=60
+```
+
+Mientras `assets/audio/` esté vacío la pista de audio saldrá en silencio; el vídeo sirve ya para juzgar la fluidez y la parada
+de golpe. Las pruebas de este banco (`tests/test_quality_tools.gd`) comprueban sin ventana que todos los scripts cargan, que
+cada PNJ del catálogo tiene su juego de tiras, que las tiras de remotos están bien formadas, la lógica de la grabadora y, si hay
+Python con Pillow, las piezas de Python con datos de mentira.
+
 ### Integración continua
 
 `.github/workflows/tests.yml` (GitHub Actions, `ubuntu-latest`) ejecuta la suite completa, red y
