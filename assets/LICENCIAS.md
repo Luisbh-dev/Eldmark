@@ -205,6 +205,19 @@ declara una licencia propia:
   `godot --headless --path . --import`. Es determinista: misma escena, mismo mapa. La cabecera de
   `tools/map/bake_parchment_map.gd` anota qué cambiar para activarlo en el juego (hoy no está conectado).
 
+- Iconos de la interfaz `assets/ui/icons/` (ART-12): 33 figuras de 128 px sin fondo
+  (`assets/ui/icons/<nombre>.png`: ataque ligero y fuerte, disparo rápido y tensado, bloqueo, esquiva,
+  las seis habilidades de espada y escudo y de arco, las dos pociones, cambiar de arma, los iconos de
+  arma (espada y escudo, arco), interactuar, sangrado, regeneración, aturdimiento, ralentización,
+  empuje, derribado, enraizado, fuerte, puerta, campamento y estandartes), las variantes pequeñas de
+  los siete estados a su tamaño nativo de 14 y 26 px (`small/<estado>_14.png`, `_26.png`) y siete
+  fondos por categoría a sangre y sin marco (`backgrounds/<categoría>.png`). Hechos enteros por código,
+  sin nada de terceros ni de generación con IA. Herramientas: Python con numpy y PIL, y el
+  rasterizador del propio motor (ThorVG). `tools/ui/icons/svgkit.py` (geometría, materiales y capas),
+  `glyphs.py` (los dibujos), `paint.py` (grano, oclusión entre piezas, luz de borde y fondos),
+  `make_icons.py` (orquestador) y `rasterize_icons.gd`; `build_icons.sh` lo regenera todo. Medidas
+  y láminas de muestra: `qa.py`, `make_sheets.py` y `engine_test.gd` (salida en `build/iconos/`).
+
 ## Créditos de cortesía
 
 Ninguno es obligatorio, pero los autores lo agradecen. Para la pantalla de créditos:
