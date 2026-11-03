@@ -192,6 +192,15 @@ declara una licencia propia:
 - Emblemas de bando `assets/emblems/*.svg` (lobo, sol partido, yunque y corona rota):
   **provisionales**, formas geométricas hechas para Eldmark con `tools/assets/make_emblems.py`; los
   sustituirá el arte final de ART-03 con los mismos nombres de archivo.
+- Iconos de la interfaz `assets/ui/icons/*.svg` y sus PNG de 128 px `assets/ui/icons/png/*.png`
+  (ART-12): 30 iconos de acciones, habilidades, consumibles, estados y mapa (ataque ligero y fuerte,
+  bloqueo, esquiva, las seis habilidades de espada y escudo y de arco, las dos pociones, cambiar de
+  arma, interactuar, sangrado, regeneración, aturdimiento, ralentización, empuje, derribado, fuerte,
+  puerta, campamento y estandartes). Dibujados enteros por código, sin nada de terceros: el kit de
+  geometría y materiales es `tools/ui/icons/svgkit.py`, los dibujos `tools/ui/icons/glyphs.py` y
+  `tools/ui/icons/make_icons.py` escribe los SVG. Los PNG los rasteriza el propio motor con
+  `tools/ui/icons/rasterize_icons.gd` (ThorVG). `tools/ui/icons/build_icons.sh` regenera todo, láminas
+  de muestra incluidas (`make_sheets.py`, salida en `build/iconos/`).
 
 ## Créditos de cortesía
 
