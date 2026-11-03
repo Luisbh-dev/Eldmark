@@ -404,6 +404,16 @@ tools/import/                           # scripts EditorScenePostImport
 | Estilos que pueden chocar: Watercolor, Binbun y Castle Wall Kit. | La escena de prueba de estilo es la puerta de entrada. |
 | Precios con oferta o contradictorios (Binbun Pro a 3,99 o 7,99 $). | Comprobarlos al comprar. |
 
+### 4.9 Modelado propio con Blender: la espada
+
+Primera pieza de arte final hecha en casa (ART-06), y la plantilla para las siguientes (escudos, arco, armas de PNJ). Todo se modela por script, sin abrir la interfaz, y el script es lo que se versiona; el GLB sale de él.
+
+- **Cómo se regenera.** `blender --background --factory-startup --python tools/blender/build_sword.py` (Blender 5.2) y después `godot --headless --path . --import`. Escribe `assets/models/weapons/sword_base.glb` y una variante por reino (`sword_vardheim.glb`: lobo y cuero azul; `sword_solmarch.glb`: guarda de sol, oro y cuero blanco; `sword_askarra.glb`: bronce, cuero carmesí y yunque con brasas) que comparten exactamente la misma hoja (lo comprueba `tests/test_sword_model.gd`).
+- **Texturas por código.** `tools/blender/sword_textures.py` (numpy, sin fotos) genera acero con degradado y brillo de filo, cuero con la sombra entre vueltas pintada y un atlas de metal; cada una con su textura de metálico y rugosidad (G y B de una sola imagen, como pide glTF). Los GLB las llevan dentro y su `.import` las deja embebidas (`gltf/embedded_image_handling=3`) para no llenar el repo de PNG sueltos.
+- **Convención de las armas.** Origen en el centro de la empuñadura, hoja por +Y, ancho por X, caras planas hacia ±Z, 1 unidad = 1 m. Dos mallas, `Sword_LOD0` (unos 2.900 triángulos) y `Sword_LOD1` (unos 750), y dos marcas, `TrailBase` y `TrailTip`, para la estela del golpe. Las vueltas del cuero y la acanaladura están en la geometría del LOD0.
+- **Metal.** Con el cielo gris del Vado Gris un metal puro (metálico 1) refleja un gris liso y no se ve la forma, así que el acero va con metálico 0,7 a 0,8 y el contraste lo pinta el albedo (acanaladura oscura, bisel claro). Es una decisión de estilo, no un descuido.
+- **En el juego.** `scripts/client/sword_model.gd` (`SwordModel`) carga y reparte los LOD con los rangos de visibilidad; `WeaponProps` cuelga el modelo de la mano (`SWORD_GRIP_ROTATION_DEG` y `SWORD_GRIP_OFFSET` son el agarre) y deja la caja si el GLB no carga. `scenes/tests/sword_preview.tscn` hace las fotos del modelo con la luz del Vado Gris y `tools/render/sword_hero_shots.gd` captura al héroe en reposo, golpeando y bloqueando.
+
 ---
 
 ## 5. Lo que NO recomiendo y por qué

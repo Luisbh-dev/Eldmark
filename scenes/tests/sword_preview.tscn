@@ -1,0 +1,28 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/client/tools/sword_preview.gd" id="1_preview"]
+
+[node name="SwordPreview" type="Node3D"]
+script = ExtResource("1_preview")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-4.371139e-08, 0.52991927, -0.8480481, 0, 0.8480481, 0.52991927, 1, 2.3163507e-08, -3.706936e-08, 0, 0, 0)
+light_color = Color(0.93333334, 0.9411765, 0.9411765, 1)
+light_energy = 1.2
+light_angular_distance = 3.0
+shadow_enabled = true
+shadow_blur = 2.5
+directional_shadow_mode = 1
+directional_shadow_max_distance = 120.0
+
+[node name="RellenoSur" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.88294756, 0.46947157, 0, -0.46947157, 0.88294756, 0, 0, 0)
+light_color = Color(0.83137256, 0.85490197, 0.8784314, 1)
+light_energy = 0.42
+sky_mode = 1
+
+[node name="RellenoNorte" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-1, 4.1042508e-08, -7.7189725e-08, 0, 0.88294756, 0.46947157, 8.742278e-08, 0.46947157, -0.88294756, 0, 0, 0)
+light_color = Color(0.83137256, 0.85490197, 0.8784314, 1)
+light_energy = 0.42
+sky_mode = 1

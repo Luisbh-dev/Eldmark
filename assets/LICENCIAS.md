@@ -189,6 +189,14 @@ declara una licencia propia:
   `tools/terrain/generate_vado_gris.gd`.
 - Tema de interfaz `assets/ui/theme/eldmark_theme.tres` (generado por `tools/ui/build_theme.gd` a
   partir de `UIPalette`).
+- Espada de armas `assets/models/weapons/` (`sword_base.glb` y las variantes por reino
+  `sword_vardheim.glb`, `sword_solmarch.glb` y `sword_askarra.glb`): modelada desde cero con Blender
+  5.2 sin interfaz por `tools/blender/build_sword.py`, con las texturas (acero, cuero, metal, todo
+  ruido y degradados) generadas por código en `tools/blender/sword_textures.py`. Ninguna malla ni
+  textura viene de un pack: las espadas de RPG Weapons Free solo se miraron para comparar calidad.
+  Para regenerarlas: `blender --background --factory-startup --python tools/blender/build_sword.py`
+  y `godot --headless --path . --import`. Los GLB llevan las texturas dentro (el `.import` las
+  conserva embebidas, `gltf/embedded_image_handling=3`).
 - Emblemas de bando `assets/emblems/*.svg` (lobo, sol partido, yunque y corona rota):
   **provisionales**, formas geométricas hechas para Eldmark con `tools/assets/make_emblems.py`; los
   sustituirá el arte final de ART-03 con los mismos nombres de archivo.

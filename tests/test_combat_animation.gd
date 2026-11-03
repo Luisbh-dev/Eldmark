@@ -550,14 +550,18 @@ func test_weapon_placeholders_hang_from_the_hands() -> void:
 		return
 	assert_eq(sword.bone_name, "RightHand", "la espada en la mano derecha")
 	assert_eq(shield.bone_name, "LeftHand", "y el escudo en la izquierda")
-	var blade: MeshInstance3D = sword.find_child("Hoja", true, false) as MeshInstance3D
-	assert_true(blade.mesh is BoxMesh, "una caja para la espada")
+	# La espada ya es el modelo propio (SwordModel), no la caja: dos mallas de LOD y no es provisional.
+	var blade: MeshInstance3D = sword.find_child(String(SwordModel.LOD0_NAME), true, false) as MeshInstance3D
+	if assert_not_null(blade, "la espada es el modelo con su malla de detalle completo"):
+		assert_true(blade.mesh is ArrayMesh and not (blade.mesh is BoxMesh), "una malla modelada, no una caja")
+	assert_not_null(sword.find_child(String(SwordModel.LOD1_NAME), true, false), "y la de detalle sencillo")
+	assert_null(sword.find_child("Hoja", true, false), "sin la caja de reserva")
 	var disc: MeshInstance3D = shield.find_child("Disco", true, false) as MeshInstance3D
 	assert_true(disc.mesh is CylinderMesh, "y un cilindro aplanado para el escudo")
 	var cylinder: CylinderMesh = disc.mesh as CylinderMesh
 	assert_true(cylinder.height < cylinder.top_radius * 0.5, "aplanado")
-	assert_true(bool(sword.get_child(0).get_meta(&"placeholder", false)), "marcada como provisional")
-	assert_true(bool(shield.get_child(0).get_meta(&"placeholder", false)))
+	assert_false(bool(sword.get_child(0).get_meta(&"placeholder", true)), "la espada ya no es provisional")
+	assert_true(bool(shield.get_child(0).get_meta(&"placeholder", false)), "el escudo sí")
 	var again: Array[BoneAttachment3D] = WeaponProps.install(skeleton)
 	assert_null(again[0], "instalarlas otra vez no duplica nada")
 	var count: int = 0
