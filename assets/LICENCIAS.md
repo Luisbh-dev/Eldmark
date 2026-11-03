@@ -192,6 +192,13 @@ declara una licencia propia:
 - Emblemas de bando `assets/emblems/*.svg` (lobo, sol partido, yunque y corona rota):
   **provisionales**, formas geométricas hechas para Eldmark con `tools/assets/make_emblems.py`; los
   sustituirá el arte final de ART-03 con los mismos nombres de archivo.
+- Mapa de pergamino del Vado Gris `assets/maps/vado_gris_parchment.png` y su escala y lugares fijos en
+  `assets/maps/vado_gris_parchment_map.tres` (UI-51): pintado por capas en CPU (papel, aguada, relieve
+  a pluma, río, caminos, murallas, fuerte, campamentos, ruinas, árboles, montañas, rosa de los vientos
+  y escala) a partir de los datos reales de la zona, sin imágenes de terceros. Lo genera
+  `tools/map/bake_parchment_map.gd` con `ParchmentMapBaker` y `ParchmentCanvas` (`tools/map/`);
+  para regenerarlo: `godot --headless --path . -s res://tools/map/bake_parchment_map.gd` y después
+  `godot --headless --path . --import`. Es determinista: misma escena, mismo mapa.
 
 ## Créditos de cortesía
 
