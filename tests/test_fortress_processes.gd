@@ -25,11 +25,18 @@ func after_each() -> void:
 
 # --- Ayudantes --------------------------------------------------------------------------------
 
+## Vacía las tuberías de los procesos lanzados con entrada estándar (en Windows se paran sin esto).
+func _drain_pipes() -> void:
+	for process: Dictionary in _pipes:
+		NetHarness.drain_pipes(process)
+
+
 func _wait_for_exit(pid: int) -> bool:
 	var deadline: int = Time.get_ticks_msec() + int(MAX_WAIT_SECONDS * 1000.0)
 	while OS.is_process_running(pid):
 		if Time.get_ticks_msec() > deadline:
 			return false
+		_drain_pipes()
 		await tree.create_timer(0.1).timeout
 	return true
 
@@ -40,6 +47,7 @@ func _wait_for_log(log_path: String, text: String) -> bool:
 	while Time.get_ticks_msec() < deadline:
 		if FileAccess.file_exists(log_path) and FileAccess.get_file_as_string(log_path).contains(text):
 			return true
+		_drain_pipes()
 		await tree.create_timer(0.1).timeout
 	return false
 
@@ -87,8 +95,10 @@ func test_a_server_process_on_the_vado_gris_leaves_its_battle_log_report_and_sum
 	if not assert_true(await _wait_for_log(log_path, "Servidor cerrado"), "la cuenta atrás cierra el servidor"):
 		return
 	# El hilo de la consola espera una línea más para dejar salir al proceso (límite conocido en Linux).
-	stdin.store_string("\n")
-	stdin.flush()
+	# En Windows el proceso sale solo, así que solo se le escribe el Intro si sigue vivo.
+	if OS.is_process_running(pid):
+		stdin.store_string("\n")
+		stdin.flush()
 	assert_true(await _wait_for_exit(pid), "y el proceso termina")
 	assert_eq(NetHarness.error_lines(log_path), PackedStringArray(), "sin errores en el registro")
 	# El registro de batalla: la cabecera con la fortaleza real y los tres avisos, en orden.

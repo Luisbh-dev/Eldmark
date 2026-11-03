@@ -12,6 +12,8 @@ const CLIENT_MAIN_SCENE: String = "res://scenes/client/client_main.tscn"
 
 var _nodes: Array[Node] = []
 var _settings: ClientSettings = null
+## El diálogo de confirmación de la última [method _make_menu] con diálogo (null si no lo llevaba).
+var _confirm: UIConfirmDialog = null
 var _saved_fps: int = 0
 var _saved_scale: float = 1.0
 var _saved_msaa: Viewport.MSAA = Viewport.MSAA_DISABLED
@@ -49,6 +51,7 @@ func after_each() -> void:
 	AudioBuses.reset_volumes()
 	ClientSettings.set_current(null)
 	_settings = null
+	_confirm = null
 	ClientMain.zone_id = _saved_client["zone_id"]
 	ClientMain.realm = _saved_client["realm"]
 	ClientMain.demo_mode = _saved_client["demo_mode"]
@@ -76,6 +79,7 @@ func _make_menu(with_confirm: bool = false) -> SettingsMenu:
 	var confirm: UIConfirmDialog = null
 	if with_confirm:
 		confirm = _add(UIConfirmDialog.new()) as UIConfirmDialog
+	_confirm = confirm
 	menu.setup(_settings, confirm)
 	return menu
 
@@ -215,7 +219,7 @@ func test_restore_tab_and_restore_all() -> void:
 func test_restore_all_asks_before_when_there_is_a_dialog() -> void:
 	var menu: SettingsMenu = _make_menu(true)
 	_settings.set_value(ClientSettings.FOV, 99.0)
-	var confirm: UIConfirmDialog = menu.get_parent().get_child(1) as UIConfirmDialog
+	var confirm: UIConfirmDialog = _confirm
 	assert_not_null(confirm)
 	menu.get_restore_all_button().pressed.emit()
 	assert_true(confirm.is_open(), "pregunta antes")

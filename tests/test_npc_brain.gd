@@ -199,3 +199,17 @@ func test_console_queue_is_bounded() -> void:
 	var lines: PackedStringArray = console.take_lines()
 	assert_eq(lines.size(), ServerConsole.MAX_PENDING_LINES, "lo que sobra se descarta")
 	assert_eq(lines[0], "kick 0")
+
+
+## En Windows una lectura de stdin puede traer varias líneas juntas (una tubería que las manda de golpe):
+## la consola las separa en vez de ejecutar el texto entero como una sola orden.
+func test_console_splits_a_read_with_several_lines() -> void:
+	var console := ServerConsole.new()
+	console.push_text("help\nplayers\r\nannounce Hola a todos\n\nshutdown 1")
+	assert_eq(console.take_lines(), PackedStringArray(
+			["help", "players", "announce Hola a todos", "shutdown 1"]),
+			"una línea por orden (LF y CRLF), sin vacías")
+	console.push_text("kick Ana")
+	assert_eq(console.take_lines(), PackedStringArray(["kick Ana"]), "y una sola línea sigue valiendo")
+	console.push_text("")
+	assert_eq(console.take_lines(), PackedStringArray(), "un texto vacío no mete nada")

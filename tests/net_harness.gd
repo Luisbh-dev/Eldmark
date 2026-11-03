@@ -25,6 +25,8 @@ const PORT_SLOT_SIZE: int = 64
 const BUILD_DIR: String = "res://build"
 ## Radio (m) por el que pasean los bots.
 const BOT_RADIUS: float = 25.0
+## Bytes que lee de golpe [method drain_pipes] de cada tubería.
+const DRAIN_BYTES: int = 4096
 
 ## Siguiente puerto que se prueba: así dos llamadas seguidas no devuelven el mismo aunque el
 ## primero aún no se haya abierto.
@@ -229,6 +231,20 @@ static func launch_script(script_path: String, user_args: PackedStringArray, log
 			"--log-file", build_path("%s.log" % log_name), "-s", script_path, "--"])
 	args.append_array(user_args)
 	return OS.create_process(OS.get_executable_path(), args)
+
+
+## Lee y descarta lo que un proceso lanzado con [method OS.execute_with_pipe] ([param process] es su
+## diccionario) ha escrito en su salida y en sus errores estándar. [b]Hay que llamarlo mientras se
+## espera al proceso[/b]: en Windows esas tuberías no tienen búfer, así que el hijo se queda parado en
+## la primera línea que imprime (sin llegar a escribir ni su registro) hasta que el padre la lee. En
+## Linux, con 64 KB de búfer, no hace falta pero tampoco molesta. Las lecturas no bloquean.
+static func drain_pipes(process: Dictionary) -> void:
+	for key: String in ["stdio", "stderr"]:
+		var pipe: FileAccess = process.get(key) as FileAccess
+		if pipe == null or not pipe.is_open():
+			continue
+		while pipe.get_buffer(DRAIN_BYTES).size() == DRAIN_BYTES:
+			pass
 
 
 ## Líneas del registro de Godot [param log_path] de otro proceso que contienen un error del motor o de

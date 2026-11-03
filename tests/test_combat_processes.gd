@@ -33,11 +33,18 @@ func _server_args(user_args: PackedStringArray, log_path: String) -> PackedStrin
 	return args
 
 
+## Vacía las tuberías de los procesos lanzados con entrada estándar (en Windows se paran sin esto).
+func _drain_pipes() -> void:
+	for process: Dictionary in _pipes:
+		NetHarness.drain_pipes(process)
+
+
 func _wait_for_exit(pid: int) -> bool:
 	var deadline: int = Time.get_ticks_msec() + int(MAX_WAIT_SECONDS * 1000.0)
 	while OS.is_process_running(pid):
 		if Time.get_ticks_msec() > deadline:
 			return false
+		_drain_pipes()
 		await tree.create_timer(0.1).timeout
 	return true
 
@@ -49,6 +56,7 @@ func _wait_for_log(log_path: String, text: String) -> bool:
 	while Time.get_ticks_msec() < deadline:
 		if FileAccess.file_exists(log_path) and FileAccess.get_file_as_string(log_path).contains(text):
 			return true
+		_drain_pipes()
 		await tree.create_timer(0.1).timeout
 	return false
 
@@ -146,10 +154,14 @@ func test_the_console_reads_stdin_in_a_thread_and_does_not_stop_the_tick() -> vo
 			"la cuenta atrás de shutdown cierra el servidor"):
 		return
 	# El hilo lector sigue esperando una línea y, en Linux, el proceso no sale hasta que le llega una
-	# (límite conocido de la consola): un Intro del operador lo deja salir.
-	assert_true(OS.is_process_running(pid), "el proceso espera a la entrada estándar")
-	stdin.store_string("\n")
-	stdin.flush()
+	# (límite conocido de la consola): un Intro del operador lo deja salir. En Windows no existe ese
+	# límite: el proceso sale solo unos 100 ms después de cerrar, así que no se puede exigir que siga
+	# vivo ni escribirle un Intro a ciegas.
+	if OS.get_name() != "Windows":
+		assert_true(OS.is_process_running(pid), "el proceso espera a la entrada estándar")
+	if OS.is_process_running(pid):
+		stdin.store_string("\n")
+		stdin.flush()
 	assert_true(await _wait_for_exit(pid), "y al pulsar Intro termina")
 	var log_text: String = FileAccess.get_file_as_string(log_path)
 	assert_true(log_text.contains("Consola de la entrada estándar activada"), "la consola arranca")

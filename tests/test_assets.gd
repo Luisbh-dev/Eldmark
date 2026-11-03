@@ -287,12 +287,17 @@ static func _walk(directory: String, skipped: Array[String], files: Array[String
 		folders: Array[String], is_top: bool) -> void:
 	var own_files: int = 0
 	for file_name: String in DirAccess.get_files_at(directory):
+		# «Oculto» es el nombre con punto (.gitkeep, .godot/), igual en todos los sistemas:
+		# DirAccess solo oculta esos en Linux, y en Windows los deja pasar (no llevan el
+		# atributo de oculto), con lo que se contaban la caché del editor y los .gitkeep.
+		if file_name.begins_with("."):
+			continue
 		files.append(directory.path_join(file_name))
 		if not IGNORED_EXTENSIONS.has(file_name.get_extension().to_lower()):
 			own_files += 1
 	if own_files > 0:
 		folders.append(directory)
 	for sub_name: String in DirAccess.get_directories_at(directory):
-		if is_top and skipped.has(sub_name):
+		if sub_name.begins_with(".") or (is_top and skipped.has(sub_name)):
 			continue
 		_walk(directory.path_join(sub_name), skipped, files, folders, false)

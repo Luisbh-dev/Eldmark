@@ -14,7 +14,14 @@ extends RefCounted
 ## [code]--console[/code]: una entrada estándar compartida con una terminal no debe leerla un proceso
 ## que nadie ha pedido que la lea.
 ## [br][br]
-## Las pruebas no necesitan stdin: [method push_line] mete una línea como si la hubiera escrito alguien.
+## [b]Líneas y lecturas[/b]: [method OS.read_string_from_stdin] da una línea por llamada en Linux, pero
+## en Windows devuelve lo que haya llegado a la entrada (varias líneas juntas si el que escribe, o una
+## tubería, las manda de golpe), con los fines de línea ya normalizados y el último quitado. Por eso
+## el hilo no trata cada lectura como una orden: [method push_text] la parte en líneas. Una lectura
+## vacía (una línea en blanco o el final de la entrada) acaba con el hilo, en los dos sistemas.
+## [br][br]
+## Las pruebas no necesitan stdin: [method push_line] mete una línea como si la hubiera escrito alguien
+## y [method push_text] un texto con varias, tal como lo daría una lectura.
 
 ## Líneas pendientes como mucho (el resto se descarta: nadie escribe tan deprisa).
 const MAX_PENDING_LINES: int = 64
@@ -74,6 +81,12 @@ func push_line(line: String) -> void:
 	_mutex.unlock()
 
 
+## Mete en la cola cada línea de [param text] (separadas por LF o CRLF) con [method push_line].
+func push_text(text: String) -> void:
+	for line: String in text.replace("\r\n", "\n").split("\n"):
+		push_line(line)
+
+
 ## Las líneas pendientes, de más antigua a más reciente, y vacía la cola.
 func take_lines() -> PackedStringArray:
 	_mutex.lock()
@@ -83,13 +96,13 @@ func take_lines() -> PackedStringArray:
 	return taken
 
 
-# Hilo lector: una línea por llamada hasta que la entrada se cierre.
+# Hilo lector: una lectura por vuelta (puede traer varias líneas) hasta que la entrada se cierre.
 func _read_loop() -> void:
 	while _running:
-		var line: String = OS.read_string_from_stdin()
-		if line.is_empty():
+		var text: String = OS.read_string_from_stdin()
+		if text.is_empty():
 			break
-		push_line(line)
+		push_text(text)
 	_mutex.lock()
 	_reached_eof = true
 	_mutex.unlock()

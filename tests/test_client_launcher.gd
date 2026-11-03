@@ -44,14 +44,23 @@ func test_the_sandbox_starts_through_the_launcher_and_reports_unknown_options() 
 
 ## El título con cuenta (docs/plataforma.md §5.5), arrancado como el proyecto con [code]--title --platform[/code] hacia
 ## un puerto donde no escucha nadie: monta FrontMain sin errores y dice que no hay conexión con el servidor.
+## [br]En Linux el rechazo del puerto cerrado se nota al instante; en Windows, Godot no lo detecta
+## (el [StreamPeerTCP] se queda en «conectando») y la llamada solo falla al agotar su plazo
+## ([constant PlatformApi.TIMEOUT_S], 15 s del reloj del juego). Con [code]--fixed-fps[/code] cada
+## fotograma cuenta 1/60 s para esos temporizadores, así que 1200 fotogramas (20 s de juego) cubren el
+## plazo en cualquier máquina y sin depender de lo rápido que corra el proceso.
+## [br]El texto se lee del registro del proceso ([code]--log-file[/code], siempre UTF-8) y no de lo que
+## devuelve [method OS.execute]: en Windows éste decodifica la salida con la página de códigos del
+## sistema y «conexión» llega como «conexiÃ³n».
 func test_the_title_starts_through_the_launcher_without_a_platform() -> void:
 	var port: int = NetHarness.free_udp_port()
+	var log_path: String = NetHarness.build_path("title_without_platform.log")
 	var args: PackedStringArray = PackedStringArray(["--headless", "--path",
-			ProjectSettings.globalize_path("res://"), "--quit-after", "180", "--",
-			"--title", "--platform=http://127.0.0.1:%d" % port])
+			ProjectSettings.globalize_path("res://"), "--log-file", log_path, "--fixed-fps", "60",
+			"--quit-after", "1200", "--", "--title", "--platform=http://127.0.0.1:%d" % port])
 	var output: Array = []
 	var code: int = OS.execute(OS.get_executable_path(), args, output, true)
-	var text: String = String(output[0]) if not output.is_empty() else ""
+	var text: String = FileAccess.get_file_as_string(log_path)
 	assert_eq(code, 0, "el proceso del título termina bien: %s" % text.right(600))
 	assert_true(text.contains("Plataforma http://127.0.0.1:%d: Sin conexión con el servidor" % port),
 			"pide el estado y no hay servidor: %s" % text.right(600))
