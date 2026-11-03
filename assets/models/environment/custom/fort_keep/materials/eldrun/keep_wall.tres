@@ -1,0 +1,38 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://assets/materials/shaders/fort_keep_surface.gdshader" id="1_hxa65"]
+[ext_resource type="Texture2D" path="res://assets/models/environment/custom/fort_keep/textures/keep_wall_albedo.png" id="2_nxq5i"]
+[ext_resource type="Texture2D" path="res://assets/models/environment/custom/fort_keep/textures/keep_wall_normal.png" id="3_cgcoc"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_hxa65")
+shader_parameter/albedo_texture = ExtResource("2_nxq5i")
+shader_parameter/normal_texture = ExtResource("3_cgcoc")
+shader_parameter/use_normal_map = true
+shader_parameter/normal_strength = 1.0
+shader_parameter/uv_scale = null
+shader_parameter/target_color = Color(0.54901963, 0.5529412, 0.5176471, 1)
+shader_parameter/colorize = 1.0
+shader_parameter/reference_luminance = 0.18645419224570778
+shader_parameter/detail_strength = 0.9
+shader_parameter/detail_min = null
+shader_parameter/detail_max = null
+shader_parameter/albedo_gain = null
+shader_parameter/tint_color = null
+shader_parameter/vertex_color_strength = null
+shader_parameter/vertex_color_gain = null
+shader_parameter/layer_color = Color(0.56078434, 0.5411765, 0.50980395, 1)
+shader_parameter/layer_amount = 0.32
+shader_parameter/layer_threshold = 0.6
+shader_parameter/layer_softness = null
+shader_parameter/layer_roughness = null
+shader_parameter/weather_color = Color(0.49019608, 0.47843137, 0.4509804, 1)
+shader_parameter/weather_amount = 0.5
+shader_parameter/ember_color = Color(1, 0.5411765, 0.16470589, 1)
+shader_parameter/ember_energy = 4.0
+shader_parameter/ember_from_texture = true
+shader_parameter/hole_amount = null
+shader_parameter/roughness = null
+shader_parameter/metallic = null
+shader_parameter/specular = null

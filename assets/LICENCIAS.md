@@ -177,7 +177,7 @@ licencia de cada familia dentro del juego exportado.
 Hecho para Eldmark a partir de los packs anteriores o desde cero. Es del proyecto, que todavía no
 declara una licencia propia:
 
-- Shaders `assets/materials/shaders/` (`realm_surface`, `water`) y materiales de
+- Shaders `assets/materials/shaders/` (`realm_surface`, `water`, y los del torreón `fort_keep_*`) y materiales de
   `assets/materials/{realms,vegetation,water}/`.
 - `assets/environments/vado_gris_frontier.tres` (ambiente).
 - `assets/models/environment/custom/` (mallas generadas por script: el puente de piedra, con
@@ -216,6 +216,23 @@ declara una licencia propia:
   en `build/audio/`, no versionados). `niveles.json` lleva la sonoridad de cada archivo, el recorte de
   volumen por grupo, el instante del pico (`pico_s`) para sincronizar los barridos con `data/combat` y el
   aleatorizador recomendado. Todavía no están conectados al juego.
+
+- Torreón del fuerte (ART-57), versión 2, modelado y pintado desde cero con código, sin fotos, IA ni
+  texturas de terceros: `assets/models/environment/custom/fort_keep.glb` (tres niveles de detalle, el nodo
+  `Estandarte` y la colisión de baja resolución en un solo glTF, con color de vértice y sin imágenes
+  incrustadas), sus texturas propias en `assets/models/environment/custom/fort_keep/textures/` (piedra,
+  piedra labrada, paño de sillería despiezada, madera, tablillas de tejado y los atlas de estandartes, estos
+  últimos con los emblemas de `assets/emblems/` rasterizados), los shaders
+  `assets/materials/shaders/fort_keep_surface.gdshader` y `fort_keep_cloth.gdshader` y sus materiales de
+  reino (Eldrun, Vardheim, Solmarch y Askarra) en `assets/models/environment/custom/fort_keep/materials/`.
+  Se regeneran con `bash tools/blender/regenerate_fort_keep.sh`, que encadena
+  `tools/blender/make_fort_keep_textures.py` (numpy y Pillow: lavados de color, pinceladas, grietas y
+  tablillas por código), `tools/blender/build_fort_keep.py` (Blender 5.2.3 con `bpy`, sin interfaz; el
+  encabezado documenta la geometría, el color de vértice y los ajustes de importación del GLB que no son
+  los de por defecto), `tools/assets/apply_texture_import_presets.gd` y
+  `tools/materials/build_fort_keep_materials.gd`. Las herramientas de revisión son
+  `tools/render/render_fort_keep_*.gd` y `tools/blender/compose_fort_keep_comparison.py`; la escena de vista
+  previa es `scenes/tests/fort_keep_preview.tscn` (con `scripts/client/tools/fort_keep_preview.gd`).
 - Emblemas de bando `assets/emblems/*.svg` (lobo, sol partido, yunque y corona rota):
   **provisionales**, formas geométricas hechas para Eldmark con `tools/assets/make_emblems.py`; los
   sustituirá el arte final de ART-03 con los mismos nombres de archivo.
