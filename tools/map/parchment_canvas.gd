@@ -163,6 +163,46 @@ func paint_vertical_gradient(mask: Mask, top: Color, bottom: Color, alpha: float
 			b[i] = b[i] * inv + color.b * gr * a
 
 
+## Como [method paint], pero la opacidad va de [param alpha_top] a [param alpha_bottom] en vertical a lo largo
+## del rectángulo de la máscara, entre sus fracciones [param t0] y [param t1] de alto (fuera de ese tramo vale
+## la del extremo más cercano). Sirve para fundir una forma con el papel por abajo sin dejar un borde duro.
+func paint_ramp(mask: Mask, mode: int, color: Color, alpha_top: float, alpha_bottom: float, t0: float = 0.0,
+		t1: float = 1.0, grain_strength: float = 0.5) -> void:
+	if mask == null:
+		return
+	var span: float = maxf(t1 - t0, 1e-4)
+	for my: int in mask.h:
+		var cy: int = mask.y0 + my
+		if cy < 0 or cy >= height:
+			continue
+		var t: float = clampf((float(my) / float(maxi(mask.h - 1, 1)) - t0) / span, 0.0, 1.0)
+		t = t * t * (3.0 - 2.0 * t)
+		var row_alpha: float = lerpf(alpha_top, alpha_bottom, t)
+		if row_alpha <= 0.002:
+			continue
+		var row_m: int = my * mask.w
+		var row_c: int = cy * width
+		for mx: int in mask.w:
+			var cover: float = mask.a[row_m + mx]
+			if cover < 0.004:
+				continue
+			var cx: int = mask.x0 + mx
+			if cx < 0 or cx >= width:
+				continue
+			var i: int = row_c + cx
+			var a: float = cover * row_alpha
+			if mode == MODE_OVER:
+				var gr: float = 1.0 - grain_strength + grain_strength * grain[i]
+				var inv: float = 1.0 - a
+				r[i] = r[i] * inv + color.r * gr * a
+				g[i] = g[i] * inv + color.g * gr * a
+				b[i] = b[i] * inv + color.b * gr * a
+			else:
+				r[i] *= 1.0 + (color.r - 1.0) * a
+				g[i] *= 1.0 + (color.g - 1.0) * a
+				b[i] *= 1.0 + (color.b - 1.0) * a
+
+
 ## El lienzo como imagen RGB8.
 func to_image() -> Image:
 	var bytes := PackedByteArray()
