@@ -5,6 +5,9 @@ shader_type spatial;
 // cuánto se nota el relieve. Encima de la mezcla se suma un calor [hot_color] que se apaga con la
 // vida ([hot_decay]): las esquirlas de metal nacen incandescentes y acaban frías. Con
 // [soft_distance] > 0 el polvo se funde con el suelo en vez de cortarlo.
+//
+// Con [accent_amount] > 0 el canal verde de la textura es una máscara de un segundo tono ([accent]): las
+// tablillas de madera lo usan para la madera fresca de la rotura, clara, frente a la tabla curtida.
 render_mode blend_mix, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 
 #include "res://scenes/vfx/shaders/vfx_common.gdshaderinc"
@@ -21,6 +24,8 @@ uniform float fade_in = 0.05;
 uniform float fade_out_start = 0.5;
 uniform vec4 hot_color : source_color = vec4(0.0);
 uniform float hot_decay = 8.0;
+uniform vec4 accent : source_color = vec4(1.0);
+uniform float accent_amount = 0.0;
 instance uniform vec4 tint : source_color = vec4(1.0);
 
 varying float v_age;
@@ -43,6 +48,7 @@ void fragment() {
 	float soft = vfx_soft_fade(texture(depth_tex, SCREEN_UV).r, SCREEN_UV, INV_PROJECTION_MATRIX,
 			VERTEX.z, soft_distance);
 	vec3 color = COLOR.rgb * tint.rgb * shade * brightness;
+	color = mix(color, accent.rgb * shade * brightness, clamp(t.g * accent_amount, 0.0, 1.0));
 	color += hot_color.rgb * hot_color.a * exp(-v_age * hot_decay);
 	ALBEDO = color;
 	ALPHA = t.a * COLOR.a * tint.a * life * soft;

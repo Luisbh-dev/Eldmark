@@ -1,0 +1,12 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://scenes/vfx/shaders/vfx_heat.gdshader" id="1_q4oin"]
+[ext_resource type="Texture2D" path="res://scenes/vfx/textures/noise.png" id="2_2x02i"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_q4oin")
+shader_parameter/noise_tex = ExtResource("2_2x02i")
+shader_parameter/strength = 0.014
+shader_parameter/start_charge = 0.6
+shader_parameter/rise_speed = null

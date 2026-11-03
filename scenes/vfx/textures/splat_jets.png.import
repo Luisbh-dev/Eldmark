@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bmfc036ei20kg"
-path="res://.godot/imported/splat.png-02ddb6fdf532e32a80e3ce94dd17b68c.ctex"
+uid="uid://cvh1k8c0r7f4b"
+path="res://.godot/imported/splat_jets.png-439c0b1629837bfd1095aec65631bc75.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://scenes/vfx/textures/splat.png"
-dest_files=["res://.godot/imported/splat.png-02ddb6fdf532e32a80e3ce94dd17b68c.ctex"]
+source_file="res://scenes/vfx/textures/splat_jets.png"
+dest_files=["res://.godot/imported/splat_jets.png-439c0b1629837bfd1095aec65631bc75.ctex"]
 
 [params]
 

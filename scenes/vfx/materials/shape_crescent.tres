@@ -1,0 +1,20 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://scenes/vfx/shaders/vfx_ground_mix.gdshader" id="1_ic6u6"]
+[ext_resource type="Texture2D" path="res://scenes/vfx/textures/noise.png" id="2_f1ubh"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_ic6u6")
+shader_parameter/noise_tex = ExtResource("2_f1ubh")
+shader_parameter/mode = 1
+shader_parameter/start_scale = 0.35
+shader_parameter/end_scale = 1.0
+shader_parameter/grow_speed = 2.6
+shader_parameter/hold = 0.15
+shader_parameter/erosion = 0.8
+shader_parameter/brightness = 0.85
+shader_parameter/soft_distance = 0.1
+shader_parameter/opacity = 0.42
+shader_parameter/drift = 0.3
+shader_parameter/light_gain = null

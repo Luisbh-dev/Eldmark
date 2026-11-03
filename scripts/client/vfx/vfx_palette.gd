@@ -1,9 +1,10 @@
 class_name VfxPalette
 extends RefCounted
-## Colores de los efectos por reino (ART-09, solo cliente). Salen de la dirección de arte
-## (docs/arte.md): Vardheim, acero y azul hielo; Solmarch, blanco y oro; Askarra, carmesí y bronce;
-## Eldrun (los Huecos), desaturado con brasas. El número de reino es el de [enum NetProtocol.Realm]
-## (1 a 3); 4 es Eldrun y 0 un acero neutro.
+## Colores de los efectos (ART-09, solo cliente). Los de la estela y el aura salen del reino y de la
+## dirección de arte (docs/arte.md): Vardheim, acero y azul hielo; Solmarch, blanco y oro; Askarra, carmesí
+## y bronce; Eldrun (los Huecos), desaturado con brasas. El número de reino es el de
+## [enum NetProtocol.Realm] (1 a 3); 4 es Eldrun y 0 un acero neutro. El polvo, en cambio, no es del reino
+## sino del suelo que se pisa ([method ground], [VfxGround]).
 
 ## Reino de los Huecos (no tiene valor en [enum NetProtocol.Realm]: no es un bando jugable).
 const REALM_ELDRUN: int = 4
@@ -15,7 +16,7 @@ const REALM_NEUTRAL: int = 0
 static func trail(realm: int) -> Array[Color]:
 	match realm:
 		NetProtocol.Realm.VARDHEIM:
-			return [Color(0.88, 0.97, 1.0), Color(0.12, 0.42, 0.95)]
+			return [Color(0.9, 0.98, 1.0), Color(0.5, 0.78, 1.0)]
 		NetProtocol.Realm.SOLMARCH:
 			return [Color(1.0, 0.98, 0.84), Color(0.95, 0.6, 0.08)]
 		NetProtocol.Realm.ASKARRA:
@@ -39,15 +40,24 @@ static func aura(realm: int) -> Color:
 	return Color(0.8, 0.88, 1.0)
 
 
-## Color del polvo del suelo de cada reino (piedra gris fría, caliza, arenisca roja, ceniza).
-static func dust(realm: int) -> Color:
-	match realm:
-		NetProtocol.Realm.VARDHEIM:
-			return Color(0.74, 0.78, 0.82)
-		NetProtocol.Realm.SOLMARCH:
-			return Color(0.88, 0.83, 0.7)
-		NetProtocol.Realm.ASKARRA:
-			return Color(0.8, 0.5, 0.34)
-		REALM_ELDRUN:
-			return Color(0.5, 0.46, 0.45)
-	return Color(0.78, 0.74, 0.66)
+## Materiales de suelo que distingue el polvo.
+const GROUND_KINDS: Array[StringName] = [&"dirt", &"stone", &"sand", &"grass", &"snow", &"ash", &"mud"]
+
+
+## Color del polvo que levanta un suelo de ese material ([constant GROUND_KINDS]); un material desconocido
+## da el de tierra seca.
+static func ground(kind: StringName) -> Color:
+	match kind:
+		&"stone":
+			return Color(0.66, 0.67, 0.69)
+		&"sand":
+			return Color(0.84, 0.72, 0.5)
+		&"grass":
+			return Color(0.52, 0.55, 0.4)
+		&"snow":
+			return Color(0.93, 0.95, 0.98)
+		&"ash":
+			return Color(0.42, 0.4, 0.4)
+		&"mud":
+			return Color(0.4, 0.33, 0.26)
+	return Color(0.6, 0.54, 0.45)

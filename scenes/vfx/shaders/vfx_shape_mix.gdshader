@@ -1,60 +1,60 @@
 shader_type spatial;
-// Formas con mezcla NORMAL sobre un quad (MeshInstance3D con QuadMesh de 1 x 1), animadas por el
-// parámetro de instancia [progress] que mueve el [VfxEffect].
+// Chorro de salpicadura en secuencia (impacto en carne) sobre un quad, con mezcla NORMAL.
 //
-// [mode]: 0 salpicadura de tinta (mira a la cámara, aparece de golpe y se deshace por los bordes) y
-// 1 anillo de polvo para el suelo (quad tumbado: se abre y se funde con el terreno). La textura lleva
-// la silueta en alfa y el sombreado en rojo.
+// La textura es un atlas de [variants] filas (variantes del chorro) por [frames] columnas (los
+// fotogramas de la secuencia): R es el sombreado, G el brillo especular y A la silueta. El chorro sale del
+// centro de la casilla hacia +X del nodo (la dirección del golpe: [VfxEffect.play_at]); el quad se
+// desplaza [pivot] metros para que el arranque del chorro caiga en el punto de impacto. Gira alrededor de
+// su eje X para mirar a la cámara (billboard cilíndrico), así se ve desde cualquier lado.
+//
+// El fotograma sale de [progress], el parámetro de instancia que mueve el [VfxEffect]. [variant] y [flip]
+// (la fila y si el chorro se refleja) los pone el [VfxEffect] en cada disparo: con cuatro filas y el
+// reflejo salen ocho chorros distintos. [fade_start] es la fracción de la vida en la que se apaga.
 render_mode blend_mix, unshaded, depth_draw_never, cull_disabled, fog_disabled;
 
 #include "res://scenes/vfx/shaders/vfx_common.gdshaderinc"
 
-uniform sampler2D tex : source_color, filter_linear_mipmap, repeat_disable;
-uniform sampler2D noise_tex : filter_linear_mipmap, repeat_enable;
-uniform sampler2D depth_tex : hint_depth_texture, repeat_disable, filter_nearest;
-uniform int mode = 0;
-uniform bool billboard = true;
-uniform float start_scale = 0.5;
-uniform float end_scale = 1.0;
-// Velocidad del crecimiento (1 = tarda toda la vida; 4 = en un cuarto).
-uniform float grow_speed = 5.0;
-uniform float spin = 0.0;
-// Fracción de la vida que se mantiene entera antes de deshacerse.
-uniform float hold = 0.35;
-// Cuánto roe el ruido el borde al deshacerse.
-uniform float erosion = 0.55;
+uniform sampler2D tex : filter_linear_mipmap, repeat_disable;
+uniform int frames = 5;
+uniform int variants = 4;
+uniform vec2 pivot = vec2(0.0, 0.0);
 uniform float brightness = 1.0;
-uniform float shade_contrast = 1.0;
-uniform float soft_distance = 0.0;
-uniform float opacity = 1.0;
+uniform float spec_strength = 0.7;
+uniform vec3 spec_color : source_color = vec3(1.0, 0.82, 0.78);
+uniform float fade_start = 0.7;
+uniform float opacity = 0.95;
+// Cuánto se mezclan dos fotogramas contiguos (0 = a saltos, 1 = fundido completo).
+uniform float frame_blend = 0.3;
 instance uniform float progress : hint_range(0.0, 1.0) = 0.0;
 instance uniform vec4 tint : source_color = vec4(1.0);
+instance uniform float variant = 0.0;
+instance uniform float flip = 1.0;
 
 varying float v_p;
 
 void vertex() {
 	v_p = clamp(progress, 0.0, 1.0);
-	VERTEX.xy *= mix(start_scale, end_scale, vfx_ease_out(v_p * grow_speed));
-	if (billboard) {
-		MODELVIEW_MATRIX = vfx_billboard(VIEW_MATRIX, INV_VIEW_MATRIX, MODEL_MATRIX);
-	}
+	VERTEX.xy += pivot;
+	MODELVIEW_MATRIX = vfx_axial_billboard(VIEW_MATRIX, MODEL_MATRIX, CAMERA_POSITION_WORLD);
+}
+
+vec4 sample_frame(vec2 uv, float frame, float row) {
+	float f = clamp(floor(frame), 0.0, float(frames) - 1.0);
+	vec2 cell = (vec2(uv.x, uv.y) + vec2(f, row)) / vec2(float(frames), float(variants));
+	return texture(tex, cell);
 }
 
 void fragment() {
 	float p = v_p;
-	vec2 c = (UV - 0.5) * 2.0;
-	vec2 suv = vfx_rot(spin * p) * c * 0.5 + 0.5;
-	vec4 t = texture(tex, suv);
-	float n = texture(noise_tex, UV * 1.7 + vec2(0.13, 0.31)).g;
-	float cut = clamp((p - hold) / max(1.0 - hold, 0.001), 0.0, 1.0);
-	float cover = t.a * 0.85 + (n - 0.5) * erosion;
-	float a = smoothstep(cut * 1.2, cut * 1.2 + 0.16, cover);
-	a *= smoothstep(0.0, 0.04, p);
-	if (mode == 1) {
-		a *= soft_distance > 0.0 ? vfx_soft_fade(texture(depth_tex, SCREEN_UV).r, SCREEN_UV,
-				INV_PROJECTION_MATRIX, VERTEX.z, soft_distance) : 1.0;
-	}
-	float shade = mix(1.0, t.r, shade_contrast);
-	ALBEDO = tint.rgb * shade * brightness;
-	ALPHA = clamp(a * tint.a * opacity, 0.0, 1.0);
+	vec2 uv = vec2(UV.x, flip < 0.0 ? 1.0 - UV.y : UV.y);
+	float row = mod(floor(variant + 0.5), float(variants));
+	float position = p * float(frames) * 0.999;
+	vec4 a = sample_frame(uv, position, row);
+	vec4 b = sample_frame(uv, position + 1.0, row);
+	float mix_amount = smoothstep(1.0 - max(frame_blend, 0.001), 1.0, fract(position));
+	vec4 t = mix(a, b, mix_amount);
+	float life = 1.0 - smoothstep(fade_start, 1.0, p);
+	vec3 color = tint.rgb * t.r * brightness + spec_color * t.g * spec_strength;
+	ALBEDO = color;
+	ALPHA = clamp(t.a * life * opacity * tint.a, 0.0, 1.0);
 }

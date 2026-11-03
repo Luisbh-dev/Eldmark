@@ -11,5 +11,6 @@ shader_parameter/intensity = null
 shader_parameter/cover = null
 shader_parameter/tail_power = null
 shader_parameter/inner_edge = null
+shader_parameter/inner_edge_tail = null
 shader_parameter/scroll_speed = null
 shader_parameter/streak_scale = null

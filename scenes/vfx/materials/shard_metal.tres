@@ -17,3 +17,5 @@ shader_parameter/fade_in = 0.02
 shader_parameter/fade_out_start = 0.7
 shader_parameter/hot_color = Color(1, 0.55, 0.18, 2.4)
 shader_parameter/hot_decay = 6.5
+shader_parameter/accent = null
+shader_parameter/accent_amount = null

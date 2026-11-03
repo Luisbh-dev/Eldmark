@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://caixlfyrwbqb1"
-path="res://.godot/imported/splinters.png-fcbf6c8f4b27616aa334e26aa0b65d7a.ctex"
+uid="uid://io5q6u3ts3b3"
+path="res://.godot/imported/planks.png-5522e7799f88e05a54acc9f475e77b66.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://scenes/vfx/textures/splinters.png"
-dest_files=["res://.godot/imported/splinters.png-fcbf6c8f4b27616aa334e26aa0b65d7a.ctex"]
+source_file="res://scenes/vfx/textures/planks.png"
+dest_files=["res://.godot/imported/planks.png-5522e7799f88e05a54acc9f475e77b66.ctex"]
 
 [params]
 

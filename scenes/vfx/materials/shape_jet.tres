@@ -1,0 +1,18 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://scenes/vfx/shaders/vfx_shape_mix.gdshader" id="1_xfj7y"]
+[ext_resource type="Texture2D" path="res://scenes/vfx/textures/splat_jets.png" id="2_k2bdb"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_xfj7y")
+shader_parameter/tex = ExtResource("2_k2bdb")
+shader_parameter/frames = 5
+shader_parameter/variants = 4
+shader_parameter/pivot = Vector2(0.17, 0)
+shader_parameter/brightness = 0.85
+shader_parameter/spec_strength = 0.7
+shader_parameter/spec_color = null
+shader_parameter/fade_start = 0.65
+shader_parameter/opacity = 0.95
+shader_parameter/frame_blend = null

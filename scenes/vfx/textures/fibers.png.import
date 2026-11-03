@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bj46w73rm8wjm"
-path="res://.godot/imported/wisp.png-7a7451557f4d357ee65e711e2225f220.ctex"
+uid="uid://bfce5m23cf3kb"
+path="res://.godot/imported/fibers.png-4106d1d584cd11b5c61609ad02c16f84.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://scenes/vfx/textures/wisp.png"
-dest_files=["res://.godot/imported/wisp.png-7a7451557f4d357ee65e711e2225f220.ctex"]
+source_file="res://scenes/vfx/textures/fibers.png"
+dest_files=["res://.godot/imported/fibers.png-4106d1d584cd11b5c61609ad02c16f84.ctex"]
 
 [params]
 

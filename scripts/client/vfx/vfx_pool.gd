@@ -32,13 +32,14 @@ func setup(effect_scene: PackedScene, copies: int) -> void:
 		_fill()
 
 
-## Lanza una copia libre en [param position] con su eje +Z en [param normal] (ver
-## [method VfxEffect.play_at]) y la devuelve. Devuelve null si el grupo no tiene escena.
-func spawn(position: Vector3, normal: Vector3 = Vector3.UP) -> VfxEffect:
+## Lanza una copia libre en [param position] con su eje +Z en [param normal] y, si se da, el +X a lo largo de
+## [param direction] (hacia dónde iba el golpe; ver [method VfxEffect.play_at]) y la devuelve. Devuelve null
+## si el grupo no tiene escena.
+func spawn(position: Vector3, normal: Vector3 = Vector3.UP, direction: Vector3 = Vector3.ZERO) -> VfxEffect:
 	var effect: VfxEffect = acquire()
 	if effect == null:
 		return null
-	effect.play_at(position, normal)
+	effect.play_at(position, normal, direction)
 	return effect
 
 

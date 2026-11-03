@@ -1,0 +1,21 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://scenes/vfx/shaders/vfx_particle_mix.gdshader" id="1_ody6y"]
+[ext_resource type="Texture2D" path="res://scenes/vfx/textures/fibers.png" id="2_v6tyd"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_ody6y")
+shader_parameter/tex = ExtResource("2_v6tyd")
+shader_parameter/h_frames = 2
+shader_parameter/v_frames = 2
+shader_parameter/brightness = 1.0
+shader_parameter/shade_contrast = 0.8
+shader_parameter/soft_distance = null
+shader_parameter/aligned_by_engine = null
+shader_parameter/fade_in = 0.02
+shader_parameter/fade_out_start = 0.65
+shader_parameter/hot_color = null
+shader_parameter/hot_decay = null
+shader_parameter/accent = null
+shader_parameter/accent_amount = null

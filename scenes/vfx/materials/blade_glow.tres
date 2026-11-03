@@ -1,0 +1,12 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://scenes/vfx/shaders/vfx_blade_glow.gdshader" id="1_aj7kj"]
+[ext_resource type="Texture2D" path="res://scenes/vfx/textures/noise.png" id="2_j428e"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_aj7kj")
+shader_parameter/noise_tex = ExtResource("2_j428e")
+shader_parameter/intensity = 3.2
+shader_parameter/cover = 0.4
+shader_parameter/flow_speed = null

@@ -25,7 +25,7 @@ from PIL import Image, ImageDraw
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "scenes", "vfx",
 		"textures")
 
-# Texto de los .import que se escriben junto a cada PNG: sin compresión de VRAM y con mipmaps.
+# Texto de los .import que se escriben junto a cada PNG nuevo: sin compresión de VRAM y con mipmaps.
 IMPORT_TEMPLATE = """[remap]
 
 importer="texture"
@@ -82,8 +82,11 @@ def save(name, rgba):
 	data = (np.clip(rgba, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
 	path = os.path.join(OUT_DIR, name)
 	Image.fromarray(data, "RGBA").save(path, optimize=True)
-	with open(path + ".import", "w", newline="\n") as handle:
-		handle.write(IMPORT_TEMPLATE)
+	# El .import solo se escribe si no existe: Godot le añade un uid propio al importar y reescribirlo en cada
+	# ejecución se lo cambiaría a la textura (y a todo lo que la referencia por uid).
+	if not os.path.exists(path + ".import"):
+		with open(path + ".import", "w", newline="\n") as handle:
+			handle.write(IMPORT_TEMPLATE)
 	print("  %s  %dx%d" % (name, data.shape[1], data.shape[0]))
 
 
@@ -165,23 +168,6 @@ def make_spark_streak():
 	save("spark_streak.png", mask_rgba(mask))
 
 
-def make_wisp():
-	"""Lengua de energía que sube, 64 x 256 (cabeza arriba): ancha en el centro, puntiaguda y con
-	cola que se difumina; el ruido la deshilacha."""
-	width, height = 64, 256
-	x, y = grid(height, width)
-	noise = fbm_tile(256, 1.4, 11)[:height, :width]
-	t = y
-	wobble = 0.12 * np.sin(t * 9.0 + 1.3) * (1.0 - t)
-	centered = (x - 0.5) - wobble * 0.5
-	profile = np.sin(np.pi * np.clip(1.0 - t, 0.0, 1.0) ** 0.7) ** 1.2
-	half_width = 0.05 + 0.26 * profile
-	d = np.abs(centered) / half_width + (noise - 0.5) * 0.45
-	density = smoothstep(1.0, 0.15, d) * smoothstep(0.0, 0.12, t) * smoothstep(1.0, 0.45, t)
-	core = smoothstep(0.55, 0.0, d) * smoothstep(0.0, 0.2, t) * smoothstep(0.95, 0.3, t)
-	save("wisp.png", mask_rgba(density * 0.7 + core * 0.6))
-
-
 def make_rays():
 	"""Rayos radiales para la parada perfecta: delgados, de distinto largo, con halo y núcleo."""
 	size = 512
@@ -217,68 +203,6 @@ def make_noise():
 	streak = fbm_tile(256, 1.3, 23, stretch=7.0)
 	rgba = np.stack([soft, fine, streak, np.ones_like(soft)], axis=-1)
 	save("noise.png", rgba)
-
-
-def make_puffs():
-	"""Cuatro bocanadas de humo o polvo con volumen (sombreado arriba a la izquierda), 4 x 128 px."""
-	frames = []
-	for index in range(4):
-		size = 128
-		noise = fbm_tile(size, 1.9, 40 + index)
-		fine = fbm_tile(size, 1.2, 50 + index)
-		x, y = grid(size)
-		d = np.hypot(x - 0.5, y - 0.5) * 2.0
-		base = np.clip(1.0 - d, 0.0, 1.0) ** 1.2
-		density = np.clip(base * 1.9 + (noise - 0.5) * 1.15 + (fine - 0.5) * 0.25, 0.0, 1.0)
-		density = smoothstep(0.05, 1.0, density) ** 1.35 * smoothstep(1.0, 0.5, d)
-		density = blur(density, 2)
-		blurred = blur(density, 3)
-		gy, gx = np.gradient(blurred)
-		light = -(gx * 0.7 + gy * 0.7) * 18.0
-		shade = 0.74 + np.clip(light, -0.3, 0.3) * 0.7 + blurred * 0.18
-		frames.append(shaded_rgba(density * 0.85, shade))
-	save("puffs.png", atlas(frames))
-
-
-def make_splat():
-	"""Salpicadura de tinta estilizada: mancha central con puntas y gotas sueltas, 256 px."""
-	size = 256
-	x, y = grid(size)
-	x = (x - 0.5) * 2.0
-	y = (y - 0.5) * 2.0
-	r = np.hypot(x, y)
-	theta = np.arctan2(y, x)
-	rng = np.random.default_rng(3)
-	boundary = 0.25 + 0.04 * np.sin(theta * 3.0 + 0.7) + 0.025 * np.sin(theta * 7.0 + 2.1)
-	satellites = np.zeros_like(r)
-	spikes = 11
-	for i in range(spikes):
-		angle = (i + rng.uniform(-0.3, 0.3)) / spikes * 2.0 * math.pi
-		length = rng.uniform(0.2, 0.52)
-		width = rng.uniform(0.07, 0.16)
-		delta = np.angle(np.exp(1j * (theta - angle)))
-		boundary = boundary + length * np.exp(-(delta / width) ** 2) * (0.55 + 0.45 * smoothstep(
-				0.0, 1.0, np.exp(-(delta / width) ** 2)))
-		# Gota suelta justo más allá de la punta.
-		drop_r = 0.25 + length + rng.uniform(0.07, 0.14)
-		dx = drop_r * math.cos(angle)
-		dy = drop_r * math.sin(angle)
-		radius = rng.uniform(0.022, 0.045)
-		satellites = np.maximum(satellites, smoothstep(radius, radius * 0.55, np.hypot(x - dx, y - dy)))
-	for _ in range(7):
-		angle = rng.uniform(0.0, 2.0 * math.pi)
-		drop_r = rng.uniform(0.5, 0.88)
-		dx = drop_r * math.cos(angle)
-		dy = drop_r * math.sin(angle)
-		radius = rng.uniform(0.012, 0.03)
-		satellites = np.maximum(satellites, smoothstep(radius, radius * 0.5, np.hypot(x - dx, y - dy)))
-	body = smoothstep(0.02, -0.02, r - boundary)
-	alpha = np.maximum(body, satellites) * smoothstep(1.0, 0.9, r)
-	# Más oscuro en el borde y más claro hacia el centro: da grosor de tinta.
-	inner = np.clip(1.0 - r / np.maximum(boundary, 0.05), 0.0, 1.0)
-	shade = 0.62 + 0.38 * np.sqrt(inner) + (fbm_tile(256, 1.6, 5) - 0.5) * 0.12
-	shade = np.where(satellites > body, 0.82, shade)
-	save("splat.png", shaded_rgba(alpha, shade))
 
 
 def make_shards():
@@ -320,37 +244,6 @@ def make_shards():
 	save("shards.png", atlas(frames))
 
 
-def make_splinters():
-	"""Cuatro astillas de madera con veta, extremo roto claro y punta afilada, 4 x 128 px."""
-	rng = np.random.default_rng(17)
-	frames = []
-	for index in range(4):
-		size = 128
-		x, y = grid(size)
-		x = x - 0.5
-		y = y - 0.5
-		angle = rng.uniform(0.0, math.pi)
-		ca, sa = math.cos(angle), math.sin(angle)
-		u = x * ca + y * sa
-		v = -x * sa + y * ca
-		length = rng.uniform(0.40, 0.47)
-		t = np.clip((u + length) / (2.0 * length), -0.2, 1.2)
-		noise = fbm_tile(size, 1.1, 60 + index)
-		width = 0.075 * np.clip(1.0 - t, 0.0, 1.0) ** 0.75 * (1.0 + 0.5 * (noise - 0.5))
-		width *= smoothstep(0.0, 0.06, t)
-		# Extremo roto: borde dentado.
-		jag = 0.03 * (fbm_tile(size, 0.8, 70 + index) - 0.5)
-		inside = smoothstep(0.004, -0.004, np.abs(v + 0.005 * np.sin(u * 40.0)) - width)
-		inside *= smoothstep(-length - jag, -length - jag + 0.012, u)
-		inside *= smoothstep(length, length - 0.02, u)
-		grain = 0.72 + 0.2 * np.sin(v * 220.0 + noise * 9.0) + 0.1 * (noise - 0.5)
-		edge = smoothstep(0.0, 0.03, width - np.abs(v))
-		fresh = smoothstep(0.35, 0.0, t)
-		shade = (grain * (0.62 + 0.38 * edge)) * (1.0 - 0.0 * fresh) + 0.28 * fresh
-		frames.append(shaded_rgba(inside, shade))
-	save("splinters.png", atlas(frames))
-
-
 def make_droplets():
 	"""Cuatro gotas estilizadas (redonda, lágrima, alargada y doble), 4 x 64 px."""
 	frames = []
@@ -381,31 +274,263 @@ def make_droplets():
 	save("droplets.png", atlas(frames))
 
 
+def make_puffs():
+	"""Cuatro bocanadas de polvo con volumen, en un atlas de 2 x 2 casillas de 256 px (512 x 512).
+
+	No llevan el color cocinado: son datos para el sombreador con luz (vfx_particle_lit):
+	    R = altura del relieve (0 fuera de la bocanada, 1 en la cima de los lóbulos); de ella sale la
+	        normal, así el sol la modela y la sombra la oscurece;
+	    G = ruido fino (la erosión: la bocanada se deshace desde el borde, no baja el alfa de golpe);
+	    B = ruido de remolino, que desplaza la erosión para que cada copia se rompa distinta;
+	    A = 1."""
+	size = 256
+	frames = []
+	for index in range(4):
+		rng = np.random.default_rng(100 + index)
+		x, y = grid(size)
+		x = (x - 0.5) * 2.0
+		y = (y - 0.5) * 2.0
+		coarse = fbm_tile(size, 2.0, 120 + index)
+		fine = fbm_tile(size, 1.3, 140 + index)
+		lobes = int(rng.integers(7, 10))
+		domes = []
+		for lobe in range(lobes):
+			angle = rng.uniform(0.0, 2.0 * math.pi)
+			dist = 0.0 if lobe == 0 else rng.uniform(0.2, 0.52)
+			radius = rng.uniform(0.28, 0.42) if lobe else 0.5
+			cx, cy = dist * math.cos(angle), dist * math.sin(angle) * 0.8
+			# Cada lóbulo es una media esfera: el borde arrugado con ruido de dos escalas.
+			d = np.hypot(x - cx, y - cy) / radius + (coarse - 0.5) * 0.3 + (fine - 0.5) * 0.12
+			domes.append(np.sqrt(np.clip(1.0 - d * d, 0.0, 1.0)))
+		# Máximo suave de las medias esferas: entre lóbulo y lóbulo queda un pliegue, como en una coliflor.
+		smooth = np.log(np.sum([np.exp(7.0 * dome) for dome in domes], axis=0)) / 7.0 - math.log(lobes) / 7.0
+		height = smooth / smooth.max()
+		height = height * (0.88 + 0.24 * (fine - 0.5)) * smoothstep(1.0, 0.82, np.hypot(x, y))
+		height = np.clip(blur(height, 1), 0.0, 1.0)
+		detail = fbm_tile(size, 1.15, 160 + index)
+		swirl = fbm_tile(size, 1.7, 180 + index)
+		frames.append(np.stack([height, detail, swirl, np.ones_like(height)], axis=-1))
+	save("puffs.png", atlas(frames))
+
+
+def make_splat_jets():
+	"""Chorros de salpicadura en secuencia, para el golpe en carne: 4 variantes (filas) por 5 fotogramas
+	(columnas), casillas de 128 px, 640 x 512. El chorro sale del centro de la casilla hacia +X (el
+	sombreador la gira hacia la dirección del golpe).
+
+	    R = sombreado (1 = claro; el centro del chorro es más claro, da grosor de líquido);
+	    G = brillo especular (un reflejo alargado en el chorro y un punto en cada gota);
+	    A = silueta.
+	Cada fotograma es un instante del chorro: nace como una mancha gorda, se estira, se estrecha y se
+	rompe en gotas alargadas por delante."""
+	cell = 128
+	X0 = -0.72  # el chorro nace cerca del borde izquierdo de la casilla (el sombreador la desplaza)
+	frames_n, variants = 5, 4
+	sheet = np.zeros((cell * variants, cell * frames_n, 4))
+	x, y = grid(cell)
+	x = (x - 0.5) * 2.0
+	y = (y - 0.5) * 2.0
+	for variant in range(variants):
+		rng = np.random.default_rng(300 + variant)
+		bend = rng.uniform(-0.45, 0.45)
+		thick = rng.uniform(0.85, 1.2)
+		edge_noise = fbm_tile(cell, 1.2, 320 + variant)
+		branches = []
+		for angle in (rng.uniform(0.12, 0.28), -rng.uniform(0.12, 0.28), rng.uniform(0.4, 0.62),
+				-rng.uniform(0.4, 0.62)):
+			if rng.uniform() < 0.8:
+				branches.append((angle, rng.uniform(0.5, 0.85), rng.uniform(0.45, 0.8), 0.0))
+		drops = []
+		for _ in range(9):
+			drops.append((rng.uniform(0.05, 0.55), rng.uniform(-0.28, 0.28), rng.uniform(0.022, 0.05)))
+
+		def jet(x0, angle, length, width, curve, ragged=1.0):
+			ca, sa = math.cos(angle), math.sin(angle)
+			u = (x - x0) * ca + y * sa
+			v = -(x - x0) * sa + y * ca + (edge_noise - 0.5) * 0.1 * np.clip(u, 0.0, 1.0)
+			s = np.clip(u / max(length, 0.01), -0.3, 1.2)
+			center = curve * np.clip(s, 0.0, 1.0) ** 2 * length * 0.5
+			ramp = 1.0 - np.exp(-np.clip(s, 0.0, 1.0) * 7.0)
+			half = width * np.clip(1.0 - s, 0.0, 1.0) ** 0.75 * (0.3 + 0.7 * ramp)
+			half = half * (1.0 + (edge_noise - 0.5) * 0.75 * ragged * np.clip(s, 0.0, 1.0))
+			mask = smoothstep(0.012, -0.012, np.abs(v - center) - half) * smoothstep(-0.02, 0.02, u) \
+					* smoothstep(1.02, 0.96, s)
+			core = np.clip(1.0 - np.abs(v - center) / np.maximum(half, 0.01), 0.0, 1.0)
+			return mask, core, v - center, half
+
+		for f in range(frames_n):
+			t = (f + 1) / frames_n
+			grow = 1.0 - (1.0 - t) ** 2
+			length = 0.3 + 1.35 * grow
+			width = 0.17 * thick * (1.0 - 0.45 * t)
+			alpha = np.zeros((cell, cell))
+			shade = np.zeros((cell, cell))
+			spec = np.zeros((cell, cell))
+			stem, core, off, half = jet(X0, 0.0, length, width, bend)
+			alpha = np.maximum(alpha, stem)
+			shade = np.maximum(shade, core * stem)
+			spec = np.maximum(spec, stem * np.exp(-((off + half * 0.38) / np.maximum(half * 0.2, 0.012)) ** 2)
+					* smoothstep(0.1, 0.35, half) * 0.9)
+			for angle, factor, w_factor, start in branches:
+				m, c, _, _ = jet(X0, angle, length * factor, width * w_factor, bend * 0.6)
+				alpha = np.maximum(alpha, m * smoothstep(0.1, 0.35, t))
+				shade = np.maximum(shade, c * m * 0.9)
+			# Mancha del impacto, que se encoge y se aclara con el tiempo.
+			blob_r = 0.15 * (1.0 - 0.55 * t) * thick
+			blob = smoothstep(blob_r, blob_r * 0.55, np.hypot(x - X0, y * 1.1))
+			blob *= 1.0 - 0.7 * smoothstep(0.5, 1.0, t)
+			alpha = np.maximum(alpha, blob)
+			shade = np.maximum(shade, blob * 0.8)
+			# Gotas por delante: aparecen según avanza el chorro, alargadas en el sentido del movimiento.
+			for pos, side, radius in drops:
+				if pos > grow * 1.05 - 0.03:
+					continue
+				dx = X0 + length * 0.82 + pos * 1.1 * grow
+				dy = side * (0.25 + 0.5 * grow) + bend * (dx - X0) ** 2 * 0.25
+				ex = radius * (1.9 + 1.2 * (1.0 - t))
+				d = np.hypot((x - dx) / ex, (y - dy) / radius)
+				drop = smoothstep(1.0, 0.7, d)
+				alpha = np.maximum(alpha, drop)
+				shade = np.maximum(shade, drop * 0.85)
+				spec = np.maximum(spec, drop * np.exp(-(np.hypot((x - dx + ex * 0.3) / (ex * 0.35),
+						(y - dy + radius * 0.3) / (radius * 0.35))) ** 2))
+			# Se apaga por los bordes de la casilla.
+			window = smoothstep(1.0, 0.86, np.hypot(x, y))
+			alpha = alpha * window
+			rgba = np.stack([0.5 + 0.5 * shade, spec, np.zeros_like(shade), alpha], axis=-1)
+			sheet[variant * cell:(variant + 1) * cell, f * cell:(f + 1) * cell] = rgba
+	save("splat_jets.png", sheet)
+
+
+def make_planks():
+	"""Cuatro tablillas de madera planas, atlas de 2 x 2 casillas de 128 px (256 x 256). Cada una es un
+	trozo plano de tabla: un extremo cortado en bisel, el otro roto en dientes, con veta a lo largo.
+
+	    R = sombreado (veta, borde oscuro);
+	    G = madera fresca (1 en la rotura, donde la madera sin curtir es clara); el sombreador la tiñe con
+	        un segundo tono ([accent]), así la tabla tiene dos tonos de madera;
+	    A = silueta."""
+	rng = np.random.default_rng(17)
+	frames = []
+	for index in range(4):
+		size = 128
+		scale = 6
+		big = size * scale
+		alpha_img = Image.new("L", (big, big), 0)
+		fresh_img = Image.new("L", (big, big), 0)
+		draw_a = ImageDraw.Draw(alpha_img)
+		draw_f = ImageDraw.Draw(fresh_img)
+		length = rng.uniform(0.78, 0.9) * big
+		width = rng.uniform(0.2, 0.3) * big
+		cx, cy = big / 2.0, big / 2.0
+		angle = rng.uniform(-0.25, 0.25)
+		ca, sa = math.cos(angle), math.sin(angle)
+
+		def pt(u, v):
+			return (cx + u * ca - v * sa, cy + u * sa + v * ca)
+
+		half_l, half_w = length / 2.0, width / 2.0
+		bevel = rng.uniform(0.3, 0.7) * width
+		# Extremo izquierdo cortado en bisel; derecho roto en dientes.
+		outline = [pt(-half_l + bevel, -half_w), pt(half_l * 0.9, -half_w)]
+		teeth = int(rng.integers(3, 6))
+		for tooth in range(teeth + 1):
+			v = -half_w + width * tooth / teeth
+			u = half_l - rng.uniform(0.0, 0.14) * length * (1 if tooth % 2 else 0.35)
+			outline.append(pt(u, v))
+		outline.append(pt(-half_l, half_w))
+		outline.append(pt(-half_l, half_w - bevel * 0.5))
+		draw_a.polygon(outline, fill=255)
+		# Madera fresca: el extremo roto y una franja del bisel.
+		draw_f.polygon([pt(half_l * 0.38, -half_w * 1.2), pt(half_l * 1.1, -half_w * 1.2),
+				pt(half_l * 1.1, half_w * 1.2), pt(half_l * 0.38, half_w * 1.2)], fill=255)
+		draw_f.polygon([pt(-half_l * 1.05, half_w * 1.1), pt(-half_l + bevel * 1.3, half_w * 1.1),
+				pt(-half_l + bevel * 0.2, -half_w * 1.1), pt(-half_l * 1.05, -half_w * 1.1)], fill=140)
+		alpha = np.asarray(alpha_img.resize((size, size), Image.LANCZOS), dtype=np.float32) / 255.0
+		fresh = np.asarray(fresh_img.resize((size, size), Image.LANCZOS), dtype=np.float32) / 255.0
+		fresh = blur(fresh, 2) * (alpha > 0.02)
+		gx, gy = grid(size)
+		noise = fbm_tile(size, 1.1, 400 + index)
+		# Veta a lo largo de la tabla (el eje del plano es x girado por [angle]).
+		v = -(gx - 0.5) * sa + (gy - 0.5) * ca
+		grain = 0.5 + 0.5 * np.sin(v * 70.0 + noise * 10.0)
+		grain = 0.7 + 0.22 * grain + 0.12 * (noise - 0.5)
+		# Borde oscuro: el contorno de la tabla se hunde en sombra.
+		inner = blur(alpha, 4)
+		edge = 0.62 + 0.38 * smoothstep(0.55, 0.98, inner)
+		shade = grain * edge
+		frames.append(np.stack([shade, fresh, np.zeros_like(shade), alpha], axis=-1))
+	save("planks.png", atlas(frames))
+
+
+def make_fibers():
+	"""Cuatro hilachas de tela (hebras finas y rizadas), atlas de 2 x 2 casillas de 128 px (256 x 256).
+	R = sombreado, A = silueta."""
+	rng = np.random.default_rng(23)
+	frames = []
+	for index in range(4):
+		size = 128
+		scale = 6
+		big = size * scale
+		alpha_img = Image.new("L", (big, big), 0)
+		shade_img = Image.new("L", (big, big), 0)
+		draw_a = ImageDraw.Draw(alpha_img)
+		draw_s = ImageDraw.Draw(shade_img)
+		for _ in range(int(rng.integers(3, 6))):
+			ax = rng.uniform(0.15, 0.4) * big
+			ay = rng.uniform(0.2, 0.8) * big
+			length = rng.uniform(0.45, 0.8) * big
+			angle = rng.uniform(-0.8, 0.8)
+			curl = rng.uniform(-0.18, 0.18) * big
+			wobble = rng.uniform(0.0, 1.0)
+			points = []
+			for k in range(17):
+				s = k / 16.0
+				u = ax + s * length * math.cos(angle) - curl * math.sin(s * math.pi) * math.sin(angle)
+				v = ay + s * length * math.sin(angle) + curl * math.sin(s * math.pi) * math.cos(angle)
+				points.append((u, v + 0.05 * big * math.sin(s * 9.0 + wobble)))
+			width = int(rng.uniform(0.014, 0.024) * big)
+			draw_a.line(points, fill=255, width=width, joint="curve")
+			draw_s.line(points, fill=int(rng.uniform(150, 255)), width=max(1, width // 2), joint="curve")
+		alpha = np.asarray(alpha_img.resize((size, size), Image.LANCZOS), dtype=np.float32) / 255.0
+		shade = np.asarray(shade_img.resize((size, size), Image.LANCZOS), dtype=np.float32) / 255.0
+		frames.append(shaded_rgba(alpha, 0.6 + 0.4 * blur(shade, 1)))
+	save("fibers.png", atlas(frames))
+
+
 def make_ring_dust():
-	"""Anillo de polvo para el suelo (aterrizaje y esquiva): borde irregular, 256 px."""
+	"""Anillo de polvo bajo para el suelo (solo caídas fuertes): estrecho, sin borde duro, con grumos."""
 	size = 256
 	x, y = grid(size)
 	x = (x - 0.5) * 2.0
 	y = (y - 0.5) * 2.0
 	r = np.hypot(x, y)
 	noise = fbm_tile(256, 1.5, 81)
-	r_n = r + (noise - 0.5) * 0.22
-	ring = smoothstep(0.52, 0.8, r_n) * smoothstep(1.0, 0.82, r_n)
-	save("ring_dust.png", shaded_rgba(ring, 0.7 + 0.3 * smoothstep(0.52, 0.9, r_n)))
+	fine = fbm_tile(256, 1.0, 82)
+	r_n = r + (noise - 0.5) * 0.3
+	ring = smoothstep(0.5, 0.78, r_n) * smoothstep(1.0, 0.8, r_n)
+	ring = ring * (0.55 + 0.9 * (fine - 0.35))
+	save("ring_dust.png", shaded_rgba(np.clip(ring, 0.0, 1.0), 0.7 + 0.3 * smoothstep(0.5, 0.95, r_n)))
 
 
 def main():
 	print("Texturas de efectos de golpe en", os.path.normpath(OUT_DIR))
+	# Las que ya no se usan se borran para que la carpeta sea justo lo que genera este script.
+	for stale in ("wisp.png", "splat.png", "splinters.png"):
+		for suffix in ("", ".import"):
+			path = os.path.join(OUT_DIR, stale + suffix)
+			if os.path.exists(path):
+				os.remove(path)
 	make_soft_dot()
 	make_flare_star()
 	make_spark_streak()
-	make_wisp()
 	make_rays()
 	make_noise()
 	make_puffs()
-	make_splat()
+	make_splat_jets()
 	make_shards()
-	make_splinters()
+	make_planks()
+	make_fibers()
 	make_droplets()
 	make_ring_dust()
 

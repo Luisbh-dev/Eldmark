@@ -18,9 +18,17 @@ extends Node3D
 ## ejemplo).
 ## [br]- [code]vfx_tint[/code] ([Color]) y [code]vfx_tint_weight[/code] (0 a 1): color base del tinte de
 ## instancia del hijo y cuánto le afecta [member tint] (0 = nada: un destello blanco sigue blanco).
+## [br]- [code]vfx_no_tint[/code] ([bool]): el hijo no lleva el parámetro [code]tint[/code] (una distorsión de calor
+## no tiene color): el efecto no se lo pone.
+## [br]- [code]vfx_variants[/code] ([int]) y [code]vfx_variant_offset[/code] ([int]): la malla tiene un atlas de
+## variantes (filas) y el efecto elige una en cada disparo (parámetros de instancia [code]variant[/code] y
+## [code]flip[/code]), de forma determinista: dos disparos seguidos no repiten el mismo chorro.
 ## [br][br]
 ## [b]Orientación.[/b] El eje +Z local es la normal del impacto: hacia donde salen las chispas, hacia
-## quien golpeó. [method play_at] lo orienta desde una posición y una normal de mundo.
+## quien golpeó. [method play_at] lo orienta desde una posición y una normal de mundo y, si se le da la
+## dirección del golpe, deja el eje +X local a lo largo de ella (un chorro de sangre sale hacia donde iba
+## el tajo) y, con [member direction_bias], inclina el +Z hacia ella (las chispas de un tajo salen
+## desviadas en el sentido del filo).
 ## [br][br]
 ## No se conecta al combate todavía: quien lo haga ([CombatFeedback], por ejemplo) pide
 ## [method VfxPool.spawn] en el punto de contacto.
@@ -34,8 +42,13 @@ const META_TIME: StringName = &"vfx_time"
 const META_CUE: StringName = &"vfx_cue"
 const META_TINT: StringName = &"vfx_tint"
 const META_TINT_WEIGHT: StringName = &"vfx_tint_weight"
+const META_NO_TINT: StringName = &"vfx_no_tint"
+const META_VARIANTS: StringName = &"vfx_variants"
+const META_VARIANT_OFFSET: StringName = &"vfx_variant_offset"
 const PARAM_PROGRESS: StringName = &"progress"
 const PARAM_TINT: StringName = &"tint"
+const PARAM_VARIANT: StringName = &"variant"
+const PARAM_FLIP: StringName = &"flip"
 
 ## Segundos hasta que el efecto se da por terminado y se puede reutilizar (en los continuos, lo que
 ## tarda en apagarse tras [method stop] sale de la vida de sus partículas).
@@ -45,10 +58,13 @@ const PARAM_TINT: StringName = &"tint"
 ## Color con el que se tiñen los hijos (según su [code]vfx_tint_weight[/code]).
 @export var tint: Color = Color.WHITE:
 	set = set_tint
+## Cuánto inclina [method play_at] el eje +Z hacia la dirección del golpe (0 = nada; 1 = a 45 grados).
+@export_range(0.0, 2.0, 0.05) var direction_bias: float = 0.0
 
 # Una malla animada por progreso.
 class _Shape extends RefCounted:
 	var node: GeometryInstance3D
+	var enabled: bool = true
 	var cue: StringName = CUE_START
 	var delay: float = 0.0
 	var length: float = 0.1
@@ -57,6 +73,7 @@ class _Shape extends RefCounted:
 # Unas partículas, con su aviso y el retardo con que se lanzan.
 class _Burst extends RefCounted:
 	var node: GPUParticles3D
+	var enabled: bool = true
 	var cue: StringName = CUE_START
 	var delay: float = 0.0
 	var start_at: float = -1.0
@@ -64,6 +81,8 @@ class _Burst extends RefCounted:
 var _shapes: Array[_Shape] = []
 var _bursts: Array[_Burst] = []
 var _tintables: Array[GeometryInstance3D] = []
+var _variant_nodes: Array[GeometryInstance3D] = []
+var _play_count: int = 0
 var _cue_lengths: Dictionary[StringName, float] = {}
 var _tail: float = 0.0
 var _is_setup: bool = false
@@ -92,16 +111,29 @@ func play() -> void:
 	for shape: _Shape in _shapes:
 		shape.started = -1.0
 		shape.node.visible = false
+	_apply_variants()
+	_play_count += 1
 	trigger(CUE_START)
 	set_process(true)
 
 
 ## Pone el efecto en [param position] con su eje +Z en [param normal] (la normal del impacto, en
-## mundo) y lo lanza. El tinte es el de [member tint].
-func play_at(position: Vector3, normal: Vector3 = Vector3.UP) -> void:
+## mundo) y lo lanza. El tinte es el de [member tint]. Con [param direction] (hacia dónde iba el golpe, en
+## mundo; se proyecta sobre el plano del impacto) el eje +X queda a lo largo de ella y, si el efecto tiene
+## [member direction_bias], el +Z se inclina hacia ella.
+func play_at(position: Vector3, normal: Vector3 = Vector3.UP, direction: Vector3 = Vector3.ZERO) -> void:
 	var facing: Vector3 = normal.normalized() if normal.length_squared() > 0.0001 else Vector3.UP
-	var up: Vector3 = Vector3.UP if absf(facing.dot(Vector3.UP)) < 0.99 else Vector3.RIGHT
-	global_transform = Transform3D(Basis.looking_at(-facing, up), position)
+	var tangent: Vector3 = direction - facing * direction.dot(facing)
+	if tangent.length_squared() < 0.0001:
+		var up: Vector3 = Vector3.UP if absf(facing.dot(Vector3.UP)) < 0.99 else Vector3.RIGHT
+		global_transform = Transform3D(Basis.looking_at(-facing, up), position)
+		play()
+		return
+	tangent = tangent.normalized()
+	if direction_bias > 0.0:
+		facing = (facing + tangent * direction_bias).normalized()
+		tangent = (tangent - facing * tangent.dot(facing)).normalized()
+	global_transform = Transform3D(Basis(tangent, facing.cross(tangent), facing), position)
 	play()
 
 
@@ -112,10 +144,10 @@ func trigger(cue: StringName) -> void:
 	if not _playing:
 		return
 	for shape: _Shape in _shapes:
-		if shape.cue == cue:
+		if shape.cue == cue and shape.enabled:
 			shape.started = _elapsed
 	for burst: _Burst in _bursts:
-		if burst.cue != cue:
+		if burst.cue != cue or not burst.enabled:
 			continue
 		if burst.delay <= 0.0:
 			_fire(burst)
@@ -124,6 +156,19 @@ func trigger(cue: StringName) -> void:
 	var cue_end: float = _elapsed + float(_cue_lengths.get(cue, 0.0))
 	_cue_end = maxf(_cue_end, cue_end)
 	_end_time = maxf(_end_time, cue_end)
+
+
+## Enciende o apaga una parte del efecto por el nombre de su nodo (una forma o unas partículas): una parte
+## apagada no se lanza con su aviso. Sirve para que un efecto de varios usos ([DustKick]) deje fuera lo que
+## no toca (el anillo de polvo solo en las caídas fuertes).
+func set_part_enabled(part_name: StringName, enabled: bool) -> void:
+	_ensure_setup()
+	for shape: _Shape in _shapes:
+		if shape.node.name == part_name:
+			shape.enabled = enabled
+	for burst: _Burst in _bursts:
+		if burst.node.name == part_name:
+			burst.enabled = enabled
 
 
 ## Deja de emitir y acaba cuando se apaguen las últimas partículas (en los efectos continuos).
@@ -231,7 +276,10 @@ func _register(node: Node) -> void:
 		_tintables.append(particles)
 	elif node is GeometryInstance3D:
 		var instance: GeometryInstance3D = node as GeometryInstance3D
-		_tintables.append(instance)
+		if not bool(node.get_meta(META_NO_TINT, false)):
+			_tintables.append(instance)
+		if node.has_meta(META_VARIANTS):
+			_variant_nodes.append(instance)
 		if node.has_meta(META_TIME):
 			var shape := _Shape.new()
 			shape.node = instance
@@ -252,3 +300,13 @@ func _apply_tint() -> void:
 		var mixed: Color = Color.WHITE.lerp(tint, weight)
 		instance.set_instance_shader_parameter(PARAM_TINT,
 				Color(base.r * mixed.r, base.g * mixed.g, base.b * mixed.b, base.a * mixed.a))
+
+
+# Elige la variante (fila del atlas) y el reflejo de cada malla con atlas de variantes, de forma que dos
+# disparos seguidos no repitan chorro. Determinista: depende del número de disparos de esta copia.
+func _apply_variants() -> void:
+	for instance: GeometryInstance3D in _variant_nodes:
+		var count: int = maxi(int(instance.get_meta(META_VARIANTS)), 1)
+		var order: int = _play_count + int(instance.get_meta(META_VARIANT_OFFSET, 0))
+		instance.set_instance_shader_parameter(PARAM_VARIANT, float(order % count))
+		instance.set_instance_shader_parameter(PARAM_FLIP, -1.0 if floori(float(order) / float(count)) % 2 == 1 else 1.0)

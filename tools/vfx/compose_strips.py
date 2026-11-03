@@ -22,8 +22,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_DIR = os.path.join(HERE, "..", "..", "build", "vfx", "strips")
 COLUMNS = 4
 ROWS = 3
-CELL = (480, 360)
+# Casilla según el recorte guardado: 4:3 con la cámara de demostración, 16:9 con la del juego.
+CELL_DEMO = (480, 360)
+CELL_GAME = (640, 360)
 BACKGROUND = (18, 18, 22)
+
+
+def cell_for(frame_size):
+	"""Tamaño de casilla de una hoja según la proporción de sus fotogramas."""
+	return CELL_GAME if abs(frame_size[0] / frame_size[1] - 16 / 9) < 0.05 else CELL_DEMO
 
 
 def load_font(size):
@@ -46,7 +53,8 @@ def compose(folder, name):
 		meta = json.load(handle)
 	times = meta["times"]
 	font = load_font(20)
-	columns, rows, cell = COLUMNS, ROWS, CELL
+	first = Image.open(os.path.join(source, "frame_00.png"))
+	columns, rows, cell = COLUMNS, ROWS, cell_for(first.size)
 	if meta.get("strip") == "showcase":
 		# Pantallas completas (16:9): 2 x 2 de 960 x 540.
 		columns, rows, cell = 2, 2, (960, 540)
@@ -72,7 +80,8 @@ def compose(folder, name):
 def compose_realms(folder, name, picks):
 	"""Una fila con el mismo fotograma de cada reino (carpetas name_r1 a name_r4)."""
 	font = load_font(22)
-	cell = (480, 360)
+	probe = os.path.join(folder, "%s_r1" % name, "frame_%02d.png" % picks[0])
+	cell = cell_for(Image.open(probe).size) if os.path.exists(probe) else CELL_DEMO
 	sheet = Image.new("RGB", (cell[0] * 4, cell[1] * len(picks)), BACKGROUND)
 	draw = ImageDraw.Draw(sheet)
 	names = {1: "Vardheim", 2: "Solmarch", 3: "Askarra", 4: "Eldrun"}
@@ -92,25 +101,30 @@ def compose_realms(folder, name, picks):
 
 # Hoja de resumen: un fotograma representativo de cada efecto, [carpeta, fotograma, rótulo].
 SUMMARY = (
-	("metal", 3, "Chispa de metal"),
-	("flesh", 2, "Impacto en carne"),
+	("metal_side", 4, "Chispa de metal (de perfil)"),
+	("flesh", 4, "Impacto en carne"),
+	("cloth", 4, "Impacto en tela"),
 	("block", 4, "Bloqueo en escudo de madera"),
 	("parry", 3, "Parada perfecta"),
 	("dust", 4, "Polvo de aterrizaje"),
-	("dodge", 5, "Polvo de esquiva"),
-	("trail_r1", 2, "Estela - Vardheim"),
-	("trail_r3", 3, "Estela - Askarra"),
+	("dodge", 4, "Polvo de esquiva"),
+	("trail_r1", 8, "Estela - Vardheim"),
+	("trail_r4", 8, "Estela - Eldrun"),
 	("aura_r2", 4, "Aura de carga - Solmarch"),
-	("aura_r2", 5, "Aura: pulso de carga completa"),
-	("aura_r3", 5, "Aura: pulso - Askarra"),
-	("showcase", 1, "Todo junto"),
+	("aura_r2", 5, "Aura: carga completa"),
+	("melee", 3, "Refriega: diez efectos a la vez"),
 )
 
 
 def compose_summary(folder):
 	columns, rows = 4, 3
-	cell = (480, 360)
 	font = load_font(20)
+	cell = CELL_DEMO
+	for name, pick, title in SUMMARY:
+		path = os.path.join(folder, name, "frame_%02d.png" % pick)
+		if os.path.exists(path):
+			cell = cell_for(Image.open(path).size)
+			break
 	sheet = Image.new("RGB", (columns * cell[0], rows * cell[1]), BACKGROUND)
 	draw = ImageDraw.Draw(sheet)
 	for index, (name, pick, title) in enumerate(SUMMARY):
@@ -118,11 +132,17 @@ def compose_summary(folder):
 		if not os.path.exists(path):
 			continue
 		frame = Image.open(path).convert("RGB")
-		# Los fotogramas de pantalla completa (16:9) se recortan al centro para llenar la casilla de 4:3.
-		if abs(frame.size[0] / frame.size[1] - 4 / 3) > 0.05:
-			width = int(frame.size[1] * 4 / 3)
-			left = (frame.size[0] - width) // 2
-			frame = frame.crop((left, 0, left + width, frame.size[1]))
+		# Un fotograma de otra proporción se recorta al centro para llenar la casilla.
+		target = cell[0] / cell[1]
+		if abs(frame.size[0] / frame.size[1] - target) > 0.05:
+			if frame.size[0] / frame.size[1] > target:
+				width = int(frame.size[1] * target)
+				left = (frame.size[0] - width) // 2
+				frame = frame.crop((left, 0, left + width, frame.size[1]))
+			else:
+				height = int(frame.size[0] / target)
+				top = (frame.size[1] - height) // 2
+				frame = frame.crop((0, top, frame.size[0], top + height))
 		frame = frame.resize(cell, Image.LANCZOS)
 		x = (index % columns) * cell[0]
 		y = (index // columns) * cell[1]
@@ -146,7 +166,7 @@ def main():
 	if "--summary" in sys.argv:
 		compose_summary(folder)
 	if "--realms" in sys.argv:
-		for name, picks in (("trail", (2, 3)), ("aura", (4, 5, 9))):
+		for name, picks in (("trail", (6, 8, 10)), ("aura", (4, 5, 9))):
 			compose_realms(folder, name, picks=picks)
 
 
