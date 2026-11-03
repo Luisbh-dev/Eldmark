@@ -1,0 +1,14 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://assets/materials/shaders/fort_keep_cloth.gdshader" id="1_28m3h"]
+[ext_resource type="Texture2D" path="res://assets/models/environment/custom/fort_keep/textures/keep_pendant_atlas.png" id="2_yo34o"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_28m3h")
+shader_parameter/atlas = ExtResource("2_yo34o")
+shader_parameter/atlas_cells = Vector2(4, 1)
+shader_parameter/progress_axis = Vector2(0, 1)
+shader_parameter/wind_amplitude = 0.14
+shader_parameter/wind_speed = null
+shader_parameter/roughness = null

@@ -1,38 +1,14 @@
 [gd_resource type="ShaderMaterial" format=3]
 
-[ext_resource type="Shader" path="res://assets/materials/shaders/realm_surface.gdshader" id="1_kqkcp"]
-[ext_resource type="Texture2D" path="res://assets/models/environment/custom/fort_keep/textures/keep_banner_albedo.png" id="2_0o66t"]
+[ext_resource type="Shader" path="res://assets/materials/shaders/fort_keep_cloth.gdshader" id="1_kqkcp"]
+[ext_resource type="Texture2D" path="res://assets/models/environment/custom/fort_keep/textures/keep_pennant_atlas.png" id="2_0o66t"]
 
 [resource]
 render_priority = 0
 shader = ExtResource("1_kqkcp")
-shader_parameter/albedo_texture = ExtResource("2_0o66t")
-shader_parameter/use_normal_map = null
-shader_parameter/normal_strength = null
-shader_parameter/uv_scale = null
-shader_parameter/use_triplanar = null
-shader_parameter/triplanar_scale = null
-shader_parameter/triplanar_sharpness = null
-shader_parameter/alpha_scissor = null
-shader_parameter/hue_shift = null
-shader_parameter/saturation = null
-shader_parameter/brightness = null
-shader_parameter/contrast = null
-shader_parameter/target_color = Color(0.7411765, 0.7137255, 0.6509804, 1)
-shader_parameter/colorize = 1.0
-shader_parameter/reference_luminance = 0.49811007029003784
-shader_parameter/detail_strength = 0.9
-shader_parameter/detail_min = null
-shader_parameter/detail_max = null
-shader_parameter/albedo_gain = null
-shader_parameter/layer_color = Color(0.56078434, 0.5411765, 0.50980395, 1)
-shader_parameter/layer_amount = 0.0
-shader_parameter/layer_threshold = 0.6
-shader_parameter/layer_softness = null
-shader_parameter/layer_roughness = null
-shader_parameter/faction_mix = 1.0
+shader_parameter/atlas = ExtResource("2_0o66t")
+shader_parameter/atlas_cells = Vector2(1, 4)
+shader_parameter/progress_axis = Vector2(1, 0)
+shader_parameter/wind_amplitude = 0.36
+shader_parameter/wind_speed = null
 shader_parameter/roughness = null
-shader_parameter/metallic = null
-shader_parameter/specular = null
-shader_parameter/emission_color = null
-shader_parameter/emission_energy = null

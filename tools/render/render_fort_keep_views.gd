@@ -13,7 +13,8 @@ extends SceneTree
 ## Opciones: [code]--scene=res://...tscn[/code] (por defecto la vista previa; con
 ## [code]res://scenes/world/zones/vado_gris/vado_gris.tscn[/code] salen las vistas "antes"),
 ## [code]--realm=eldrun|vardheim|solmarch[/code] (paleta del torreón),
-## [code]--only=<prefijo>[/code] (una sola vista, por el prefijo de su nombre).
+## [code]--only=<prefijo>[/code] (una sola vista, por el prefijo de su nombre),
+## [code]--shadow-quality=N[/code] (filtro de sombras suaves de la luz direccional, 0 a 5; por defecto el del proyecto).
 ## Posiciones y ángulos: los de las vistas de Vardheim del banco de calidad.
 
 const DEFAULT_SCENE: String = "res://scenes/tests/fort_keep_preview.tscn"
@@ -52,6 +53,7 @@ var _out_dir: String = ""
 var _scene_path: String = DEFAULT_SCENE
 var _realm: String = ""
 var _only: String = ""
+var _shadow_quality: int = -1
 
 
 func _initialize() -> void:
@@ -64,6 +66,8 @@ func _initialize() -> void:
 			_realm = arg.trim_prefix("--realm=")
 		elif arg.begins_with("--only="):
 			_only = arg.trim_prefix("--only=")
+		elif arg.begins_with("--shadow-quality="):
+			_shadow_quality = int(arg.trim_prefix("--shadow-quality="))
 	if _out_dir.is_empty():
 		_out_dir = ProjectSettings.globalize_path("res://build/torreon")
 	_run()
@@ -78,6 +82,8 @@ func _run() -> void:
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = 0
 	DirAccess.make_dir_recursive_absolute(_out_dir)
+	if _shadow_quality >= 0:
+		RenderingServer.directional_soft_shadow_filter_set_quality(_shadow_quality as RenderingServer.ShadowQuality)
 
 	var packed: PackedScene = load(_scene_path) as PackedScene
 	if packed == null:
