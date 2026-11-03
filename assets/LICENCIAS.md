@@ -203,6 +203,19 @@ declara una licencia propia:
   refriega y el vídeo en `build/vfx/`; ver `tools/vfx/README.md`). Orden para regenerarlo todo:
   `python tools/vfx/make_vfx_textures.py`, `godot --headless --path . --import`,
   `godot --headless --path . -s res://tools/vfx/build_vfx_scenes.gd` y otra vez `--import`.
+
+- Sonidos `assets/audio/sfx/<categoría>/*.ogg` y `assets/audio/sfx/niveles.json` (ART-11): 89 efectos
+  sintetizados desde cero, sin muestras de terceros ni grabaciones: barridos de espada (6 ligeros, 3
+  fuertes), golpes de espada en carne, cuero, gambesón y malla, escudo de madera y bloqueo con acero,
+  parada de acero con acero, pasos en tierra y en piedra (8 cada uno), caída de un cuerpo (3), esquiva,
+  arco y flechas (tensar, soltar, impacto en carne y en madera), voces de los Huecos (heridas y muerte),
+  poción, clic y confirmación de interfaz, y cuernos de fuerte ganado y perdido con un timbre por reino.
+  Los genera `tools/audio/synth_sfx.py` con `sfx_dsp.py`, `sfx_combat.py` y `sfx_world.py` (síntesis con
+  numpy, codificación con ffmpeg y libvorbis; salida idéntica byte a byte en cada ejecución) y los mide
+  contra el listón de calidad y dibuja `tools/audio/analyze_sfx.py` (espectrogramas, hojas y comparativas
+  en `build/audio/`, no versionados). `niveles.json` lleva la sonoridad de cada archivo, el recorte de
+  volumen por grupo, el instante del pico (`pico_s`) para sincronizar los barridos con `data/combat` y el
+  aleatorizador recomendado. Todavía no están conectados al juego.
 - Emblemas de bando `assets/emblems/*.svg` (lobo, sol partido, yunque y corona rota):
   **provisionales**, formas geométricas hechas para Eldmark con `tools/assets/make_emblems.py`; los
   sustituirá el arte final de ART-03 con los mismos nombres de archivo.
