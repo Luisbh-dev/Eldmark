@@ -1,0 +1,40 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://assets/materials/shaders/realm_surface.gdshader" id="1_j4gke"]
+[ext_resource type="Texture2D" path="res://assets/models/environment/castle_wall/textures/wood_wall_albedo.png" id="2_fgx4p"]
+[ext_resource type="Texture2D" path="res://assets/models/environment/castle_wall/textures/wood_wall_normal.png" id="3_p4m87"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_j4gke")
+shader_parameter/albedo_texture = ExtResource("2_fgx4p")
+shader_parameter/normal_texture = ExtResource("3_p4m87")
+shader_parameter/use_normal_map = true
+shader_parameter/normal_strength = null
+shader_parameter/uv_scale = null
+shader_parameter/use_triplanar = null
+shader_parameter/triplanar_scale = null
+shader_parameter/triplanar_sharpness = null
+shader_parameter/alpha_scissor = null
+shader_parameter/hue_shift = null
+shader_parameter/saturation = null
+shader_parameter/brightness = null
+shader_parameter/contrast = null
+shader_parameter/target_color = Color(0.5411765, 0.41568628, 0.2901961, 1)
+shader_parameter/colorize = 0.7
+shader_parameter/reference_luminance = 0.05
+shader_parameter/detail_strength = null
+shader_parameter/detail_min = null
+shader_parameter/detail_max = null
+shader_parameter/albedo_gain = null
+shader_parameter/layer_color = Color(0.41960785, 0.4509804, 0.3137255, 1)
+shader_parameter/layer_amount = 0.084
+shader_parameter/layer_threshold = 0.78
+shader_parameter/layer_softness = null
+shader_parameter/layer_roughness = null
+shader_parameter/faction_mix = null
+shader_parameter/roughness = null
+shader_parameter/metallic = null
+shader_parameter/specular = null
+shader_parameter/emission_color = null
+shader_parameter/emission_energy = null

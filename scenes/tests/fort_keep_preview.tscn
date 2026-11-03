@@ -1,0 +1,9 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/client/tools/fort_keep_preview.gd" id="1_preview"]
+[ext_resource type="PackedScene" path="res://scenes/world/zones/vado_gris/vado_gris.tscn" id="2_zone"]
+
+[node name="FortKeepPreview" type="Node3D"]
+script = ExtResource("1_preview")
+
+[node name="Zona" parent="." instance=ExtResource("2_zone")]

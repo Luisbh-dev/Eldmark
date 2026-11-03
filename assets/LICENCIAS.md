@@ -189,6 +189,17 @@ declara una licencia propia:
   `tools/terrain/generate_vado_gris.gd`.
 - Tema de interfaz `assets/ui/theme/eldmark_theme.tres` (generado por `tools/ui/build_theme.gd` a
   partir de `UIPalette`).
+- Torreón del fuerte (ART-57), modelado desde cero con código: `assets/models/environment/custom/fort_keep.glb`
+  (LOD0, LOD1 y colisión de baja resolución en un solo glTF), sus texturas propias de piedra, piedra labrada y
+  gallardete en `assets/models/environment/custom/fort_keep/textures/` y sus materiales de reino en
+  `assets/models/environment/custom/fort_keep/materials/`. Los genera, por este orden,
+  `tools/blender/make_fort_keep_textures.py` (numpy y Pillow: ruido periódico por FFT y trazos de cincel, sin
+  fotos ni IA), `tools/blender/build_fort_keep.py` (Blender 5.2.3 con `bpy`, sin interfaz) y
+  `tools/materials/build_fort_keep_materials.gd`. El glTF incrusta además, reducidas a 512 px, texturas ya
+  registradas más arriba: los tablones y el ladrillo del Castle Wall Kit (loafbrr, CC0) y las tejas del Village
+  MegaKit (Quaternius, CC0). Las herramientas de revisión son `tools/render/render_fort_keep_*.gd` y
+  `tools/blender/compose_fort_keep_comparison.py`; la escena de vista previa es
+  `scenes/tests/fort_keep_preview.tscn`.
 - Emblemas de bando `assets/emblems/*.svg` (lobo, sol partido, yunque y corona rota):
   **provisionales**, formas geométricas hechas para Eldmark con `tools/assets/make_emblems.py`; los
   sustituirá el arte final de ART-03 con los mismos nombres de archivo.

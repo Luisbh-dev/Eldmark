@@ -1,0 +1,3 @@
+keep_stone_albedo luminancia media 0.5011
+keep_trim_albedo luminancia media 0.5973
+keep_banner_albedo luminancia media 0.7278
