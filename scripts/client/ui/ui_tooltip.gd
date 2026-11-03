@@ -13,6 +13,11 @@ extends PanelContainer
 ## derecha y debajo del cursor; si así se saldría de [param bounds] por la derecha pasa a la
 ## izquierda, y por abajo, encima; después se encaja dentro dejando [constant MARGIN] px de borde.
 ## [br][br]
+## [b]Foco.[/b] El tooltip por foco existe para el teclado y el mando: solo se abre si lo último que hizo el jugador
+## fue pulsar una tecla o un botón de mando ([method note_input]) y el foco no lo dio el código
+## ([method grab_focus_silently]). Con el ratón, o al abrir una ventana que enfoca su primer control, el foco no
+## enseña nada: antes un tooltip tapaba el inventario y la ventana de personaje al abrirlos (UI-49).
+## [br][br]
 ## El tiempo lo lleva [method advance] ([method _process] lo llama con el delta de cada fotograma);
 ## las pruebas lo llaman con pasos exactos. Nunca captura el ratón.
 ## [br][br]
@@ -39,6 +44,8 @@ var delay: float = DEFAULT_DELAY
 var bounds_override: Variant = null
 
 static var _shared: UITooltip = null
+## Llamadas de [method grab_focus_silently] en curso: mientras haya alguna, el foco no abre tooltips.
+static var _silent_focus: int = 0
 
 var _title: Label = null
 var _subtitle: Label = null
@@ -48,6 +55,8 @@ var _showing: bool = false
 var _elapsed: float = 0.0
 var _anchor: Vector2 = Vector2.ZERO
 var _follow_mouse: bool = false
+# true si la última entrada del jugador fue de teclado o de mando (el foco solo enseña tooltips entonces).
+var _navigation_input: bool = false
 
 
 ## El tooltip compartido del árbol de [param tree], creado la primera vez (en su propia capa).
@@ -62,6 +71,14 @@ static func get_shared(tree: SceneTree) -> UITooltip:
 	tree.root.add_child(layer)
 	_shared = tooltip
 	return tooltip
+
+
+## Da el foco a [param control] sin que abra su tooltip: el foco lo pone el código (una ventana que se abre), no el
+## jugador al navegar.
+static func grab_focus_silently(control: Control) -> void:
+	_silent_focus += 1
+	control.grab_focus()
+	_silent_focus -= 1
 
 
 ## Posición (esquina superior izquierda) de un tooltip de tamaño [param tooltip_size] para un cursor
@@ -111,10 +128,30 @@ func _exit_tree() -> void:
 		_shared = null
 
 
+func _input(event: InputEvent) -> void:
+	note_input(event)
+
+
 func _process(delta: float) -> void:
 	if _follow_mouse and (_pending or _showing) and is_inside_tree():
 		_anchor = get_viewport().get_mouse_position()
 	advance(delta)
+
+
+## Anota con qué dispositivo juega el jugador: el ratón apaga el tooltip por foco; una tecla o un botón (o un eje de
+## mando a más de la mitad) lo enciende. Lo llama [method _input] con cada evento.
+func note_input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion or event is InputEventMouseButton:
+		_navigation_input = false
+	elif event is InputEventKey or event is InputEventJoypadButton:
+		_navigation_input = true
+	elif event is InputEventJoypadMotion and absf((event as InputEventJoypadMotion).axis_value) > 0.5:
+		_navigation_input = true
+
+
+## true si un cambio de foco abriría ahora un tooltip: lo último fue teclado o mando y el foco no lo da el código.
+func allows_focus_tooltip() -> bool:
+	return _navigation_input and _silent_focus == 0
 
 
 ## Pide un tooltip con [param title], [param body] (BBCode) y [param subtitle], con el título del
@@ -216,6 +253,8 @@ func bind_source(control: Control, provider: Callable) -> void:
 
 
 func _on_source_entered(control: Control, by_mouse: bool) -> void:
+	if not by_mouse and not allows_focus_tooltip():
+		return
 	var provider: Callable = control.get_meta(PROVIDER_META, Callable()) as Callable
 	if not provider.is_valid():
 		return

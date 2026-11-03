@@ -82,11 +82,11 @@ func test_the_schema_covers_every_requested_setting() -> void:
 			ClientSettings.SHADOWS, ClientSettings.GRASS_DISTANCE, ClientSettings.ANTIALIASING,
 			ClientSettings.MOUSE_SENSITIVITY, ClientSettings.INVERT_Y, ClientSettings.FOV,
 			ClientSettings.DEFAULT_SHOULDER, ClientSettings.DAMAGE_NUMBERS,
-			ClientSettings.NAMEPLATES, ClientSettings.HINTS]:
+			ClientSettings.NAMEPLATES, ClientSettings.HINTS, ClientSettings.HELP_BAR]:
 		assert_true(ids.has(id), "falta el ajuste %s" % id)
 	for bus: StringName in AudioBuses.ALL:
 		assert_true(ids.has(ClientSettings.volume_id(bus)), "falta el volumen de %s" % bus)
-	assert_eq(ids.size(), 15 + AudioBuses.ALL.size())
+	assert_eq(ids.size(), 16 + AudioBuses.ALL.size())
 	var seen_ids: Dictionary = {}
 	var seen_keys: Dictionary = {}
 	for spec: Dictionary in ClientSettings.get_schema():

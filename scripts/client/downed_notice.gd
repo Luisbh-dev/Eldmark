@@ -21,6 +21,8 @@ enum Interaction { NONE, BEING_REVIVED, BEING_EXECUTED, REVIVING, EXECUTING }
 const TITLE_FONT_SIZE: int = 34
 const TEXT_FONT_SIZE: int = 20
 const BAR_SIZE: Vector2 = Vector2(320.0, 12.0)
+## Ancho de la columna de textos, centrada en la pantalla.
+const COLUMN_WIDTH: float = BAR_SIZE.x + 80.0
 const DOWNED_COLOR: Color = Color(0.95, 0.55, 0.15, 1.0)
 const REVIVE_COLOR: Color = Color(0.4, 0.85, 0.45, 1.0)
 const EXECUTE_COLOR: Color = Color(0.95, 0.2, 0.15, 1.0)
@@ -280,14 +282,16 @@ func _name_or_ally(net_id: int) -> String:
 
 
 func _build() -> void:
-	set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	# A pantalla completa (así lo coloca también el HUD): la columna se centra respecto al padre, sea del tamaño que sea
+	# (UI-49; antes suponía un padre de ancho 0 centrado y salía cortada por la izquierda).
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_column = VBoxContainer.new()
 	_column.name = "Columna"
 	_column.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_column.alignment = BoxContainer.ALIGNMENT_CENTER
 	_column.add_theme_constant_override(&"separation", 6)
-	_column.custom_minimum_size = Vector2(BAR_SIZE.x + 80.0, 0.0)
-	_column.position = Vector2(-(BAR_SIZE.x + 80.0) * 0.5, TOP_OFFSET)
+	_column.custom_minimum_size = Vector2(COLUMN_WIDTH, 0.0)
+	UILayout.anchor_top_center(_column, COLUMN_WIDTH, TOP_OFFSET)
 	add_child(_column)
 	_title = _make_label("Titulo", CombatText.TEXT_DOWNED, TITLE_FONT_SIZE, DOWNED_COLOR)
 	_countdown = _make_label("Cuenta", "", TEXT_FONT_SIZE, Color.WHITE)

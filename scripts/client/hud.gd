@@ -141,6 +141,8 @@ func _ready() -> void:
 	# bit «sin resistencia» de combat_flags dura un solo tick y hay que leerlo ya puesto.
 	process_physics_priority = 100
 	_vitals.set_health_visible(_client != null)
+	# La línea de ayuda de controles empieza oculta (UI-49): F1 y los ajustes de Interfaz la muestran.
+	ClientSettings.bind_visibility(_hint, ClientSettings.HELP_BAR, true)
 	_death.respawn_requested.connect(_on_respawn_requested)
 	_death.map_requested.connect(_on_map_requested)
 	_death.opened.connect(_hint_respawn_map)
@@ -240,6 +242,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_debug_refresh_left = 0.0
 			_refresh_debug_text()
 		get_viewport().set_input_as_handled()
+	elif InputMap.has_action(&"toggle_help") and event.is_action_pressed(&"toggle_help"):
+		toggle_help_line()
+		get_viewport().set_input_as_handled()
 	elif InputMap.has_action(&"social_menu") and event.is_action_pressed(&"social_menu"):
 		if open_social_menu():
 			get_viewport().set_input_as_handled()
@@ -249,6 +254,20 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif InputMap.has_action(&"open_character") and event.is_action_pressed(&"open_character"):
 		if toggle_character_window():
 			get_viewport().set_input_as_handled()
+
+
+## Muestra u oculta la línea de ayuda de controles (F1) y lo recuerda en los ajustes de Interfaz
+## ([constant ClientSettings.HELP_BAR]). Devuelve si queda visible.
+func toggle_help_line() -> bool:
+	var settings: ClientSettings = ClientSettings.current()
+	settings.set_value(ClientSettings.HELP_BAR, not bool(settings.get_value(ClientSettings.HELP_BAR)))
+	settings.save_if_dirty()
+	return _hint.visible
+
+
+## Línea de ayuda de controles de la parte baja (oculta por defecto).
+func get_help_line() -> UIHintBar:
+	return _hint
 
 
 ## Muestra u oculta el panel de depuración sin esperar a F3. El cliente en red lo empieza oculto y
@@ -423,6 +442,7 @@ func _setup_feedback() -> void:
 		_feedback = CombatFeedback.new()
 		add_child(_feedback)
 		_feedback.damage_taken.connect(_on_damage_taken)
+		_feedback.hit_confirmed.connect(_on_hit_confirmed)
 		_feedback.entity_damaged.connect(_nameplates.mark_damaged)
 		_feedback.local_died.connect(_on_local_died)
 		_feedback.local_respawned.connect(_on_local_respawned)
@@ -703,17 +723,32 @@ func _update_vitals() -> void:
 			_health_initialized = true
 		else:
 			_vitals.set_health(health, max_health)
-		_vignette.set_health_fraction(0.0 if _is_dead_now() else float(health)
-				/ float(maxi(max_health, 1)))
+		# En la pantalla de muerte, sin viñeta: ya atenúa el mundo y el HUD (UI-50).
+		var dead: bool = _is_dead_now()
+		_vignette.set_suppressed(dead)
+		_vignette.set_health_fraction(1.0 if dead else float(health) / float(maxi(max_health, 1)))
 	else:
 		_vignette.set_health_fraction(1.0)
 
 
+# Un golpe propio confirmado: los marcadores del mundo se quedan solo con el objetivo unos segundos.
+func _on_hit_confirmed(_kind: int, _amount: int, _event: NetMessages.EntityEvent) -> void:
+	_notify_combat_to_markers()
+
+
+func _notify_combat_to_markers() -> void:
+	if is_instance_valid(_war_hud) and is_instance_valid(_war_hud.get_world_markers()):
+		_war_hud.get_world_markers().notify_combat()
+
+
 func _on_damage_taken(amount: int, attacker_id: int, _event: NetMessages.EntityEvent) -> void:
-	# La viñeta roja avisa de daño: una parada o un bloqueo completo (amount 0) no la enciende.
+	_notify_combat_to_markers()
+	# La viñeta roja avisa de daño: una parada o un bloqueo completo (amount 0) no la enciende. Su opacidad es
+	# proporcional a lo que quita el golpe de la vida máxima (UI-50).
 	if amount <= 0:
 		return
-	_vignette.flash()
+	_vignette.flash(amount, _client.get_max_health() if is_instance_valid(_client) and _client.has_health()
+			else LowHealthVignette.DEFAULT_MAX_HEALTH)
 	if not is_instance_valid(_character) or _feedback == null:
 		return
 	if attacker_id == 0 or not _feedback.knows_entity(attacker_id):

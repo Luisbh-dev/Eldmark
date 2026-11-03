@@ -297,6 +297,8 @@ func ensure_preview() -> HumanoidVisual:
 		push_warning("[Eldmark] No se pudo montar la figura de la ventana de personaje")
 		return null
 	_preview.name = "Figura"
+	# Nadie simula a este personaje: sin esto el animador lo ve siempre en el aire y lo enseña en la pose de caída (UI-49).
+	_preview.grounded = true
 	_turntable.add_child(_preview)
 	_visual = HumanoidVisual.install_replacing_placeholder(_preview)
 	if _visual != null:

@@ -23,7 +23,7 @@ extends RefCounted
 ## (el último nivel de LOD de los [code]Terrain3DMeshAsset[/code] de hierba) y suavizado. Audio:
 ## [AudioBuses]. Cámara: sensibilidad, invertir Y, campo de visión y hombro por defecto en cada
 ## [CameraRig] (grupo [constant CameraRig.GROUP]). Interfaz: los controles enlazados con
-## [method bind_visibility] ([DamageNumbers], [Nameplates]) se muestran u ocultan solos y las pistas
+## [method bind_visibility] ([DamageNumbers], [Nameplates], la línea de ayuda del [HUD]) se muestran u ocultan solos y las pistas
 ## ([HintToasts]) leen [constant HINTS] al mostrarse.
 ## [br][br]
 ## El modo de ventana, la resolución y el vsync no se tocan en modo headless (no hay ventana):
@@ -68,9 +68,11 @@ const DAMAGE_NUMBERS: StringName = &"damage_numbers"
 const NAMEPLATES: StringName = &"nameplates"
 ## Pistas del juego (UI-42): consejos que salen una sola vez por jugador ([HintToasts]).
 const HINTS: StringName = &"hints"
+## Línea de ayuda con las teclas, abajo en el centro del HUD (UI-49): oculta por defecto, F1 la muestra y la oculta.
+const HELP_BAR: StringName = &"help_bar"
 ## Ajustes de cámara, de gráficos que recorren la escena y de interfaz.
 const CAMERA_IDS: Array[StringName] = [MOUSE_SENSITIVITY, INVERT_Y, FOV, DEFAULT_SHOULDER]
-const INTERFACE_IDS: Array[StringName] = [DAMAGE_NUMBERS, NAMEPLATES, HINTS]
+const INTERFACE_IDS: Array[StringName] = [DAMAGE_NUMBERS, NAMEPLATES, HINTS, HELP_BAR]
 
 ## Resoluciones de ventana que se ofrecen (texto «ancho x alto» sin espacios).
 const RESOLUTIONS: Array[String] = ["1280x720", "1600x900", "1920x1080", "2560x1440"]
@@ -212,6 +214,7 @@ static func _build_schema() -> Array[Dictionary]:
 	schema.append(_bool(TAB_INTERFACE, DAMAGE_NUMBERS, "Números de daño", true))
 	schema.append(_bool(TAB_INTERFACE, NAMEPLATES, "Placas de nombre", true))
 	schema.append(_bool(TAB_INTERFACE, HINTS, "Pistas del juego", true))
+	schema.append(_bool(TAB_INTERFACE, HELP_BAR, "Línea de ayuda de controles (F1)", false))
 	return schema
 
 
@@ -498,12 +501,13 @@ func _apply_camera_value(rig: CameraRig, id: StringName) -> void:
 			rig.set_default_shoulder(int(_values[id]))
 
 
-## Muestra u oculta [param control] según el ajuste de interfaz [param id] ([constant DAMAGE_NUMBERS]
-## o [constant NAMEPLATES]): ahora, si el jugador lo ha fijado, y cada vez que cambie. Se desenlaza al
-## salir del árbol.
-static func bind_visibility(control: Control, id: StringName) -> void:
+## Muestra u oculta [param control] según el ajuste de interfaz [param id] ([constant DAMAGE_NUMBERS],
+## [constant NAMEPLATES] o [constant HELP_BAR]): ahora, si el jugador lo ha fijado, y cada vez que cambie. Con
+## [param apply_default] también ahora aunque el jugador no lo haya fijado (el valor por defecto manda: para lo que
+## empieza oculto). Se desenlaza al salir del árbol.
+static func bind_visibility(control: Control, id: StringName, apply_default: bool = false) -> void:
 	var settings: ClientSettings = current()
-	if settings.is_stored(id):
+	if apply_default or settings.is_stored(id):
 		control.visible = bool(settings.get_value(id))
 	var handler: Callable = func(changed_id: StringName, value: Variant) -> void:
 		if changed_id == id and is_instance_valid(control):
