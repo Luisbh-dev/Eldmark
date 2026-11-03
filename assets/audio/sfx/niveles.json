@@ -1,0 +1,198 @@
+{
+  "generador": "tools/audio/synth_sfx.py",
+  "nota": "volume_db es el recorte de volumen que debe aplicar el reproductor para igualar categorías; todos los archivos tienen el mismo pico real (-1.5 dBFS) medido sobre el OGG decodificado.",
+  "sonidos": {
+    "swing/sword_swing_light_01": {
+      "duracion_s": 0.328,
+      "canales": 1,
+      "pico_dbfs": -2.07,
+      "pico_real_dbfs": -1.56,
+      "rms_activo_dbfs": -16.31,
+      "volume_db": -4.0
+    },
+    "swing/sword_swing_light_02": {
+      "duracion_s": 0.376,
+      "canales": 1,
+      "pico_dbfs": -1.52,
+      "pico_real_dbfs": -1.52,
+      "rms_activo_dbfs": -14.97,
+      "volume_db": -4.0
+    },
+    "swing/sword_swing_light_03": {
+      "duracion_s": 0.293,
+      "canales": 1,
+      "pico_dbfs": -1.45,
+      "pico_real_dbfs": -1.38,
+      "rms_activo_dbfs": -14.99,
+      "volume_db": -4.0
+    },
+    "swing/sword_swing_heavy_01": {
+      "duracion_s": 0.667,
+      "canales": 1,
+      "pico_dbfs": -1.48,
+      "pico_real_dbfs": -1.42,
+      "rms_activo_dbfs": -14.73,
+      "volume_db": -3.0
+    },
+    "swing/sword_swing_heavy_02": {
+      "duracion_s": 0.756,
+      "canales": 1,
+      "pico_dbfs": -1.74,
+      "pico_real_dbfs": -1.54,
+      "rms_activo_dbfs": -16.95,
+      "volume_db": -3.0
+    },
+    "hit_flesh/hit_flesh_01": {
+      "duracion_s": 0.35,
+      "canales": 1,
+      "pico_dbfs": -1.59,
+      "pico_real_dbfs": -1.58,
+      "rms_activo_dbfs": -12.84,
+      "volume_db": -1.0
+    },
+    "hit_flesh/hit_flesh_02": {
+      "duracion_s": 0.402,
+      "canales": 1,
+      "pico_dbfs": -1.56,
+      "pico_real_dbfs": -1.55,
+      "rms_activo_dbfs": -12.93,
+      "volume_db": -1.0
+    },
+    "hit_flesh/hit_flesh_03": {
+      "duracion_s": 0.411,
+      "canales": 1,
+      "pico_dbfs": -1.55,
+      "pico_real_dbfs": -1.54,
+      "rms_activo_dbfs": -12.2,
+      "volume_db": -1.0
+    },
+    "hit_shield/hit_shield_wood_01": {
+      "duracion_s": 0.271,
+      "canales": 1,
+      "pico_dbfs": -1.46,
+      "pico_real_dbfs": -1.43,
+      "rms_activo_dbfs": -13.26,
+      "volume_db": -1.0
+    },
+    "hit_shield/hit_shield_wood_02": {
+      "duracion_s": 0.271,
+      "canales": 1,
+      "pico_dbfs": -1.44,
+      "pico_real_dbfs": -1.44,
+      "rms_activo_dbfs": -14.15,
+      "volume_db": -1.0
+    },
+    "hit_shield/hit_shield_wood_03": {
+      "duracion_s": 0.324,
+      "canales": 1,
+      "pico_dbfs": -1.55,
+      "pico_real_dbfs": -1.55,
+      "rms_activo_dbfs": -15.39,
+      "volume_db": -1.0
+    },
+    "parry/clash_metal_01": {
+      "duracion_s": 0.45,
+      "canales": 1,
+      "pico_dbfs": -3.3,
+      "pico_real_dbfs": -1.51,
+      "rms_activo_dbfs": -18.77,
+      "volume_db": -2.0
+    },
+    "parry/clash_metal_02": {
+      "duracion_s": 0.686,
+      "canales": 1,
+      "pico_dbfs": -2.72,
+      "pico_real_dbfs": -1.47,
+      "rms_activo_dbfs": -17.57,
+      "volume_db": -2.0
+    },
+    "step_dirt/step_dirt_01": {
+      "duracion_s": 0.376,
+      "canales": 1,
+      "pico_dbfs": -1.58,
+      "pico_real_dbfs": -1.56,
+      "rms_activo_dbfs": -17.15,
+      "volume_db": -9.0
+    },
+    "step_dirt/step_dirt_02": {
+      "duracion_s": 0.395,
+      "canales": 1,
+      "pico_dbfs": -1.54,
+      "pico_real_dbfs": -1.51,
+      "rms_activo_dbfs": -17.14,
+      "volume_db": -9.0
+    },
+    "step_dirt/step_dirt_03": {
+      "duracion_s": 0.374,
+      "canales": 1,
+      "pico_dbfs": -1.6,
+      "pico_real_dbfs": -1.55,
+      "rms_activo_dbfs": -15.45,
+      "volume_db": -9.0
+    },
+    "step_stone/step_stone_01": {
+      "duracion_s": 0.423,
+      "canales": 1,
+      "pico_dbfs": -2.83,
+      "pico_real_dbfs": -1.45,
+      "rms_activo_dbfs": -18.06,
+      "volume_db": -8.0
+    },
+    "step_stone/step_stone_02": {
+      "duracion_s": 0.452,
+      "canales": 1,
+      "pico_dbfs": -2.77,
+      "pico_real_dbfs": -1.54,
+      "rms_activo_dbfs": -18.84,
+      "volume_db": -8.0
+    },
+    "step_stone/step_stone_03": {
+      "duracion_s": 0.403,
+      "canales": 1,
+      "pico_dbfs": -1.67,
+      "pico_real_dbfs": -1.42,
+      "rms_activo_dbfs": -17.3,
+      "volume_db": -8.0
+    },
+    "body/body_fall_01": {
+      "duracion_s": 0.683,
+      "canales": 1,
+      "pico_dbfs": -1.43,
+      "pico_real_dbfs": -1.43,
+      "rms_activo_dbfs": -13.97,
+      "volume_db": -3.0
+    },
+    "potion/potion_drink_01": {
+      "duracion_s": 1.529,
+      "canales": 1,
+      "pico_dbfs": -1.59,
+      "pico_real_dbfs": -1.59,
+      "rms_activo_dbfs": -15.36,
+      "volume_db": -6.0
+    },
+    "ui/ui_click_01": {
+      "duracion_s": 0.112,
+      "canales": 1,
+      "pico_dbfs": -1.5,
+      "pico_real_dbfs": -1.5,
+      "rms_activo_dbfs": -15.38,
+      "volume_db": -8.0
+    },
+    "ui/ui_confirm_01": {
+      "duracion_s": 0.697,
+      "canales": 2,
+      "pico_dbfs": -1.45,
+      "pico_real_dbfs": -1.43,
+      "rms_activo_dbfs": -16.1,
+      "volume_db": -8.0
+    },
+    "alert/horn_fort_capture_01": {
+      "duracion_s": 2.137,
+      "canales": 2,
+      "pico_dbfs": -1.52,
+      "pico_real_dbfs": -1.52,
+      "rms_activo_dbfs": -10.98,
+      "volume_db": -5.0
+    }
+  }
+}

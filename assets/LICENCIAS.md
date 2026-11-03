@@ -189,6 +189,13 @@ declara una licencia propia:
   `tools/terrain/generate_vado_gris.gd`.
 - Tema de interfaz `assets/ui/theme/eldmark_theme.tres` (generado por `tools/ui/build_theme.gd` a
   partir de `UIPalette`).
+- Sonidos `assets/audio/sfx/<categoría>/*.ogg` y `assets/audio/sfx/niveles.json` (ART-11): 24 efectos
+  sintetizados desde cero, sin muestras de terceros: barridos de espada, golpes en carne, escudo de
+  madera y metal, pasos en tierra y en piedra, caída de un cuerpo, poción, clic y confirmación de
+  interfaz y el cuerno de captura del fuerte. Los genera `tools/audio/synth_sfx.py` (síntesis con
+  numpy, codificación con ffmpeg y libvorbis; salida idéntica byte a byte en cada ejecución) y los mide
+  y dibuja `tools/audio/analyze_sfx.py` (espectrogramas en `build/audio/`, no versionados). Todavía no
+  están conectados al juego.
 - Emblemas de bando `assets/emblems/*.svg` (lobo, sol partido, yunque y corona rota):
   **provisionales**, formas geométricas hechas para Eldmark con `tools/assets/make_emblems.py`; los
   sustituirá el arte final de ART-03 con los mismos nombres de archivo.
