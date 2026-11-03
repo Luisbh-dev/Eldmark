@@ -113,7 +113,7 @@ func test_planner_picks_the_right_clip_for_each_action() -> void:
 		[CombatState.Action.HEAVY, ActionMachine.PHASE_WINDUP, 0, &"ual2/Sword_Heavy_Combo", true],
 		[CombatState.Action.HEAVY, ActionMachine.PHASE_ACTIVE, 0, &"ual2/Sword_Heavy_Combo", true],
 		[CombatState.Action.CHARGE, ActionMachine.PHASE_WINDUP, 0, &"ual2/Sword_Heavy_Combo", true],
-		[CombatState.Action.BLOCK, ActionMachine.PHASE_NONE, 0, &"ual2/Sword_Block", true],
+		[CombatState.Action.BLOCK, ActionMachine.PHASE_NONE, 0, &"ual2/Idle_Shield_Loop", true],
 		[CombatState.Action.DODGE, ActionMachine.PHASE_NONE, 0, &"ual1/Roll", false],
 		[CombatState.Action.STAGGER, ActionMachine.PHASE_NONE, 0, &"ual1/Hit_Chest", true],
 		[CombatState.Action.STUN, ActionMachine.PHASE_NONE, 0, &"ual2/Idle_Shield_Break", true],
@@ -195,15 +195,50 @@ func test_dodge_and_controls_fit_their_durations() -> void:
 	assert_near(remote.duration_s, _clips.find(&"stagger").duration_s, 0.0001)
 
 
-func test_block_charge_and_death_hold_their_last_pose() -> void:
-	for pair: Array in [[CombatState.Action.BLOCK, &"block"], [CombatState.Action.CHARGE, &"charge"],
-			[CombatState.Action.DEAD, &"dead"]]:
+func test_charge_and_death_hold_their_last_pose() -> void:
+	for pair: Array in [[CombatState.Action.CHARGE, &"charge"], [CombatState.Action.DEAD, &"dead"]]:
 		var entry: CombatActionAnim = _clips.find(pair[1])
 		assert_true(entry.hold_end, "%s se queda en la última pose" % pair[1])
 		var late: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, int(pair[0]),
 				ActionMachine.PHASE_NONE, 0, 100000.0)
 		assert_near(late.time_s, entry.windup.to_s, 0.0001, "%s: mucho después sigue en el final" % pair[1])
 		assert_true(late.hold)
+
+
+## ART-48: el bloqueo es la guardia del escudo en bucle (no una pose congelada): el escudo queda delante del
+## pecho, el clip no se queda parado y se puede andar bloqueando (solo la parte superior).
+func test_block_loops_the_shield_guard_instead_of_freezing() -> void:
+	var entry: CombatActionAnim = _clips.find(&"block")
+	assert_true(entry.loop, "el bloqueo se repite")
+	assert_false(entry.hold_end, "y no se queda en la última pose")
+	assert_true(entry.upper_body, "solo la parte superior: se anda bloqueando")
+	assert_eq(entry.windup.animation, &"ual2/Idle_Shield_Loop")
+	var length: float = _clips.get_animation(entry.windup.animation).length
+	assert_near(entry.windup.length_s(), length, 0.0001, "el bucle completo del clip")
+	var times: Array[float] = []
+	for ticks: float in [0.0, 40.0, 80.0, 120.0]:
+		var plan: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, CombatState.Action.BLOCK,
+				ActionMachine.PHASE_NONE, 0, ticks)
+		assert_false(plan.hold)
+		assert_near(plan.speed, 1.0, 0.0001, "a su velocidad original")
+		times.append(plan.time_s)
+	assert_true(times[1] > times[0] and times[2] > times[1] and times[3] > times[2], "el instante avanza")
+	var wrapped: CombatClipPlanner.Plan = CombatClipPlanner.plan(_clips, _weapon, CombatState.Action.BLOCK,
+			ActionMachine.PHASE_NONE, 0, entry.duration_s * _tick_rate + 30.0)
+	assert_near(wrapped.time_s, entry.windup.from_s + 30.0 / _tick_rate, 0.0001, "y vuelve al principio")
+	# El muro de escudos mantiene la misma guardia en bucle.
+	var wall: CombatActionAnim = _clips.find(&"shield_wall")
+	assert_true(wall.loop and not wall.hold_end, "el muro de escudos tampoco congela el clip")
+	assert_eq(wall.windup.animation, &"ual2/Idle_Shield_Loop")
+
+
+## ART-49: la esquiva reproduce el Roll recortado a unas 2x como máximo (el único clip que hay; el tope del
+## listón de calidad para la esquiva), no a 3x.
+func test_the_dodge_clip_plays_at_most_twice_as_fast() -> void:
+	for clips: CombatClipSet in [_clips, load(BOW_CLIPS_PATH) as CombatClipSet]:
+		var plan: CombatClipPlanner.Plan = CombatClipPlanner.plan(clips, _weapon, CombatState.Action.DODGE,
+				ActionMachine.PHASE_NONE, 0, 0.0)
+		assert_true(plan.speed <= 2.0001 and plan.speed >= 0.7, "esquiva a %.2fx" % plan.speed)
 
 
 # --- Contacto dentro de la ventana activa -----------------------------------------------------
@@ -733,7 +768,10 @@ func test_each_weapon_has_its_clip_set_with_the_phase_4_entries() -> void:
 	assert_eq(CombatAnimationLayer.clips_for(bow_id, _clips), bow_clips, "el de su arma")
 	assert_eq(CombatAnimationLayer.clips_for(sword_id, null).resource_path, CLIPS_PATH)
 	var npc: int = CombatCatalog.weapon_id(&"npc_guard")
-	assert_eq(CombatAnimationLayer.clips_for(npc, _clips), _clips, "un arma sin juego usa el de por defecto")
+	var npc_clips: CombatClipSet = CombatAnimationLayer.clips_for(npc, _clips)
+	assert_true(npc_clips != _clips and npc_clips.resource_path.ends_with("npc_guard_clips.tres"),
+			"un PNJ usa su propio juego (ART-47)")
+	assert_eq(CombatAnimationLayer.clips_for(0, _clips), _clips, "un arma desconocida usa el de por defecto")
 	var common: Array[StringName] = [&"drink", &"swap", &"downed", &"downed_crawl", &"revive", &"execute",
 			&"get_up", &"dodge", &"stagger", &"stun", &"dead"]
 	for key: StringName in common + ([&"shield_bash", &"shield_rush", &"shield_wall", &"block", &"charge"]

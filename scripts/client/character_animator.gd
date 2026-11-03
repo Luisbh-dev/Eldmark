@@ -27,6 +27,13 @@ extends Node
 ## Pivot no usa interpolación física: su giro se aplica cada fotograma sobre la transformación
 ## interpolada del personaje.
 ## [br][br]
+## [b]Esquiva[/b] (ART-49, solo visual): durante [constant CombatState.Action.DODGE] el modelo mira hacia donde
+## se viaja desde el primer fotograma (el rumbo de la esquiva del estado del personaje o, en un remoto, su
+## velocidad) y la columna no compensa el giro: la voltereta va de cabeza hacia donde se mueve el cuerpo en
+## las cuatro direcciones, también hacia atrás. Al acabar, el modelo vuelve al giro de siempre con el suavizado
+## de [member turn_sharpness] y la columna recupera su compensación en [member dodge_twist_return_time]. La
+## simulación no se entera: solo se mueve el [code]Pivot[/code].
+## [br][br]
 ## [b]Aire.[/b] Saltar reproduce Jump_Start desde el despegue (sin la anticipación agachada, porque
 ## la simulación ya ha despegado) y pasa a Jump_Loop al empezar a caer; caer por un borde va
 ## directo a Jump_Loop. Al aterrizar se mezcla Jump_Land con una intensidad que depende de la
@@ -43,7 +50,9 @@ extends Node
 ## [b]Arma activa[/b] (fase 4): la del estado del personaje o, en un remoto, la que da su vista (pareja de
 ## armas y bit de ranura del registro, [method set_remote_source]). Elige el juego de clips del arma y,
 ## cuando cambia, avisa por [signal weapon_shown] (el [HumanoidVisual] cambia los accesorios de las manos,
-## [WeaponProps]).
+## [WeaponProps]). Si el cambio llega durante la acción [constant CombatState.Action.SWAP] (ART-06), los
+## accesorios cambian a mitad del gesto ([member swap_show_fraction]) y no en el primer fotograma; en cualquier
+## otro caso (aparecer, un cambio de equipo) cambian al instante.
 
 ## Ruta de los parámetros del árbol (ver humanoid_visual.tscn).
 const PARAM_LOCOMOTION_BLEND: StringName = &"parameters/locomotion/blend_position"
@@ -106,6 +115,16 @@ const CRAWL_MIN_SPEED: float = 0.2
 ## Giro máximo (grados) con el que la columna compensa el de las caderas.
 @export var max_spine_twist: float = 75.0
 
+@export_group("Esquiva")
+## Tiempo (s) que tarda la columna en recuperar su compensación hacia el punto de mira al acabar la esquiva.
+@export var dodge_twist_return_time: float = 0.15
+## Velocidad horizontal (m/s) a partir de la cual un remoto en esquiva da el rumbo de su movimiento.
+@export var dodge_min_speed: float = 0.5
+
+@export_group("Cambio de arma")
+## Fracción de la acción de cambio de arma (0 a 1) a la que cambian los accesorios de las manos.
+@export_range(0.0, 1.0) var swap_show_fraction: float = 0.5
+
 @export_group("Aire")
 ## Segundo de Jump_Start en el que los pies dejan el suelo (antes hay una anticipación agachada).
 @export var jump_takeoff_time: float = 0.07
@@ -160,6 +179,11 @@ var _land_strength: float = 0.0
 var _locomotion_scale: float = 0.0
 var _move_weight: float = 0.0
 var _backpedal: bool = false
+## Esquiva en curso (el modelo mira hacia su rumbo) y cuánto de la compensación de la columna se aplica (0 a 1).
+var _dodging: bool = false
+var _twist_weight: float = 1.0
+## Segundos que lleva la acción de cambio de arma en curso.
+var _swap_elapsed: float = 0.0
 var _combat_layer: CombatAnimationLayer = null
 var _combat_modifier: CombatPoseModifier = null
 ## Origen del byte action de un remoto: devuelve el byte del registro dibujado. Si no es válido, la
@@ -211,6 +235,8 @@ func get_character() -> PlayerCharacter:
 func reset_facing() -> void:
 	_yaw_initialized = false
 	_backpedal = false
+	_dodging = false
+	_twist_weight = 1.0
 	if pivot != null:
 		pivot.rotation = Vector3.ZERO
 	if _spine != null:
@@ -269,6 +295,7 @@ func get_debug_state() -> Dictionary:
 		"land": _land_weight,
 		"facing_offset_deg": rad_to_deg(pivot.rotation.y) if pivot != null else 0.0,
 		"backpedal": _backpedal,
+		"dodging": _dodging,
 		"spine_twist_deg": rad_to_deg(_spine.twist) if _spine != null else 0.0,
 		"combat": _combat_debug(),
 	}
@@ -300,7 +327,15 @@ func _update_combat(delta: float) -> void:
 	var weapon_id: int = _character.combat.weapon_id
 	if _remote_source.is_valid() and _remote_weapon_source.is_valid():
 		weapon_id = int(_remote_weapon_source.call())
-	if weapon_id != _shown_weapon:
+	if _current_action() == CombatState.Action.SWAP:
+		_swap_elapsed += delta
+	else:
+		_swap_elapsed = 0.0
+	# En pleno cambio de arma los accesorios esperan a la mitad del gesto; si la acción acaba antes (o no hay
+	# cambio de arma, sino un equipo nuevo), cambian ya.
+	var swapping_in_place: bool = _shown_weapon >= 0 and _swap_elapsed > 0.0 \
+			and _swap_elapsed < _swap_show_seconds()
+	if weapon_id != _shown_weapon and not swapping_in_place:
 		_shown_weapon = weapon_id
 		weapon_shown.emit(weapon_id)
 	if _combat_layer == null:
@@ -311,6 +346,19 @@ func _update_combat(delta: float) -> void:
 	else:
 		_combat_layer.update_local(_character.combat, _character.last_input_tick,
 				Engine.get_physics_interpolation_fraction(), delta, moving)
+
+
+# Acción de combate de este fotograma: la del byte del registro dibujado de un remoto o la del estado del
+# personaje.
+func _current_action() -> int:
+	if _remote_source.is_valid():
+		return int(_remote_source.call()) & 15
+	return _character.combat.action
+
+
+# Segundos desde el inicio del cambio de arma a los que cambian los accesorios.
+func _swap_show_seconds() -> float:
+	return float(CombatCatalog.tables().swap_ticks) / float(Engine.physics_ticks_per_second) * swap_show_fraction
 
 
 func _combat_debug() -> Dictionary:
@@ -406,6 +454,22 @@ func _update_facing(delta: float, horizontal: Vector3, real_speed: float) -> voi
 	if not _yaw_initialized:
 		_visual_yaw = base_yaw
 		_yaw_initialized = true
+	# Esquiva: el modelo mira hacia donde se viaja desde el primer fotograma, sin giro suave ni compensación de
+	# la columna (ART-49).
+	if _current_action() == CombatState.Action.DODGE:
+		var dodge_yaw: float = _dodge_heading(horizontal, real_speed)
+		if not _dodging:
+			_dodging = true
+			_backpedal = false
+			_twist_weight = 0.0
+		if not is_nan(dodge_yaw):
+			_visual_yaw = wrapf(dodge_yaw, -PI, PI)
+		pivot.rotation = Vector3(0.0, angle_difference(base_yaw, _visual_yaw), 0.0)
+		if _spine != null:
+			_spine.twist = 0.0
+		return
+	_dodging = false
+	_twist_weight = move_toward(_twist_weight, 1.0, delta / maxf(dodge_twist_return_time, 0.001))
 	var target_yaw: float = base_yaw
 	if real_speed > turn_min_speed:
 		var move_yaw: float = atan2(-horizontal.x, -horizontal.z)
@@ -426,7 +490,17 @@ func _update_facing(delta: float, horizontal: Vector3, real_speed: float) -> voi
 	# La columna devuelve el pecho y la cabeza hacia el punto de mira.
 	if _spine != null:
 		var limit: float = deg_to_rad(max_spine_twist)
-		_spine.twist = -clampf(offset, -limit, limit)
+		_spine.twist = -clampf(offset, -limit, limit) * _twist_weight
+
+
+# Rumbo (yaw) de la esquiva en curso: el del estado del personaje si es el local (la simulación lo fija al
+# empezar) o el de su velocidad si es un remoto; NAN si aún no se sabe.
+func _dodge_heading(horizontal: Vector3, real_speed: float) -> float:
+	if not _remote_source.is_valid():
+		return CombatState.dequantize_yaw(_character.combat.action_dir)
+	if real_speed > dodge_min_speed:
+		return atan2(-horizontal.x, -horizontal.z)
+	return NAN
 
 
 ## Yaw (convención de [member Node3D.rotation].y: 0 mira hacia -Z) de una base.
