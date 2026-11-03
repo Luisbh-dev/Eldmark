@@ -1,0 +1,21 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://scenes/vfx/shaders/vfx_particle_mix.gdshader" id="1_iwmi8"]
+[ext_resource type="Texture2D" path="res://scenes/vfx/textures/droplets.png" id="2_36vjk"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_iwmi8")
+shader_parameter/tex = ExtResource("2_36vjk")
+shader_parameter/h_frames = 2
+shader_parameter/v_frames = 2
+shader_parameter/brightness = 0.9
+shader_parameter/shade_contrast = null
+shader_parameter/soft_distance = null
+shader_parameter/aligned_by_engine = true
+shader_parameter/fade_in = 0.02
+shader_parameter/fade_out_start = 0.7
+shader_parameter/hot_color = null
+shader_parameter/hot_decay = null
+shader_parameter/accent = null
+shader_parameter/accent_amount = null

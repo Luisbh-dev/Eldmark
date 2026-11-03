@@ -1,0 +1,18 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://scenes/vfx/shaders/vfx_particle_add.gdshader" id="1_gf60d"]
+[ext_resource type="Texture2D" path="res://scenes/vfx/textures/spark_streak.png" id="2_b3qv0"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_gf60d")
+shader_parameter/tex = ExtResource("2_b3qv0")
+shader_parameter/h_frames = null
+shader_parameter/v_frames = null
+shader_parameter/intensity = 4.0
+shader_parameter/cover = 0.1
+shader_parameter/soft_distance = null
+shader_parameter/aligned_by_engine = true
+shader_parameter/fade_in = 0.02
+shader_parameter/fade_out_start = 0.5
+shader_parameter/grow = null

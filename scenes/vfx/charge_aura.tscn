@@ -1,0 +1,244 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/client/vfx/charge_aura.gd" id="1_w16xg"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/shape_rune.tres" id="2_a5daf"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/blade_glow.tres" id="3_tuea1"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/heat_haze.tres" id="4_o60kd"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/mote_streak.tres" id="5_geasm"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/ember_glow.tres" id="6_aae4f"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/shape_flash_aura.tres" id="7_cx5fq"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/shape_flash_release.tres" id="8_rjdbb"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/spark_streak_aura.tres" id="9_7jmvh"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/shape_wave_aura.tres" id="10_l8mxg"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/shape_wave_release.tres" id="11_ib27d"]
+
+[sub_resource type="QuadMesh" id="QuadMesh_wg1aw"]
+size = Vector2(2.4, 2.4)
+
+[sub_resource type="QuadMesh" id="QuadMesh_hk5yv"]
+size = Vector2(1, 0.6)
+
+[sub_resource type="QuadMesh" id="QuadMesh_7dmqo"]
+size = Vector2(1.5, 1.5)
+
+[sub_resource type="Gradient" id="Gradient_cpyss"]
+offsets = PackedFloat32Array(0, 0.25, 0.9, 1)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 0.8, 1, 1, 1, 1, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_f2wv5"]
+gradient = SubResource("Gradient_cpyss")
+width = 128
+
+[sub_resource type="Curve" id="Curve_kvsr6"]
+_data = [Vector2(0, 0.5), 0.0, 0.0, 0, 0, Vector2(0.6, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.5), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="CurveTexture" id="CurveTexture_8xtm7"]
+width = 128
+curve = SubResource("Curve_kvsr6")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_8ni31"]
+emission_shape = 2
+emission_sphere_radius = 1.05
+direction = Vector3(0, 0, 0)
+spread = 0.0
+radial_velocity_min = -2.9
+radial_velocity_max = -2.0
+scale_min = 0.5
+scale_max = 1.1
+scale_curve = SubResource("CurveTexture_8xtm7")
+color_ramp = SubResource("GradientTexture1D_f2wv5")
+
+[sub_resource type="QuadMesh" id="QuadMesh_4h8ao"]
+material = ExtResource("5_geasm")
+size = Vector2(0.035, 0.36)
+
+[sub_resource type="Gradient" id="Gradient_r2dlu"]
+offsets = PackedFloat32Array(0, 0.4, 1)
+colors = PackedColorArray(1, 0.95, 0.8, 1, 1, 0.62, 0.25, 0.9, 0.9, 0.25, 0.08, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_bt2dk"]
+gradient = SubResource("Gradient_r2dlu")
+width = 128
+
+[sub_resource type="Curve" id="Curve_r2muu"]
+_data = [Vector2(0, 0.7), 0.0, 0.0, 0, 0, Vector2(0.5, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.2), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="CurveTexture" id="CurveTexture_xdox1"]
+width = 128
+curve = SubResource("Curve_r2muu")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_irb3v"]
+emission_shape = 3
+emission_box_extents = Vector3(0.5, 0.03, 0.03)
+direction = Vector3(0, 1, 0)
+spread = 28.0
+initial_velocity_min = 0.3
+initial_velocity_max = 0.9
+gravity = Vector3(0, 0.5, 0)
+scale_min = 0.5
+scale_max = 1.1
+scale_curve = SubResource("CurveTexture_xdox1")
+color_ramp = SubResource("GradientTexture1D_bt2dk")
+
+[sub_resource type="QuadMesh" id="QuadMesh_yjod4"]
+material = ExtResource("6_aae4f")
+size = Vector2(0.045, 0.045)
+
+[sub_resource type="QuadMesh" id="QuadMesh_tddf3"]
+size = Vector2(0.95, 0.95)
+
+[sub_resource type="QuadMesh" id="QuadMesh_4mlwo"]
+size = Vector2(1.7, 1.7)
+
+[sub_resource type="Gradient" id="Gradient_b6frw"]
+offsets = PackedFloat32Array(0, 0.4, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0.9, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_ar5fy"]
+gradient = SubResource("Gradient_b6frw")
+width = 128
+
+[sub_resource type="Curve" id="Curve_8wqyr"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.2), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_fd5hi"]
+width = 128
+curve = SubResource("Curve_8wqyr")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_uen2c"]
+emission_shape = 3
+emission_box_extents = Vector3(0.5, 0.03, 0.03)
+direction = Vector3(0, 0, 1)
+spread = 180.0
+initial_velocity_min = 2.5
+initial_velocity_max = 6.0
+damping_min = 8.0
+damping_max = 12.0
+scale_min = 0.6
+scale_max = 1.2
+scale_curve = SubResource("CurveTexture_fd5hi")
+color_ramp = SubResource("GradientTexture1D_ar5fy")
+
+[sub_resource type="QuadMesh" id="QuadMesh_jhcgy"]
+material = ExtResource("9_7jmvh")
+size = Vector2(0.03, 0.26)
+
+[sub_resource type="QuadMesh" id="QuadMesh_ko6t5"]
+size = Vector2(2.6, 2.6)
+
+[sub_resource type="QuadMesh" id="QuadMesh_x1pdx"]
+size = Vector2(3.8, 3.8)
+
+[node name="ChargeAura" type="Node3D" unique_id=457477408]
+script = ExtResource("1_w16xg")
+duration = 0.5
+looping = true
+
+[node name="Rune" type="MeshInstance3D" parent="." unique_id=96131745]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0.04, 0)
+material_override = ExtResource("2_a5daf")
+cast_shadow = 0
+mesh = SubResource("QuadMesh_wg1aw")
+metadata/vfx_charge = &"progress"
+
+[node name="Blade" type="Node3D" parent="." unique_id=875688924]
+
+[node name="BladeGlow" type="MeshInstance3D" parent="Blade" unique_id=1075749308]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.62, 0, 0)
+material_override = ExtResource("3_tuea1")
+cast_shadow = 0
+mesh = SubResource("QuadMesh_hk5yv")
+metadata/vfx_charge = &"charge"
+
+[node name="Heat" type="MeshInstance3D" parent="Blade" unique_id=1925745929]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.896, 0, 0)
+material_override = ExtResource("4_o60kd")
+cast_shadow = 0
+mesh = SubResource("QuadMesh_7dmqo")
+metadata/vfx_charge = &"charge"
+metadata/vfx_no_tint = true
+
+[node name="Motes" type="GPUParticles3D" parent="Blade" unique_id=1467938342]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.62, 0, 0)
+cast_shadow = 0
+emitting = false
+amount = 40
+lifetime = 0.5
+randomness = 1.0
+fixed_fps = 60
+transform_align = 3
+process_material = SubResource("ParticleProcessMaterial_8ni31")
+draw_pass_1 = SubResource("QuadMesh_4h8ao")
+metadata/vfx_charge_amount = true
+
+[node name="Embers" type="GPUParticles3D" parent="Blade" unique_id=1093026910]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.62, 0, 0)
+cast_shadow = 0
+emitting = false
+amount = 18
+lifetime = 0.9
+randomness = 1.0
+fixed_fps = 60
+process_material = SubResource("ParticleProcessMaterial_irb3v")
+draw_pass_1 = SubResource("QuadMesh_yjod4")
+metadata/vfx_tint = Color(1, 0.7, 0.4, 1)
+metadata/vfx_tint_weight = 0.5
+metadata/vfx_charge_amount = true
+
+[node name="PulseFlash" type="MeshInstance3D" parent="Blade" unique_id=450108399]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.952, 0, 0)
+material_override = ExtResource("7_cx5fq")
+cast_shadow = 0
+mesh = SubResource("QuadMesh_tddf3")
+metadata/vfx_time = Vector2(0, 0.22)
+metadata/vfx_tint = Color(1, 1, 1, 1)
+metadata/vfx_tint_weight = 0.85
+metadata/vfx_cue = &"pulse"
+
+[node name="ReleaseFlash" type="MeshInstance3D" parent="Blade" unique_id=907362874]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.784, 0, 0)
+material_override = ExtResource("8_rjdbb")
+cast_shadow = 0
+mesh = SubResource("QuadMesh_4mlwo")
+metadata/vfx_time = Vector2(0, 0.26)
+metadata/vfx_tint = Color(1, 1, 1, 1)
+metadata/vfx_tint_weight = 0.7
+metadata/vfx_cue = &"release"
+
+[node name="ReleaseSparks" type="GPUParticles3D" parent="Blade" unique_id=1251077430]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.62, 0, 0)
+cast_shadow = 0
+emitting = false
+amount = 24
+lifetime = 0.45
+one_shot = true
+explosiveness = 1.0
+randomness = 0.5
+fixed_fps = 60
+transform_align = 3
+process_material = SubResource("ParticleProcessMaterial_uen2c")
+draw_pass_1 = SubResource("QuadMesh_jhcgy")
+metadata/vfx_cue = &"release"
+
+[node name="PulseWave" type="MeshInstance3D" parent="." unique_id=811508438]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0.06, 0)
+material_override = ExtResource("10_l8mxg")
+cast_shadow = 0
+mesh = SubResource("QuadMesh_ko6t5")
+metadata/vfx_time = Vector2(0, 0.45)
+metadata/vfx_tint = Color(1, 1, 1, 1)
+metadata/vfx_tint_weight = 0.9
+metadata/vfx_cue = &"pulse"
+
+[node name="ReleaseWave" type="MeshInstance3D" parent="." unique_id=414481353]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0.06, 0)
+material_override = ExtResource("11_ib27d")
+cast_shadow = 0
+mesh = SubResource("QuadMesh_x1pdx")
+metadata/vfx_time = Vector2(0, 0.5)
+metadata/vfx_tint = Color(1, 1, 1, 1)
+metadata/vfx_tint_weight = 0.8
+metadata/vfx_cue = &"release"

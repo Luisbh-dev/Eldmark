@@ -1,0 +1,30 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://scenes/vfx/shaders/vfx_shape_add.gdshader" id="1_kq21g"]
+[ext_resource type="Texture2D" path="res://scenes/vfx/textures/noise.png" id="2_gno2q"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_kq21g")
+shader_parameter/noise_tex = ExtResource("2_gno2q")
+shader_parameter/mode = 1
+shader_parameter/billboard = false
+shader_parameter/intensity = 2.6
+shader_parameter/cover = 0.4
+shader_parameter/start_scale = null
+shader_parameter/end_scale = null
+shader_parameter/push = null
+shader_parameter/spin = null
+shader_parameter/fade_power = 1.3
+shader_parameter/attack = 0.03
+shader_parameter/ring_start_radius = 0.2
+shader_parameter/ring_width_start = 0.1
+shader_parameter/ring_width_end = 0.03
+shader_parameter/ring_line = 0.022
+shader_parameter/ring_tail = 0.5
+shader_parameter/ring_fill = null
+shader_parameter/ring_arc = null
+shader_parameter/ring_squash = null
+shader_parameter/runes = null
+shader_parameter/lens_thick_start = null
+shader_parameter/lens_thick_end = null

@@ -1,0 +1,9 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://scenes/vfx/materials/weapon_trail.tres" id="1_rxcw0"]
+[ext_resource type="Script" path="res://scripts/client/vfx/weapon_trail.gd" id="2_yv0g2"]
+
+[node name="WeaponTrail" type="MeshInstance3D" unique_id=709962785]
+material_override = ExtResource("1_rxcw0")
+cast_shadow = 0
+script = ExtResource("2_yv0g2")

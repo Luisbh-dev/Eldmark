@@ -1,0 +1,85 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/client/vfx/vfx_effect.gd" id="1_vj4a2"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/shape_jet.tres" id="2_h7gi5"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/droplet.tres" id="3_81otl"]
+
+[sub_resource type="QuadMesh" id="QuadMesh_60l2u"]
+size = Vector2(0.46, 0.46)
+
+[sub_resource type="QuadMesh" id="QuadMesh_ffxcx"]
+size = Vector2(0.3, 0.3)
+
+[sub_resource type="Gradient" id="Gradient_c4kia"]
+offsets = PackedFloat32Array(0, 0.7, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_yyx82"]
+gradient = SubResource("Gradient_c4kia")
+width = 128
+
+[sub_resource type="Curve" id="Curve_l318j"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.6, 0.85), 0.0, 0.0, 0, 0, Vector2(1, 0.35), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="CurveTexture" id="CurveTexture_drsol"]
+width = 128
+curve = SubResource("Curve_l318j")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_bdr70"]
+lifetime_randomness = 0.25
+direction = Vector3(1, 0, 0.35)
+spread = 32.0
+initial_velocity_min = 0.8
+initial_velocity_max = 1.6
+gravity = Vector3(0, -9, 0)
+damping_min = 2.0
+damping_max = 4.0
+scale_min = 0.6
+scale_max = 1.2
+scale_curve = SubResource("CurveTexture_drsol")
+color_ramp = SubResource("GradientTexture1D_yyx82")
+anim_offset_max = 1.0
+
+[sub_resource type="QuadMesh" id="QuadMesh_62n3j"]
+material = ExtResource("3_81otl")
+size = Vector2(0.04, 0.04)
+
+[node name="HitFlesh" type="Node3D" unique_id=1357342273]
+script = ExtResource("1_vj4a2")
+duration = 0.4
+tint = Color(0.4, 0.12, 0.12, 1)
+
+[node name="Jet" type="MeshInstance3D" parent="." unique_id=1647791729]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.03)
+material_override = ExtResource("2_h7gi5")
+cast_shadow = 0
+mesh = SubResource("QuadMesh_60l2u")
+metadata/vfx_time = Vector2(0, 0.2)
+metadata/vfx_tint = Color(1, 1, 1, 1)
+metadata/vfx_tint_weight = 1.0
+metadata/vfx_variants = 4
+
+[node name="JetSide" type="MeshInstance3D" parent="." unique_id=152843277]
+transform = Transform3D(0.8480481, 0.52991927, 0, -0.52991927, 0.8480481, 0, 0, 0, 1, 0, 0, 0.035)
+material_override = ExtResource("2_h7gi5")
+cast_shadow = 0
+mesh = SubResource("QuadMesh_ffxcx")
+metadata/vfx_time = Vector2(0.04, 0.18)
+metadata/vfx_tint = Color(1, 0.92, 0.9, 1)
+metadata/vfx_tint_weight = 1.0
+metadata/vfx_variants = 4
+metadata/vfx_variant_offset = 2
+
+[node name="Drops" type="GPUParticles3D" parent="." unique_id=557911352]
+cast_shadow = 0
+emitting = false
+amount = 9
+lifetime = 0.3
+one_shot = true
+explosiveness = 1.0
+randomness = 0.5
+fixed_fps = 60
+transform_align = 3
+process_material = SubResource("ParticleProcessMaterial_bdr70")
+draw_pass_1 = SubResource("QuadMesh_62n3j")

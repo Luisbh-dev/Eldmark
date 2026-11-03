@@ -1,0 +1,99 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/client/vfx/vfx_effect.gd" id="1_kw82r"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/puff_cloth.tres" id="2_ki6ea"]
+[ext_resource type="Material" path="res://scenes/vfx/materials/fibers.tres" id="3_oedu1"]
+
+[sub_resource type="Gradient" id="Gradient_aix2o"]
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 1)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_2sg4k"]
+gradient = SubResource("Gradient_aix2o")
+width = 128
+
+[sub_resource type="Curve" id="Curve_160hm"]
+_limits = [0.0, 2.0, 0.0, 1.0]
+_data = [Vector2(0, 0.45), 0.0, 0.0, 0, 0, Vector2(1, 1.4), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_brupr"]
+width = 128
+curve = SubResource("Curve_160hm")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_u7khm"]
+angle_max = 360.0
+direction = Vector3(0, 0.2, 1)
+spread = 50.0
+initial_velocity_min = 0.4
+initial_velocity_max = 1.1
+angular_velocity_min = -50.0
+angular_velocity_max = 50.0
+damping_min = 1.6
+damping_max = 2.6
+scale_min = 0.6
+scale_curve = SubResource("CurveTexture_brupr")
+color_ramp = SubResource("GradientTexture1D_2sg4k")
+anim_offset_max = 1.0
+
+[sub_resource type="QuadMesh" id="QuadMesh_nvbw1"]
+material = ExtResource("2_ki6ea")
+size = Vector2(0.34, 0.34)
+
+[sub_resource type="Gradient" id="Gradient_pajjl"]
+offsets = PackedFloat32Array(0, 0.7, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_3bxiq"]
+gradient = SubResource("Gradient_pajjl")
+width = 128
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_cbdto"]
+lifetime_randomness = 0.3
+angle_max = 360.0
+direction = Vector3(0, 0.15, 1)
+spread = 62.0
+initial_velocity_min = 0.9
+initial_velocity_max = 2.3
+angular_velocity_min = -220.0
+angular_velocity_max = 220.0
+gravity = Vector3(0, -2, 0)
+damping_min = 1.6
+damping_max = 2.8
+scale_min = 0.6
+scale_max = 1.2
+color_ramp = SubResource("GradientTexture1D_3bxiq")
+anim_offset_max = 1.0
+
+[sub_resource type="QuadMesh" id="QuadMesh_df258"]
+material = ExtResource("3_oedu1")
+size = Vector2(0.14, 0.14)
+
+[node name="HitCloth" type="Node3D" unique_id=239871038]
+script = ExtResource("1_kw82r")
+duration = 0.65
+tint = Color(0.82, 0.77, 0.68, 1)
+
+[node name="Puff" type="GPUParticles3D" parent="." unique_id=1175248019]
+cast_shadow = 0
+emitting = false
+amount = 4
+lifetime = 0.55
+one_shot = true
+explosiveness = 1.0
+randomness = 0.3
+fixed_fps = 60
+draw_order = 3
+process_material = SubResource("ParticleProcessMaterial_u7khm")
+draw_pass_1 = SubResource("QuadMesh_nvbw1")
+
+[node name="Fibers" type="GPUParticles3D" parent="." unique_id=330279038]
+cast_shadow = 0
+emitting = false
+amount = 9
+lifetime = 0.6
+one_shot = true
+explosiveness = 1.0
+randomness = 0.5
+fixed_fps = 60
+process_material = SubResource("ParticleProcessMaterial_cbdto")
+draw_pass_1 = SubResource("QuadMesh_df258")
