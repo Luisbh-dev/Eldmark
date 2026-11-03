@@ -84,15 +84,15 @@ to_s = 0.2
 
 [sub_resource type="Resource" id="Seg_block_main"]
 script = ExtResource("3_seg")
-animation = &"ual2/Sword_Block"
+animation = &"ual2/Idle_Shield_Loop"
 from_s = 0.0
-to_s = 0.3
+to_s = 2.5
 
 [sub_resource type="Resource" id="Seg_dodge_main"]
 script = ExtResource("3_seg")
 animation = &"ual1/Roll"
-from_s = 0.0
-to_s = 1.35
+from_s = 0.04
+to_s = 0.94
 
 [sub_resource type="Resource" id="Seg_stagger_main"]
 script = ExtResource("3_seg")
@@ -181,9 +181,10 @@ key = &"block"
 upper_body = true
 windup = SubResource("Seg_block_main")
 contact_s = -1.0
-duration_s = 0.12
-hold_end = true
-blend_in_s = 0.06
+duration_s = 2.5
+hold_end = false
+loop = true
+blend_in_s = 0.1
 blend_out_s = 0.15
 
 [sub_resource type="Resource" id="Anim_dodge"]
@@ -270,7 +271,7 @@ to_s = 1.1
 script = ExtResource("3_seg")
 animation = &"ual2/Idle_Shield_Loop"
 from_s = 0.0
-to_s = 0.4
+to_s = 2.5
 
 [sub_resource type="Resource" id="Seg_drink_windup"]
 script = ExtResource("3_seg")
@@ -358,8 +359,9 @@ key = &"shield_wall"
 upper_body = true
 windup = SubResource("Seg_shield_wall_main")
 contact_s = -1.0
-duration_s = 0.2
-hold_end = true
+duration_s = 2.5
+hold_end = false
+loop = true
 blend_in_s = 0.08
 blend_out_s = 0.15
 
