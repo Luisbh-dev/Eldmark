@@ -1,0 +1,264 @@
+{
+  "asset": {
+    "generator": "Khronos glTF Blender I/O v4.0.44",
+    "version": "2.0"
+  },
+  "scene": 0.0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0.0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0.0,
+      "name": "Pine_5"
+    }
+  ],
+  "materials": [
+    {
+      "alphaCutoff": 0.200000002980232,
+      "alphaMode": "MASK",
+      "doubleSided": true,
+      "name": "Bark_NormalTree",
+      "normalTexture": {
+        "index": 0.0
+      },
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1.0
+        },
+        "metallicFactor": 0.0
+      }
+    },
+    {
+      "alphaCutoff": 0.200000002980232,
+      "alphaMode": "MASK",
+      "doubleSided": true,
+      "name": "Leaves_Pine",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 2.0
+        },
+        "metallicFactor": 0.0
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "tree.032",
+      "primitives": [
+        {
+          "attributes": {
+            "COLOR_0": 0.0,
+            "POSITION": 1.0,
+            "NORMAL": 2.0,
+            "TEXCOORD_0": 3.0
+          },
+          "indices": 4.0,
+          "material": 0.0
+        },
+        {
+          "attributes": {
+            "COLOR_0": 5.0,
+            "POSITION": 6.0,
+            "NORMAL": 7.0,
+            "TEXCOORD_0": 8.0
+          },
+          "indices": 9.0,
+          "material": 1.0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0.0,
+      "source": 0.0
+    },
+    {
+      "sampler": 0.0,
+      "source": 1.0
+    },
+    {
+      "sampler": 0.0,
+      "source": 2.0
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/png",
+      "name": "Bark_NormalTree_Normal",
+      "uri": "bark_normal_tree_normal.png"
+    },
+    {
+      "mimeType": "image/png",
+      "name": "Bark_NormalTree",
+      "uri": "bark_normal_tree.png"
+    },
+    {
+      "mimeType": "image/png",
+      "name": "Leaf_Pine_C",
+      "uri": "leaf_pine_c.png"
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0.0,
+      "componentType": 5126.0,
+      "count": 542.0,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 1.0,
+      "componentType": 5126.0,
+      "count": 542.0,
+      "max": [
+        0.647255778312683,
+        8.33225727081299,
+        0.473914206027985
+      ],
+      "min": [
+        -0.473914384841919,
+        -0.235088616609573,
+        -1.5000479221344
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2.0,
+      "componentType": 5126.0,
+      "count": 542.0,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 3.0,
+      "componentType": 5126.0,
+      "count": 542.0,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 4.0,
+      "componentType": 5123.0,
+      "count": 1464.0,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 5.0,
+      "componentType": 5126.0,
+      "count": 1773.0,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 6.0,
+      "componentType": 5126.0,
+      "count": 1773.0,
+      "max": [
+        3.43243432044983,
+        8.48871898651123,
+        2.44359707832336
+      ],
+      "min": [
+        -2.98770642280579,
+        1.45358622074127,
+        -3.77840423583984
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 7.0,
+      "componentType": 5126.0,
+      "count": 1773.0,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 8.0,
+      "componentType": 5126.0,
+      "count": 1773.0,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 9.0,
+      "componentType": 5123.0,
+      "count": 3474.0,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0.0,
+      "byteLength": 8672.0,
+      "byteOffset": 0.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 6504.0,
+      "byteOffset": 8672.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 6504.0,
+      "byteOffset": 15176.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 4336.0,
+      "byteOffset": 21680.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 2928.0,
+      "byteOffset": 26016.0,
+      "target": 34963.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 28368.0,
+      "byteOffset": 28944.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 21276.0,
+      "byteOffset": 57312.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 21276.0,
+      "byteOffset": 78588.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 14184.0,
+      "byteOffset": 99864.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 6948.0,
+      "byteOffset": 114048.0,
+      "target": 34963.0
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729.0,
+      "minFilter": 9987.0
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 120996.0,
+      "uri": "pine_5.bin"
+    }
+  ]
+}

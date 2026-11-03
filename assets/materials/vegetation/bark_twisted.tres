@@ -1,0 +1,40 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://assets/materials/shaders/realm_surface_closed.gdshader" id="1_v5py1"]
+[ext_resource type="Texture2D" path="res://assets/models/environment/nature/bark_twisted_tree.png" id="2_h3kop"]
+[ext_resource type="Texture2D" path="res://assets/models/environment/nature/bark_twisted_tree_normal.png" id="3_hoxyy"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_v5py1")
+shader_parameter/albedo_texture = ExtResource("2_h3kop")
+shader_parameter/normal_texture = ExtResource("3_hoxyy")
+shader_parameter/use_normal_map = true
+shader_parameter/normal_strength = null
+shader_parameter/uv_scale = null
+shader_parameter/use_triplanar = null
+shader_parameter/triplanar_scale = null
+shader_parameter/triplanar_sharpness = null
+shader_parameter/alpha_scissor = null
+shader_parameter/hue_shift = null
+shader_parameter/saturation = 0.8
+shader_parameter/brightness = null
+shader_parameter/contrast = null
+shader_parameter/target_color = Color(0.34117648, 0.3137255, 0.28627452, 1)
+shader_parameter/colorize = 0.7
+shader_parameter/reference_luminance = 0.07766536659231159
+shader_parameter/detail_strength = 0.9
+shader_parameter/detail_min = null
+shader_parameter/detail_max = null
+shader_parameter/albedo_gain = null
+shader_parameter/layer_color = null
+shader_parameter/layer_amount = null
+shader_parameter/layer_threshold = null
+shader_parameter/layer_softness = null
+shader_parameter/layer_roughness = null
+shader_parameter/faction_mix = null
+shader_parameter/roughness = 0.95
+shader_parameter/metallic = null
+shader_parameter/specular = 0.15
+shader_parameter/emission_color = null
+shader_parameter/emission_energy = null
