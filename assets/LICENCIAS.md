@@ -191,9 +191,11 @@ declara una licencia propia:
   partir de `UIPalette`).
 - Espada de armas `assets/models/weapons/` (`sword_base.glb` y las variantes por reino
   `sword_vardheim.glb`, `sword_solmarch.glb` y `sword_askarra.glb`): modelada desde cero con Blender
-  5.2 sin interfaz por `tools/blender/build_sword.py`, con las texturas (acero, cuero, metal, todo
+  5.2 sin interfaz por `tools/blender/build_sword.py`, con las texturas (la hoja de cada reino con su
+  acanaladura de runas, oro o grieta emisiva, el cuero y un atlas de metal con el canto pulido, todo
   ruido y degradados) generadas por código en `tools/blender/sword_textures.py`. Ninguna malla ni
   textura viene de un pack: las espadas de RPG Weapons Free solo se miraron para comparar calidad.
+  La estela del golpe (`scripts/client/sword_trail.gd`) es una malla de cinta propia, sin texturas.
   Para regenerarlas: `blender --background --factory-startup --python tools/blender/build_sword.py`
   y `godot --headless --path . --import`. Los GLB llevan las texturas dentro (el `.import` las
   conserva embebidas, `gltf/embedded_image_handling=3`).

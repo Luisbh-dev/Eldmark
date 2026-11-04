@@ -23,6 +23,10 @@ const SHIELD_ATTACHMENT: StringName = &"ShieldAttachment"
 const SWORD_MESH: StringName = &"SwordPlaceholder"
 ## Nodo que cuelga de la mano con el modelo de la espada (la caja de reserva usa [constant SWORD_MESH]).
 const SWORD_MODEL_NODE: StringName = &"Sword"
+## Nodo del modelo dentro de [constant SWORD_MODEL_NODE] (se cambia con [method set_sword_variant]) y de la
+## estela del golpe ([SwordTrail]), que cuelga del mismo nodo.
+const SWORD_MODEL_INSTANCE: StringName = &"SwordModel"
+const SWORD_TRAIL_NODE: StringName = &"SwordTrail"
 const SHIELD_MESH: StringName = &"ShieldPlaceholder"
 ## Huesos de las manos.
 const SWORD_BONE: StringName = &"RightHand"
@@ -38,6 +42,10 @@ const SWORD_POMMEL_BACK: float = 0.12
 ## el centro de la empuñadura a la palma, un poco por delante de la muñeca (hacia los dedos, +Y).
 const SWORD_GRIP_ROTATION_DEG: Vector3 = Vector3(0.0, 0.0, -90.0)
 const SWORD_GRIP_OFFSET: Vector3 = Vector3(0.0, 0.07, 0.0)
+## Giro del modelo sobre su propio eje (el de la hoja) dentro del agarre, en grados: con la hoja exactamente
+## de canto desde detrás (reposo, cámara del juego) se ve como un hilo; unos grados enseñan algo de cara
+## plana. No toca el alcance del golpe, que sale de los datos de combate y no de la malla.
+const SWORD_ROLL_DEG: float = 18.0
 ## Guarda de la espada (caja cruzada) y su posición a lo largo de la hoja.
 const GUARD_SIZE: Vector3 = Vector3(0.03, 0.025, 0.22)
 const GUARD_OFFSET: float = 0.1
@@ -107,6 +115,64 @@ static func show_weapon(skeleton: Skeleton3D, weapon_id: int) -> bool:
 	return bow
 
 
+## Cambia la espada de [param skeleton] por la variante [param variant] de [SwordModel] ([code]base[/code] o el
+## id de un reino: [code]vardheim[/code], [code]solmarch[/code], [code]askarra[/code]; cualquier otro, el
+## base) y tiñe su estela. No hace nada si ya es esa variante, si la espada no está instalada o si es la caja
+## de reserva. El agarre no cambia: es el mismo para las cuatro.
+static func set_sword_variant(skeleton: Skeleton3D, variant: StringName) -> void:
+	var root: Node3D = _sword_root(skeleton)
+	if root == null:
+		return
+	var key: StringName = variant if SwordModel.MODELS.has(variant) else SwordModel.BASE
+	var current: Node3D = root.get_node_or_null(NodePath(SWORD_MODEL_INSTANCE)) as Node3D
+	if current == null or StringName(current.get_meta(&"variant", &"")) == key:
+		return
+	var model: Node3D = SwordModel.instantiate(key)
+	if model == null:
+		return
+	model.name = SWORD_MODEL_INSTANCE
+	model.set_meta(&"variant", key)
+	model.rotation_degrees = Vector3(0.0, SWORD_ROLL_DEG, 0.0)
+	root.remove_child(current)
+	current.queue_free()
+	root.add_child(model)
+	var trail: SwordTrail = root.get_node_or_null(NodePath(SWORD_TRAIL_NODE)) as SwordTrail
+	if trail != null:
+		trail.bind(model)
+		trail.set_tint(SwordTrail.color_for(key))
+
+
+## Variante de la espada que se ve ahora en [param skeleton] ([constant SwordModel.BASE] si es la de
+## siempre; una cadena vacía si no hay modelo).
+static func get_sword_variant(skeleton: Skeleton3D) -> StringName:
+	var root: Node3D = _sword_root(skeleton)
+	if root == null:
+		return &""
+	var current: Node3D = root.get_node_or_null(NodePath(SWORD_MODEL_INSTANCE)) as Node3D
+	return StringName(current.get_meta(&"variant", &"")) if current != null else &""
+
+
+## Lanza o corta la estela de la espada de [param skeleton] (el golpe está activo o ha terminado). No hace nada
+## sin modelo de espada.
+static func set_swing_active(skeleton: Skeleton3D, active: bool) -> void:
+	var root: Node3D = _sword_root(skeleton)
+	if root == null:
+		return
+	var trail: SwordTrail = root.get_node_or_null(NodePath(SWORD_TRAIL_NODE)) as SwordTrail
+	if trail != null:
+		trail.set_active(active)
+
+
+# El nodo [constant SWORD_MODEL_NODE] de la espada, o null (sin espada instalada o con la caja de reserva).
+static func _sword_root(skeleton: Skeleton3D) -> Node3D:
+	if skeleton == null:
+		return null
+	var attachment: Node = skeleton.get_node_or_null(NodePath(SWORD_ATTACHMENT))
+	if attachment == null:
+		return null
+	return attachment.get_node_or_null(NodePath(SWORD_MODEL_NODE)) as Node3D
+
+
 static func _attach(skeleton: Skeleton3D, node_name: StringName, bone: StringName,
 		prop: Node3D) -> BoneAttachment3D:
 	var attachment := BoneAttachment3D.new()
@@ -131,7 +197,14 @@ static func _make_sword_node() -> Node3D:
 	root.set_meta(&"placeholder", false)
 	root.rotation_degrees = SWORD_GRIP_ROTATION_DEG
 	root.position = SWORD_GRIP_OFFSET
+	model.name = SWORD_MODEL_INSTANCE
+	model.set_meta(&"variant", SwordModel.BASE)
+	model.rotation_degrees = Vector3(0.0, SWORD_ROLL_DEG, 0.0)
 	root.add_child(model)
+	var trail := SwordTrail.new()
+	trail.set_tint(SwordTrail.color_for(SwordModel.BASE))
+	root.add_child(trail)
+	trail.bind(model)
 	return root
 
 

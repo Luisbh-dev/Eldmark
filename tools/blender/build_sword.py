@@ -6,8 +6,16 @@ Uso (Blender 5.2 sin interfaz, desde la raíz del repo):
         [--out assets/models/weapons] [--tex build/sword/tex] [--only base] [--blend build/sword/x.blend]
 
 Escribe `sword_base.glb` y las tres variantes por reino (`sword_vardheim.glb`, `sword_solmarch.glb`
-y `sword_askarra.glb`). Las cuatro comparten la MISMA hoja (geometría, UV y textura idénticas) y
-cambian solo guarda, pomo y colores del cuero y el metal.
+y `sword_askarra.glb`). Las cuatro comparten la MISMA hoja (geometría y UV idénticas) y cambian
+guarda, pomo y colores del cuero y el metal; la textura de la hoja es propia de cada reino (hielo con
+runas, oro incrustado o acero ennegrecido con una grieta emisiva), porque desde la cámara del juego
+solo se lee la hoja.
+
+Proporciones heroicas: la hoja mide unos 10,8 cm de ancho y 3 cm de canto, no los 8,9 x 1,4 de una
+espada real, y la punta sigue a 0,94 m de la empuñadura (decisión 8 de docs/calidad.md: el alcance
+del golpe no depende de la malla). Las caras de bisel que crea `slab` se mapean a la franja del canto
+pulido del atlas de metal; `check_triangulation` avisa si un bisel mayor que la pieza rompe un
+polígono.
 
 Todo es propio: ninguna malla ni textura viene de un pack. Las texturas salen de
 `tools/blender/sword_textures.py` (numpy, sin fotos).
@@ -51,27 +59,37 @@ BLADE_ROOT_Z = 0.075
 GRIP_Z0, GRIP_Z1 = -0.070, 0.070
 GRIP_RX, GRIP_RY = 0.0205, 0.0170
 GRIP_PITCH = 0.0158
-GRIP_AMP = 0.18
+GRIP_AMP = 0.12
 # Z donde acaba por abajo el cuero y empieza el pomo (el anillo metálico lo tapa).
 POMMEL_Z = -0.078
 
-# Hoja: (z, medio ancho, medio grosor). Ensanche suave hasta el 65 % y punta en ojiva.
+# Hoja: (z, medio ancho, medio grosor). Proporciones heroicas: unos 10,8 cm de ancho y 3 cm de canto
+# a media hoja (de espada real serían 8,9 y 1,4), ensanche suave hasta el 65 % y punta en ojiva.
+# La punta sigue en TIP_Z = 0,94 (decisión 8 de docs/calidad.md: el alcance del golpe no cambia).
 BLADE_STATIONS = [
-	(0.075, 0.0340, 0.0105), (0.145, 0.0340, 0.0105), (0.195, 0.0345, 0.0097),
-	(0.255, 0.0360, 0.0092), (0.330, 0.0380, 0.0087), (0.420, 0.0405, 0.0082),
-	(0.510, 0.0430, 0.0077), (0.600, 0.0445, 0.0072), (0.680, 0.0440, 0.0067),
-	(0.750, 0.0420, 0.0062), (0.800, 0.0390, 0.0057), (0.840, 0.0350, 0.0052),
-	(0.875, 0.0285, 0.0046), (0.905, 0.0200, 0.0040), (0.925, 0.0110, 0.0032),
+	(0.075, 0.0420, 0.0150), (0.145, 0.0420, 0.0150), (0.195, 0.0428, 0.0138),
+	(0.255, 0.0445, 0.0130), (0.330, 0.0468, 0.0124), (0.420, 0.0498, 0.0117),
+	(0.510, 0.0525, 0.0110), (0.600, 0.0540, 0.0103), (0.680, 0.0535, 0.0096),
+	(0.750, 0.0512, 0.0088), (0.800, 0.0478, 0.0080), (0.840, 0.0430, 0.0072),
+	(0.875, 0.0350, 0.0063), (0.905, 0.0245, 0.0052), (0.925, 0.0135, 0.0040),
 ]
 BLADE_STATIONS_LOD1 = [0, 1, 3, 5, 7, 9, 11, 13]
 
 # Índices de material en la malla final.
 M_BLADE, M_LEATHER, M_METAL, M_EMBER = 0, 1, 2, 3
 # Zonas del atlas de metal (u0, v0, u1, v1), con un margen para que no sangren al filtrar.
-REGION_METAL = (0.02, 0.02, 0.98, tex.ATLAS_SPLIT - 0.02)
-REGION_ACCENT = (0.02, tex.ATLAS_SPLIT + 0.02, 0.98, 0.98)
+_BAND = 1.0 / tex.ATLAS_BANDS
+REGION_METAL = (0.02, 0.02, 0.98, _BAND - 0.02)
+REGION_ACCENT = (0.02, _BAND + 0.02, 0.98, 2.0 * _BAND - 0.02)
+# El canto pulido: las caras de bisel de cada pieza (las crea `slab`) caen aquí y recogen la luz.
+REGION_EDGE = (0.02, 2.0 * _BAND + 0.02, 0.98, 0.98)
 # Metros de pieza por unidad de UV, al revés: UV por metro del mapeado en caja.
 BOX_UV_SCALE = 2.2
+# Nombre de la capa de caras donde `slab` marca las de bisel.
+EDGE_TAG = "edge"
+# Fuerza de la emisión de la brasa de Askarra (la grieta de la hoja y la del pomo): 3 a 4 para que se
+# lea de lejos y en movimiento.
+EMBER_STRENGTH = 3.5
 
 
 # --- Utilidades de geometría ----------------------------------------------------------------------
@@ -87,31 +105,39 @@ def new_part():
 	return part
 
 
-def finish(part, material, smooth=False, region=None, recalc=True):
-	"""Deja la pieza lista: normales hacia fuera, material, sombreado y (si se pide) UV en caja."""
+def finish(part, material, smooth=False, region=None, recalc=True, edge_region=None):
+	"""Deja la pieza lista: normales hacia fuera, material, sombreado y (si se pide) UV en caja.
+
+	Con `edge_region`, las caras de bisel que marcó `slab` van a esa zona del atlas (el canto pulido).
+	"""
 	if recalc:
 		bmesh.ops.recalc_face_normals(part, faces=part.faces[:])
 	for face in part.faces:
 		face.material_index = material
 		face.smooth = smooth
 	if region is not None:
-		box_uv(part, region)
+		box_uv(part, region, edge_region=edge_region)
 	return part
 
 
-def box_uv(part, region, scale=BOX_UV_SCALE):
+def box_uv(part, region, scale=BOX_UV_SCALE, edge_region=None):
 	"""Mapeado en caja: cada cara se proyecta por su eje dominante, con densidad de píxel constante.
 
 	Las UV de cada pieza arrancan en la esquina de su zona del atlas (`region`), así que nunca
 	invaden la zona de al lado. El metal es ruido que se repite, así que no necesita islas aparte.
+	Las caras marcadas como bisel (`edge_region` dado) se mapean en la zona del canto pulido.
 	"""
 	uv_layer = part.loops.layers.uv.verify()
-	u0, v0, u1, v1 = region
+	tag = part.faces.layers.int.get(EDGE_TAG) if edge_region is not None else None
 	xs = [v.co.x for v in part.verts]
 	ys = [v.co.y for v in part.verts]
 	zs = [v.co.z for v in part.verts]
 	mins = (min(xs), min(ys), min(zs))
 	for face in part.faces:
+		if tag is not None and face[tag]:
+			u0, v0, u1, v1 = edge_region
+		else:
+			u0, v0, u1, v1 = region
 		normal = face.normal
 		axis = max(range(3), key=lambda i: abs(normal[i]))
 		for loop in face.loops:
@@ -182,6 +208,7 @@ def slab(outline, y0, y1, bevel=0.0, segments=1):
 	pulido que recoge la luz, que es lo que hace que una pieza plana parezca forjada.
 	"""
 	part = new_part()
+	tag = part.faces.layers.int.new(EDGE_TAG)
 	bottom = [part.verts.new((x, y0, z)) for x, z in outline]
 	top = [part.verts.new((x, y1, z)) for x, z in outline]
 	part.faces.new(bottom)
@@ -196,8 +223,10 @@ def slab(outline, y0, y1, bevel=0.0, segments=1):
 		edges = [e for e in part.edges
 				if (e.verts[0] in bottom_set and e.verts[1] in bottom_set)
 				or (e.verts[0] in top_set and e.verts[1] in top_set)]
-		bmesh.ops.bevel(part, geom=edges, offset=bevel, offset_type='OFFSET', segments=segments,
+		result = bmesh.ops.bevel(part, geom=edges, offset=bevel, offset_type='OFFSET', segments=segments,
 				profile=0.5, affect='EDGES', clamp_overlap=True)
+		for face in result["faces"]:
+			face[tag] = 1
 	return part
 
 
@@ -256,7 +285,7 @@ def build_blade(detail):
 	for z, w, ht in stations:
 		if detail == 0:
 			edge = smoothstep(0.145, 0.195, z)
-			fuller = smoothstep(0.185, 0.265, z) * (1.0 - smoothstep(0.66, 0.80, z))
+			fuller = smoothstep(*tex.FULLER_START, z) * (1.0 - smoothstep(*tex.FULLER_END, z))
 			points = blade_section(w, ht, edge, fuller)
 		else:
 			points = blade_section_lod1(w, ht)
@@ -347,16 +376,19 @@ def build_ferrules(detail):
 
 
 def build_guard_boss(detail):
-	"""El cuerpo de la guarda por el que pasa la hoja: más grueso que las alas, con chaflán."""
-	outline = [(-0.030, 0.064), (0.030, 0.064), (0.042, 0.078), (0.042, 0.108), (0.030, 0.122),
-			(-0.030, 0.122), (-0.042, 0.108), (-0.042, 0.078)]
+	"""El cuerpo de la guarda por el que pasa la hoja: más grueso que las alas, con chaflán.
+
+	Es más ancho que la hoja heroica (10,8 cm) para taparle el recazo por los dos lados.
+	"""
+	outline = [(-0.040, 0.064), (0.040, 0.064), (0.054, 0.078), (0.054, 0.108), (0.040, 0.122),
+			(-0.040, 0.122), (-0.054, 0.108), (-0.054, 0.078)]
 	part = slab(outline, -0.0205, 0.0205, bevel=0.0045 if detail == 0 else 0.0, segments=1)
-	return finish(part, M_METAL, smooth=False, region=REGION_METAL)
+	return finish(part, M_METAL, smooth=False, region=REGION_METAL, edge_region=REGION_EDGE)
 
 
 def guard_slab(outline, detail, region=REGION_METAL, half=0.0125, bevel=0.0045):
 	part = slab(outline, -half, half, bevel=bevel if detail == 0 else 0.0, segments=1)
-	return finish(part, M_METAL, smooth=False, region=region)
+	return finish(part, M_METAL, smooth=False, region=region, edge_region=REGION_EDGE)
 
 
 def gem(cx, cz, radius, y0, y1, sides=6):
@@ -364,6 +396,28 @@ def gem(cx, cz, radius, y0, y1, sides=6):
 	outline = ellipse_outline(cx, cz, radius, radius, sides)
 	part = slab(outline, y0, y1, bevel=radius * 0.28, segments=1)
 	return finish(part, M_METAL, smooth=False, region=REGION_ACCENT)
+
+
+def facet_gem(cx, cz, radius, height, sides, base, side=1.0):
+	"""Piedra facetada: una cúpula de `sides` caras que sobresale de la pieza hacia +Y (`side` = 1) o
+	hacia -Y (`side` = -1), apoyada en el plano y = base. Usa el color de acento."""
+	profile = [(radius, 0.0), (radius * 0.97, height * 0.30), (radius * 0.62, height * 0.78),
+			(0.0, height)]
+	part = lathe(profile, sides, caps=True)
+	for vert in part.verts:
+		x, y, z = vert.co
+		vert.co = Vector((cx + x, side * (base + z), cz + y))
+	return finish(part, M_METAL, smooth=False, region=REGION_ACCENT)
+
+
+def ember_bar(p0, p1, width, y0, y1):
+	"""Un tramo de grieta emisiva: un rectángulo fino de `p0` a `p1` (x, z) entre los planos y0 e y1."""
+	dx, dz = p1[0] - p0[0], p1[1] - p0[1]
+	length = math.hypot(dx, dz)
+	nx, nz = -dz / length * width * 0.5, dx / length * width * 0.5
+	outline = [(p0[0] + nx, p0[1] + nz), (p1[0] + nx, p1[1] + nz), (p1[0] - nx, p1[1] - nz),
+			(p0[0] - nx, p0[1] - nz)]
+	return finish(slab(outline, y0, y1), M_EMBER, smooth=False)
 
 
 # --- Guardas por variante -------------------------------------------------------------------------
@@ -398,16 +452,37 @@ def guard_base(detail):
 	return parts
 
 
+def fang_half(center_z=0.092, bar_x=0.095, radius=0.115, sweep_deg=84.0, base_width=0.044, steps=16):
+	"""Mitad derecha de una guarda de colmillos: una barra recta que se curva hacia la punta de la hoja.
+
+	El colmillo es un arco de círculo (centro encima de la barra) cuyo grosor se afila hasta la punta.
+	Va de abajo-centro a arriba-centro, como el resto de las mitades.
+	"""
+	outer, inner = [], []
+	for index in range(steps + 1):
+		t = index / steps
+		angle = math.radians(sweep_deg * t)
+		x = bar_x + radius * math.sin(angle)
+		z = center_z + radius * (1.0 - math.cos(angle))
+		width = base_width * (1.0 - t) ** 0.85 + 0.009
+		# La tangente es (cos, sin); la normal hacia el centro del arco, (-sin, cos).
+		nx, nz = -math.sin(angle), math.cos(angle)
+		outer.append((x - nx * width * 0.5, z - nz * width * 0.5))
+		inner.append((x + nx * width * 0.5, z + nz * width * 0.5))
+	bar_low = center_z - 0.027
+	bar_high = center_z + 0.027
+	return [(0.0, bar_low), (bar_x * 0.55, bar_low)] + outer + list(reversed(inner)) \
+			+ [(bar_x * 0.55, bar_high), (0.0, bar_high)]
+
+
 def guard_vardheim(detail):
-	"""Guarda de lobo: barra recia con un colmillo que sube y una púa que baja en cada punta."""
-	half = [(0.0, 0.064), (0.055, 0.064), (0.105, 0.068), (0.140, 0.060), (0.174, 0.032),
-			(0.162, 0.064), (0.154, 0.082), (0.180, 0.098), (0.190, 0.135), (0.174, 0.196),
-			(0.155, 0.152), (0.135, 0.124), (0.100, 0.115), (0.050, 0.120), (0.0, 0.124)]
-	parts = [guard_slab(mirrored(half), detail, half=0.0145, bevel=0.0055)]
+	"""Guarda de lobo: una barra recia que acaba en dos colmillos curvados hacia la punta."""
+	half = fang_half()
+	parts = [guard_slab(mirrored(half), detail, half=0.0145, bevel=0.0035)]
 	for side in (-1.0, 1.0):
-		# Una piedra de hielo en cada brazo, a las dos caras.
-		parts.append(gem(side * 0.098, 0.092, 0.0115, 0.0145, 0.0190, sides=6))
-		parts.append(gem(side * 0.098, 0.092, 0.0115, -0.0190, -0.0145, sides=6))
+		# Una piedra de hielo en cada brazo de la barra, a las dos caras.
+		parts.append(facet_gem(side * 0.070, 0.092, 0.0105, 0.0055, 6, 0.0145, 1.0))
+		parts.append(facet_gem(side * 0.070, 0.092, 0.0105, 0.0055, 6, 0.0145, -1.0))
 	return parts
 
 
@@ -436,44 +511,77 @@ def _polar(center_z, angle_deg, radius):
 	return (radius * math.cos(a), center_z + radius * math.sin(a))
 
 
+def half_sun_outline(center_z, hub, rays, lower_depth, lower_width=None, step=10.0):
+	"""Silueta de medio sol: rayos solo en la mitad de arriba y la de abajo maciza.
+
+	`rays` = [(ángulo de 0 a 180, largo, semiángulo de la base)]. Los rayos de 0 y 180 grados son los
+	horizontales (los gavilanes). La mitad de abajo es media elipse de ancho `lower_width` (por defecto
+	`hub`) y fondo `lower_depth`.
+	"""
+	lower_width = hub if lower_width is None else lower_width
+	outline = []
+	rays = sorted(rays)
+	for index, (angle, length, half_base) in enumerate(rays):
+		outline.append(_polar(center_z, angle - half_base, hub))
+		outline.append(_polar(center_z, angle, length))
+		outline.append(_polar(center_z, angle + half_base, hub))
+		if index + 1 < len(rays):
+			next_angle, _, next_half = rays[index + 1]
+			start, end = angle + half_base, next_angle - next_half
+			steps = int((end - start) // step)
+			for s in range(1, steps + 1):
+				outline.append(_polar(center_z, start + (end - start) * s / (steps + 1), hub))
+	# De la base del último rayo (180 + semiángulo) a la del primero (360 - semiángulo), por abajo.
+	last_angle, _, last_half = rays[-1]
+	first_angle, _, first_half = rays[0]
+	start, end = last_angle + last_half, 360.0 + first_angle - first_half
+	steps = max(int((end - start) // step), 4)
+	for s in range(1, steps):
+		a = math.radians(start + (end - start) * s / steps)
+		outline.append((lower_width * math.cos(a), center_z + lower_depth * math.sin(a)))
+	return outline
+
+
 def guard_solmarch(detail):
-	"""Guarda de sol: rayos de oro que salen de un disco, los dos largos horizontales."""
-	right = [(0.0, 0.190, 8.0), (22.0, 0.118, 8.5), (42.0, 0.094, 8.5),
-			(-22.0, 0.102, 8.5), (-44.0, 0.082, 8.5), (-65.0, 0.068, 8.5)]
-	rays = []
-	for angle, length, half_base in right:
-		rays.append((angle % 360.0, length, half_base))
-		if abs(angle) > 1e-6:
-			rays.append(((180.0 - angle) % 360.0, length, half_base))
-	rays.append((180.0, 0.190, 8.0))
-	outline = sun_outline(0.092, rays, 0.054)
-	parts = [guard_slab(outline, detail, half=0.0135, bevel=0.0040)]
-	parts.append(gem(0.0, 0.092, 0.021, 0.0205, 0.0260, sides=8))
-	parts.append(gem(0.0, 0.092, 0.021, -0.0260, -0.0205, sides=8))
+	"""Guarda de medio sol, el sol partido del emblema: rayos solo del lado de la hoja, los dos largos
+	horizontales como gavilanes, y la mitad de abajo maciza (hacia la mano no sale ningún rayo)."""
+	rays = [(0.0, 0.195, 15.0), (32.0, 0.108, 12.0), (62.0, 0.094, 12.0), (118.0, 0.094, 12.0),
+			(148.0, 0.108, 12.0), (180.0, 0.195, 15.0)]
+	outline = half_sun_outline(0.092, 0.060, rays, 0.044, lower_width=0.068)
+	parts = [guard_slab(outline, detail, half=0.0135, bevel=0.0045)]
+	# La piedra solar, cálida y facetada, en el centro de las dos caras.
+	parts.append(facet_gem(0.0, 0.092, 0.022, 0.0120, 8, 0.0205, 1.0))
+	parts.append(facet_gem(0.0, 0.092, 0.022, 0.0120, 8, 0.0205, -1.0))
 	return parts
 
 
 def guard_askarra(detail):
-	"""Guarda de yunque: dos cuernos de bronce que salen de un bloque recio y bajan un poco."""
-	widths = [(0.0, 0.076), (0.04, 0.068), (0.08, 0.056), (0.12, 0.042), (0.15, 0.030),
-			(0.175, 0.018)]
-	half = swept_guard(widths, -0.034, 0.175, -0.004, power=2.0, base_z=0.094)
-	parts = [guard_slab(mirrored(half), detail, half=0.0150, bevel=0.0055)]
-	rivet_z = 0.094 - 0.034 * (0.070 / 0.175) ** 2.0
+	"""Guarda de forja: una barra maciza con las puntas cortadas a golpe de cincel, la de arriba más
+	alta, y un remache negro de hollín a cada lado. Recta y simétrica, para que no recuerde a un pico."""
+	half = [(0.0, 0.062), (0.100, 0.062), (0.168, 0.058), (0.206, 0.078), (0.208, 0.112),
+			(0.186, 0.140), (0.158, 0.124), (0.100, 0.116), (0.0, 0.116)]
+	parts = [guard_slab(mirrored(half), detail, half=0.0155, bevel=0.0060)]
 	for side in (-1.0, 1.0):
-		# Remaches del bronce, a las dos caras.
-		parts.append(gem(side * 0.070, rivet_z, 0.0095, 0.0150, 0.0190, sides=6))
-		parts.append(gem(side * 0.070, rivet_z, 0.0095, -0.0190, -0.0150, sides=6))
+		parts.append(facet_gem(side * 0.150, 0.090, 0.0095, 0.0050, 6, 0.0155, 1.0))
+		parts.append(facet_gem(side * 0.150, 0.090, 0.0095, 0.0050, 6, 0.0155, -1.0))
+	if detail == 0:
+		# Una raja de brasa en el centro de la barra, a las dos caras: la grieta empieza aquí.
+		for sign in (1.0, -1.0):
+			y0, y1 = (0.0150, 0.0175) if sign > 0 else (-0.0175, -0.0150)
+			parts.append(ember_bar((0.060, 0.068), (0.078, 0.092), 0.0050, y0, y1))
+			parts.append(ember_bar((0.078, 0.092), (0.068, 0.108), 0.0050, y0, y1))
+			parts.append(ember_bar((-0.060, 0.112), (-0.080, 0.092), 0.0050, y0, y1))
+			parts.append(ember_bar((-0.080, 0.092), (-0.070, 0.070), 0.0050, y0, y1))
 	return parts
 
 
 # --- Pomos por variante ---------------------------------------------------------------------------
 
 def pommel_base(detail):
-	"""Pomo de gema facetada: ocho caras, collar y banda de oro."""
+	"""Pomo de gema facetada: doce caras, collar y banda de oro."""
 	profile = [(0.024, 0.000), (0.029, 0.006), (0.024, 0.013), (0.034, 0.028), (0.043, 0.050),
 			(0.040, 0.070), (0.029, 0.088), (0.013, 0.097), (0.0, 0.101)]
-	segments = 8 if detail == 0 else 6
+	segments = 12 if detail == 0 else 6
 	part = lathe([(r, POMMEL_Z - a) for r, a in reversed(profile)], segments, scale_y=0.86)
 	parts = [finish(part, M_METAL, smooth=False, region=REGION_METAL)]
 	if detail == 0:
@@ -483,106 +591,96 @@ def pommel_base(detail):
 	return parts
 
 
-def mask_outline(points, scale=1.0):
-	"""Silueta (x, z) a partir de la mitad derecha (x, d), de arriba-centro a abajo-centro.
-
-	`d` es la distancia hacia fuera desde el anillo del cuero; en el modelo es z = POMMEL_Z - d.
-	"""
-	half = list(points)
-	full = list(half)
-	for x, d in reversed(half[1:-1]):
-		full.append((-x, d))
-	return [(x * scale, POMMEL_Z - d * scale) for x, d in full]
+def pommel_outline(points, scale=1.0):
+	"""Silueta (x, z) a partir de puntos (x, d) en centímetros, con `d` hacia fuera del anillo del cuero
+	(en el modelo es z = POMMEL_Z - d)."""
+	return [(x * 0.01 * scale, POMMEL_Z - d * 0.01 * scale) for x, d in points]
 
 
-# Máscara de lobo, vista de frente por la cara plana de la hoja: orejas que suben a los lados del
-# cuero, mejillas con mechones, hocico abajo.
-WOLF_MASK = [
-	(0.000, 0.014), (0.016, 0.014), (0.030, 0.006), (0.040, -0.040), (0.058, 0.014),
-	(0.068, 0.036), (0.078, 0.056), (0.062, 0.060), (0.072, 0.078), (0.048, 0.086),
-	(0.036, 0.104), (0.018, 0.112), (0.000, 0.118),
+# Cabeza de lobo de perfil, mirando a +X, en el plano de la hoja (cm; d = hacia fuera del cuero): la
+# nuca y el cuello cierran alrededor del anillo, la oreja tiesa sube a un lado del cuero, el hocico va
+# hacia delante con la mandíbula entreabierta y la gorguera de pelo cae en tres mechones.
+WOLF_HEAD = [
+	(2.4, -0.4), (3.0, 0.8), (3.9, 2.0), (5.4, 2.9), (7.5, 3.9), (8.3, 4.5), (8.5, 5.2), (8.0, 5.8),
+	(6.2, 6.0), (5.2, 6.1), (6.5, 6.8), (6.8, 7.5), (5.8, 8.2), (3.6, 8.2), (3.0, 10.4), (1.0, 8.4),
+	(-0.4, 11.0), (-1.6, 8.6), (-3.4, 10.0), (-3.7, 7.2), (-5.4, 7.4), (-4.6, 4.4), (-5.6, 3.2),
+	(-4.7, 1.6), (-6.2, -3.6), (-3.0, -0.2),
 ]
-# Relieve del hocico (la mitad derecha; el resto es su espejo).
-WOLF_MUZZLE = [(0.000, 0.108), (0.020, 0.094), (0.026, 0.070), (0.016, 0.050), (0.000, 0.044)]
-
-
-def _quad(points, side, scale):
-	"""Cuadrilátero de la cara derecha (x, d) llevado al lado `side` (1 derecha, -1 izquierda)."""
-	quad = [(side * x * scale, POMMEL_Z - d * scale) for x, d in points]
-	return quad if side > 0 else list(reversed(quad))
+WOLF_SCALE = 0.86
+# Relieves de la cara del lobo (mismo plano, mismos cm): el interior de la oreja y la mejilla.
+WOLF_EAR_INNER = [(-3.6, -0.1), (-4.8, 1.3), (-5.4, -2.2)]
+WOLF_CHEEK = [(2.2, 3.3), (4.4, 4.0), (5.0, 5.1), (3.4, 5.8), (1.4, 5.4)]
+WOLF_EYE = (4.4, 3.5)
 
 
 def pommel_vardheim(detail):
-	"""Pomo de lobo: la cabeza vista de frente en cada cara, con ojos de hielo."""
-	scale = 1.0
-	head = slab(mask_outline(WOLF_MASK, scale), -0.0165, 0.0165,
-			bevel=0.0055 if detail == 0 else 0.0, segments=1)
-	parts = [finish(head, M_METAL, smooth=False, region=REGION_METAL)]
+	"""Pomo de lobo: la cabeza de perfil, en el plano de la hoja, cerrada alrededor del anillo del cuero
+	y con una gema de hielo por ojo."""
+	head = slab(pommel_outline(WOLF_HEAD, WOLF_SCALE), -0.0165, 0.0165,
+			bevel=0.0050 if detail == 0 else 0.0, segments=1)
+	parts = [finish(head, M_METAL, smooth=False, region=REGION_METAL, edge_region=REGION_EDGE)]
 	if detail == 1:
 		return parts
-	muzzle = mask_outline(WOLF_MUZZLE, scale)
-	brow = [(0.008, 0.034), (0.046, 0.026), (0.050, 0.038), (0.014, 0.050)]
-	eye = [(0.022, 0.052), (0.036, 0.047), (0.034, 0.057), (0.020, 0.059)]
+	ear = pommel_outline(WOLF_EAR_INNER, WOLF_SCALE)
+	cheek = pommel_outline(WOLF_CHEEK, WOLF_SCALE)
+	eye_x, eye_d = WOLF_EYE
+	eye = (eye_x * 0.01 * WOLF_SCALE, POMMEL_Z - eye_d * 0.01 * WOLF_SCALE)
 	for sign in (1.0, -1.0):
 		# Cada cara lleva sus relieves: se levantan desde la cara plana hacia fuera.
-		def layer(top: float):
-			return (0.0, top) if sign > 0 else (-top, 0.0)
-
-		y0, y1 = layer(0.0255)
-		parts.append(finish(slab(muzzle, y0, y1, bevel=0.005, segments=1), M_METAL, smooth=False,
-				region=REGION_METAL))
-		for side in (-1.0, 1.0):
-			y0, y1 = layer(0.0215)
-			parts.append(finish(slab(_quad(brow, side, scale), y0, y1, bevel=0.003, segments=1),
-					M_METAL, smooth=False, region=REGION_METAL))
-			y0, y1 = layer(0.0275)
-			parts.append(finish(slab(_quad(eye, side, scale), y0, y1), M_METAL, smooth=False,
-					region=REGION_ACCENT))
+		y0, y1 = (0.0150, 0.0200) if sign > 0 else (-0.0200, -0.0150)
+		parts.append(finish(slab(ear, y0, y1, bevel=0.0025), M_METAL, smooth=False,
+				region=REGION_METAL, edge_region=REGION_EDGE))
+		parts.append(finish(slab(cheek, y0, y1, bevel=0.0030), M_METAL, smooth=False,
+				region=REGION_METAL, edge_region=REGION_EDGE))
+		parts.append(facet_gem(eye[0], eye[1], 0.0085, 0.0055, 6, 0.0200, sign))
 	return parts
 
 
 def pommel_solmarch(detail):
-	"""Pomo de sol: disco de rayos de oro con una piedra clara en el centro."""
-	rays = [(i * 30.0, 0.056, 8.0) for i in range(12)]
-	center = POMMEL_Z - 0.056
-	outline = sun_outline(center, rays, 0.036)
-	disc = slab(outline, -0.0145, 0.0145, bevel=0.0038 if detail == 0 else 0.0, segments=1)
-	parts = [finish(disc, M_METAL, smooth=False, region=REGION_METAL)]
-	parts.append(gem(0.0, center, 0.0185, 0.0125, 0.0190, sides=8))
-	parts.append(gem(0.0, center, 0.0185, -0.0190, -0.0125, sides=8))
+	"""Pomo de sol: ocho rayos que alternan largo y corto y una piedra solar cálida y facetada."""
+	rays = [(i * 45.0, 0.060 if i % 2 == 0 else 0.042, 9.0) for i in range(8)]
+	center = POMMEL_Z - 0.052
+	outline = sun_outline(center, rays, 0.034)
+	disc = slab(outline, -0.0145, 0.0145, bevel=0.0040 if detail == 0 else 0.0, segments=1)
+	parts = [finish(disc, M_METAL, smooth=False, region=REGION_METAL, edge_region=REGION_EDGE)]
+	parts.append(facet_gem(0.0, center, 0.0200, 0.0110, 8, 0.0145, 1.0))
+	parts.append(facet_gem(0.0, center, 0.0200, 0.0110, 8, 0.0145, -1.0))
 	return parts
 
 
-# Yunque de pie (a = hacia fuera del pomo): la cara de trabajo pega al cuero, el pie queda fuera y
-# el cuerno apunta a +b.
-ANVIL = [
-	(0.000, -0.040), (0.000, 0.046), (0.008, 0.092), (0.020, 0.052), (0.034, 0.020),
-	(0.048, 0.016), (0.054, 0.032), (0.066, 0.040), (0.066, -0.040), (0.054, -0.040),
-	(0.050, -0.020), (0.034, -0.018), (0.022, -0.030), (0.010, -0.046),
+# Pomo de yunque de doble cuerno, compacto y simétrico (cm; d = hacia fuera del cuero): cara de
+# trabajo pegada al cuero, un cuerno a cada lado, cintura y pie. Está cruzado por una grieta de brasa.
+ANVIL_HALF = [
+	(0.0, -0.4), (2.4, -0.4), (2.4, 1.0), (3.2, 1.0), (6.4, 1.5), (7.5, 2.1), (6.8, 2.9), (3.8, 3.5),
+	(2.7, 4.5), (2.4, 6.2), (4.2, 7.0), (4.2, 8.4), (0.0, 8.4),
 ]
+# La grieta (x, d, en cm) que corre por las dos caras del yunque, de arriba a la izquierda a abajo
+# a la derecha, y una rama corta.
+ANVIL_CRACK = [(-4.6, 1.5), (-2.6, 2.4), (-1.5, 3.4), (-0.2, 3.9), (0.8, 5.2), (0.2, 6.1), (1.9, 7.2),
+		(3.2, 8.3)]
+ANVIL_BRANCH = [(-0.2, 3.9), (1.6, 3.2), (2.4, 2.1)]
 
 
 def pommel_askarra(detail):
-	"""Pomo de yunque de bronce sobre un lecho de brasas encendidas."""
-	scale = 1.3
-	outline = [(b * scale, POMMEL_Z - a * scale) for a, b in ANVIL]
-	anvil = slab(outline, -0.0235, 0.0235, bevel=0.0060 if detail == 0 else 0.0, segments=1)
-	parts = [finish(anvil, M_METAL, smooth=False, region=REGION_METAL)]
-	foot_z = POMMEL_Z - 0.066 * scale
-	# Las brasas bajo el pie: piedras bajas y ásperas que brillan un poco.
-	chunks = [(-0.012, 0.0, 0.024, 0.022, 0.0125), (0.018, 0.0, 0.0150, 0.0165, 0.0100),
-			(-0.043, 0.0, 0.0110, 0.0130, 0.0085), (0.048, 0.0, 0.0100, 0.0120, 0.0080)]
-	for index, (dx, dy, rx, ry, rz) in enumerate(chunks):
-		if detail == 1 and index > 0:
-			continue
-		ember = new_part()
-		bmesh.ops.create_icosphere(ember, subdivisions=1, radius=1.0)
-		center_z = foot_z - rz * 0.85
-		for number, vert in enumerate(ember.verts):
-			jitter = 1.0 + 0.16 * math.sin(number * 12.9898 + dx * 91.0)
-			vert.co = Vector((vert.co.x * rx * jitter + dx, vert.co.y * ry * jitter + dy,
-					center_z + vert.co.z * rz * jitter))
-		parts.append(finish(ember, M_EMBER, smooth=False))
+	"""Pomo de yunque de bronce, simétrico, con una grieta de brasa viva cruzándolo."""
+	scale = 1.0
+	half = [(x * 0.01 * scale, POMMEL_Z - d * 0.01 * scale) for x, d in ANVIL_HALF]
+	outline = [(x, z) for x, z in half]
+	for x, z in reversed(half[1:-1]):
+		outline.append((-x, z))
+	anvil = slab(outline, -0.0205, 0.0205, bevel=0.0060 if detail == 0 else 0.0, segments=1)
+	parts = [finish(anvil, M_METAL, smooth=False, region=REGION_METAL, edge_region=REGION_EDGE)]
+
+	def point(p):
+		return (p[0] * 0.01 * scale, POMMEL_Z - p[1] * 0.01 * scale)
+
+	for sign in (1.0, -1.0):
+		y0, y1 = (0.0200, 0.0228) if sign > 0 else (-0.0228, -0.0200)
+		for chain, width in ((ANVIL_CRACK, 0.0058), (ANVIL_BRANCH, 0.0042)):
+			for a, b in zip(chain, chain[1:]):
+				if detail == 1 and chain is ANVIL_BRANCH:
+					continue
+				parts.append(ember_bar(point(a), point(b), width, y0, y1))
 	return parts
 
 
@@ -617,7 +715,25 @@ def build_mesh(name, variant, detail, materials):
 		mesh.materials.append(material)
 	mesh.validate()
 	mesh.update()
+	check_triangulation(mesh, name)
 	return mesh
+
+
+def check_triangulation(mesh, name):
+	"""Avisa si algún polígono se triangula mal (el área de los triángulos tiene que ser la del polígono).
+
+	Pasa con un bisel mayor que lo que mide la pieza (una punta muy fina cuyo contorno se cruza) y se
+	ve como una cara que rellena un hueco que no es suyo.
+	"""
+	mesh.calc_loop_triangles()
+	polygon_area = sum(poly.area for poly in mesh.polygons)
+	triangle_area = 0.0
+	for tri in mesh.loop_triangles:
+		a, b, c = (mesh.vertices[i].co for i in tri.vertices)
+		triangle_area += (b - a).cross(c - a).length * 0.5
+	if abs(triangle_area - polygon_area) > 0.01 * polygon_area:
+		raise ValueError("%s: triangulación rota (área %.5f frente a %.5f); revisa los biseles de las "
+				"puntas finas" % (name, triangle_area, polygon_area))
 
 
 # --- Materiales -----------------------------------------------------------------------------------
@@ -629,8 +745,12 @@ def load_image(path, srgb):
 	return image
 
 
-def make_textured_material(name, albedo_path, mr_path):
-	"""Material PBR de glTF: albedo + (rugosidad en G, metálico en B) de una sola textura."""
+def make_textured_material(name, albedo_path, mr_path, emit_path="", emit_strength=1.0):
+	"""Material PBR de glTF: albedo + (rugosidad en G, metálico en B) de una sola textura.
+
+	Con `emit_path`, la textura de emisión (la grieta en llamas de la hoja de Askarra) con la fuerza
+	`emit_strength`, que el glTF guarda como KHR_materials_emissive_strength.
+	"""
 	material = bpy.data.materials.new(name)
 	material.use_nodes = True
 	material.use_backface_culling = True
@@ -648,6 +768,12 @@ def make_textured_material(name, albedo_path, mr_path):
 	links.new(mr.outputs["Color"], split.inputs["Color"])
 	links.new(split.outputs["Green"], bsdf.inputs["Roughness"])
 	links.new(split.outputs["Blue"], bsdf.inputs["Metallic"])
+	if emit_path:
+		emit = nodes.new("ShaderNodeTexImage")
+		emit.image = load_image(emit_path, True)
+		emit.location = (-700, -400)
+		links.new(emit.outputs["Color"], bsdf.inputs["Emission Color"])
+		bsdf.inputs["Emission Strength"].default_value = emit_strength
 	return material
 
 
@@ -659,14 +785,16 @@ def make_ember_material(name):
 	bsdf.inputs["Base Color"].default_value = (0.10, 0.025, 0.015, 1.0)
 	bsdf.inputs["Roughness"].default_value = 0.7
 	bsdf.inputs["Metallic"].default_value = 0.0
-	bsdf.inputs["Emission Color"].default_value = (0.90, 0.13, 0.015, 1.0)
-	bsdf.inputs["Emission Strength"].default_value = 1.5
+	bsdf.inputs["Emission Color"].default_value = (1.0, 0.22, 0.02, 1.0)
+	bsdf.inputs["Emission Strength"].default_value = EMBER_STRENGTH
 	return material
 
 
 def make_materials(variant, paths):
+	emit = paths.get("blade_%s_emit" % variant, "")
 	materials = [
-		make_textured_material("SwordBlade", paths["blade_albedo"], paths["blade_mr"]),
+		make_textured_material("SwordBlade", paths["blade_%s_albedo" % variant],
+				paths["blade_%s_mr" % variant], emit, EMBER_STRENGTH if emit else 1.0),
 		make_textured_material("SwordLeather_" + variant, paths["leather_%s_albedo" % variant],
 				paths["leather_%s_mr" % variant]),
 		make_textured_material("SwordMetal_" + variant, paths["metal_%s_albedo" % variant],

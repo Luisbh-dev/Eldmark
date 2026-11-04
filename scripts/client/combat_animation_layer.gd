@@ -63,6 +63,8 @@ var _remote_action: int = -1
 var _remote_step: int = -1
 var _remote_phase: int = -1
 var _remote_elapsed: float = 0.0
+# true mientras el golpe del arma está activo (la estela de la espada; ver [method is_swing_active]).
+var _swing_active: bool = false
 
 
 func _init(clip_set: CombatClipSet = null) -> void:
@@ -91,6 +93,7 @@ static func clips_for(weapon_id: int, fallback: CombatClipSet) -> CombatClipSet:
 func update_local(state: CombatState, tick: int, fraction: float, delta: float,
 		moving: bool = false) -> void:
 	var plan: CombatClipPlanner.Plan = null
+	_swing_active = ActionMachine.is_attack_active(state, tick)
 	var weapon: WeaponTicks = CombatCatalog.weapon(state.weapon_id)
 	if weapon == null:
 		weapon = _weapon
@@ -126,6 +129,7 @@ func update_remote(action_byte: int, delta: float, weapon_id: int = 0, moving: b
 	var action: int = action_byte & 15
 	var phase: int = (action_byte >> 4) & 3
 	var step: int = ActionWire.step_of(action_byte)
+	_swing_active = (action == CombatState.Action.LIGHT or action == CombatState.Action.HEAVY) 			and phase == ActionMachine.PHASE_ACTIVE
 	var combo: int = step if action == CombatState.Action.LIGHT else 0
 	var weapon: WeaponTicks = CombatCatalog.weapon(weapon_id) if weapon_id != 0 else null
 	if weapon == null:
@@ -215,6 +219,13 @@ func is_active() -> bool:
 	return not get_slots().is_empty()
 
 
+## true mientras el golpe del arma (ataque ligero o fuerte) está en su fase activa: lo que lanza la estela.
+## Es el mismo criterio para el jugador local ([method ActionMachine.is_attack_active], el de
+## [signal CombatFeedback.swing_active_changed]) y para los remotos (la fase activa del byte de acción).
+func is_swing_active() -> bool:
+	return _swing_active
+
+
 ## Olvida todo (por ejemplo, tras reaparecer o cambiar de personaje).
 func reset() -> void:
 	_current = null
@@ -227,6 +238,7 @@ func reset() -> void:
 	_remote_step = -1
 	_remote_phase = -1
 	_remote_elapsed = 0.0
+	_swing_active = false
 
 
 # --- Interno ----------------------------------------------------------------------------------

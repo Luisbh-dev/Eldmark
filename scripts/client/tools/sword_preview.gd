@@ -20,7 +20,8 @@ extends Node3D
 ## [br][br]
 ## Vistas: [code]perfil[/code] (de canto, 90°), [code]frente[/code] (la cara ancha de la hoja),
 ## [code]tres_cuartos[/code], [code]empunadura[/code] (guarda, cuero y pomo de cerca) y
-## [code]pomo[/code] (el pomo de cerca); [code]juntas[/code] pone las cuatro espadas en fila.
+## [code]pomo[/code] (el pomo de cerca), [code]pomo_frente[/code] y [code]guarda_frente[/code] (el pomo y la guarda de
+## cara, sin giro: la silueta tal como está modelada); [code]juntas[/code] pone las cuatro espadas en fila.
 
 ## Fondo de las fotos: gris pizarra, para que el acero se despegue.
 const BACKGROUND: Color = Color(0.19, 0.205, 0.23, 1.0)
@@ -39,6 +40,10 @@ const VIEWS: Dictionary[String, Dictionary] = {
 			"size": Vector2i(1000, 1000)},
 	"pomo": {"yaw": -36.0, "pitch": 8.0, "distance": 0.8, "fov": 20.0, "target": -0.115,
 			"size": Vector2i(900, 900)},
+	"pomo_frente": {"yaw": 0.0, "pitch": 0.0, "distance": 0.8, "fov": 20.0, "target": -0.115,
+			"size": Vector2i(900, 900)},
+	"guarda_frente": {"yaw": 0.0, "pitch": 0.0, "distance": 1.1, "fov": 20.0, "target": 0.10,
+			"size": Vector2i(1200, 800)},
 }
 const ALL_VARIANTS: Array[StringName] = [&"base", &"vardheim", &"solmarch", &"askarra"]
 ## Separación entre espadas en la vista de conjunto (m) y tamaño de esa imagen.
