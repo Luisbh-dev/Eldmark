@@ -8,6 +8,8 @@ Leyenda: prioridad imprescindible, importante o deseable; tamaño S (una sesión
 
 Las fases 2 a 5 están en `main`: red, combate, fuerte del Vado Gris con sus PNJ, habilidades, chat y grupos, y el servicio de plataforma en Go ([informe_noche.md](informe_noche.md)). Casi todo se hizo sin ventana. El 1 de noviembre de 2026 se jugó por primera vez con servidor, 8 bots y cliente en Windows: el resultado gusta, pero las animaciones y el mapa se ven bastante mal. Tras auditar capturas reales de animación, mapa e interfaz, mundo y combate, el plan de calidad está en [calidad.md](calidad.md): listón comprobable con capturas, ocho oleadas en orden (TEC-50 primero; luego los arreglos baratos, la animación con los clips del repo, el mapa y el HUD, la sensación de golpe, el escenario y lo que depende de compras) y las decisiones que faltan. ART-44 y UI-48 quedan como paraguas de esos elementos. Además, completar lo que aún está en curso de la fase 4 y revisar las 6 pruebas que fallan en Windows.
 
+Estado del plan de calidad a 4 de noviembre de 2026: las oleadas 0 y 1 y la espada propia están en `main`. Las oleadas 2 a 5 (animación, mapa, HUD, golpe y escenario) están hechas en ramas y ya integradas en `wip/o2-integracion`, pero aún sin fusionar: falta la suite completa, la revisión y las correcciones antes de pasar a `main`. Las capturas de antes y después están archivadas fuera del repo.
+
 ## Primer objetivo jugable
 
 Corte vertical mínimo de las fases 2–4: la red, el combate de espada y escudo con rebobinado, la sensación de golpe, los PNJ y el capitán, la lógica del fuerte y los bots que capturan. En orden:
