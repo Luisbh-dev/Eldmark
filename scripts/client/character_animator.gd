@@ -69,6 +69,9 @@ const LOCOMOTION_NODE: StringName = &"locomotion"
 
 ## El arma que se ve en las manos ha cambiado (id del catálogo de combate; 0 = ninguna conocida).
 signal weapon_shown(weapon_id: int)
+## El golpe del arma pasa a estar activo (o deja de estarlo), para el jugador local y para los remotos
+## ([method CombatAnimationLayer.is_swing_active]): de aquí cuelga la estela de la espada.
+signal swing_active_changed(active: bool)
 
 ## Fases del aire.
 enum AirState { GROUNDED, JUMPING, FALLING }
@@ -196,6 +199,8 @@ var _remote_source: Callable = Callable()
 ## Arma activa de un remoto (devuelve su id); si no es válido, la del estado del personaje.
 var _remote_weapon_source: Callable = Callable()
 var _shown_weapon: int = -1
+# Último valor avisado por [signal swing_active_changed].
+var _swing_shown: bool = false
 
 
 func _ready() -> void:
@@ -270,6 +275,7 @@ func set_remote_source(source: Callable, weapon_source: Callable = Callable()) -
 	_remote_weapon_source = weapon_source
 	if _combat_layer != null:
 		_combat_layer.reset()
+	_set_swing_shown(false)
 
 
 ## Arma que se ve ahora en las manos (-1 antes del primer fotograma).
@@ -350,6 +356,14 @@ func _update_combat(delta: float) -> void:
 	else:
 		_combat_layer.update_local(_character.combat, _character.last_input_tick,
 				Engine.get_physics_interpolation_fraction(), delta, moving)
+	_set_swing_shown(_combat_layer.is_swing_active())
+
+
+# Avisa por [signal swing_active_changed] solo cuando el estado cambia.
+func _set_swing_shown(swinging: bool) -> void:
+	if swinging != _swing_shown:
+		_swing_shown = swinging
+		swing_active_changed.emit(swinging)
 
 
 # Acción de combate de este fotograma: la del byte del registro dibujado de un remoto o la del estado del

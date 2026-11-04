@@ -23,6 +23,16 @@ func after_each() -> void:
 	await wait_process_frames()
 
 
+## true si [param node] cuelga de una [SwordTrail] por debajo de [param root].
+static func _is_under_trail(node: Node, root: Node) -> bool:
+	var current: Node = node
+	while current != null and current != root:
+		if current is SwordTrail:
+			return true
+		current = current.get_parent()
+	return false
+
+
 func _make_visual() -> HumanoidVisual:
 	var world := Node3D.new()
 	tree.root.add_child(world)
@@ -188,15 +198,23 @@ func test_the_weapons_cast_shadows() -> void:
 	var sword: Node = skeleton.get_node(NodePath(WeaponProps.SWORD_ATTACHMENT))
 	var left: Node = skeleton.get_node(NodePath(WeaponProps.SHIELD_ATTACHMENT))
 	WeaponProps.show_weapon(skeleton, CombatCatalog.weapon_id(&"bow"))
+	# La estela de la espada (SwordTrail) es un efecto: no debe proyectar sombra. Todo lo demás (la
+	# espada, sea el modelo propio o la caja de reserva, el disco del escudo y el arco), sí, menos la cuerda.
 	var meshes: Array[MeshInstance3D] = []
+	var trail_meshes: int = 0
 	for root: Node in [sword, left]:
 		for mesh_node: Node in root.find_children("*", "MeshInstance3D", true, false):
+			if _is_under_trail(mesh_node, root):
+				trail_meshes += 1
+				assert_eq((mesh_node as MeshInstance3D).cast_shadow,
+						GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "la estela no proyecta sombra")
+				continue
 			meshes.append(mesh_node as MeshInstance3D)
-	assert_eq(meshes.size(), 7, "hoja, guarda, disco y las cuatro piezas del arco")
+	assert_true(meshes.size() >= 7, "espada, disco y las cuatro piezas del arco (%d mallas)" % meshes.size())
 	var casting: int = 0
 	for mesh: MeshInstance3D in meshes:
 		if mesh.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
 			casting += 1
 		elif mesh.name != &"Cuerda":
 			assert_true(false, "%s debería proyectar sombra" % mesh.name)
-	assert_eq(casting, 6, "todas las piezas menos la cuerda proyectan sombra")
+	assert_eq(casting, meshes.size() - 1, "todas las piezas menos la cuerda proyectan sombra")

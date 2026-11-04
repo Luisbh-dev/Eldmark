@@ -234,6 +234,17 @@ declara una licencia propia:
   `tools/materials/build_fort_keep_materials.gd`. Las herramientas de revisión son
   `tools/render/render_fort_keep_*.gd` y `tools/blender/compose_fort_keep_comparison.py`; la escena de vista
   previa es `scenes/tests/fort_keep_preview.tscn` (con `scripts/client/tools/fort_keep_preview.gd`).
+
+- Espada de armas `assets/models/weapons/` (`sword_base.glb` y las variantes por reino
+  `sword_vardheim.glb`, `sword_solmarch.glb` y `sword_askarra.glb`): modelada desde cero con Blender
+  5.2 sin interfaz por `tools/blender/build_sword.py`, con las texturas (la hoja de cada reino con su
+  acanaladura de runas, oro o grieta emisiva, el cuero y un atlas de metal con el canto pulido, todo
+  ruido y degradados) generadas por código en `tools/blender/sword_textures.py`. Ninguna malla ni
+  textura viene de un pack: las espadas de RPG Weapons Free solo se miraron para comparar calidad.
+  La estela del golpe (`scripts/client/sword_trail.gd`) es una cinta propia con una textura de degradado generada por código al arrancar.
+  Para regenerarlas: `blender --background --factory-startup --python tools/blender/build_sword.py`
+  y `godot --headless --path . --import`. Los GLB llevan las texturas dentro (el `.import` las
+  conserva embebidas, `gltf/embedded_image_handling=3`).
 - Emblemas de bando `assets/emblems/*.svg` (lobo, sol partido, yunque y corona rota):
   **provisionales**, formas geométricas hechas para Eldmark con `tools/assets/make_emblems.py`; los
   sustituirá el arte final de ART-03 con los mismos nombres de archivo.

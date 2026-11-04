@@ -44,3 +44,7 @@ platform/deploy/secrets/
 # Binario de la plataforma compilado dentro de platform/
 /platform/eldmark-platform
 /platform/eldmark-platform.exe
+
+# Caches de Python (herramientas de assets)
+__pycache__/
+*.pyc

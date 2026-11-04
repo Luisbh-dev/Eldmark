@@ -61,6 +61,9 @@ static func apply_bytes(visual: HumanoidVisual, bytes: PackedByteArray, realm: i
 		catalog = AppearanceCatalog.shared()
 	var appearance: CharacterAppearance = resolve(bytes, realm, catalog)
 	apply(visual, appearance, catalog)
+	# La espada también es del reino: su modelo y el color de su estela.
+	if visual != null:
+		visual.set_realm(realm)
 	return appearance
 
 

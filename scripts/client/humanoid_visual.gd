@@ -91,6 +91,8 @@ var _skeleton: Skeleton3D = null
 var _camera_fade_applied: bool = false
 var _fade_meshes: Array[MeshInstance3D] = []
 var _fade_value: float = -1.0
+# Variante de la espada pedida antes de _ready (vacía = ninguna).
+var _pending_sword_variant: StringName = &""
 # Ranura -> sus mallas (colgadas del esqueleto) y la ruta de la escena de la que salieron.
 var _part_meshes: Dictionary[StringName, Array] = {}
 var _part_paths: Dictionary[StringName, String] = {}
@@ -176,7 +178,11 @@ func _ready() -> void:
 	# avisa del arma que se lleva (la activa del personaje o la del registro de un remoto) y se enseñan
 	# sus accesorios (fase 4: el arco o la espada y el escudo).
 	WeaponProps.install(_skeleton)
+	if _pending_sword_variant != &"":
+		WeaponProps.set_sword_variant(_skeleton, _pending_sword_variant)
 	get_animator().weapon_shown.connect(_on_weapon_shown)
+	# La estela de la espada sigue la fase activa del golpe, también la de los remotos.
+	get_animator().swing_active_changed.connect(_on_swing_active_changed)
 	# Pose de combate sobre la locomoción (ART-08). Va antes que el giro de la columna, que se
 	# aplica encima.
 	var combat := CombatPoseModifier.new()
@@ -196,6 +202,22 @@ func _on_weapon_shown(weapon_id: int) -> void:
 	WeaponProps.show_weapon(_skeleton, weapon_id)
 	# El arco se crea la primera vez que hace falta: sus mallas también se difuminan.
 	_apply_camera_fade()
+
+
+func _on_swing_active_changed(active: bool) -> void:
+	WeaponProps.set_swing_active(_skeleton, active)
+
+
+## Pone la espada del reino [param realm] (código de [enum NetProtocol.Realm]; cualquier otro, la base):
+## el modelo y el color de la estela. Antes de [method _ready] se guarda y se aplica al entrar.
+func set_realm(realm: int) -> void:
+	var variant: StringName = RealmCatalog.id_of_code(realm)
+	if not SwordModel.MODELS.has(variant):
+		variant = SwordModel.BASE
+	if _skeleton == null:
+		_pending_sword_variant = variant
+		return
+	WeaponProps.set_sword_variant(_skeleton, variant)
 
 
 ## Esqueleto que anima todas las mallas (perfil humanoide de Godot: Hips, Head, RightHand...).
