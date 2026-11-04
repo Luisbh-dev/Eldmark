@@ -135,7 +135,7 @@ Keys are bound to physical key positions, so WASD works on any keyboard layout. 
 | Settings / controls help bar | F10 / F1 |
 | Debug panels / network ghost (client) | F3 / F4 |
 
-Chat commands (`/r`, `/ignorar`, `/reportar`, ...) are in Spanish for now. The `--demo` flag plays a scripted route and combat for recording captures; see [getting started](docs/getting-started.md#scripted-demo-and-screenshots).
+Chat commands (`/r`, `/ignorar`, `/reportar`, ...) are in Spanish for now. The `--demo` flag plays a scripted route and combat for recording captures; see [getting started](docs/getting-started.md#offline-sandbox-and-startup-options).
 
 ## Project structure
 

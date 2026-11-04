@@ -1,6 +1,6 @@
 # Eldmark · Phase 2: network design
 
-Final design for step 2 of the [roadmap](vision.md#hoja-de-ruta): authoritative dedicated server,
+Final design for step 2 of the [roadmap](vision.md#roadmap): authoritative dedicated server,
 several players in one zone, prediction and reconciliation for the local player, interpolation of
 the others, and realm selection.
 
@@ -665,10 +665,10 @@ time, without the half-tick bias that applying them on the physics tick would ha
 | `0x54` | WALLET_UPDATE (v7) | S→C | 3 | 19 B, owner only |
 | `0x55` | PROGRESS_UPDATE (v7) | S→C | 3 | 25 B, owner only |
 
-"v3" marks what protocol 3 adds (phase 4, [fortress.md](fortress.md#2-replicación-con-estado-object_state-gue-09)).
-"v5" marks what protocol 5 adds (chat and parties, [social.md](social.md#12-implementación-fase-4)).
+"v3" marks what protocol 3 adds (phase 4, [fortress.md](fortress.md#2-stateful-replication-object_state-gue-09)).
+"v5" marks what protocol 5 adds (chat and parties, [social.md](social.md#12-implementation-phase-4)).
 "v6" marks what protocol 6 adds or changes (abilities, effects, weapon swap, projectiles, knocked-down state
-and templates, [abilities.md 5](abilities.md#5-protocolo-protocol_version--6)).
+and templates, [abilities.md 5](abilities.md#5-protocol-protocol_version--6)).
 "v7" marks what protocol 7 adds or changes, the phase 5 upgrade ([platform.md](platform.md) §5.4 and
 [progression.md](progression.md) §12): each document writes here what its code adds.
 The size of an ENTITY_SPAWN depends on `kind` (see 5.5).
@@ -716,7 +716,7 @@ ticks.
 | 16 | u8 | channel | zone channel; 0 in phase 2 |
 | 17 | u8 | zone_len | ≤ 32 |
 | 18 | z B | zone_id | ASCII id from `zones.gd` |
-| 18+z | u8 × 3 | realm_counts | players of Vardheim, Solmarch and Askarra in the zone (saturating at 255), so that realm selection offers the shortest one ([fortress.md 7](fortress.md#7-bots-que-asedian-gue-15-gue-16-gue-42)). People (not fake players) of each realm at the time of the HELLO, not counting the one joining; the server fills them in since GUE-42 (F6a) |
+| 18+z | u8 × 3 | realm_counts | players of Vardheim, Solmarch and Askarra in the zone (saturating at 255), so that realm selection offers the shortest one ([fortress.md 7](fortress.md#7-bots-that-lay-siege-gue-15-gue-16-gue-42)). People (not fake players) of each realm at the time of the HELLO, not counting the one joining; the server fills them in since GUE-42 (F6a) |
 
 The size is exactly `21 + z`: a version 2 WELCOME (without the count) no longer decodes.
 
@@ -780,9 +780,9 @@ removal without waiting for the timeout.
 - `command` 1 = TELEPORT, with `f32 × 3` of position (14 B in total).
 - **Fixed ids** (`NetProtocol.DEBUG_*`), which are not reused or reordered: 1 `teleport`,
   2 `heal`, 3 `kill`, 4 `stamina_inf`, 5 `set_weapon`, 6 `spawn_dummy` and, since version 4
-  ([fortress.md 1.6](fortress.md#16-controlador-gue-08-gue-12)), 7 `unstuck`, 8 `fort_reset`, 9
+  ([fortress.md 1.6](fortress.md#16-controller-gue-08-gue-12)), 7 `unstuck`, 8 `fort_reset`, 9
   `fort_owner`, 10 `fort_kill_captain`, 11 `fort_capture_speed` and 12 `npc_debug` and, since version
-  6 ([abilities.md 5.1](abilities.md#51-entradas-y-mensajes-cs)), 13 `cooldowns_off`, 14
+  6 ([abilities.md 5.1](abilities.md#51-inputs-and-cs-messages)), 13 `cooldowns_off`, 14
   `apply_status`, 15 `down` and 16 `refill` and, since version 7 ([progression.md](progression.md) §10), the
   progression GM ones, always on the player themself: 40 `item_give`, 41 `currency_add`, 42 `level_set` and 43
   `xp_add`. The data for 2 to 6 is defined by the server
@@ -808,7 +808,7 @@ removal without waiting for the timeout.
 **RESPAWN_REQUEST** (`0x05`, channel 3): `u8 type`, `u8 point_index`. The dead player asks to
 respawn at point `point_index` of the list of points of their realm (since phase 4, the static list
 of all the points in the zone, `NetZones.get_all_respawn_points`; the server checks
-that it is valid for their realm, [fortress.md 8.3](fortress.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones))
+that it is valid for their realm, [fortress.md 8.3](fortress.md#83-what-f0-f1-and-f2-left-behind-additions-to-the-contract-and-decisions))
 ([combate.md 5](combate.md#5-vida-eventos-muerte-y-reaparición-cmb-10-cmb-15-cmb-41-gue-03-gue-05)).
 Out of time or with an invalid index, the server counts a warning. It is sent by the button on the death
 screen, by `SwarmBot` and, since the phase 4 revision, by `--bot` (point 0, as soon as the server's estimated tick
@@ -816,12 +816,12 @@ reaches the `respawn_tick` of the extra block, and every second while still dead
 have no network and request it on death (`Combatant.requests_respawn_on_death`).
 
 **UNSTUCK_REQUEST** (`0x06`, channel 3, v3): 1 B, only `u8 type`. The player requests `/atascado` (stuck)
-([fortress.md 5](fortress.md#5-avisos-reaparición-salida-y-atascado)). Valid without `--debug-commands`. Before
+([fortress.md 5](fortress.md#5-notices-respawn-leaving-and-atascado)). Valid without `--debug-commands`. Before
 entering the world, or with any extra byte, it counts a warning; the 10 s channeling, the
 reuse and the teleport belong to F3.
 
 **LOADOUT_SELECT** (`0x07`, channel 3, v6): `u8 type`, `u8 template_id`. The equipment template for the
-next spawn ([abilities.md 4.6](abilities.md#46-equipo-plantillas-y-consumibles)). Valid from
+next spawn ([abilities.md 4.6](abilities.md#46-equipment-templates-and-consumables)). Valid from
 the WELCOME, also before CLIENT_READY (LOADING and IN_WORLD), and goes through the reliable-message limiter. 0 = the
 default one, without a warning; an id that does not exist or is not `selectable` counts a warning. `decode` only
 requires the 2 B and the type. The server (H3c) stores it in `ServerPeer.pending_template_id` and applies it when it spawns the
@@ -878,7 +878,7 @@ because it does not change the simulation ([combate.md 1](combate.md#1-qué-se-p
 - **Active weapon (v6).** The remote player knows which weapon it carries from the weapon pair (SPAWN or LOADOUT) and bit 3:
   the one in slot 2 if it is set. The `action` byte has no free bits. The lag compensation history
   does not take this bit: there bit 3 is `DEFENSE_BLOCKING` and the history byte is `(flags &
-  0b111) | defense` ([abilities.md 3.6](abilities.md#36-consultas)).
+  0b111) | defense` ([abilities.md 3.6](abilities.md#36-queries)).
 - **Animation.** Sprint does not travel: the client deduces it from the velocity.
 
 **ENTITY_SPAWN** (`0x20`, channel 3)
@@ -945,7 +945,7 @@ initial values. The opposite would dump to anyone entering the zone the private 
 enemy (combate.md 6). Since v6 the weapon in the other slot (`alt_weapon_id`) and the active
 slot (bit 0 of `combat_flags2`) are also public: weapons are visible. Cooldowns, charges, the cooldown of
 consumables, the movement-effect slots and the pressed-button bits revert to their initial
-values ([abilities.md 5.2](abilities.md#52-estado-snapshot-y-registro)).
+values ([abilities.md 5.2](abilities.md#52-state-snapshot-and-record)).
 
 **ENTITY_DESPAWN** (`0x21`, channel 3)
 
@@ -986,13 +986,13 @@ other messages of channel 3.
 
 - **WAR**: the `net_id` is the fortress and the `realm` the realm that accompanies the notice
   (`FortressState.event_realm`). It goes to the whole zone and is applied on the render tick
-  ([fortress.md 5](fortress.md#5-avisos-reaparición-salida-y-atascado)).
+  ([fortress.md 5](fortress.md#5-notices-respawn-leaving-and-atascado)).
 - **TELEGRAPH**: the `net_id` is the NPC preparing the attack. `position` is packed as in the
   entity record (20 bits per axis, 1 cm), `yaw` as in the record (0..65535 over [0, TAU)),
   `radius_cm` is the reach and `impact_in_ticks` the ticks remaining until the blow. It is applied on
   arrival: it is a warning. The blow lands at the server's `tick + impact_in_ticks` and is dodged by the input
   of that tick, so the client counts the deadline with its predicted tick, not with the arrival time
-  (the marker, the bots; [fortress.md 5](fortress.md#5-avisos-reaparición-salida-y-atascado)).
+  (the marker, the bots; [fortress.md 5](fortress.md#5-notices-respawn-leaving-and-atascado)).
 
 - **HIT flags:** bit0 critical, bit1 blocked, bit2 parried, bit3 guard break, bit4
   lethal; v6: bit5 interrupted (drinking, a marked cast, reviving or finishing off) and bit6 knocks down.
@@ -1002,7 +1002,7 @@ other messages of channel 3.
   ability; `0x8000 | id` effect (a pulse); `0xC000 | 1` finisher and `0xC000 | 2` bleed-out. The ids
   are requested from the catalog by name: none is fixed.
 - **STATUS, HEAL, LOADOUT, DOWNED and INTERACT (v6)**: recipients, timing and what they explain in
-  prediction, in [abilities.md 5.4](abilities.md#54-entity_event-y-fuentes). DOWNED goes to the whole zone
+  prediction, in [abilities.md 5.4](abilities.md#54-entity_event-and-sources). DOWNED goes to the whole zone
   (kill feed); LOADOUT, to the owner and, if the weapons change, to whoever has it as relevant with
   `charges` = 0.
 - **LEVEL_UP (v7)**: to the owner and to those of **their realm** who have it as relevant, for the visual effect; it does not
@@ -1023,7 +1023,7 @@ other messages of channel 3.
 - With code 1, the server disconnects the peer after the `flush()`.
 
 **OBJECT_STATE** (`0x22`, channel 3, v3). The replicated state of an object that is neither a player nor an
-NPC, today a fortress ([fortress.md 2](fortress.md#2-replicación-con-estado-object_state-gue-09)).
+NPC, today a fortress ([fortress.md 2](fortress.md#2-stateful-replication-object_state-gue-09)).
 
 | Offset | Type | Field | Notes |
 |---|---|---|---|
@@ -1043,7 +1043,7 @@ NPC, today a fortress ([fortress.md 2](fortress.md#2-replicación-con-estado-obj
   `ObjectState.apply_to_fortress` skips it and `is_valid_for_fortress` flags it.
 
 **SCOREBOARD** (`0x32`, channel 3, v3). The zone scoreboard, every 2 s to all players
-([fortress.md 6](fortress.md#6-interfaz-ui-18-ui-21-ui-41-ui-42)).
+([fortress.md 6](fortress.md#6-interface-ui-18--ui-21-ui-41-ui-42)).
 
 | Offset | Type | Field | Notes |
 |---|---|---|---|
@@ -1341,7 +1341,7 @@ func _physics_process(delta: float) -> void:
 
 This is a phase 2 sketch: the normative order, with all the steps that have been added since (NPC
 brains, combat with abilities, projectiles, effects and the phase 4 knocked-down state
-([abilities.md 4.1](abilities.md#41-orden-del-tick-completa-fuertemd-17)), forts, NPCs, the social step and the
+([abilities.md 4.1](abilities.md#41-tick-order-completes-fortressmd-17)), forts, NPCs, the social step and the
 per-section metrics), is the one in the header of `scripts/server/zone_server.gd`.
 
 - **Staggered sends.** Each client receives its snapshot on the ticks matching the parity of its
@@ -1650,7 +1650,7 @@ The server never accepts client state, and every decoded value is bounded.
 | Realm | Validated against the zone. In phase 2 the client declares it (`DevAuthProvider`); since phase 5 it comes from the character (the claim in platform.md §5) and the HELLO field is ignored |
 | Rewind | Bounded by what is measured ([10](#10-history-for-lag-compensation)); the RTT the client declares with its acks is bounded by the ENet one plus the server's simulator + 3 ticks |
 | Debug commands | Only with `--debug-commands` |
-| Chat (protocol 5) | Each CHAT_SEND counts as one more reliable message and also has its per-peer buckets, which it spends before sanitizing: say, zone and party, 1 message/s with a burst of 5; whisper, 1/s with a burst of 3 and 5 new recipients per minute; a text equal to the previous one within 10 s and to the same place is discarded. The first ten discards in every 600 ticks are free and each subsequent one adds a warning: from about 6 messages per second sustained (the transport lets 10 through without warnings) it reaches a kick. Party invitations, the same. The server sanitizes the text (including invisible characters and combining marks) and never sends a client the text of another realm ([social.md](social.md#12-implementación-fase-4)) |
+| Chat (protocol 5) | Each CHAT_SEND counts as one more reliable message and also has its per-peer buckets, which it spends before sanitizing: say, zone and party, 1 message/s with a burst of 5; whisper, 1/s with a burst of 3 and 5 new recipients per minute; a text equal to the previous one within 10 s and to the same place is discarded. The first ten discards in every 600 ticks are free and each subsequent one adds a warning: from about 6 messages per second sustained (the transport lets 10 through without warnings) it reaches a kick. Party invitations, the same. The server sanitizes the text (including invisible characters and combining marks) and never sends a client the text of another realm ([social.md](social.md#12-implementation-phase-4)) |
 | Inventory (v7) | INVENTORY_REQUEST counts as one more reliable message and has its per-peer buckets, which are checked on arrival, before anything else: 8 requests/s with a burst of 16 and, in addition, 2 SPLIT or DESTROY/s with a burst of 10 (they spend ids). Whatever exceeds immediately receives its INVENTORY_DELTA with `result` 8 RATE and the real contents of its slots; the first ten discards in every 600 ticks are free and each subsequent one adds a warning, like chat. A request outside the world, malformed or INVALID adds a warning; INVENTORY_SYNC_REQUEST, one every 5 s (more, a warning and no response). Accepted ones are applied at the end of the tick, after the spawns, in arrival order ([progression.md](progression.md) §4.2 and §19.12) |
 
 **Stall credit.** Limiters count in server ticks, and the tick does not advance while
@@ -1684,14 +1684,14 @@ REJECT). Now `ZoneServer._kick` records a 30 s `_kick_until` entry:
 - **Limit.** It is a brake, not a ban: an attacker with several IPs or with another name from loopback
   still gets in, and whoever shares an IP with the kicked player (a NAT network) waits the same 30 s. The
   per-account ban arrives with phases 5 and 6. The same goes for the social buckets (`ChatPeerState`):
-  they are per connection until phase 5 ([social.md](social.md#127-decisiones-y-pendiente-de-la-fase-4)).
+  they are per connection until phase 5 ([social.md](social.md#127-phase-4-decisions-and-pending-items)).
 
 **Names in the HELLO (phase 4).** Since the client chooses the name, the `REJECT NAME` for a name already
 used by someone in the zone says whether that name is connected, whatever its realm; together with the whisper's "not
 connected" it gives an enemy away. It is not covered up in phase 4 because the client also chooses its
 realm (`DevAuthProvider`) and can enter the enemy's directly; since phase 5 the name and the
 realm come from the ticket's character and that rejection disappears (details in
-[social.md](social.md#127-decisiones-y-pendiente-de-la-fase-4)).
+[social.md](social.md#127-phase-4-decisions-and-pending-items)).
 
 **Phases 5 and 6:**
 
@@ -1791,14 +1791,14 @@ Overhead per UDP packet: about 40 B (IPv4 20, UDP 8, ENet ~12).
 | Server input, 64 players | 64 × 5.5 KB/s | ~350 KB/s |
 | Eldrun, 300 players with no further levers | 300 × 37 KB/s | ~11 MB/s (~89 Mbit/s): too much |
 
-The downstream in this table is that of protocol 6 ([abilities.md 5.6](abilities.md#56-ancho-de-banda)):
+The downstream in this table is that of protocol 6 ([abilities.md 5.6](abilities.md#56-bandwidth)):
 136 B are the 134 of the header with own state (111 B) and extra block plus the 2 of the
 section header; with v5 they were 94 (92 and 2). Below the cap, the 111 B state adds +42 B × 30/s = +1.26 KB/s
 per client; at the cap the packet was already full and what is lost is 2 records per snapshot (50 instead of
 52). Added to the downstream are the ENTITY_EVENT messages, about 27 B per recipient and hit
 ([combate.md 6](combate.md#6-protocolo-tec-13-protocol_version--2)), and the projectile SPAWN and DESPAWN
 messages (v6). The measurements below are from phase 2 (20 B record and 35 B state), from phases 3 and 4 (69 B state)
-and, the last one, from v6 with the phase 4 kit (H5, [abilities.md 7.3](abilities.md#73-pruebas-cada-una--30-s)): with
+and, the last one, from v6 with the phase 4 kit (H5, [abilities.md 7.3](abilities.md#73-tests-each--30-s)): with
 the 111 B state, each client downloads 36.1 KB/s with 64 combatants (35.3 with v5).
 
 **CPU (phase 2):** the p99 of the tick must stay below 8 ms (half of the 16.7 ms) with
@@ -1931,7 +1931,7 @@ Tick in ms, p50 / p95 / p99 / maximum of the last 34 s stretch:
 The 64 vs 64 row is not of 128 players (F6b review): the swarm closed on its own clock and the server, slower
 than real time, ran the last stretch without the 10 real bots (its `snapshot` of 0.002 ms gives it away); since the review the swarm
 closes on the server tick (`--quit-at-server-tick`) and the summary warns if the stretch lacks the player peak.
-The full results and what happens in the battle are in [fortress.md 8.3](fortress.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones). With 64 players
+The full results and what happens in the battle are in [fortress.md 8.3](fortress.md#83-what-f0-f1-and-f2-left-behind-additions-to-the-contract-and-decisions). With 64 players
 the 8 ms p99 criterion **is not met** (19.1 ms, with the median already at 10.6), just as in the phase 3 brawl (15.9 ms with 64
 combatants on an idle machine), the KB/s per client are met (36.1 of 37) and not a single input is substituted; with 128 the
 server does not sustain real time (half the clients' inputs are substituted and rewind fails honest players).
@@ -1971,10 +1971,10 @@ client and at most 0.03% of substituted inputs, yes; with 128, no: the p99 excee
 rewind fails honest players in both.
 **The first per-battle player limit at the fort stays at 64 (32 vs 32), also with the NPCs** (without the phase 4 kit;
 with it, the 20 vs 20 measurement below). The battle of each run
-and the 20 vs 20 telemetry session are in [fortress.md 8.3](fortress.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones) (F6b, package E).
+and the 20 vs 20 telemetry session are in [fortress.md 8.3](fortress.md#83-what-f0-f1-and-f2-left-behind-additions-to-the-contract-and-decisions) (F6b, package E).
 
 **Phase 4 measurements: brawls with the kit** (`tools/load_test.gd --brawl`, H5;
-[abilities.md 7.3](abilities.md#73-pruebas-cada-una--30-s)). Like those of phase 3 (Vado Gris with its Terrain3D, 10
+[abilities.md 7.3](abilities.md#73-tests-each--30-s)). Like those of phase 3 (Vado Gris with its Terrain3D, 10
 real bots `--bot-brain=combat` and the rest fake combatants in the `--fake-center=0,-96` ring, 60 s of measurement after
 12 s of approach), with protocol 6 and the phase 4 kit: the fake players use abilities, potions, knockdowns and
 finishers, **half carry the marksman template** (`--fake-loadout=marksman:50`) and are pure archers
@@ -2028,13 +2028,13 @@ running at times (load average of 0.5 to 0.7 at the start of each scenario). Tic
 
 **Integration of abilities onto F6b** (merge of phase 4 with F6b): the F6b sieges above (32 vs 32 and 64 vs
 64, with and without NPCs) predate the kit. Since the merge the fake players and the siege bots fight with it (step 1 of their plan,
-[abilities.md 11.9](abilities.md#119-h5--integración)). The integration gave the limit at the fort with the kit as 40 (20 vs
+[abilities.md 11.9](abilities.md#119-h5--integration)). The integration gave the limit at the fort with the kit as 40 (20 vs
 20), but that was the unmeasured estimate above, and the measurement it proposed (`load_test.gd --siege --npcs`) carried no archers: the
 siege fake players come out with the default template and the `SwarmBot`s have no kit. The default capacity of the Vado Gris server is
 40 (`Zones.MAX_PLAYERS`); the F6b tools and tests that measure more players (the `SIEGE_MATRIX` sieges, 32 vs 32 and
 64 vs 64; `siege_battle.gd` and `SiegeRunner`) request their capacity with explicit `--max-players` or `ServerConfig.max_players`
 (`load_test.gd`: `server_max_players`, the players plus 8), and so does any manual session with more than 40 players. See also
-[fortress.md 8.3](fortress.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones).
+[fortress.md 8.3](fortress.md#83-what-f0-f1-and-f2-left-behind-additions-to-the-contract-and-decisions).
 
 **20 vs 20 siege with the kit and the NPCs** (integration review; GUE-16): `load_test.gd --scenario=siege --fakes=30
 --bots=10 --seconds=120 --npcs`, with the default template and with half marksmen (`--fake-loadout=marksman:50`; the siege bots'
@@ -2053,7 +2053,7 @@ give 17.1–17.2 ms in both. It costs more than the 40 brawl in the open field b
 ~70–74 µs per character on the slopes and the fort's esplanade) and the NPC brains (0.2–0.4 ms). **The per-battle limit
 at the fort with the kit stays at 40 (20 vs 20), measured and with no margin**: the capacity is not lowered over what separates a run from the
 criterion (of the order of the noise between two identical runs, ~1 ms), and the lever for gaining margin is still 6 (`simulate()`,
-TEC-35). Battle details for each run are in [fortress.md 8.3](fortress.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones)
+TEC-35). Battle details for each run are in [fortress.md 8.3](fortress.md#83-what-f0-f1-and-f2-left-behind-additions-to-the-contract-and-decisions)
 ("Revisión de la integración de las habilidades", the ability integration review).
 
 **Phase 5 measurements: DTLS** (TEC-27, [platform.md](platform.md) §10.2 and §19.18, P9c). `tools/load_test.gd
@@ -2159,11 +2159,11 @@ Tick in ms of the last 34 s stretch; sections, p50 (p99):
   [8.1](#81-tick-order) and interpolated on the client.
 - **Announcements** ("¡Vado Gris capturado!", Vado Gris captured!): through NOTICE or ENTITY_EVENT, applied on the
   render tick.
-- **Chat and parties** (protocol 5, [social.md](social.md#12-implementación-fase-4)): CHAT_SEND and
+- **Chat and parties** (protocol 5, [social.md](social.md#12-implementation-phase-4)): CHAT_SEND and
   CHAT_MESSAGE (`0x40` and `0x41`) through reliable channel 3. They are distributed by the social service's `ChatRouter`
   (`scripts/server/social/`), which `ZoneServer` only feeds with types `0x40` to `0x4F`. `NetClient`
   decodes the S→C ones (CHAT_MESSAGE and PARTY_*) and emits signals; `SwarmBot` decodes them and discards them without
-  counting them as malformed ([social.md](social.md#12-implementación-fase-4), 12.7).
+  counting them as malformed ([social.md](social.md#12-implementation-phase-4), 12.7).
 
 ### Phases 5 and 6: accounts and handoffs
 
@@ -2359,7 +2359,7 @@ all copies of the project.
   Figures in 14.
   gate and the circle; the fake players carry `--fake-brain=siege`, the real bots `--bot-brain=siege` and the server opens the circle with
   `--run-at=<tick>:fort_kill_captain` and writes a battle log. Figures in 14.
-- Brawls with the phase 4 kit (H5, [abilities.md 7.3](abilities.md#73-pruebas-cada-una--30-s)): `--brawl` has since
+- Brawls with the phase 4 kit (H5, [abilities.md 7.3](abilities.md#73-tests-each--30-s)): `--brawl` has since
   then carried half of the fake players with the marksman template (`--fake-loadout=marksman:50`), pure archers (`--fake-archers`) of
   whom a share fires at the sky (`--sky-archers=<percentage>`, 50 by default; with 100, the maximum of live arrows), and the
   fort's NPCs in the zone. The summary adds the `combat_projectiles` section, the arrows and the kit, and the phase 4 criterion: tick p99

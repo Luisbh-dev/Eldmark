@@ -182,7 +182,7 @@ S1, S2, S3 and A1 are real failures in production or in daily use of `--local` o
 
 ## Phase 3: progress
 
-Design in [combate.md](combate.md): reviewed through two lenses before implementing (2 blockers and
+Design in [combate.md](../combate.md): reviewed through two lenses before implementing (2 blockers and
 ~25 important issues fixed in version 2) and with a §11 that records what was settled during implementation.
 
 | Package | Contents | New tests |
@@ -264,7 +264,7 @@ client), with verifiers who tried to refute each finding: 19 findings, 18 confir
 
 ## Phase 4: progress
 
-Design in [fortress.md](fortress.md), reviewed before implementing (22 findings, 3 blockers; several
+Design in [fortress.md](../fortress.md), reviewed before implementing (22 findings, 3 blockers; several
 technical assumptions checked by running Godot and Terrain3D).
 
 | Package | Contents | Status |

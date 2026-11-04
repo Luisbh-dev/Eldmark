@@ -501,7 +501,7 @@ remaining rules are in `PartyRules` (shared).
 
 `health_q` is the snapshots' quantized health (0 dead, 1 to 255 alive), `stamina_q` the stamina in 255
 steps and `status` the bits `STATUS_IN_COMBAT`, `STATUS_PROTECTED` and `STATUS_DEAD` (and, since protocol 6,
-`STATUS_DOWNED`: the member is knocked down, [abilities.md 5.2](abilities.md#52-estado-snapshot-y-registro)). `decode` returns `null` if the
+`STATUS_DOWNED`: the member is knocked down, [abilities.md 5.2](abilities.md#52-state-snapshot-and-record)). `decode` returns `null` if the
 size does not match, there are more than 5 members, a net id repeats, the leader is not in the list, a name is
 empty (also if it is only a UTF-8 BOM, which reads as empty) or is not valid UTF-8, a status bit is unknown
 or a position is not finite.
@@ -555,7 +555,7 @@ screen.
 | `Nameplates.set_party` | Party members carry their name in the party color (channel blue) instead of their realm's |
 
 New keys in `InputBindings`: `party_accept` (Y), `party_decline` (N) and `social_menu` (G; it was T until
-phase 4, which gives T to the stamina potion: [abilities.md 11.7](abilities.md#117-h4--cliente)); all
+phase 4, which gives T to the stamina potion: [abilities.md 11.7](abilities.md#117-h4--client)); all
 provisional (pending for the user, like the dimensions and the frame colors). Y and N only respond
 with the prompt in view and **with no other interface piece holding the cursor** (`CameraRig.is_ui_holding_cursor`:
 the social menu, the map, the settings, the chat line), so that a letter pressed in a window does not accept or

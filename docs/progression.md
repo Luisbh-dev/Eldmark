@@ -1,7 +1,7 @@
 # Eldmark · Phase 5: progression design
 
 Design of what is saved for a character and what is played with it, in step 5 of the
-[roadmap](vision.md#hoja-de-ruta): items (PRG-02), what is saved and its invariants (PRG-10),
+[roadmap](vision.md#roadmap): items (PRG-02), what is saved and its invariants (PRG-10),
 authoritative inventory (PRG-11), currencies and ledger (PRG-12), levels (PRG-13), races (PRG-14),
 GM tools (PRG-16), persistent combat configuration (CMB-30), appearance (ART-19) and the
 inventory and character window (UI-26).

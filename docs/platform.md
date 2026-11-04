@@ -1,6 +1,6 @@
 # Eldmark · Phase 5: platform design
 
-Design of step 5 of the [roadmap](vision.md#hoja-de-ruta): accounts, characters and saving to a database.
+Design of step 5 of the [roadmap](vision.md#roadmap): accounts, characters and saving to a database.
 It covers the platform service and everything that goes through it: TEC-22 to TEC-25, TEC-27, TEC-28, TEC-41, TEC-43,
 PRG-41, SOC-13 to SOC-18, GUE-19 and the client side of UI-22 to UI-24.
 

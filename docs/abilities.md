@@ -1,11 +1,11 @@
 # Eldmark · Phase 4: design of abilities, effects, weapons and projectiles
 
-A short design for the combat expansion announced in [fortress.md 10](fortress.md#10-ampliación-del-combate-otro-diseño-corto):
+A short design for the combat expansion announced in [fortress.md 10](fortress.md#10-combat-expansion-another-short-design):
 abilities with cooldowns (CMB-19), status effects (CMB-20), sword and shield (CMB-21), projectiles
 with rewind (CMB-22), bow (CMB-23), weapon swap (CMB-24), knocked down (CMB-28), minimal equipment
 (PRG-04), templates (PRG-07), consumables (PRG-08), action bar (UI-11) and status icons
 (UI-45). It continues [combate.md](combate.md) (its §1, §3, §4 and §6 are taken as read), [networking.md](networking.md) (§6,
-§8, §10, §14) and the tick order of [fortress.md 1.7](fortress.md#17-orden-del-tick-completa-combatemd-42).
+§8, §10, §14) and the tick order of [fortress.md 1.7](fortress.md#17-tick-order-completes-combatemd-42).
 
 Version 2: version 1 after the review by three reviewers (§10). Anything marked "verified" comes from probes in
 headless Godot 4.7.2 (not committed).
@@ -2180,7 +2180,7 @@ export, audio, names and realms.
   (`--fake-loadout=marksman:50`), pure archers with `--fake-archers` (of them, the `--sky-archers` share shoots
   into the sky), the fort NPCs in the zone and, in the summary, the `combat_projectiles` section, the arrows (peak versus
   the cap, evicted by the cap) and the kit, with the phase 4 criterion. Player limit in
-  [networking.md 14](networking.md#14-presupuesto-de-ancho-de-banda-y-cpu).
+  [networking.md 14](networking.md#14-bandwidth-and-cpu-budget).
 - **`Nameplates`**: occlusion requests the world with `find_world_3d()` (inside a `SubViewport` with its own
   world, `get_world_3d()` is null and the nameplate failed; uncovered by `test_loadout_net`, which puts a HUD in each bot's
   viewport).
@@ -2232,7 +2232,7 @@ fake players use the kit: the combat log also carries ability names, and some mu
 - **Siege**: `SIEGE` bots use the kit when fighting (step 1 of their plan) but do not revive anyone: they follow their
   route. F6b's siege tests remain green. With F6b merged (its defenders, the walkway, the muster and the capacity of 40,
   which in the fort was an estimate and was measured in the integration review), in
-  [fortress.md 8.3](fortress.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones), "Integration of the abilities
+  [fortress.md 8.3](fortress.md#83-what-f0-f1-and-f2-left-behind-additions-to-the-contract-and-decisions), "Integration of the abilities
   on F6b" and "Review of the abilities integration" (the siege bots' bow only fires with a clear line of fire).
 - **Bad network on the server** in `test_abilities_reconciliation`: §7.3 asked for `NetSim` on each bot, but the cap of the
   rewind counts the server simulator's delay and not that of a client (networking.md §10), and with the simulator on
@@ -2261,7 +2261,7 @@ fake players use the kit: the combat log also carries ability names, and some mu
 **Measured.** (Indicative: 4-core machine shared with other agents.)
 
 - **Load** (`load_test.gd --brawl`, 60 s of measurement, Vado Gris, fort NPCs; detail in
-  [networking.md 14](networking.md#14-presupuesto-de-ancho-de-banda-y-cpu)): p99 of the tick and of `combat_projectiles` with 32
+  [networking.md 14](networking.md#14-bandwidth-and-cpu-budget)): p99 of the tick and of `combat_projectiles` with 32
   combatants, 11.3 and 0.98 ms (meets); with 48, 17.0 and 0.89 ms; with 64, **19.3 and 1.68 ms** (does not meet; with all
   archers firing into the sky, 19.5 and 2.04 ms and a peak of 54 live arrows: the cap of 64 never fills up); with 128, 28.9 and
   2.94 ms. **The player limit per battle drops from 64 to 40** (networking.md 14; the brawl of 40 was measured in the
@@ -2344,7 +2344,7 @@ interrupting a drink, the shared cooldown is `s + REARM_TICKS` instead of 0), `t
   criterion, with little margin on projectiles. *(Phase 4 review: the server's fake players now request respawn
   on dying and return after 10 s, not 30. Repeated with the earlier code and the current one in the same session, it gives the same
   —14.5 and 14.6 ms tick p99; 1.28 and 1.01 ms for projectiles, both over a millisecond on that pass—, because in
-  the measurement minute almost nobody dies: [fortress.md 8.3](fortress.md#83-lo-que-han-dejado-f0-f1-y-f2-añadidos-al-contrato-y-decisiones).)*
+  the measurement minute almost nobody dies: [fortress.md 8.3](fortress.md#83-what-f0-f1-and-f2-left-behind-additions-to-the-contract-and-decisions).)*
 - The full cap (54 fake marksmen, pure archers and into the sky, and 10 bots): 4755 shots (57 per second), peak of
   64 live and 4603 evicted by the cap without errors; `combat_projectiles` 1.29 / 3.09 ms and the tick 23.2 ms p99. The
   cap bounds live arrows, not the cost per shot.

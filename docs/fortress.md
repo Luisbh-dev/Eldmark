@@ -1,6 +1,6 @@
 # Eldmark · Phase 4: design of the capturable fort
 
-Design of step 4 of the [roadmap](vision.md#hoja-de-ruta): the first playable objective, the
+Design of step 4 of the [roadmap](vision.md#roadmap): the first playable objective, the
 fort of the Vado Gris contested between Vardheim and Solmarch ([world.md](world.md),
 [zone](zonas/vado_gris.md)). It builds on the networking ([networking.md](networking.md)) and the combat
 ([combate.md](combate.md)).
@@ -141,7 +141,7 @@ owner (with a neutral fort, `D` is false).
    history, snapshots, OBJECT_STATE and events. The full, normative order is that of the
    `ZoneServer` header.
 
-Abilities complete it ([abilities.md 4.1](abilities.md#41-orden-del-tick-completa-fuertemd-17),
+Abilities complete it ([abilities.md 4.1](abilities.md#41-tick-order-completes-fortressmd-17),
 package H3a): after freezing, the shots (H3b) and the own effects of whoever is in their
 commitment; resolving includes projectile flight (H3b), and applying includes ability hits and
 arrow hits, effects on the target and interruptions; then, the pulses and expirations of status effects and (H3c) the knocked-down state
@@ -281,7 +281,7 @@ of the owner realm; each query (`NavigationPathQueryParameters3D`) filters with
   **Tokens**: at most 2 NPCs attack the same player at once; the rest circle them at 3–4 m.
 - Debugging: command 12 `npc_debug` writes the state, target and route of nearby NPCs to the
   server log every second (no network message in phase 4).
-- **Knocked down** (H3c, [abilities.md 4.5](abilities.md#45-derribado-levantar-y-rematar-downedsystem-scriptsserverdowned_systemgd)):
+- **Knocked down** (H3c, [abilities.md 4.5](abilities.md#45-knocked-down-reviving-and-executing-downedsystem-scriptsserverdowned_systemgd)):
   NPCs do not end up knocked down (their killing blow kills), but they finish off. In `HfsmBrain`, a hostile knocked-down
   player within ≤ 6 m is the preferred target, before the closest standing one (also on noticing them in idle or
   patrol), and is attacked with the light attack, without shield or charge; it asks for its `AttackTokens` token like any
@@ -593,7 +593,7 @@ touches the NPCs) will find this:
   fields) and answers `is_gate_closed_for`, `can_damage_gate`, `should_defend`,
   `should_attack`, `is_circle_active`, `is_capturing` and `is_in_circle`.
 
-**F2** (protocol 4 after merging the phase 3 review, which took 3: `PROTOCOL_VERSION = 4`; formats in [networking.md 5](networking.md#5-formatos-de-los-mensajes))
+**F2** (protocol 4 after merging the phase 3 review, which took 3: `PROTOCOL_VERSION = 4`; formats in [networking.md 5](networking.md#5-message-formats))
 
 - Everything is in `scripts/shared/net/`. `NetMessages` gains `ObjectField` (single field: `field_id`,
   `value_type`, `value`; saturates when encoding), `ObjectState` (OBJECT_STATE), `UnstuckRequest`,
@@ -969,7 +969,7 @@ tests in `test_realm_balance`, `test_bot_brain_siege`, `test_siege_zone`, `test_
   - **< 1 % of inputs substituted: met with 64 players (0.00 %) and not with 128 (50.76 %)**, and with 128 the rewind starts to
     fail honest players (25 rejections, 6 suspicious), as already happened with 128 in the melee. **First player limit per battle
     at the fort: 64 (32 against 32)**; 64 against 64 is beyond what the server sustains today. (Measured without the phase 4 kit;
-    with archers and abilities, the H5 melee lowers the per-battle limit to 40: [networking.md 14](networking.md#14-presupuesto-de-ancho-de-banda-y-cpu).)
+    with archers and abilities, the H5 melee lowers the per-battle limit to 40: [networking.md 14](networking.md#14-bandwidth-and-cpu-budget).)
   - **The cost of the fortresses is negligible**: the `war` section (step 4b) costs a median of 0.10–0.11 ms and a p99 of 1.4–2.4 ms
     (presence is recounted every 6 ticks with everyone in the circle), about 300 `OBJECT_STATE`s and 90 scoreboards in the 3 minutes. Combat
     (`combat`) costs a median of 0.9 ms with 64 and 1.5 with 128; hits with rewind, 57 to 70 µs per check.
@@ -1518,7 +1518,7 @@ same time); those of the recapture, from when Solmarch leaves, which is when Var
 - The recapture still depends on the seed (risk in §9): any adjustment is measured with five seeds or more.
 
 **Abilities integration on top of F6b** (the abilities phase 4, H1a–H5, merged on top of F6b;
-[abilities.md 11.9](abilities.md#119-h5--integración)). The two branches came from the same base and touched each other in the bots'
+[abilities.md 11.9](abilities.md#119-h5--integration)). The two branches came from the same base and touched each other in the bots'
 brain, the zone server and the load. How they fit together:
 
 - **The siege bots fight with the kit** in step 1 of their plan, as H5 asked (abilities by their role, weapon swap,
@@ -1556,7 +1556,7 @@ brain, the zone server and the load. How they fit together:
   F6b tools and tests that carry more than 40 players request their capacity explicitly: `load_test.gd` launches the
   server with `--max-players` (`server_max_players`, the players plus 8; `test_load_test` checks that each scenario of the
   batteries fits) and `SiegeRunner` (`siege_battle.gd` and the siege tests) sets `ServerConfig.max_players`. Note in
-  [networking.md 14](networking.md#14-presupuesto-de-ancho-de-banda-y-cpu).
+  [networking.md 14](networking.md#14-bandwidth-and-cpu-budget).
 - **Tests**: `test_bot_brain_siege_kit` (new, 7: the kit against the defender, the bow that aims at the defender ahead of it, the
   archer that does not stop shooting and the sword that does drop the chase, the walkway with no archer side steps, looking along the
   axis and with no charges, reviving no one, deterministic; each fix checked by undoing it) and `test_load_test` (+1, the capacity).
