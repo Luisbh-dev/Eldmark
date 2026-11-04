@@ -74,7 +74,6 @@ func _initialize() -> void:
 	_rng.seed = 20261028
 	_build_crate("eldrun")
 	_build_fire_pit()
-	_build_fort_tower()
 	_build_fort_gate()
 	_build_wooden_ramp()
 	_build_banner_pole()
@@ -95,43 +94,6 @@ func _initialize() -> void:
 # =============================================================================================
 # Fuerte del Vado Gris
 # =============================================================================================
-
-## Torre central de piedra de dos plantas (Castle Wall Kit, piedra de Eld). Origen: centro de la
-## base a ras de suelo. Planta baja con puerta, planta alta con saeteras y ventanas, terraza
-## almenada y el mástil del estandarte encima.
-func _build_fort_tower() -> void:
-	var root := StaticBody3D.new()
-	root.name = "FortTower"
-	root.collision_layer = WORLD_LAYER
-	root.collision_mask = 0
-	var stone: Material = _mat("eldrun/stone_wall")
-	var trim: Material = _mat("eldrun/stone_trim")
-	var floor_mat: Material = _mat("eldrun/stone_floor")
-	var base_y: float = -0.4
-	var faces: Array[String] = ["wall_wall", "wall_wall", "wall_wall", "wall_wall"]
-	var upper: Array[String] = ["wall_slits", "wall_window_arch", "wall_slits", "wall_window_arch"]
-	for storey: int in 2:
-		var pieces: Array[String] = faces if storey == 0 else upper
-		for side: int in 4:
-			var xform: Transform3D = _tower_face_transform(side, TOWER_HALF, base_y + storey * STOREY)
-			_mesh(root, "Planta%d_%d" % [storey + 1, side], CW_MESH + pieces[side] + ".tres", [stone], xform)
-	_mesh(root, "Terraza", CW_MESH + "wall_floor.tres", [floor_mat],
-			Transform3D(Basis(), Vector3(0, base_y + 2.0 * STOREY, 0)))
-	_mesh(root, "Forjado", CW_MESH + "wall_floor.tres", [floor_mat],
-			Transform3D(Basis(), Vector3(0, base_y + STOREY, 0)))
-	for side: int in 4:
-		var basis: Basis = Basis(Vector3.UP, _side_yaw(side))
-		var offset: Vector3 = basis * Vector3(0, 0, TOWER_HALF)
-		_mesh(root, "Almenas%d" % side, CW_MESH + "wall_battlements.tres", [trim],
-				Transform3D(basis, offset + Vector3(0, base_y + 2.0 * STOREY, 0)))
-	# Puerta de madera (calcomanía del kit) en la cara oeste, hacia la puerta del fuerte.
-	var door_basis: Basis = Basis(Vector3.UP, _side_yaw(3))
-	_mesh(root, "Puerta", CW_MESH + "door_sticker_door.tres", [_mat("eldrun/door")],
-			Transform3D(door_basis.scaled(Vector3(1.1, 1.1, 1.1)), door_basis * Vector3(0, 0, TOWER_HALF + 0.03) + Vector3(0, 0.0, 0)))
-	_box(root, "Colision", Vector3(TOWER_HALF * 2.0, 2.0 * STOREY + 1.0, TOWER_HALF * 2.0),
-			Vector3(0, base_y + STOREY + 0.5, 0))
-	_save(root, PROPS_DIR.path_join("fort/fort_tower.tscn"))
-
 
 ## Cara [param side] (0 = sur, 1 = este, 2 = norte, 3 = oeste) de una caja de medio lado
 ## [param half]: las piezas Wall_* del kit son planos de 6 x 6 m con origen en una esquina.
@@ -426,14 +388,11 @@ func _build_fort() -> void:
 	gate.position = Vector3(-FORT_HALF, 0.0, 0.0)
 	root.add_child(gate)
 
-	# --- Torre central y estandarte.
-	var tower: Node3D = (load(PROPS_DIR.path_join("fort/fort_tower.tscn")) as PackedScene).instantiate() as Node3D
-	tower.name = "FortTower"
-	root.add_child(tower)
-	var banner: Node3D = (load(PROPS_DIR.path_join("fort/banner_pole.tscn")) as PackedScene).instantiate() as Node3D
-	banner.name = "Estandarte"
-	banner.position = Vector3(0.0, 2.0 * STOREY - 0.4, 0.0)
-	root.add_child(banner)
+	# --- Torreón central (ART-57): el modelo propio fort_keep.glb, con su estandarte y su colisión de
+	# baja resolución (scripts/world/fort_keep.gd). Sustituye a la torre de dos plantas del Castle Wall Kit.
+	var keep: Node3D = (load(PROPS_DIR.path_join("fort/fort_keep.tscn")) as PackedScene).instantiate() as Node3D
+	keep.name = "FortKeep"
+	root.add_child(keep)
 
 	# --- Vida en el patio: cajas de la vieja guarnición (en espejo norte-sur: las dos pilas dan el
 	# mismo atajo a la pasarela) y una hoguera sobre el eje, al este de la torre.

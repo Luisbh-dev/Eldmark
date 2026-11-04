@@ -1,0 +1,17 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://assets/materials/shaders/grass_blade.gdshader" id="1_shader"]
+[ext_resource type="Texture2D" path="res://assets/models/environment/nature/grass.png" id="2_tex"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/albedo_texture = ExtResource("2_tex")
+shader_parameter/alpha_scissor = 0.5
+shader_parameter/base_color = Color(0.3, 0.31, 0.2, 1)
+shader_parameter/tip_color = Color(0.42, 0.46, 0.29, 1)
+shader_parameter/reference_luminance = 0.83
+shader_parameter/blade_height = 1.87
+shader_parameter/wind_strength = 0.12
+shader_parameter/wind_speed = 1.1
+shader_parameter/translucency = 0.35

@@ -22,16 +22,18 @@ extends SceneTree
 const Layout = preload("res://tools/terrain/vado_gris_layout.gd")
 const BakedMultiMeshScript: GDScript = preload("res://scripts/world/baked_multimesh.gd")
 const ZoneRootScript: GDScript = preload("res://scripts/world/zone_root.gd")
+const WallLightTagScript: GDScript = preload("res://scripts/world/wall_light_tag.gd")
 
 const ZONE_DIR: String = "res://scenes/world/zones/vado_gris"
 const DATA_DIR: String = ZONE_DIR + "/terrain"
 const TERRAIN_ASSETS_PATH: String = ZONE_DIR + "/vado_gris_terrain_assets.tres"
 const WATER_MESH_PATH: String = ZONE_DIR + "/vado_gris_river_water.tres"
 const SCENE_PATH: String = ZONE_DIR + "/vado_gris.tscn"
+const SKY_SHADER_PATH: String = "res://assets/materials/shaders/storm_sky.gdshader"
 const ENVIRONMENT_PATH: String = "res://assets/environments/vado_gris_frontier.tres"
 const WATER_MATERIAL_PATH: String = "res://assets/materials/water/river_eldrun.tres"
 
-const TEX_DIR: String = "res://assets/textures/terrain/watercolor/"
+const TEX_DIR: String = "res://assets/textures/terrain/polyhaven/"
 const NATURE_DIR: String = "res://assets/models/environment/nature/"
 const PROPS: String = "res://scenes/world/props/"
 const MAT: String = "res://assets/materials/realms/"
@@ -65,22 +67,28 @@ const CAMP_SPAWN_XS: Array[float] = [-7.5, -2.5, 2.5, 7.5]
 ## Medio ancho exterior de los puentes (tablero + pretil): las orillas profundas acaban aquí.
 const BRIDGE_OUTER_HALF: float = Layout.BRIDGE_WIDTH * 0.5 + 0.4
 
-## Texturas del terreno (el índice es el id de Terrain3D): [archivo, nombre, uv_scale]. El uv_scale
-## es de 0,25 a 0,35 (teselas de 3 a 4 m, antes de 8 a 17 m): de cerca el terreno enseña grano y la
-## roca de las laderas no se estira (ART-55). La repetición a gran escala la rompen la variación
-## de color del material y el mapa de color.
+## Texturas del terreno (el índice es el id de Terrain3D): [archivo (sin sufijo), nombre, uv_scale,
+## tinte]. Son las CC0 de Poly Haven procesadas por tools/assets/process_terrain_textures.py:
+## desaturadas, con la altura en el alfa del albedo y la normal con la rugosidad en el alfa de la
+## normal (ART-55). El uv_scale es la inversa del lado de la tesela en metros: la hierba y la tierra
+## a 3 m, la grava a 2 m y la roca a 4,5 m; de cerca se ve grano, piedras y briznas, y la proyección
+## en pendientes evita las vetas estiradas. La repetición a gran escala la rompen el desfase de
+## rotación de cada textura, la variación macro del material y el mapa de color.
 const TERRAIN_TEXTURES: Array[Array] = [
-	["grass_03_alb_ht.png", "Hierba", 0.28],
-	["grass_04_alb_ht.png", "Hierba seca", 0.26],
-	["dirt_03_alb_ht.png", "Tierra", 0.3],
-	["stone_01_alb_ht.png", "Grava", 0.35],
-	["stone_04_alb_ht.png", "Roca", 0.3],
-	["grass_02_alb_ht.png", "Hierba verde", 0.28],
-	["stone_03_alb_ht.png", "Lecho", 0.32],
+	["grass_ground", "Hierba", 0.3, Color(0.84, 1.08, 0.76)],
+	["grass_ground", "Hierba seca", 0.27, Color(1.06, 1.02, 0.84)],
+	["dirt_floor", "Tierra", 0.34, Color(0.86, 0.86, 0.86)],
+	["ground_grey", "Grava", 0.5, Color(1.0, 1.0, 1.0)],
+	["rock_boulder_dry", "Roca", 0.24, Color(0.74, 0.76, 0.8)],
+	["grass_ground", "Hierba verde", 0.3, Color(0.74, 1.2, 0.64)],
+	["rocky_trail", "Lecho", 0.38, Color(0.95, 0.95, 0.95)],
+	["damp_beach_sand", "Barro de orilla", 0.4, Color(0.9, 0.88, 0.84)],
+	["snow_02", "Nieve", 0.3, Color(1.0, 1.0, 1.02)],
+	["forest_ground_06", "Suelo de bosque", 0.32, Color(1.0, 1.0, 1.0)],
 ]
 ## Umbral de la proyección en pendientes de Terrain3D (0 a 0,99): a partir de esa inclinación la
 ## textura se proyecta de lado en vez de estirarse a lo largo de la ladera.
-const PROJECTION_THRESHOLD: float = 0.65
+const PROJECTION_THRESHOLD: float = 0.6
 const T_GRASS: int = 0
 const T_DRY: int = 1
 const T_DIRT: int = 2
@@ -88,23 +96,25 @@ const T_GRAVEL: int = 3
 const T_ROCK: int = 4
 const T_LUSH: int = 5
 const T_BED: int = 6
+const T_MUD: int = 7
+const T_SNOW: int = 8
+const T_FOREST: int = 9
 
 ## Materiales que sustituyen a los del glTF en el instanciador (tono de Eldrun).
 const MESH_MATERIALS: Dictionary = {
-	0: "res://assets/materials/vegetation/grass_green.tres",
-	1: "res://assets/materials/vegetation/grass_dry.tres",
+	0: "res://assets/materials/vegetation/grass_blade_green.tres",
+	1: "res://assets/materials/vegetation/grass_blade_wispy.tres",
 	14: "res://assets/materials/vegetation/path_stones.tres",
 	15: "res://assets/materials/vegetation/path_stones.tres",
 	25: "res://assets/materials/vegetation/leaves_green.tres",
 	26: "res://assets/materials/vegetation/leaves_green.tres",
-	27: "res://assets/materials/vegetation/grass_green.tres",
+	27: "res://assets/materials/vegetation/grass_blade_tall.tres",
+	31: "res://assets/materials/vegetation/grass_blade_dry.tres",
+	32: "res://assets/materials/vegetation/grass_blade_lush.tres",
+	33: "res://assets/materials/vegetation/grass_blade_frost.tres",
 	28: "res://assets/materials/vegetation/path_stones.tres",
 	29: "res://assets/materials/vegetation/path_stones.tres",
 }
-## Tinte (multiplica) de cada textura del terreno. La tierra ya viene corregida hacia la paleta
-## de Eldrun desde copy_vado_gris_assets.gd (multiplicar solo la oscurecía); la grava se aclara
-## un poco hacia la "ceniza" de Eldrun (#8F8A82).
-const TEXTURE_TINTS: Dictionary = {3: Color(0.94, 0.92, 0.88)}
 
 ## Mallas del instanciador (el índice es el id): [glTF, nombre, alcance visible (m), sombra].
 ## Terrain3D crea un MultiMesh por variante y celda de 32 m, así que cada variante extra
@@ -112,37 +122,40 @@ const TEXTURE_TINTS: Dictionary = {3: Color(0.94, 0.92, 0.88)}
 ## que el kit ya trae) y el sotobosque solo se ve de cerca. Los ids nuevos van al final para no
 ## mover los que ya usa el resto del generador.
 const MESHES: Array[Array] = [
-	["grass_common_short.gltf", "Hierba corta", 60.0, false],
-	["grass_wispy_short.gltf", "Hierba seca", 60.0, false],
-	["pine_1.gltf", "Pino 1", 340.0, true],
-	["pine_2.gltf", "Pino 2", 340.0, true],
-	["pine_3.gltf", "Pino 3", 340.0, true],
-	["common_tree_1.gltf", "Caducifolio 1", 340.0, true],
-	["common_tree_2.gltf", "Caducifolio 2", 340.0, true],
-	["common_tree_3.gltf", "Caducifolio 3", 340.0, true],
-	["dead_tree_1.gltf", "Árbol muerto 1", 340.0, true],
-	["dead_tree_2.gltf", "Árbol muerto 2", 340.0, true],
-	["rock_medium_1.gltf", "Roca 1", 240.0, true],
-	["rock_medium_2.gltf", "Roca 2", 240.0, true],
-	["rock_medium_3.gltf", "Roca 3", 240.0, true],
+	["grass_common_short.gltf", "Hierba corta", 48.0, false],
+	["grass_wispy_short.gltf", "Hierba seca", 40.0, false],
+	["pine_1.gltf", "Pino 1", 260.0, true],
+	["pine_2.gltf", "Pino 2", 260.0, true],
+	["pine_3.gltf", "Pino 3", 260.0, true],
+	["common_tree_1.gltf", "Caducifolio 1", 260.0, true],
+	["common_tree_2.gltf", "Caducifolio 2", 260.0, true],
+	["common_tree_3.gltf", "Caducifolio 3", 260.0, true],
+	["dead_tree_1.gltf", "Árbol muerto 1", 260.0, true],
+	["dead_tree_2.gltf", "Árbol muerto 2", 260.0, true],
+	["rock_medium_1.gltf", "Roca 1", 150.0, true],
+	["rock_medium_2.gltf", "Roca 2", 150.0, true],
+	["rock_medium_3.gltf", "Roca 3", 150.0, true],
 	["bush_common_flowers.gltf", "Arbusto", 120.0, false],
 	["rock_path_square_wide.gltf", "Losa de calzada", 120.0, false],
 	["rock_path_round_wide.gltf", "Losa redonda", 120.0, false],
-	["pine_4.gltf", "Pino 4", 340.0, true],
-	["pine_5.gltf", "Pino 5", 340.0, true],
-	["common_tree_4.gltf", "Caducifolio 4", 340.0, true],
-	["common_tree_5.gltf", "Caducifolio 5", 340.0, true],
-	["dead_tree_3.gltf", "Árbol muerto 3", 340.0, true],
-	["dead_tree_4.gltf", "Árbol muerto 4", 340.0, true],
-	["dead_tree_5.gltf", "Árbol muerto 5", 340.0, true],
-	["twisted_tree_1.gltf", "Retorcido 1", 340.0, true],
-	["twisted_tree_2.gltf", "Retorcido 2", 340.0, true],
+	["pine_4.gltf", "Pino 4", 260.0, true],
+	["pine_5.gltf", "Pino 5", 260.0, true],
+	["common_tree_4.gltf", "Caducifolio 4", 260.0, true],
+	["common_tree_5.gltf", "Caducifolio 5", 260.0, true],
+	["dead_tree_3.gltf", "Árbol muerto 3", 260.0, true],
+	["dead_tree_4.gltf", "Árbol muerto 4", 260.0, true],
+	["dead_tree_5.gltf", "Árbol muerto 5", 260.0, true],
+	["twisted_tree_1.gltf", "Retorcido 1", 260.0, true],
+	["twisted_tree_2.gltf", "Retorcido 2", 260.0, true],
 	["fern_1.gltf", "Helecho", 60.0, false],
 	["plant_1_big.gltf", "Planta grande", 60.0, false],
 	["grass_common_tall.gltf", "Hierba alta", 60.0, false],
 	["pebble_round_2.gltf", "Guijarro redondo", 40.0, false],
 	["pebble_square_1.gltf", "Guijarro cuadrado", 40.0, false],
 	["mushroom_common.gltf", "Seta", 30.0, false],
+	["grass_common_short.gltf", "Hierba corta seca", 48.0, false],
+	["grass_common_short.gltf", "Hierba corta viva", 48.0, false],
+	["grass_common_short.gltf", "Hierba corta escarchada", 48.0, false],
 ]
 const M_GRASS: int = 0
 const M_GRASS_DRY: int = 1
@@ -158,6 +171,9 @@ const M_PLANT: int = 26
 const M_TALL_GRASS: int = 27
 const M_PEBBLE: int = 28
 const M_MUSHROOM: int = 30
+const M_GRASS_DRY_SHORT: int = 31
+const M_GRASS_LUSH: int = 32
+const M_GRASS_FROST: int = 33
 ## Ids de las variantes de cada familia de árbol (los de pino, caducifolio y muerto van en el
 ## orden del kit; los extra, al final de la lista de mallas).
 const TREE_VARIANTS: Dictionary = {
@@ -323,6 +339,29 @@ func _paint(x: float, z: float, h: float, slope: float) -> Vector3i:
 			overlay = T_ROCK
 			blend = r * 2.0
 
+	# Identidad de cada mitad (ART-62), solo pintura (la capa de juego sigue en espejo): al norte
+	# (Vardheim) nieve a manchas en la hierba y suelo de bosque oscuro bajo las coníferas, y nieve
+	# continua en lo alto; al sur (Solmarch) hierba verde y suelo vivo, sin nieve. Fuera del área
+	# jugable la diferencia es mayor.
+	var outside: float = smoothstep(0.0, 14.0, maxf(absf(x) - Layout.PLAY_HALF, absf(z) - Layout.WALL_Z))
+	if z < 0.0 and base != T_ROCK:
+		var snow_noise: float = _layout.paint_noise(x * 0.9 + 400.0, z * 0.9 + 77.0)
+		var snow_zone: float = smoothstep(-70.0, -150.0, z) * 0.55 + outside * 0.35 + smoothstep(18.0, 45.0, h) * 0.5
+		var snow: float = smoothstep(0.02, 0.28, snow_noise + snow_zone - 0.45)
+		if snow > 0.05:
+			overlay = T_SNOW
+			blend = snow
+		if outside > 0.3 and h < 40.0 and snow < 0.4:
+			overlay = T_FOREST
+			blend = clampf(0.5 + n * 0.6, 0.0, 1.0)
+	elif z >= 0.0 and base != T_ROCK and outside > 0.3 and h < 40.0:
+		overlay = T_LUSH
+		blend = clampf(0.55 + n2 * 0.5, 0.0, 1.0)
+	# Cimas y riscos: la roca manda, con nieve en las cumbres del norte.
+	if high > 0.8 and z < -20.0 and h > 62.0:
+		overlay = T_SNOW
+		blend = clampf((h - 62.0) / 14.0, 0.0, 1.0)
+
 	var grass_base: int = base
 	# Pie de las murallas y campamentos: tierra pisada con calvas de hierba.
 	var az: float = absf(z)
@@ -363,7 +402,7 @@ func _paint(x: float, z: float, h: float, slope: float) -> Vector3i:
 		overlay = T_GRAVEL if ford < 0.5 else T_BED
 		blend = clampf((0.25 + n2 * 0.5) if ford < 0.5 else 0.3 + n * 0.4, 0.0, 1.0)
 	elif d < 12.0 + ford * 8.0:
-		base = T_GRAVEL if ford > 0.3 else T_DIRT
+		base = T_GRAVEL if ford > 0.3 else T_MUD
 		overlay = T_DIRT if ford > 0.3 else T_GRAVEL
 		var t: float = smoothstep(Layout.WATER_HALF_WIDTH + 1.0, 12.0 + ford * 8.0, d)
 		blend = clampf(0.5 + n * 0.8, 0.0, 1.0) * (1.0 - t * 0.5)
@@ -429,17 +468,18 @@ func _create_terrain(height_image: Image, control_image: Image, color_image: Ima
 	_terrain.material.set_shader_param(&"macro_variation_slope", 0.4)
 
 	var assets := Terrain3DAssets.new()
-	var flat_normal: Texture2D = load(TEX_DIR + "flat_normal_rough_256.png") as Texture2D
 	for i: int in TERRAIN_TEXTURES.size():
 		var spec: Array = TERRAIN_TEXTURES[i]
 		var texture := Terrain3DTextureAsset.new()
 		texture.name = spec[1]
-		texture.albedo_texture = load(TEX_DIR + spec[0]) as Texture2D
-		texture.normal_texture = flat_normal
+		texture.albedo_texture = load(TEX_DIR + spec[0] + "_alb_ht.png") as Texture2D
+		texture.normal_texture = load(TEX_DIR + spec[0] + "_nrm_rough.png") as Texture2D
 		texture.uv_scale = spec[2]
-		texture.detiling_rotation = 0.15
+		texture.detiling_rotation = 0.2
 		texture.roughness = 0.0
-		texture.albedo_color = TEXTURE_TINTS.get(i, Color.WHITE)
+		texture.normal_depth = 1.0
+		texture.ao_strength = 0.0
+		texture.albedo_color = spec[3]
 		assets.set_texture(i, texture)
 	for i: int in MESHES.size():
 		var spec: Array = MESHES[i]
@@ -622,7 +662,7 @@ func _add_mirrored_tree(x: float, z: float, family: int) -> void:
 		var basis: Basis = Basis(Vector3.UP, yaw if mirror == 0 else PI - yaw).scaled(Vector3(visual_scale, visual_scale, visual_scale))
 		_add_instance(mesh_id, Transform3D(basis, Vector3(x, _trunk_y(x, mz, mesh_family, visual_scale, 0.1), mz)))
 		_tree_colliders.append({"position": Vector3(x, y, mz), "radius": TRUNK_RADIUS[family] * scale, "height": 7.0})
-		_scatter_undergrowth(x, mz, 4.5, 3)
+		_scatter_undergrowth(x, mz, 5.0, 7)
 	_occupied.append(Vector3(x, 2.5, z))
 
 
@@ -711,7 +751,7 @@ func _decor_allowed(x: float, z: float, road_margin: float, max_slope: float) ->
 ## caducifolios al sur y árboles muertos y retorcidos donde se juntan, como pide la identidad
 ## visual. No hay árboles por encima de [constant TREE_MAX_SLOPE]: allí va canchal (ART-58).
 func _place_border_forest() -> void:
-	var step: float = 8.0
+	var step: float = 6.5
 	var count: int = 0
 	var gx: float = Layout.MAP_ORIGIN.x + 4.0
 	while gx < 252.0:
@@ -736,17 +776,24 @@ func _place_border_forest() -> void:
 			var slope: float = _ground_slope(x, z)
 			# Laderas de más de 45°: canchal de rocas en vez de árboles.
 			if slope > TREE_MAX_SLOPE:
-				if _rng.randf() < 0.3:
+				if _rng.randf() < 0.45:
 					_add_scree(x, z)
 				continue
 			# Bosque en grupos (ruido), que se aclara en las laderas fuertes (de 38° hacia arriba) en
 			# vez de quedarse solo en las crestas.
 			var clump: float = _layout.paint_noise(x * 0.5 + 300.0, z * 0.5 - 120.0)
 			var density: float = (0.85 if z < -40.0 else 0.7) * clampf(0.8 + clump * 1.4, 0.2, 1.0)
-			density *= 1.0 - smoothstep(38.0, 62.0, slope) * 0.7
+			density *= 1.0 - smoothstep(34.0, 50.0, slope) * 0.55
+			# Más lejos del área jugable el bosque se aclara (presupuesto de primitivas, y a esa
+			# distancia la niebla lo funde en una masa).
+			var beyond: float = maxf(absf(x) - Layout.PLAY_HALF, absf(z) - Layout.WALL_Z)
+			density *= lerpf(1.0, 0.45, smoothstep(30.0, 110.0, beyond))
 			if _rng.randf() > density:
 				if slope > 34.0 and _rng.randf() < 0.18:
 					_add_scree(x, z)
+				# Laderas sin árbol: matorral (helechos, plantas y arbustos) para que no queden peladas.
+				if slope > 20.0 and _decor_rng.randf() < 0.6:
+					_scatter_scrub(x, z)
 				continue
 			var family: int
 			if z < -40.0:
@@ -774,8 +821,8 @@ func _place_border_forest() -> void:
 			_add_instance(mesh_id, Transform3D(basis, Vector3(x, _trunk_y(x, z, family, scale, 0.15), z)))
 			count += 1
 			# Sotobosque al pie de algunos árboles (ART-59).
-			if _decor_rng.randf() < 0.45:
-				_scatter_undergrowth(x, z, 3.5, 2)
+			if _decor_rng.randf() < 0.8:
+				_scatter_undergrowth(x, z, 4.0, 4)
 			if _rng.randf() < 0.12:
 				var rock_scale: float = _rng.randf_range(0.8, 1.8)
 				var rx: float = x + _rng.randf_range(-3.0, 3.0)
@@ -794,20 +841,31 @@ func _place_border_forest() -> void:
 ## Rocas sueltas de canchal en una ladera empinada del borde (sin colisión: no se llega), inclinadas
 ## con la ladera y medio enterradas (ART-58).
 func _add_scree(x: float, z: float) -> void:
-	for i: int in _rng.randi_range(1, 3):
-		var rx: float = x + _rng.randf_range(-3.0, 3.0)
-		var rz: float = z + _rng.randf_range(-3.0, 3.0)
+	# Canchal en regueros, no lunares: de 3 a 6 rocas de tamaños distintos alineadas con la línea de
+	# máxima pendiente (cuesta abajo), las pequeñas a los lados, y guijarros entre ellas.
+	var normal: Vector3 = _ground_normal(x, z)
+	var downhill: Vector2 = Vector2(normal.x, normal.z)
+	downhill = downhill.normalized() if downhill.length() > 0.01 else Vector2(0.0, 1.0)
+	var count: int = _rng.randi_range(3, 6)
+	for i: int in count:
+		var along: float = _rng.randf_range(-2.0, 5.0)
+		var side: float = _rng.randf_range(-1.8, 1.8)
+		var rx: float = x + downhill.x * along - downhill.y * side
+		var rz: float = z + downhill.y * along + downhill.x * side
 		var rh: float = _ground(rx, rz)
-		var rock_scale: float = _rng.randf_range(0.8, 1.8)
+		var big: bool = i < 2
+		var rock_scale: float = _rng.randf_range(0.9, 1.7) if big else _rng.randf_range(0.3, 0.8)
 		var rock_yaw: float = _rng.randf_range(0.0, TAU)
 		var rock_id: int = M_ROCK + _rng.randi_range(0, 2)
 		# Dentro del área jugable toda roca tiene colisión: el canchal solo va fuera.
-		if is_nan(rh) or _in_play_area(rx, rz):
+		if is_nan(rh) or absf(rx) > 246.0 or absf(rz) > 246.0 or _in_play_area(rx, rz):
 			continue
 		_add_instance(rock_id, _settle_rock(rx, rz, rock_scale, rock_scale * 0.8, rock_yaw, LOOSE_ROCK_SINK, 0.9))
+		if not big and _decor_rng.randf() < 0.7:
+			_scatter_pebbles(rx, rz, 1.2 * rock_scale + 0.6)
 
 
-## Hierba (instanciador, sin colisión, visible hasta 60 m): en matas agrupadas por un ruido de
+## Hierba (instanciador, sin colisión, visible hasta 48 m): en matas agrupadas por un ruido de
 ## manchas (prado espeso y claros, no una rejilla), seca y gris hacia el centro (Eldrun) y el
 ## norte, algo más verde hacia el sur. Cada celda de 1 m tiene su posición al azar dentro de la
 ## celda, así que no se ven hileras.
@@ -833,7 +891,7 @@ func _place_grass() -> void:
 			# Manchas: densidad alta en los prados, claros entre ellos.
 			var clump: float = _layout.paint_noise(cx * 2.2 + 57.0, cz * 2.2 - 11.0) * 0.7 \
 					+ _layout.paint_noise(cx * 0.7 - 23.0, cz * 0.7 + 41.0) * 0.6
-			var keep: float = clampf(0.35 + clump * 1.6, 0.04, 0.95)
+			var keep: float = clampf(0.58 + clump * 1.5, 0.1, 0.97)
 			# Junto a las calzadas, un borde de matas más espeso.
 			if road < 4.5:
 				keep = maxf(keep, 0.7)
@@ -843,21 +901,51 @@ func _place_grass() -> void:
 				keep *= 0.35
 			if _rng.randf() > keep:
 				continue
-			var tufts: int = 1 if keep < 0.6 else 2
+			var tufts: int = 1 if keep < 0.5 else (2 if keep < 0.8 else 3)
 			for t: int in tufts:
 				var x: float = cx + _rng.randf_range(-0.5, 0.5)
 				var z: float = cz + _rng.randf_range(-0.5, 0.5)
 				var h: float = _ground(x, z)
-				if is_nan(h) or h > 32.0 or _ground_slope(x, z) > 27.0:
+				if is_nan(h) or h > 40.0 or _ground_slope(x, z) > 32.0:
 					continue
 				var dryness: float = clampf(0.5 + _layout.paint_noise(x, z) * 1.3 + smoothstep(-20.0, 150.0, -z) * 0.4 - smoothstep(-20.0, 150.0, z) * 0.6, 0.0, 1.0)
 				var center: float = 1.0 - smoothstep(30.0, 110.0, absf(z))
 				var dry_chance: float = clampf(dryness * 0.8 + center * 0.3, 0.0, 0.92)
-				var mesh_id: int = M_GRASS_DRY if _rng.randf() < dry_chance else M_GRASS
-				var scale: float = _rng.randf_range(0.28, 0.45) if road < 4.5 else _rng.randf_range(0.32, 0.55)
-				var basis: Basis = Basis(Vector3.UP, _rng.randf_range(0.0, TAU)).scaled(Vector3(scale, scale * _rng.randf_range(0.8, 1.15), scale))
+				var mesh_id: int = _grass_variant(z, dry_chance)
+				var scale: float = _rng.randf_range(0.2, 0.34) if road < 4.5 else _rng.randf_range(0.24, 0.42)
+				var basis: Basis = Basis(Vector3.UP, _rng.randf_range(0.0, TAU)).scaled(Vector3(scale, scale * _rng.randf_range(0.8, 1.2), scale))
 				_add_instance(mesh_id, Transform3D(basis, Vector3(x, h - 0.03, z)))
 		gx += step
+
+
+## Matorral de ladera (ART-59): un manchón de helechos, plantas y arbustos, solo dibujo.
+func _scatter_scrub(x: float, z: float) -> void:
+	if absf(x) > 246.0 or absf(z) > 246.0 or _in_play_area(x, z):
+		return
+	var kinds: Array[int] = [M_FERN, M_FERN, M_PLANT, M_BUSH, M_TALL_GRASS]
+	for i: int in _decor_rng.randi_range(3, 6):
+		var px: float = x + _decor_rng.randf_range(-4.0, 4.0)
+		var pz: float = z + _decor_rng.randf_range(-4.0, 4.0)
+		var kind: int = kinds[_decor_rng.randi_range(0, kinds.size() - 1)]
+		var h: float = _ground(px, pz)
+		if is_nan(h) or absf(px) > 246.0 or absf(pz) > 246.0 or _ground_slope(px, pz) > 50.0:
+			continue
+		var scale: float = _decor_rng.randf_range(0.5, 0.9) if kind != M_BUSH else _decor_rng.randf_range(0.7, 1.2)
+		var basis: Basis = Basis(Vector3.UP, _decor_rng.randf_range(0.0, TAU)).scaled(Vector3(scale, scale, scale))
+		_add_instance(kind, Transform3D(basis, Vector3(px, h - 0.05, pz)))
+
+
+## Variante de hierba según la zona (ART-59 y ART-62): al norte (Vardheim) matas escarchadas y
+## verdes frías, en la franja central (Eldrun) secas y grises, al sur (Solmarch) verde vivo. La
+## de hojas finas y caras (wispy, 190 triángulos) solo entra en pequeña proporción.
+func _grass_variant(z: float, dry_chance: float) -> int:
+	if _rng.randf() < dry_chance:
+		return M_GRASS_DRY if _rng.randf() < 0.18 else M_GRASS_DRY_SHORT
+	if z < -55.0 and _rng.randf() < smoothstep(-55.0, -120.0, z) * 0.9 + 0.1:
+		return M_GRASS_FROST
+	if z > 55.0 and _rng.randf() < smoothstep(55.0, 120.0, z) * 0.9 + 0.1:
+		return M_GRASS_LUSH
+	return M_GRASS
 
 
 ## Arbustos decorativos (sin colisión) en orillas, lindes de los bosquetes y ruinas.
@@ -986,49 +1074,60 @@ func _assemble_scene() -> void:
 func _add_environment() -> void:
 	var environment := Environment.new()
 	environment.background_mode = Environment.BG_SKY
-	# Cielo cubierto de la frontera de Eldrun: tapa de nubes gris (cobertura procedural) sobre un
-	# degradado más oscuro arriba. Con él, el sol se vela y las sombras se ablandan.
-	var sky_material := ProceduralSkyMaterial.new()
-	sky_material.sky_top_color = Color("#56616d")
-	sky_material.sky_horizon_color = Color("#a3abb0")
-	sky_material.sky_curve = 0.12
-	sky_material.ground_bottom_color = Color("#4b4f4e")
-	sky_material.ground_horizon_color = Color("#a0a7aa")
-	sky_material.sun_angle_max = 30.0
-	sky_material.sun_curve = 0.1
-	sky_material.energy_multiplier = 1.0
-	sky_material.sky_cover = _make_cloud_cover()
-	sky_material.sky_cover_modulate = Color(0.78, 0.8, 0.83, 0.85)
+	# Cielo de la frontera de Eldrun (ART-54): una tormenta que se abre. Shader propio sobre la cúpula
+	# (assets/materials/shaders/storm_sky.gdshader): nubes rotas, oscuras al este y en el cénit, con un
+	# claro hacia el oeste y filo plateado, y el disco solar donde está la luz direccional. Es un
+	# recurso de Environment como otro cualquiera: el servidor headless no lo dibuja y no carga
+	# ningún addon de cielo.
+	var sky_material := ShaderMaterial.new()
+	sky_material.shader = load(SKY_SHADER_PATH) as Shader
+	sky_material.set_shader_parameter(&"cloud_noise", _make_cloud_noise())
 	var sky := Sky.new()
 	sky.sky_material = sky_material
+	sky.radiance_size = Sky.RADIANCE_SIZE_256
 	environment.sky = sky
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	# Ambiente bajo (0,48): la luz con dirección la pone el sol. Con 0,95 el cielo cubierto igualaba
-	# luz y sombra y el valle se veía plano (ART-54).
-	environment.ambient_light_energy = 0.48
-	environment.ambient_light_sky_contribution = 0.85
+	# Ambiente bajo: la luz con dirección la pone el sol. Con el claro del cielo hacia el oeste y las
+	# nubes oscuras al este, el ambiente ya trae un degradado de color, no un gris uniforme.
+	environment.ambient_light_energy = 0.55
+	environment.ambient_light_sky_contribution = 1.0
 	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	environment.tonemap_exposure = 1.04
+	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
+	environment.tonemap_exposure = 1.0
 	environment.tonemap_white = 6.0
 	environment.ssao_enabled = true
 	environment.ssao_radius = 1.6
 	environment.ssao_intensity = 1.6
+	# Rebote de luz en pantalla: el interior del fuerte y el pie de las murallas no se quedan negros.
+	environment.ssil_enabled = true
+	environment.ssil_radius = 4.0
+	environment.ssil_intensity = 0.8
 	environment.glow_enabled = true
-	environment.glow_intensity = 0.3
-	environment.glow_bloom = 0.03
+	environment.glow_intensity = 0.35
+	environment.glow_bloom = 0.04
+	environment.glow_hdr_threshold = 1.2
+	# Niebla de distancia fría y baja, con la dispersión del sol bajo del oeste.
 	environment.fog_enabled = true
-	environment.fog_light_color = Color("#a3abb0")
+	environment.fog_light_color = Color("#9ba5ae")
 	environment.fog_light_energy = 1.0
-	environment.fog_sun_scatter = 0.05
-	environment.fog_density = 0.0015
-	environment.fog_aerial_perspective = 0.2
-	environment.fog_sky_affect = 0.35
-	environment.fog_height = 2.0
-	environment.fog_height_density = 0.004
+	environment.fog_sun_scatter = 0.18
+	environment.fog_density = 0.0016
+	environment.fog_aerial_perspective = 0.3
+	environment.fog_sky_affect = 0.25
+	environment.fog_height = 3.0
+	environment.fog_height_density = 0.01
+	# Niebla volumétrica ligera: las sombras de las nubes y de las torres dejan haces de luz.
+	environment.volumetric_fog_enabled = true
+	environment.volumetric_fog_density = 0.0012
+	environment.volumetric_fog_albedo = Color("#b8c4d0")
+	environment.volumetric_fog_emission = Color("#000000")
+	environment.volumetric_fog_length = 120.0
+	environment.volumetric_fog_detail_spread = 2.0
+	environment.volumetric_fog_ambient_inject = 0.25
+	environment.volumetric_fog_sky_affect = 0.4
 	environment.adjustment_enabled = true
-	environment.adjustment_saturation = 0.88
-	environment.adjustment_contrast = 1.05
+	environment.adjustment_saturation = 1.0
+	environment.adjustment_contrast = 1.06
 	environment.adjustment_brightness = 1.0
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(ENVIRONMENT_PATH.get_base_dir()))
 	var error: Error = ResourceSaver.save(environment, ENVIRONMENT_PATH)
@@ -1048,8 +1147,9 @@ func _add_environment() -> void:
 	# rellenos: con ellos la luz era plana (ART-54). Lo que mira al oeste recibe sol y lo que mira al
 	# este queda en sombra, con un ambiente de 0,48.
 	sun.rotation_degrees = Vector3(-28.0, -90.0, 0.0)
-	sun.light_color = Color("#f6efe4")
-	sun.light_energy = 2.2
+	sun.light_color = Color("#ffe6c4")
+	sun.light_energy = 2.6
+	sun.light_volumetric_fog_energy = 1.0
 	sun.light_angular_distance = 1.5
 	sun.shadow_enabled = true
 	sun.shadow_blur = 1.4
@@ -1057,32 +1157,45 @@ func _add_environment() -> void:
 	# los árboles y a la muralla. El coste en llamadas de dibujo se mide con
 	# tools/render/render_screenshot_points.gd (docs/zonas/vado_gris.md, «Rendimiento medido»).
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
-	sun.directional_shadow_max_distance = 130.0
+	sun.directional_shadow_max_distance = 110.0
 	sun.directional_shadow_blend_splits = false
 	_zone.add_child(sun)
 	_zone.move_child(sun, 1)
 
+	# Relleno de las murallas (ART-54): dos luces simétricas, sin sombra, que solo iluminan la capa 20
+	# (WallLightTag la pone en las murallas). Con el sol en el plano X, las fachadas de las murallas
+	# quedan de canto y salen grises y planas; cada una recibe aquí una luz rasante del oeste, una desde
+	# el suroeste y otra desde el noroeste, y se lee el relieve de la sillería. La zona sigue en espejo.
+	for side: float in [-1.0, 1.0]:
+		var fill := DirectionalLight3D.new()
+		fill.name = "RellenoMuralla%s" % ("Norte" if side < 0.0 else "Sur")
+		# La luz viaja hacia el este y hacia la fachada (la del muro norte mira a +Z): de lado, a 28°.
+		fill.basis = Basis.looking_at(Vector3(0.62, -0.47, -side * 0.62).normalized(), Vector3.UP)
+		fill.light_color = Color("#ffe9cf")
+		fill.light_energy = 0.9
+		fill.light_cull_mask = WallLightTagScript.LIGHT_LAYER
+		fill.shadow_enabled = false
+		fill.light_specular = 0.3
+		_zone.add_child(fill)
+		_zone.move_child(fill, 2 if side < 0.0 else 3)
 
-## Cobertura de nubes del cielo (textura de ruido procedural: se guarda como parámetros, no
-## como imagen).
-static func _make_cloud_cover() -> NoiseTexture2D:
+
+## Ruido de las nubes del cielo (textura procedural que se guarda como parámetros, no como imagen):
+## ruido simplex suave y sin costuras, que el shader del cielo muestrea a varias escalas.
+static func _make_cloud_noise() -> NoiseTexture2D:
 	var noise := FastNoiseLite.new()
 	noise.seed = 4113
 	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	noise.frequency = 0.006
-	noise.fractal_octaves = 5
-	noise.fractal_gain = 0.55
-	var ramp := Gradient.new()
-	ramp.set_color(0, Color(1.0, 1.0, 1.0, 0.25))
-	ramp.set_color(1, Color(1.0, 1.0, 1.0, 1.0))
-	ramp.set_offset(0, 0.3)
-	ramp.set_offset(1, 0.75)
+	noise.frequency = 0.01
+	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	noise.fractal_octaves = 3
+	noise.fractal_gain = 0.5
 	var texture := NoiseTexture2D.new()
-	texture.width = 1024
+	texture.width = 512
 	texture.height = 512
 	texture.seamless = true
+	texture.normalize = true
 	texture.noise = noise
-	texture.color_ramp = ramp
 	return texture
 
 
@@ -1160,6 +1273,7 @@ func _add_bridges() -> void:
 
 func _add_walls() -> void:
 	var group := _group("Murallas")
+	group.set_script(WallLightTagScript)
 	_build_wall(group, "vardheim", -1.0, "MuroDeEscarcha", [48.0, 96.0, 144.0])
 	_build_wall(group, "solmarch", 1.0, "MurallaDelAlba", [36.0, 72.0, 108.0, 144.0])
 

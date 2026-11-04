@@ -175,6 +175,7 @@ python tools/quality/run.py video --seconds 60               # un minuto de comb
 python tools/quality/run.py todo --port 24721                # las seis áreas seguidas
 python tools/quality/run.py indice --out build/calidad       # solo regenera el índice
 python tools/quality/run.py listar                           # áreas y pasos
+python tools/quality/compare_pairs.py <antes> <despues> <salida>   # una imagen ANTES | DESPUÉS por cada captura
 ```
 
 Para comparar dos pasadas con los mismos encuadres (antes y después de un cambio), `python tools/quality/compare_before_after.py

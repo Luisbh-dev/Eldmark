@@ -63,10 +63,48 @@ func test_the_fort_groups_the_markers_the_controller_needs() -> void:
 			var away: Vector3 = guard.global_position - circle.global_position
 			assert_true(Vector2(away.x, away.z).length() > 5.0, "GuardSpawn%d queda fuera del círculo" % index)
 	for banner_name: String in ["Estandarte", "EstandartePuertaN", "EstandartePuertaS"]:
-		assert_not_null(_fort.get_node_or_null(NodePath(banner_name)), banner_name)
+		assert_not_null(_fort.find_child(banner_name, true, false), banner_name)
 	var gate: Node = _fort.get_node_or_null(^"FortGate")
 	if assert_not_null(gate, "FortGate") and assert_true(gate is FortGate, "es un FortGate"):
 		assert_true(gate.is_in_group(&"fort_gate"))
+
+
+func test_the_keep_replaces_the_old_tower_with_a_low_resolution_collision() -> void:
+	if not assert_not_null(_fort, "la zona tiene el nodo Fuerte"):
+		return
+	var keep: Node = _fort.get_node_or_null(^"FortKeep")
+	if not assert_not_null(keep, "el torreón nuevo (FortKeep)") or not assert_true(keep is FortKeep, "con su script"):
+		return
+	assert_null(_fort.get_node_or_null(^"FortTower"), "la torre vieja ya no está")
+	var bodies: Array[Node] = keep.find_children("*", "StaticBody3D", true, false)
+	if not assert_eq(bodies.size(), 1, "un solo cuerpo de colisión"):
+		return
+	var body: StaticBody3D = bodies[0] as StaticBody3D
+	assert_eq(body.collision_layer, PlayerCharacter.WORLD_COLLISION_LAYER, "el torreón está en la capa del mundo")
+	assert_eq(body.collision_mask, 0)
+	var shape: ConcavePolygonShape3D = (body.find_children("*", "CollisionShape3D", true, false)[0] as CollisionShape3D).shape as ConcavePolygonShape3D
+	if not assert_not_null(shape, "colisión de malla"):
+		return
+	var faces: PackedVector3Array = shape.get_faces()
+	assert_true(faces.size() / 3 < 600, "colisión de baja resolución (%d caras)" % (faces.size() / 3))
+	# La huella no invade el círculo de captura más de lo previsto ni se come los puntos de aparición.
+	var lo: Vector3 = Vector3(1e9, 1e9, 1e9)
+	var hi: Vector3 = Vector3(-1e9, -1e9, -1e9)
+	for vertex: Vector3 in faces:
+		lo = lo.min(vertex)
+		hi = hi.max(vertex)
+	assert_true(hi.x - lo.x < 11.0 and hi.z - lo.z < 11.0, "huella de menos de 11 m de lado")
+	for spawn_name: String in ["CaptainSpawn", "FordCaptainSpawner"]:
+		var marker: Node3D = _fort.get_node_or_null(NodePath(spawn_name)) as Node3D
+		if marker == null:
+			continue
+		var local: Vector3 = keep.to_local(marker.global_position)
+		var outside: bool = local.x < lo.x - 0.9 or local.x > hi.x + 0.9 or local.z < lo.z - 0.9 or local.z > hi.z + 0.9
+		assert_true(outside, "%s queda a más de 0,9 m de la colisión del torreón" % spawn_name)
+	# El estandarte del torreón lleva el color de bando por instancia que mueve la vista del fuerte.
+	var banner: MeshInstance3D = _fort.find_child("Estandarte", true, false) as MeshInstance3D
+	if assert_not_null(banner, "el estandarte del torreón"):
+		assert_not_null(banner.get("instance_shader_parameters/faction_color"), "color de bando por instancia")
 
 
 func test_respawn_points_keep_the_camps_first_and_then_the_fort_interior() -> void:

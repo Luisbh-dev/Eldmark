@@ -67,8 +67,14 @@ Sobre una colina baja (meseta a 10,2 m, 6 m por encima del valle, laderas de 12�
 - Patio: cajas de la vieja guarnición en espejo norte-sur (las dos pilas dan el mismo atajo a la
   pasarela) y una hoguera sobre el eje, al este de la torre. Dos estandartes neutrales flanquean la
   puerta por fuera.
-- **Torre central de piedra** de dos plantas (6 × 6 × 12 m, terraza almenada) con el mástil del
-  estandarte neutral (gris hueso, `faction_color` por instancia).
+- **Torreón central** (ART-57): el modelo propio `assets/models/environment/custom/fort_keep.glb`
+  (26 m con el asta, tejado a cuatro aguas, cadalso, tres LOD y estandarte de tela con emblema) en la
+  escena `fort_keep.tscn` (`FortKeep`, `scripts/world/fort_keep.gd`: materiales de reino, rangos de LOD
+  y capa de colisión). Sustituye a la torre de dos plantas de 6 × 6 m. Su colisión es la malla de baja
+  resolución del propio glb (268 caras, cuerpo cónico de 9,9 × 9,7 m en la base), cuya huella entra 1,4 m
+  en el borde este del círculo de captura (el centro y los marcadores no se mueven; el punto de aparición
+  del Capitán queda a 1,07 m de la colisión). El estandarte `Estandarte` cuelga
+  del glb; `FortressView` lo encuentra por nombre y le pone el color del dueño por instancia.
 - El nodo `Fuerte` es el **nodo de la fortaleza**: está en el grupo `fortresses` y lleva el metadato
   `definition` con la ruta de `data/fortresses/vado_gris.tres` (`FortressDefinition`, id
   `vado_gris_fort`). Sus hijos son los marcadores que lee el controlador del fuerte:
@@ -250,10 +256,23 @@ Por qué es justo:
   vado, la calle de la aldea y la capilla.
 - Cada reino tiene **las dos rutas**: su propio puente (equivalente simétrico) y el mismo vado.
 - **Luz:** el sol viene exactamente del oeste (a lo largo de +X), a 28° y con sombras largas, así que
-  no da de lleno en ninguna de las dos fachadas de muralla (miran a +Z y a -Z): las dos reciben solo
-  la luz del ambiente, la misma. Ya no hay rellenos (ART-54): lo que mira al oeste (caras de torre,
-  empalizada, árboles) recibe sol y lo que mira al este queda en sombra, con una relación de
-  luminancia de 4 a 5 entre las dos caras de una torre (antes 1,8). La simetría norte-sur no cambia.
+  no da de lleno en ninguna de las dos fachadas de muralla (miran a +Z y a -Z): las dos reciben la misma
+  luz. Lo que mira al oeste (caras de torre, empalizada, árboles) recibe sol y lo que mira al este queda
+  en sombra, con una relación de luminancia de 4 a 5 entre las dos caras de una torre. Como las
+  fachadas de las murallas quedan de canto y solo reciben ambiente (grises y planas), el generador
+  pone dos luces de relleno **espejo una de otra** (una del suroeste y otra del noroeste, sin sombra,
+  energía 0,9) que solo iluminan la capa 20, y `WallLightTag` mete las murallas, torres y puertas en
+  esa capa: cada fachada interior recibe una luz rasante y se lee el relieve de la sillería, sin tocar
+  el resto de la escena. La simetría norte-sur no cambia (ART-54).
+- **Cielo y clima (ART-54):** una tormenta que se abre (decisión provisional de calidad.md, sección 6).
+  `storm_sky.gdshader` es un shader de cielo propio (no Sky3D: ver `assets/LICENCIAS.md`): nubes rotas
+  sobre un degradado frío, oscuras al este y en el cénit, con un claro hacia el oeste alrededor del sol
+  bajo, filo plateado en el borde de las nubes que mira al sol y el disco solar donde está la luz
+  direccional (`LIGHT0_DIRECTION`, así que cielo y luz no se desacoplan). Sin `TIME`, para que el mapa de
+  radiancia no se regenere en cada fotograma. Es un recurso del `Environment`: el servidor headless no
+  lo dibuja y no carga ningún addon. Cada mitad se ve distinta (ART-62): según la `z` de la cámara
+  el horizonte y el halo del sol se enfrían (Vardheim) o se calientan (Solmarch); solo en la pasada de
+  pantalla completa, así que la luz ambiente de las dos mitades es idéntica.
 
 ## Técnica
 
@@ -280,23 +299,29 @@ Por qué es justo:
 - **Agua:** `assets/materials/shaders/water.gdshader`, color por profundidad leída del búfer de
   profundidad (vado claro, cauce oscuro), espuma en orillas y postes, ondas que corren a lo largo
   del río. La malla es una cinta a lo largo del cauce (`vado_gris_river_water.tres`).
-- **Ambiente:** `assets/environments/vado_gris_frontier.tres`: cielo cubierto de la frontera de
-  Eldrun (degradado gris con una capa de nubes procedural, `sky_cover`), niebla de 0,0015 más algo
-  de niebla baja, SSAO y saturación al 88 %. Sol del oeste a 28°, algo cálido (`#f6efe4`) y con
-  energía 2,2, con sombras de 4 cortes hasta 130 m sin mezcla entre cortes (con mezcla y 180 m el
-  coste en primitivas pasaba del presupuesto); luz ambiente del cielo a 0,48 (antes 0,95) y ningún
-  relleno. El cielo y la niebla no se han tocado (queda para ART-54, segunda mitad).
-- **Texturas del terreno:** la tierra de acuarela (Dirt_03, un pardo rojizo muy saturado que se
-  veía casi negro) se corrige al copiarla (`copy_vado_gris_assets.gd`: tono +9°, saturación ×0,6,
-  valor ×1,35) hacia la tierra quemada y la ceniza de Eldrun. Las calzadas tienen un núcleo de
-  grava gris que pasa a tierra y se funde con la hierba en un borde roto por ruido, con mezcla
-  fraccionaria; el material de Terrain3D usa `blend_sharpness` 0,45 y variación de color a gran
-  escala. Las texturas se repiten cada 3 o 4 m (`uv_scale` de 0,26 a 0,35, antes de 8 a 17 m) y las
-  laderas de más de unos 45° proyectan la textura de lado (`enable_projection`, umbral 0,65) en vez
-  de estirarla a lo largo de la pendiente (ART-55, parte barata; las normales y la altura de las
-  texturas quedan para la segunda parte).
-- **Hierba:** en matas agrupadas por ruido (prado y claros, sin hileras), con material
-  `realm_surface` que la desatura hacia un verde gris y un pajizo de Eldrun.
+- **Ambiente:** `assets/environments/vado_gris_frontier.tres`: cielo propio (arriba), niebla de
+  distancia fría de 0,0016 con dispersión del sol, niebla volumétrica ligera (densidad 0,0012, 120 m,
+  con la luz del sol dentro: las sombras de las torres y las nubes dejan haces), SSAO y SSIL (rebote
+  en pantalla en el patio del fuerte y al pie de las murallas), tonemapper AgX sin desaturación global,
+  brillo suave. Sol del oeste a 28°, cálido (`#ffe6c4`) y con energía 2,6, con sombras de 4 cortes hasta
+  110 m sin mezcla entre cortes; luz ambiente del cielo a 0,55. Sin SDFGI (coste y parpadeo en un
+  terreno de 512 m): queda como mejora opcional.
+- **Texturas del terreno (ART-55):** diez huecos de Terrain3D con las ocho texturas CC0 de Poly Haven
+  (hierba, tierra, grava, roca de canto rodado, grava con piedras, arena húmeda, nieve y suelo de bosque),
+  procesadas por `tools/assets/process_terrain_textures.py` (1024 px, desaturadas, con la altura en el
+  alfa del albedo y la normal OpenGL con la rugosidad en el alfa; ver `assets/LICENCIAS.md`). Hierba seca
+  y hierba verde reutilizan la de hierba con otro tinte. Las teselas miden de 2 a 4,5 m (`uv_scale` de 0,24
+  a 0,5), el desfase de rotación de cada textura rompe la repetición y las laderas proyectan la textura de
+  lado (`enable_projection`, umbral 0,6) en vez de estirar la roca en vetas. Las calzadas tienen un núcleo
+  de grava gris que pasa a tierra con un borde roto por ruido, y las orillas llevan barro. Identidad de
+  cada mitad (ART-62, solo pintura): nieve a manchas, suelo de bosque oscuro bajo las coníferas y nieve en
+  las cumbres al norte; hierba verde viva al sur.
+- **Hierba (ART-59):** matas agrupadas por ruido (prado y claros, sin hileras), de 1 a 3 por celda de
+  1 m, visibles hasta 48 m. Material propio `grass_blade.gdshader` (cinco variantes de
+  `grass_blade_*.tres`, de `tools/assets/build_grass_materials.py`): la base de las hojas tiene el color
+  del terreno y sube hasta el de la punta, algo de translucidez a contraluz y balanceo de viento que
+  crece con la altura. Variante por zona: escarchada al norte, seca y gris en la franja central, verde
+  viva al sur. La de hojas finas (190 triángulos) entra solo en pequeña proporción.
 - **Losas de la calzada:** se inclinan con el terreno y se hunden hasta quedar a ras; en
   pendientes de más de 7° no se ponen.
 - **Todo en una escena por ahora.** El servidor dedicado quita la capa visual al cargarla con
