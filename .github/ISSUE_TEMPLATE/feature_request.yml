@@ -1,0 +1,42 @@
+name: Feature request
+description: Suggest an idea or an improvement (English or Spanish)
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or goal
+      description: What do you want to achieve, and why?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Combat
+        - World and zones
+        - Networking
+        - Interface
+        - Progression and social
+        - Tools and tests
+        - Assets
+        - Documentation
+        - Other
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contribution
+      options:
+        - label: I would like to work on this myself
+        - label: I checked docs/vision.md and the backlog for existing plans

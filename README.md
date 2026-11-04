@@ -1,17 +1,65 @@
 # Eldmark
 
-MMORPG 3D de fantasía medieval hecho con [Godot 4](https://godotengine.org/).
-Tres reinos en guerra por el control de los fuertes y castillos de una zona
-central. Visión completa en [docs/vision.md](docs/vision.md).
+**An open-source 3D medieval-fantasy MMORPG built with Godot 4.** A playable game with its own identity, and a reference architecture for authoritative-server action combat that you can study, fork or build on.
 
-> Estado: prototipo temprano.
+![Eldmark: the Vado Gris fort on its hill, seen from the Vardheim side](docs/screenshots/hero.jpg)
 
-## Requisitos
+Three realms fight over the forts and castles of a central war zone. You pick a realm, level up inside its walls, and march out through its gate to take fortresses from the other two. Combat is third-person action in the style of New World: over-the-shoulder camera, crosshair aiming, no target lock, blocking and dodging. The server decides everything that matters; the client predicts what it can.
 
-- Godot 4.7 (versión estándar, GDScript)
-- Git y [Git LFS](https://git-lfs.com/)
+> **Status: pre-alpha, a playable vertical slice.** One real zone (the Vado Gris frontier, with a capturable fort), accounts and character saves through a separate platform service, and the full network and combat stack underneath. It is a prototype, not a finished game: most of the world, the third realm's content and the siege layer are still ahead (see [Roadmap](#roadmap)).
+>
+> **Language:** the code, comments and documentation are in English. The in-game interface text and the server log messages are still in Spanish; an English localization is planned.
 
-## Cómo empezar
+## What works today
+
+Everything below is in `main` and covered by the automated test suite.
+
+- **Dedicated server per zone.** The same Godot project runs as a headless server (`--headless -- --server`). Each zone is its own map and its own process; there is no continuous world.
+- **Authoritative networking.** Fixed 60 Hz ticks, binary protocol over ENet (optionally DTLS), snapshots at 30 Hz, **client-side prediction** with reconciliation for the local player, **interpolation** for everyone else, and **lag compensation**: the server keeps a short position history and rewinds hitboxes to what the attacker saw (up to 24 ticks, 400 ms). Rate limiting, input-window checks and a per-IP connection cap protect the server from malformed or abusive clients.
+- **Action combat.** Sword and shield (light-attack combo, charged heavy attack, block with a parry window, dodge with invulnerability frames), bow (quick and drawn shots, projectiles simulated deterministically), three shield abilities and three bow abilities, two potions, weapon swap, stamina, knockdown (the "downed" state, revive and finisher). Fully data-driven from `data/combat/*.tres`.
+- **NPCs and a boss.** A hierarchical-state-machine AI with navmesh pathing and attack tokens: the undead Hollows, realm guards, gate guardians and the Ford Captain.
+- **Capturable fort.** The Vado Gris fort has a destructible gate, a capture circle, a garrison that changes hands, respawn waves inside owned forts, war alerts, a minimap and a capture HUD.
+- **Social.** Realm-only chat (say, zone, whisper, party and system channels), parties, ignore and report, server-side filtering by realm, moderation sanctions.
+- **Progression.** Races and character appearance, inventory with an authoritative ledger, currencies, levels and experience, starter templates (Squire with sword and shield, Marksman with bow).
+- **Platform service in Go** (`platform/`, Go 1.24 on PostgreSQL 16): accounts with email verification and password reset, characters, hand-off tickets that let a zone admit a character, periodic persistence with integrity checks, an admin CLI, privacy tooling (data export and retention purges), and Docker-based deployment with backups. Optional: you can run the whole game without it.
+- **Bots and load testing.** Full headless bot clients and a lightweight swarm that can load a zone with dozens of connections, a battery of cheating bots that checks the server cannot be fooled, and tools that compare the predicted and authoritative state bit by bit.
+- **Tests and CI.** Over 2,800 test methods in about 210 files, including multi-process network tests, run on every push through GitHub Actions (see [docs/getting-started.md](docs/getting-started.md#continuous-integration)).
+
+Not there yet, to be honest about it: the other two war-zone regions, siege weapons, the capital cities and PvE zones, Askarra gameplay content (the realm exists in the catalog and the realm-select screen, but the Vado Gris only admits Vardheim and Solmarch), classes beyond the two starter templates, guilds, and a polished art pass. Interest management is a stub that sends every entity to every client; a grid-based policy is designed but not built.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Combat inside the fort courtyard](docs/screenshots/combat.jpg) | ![Fort capture notice](docs/screenshots/fort_capture.jpg) |
+| Sword-and-shield fight against the fort garrison | Capturing the Vado Gris fort for Vardheim |
+| ![The Vardheim wall and camp](docs/screenshots/world.jpg) | ![Character creation](docs/screenshots/character_creation.jpg) |
+| The Vardheim wall and camp, north end of the zone | Character creation (the interface is in Spanish for now) |
+
+The swords are original models, one base design and one variant per realm:
+
+![Four original sword models](docs/screenshots/swords.jpg)
+
+## The world
+
+Eldmark is set in **The Broken Crown**. The three peoples were once a single kingdom, Eld, ruled from the citadel of Aldcor, where the Flame of Eld burned. When the last king died without an heir the three lineages fought for the throne, the Flame burst, and the land cracked. The embers of the Flame still burn in the ruins and empower whoever holds them.
+
+| Realm | Inspiration | Colors and emblem | Capital |
+|---|---|---|---|
+| **Vardheim** (north) | Norse and Anglo-Saxon clans: fjords, pine forest, tundra | Steel grey and ice blue; white wolf | Isenholm |
+| **Solmarch** (southwest) | Gothic theocracy: fertile valleys, vineyards, slow rivers | White and gold; split radiant sun | Valcorin |
+| **Askarra** (southeast) | Forgelords and merchants: red canyons, mesas, volcanic fields | Crimson and bronze; anvil over a burning crack | Kassar |
+
+Each realm is enclosed by a wall with gates facing **Eldrun**, the central war zone, where the ruined citadel of Aldcor stands and where forts (small, quick objectives) and castles (large, with walls, gates and several lines of defense) can be captured and held. Realm-vs-realm combat happens there; inside a realm's own safe areas, enemies cannot hurt you. There is no diplomacy and no cross-realm chat: you see the enemy's body and banner, never their voice.
+
+The first playable zone is the **Vado Gris** ("Grey Ford"), a compressed frontier of about 300 by 300 m between Vardheim's Frost Wall (north) and Solmarch's Dawn Wall (south), with a horseshoe river, a stone bridge and a wide ford, ruins on the flanks and a palisade fort on the central hill. Full lore and geography are in [docs/world.md](docs/world.md) and the zone notes in [docs/zonas/vado_gris.md](docs/zonas/vado_gris.md) (Spanish until translated).
+
+## Quick start
+
+You need:
+
+- [Godot 4.7](https://godotengine.org/) (standard build, GDScript; 4.7.2 is what CI uses)
+- [Git](https://git-scm.com/) and [Git LFS](https://git-lfs.com/): models, textures, audio and terrain data are stored in LFS
 
 ```bash
 git clone https://github.com/Luisbh-dev/Eldmark
@@ -20,656 +68,170 @@ git lfs install
 git lfs pull
 ```
 
-Abre `project.godot` desde Godot y pulsa F5. Arranca el cliente (todavía sin red) en
-el **Vado Gris**, la primera zona de frontera: el héroe animado aparece en el campamento
-de Vardheim, delante de su muralla, con el fuerte al otro lado del río.
+### Try it in the editor
 
-Controles:
+Open `project.godot` in Godot and press **F5**. This starts the offline sandbox in the Vado Gris: you appear in the Vardheim camp in front of the wall, with the fort across the river. There is no server in this mode, so no enemies and no other players; it is good for looking around and trying movement and camera.
 
-| Acción | Tecla |
-|---|---|
-| Moverse | WASD |
-| Mirar | Ratón |
-| Saltar | Espacio |
-| Esprintar | Mayús (mantener) |
-| Liberar el cursor mientras se mantiene | Alt |
-| Soltar el cursor hasta hacer clic | Esc |
-| Cambiar de hombro | V |
-| Acercar / alejar la cámara | Rueda del ratón |
-| Panel de depuración | F3 |
-| Ajustes (gráficos, audio, cámara e interfaz) | F10 |
+### Play with a server
 
-Las teclas de combate (clic izquierdo y derecho, Ctrl, 1-3, E) ya están asignadas, pero
-todavía no hacen nada (fase 3).
-
-## Ajustes del jugador (F10)
-
-**F10** abre y cierra la ventana de ajustes, tanto en el sandbox sin red como en el cliente en red
-(Esc también la cierra; mientras está abierta el cursor queda libre). Tiene cuatro pestañas:
-
-| Pestaña | Ajustes |
-|---|---|
-| Gráficos | modo de ventana (ventana, pantalla completa sin bordes o exclusiva), resolución (solo en modo ventana), sincronía vertical, límite de FPS, escala de render, sombras (desactivadas, bajas, medias o altas), distancia de la hierba (0 la quita) y suavizado de bordes (ninguno, FXAA, MSAA 2x o 4x) |
-| Audio | volumen de cada bus: General, Música, Efectos, Ambiente, Interfaz y Voces |
-| Cámara | sensibilidad del ratón, invertir el eje vertical, campo de visión y hombro por defecto |
-| Interfaz | números de daño y placas de nombre |
-
-Los cambios se aplican en vivo, se guardan al cerrar la ventana en `user://settings.cfg` (en Linux,
-`~/.local/share/godot/app_userdata/Eldmark/`; en Windows, `%APPDATA%\Godot\app_userdata\Eldmark\`) y se
-aplican al arrancar. Solo se escribe lo que el jugador ha tocado: un cliente sin `settings.cfg` arranca
-exactamente igual que siempre, con el Vado Gris, la ventana y el suavizado del proyecto. «Restaurar
-pestaña» y «Restaurar todo» devuelven los valores por defecto (y quitan esas claves del archivo). El
-archivo es texto (`[graphics]`, `[audio]`, `[camera]` y `[interface]`) y se puede editar a mano: lo que
-no sea válido se ignora y queda el valor por defecto. Está implementado en `ClientSettings`
-(`scripts/client/ui/client_settings.gd`, que también describe cada ajuste) y `SettingsMenu`.
-
-## Interfaz y audio
-
-- El tema global (`assets/ui/theme/eldmark_theme.tres`, asignado en `project.godot` con
-  `gui/theme/custom`) lo genera `tools/ui/build_theme.gd` a partir de la paleta `UIPalette`; para
-  cambiar el aspecto se cambia la paleta o `UIThemeBuilder` y se vuelve a ejecutar
-  (`godot --headless --path . -s res://tools/ui/build_theme.gd`). Aún no hay fuentes en el repositorio
-  (usa la del motor): las ranuras de Noto Sans y Cinzel están preparadas y las instrucciones para
-  añadirlas, en `assets/LICENCIAS.md`. Los emblemas de bando de `assets/emblems/` son provisionales
-  (`tools/assets/make_emblems.py`).
-- La galería de la interfaz muestra todos los estilos del tema y los componentes comunes (casillas
-  de icono con rareza y reutilización, glifos de tecla, tooltip, diálogo de confirmación, foco):
-  `godot --path . res://scenes/tests/ui_gallery.tscn`.
-- Los glifos de tecla (la línea de ayuda del HUD, las casillas) leen la asignación real del
-  `InputMap`, así que reflejan cualquier tecla reasignada.
-- El audio es solo del cliente: `default_bus_layout.tres` define los buses (General con limitador,
-  Música, Efectos, Ambiente, Interfaz y Voces) y `AudioDirector` reparte los sonidos en pools con un
-  límite de voces por categoría. Todavía no hay sonidos reales en `assets/audio/`.
-
-## Zonas
-
-El mundo se divide en zonas independientes (ver [docs/mundo.md](docs/mundo.md)). El registro
-de zonas está en `scripts/shared/zones.gd` (`Zones`), que comparten cliente y servidor:
-
-| Zona | Escena | Qué es |
-|---|---|---|
-| `vado_gris` (por defecto) | `scenes/world/zones/vado_gris/vado_gris.tscn` | Frontera de la fase 4: fuerte capturable entre Vardheim (norte) y Solmarch (sur). Ver [docs/zonas/vado_gris.md](docs/zonas/vado_gris.md) |
-| `test_world` | `scenes/world/test_world.tscn` | Circuito de pruebas de movimiento y cámara de la fase 1 |
-
-Se aparece en el primer punto de aparición del reino elegido (los marcadores del grupo
-`spawn_points` llevan el metadato `realm`); si la zona no tiene puntos de ese reino, en el
-primero de la zona.
-
-## Pruebas y demo
-
-Desde la raíz del proyecto (`godot` es el ejecutable de consola de Godot 4.7):
+Run the following from the project root. `godot` stands for the Godot 4.7 console executable (see [getting started](docs/getting-started.md#running-godot-from-the-terminal) if it is not on your `PATH`).
 
 ```bash
-# Importar recursos y validar el proyecto
-godot --headless --path . --import
-
-# Pruebas automáticas (código de salida 0 si todo pasa)
-godot --headless --path . -s res://tests/run_tests.gd
-# Solo las pruebas cuyo nombre contiene un texto
-godot --headless --path . -s res://tests/run_tests.gd -- --filter=replay
-# Solo la parte 2 de 4 de los archivos de prueba (repartidos por turnos, como en la CI)
-godot --headless --path . -s res://tests/run_tests.gd -- --shard=2/4
-
-# Arrancar el cliente sin ventana durante 300 fotogramas (comprobación rápida)
-godot --headless --path . --quit-after 300
-
-# Jugar con Solmarch en el Vado Gris
-godot --path . -- --realm=solmarch
-
-# Demo guionizada en el Vado Gris (unos 33 s) con una captura PNG cada 90 ticks, las capturas
-# de las cámaras de revisión de la zona al final y salida al terminar
-godot --path . -- --zone=vado_gris --demo --shots=C:/ruta/absoluta/capturas --quit-after-demo
-
-# Demo de la fase 1 en el circuito de pruebas (unos 10 s)
-godot --path . -- --zone=test_world --demo --quit-after-demo
-```
-
-Opciones de arranque (van después de `--`):
-
-- `--zone=<id>`: zona que se carga (`vado_gris` por defecto o `test_world`).
-- `--realm=<reino>`: reino del jugador (`vardheim` por defecto o `solmarch`); decide el
-  punto de aparición.
-- `--demo`: el personaje y la cámara siguen un guion en lugar del teclado y el ratón. En el
-  Vado Gris recorre la ruta del puente de su reino: sale del campamento, esprinta con un salto
-  por la calzada, cruza el puente, salta dos veces al pie del fuerte, da un paso lateral, rodea
-  la empalizada hasta la puerta (frente al vado) y la cámara da una vuelta completa. En
-  `test_world` es el guion fijo de la fase 1. Los dos acaban con un combate de unos 5 s (combo de tres
-  ligeros, fuerte cargado, bloqueo y esquiva) y la demo escribe al terminar las acciones que recorrió
-  el personaje («Demo, acciones de combate: LIGHT x4, CHARGE x1, HEAVY x1, BLOCK x1, DODGE x1»; el
-  cuarto ligero es la pulsación que se convierte en la carga).
-- `--shots=<carpeta absoluta>`: durante la demo guarda `shot_000.png`, `shot_001.png`...
-  y, al terminar, una captura sin HUD desde cada cámara de revisión de la zona
-  (`zona_<nombre>.png`, marcadores del grupo `screenshot_points`). Necesita ventana; en modo
-  headless se omiten.
-- `--quit-after-demo`: cierra el juego al terminar la demo.
-- `--server`: servidor dedicado de una zona (ver «Servidor dedicado» más abajo).
-- `--connect=<host>[:<puerto>]`, `--local` y `--bot`: cliente en red (ver «Cliente en red» más
-  abajo).
-- `--bots=N`: enjambre de N clientes ligeros para pruebas de carga (ver «Enjambre de bots»).
-- `--title` y `--platform=<url>`: la pantalla de título con cuenta (ver «Cliente con cuenta»). Una
-  exportación sin argumentos también la abre; desde el editor, sin argumentos sigue el sandbox.
-
-Las capturas y otros ficheros temporales pueden ir en `build/`, que Godot ignora.
-
-### Banco de capturas de calidad (`tools/quality/`)
-
-El plan de calidad visual ([docs/calidad.md](docs/calidad.md)) se comprueba con capturas, no a ojo: el banco regenera con
-una orden por área las capturas y tiras que demuestran cada criterio del listón, en la misma resolución y con los mismos
-encuadres, para poder enseñar un antes y un después. Necesita **ventana y GPU** (no sirve en `--headless`), Python 3 con
-Pillow (`pip install pillow`) y el ejecutable de consola de Godot (lo busca en `GODOT`, en la instalación de winget y en el
-`PATH`; o `--godot <ruta>`). Si existe `override.cfg` en la raíz (lo ignora Git), las ventanas se abren en la segunda pantalla.
-No usa cuentas ni contraseñas: el servidor va con `--debug-commands` y el cliente de captura entra con un personaje efímero.
-
-```bash
-# Una orden por área (todas escriben en build/calidad, o en la carpeta de --out, y regeneran su indice.md)
-python tools/quality/run.py animacion --out build/calidad    # tiras de 12 fotogramas en el sandbox: jugador y PNJ
-python tools/quality/run.py mapa                             # mapa M, minimapa y brújula
-python tools/quality/run.py interfaz                         # HUD, ventanas, título, creación, galería y chat
-python tools/quality/run.py mundo                            # 66 vistas a altura de jugador, cámaras de revisión y demo
-python tools/quality/run.py combate                          # refriegas, golpe en bloqueo y remotos aislados
-python tools/quality/run.py video --seconds 60               # un minuto de combate con --write-movie
-python tools/quality/run.py todo --port 24721                # las seis áreas seguidas
-python tools/quality/run.py indice --out build/calidad       # solo regenera el índice
-python tools/quality/run.py listar                           # áreas y pasos
-```
-
-Cada orden arranca lo que necesita (el sandbox, o un servidor del Vado Gris en `--port`, 24711 por defecto, con sus bots y el
-cliente conducido por `online_driver.gd`), recoge las capturas en `<out>/<área>/`, une las tiras en rejillas, escribe
-`<out>/indice.md` (qué enseña cada archivo, con qué clips, desde cuándo) y, al acabar o al interrumpirla, cierra los procesos de
-Godot que lanzó. Opciones: `--steps a,b` (solo algunos pasos del área, ver `listar`), `--only <ids>` (en `animacion`, solo esas
-acciones), `--phases hueco,capitan,guardia,guardian` (en `combate --steps pnj`, solo esas fases), `--bots N` (bots de asedio por reino), `--resolution WxH` (1920x1080), `--sin-capsulas` (en `mundo`, las cámaras de
-revisión sin las cápsulas de escala), `--clean-raw` (borra los fotogramas sueltos de `raw/` y deja sus `meta.json`) y `--godot`.
-
-| Área | Qué lanza | Qué deja en `<out>` |
-|---|---|---|
-| `animacion` | `anim_strips.gd` sobre `test_world` (personaje, `HumanoidVisual`, `CameraRig` y `LocalPlayerController` de verdad; los guiones de entradas están en `anim_actions.gd`) | `animacion/{camara_juego,lado,frente}/<acción>.png`: `loc_*`, `com_*`, `arc_*` y `npc_*` (Hueco, Capitán, guardia de reino y Guardián de la Puerta, con ataques, bloqueo, tambaleo y muerte) |
-| `mapa` | servidor con 2 x 6 bots de asedio y `sc_mapa.gd` | `mapa/minimapa_*`, `brujula_*`, `mapa_m_*` e `imagen_horneada_vado_gris.png` |
-| `interfaz` | el mismo servidor con `sc_interfaz.gd` y `sc_extras.gd`, y sin servidor `sc_front.gd` (título, selección y creación con datos de mentira), `sc_gallery.gd` y `chat_preview.tscn` | `interfaz/*.png` y los `recorte_*.png` de `crops.py` (las mismas regiones de píxeles de la auditoría) |
-| `mundo` | servidor sin PNJ ni bots (`--no-npcs --no-dummies`), `sc_mundo.gd` como Vardheim y como Solmarch, `tools/render/render_screenshot_points.gd` y la demo del sandbox | `mundo/jugador_{vardheim,solmarch}/` (33 vistas cada uno), `mundo/camaras_revision/` (con `metricas.txt`) y `mundo/demo_sandbox/` |
-| `combate` | `sc_combate.gd` con 2 x 6 bots; después un servidor sin PNJ con **un solo bot** de combate (`sc_remotos_bot.gd` y `sc_bloqueo.gd`) y otro con los PNJ del Vado Gris sin bots (`sc_remotos_pnj.gd`) | `combate/pelea_*` y `bloqueo_recibiendo_*`, y las tiras de remotos en `animacion/remoto/` y `animacion/remoto_lado/` |
-| `video` | servidor con los PNJ del fuerte y un bot de combate, y `sc_video.gd` con `--write-movie` | `video/combate.avi` (y `.mp4` con `--mp4` si hay ffmpeg) y `video/video.json` |
-
-**Tiras de otros personajes (`rem_*`).** El cliente de captura pelea con un bot o un PNJ ([`spar.gd`](tools/quality/spar.gd):
-ligeros, fuertes, bloqueo, retroceso...) y [`strip_recorder.gd`](tools/quality/strip_recorder.gd) guarda cada 50 ms los últimos
-4,5 s del personaje seguido. Cuando ocurre la acción buscada (el borde de subida de `BLOCK`, `DODGE`, `DEAD`...) la tira sale del
-anillo con el principio de la acción y se descarta si no cumple su validación (por ejemplo, un «ataque ligero» que se convierte en
-carga). El bot va **solo** (servidor sin PNJ ni maniquíes y un único bot completo, que usa habilidades, bloqueo y esquiva), así que
-nadie lo tapa; cada tira lleva además una vista lateral propia a 5 m (`remoto_lado`) y marca `TAPADO` los fotogramas con otro
-cuerpo delante de la cámara del juego. El `meta.json` de cada tira guarda por fotograma la acción de combate, la fase, la
-velocidad y **el clip que reproduce la capa de animación del remoto** (`clip`, `clip_t`, `clip_speed`), y el índice resume cuántos
-fotogramas de acción tienen clip (por ejemplo, `0/9` en el ataque de un PNJ que ataca andando). Las tiras que ya existen son las
-del bot (`rem_bot_*`), el Hueco, el Capitán, el guardia de reino, el Guardián de la Puerta y el golpe recibido en bloqueo
-(`com_bloqueo_recibir_golpe*`: lleva en cada fotograma la marca del golpe que vio el cliente: `BLOQUEADO`, `PARADA`...).
-
-**Vídeo (`video`).** `run.py video` lanza el cliente con el `--write-movie combate.avi --fixed-fps 60` del motor (Movie
-Maker: graba cada fotograma y el audio del bus maestro, PCM estéreo a 48 kHz). El vídeo sale al tamaño de la ventana del proyecto
-(1600x900, `window_width_override`), no al de `--resolution`. El motor avanza un fotograma de 1/60 s por iteración sin mirar el
-reloj, así que el vídeo sale a 60 fotogramas por segundo exactos aunque la grabación vaya más lenta que el tiempo real (en el
-equipo de desarrollo, al 34 %: el JPEG de cada fotograma pesa); el servidor, que no sabe que se graba, sigue en tiempo real y el
-cliente lo compensa como con cualquier mala conexión. Cuando la máquina llega, el conductor frena el juego a tiempo real. La
-duración es la del guion en fotogramas (`--seconds`, 60 por defecto; unos 8 MB por segundo de vídeo): la mitad contra los Huecos y
-el Capitán del patio del fuerte y el resto contra un bot enemigo, con ligeros, fuertes, habilidades, esquivas y bloqueos. A mano:
-
-```bash
-godot --path . --resolution 1600x900 --write-movie build/calidad/video/combate.avi --fixed-fps 60     -s res://tools/quality/online_driver.gd -- --connect=127.0.0.1:24711 --realm=vardheim --name=Cronista     --scenario=res://tools/quality/sc_video.gd --out=build/calidad --tag=video --seconds=60
-```
-
-Mientras `assets/audio/` esté vacío la pista de audio saldrá en silencio; el vídeo sirve ya para juzgar la fluidez y la parada
-de golpe. Las pruebas de este banco (`tests/test_quality_tools.gd`) comprueban sin ventana que todos los scripts cargan, que
-cada PNJ del catálogo tiene su juego de tiras, que las tiras de remotos están bien formadas, la lógica de la grabadora y, si hay
-Python con Pillow, las piezas de Python con datos de mentira.
-
-### Integración continua
-
-`.github/workflows/tests.yml` (GitHub Actions, `ubuntu-latest`) ejecuta la suite completa, red y
-procesos incluidos, en cada push a `main` y en cada pull request: descarga Godot 4.7.2-stable para Linux
-(con comprobación SHA-512 y en caché), baja los objetos de Git LFS (también en caché), importa el
-proyecto y lanza `tests/run_tests.gd` repartido en cuatro partes a la vez (`--shard=K/4`), cada una
-con un plazo de 20 minutos. Si una falla, sube su `build/` (logs e informes) como artefacto
-`build-logs-K`. El trabajo «Suite completa» solo pasa si pasan las cuatro: para que una prueba rota
-bloquee el merge hay que marcarlo como comprobación obligatoria en la protección de la rama. Se puede
-lanzar a mano desde la pestaña Actions (`workflow_dispatch`). El trabajo «Plataforma», aparte, comprueba
-que no haya secretos en el índice (`tools/check_secrets.sh`) y pasa `gofmt`, `go vet` y `go test` del
-servicio de plataforma (abajo).
-
-## Servidor dedicado
-
-Un proceso del mismo proyecto, siempre con `--headless`, sirve una zona en un puerto UDP (diseño
-en `docs/red.md`). Por ejemplo, el Vado Gris con 8 jugadores falsos durante 30 s y un informe
-JSON al cerrar:
-
-```bash
-godot --headless --path . --log-file build/servidor.log -- --server --zone=vado_gris \
-    --port=24600 --fake-players=8 --quit-after-ticks=1800 --report=build/informe.json
-```
-
-Opciones (después de `--`): `--server`, `--zone=<id>`, `--port=24600`, `--max-players=64`,
-`--max-per-ip=4`, `--idle-quit=<s>` (se cierra tras esos segundos sin jugadores),
-`--fake-players=N` (jugadores sin red, para pruebas y carga) con `--fake-layout=cluster|spread`
-(todos agrupados en un punto, a menos de 60 m, o repartidos por la zona) y `--fake-churn=<ticks>`
-(cada tantos ticks sale el más antiguo y entra uno nuevo: 60 = una alta y una baja por segundo),
-`--debug-commands` (admite el teletransporte de depuración de los clientes), `--dev-lock` (escribe
-`user://dev_server.json` para que `--local` reutilice el servidor; `--dev-lock-path=<ruta>` lo escribe
-en otro sitio, y `--local --dev-lock-path=<ruta>` lo lee de ahí), `--quit-after-ticks=N`,
-`--report=<ruta.json>`, `--state-log=<ruta.txt>` (`tick,net_id,sustituida,estado` por tick y
-jugador; ver «Registros de estado») y `--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1`. El
-registro escribe las altas, las bajas, las expulsiones y, cada 10 s, la duración del tick y el
-ancho de banda. El informe lleva, además de los contadores, el p50/p99/máximo del tick y de cada
-sección, los µs de cada `simulate()` y el tamaño y el coste de construir los snapshots. El código
-de salida es 0 en un cierre normal y 1 si no puede arrancar (zona desconocida, puerto ocupado).
-
-Con la plataforma (`docs/plataforma.md` §8 y «Servicio de plataforma», abajo) la zona se registra en la API
-interna y solo admite clientes con billete: `--platform=<url interna>` (sin ella, cada cliente entra con un
-personaje efímero que se pierde al salir, `docs/progresion.md` §9.4), `--world=<id>` (1) y `--channel=<n>` (0),
-`--public-address=<host>[:<puerto>]` (a dónde conectan los clientes), `--save-interval=<s>` (el punto de control
-de los guardados, 60) y `--replace` (sustituye a una instancia viva de la misma zona y canal). El token de la zona
-y las claves de los billetes van en `ELDMARK_ZONE_TOKEN` y `ELDMARK_TICKET_KEYS` o en los archivos que nombran
-`ELDMARK_ZONE_TOKEN_FILE` y `ELDMARK_TICKET_KEYS_FILE` (`platform/deploy/dev.sh` los prepara y escribe la orden
-entera). Con plataforma, la zona sale con 1 si no puede registrarse y con 3 si la plataforma cierra la
-instancia. `--console` lee comandos de la entrada estándar, también los del progreso (`item_give`, `xp_add`,
-`inv_show`…, `docs/progresion.md` §10).
-
-Con `--dtls-cert=<pem> --dtls-key=<pem>` (con o sin plataforma, `docs/plataforma.md` §10.2) la zona abre el puerto
-por DTLS y, con plataforma, manda el certificado y su CN en el registro: el cliente lo recibe en `enter` y lo ancla.
-El certificado es autofirmado, con CN y con la clave sin contraseña (EC P-256 hace el apretón de manos más barato;
-la orden de OpenSSL está en `platform/deploy/docker-compose.yml`); si falta uno de los dos, no se lee, no tiene CN o
-la clave no es la suya, la zona sale con 1. Sin plataforma, un cliente o un enjambre entran con `--dtls-cert=<pem>
---dtls-name=<cn>` (el certificado y el nombre de la zona); en staging y producción la plataforma no registra una
-zona sin certificado.
-
-El servidor se defiende de los clientes (docs/red.md, sección 12): limita los paquetes por tick y
-por segundo y los bytes de cada peer, cuenta un aviso por cada paquete mal formado, de un tipo
-inesperado para el estado de la sesión o por encima del ritmo, y expulsa con un NOTICE al que
-suma 50 avisos en 600 ticks; además admite como mucho `--max-per-ip` conexiones por IP (salvo
-desde loopback).
-
-## Servicio de plataforma (Go)
-
-`platform/` es el servicio de cuentas, personajes y guardado de la fase 5, en Go 1.24 sobre PostgreSQL 16
-(diseño en `docs/plataforma.md`; lo hecho, en su §19). Godot no lo escanea (`platform/.gdignore`) ni lo
-exporta. Se configura con variables `ELDMARK_*` (§2.3):
-
-```bash
-cd platform
-go test ./...                                   # levanta un PostgreSQL efímero con initdb (sin Docker)
-go run ./cmd/eldmark-platform migrate status    # o migrate up, migrate down N (solo dev y test)
-go run ./cmd/eldmark-platform serve             # API pública en :24680 e interna en :24681
-```
-
-Las pruebas necesitan los binarios de PostgreSQL (`ELDMARK_PG_BIN`, `pg_config` o
-`/usr/lib/postgresql/*/bin`; si no hay, se saltan) o un servidor en `ELDMARK_TEST_DATABASE_URL`. Como root,
-`initdb` corre con `runuser -u postgres`, que tiene que poder entrar en `TMPDIR`.
-
-Las de extremo a extremo (`platform/e2e`, `docs/plataforma.md` P10) llevan la etiqueta `e2e` y arrancan la
-plataforma en el proceso de la prueba contra una zona `test_world` y bots de Godot de verdad; sin `ELDMARK_GODOT` se
-saltan. Importan el proyecto al empezar (con los objetos de LFS bajados) y tardan menos de un minuto:
-
-```bash
-cd platform
-ELDMARK_GODOT=<ruta de Godot 4.7.2> go test -tags e2e -count=1 -v ./e2e
-# ELDMARK_E2E_ARTIFACTS=<carpeta> conserva los registros de la plataforma, las zonas y los bots
-```
-
-En desarrollo (`ELDMARK_MAIL=log`, por defecto) los correos de las cuentas no salen: van a la tabla
-`outbound_mail` y al registro con el enlace entero (`/verify`, `/reset` o `/revert` sobre `ELDMARK_PUBLIC_URL`).
-Los textos legales que se aceptan al registrarse son los borradores de `platform/legal/`, que van dentro del
-binario (`ELDMARK_LEGAL_DIR` los cambia por los de otra carpeta).
-
-Los personajes (`/v1/worlds/{w}/characters`, `POST /v1/characters/{id}/enter`) guardan su progreso en
-PostgreSQL (las tablas de `0010_progress` y `platform/internal/progress`, `docs/progresion.md` P7): al crearlos se
-validan raza, apariencia y plantilla con las reglas exportadas, y cada guardado de la zona pasa las comprobaciones
-S1–S8 (`docs/progresion.md` §13.3). `enter` solo da billete si hay una instancia de zona viva que admite el reino.
-Las reglas de los nombres y el protocolo mínimo por defecto salen de
-`platform/internal/gamedata/progression_rules.json`, que se genera desde Godot, igual que las razas, la apariencia
-(`data/characters/`), la curva de niveles (`data/progression/`), los objetos (`data/items/`), las plantillas de
-inicio, las monedas, los motivos, los contenedores y la vida máxima. Tras cambiar cualquiera de esos datos hay que volver a exportarlo (la prueba
-`test_progression_rules_export.gd` avisa si se ha quedado viejo):
-
-```bash
-godot --headless --path . -s res://tools/progression/export_rules.gd             # lo escribe
-godot --headless --path . -s res://tools/progression/export_rules.gd -- --check  # solo lo compara
-```
-
-La API interna (`/internal/v1`, en `ELDMARK_INTERNAL_ADDR`, solo para las zonas) pide en cada petición el
-token de un despliegue de zona: `ELDMARK_ZONE_TOKENS` guarda su SHA-256 con el alcance
-`<mundo>:<zona>:<canal>`. Para probarla a mano con el token `secreto` de `1:vado_gris:0` (`protocol_version`, el
-de `progression_rules.json`):
-
-```bash
-export ELDMARK_ZONE_TOKENS="1:vado_gris:0:$(printf %s secreto | sha256sum | cut -d' ' -f1)"
-curl -s -H 'Authorization: Bearer secreto' -d '{"world_id": 1, "zone_id": "vado_gris", "channel": 0,
-  "public_host": "127.0.0.1", "public_port": 24600, "realms": [1, 2], "build_id": "dev", "protocol_version": 5,
-  "record_format": 1, "max_players": 64, "dtls_cert_pem": null, "dtls_name": null, "replace": false}' \
-  http://127.0.0.1:24681/internal/v1/zone-instances
-```
-
-Una instancia que deja de latir 3 × `ELDMARK_HEARTBEAT_S` se da por perdida y sus personajes quedan libres.
-`ELDMARK_LEASE_TTL_S` tiene que pasar de 3 × `ELDMARK_HEARTBEAT_S` + min(5, `ELDMARK_HEARTBEAT_S`) segundos (con 5 y
-30, los valores por defecto, sobra); si no, `serve` no arranca.
-
-Cada hora, `serve` purga las cuentas y los personajes que han cumplido su plazo y borra lo caducado según la tabla de
-retenciones de `docs/plataforma.md` §11.1 (el chat a los 30 días, la auditoría y los reportes cerrados al año, el
-libro de un personaje al año de purgarlo…). La exportación de datos de una cuenta (`POST /v1/account/export`) lleva
-también el progreso de sus personajes.
-
-La moderación y las cuentas del equipo van por la orden `admin`, con la misma configuración que `serve`. Toda
-orden lleva `--actor` con el correo de una cuenta `admin` (o `moderator` para las de lectura) y deja su fila en
-la auditoría (`audit_log`, sin correos ni nombres); la primera cuenta `admin` se crea con `bootstrap`. La
-contraseña de las cuentas nuevas se lee de un archivo, nunca de la línea de órdenes:
-
-```bash
-go run ./cmd/eldmark-platform admin bootstrap jefa@eldmark.test --password-file clave.txt
-go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test create-account prueba@eldmark.test --password-file clave.txt
-go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test set-role gm@eldmark.test gm     # revoca sus sesiones
-go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test reports list
-go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test chat --character Bran --from 2026-11-01 --to 2026-11-02
-go run ./cmd/eldmark-platform admin --actor jefa@eldmark.test sanction add Bran mute --duration 24h --reason "insultos"
-go run ./cmd/eldmark-platform admin help                                                       # todas las órdenes
-```
-
-### Plataforma en local y despliegue
-
-`platform/deploy/dev.sh` levanta la plataforma de desarrollo sin Docker (Linux, macOS o WSL, con los binarios de
-PostgreSQL 16 y Go): un PostgreSQL propio en `build/dev_pg` (en 127.0.0.1:24682), las migraciones, claves y un
-token por zona de desarrollo (`vado_gris` y `test_world`) en `build/dev_secrets/`, una cuenta `admin@eldmark.test`
-y otra `prueba@eldmark.test` (contraseñas `eldmark-admin-dev` y `eldmark-prueba-dev`), y escribe la orden de la
-zona con `--platform`. Los datos se conservan entre arranques:
-
-```bash
-platform/deploy/dev.sh                # lo prepara todo y arranca serve; Ctrl-C para serve y PostgreSQL
-platform/deploy/dev.sh prepare        # lo mismo sin serve (PostgreSQL queda en marcha; dev.sh stop lo para)
-eval "$(platform/deploy/dev.sh env)"  # las variables para usar eldmark-platform a mano
-platform/deploy/dev.sh reset          # borra la base, las claves y las cuentas de desarrollo
-```
-
-Staging y producción van con `platform/deploy/docker-compose.yml` (base, plataforma, Caddy con HTTPS de Let's
-Encrypt, zonas y copias), un `staging.env` o `production.env` sacado de su `.example` y los secretos como archivos
-en `platform/deploy/secrets/` (ignorada por git); la cabecera del compose tiene las órdenes y la lista de
-secretos, y `docs/plataforma.md` §12 y §19.13, el resto. Las copias: `backup.sh` (diaria, con `purges.txt`),
-`restore_check.sh` (restauración de prueba semanal, con `reapply-purges`) y `pitr_check.sh` (recuperación a un
-instante); los tres corren en local contra un PostgreSQL efímero o en el contenedor `ops` del compose. Tras
-restaurar una copia de verdad, y antes de arrancar `serve`:
-`eldmark-platform admin --actor <correo> reapply-purges <carpeta de copias>/purges.txt`.
-
-## Exportación (cliente Windows y servidor Linux)
-
-`export_presets.cfg` (en texto, versionado) define dos destinos, y `tools/export.sh` (Linux y macOS) o
-`tools/export.ps1` (Windows) los exportan a `exports/` (que no se versiona):
-
-| Preset | Plataforma | Salida | Qué lleva |
-|---|---|---|---|
-| `Cliente Windows` | Windows x86_64 | `exports/windows/Eldmark.exe` (más `Eldmark.pck` y la DLL de Terrain3D) | Todos los recursos; el .pck va aparte del ejecutable |
-| `Servidor Linux` | Linux x86_64, servidor dedicado | `exports/server/eldmark-server.x86_64` (más su .pck y el `.so` de Terrain3D) y `run-server.sh` | Los modelos, materiales, audio y animaciones recortados («strip»: sin la capa visual, pero la escena sigue cargando); las texturas del terreno se conservan porque Terrain3D las valida |
-
-Los dos dejan fuera `build/`, `docs/`, `tests/`, `tools/`, `exports/`, `.github/` y `scenes/tests/`, y
-conservan las licencias de los addons y `assets/LICENCIAS.md` (la MIT las exige).
-
-**Pasos (una vez, en tu máquina):**
-
-1. Instala las **plantillas de exportación 4.7.2** (no vienen con el editor): abre Godot 4.7.2, menú
-   *Editor > Administrar plantillas de exportación > Descargar e instalar*, o descarga
-   `Godot_v4.7.2-stable_export_templates.tpz` de la página de la versión y usa *Instalar desde archivo*.
-   Quedan en `%APPDATA%\Godot\export_templates\4.7.2.stable` (Windows) o
-   `~/.local/share/godot/export_templates/4.7.2.stable` (Linux). Sin ellas el script se detiene y lo dice.
-2. Baja los objetos de Git LFS (`git lfs pull`): el terreno y las texturas van por LFS y el script se
-   niega a exportar si son punteros.
-3. Exporta:
-
-```bash
-tools/export.sh                  # los dos destinos
-tools/export.sh server --zip     # solo el servidor, y lo comprime
-tools/export.sh --pack-only      # solo los .pck: NO necesita las plantillas (para comprobar filtros y recorte)
-tools/export.sh --dry-run        # muestra lo que haría
-```
-
-```powershell
-tools\export.ps1                 # equivalente en Windows: -Target client|server|all, -DebugBuild, -PackOnly, -Zip, -DryRun
-```
-
-El servidor exportado se lanza con `./run-server.sh --zone=vado_gris --port=24600` (el lanzador pone
-`--headless`: un servidor exportado sin pantalla necesita esa opción; después van las del servidor de
-la sección anterior). El identificador de la compilación (`git describe`) se guarda en `BUILD_ID` junto
-a lo exportado.
-
-**Estado de TEC-12.** Hecho y comprobado aquí: los presets (`godot --export-pack` de los dos funciona y
-sus filtros están probados en `tests/test_export_config.gd`, que exporta el paquete del servidor en un
-proceso aparte) y un servidor emulado (el binario del editor con el .pck exportado y el `.so` de
-Terrain3D al lado) que carga el Vado Gris y simula 180 ticks sin errores. Sin hacer, porque necesita las
-plantillas o una máquina Windows: exportar el ejecutable de verdad, el `--bot` de Windows contra el
-servidor Linux y medir con `--state-log` las diferencias de último bit entre las dos plataformas; el
-identificador de compilación visible en el cliente y en el informe del servidor; y el trabajo de CI por
-etiqueta que publica los artefactos (descargaría las plantillas en el trabajo; falta fijar la
-distribución). La exportación a Windows desde Linux solo da el ejecutable sin icono ni
-metadatos (`application/modify_resources=false`: no se depende de `rcedit`).
-
-## Cliente en red
-
-Con un servidor ya arrancado, `--connect` conecta con él; la zona la dicta el servidor. Un bot es el
-mismo cliente sin cámara ni HUD, guiado por un `BotBrain` determinista (útil para pruebas y carga):
-
-```bash
-# Jugar contra un servidor local
-godot --path . -- --connect=127.0.0.1 --realm=solmarch --name=Ana
-
-# Un bot sin ventana: 25 s de juego, informe JSON al terminar y registro de estados
-godot --headless --path . -- --bot --connect=127.0.0.1:24600 --bot-seed=3 \
-    --quit-after-ticks=1500 --report=build/bot_3.json --state-log=build/bot_3.csv
-```
-
-Opciones (después de `--`): `--connect=<host>[:<puerto>]`, `--port=<puerto>` (gana al de
-`--connect`), `--realm=<reino>` (sin él, un cliente con ventana muestra la pantalla de elección de
-reino; un bot o un cliente sin ventana entra como Vardheim, con un aviso), `--name=<nombre>` (por
-defecto «Jugador» y cuatro letras al azar), `--local`, `--bot`, `--bot-seed=N`, `--bot-cheat=version|future|dupes|garbage|flood` (bot
-tramposo, ver más abajo),
-`--net-sim=rtt=120,jitter=20,loss=5,dup=0,seed=1`, `--quit-after-ticks=N` (ticks de física locales
-desde que arranca la sesión, contando la conexión y la carga de la zona; los últimos ticks el bot se
-queda quieto), `--report=<ruta.json>` (coincidencias exactas, diferencias explicadas y sin
-explicar, reinicios y resincronizaciones, ajustes de TickSync y estado final) y
-`--state-log=<ruta.txt>` (`server_tick,predicho,servidor` en hexadecimal por snapshot). Con
-`--quit-after-ticks` el código de salida es 0 si el bot llegó a jugar y salió por su pie, y 1 si
-fue rechazado, se desconectó o no llegó a entrar en la zona.
-
-Las rutas de `--report` y `--state-log` pueden ir en `build/`, pero con `--state-log` dentro del
-proyecto usa la extensión `.txt`: el importador de Godot convierte los `.csv` en traducciones.
-
-### Cliente con cuenta (`--title`, `--bot --platform`)
-
-Contra la plataforma (docs/plataforma.md §13), el cliente arranca en la pantalla de título: inicio de
-sesión, selección y creación de personaje, y «Entrar» pide el billete y conecta con la zona que diga la
-plataforma. Sin `--platform` usa el ajuste de proyecto `eldmark/platform/url` (`http://127.0.0.1:24680`).
-Solo admite `https://` o, hacia esta máquina, `http://`; `eldmark/platform/ca_cert` ancla un certificado
-propio (staging).
-
-```bash
-# El título contra la plataforma local
-godot --path . -- --title --platform=http://127.0.0.1:24680
-
-# Un bot con cuenta: inicia sesión, crea «Probador» si no existe, pide el billete y entra
-godot --headless --path . -- --bot --platform=http://127.0.0.1:24680 --login=bot@eldmark.test \
-    --password-file=build/bot.pw --character=Probador --realm=solmarch --quit-after-ticks=1500 \
-    --report=build/bot.json
-```
-
-La contraseña del bot va siempre en un archivo (`--password-file`), nunca en la línea de órdenes. Sin
-`--login` o `--password-file`, o si la cuenta falla (credenciales, `character_busy` tras 30 s,
-`zone_unavailable`), el bot sale con código 1 y el `code` de la plataforma en el informe
-(`platform.code`). `--world=N` elige el mundo (1). `--bots` no admite `--platform`.
-
-### Enjambre de bots (`--bots=N`)
-
-`--bots=N` lanza un proceso con N clientes ligeros (`BotSwarm`/`SwarmBot`) que no cargan la zona ni
-simulan: entran uno cada 5 ticks, predicen con el `TickSync` de verdad, caminan guiados por su
-`BotBrain` y confirman los snapshots. Sirven para cargar el servidor sin que el generador de carga
-sea el cuello de botella:
-
-```bash
-godot --headless --path . -- --bots=32 --connect=127.0.0.1:24600 --realm=vardheim \
-    --bot-seed=1000 --quit-after-ticks=3600 --report=build/enjambre.json
-```
-
-Con `--quit-at-server-tick=N` el enjambre se va cuando alguno de sus bots recibe un snapshot del tick N
-del servidor, aunque el servidor vaya más despacio que el tiempo real (lo usa `tools/load_test.gd`).
-Cada bot se llama `Bot` más cuatro letras según `--bot-seed` más su índice, así que dos enjambres
-contra el mismo servidor necesitan semillas distintas. Sin `--realm` se reparten entre Vardheim y
-Solmarch. El informe trae los bytes de subida y de bajada de cada cliente, los snapshots recibidos
-y su tamaño medio. Código de salida 0 si todos jugaban al terminar y 1 si alguno fue rechazado o se
-cayó. Contra una zona con DTLS, `--dtls-cert=<pem> --dtls-name=<cn>` (sin el nombre, o con un certificado que no
-se puede leer, sale con 1 sin conectar en claro).
-
-### Bot tramposo (`--bot-cheat`)
-
-Un `--bot` con `--bot-cheat=<modo>` hace trampa sin dejar de predecir con sus entradas honradas;
-sirve para comprobar que el servidor no se deja (docs/red.md, sección 12):
-
-| Modo | Qué hace | Qué debe pasar |
-|---|---|---|
-| `version` | HELLO con otra versión del protocolo | REJECT por versión |
-| `future` | lotes de entradas con ticks muy por delante de la ventana | se descartan y se cuentan; sin efecto ni ventaja |
-| `dupes` | copias distintas de las mismas entradas | gana la primera copia |
-| `garbage` | paquetes al azar por el canal de entradas y el fiable | avisos y expulsión |
-| `flood` | más paquetes por tick de los que admiten los limitadores | avisos por exceso de ritmo y expulsión |
-
-### Registros de estado y comparación
-
-Con `--state-log` el servidor escribe el estado de cada jugador en cada tick
-(`tick,net_id,sustituida,estado`) y el bot el estado que predijo y el que le llegó en cada snapshot
-(`server_tick,predicho,servidor`). `tools/compare_state_logs.gd` los cruza y clasifica cada
-snapshot del bot: coincide bit a bit, diferencia explicada (el servidor sustituyó una entrada) o
-diferencia sin explicar (un fallo de determinismo). Sale con código 1 si hay alguna sin explicar:
-
-```bash
-godot --headless --path . -s res://tools/compare_state_logs.gd -- build/servidor.txt build/bot.txt [net_id]
-```
-
-### Pruebas de carga
-
-`tools/load_test.gd` lanza un servidor con jugadores falsos y procesos `--bots`, espera a que
-terminen y resume lo que mide el servidor: p50/p99/máximo del tick por sección, µs de `simulate()`
-por personaje, tamaño de los snapshots, KB/s por cliente y entradas sustituidas (las de toda la
-sesión y las de la ventana de medida, sin el arranque), con el criterio de la fase 2 (con 64
-agrupados y 100 ms de RTT: p99 del tick por debajo de 8 ms, 37 KB/s por cliente, menos de un 1 %
-sustituidas en la ventana). Escenarios: `cluster` (agrupados en 60 m), `spread` (dispersos) y `churn`
-(altas y bajas a 1 por segundo). Está documentado en la cabecera del script:
-
-```bash
-# Un escenario: 64 falsos agrupados y 10 clientes reales
-godot --headless --path . -s res://tools/load_test.gd -- --scenario=cluster --fakes=64 --bots=10
-# La batería de la fase 2: 64, 128 y 256 jugadores falsos y el criterio con 100 ms de RTT, 120 s
-# de medida cada escenario (unos 25 minutos; con la máquina libre)
-godot --headless --path . -s res://tools/load_test.gd -- --matrix
-```
-
-Los informes quedan en `build/load_test/` (`summary.txt` y `summary.json`).
-
-Con `--dtls` el servidor y los enjambres van por DTLS (con el certificado de las pruebas, o con `--dtls-cert`,
-`--dtls-key` y `--dtls-name`). `--dtls-compare` es la campaña de TEC-27: el mismo escenario sin y con DTLS,
-alternados (por defecto 64 bots reales agrupados en dos enjambres, 60 s, `--repeat=2`), y al final cuánto sube cada
-cifra y el criterio (el p99 del tick no sube más de un 10 %). Resultados en `docs/red.md` §14:
-
-```bash
-godot --headless --path . -s res://tools/load_test.gd -- --dtls-compare --repeat=3
-```
-
-Con combate (TEC-15), `--scenario=brawl` junta a los falsos con el cerebro de combate
-(`--fake-brain=combat`, en un corro alrededor de `--fake-center=x,z`) y a bots reales que pelean
-(`--bot-brain=combat`) y mide además las secciones de combate (golpes con rebobinado, eventos), los
-µs por comprobación de golpe y los KB/s de eventos; `--brawl` lanza la batería de 32, 64 y 128
-combatientes (60 s cada una, unos 6 minutos, informes en `build/load_test/`; cambia la carpeta con
-`--out`). Resultados y límite de jugadores por batalla en `docs/red.md` §14.
-
-```bash
-godot --headless --path . -s res://tools/load_test.gd -- --brawl
-godot --headless --path . -s res://tools/load_test.gd -- --scenario=brawl --fakes=54 --bots=10
-```
-
-### Pasada de equilibrio del combate
-
-`tools/combat_balance.gd` (CMB-29) monta un servidor sin red sobre `test_world`, lo avanza a mano tick a
-tick y mide con él el DPS contra el maniquí, el tiempo de muerte (TTK) de un atacante perfecto, duelos
-entre bots de combate y combates de 2 contra 2 y de 5 contra 5, en unos 20 s y con el mismo resultado
-en cualquier máquina. Las cifras y las decisiones están en `docs/combate.md` §12.
-
-```bash
-godot --headless --path . -s res://tools/combat_balance.gd -- --duels=60 --seconds=30 --out=build/combat_balance.json
-```
-
-
-### Todo en uno: `--local`
-
-```bash
+# Everything in one command: starts a local server if none is running, then connects
 godot --path . -- --local --realm=vardheim --name=Ana
 ```
 
-`--local` no necesita un servidor arrancado: lee `user://dev_server.json` (`{pid, port}`, lo
-escribe un servidor lanzado con `--dev-lock`) y, si ese proceso sigue vivo, se conecta a él. Si no,
-lanza el servidor como proceso aparte (`--headless --server --port=24600 --idle-quit=30
---dev-lock`, con su registro en `user://logs/dev_server.log`) y reintenta conectar durante 10 s con
-un tiempo de espera corto de ENet (1 s). Así varias ventanas lanzadas con `--local` comparten el
-mismo servidor. El servidor se cierra solo tras 30 s sin jugadores, y el cliente nunca lo cierra:
-si el cliente se cae, el servidor no queda huérfano. `--zone=<id>`, `--debug-commands`,
-`--fake-players=N` y `--max-players=N` se reenvían al servidor que se lanza (si ya había uno en
-marcha, se usa tal cual). `--port=<puerto>` elige el puerto del servidor que se lanza.
+Or run the pieces yourself, which is what you do for development and load tests:
 
-### Elegir reino (`RealmSelect`)
+```bash
+# Terminal 1: a dedicated server for the Vado Gris, headless, with 8 fake players
+godot --headless --path . -- --server --zone=vado_gris --port=24600 --fake-players=8
 
-Un cliente con ventana que arranca sin `--realm` abre la pantalla de elección: tres botones
-(Vardheim, Solmarch, Askarra; los que la zona no admite salen desactivados), los campos de
-dirección del servidor (`host` o `host:puerto`; en `--local` no se edita) y de nombre del personaje,
-y «Entrar». El nombre se valida con las reglas de nombres (de 3 a 16 letras, sin espacios ni
-números, empezando por mayúscula) y el motivo se muestra junto al campo antes de conectar; mientras
-algo no valga, «Entrar» queda desactivado. Tras un rechazo del servidor, un fallo de conexión o una
-desconexión se vuelve a esta pantalla, con el motivo como aviso, y se puede reintentar sin cerrar el
-juego.
+# Terminal 2: a player client
+godot --path . -- --connect=127.0.0.1 --realm=solmarch --name=Ana
 
-### Depuración de red (F3 y F4)
+# Terminal 3: a headless bot that plays for 25 seconds and writes a JSON report
+godot --headless --path . -- --bot --connect=127.0.0.1:24600 --bot-seed=3 \
+    --quit-after-ticks=1500 --report=build/bot_3.json
 
-En el cliente en red, **F3** muestra y oculta a la vez el panel de depuración del HUD (a la izquierda,
-el mismo del sandbox) y el panel de red (a la derecha); los dos empiezan ocultos. El panel de red
-enseña: RTT de ENet (sin el simulador de red) y en ticks, pérdida de ENet, KB/s de subida y de
-bajada, `input_margin` (último y mínimo de la ventana de TickSync) y margen objetivo, ajustes de
-TickSync, sustituciones y correcciones (con su tasa por minuto cuando hay 10 s de historia), última y
-máxima corrección, ticks vueltos a simular, retardo de interpolación, jitter, entidades visibles y
-bytes medios por snapshot. **F4** enciende un fantasma translúcido en la posición del último estado
-propio que mandó el servidor y una marca en cada muestra, sin interpolar, de los jugadores remotos.
-El sandbox sin argumentos no cambia: F3 sigue alternando solo su panel, que empieza visible.
+# A swarm of 32 lightweight bots
+godot --headless --path . -- --bots=32 --connect=127.0.0.1:24600 --bot-seed=1000 \
+    --quit-after-ticks=3600 --report=build/swarm.json
+```
 
-## Estructura
+Without a platform service, every client enters with a throwaway character that is lost on exit. To play with accounts and saved characters, run the Go platform service (`platform/deploy/dev.sh`) and start the client with `--title`. All options, debug panels, settings and the platform setup are in [docs/getting-started.md](docs/getting-started.md).
+
+### Run the tests
+
+```bash
+godot --headless --path . --import                                  # import assets once
+godot --headless --path . -s res://tests/run_tests.gd               # whole suite, exit code 0 if all pass
+godot --headless --path . -s res://tests/run_tests.gd -- --filter=replay
+```
+
+The full suite takes a while (CI splits it into four parallel shards with `--shard=K/4`).
+
+## Controls
+
+Keys are bound to physical key positions, so WASD works on any keyboard layout. Defaults are registered at runtime by `scripts/client/input_bindings.gd`.
+
+| Action | Default |
+|---|---|
+| Move | W A S D |
+| Look | Mouse |
+| Jump / Sprint | Space / Shift (hold) |
+| Light attack (combo); hold for a charged heavy attack | Left mouse button |
+| Block (a quick press just before a hit parries it) | Right mouse button |
+| Dodge (in the direction you are moving) | Ctrl |
+| Abilities of the equipped weapon | 1, 2, 3 |
+| Swap weapon | Q |
+| Health potion / stamina potion | R / T |
+| Interact (hold to revive a downed ally or finish a downed enemy) | E |
+| Swap camera shoulder / zoom | V / mouse wheel |
+| Free the cursor while held / release the cursor until you click | Alt / Esc |
+| Chat / party invite accept, decline | Enter / Y, N |
+| Map (zoom with + and -) / scoreboard | M / Tab |
+| Inventory / character window / social menu | I / C / G |
+| Settings / controls help bar | F10 / F1 |
+| Debug panels / network ghost (client) | F3 / F4 |
+
+Chat commands (`/r`, `/ignorar`, `/reportar`, ...) are in Spanish for now. The `--demo` flag plays a scripted route and combat for recording captures; see [getting started](docs/getting-started.md#scripted-demo-and-screenshots).
+
+## Project structure
 
 ```
-assets/        Modelos, animaciones, texturas, materiales, audio y fuentes (binarios en Git LFS),
-               más el tema de la interfaz (ui/) y los emblemas de bando (emblems/)
-  LICENCIAS.md Procedencia y licencia de cada pack y addon de terceros
-default_bus_layout.tres  Buses de audio (General con limitador, Música, Efectos, Ambiente, Interfaz, Voces)
-scenes/        Escenas de Godot (.tscn)
-  boot.tscn    Escena principal: lee las opciones de arranque
-  characters/  Personajes (PlayerCharacter) y su aspecto visual (solo cliente)
-  client/      Raíces del cliente (sandbox y red) y cámara de acción
-  ui/          Interfaz (HUD, elección de reino, depuración de red)
-  world/       Zonas (zones/) y sus piezas (props/), y el circuito de pruebas
+assets/        Models, animations, textures, materials, audio, UI theme, emblems (binaries in Git LFS)
+addons/        Third-party plugins (Terrain3D, ProtonScatter)
+data/          Game data as .tres resources: combat catalog, NPCs, items, fortresses, races, level curve
+docs/          Design and technical documentation (see the index below)
+platform/      Accounts, characters and persistence service in Go (not scanned or exported by Godot)
+scenes/        Godot scenes: boot, characters, client roots, UI, world and zones, VFX
 scripts/
-  client/      Solo cliente: cámara, input, interfaz (ui/), audio (audio/), visual y animación del personaje
-  server/      Solo servidor: lógica autoritativa, IA, persistencia
-  shared/      Compartido: datos, fórmulas, protocolo de red, simulación, registro de zonas
-  world/       Nodos de las escenas de zona (ZoneRoot...), los cargan cliente y servidor
-tests/         Pruebas automáticas (run_tests.gd y test_*.gd)
-tools/         Scripts de generación (terreno, piezas, materiales, assets), de revisión, de
-               comparación de registros de estado (compare_state_logs.gd) y de carga (load_test.gd)
-docs/          Diseño y documentación técnica
-addons/        Plugins de terceros (Terrain3D, ProtonScatter)
+  shared/      Simulation and protocol, loaded by both client and server
+  server/      Authoritative server logic, AI, persistence glue
+  client/      Camera, input, UI, audio, animation, bots
+  world/       Nodes used by zone scenes
+tests/         Automated tests: run_tests.gd, test_*.gd and the network harness
+tools/         Generators, quality bench, load tests, balance and state-log tools, export scripts
 ```
 
-Cliente y servidor viven en el mismo proyecto. El servidor dedicado se ejecuta
-con Godot en modo headless.
+One Godot project holds client and server. `scripts/shared/` never depends on `scripts/client/` or `scripts/server/`, and server and client never depend on each other; `tests/test_architecture.gd` enforces it. More in [docs/architecture.md](docs/architecture.md).
 
-## Hoja de ruta
+## Why Eldmark as a base
 
-Tareas, dependencias y decisiones pendientes: [docs/backlog.md](docs/backlog.md).
+If you want to build your own networked action game in Godot, the parts of Eldmark that are hardest to get right are written down and tested:
 
-1. Personaje y cámara: movimiento con WASD y cámara de acción por encima del hombro
-2. Red: servidor dedicado, varios jugadores, predicción e interpolación, elección de reino
-3. Combate de acción: ataques, bloqueo, esquiva, resistencia, compensación de latencia, muerte y reaparición
-4. Primer fuerte capturable en un mapa de frontera pequeño
-5. Cuentas, personajes y guardado en base de datos
-6. Primer reino: ciudad capital, una zona PvE, muralla y puerta
-7. Zona de guerra completa: varios fuertes y castillos, armas de asedio y recompensas
-8. Los tres reinos completos y escalado a varios servidores
+- **A deterministic shared simulation** (`scripts/shared/`) that the server and the predicting client run bit for bit, with no clock, input or scene-tree access. Reconciliation compares encoded state exactly, and a test fails on any unexplained divergence. See [docs/networking.md](docs/networking.md).
+- **Prediction, interpolation and lag compensation** built on ENet with explicit ticks instead of Godot's high-level multiplayer: tick synchronization, input windows, snapshot priority under a byte budget, rewound hit checks with cheat-resistant limits.
+- **An action-combat state machine** driven by `.tres` data, shared by client and server, with abilities, status effects, projectiles and a deterministic balance tool. See the [combat section](docs/architecture.md#combat) of the architecture overview and [docs/abilities.md](docs/abilities.md).
+- **A test harness** that runs a server and several clients in a single process, or as real processes, with a network simulator (latency, jitter, loss, duplication) and cheating bots.
+- **A server/platform split** with a small Go service for accounts and persistence, signed hand-off tickets, and the design notes for privacy and operations. See [docs/platform.md](docs/platform.md).
+- **Measured limits**: load-test tooling and recorded results for how many combatants one zone process sustains (40 per battle at the moment).
+
+The design documents are long and written as decision records, including what was tried, what failed and what is still provisional. They are the best place to understand why things are the way they are.
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [docs/getting-started.md](docs/getting-started.md) | Running the game, server, bots, platform, tests, CI and export |
+| [docs/architecture.md](docs/architecture.md) | Architecture overview for contributors and people building on Eldmark |
+| [docs/vision.md](docs/vision.md) | Game vision, realms, war zone, combat pillars, roadmap |
+| [docs/world.md](docs/world.md) | Lore, geography and world structure |
+| [docs/networking.md](docs/networking.md) | Protocol, ticks, prediction, interpolation, lag compensation, security, budgets |
+| [docs/abilities.md](docs/abilities.md) | Abilities, status effects, weapons and projectiles |
+| [docs/fortress.md](docs/fortress.md) | The capturable fort: state, gate, NPC garrison, alerts, siege bots |
+| [docs/progression.md](docs/progression.md) | Items, inventory, currencies, levels, races and appearance |
+| [docs/social.md](docs/social.md) | Chat, parties, moderation and what crosses between realms |
+| [docs/platform.md](docs/platform.md) | Accounts, tickets, persistence, privacy, deployment |
+| [docs/art.md](docs/art.md) | Art direction and asset plan |
+| [docs/history/](docs/history) | Archived reports from past work sessions |
+
+The following documents are still in Spanish and are being translated: [docs/combate.md](docs/combate.md) (combat design), [docs/zonas/](docs/zonas) (zone notes), [docs/calidad.md](docs/calidad.md) (visual quality plan) and [docs/backlog.md](docs/backlog.md) (the master task list, with what is done and what is next).
+
+## Contributing
+
+Contributions are welcome, from bug reports to new content. Read [CONTRIBUTING.md](CONTRIBUTING.md) first. The short version:
+
+- Open an issue before starting anything large, so we can agree on the approach.
+- Follow the official GDScript style guide: `snake_case` files and variables, `PascalCase` `class_name`, tabs, **static typing everywhere**. Identifiers and comments are in English.
+- Keep the dependency rules between `scripts/shared`, `scripts/server` and `scripts/client`.
+- Add tests with your change and make sure the suite passes headless. Scenes and resources must stay in text format (`.tscn`, `.tres`).
+- Any third-party asset must be redistributable and recorded with its author, version, URL and license.
+
+## Roadmap
+
+The long-term plan, from [docs/vision.md](docs/vision.md). The first four steps are in place; the master task list is [docs/backlog.md](docs/backlog.md).
+
+1. Character and camera: WASD movement and an over-the-shoulder action camera. **Done.**
+2. Networking: dedicated server, several players, prediction and interpolation, realm selection. **Done.**
+3. Action combat: attacks, block, dodge, stamina, lag compensation, death and respawn. **Done.**
+4. First capturable fort on a small frontier map. **Done** (Vado Gris).
+5. Accounts, characters and database persistence. **Implemented** (platform service and title screen); no public deployment yet.
+6. First realm: capital city, a PvE zone, wall and gate. **Planned.**
+7. Full war zone: several forts and castles, siege weapons, rewards.
+8. All three realms and scaling across several servers.
+
+In parallel: a visual quality pass (animation, map, HUD, hit feel, scenery), an English localization of the interface, and exports for closed tests (export presets for a Windows client and a Linux server already exist).
+
+## License
+
+- **Code** (GDScript, Go, Python, shaders and tooling): [MIT](LICENSE).
+- **Original assets made by this project** (the sword models, interface icons and emblems, sound effects, visual effects, materials and zone maps): [CC BY 4.0](LICENSE-ASSETS.md). The file lists exactly which folders it covers.
+- **Third-party material keeps its own license** and is not relicensed: the addons in `addons/` (MIT), and the CC0 asset packs listed below. Details and per-folder scope are in [LICENSE-ASSETS.md](LICENSE-ASSETS.md) and the per-pack records in `assets/LICENCIAS.md` (which is in Spanish for now).
+
+## Third-party credits
+
+Eldmark stands on the work of others. These are included in the repository today:
+
+- **[Terrain3D](https://github.com/TokisanGames/Terrain3D)** 1.0.2, by Cory Petkovsek, Roope Palmroos and contributors. MIT.
+- **[ProtonScatter](https://github.com/HungryProton/scatter)** 4.2.0, by HungryProton. MIT.
+- **[Quaternius](https://quaternius.com)**: Universal Animation Library 1 and 2, Universal Base Characters, Modular Character Outfits (Fantasy), Medieval Village MegaKit and Stylized Nature MegaKit (the free Standard editions). CC0 1.0.
+- **Castle Wall Kit** by [loafbrr](https://loafbrr.itch.io/castle-wall-kit). CC0 1.0.
+- **Castle Kit** by [Kenney](https://www.kenney.nl). CC0 1.0.
+- **Hand-Painted Watercolor Terrain Texture Pack** by Jonas Voland (Voxel Core Lab). CC0 1.0.
+- The Terrain3D binaries are built with [godot-cpp](https://github.com/godotengine/godot-cpp) (MIT, Godot Engine contributors), and the game runs on the [Godot Engine](https://godotengine.org) (MIT).
+
+Credit is not required for the CC0 material, but it is deserved. The full table, with licenses and the folders each one covers, is in [LICENSE-ASSETS.md](LICENSE-ASSETS.md).
+
+Eldmark is an independent project and is not affiliated with Amazon Games or New World; the combat style is cited only as a reference.
