@@ -23,6 +23,7 @@ const ROOTS: PackedStringArray = ["res://assets/models"]
 ## distancia siga teniendo cuerpo.
 const FOLIAGE_TEXTURES: PackedStringArray = [
 	"grass.png", "leaf_pine_c.png", "leaves_normal_tree_c.png", "flowers.png",
+	"leaves.png", "leaves_twisted_tree_c.png",
 ]
 ## Niveles de mipmap de las texturas de follaje (1024 px -> hasta 128 px).
 const FOLIAGE_MIP_LIMIT: int = 4

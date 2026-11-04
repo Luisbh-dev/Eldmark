@@ -143,13 +143,29 @@ Sobre una colina baja (meseta a 10,2 m, 6 m por encima del valle, laderas de 12�
   Se generan en la mitad norte y se reflejan: **las mismas 50 colisiones de tronco y 17 de roca
   en cada mitad**, en las mismas posiciones.
 - **Decorativa** (instanciador de Terrain3D, sin colisión): unas 51.000 matas de hierba (visibles
-  hasta 60 m), arbustos en las orillas y losas de la vieja calzada.
+  hasta 60 m), arbustos en las orillas, losas de la vieja calzada y sotobosque (helechos, plantas,
+  setas, hierba alta y guijarros, de 30 a 60 m) al pie de los árboles y las rocas de juego y de
+  algunos del borde. Cinco variantes de pino, de caducifolio y de árbol muerto, y dos retorcidos en
+  la franja central del borde (del Stylized Nature ya descargado; ver `assets/LICENCIAS.md`).
+- **Asentado en el terreno** (ART-58): cada árbol se hunde `tan(pendiente)` por el radio de su base
+  (medido en la malla) además de lo de siempre, y las rocas se inclinan hacia la normal del terreno y
+  se hunden una fracción de su altura más el hueco de la inclinación que falta (14 % las de juego, para
+  que el dibujo siga a la altura de su colisión; 45 % las sueltas del borde y el canchal). No hay
+  árboles por encima de 45°: allí va canchal. **Las 132 colisiones (100 troncos y 32 rocas) están donde
+  estaban**: solo cambia el dibujo, y para eso el sotobosque, los guijarros y la variedad de modelo
+  salen de un segundo generador de números aleatorios (`_decor_rng`) que no mueve la cobertura de juego.
+- **Corteza y hojas** (ART-59): la corteza del kit es terracota y en el valle se veía salmón. Los glTF
+  de los árboles la sustituyen al importar por un material propio (`bark_tree`, `bark_twisted` y
+  `bark_dead`, recoloreados hacia pardo grisáceo con `realm_surface_closed`), y las hojas rojas de los
+  retorcidos por `leaves_twisted` (verde oliva). Lo hace `tools/assets/apply_nature_materials.gd` con
+  el material externo del `.import`, sin tocar los glTF.
 - **Borde:** montañas de pinos y roca detrás del Muro de Escarcha (hasta 80 m de altura, con un
   paso detrás de la puerta), colinas suaves de caducifolios detrás de la Muralla del Alba y
   montañas a los lados que empiezan 15 m dentro del área jugable (la pared invisible queda en una
   ladera de unos 40°, no en mitad del prado). Bosque en grupos que sube por las laderas de hasta
-  62°, cada vez más claro (coníferas a 1,5–2,2 veces el modelo del kit), canchales de rocas en las caras más
-  empinadas y relieve fino en las laderas. El río sale por el este entre dos lomas.
+  45°, cada vez más claro (coníferas a 1,5–2,2 veces el modelo del kit), canchales de rocas inclinadas y
+  medio enterradas en las caras más empinadas y relieve fino en las laderas. El río sale por el este
+  entre dos lomas.
 
 ### Mapa
 
@@ -233,9 +249,11 @@ Por qué es justo:
 - Lo que no tiene pareja está **sobre el eje** y es común a los dos: el fuerte, su puerta, el
   vado, la calle de la aldea y la capilla.
 - Cada reino tiene **las dos rutas**: su propio puente (equivalente simétrico) y el mismo vado.
-- **Luz:** el sol viene exactamente del oeste (a lo largo de +X), así que no da de lleno en
-  ninguna de las dos fachadas de muralla (miran a +Z y a -Z); las dos reciben la misma luz de dos
-  rellenos simétricos sin sombra, uno desde el sur y otro desde el norte, con la misma energía.
+- **Luz:** el sol viene exactamente del oeste (a lo largo de +X), a 28° y con sombras largas, así que
+  no da de lleno en ninguna de las dos fachadas de muralla (miran a +Z y a -Z): las dos reciben solo
+  la luz del ambiente, la misma. Ya no hay rellenos (ART-54): lo que mira al oeste (caras de torre,
+  empalizada, árboles) recibe sol y lo que mira al este queda en sombra, con una relación de
+  luminancia de 4 a 5 entre las dos caras de una torre (antes 1,8). La simetría norte-sur no cambia.
 
 ## Técnica
 
@@ -264,14 +282,19 @@ Por qué es justo:
   del río. La malla es una cinta a lo largo del cauce (`vado_gris_river_water.tres`).
 - **Ambiente:** `assets/environments/vado_gris_frontier.tres`: cielo cubierto de la frontera de
   Eldrun (degradado gris con una capa de nubes procedural, `sky_cover`), niebla de 0,0015 más algo
-  de niebla baja, SSAO y saturación al 88 %. Sol del oeste a 32°, blanco frío y velado (1,2), con
-  sombras blandas de 2 cortes hasta 120 m, y los dos rellenos norte y sur (0,42) sin sombra.
+  de niebla baja, SSAO y saturación al 88 %. Sol del oeste a 28°, algo cálido (`#f6efe4`) y con
+  energía 2,2, con sombras de 4 cortes hasta 130 m sin mezcla entre cortes (con mezcla y 180 m el
+  coste en primitivas pasaba del presupuesto); luz ambiente del cielo a 0,48 (antes 0,95) y ningún
+  relleno. El cielo y la niebla no se han tocado (queda para ART-54, segunda mitad).
 - **Texturas del terreno:** la tierra de acuarela (Dirt_03, un pardo rojizo muy saturado que se
   veía casi negro) se corrige al copiarla (`copy_vado_gris_assets.gd`: tono +9°, saturación ×0,6,
   valor ×1,35) hacia la tierra quemada y la ceniza de Eldrun. Las calzadas tienen un núcleo de
   grava gris que pasa a tierra y se funde con la hierba en un borde roto por ruido, con mezcla
   fraccionaria; el material de Terrain3D usa `blend_sharpness` 0,45 y variación de color a gran
-  escala.
+  escala. Las texturas se repiten cada 3 o 4 m (`uv_scale` de 0,26 a 0,35, antes de 8 a 17 m) y las
+  laderas de más de unos 45° proyectan la textura de lado (`enable_projection`, umbral 0,65) en vez
+  de estirarla a lo largo de la pendiente (ART-55, parte barata; las normales y la altura de las
+  texturas quedan para la segunda parte).
 - **Hierba:** en matas agrupadas por ruido (prado y claros, sin hileras), con material
   `realm_surface` que la desatura hacia un verde gris y un pajizo de Eldrun.
 - **Losas de la calzada:** se inclinan con el terreno y se hunden hasta quedar a ras; en
@@ -282,29 +305,34 @@ Por qué es justo:
 
 ### Rendimiento medido
 
-`tools/render/render_screenshot_points.gd` a 1600 × 900, Forward+, sin vsync, en una RTX 5090
-Laptop (no es la GPU de gama media del presupuesto; sirve para comparar vistas):
+`tools/render/render_screenshot_points.gd` a 1920 × 1080, Forward+, sin vsync, en una RTX 5090
+Laptop (no es la GPU de gama media del presupuesto; sirve para comparar vistas). Antes → después de
+ART-53, 54, 55, 58 y 59 (3 de noviembre de 2026). Los FPS son de dos pasadas seguidas en la misma
+máquina, una con la zona de antes y otra con la de ahora, y varían mucho de una pasada a otra (la GPU
+es de portátil): sirven para ver que no hay una caída, no para fijar una cifra.
 
 | Vista | FPS | Llamadas de dibujo | Primitivas |
 |---|---|---|---|
-| Desde la puerta de Vardheim | 382 | 520 | 0,91 M |
-| Desde la puerta de Solmarch | 385 | 530 | 0,84 M |
-| Fuerte de cerca | 389 | 514 | 0,97 M |
-| Puente norte | 350 | 694 | 1,10 M |
-| Vado | 338 | 681 | 1,18 M |
-| Ruinas de la aldea | 347 | 781 | 1,19 M |
-| Muralla de Vardheim | 466 | 645 | 0,60 M |
-| Campamento de Solmarch | 437 | 606 | 0,82 M |
-| Vista aérea | 481 | 336 | 0,55 M |
-| Puerta del fuerte | 546 | 509 | 0,95 M |
+| Desde la puerta de Vardheim | 192 → 220 | 524 → 603 | 0,98 M → 1,08 M |
+| Desde la puerta de Solmarch | 190 → 221 | 535 → 618 | 0,90 M → 1,02 M |
+| Fuerte de cerca | 183 → 208 | 521 → 717 | 1,04 M → 1,47 M |
+| Puente norte | 162 → 167 | 704 → 887 | 1,20 M → 1,48 M |
+| Vado | 162 → 187 | 692 → 1023 | 1,27 M → 1,85 M |
+| Ruinas de la aldea | 147 → 191 | 789 → 1151 | 1,28 M → 1,93 M |
+| Muralla de Vardheim | 185 → 266 | 652 → 916 | 0,66 M → 0,92 M |
+| Campamento de Solmarch | 194 → 241 | 607 → 972 | 0,87 M → 1,26 M |
+| Vista aérea | 225 → 240 | 340 → 378 | 0,61 M → 0,66 M |
+| Puerta del fuerte | 268 → 314 | 517 → 628 | 1,02 M → 1,34 M |
 
-Todas muy por debajo del presupuesto de mundo.md (2000 llamadas, 2 M de triángulos). Respecto a la
-primera versión de la zona, las llamadas de dibujo bajan a la mitad: sombras de 2 cortes hasta
-120 m (antes 4 hasta 190 m), 8 variantes de árbol en vez de 12, arbustos sin sombra, suelos y
-escombros de las ruinas en MultiMesh, piedras de hogueras y escombros fundidas en una malla,
-distancia de dibujo en las piezas pequeñas y troncos y lonas con cull_back. Las texturas de los
-kits van comprimidas (BPTC/S3TC) con mipmaps en vez de RGBA sin comprimir, y cargar la zona
-headless cuesta ahora unos 72 MB de memoria estática (antes unos 150 MB).
+Todas dentro del presupuesto de mundo.md (2000 llamadas, 2 M de triángulos), pero con poco margen en las
+primitivas del vado y las ruinas: el aumento viene sobre todo de las sombras de 4 cortes y de los
+árboles y rocas que proyectan sombra. Si hace falta recortar, lo primero es la distancia de las sombras
+(con 2 cortes hasta 120 m eran unas 0,5 M menos) y después los alcances del sotobosque. Respecto a la
+primera versión de la zona, las llamadas de dibujo siguen muy por debajo: 8 variantes de árbol en vez
+de 12 (ahora 17, por ART-59), arbustos sin sombra, suelos y escombros de las ruinas en MultiMesh, piedras
+de hogueras y escombros fundidas en una malla, distancia de dibujo en las piezas pequeñas y troncos y
+lonas con cull_back. Las texturas de los kits van comprimidas (BPTC/S3TC) con mipmaps en vez de RGBA sin
+comprimir, y cargar la zona headless cuesta unos 72 MB de memoria estática (antes unos 150 MB).
 
 ## Jugar en la zona
 
@@ -332,7 +360,8 @@ Con el editor cerrado, desde la raíz del proyecto (`godot` es el ejecutable de 
 godot --headless --path . -s res://tools/assets/copy_vado_gris_assets.gd     # copia y reescala desde ../Eldmark-raw
 godot --headless --path . --import
 godot --headless --path . -s res://tools/assets/extract_kit_meshes.gd        # mallas de kit a .tres
-godot --headless --path . -s res://tools/materials/build_realm_materials.gd  # materiales de reino y agua
+godot --headless --path . -s res://tools/materials/build_realm_materials.gd  # materiales de reino, agua, corteza y hojas
+godot --headless --path . -s res://tools/assets/apply_nature_materials.gd    # corteza y hojas propias en los glTF de árboles
 godot --headless --path . --import
 godot --headless --path . -s res://tools/props/build_vado_gris_props.gd      # scenes/world/props/ (fuerte, puerta, marcadores de PNJ)
 godot --headless --path . -s res://tools/terrain/generate_vado_gris.gd       # terreno + vado_gris.tscn
@@ -358,7 +387,10 @@ godot --path . -s res://tools/render/render_screenshot_points.gd -- --out=<ruta>
   `BakedMultiMesh`. Cubre el área jugable con 10 m de margen (320 x 320 m, 1024 px, 3,2 px/m, norte arriba)
   y sale igual en cada ejecución (unos 8 s). Hay que repetirlo si cambian el relieve, el agua o las
   colisiones, o los campamentos, el fuerte y los pasos que marca (`tests/test_zone_map.gd` lo recuerda).
-- Los dos primeros pasos solo hacen falta si cambian los assets. Para cambiar el trazado se edita
+- Los dos primeros pasos solo hacen falta si cambian los assets. En un worktree de git la carpeta de
+  paquetes no está junto al repo: se pasa con `-- --raw=<ruta de Eldmark-raw>` a
+  `copy_vado_gris_assets.gd`, y un worktree nuevo trae los `.res` del terreno como punteros de LFS:
+  `git lfs checkout` los rellena antes de importar. Para cambiar el trazado se edita
   `tools/terrain/vado_gris_layout.gd` (posiciones, río, calzadas, función de alturas) y se
   vuelve a lanzar el generador; la vegetación, la pintura y las escenas de piezas, en sus scripts.
 - Todo es determinista (semillas fijas): repetirlo en la misma máquina deja los mismos datos de

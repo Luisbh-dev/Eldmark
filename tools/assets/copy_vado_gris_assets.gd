@@ -45,12 +45,16 @@ const VILLAGE_PIECES: PackedStringArray = [
 	"Prop_Crate", "Prop_Wagon", "Prop_WoodenFence_Single", "Roof_Tower_RoundTiles",
 ]
 const NATURE_PIECES: PackedStringArray = [
-	"Pine_1", "Pine_2", "Pine_3",
-	"CommonTree_1", "CommonTree_2", "CommonTree_3",
-	"DeadTree_1", "DeadTree_2",
+	"Pine_1", "Pine_2", "Pine_3", "Pine_4", "Pine_5",
+	"CommonTree_1", "CommonTree_2", "CommonTree_3", "CommonTree_4", "CommonTree_5",
+	"DeadTree_1", "DeadTree_2", "DeadTree_3", "DeadTree_4", "DeadTree_5",
+	"TwistedTree_1", "TwistedTree_2",
 	"Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3",
 	"Bush_Common_Flowers", "Grass_Common_Short", "Grass_Wispy_Short",
 	"RockPath_Square_Wide", "RockPath_Round_Wide",
+	# Sotobosque y detalle (ART-59): helecho, planta grande, hierba alta, guijarros y seta.
+	"Fern_1", "Plant_1_Big", "Grass_Common_Tall", "Pebble_Round_2", "Pebble_Square_1",
+	"Mushroom_Common",
 ]
 const KENNEY_PIECES: PackedStringArray = ["flag-banner-long", "tree-log"]
 ## Texturas del Castle Wall Kit (su glTF no referencia imágenes): [origen, destino].

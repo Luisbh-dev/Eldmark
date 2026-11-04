@@ -82,6 +82,8 @@ func on_spawn(msg: NetMessages.EntitySpawn) -> void:
 	# El animador de combate del remoto lee el byte action de su registro dibujado.
 	var visual: HumanoidVisual = body.get_node_or_null(^"Visual/HumanoidVisual") as HumanoidVisual
 	if visual != null:
+		# Sin colisión entre personajes, un remoto pegado a la cámara se difumina (ART-53).
+		visual.camera_fade = true
 		visual.get_animator().set_remote_source(Callable(view, "get_drawn_action"),
 				Callable(view, "get_active_weapon_id"))
 		# Su apariencia (protocolo 7): la del SPAWN si vale para su reino y, si no, la de por defecto de su pueblo.

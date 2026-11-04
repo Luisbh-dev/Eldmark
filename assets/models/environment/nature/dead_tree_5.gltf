@@ -1,0 +1,161 @@
+{
+  "asset": {
+    "generator": "Khronos glTF Blender I/O v4.0.44",
+    "version": "2.0"
+  },
+  "scene": 0.0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0.0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0.0,
+      "name": "DeadTree_5"
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "Bark_DeadTree",
+      "normalTexture": {
+        "index": 0.0
+      },
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1.0
+        },
+        "metallicFactor": 0.0
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "tree.021",
+      "primitives": [
+        {
+          "attributes": {
+            "COLOR_0": 0.0,
+            "POSITION": 1.0,
+            "NORMAL": 2.0,
+            "TEXCOORD_0": 3.0
+          },
+          "indices": 4.0,
+          "material": 0.0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0.0,
+      "source": 0.0
+    },
+    {
+      "sampler": 0.0,
+      "source": 1.0
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/png",
+      "name": "Bark_DeadTree_Normal",
+      "uri": "bark_dead_tree_normal.png"
+    },
+    {
+      "mimeType": "image/png",
+      "name": "Bark_DeadTree",
+      "uri": "bark_dead_tree.png"
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0.0,
+      "componentType": 5126.0,
+      "count": 7499.0,
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 1.0,
+      "componentType": 5126.0,
+      "count": 7499.0,
+      "max": [
+        4.38586139678955,
+        16.10182762146,
+        3.61603689193726
+      ],
+      "min": [
+        -3.97053289413452,
+        -0.335554599761963,
+        -4.79723072052002
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2.0,
+      "componentType": 5126.0,
+      "count": 7499.0,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 3.0,
+      "componentType": 5126.0,
+      "count": 7499.0,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 4.0,
+      "componentType": 5123.0,
+      "count": 16944.0,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0.0,
+      "byteLength": 119984.0,
+      "byteOffset": 0.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 89988.0,
+      "byteOffset": 119984.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 89988.0,
+      "byteOffset": 209972.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 59992.0,
+      "byteOffset": 299960.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 33888.0,
+      "byteOffset": 359952.0,
+      "target": 34963.0
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729.0,
+      "minFilter": 9987.0
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 393840.0,
+      "uri": "dead_tree_5.bin"
+    }
+  ]
+}

@@ -1,0 +1,178 @@
+[gd_resource type="Resource" script_class="CombatClipSet" format=3]
+
+[ext_resource type="Script" path="res://scripts/client/combat_clip_set.gd" id="1_set"]
+[ext_resource type="Script" path="res://scripts/client/combat_action_anim.gd" id="2_anim"]
+[ext_resource type="Script" path="res://scripts/client/combat_clip_segment.gd" id="3_seg"]
+
+[sub_resource type="Resource" id="Seg_npc_guardian_halberd_w"]
+script = ExtResource("3_seg")
+animation = &"ual1/Sword_Attack"
+from_s = 0.0
+to_s = 0.3
+
+[sub_resource type="Resource" id="Seg_npc_guardian_halberd_a"]
+script = ExtResource("3_seg")
+animation = &"ual1/Sword_Attack"
+from_s = 0.3
+to_s = 0.43
+
+[sub_resource type="Resource" id="Seg_npc_guardian_halberd_r"]
+script = ExtResource("3_seg")
+animation = &"ual1/Sword_Attack"
+from_s = 0.43
+to_s = 1.13
+
+[sub_resource type="Resource" id="Seg_npc_guardian_thrust_w"]
+script = ExtResource("3_seg")
+animation = &"ual2/Sword_Dash"
+from_s = 0.14
+to_s = 0.43
+
+[sub_resource type="Resource" id="Seg_npc_guardian_thrust_a"]
+script = ExtResource("3_seg")
+animation = &"ual2/Sword_Dash"
+from_s = 0.43
+to_s = 0.58
+
+[sub_resource type="Resource" id="Seg_npc_guardian_thrust_r"]
+script = ExtResource("3_seg")
+animation = &"ual2/Sword_Dash"
+from_s = 0.58
+to_s = 1.56
+
+[sub_resource type="Resource" id="Seg_charge_main"]
+script = ExtResource("3_seg")
+animation = &"ual2/Sword_Dash"
+from_s = 0.0
+to_s = 0.14
+
+[sub_resource type="Resource" id="Seg_block_main"]
+script = ExtResource("3_seg")
+animation = &"ual2/Idle_Shield_Loop"
+from_s = 0.0
+to_s = 2.5
+
+[sub_resource type="Resource" id="Seg_dodge_main"]
+script = ExtResource("3_seg")
+animation = &"ual1/Roll"
+from_s = 0.04
+to_s = 0.94
+
+[sub_resource type="Resource" id="Seg_stagger_main"]
+script = ExtResource("3_seg")
+animation = &"ual1/Hit_Chest"
+from_s = 0.0
+to_s = 0.333
+
+[sub_resource type="Resource" id="Seg_stun_main"]
+script = ExtResource("3_seg")
+animation = &"ual2/Idle_Shield_Break"
+from_s = 0.0
+to_s = 1.06
+
+[sub_resource type="Resource" id="Seg_dead_main"]
+script = ExtResource("3_seg")
+animation = &"ual1/Death01"
+from_s = 0.0
+to_s = 2.4
+
+[sub_resource type="Resource" id="Anim_npc_guardian_halberd"]
+script = ExtResource("2_anim")
+key = &"npc_guardian_halberd"
+upper_body = false
+windup = SubResource("Seg_npc_guardian_halberd_w")
+active = SubResource("Seg_npc_guardian_halberd_a")
+recovery = SubResource("Seg_npc_guardian_halberd_r")
+contact_s = 0.37
+duration_s = 0.0
+hold_end = false
+blend_in_s = 0.08
+blend_out_s = 0.15
+
+[sub_resource type="Resource" id="Anim_npc_guardian_thrust"]
+script = ExtResource("2_anim")
+key = &"npc_guardian_thrust"
+upper_body = false
+windup = SubResource("Seg_npc_guardian_thrust_w")
+active = SubResource("Seg_npc_guardian_thrust_a")
+recovery = SubResource("Seg_npc_guardian_thrust_r")
+contact_s = 0.5
+duration_s = 0.0
+hold_end = false
+blend_in_s = 0.1
+blend_out_s = 0.15
+
+[sub_resource type="Resource" id="Anim_charge"]
+script = ExtResource("2_anim")
+key = &"charge"
+upper_body = false
+windup = SubResource("Seg_charge_main")
+contact_s = -1.0
+duration_s = 0.35
+hold_end = true
+blend_in_s = 0.08
+blend_out_s = 0.1
+
+[sub_resource type="Resource" id="Anim_block"]
+script = ExtResource("2_anim")
+key = &"block"
+upper_body = true
+windup = SubResource("Seg_block_main")
+contact_s = -1.0
+duration_s = 2.5
+hold_end = false
+loop = true
+blend_in_s = 0.1
+blend_out_s = 0.15
+
+[sub_resource type="Resource" id="Anim_dodge"]
+script = ExtResource("2_anim")
+key = &"dodge"
+upper_body = false
+windup = SubResource("Seg_dodge_main")
+contact_s = -1.0
+duration_s = 0.45
+hold_end = false
+blend_in_s = 0.04
+blend_out_s = 0.1
+
+[sub_resource type="Resource" id="Anim_stagger"]
+script = ExtResource("2_anim")
+key = &"stagger"
+upper_body = true
+windup = SubResource("Seg_stagger_main")
+contact_s = -1.0
+duration_s = 0.4
+hold_end = false
+blend_in_s = 0.03
+blend_out_s = 0.1
+
+[sub_resource type="Resource" id="Anim_stun"]
+script = ExtResource("2_anim")
+key = &"stun"
+upper_body = true
+windup = SubResource("Seg_stun_main")
+contact_s = -1.0
+duration_s = 1.0
+hold_end = true
+blend_in_s = 0.05
+blend_out_s = 0.15
+
+[sub_resource type="Resource" id="Anim_dead"]
+script = ExtResource("2_anim")
+key = &"dead"
+upper_body = false
+windup = SubResource("Seg_dead_main")
+contact_s = -1.0
+duration_s = 2.4
+hold_end = true
+blend_in_s = 0.08
+blend_out_s = 0.2
+
+[resource]
+script = ExtResource("1_set")
+entries = Array[ExtResource("2_anim")]([SubResource("Anim_npc_guardian_halberd"), SubResource("Anim_npc_guardian_thrust"), SubResource("Anim_charge"), SubResource("Anim_block"), SubResource("Anim_dodge"), SubResource("Anim_stagger"), SubResource("Anim_stun"), SubResource("Anim_dead")])
+libraries = Dictionary[StringName, String]({
+&"ual1": "res://assets/animations/ual1/UAL1_Standard.glb",
+&"ual2": "res://assets/animations/ual2/UAL2_Standard.glb"
+})

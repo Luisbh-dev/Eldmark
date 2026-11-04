@@ -339,6 +339,36 @@ func test_flash_tints_the_victim_briefly_and_cleans_up() -> void:
 	assert_null(mesh.material_overlay, "sin destello si el jugador lo apaga")
 
 
+func test_the_flash_is_white_additive_short_and_fades_out() -> void:
+	_make_feedback()
+	var mesh: MeshInstance3D = _character.get_node(^"Cuerpo") as MeshInstance3D
+	_feedback.handle_event(_hit(OWN_ID, OTHER_ID, 50), true)
+	var material: StandardMaterial3D = mesh.material_overlay as StandardMaterial3D
+	if not assert_not_null(material, "la víctima destella"):
+		return
+	assert_eq(material.blend_mode, BaseMaterial3D.BLEND_MODE_ADD, "suma luz en vez de teñir")
+	assert_eq(Color(material.albedo_color, 1.0), Color.WHITE, "y es blanco, no rojo (UI-50)")
+	assert_true(CombatFeedback.FLASH_SECONDS <= 0.1, "dura unos 80 ms")
+	assert_near(_feedback.get_flash_alpha(), CombatFeedback.FLASH_COLOR.a, 0.0001, "a plena intensidad al empezar")
+	_feedback.advance_flashes(CombatFeedback.FLASH_SECONDS * 0.5)
+	assert_near(_feedback.get_flash_alpha(), CombatFeedback.FLASH_COLOR.a * 0.5, 0.001, "y cae en línea recta")
+	_feedback.advance_flashes(CombatFeedback.FLASH_SECONDS)
+	assert_eq(_feedback.get_flashing_count(), 0)
+
+
+func test_the_flash_is_dimmer_in_hits_that_do_not_involve_the_local_player() -> void:
+	_make_feedback()
+	_feedback.flash(OWN_ID, CombatFeedback.FLASH_OTHERS_INTENSITY)
+	var dim: float = _feedback.get_flash_alpha()
+	assert_near(dim, CombatFeedback.FLASH_COLOR.a * CombatFeedback.FLASH_OTHERS_INTENSITY, 0.0001)
+	_feedback.advance_flashes(1.0)
+	_feedback.flash(OWN_ID)
+	assert_true(_feedback.get_flash_alpha() > dim, "los golpes propios, a plena intensidad")
+	_feedback.advance_flashes(1.0)
+	_feedback.flash(OWN_ID, 7.0)
+	assert_near(_feedback.get_flash_alpha(), CombatFeedback.FLASH_COLOR.a, 0.0001, "sin pasar de la plena")
+
+
 func test_entity_damaged_is_emitted_for_every_hit_with_damage() -> void:
 	_make_feedback()
 	var damaged: Array[int] = []

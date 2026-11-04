@@ -109,12 +109,13 @@ versión; se anota la fecha del archivo usado dentro del zip.
 | Campo | Valor |
 |---|---|
 | Autor | Quaternius |
-| Versión / archivo | `Stylized Nature MegaKit[Standard].zip`, sha256 `298f6732b872e4cf7b30e6e7abf9641c7f6dc6b326df37ac089533ed7e3d58c9`. 16 modelos glTF (3 pinos, 3 caducifolios, 2 árboles muertos, 3 rocas, 2 hierbas, un arbusto y 2 losas de camino) y sus texturas, reducidas a 1024 px como máximo; `flowers.png` (1008 x 981 en el pack) llevada a 1024 x 1024 |
+| Versión / archivo | `Stylized Nature MegaKit[Standard].zip`, sha256 `298f6732b872e4cf7b30e6e7abf9641c7f6dc6b326df37ac089533ed7e3d58c9`. 31 modelos glTF (5 pinos, 5 caducifolios, 5 árboles muertos, 2 retorcidos, 3 rocas, 3 hierbas, un arbusto, un helecho, una planta grande, 2 guijarros, una seta y 2 losas de camino) y sus texturas, reducidas a 1024 px como máximo; `flowers.png` (1008 x 981 en el pack) llevada a 1024 x 1024. Los 16 primeros modelos entraron con la zona; los otros 15 (variantes de árbol, retorcidos y sotobosque) el 3 de noviembre de 2026 (ART-59) |
 | URL | https://quaternius.itch.io/stylized-nature-megakit |
 | Licencia | CC0 1.0 Universal |
 | Dónde se indica | `License_Standard.txt` dentro del zip |
 | Carpeta en el repo | `assets/models/environment/nature/` |
 | Créditos | No obligatorios (cortesía: Quaternius) |
+| Modificaciones | Los glTF no se tocan. La corteza de los árboles (terracota en el pack) y las hojas de los retorcidos (rojas) se sustituyen al importar por materiales propios que recolorean la misma textura (`assets/materials/vegetation/bark_*.tres`, `leaves_twisted.tres`, `leaves_green.tres`; los genera `tools/materials/build_realm_materials.gd` y los aplica `tools/assets/apply_nature_materials.gd`) |
 
 ### Castle Wall Kit
 

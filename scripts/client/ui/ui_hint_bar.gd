@@ -10,13 +10,12 @@ extends HBoxContainer
 ## [br][br]
 ## Solo cliente.
 
-## Pistas del HUD: las teclas del sandbox y del cliente en red.
+## Pistas del HUD: las teclas del sandbox y del cliente en red. Sin «Soltar ratón» (Esc) ni «Depuración» (F3): la línea
+## ya no pasa de una docena de atajos (UI-49).
 const DEFAULT_HINTS: Array[Dictionary] = [
 	{"action": &"free_cursor", "text": "Liberar cursor"},
-	{"action": &"toggle_cursor", "text": "Soltar ratón"},
 	{"action": &"shoulder_swap", "text": "Cambiar hombro"},
 	{"action": &"zoom_in", "text": "Zoom", "glyph": "Rueda"},
-	{"action": &"toggle_debug", "text": "Depuración"},
 	{"action": &"open_settings", "text": "Ajustes"},
 ]
 const SEPARATOR_TEXT: String = "·"

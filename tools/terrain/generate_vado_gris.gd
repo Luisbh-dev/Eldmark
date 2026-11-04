@@ -65,16 +65,22 @@ const CAMP_SPAWN_XS: Array[float] = [-7.5, -2.5, 2.5, 7.5]
 ## Medio ancho exterior de los puentes (tablero + pretil): las orillas profundas acaban aquí.
 const BRIDGE_OUTER_HALF: float = Layout.BRIDGE_WIDTH * 0.5 + 0.4
 
-## Texturas del terreno (el índice es el id de Terrain3D): [archivo, nombre, uv_scale].
+## Texturas del terreno (el índice es el id de Terrain3D): [archivo, nombre, uv_scale]. El uv_scale
+## es de 0,25 a 0,35 (teselas de 3 a 4 m, antes de 8 a 17 m): de cerca el terreno enseña grano y la
+## roca de las laderas no se estira (ART-55). La repetición a gran escala la rompen la variación
+## de color del material y el mapa de color.
 const TERRAIN_TEXTURES: Array[Array] = [
-	["grass_03_alb_ht.png", "Hierba", 0.07],
-	["grass_04_alb_ht.png", "Hierba seca", 0.06],
-	["dirt_03_alb_ht.png", "Tierra", 0.1],
-	["stone_01_alb_ht.png", "Grava", 0.12],
-	["stone_04_alb_ht.png", "Roca", 0.07],
-	["grass_02_alb_ht.png", "Hierba verde", 0.07],
-	["stone_03_alb_ht.png", "Lecho", 0.1],
+	["grass_03_alb_ht.png", "Hierba", 0.28],
+	["grass_04_alb_ht.png", "Hierba seca", 0.26],
+	["dirt_03_alb_ht.png", "Tierra", 0.3],
+	["stone_01_alb_ht.png", "Grava", 0.35],
+	["stone_04_alb_ht.png", "Roca", 0.3],
+	["grass_02_alb_ht.png", "Hierba verde", 0.28],
+	["stone_03_alb_ht.png", "Lecho", 0.32],
 ]
+## Umbral de la proyección en pendientes de Terrain3D (0 a 0,99): a partir de esa inclinación la
+## textura se proyecta de lado en vez de estirarse a lo largo de la ladera.
+const PROJECTION_THRESHOLD: float = 0.65
 const T_GRASS: int = 0
 const T_DRY: int = 1
 const T_DIRT: int = 2
@@ -89,6 +95,11 @@ const MESH_MATERIALS: Dictionary = {
 	1: "res://assets/materials/vegetation/grass_dry.tres",
 	14: "res://assets/materials/vegetation/path_stones.tres",
 	15: "res://assets/materials/vegetation/path_stones.tres",
+	25: "res://assets/materials/vegetation/leaves_green.tres",
+	26: "res://assets/materials/vegetation/leaves_green.tres",
+	27: "res://assets/materials/vegetation/grass_green.tres",
+	28: "res://assets/materials/vegetation/path_stones.tres",
+	29: "res://assets/materials/vegetation/path_stones.tres",
 }
 ## Tinte (multiplica) de cada textura del terreno. La tierra ya viene corregida hacia la paleta
 ## de Eldrun desde copy_vado_gris_assets.gd (multiplicar solo la oscurecía); la grava se aclara
@@ -96,8 +107,10 @@ const MESH_MATERIALS: Dictionary = {
 const TEXTURE_TINTS: Dictionary = {3: Color(0.94, 0.92, 0.88)}
 
 ## Mallas del instanciador (el índice es el id): [glTF, nombre, alcance visible (m), sombra].
-## Pocas variantes de árbol: Terrain3D crea un MultiMesh por variante y celda de 32 m, así que
-## cada variante extra multiplica las llamadas de dibujo.
+## Terrain3D crea un MultiMesh por variante y celda de 32 m, así que cada variante extra
+## multiplica las llamadas de dibujo: las variantes de árbol son pocas (cinco por familia, de las
+## que el kit ya trae) y el sotobosque solo se ve de cerca. Los ids nuevos van al final para no
+## mover los que ya usa el resto del generador.
 const MESHES: Array[Array] = [
 	["grass_common_short.gltf", "Hierba corta", 60.0, false],
 	["grass_wispy_short.gltf", "Hierba seca", 60.0, false],
@@ -115,6 +128,21 @@ const MESHES: Array[Array] = [
 	["bush_common_flowers.gltf", "Arbusto", 120.0, false],
 	["rock_path_square_wide.gltf", "Losa de calzada", 120.0, false],
 	["rock_path_round_wide.gltf", "Losa redonda", 120.0, false],
+	["pine_4.gltf", "Pino 4", 340.0, true],
+	["pine_5.gltf", "Pino 5", 340.0, true],
+	["common_tree_4.gltf", "Caducifolio 4", 340.0, true],
+	["common_tree_5.gltf", "Caducifolio 5", 340.0, true],
+	["dead_tree_3.gltf", "Árbol muerto 3", 340.0, true],
+	["dead_tree_4.gltf", "Árbol muerto 4", 340.0, true],
+	["dead_tree_5.gltf", "Árbol muerto 5", 340.0, true],
+	["twisted_tree_1.gltf", "Retorcido 1", 340.0, true],
+	["twisted_tree_2.gltf", "Retorcido 2", 340.0, true],
+	["fern_1.gltf", "Helecho", 60.0, false],
+	["plant_1_big.gltf", "Planta grande", 60.0, false],
+	["grass_common_tall.gltf", "Hierba alta", 60.0, false],
+	["pebble_round_2.gltf", "Guijarro redondo", 40.0, false],
+	["pebble_square_1.gltf", "Guijarro cuadrado", 40.0, false],
+	["mushroom_common.gltf", "Seta", 30.0, false],
 ]
 const M_GRASS: int = 0
 const M_GRASS_DRY: int = 1
@@ -124,18 +152,49 @@ const M_DEAD: int = 8
 const M_ROCK: int = 10
 const M_BUSH: int = 13
 const M_PATH: int = 14
-## Variantes de cada familia de árbol.
-const TREE_VARIANTS: Dictionary = {M_PINE: 3, M_COMMON: 3, M_DEAD: 2}
+const M_TWISTED: int = 23
+const M_FERN: int = 25
+const M_PLANT: int = 26
+const M_TALL_GRASS: int = 27
+const M_PEBBLE: int = 28
+const M_MUSHROOM: int = 30
+## Ids de las variantes de cada familia de árbol (los de pino, caducifolio y muerto van en el
+## orden del kit; los extra, al final de la lista de mallas).
+const TREE_VARIANTS: Dictionary = {
+	M_PINE: [2, 3, 4, 16, 17],
+	M_COMMON: [5, 6, 7, 18, 19],
+	M_DEAD: [8, 9, 20, 21, 22],
+	M_TWISTED: [23, 24],
+}
 ## Grosor de las losas de calzada (m): se hunden para que su cara de arriba quede a ras.
 const PATH_SLAB_SINK: Dictionary = {M_PATH: 0.155, M_PATH + 1: 0.095}
 ## Pendiente máxima (grados) para poner una losa: en las laderas del fuerte quedarían al aire.
 const PATH_SLAB_MAX_SLOPE: float = 7.0
 
+## Factor de escala de las variantes que el kit trae más altas que las tres primeras de su familia
+## (DeadTree_3 a _5 miden de 13 a 16 m y Pine_4 10 m, frente a los 7 a 11 m de las demás): solo
+## afecta al dibujo, nunca a la colisión.
+const VARIANT_SCALE: Dictionary = {16: 0.8, 17: 0.9, 18: 0.85, 20: 0.78, 21: 0.8, 22: 0.62}
 ## Radio del tronco (m, a escala 1) para la colisión de cada familia de árbol.
 const TRUNK_RADIUS: Dictionary = {M_PINE: 0.4, M_COMMON: 0.38, M_DEAD: 0.45}
+## Radio de la base del tronco de cada familia (m, a escala 1), medido en las mallas: lo que hay que
+## hundir un árbol por cada unidad de pendiente para que no quede aire bajo el lado de abajo.
+const ROOT_RADIUS: Dictionary = {M_PINE: 0.27, M_COMMON: 0.74, M_DEAD: 0.67, M_TWISTED: 0.6}
+## Por encima de esta pendiente (grados) no se plantan árboles: va roca y canchal (ART-58).
+const TREE_MAX_SLOPE: float = 45.0
+## Altura y radio de la base de las rocas medianas del kit (m, a escala 1), medidos en las mallas.
+const ROCK_HEIGHT: float = 2.2
+const ROCK_RADIUS: float = 1.8
+## Fracción de su altura que se hunde una roca con colisión (la colisión no se toca: el dibujo queda a
+## la altura de su cilindro) y una roca suelta del borde, que sí puede quedar medio enterrada.
+const GAMEPLAY_ROCK_SINK: float = 0.14
+const LOOSE_ROCK_SINK: float = 0.45
 
 var _layout: Layout
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+## Generador aparte para lo que es solo decoración (sotobosque, guijarros): así la cobertura de
+## juego (árboles y rocas con colisión), que sale de [member _rng], no se mueve nunca.
+var _decor_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _terrain: Terrain3D
 var _zone: Node3D
 var _heights: PackedFloat32Array
@@ -157,6 +216,7 @@ func _run() -> void:
 	var started: int = Time.get_ticks_msec()
 	_layout = Layout.new()
 	_rng.seed = SEED
+	_decor_rng.seed = SEED + 7
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(DATA_DIR))
 
 	_zone = Node3D.new()
@@ -361,6 +421,8 @@ func _create_terrain(height_image: Image, control_image: Image, color_image: Ima
 	# acuarela) y variación de color a gran escala para que los bordes de la pintura no sigan la
 	# rejilla de 1 m del mapa de control.
 	_terrain.material.set_shader_param(&"blend_sharpness", 0.45)
+	_terrain.material.set_shader_param(&"enable_projection", true)
+	_terrain.material.set_shader_param(&"projection_threshold", PROJECTION_THRESHOLD)
 	_terrain.material.set_shader_param(&"enable_macro_variation", true)
 	_terrain.material.set_shader_param(&"macro_variation1", Color(0.86, 0.87, 0.83))
 	_terrain.material.set_shader_param(&"macro_variation2", Color(0.94, 0.9, 0.85))
@@ -530,16 +592,18 @@ func _place_gameplay_cover() -> void:
 			for mirror: int in 2:
 				var mz: float = z if mirror == 0 else -z
 				var my: float = yaw if mirror == 0 else PI - yaw
+				# La colisión se queda donde estaba (cilindro desde 0,15 de escala bajo el suelo);
+				# solo el dibujo se asienta en la ladera (ART-58).
 				var y: float = _ground(x, mz) - 0.15 * scale
-				var basis: Basis = Basis(Vector3.UP, my).scaled(Vector3(scale, scale, scale))
-				_add_instance(mesh_id, Transform3D(basis, Vector3(x, y, mz)))
+				_add_instance(mesh_id, _settle_rock(x, mz, scale, scale, my, GAMEPLAY_ROCK_SINK, 0.8))
 				_rock_colliders.append({"position": Vector3(x, y, mz), "radius": 1.35 * scale, "height": 2.0 * scale})
+				_scatter_pebbles(x, mz, 2.6 * scale)
 			_occupied.append(Vector3(x, 1.6 * scale, z))
 
 
 func _add_mirrored_tree(x: float, z: float, family: int) -> void:
-	var variants: int = TREE_VARIANTS[family]
-	var variant: int = _rng.randi_range(0, variants - 1)
+	var variants: Array = TREE_VARIANTS[family]
+	var variant: int = _rng.randi_range(0, variants.size() - 1)
 	# Algo más grandes que el modelo del kit (7,3 m): junto a murallas de 12 m y torres de 18 m
 	# los árboles a escala 1 parecían arbustos.
 	var scale: float = _rng.randf_range(1.05, 1.4)
@@ -550,17 +614,102 @@ func _add_mirrored_tree(x: float, z: float, family: int) -> void:
 		var mesh_variant: int = variant
 		if mirror == 1 and family == M_PINE:
 			mesh_family = M_COMMON
-			mesh_variant = variant % TREE_VARIANTS[M_COMMON]
-		var mesh_id: int = mesh_family + mesh_variant
+			mesh_variant = variant % (TREE_VARIANTS[M_COMMON] as Array).size()
+		var mesh_id: int = (TREE_VARIANTS[mesh_family] as Array)[mesh_variant]
+		# La colisión se queda en h - 0,1; el dibujo se hunde además según la pendiente (ART-58).
 		var y: float = _ground(x, mz) - 0.1
-		var basis: Basis = Basis(Vector3.UP, yaw if mirror == 0 else PI - yaw).scaled(Vector3(scale, scale, scale))
-		_add_instance(mesh_id, Transform3D(basis, Vector3(x, y, mz)))
+		var visual_scale: float = scale * float(VARIANT_SCALE.get(mesh_id, 1.0))
+		var basis: Basis = Basis(Vector3.UP, yaw if mirror == 0 else PI - yaw).scaled(Vector3(visual_scale, visual_scale, visual_scale))
+		_add_instance(mesh_id, Transform3D(basis, Vector3(x, _trunk_y(x, mz, mesh_family, visual_scale, 0.1), mz)))
 		_tree_colliders.append({"position": Vector3(x, y, mz), "radius": TRUNK_RADIUS[family] * scale, "height": 7.0})
+		_scatter_undergrowth(x, mz, 4.5, 3)
 	_occupied.append(Vector3(x, 2.5, z))
 
 
+## Altura a la que se pone un árbol (ART-58): el suelo menos [param base_sink] menos lo que hay que
+## hundirlo según la pendiente, tan(pendiente) por el radio de su base, para que el lado de abajo del
+## tronco no quede en el aire. Por encima de [constant TREE_MAX_SLOPE] no se ponen árboles.
+func _trunk_y(x: float, z: float, family: int, scale: float, base_sink: float) -> float:
+	var slope: float = minf(_ground_slope(x, z), TREE_MAX_SLOPE)
+	return _ground(x, z) - base_sink - tan(deg_to_rad(slope)) * float(ROOT_RADIUS[family]) * scale
+
+
+## Posición y giro de una roca asentada en la ladera (ART-58): inclinada hacia la normal del terreno
+## ([param tilt] de 0 a 1) y hundida una fracción [param sink_fraction] de su altura más el hueco que
+## deja la inclinación que falta. Escala [param scale_xz] en horizontal y [param scale_y] en vertical.
+func _settle_rock(x: float, z: float, scale_xz: float, scale_y: float, yaw: float, sink_fraction: float,
+		tilt: float) -> Transform3D:
+	var normal: Vector3 = _ground_normal(x, z)
+	var axis: Vector3 = Vector3.UP.lerp(normal, tilt).normalized()
+	var residual: float = acos(clampf(axis.dot(normal), -1.0, 1.0))
+	var basis: Basis = _basis_on_normal(axis, yaw) * Basis.from_scale(Vector3(scale_xz, scale_y, scale_xz))
+	var sink: float = sink_fraction * ROCK_HEIGHT * scale_y + tan(residual) * ROCK_RADIUS * scale_xz
+	return Transform3D(basis, Vector3(x, _ground(x, z) - sink, z))
+
+
+## Sotobosque alrededor de un tronco (ART-59): helechos, plantas, setas y hierba alta. Solo dibujo (sin
+## colisión), con el generador de decoración para no mover la cobertura de juego. No pisa calzadas,
+## río, fuerte, campamentos ni ruinas.
+func _scatter_undergrowth(x: float, z: float, radius: float, count: int) -> void:
+	var kinds: Array[int] = [M_FERN, M_FERN, M_PLANT, M_TALL_GRASS, M_MUSHROOM]
+	for i: int in count:
+		var angle: float = _decor_rng.randf_range(0.0, TAU)
+		var dist: float = radius * (0.3 + 0.7 * sqrt(_decor_rng.randf()))
+		var px: float = x + cos(angle) * dist
+		var pz: float = z + sin(angle) * dist
+		var kind: int = kinds[_decor_rng.randi_range(0, kinds.size() - 1)]
+		var scale: float = _decor_rng.randf_range(0.3, 0.55)
+		var yaw: float = _decor_rng.randf_range(0.0, TAU)
+		if not _decor_allowed(px, pz, 2.5, 32.0):
+			continue
+		match kind:
+			M_PLANT:
+				scale *= 0.7
+			M_TALL_GRASS:
+				scale = _decor_rng.randf_range(0.5, 0.85)
+			M_MUSHROOM:
+				scale = _decor_rng.randf_range(0.8, 1.4)
+		var basis: Basis = Basis(Vector3.UP, yaw).scaled(Vector3(scale, scale, scale))
+		_add_instance(kind, Transform3D(basis, Vector3(px, _ground(px, pz) - 0.03, pz)))
+
+
+## Guijarros alrededor de una roca (ART-59), solo dibujo.
+func _scatter_pebbles(x: float, z: float, radius: float) -> void:
+	for i: int in _decor_rng.randi_range(3, 6):
+		var angle: float = _decor_rng.randf_range(0.0, TAU)
+		var dist: float = radius * (0.5 + 0.5 * _decor_rng.randf())
+		var px: float = x + cos(angle) * dist
+		var pz: float = z + sin(angle) * dist
+		var scale: float = _decor_rng.randf_range(0.8, 1.7)
+		var yaw: float = _decor_rng.randf_range(0.0, TAU)
+		var kind: int = M_PEBBLE + _decor_rng.randi_range(0, 1)
+		if not _decor_allowed(px, pz, 3.0, 24.0):
+			continue
+		var basis: Basis = Basis(Vector3.UP, yaw).scaled(Vector3(scale, scale, scale))
+		_add_instance(kind, Transform3D(basis, Vector3(px, _ground(px, pz) - 0.02, pz)))
+
+
+## ¿Cae (x, z) dentro del área jugable (el cuadrado de [constant Layout.PLAY_HALF] hasta las murallas)?
+static func _in_play_area(x: float, z: float) -> bool:
+	return absf(x) <= Layout.PLAY_HALF and absf(z) <= Layout.WALL_Z
+
+
+## ¿Se puede poner decoración suelta aquí? Fuera de calzadas (margen [param road_margin] m), del
+## río, del fuerte, de los campamentos y de las ruinas, y en pendientes de menos de [param max_slope].
+func _decor_allowed(x: float, z: float, road_margin: float, max_slope: float) -> bool:
+	if Layout.road_distance(x, z) < road_margin or Layout.river_distance(x, z) < 11.5:
+		return false
+	if Layout.fort_sdf(x, z) < 3.0 or Layout.camp_distance(x, z) < Layout.CAMP_RADIUS:
+		return false
+	if _in_ruins(x, z, 1.0):
+		return false
+	var h: float = _ground(x, z)
+	return not is_nan(h) and _ground_slope(x, z) <= max_slope
+
+
 ## Bosque del borde, fuera del área jugable (sin colisión: no se llega). Pinos al norte,
-## caducifolios al sur y árboles muertos donde se juntan, como pide la identidad visual.
+## caducifolios al sur y árboles muertos y retorcidos donde se juntan, como pide la identidad
+## visual. No hay árboles por encima de [constant TREE_MAX_SLOPE]: allí va canchal (ART-58).
 func _place_border_forest() -> void:
 	var step: float = 8.0
 	var count: int = 0
@@ -585,13 +734,13 @@ func _place_border_forest() -> void:
 			if is_nan(h) or h > 110.0:
 				continue
 			var slope: float = _ground_slope(x, z)
-			# Caras casi verticales: canchal de rocas en vez de árboles.
-			if slope > 62.0:
+			# Laderas de más de 45°: canchal de rocas en vez de árboles.
+			if slope > TREE_MAX_SLOPE:
 				if _rng.randf() < 0.3:
 					_add_scree(x, z)
 				continue
-			# Bosque en grupos (ruido), que se aclara en las laderas fuertes (de 38° a 62°) en vez
-			# de quedarse solo en las crestas.
+			# Bosque en grupos (ruido), que se aclara en las laderas fuertes (de 38° hacia arriba) en
+			# vez de quedarse solo en las crestas.
 			var clump: float = _layout.paint_noise(x * 0.5 + 300.0, z * 0.5 - 120.0)
 			var density: float = (0.85 if z < -40.0 else 0.7) * clampf(0.8 + clump * 1.4, 0.2, 1.0)
 			density *= 1.0 - smoothstep(38.0, 62.0, slope) * 0.7
@@ -605,38 +754,57 @@ func _place_border_forest() -> void:
 			elif z > 40.0:
 				family = M_COMMON
 			else:
-				family = M_DEAD if _rng.randf() < 0.5 else (M_PINE if _rng.randf() < 0.5 else M_COMMON)
-			var variants: int = TREE_VARIANTS[family]
+				var pick: float = _rng.randf()
+				family = M_DEAD if pick < 0.4 else (M_TWISTED if pick < 0.55 else (M_PINE if _rng.randf() < 0.5 else M_COMMON))
+			var variants: Array = TREE_VARIANTS[family]
 			# Coníferas del borde mucho más grandes (las montañas llegan a 80 m y el Muro de
-			# Escarcha mide 12 m): mismo modelo del kit, a escala de bosque de montaña.
-			var scale: float = _rng.randf_range(1.5, 2.2) if family == M_PINE else _rng.randf_range(1.3, 1.8)
-			var basis: Basis = Basis(Vector3.UP, _rng.randf_range(0.0, TAU)).scaled(Vector3(scale, scale, scale))
-			_add_instance(family + _rng.randi_range(0, variants - 1), Transform3D(basis, Vector3(x, h - 0.15, z)))
+			# Escarcha mide 12 m): mismo modelo del kit, a escala de bosque de montaña. Los
+			# retorcidos del kit son enormes (17 m a escala 1) y se achican.
+			var scale: float
+			if family == M_TWISTED:
+				scale = _rng.randf_range(0.5, 0.7)
+			elif family == M_PINE:
+				scale = _rng.randf_range(1.5, 2.2)
+			else:
+				scale = _rng.randf_range(1.3, 1.8)
+			var basis: Basis = Basis(Vector3.UP, _rng.randf_range(0.0, TAU))
+			var mesh_id: int = variants[_rng.randi_range(0, variants.size() - 1)]
+			scale *= float(VARIANT_SCALE.get(mesh_id, 1.0))
+			basis = basis.scaled(Vector3(scale, scale, scale))
+			_add_instance(mesh_id, Transform3D(basis, Vector3(x, _trunk_y(x, z, family, scale, 0.15), z)))
 			count += 1
+			# Sotobosque al pie de algunos árboles (ART-59).
+			if _decor_rng.randf() < 0.45:
+				_scatter_undergrowth(x, z, 3.5, 2)
 			if _rng.randf() < 0.12:
 				var rock_scale: float = _rng.randf_range(0.8, 1.8)
 				var rx: float = x + _rng.randf_range(-3.0, 3.0)
 				var rz: float = z + _rng.randf_range(-3.0, 3.0)
 				var rh: float = _ground(rx, rz)
-				if not is_nan(rh):
-					_add_instance(M_ROCK + _rng.randi_range(0, 2), Transform3D(
-							Basis(Vector3.UP, _rng.randf_range(0, TAU)).scaled(Vector3(rock_scale, rock_scale, rock_scale)),
-							Vector3(rx, rh - 0.2 * rock_scale, rz)))
+				var rock_id: int = M_ROCK + _rng.randi_range(0, 2)
+				var rock_yaw: float = _rng.randf_range(0, TAU)
+				# Dentro del área jugable toda roca tiene colisión: las sueltas solo van fuera.
+				if not is_nan(rh) and not _in_play_area(rx, rz):
+					_add_instance(rock_id, _settle_rock(rx, rz, rock_scale, rock_scale, rock_yaw,
+							LOOSE_ROCK_SINK, 0.85))
 		gx += step
 	print("   bosque del borde: %d árboles" % count)
 
 
-## Rocas sueltas de canchal en una ladera empinada del borde (sin colisión: no se llega).
+## Rocas sueltas de canchal en una ladera empinada del borde (sin colisión: no se llega), inclinadas
+## con la ladera y medio enterradas (ART-58).
 func _add_scree(x: float, z: float) -> void:
 	for i: int in _rng.randi_range(1, 3):
 		var rx: float = x + _rng.randf_range(-3.0, 3.0)
 		var rz: float = z + _rng.randf_range(-3.0, 3.0)
 		var rh: float = _ground(rx, rz)
-		if is_nan(rh):
+		var rock_scale: float = _rng.randf_range(0.8, 1.8)
+		var rock_yaw: float = _rng.randf_range(0.0, TAU)
+		var rock_id: int = M_ROCK + _rng.randi_range(0, 2)
+		# Dentro del área jugable toda roca tiene colisión: el canchal solo va fuera.
+		if is_nan(rh) or _in_play_area(rx, rz):
 			continue
-		var rock_scale: float = _rng.randf_range(0.9, 2.2)
-		var basis: Basis = Basis(Vector3.UP, _rng.randf_range(0.0, TAU)).scaled(Vector3(rock_scale, rock_scale * 0.8, rock_scale))
-		_add_instance(M_ROCK + _rng.randi_range(0, 2), Transform3D(basis, Vector3(rx, rh - 0.35 * rock_scale, rz)))
+		_add_instance(rock_id, _settle_rock(rx, rz, rock_scale, rock_scale * 0.8, rock_yaw, LOOSE_ROCK_SINK, 0.9))
 
 
 ## Hierba (instanciador, sin colisión, visible hasta 60 m): en matas agrupadas por un ruido de
@@ -835,7 +1003,9 @@ func _add_environment() -> void:
 	sky.sky_material = sky_material
 	environment.sky = sky
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	environment.ambient_light_energy = 0.95
+	# Ambiente bajo (0,48): la luz con dirección la pone el sol. Con 0,95 el cielo cubierto igualaba
+	# luz y sombra y el valle se veía plano (ART-54).
+	environment.ambient_light_energy = 0.48
 	environment.ambient_light_sky_contribution = 0.85
 	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
@@ -872,35 +1042,25 @@ func _add_environment() -> void:
 
 	var sun := DirectionalLight3D.new()
 	sun.name = "Sun"
-	# Sol bajo del oeste (unos 32°), blanco frío y velado por las nubes, con sombras blandas. Va
-	# exactamente a lo largo de +X, así que no da de lleno en ninguna de las dos fachadas de
-	# muralla (miran a +Z y a -Z): las dos reciben la misma luz, la de los rellenos de abajo.
-	sun.rotation_degrees = Vector3(-32.0, -90.0, 0.0)
-	sun.light_color = Color("#eef0f0")
-	sun.light_energy = 1.2
-	sun.light_angular_distance = 3.0
+	# Sol bajo del oeste (28°), algo cálido y con sombras largas. Va exactamente a lo largo de +X,
+	# así que no da de lleno en ninguna de las dos fachadas de muralla (miran a +Z y a -Z): las dos
+	# reciben la misma luz (la del ambiente), y la simetría entre reinos no se toca. Ya no hay
+	# rellenos: con ellos la luz era plana (ART-54). Lo que mira al oeste recibe sol y lo que mira al
+	# este queda en sombra, con un ambiente de 0,48.
+	sun.rotation_degrees = Vector3(-28.0, -90.0, 0.0)
+	sun.light_color = Color("#f6efe4")
+	sun.light_energy = 2.2
+	sun.light_angular_distance = 1.5
 	sun.shadow_enabled = true
-	sun.shadow_blur = 2.5
-	# Dos cortes hasta 120 m: la mitad de llamadas de dibujo de sombra que cuatro cortes hasta
-	# 190 m, y de lejos la niebla y el cielo cubierto ya tapan las sombras.
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_max_distance = 120.0
+	sun.shadow_blur = 1.4
+	# Cuatro cortes hasta 130 m (antes dos hasta 120 m): las sombras largas de un sol bajo llegan a
+	# los árboles y a la muralla. El coste en llamadas de dibujo se mide con
+	# tools/render/render_screenshot_points.gd (docs/zonas/vado_gris.md, «Rendimiento medido»).
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	sun.directional_shadow_max_distance = 130.0
 	sun.directional_shadow_blend_splits = false
 	_zone.add_child(sun)
 	_zone.move_child(sun, 1)
-	# Rellenos simétricos sin sombra, uno desde el sur (ilumina la cara del Muro de Escarcha, que
-	# mira a +Z) y otro desde el norte (la de la Muralla del Alba): luz del cielo cubierto que da
-	# forma a las fachadas norte y sur sin favorecer a ningún reino.
-	for i: int in 2:
-		var fill := DirectionalLight3D.new()
-		fill.name = "RellenoSur" if i == 0 else "RellenoNorte"
-		fill.rotation_degrees = Vector3(-28.0, 0.0 if i == 0 else 180.0, 0.0)
-		fill.light_color = Color("#d4dae0")
-		fill.light_energy = 0.42
-		fill.shadow_enabled = false
-		fill.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
-		_zone.add_child(fill)
-		_zone.move_child(fill, 2 + i)
 
 
 ## Cobertura de nubes del cielo (textura de ruido procedural: se guarda como parámetros, no

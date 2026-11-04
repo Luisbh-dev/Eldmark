@@ -43,8 +43,8 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 0)
-	position.y = TOP_MARGIN
+	# Centrada arriba (UI-49): con el preset de tamaño mínimo quedaba con el borde izquierdo en el centro.
+	UILayout.anchor_top_center(self, WIDTH, TOP_MARGIN)
 
 
 ## Pone hacia dónde se mira (el [code]yaw[/code] de la cámara, en radianes), dónde se está y los

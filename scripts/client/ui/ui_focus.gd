@@ -72,11 +72,12 @@ static func find_first_focusable(root: Node) -> Control:
 	return null
 
 
-## Da el foco al primer control enfocable bajo [param root]. Devuelve ese control (null si no hay).
+## Da el foco al primer control enfocable bajo [param root]. Devuelve ese control (null si no hay). El foco no abre su
+## tooltip: lo pone el código al abrir una ventana, no el jugador al navegar ([method UITooltip.grab_focus_silently]).
 static func focus_first(root: Node) -> Control:
 	var control: Control = find_first_focusable(root)
 	if control != null:
-		control.grab_focus()
+		UITooltip.grab_focus_silently(control)
 	return control
 
 

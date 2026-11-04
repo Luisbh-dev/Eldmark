@@ -186,7 +186,8 @@ func test_hint_bar_shows_the_real_keys_of_each_hint() -> void:
 	assert_true(text.contains("Alt: Liberar cursor"), text)
 	assert_true(text.contains("V: Cambiar hombro"), text)
 	assert_true(text.contains("Rueda: Zoom"), "el zoom enseña «Rueda»: " + text)
-	assert_true(text.contains("F3: Depuración"), text)
+	assert_false(text.contains("Depuración"), "sin el atajo de depuración (UI-49): " + text)
+	assert_false(text.contains("Soltar ratón"), "ni el de soltar el ratón (UI-49): " + text)
 	assert_true(text.contains("F10: Ajustes"), text)
 	assert_eq(bar.get_glyphs().size(), bar.get_hint_count())
 	# Reasignar una tecla cambia la línea.
@@ -210,7 +211,8 @@ func test_the_hud_help_line_uses_glyphs_instead_of_fixed_text() -> void:
 	_add(hud)
 	var bar: UIHintBar = hud.get_node(^"HintLabel") as UIHintBar
 	assert_not_null(bar, "la ayuda del HUD es una UIHintBar")
-	assert_true(bar.get_hint_count() >= 5)
+	assert_true(bar.get_hint_count() >= 4)
+	assert_false(bar.visible, "la línea de ayuda empieza oculta (UI-49)")
 	assert_true(bar.get_plain_text().contains("Alt: Liberar cursor"), bar.get_plain_text())
 	assert_true(bar.get_plain_text().contains("F10: Ajustes"), "incluye los ajustes")
 	for glyph: UIKeyGlyph in bar.get_glyphs():

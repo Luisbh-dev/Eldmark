@@ -1,0 +1,136 @@
+{
+  "asset": {
+    "generator": "Khronos glTF Blender I/O v4.0.44",
+    "version": "2.0"
+  },
+  "scene": 0.0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0.0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0.0,
+      "name": "Pebble_Round_2"
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "PathRocks",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0.0
+        },
+        "metallicFactor": 0.0
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Cube.017_Retopology.010",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0.0,
+            "NORMAL": 1.0,
+            "TEXCOORD_0": 2.0
+          },
+          "indices": 3.0,
+          "material": 0.0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0.0,
+      "source": 0.0
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/png",
+      "name": "PathRocks_Diffuse",
+      "uri": "path_rocks_diffuse.png"
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0.0,
+      "componentType": 5126.0,
+      "count": 212.0,
+      "max": [
+        0.234273418784142,
+        0.0912495329976082,
+        0.18878561258316
+      ],
+      "min": [
+        -0.215203478932381,
+        -0.00298019987531006,
+        -0.222273126244545
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1.0,
+      "componentType": 5126.0,
+      "count": 212.0,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2.0,
+      "componentType": 5126.0,
+      "count": 212.0,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3.0,
+      "componentType": 5123.0,
+      "count": 342.0,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0.0,
+      "byteLength": 2544.0,
+      "byteOffset": 0.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 2544.0,
+      "byteOffset": 2544.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 1696.0,
+      "byteOffset": 5088.0,
+      "target": 34962.0
+    },
+    {
+      "buffer": 0.0,
+      "byteLength": 684.0,
+      "byteOffset": 6784.0,
+      "target": 34963.0
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729.0,
+      "minFilter": 9987.0
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 7468.0,
+      "uri": "pebble_round_2.bin"
+    }
+  ]
+}

@@ -49,8 +49,8 @@ to_s = 0.166
 [sub_resource type="Resource" id="Seg_dodge_main"]
 script = ExtResource("3_seg")
 animation = &"ual1/Roll"
-from_s = 0.0
-to_s = 1.35
+from_s = 0.04
+to_s = 0.94
 
 [sub_resource type="Resource" id="Seg_stagger_main"]
 script = ExtResource("3_seg")

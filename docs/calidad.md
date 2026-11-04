@@ -38,7 +38,7 @@ Antes de escribirlo he revisado yo mismo las capturas que respaldan los hallazgo
 
 1. En todos los fotogramas de `loc_*` (lado, frente y cámara del juego) el escudo va delante del torso y la hoja nunca apunta hacia atrás ni por encima de la cabeza. Los dedos de las dos manos están cerrados.
 2. En `com_ligero_*`, `com_combo_completo` y `com_fuerte__golpe`, sin entrada de movimiento, los pies quedan plantados durante la anticipación y el golpe, la cadera gira hacia el golpe y el escudo no sale de delante del pecho.
-3. Ningún tramo de ataque, bloqueo o habilidad se reproduce fuera de 0,7x a 1,5x de su velocidad original. Lo comprueba una prueba que cruza `data/animation` con los ticks de `data/combat`; la esquiva admite hasta 2x hasta tener clips propios.
+3. Ningún tramo de ataque, bloqueo o habilidad se reproduce fuera de 0,7x a 1,5x de su velocidad original. Lo comprueba una prueba que cruza `data/animation` con los ticks de `data/combat`; la esquiva admite hasta 2x hasta tener clips propios, y la anticipación de los PNJ admite desde 0,3x (la alargan a propósito; se cambiará en la oleada 2 por un tramo a 1x más una pose mantenida).
 4. Todo ataque de toda `WeaponDefinition` de `data/combat` tiene entrada en su `CombatClipSet` (prueba automática), y las tiras `npc_*` muestran un clip en cada fotograma de la acción.
 5. Bloqueo: visto desde el atacante, el escudo tapa pecho y cabeza; la pose respira (no hay 12 fotogramas idénticos), se puede andar bloqueando y cada golpe bloqueado da una reacción visible de 0,15 s o más.
 6. En las cuatro esquivas el cuerpo viaja hacia donde rueda o salta. ⓒ Con clips direccionales, el modelo no gira más de 15° respecto al punto de mira.
@@ -127,6 +127,8 @@ El orden pone primero lo que permite demostrar la mejora, después lo barato y l
 
 **Capturas que lo demuestran.** El índice regenerado y una tira remota en la que el remoto seguido no queda tapado.
 
+**Estado.** Hecho: `tools/quality/` con `python tools/quality/run.py <área>` (animacion, mapa, interfaz, mundo, combate, video y todo), documentado en el README. Las tiras de remotos salen de un bot completo solo en el servidor (sin PNJ), de los PNJ del fuerte, de los guardias de reino y de los Guardianes de la Puerta; cada una lleva en su `meta.json` el clip que reproduce la capa de animación del remoto, una vista lateral propia y la marca de los fotogramas tapados. Hay tira de golpe recibido en bloqueo y el vídeo con `--write-movie`. El índice resume por tira cuántos fotogramas de acción tienen clip (por ejemplo, `0/9` en un ataque de PNJ que ataca andando).
+
 **Depende del usuario.** Nada.
 
 ### Oleada 1: lo barato (4 a 6 sesiones)
@@ -136,6 +138,8 @@ El orden pone primero lo que permite demostrar la mejora, después lo barato y l
 **Tareas.** UI-49 (arreglos rápidos de la interfaz), UI-50 (señales de daño y colores), ART-47 (clips de los PNJ), ART-48 (bloqueo con escudo), ART-49 (esquiva orientada), ART-53 (cuerpos junto a la cámara), ART-58 (rocas y árboles asentados), la primera mitad de ART-54 (luz sin rellenos, sombras), las UV y los mipmaps del minimapa de UI-52, el filtro de marcadores de UI-54 y las sombras de las armas de ART-06.
 
 **Capturas que lo demuestran.** `interfaz/hud_en_pelea_*` (brújula y panel en x = 960), `interfaz/derribado_aviso.png` entero, `interfaz/inventario_i.png` y `personaje_c.png` sin tooltip, `interfaz/creacion_02_apariencia.png` en reposo, `combate/pelea_b_05.png` sin rojo a pantalla completa, `animacion/lado/npc_*_ataque_*` con clip, `camara_juego/com_bloqueo__mantener.png` con el escudo delante, `lado/com_esquiva_*`, `mapa/minimapa_*` sin franjas y las 10 cámaras de revisión con sombras.
+
+**Estado.** Integrada (3 de noviembre de 2026) la parte barata de UI-49 (puntos 1 a 5), UI-50, ART-47 (clips, sin árbol de zombi), ART-48 (bloqueo con `Idle_Shield_Loop`), ART-49 (esquiva orientada), ART-53, ART-58, ART-54 (solo la luz), ART-55 (UV y proyección), ART-59 (corteza y modelos), UI-52 (UV y niebla), UI-54 (filtro de marcadores) y ART-06 (sombras y cambio de arma a mitad del gesto). La suite completa pasa (2768 pruebas) y el juego completo de capturas se regeneró con `python tools/quality/run.py todo` en `build/calidad_o1/`, con los mismos encuadres que la auditoría. Las parejas antes y después están en `build/comparaciones/`. Comprobado en las capturas: brújula y panel centrados en x = 960, aviso de derribado entero, sin tooltip al abrir el inventario, figura de creación en reposo, golpe de 70 u 90 sin teñir la pantalla, minimapa sin franjas, sombras en las 10 cámaras de revisión (como mucho 1,93 M de primitivas y 1151 llamadas de dibujo, dentro del presupuesto), todos los ataques de PNJ con clip en cada fotograma de acción y el bloqueo con el escudo delante del pecho. Sigue abierto: el aviso de derribado se pisa con la barra de jefe (UI-08 y UI-18), las columnas cortadas del marcador y la elección de reino (UI-49, 6 y 7), el árbol de locomoción de zombi y el perfil visual de los PNJ (ART-52), la segunda mitad de ART-54, ART-55 y ART-59, y toda la oleada 2. Dos observaciones del banco: la tira `rem_bot_*` se colgó una vez al cerrar el cliente (se repitió y salió bien) y `rem_guardian_andar` necesitó una segunda pasada de la fase del Guardián.
 
 **Depende del usuario.** Aprobar la descarga de las fuentes (gratis) si se quieren ya en esta oleada.
 

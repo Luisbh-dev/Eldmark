@@ -4,7 +4,8 @@ extends RefCounted
 ## aplanado para el escudo, colgados de [BoneAttachment3D] en la mano derecha e izquierda del
 ## esqueleto. Solo cliente y [b]solo un marcador de posición[/b] hasta que lleguen los modelos
 ## definitivos (espada del Fantasy Props MegaKit y escudo de RPG Weapons Pro); el arco del golpe no
-## sale de la malla sino de los datos de combate.
+## sale de la malla sino de los datos de combate. La hoja, la guarda, el disco y el arco proyectan sombra
+## (la cuerda, de 6 mm, no): el arma existe también en la sombra del personaje.
 ## [br][br]
 ## El esqueleto es el humanoide de Godot ([code]RightHand[/code], [code]LeftHand[/code]). En los clips de
 ## UAL el eje local +Y de la mano apunta por el antebrazo hacia los dedos; la hoja sale por +X y el
@@ -125,7 +126,7 @@ static func _make_sword() -> Node3D:
 	blade_mesh.material = _material(STEEL_COLOR, 0.9, 0.35)
 	blade.mesh = blade_mesh
 	blade.position = Vector3(SWORD_LENGTH * 0.5 - SWORD_POMMEL_BACK, 0.0, 0.0)
-	blade.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	blade.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	root.add_child(blade)
 	var guard := MeshInstance3D.new()
 	guard.name = "Guarda"
@@ -134,7 +135,7 @@ static func _make_sword() -> Node3D:
 	guard_mesh.material = _material(GUARD_COLOR, 0.2, 0.6)
 	guard.mesh = guard_mesh
 	guard.position = Vector3(GUARD_OFFSET, 0.0, 0.0)
-	guard.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	guard.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	root.add_child(guard)
 	return root
 
@@ -157,7 +158,7 @@ static func _make_shield() -> Node3D:
 	# El cilindro de Godot tiene el eje en Y: se tumba para que el eje sea Z.
 	disc.rotation = Vector3(PI * 0.5, 0.0, 0.0)
 	disc.position = Vector3(0.0, 0.0, -SHIELD_FORWARD)
-	disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	root.add_child(disc)
 	return root
 
@@ -174,7 +175,7 @@ static func _make_bow() -> Node3D:
 	grip.name = "Empunadura"
 	grip.mesh = _bow_rod(BOW_GRIP_LENGTH, material)
 	grip.rotation = Vector3(0.0, 0.0, PI * 0.5)
-	grip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	grip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	root.add_child(grip)
 	var bend: float = deg_to_rad(BOW_BEND_DEG)
 	var tips: Array[Vector3] = []
@@ -187,7 +188,7 @@ static func _make_bow() -> Node3D:
 		limb.position = start + direction * BOW_LIMB_LENGTH * 0.5
 		# El cilindro va en Y: se gira para que siga la dirección de la pala.
 		limb.basis = Basis(Quaternion(Vector3.UP, direction.normalized()))
-		limb.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		limb.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		root.add_child(limb)
 		tips.append(start + direction * BOW_LIMB_LENGTH)
 	var string := MeshInstance3D.new()
