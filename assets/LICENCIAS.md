@@ -154,6 +154,28 @@ versión; se anota la fecha del archivo usado dentro del zip.
 | Carpeta en el repo | `assets/textures/terrain/watercolor/` |
 | Créditos | No obligatorios; si se acredita, el autor pide "Jonas Voland" |
 
+### Texturas de terreno de Poly Haven (ART-55)
+
+| Campo | Valor |
+|---|---|
+| Autores | Dimitrios Savva (`damp_beach_sand`, y fotografía de `rock_boulder_dry`), eye-candy.xyz (`dirt_floor`), Charlotte Baglioni (`forest_ground_06`, `grass_ground`), Rob Tuytel (`ground_grey`, `snow_02`), Rico Cilliers (procesado de `rock_boulder_dry`), Amal Kumar (`rocky_trail`) |
+| Versión / archivo | Las ocho a 2K, bajadas el 3 de noviembre de 2026 a `../Eldmark-raw/texturas_polyhaven_2k/` (md5 comprobado contra la API de Poly Haven; ver su `FUENTE.txt`). **Modificadas**: reescaladas a 1024 px, desaturadas, con el contraste comprimido y parte de la oclusión ambiental horneada en el color; la altura va en el alfa del albedo (`*_alb_ht.png`) y la rugosidad en el alfa de la normal OpenGL (`*_nrm_rough.png`). Script: `tools/assets/process_terrain_textures.py` |
+| URL | https://polyhaven.com/textures (cada una en https://polyhaven.com/a/<id>) |
+| Licencia | CC0 1.0 (dominio público), https://polyhaven.com/license |
+| Dónde se indica | Página de licencia de Poly Haven (los archivos no traen licencia propia) |
+| Carpeta en el repo | `assets/textures/terrain/polyhaven/` |
+| Créditos | No obligatorios (cortesía: "Poly Haven") |
+| Nota | Sustituyen a las de acuarela y a la normal plana en el terreno del Vado Gris; las de acuarela siguen en el repo por si otra zona las usa |
+
+### Sky3D 2.1.0: descartado (ART-54)
+
+El cielo del Vado Gris es propio (`assets/materials/shaders/storm_sky.gdshader`, un shader de cielo con
+nubes procedurales): Sky3D (TokisanGames, MIT) trae un ciclo de día y noche completo que aquí no hace
+falta, arrastra la luna de procedencia dudosa (MoonMap.png) y las estrellas de ESO/S. Brunier (CC BY 4.0,
+que obligaría a acreditarlas), y su ciclo habría que mantenerlo apagado en el servidor. No se ha copiado
+nada de Sky3D al repo, así que no hay nada que acreditar por él. Si algún día se quiere el ciclo de día y
+noche (decisión pendiente en el backlog), habrá que volver a valorarlo y acreditar a ESO entonces.
+
 ## Fuentes (pendientes: tarea del usuario)
 
 `assets/fonts/` está vacío: **faltan las fuentes OFL elegidas** para la interfaz (decisión del
@@ -281,6 +303,6 @@ Ninguno es obligatorio, pero los autores lo agradecen. Para la pantalla de créd
 - Modelos y animaciones: **Quaternius** (quaternius.com).
 - Murallas: **loafbrr**.
 - Piezas de blockout: **Kenney** (www.kenney.nl).
-- Texturas de terreno: **Jonas Voland**.
+- Texturas de terreno: **Jonas Voland** y **Poly Haven** (Dimitrios Savva, eye-candy.xyz, Charlotte Baglioni, Rob Tuytel, Rico Cilliers, Amal Kumar).
 - Terreno: **Terrain3D**, de Cory Petkovsek, Roope Palmroos y colaboradores (MIT).
 - Dispersión: **ProtonScatter**, de HungryProton (MIT).

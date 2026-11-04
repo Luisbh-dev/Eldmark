@@ -264,7 +264,12 @@ func test_four_bots_that_do_not_die_beat_the_ford_captain_in_a_reasonable_time()
 	print("[capitán] 4 bots que no mueren derrotan al Capitán del Vado en %.1f s de juego" % seconds)
 	assert_true(cleared, "el Capitán cae")
 	assert_true(seconds > 40.0 and seconds < 150.0, "entre 40 y 150 s (%.1f s)" % seconds)
-	assert_eq(_rig.state().phase, FortressState.Phase.VULNERABLE, "su muerte abre el círculo de captura")
+	# Con el torreón nuevo (ART-57, huella de 9,9 m) los bots pelean con el Capitán en la cara oeste, dentro
+	# del círculo: en cuanto muere, el círculo está abierto y ya captura (antes, con la torre de 6 m, lo
+	# atacaban desde fuera y la fase era VULNERABLE en ese tick).
+	var phase: int = _rig.state().phase
+	assert_true(phase == FortressState.Phase.VULNERABLE or phase == FortressState.Phase.CAPTURING,
+			"su muerte abre el círculo de captura (fase %d)" % phase)
 	assert_false(_rig.state().captain_alive)
 
 
