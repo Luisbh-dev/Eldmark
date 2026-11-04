@@ -35,6 +35,23 @@ extends Resource
 @export var hold_end: bool = false
 ## Repite el tramo mientras dura la acción (arrastrarse derribado).
 @export var loop: bool = false
+## Con [member upper_body] (ART-46): cuánto toman la cadera y las piernas del clip (0 a 1) cuando la entrada no
+## pide movimiento. Los ataques ponen 1: con los pies plantados el cuerpo entero sale del clip; en cuanto la
+## entrada pide andar (la estocada del ataque no cuenta), las piernas vuelven a la locomoción. Sin efecto con
+## [code]upper_body = false[/code] (el clip ya es de cuerpo entero).
+@export_range(0.0, 1.0) var lower_weight: float = 0.0
+## Peso de cadera y piernas propio de cada fase de un ataque (anticipación, golpe, recuperación); -1 = el de
+## [member lower_weight]. Sirve cuando un tramo del clip no tiene los pies en el suelo (el salto del tercer ligero).
+@export_range(-1.0, 1.0) var lower_weight_windup: float = -1.0
+@export_range(-1.0, 1.0) var lower_weight_active: float = -1.0
+@export_range(-1.0, 1.0) var lower_weight_recovery: float = -1.0
+## true (ART-46): el clip no toca el brazo izquierdo (hombro, brazo, mano y dedos): lo pone la postura armada
+## ([ArmedStanceModifier], ART-45), así el escudo no sale de delante del pecho en los ataques de espada.
+@export var keep_left_arm: bool = false
+## Con [member hold_end] (ART-07): la pose mantenida se mece este tiempo (s) hacia atrás por el clip y vuelve, a
+## [member sway_hz] ciclos por segundo, para que la carga de un golpe no sea un fotograma congelado.
+@export var sway_s: float = 0.0
+@export var sway_hz: float = 1.2
 ## Segundos que tarda la capa en aparecer al empezar la acción y en irse al acabar.
 @export var blend_in_s: float = 0.06
 @export var blend_out_s: float = 0.12
@@ -49,6 +66,19 @@ func segment_for_phase(phase: int) -> CombatClipSegment:
 		ActionMachine.PHASE_RECOVERY:
 			return recovery if recovery != null else windup
 	return windup
+
+
+## Peso de cadera y piernas para la fase [param phase] ([constant ActionMachine.PHASE_WINDUP]...).
+func lower_weight_for_phase(phase: int) -> float:
+	var override: float = -1.0
+	match phase:
+		ActionMachine.PHASE_WINDUP:
+			override = lower_weight_windup
+		ActionMachine.PHASE_ACTIVE:
+			override = lower_weight_active
+		ActionMachine.PHASE_RECOVERY:
+			override = lower_weight_recovery
+	return override if override >= 0.0 else lower_weight
 
 
 ## true si es una animación de ataque (tiene los tres tramos).

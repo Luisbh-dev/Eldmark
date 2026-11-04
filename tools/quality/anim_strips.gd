@@ -250,6 +250,10 @@ func apply_event(ev: Dictionary, tick: int) -> void:
 			ActionMachine.impose_interact(c, tick, CombatState.Action.EXECUTE)
 		"revived":
 			ActionMachine.impose_revived(c, tick)
+		"hit", "block_hit":
+			# Reacción visual a un golpe que el servidor no convierte en control (ART-48, ART-50): el atacante
+			# está delante del personaje (que mira a -Z).
+			visual.react_to_hit(Vector3(0.0, 0.0, -1.0), float(ev.get("amount", 90.0)), String(ev["kind"]) == "block_hit")
 
 
 # ---------------------------------------------------------------------------------------------

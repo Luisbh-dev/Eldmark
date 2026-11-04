@@ -268,6 +268,9 @@ func _on_hit(event: NetMessages.EntityEvent, is_own: bool) -> void:
 	var position: Vector3 = get_entity_position(event.net_id)
 	if event.amount > 0 and not _defer_remote_reaction(event, is_own):
 		_react_to_hit(event)
+	elif event.amount <= 0 and (blocked or parried):
+		# Un golpe bloqueado del todo no tiene daño, pero el escudo lo nota (ART-48).
+		_react_body(event, true)
 	if attacker_is_me:
 		_dps.add_hit(event.tick, event.amount)
 		if is_instance_valid(_marker):
@@ -311,9 +314,27 @@ func _on_kill(event: NetMessages.EntityEvent, is_own: bool) -> void:
 # es del jugador local o lo recibe él, tenue si es de otros).
 func _react_to_hit(event: NetMessages.EntityEvent) -> void:
 	entity_damaged.emit(event.net_id)
+	_react_body(event, event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_BLOCKED)
+			or event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_PARRIED))
 	var own_id: int = get_own_net_id()
 	var involves_me: bool = own_id != 0 and (event.attacker == own_id or event.net_id == own_id)
 	flash(event.net_id, 1.0 if involves_me else FLASH_OTHERS_INTENSITY)
+
+
+# El cuerpo de la víctima reacciona al golpe (ART-48, ART-50): se echa atrás, al lado contrario al atacante, o, si
+# lo bloquea, empuja el escudo. Solo visual y solo si la víctima tiene un [HumanoidVisual] dibujado.
+func _react_body(event: NetMessages.EntityEvent, blocked: bool) -> void:
+	var body: PlayerCharacter = _body_of(event.net_id)
+	if body == null:
+		return
+	var visual: HumanoidVisual = body.get_node_or_null(^"Visual/HumanoidVisual") as HumanoidVisual
+	if visual == null:
+		return
+	var direction := Vector3.ZERO
+	var attacker_position: Vector3 = get_entity_position(event.attacker)
+	if attacker_position != Vector3.INF:
+		direction = attacker_position - body.global_position
+	visual.react_to_hit(direction, float(event.amount), blocked)
 
 
 func _react_to_death(event: NetMessages.EntityEvent) -> void:

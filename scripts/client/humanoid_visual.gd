@@ -91,6 +91,8 @@ var _skeleton: Skeleton3D = null
 var _camera_fade_applied: bool = false
 var _fade_meshes: Array[MeshInstance3D] = []
 var _fade_value: float = -1.0
+# Perfil visual de PNJ puesto (ART-52) o null.
+var _profile: NpcVisualProfile = null
 # Variante de la espada pedida antes de _ready (vacía = ninguna).
 var _pending_sword_variant: StringName = &""
 # Ranura -> sus mallas (colgadas del esqueleto) y la ruta de la escena de la que salieron.
@@ -183,12 +185,23 @@ func _ready() -> void:
 	get_animator().weapon_shown.connect(_on_weapon_shown)
 	# La estela de la espada sigue la fase activa del golpe, también la de los remotos.
 	get_animator().swing_active_changed.connect(_on_swing_active_changed)
+	# Postura armada sobre la locomoción (ART-45): el reposo de combate, la capa de brazos y el agarre. Va antes
+	# que la pose de combate, que la pisa cuando hay un golpe o una esquiva.
+	var stance := ArmedStanceModifier.new()
+	stance.name = "ArmedStance"
+	_skeleton.add_child(stance)
+	get_animator().set_stance_modifier(stance)
 	# Pose de combate sobre la locomoción (ART-08). Va antes que el giro de la columna, que se
 	# aplica encima.
 	var combat := CombatPoseModifier.new()
 	combat.name = "CombatPose"
 	_skeleton.add_child(combat)
 	get_animator().set_combat_modifier(combat)
+	# Reacciones procedurales al golpe recibido o bloqueado y escudo a la altura de la cabeza (ART-48, ART-50).
+	var reaction := HitReactionModifier.new()
+	reaction.name = "HitReaction"
+	_skeleton.add_child(reaction)
+	get_animator().set_reaction_modifier(reaction)
 	# Giro de la columna hacia el punto de mira (lo conduce el animador).
 	var spine := SpineTwistModifier.new()
 	spine.name = "SpineTwist"
@@ -200,8 +213,50 @@ func _ready() -> void:
 
 func _on_weapon_shown(weapon_id: int) -> void:
 	WeaponProps.show_weapon(_skeleton, weapon_id)
+	# Un PNJ con perfil visual (ART-52) cambia el escudo, el color, los ojos, la escala y la postura.
+	apply_profile(NpcVisualProfile.for_weapon_id(weapon_id))
 	# El arco se crea la primera vez que hace falta: sus mallas también se difuminan.
 	_apply_camera_fade()
+
+
+## Aplica el perfil visual de un tipo de PNJ ([NpcVisualProfile], ART-52), o lo quita con null: escala visual, color
+## de las mallas del cuerpo, brillo de los ojos, escudo y arma de las manos y postura del animador. Es solo visual: la
+## cápsula del personaje y las cajas de golpe no cambian.
+func apply_profile(profile: NpcVisualProfile) -> void:
+	_profile = profile
+	scale = Vector3.ONE * (profile.scale if profile != null else 1.0)
+	if _skeleton != null:
+		_apply_tints()
+		_apply_profile_props()
+	var animator: CharacterAnimator = get_animator()
+	if animator != null:
+		animator.set_stance_profile(profile.stance if profile != null else &"shield")
+
+
+## Perfil visual puesto ahora (null si no hay).
+func get_profile() -> NpcVisualProfile:
+	return _profile
+
+
+## El personaje recibe un golpe de [param amount] de daño desde [param attacker_direction] (vector del mundo, de la
+## víctima hacia el atacante), o lo bloquea con el escudo si [param blocked]: reacción procedural del cuerpo (ART-48,
+## ART-50). Ver [method CharacterAnimator.react_to_hit].
+func react_to_hit(attacker_direction: Vector3, amount: float = 0.0, blocked: bool = false) -> void:
+	get_animator().react_to_hit(attacker_direction, amount, blocked)
+
+
+# Escudo y arma de las manos según el perfil: sin escudo en el Hueco y arma mayor en el Capitán.
+func _apply_profile_props() -> void:
+	var shield_node: Node3D = _skeleton.get_node_or_null(NodePath("%s/%s" % [WeaponProps.SHIELD_ATTACHMENT,
+			WeaponProps.SHIELD_MESH])) as Node3D
+	var sword_attachment: Node3D = _skeleton.get_node_or_null(NodePath(WeaponProps.SWORD_ATTACHMENT)) as Node3D
+	var shown_bow: bool = get_animator().get_shown_weapon() >= 0 \
+			and CombatCatalog.weapon(get_animator().get_shown_weapon()) != null \
+			and CombatCatalog.weapon(get_animator().get_shown_weapon()).name == WeaponProps.BOW_WEAPON
+	if shield_node != null and not shown_bow:
+		shield_node.visible = _profile == null or _profile.shield
+	if sword_attachment != null:
+		sword_attachment.scale = Vector3.ONE * (_profile.weapon_scale if _profile != null else 1.0)
 
 
 func _on_swing_active_changed(active: bool) -> void:
@@ -360,10 +415,12 @@ func _apply_tints() -> void:
 		for surface: int in range(mesh.mesh.get_surface_count()):
 			var base: Material = mesh.mesh.surface_get_material(surface)
 			var channel: StringName = _tint_channel_of(base)
-			if channel == &"" or not _tints.has(channel):
-				mesh.set_surface_override_material(surface, null)
-			else:
-				mesh.set_surface_override_material(surface, _tinted(base, _tints[channel]))
+			var result: Material = null
+			if channel != &"" and _tints.has(channel):
+				result = _tinted(base, _tints[channel])
+			if _profile != null and _profile.changes_look():
+				result = _profiled(result if result != null else base, _profile, channel == &"eyes")
+			mesh.set_surface_override_material(surface, result)
 
 
 static func _tint_channel_of(material: Material) -> StringName:
@@ -384,6 +441,43 @@ static func _tinted(base: Material, color: Color) -> Material:
 		(tinted as BaseMaterial3D).albedo_color = color
 		_tinted_materials[key] = tinted
 	return tinted
+
+
+# Material de [param base] con el color del perfil de PNJ (ART-52) y, en los ojos, su brillo emisivo. Se comparten
+# entre todos los PNJ del mismo perfil.
+static func _profiled(base: Material, profile: NpcVisualProfile, is_eye: bool) -> Material:
+	if not (base is BaseMaterial3D):
+		return base
+	var key: String = "p|%d|%s|%s" % [base.get_instance_id(), profile.id, is_eye]
+	var made: Material = _tinted_materials.get(key)
+	if made != null:
+		return made
+	var source: BaseMaterial3D = base as BaseMaterial3D
+	if is_eye:
+		if profile.eye_energy <= 0.0:
+			return base
+		var glow: BaseMaterial3D = source.duplicate() as BaseMaterial3D
+		glow.emission_enabled = true
+		glow.emission = profile.eye_glow
+		glow.emission_energy_multiplier = profile.eye_energy
+		glow.albedo_color = profile.eye_glow
+		made = glow
+	elif source.albedo_texture != null and (profile.saturation < 1.0 or profile.tint != Color.WHITE):
+		# Con textura: desaturada y teñida por el sombreado de recoloreado.
+		var shader := Shader.new()
+		shader.code = NpcVisualProfile.RECOLOR_SHADER
+		var recolored := ShaderMaterial.new()
+		recolored.shader = shader
+		recolored.set_shader_parameter(&"albedo_tex", source.albedo_texture)
+		recolored.set_shader_parameter(&"tint", source.albedo_color * profile.tint)
+		recolored.set_shader_parameter(&"saturation", profile.saturation)
+		made = recolored
+	else:
+		var tinted: BaseMaterial3D = source.duplicate() as BaseMaterial3D
+		tinted.albedo_color = tinted.albedo_color * profile.tint
+		made = tinted
+	_tinted_materials[key] = made
+	return made
 
 
 func _apply_hood() -> void:
