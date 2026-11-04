@@ -232,9 +232,11 @@ func _on_hit_impact(event: NetMessages.EntityEvent, position: Vector3, _involves
 			event.has_hit_flag(NetMessages.EntityEvent.HIT_FLAG_PARRIED), attack != null and attack.heavy)
 
 
-func _on_hit_predicted(position: Vector3, heavy: bool) -> void:
+func _on_hit_predicted(net_id: int, position: Vector3, heavy: bool) -> void:
 	var attacker: Vector3 = _feedback.get_local_position() if is_instance_valid(_feedback) else Vector3.ZERO
-	spawn_impact(position, attacker, CombatSoundBank.Armor.FLESH, false, false, heavy)
+	var audio: CombatAudio = CombatAudio.get_instance()
+	var material: int = audio.material_of(net_id) if audio != null else CombatSoundBank.Armor.FLESH
+	spawn_impact(position, attacker, material, false, false, heavy)
 
 
 func _on_entity_died(_net_id: int, position: Vector3) -> void:

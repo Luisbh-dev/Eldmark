@@ -321,12 +321,12 @@ func test_banners_take_the_realm_color_and_the_big_ones_last_longer() -> void:
 	assert_eq(banners.get_banner_count(), 0, "y luego también")
 
 
-func test_banners_queue_up_to_three_and_the_oldest_leaves() -> void:
+func test_banners_queue_up_to_three_and_the_oldest_waiting_one_leaves() -> void:
 	var banners: WarBanners = _track(WarBanners.new()) as WarBanners
 	for i: int in 5:
 		banners.add_banner("Aviso %d" % i, Color.WHITE)
 	assert_eq(banners.get_banner_count(), WarBanners.MAX_BANNERS)
-	assert_eq(banners.get_texts(), PackedStringArray(["Aviso 2", "Aviso 3", "Aviso 4"]))
+	assert_eq(banners.get_texts(), PackedStringArray(["Aviso 0", "Aviso 3", "Aviso 4"]), "el aviso visible no se quita a medias")
 	banners.add_banner("", Color.WHITE)
 	assert_eq(banners.get_banner_count(), 3, "un texto vacío no cuenta")
 	# Fundido final de la banda (solo del aviso que se ve).

@@ -987,6 +987,10 @@ func test_the_kill_feed_shows_downed_players() -> void:
 	var drawn_source: int = CombatSource.make(CombatSource.Kind.ATTACK, CombatCatalog.attack_id(&"bow_drawn"))
 	var text: String = feed.show_downed(NetMessages.EntityEvent.downed(33, 100, OTHER_ID, drawn_source))
 	assert_eq(text, "Ana derribó a Bruno con un disparo tensado", "one line per knockdown")
+	var painted: PackedStringArray = PackedStringArray()
+	for label: Node in feed.find_children("*", "Label", true, false):
+		painted.append((label as Label).text)
+	assert_true(" ".join(painted).contains("derribó"), "the painted row keeps the verb, a knockdown does not read as a kill")
 	var slowing: int = CombatSource.make(CombatSource.Kind.ABILITY, CombatCatalog.ability_id(&"bow_slowing_shot"))
 	assert_eq(CombatText.source_label(slowing), "una flecha lastrante", "the abilities have a name")
 	assert_eq(CombatText.death_text(OTHER_ID, "Ana", CombatSource.EXECUTE), "Te ha rematado Ana.")

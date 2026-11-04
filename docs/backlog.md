@@ -463,6 +463,7 @@ Terminado cuando un fallo provocado llega con build id, zona y sus últimas 500 
 - [ ] **TEC-53 Localización de la interfaz: inglés y español** · F6 · importante · M · cliente — La interfaz y los mensajes de log siguen en español. Pasar los textos de la UI a la traducción de Godot (`tr()` y catálogos `.po` o CSV), con inglés por defecto y español, elección en los ajustes y prueba que falle si queda un texto visible sin clave.
 - [ ] **TEC-54 Publicar el repositorio** · F5 · importante · S · operaciones — Lista para abrir el repo (auditorías del 4 de noviembre de 2026: ningún asset de terceros impide publicar y no hay secretos):
   - decidir el alojamiento de los assets: el ancho de banda gratuito de Git LFS (10 GiB al mes) se agota con unos 65 clones o forks, y entonces LFS se corta también para la CI. Hay dos salidas: pasar los binarios a adjuntos de GitHub Releases con un `tools/fetch_assets`, lo más barato si se reescribe el historial antes de publicar, o seguir con LFS añadiendo un método de pago con presupuesto;
+  - reescribir el historial de `main` con `git filter-repo --message-callback` para quitar los trailers `Co-Authored-By` de Claude (unos 310 de sus 323 commits) y traducir los mensajes al inglés; reescribir el historial lo decide el usuario y rompe los clones existentes, así que se hace antes de publicar;
   - decidir si se acepta el correo del dominio propio que figura como autor en 65 commits;
   - guardar una copia de la página de itch del Castle Wall Kit, que acredita su CC0;
   - activar el reporte privado de vulnerabilidades;

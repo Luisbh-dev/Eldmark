@@ -60,6 +60,9 @@ const FOOT_BONES: Array[StringName] = [&"LeftFoot", &"RightFoot"]
 ## cual se da por posado.
 const FOOT_LIFT_HEIGHT: float = 0.075
 const FOOT_PLANT_HEIGHT: float = 0.035
+## Cuánto sube por segundo el mínimo reciente de cada pie (m/s). Va con el tiempo y no con los fotogramas, para que
+## el paso no dependa de los FPS.
+const FOOT_LOW_RATE: float = 0.24
 ## Velocidad horizontal (m/s) por debajo de la cual no suenan pasos (un cambio de pose en el sitio no es andar).
 const STEP_MIN_SPEED: float = 0.6
 ## Escena del aura de carga del golpe fuerte.
@@ -329,19 +332,29 @@ func _check_feet() -> void:
 		return
 	var moving: bool = character.grounded and character.get_horizontal_speed() > STEP_MIN_SPEED \
 			and animator.get_current_action() != CombatState.Action.DODGE
+	var step_delta: float = get_process_delta_time()
 	for index: int in _foot_ids.size():
 		var pose: Transform3D = _skeleton.get_bone_global_pose(_foot_ids[index])
-		var height: float = pose.origin.y
-		_foot_low[index] = minf(_foot_low[index] + 0.004, height) if _foot_low[index] != INF else height
-		var above: float = height - _foot_low[index]
-		var falling: bool = _foot_prev[index] != INF and height <= _foot_prev[index]
-		_foot_prev[index] = height
-		if above > FOOT_LIFT_HEIGHT:
-			_foot_planted[index] = false
-		elif above < FOOT_PLANT_HEIGHT and falling and not _foot_planted[index]:
-			_foot_planted[index] = true
-			if moving:
-				_play_step(_skeleton.global_transform * pose.origin, character)
+		if _track_foot(index, pose.origin.y, step_delta) and moving:
+			_play_step(_skeleton.global_transform * pose.origin, character)
+
+
+# Sigue la altura [param height] del pie [param index] durante [param step_delta] s y dice si acaba de posarse (el
+# paso). Separado de [method _check_feet] para probarlo con alturas y fotogramas sintéticos.
+func _track_foot(index: int, height: float, step_delta: float) -> bool:
+	if _foot_low[index] == INF:
+		_foot_low[index] = height
+	else:
+		_foot_low[index] = minf(_foot_low[index] + FOOT_LOW_RATE * step_delta, height)
+	var above: float = height - _foot_low[index]
+	var falling: bool = _foot_prev[index] != INF and height <= _foot_prev[index]
+	_foot_prev[index] = height
+	if above > FOOT_LIFT_HEIGHT:
+		_foot_planted[index] = false
+	elif above < FOOT_PLANT_HEIGHT and falling and not _foot_planted[index]:
+		_foot_planted[index] = true
+		return true
+	return false
 
 
 func _play_step(position: Vector3, character: PlayerCharacter) -> void:

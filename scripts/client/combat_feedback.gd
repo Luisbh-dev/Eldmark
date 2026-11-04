@@ -70,7 +70,7 @@ signal sound_requested(sound: StringName, world_position: Vector3)
 ## chispa).
 signal hit_impact(event: NetMessages.EntityEvent, position: Vector3, involves_me: bool, already_predicted: bool)
 ## El golpe propio activo alcanzaría a alguien según lo dibujado: [param position] son los pies de la víctima.
-signal hit_predicted(position: Vector3, heavy: bool)
+signal hit_predicted(net_id: int, position: Vector3, heavy: bool)
 ## [param net_id] muere en [param position] (los pies), en el tick en que se dibuja.
 signal entity_died(net_id: int, position: Vector3)
 
@@ -301,9 +301,6 @@ func _on_hit(event: NetMessages.EntityEvent, is_own: bool) -> void:
 	var position: Vector3 = get_entity_position(event.net_id)
 	if not _defer_remote_reaction(event, is_own):
 		_react_to_hit(event)
-	elif event.amount <= 0 and (blocked or parried):
-		# Un golpe bloqueado del todo no tiene daño, pero el escudo lo nota (ART-48).
-		_react_body(event, true)
 	if attacker_is_me:
 		_dps.add_hit(event.tick, event.amount)
 		if is_instance_valid(_marker):
@@ -580,17 +577,23 @@ func _try_predict(character: PlayerCharacter, state: CombatState) -> void:
 	if attack == null or attack.shape == null:
 		return
 	var origin: Vector3 = character.global_position if character.is_inside_tree() else character.position
+	var space: PhysicsDirectSpaceState3D = null
+	if character.is_inside_tree():
+		space = character.get_world_3d().direct_space_state
 	for view: RemotePlayerView in _client.get_remote_world().get_views():
 		if view.get_net_id() == get_own_net_id() or not is_valid_target(view):
 			continue
+		# Quien esquiva (en sus ticks de invulnerabilidad) no recibe el golpe: no se predice.
+		if (view.get_drawn_action() & 15) == CombatState.Action.DODGE:
+			continue
 		var feet: Vector3 = view.get_drawn_position()
 		if HitShapes.sector_hits_capsule(origin, character.yaw, attack.shape, feet,
-				HitShapes.CAPSULE_RADIUS, HitShapes.CAPSULE_HEIGHT):
+				HitShapes.CAPSULE_RADIUS, HitShapes.CAPSULE_HEIGHT) 				and (space == null or HitShapes.has_line_of_sight(space, origin, feet)):
 			_predicted_this_swing = true
 			_predicted_attack = state.action_id
 			_predicted_msec = Time.get_ticks_msec()
 			_predictions_made += 1
-			hit_predicted.emit(feet, attack.heavy)
+			hit_predicted.emit(view.get_net_id(), feet, attack.heavy)
 			_hitstop(get_own_net_id(), HITSTOP_HEAVY if attack.heavy else HITSTOP_LIGHT)
 			return
 

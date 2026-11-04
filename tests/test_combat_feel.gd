@@ -254,6 +254,17 @@ func test_numbers_of_the_same_target_do_not_overlap_when_they_are_born() -> void
 	numbers.free()
 
 
+func test_numbers_of_different_targets_close_together_do_not_overlap() -> void:
+	var numbers := DamageNumbers.new()
+	_root.add_child(numbers)
+	numbers.add_number(OTHER_ID, Vector3.ZERO, 90)
+	numbers.add_number(OTHER_ID + 1, Vector3(0.5, 0.0, 0.0), 135)
+	assert_eq(numbers.get_active_count(), 2)
+	assert_true(numbers.get_number_offset(1).y < numbers.get_number_offset(0).y,
+			"the second victim's number is born a step higher")
+	numbers.free()
+
+
 func test_critical_has_its_own_color_and_size_and_kill_and_taken_are_not_confused() -> void:
 	var numbers := DamageNumbers.new()
 	_root.add_child(numbers)

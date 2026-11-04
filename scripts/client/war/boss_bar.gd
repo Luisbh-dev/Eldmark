@@ -11,7 +11,7 @@ extends Control
 ## Metros a los que se ve la barra de un jefe.
 const RANGE: float = 90.0
 const BAR_WIDTH: float = 520.0
-const TOP_OFFSET: float = 234.0
+const TOP_OFFSET: float = 316.0
 const FILL_COLOR: Color = UIPalette.BOSS
 
 ## Segundos que dura «peleando» tras cada golpe entre el jugador y el jefe.
@@ -76,6 +76,13 @@ func _on_combat_event(event: NetMessages.EntityEvent, _is_own: bool) -> void:
 		engage(event.attacker)
 
 
+# Quita las peleas caducadas: sin esto, cada golpe a una entidad nueva (los PNJ que reaparecen) dejaría su entrada.
+func _purge_expired() -> void:
+	for net_id: int in _engaged.keys():
+		if _clock > float(_engaged[net_id]):
+			_engaged.erase(net_id)
+
+
 ## Busca el jefe vivo más cercano a menos de [constant RANGE] m con el que se pelea ([method is_engaged]) y lo
 ## muestra; si no hay, oculta la barra.
 func refresh() -> void:
@@ -87,6 +94,7 @@ func refresh() -> void:
 		_hide()
 		return
 	var here: Vector3 = character.global_position if character.is_inside_tree() else character.position
+	_purge_expired()
 	var best: RemotePlayerView = null
 	var best_distance: float = RANGE
 	for view: RemotePlayerView in _client.get_remote_world().get_views():

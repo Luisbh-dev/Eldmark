@@ -214,8 +214,8 @@ func _on_hit_impact(event: NetMessages.EntityEvent, position: Vector3, involves_
 			involves_me)
 
 
-func _on_hit_predicted(position: Vector3, heavy: bool) -> void:
-	play_impact(position + Vector3(0.0, 1.2, 0.0), CombatSoundBank.Armor.FLESH, heavy, false, false, true)
+func _on_hit_predicted(net_id: int, position: Vector3, heavy: bool) -> void:
+	play_impact(position + Vector3(0.0, 1.2, 0.0), material_of(net_id), heavy, false, false, true)
 
 
 func _on_local_action(action: int, attack_id: int, _action_tick: int, _previous: int) -> void:

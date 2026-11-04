@@ -23,13 +23,13 @@ const TEXT_FONT_SIZE: int = 20
 const BAR_SIZE: Vector2 = Vector2(320.0, 12.0)
 ## Ancho de la columna de textos, centrada en la pantalla.
 const COLUMN_WIDTH: float = BAR_SIZE.x + 80.0
-const DOWNED_COLOR: Color = Color(0.95, 0.55, 0.15, 1.0)
+const DOWNED_COLOR: Color = Color(0.78, 0.74, 0.92, 1.0)
 const REVIVE_COLOR: Color = Color(0.4, 0.85, 0.45, 1.0)
 const EXECUTE_COLOR: Color = Color(0.95, 0.2, 0.15, 1.0)
 const BAR_BACK: Color = Color(0.03, 0.03, 0.04, 0.75)
-## Desde lo alto de la pantalla (px). Por debajo de la barra de jefe (BossBar.TOP_OFFSET 234 + unos 52 de alto) y de la banda de avisos (WarBanners.TOP_OFFSET),
+## Desde lo alto de la pantalla (px). Por debajo de la barra de jefe (BossBar.TOP_OFFSET 316 + unos 52 de alto) y de la banda de avisos (WarBanners.TOP_OFFSET),
 ## que sale en todo el fuerte, para que la cuenta atrás no se pise con ella.
-const TOP_OFFSET: float = 300.0
+const TOP_OFFSET: float = 374.0
 
 ## Ticks tras el fin previsto de una interacción en que se olvida si no llega su evento de fin.
 const FORGET_AFTER_TICKS: int = 30

@@ -860,6 +860,9 @@ func _update_body_offset(delta: float, horizontal: Vector3) -> void:
 		_body_offset += to_local * _slide_velocity * delta
 		pivot.position = _body_offset
 		return
+	if _was_dead:
+		# Sale de la muerte (reaparición): el cuerpo vuelve a la cápsula y al rumbo de golpe, sin deslizarse hasta ella.
+		reset_facing()
 	_was_dead = false
 	_death_yaw = NAN
 	_slide_velocity = Vector3.ZERO

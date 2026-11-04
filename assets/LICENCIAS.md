@@ -283,8 +283,8 @@ declara una licencia propia:
 - Emblemas de bando `assets/emblems/*.svg` (lobo, sol partido, yunque y corona rota):
   **provisionales**, formas geométricas hechas para Eldmark con `tools/assets/make_emblems.py`; los
   sustituirá el arte final de ART-03 con los mismos nombres de archivo.
-- Mapa de pergamino del Vado Gris `assets/maps/vado_gris_parchment.png` y su escala y lugares fijos en
-  `assets/maps/vado_gris_parchment_map.tres` (UI-51): contenido propio, 2048 px sobre ±200 m (el valle
+- Mapa de pergamino del Vado Gris `assets/maps/vado_gris.png` y su escala y lugares fijos en
+  `assets/maps/vado_gris_map.tres` (UI-51): contenido propio, 2048 px sobre ±200 m (el valle
   jugable ocupa tres cuartos de la imagen). Pintado por capas en CPU (papel gris pardo desaturado, aguada,
   relieve a pluma con las rampas dobladas con ruido, río, calzadas unidas antes de entintar, murallas, torres
   y puertas en perspectiva oblicua, fuerte agrandado 1,5 veces con empalizada, torres y torreón, campamentos

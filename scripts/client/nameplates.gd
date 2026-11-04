@@ -33,6 +33,9 @@ const ALLY_FADE_START: float = 30.0
 const MARK_RANGE: float = 30.0
 ## Separación (px) mínima entre dos placas apiladas.
 const STACK_GAP: float = 2.0
+## Lo máximo (px) que sube una placa al apilarse: más arriba ya no se sabe de quién es, así que el resto se queda
+## donde cae. Con un grupo grande, las placas se solapan un poco en vez de formar torres.
+const MAX_STACK_SHIFT: float = 60.0
 ## Distancia máxima (m) a la que se apunta a un enemigo con la retícula o se le enseña herido.
 const ENEMY_RANGE: float = 70.0
 ## Color del nombre de los miembros del grupo (provisional, el mismo azul del canal de grupo del chat).
@@ -310,10 +313,9 @@ func _show(plate: Nameplate, candidate: Dictionary, camera: Camera3D) -> void:
 	plate.visible = true
 
 
-# Apila hacia arriba las placas que se tocan (UI-56): las más cercanas a la mira se quedan donde están y
-# las demás suben lo justo para no pisarlas.
+# Apila hacia arriba las placas que se tocan (UI-56): las demás suben lo justo para no pisarlas, hasta
+# [constant MAX_STACK_SHIFT]. El orden es estable (por net_id) para que las placas no salten de un fotograma a otro.
 func _stack_overlapping() -> void:
-	var centre: Vector2 = get_viewport_rect().size * 0.5 if is_inside_tree() else Vector2.ZERO
 	var plates: Array[Nameplate] = []
 	var rects: Array[Rect2] = []
 	for plate: Nameplate in _assigned.values():
@@ -324,17 +326,17 @@ func _stack_overlapping() -> void:
 	for index: int in plates.size():
 		order.append(index)
 	order.sort_custom(func(a: int, b: int) -> bool:
-		return rects[a].get_center().distance_squared_to(centre) \
-				< rects[b].get_center().distance_squared_to(centre))
-	var shifts: PackedFloat32Array = stack_shifts(rects, order, STACK_GAP)
+		return plates[a].get_net_id() < plates[b].get_net_id())
+	var shifts: PackedFloat32Array = stack_shifts(rects, order, STACK_GAP, MAX_STACK_SHIFT)
 	for index: int in plates.size():
 		plates[index].position.y -= shifts[index]
 
 
 ## Cuánto sube cada rectángulo de [param rects] (en px, 0 o más) para que ninguno pise a otro. Se atienden en
 ## el orden de [param order] (índices): el primero no se mueve y cada siguiente sube hasta quedar libre de los
-## ya colocados, con [param gap] px de aire. Devuelve un valor por rectángulo, en el orden original.
-static func stack_shifts(rects: Array[Rect2], order: Array[int], gap: float) -> PackedFloat32Array:
+## ya colocados, con [param gap] px de aire, y ninguno sube más de [param max_shift]. Devuelve un valor por rectángulo, en el orden original.
+static func stack_shifts(rects: Array[Rect2], order: Array[int], gap: float,
+		max_shift: float = INF) -> PackedFloat32Array:
 	var shifts := PackedFloat32Array()
 	shifts.resize(rects.size())
 	var placed: Array[Rect2] = []
@@ -351,6 +353,7 @@ static func stack_shifts(rects: Array[Rect2], order: Array[int], gap: float) -> 
 					moved = true
 			if not moved:
 				break
+		shift = minf(shift, max_shift)
 		shifts[index] = shift
 		placed.append(Rect2(rect.position - Vector2(0.0, shift), rect.size))
 	return shifts

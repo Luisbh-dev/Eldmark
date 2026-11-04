@@ -305,6 +305,9 @@ func _make_row(parts: PackedStringArray, killer_color: Color, victim_color: Colo
 		icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		icon_rect.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		line.add_child(icon_rect)
+		if parts[1] == TEXT_DOWNED:
+			# Un derribo (se puede reanimar) no se lee como una muerte: conserva el verbo tras el icono.
+			_add_label(line, parts[1].strip_edges(), UIPalette.TEXT_DIM)
 		_add_label(line, parts[2], victim_color)
 		if assist_count > 0:
 			_add_label(line, TEXT_ASSISTS % assist_count, UIPalette.TEXT_DIM)

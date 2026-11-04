@@ -195,6 +195,17 @@ func test_a_pile_of_plates_ends_with_no_overlaps() -> void:
 			assert_false(final[i].intersects(final[j]), "las placas %d y %d no se tocan" % [i, j])
 
 
+func test_stacked_plates_never_climb_beyond_the_cap() -> void:
+	var rects: Array[Rect2] = []
+	var order: Array[int] = []
+	for i: int in 10:
+		rects.append(Rect2(300.0, 400.0, 110.0, 34.0))
+		order.append(i)
+	var shifts: PackedFloat32Array = Nameplates.stack_shifts(rects, order, 2.0, 60.0)
+	for i: int in 10:
+		assert_true(shifts[i] <= 60.0, "la placa %d sube %f" % [i, shifts[i]])
+
+
 func test_a_plate_with_a_faction_mark_grows_its_content_and_distinguishes_ally_from_enemy() -> void:
 	var plate: Nameplate = _add(Nameplate.new()) as Nameplate
 	plate.configure(1, "Ana", Color.WHITE, true, true, 1.0, true, 1.0)
@@ -273,6 +284,27 @@ func test_the_band_and_the_boss_bar_and_the_downed_notice_never_overlap_on_scree
 	assert_false(boss_rect.intersects(notice_rect), "barra de jefe %s y aviso de derribado %s" % [boss_rect, notice_rect])
 	for rect: Rect2 in [band, boss_rect]:
 		assert_near(rect.get_center().x, SCREEN.x * 0.5, 1.0, "centrado en x = 960")
+
+
+func test_the_band_stays_below_the_fort_panel_while_capturing() -> void:
+	var screen := Control.new()
+	screen.size = SCREEN
+	_add(screen)
+	screen.size = SCREEN
+	var definition: FortressDefinition = load("res://data/fortresses/vado_gris.tres") as FortressDefinition
+	var state: FortressState = FortressState.initial(definition, 100)
+	state.phase = FortressState.Phase.CAPTURING
+	state.capture_realm = NetProtocol.Realm.SOLMARCH
+	var panel: CapturePanel = _add(CapturePanel.new(), screen) as CapturePanel
+	panel.show_state(state, 0.4, "Fuerte del Vado Gris", 100)
+	var banners: WarBanners = _add(WarBanners.new(), screen) as WarBanners
+	banners.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	banners.add_banner("Aviso", Color.WHITE, true)
+	await wait_process_frames(3)
+	var panel_rect: Rect2 = panel.get_global_rect()
+	assert_true(panel_rect.size.y > 0.0, "the panel has a size")
+	assert_true(panel_rect.end.y <= banners.get_band().get_global_rect().position.y,
+			"banda %s bajo el panel %s" % [banners.get_band().get_global_rect(), panel_rect])
 
 
 # --- UI-41: registro de bajas ------------------------------------------------------------------

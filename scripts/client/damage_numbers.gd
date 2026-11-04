@@ -54,6 +54,9 @@ const OUTLINE_COLOR: Color = Color(0.0, 0.0, 0.0, 0.85)
 ## nace (1 = sin salto) y tiempo (s) que tarda en bajar a su tamaño.
 const SPREAD_PX: float = 34.0
 const STACK_STEP_PX: float = 26.0
+## Distancia (m) a la que dos números de víctimas distintas cuentan como cercanos y se apilan, y escalones máximos.
+const NEAR_METERS: float = 1.5
+const MAX_STACK_STEPS: int = 6
 const POP_SCALE: float = 1.4
 const POP_SECONDS: float = 0.08
 
@@ -131,7 +134,7 @@ func add_number(target_id: int, world_position: Vector3, amount: int, variant: i
 	created.amount = amount
 	created.world_position = world_position
 	created.text_override = text_override
-	created.offset = _spread_offset(target_id, taken)
+	created.offset = _spread_offset(target_id, taken, world_position)
 	_active.append(created)
 	_spawned_total += 1
 	_refresh(created)
@@ -231,15 +234,17 @@ func _release(label: Label) -> void:
 
 
 # Dónde nace un número respecto al ancla: a un lado (alternando) y un escalón más arriba por cada número vivo de la
-# misma víctima y sentido, para que no se pisen.
-func _spread_offset(target_id: int, taken: bool) -> Vector2:
+# misma víctima y sentido, o de otra víctima que esté a menos de [constant NEAR_METERS] (se dibujarían unos sobre
+# otros), para que no se pisen.
+func _spread_offset(target_id: int, taken: bool, world_position: Vector3 = Vector3.ZERO) -> Vector2:
 	var alive: int = 0
 	for number: _Number in _active:
-		if number.target_id == target_id and number.taken == taken:
+		if ((number.target_id == target_id and number.taken == taken)
+				or number.world_position.distance_to(world_position) < NEAR_METERS):
 			alive += 1
 	var side: float = -1.0 if (_spawned_total % 2) == 0 else 1.0
 	return Vector2(side * SPREAD_PX * (0.6 + 0.4 * float(alive % 3 + 1) / 3.0),
-			-STACK_STEP_PX * float(mini(alive, 4)))
+			-STACK_STEP_PX * float(mini(alive, MAX_STACK_STEPS)))
 
 
 ## Desplazamiento de nacimiento del número activo [param index] (para las pruebas).

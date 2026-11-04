@@ -10,17 +10,29 @@ de tests/test_export_config.gd).
 Estilo (docs/arte.md): estilizado y apagado, así que se desatura, se comprime un poco el contraste
 y se hornea parte de la oclusión ambiental en el color. Uso: python tools/assets/process_terrain_textures.py
 """
+import os
 import sys
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
-RAW = Path(__file__).resolve().parents[3] / "Eldmark-raw" / "texturas_polyhaven_2k" / "extracted"
+
+
+def find_raw() -> Path:
+    """Carpeta de las texturas originales: la variable de entorno ELDMARK_RAW (que apunta a Eldmark-raw) o, si no
+    está, la primera Eldmark-raw que haya en los directorios padres del repo."""
+    sub = Path("texturas_polyhaven_2k") / "extracted"
+    if os.environ.get("ELDMARK_RAW"):
+        return Path(os.environ["ELDMARK_RAW"]) / sub
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "Eldmark-raw").is_dir():
+            return parent / "Eldmark-raw" / sub
+    return Path(__file__).resolve().parents[3] / "Eldmark-raw" / sub
+
+
+RAW = find_raw()
 OUT = Path(__file__).resolve().parents[2] / "assets" / "textures" / "terrain" / "polyhaven"
-if not RAW.exists():
-    # Dentro de un worktree (.claude/worktrees/<n>) el repo principal está tres niveles más arriba.
-    RAW = Path("C:/Users/MrPortainer/Documents/REPOS/Eldmark-raw/texturas_polyhaven_2k/extracted")
 SIZE = 1024
 NORMAL_SIZE = 512
 

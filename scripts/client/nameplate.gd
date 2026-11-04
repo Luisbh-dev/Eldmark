@@ -15,7 +15,7 @@ extends Control
 const PLATE_SIZE: Vector2 = Vector2(160.0, 56.0)
 ## Iconos de efectos que caben en una placa.
 const MAX_STATUS_ICONS: int = 4
-const DOWNED_BAR_COLOR: Color = Color(0.95, 0.55, 0.15, 1.0)
+const DOWNED_BAR_COLOR: Color = Color(0.78, 0.74, 0.92, 1.0)
 const BAR_SIZE: Vector2 = Vector2(84.0, 7.0)
 ## Barra de quien está cerca (menos de [constant NEAR_RANGE] m): algo mayor, para leerla de un vistazo.
 const BAR_SIZE_NEAR: Vector2 = Vector2(108.0, 9.0)

@@ -575,6 +575,45 @@ func _make_visual() -> HumanoidVisual:
 	return visual
 
 
+func test_footsteps_do_not_depend_on_the_frame_rate() -> void:
+	var counts: Array[int] = []
+	for fps: int in [30, 60, 144, 240]:
+		var visual: HumanoidVisual = _make_visual()
+		if not assert_not_null(visual):
+			return
+		var dt: float = 1.0 / float(fps)
+		var steps: int = 0
+		var time: float = 0.0
+		# Un pie que se levanta 0,2 m y se posa a 1,25 pasos por segundo (andar tensando el arco), 6 s.
+		while time < 6.0:
+			var phase: float = fmod(time * 1.25, 1.0)
+			var height: float = 0.1 + (0.2 * sin(phase / 0.4 * PI) if phase < 0.4 else 0.0)
+			if visual._track_foot(0, height, dt):
+				steps += 1
+			time += dt
+		counts.append(steps)
+	assert_true(counts[0] >= 6, "se oyen pasos: %s" % [counts])
+	for count: int in counts:
+		assert_true(absi(count - counts[1]) <= 1, "los mismos pasos a cualquier FPS: %s" % [counts])
+
+
+func test_the_death_slide_is_gone_when_the_character_respawns() -> void:
+	var visual: HumanoidVisual = _make_visual()
+	if not assert_not_null(visual):
+		return
+	var character: PlayerCharacter = visual.get_animator().get_character()
+	character.grounded = true
+	character.velocity = Vector3(0.0, 0.0, -6.0)
+	await wait_process_frames(40)
+	character.velocity = Vector3.ZERO
+	character.combat.action = CombatState.Action.DEAD
+	await wait_process_frames(60)
+	assert_true(visual.get_pivot().position.length() > 0.1, "the body slid while dying")
+	character.combat.action = CombatState.Action.NONE
+	await wait_process_frames(3)
+	assert_near(visual.get_pivot().position.length(), 0.0, 0.001, "and it is back in the capsule on respawn")
+
+
 func test_weapon_placeholders_hang_from_the_hands() -> void:
 	var visual: HumanoidVisual = _make_visual()
 	if not assert_not_null(visual):

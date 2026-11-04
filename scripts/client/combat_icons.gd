@@ -53,7 +53,7 @@ const DEFAULT_COLOR: Color = Color(0.4, 0.4, 0.45, 1.0)
 ## Color de las casillas que no son de un arma (esquiva).
 const NEUTRAL_COLOR: Color = Color(0.42, 0.4, 0.36, 1.0)
 ## Color del icono de derribado de las placas.
-const DOWNED_COLOR: Color = Color(0.85, 0.45, 0.1, 1.0)
+const DOWNED_COLOR: Color = Color(0.78, 0.74, 0.92, 1.0)
 
 static var _cache: Dictionary[String, PlaceholderIcon] = {}
 static var _status_cache: Dictionary[String, Texture2D] = {}

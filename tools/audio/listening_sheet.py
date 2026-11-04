@@ -163,7 +163,7 @@ def main() -> int:
         return 1
     raw = Path(args.raw)
     if not raw.exists():
-        # El worktree vive en .claude/worktrees/<n>: sube hasta encontrar ../Eldmark-raw.
+        # Si no está donde se indica, sube por los directorios padres hasta encontrar Eldmark-raw.
         for parent in ROOT.parents:
             if (parent / "Eldmark-raw").exists():
                 raw = parent / "Eldmark-raw"

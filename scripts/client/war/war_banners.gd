@@ -6,7 +6,7 @@ extends Control
 ## ([signal NetClient.war_event]) y aquí se convierten en texto con [method WarEvents.text].
 ## [br][br]
 ## [b]Cola, de uno en uno.[/b] Los avisos esperan en una cola (como mucho [constant MAX_BANNERS]: al llegar otro
-## se quita el más antiguo) y se ven de uno en uno sobre una banda oscura con el emblema del bando a los dos
+## se quita el más antiguo que aún no se ve) y se ven de uno en uno sobre una banda oscura con el emblema del bando a los dos
 ## lados y el texto en la fuente de títulos. Así nunca se pisan entre sí, y la banda tiene su sitio fijo
 ## ([constant TOP_OFFSET]) entre el panel del fuerte, la barra de jefe y el aviso de derribado. El tiempo de
 ## cada aviso solo corre mientras es el que se ve; el fundido es breve ([constant FADE_SECONDS]) y lo hace la
@@ -22,8 +22,8 @@ const BIG_SECONDS: float = 6.0
 const FADE_SECONDS: float = 0.25
 const NORMAL_FONT_SIZE: int = 22
 const BIG_FONT_SIZE: int = 28
-## Lugar de la banda: px desde lo alto, justo bajo el panel del fuerte (que acaba hacia los 155 px).
-const TOP_OFFSET: float = 166.0
+## Lugar de la banda: px desde lo alto, bajo el panel del fuerte en su estado más alto (en plena captura acaba hacia los 252 px).
+const TOP_OFFSET: float = 260.0
 const MIN_WIDTH: float = 460.0
 const EMBLEM_SIZE: float = 30.0
 const BAND_COLOR: Color = Color(0.03, 0.035, 0.05, 0.82)
@@ -106,7 +106,8 @@ func add_banner(text: String, color: Color, big: bool = false, emblem: Texture2D
 	if text.is_empty():
 		return
 	while _banners.size() >= MAX_BANNERS:
-		_banners.remove_at(0)
+		# Se descarta el más antiguo que aún no se ve: el aviso visible no se quita a medias.
+		_banners.remove_at(1 if _banners.size() > 1 else 0)
 	_banners.append({"left": BIG_SECONDS if big else NORMAL_SECONDS, "text": text, "big": big,
 			"color": color, "emblem": emblem})
 	_refresh_view()
