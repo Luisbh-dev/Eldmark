@@ -6,7 +6,7 @@ Usage:
 
 For every file changed against the base (or the given paths), compares the code without comments:
 GDScript, Go and shaders by token stream (comments removed; in tests/ the message literals of the
-assertions may also change), Python by ast.dump without docstrings, and the rest without
+assertions may also change, and in Go *_test.go files so may the message literals of t.Errorf & co), Python by ast.dump without docstrings, and the rest without
 full-line comments. Directives (shebang, //go:, noqa, ...) must stay identical.
 Exit code 1 and a report if anything else changed.
 """
@@ -61,7 +61,9 @@ def main() -> int:
 		if new_raw.startswith(b"\xef\xbb\xbf") != base_raw.startswith(b"\xef\xbb\xbf"):
 			failures.append(f"{rel}: the BOM changed")
 			continue
-		if (b"\r\n" in new_raw) != (b"\r\n" in base_raw):
+		# A CRLF working copy of an LF blob is only the checkout conversion of core.autocrlf (git
+		# normalizes it back on commit); a blob committed with CRLF must keep them.
+		if b"\r\n" in base_raw and b"\r\n" not in new_raw:
 			failures.append(f"{rel}: the line endings changed")
 			continue
 		try:
@@ -81,7 +83,7 @@ def main() -> int:
 	for f in failures:
 		print("FAIL", f)
 	if not failures:
-		print("OK: only comments (and test assertion messages) changed")
+		print("OK: only comments (and test assertion / t.Errorf messages) changed")
 	return 1 if failures else 0
 
 

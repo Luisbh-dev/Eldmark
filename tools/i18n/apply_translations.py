@@ -83,7 +83,7 @@ def main() -> int:
 				rejections.append((b.sid, f"{rel}:{seg.line}: kind changed ({seg.kind} -> {b.kind})"))
 				counts["rejected"] += 1
 				continue
-			if seg.kind == "assert":  # spaces at the ends matter: the string may be joined with "+"
+			if seg.kind in ("assert", "gotest"):  # spaces at the ends matter: the string may be joined with "+"
 				new_lines, old_lines = list(b.lines), list(seg.lines)
 			else:
 				new_lines = [ln.rstrip() for ln in b.lines]

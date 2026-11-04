@@ -122,7 +122,7 @@ def read_source(path: Path) -> SourceFile:
 # Segments
 # ---------------------------------------------------------------------------------------------
 
-SINGLE_LINE_KINDS = {"inline", "region", "assert"}
+SINGLE_LINE_KINDS = {"inline", "region", "assert", "gotest"}
 
 
 @dataclass
@@ -808,6 +808,288 @@ def build_assert_segments(path: str, text: str, toks: list[Tok]) -> list[Segment
 
 
 # ---------------------------------------------------------------------------------------------
+# Messages of Go tests (t.Errorf, t.Fatal, ...)
+# ---------------------------------------------------------------------------------------------
+
+GO_PRINTF_METHODS = {"Errorf", "Fatalf", "Logf", "Skipf"}  # the format is argument 0
+GO_PRINT_METHODS = {"Error", "Fatal", "Log", "Skip"}  # every argument is part of the message
+GO_MESSAGE_METHODS = GO_PRINTF_METHODS | GO_PRINT_METHODS
+# Receivers that always count as a testing value ("t.Fatalf", "h.t.Fatal", "h.T.Logf", "b.Fatalf").
+GO_DEFAULT_RECEIVERS = {"t", "T", "tb", "b", "B"}
+GO_TESTING_DECL = re.compile(r"\b(\w+)\s+\*?testing\.(?:T|B|TB|F)\b")
+# Go verbs: flags, argument index, width, precision and the verb itself.
+GO_PERCENT = re.compile(r"%[-+0 #]*(?:\[\d+\])?(?:\*|\d+)?(?:\.(?:\*|\d+))?(?:\[\d+\])?[a-zA-Z%]")
+GO_ESCAPE = re.compile(r"\\(?:x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|[0-7]{3}|.)", re.DOTALL)
+GO_VALID_ESCAPE = re.compile(r"\\(?:x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|[0-7]{3}|[abfnrtv\\\"'])")
+
+# directory -> {helper name: index of its message parameter}
+_GO_HELPER_CACHE: dict[str, dict[str, int]] = {}
+
+
+def _split_args(toks: list[Tok], open_idx: int) -> tuple[list[list[Tok]], int] | None:
+	"""Splits the arguments of the call whose '(' is toks[open_idx]. Returns (args, index of ')')."""
+	depth = 0
+	args: list[list[Tok]] = [[]]
+	k = open_idx + 1
+	while k < len(toks):
+		tk = toks[k]
+		if tk.kind == "op":
+			if tk.text in "([{":
+				depth += 1
+			elif tk.text in ")]}":
+				if depth == 0:
+					if args and not args[-1]:
+						args.pop()
+					return args, k
+				depth -= 1
+			elif tk.text == "," and depth == 0:
+				args.append([])
+				k += 1
+				continue
+		args[-1].append(tk)
+		k += 1
+	return None
+
+
+def _go_receiver_ok(toks: list[Tok], idx: int, receivers: set[str]) -> bool:
+	"""toks[idx] is a method name preceded by '.': is the receiver a testing value?"""
+	return idx >= 2 and toks[idx - 1].text == "." and toks[idx - 2].kind == "id" and toks[idx - 2].text in receivers
+
+
+def _go_decls(toks: list[Tok]) -> list[tuple[int, str, list[tuple[str, str]], int, int]]:
+	"""Function declarations: (index of the name, name, [(param, type)], body start, body end)."""
+	out = []
+	n = len(toks)
+	for i, t in enumerate(toks):
+		if not (t.kind == "id" and t.text == "func"):
+			continue
+		k = i + 1
+		if k < n and toks[k].text == "(":  # receiver
+			got = _split_args(toks, k)
+			if got is None:
+				continue
+			k = got[1] + 1
+		if not (k + 1 < n and toks[k].kind == "id" and toks[k + 1].text == "("):
+			continue
+		name_idx = k
+		got = _split_args(toks, k + 1)
+		if got is None:
+			continue
+		params_raw, close = got
+		params: list[tuple[str, str]] = []
+		pending: list[str] = []
+		for piece in params_raw:
+			words = [x.text for x in piece]
+			if len(words) == 1 and piece[0].kind == "id":
+				pending.append(words[0])
+				continue
+			if piece and piece[0].kind == "id":
+				typ = "".join(words[1:])
+				params += [(nm, typ) for nm in pending + [words[0]]]
+			else:
+				params += [("_", "".join(words)) for _ in range(len(pending) + 1)]
+			pending = []
+		for nm in pending:
+			params.append((nm, ""))
+		# Skip the result list up to the opening brace of the body.
+		j = close + 1
+		while j < n and not (toks[j].kind == "op" and toks[j].text == "{"):
+			if toks[j].kind == "op" and toks[j].text == "(":
+				sub = _split_args(toks, j)
+				if sub is None:
+					break
+				j = sub[1]
+			if toks[j].kind == "id" and toks[j].text == "func":
+				break
+			j += 1
+		if j >= n or toks[j].text != "{":
+			continue
+		depth, e = 0, j
+		while e < n:
+			if toks[e].kind == "op" and toks[e].text == "{":
+				depth += 1
+			elif toks[e].kind == "op" and toks[e].text == "}":
+				depth -= 1
+				if depth == 0:
+					break
+			e += 1
+		out.append((name_idx, toks[name_idx].text, params, j, e))
+	return out
+
+
+def _message_slots(name: str, args: list[list[Tok]], helpers: dict[str, int]) -> list[int]:
+	if name in helpers:
+		return [helpers[name]]
+	return [0] if name in GO_PRINTF_METHODS else list(range(len(args)))
+
+
+def go_helpers_of(text: str, known: dict[str, int] | None = None) -> dict[str, int]:
+	"""Functions or methods whose string parameter is only ever passed on as a whole argument of
+	t.Errorf & co (or of another helper). Returns {name: index of that parameter}."""
+	known = dict(known or {})
+	toks, _ = lex_clike(text, go=True)
+	receivers = set(GO_DEFAULT_RECEIVERS) | set(GO_TESTING_DECL.findall(text))
+	found: dict[str, int] = {}
+	decls = _go_decls(toks)
+	for _round in range(3):  # helpers that call helpers
+		changed = False
+		for _ni, name, params, bs, be in decls:
+			if name in found:
+				continue
+			# Message calls inside the body: (argument token lists that carry a message).
+			carriers: list[tuple[int, int, list[list[Tok]]]] = []
+			for c in range(bs + 1, be):
+				if not (toks[c].kind == "id" and toks[c + 1].text == "("):
+					continue
+				mname = toks[c].text
+				if not (
+					mname in known or mname in found
+					or (mname in GO_MESSAGE_METHODS and _go_receiver_ok(toks, c, receivers))
+				):
+					continue
+				got = _split_args(toks, c + 1)
+				if got is None:
+					continue
+				args, close = got
+				allh = {**known, **found}
+				for s in _message_slots(mname, args, allh):
+					if s < len(args):
+						carriers.append((c + 1, close, [args[s]]))
+				# fmt.Sprintf(format, ...) as an argument of the message call also carries it
+				# (a helper that adds a prefix: t.Logf("[%s] %s", at, fmt.Sprintf(format, args...))).
+				for arg in args:
+					if len(arg) >= 4 and arg[0].text == "fmt" and arg[1].text == "." and arg[2].text == "Sprintf" and arg[3].text == "(":
+						inner = _split_args(arg, 3)
+						if inner is not None and inner[0]:
+							carriers.append((c + 1, close, [inner[0][0]]))
+			for pi, (pname, ptype) in enumerate(params):
+				if ptype != "string" or pname == "_":
+					continue
+				uses = [k for k in range(bs + 1, be) if toks[k].kind == "id" and toks[k].text == pname]
+				if not uses:
+					continue
+				ok = all(
+					any(len(a[0]) == 1 and a[0][0] is toks[k] for _o, _c, a in carriers)
+					for k in uses
+				)
+				if ok:
+					found[name] = pi
+					changed = True
+					break
+		if not changed:
+			break
+	return found
+
+
+def _package_helpers(path: str, text: str) -> dict[str, int]:
+	"""Helpers declared in the _test.go files of the same directory (cached) and in this file."""
+	d = str(PurePosixPath(path).parent)
+	cached = _GO_HELPER_CACHE.get(d)
+	if cached is None:
+		cached = {}
+		folder = REPO_ROOT / d
+		if folder.is_dir():
+			for f in sorted(folder.glob("*_test.go")):
+				if f.name == PurePosixPath(path).name:
+					continue
+				try:
+					cached.update(go_helpers_of(read_source(f).text, cached))
+				except (OSError, UnicodeDecodeError, ValueError):
+					pass
+		_GO_HELPER_CACHE[d] = cached
+	known = dict(cached)
+	try:
+		known.update(go_helpers_of(text, known))
+	except ValueError:
+		pass
+	return known
+
+
+def _pure_literals(arg: list[Tok]) -> list[Tok]:
+	"""The string literals of an argument made only of literals joined with '+'."""
+	if not arg or len(arg) % 2 == 0:
+		return []
+	for i, t in enumerate(arg):
+		if i % 2 == 0:
+			if t.kind != "str" or t.quote not in ('"', "`"):
+				return []
+		elif not (t.kind == "op" and t.text == "+"):
+			return []
+	return [t for t in arg if t.kind == "str"]
+
+
+def find_gotest_messages(path: str, text: str, toks: list[Tok]) -> list[tuple[Tok, str]]:
+	"""(string token, method name) of every message literal of a Go test call."""
+	receivers = set(GO_DEFAULT_RECEIVERS) | set(GO_TESTING_DECL.findall(text))
+	helpers = _package_helpers(path, text)
+	decl_names = {d[0] for d in _go_decls(toks)}
+	out: list[tuple[Tok, str]] = []
+	for idx, t in enumerate(toks):
+		if t.kind != "id" or idx + 1 >= len(toks) or toks[idx + 1].text != "(" or idx in decl_names:
+			continue
+		name = t.text
+		if name not in helpers and not (name in GO_MESSAGE_METHODS and _go_receiver_ok(toks, idx, receivers)):
+			continue
+		got = _split_args(toks, idx + 1)
+		if got is None:
+			continue
+		args = got[0]
+		for s in _message_slots(name, args, helpers):
+			if s < len(args):
+				for lit in _pure_literals(args[s]):
+					out.append((lit, name))
+	return out
+
+
+def build_gotest_segments(path: str, text: str, toks: list[Tok]) -> list[Segment]:
+	segs = []
+	starts = _line_starts(text)
+	seen: set[int] = set()
+	for tok, fn in find_gotest_messages(path, text, toks):
+		if tok.cstart in seen:
+			continue
+		seen.add(tok.cstart)
+		content = text[tok.cstart:tok.cend]
+		if "\n" in content or not has_text([content]):
+			continue
+		seg = Segment(
+			path, "gotest", _line_of(starts, tok.cstart), tok.cstart, tok.cend, [content],
+			style={"quote": tok.quote}, context=f"{fn}(...)",
+		)
+		if content != content.strip():
+			seg.note = "NOTE: keep the spaces at the start/end of the text exactly (it is joined with +)"
+		segs.append(seg)
+	return segs
+
+
+def validate_gotest(seg: Segment, new_text: str) -> str | None:
+	"""Rules for the message literal of a Go test call."""
+	old_pct = GO_PERCENT.findall(seg.text)
+	new_pct = GO_PERCENT.findall(new_text)
+	if old_pct != new_pct:
+		return f"the format verbs changed: {old_pct} -> {new_pct}"
+	old_text = seg.text
+	if old_text[:len(old_text) - len(old_text.lstrip())] != new_text[:len(new_text) - len(new_text.lstrip())] or \
+			old_text[len(old_text.rstrip()):] != new_text[len(new_text.rstrip()):]:
+		return "the spaces at the start or end changed (the string is probably joined with +)"
+	if seg.style["quote"] == "`":
+		return "a backtick inside a raw string" if "`" in new_text else None
+	if _unescaped_quote(new_text, '"'):
+		return 'unescaped " quote in the string'
+	if _ENDS_BACKSLASH.search(new_text):
+		return "the text ends with a backslash"
+	new_all = GO_ESCAPE.findall(new_text)
+	for esc in new_all:
+		if not GO_VALID_ESCAPE.fullmatch(esc):
+			return f"invalid escape sequence {esc!r}"
+	old_esc = [e for e in GO_ESCAPE.findall(seg.text) if e != '\\"']
+	new_esc = [e for e in new_all if e != '\\"']
+	if old_esc != new_esc:
+		return f"the escape sequences changed: {old_esc} -> {new_esc}"
+	return None
+
+
+# ---------------------------------------------------------------------------------------------
 # Python docstrings
 # ---------------------------------------------------------------------------------------------
 
@@ -953,6 +1235,14 @@ def analyze(path: str, text: str) -> Analysis:
 		prot = {id(c) for c in protected}
 		removable = [(c.start, c.end) for c in comments if id(c) not in prot]
 		kept = [text[c.start:c.end] for c in protected]
+		if lang == "go" and path.endswith("_test.go"):
+			gsegs = build_gotest_segments(path, text, toks)
+			segs += gsegs
+			msg_spans = [(g.start, g.end) for g in gsegs]
+			for tok, _fn in find_gotest_messages(path, text, toks):
+				span = (tok.cstart, tok.cend)
+				if span not in msg_spans:
+					msg_spans.append(span)
 	elif lang == "py":
 		tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
 		starts = _line_starts(text)
@@ -1150,6 +1440,8 @@ def validate(seg: Segment, new_lines: list[str]) -> str | None:
 	new_text = "\n".join(new_lines)
 	if seg.single_line and len(new_lines) != 1:
 		return "the result spans more than one line (this kind must stay on one line)"
+	if seg.kind == "gotest":
+		return validate_gotest(seg, new_text)
 	if seg.kind == "assert":
 		old_pct = PERCENT.findall(seg.text)
 		new_pct = PERCENT.findall(new_text)
@@ -1189,7 +1481,7 @@ def validate(seg: Segment, new_lines: list[str]) -> str | None:
 
 
 def render(seg: Segment, new_lines: list[str]) -> str:
-	if seg.kind == "assert":
+	if seg.kind in ("assert", "gotest"):
 		return new_lines[0]
 	if seg.kind == "docstring":
 		return render_docstring(seg, new_lines)

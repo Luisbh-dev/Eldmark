@@ -16,16 +16,44 @@ the original text, without comment prefix or indentation
 
 Kinds: `doc` (GDScript `##`), `comment`, `inline` (comment after code), `region`, `docstring`
 (Python), `godoc` (Go doc comment: the first word must stay the identifier), `assert` (message
-string of a test assertion). Consecutive full-line comments with the same indentation and prefix
-form one multi-line segment; the translation may have a different number of lines.
+string of a test assertion), `gotest` (message literal of a Go test call, see below). Consecutive
+full-line comments with the same indentation and prefix form one multi-line segment;
+the translation may have a different number of lines.
+
+## Messages of Go tests (`gotest`)
+
+In `platform/**/*_test.go` the extractor also takes the string literals that a test passes as its
+message: the format of `t.Errorf`, `t.Fatalf`, `t.Logf` and `t.Skipf`, and every literal argument of
+`t.Error`, `t.Fatal`, `t.Log` and `t.Skip` (receivers `t`, `T`, `tb`, `b`, any name declared as
+`*testing.T`/`B`/`TB`/`F`, so `h.t.Fatalf` and `h.T.Logf` count too). Helpers count as well: a function
+or method whose `string` parameter is only ever passed on as a whole argument of those methods (or of
+`fmt.Sprintf(param, ...)` inside one, or of another helper) is learned from the `_test.go` files of the
+same directory, and the literals passed to that parameter by its callers are extracted
+(`func (h *Harness) Logf(format string, ...)`, `func must(t *testing.T, ok bool, msg string)`).
+
+What is **not** extracted: literals nested in other calls (`strings.Join(bad, "; ")`), arguments that
+mix literals with identifiers, raw strings with line breaks, strings with no word of three letters,
+and a `what`/`name` parameter that the helper also uses for something else. Production `.go` files
+are never touched.
+
+The rules for the translator (checked by `apply_translations.py`, same spirit as `assert`):
+
+- the same format verbs (`%v`, `%d`, `%q`, `%w`, `%5.1f`, `%[1]d`, `%%`...) in the same order;
+- one line, no unescaped `"` (write `\"`), no backtick inside a raw string, no trailing backslash;
+- the same escape sequences (backslash followed by `n`, `t`, `\`, `x41`...) in the same order (`\"` may be added or removed);
+- the same spaces at both ends (a literal may be joined with `+`).
+
+`check_comment_only.py` lets exactly these literals change in `_test.go` files and nothing else.
+The `gotest` literal that is a format of a helper declared in another directory is not seen; that
+does not happen today.
 
 ## Tools
 
 | Tool | What it does |
 | --- | --- |
 | `extract_comments.py` | Extracts segments from GDScript, Python, Go, shaders, YAML, shell, PowerShell, Dockerfile, Caddyfile and dot-files. `--lanes N --out-dir DIR --manifest FILE` splits the work into N balanced lanes (whole files, grouped by folder). |
-| `apply_translations.py` | Validates and injects translated segment files. `--dry-run` only reports. Rejects a segment (and leaves it as it was) when the id or the original text no longer matches, when `%` markers, BBCode tags or `` `code` `` spans change, when an assert string gets an unescaped quote or a line break, when a one-line segment grows to several lines, or when a Go doc comment loses its identifier. It also refuses to write a file whose code would change. |
-| `check_comment_only.py` | Proves that the files changed against a base (`--base main`) differ only in comments (token stream for GDScript, Go and shaders; `ast.dump` without docstrings for Python). In `tests/` the assertion messages may change too. Exit code 1 on any other change. |
+| `apply_translations.py` | Validates and injects translated segment files. `--dry-run` only reports. Rejects a segment (and leaves it as it was) when the id or the original text no longer matches, when `%` markers, BBCode tags or `` `code` `` spans change, when an assert string gets an unescaped quote or a line break, when a one-line segment grows to several lines, when a Go doc comment loses its identifier, or when a `gotest` literal changes its format verbs, escapes or end spaces. It also refuses to write a file whose code would change. |
+| `check_comment_only.py` | Proves that the files changed against a base (`--base main`) differ only in comments (token stream for GDScript, Go and shaders; `ast.dump` without docstrings for Python). In `tests/` the assertion messages may change too, and in Go `_test.go` files the `gotest` literals. Exit code 1 on any other change. |
 | `rename_doc_refs.py` | Rewrites references to the renamed documents (`docs/red.md` -> `docs/networking.md`, with or without `docs/`, with word boundaries). `--dry-run` lists every replacement. It does not run `git mv`. |
 | `find_spanish.py` | Heuristic detector of Spanish left in comments and `.md` files (function words, accents, inverted marks). Lists `file:line`. |
 | `test_i18n.py` | Self-tests: `python -I tools/i18n/test_i18n.py`. |
@@ -79,7 +107,7 @@ Known leftovers that are deliberate or deferred:
 - The SQL migrations in `platform/internal/migrate/migrations/` keep their Spanish comments and old doc
   names: `migrate.go` rejects a changed SHA-256 for an applied `.up.sql`, so they cannot be edited once
   deployed. The `testdata/seed_*.sql` seeds carry no checksum and are translated.
-- The messages of the Go test assertions (`t.Errorf`, `t.Fatalf`, ...) in `platform/**/*_test.go` are
-  still in Spanish; the extractor only knows GDScript assert functions. Pending as a follow-up.
+- Go test helpers that take a free-text `what`/`name` label (for example `WaitFor(timeout, what, ...)`)
+  are not extracted: the label is used inside other messages, so it needs a manual pass.
 - Some `tests/*.gd` helpers with a `label` parameter or case tables still carry Spanish labels.
 - Run the Python tools with `python -I -X utf8` on Windows when redirecting their output.

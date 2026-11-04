@@ -12,6 +12,7 @@ the output: only comments (and the message of test assertions) are extracted.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import sys
 from pathlib import Path
@@ -88,6 +89,8 @@ def main() -> int:
 	ap.add_argument("--lanes", type=int, help="split the output into N balanced lanes")
 	ap.add_argument("--out-dir", help="directory for lane_XX.txt")
 	ap.add_argument("--manifest", help="manifest.json path (with --lanes)")
+	ap.add_argument("--kind-only", action="append", default=[], metavar="GLOB=KIND",
+		help="in the files matching GLOB keep only the segments of KIND (repeatable)")
 	args = ap.parse_args()
 
 	root = Path(args.root)
@@ -97,10 +100,19 @@ def main() -> int:
 	else:
 		files = [p for p in L.git_files(root) if L.in_scope(p, excludes)]
 	files = sorted(files)
+	kind_only: list[tuple[str, str]] = []
+	for spec in args.kind_only:
+		glob, _, kind = spec.rpartition("=")
+		if not glob or not kind:
+			ap.error(f"--kind-only expects GLOB=KIND, got {spec!r}")
+		kind_only.append((glob, kind))
 
 	per_file: list[tuple[str, list[L.Segment]]] = []
 	for rel in files:
 		segs = extract_file(rel, root)
+		for glob, kind in kind_only:
+			if fnmatch.fnmatch(rel, glob):
+				segs = [sg for sg in segs if sg.kind == kind]
 		if segs:
 			per_file.append((rel, segs))
 	weights = [sum(len(s.text) for s in segs) for _, segs in per_file]
