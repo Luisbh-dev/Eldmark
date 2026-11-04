@@ -1,6 +1,6 @@
 class_name FrontScreen
 extends Control
-## Base of the account screens of [FrontMain] (docs/plataforma.md §13.2): they fill the whole screen over a
+## Base of the account screens of [FrontMain] (docs/platform.md §13.2): they fill the whole screen over a
 ## dark background, with the notice at the top ([method set_notice]) and the "busy" state
 ## ([method set_busy]) that disables the controls while a call to the platform is in flight. The controls
 ## are built in code, like [UIWindow] and [TemplateSelector]; their scene in [code]scenes/ui/[/code] is

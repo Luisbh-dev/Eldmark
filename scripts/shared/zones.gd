@@ -29,13 +29,13 @@ const PVP_MODES: Dictionary[StringName, int] = {
 
 ## Default capacity of each zone's server (players, fake ones too), if [code]--max-players[/code]
 ## is not passed: in Vado Gris, the war zone, the per-battle player limit measured with the phase 4
-## kit (docs/red.md, section 14; docs/habilidades.md, section 11). A zone not listed here uses the
+## kit (docs/networking.md, section 14; docs/abilities.md, section 11). A zone not listed here uses the
 ## [code]ServerConfig[/code] one (64).
 const MAX_PLAYERS: Dictionary[StringName, int] = {
 	&"vado_gris": 40,
 }
 
-## Playable realms (see docs/mundo.md): those of [RealmCatalog].
+## Playable realms (see docs/world.md): those of [RealmCatalog].
 const REALMS: Array[StringName] = RealmCatalog.REALM_IDS
 ## Realm used if no other is given.
 const DEFAULT_REALM: StringName = RealmCatalog.VARDHEIM
@@ -62,7 +62,7 @@ const SAFE_AREA_DEFAULT_RADIUS: float = 24.0
 const LETHAL_GROUP: StringName = &"lethal_volumes"
 ## Group of points where the server places a training dummy when the zone starts.
 const DUMMY_GROUP: StringName = &"dummy_points"
-## Group of a zone's forts (docs/fuerte.md, section 1.6): each fort's node, with the
+## Group of a zone's forts (docs/fortress.md, section 1.6): each fort's node, with the
 ## [constant FORTRESS_DEFINITION_META] metadata and its markers as children
 ## ([code]CaptureCircle[/code], [code]CaptainSpawn[/code], [code]GuardSpawn1[/code]..4,
 ## [code]FortGate[/code], the banners...).

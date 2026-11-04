@@ -7,20 +7,20 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Retention is how long a character's ledger is kept after its purge (progresion.md §3.5, PRG-39;
+// Retention is how long a character's ledger is kept after its purge (progression.md §3.5, PRG-39;
 // legal review pending, §16).
 const Retention = 365 * 24 * time.Hour
 
 // RetentionBatch is the most that each PurgeRetention call deletes from each append-only table.
 const RetentionBatch = 10_000
 
-// PurgeRetention implements persistence.ProgressStore (progresion.md §3.5). In the caller's
+// PurgeRetention implements persistence.ProgressStore (progression.md §3.5). In the caller's
 // transaction and with set local eldmark.retention_purge = 'on' (the only flag that allows
 // deleting from the append-only tables; it is removed at the end), it deletes, for characters
 // purged more than a year ago, at most [RetentionBatch] from each table: their entries, their
 // item events and, afterwards, their participations that no longer have either; finally, the
 // reversals and operations left without participants (those of other characters stay). deleted is
-// how much it deleted in total: the hourly job from plataforma.md §2.5 calls it again, one
+// how much it deleted in total: the hourly job from platform.md §2.5 calls it again, one
 // transaction at a time, while it is greater than 0. emptied are the characters purged more than
 // a year ago with no row in op_participants (including those that never had any): the platform
 // deletes those rows from characters in the same transaction.

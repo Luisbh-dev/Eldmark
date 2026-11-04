@@ -19,10 +19,10 @@ import (
 // update rewrites the shared vectors: go test ./internal/tickets -run TestSharedVectors -update
 var update = flag.Bool("update", false, "reescribe tests/fixtures/tickets/handoff_ticket_vectors.json")
 
-// The vectors shared with HandoffTicket in GDScript (plataforma.md P4).
+// The vectors shared with HandoffTicket in GDScript (platform.md P4).
 const vectorsPath = "../../../tests/fixtures/tickets/handoff_ticket_vectors.json"
 
-// The vector from plataforma.md §5.1 and the ticket from the enter response in §4.5.
+// The vector from platform.md §5.1 and the ticket from the enter response in §4.5.
 const (
 	specHex    = "0101010008070605040302012a0000000000000013c0ef190001000100d2496b0ad2496b7061e2f54ab1a096f66024437123d9d1"
 	specBase64 = "AQEBAAgHBgUEAwIBKgAAAAAAAAATwO8ZAAEAAQDSSWsK0klrcGHi9UqxoJb2YCRDcSPZ0Q=="
@@ -135,7 +135,7 @@ func TestNewID(t *testing.T) {
 	}
 }
 
-// Vectors shared with GDScript. Ids are strings (plataforma.md §4.1): in GDScript they are read
+// Vectors shared with GDScript. Ids are strings (platform.md §4.1): in GDScript they are read
 // with String.to_int(); the other numbers fit in a float.
 type vectorFile struct {
 	Comment  string        `json:"comment"`
@@ -218,7 +218,7 @@ func buildVectors() vectorFile {
 	version2 := spec
 	version2.Version = 2
 	f := vectorFile{
-		Comment: "Billete de 52 B de docs/plataforma.md §5.1. Generado por platform/internal/tickets " +
+		Comment: "Billete de 52 B de docs/platform.md §5.1. Generado por platform/internal/tickets " +
 			"(go test ./internal/tickets -run TestSharedVectors -update); lo leen las pruebas de Go y de HandoffTicket.",
 		Keys: []vectorKey{{1, hex.EncodeToString(key1)}, {2, hex.EncodeToString(key2)}},
 	}
@@ -226,7 +226,7 @@ func buildVectors() vectorFile {
 		f.ZoneKeys = append(f.ZoneKeys, zoneKeyCase{z, tickets.ZoneKey(z)})
 	}
 	f.Valid = []validCase{
-		valid("vector de plataforma.md §5.1", 1, spec, "vado_gris"),
+		valid("vector de platform.md §5.1", 1, spec, "vado_gris"),
 		valid("ids de 63 bits, por encima de 2^53", 2, tickets.Ticket{WorldID: 1, TicketID: 1<<63 - 1,
 			CharacterID: 1<<53 + 1, Channel: 3, Realm: 2, Flags: tickets.FlagFromMenu, IssuedAt: 1800000100,
 			ExpiresAt: 1800000110}, "test_world"),

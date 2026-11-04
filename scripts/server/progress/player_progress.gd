@@ -1,6 +1,6 @@
 class_name PlayerProgress
 extends RefCounted
-## The authoritative progress state of a character in the zone (docs/progresion.md §4, §5, §6 and §9): its
+## The authoritative progress state of a character in the zone (docs/progression.md §4, §5, §6 and §9): its
 ## [ProgressRecord] (inventory, currencies, level, timers…), the journal of operations that no save has confirmed
 ## yet, and the aggregate of in-game gains and spends. It is created by [method ProgressService.prepare] (with a
 ## platform) or by the registration of an ephemeral character (P5b), and discarded by [method ProgressService.on_departure].

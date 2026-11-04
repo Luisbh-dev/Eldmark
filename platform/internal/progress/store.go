@@ -14,7 +14,7 @@ import (
 	"eldmark/platform/internal/persistence"
 )
 
-// Store is the progress store on PostgreSQL (progresion.md §13.2, P7): it implements
+// Store is the progress store on PostgreSQL (progression.md §13.2, P7): it implements
 // persistence.ProgressStore over the 0010_progress tables. Everything runs in the caller's
 // transaction or connection; the rules are read-only, so it is safe to share between goroutines.
 type Store struct {
@@ -51,7 +51,7 @@ func (s *Store) Create(ctx context.Context, tx pgx.Tx, _ int16, characterID int6
 	return nil
 }
 
-// record is the claim's ProgressRecord (progresion.md §3.4), with keys in the zone's order
+// record is the claim's ProgressRecord (progression.md §3.4), with keys in the zone's order
 // (encoding/json writes them in the struct's order; the order matters to nobody, but this way the
 // diff reads well).
 type record struct {
@@ -254,10 +254,10 @@ func (s *Store) Summaries(ctx context.Context, q persistence.Querier, characterI
 	return out, rows.Err()
 }
 
-// Purge implements persistence.ProgressStore (progresion.md §3.5): it deletes the progress state
+// Purge implements persistence.ProgressStore (progression.md §3.5): it deletes the progress state
 // (progress, balances, live and retired objects, timers) and leaves the append-only data, which
 // stays with the characters tombstone until retention. The platform calls it with the lease and
-// the character's row locked (plataforma.md §11.2).
+// the character's row locked (platform.md §11.2).
 func (s *Store) Purge(ctx context.Context, tx pgx.Tx, characterID int64) error {
 	for _, table := range []string{"character_timers", "item_instances", "character_wallets", "character_progress"} {
 		if _, err := tx.Exec(ctx, "delete from "+table+" where character_id = $1", characterID); err != nil {

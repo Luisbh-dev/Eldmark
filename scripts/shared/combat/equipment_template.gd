@@ -1,6 +1,6 @@
 class_name EquipmentTemplate
 extends Resource
-## An equipment template (PRG-07; docs/habilidades.md, section 2.1): the weapons and consumable
+## An equipment template (PRG-07; docs/abilities.md, section 2.1): the weapons and consumable
 ## charges a character spawns with. The server imposes it on spawn, so it is not part of
 ## the prediction fingerprint.
 

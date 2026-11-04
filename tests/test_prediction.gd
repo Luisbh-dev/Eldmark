@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests of the client prediction ([ClientPrediction]), the smoothing of corrections
-## ([CorrectionSmoother]) and the phase 2 changes to [LocalPlayerController] (docs/red.md,
+## ([CorrectionSmoother]) and the phase 2 changes to [LocalPlayerController] (docs/networking.md,
 ## sections 6, 16 and 17.7). There is no network: the "server" and the client are two separate
 ## physics worlds (two [SubViewport]s with [code]own_world_3d = true[/code]), each with a
 ## [PlayerCharacter] on a ground with a ramp.

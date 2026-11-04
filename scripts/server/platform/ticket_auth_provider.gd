@@ -1,6 +1,6 @@
 class_name TicketAuthProvider
 extends AuthProvider
-## Entry with the platform's ticket (docs/plataforma.md §5.2): [method authenticate] is synchronous and
+## Entry with the platform's ticket (docs/platform.md §5.2): [method authenticate] is synchronous and
 ## network-free; any failure is REJECT [constant NetProtocol.Result.TICKET] and nothing reaches the platform.
 ## [br][br]
 ## [codeblock]

@@ -17,7 +17,7 @@ extends RefCounted
 ## [method BotBrain.bow_sight_clear] in the client's world ([method BotBrain.set_line_of_sight]);
 ## [br]- otherwise, [constant BotBrain.Pattern.WANDER]: it strolls around its spawn point.
 ## [br][br]
-## The combat and siege brains fight with the phase 4 kit (H5; docs/habilidades.md, section 7.1,
+## The combat and siege brains fight with the phase 4 kit (H5; docs/abilities.md, section 7.1,
 ## [method give_kit_senses]): they read the character's predicted combat state, the extra block's
 ## health, the enemies with their drawn velocity and knockdown, and the downed allies drawn by the
 ## [RemoteWorld]. The cheating bot's brains do not: they play as in phase 3 (cheating is a different

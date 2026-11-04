@@ -1,5 +1,5 @@
 extends TestCase
-## The [FortressController] alone, with no server or network (docs/fuerte.md, sections 1 to 3; GUE-08, GUE-10,
+## The [FortressController] alone, with no server or network (docs/fortress.md, sections 1 to 3; GUE-08, GUE-10,
 ## GUE-12 and GUE-13): advanced by hand, tick by tick, with fake players placed inside or outside the
 ## circle. It checks presence (every 6 ticks, alive, connected and active), a full neutral -> Vardheim -> Solmarch
 ## capture with the Hollows' captain and the owner's, the dispute and the

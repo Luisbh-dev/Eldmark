@@ -9,7 +9,7 @@ extends RefCounted
 ## The chat's party channel delivers to the members given by the [PartyManager] and the parties' system messages go out
 ## through the [ChatRouter].
 ## [br][br]
-## [b]Chat state per character[/b] (docs/plataforma.md §9.2, P7b). With a platform, the [ChatPeerState] of whoever leaves
+## [b]Chat state per character[/b] (docs/platform.md §9.2, P7b). With a platform, the [ChatPeerState] of whoever leaves
 ## is kept by its [code]character_id[/code] for [constant ChatRouter.KNOWN_RECIPIENT_TICKS] ticks (5 min) and, if it
 ## re-enters this instance, [method on_peer_joined] gives it back: leaving and coming back does not refill the bursts. On
 ## entering, its account, those it ignores and its mute are also set, from the claim. Without a platform, per connection,

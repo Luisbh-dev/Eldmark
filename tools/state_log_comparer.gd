@@ -1,6 +1,6 @@
 class_name StateLogComparer
 extends RefCounted
-## Cross-checks the server's state log with a bot's (docs/red.md, section 13). The logic of
+## Cross-checks the server's state log with a bot's (docs/networking.md, section 13). The logic of
 ## [code]tools/compare_state_logs.gd[/code], separated so that it can be tested and so that the tests of
 ## several processes can use it without launching another process.
 ## [br][br]

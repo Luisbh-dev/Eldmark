@@ -1,6 +1,6 @@
 extends SceneTree
 ## Writes the approach routes to the Vado Gris fort as shared data
-## ([ApproachRoutes], docs/fuerte.md section 7) to [code]data/routes/vado_gris.tres[/code].
+## ([ApproachRoutes], docs/fortress.md section 7) to [code]data/routes/vado_gris.tres[/code].
 ##
 ## Usage (from the project root, windowless):
 ## [codeblock]

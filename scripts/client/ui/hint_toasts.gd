@@ -1,6 +1,6 @@
 class_name HintToasts
 extends Control
-## Game hints (UI-42, docs/fuerte.md section 6): short tips ([HintCatalog]) that appear at the bottom,
+## Game hints (UI-42, docs/fortress.md section 6): short tips ([HintCatalog]) that appear at the bottom,
 ## above the controls help line, only once per player ([HintLog], in [code]user://[/code]) and only if
 ## hints are enabled in the settings ([constant ClientSettings.HINTS]).
 ## [br][br]

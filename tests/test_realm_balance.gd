@@ -1,5 +1,5 @@
 extends TestCase
-## Realm balance (GUE-42 and GUE-43; docs/fuerte.md, section 7): the pure rules of [RealmBalance] (rejection
+## Realm balance (GUE-42 and GUE-43; docs/fortress.md, section 7): the pure rules of [RealmBalance] (rejection
 ## by difference in humans, when a filler fake player is removed or added and which one gives up its slot with the
 ## server full) and [FillerKeeper], which applies them to the automatic-realm fake players. With a real network they are
 ## tested by [code]test_zone_server_net[/code] (REJECT 9, the WELCOME count and the slot the filler gives up) and

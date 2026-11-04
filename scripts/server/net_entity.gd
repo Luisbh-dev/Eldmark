@@ -1,6 +1,6 @@
 class_name NetEntity
 extends RefCounted
-## Entity replicated by the server (docs/red.md, section 9.1): a player (and, since phase 4,
+## Entity replicated by the server (docs/networking.md, section 9.1): a player (and, since phase 4,
 ## NPCs, projectiles and structures).
 ## [br][br]
 ## It stores what is needed to replicate it: the network id assigned by [NetEntityRegistry], the
@@ -34,14 +34,14 @@ var spawn_tick: int
 ## Id of the owning peer (0 if no client controls it).
 var owner_peer: int = 0
 var display_name: String
-## Game staff (moderator or higher, the claim's role; docs/plataforma.md §5.4): its ENTITY_SPAWN
+## Game staff (moderator or higher, the claim's role; docs/platform.md §5.4): its ENTITY_SPAWN
 ## carries the bit [constant NetMessages.SPAWN_FLAG_STAFF] for the nameplate tag (SOC-14). Always false without the platform.
 var is_staff: bool = false
-## Marked by a GM command that moves, heals or shows it (docs/progresion.md §6.2; set by
-## [code]/gm teleport[/code], [code]/gm visible[/code] and DEBUG_COMMANDs 1, 2 and 4, plataforma.md P7b): while it
-## lasts it does not enter the captures list or collect merits or NPCs. Respawning removes it (plataforma.md P6).
+## Marked by a GM command that moves, heals or shows it (docs/progression.md §6.2; set by
+## [code]/gm teleport[/code], [code]/gm visible[/code] and DEBUG_COMMANDs 1, 2 and 4, platform.md P7b): while it
+## lasts it does not enter the captures list or collect merits or NPCs. Respawning removes it (platform.md P6).
 var gm_forced: bool = false
-## A GM in invisible mode ([code]/gm invisible[/code], docs/plataforma.md §9.1, P7b): it does not enter the interest of
+## A GM in invisible mode ([code]/gm invisible[/code], docs/platform.md §9.1, P7b): it does not enter the interest of
 ## others, deals and takes no damage, does not count in the circle or the scoreboard and collects no rewards. Lasts until
 ## [code]/gm visible[/code] or until it leaves (not saved); respawning does not remove it.
 var gm_invisible: bool = false
@@ -69,7 +69,7 @@ var npc_def_id: int = 0
 ## state at the time of addition.
 var definition_id: String = ""
 var fortress_state: FortressState = null
-## PLAYER (protocol 7, docs/progresion.md §7.3): character level (1 to 40; 0 = no progress, like a fake
+## PLAYER (protocol 7, docs/progression.md §7.3): character level (1 to 40; 0 = no progress, like a fake
 ## player) and the 8 B of its [CharacterAppearance] (empty = no appearance). Set by progress on spawn and on
 ## leveling up; they travel in its ENTITY_SPAWN (the level, only toward its realm: see [method encode_spawn]).
 var level: int = 0
@@ -127,9 +127,9 @@ func encode_record(bytes: PackedByteArray, offset: int) -> void:
 ## (position, velocity, turn, ground, action, the two weapons and the active slot): not its exact
 ## stamina, exhaustion, parry cooldown, buffer, controls, held buttons,
 ## cooldowns, charges or movement effects (docs/combate.md, sections 1 and 6, and
-## docs/habilidades.md, section 5.2).
+## docs/abilities.md, section 5.2).
 ## [br][br]
-## A player also carries their appearance and level (protocol 7, docs/progresion.md §7.3); the real level only
+## A player also carries their appearance and level (protocol 7, docs/progression.md §7.3); the real level only
 ## if it is the own SPAWN or [param receiver_realm] (the [enum NetProtocol.Realm] code of the receiver) is
 ## the entity's, and 0 if not: the enemy's level does not cross over (social.md §1). That is why whoever distributes SPAWNs
 ## encodes them per receiving realm.
@@ -170,7 +170,7 @@ func encode_spawn(tick: int, for_owner: bool, receiver_realm: int = NetProtocol.
 # initial values (full stamina, no flags, buffer, controls, parry, cooldowns,
 # charges, consumable or movement slots) except the action in progress, which the 21 B record already
 # shows, and the weapons: the other slot's and the active slot (bit 0 of combat_flags2) are visible
-# (docs/habilidades.md, section 5.2). The last tick's buttons and the jump counters are cleared.
+# (docs/abilities.md, section 5.2). The last tick's buttons and the jump counters are cleared.
 static func _hide_private_state(state: PlayerState) -> void:
 	var own: CombatState = state.combat
 	var public := CombatState.initial(CombatCatalog.rules(), own.weapon_id, own.alt_weapon_id)

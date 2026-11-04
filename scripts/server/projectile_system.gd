@@ -1,6 +1,6 @@
 class_name ProjectileSystem
 extends RefCounted
-## Server projectiles (docs/habilidades.md, section 4.4; CMB-22): bow arrows, with data-driven ballistics
+## Server projectiles (docs/abilities.md, section 4.4; CMB-22): bow arrows, with data-driven ballistics
 ## ([ProjectileTicks]), hit rewind fixed for the whole flight and the shield wall's box.
 ## [br][br]
 ## [b]Firing[/b] ([method fire], tick step 3, by net_id): each projectile of the attack or ability that commits at
@@ -36,7 +36,7 @@ extends RefCounted
 ## [signal despawned] (the [ZoneServer] sends them to whoever has the shooter relevant, and to the shooter) and returns
 ## the hits for the [CombatDirector] to apply, since it is the one that knows about damage, controls and deaths.
 ## [br][br]
-## [b]Cost[/b] (docs/habilidades.md, section 8): the tick's candidates live in packed arrays (no objects per tick) and
+## [b]Cost[/b] (docs/abilities.md, section 8): the tick's candidates live in packed arrays (no objects per tick) and
 ## each arrow stores the end of its segment, which is the origin of the next (the same [method Ballistics.position] with
 ## the same [code]n[/code]): a flight tick is one ray against the world, one screening by boxes and, almost never, an
 ## exact test.
@@ -224,7 +224,7 @@ func get_projectile(projectile_id: int) -> Projectile:
 ## at tick [param s] (already frozen), against the world [param space]. Does nothing if the source carries no
 ## projectile.
 func fire(shooter: Combatant, source: int, s: int, space: PhysicsDirectSpaceState3D) -> void:
-	# An invisible GM does not fire (docs/plataforma.md §9.1): it does no damage to anyone.
+	# An invisible GM does not fire (docs/platform.md §9.1): it does no damage to anyone.
 	if shooter.is_gm_invisible():
 		return
 	var frame: Combatant.Frozen = shooter.frozen
@@ -431,7 +431,7 @@ func resolve(s: int, combatants: Array[Combatant],
 
 
 ## Merges two hit lists sorted by attacker net_id without undoing their order: with the same attacker, those of
-## [param first] come first. It is how the director joins melee hits and projectile hits (docs/habilidades.md, section
+## [param first] come first. It is how the director joins melee hits and projectile hits (docs/abilities.md, section
 ## 4.1, step 5).
 static func merge_by_attacker(first: Array[CombatResolver.Hit],
 		second: Array[CombatResolver.Hit]) -> Array[CombatResolver.Hit]:
@@ -733,7 +733,7 @@ func _prepare(s: int) -> void:
 		_candidate_high.resize(total)
 	var count: int = 0
 	for combatant: Combatant in _combatants:
-		# An invisible GM is not a target: an arrow passes through it (docs/plataforma.md §9.1).
+		# An invisible GM is not a target: an arrow passes through it (docs/platform.md §9.1).
 		if combatant.is_dead() or combatant.is_gm_invisible():
 			continue
 		var frame: Combatant.Frozen = combatant.frozen

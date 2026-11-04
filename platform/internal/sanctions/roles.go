@@ -12,7 +12,7 @@ const CommandSetRole = "set-role"
 // Roles are the valid roles, from lowest to highest.
 var Roles = []string{RolePlayer, RoleModerator, RoleGM, RoleAdmin}
 
-// RoleAt is the role the account had at instant at, for the save's S2 check (progresion.md
+// RoleAt is the role the account had at instant at, for the save's S2 check (progression.md
 // §13.3: the actor of a GM or REVERSAL operation with the role they had at detail.at_unix). It is
 // given by the first CLI set-role row after at, with its args.from: the role from before that
 // change; with none, the current role. Only rows with source = 'cli' count (those written by the

@@ -1,5 +1,5 @@
 extends TestCase
-## The siege pattern of [BotBrain] ([constant BotBrain.Pattern.SIEGE], GUE-15; docs/fuerte.md, section 7)
+## The siege pattern of [BotBrain] ([constant BotBrain.Pattern.SIEGE], GUE-15; docs/fortress.md, section 7)
 ## without physics: a point that moves where the inputs say ([Walker]), the real Vado Gris fort
 ## ([SiegeView] with the gate and circle positions) and the routes in [code]data/routes/vado_gris.tres[/code].
 ## It checks that it follows its realm's route (either of the two, depending on its seed), that it hits the closed gate, enters

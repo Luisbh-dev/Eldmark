@@ -225,7 +225,7 @@ func test_is_physical() -> void:
 
 ## Light hit with no defense or armor.
 func test_status_modifiers_scale_the_damage_and_lower_the_mitigation() -> void:
-	# docs/habilidades.md, section 4.3: damage_scale = 1 + Σ DAMAGE_UP and mitigation_penalty = Σ
+	# docs/abilities.md, section 4.3: damage_scale = 1 + Σ DAMAGE_UP and mitigation_penalty = Σ
 	# MITIGATION_DOWN; without effects, the usual.
 	var plain: DamageFormula.Result = DamageFormula.compute(LIGHT_1, 0, 0, 0, 1.0, false, false, 1.0,
 			STAMINA_PER_DAMAGE, FULL_STAMINA, 0)

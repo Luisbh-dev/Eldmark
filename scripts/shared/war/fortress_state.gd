@@ -1,6 +1,6 @@
 class_name FortressState
 extends RefCounted
-## State of a capturable fort and its state machine (docs/fuerte.md, sections 1.3 to 1.5). Pure,
+## State of a capturable fort and its state machine (docs/fortress.md, sections 1.3 to 1.5). Pure,
 ## in ticks and without nodes: the server advances it with [method advance] every tick and the
 ## client rebuilds it from the OBJECT_STATE fields ([FortressFields]) and the capture formula
 ## ([method progress_at]).
@@ -168,7 +168,7 @@ func on_captain_died(tick: int, _killer_realm: int) -> PackedInt32Array:
 	return events
 
 
-## The captain returns ahead of schedule: the Hollow's "full respawn" (docs/fuerte.md, 4.3)
+## The captain returns ahead of schedule: the Hollow's "full respawn" (docs/fortress.md, 4.3)
 ## includes the Ford Captain when the fort is still neutral and with no players nearby. It only
 ## does something in the VULNERABLE phase (not while someone is capturing): it returns to
 ## GARRISONED with the captain alive. Returns true if the captain has respawned.

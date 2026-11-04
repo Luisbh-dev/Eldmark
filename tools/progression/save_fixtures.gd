@@ -1,8 +1,8 @@
 class_name SaveFixtures
 extends RefCounted
-## The shared cases for the save checks (docs/progresion.md §13.3): sequences of [code]progress[/code]
+## The shared cases for the save checks (docs/progression.md §13.3): sequences of [code]progress[/code]
 ## sections with their expected result, valid and invalid (at least one per check, S1–S8), which
-## the Go store test reads ([code]TestApply*[/code], progresion.md P7) and which
+## the Go store test reads ([code]TestApply*[/code], progression.md P7) and which
 ## [code]tests/test_progression_fixtures.gd[/code] regenerates so that they do not diverge. The valid sections come from
 ## [PlayerProgress] (the kit, drinking, refilling, earning gold and merits, XP, DESTROY, a GM action, a reversal...); the
 ## invalid ones, from changing a single thing in a valid one, so that only the expected check fails (the
@@ -111,7 +111,7 @@ class Flow:
 static func build() -> Dictionary:
 	return {
 		"format": FORMAT,
-		"about": "Casos de las comprobaciones del guardado (docs/progresion.md §13.3), generados por "
+		"about": "Casos de las comprobaciones del guardado (docs/progression.md §13.3), generados por "
 				+ "tools/progression/write_fixtures.gd: cada caso en una base nueva; cada paso, un Apply en su "
 				+ "transacción con expect applied o el check del error.",
 		"now_unix": NOW_UNIX,

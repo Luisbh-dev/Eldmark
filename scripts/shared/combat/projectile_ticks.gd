@@ -1,6 +1,6 @@
 class_name ProjectileTicks
 extends RefCounted
-## A [ProjectileDefinition] already resolved by [CombatCatalog] (docs/habilidades.md, section 2.1).
+## A [ProjectileDefinition] already resolved by [CombatCatalog] (docs/abilities.md, section 2.1).
 ## It goes in full into the prediction fingerprint.
 
 ## Catalog u16 ID (1..n in alphabetical order of the name; 0 = none).

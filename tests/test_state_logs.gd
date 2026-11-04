@@ -1,5 +1,5 @@
 extends TestCase
-## State logs ([code]--state-log[/code]) and [code]tools/compare_state_logs.gd[/code] (docs/red.md,
+## State logs ([code]--state-log[/code]) and [code]tools/compare_state_logs.gd[/code] (docs/networking.md,
 ## section 13; TEC-46):
 ## [br]- the logic of [StateLogComparer] with synthetic logs (matches, differences explained
 ## by a substitution, unexplained, without prediction, errors and player deduction);

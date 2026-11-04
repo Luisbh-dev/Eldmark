@@ -1,6 +1,6 @@
 class_name ItemInstance
 extends RefCounted
-## A concrete item that someone owns (docs/progresion.md §2.1, PRG-02): a row of
+## A concrete item that someone owns (docs/progression.md §2.1, PRG-02): a row of
 ## [code]item_instances[/code], with a [member uid] unique across the whole world and forever.
 ## What the item is lives in its [ItemDefinition] ([member def_id], in [ItemDatabase]).
 ## [br][br]
@@ -20,7 +20,7 @@ extends RefCounted
 ## 22      n × u16   affixes
 ## [/codeblock]
 ## 22 + 2·n B, little endian like the rest of the protocol. [method decode] returns null for
-## anything that does not fit and never logs engine errors (red.md §5.7).
+## anything that does not fit and never logs engine errors (networking.md §5.7).
 ## [br][br]
 ## [b]JSON[/b] ([method to_dictionary], an [code]items[/code] entry in §3.4): ids
 ## ([code]uid[/code], [code]seed[/code]) as a decimal string and durability null if it has none.

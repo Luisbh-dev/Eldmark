@@ -1,4 +1,4 @@
-// Package migrate applies and reverts the schema migrations (plataforma.md §2.4).
+// Package migrate applies and reverts the schema migrations (platform.md §2.4).
 //
 // The migrations are NNNN_name.up.sql and NNNN_name.down.sql pairs embedded in the binary ([FS]).
 // The runner takes pg_advisory_lock(4815162342), applies the pending ones in number order, each in

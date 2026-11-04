@@ -1,6 +1,6 @@
 class_name StatusTicks
 extends RefCounted
-## A [StatusEffectDefinition] already converted to ticks by [CombatCatalog] (docs/habilidades.md,
+## A [StatusEffectDefinition] already converted to ticks by [CombatCatalog] (docs/abilities.md,
 ## sections 2.1 and 4.3).
 
 ## Catalog u8 ID (1..n in alphabetical order of the name; 0 = none).

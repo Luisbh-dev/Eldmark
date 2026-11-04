@@ -1,6 +1,6 @@
 class_name RateLimiter
 extends RefCounted
-## Token bucket measured in ticks (docs/red.md, section 12): the server uses it to limit what each peer can send.
+## Token bucket measured in ticks (docs/networking.md, section 12): the server uses it to limit what each peer can send.
 ## [br][br]
 ## The bucket starts full ([code]burst[/code] tokens) and recovers [code]rate_per_tick[/code] tokens for each tick that
 ## passes, without exceeding [code]burst[/code]. It reads no clock: the caller gives it the current tick, so it is

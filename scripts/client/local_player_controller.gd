@@ -6,7 +6,7 @@ extends Node
 ## or a [BotBrain]), builds a [PlayerInput], quantizes it
 ## exactly as it will travel over the network, stores it in the history, emits
 ## [signal input_generated] and calls [method PlayerCharacter.simulate].
-## [br][br]Phase 4 (docs/habilidades.md, sections 0 and 3.2): Q swaps weapons, R and T drink the
+## [br][br]Phase 4 (docs/abilities.md, sections 0 and 3.2): Q swaps weapons, R and T drink the
 ## potions, and the [constant PlayerInput.AIM_LEFT] bit (left shoulder of the aim) comes from the camera's
 ## effective shoulder on every device input.
 ## [br][br]Phase 2: with [member auto_step] set to false the controller does not advance on its own.
@@ -219,7 +219,7 @@ func _device_input() -> PlayerInput:
 	if is_input_blocked():
 		input.move = Vector2.ZERO
 		input.buttons = 0
-	# Aim shoulder (docs/habilidades.md, section 3.2): a level that describes the view, not a
+	# Aim shoulder (docs/abilities.md, section 3.2): a level that describes the view, not a
 	# press. It comes from the camera's effective shoulder (after the automatic switch because of a wall), which is
 	# the one that gives the canonical ray of the arrows ([method AimRay.canonical]).
 	if is_instance_valid(_camera_rig) and _camera_rig.get_effective_shoulder() < 0:

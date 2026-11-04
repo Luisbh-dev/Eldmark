@@ -1,5 +1,5 @@
 extends TestCase
-## Pure inventory (docs/progresion.md §2.5, §4.1–§4.4, PRG-11): [InventoryState], [InventoryOps],
+## Pure inventory (docs/progression.md §2.5, §4.1–§4.4, PRG-11): [InventoryState], [InventoryOps],
 ## [ItemEvent] and [StarterKit]. A table of cases with each operation and each code of §4.2 in their order (the
 ## first failure gives the code, and a rejection changes nothing); partial merge, full destination stack →
 ## swap, bound on equip, slots 2–6 → CANNOT_EQUIP, DESTROY of a consumable while drinking → NOT_NOW,

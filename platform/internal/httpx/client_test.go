@@ -14,7 +14,7 @@ import (
 	"eldmark/platform/internal/logx"
 )
 
-// Only X-Real-IP and only from a trusted proxy; never X-Forwarded-For (plataforma.md §4.2).
+// Only X-Real-IP and only from a trusted proxy; never X-Forwarded-For (platform.md §4.2).
 func TestClientIP(t *testing.T) {
 	trusted := []netip.Prefix{netip.MustParsePrefix("172.18.0.5/32")}
 	cases := []struct {

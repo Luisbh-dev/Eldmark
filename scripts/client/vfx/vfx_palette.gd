@@ -1,7 +1,7 @@
 class_name VfxPalette
 extends RefCounted
 ## Effect colors (ART-09, client only). Those of the trail and the aura come from the realm and the art
-## direction (docs/arte.md): Vardheim, steel and ice blue; Solmarch, white and gold; Askarra, crimson and
+## direction (docs/art.md): Vardheim, steel and ice blue; Solmarch, white and gold; Askarra, crimson and
 ## bronze; Eldrun (the Hollow), desaturated with embers. The realm number is that of
 ## [enum NetProtocol.Realm] (1 to 3); 4 is Eldrun and 0 a neutral steel. The dust, in contrast, belongs not
 ## to the realm but to the ground being stepped on ([method ground], [VfxGround]).

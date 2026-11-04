@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [NetDebugOverlay] (docs/red.md, section 13; TEC-10) with clients from an
+## Tests for [NetDebugOverlay] (docs/networking.md, section 13; TEC-10) with clients from an
 ## integration test: server and bots in the same process, each in its own [SubViewport].
 ## [br]- The texts are filled in with the data of the [NetClient] it is linked to.
 ## [br]- F3 shows and hides the panel; F4, the translucent ghost of the server's last own

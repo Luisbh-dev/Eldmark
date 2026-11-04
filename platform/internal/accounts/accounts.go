@@ -1,4 +1,4 @@
-// Package accounts is the platform's accounts and sessions service (plataforma.md §4.1 to §4.3,
+// Package accounts is the platform's accounts and sessions service (platform.md §4.1 to §4.3,
 // TEC-23 and TEC-41): registration that does not reveal accounts, login with argon2id and a single
 // function that checks passwords ([Service.CheckPassword], with failures per account and IP group),
 // sessions with the refresh that rotates in the same row, a privacy session for sanctioned
@@ -40,7 +40,7 @@ import (
 	"eldmark/platform/legal"
 )
 
-// Timeouts from plataforma.md §0, §4.2, §4.3 and §11.1.
+// Timeouts from platform.md §0, §4.2, §4.3 and §11.1.
 const (
 	AccessTTL      = 15 * time.Minute    // access token
 	SessionTTL     = 12 * time.Hour      // the session, from login; rotating does not extend it
@@ -66,7 +66,7 @@ const (
 	ScopePrivacy = "privacy"
 )
 
-// CharacterPurger purges an account's characters inside its purge transaction (plataforma.md §11.2:
+// CharacterPurger purges an account's characters inside its purge transaction (platform.md §11.2:
 // tombstone, ProgressStore.Purge...). It is provided by characters.Purger (P2); without it, an
 // account with unpurged characters is not purged and is logged. With a character in the world it
 // returns an error that wraps [ErrCharactersBusy] and purges nothing.

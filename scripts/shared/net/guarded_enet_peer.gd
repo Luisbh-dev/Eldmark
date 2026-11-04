@@ -1,7 +1,7 @@
 class_name GuardedEnetPeer
 extends MultiplayerPeerExtension
 ## Wrapper around the server's [ENetMultiplayerPeer] that filters packets before [SceneMultiplayer]
-## sees them (docs/red.md, sections 2 and 12).
+## sees them (docs/networking.md, sections 2 and 12).
 ## [br][br]
 ## [b]Why.[/b] [SceneMultiplayer] processes everything that arrives inside [code]poll()[/code], and only
 ## delivers to the application the RAW packets of already admitted peers. An ENet client without

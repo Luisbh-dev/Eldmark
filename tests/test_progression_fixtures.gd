@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests for the shared cases of the save checks ([SaveFixtures],
-## [code]tests/fixtures/progression/save_cases.json[/code]; docs/progresion.md §13.3 and §15 P5a): the file in the
+## [code]tests/fixtures/progression/save_cases.json[/code]; docs/progression.md §13.3 and §15 P5a): the file in the
 ## repository matches what [code]tools/progression/write_fixtures.gd[/code] generates with [PlayerProgress], and the
 ## cases are well formed: at least one per check, valid steps read as a record with
 ## consistent operations, and S3 and S4 (repeated here as a reference) give what each case says.

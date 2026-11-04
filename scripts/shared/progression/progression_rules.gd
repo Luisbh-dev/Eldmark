@@ -1,6 +1,6 @@
 class_name ProgressionRules
 extends RefCounted
-## Pure rules for experience and levels (docs/progresion.md §6.3, PRG-13), shared by the zone
+## Pure rules for experience and levels (docs/progression.md §6.3, PRG-13), shared by the zone
 ## (which hands out XP) and the interface (which displays it). No state, clock or randomness.
 ## [br][br]
 ## A single contribution can raise several levels; at the cap no XP accumulates (I8): 0 is applied

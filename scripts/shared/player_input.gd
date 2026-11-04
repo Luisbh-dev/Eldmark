@@ -26,10 +26,10 @@ const ABILITY_1: int = 1 << 5
 const ABILITY_2: int = 1 << 6
 const ABILITY_3: int = 1 << 7
 const INTERACT: int = 1 << 8
-## Swap weapon (Q; docs/habilidades.md, section 3.2).
+## Swap weapon (Q; docs/abilities.md, section 3.2).
 const SWAP_WEAPON: int = 1 << 9
 ## Camera's left shoulder: set by the client with the camera's effective shoulder. It is a level,
-## not a press; only projectile aiming reads it (docs/habilidades.md, section 4.4).
+## not a press; only projectile aiming reads it (docs/abilities.md, section 4.4).
 const AIM_LEFT: int = 1 << 10
 ## Consumables: health potion (R) and stamina potion (T).
 const CONSUMABLE_1: int = 1 << 11

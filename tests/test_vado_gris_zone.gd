@@ -252,7 +252,7 @@ func test_bridge_lanes_are_walkable() -> void:
 				% [runner["name"], character.global_position.snapped(Vector3.ONE * 0.01)])
 
 
-## The fort gate is kept closed (docs/fuerte.md, section 3.1) and with two bodies: the movement one
+## The fort gate is kept closed (docs/fortress.md, section 3.1) and with two bodies: the movement one
 ## (realm layers 5 to 7) and the sight one (layer 4). A character with no realm layer in its mask (the
 ## offline mode, which does not set it) does not notice it and walks in through the opening from the
 ## esplanade; with a realm layer the neutral gate stops it (test_fort_gate_collision.gd).

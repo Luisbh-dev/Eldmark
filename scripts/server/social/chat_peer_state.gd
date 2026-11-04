@@ -6,8 +6,8 @@ extends RefCounted
 ## [br][br]
 ## It lives in the [ServerPeer] and is born full with each connection. Without a platform, rates are [b]per
 ## connection[/b]: whoever leaves and re-enters recovers the bursts full (also the 5 new whisper recipients), just like
-## the transport buckets and strikes (docs/red.md, finding S6); the client chooses its name on each connection, so
-## storing it by name would stop nobody. [b]With a platform[/b] (docs/plataforma.md §9.2, P7b) it is [b]per
+## the transport buckets and strikes (docs/networking.md, finding S6); the client chooses its name on each connection, so
+## storing it by name would stop nobody. [b]With a platform[/b] (docs/platform.md §9.2, P7b) it is [b]per
 ## character[/b]: [SocialService] keeps it for [constant ChatRouter.KNOWN_RECIPIENT_TICKS] ticks after departure and
 ## gives it back if the character re-enters this instance, so leaving and coming back does not refill the bursts.
 ## [br][br]
@@ -64,7 +64,7 @@ class FloodWindow:
 		return now_tick - oldest < ChatPeerState.FLOOD_WINDOW_TICKS
 
 
-## Received messages kept by each receiver's ring as evidence for a report (docs/plataforma.md §9.4).
+## Received messages kept by each receiver's ring as evidence for a report (docs/platform.md §9.4).
 const RECEIVED_RING_SIZE: int = 100
 ## Mute with no end (the Unix time given by the platform: 9999-12-31).
 const MUTE_NO_END_UNIX: int = 253402300799
@@ -113,7 +113,7 @@ var name_key: String = ""
 var known_recipients: Dictionary[String, int] = {}
 
 ## With a platform: the character's account (0 without a platform) and the accounts it ignores (account -> true): their
-## messages, whispers and invitations do not reach it (docs/plataforma.md §9.3).
+## messages, whispers and invitations do not reach it (docs/platform.md §9.3).
 var account_id: int = 0
 var ignored_accounts: Dictionary[int, bool] = {}
 ## Those it has ignored in this session, by the key of the name it typed (for [code]/designorar[/code] (unignore), which
@@ -122,7 +122,7 @@ var ignored_by_name: Dictionary[String, int] = {}
 ## Unix time until which it is muted (0 = not muted; [constant MUTE_NO_END_UNIX] = no end).
 var muted_until_unix: int = 0
 ## Instant ([code]Time.get_ticks_msec()[/code]) at which a sanction from this zone changed the mute: a heartbeat that
-## went out earlier does not undo it (docs/plataforma.md §9.5).
+## went out earlier does not undo it (docs/platform.md §9.5).
 var mute_changed_msec: int = -1
 ## Ring of the last [constant RECEIVED_RING_SIZE] received messages; the oldest is at [member received_head] when the
 ## ring is full.

@@ -1,4 +1,4 @@
-// Package zones is the part of the internal API (plataforma.md §6, TEC-24) that handles zone
+// Package zones is the part of the internal API (platform.md §6, TEC-24) that handles zone
 // instances: per-deployment tokens and their scope, registration (with replacement and the
 // silent instance that is considered lost), live, the heartbeat (it renews leases and says whom
 // to remove and whom to mute), deregistration, the lost-instances job and id blocks.

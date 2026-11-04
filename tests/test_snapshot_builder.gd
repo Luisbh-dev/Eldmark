@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [SnapshotBuilder] (docs/red.md, section 9.3): header contents, the player
+## Tests for [SnapshotBuilder] (docs/networking.md, section 9.3): header contents, the player
 ## themselves left out of the records, the 1200 B cap, the priority accumulator and the guarantee
 ## that no entity goes more than ceil(N/C) snapshots without being sent (property test with
 ## 200 entities over 600 ticks).
@@ -292,7 +292,7 @@ func test_health_goes_into_the_extra_block_and_the_records() -> void:
 
 
 func test_protocol_6_bits_3_of_the_records_and_of_the_extra_block() -> void:
-	# docs/habilidades.md, section 5.2: bit 3 of the record's flags = weapon slot 2 active; bit 3 of the
+	# docs/abilities.md, section 5.2: bit 3 of the record's flags = weapon slot 2 active; bit 3 of the
 	# extra block's status = knocked down (its health and its maximum are those of knocked down).
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 66
@@ -477,14 +477,14 @@ func test_packet_never_exceeds_the_limit_for_any_player_count() -> void:
 			+ CAPACITY * EntityRecord.SIZE
 	assert_true(full_size <= MAX_BYTES, "the %d full records fit" % CAPACITY)
 	assert_true(full_size + EntityRecord.SIZE > MAX_BYTES, "one more would no longer fit")
-	# With the 111 B PlayerState of phase 4: 50 records in 1186 B (habilidades.md, section 3.1).
+	# With the 111 B PlayerState of phase 4: 50 records in 1186 B (abilities.md, section 3.1).
 	if PlayerState.ENCODED_SIZE == 111:
 		assert_eq(CAPACITY, 50, "the document's capacity: 50 records")
 		assert_eq(full_size, 1186, "50 records take up 1186 B")
 
 
 func test_with_63_visible_players_every_entity_goes_out_at_least_every_other_snapshot() -> void:
-	# The guarantee of red.md 9.3: 63 visible players and CAPACITY slots (50 with the
+	# The guarantee of networking.md 9.3: 63 visible players and CAPACITY slots (50 with the
 	# 111 B state), each entity goes out at least one in every two snapshots: ceil(63 / C) = 2.
 	assert_eq(ceili(63.0 / float(CAPACITY)), 2, "with 63 candidates ceil(N / C) is 2")
 	var rng := RandomNumberGenerator.new()

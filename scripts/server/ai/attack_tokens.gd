@@ -1,6 +1,6 @@
 class_name AttackTokens
 extends RefCounted
-## Attack tokens (docs/fuerte.md, section 4.2; MUN-08): at most [constant MAX_PER_TARGET] NPCs attack the
+## Attack tokens (docs/fortress.md, section 4.2; MUN-08): at most [constant MAX_PER_TARGET] NPCs attack the
 ## same target at once; the rest circle it at 3 or 4 m waiting for their turn.
 ## [br][br]
 ## An NPC requests a token with [method try_claim] before starting an attack and releases it with

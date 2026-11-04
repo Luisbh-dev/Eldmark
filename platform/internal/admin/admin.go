@@ -1,4 +1,4 @@
-// Package admin is the platform's admin command (plataforma.md §9, §11.2 and §12; SOC-13 to
+// Package admin is the platform's admin command (platform.md §9, §11.2 and §12; SOC-13 to
 // SOC-18): what moderators and administrators do by hand, always with identity.
 //
 // Every command carries --actor <email> of an admin account (or moderator for the read ones:

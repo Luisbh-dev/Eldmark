@@ -1,6 +1,6 @@
 class_name DownedSystem
 extends RefCounted
-## Knocked down, lifting and finishing off on the server (docs/habilidades.md, section 4.5; CMB-28).
+## Knocked down, lifting and finishing off on the server (docs/abilities.md, section 4.5; CMB-28).
 ## [br][br]
 ## [b]When[/b] ([method should_down]): the health of a [b]player[/b] (fake ones too) reaches 0 from a
 ## hit, an arrow or a pulse whose author is a player of a hostile realm in an RvR zone. Otherwise, direct
@@ -10,7 +10,7 @@ extends RefCounted
 ## [member CombatRules.downed_health], author and source, effects cleared (without STATUS: DOWNED clears them on the
 ## client) and the DOWNED event to the whole zone. The hit's HIT carries bit 6 (set by the director).
 ## [br][br]
-## [b]Step 7 of the tick[/b] ([method step], docs/habilidades.md, section 4.1), by net_id:
+## [b]Step 7 of the tick[/b] ([method step], docs/abilities.md, section 4.1), by net_id:
 ## [br]1. [b]Bleeding out[/b]: downed health drops exactly in integers down to 0 over
 ## [member CombatTables.downed_ticks] (−1 every 3 ticks with 400 in 1200). At 0, death: killer is the last
 ## enemy that damaged it while already downed or, failing that, whoever downed it, with the source "bled out".
@@ -113,7 +113,7 @@ func down(victim: Combatant, author_id: int, source: int, s: int) -> void:
 			_involved(victim.get_id(), author_id))
 
 
-## Step 7 of tick [param s] (docs/habilidades.md, section 4.1) over [param list] (by net_id):
+## Step 7 of tick [param s] (docs/abilities.md, section 4.1) over [param list] (by net_id):
 ## bleeding out, new INTERACTs and the progress and end of lifting and finishing off. [param space] is the world's
 ## physics space (line of sight; null = no world).
 func step(s: int, list: Array[Combatant], space: PhysicsDirectSpaceState3D) -> void:
@@ -281,7 +281,7 @@ func _try_start(actor: Combatant, s: int, space: PhysicsDirectSpaceState3D, tabl
 # What [param actor] can do with the downed player [param target]: REVIVE an ally whom nobody is lifting,
 # EXECUTE an enemy with no safe zones in between, or 0 (always 0 for an invisible GM).
 func _interaction_for(actor: Combatant, target: Combatant) -> int:
-	# An invisible GM neither lifts nor finishes off (docs/plataforma.md §9.1).
+	# An invisible GM neither lifts nor finishes off (docs/platform.md §9.1).
 	if actor.is_gm_invisible():
 		return 0
 	if target.get_realm() == actor.get_realm():

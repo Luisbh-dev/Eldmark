@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests for [ZoneServer] with the platform ([FakeZonePlatform] and [TicketAuthProvider]) and real
-## clients over ENet on 127.0.0.1 (docs/plataforma.md §5.2, §5.4 and §15 P4): ticket → VERIFYING →
+## clients over ENet on 127.0.0.1 (docs/platform.md §5.2, §5.4 and §15 P4): ticket → VERIFYING →
 ## WELCOME with the character's realm and name; with no ticket, TICKET; the quota counts those who are
 ## verifying; a late HELLO with a slow claim gets in (10 s auth_timeout); a silent platform gives
 ## UNAVAILABLE at 7 s; the fenced zone too; removals in VERIFYING and in LOADING release without saving;
@@ -409,7 +409,7 @@ func test_revoked_while_loading_kicks_and_releases() -> void:
 
 
 ## In the world: a revoked with an old lease_id does not kick; with the current one, it does (and when the body leaves its final
-## save goes out with release_lease, which releases: since progresion.md P5a the progress section is always built); a lease_lost
+## save goes out with release_lease, which releases: since progression.md P5a the progress section is always built); a lease_lost
 ## kicks without releasing or saving.
 func test_revoked_in_the_world_only_with_the_current_lease() -> void:
 	if not await _start(Callable(), func(platform: FakeZonePlatform) -> void:

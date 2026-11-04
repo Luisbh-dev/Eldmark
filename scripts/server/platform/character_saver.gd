@@ -1,18 +1,18 @@
 class_name CharacterSaver
 extends RefCounted
-## When and how each character is saved to the platform (docs/plataforma.md §7.2, §7.3 and §14.3): checkpoint,
+## When and how each character is saved to the platform (docs/platform.md §7.2, §7.3 and §14.3): checkpoint,
 ## critical events, final save and removal without saving, with one write in flight per character. It only
-## exists with [code]--platform[/code]: without a platform nothing is saved (docs/progresion.md §9.4).
+## exists with [code]--platform[/code]: without a platform nothing is saved (docs/progression.md §9.4).
 ## [br][br]
 ## [b]Sections[/b] ([method register_section]): each one sets a body key ([code]progress[/code] of
-## [code]ProgressService[/code], progresion.md P5a; [code]pvp[/code] of [code]ScoreKeeper[/code], P6) with three
+## [code]ProgressService[/code], progression.md P5a; [code]pvp[/code] of [code]ScoreKeeper[/code], P6) with three
 ## [Callable]s: [code]build(net_id, seq) -> Dictionary[/code] (once per [code]seq[/code]; [code]{}[/code] = cannot
 ## be built now), [code]acknowledge(net_id, seq)[/code] (after a 200 [code]applied[/code] or
 ## [code]duplicate[/code], only before [method finish]) and [code]is_dirty(net_id) -> bool[/code] (whether there is something to
 ## save at the checkpoint, only before [method finish]). They are built in the order they are registered.
 ## [b]Without any section there is nothing to save[/b]: the checkpoint is never dirty, a critical sends
-## nothing and [method finish] releases the lease without saving, as plataforma.md P4 did (the platform requires
-## [code]progress[/code], which arrives with progresion.md P5a).
+## nothing and [method finish] releases the lease without saving, as platform.md P4 did (the platform requires
+## [code]progress[/code], which arrives with progression.md P5a).
 ## [br][br]
 ## [b]Entries by [code]lease_id[/code][/b] (unique per claim), with two indexes: [code]character_id[/code] →
 ## current [code]lease_id[/code] and, until [method finish] or [method drop], [code]net_id[/code] → [code]lease_id[/code].
@@ -77,7 +77,7 @@ var _stats: Dictionary[StringName, int] = {
 	&"rejected": 0, &"deferred": 0, &"finals": 0, &"finals_unbuilt": 0, &"dropped": 0, &"released": 0,
 	&"resent": 0, &"stale_answers": 0, &"criticals": 0,
 }
-## Criticals marked by reason (logging and metrics only, progresion.md §9.2).
+## Criticals marked by reason (logging and metrics only, progression.md §9.2).
 var _criticals_by_reason: Dictionary[StringName, int] = {}
 
 
@@ -185,7 +185,7 @@ func track(net_id: int, character_id: int, lease_id: String, tick: int) -> void:
 
 
 ## Marks body [param net_id] critical: its save goes out on the next [method step] with nothing in flight.
-## [param reason] only goes to the log and metrics (progresion.md §9.2).
+## [param reason] only goes to the log and metrics (progression.md §9.2).
 func mark_critical(net_id: int, reason: StringName) -> void:
 	var entry: _Entry = _attached(net_id)
 	if entry == null:

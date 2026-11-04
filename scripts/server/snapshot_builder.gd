@@ -1,6 +1,6 @@
 class_name SnapshotBuilder
 extends RefCounted
-## Builds each client's SNAPSHOTs (docs/red.md, section 9.3).
+## Builds each client's SNAPSHOTs (docs/networking.md, section 9.3).
 ## [br][br]
 ## [method begin] is called once per tick: it encodes [b]each record only once[/b] in a shared buffer and stores its
 ## offset per [code]net_id[/code]. Encoding is O(entities); per client there are only memory copies. [method build_for]

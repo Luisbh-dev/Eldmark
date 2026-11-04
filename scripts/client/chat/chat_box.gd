@@ -250,7 +250,7 @@ func submit(text: String) -> void:
 				ChatCommandParser.Kind.LEADER:
 			_party(command)
 		ChatCommandParser.Kind.SERVER:
-			# The server handles it (docs/plataforma.md §9): the line goes through the GM channel and the
+			# The server handles it (docs/platform.md §9): the line goes through the GM channel and the
 			# reply comes through the system channel.
 			_send(ChatChannel.Id.GM, "", command.text)
 		ChatCommandParser.Kind.UNKNOWN:

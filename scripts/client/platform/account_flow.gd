@@ -1,6 +1,6 @@
 class_name AccountFlow
 extends RefCounted
-## The UI-less account path (docs/plataforma.md §13.3 and §14.4): logging in, ensuring the character and
+## The UI-less account path (docs/platform.md §13.3 and §14.4): logging in, ensuring the character and
 ## entering the world, which returns the [ClientConfig] with a ticket for [OnlineMain]. It is used by [FrontMain] (the screens)
 ## and by [OnlineMain] in BOT mode with [code]--platform[/code] (the bot with an account, §5.5).
 ## [br][br]
@@ -99,7 +99,7 @@ func create_character(world_id: int, display_name: String, realm: StringName, ra
 
 ## The account's character [param display_name] in [param world_id]; if it does not exist, creates it in [param realm] (id from
 ## [RealmCatalog]; empty = the account's realm in that world or, if it has none yet, Vardheim) with the starter template
-## [param starter_template] (empty, or a non-selectable one = [method first_starter_template]; docs/progresion.md
+## [param starter_template] (empty, or a non-selectable one = [method first_starter_template]; docs/progression.md
 ## §2.5). One that already exists keeps its own. Coroutine.
 func ensure_character(world_id: int, display_name: String, realm: StringName,
 		starter_template: StringName = &"") -> ApiResult:

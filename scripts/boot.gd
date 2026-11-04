@@ -14,7 +14,7 @@ extends Node
 ## [br]    - [code]--local[/code]: networked client against a local server that is launched on its own if
 ## there is none ([code]LocalServerLauncher[/code]).
 ## [br]    - [code]--title[/code] or [code]--platform=<url>[/code]: the title screen with account
-## ([code]FrontMain[/code], docs/plataforma.md §5.5 and §13). An export with no arguments also opens it.
+## ([code]FrontMain[/code], docs/platform.md §5.5 and §13). An export with no arguments also opens it.
 ## [br]    - With none of the above, the offline sandbox ([code]ClientMain[/code]; also in headless
 ## mode), with the options from [method parse_client_options]:
 ## [br]        - [code]--zone=<id>[/code]: zone to load ([code]vado_gris[/code] by default,
@@ -48,7 +48,7 @@ const SHOTS_ARG_PREFIX: String = "--shots="
 const QUIT_AFTER_DEMO_ARG: String = "--quit-after-demo"
 const ZONE_ARG_PREFIX: String = "--zone="
 const REALM_ARG_PREFIX: String = "--realm="
-## Arguments of the networked modes (docs/red.md, section 1.2) that the sandbox ignores silently:
+## Arguments of the networked modes (docs/networking.md, section 1.2) that the sandbox ignores silently:
 ## they are interpreted by [ServerConfig] and the networked client modes, not by [method parse_client_options].
 const NETWORK_ARGS: Array[String] = ["--local", "--bot", "--title"]
 const NETWORK_ARG_PREFIXES: Array[String] = [

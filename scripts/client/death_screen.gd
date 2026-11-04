@@ -12,7 +12,7 @@ extends Control
 ## [method _ready] and opening and closing it only changes texts and visibility: dying and respawning many
 ## times accumulates nothing.
 ## [br][br]
-## [b]Equipment template[/b] (PRG-07, docs/habilidades.md, section 6.5): below the respawn points,
+## [b]Equipment template[/b] (PRG-07, docs/abilities.md, section 6.5): below the respawn points,
 ## the [TemplateSelector] ([method get_template_selector]); the [HUD] sends the LOADOUT_SELECT on
 ## choosing and the template applies on this respawn.
 ## [br][br]

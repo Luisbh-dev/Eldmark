@@ -370,7 +370,7 @@ func (a *API) ledger(w http.ResponseWriter, r *http.Request) {
 	writeRaw(w, body)
 }
 
-// writeRaw writes the store's JSON as is (the bodies of progresion.md §13.2).
+// writeRaw writes the store's JSON as is (the bodies of progression.md §13.2).
 func writeRaw(w http.ResponseWriter, body json.RawMessage) {
 	h := w.Header()
 	h.Set("Content-Type", "application/json; charset=utf-8")

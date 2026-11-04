@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [RemoteWorld] and [RemotePlayerView] (docs/red.md, sections 7 and 9.4) with synthetic
+## Tests for [RemoteWorld] and [RemotePlayerView] (docs/networking.md, sections 7 and 9.4) with synthetic
 ## messages: ENTITY_SPAWN, SNAPSHOT and ENTITY_DESPAWN by hand, and a fake interpolation clock
 ## whose render tick is set at will. It checks that the remote appears and disappears according to the
 ## render tick, that it is interpolated between samples, that records with unknown or out-of-range
@@ -472,7 +472,7 @@ func test_the_weapon_pair_comes_from_the_spawn_and_the_loadout_and_the_slot_bit_
 	var sword: int = CombatCatalog.weapon_id(&"sword_shield")
 	var bow: int = CombatCatalog.weapon_id(&"bow")
 	var spawn: NetMessages.EntitySpawn = _spawn(7, 10, Vector3.ZERO)
-	# Another player's SPAWN carries the other weapon and the active slot (docs/habilidades.md, section 5.2): here, the
+	# Another player's SPAWN carries the other weapon and the active slot (docs/abilities.md, section 5.2): here, the
 	# bow in slot 2 and active.
 	spawn.state.combat = CombatState.initial(CombatCatalog.rules(), bow, sword)
 	spawn.state.combat.combat_flags2 |= CombatState.FLAG2_SECOND_SLOT

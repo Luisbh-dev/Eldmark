@@ -1,4 +1,4 @@
-// Package config reads the platform's configuration from environment variables (plataforma.md
+// Package config reads the platform's configuration from environment variables (platform.md
 // §2.3). Each secret also accepts <NAME>_FILE with the path of a file (Docker secrets). A value that
 // is missing or not understood prevents startup: [Load] returns an error in Spanish with all the
 // problems, one per line, never repeating a secret's value.
@@ -74,7 +74,7 @@ func ParseRealm(name string) (Realm, bool) {
 }
 
 // ZoneToken is an entry of ELDMARK_ZONE_TOKENS: the scope of a zone deployment and the SHA-256 of
-// its token (the platform never stores the token, plataforma.md §6).
+// its token (the platform never stores the token, platform.md §6).
 type ZoneToken struct {
 	WorldID int16
 	ZoneID  string
@@ -148,7 +148,7 @@ type Config struct {
 }
 
 // LostAfterHeartbeats is how many heartbeats can be missed before an instance is considered lost
-// (plataforma.md §5.3).
+// (platform.md §5.3).
 const LostAfterHeartbeats = 3
 
 // LostEvery is how often the lost-instances job runs: min(5 s, HEARTBEAT_S) (§2.5).
@@ -198,7 +198,7 @@ func (c *Config) LogValue() slog.Value {
 	)
 }
 
-// Ticket key from the test vector of plataforma.md §5.1 (00 01 ... 1f): only valid in test.
+// Ticket key from the test vector of platform.md §5.1 (00 01 ... 1f): only valid in test.
 var vectorTicketKey = func() []byte {
 	k := make([]byte, 32)
 	for i := range k {

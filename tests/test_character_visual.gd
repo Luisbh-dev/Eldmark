@@ -8,7 +8,7 @@ extends TestCase
 ##   relative to the ground when jogging (5 m/s) and sprinting (7.5 m/s).
 ## - Backpedaling facing forward: when going backward the model keeps facing forward (it does not
 ##   turn around toward the camera) and the locomotion runs in reverse; sideways, the spine compensates.
-## - Model textures imported as VRAM-compressed with mipmaps (docs/arte.md, 4.2).
+## - Model textures imported as VRAM-compressed with mipmaps (docs/art.md, 4.2).
 
 const CHARACTER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn"
 const MODELS_DIR: String = "res://assets/models"

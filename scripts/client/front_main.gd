@@ -1,6 +1,6 @@
 class_name FrontMain
 extends Node
-## Root of the title screen with an account (docs/plataforma.md §13, UI-22 to UI-24): mounts the screens, talks to the platform
+## Root of the title screen with an account (docs/platform.md §13, UI-22 to UI-24): mounts the screens, talks to the platform
 ## ([PlatformApi] and [AccountFlow]) and keeps the [AccountSession] between scenes ([member session]).
 ## [codeblock]
 ## título ──Entrar──▶ (aceptar textos nuevos) ──▶ selección ──Entrar──▶ OnlineMain con billete

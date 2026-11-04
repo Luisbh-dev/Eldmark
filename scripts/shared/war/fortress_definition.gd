@@ -1,6 +1,6 @@
 class_name FortressDefinition
 extends Resource
-## Data of a capturable fort (docs/fuerte.md, section 1.1), in
+## Data of a capturable fort (docs/fortress.md, section 1.1), in
 ## [code]data/fortresses/<id>.tres[/code]. The zone scene points to it with the
 ## [code]definition[/code] metadata of the fort node ([constant Zones.FORTRESS_GROUP]).
 ## [br][br]

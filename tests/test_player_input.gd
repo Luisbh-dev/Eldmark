@@ -28,7 +28,7 @@ func test_button_constants_match_wire_format() -> void:
 	assert_eq(PlayerInput.ABILITY_2, 1 << 6, "ABILITY_2")
 	assert_eq(PlayerInput.ABILITY_3, 1 << 7, "ABILITY_3")
 	assert_eq(PlayerInput.INTERACT, 1 << 8, "INTERACT")
-	# Phase 4 (docs/habilidades.md, section 3.2); 13-14 reserved and 15 is SUBSTITUTED.
+	# Phase 4 (docs/abilities.md, section 3.2); 13-14 reserved and 15 is SUBSTITUTED.
 	assert_eq(PlayerInput.SWAP_WEAPON, 1 << 9, "SWAP_WEAPON")
 	assert_eq(PlayerInput.AIM_LEFT, 1 << 10, "AIM_LEFT")
 	assert_eq(PlayerInput.CONSUMABLE_1, 1 << 11, "CONSUMABLE_1")

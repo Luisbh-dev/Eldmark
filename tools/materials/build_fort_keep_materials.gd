@@ -5,7 +5,7 @@ extends SceneTree
 ## glTF ones with these and the keep takes on each realm's palette.
 ##
 ## Stone, cloth, wood, roof and earth use assets/materials/shaders/fort_keep_surface.gdshader
-## (it recolours the texture towards the colour in docs/mundo.md, "Palette per material", and reads the model's
+## (it recolours the texture towards the colour in docs/world.md, "Palette per material", and reads the model's
 ## vertex colour: value of each ashlar block, joint occlusion, dirt and wear mask).
 ## The fabrics use fort_keep_cloth.gdshader (emblem atlas, faction colour, capture and wind per
 ## instance). The textures are the project's own from tools/blender/make_fort_keep_textures.py.
@@ -53,7 +53,7 @@ const EMBERS: Dictionary = {
 	"eldrun": [Color("#ff8a2a"), 4.0],
 }
 
-## Missing pieces of roof (Eldrun ruin, docs/arte.md: "missing pieces").
+## Missing pieces of roof (Eldrun ruin, docs/art.md: "missing pieces").
 const ROOF_HOLES: Dictionary = {
 	"eldrun": 0.27,
 }

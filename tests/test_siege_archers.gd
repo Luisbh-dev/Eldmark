@@ -1,6 +1,6 @@
 extends TestCase
 ## The siege shooters on the real Vado Gris, with its physics (review of the abilities integration
-## on F6b; docs/fuerte.md 8.3): fake players with the siege brain ([constant BotBrain.Pattern.SIEGE]) and the
+## on F6b; docs/fortress.md 8.3): fake players with the siege brain ([constant BotBrain.Pattern.SIEGE]) and the
 ## shooter template (the bow in hand and the sword on the back). These are the review's probes turned into a
 ## test: before, the owner's archer shot at its own closed door (all arrows into the world), the attacker with the
 ## door broken kept shooting at the palisade without entering, and the door was hit with arrows (about 2.6 times less

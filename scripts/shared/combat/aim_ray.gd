@@ -1,6 +1,6 @@
 class_name AimRay
 extends RefCounted
-## Canonical aiming for projectiles (docs/habilidades.md, section 4.4): the camera ray that
+## Canonical aiming for projectiles (docs/abilities.md, section 4.4): the camera ray that
 ## comes out of [code]look_yaw[/code], [code]look_pitch[/code] and the shoulder bit
 ## ([constant PlayerInput.AIM_LEFT]), the aimed point with convergence to the depth of the hostile
 ## closest to the crosshair, the muzzle (the chest) and the inverse for bots and NPCs.

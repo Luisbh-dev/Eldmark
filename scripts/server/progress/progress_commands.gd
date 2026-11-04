@@ -1,6 +1,6 @@
 class_name ProgressCommands
 extends RefCounted
-## The GM commands for progression and economy (docs/progresion.md §10, P5d; PRG-16). They are registered by
+## The GM commands for progression and economy (docs/progression.md §10, P5d; PRG-16). They are registered by
 ## [method ProgressService.setup] in the [CommandRegistry]: through the console, through [code]/gm …[/code] with the
 ## role of the claim (all require [code]gm[/code]) and, the four with a network id (40 [code]item_give[/code], 41
 ## [code]currency_add[/code], 42 [code]level_set[/code] and 43 [code]xp_add[/code]), through DEBUG_COMMAND on the

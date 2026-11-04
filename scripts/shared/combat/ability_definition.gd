@@ -1,6 +1,6 @@
 class_name AbilityDefinition
 extends Resource
-## A weapon ability or a consumable (docs/habilidades.md, section 2.1). All times are in seconds
+## A weapon ability or a consumable (docs/abilities.md, section 2.1). All times are in seconds
 ## since the start of the action, and [CombatCatalog] converts them to ticks with
 ## [code]roundi(s * 60)[/code] on load.
 ## [br][br]

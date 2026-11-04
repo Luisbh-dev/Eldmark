@@ -2,7 +2,7 @@ class_name RawEnetAttacker
 extends RefCounted
 ## Raw ENet client for the security tests: talks to the server through an
 ## [ENetMultiplayerPeer] without [SceneMultiplayer] or [NetTransport], so it can send anything,
-## before and after authenticating (docs/red.md, sections 5.7 and 12).
+## before and after authenticating (docs/networking.md, sections 5.7 and 12).
 ## [br][br]
 ## It knows the internal [SceneMultiplayer] format used by [GuardedEnetPeer]: byte 0 &amp; 7 is the
 ## command (RAW = 3, SYS = 7, RPC = 0, SIMPLIFY_PATH = 1, SPAWN = 4) and, in a SYS, byte 1 is the

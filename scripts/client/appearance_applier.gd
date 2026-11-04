@@ -1,6 +1,6 @@
 class_name AppearanceApplier
 extends RefCounted
-## Applies a [CharacterAppearance] to a [HumanoidVisual] (docs/progresion.md §7.4, ART-19): it
+## Applies a [CharacterAppearance] to a [HumanoidVisual] (docs/progression.md §7.4, ART-19): it
 ## mounts body, head, hair, beard and marks as Universal Base Characters glTF scenes with
 ## [method HumanoidVisual.set_part] (or removes them with [method HumanoidVisual.clear_part]) and
 ## tints skin, hair and eyes with [method HumanoidVisual.set_tint]. Changing a part does not

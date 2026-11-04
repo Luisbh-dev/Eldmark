@@ -34,7 +34,7 @@ func find(position: Vector3) -> Variant:
 	return view.get_drawn_position() if view != null else null
 
 
-## Like [method find], but with what the bots' kit also needs (H5; docs/habilidades.md, section
+## Like [method find], but with what the bots' kit also needs (H5; docs/abilities.md, section
 ## 7.1): a [BotTarget] with the drawn position, the velocity of its drawn body (for lead shots: the
 ## server rewinds arrows to what was drawn) and whether it is knocked down (the DOWNED action in its record).
 func find_target(position: Vector3) -> Variant:

@@ -1,5 +1,5 @@
 extends TestCase
-## The fort gate in prediction (docs/fuerte.md, section 3.2): client and server simulate each
+## The fort gate in prediction (docs/fortress.md, section 3.2): client and server simulate each
 ## tick with the same gate, also when the gate changes owner midway and also in
 ## the replays of reconciliation. As in [code]test_prediction.gd[/code], the \"server\" and the
 ## client are two separate physics worlds (two [SubViewport]s); each with a flat floor and a
@@ -66,7 +66,7 @@ class EastBrain extends BotBrain:
 		return input
 
 
-## The server: applies the tick's input or repeats the last one (the substitution rule in red.md, 8.2).
+## The server: applies the tick's input or repeats the last one (the substitution rule in networking.md, 8.2).
 class ServerModel:
 	var character: PlayerCharacter
 	var dt: float = 1.0 / 60.0

@@ -1,6 +1,6 @@
 class_name CharacterWindow
 extends UIWindow
-## Character window (key C; docs/progresion.md §11.1, UI-26): the 3D figure (a [SubViewport] with its own
+## Character window (key C; docs/progression.md §11.1, UI-26): the 3D figure (a [SubViewport] with its own
 ## world, a still [PlayerCharacter] with [HumanoidVisual], its appearance and its weapons, which turns when dragged), the
 ## two weapon slots (the other five, grayed out with "Próximamente", coming soon), name, realm, level and XP bar, realm
 ## and attribute points, and the [CombatRules] sheet (maximum health and stamina; in phase 5 it does not change with
@@ -31,7 +31,7 @@ const PREVIEW_SIZE: Vector2i = Vector2i(220, 300)
 ## Radians the figure turns per dragged pixel.
 const TURN_RATE: float = 0.012
 ## Camera of the figure: front-facing (the character looks toward −Z) and at chest height. # TODO(arte): framing, light and
-## background are provisional until the window gets sign-off (docs/progresion.md §16).
+## background are provisional until the window gets sign-off (docs/progression.md §16).
 const CAMERA_POSITION: Vector3 = Vector3(0.0, 1.1, -3.1)
 const CAMERA_TARGET: Vector3 = Vector3(0.0, 0.92, 0.0)
 const CAMERA_FOV: float = 38.0

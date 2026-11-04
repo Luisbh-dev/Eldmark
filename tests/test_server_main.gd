@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests for [ServerMain] and the [code]--server[/code] mode of [code]boot.gd[/code], with the
-## server started as a separate process (docs/red.md, section 16):
+## server started as a separate process (docs/networking.md, section 16):
 ## [code]OS.create_process(OS.get_executable_path(), [--headless, --path, …, --, --server, …])[/code].
 ## [br][br]
 ## It checks that it starts, simulates and shuts down on its own with [code]--quit-after-ticks[/code] and

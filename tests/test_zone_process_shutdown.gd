@@ -1,11 +1,11 @@
 extends TestCase
 ## The orderly shutdown of the real zone server (another process, [code]--platform[/code] against
 ## [FakeHttpServer], which answers the releases after 2 s) with each of the five triggers in
-## docs/plataforma.md §7.2: [code]--stop-file[/code], [code]--quit-after-ticks[/code],
+## docs/platform.md §7.2: [code]--stop-file[/code], [code]--quit-after-ticks[/code],
 ## [code]--idle-quit[/code], the console's [code]shutdown[/code] (with [code]--run-at[/code]) and the
 ## heartbeat's [code]maintenance[/code]. With one player in the world, one in LOADING and one in
 ## VERIFYING, the process does not deregister (DELETE) until the platform has answered what is left
-## for each of them, and exits with code 0 and no errors. Since progresion.md P5a the zone has the
+## for each of them, and exits with code 0 and no errors. Since progression.md P5a the zone has the
 ## [code]progress[/code] section: whoever is in the world saves their kit on entry and is released with
 ## their final save ([code]release_lease[/code]); those in LOADING and VERIFYING, with the release. The
 ## fake platform answers saves and releases with the same delay.

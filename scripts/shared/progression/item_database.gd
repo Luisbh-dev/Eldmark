@@ -1,6 +1,6 @@
 class_name ItemDatabase
 extends RefCounted
-## The item definitions (docs/progresion.md §2.2, PRG-02): reads [code]data/items/[/code] (with
+## The item definitions (docs/progression.md §2.2, PRG-02): reads [code]data/items/[/code] (with
 ## subfolders) once, lazily like [CombatCatalog], tolerates the [code].tres.remap[/code] files of
 ## an exported project and logs its errors only once ([method shared]).
 ## [br][br]

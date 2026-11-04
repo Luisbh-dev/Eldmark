@@ -1,6 +1,6 @@
 class_name MarkerSource
 extends RefCounted
-## Where a zone's [WorldMarker]s come from (UI-19, docs/fuerte.md section 6): the fixed places of the baked
+## Where a zone's [WorldMarker]s come from (UI-19, docs/fortress.md section 6): the fixed places of the baked
 ## map ([ZoneMapDefinition]: camps and passes) and what the client knows about each fortress
 ## ([FortressView]: the fort, its gate and its circle with the owner's or the capturer's color). Pure: it
 ## neither draws nor reads the scene, it only gathers data.

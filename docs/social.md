@@ -1,411 +1,411 @@
-# Eldmark: diseño social
+# Eldmark: social design
 
-Qué se pueden decir y hacer los jugadores entre sí: qué cruza la frontera entre reinos y qué no,
-canales y alcances del chat, grupos y bandas, comandos, límites de ritmo, registros y sanciones. Es el
-documento de SOC-02: lo implementan SOC-03 a SOC-40 del [backlog](backlog.md) y de él salen las
-constantes de [red.md](red.md) (canal fiable 3) y los textos de las normas (`docs/normas.md`, SOC-18).
-Para el mundo y los reinos, [mundo.md](mundo.md); para la visión, [vision.md](vision.md).
+What players can say and do to each other: what crosses the border between realms and what does not,
+chat channels and ranges, parties and warbands, commands, rate limits, logs and sanctions. This is the
+SOC-02 document: SOC-03 to SOC-40 of the [backlog](backlog.md) implement it, and it is the source of the
+constants in [networking.md](networking.md) (reliable channel 3) and of the text of the rules (`docs/normas.md`, SOC-18).
+For the world and the realms, see [world.md](world.md); for the vision, [vision.md](vision.md).
 
-Todo lo que dice este documento sobre cifras (alcances, ritmos, retenciones, tiempos de sanción) es
-**provisional**: se fijó de noche para desbloquear las fases 3 y 4 y se afina con las pruebas reales.
-Las reglas de nombres ya están implementadas (SOC-01, `NameRules`) y aquí solo se recuerdan.
+Every figure in this document (ranges, rates, retention periods, sanction durations) is
+**provisional**: it was set overnight to unblock phases 3 and 4 and will be tuned with real playtests.
+The name rules are already implemented (SOC-01, `NameRules`) and are only recalled here.
 
-## 0. Decisiones
+## 0. Decisions
 
-Tomadas de noche, con la recomendación del backlog (provisionales; revisar). Las cuatro salían de las
-«Decisiones pendientes» de [backlog.md](backlog.md) y desde ahora están en «Decisiones tomadas».
+Made overnight, following the backlog's recommendation (provisional; to be reviewed). All four came from the
+"Decisiones pendientes" (pending decisions) of [backlog.md](backlog.md) and now live under "Decisiones tomadas" (decisions made).
 
-| Pregunta | Decisión |
+| Question | Decision |
 |---|---|
-| ¿Qué se ve de los jugadores enemigos y qué pueden comunicarse los reinos? | Del enemigo solo se ve el color y el emblema de su bando; su nombre aparece solo al apuntarle con la retícula y siempre en el registro de combate y en la pantalla de muerte. Ni chat, ni susurros, ni grupos entre reinos, y lo filtra el servidor (sección 1) |
-| ¿Los gestos se ven entre reinos? | Solo la animación: provocar al enemigo forma parte del PvP y, sin texto, no sirve de canal de comunicación (sección 6) |
-| ¿Tamaño máximo del grupo? | 5, coherente con las mazmorras de 3–5 jugadores de mundo.md y con marcos legibles en combate; las batallas grandes se cubren con bandas (sección 3) |
-| ¿Chat de voz integrado? | Sin voz hasta después del lanzamiento: es caro y difícil de moderar y Discord ya lo cubre; los pings y marcas (SOC-10) resuelven la táctica dentro del juego (sección 7) |
+| What is visible of enemy players, and what can the realms communicate to each other? | Of the enemy only the color and emblem of their side are visible; their name appears only while aiming at them with the reticle, and always in the combat log and on the death screen. No chat, no whispers, no parties across realms, and the server filters it (section 1) |
+| Are emotes visible across realms? | Only the animation: taunting the enemy is part of PvP and, without text, it is no communication channel (section 6) |
+| Maximum party size? | 5, consistent with the 3-5 player dungeons of world.md and with frames that stay readable in combat; large battles are covered by warbands (section 3) |
+| Built-in voice chat? | No voice until after launch: it is expensive and hard to moderate, and Discord already covers it; pings and markers (SOC-10) handle tactics inside the game (section 7) |
 
-Las dos que quedaban pendientes se tomaron en la fase 5 ([plataforma.md](plataforma.md) §0,
-provisionales, de noche): «ignorar» afecta a **la cuenta**, en silencio, y el servidor filtra también los
-canales públicos (sección 10); el registro de chat se guarda **30 días**, susurros incluidos, y **un año** lo
-copiado a un reporte (sección 8), con revisión legal (RGPD) antes de las pruebas públicas.
+The two that were still pending were decided in phase 5 ([platform.md](platform.md) §0,
+provisional, overnight): "ignore" applies to **the account**, silently, and the server also filters the
+public channels (section 10); the chat log is kept **30 days**, whispers included, and **one year** for what is
+copied into a report (section 8), with a legal review (GDPR) before the public tests.
 
-## 1. Qué cruza entre reinos
+## 1. What crosses between realms
 
-Los reinos están en guerra y no hay diplomacia: lo que cruza la frontera es la **imagen** del
-enemigo (cómo se ve, cómo se mueve, qué le hace al mundo), nunca su **voz**. El servidor lo impone;
-el cliente no puede pedir algo que el servidor no envía.
+The realms are at war and there is no diplomacy: what crosses the border is the enemy's **image** (how they
+look, how they move, what they do to the world), never their **voice**. The server enforces it;
+the client cannot ask for something the server does not send.
 
-| Qué | ¿Cruza entre reinos? | Cómo |
+| What | Crosses between realms? | How |
 |---|---|---|
-| Aspecto, posición y animaciones | Sí | Es el juego: se ve al enemigo, sus tabardos y su emblema |
-| Color y emblema de bando | Sí | Siempre visibles (también en la placa) |
-| Nombre del personaje | Solo al apuntar | La placa del enemigo muestra el nombre mientras la retícula lo señala (unos segundos de gracia al apartarla) y siempre figura en el registro de combate y en la pantalla de muerte («Te ha derrotado X») |
-| Gremio, nivel y equipo del enemigo | No | Solo se ven los de un aliado. Inspeccionar a un enemigo (SOC-29) no devuelve equipo, atributos, gremio ni nivel; solo lo que ya se ve y, desde la fase 8, su rango de guerra |
-| Vida del enemigo | Sí, en su placa | Al apuntarle o tras dañarlo (decisión de combate.md) |
-| Chat (decir, zona y los demás canales) | No | El servidor **nunca** envía a un cliente un texto de otro reino |
-| Susurros | No | Susurrar a un enemigo responde «no está conectado», sin revelar que existe |
-| Grupos, bandas, gremios, amigos, correo, comercio | No | Solo del mismo reino |
-| Gestos | Solo la animación | Sección 6 |
-| Pings y marcas tácticas | No | Solo al grupo y la banda propios (SOC-10) |
-| Mensajes del sistema | Los que afectan a los dos | «X ha capturado el fuerte» lo ven todos los implicados; el texto lo compone el servidor |
-| Nombres | Sí | Un nombre es único en todo el mundo, de cualquier reino (SOC-13, clave de comparación de `NameRules`): identifica a un solo personaje, así que se puede reportar y recordar |
+| Appearance, position and animations | Yes | It is the game: you see the enemy, their tabards and their emblem |
+| Side color and emblem | Yes | Always visible (also on the nameplate) |
+| Character name | Only when aimed at | The enemy's nameplate shows the name while the reticle points at it (a few seconds of grace after looking away), and it always appears in the combat log and on the death screen ("Te ha derrotado X", "X has defeated you") |
+| Enemy guild, level and equipment | No | Only an ally's are visible. Inspecting an enemy (SOC-29) returns no equipment, attributes, guild or level; only what is already visible and, from phase 8, their war rank |
+| Enemy health | Yes, on their nameplate | When aimed at or after damaging them (combat decision in combate.md) |
+| Chat (say, zone and the other channels) | No | The server **never** sends a client text from another realm |
+| Whispers | No | Whispering an enemy answers "no está conectado" (is not online), without revealing that they exist |
+| Parties, warbands, guilds, friends, mail, trade | No | Same realm only |
+| Emotes | Animation only | Section 6 |
+| Pings and tactical markers | No | Only to your own party and warband (SOC-10) |
+| System messages | Those that affect both sides | "X ha capturado el fuerte" (X has captured the fort) is seen by everyone involved; the server composes the text |
+| Names | Yes | A name is unique across the whole world, in any realm (SOC-13, the `NameRules` comparison key): it identifies a single character, so it can be reported and remembered |
 
-Detalles que se deducen:
+Details that follow from this:
 
-- **Zona compartida.** En Eldrun, el Vado Gris y las fronteras hay jugadores de varios reinos en el
-  mismo proceso. El canal «zona» y el «decir» solo reparten dentro del reino del emisor; el
-  `ChatRouter` filtra por reino al construir la lista de destinatarios, no al mostrar.
-- **Los Huecos** (neutrales) no hablan: no tienen chat; sus avisos de PNJ son mensajes del sistema.
-- **Ignorar y reportar** funcionan con enemigos (se puede reportar a quien insulta con un gesto o
-  con un nombre ofensivo); ignorar a un enemigo no tiene efecto práctico porque no puede escribirte.
+- **Shared zone.** In Eldrun, the Vado Gris and the borders, players of several realms share the
+  same process. The "zone" channel and "say" only deliver within the sender's realm; the
+  `ChatRouter` filters by realm when building the recipient list, not when displaying.
+- **The Hollow** (neutral) does not talk: it has no chat; its NPC announcements are system messages.
+- **Ignore and report** work with enemies (you can report someone who insults you with an emote or
+  with an offensive name); ignoring an enemy has no practical effect because they cannot write to you.
 
-## 2. Canales y alcances
+## 2. Channels and ranges
 
-Mensaje de chat: hasta **255 caracteres** y 768 B (SOC-03, canal fiable 3, tipos `0x40` en adelante),
-con emisor y destinatario por nombre. El texto se sanea en el servidor antes de repartirlo (sección 5).
-Sin comando delante, el texto va al **canal activo**, que por defecto es «decir» y cambia al escribir
-un comando de canal sin texto (`/g` deja el grupo como activo).
+Chat message: up to **255 characters** and 768 B (SOC-03, reliable channel 3, types `0x40` onwards),
+with sender and recipient by name. The text is sanitized on the server before it is delivered (section 5).
+With no command in front, the text goes to the **active channel**, which defaults to "say" and changes when
+you type a channel command without text (`/g` leaves the party channel active).
 
-| Canal | Comando | Alcance | Fase |
+| Channel | Command | Range | Phase |
 |---|---|---|---|
-| Decir | `/d` · `/decir` | Mismo reino, a 30 m del emisor | 4 (SOC-04) |
-| Zona | `/z` · `/zona` | Todo el reino presente en esa zona y esa copia (canal) | 4 |
-| Susurro | `/s nombre texto` · `/susurrar` | Un personaje del mismo reino; en la fase 4 dentro del proceso, desde la 6 en cualquier zona (SOC-20) | 4 · 6 |
-| Responder | `/r texto` · `/responder` | Al último con quien se habló | 4 |
-| Grupo | `/g` · `/grupo` | Los miembros del grupo, estén donde estén | 4 (SOC-06) |
-| Banda | `/b` · `/banda` | Los miembros de la banda | 7 (SOC-30) |
-| Gremio | `/gr` · `/gremio` | Los miembros del gremio | 6 (SOC-25) |
-| Oficiales | `/o` · `/oficiales` | Los oficiales del gremio | 6 |
-| Reino | `/reino` | Todo el reino conectado, a ritmo lento | 6 (SOC-21) |
-| Comercio | `/comercio` | Todo el reino conectado, a ritmo lento | 6 |
-| Novatos | `/novatos` | Todo el reino conectado que se haya unido al canal | 6 |
-| Sistema | (solo S→C) | El destinatario; avisos del servidor (`NOTICE`) y del juego | 4 |
-| GM | `/gm …` | Roles de moderación (SOC-14); etiqueta visible | 5 |
+| Say | `/d` · `/decir` | Same realm, within 30 m of the sender | 4 (SOC-04) |
+| Zone | `/z` · `/zona` | The whole realm present in that zone and that instance (channel) | 4 |
+| Whisper | `/s name text` · `/susurrar` | One character of the same realm; in phase 4 within the process, from phase 6 in any zone (SOC-20) | 4 · 6 |
+| Reply | `/r text` · `/responder` | The last person you talked with | 4 |
+| Party | `/g` · `/grupo` | The party members, wherever they are | 4 (SOC-06) |
+| Warband | `/b` · `/banda` | The warband members | 7 (SOC-30) |
+| Guild | `/gr` · `/gremio` | The guild members | 6 (SOC-25) |
+| Officers | `/o` · `/oficiales` | The guild officers | 6 |
+| Realm | `/reino` | The whole connected realm, at a slow rate | 6 (SOC-21) |
+| Trade | `/comercio` | The whole connected realm, at a slow rate | 6 |
+| Newcomers | `/novatos` | The whole connected realm that has joined the channel | 6 |
+| System | (S→C only) | The recipient; server notices (`NOTICE`) and game notices | 4 |
+| GM | `/gm …` | Moderation roles (SOC-14); visible tag | 5 |
 
-- **Zona y copias.** Una capital o una zona PvE con varias copias («canales», mundo.md) tiene un canal
-  de zona por copia. Eldrun no se divide: allí «zona» es el reino entero dentro de Eldrun.
-- **Eldrun y el ruido.** En Eldrun con cientos de jugadores, «zona» sigue siendo por reino; los
-  eventos de guerra no pasan por el chat de jugadores sino por el canal de guerra del reino (SOC-32).
-- **Nombre del canal de ayuda.** SOC-05 usa `/ayuda` para listar los comandos; el canal de preguntas de
-  los jugadores nuevos, que SOC-21 llama «ayuda», se llama **«novatos»** para no chocar.
-- **Colores.** Cada canal tiene su color propio y el sistema y los GM, uno inconfundible; los textos de
-  otros jugadores se muestran sin interpretar BBCode (SOC-05).
+- **Zone and instances.** A capital or a PvE zone with several instances ("channels", world.md) has one zone
+  channel per instance. Eldrun is not split: there "zone" is the entire realm within Eldrun.
+- **Eldrun and noise.** In Eldrun with hundreds of players, "zone" is still per realm; war
+  events do not go through the player chat but through the realm's war channel (SOC-32).
+- **Name of the help channel.** SOC-05 uses `/ayuda` to list the commands; the new players' question channel,
+  which SOC-21 calls "ayuda" (help), is called **"novatos"** (newcomers) so they do not clash.
+- **Colors.** Each channel has its own color, and the system and the GMs an unmistakable one; text from
+  other players is displayed without interpreting BBCode (SOC-05).
 
-## 3. Grupos y bandas
+## 3. Parties and warbands
 
-| Concepto | Valor | Notas |
+| Concept | Value | Notes |
 |---|---|---|
-| Tamaño máximo del grupo | **5** (`PARTY_MAX_SIZE`) | Una constante compartida; mazmorras de 3–5 |
-| Quién puede agrupar | Solo el mismo reino | La invitación a un enemigo se rechaza en el servidor (SOC-06) |
-| Invitación | Caduca a los **60 s**; como mucho 5 pendientes por emisor | Aceptar y rechazar por teclado |
-| Líder | El primero; hereda el siguiente más antiguo al salir | Puede expulsar y cambiar de líder |
-| Estado compartido | Vida, resistencia y posición de cada miembro a 2 Hz, aunque esté fuera del radio de interés (SOC-06, SOC-09) | |
-| Reparto de XP y crédito | Miembros a menos de **100 m** (SOC-23); el botín es personal (PRG-21) | |
-| Reconexión | **5 min** de gracia manteniendo el puesto (SOC-22) | |
-| Banda de guerra | Hasta **4 grupos (20 jugadores)** en la primera versión; el tope final lo fija TEC-34 con la capacidad medida de Eldrun | Líder y ayudantes, `/banda`, marcos compactos, pings a toda la banda (SOC-30) |
-| Bandas abiertas | Cualquiera del reino se une con un clic o al acercarse a la fortaleza que atacan (SOC-31) | Fase 7 |
+| Maximum party size | **5** (`PARTY_MAX_SIZE`) | A shared constant; dungeons of 3-5 |
+| Who can party up | Same realm only | An invitation to an enemy is rejected on the server (SOC-06) |
+| Invitation | Expires after **60 s**; at most 5 pending per sender | Accept and decline from the keyboard |
+| Leader | The first one; the next oldest inherits on leaving | Can kick and change leader |
+| Shared state | Health, stamina and position of each member at 2 Hz, even outside the interest radius (SOC-06, SOC-09) | |
+| XP and credit sharing | Members within **100 m** (SOC-23); loot is personal (PRG-21) | |
+| Reconnection | **5 min** of grace keeping the spot (SOC-22) | |
+| War warband | Up to **4 parties (20 players)** in the first version; the final cap is set by TEC-34 with Eldrun's measured capacity | Leader and assistants, `/banda`, compact frames, pings to the whole warband (SOC-30) |
+| Open warbands | Anyone in the realm joins with one click or by approaching the fortress they are attacking (SOC-31) | Phase 7 |
 
-El grupo es de 5 y no de 6 u 8 porque los marcos de grupo tienen que seguir siendo legibles con la
-mirada puesta en un combate de acción sin selección de objetivo; para más gente existe la banda.
+The party is 5 and not 6 or 8 because party frames have to stay readable while the eyes are on an
+action combat with no target selection; for more people there is the warband.
 
-## 4. Comandos en español
+## 4. Commands in Spanish
 
-Los comandos empiezan por `/` y se reconocen sin distinguir mayúsculas ni tildes
-(`/Susurrar`, `/susurrar` y `/SUSURRAR` valen igual; la clave de comparación es la de `NameRules`).
-Un nombre de jugador como argumento tampoco distingue mayúsculas ni tildes y no lleva comillas (los
-nombres no tienen espacios). Un comando desconocido contesta «Comando desconocido. Escribe /ayuda.»
-y un jugador sin rol que escribe `/gm` recibe lo mismo: no se revela que existe.
+Commands start with `/` and are recognized regardless of case and accents
+(`/Susurrar`, `/susurrar` and `/SUSURRAR` are equivalent; the comparison key is that of `NameRules`).
+A player name as an argument is also case- and accent-insensitive and takes no quotes (names
+have no spaces). An unknown command answers "Comando desconocido. Escribe /ayuda." (Unknown command. Type /ayuda.)
+and a player without a role who types `/gm` gets the same: it does not reveal that it exists.
 
-| Grupo | Comandos |
+| Group | Commands |
 |---|---|
-| Canales | `/d` `/z` `/s` `/r` `/g` `/b` `/gr` `/o` `/reino` `/comercio` `/novatos` (y sus nombres largos de la sección 2) |
-| Grupo | `/invitar nombre` · `/salir` · `/expulsar nombre` · `/lider nombre` |
-| Gremio | `/ginvitar nombre` · `/gsalir` · `/gexpulsar nombre` · `/gascender nombre` |
-| Social | `/amigo nombre` · `/ignorar nombre` · `/designorar nombre` · `/ausente [texto]` · `/ocupado` |
-| Gestos | `/saludar` · `/reverencia` · `/burla` · `/animar` · `/sentarse` · `/señalar` (SOC-11) |
-| Ayuda y quejas | `/ayuda [comando]` · `/reportar nombre` · `/peticion texto` (SOC-17, SOC-36) |
-| Moderación | `/gm …` (solo con rol; SOC-14) |
+| Channels | `/d` `/z` `/s` `/r` `/g` `/b` `/gr` `/o` `/reino` `/comercio` `/novatos` (and their long names from section 2) |
+| Party | `/invitar name` · `/salir` · `/expulsar name` · `/lider name` |
+| Guild | `/ginvitar name` · `/gsalir` · `/gexpulsar name` · `/gascender name` |
+| Social | `/amigo name` · `/ignorar name` · `/designorar name` · `/ausente [text]` · `/ocupado` |
+| Emotes | `/saludar` · `/reverencia` · `/burla` · `/animar` · `/sentarse` · `/señalar` (SOC-11) |
+| Help and complaints | `/ayuda [command]` · `/reportar name` · `/peticion text` (SOC-17, SOC-36) |
+| Moderation | `/gm …` (role only; SOC-14) |
 
-Todo comando que cambia un estado (invitar, salir, reportar) pasa por el servidor, que valida y
-contesta con un mensaje del sistema; el cliente nunca da por hecho el resultado. Los que dependen de
-un jugador concreto sin escribir su nombre (invitar, susurrar, inspeccionar, ignorar, reportar) salen
-también del **menú social** sobre el jugador bajo el punto de mira, a 20 m como mucho (SOC-07).
+Every command that changes a state (invite, leave, report) goes through the server, which validates and
+answers with a system message; the client never assumes the result. Those that depend on a specific
+player without typing their name (invite, whisper, inspect, ignore, report) also come
+from the **social menu** on the player under the crosshair, at 20 m at most (SOC-07).
 
-## 5. Límites de ritmo y saneado
+## 5. Rate limits and sanitizing
 
-Se aplican en el servidor, por conexión, con el `RateLimiter` de cubo de fichas que ya existe
-([red.md](red.md), sección 12); desde la fase 5, por personaje (12.7). Cuando algo se descarta, el jugador
-recibe un aviso del sistema («Hablas demasiado rápido», como mucho uno por segundo) y, para que pulsar
-Intro de más no expulse a nadie, los **diez primeros descartes de cada 10 s son gratis**; a partir de ahí
-cada descarte cuenta como un aviso del peer para la expulsión (50 avisos en 600 ticks: red.md sección
-12), de modo que la inundación sostenida sí expulsa (12.2).
+They are applied on the server, per connection, with the token-bucket `RateLimiter` that already exists
+([networking.md](networking.md), section 12); from phase 5, per character (12.7). When something is dropped, the player
+gets a system notice ("Hablas demasiado rápido", "You talk too fast", at most one per second) and, so that pressing
+Enter too many times does not get anyone kicked, the **first ten drops in every 10 s are free**; after that
+each drop counts as a peer warning toward the kick (50 warnings in 600 ticks: networking.md section
+12), so sustained flooding does get kicked (12.2).
 
-| Acción | Ritmo | Ráfaga | Notas |
+| Action | Rate | Burst | Notes |
 |---|---|---|---|
-| Decir, zona, grupo, banda, gremio | 1 mensaje/s | 5 | Un mensaje idéntico al anterior en los últimos 10 s se descarta |
-| Susurro | 1 mensaje/s | 3 | Y como mucho 5 destinatarios nuevos por minuto (SOC-38); repetir el texto solo se descarta si va al mismo destinatario |
-| Reino | 1 mensaje cada 10 s | 1 | SOC-21 |
-| Comercio | 1 mensaje cada 15 s | 1 | |
-| Novatos | 1 mensaje cada 5 s | 2 | |
-| Invitaciones (grupo, gremio, amigo) | 1 cada 2 s | 3 | Y como mucho 5 pendientes |
-| Gestos | 1 cada 2 s | 2 | Moverse, atacar o recibir daño lo cancela |
-| Pings | 1 cada 2 s | 3 | A 300 m como mucho; duran 6 s (SOC-10) |
-| Inspeccionar | 1 cada 2 s | 3 | A 20 m, solo aliados (SOC-29) |
-| Reportes | 1 por objetivo cada 10 min | 10 por hora | SOC-17 |
-| Peticiones a un GM | 1 abierta a la vez | | SOC-36 |
+| Say, zone, party, warband, guild | 1 message/s | 5 | A message identical to the previous one within the last 10 s is dropped |
+| Whisper | 1 message/s | 3 | And at most 5 new recipients per minute (SOC-38); repeating the text is only dropped if it goes to the same recipient |
+| Realm | 1 message every 10 s | 1 | SOC-21 |
+| Trade | 1 message every 15 s | 1 | |
+| Newcomers | 1 message every 5 s | 2 | |
+| Invitations (party, guild, friend) | 1 every 2 s | 3 | And at most 5 pending |
+| Emotes | 1 every 2 s | 2 | Moving, attacking or taking damage cancels it |
+| Pings | 1 every 2 s | 3 | At 300 m at most; they last 6 s (SOC-10) |
+| Inspect | 1 every 2 s | 3 | At 20 m, allies only (SOC-29) |
+| Reports | 1 per target every 10 min | 10 per hour | SOC-17 |
+| Requests to a GM | 1 open at a time | | SOC-36 |
 
-Antes de repartir un mensaje, el servidor lo **sanea**: quita los caracteres de control y todo lo
-invisible (formato, marcas de dirección, rellenos, sin asignar, uso privado), la secuencia BBCode
-(`[…]`), las marcas combinantes sin letra y las que pasan de cuatro sobre una misma letra, los espacios
-repetidos y los de los extremos y lo que pase de cinco puntos de código en un mismo grafema, y rechaza el texto vacío o que pase de 255 caracteres (detalle en 12.2). En los canales públicos bloquea además los enlaces (SOC-27). El cliente tiene un
-filtro de lenguaje opcional, activo por defecto, con listas editables en español e inglés. Un personaje
-con menos de 2 h jugadas no puede usar `/reino`, `/comercio` ni adjuntos de correo (SOC-38).
+Before delivering a message, the server **sanitizes** it: it strips control characters and everything
+invisible (format, direction marks, fillers, unassigned, private use), BBCode sequences
+(`[…]`), combining marks with no letter and those beyond four over the same letter, repeated spaces and
+leading/trailing ones, and anything beyond five code points in a single grapheme, and it rejects empty text or text beyond 255 characters (details in 12.2). On public channels it also blocks links (SOC-27). The client has an
+optional language filter, on by default, with editable lists in Spanish and English. A character
+with less than 2 h played cannot use `/reino`, `/comercio` or mail attachments (SOC-38).
 
-## 6. Gestos
+## 6. Emotes
 
-Un gesto es una animación con o sin texto («Ana saluda»). Se replica a todos los que ven al
-personaje, también al enemigo: la burla es parte del PvP. **El texto del gesto solo lo recibe el
-propio reino y a 30 m**; el enemigo ve la animación sin palabras y no puede usarla para comunicarse.
-Moverse, atacar, recibir daño o morir cancela el gesto. Los gestos nunca dan ventaja mecánica.
+An emote is an animation with or without text ("Ana saluda", "Ana waves"). It is replicated to everyone who sees the
+character, the enemy too: taunting is part of PvP. **The emote text is only received by the
+character's own realm and within 30 m**; the enemy sees the animation without words and cannot use it to communicate.
+Moving, attacking, taking damage or dying cancels the emote. Emotes never give a mechanical advantage.
 
-## 7. Voz y pings
+## 7. Voice and pings
 
-No hay chat de voz integrado: es caro, se modera mal y Discord ya cubre esa necesidad (SOC-40 deja
-una integración opcional de presencia). La coordinación táctica dentro del juego la cubren los
-**pings** (atacar, defender, peligro, reunirse) y hasta 4 marcas persistentes del líder, que ve el
-grupo o la banda en el mundo, la brújula y el minimapa (SOC-10), con límite de ritmo y sin que los
-vea el enemigo.
+There is no built-in voice chat: it is expensive, hard to moderate and Discord already covers that need (SOC-40 leaves
+an optional presence integration). Tactical coordination inside the game is covered by
+**pings** (attack, defend, danger, regroup) and up to 4 persistent leader markers, which the
+party or warband sees in the world, on the compass and on the minimap (SOC-10), with a rate limit and not visible
+to the enemy.
 
-## 8. Registros y retención (decidido en la fase 5: plataforma.md §0 y §11)
+## 8. Logs and retention (decided in phase 5: platform.md §0 and §11)
 
-| Qué | Qué se guarda | Cuánto |
+| What | What is stored | How long |
 |---|---|---|
-| Chat | Canal, `character_id` del emisor, destinatario (susurros), zona y copia, texto y hora UTC (SOC-15), **incluidos los susurros**; de un mensaje de grupo no se guarda qué grupo (plataforma.md §9.2) | 30 días |
-| Fragmentos ligados a un reporte | El contexto que se adjunta al reporte (SOC-17, `report_evidence`) | 1 año desde que se cierra el reporte; uno sin cerrar se da por cerrado al año |
-| Auditoría de comandos de GM | Quién, cuándo, zona, objetivo y argumentos (SOC-14) | 1 año en `audit_log`; la copia que queda en el libro del personaje (actor, nota y argumentos de las operaciones de GM) sigue la retención del libro (plataforma.md §11.1) |
-| Sanciones | Tipo, motivo, autor, caducidad y reportes enlazados | Mientras exista la cuenta; al purgarla, sin motivo y 1 año más |
-| Nombres de personajes borrados | Reservados para que nadie los herede | Los 7 días en que se pueden restaurar y 30 más; los de prueba, solo los 7 (SOC-13, plataforma.md §4.4) |
+| Chat | Channel, sender's `character_id`, recipient (whispers), zone and instance, text and UTC time (SOC-15), **whispers included**; for a party message the party is not stored (platform.md §9.2) | 30 days |
+| Fragments linked to a report | The context attached to the report (SOC-17, `report_evidence`) | 1 year after the report is closed; an unclosed one is considered closed after a year |
+| GM command audit | Who, when, zone, target and arguments (SOC-14) | 1 year in `audit_log`; the copy kept in the character's ledger (actor, note and arguments of the GM operations) follows the ledger's retention (platform.md §11.1) |
+| Sanctions | Type, reason, author, expiry and linked reports | As long as the account exists; when it is purged, with no reason and 1 more year |
+| Names of deleted characters | Reserved so that nobody inherits them | The 7 days in which they can be restored plus 30 more; test ones, only the 7 (SOC-13, platform.md §4.4) |
 
-Las cifras y cómo se aplican son las de plataforma.md §11.1, que manda. Una sanción no guarda chat propio:
-solo se conserva lo copiado a un reporte.
+The figures and how they are applied are those of platform.md §11.1, which prevails. A sanction does not store chat of its own:
+only what was copied into a report is kept.
 
-Los susurros se guardan porque sin ellos no se puede atender un reporte de acoso. Acceso solo a
-moderadores con rol, con registro de cada consulta (plataforma.md §9.1: la CLI exige `--actor` y cada
-lectura deja su fila en la auditoría). Antes de abrir pruebas públicas hay que pasar la
-retención y el consentimiento por una revisión legal (RGPD); esas cifras pueden cambiar entonces.
+Whispers are stored because without them a harassment report cannot be handled. Access is limited to
+moderators with a role, with a log of every query (platform.md §9.1: the CLI requires `--actor` and each
+read leaves its row in the audit). Before opening public tests, retention
+and consent must go through a legal review (GDPR); these figures may change then.
 
-## 9. Sanciones y normas
+## 9. Sanctions and rules
 
-Las normas completas y la pantalla que se acepta al crear la cuenta son de SOC-18
-(`docs/normas.md`). La escala es **progresiva** y siempre lleva motivo, autor, caducidad y los
-reportes enlazados:
+The full rules and the screen that is accepted when creating the account belong to SOC-18
+(`docs/normas.md`). The scale is **progressive** and always carries a reason, author, expiry and the
+linked reports:
 
-| Paso | Sanción | Efecto |
+| Step | Sanction | Effect |
 |---|---|---|
-| 1 | Aviso | Mensaje del sistema y anotación en la cuenta; sin efecto mecánico |
-| 2 | Silencio | Sin acceso a ningún canal de chat salvo los de sistema; 1 h, 24 h o 7 días |
-| 3 | Suspensión temporal | La cuenta no puede entrar; 1, 3, 7 o 30 días, con el motivo y la fecha de fin en el rechazo |
-| 4 | Expulsión permanente | Cuenta cerrada; sin devolución |
-| Aparte | Renombrado forzado | Nombre ofensivo o suplantación: se obliga a elegir otro al entrar |
+| 1 | Warning | System message and a note on the account; no mechanical effect |
+| 2 | Mute | No access to any chat channel except the system ones; 1 h, 24 h or 7 days |
+| 3 | Temporary suspension | The account cannot log in; 1, 3, 7 or 30 days, with the reason and the end date in the rejection |
+| 4 | Permanent ban | Account closed; no refund |
+| Aside | Forced rename | Offensive name or impersonation: the player is forced to choose another on login |
 
-| Falta | Primera vez | Reincidencia |
+| Offense | First time | Repeat offense |
 |---|---|---|
-| Lenguaje ofensivo, spam | Aviso o silencio de 1 h | Silencio de 24 h o 7 días |
-| Acoso, amenazas, discriminación | Silencio de 7 días o suspensión de 3 días | Suspensión de 30 días o expulsión |
-| Nombre ofensivo o suplantación | Renombrado forzado | Suspensión de 7 días |
-| Trampas, bots, explotar errores | Suspensión de 7 a 30 días | Expulsión |
-| Compraventa de cuentas, objetos u oro por dinero real | Suspensión de 30 días | Expulsión |
+| Offensive language, spam | Warning or 1 h mute | 24 h or 7-day mute |
+| Harassment, threats, discrimination | 7-day mute or 3-day suspension | 30-day suspension or ban |
+| Offensive name or impersonation | Forced rename | 7-day suspension |
+| Cheating, bots, exploiting bugs | 7 to 30-day suspension | Ban |
+| Buying or selling accounts, items or gold for real money | 30-day suspension | Ban |
 
-Una sanción grave puede saltarse pasos; la reincidencia cuenta dentro de 90 días. Toda sanción tiene
-una vía de apelación (una petición, atendida por un moderador distinto en 7 días). Un silencio
-automático provisional tras varios reportes de jugadores distintos queda pendiente de revisión
-humana (SOC-38).
+A serious sanction may skip steps; repeat offenses count within 90 days. Every sanction has
+an appeal route (a request, handled by a different moderator within 7 days). A provisional automatic mute
+after several reports from different players stays pending human
+review (SOC-38).
 
-## 10. Ignorados, amigos y gremios
+## 10. Ignored players, friends and guilds
 
-- **Amigos:** hasta 100, del mismo reino, por solicitud aceptada (SOC-24).
-- **Ignorados:** hasta 100. Ignorar afecta a **la cuenta** (decidido en la fase 5, plataforma.md §0),
-  en silencio y sin revelar qué otros personajes comparte, porque el acoso con personajes alternativos es
-  el caso más frecuente. El servidor descarta del ignorado susurros, invitaciones y correo, y lo quita
-  también de los destinatarios de los canales públicos: el cliente no puede ocultarlo, porque no sabe qué
-  personajes comparten cuenta (SOC-16, plataforma.md §9.3).
-- **Gremios:** del mismo reino, con 5 rangos y permisos por bits; el nombre del gremio de un aliado
-  aparece en su placa, el del enemigo no (SOC-25, sección 1).
+- **Friends:** up to 100, same realm, by accepted request (SOC-24).
+- **Ignored:** up to 100. Ignoring applies to **the account** (decided in phase 5, platform.md §0),
+  silently and without revealing which other characters it shares, because harassment with alternate characters is
+  the most frequent case. The server drops whispers, invitations and mail from the ignored player, and also removes them
+  from the recipients of the public channels: the client cannot hide them, because it does not know which
+  characters share an account (SOC-16, platform.md §9.3).
+- **Guilds:** same realm, with 5 ranks and bit-based permissions; an ally's guild name
+  appears on their nameplate, an enemy's does not (SOC-25, section 1).
 
-## 11. Dónde se implementa
+## 11. Where it is implemented
 
-| Fase | Pieza |
+| Phase | Piece |
 |---|---|
-| 4 | Protocolo de chat (SOC-03), `ChatRouter` en el servidor de zona con decir, zona, susurro y sistema (SOC-04), ventana de chat y comandos (SOC-05), grupos (SOC-06 a SOC-09), menú social (SOC-07), pings (SOC-10) |
-| 5 | Nombres únicos (SOC-13), roles de GM y auditoría (SOC-14), registro persistente (SOC-15), ignorados, reportes y sanciones (SOC-16 a SOC-18) |
-| 6 | Gestos (SOC-11), susurros entre zonas y canales de reino, comercio y novatos (SOC-20, SOC-21), grupos entre zonas (SOC-22), amigos, gremios, filtro, correo e inspección (SOC-24 a SOC-29) |
-| 7 | Bandas de guerra (SOC-30), buscar grupo (SOC-31), canal de guerra (SOC-32), heráldica y fortalezas de gremio (SOC-33 a SOC-35) |
-| 8 | Peticiones a GM, panel de moderación, antispam y escalado (SOC-36 a SOC-39) |
+| 4 | Chat protocol (SOC-03), `ChatRouter` on the zone server with say, zone, whisper and system (SOC-04), chat window and commands (SOC-05), parties (SOC-06 to SOC-09), social menu (SOC-07), pings (SOC-10) |
+| 5 | Unique names (SOC-13), GM roles and audit (SOC-14), persistent log (SOC-15), ignored players, reports and sanctions (SOC-16 to SOC-18) |
+| 6 | Emotes (SOC-11), cross-zone whispers and realm channels, trade and newcomers (SOC-20, SOC-21), cross-zone parties (SOC-22), friends, guilds, filter, mail and inspection (SOC-24 to SOC-29) |
+| 7 | War warbands (SOC-30), looking for group (SOC-31), war channel (SOC-32), heraldry and guild fortresses (SOC-33 to SOC-35) |
+| 8 | Requests to a GM, moderation panel, anti-spam and scaling (SOC-36 to SOC-39) |
 
-Quien implemente una pieza debe respetar el filtro por reino de la sección 1 en el servidor, aunque el
-cliente «ya no muestre» lo que no debe: la prueba de aceptación de SOC-04 es que un cliente de otro
-reino no recibe ningún paquete con el texto, no que no lo pinte.
+Whoever implements a piece must respect the realm filter from section 1 on the server, even if the
+client "no longer shows" what it should not: the acceptance test of SOC-04 is that a client from another
+realm receives no packet with the text, not merely that it does not draw it.
 
-## 12. Implementación (fase 4)
+## 12. Implementation (phase 4)
 
-Lo que se ha hecho de SOC-03 a SOC-08 en la fase 4, con los formatos de bytes, las decisiones que se
-tomaron al implementarlo y lo que queda. Las cifras siguen siendo provisionales (sección 0).
+What was done of SOC-03 to SOC-08 in phase 4, with the byte formats, the decisions that
+were made while implementing it and what remains. The figures are still provisional (section 0).
 
-### 12.1 Mensajes de chat (SOC-03)
+### 12.1 Chat messages (SOC-03)
 
-El protocolo sube a la **versión 5** (`NetProtocol.PROTOCOL_VERSION`). Los tipos van del `0x40` en adelante,
-por el canal fiable 3 ([red.md](red.md), sección 2); ningún paquete pasa de 1200 B. Todo en
-little-endian y con las cadenas en UTF-8 (sin byte nulo) con su longitud delante, como el resto del
-protocolo.
+The protocol goes up to **version 5** (`NetProtocol.PROTOCOL_VERSION`). The types start at `0x40`,
+on reliable channel 3 ([networking.md](networking.md), section 2); no packet exceeds 1200 B. Everything is
+little-endian and strings are UTF-8 (no null byte) with their length in front, like the rest of the
+protocol.
 
-**CHAT_SEND** (`0x40`, C→S): lo que el jugador quiere decir.
+**CHAT_SEND** (`0x40`, C→S): what the player wants to say.
 
-| Offset | Tipo | Campo | Notas |
+| Offset | Type | Field | Notes |
 |---|---|---|---|
 | 0 | u8 | type | `0x40` |
-| 1 | u8 | channel | `ChatChannel.Id`; el 7 (sistema) no lo envía un cliente |
-| 2 | u8 | recipient_len | bytes del destinatario (≤ 48; ≤ 24 caracteres); solo en un susurro, y obligatorio en él |
-| 3 | u16 | text_len | bytes del texto (≤ 768) |
-| 5 | n B | recipient | el nombre tal como lo escribió el jugador |
-| 5 + n | m B | text | ≤ 255 caracteres |
+| 1 | u8 | channel | `ChatChannel.Id`; 7 (system) is not sent by a client |
+| 2 | u8 | recipient_len | bytes of the recipient (≤ 48; ≤ 24 characters); only in a whisper, and mandatory there |
+| 3 | u16 | text_len | bytes of the text (≤ 768) |
+| 5 | n B | recipient | the name as the player typed it |
+| 5 + n | m B | text | ≤ 255 characters |
 
-**CHAT_MESSAGE** (`0x41`, S→C): un mensaje ya saneado y repartido solo a quien debe verlo.
+**CHAT_MESSAGE** (`0x41`, S→C): an already sanitized message, delivered only to whoever should see it.
 
-| Offset | Tipo | Campo | Notas |
+| Offset | Type | Field | Notes |
 |---|---|---|---|
 | 0 | u8 | type | `0x41` |
 | 1 | u8 | channel | `ChatChannel.Id` |
-| 2 | u8 | sender_realm | reino del emisor (0 en el sistema) |
-| 3 | u32 | tick | tick del servidor al repartirlo |
-| 7 | u8 | sender_len | 0 si y solo si el canal es el del sistema |
-| 8 | u8 | recipient_len | solo en un susurro (y obligatorio en él) |
+| 2 | u8 | sender_realm | sender's realm (0 for the system) |
+| 3 | u32 | tick | server tick at delivery |
+| 7 | u8 | sender_len | 0 if and only if the channel is the system one |
+| 8 | u8 | recipient_len | only in a whisper (and mandatory there) |
 | 9 | u16 | text_len | ≤ 768 |
-| 11 | n B | sender | nombre canónico del emisor |
-| 11 + n | m B | recipient | nombre canónico del destinatario |
-| 11 + n + m | k B | text | ≤ 255 caracteres |
+| 11 | n B | sender | canonical name of the sender |
+| 11 + n | m B | recipient | canonical name of the recipient |
+| 11 + n + m | k B | text | ≤ 255 characters |
 
-Tamaños máximos: 821 B el CHAT_SEND y 875 B el CHAT_MESSAGE.
+Maximum sizes: 821 B for CHAT_SEND and 875 B for CHAT_MESSAGE.
 
-Canales (`ChatChannel.Id`, no se reordenan): `0` decir, `1` zona, `2` susurro, `3` grupo, `4` banda, `5`
-gremio, `6` reino, `7` sistema, `8` GM. En la fase 4 el servidor reparte decir, zona, susurro, grupo y
-sistema; los otros contestan «Ese canal aún no está disponible». Desde el protocolo 7 (fase 5, plataforma.md §9 y
-§19.12), el `8` lleva los comandos que atiende el servidor: el cliente manda `/gm …`, `/ignorar`, `/designorar` y
-`/reportar` tal cual, sin la barra, y la respuesta llega por el canal del sistema.
+Channels (`ChatChannel.Id`, never reordered): `0` say, `1` zone, `2` whisper, `3` party, `4` warband, `5`
+guild, `6` realm, `7` system, `8` GM. In phase 4 the server delivers say, zone, whisper, party and
+system; the others answer "Ese canal aún no está disponible" (That channel is not available yet). Since protocol 7 (phase 5, platform.md §9 and
+§19.12), `8` carries the commands handled by the server: the client sends `/gm …`, `/ignorar`, `/designorar` and
+`/reportar` as they are, without the slash, and the reply arrives through the system channel.
 
-`decode` devuelve `null` (y no registra ningún error del motor) si el tamaño no cuadra con las longitudes,
-si el canal no existe, si un cliente manda el del sistema, si un susurro no lleva destinatario o cualquier
-otro canal lo lleva, si algún texto no es UTF-8 válido o lleva un byte nulo, si el destinatario pasa de
-24 caracteres o el texto de 255 caracteres o 768 B. Un CHAT_MESSAGE además exige emisor en todos los
-canales menos el del sistema y destinatario solo en el susurro. Un nombre obligatorio que se lee vacío
-también es `null`: `get_string_from_utf8` se salta un BOM (`EF BB BF`) al principio, así que esos tres bytes
-solos pasarían la comprobación de longitud y saldrían como «». Un texto vacío sí se decodifica: es el
-servidor quien lo descarta al sanear. `encode` recorta a los límites sin partir ningún carácter.
+`decode` returns `null` (and logs no engine error) if the size does not match the lengths,
+if the channel does not exist, if a client sends the system one, if a whisper has no recipient or any
+other channel has one, if any text is not valid UTF-8 or contains a null byte, if the recipient exceeds
+24 characters or the text exceeds 255 characters or 768 B. A CHAT_MESSAGE also requires a sender on every
+channel except the system one and a recipient only in the whisper. A mandatory name that reads as empty
+is also `null`: `get_string_from_utf8` skips a BOM (`EF BB BF`) at the start, so those three bytes
+alone would pass the length check and come out as "". Empty text does decode: it is the
+server that drops it when sanitizing. `encode` trims to the limits without splitting any character.
 
-### 12.2 Enrutado en el servidor de zona (SOC-04)
+### 12.2 Routing on the zone server (SOC-04)
 
-Todo lo social vive en `scripts/server/social/`; `ZoneServer` solo crea un `SocialService`, le pasa los
-mensajes de los tipos `0x40` a `0x4F` (`handle_packet`) y le presta tres funciones (la lista de peers en el
-mundo, el envío por el canal fiable y la suma de avisos). El resto es:
+Everything social lives in `scripts/server/social/`; `ZoneServer` only creates a `SocialService`, hands it the
+messages of types `0x40` to `0x4F` (`handle_packet`) and lends it three functions (the list of peers in the
+world, sending over the reliable channel and the warning counter). The rest is:
 
-| Pieza | Qué hace |
+| Piece | What it does |
 |---|---|
-| `SocialService` | Reúne el enrutador del chat y, cuando existan, los grupos; es lo único que conoce `ZoneServer` |
-| `ChatRouter` | Sanea, aplica los ritmos y reparte; resultado de cada mensaje en `ChatRouter.Result` |
-| `ChatPeerState` | Cubos de fichas, último texto, descartes recientes y contadores de cada conexión; cuelga de `ServerPeer.chat` |
-| `SocialPeers` | Búsqueda de jugadores en el mundo por nombre (clave de `NameRules`) y por reino |
+| `SocialService` | Gathers the chat router and, when they exist, the parties; it is the only thing `ZoneServer` knows about |
+| `ChatRouter` | Sanitizes, applies the rates and delivers; the result of each message is in `ChatRouter.Result` |
+| `ChatPeerState` | Token buckets, last text, recent drops and counters of each connection; hangs off `ServerPeer.chat` |
+| `SocialPeers` | Lookup of players in the world by name (`NameRules` key) and by realm |
 
-**Destinatarios.** La lista se construye ya filtrada por reino; nunca se filtra al mostrar.
+**Recipients.** The list is built already filtered by realm; it is never filtered when displaying.
 
-| Canal | Quién lo recibe |
+| Channel | Who receives it |
 |---|---|
-| Decir | Los del mismo reino a 30 m en 3D del emisor, él incluido |
-| Zona | Todos los del mismo reino en el proceso, él incluido |
-| Susurro | El destinatario y, como copia, el emisor |
-| Grupo | Los miembros de su grupo (que el enrutador vuelve a filtrar por reino) |
+| Say | Those of the same realm within 30 m in 3D of the sender, the sender included |
+| Zone | Everyone of the same realm in the process, the sender included |
+| Whisper | The recipient and, as a copy, the sender |
+| Party | The members of their party (which the router filters again by realm) |
 
-**Susurro.** Se busca por la clave de comparación (minúsculas y sin tildes: `peña` encuentra a `Peña`).
-Si no hay nadie con ese nombre en el mundo *o* es del otro reino, la respuesta es idéntica: el mensaje del
-sistema ««X» no está conectado.», con lo que escribió el jugador y no el nombre canónico del otro lado.
-Susurrarse a uno mismo se rechaza («No puedes susurrarte a ti mismo.»).
+**Whisper.** It is looked up by the comparison key (lowercase and without accents: `peña` finds `Peña`).
+If nobody with that name is in the world *or* they are in the other realm, the answer is identical: the
+system message ""X" no está conectado." ("X" is not online), with what the player typed and not the canonical name from the other side.
+Whispering yourself is rejected ("No puedes susurrarte a ti mismo.", You cannot whisper yourself).
 
-**Responder (`/r`).** Lo resuelve el cliente: guarda con quién habló la última vez (quien le susurró o a
-quien susurró) y manda un susurro a ese nombre. El servidor no guarda «el último interlocutor»: un susurro a
-un nombre que ya no está da la respuesta de siempre, y así el protocolo no necesita otro canal.
+**Reply (`/r`).** The client resolves it: it remembers who it last talked with (whoever whispered it or
+whom it whispered) and sends a whisper to that name. The server does not store "the last interlocutor": a whisper to
+a name that is no longer there gets the usual answer, and so the protocol needs no other channel.
 
-**Ritmos** (`RateLimiter` por conexión, en ticks; no cambian los cubos del transporte, que van antes). Cada
-CHAT_SEND gasta primero una ficha de su cubo, **antes de sanear** o de contestar nada: el saneado no es gratis
-y un texto que queda vacío, o un canal sin servicio, también cuestan su ficha. (Antes se saneaba primero y un
-texto que quedaba vacío salía gratis: 127 niveles de corchetes costaban 0,6 ms de hilo principal por mensaje,
-sin gastar ritmo ni sumar avisos.)
+**Rates** (`RateLimiter` per connection, in ticks; the transport buckets, which come first, do not change). Each
+CHAT_SEND first spends a token from its bucket, **before sanitizing** or answering anything: sanitizing is not free,
+and text that ends up empty, or a channel with no service, also costs its token. (Previously it sanitized first and
+text that ended up empty went free: 127 levels of brackets cost 0.6 ms of main thread per message,
+without spending rate or adding warnings.)
 
-| Cubo | Ritmo | Ráfaga |
+| Bucket | Rate | Burst |
 |---|---|---|
-| Hablar (decir, zona, grupo; banda y gremio cuando existan; también los canales sin servicio) | 1/s | 5 |
-| Susurro | 1/s | 3 |
-| Destinatarios nuevos de susurro | 5/min | 5 |
-| Repetición | un texto igual al último aceptado en 600 ticks (10 s) **y al mismo sitio** se descarta: los canales públicos comparten la comprobación (la misma frase por zona y por decir es repetición) y en un susurro cuenta el destinatario («ok» a Bea y después a Eva llega a las dos) | |
+| Talking (say, zone, party; warband and guild when they exist; also the channels with no service) | 1/s | 5 |
+| Whisper | 1/s | 3 |
+| New whisper recipients | 5/min | 5 |
+| Repetition | text equal to the last accepted within 600 ticks (10 s) **and to the same place** is dropped: the public channels share the check (the same phrase by zone and by say is a repeat) and in a whisper the recipient counts ("ok" to Bea and then to Eva reaches both) | |
 
-Un interlocutor reciente (quien te ha susurrado, o a quien has susurrado, en los últimos 5 min) no cuenta
-como destinatario nuevo, así que responder a seis desconocidos seguidos no gasta del cubo. Ese diccionario se
-poda en los dos lados de cada susurro: quien solo recibe susurros tampoco acumula a todos los que le
-escribieron. Lo descartado, por ritmo o por repetición:
+A recent interlocutor (someone who whispered you, or whom you whispered, in the last 5 min) does not count
+as a new recipient, so replying to six strangers in a row does not spend from the bucket. That dictionary is
+pruned on both sides of each whisper: someone who only receives whispers also does not accumulate everyone who
+wrote to them. What is dropped, by rate or by repetition:
 
-- avisa al jugador por el canal del sistema, «Hablas demasiado rápido.» o «Ya has enviado ese mensaje.», como
-  mucho un aviso por segundo;
-- y, pasados los diez primeros descartes de cada 600 ticks (`ChatPeerState.FLOOD_FREE_DISCARDS`, en un anillo
-  con los ticks de los últimos diez), cada uno suma un aviso del peer (`exceso de mensajes de chat`). Pulsar
-  Intro de más no suma nada; la inundación sostenida, sí: a través del cubo fiable del transporte (10 por
-  segundo sin avisos), un cliente que manda 6 mensajes por segundo o más llega a los 50 avisos y se le expulsa
-  (en unos 13 s; a 10 por segundo, en 7 s). Por debajo no se le expulsa, pero el cubo ya deja a los demás en 1
-  mensaje por segundo. Antes sumaba uno de cada cinco descartes, que a 10 por segundo son unos 20 avisos por
-  ventana: la inundación no expulsaba nunca.
+- warns the player through the system channel, "Hablas demasiado rápido." or "Ya has enviado ese mensaje." (You already sent that message.), at
+  most one warning per second;
+- and, after the first ten drops of every 600 ticks (`ChatPeerState.FLOOD_FREE_DISCARDS`, in a ring
+  with the ticks of the last ten), each one adds a peer warning (`exceso de mensajes de chat`, excess chat messages). Pressing
+  Enter too many times adds nothing; sustained flooding does: through the transport's reliable bucket (10 per
+  second without warnings), a client sending 6 messages per second or more reaches the 50 warnings and is kicked
+  (in about 13 s; at 10 per second, in 7 s). Below that it is not kicked, but the bucket already leaves the others at 1
+  message per second. Before, it added one in every five drops, which at 10 per second is about 20 warnings per
+  window: flooding never got kicked.
 
-**Saneado** (`ChatText`, compartido; el cliente aplica lo mismo antes de enviar). Por este orden:
+**Sanitizing** (`ChatText`, shared; the client applies the same before sending). In this order:
 
-1. Quita los controles (C0, DEL, C1), todo el formato invisible (categoría Cf de Unicode: anchura cero, marcas
-   de dirección como U+200E o U+061C, el guion blando, las etiquetas U+E0000…), los separadores de línea y de
-   párrafo, el uso privado, los no caracteres y los puntos sin asignar, los ignorables por defecto (rellenos
-   hangul, el unidor de grafemas, los selectores de variación salvo U+FE0F, que pide el emoji en color) y
-   U+FFFC y U+FFFD. El tabulador, los saltos de línea, los espacios de Unicode y el blanco braille (U+2800)
-   pasan a ser un espacio.
-2. Quita el BBCode y los corchetes sueltos en una sola pasada lineal (cada «]» se lleva todo desde el último
-   «[» abierto), con el mismo resultado que quitar una y otra vez el par más interior.
-3. Quita las marcas combinantes (categoría M) sin letra delante y las que pasan de cuatro seguidas sobre una
-   letra (`ChatText.MAX_MARKS_PER_BASE`).
-4. Junta los espacios repetidos y quita los de los extremos.
-5. Deja cada grafema (lo que se ve como un solo carácter, `\X` de PCRE2) en sus cinco primeros puntos de código
-   (`ChatText.MAX_CODE_POINTS_PER_GRAPHEME`: la letra y sus cuatro marcas). Acota lo que se pega a la letra
-   anterior sin ser de la categoría M: el «ำ» tailandés (U+0E33) y el lao (U+0EB3), las vocales y finales del
-   hangul antiguo y los tonos de piel. Solo recorre el texto grafema a grafema si hay cinco o más puntos seguidos
-   por encima de U+02FF (nada que se combine está por debajo), así que el español con tildes nunca paga ese paso.
+1. Strips controls (C0, DEL, C1), all invisible formatting (Unicode category Cf: zero width, direction
+   marks such as U+200E or U+061C, the soft hyphen, the U+E0000… tags), line and paragraph
+   separators, private use, noncharacters and unassigned code points, default ignorables (hangul
+   fillers, the grapheme joiner, variation selectors except U+FE0F, which requests the color emoji) and
+   U+FFFC and U+FFFD. The tab, line breaks, Unicode spaces and the braille blank (U+2800)
+   become a space.
+2. Strips BBCode and stray brackets in a single linear pass (each "]" takes everything since the last
+   open "["), with the same result as repeatedly stripping the innermost pair.
+3. Strips combining marks (category M) with no letter before them and those beyond four in a row over a
+   letter (`ChatText.MAX_MARKS_PER_BASE`).
+4. Collapses repeated spaces and strips leading and trailing ones.
+5. Keeps each grapheme (what looks like a single character, PCRE2's `\X`) to its first five code points
+   (`ChatText.MAX_CODE_POINTS_PER_GRAPHEME`: the letter and its four marks). It bounds what attaches to the
+   previous letter without being category M: the Thai "ำ" (U+0E33) and the Lao one (U+0EB3), the vowels and finals of
+   old hangul and skin tones. It only walks the text grapheme by grapheme if there are five or more consecutive code points
+   above U+02FF (nothing that combines is below), so accented Spanish never pays that step.
 
-Las categorías salen de las tablas de Unicode del motor (las `RegEx` de PCRE2 con `\p{…}`), que son las mismas en
-el cliente y el servidor. **Hallazgo:** una letra con unas 250 marcas variadas encima cabe en 255 caracteres y deja
-colgada la maquetación de texto de Godot 4.7.2 en quien la recibe (reproducido con `TextLine` y la fuente por
-defecto: con 253 marcas acaba en milisegundos; con 254, no); el tope de cuatro lo evita y, de paso, el «zalgo»
-que ocupaba toda la caja. La verificación de la revisión encontró lo mismo con 128 «ำ» (U+0E33, de la categoría
-Lo y no M) tras una consonante tailandesa: de ahí el paso 5, que acota cualquier grafema y no solo las marcas. Coste medido: 5 µs un texto ASCII normal de 255 caracteres y de 40 a 65 µs el peor
-caso (antes, de 210 a 600 µs).
+The categories come from the engine's Unicode tables (PCRE2 `RegEx` with `\p{…}`), which are the same on
+the client and the server. **Finding:** a letter with about 250 assorted marks on top fits in 255 characters and hangs
+Godot 4.7.2's text layout for whoever receives it (reproduced with `TextLine` and the default font:
+with 253 marks it ends in milliseconds; with 254, it does not); the cap of four prevents it and, along the way, the "zalgo"
+that filled the whole box. The review's verification found the same with 128 "ำ" (U+0E33, category
+Lo and not M) after a Thai consonant: hence step 5, which bounds any grapheme and not only marks. Measured cost: 5 µs for normal 255-character ASCII text and 40 to 65 µs the worst
+case (before, 210 to 600 µs).
 
-**Otros resultados.** Un CHAT_SEND mal formado, con el canal del sistema, o de quien aún no está en el
-mundo, suma un aviso. Un texto vacío tras sanear se descarta sin avisar a nadie (ya ha gastado su ficha: un
-cliente honrado nunca lo manda, porque sanea antes de enviar). Banda, gremio y reino contestan
-«Ese canal aún no está disponible.»; GM contesta «Comando desconocido. Escribe /ayuda.» para no revelar que
-existe. Un grupo inexistente contesta «No estás en un grupo.».
+**Other outcomes.** A malformed CHAT_SEND, one with the system channel, or from someone not yet in the
+world, adds a warning. Empty text after sanitizing is dropped without warning anyone (it already spent its token: an
+honest client never sends it, because it sanitizes before sending). Warband, guild and realm answer
+"Ese canal aún no está disponible."; GM answers "Comando desconocido. Escribe /ayuda." so as not to reveal that it
+exists. A nonexistent party answers "No estás en un grupo." (You are not in a party).
 
-**Informe.** `write_report` incluye `social.chat` con los mensajes procesados, las copias repartidas y
-cuántos acabaron en cada resultado.
+**Report.** `write_report` includes `social.chat` with the messages processed, the copies delivered and
+how many ended in each outcome.
 
-**Pruebas.** `test_chat_text` (el saneado, con tablas de puntos de código: invisibles, espacios, visibles y marcas;
-el «zalgo», los grafemas largos sin marcas (tailandés, lao, hangul antiguo, tonos de piel), el BBCode comparado con el método anterior en textos al azar y un fuzz de idempotencia),
-`test_chat_router` (30, sin red: alcance, filtro por reino, saneado, ritmos antes del saneado, descartes gratis y
-expulsión por inundar a través del cubo del transporte, repetición por destinatario, susurros),
-`test_chat_loopback` (8, con ENet real: dos bots de un reino y uno del otro; el del otro reino no recibe
-ningún CHAT_MESSAGE ni ningún paquete cuyos bytes contengan el texto de los demás, en los cuatro canales y
-con el enemigo a 3 m del emisor).
+**Tests.** `test_chat_text` (sanitizing, with code point tables: invisibles, spaces, visibles and marks;
+"zalgo", long graphemes without marks (Thai, Lao, old hangul, skin tones), BBCode compared with the previous method on random texts and an idempotence fuzz),
+`test_chat_router` (30, no network: range, realm filter, sanitizing, rates before sanitizing, free drops and
+kick for flooding through the transport bucket, repetition per recipient, whispers),
+`test_chat_loopback` (8, with real ENet: two bots of one realm and one of the other; the one from the other realm receives
+no CHAT_MESSAGE and no packet whose bytes contain the others' text, on the four channels and
+with the enemy 3 m from the sender).
 
-### 12.3 Caja de chat y comandos (SOC-05)
+### 12.3 Chat box and commands (SOC-05)
 
-`scripts/client/chat/` (solo cliente); la caja cuelga del `HUD` en red, abajo a la izquierda, por debajo de la
-pantalla de muerte. Una vista previa sin servidor para probarla a mano o sacar capturas está en
+`scripts/client/chat/` (client only); the box hangs off the networked `HUD`, bottom left, below the
+death screen. A server-less preview for trying it by hand or taking screenshots is at
 `scenes/tests/chat_preview.tscn`:
 
 ```
@@ -413,286 +413,286 @@ godot --path . res://scenes/tests/chat_preview.tscn
 xvfb-run -a godot --path . res://scenes/tests/chat_preview.tscn --resolution 1600x900 -- --shots=/ruta/absoluta/build/chat
 ```
 
-(`--headless` no sirve para las capturas: el renderizador falso no dibuja. Con `xvfb-run`, Mesa llvmpipe sí.)
-La captura de demo con mensajes de todos los canales, la línea abierta con un comando a medio escribir y la
-pestaña de susurros es [capturas/chat_demo.png](capturas/chat_demo.png).
+(`--headless` does not work for screenshots: the dummy renderer does not draw. With `xvfb-run`, Mesa llvmpipe does.)
+The demo screenshot with messages from all channels, the open line with a half-typed command and the
+whispers tab is [screenshots/chat_demo.png](screenshots/chat_demo.png).
 
-| Pieza | Qué hace |
+| Piece | What it does |
 |---|---|
-| `ChatBox` | Pestañas, registro y línea; abrir, cerrar, enviar, desvanecer |
-| `ChatCommandParser` | Decide si la línea es texto o comando y cuál (puro, solo texto) |
-| `ChatLog` | Últimas 200 líneas con lo necesario para pintarlas y filtrarlas |
-| `ChatStyle` | Color de cada canal y composición de una línea («Ana te susurra: …») |
-| `ChatInputHistory` | Historial de lo enviado, 50 líneas, para flecha arriba y abajo |
+| `ChatBox` | Tabs, log and line; open, close, send, fade |
+| `ChatCommandParser` | Decides whether the line is text or a command and which one (pure, text only) |
+| `ChatLog` | Last 200 lines with what is needed to draw and filter them |
+| `ChatStyle` | Color of each channel and composition of a line ("Ana te susurra: …", "Ana whispers to you: …") |
+| `ChatInputHistory` | History of what was sent, 50 lines, for up and down arrows |
 
-**Teclas.** Intro (acción `chat_open`, también el Intro del teclado numérico) abre la línea; escribir `/` la
-abre ya con la barra (se mira el carácter, no la tecla, así vale en cualquier distribución); Esc la cierra sin
-enviar; Intro envía y cierra; flecha arriba y abajo recorren el historial. Un clic fuera de la caja (botón
-izquierdo, derecho o central; la rueda no) la cierra sin enviar: en Godot 4.7 un clic donde no hay ningún control
-no le quita el foco al campo de texto, así que lo atiende `ChatBox._input` comparando el punto con el panel. Ese
-clic sigue su camino (si cae en otra ventana, es para ella) y no ataca, porque `LocalPlayerController` suprime los
-botones del ratón pulsados con el cursor libre hasta soltarlos; el siguiente clic ya es del juego. Perder el foco
-porque otro control se lo lleva también la cierra; cambiar de ventana del sistema no (al volver se sigue
-escribiendo). No se abre si otra ventana (ajustes, mapa, pantalla de muerte) tiene el cursor.
+**Keys.** Enter (action `chat_open`, also the numpad Enter) opens the line; typing `/` opens it
+already with the slash (the character is checked, not the key, so it works on any layout); Esc closes it without
+sending; Enter sends and closes; up and down arrows walk the history. A click outside the box (left,
+right or middle button; the wheel does not) closes it without sending: in Godot 4.7 a click where there is no control
+does not take focus away from the text field, so `ChatBox._input` handles it by comparing the point with the panel. That
+click continues on its way (if it lands on another window, it is for that window) and does not attack, because `LocalPlayerController` suppresses
+mouse buttons pressed with the cursor free until they are released; the next click is already the game's. Losing focus
+because another control takes it also closes it; switching system windows does not (on return you keep
+typing). It does not open if another window (settings, map, death screen) holds the cursor.
 
-**Tope de la línea.** `ChatBox.MAX_INPUT_CHARS` (286) cabe el texto más largo que admite el servidor (255) detrás
-de la forma más larga de un comando con nombre y texto, `/susurrar ` con un nombre de 16 letras, más 4 de
-holgura; la prueba lo comprueba con todas las formas de `ChatCommandParser.COMMANDS`. Si aun así se pega o se
-escribe más de lo que cabe, la caja avisa una vez cada vez que se abre («El mensaje es demasiado largo...») en
-lugar de recortar sin decir nada.
+**Line cap.** `ChatBox.MAX_INPUT_CHARS` (286) fits the longest text the server accepts (255) behind
+the longest form of a command with name and text, `/susurrar ` with a 16-letter name, plus 4 of
+slack; the test checks it with all the forms of `ChatCommandParser.COMMANDS`. If more than fits is still pasted or
+typed, the box warns once each time it opens ("El mensaje es demasiado largo...", The message is too long...) instead of
+trimming silently.
 
-**Entrada suspendida.** Mientras la línea está abierta la caja pide el cursor libre a la cámara
-(`CameraRig.set_ui_cursor_release`, como las ventanas), con lo que la cámara no gira y los clics no atacan, y
-suspende la entrada de juego en `LocalPlayerController.set_input_blocked`: la entrada del dispositivo sale
-neutra (sin movimiento ni botones) aunque se teclee W. **Hallazgo:** las ventanas de la interfaz (ajustes F10,
-mapa) solo liberaban el cursor, no el movimiento: seguir caminando con W al abrirlas era posible. Para escribir
-no vale, así que el bloqueo es un mecanismo nuevo por solicitante (id de instancia), igual que el del cursor;
-las ventanas pueden pedirlo cuando se quiera.
+**Suspended input.** While the line is open the box asks the camera for the free cursor
+(`CameraRig.set_ui_cursor_release`, like the windows), so the camera does not rotate and clicks do not attack, and it
+suspends game input in `LocalPlayerController.set_input_blocked`: device input comes out
+neutral (no movement or buttons) even if W is typed. **Finding:** the UI windows (settings F10,
+map) only released the cursor, not movement: it was possible to keep walking with W when opening them. That is not
+good enough for typing, so the block is a new per-requester mechanism (instance id), like the cursor one;
+windows can request it whenever wanted.
 
-**Comandos de la fase 4** (sin distinguir mayúsculas ni tildes; `/ayuda` los lista desde la tabla
-`ChatCommandParser.COMMANDS`):
+**Phase 4 commands** (case- and accent-insensitive; `/ayuda` lists them from the
+`ChatCommandParser.COMMANDS` table):
 
-| Comando | Efecto |
+| Command | Effect |
 |---|---|
-| `/d` `/decir` `[texto]` | Decir. Con texto lo envía por ahí sin cambiar el canal activo; sin texto, lo deja activo |
-| `/z` `/zona` `[texto]` | Zona (igual) |
-| `/g` `/grupo` `[texto]` | Grupo (igual) |
-| `/s` `/susurrar` `nombre [texto]` | Susurro. Sin texto deja «susurro a nombre» como canal activo; sin nombre, «Uso: /s nombre [texto]» |
-| `/r` `/responder` `[texto]` | Susurro al último interlocutor (copia de un susurro propio o susurro recibido) |
-| `/ayuda` `[comando]` | La lista de comandos o el detalle de uno |
-| `/invitar` `/salir` `/expulsar` `/lider` | Grupos (se entregan a `ChatBox.party_handler`; ver 12.5) |
+| `/d` `/decir` `[text]` | Say. With text it sends it there without changing the active channel; without text, it makes it active |
+| `/z` `/zona` `[text]` | Zone (same) |
+| `/g` `/grupo` `[text]` | Party (same) |
+| `/s` `/susurrar` `name [text]` | Whisper. Without text it leaves "susurro a nombre" (whisper to name) as the active channel; without a name, "Uso: /s nombre [texto]" (Usage) |
+| `/r` `/responder` `[text]` | Whisper to the last interlocutor (copy of an own whisper or received whisper) |
+| `/ayuda` `[command]` | The list of commands or the detail of one |
+| `/invitar` `/salir` `/expulsar` `/lider` | Parties (handed to `ChatBox.party_handler`; see 12.5) |
 
-Cualquier otro (`/b`, `/gr`, `/reino`, `/gm`, `/amigo`...) contesta «Comando desconocido. Escribe /ayuda.»,
-también los de fases futuras: no se avisa de que existen. Los nombres de más de 16 letras no pueden existir
-(`NameRules`) y se rechazan en local.
+Any other (`/b`, `/gr`, `/reino`, `/gm`, `/amigo`...) answers "Comando desconocido. Escribe /ayuda.",
+also those of future phases: it does not warn that they exist. Names of more than 16 letters cannot exist
+(`NameRules`) and are rejected locally.
 
-**Qué se ve.** Pestañas Todo, Decir, Zona, Grupo, Susurros y Sistema. Cada canal tiene su color propio (el
-sistema, amarillo pálido; los GM, cian) y el nombre del emisor va con el color de su reino. Los NOTICE del
-servidor salen en el canal del sistema, igual que los avisos locales (ayuda, errores de un comando).
-**El texto de otros jugadores se pinta con `RichTextLabel.add_text`**: nunca se interpreta BBCode, aunque el
-servidor lo deje pasar (la prueba pasa `[b]`, `[color]`, `[url]`, `[img]` y `[font_size]` y comprueba que se ve
-literal). Cerrada, la caja se desvanece 8 s después del último mensaje (fundido de 2 s) y vuelve con el
-siguiente; abierta, no se desvanece.
+**What is shown.** Tabs All ("Todo"), Say ("Decir"), Zone ("Zona"), Party ("Grupo"), Whispers ("Susurros") and System ("Sistema"). Each channel has its own color (the
+system one pale yellow; the GMs, cyan) and the sender's name goes in their realm's color. Server
+NOTICEs come out on the system channel, like local notices (help, command errors).
+**Other players' text is drawn with `RichTextLabel.add_text`**: BBCode is never interpreted, even if the
+server lets it through (the test passes `[b]`, `[color]`, `[url]`, `[img]` and `[font_size]` and checks that it shows
+literally). When closed, the box fades 8 s after the last message (2 s fade) and comes back with the
+next one; when open, it does not fade.
 
-**Decisiones.** `/r` lo resuelve el cliente (12.2); Intro cierra la línea al enviar (como New World), y para
-seguir hablando por un canal está el canal activo; el texto se sanea en el cliente con `ChatText` antes de
-enviarlo (el servidor lo vuelve a sanear) y un texto vacío tras sanear no se envía.
+**Decisions.** `/r` is resolved by the client (12.2); Enter closes the line on sending (like New World), and to
+keep talking on a channel there is the active channel; the text is sanitized on the client with `ChatText` before
+sending (the server sanitizes it again) and empty text after sanitizing is not sent.
 
-**Pendiente del usuario.** Colores de los canales, medidas de la caja (560 x 236, abajo a la izquierda),
-tiempos de desvanecimiento y los textos de los avisos son provisionales (ART-12); también si la caja debe
-atenuarse con la pantalla de muerte (hoy no) y qué tecla debe abrir el chat en el menú de controles.
+**Pending for the user.** Channel colors, box dimensions (560 x 236, bottom left),
+fade times and the text of the notices are provisional (ART-12); also whether the box should
+dim with the death screen (it does not today) and which key should open chat in the controls menu.
 
-### 12.4 Grupos: protocolo y servidor (SOC-06)
+### 12.4 Parties: protocol and server (SOC-06)
 
-Ocho tipos nuevos, del `0x48` al `0x4F`, por el canal fiable 3 (los atiende el `SocialService`, que ya tenía el
-rango `0x40`–`0x4F`). `NetProtocol.PARTY_MAX_SIZE` (5) es la constante compartida del tope de miembros; el
-resto de reglas están en `PartyRules` (shared).
+Eight new types, `0x48` to `0x4F`, on reliable channel 3 (handled by the `SocialService`, which already had the
+`0x40`-`0x4F` range). `NetProtocol.PARTY_MAX_SIZE` (5) is the shared constant for the member cap; the
+remaining rules are in `PartyRules` (shared).
 
-| Tipo | Mensaje | Sentido | Formato |
+| Type | Message | Direction | Format |
 |---|---|---|---|
-| `0x48` | PARTY_INVITE | C→S | `u8 type, u8 name_len` + nombre (UTF-8, 1 a 48 B y 24 caracteres) |
-| `0x49` | PARTY_RESPONSE | C→S | `u8 type, u8 accept (0 o 1), u8 name_len` + nombre de quien invitó |
+| `0x48` | PARTY_INVITE | C→S | `u8 type, u8 name_len` + name (UTF-8, 1 to 48 B and 24 characters) |
+| `0x49` | PARTY_RESPONSE | C→S | `u8 type, u8 accept (0 or 1), u8 name_len` + name of the inviter |
 | `0x4A` | PARTY_LEAVE | C→S | `u8 type` (1 B) |
-| `0x4B` | PARTY_KICK | C→S | como PARTY_INVITE |
-| `0x4C` | PARTY_LEADER | C→S | como PARTY_INVITE |
-| `0x4D` | PARTY_INVITATION | S→C | `u8 type, u8 state (0 nueva, 1 caducada, 2 cancelada), u32 tick, u8 name_len` + nombre canónico; con `state` 0, `tick` es cuándo caduca |
-| `0x4E` | PARTY_ROSTER | S→C | `u8 type, u8 count (0 a 5), u8 leader_index` y, por miembro, `u16 net_id, u8 name_len` + nombre (≤ 258 B); `count` 0 = «ya no estás en un grupo» |
-| `0x4F` | PARTY_STATUS | S→C | `u8 type, u8 count` y, por miembro, `u16 net_id, u8 health_q, u8 stamina_q, u8 status, f32 x, f32 y, f32 z` (17 B por miembro, ≤ 87 B) |
+| `0x4B` | PARTY_KICK | C→S | as PARTY_INVITE |
+| `0x4C` | PARTY_LEADER | C→S | as PARTY_INVITE |
+| `0x4D` | PARTY_INVITATION | S→C | `u8 type, u8 state (0 new, 1 expired, 2 cancelled), u32 tick, u8 name_len` + canonical name; with `state` 0, `tick` is when it expires |
+| `0x4E` | PARTY_ROSTER | S→C | `u8 type, u8 count (0 to 5), u8 leader_index` and, per member, `u16 net_id, u8 name_len` + name (≤ 258 B); `count` 0 = "you are no longer in a party" |
+| `0x4F` | PARTY_STATUS | S→C | `u8 type, u8 count` and, per member, `u16 net_id, u8 health_q, u8 stamina_q, u8 status, f32 x, f32 y, f32 z` (17 B per member, ≤ 87 B) |
 
-`health_q` es la vida cuantizada de los snapshots (0 muerto, de 1 a 255 vivo), `stamina_q` la resistencia en 255
-pasos y `status` los bits `STATUS_IN_COMBAT`, `STATUS_PROTECTED` y `STATUS_DEAD` (y, desde el protocolo 6,
-`STATUS_DOWNED`: el miembro está derribado, [habilidades.md 5.2](habilidades.md#52-estado-snapshot-y-registro)). `decode` devuelve `null` si el
-tamaño no cuadra, hay más de 5 miembros, un id de red se repite, el líder no está en la lista, un nombre está
-vacío (también si solo es un BOM UTF-8, que se lee vacío) o no es UTF-8 válido, un bit de estado es desconocido
-o una posición no es finita.
+`health_q` is the snapshots' quantized health (0 dead, 1 to 255 alive), `stamina_q` the stamina in 255
+steps and `status` the bits `STATUS_IN_COMBAT`, `STATUS_PROTECTED` and `STATUS_DEAD` (and, since protocol 6,
+`STATUS_DOWNED`: the member is knocked down, [abilities.md 5.2](abilities.md#52-estado-snapshot-y-registro)). `decode` returns `null` if the
+size does not match, there are more than 5 members, a net id repeats, the leader is not in the list, a name is
+empty (also if it is only a UTF-8 BOM, which reads as empty) or is not valid UTF-8, a status bit is unknown
+or a position is not finite.
 
-**Reglas** (`PartyManager`, en `scripts/server/social/`):
+**Rules** (`PartyManager`, in `scripts/server/social/`):
 
-- Un grupo es de 5 como mucho y **solo del mismo reino**. Invitar a un enemigo, o a quien no existe, contesta
-  lo mismo que un susurro («no está conectado»), no avisa al invitado y no deja ninguna invitación.
-- Cualquier miembro puede invitar; solo el líder expulsa (`/expulsar`) y cede el mando (`/lider`). El primero
-  en invitar crea el grupo cuando el invitado acepta, y es su líder.
-- Una invitación caduca a los 3600 ticks (60 s); cada jugador puede tener como mucho 5 enviadas a la vez. Al
-  aceptar una se cancelan las demás que tuviera el aceptante y, si con ello nace el grupo, también las que
-  tuviera quien invitó, que acaba de entrar en él: nadie que esté en un grupo tiene invitaciones pendientes (ni
-  ocupa un hueco de las 5 de quien le invitó). Invitar tiene su cubo (1 cada 2 s, ráfaga de 3): lo descartado
-  avisa («Invitas demasiado rápido.», como mucho una vez por segundo) y, pasados los diez primeros descartes
-  de cada 10 s, cada uno suma un aviso del peer, como en el chat (12.2).
-- Si el líder sale o se desconecta, hereda el mando el siguiente más antiguo; un grupo que se queda en uno se
-  disuelve. Aceptar una invitación a un grupo que se llenó entretanto contesta «El grupo está completo.».
-- Cada resultado llega al jugador como un mensaje del canal del sistema del chat; la interfaz recibe además
-  PARTY_INVITATION y PARTY_ROSTER cuando cambian.
-- **Estado a 2 Hz.** Cada 30 ticks (`PartyRules.STATUS_INTERVAL_TICKS`) el servidor manda un PARTY_STATUS a cada
-  miembro con la vida, la resistencia, los bits de estado y la posición de todos, estén donde estén: no pasa
-  por la política de interés de los snapshots, así que un miembro a 250 m y fuera del radio de interés sigue
-  apareciendo (la prueba usa una política de 100 m y un miembro a 210 m). Cada grupo lo manda en su tick del
-  intervalo, cuando `(tick + id del grupo) % 30 == 0` (`PartyManager.is_status_tick`), como los snapshots por la
-  paridad del `net_id`: el coste se reparte entre los 30 ticks en lugar de caer entero en uno (con 100 grupos de
-  5 eran de 3 a 4,6 ms en un solo tick, cada 30).
-- Canal de grupo del chat (`/g`): los miembros, esté donde esté cada uno; el enrutador vuelve a filtrar por
-  reino a quien le da el `PartyManager`.
+- A party has 5 members at most and is **same-realm only**. Inviting an enemy, or someone who does not exist, answers
+  the same as a whisper ("no está conectado"), does not notify the invitee and leaves no invitation.
+- Any member can invite; only the leader kicks (`/expulsar`) and hands over command (`/lider`). The first
+  to invite creates the party when the invitee accepts, and is its leader.
+- An invitation expires after 3600 ticks (60 s); each player can have at most 5 sent at once. When
+  accepting one, the accepter's other pending invitations are cancelled and, if that creates the party, so are those
+  of the inviter, who has just joined it: nobody in a party has pending invitations (nor
+  takes up one of the 5 slots of whoever invited them). Inviting has its own bucket (1 every 2 s, burst of 3): what is dropped
+  warns ("Invitas demasiado rápido.", at most once per second) and, after the first ten drops
+  of every 10 s, each one adds a peer warning, as in chat (12.2).
+- If the leader leaves or disconnects, the next oldest inherits command; a party left with one member
+  is dissolved. Accepting an invitation to a party that filled up in the meantime answers "El grupo está completo." (The party is full).
+- Each result reaches the player as a message on the chat's system channel; the interface additionally receives
+  PARTY_INVITATION and PARTY_ROSTER when they change.
+- **2 Hz status.** Every 30 ticks (`PartyRules.STATUS_INTERVAL_TICKS`) the server sends a PARTY_STATUS to each
+  member with the health, stamina, status bits and position of everyone, wherever they are: it does not go
+  through the snapshots' interest policy, so a member at 250 m and outside the interest radius still
+  shows up (the test uses a 100 m policy and a member at 210 m). Each party sends it on its tick of the
+  interval, when `(tick + party id) % 30 == 0` (`PartyManager.is_status_tick`), like the snapshots by
+  `net_id` parity: the cost is spread over the 30 ticks instead of falling entirely on one (with 100 parties of
+  5 it was 3 to 4.6 ms in a single tick, every 30).
+- Chat's party channel (`/g`): the members, wherever each one is; the router filters again by
+  realm whoever the `PartyManager` hands it.
 
-**Fuera de alcance de la fase 4** (SOC-22): el grupo no sobrevive a una desconexión ni cruza zonas; el servidor
-no guarda nada. Cuando alguien se desconecta, sale del grupo.
+**Out of scope for phase 4** (SOC-22): the party does not survive a disconnection or cross zones; the server
+stores nothing. When someone disconnects, they leave the party.
 
-**Pruebas.** `test_party_messages` (formatos a mano, corruptos, truncados en cada longitud y fuzz),
-`test_party_manager` (sin red: todos los flujos, topes, enemigo, líder heredado, invitaciones de quien invita
-canceladas al formarse el grupo, ritmo de invitar, estado a 2 Hz escalonado por grupo, canal de grupo) y `test_party_loopback` (con ENet y bots: invitar, aceptar, rechazar, caducar, expulsar, ceder el mando,
-salir y desconectarse, la invitación a un enemigo rechazada sin que se entere, y el estado de un miembro fuera
-del radio de interés).
+**Tests.** `test_party_messages` (hand-written formats, corrupt, truncated at every length, and fuzz),
+`test_party_manager` (no network: all flows, caps, enemy, inherited leader, inviter's invitations
+cancelled when the party forms, invite rate, 2 Hz status staggered per party, party channel) and `test_party_loopback` (with ENet and bots: invite, accept, decline, expire, kick, hand over command,
+leave and disconnect, the invitation to an enemy rejected without them noticing, and a member's status outside
+the interest radius).
 
-### 12.5 Interfaz de grupo (SOC-08)
+### 12.5 Party interface (SOC-08)
 
-`scripts/client/party/`; la monta el `HUD` en red a la izquierda de la pantalla, por debajo de la pantalla de
-muerte.
+`scripts/client/party/`; the networked `HUD` mounts it on the left of the screen, below the death
+screen.
 
-| Pieza | Qué hace |
+| Piece | What it does |
 |---|---|
-| `PartyState` | Lo que el cliente sabe del grupo: miembros por orden de llegada, líder, estado a 2 Hz e invitaciones (la más antigua a la vista). Lo alimenta `NetClient` y lo expone `NetClient.get_party()` |
-| `PartyFrames` y `PartyFrame` | Un marco por miembro: nombre con el color del reino, corona dibujada del líder, vida, resistencia y distancia a partir de 30 m; atenuado si está a más de 100 m, muerto o sin datos todavía |
-| `PartyInvitePrompt` | «Ana te invita a su grupo», los segundos que quedan y las teclas reales de aceptar (Y) y rechazar (N) con su glifo; quita lo caducado por tick. Si la respuesta no sale (la sesión se está cerrando), la invitación y el aviso se quedan |
-| `PartyHud` | Reúne los dos y traduce `/invitar`, `/salir`, `/expulsar` y `/lider` de la caja de chat en peticiones (`NetClient.send_party_*`) |
-| `Nameplates.set_party` | Los miembros del grupo llevan el nombre con el color de grupo (azul del canal) en lugar del de su reino |
+| `PartyState` | What the client knows about the party: members in arrival order, leader, 2 Hz status and invitations (the oldest in view). It is fed by `NetClient` and exposed by `NetClient.get_party()` |
+| `PartyFrames` and `PartyFrame` | One frame per member: name in the realm color, drawn leader crown, health, stamina and distance from 30 m; dimmed if more than 100 m away, dead or with no data yet |
+| `PartyInvitePrompt` | "Ana te invita a su grupo" (Ana invites you to her party), the seconds left and the real accept (Y) and decline (N) keys with their glyph; removes what has expired per tick. If the reply cannot be sent (the session is closing), the invitation and the prompt stay |
+| `PartyHud` | Gathers the two and translates `/invitar`, `/salir`, `/expulsar` and `/lider` from the chat box into requests (`NetClient.send_party_*`) |
+| `Nameplates.set_party` | Party members carry their name in the party color (channel blue) instead of their realm's |
 
-Teclas nuevas en `InputBindings`: `party_accept` (Y), `party_decline` (N) y `social_menu` (G; era T hasta
-la fase 4, que da T a la poción de resistencia: [habilidades.md 11.7](habilidades.md#117-h4--cliente)); todas
-provisionales (pendiente del usuario, igual que las medidas y los colores de los marcos). Y y N solo responden
-con el aviso a la vista y **sin ninguna otra pieza de la interfaz con el cursor** (`CameraRig.is_ui_holding_cursor`:
-el menú social, el mapa, los ajustes, la línea del chat), para que una letra pulsada en una ventana no acepte ni
-rechace sin querer. La excepción es la pantalla de muerte (el HUD pide el cursor por ella y se da como
-solicitante permitido): no usa letras, y esperar a reaparecer es buen momento para aceptar; con el mapa abierto
-encima, tampoco responden.
+New keys in `InputBindings`: `party_accept` (Y), `party_decline` (N) and `social_menu` (G; it was T until
+phase 4, which gives T to the stamina potion: [abilities.md 11.7](abilities.md#117-h4--cliente)); all
+provisional (pending for the user, like the dimensions and the frame colors). Y and N only respond
+with the prompt in view and **with no other interface piece holding the cursor** (`CameraRig.is_ui_holding_cursor`:
+the social menu, the map, the settings, the chat line), so that a letter pressed in a window does not accept or
+decline by accident. The exception is the death screen (the HUD requests the cursor for it and is given as an allowed
+requester): it uses no letters, and waiting to respawn is a good time to accept; with the map open
+on top, they do not respond either.
 
-La demo del backlog (cuatro bots agrupados con el jugador local) está en `test_party_hud`
-(`test_a_party_of_five_shows_the_right_frames`): comprueba nombres, orden, corona única, vida, resistencia,
-distancia, atenuado por lejos, por muerte y por falta de datos, y que los marcos siguen a la lista.
+The backlog demo (four bots grouped with the local player) is in `test_party_hud`
+(`test_a_party_of_five_shows_the_right_frames`): it checks names, order, single crown, health, stamina,
+distance, dimming for distance, death and missing data, and that the frames follow the list.
 
-### 12.6 Menú social sobre el jugador bajo el punto de mira (SOC-07)
+### 12.6 Social menu on the player under the crosshair (SOC-07)
 
-Solo el primer origen de las acciones: la tecla `social_menu` (G; T hasta la fase 4) lanza un rayo desde la cámara contra la
-cápsula de cada jugador remoto que se está dibujando (como el de las placas de nombre) y toma al más cercano a
-lo largo del rayo a **20 m o menos del jugador local** (no de la cámara, que va detrás). **Solo cuentan los
-aliados que se ven** (`SocialTarget.is_social_target` y la oclusión de `SocialTarget.find`): un jugador del propio
-reino, vivo, con nombre de persona y sin una pared o estructura entre la cámara y su cabeza, con la misma prueba
-que oculta su placa (`Nameplates.is_head_hidden`: rayo contra `HitShapes.LINE_OF_SIGHT_MASK` cortado 0,4 m antes
-de la cabeza). Los demás se ignoran, también si están delante de un aliado. Con él se abre una ventana pequeña
-(`SocialMenu`, una `UIWindow`: libera el cursor, se maneja con teclado o ratón y Esc la cierra) con las acciones
-que aplican. El primer botón tiene el foco e Intro lo pulsa; Espacio no, porque es saltar y la ventana no suspende
-la entrada de juego (UI-47): `InputBindings` lo quita de `ui_accept` (revisión de la fase 4, cliente):
+Only the first origin of the actions: the `social_menu` key (G; T until phase 4) casts a ray from the camera against the
+capsule of each remote player being drawn (like the nameplates' one) and takes the closest along
+the ray at **20 m or less from the local player** (not from the camera, which sits behind). **Only visible
+allies count** (`SocialTarget.is_social_target` and the occlusion of `SocialTarget.find`): a player of the own
+realm, alive, with a person's name and with no wall or structure between the camera and their head, with the same test
+that hides their nameplate (`Nameplates.is_head_hidden`: ray against `HitShapes.LINE_OF_SIGHT_MASK` cut 0.4 m before
+the head). The rest are ignored, even if they are in front of an ally. With it a small window opens
+(`SocialMenu`, a `UIWindow`: it releases the cursor, works with keyboard or mouse and Esc closes it) with the
+applicable actions. The first button has focus and Enter presses it; Space does not, because it is jump and the window does not suspend
+game input (UI-47): `InputBindings` removes it from `ui_accept` (phase 4 review, client):
 
-| Objetivo | Opciones |
+| Target | Options |
 |---|---|
-| Aliado | Invitar al grupo (si no es ya del grupo y el grupo no está completo) y Susurrar |
-| Miembro del grupo, o grupo completo | Solo Susurrar |
-| Enemigo, muerto, jugador falso, alguien tras una pared, nadie | El menú no se abre y el chat avisa siempre igual: «Apunta a un jugador de tu reino (a 20 m o menos) para ver sus acciones.» |
+| Ally | Invite to party (if not already in the party and the party is not full) and Whisper |
+| Party member, or full party | Whisper only |
+| Enemy, dead, fake player, someone behind a wall, nobody | The menu does not open and the chat always warns the same: "Apunta a un jugador de tu reino (a 20 m o menos) para ver sus acciones." (Aim at a player of your realm, within 20 m, to see their actions.) |
 
-**Por qué un solo aviso y la oclusión.** Antes el rayo no miraba las paredes y un enemigo daba un aviso distinto
-del de «nadie»: pulsar T contra un muro o la puerta del fuerte decía si había un enemigo justo detrás, a 20 m o
-menos, que su placa oculta a propósito. Ahora apuntar a un enemigo (visible o no), a un muro con alguien detrás o
-al vacío da exactamente lo mismo, y un aliado tapado tampoco abre el menú. El servidor sigue mandando la posición
-de los enemigos tras las paredes (el interés va por distancia, [red.md](red.md) sección 11), así que un cliente
-modificado ya la tiene; esto solo evita que el cliente honrado la enseñe.
+**Why a single notice and the occlusion.** Before, the ray did not look at walls and an enemy gave a different notice
+from "nobody": pressing T against a wall or the fort's door told you whether there was an enemy right behind, at 20 m or
+less, whom their nameplate hides on purpose. Now aiming at an enemy (visible or not), at a wall with someone behind or
+at the void gives exactly the same, and a covered ally does not open the menu either. The server still sends the position
+of enemies behind walls (interest goes by distance, [networking.md](networking.md) section 11), so a modified client
+already has it; this only prevents the honest client from showing it.
 
-**Jugadores falsos.** Los cuerpos de jugador que el servidor crea sin conexión (`ZoneServer.add_fake_player`: las
-pruebas de carga y, con `--max-realm-diff`, el relleno del bando corto de GUE-42) no pueden recibir invitaciones ni
-susurros: el servidor contesta «no está conectado». El ENTITY_SPAWN no los distingue, pero su nombre
-(`ZoneServer.FAKE_NAME_FORMAT`, «Bot-01») no cumple `NameRules` (guion y cifras), y el de una persona siempre la
-cumple porque `ServerAuth` la exige en el HELLO; por eso el menú no se abre con un nombre que no la cumple
-(`test_zone_server` comprueba que ningún falso la cumple). Si `NameRules` se endureciera algún día y un nombre
-antiguo dejara de cumplirla, ese jugador se quedaría sin menú: entonces convendría un bit «sin acciones sociales»
-en el ENTITY_SPAWN. El cuerpo que se queda en el mundo tras salir en combate (GUE-41) lleva el nombre de una
-persona y sí ofrece acciones; el servidor contesta «no está conectado», que es verdad.
+**Fake players.** The player bodies the server creates without a connection (`ZoneServer.add_fake_player`: the
+load tests and, with `--max-realm-diff`, the filler for the short side from GUE-42) cannot receive invitations or
+whispers: the server answers "no está conectado". The ENTITY_SPAWN does not distinguish them, but their name
+(`ZoneServer.FAKE_NAME_FORMAT`, "Bot-01") does not satisfy `NameRules` (hyphen and digits), and a person's always
+satisfies it because `ServerAuth` requires it in the HELLO; hence the menu does not open with a name that does not satisfy it
+(`test_zone_server` checks that no fake one satisfies it). If `NameRules` were ever tightened and an
+old name stopped satisfying it, that player would be left with no menu: then a "no social actions" bit
+in the ENTITY_SPAWN would be advisable. The body that stays in the world after logging out in combat (GUE-41) carries a person's name and does offer actions; the server answers
+"no está conectado", which is true.
 
-**Invitar** manda PARTY_INVITE; **susurrar** cierra el menú y abre la línea del chat con `/s nombre ` ya escrito.
-Cuando existan inspeccionar, añadir amigo, ignorar y reportar, saldrán de `SocialTarget.options_for` (una función
-pura) sin mostrar con un enemigo las que no apliquen.
+**Invite** sends PARTY_INVITE; **whisper** closes the menu and opens the chat line with `/s name ` already typed.
+When inspect, add friend, ignore and report exist, they will come from `SocialTarget.options_for` (a pure
+function) without showing, with an enemy, the ones that do not apply.
 
-**Pendiente de SOC-07:** el segundo origen, un nombre pulsado en el chat con el cursor libre (los nombres de las
-líneas del chat no son todavía pulsables), y las opciones que dependen de fases posteriores.
+**Pending in SOC-07:** the second origin, a name clicked in the chat with the free cursor (the names in the
+chat lines are not clickable yet), and the options that depend on later phases.
 
-**Pruebas.** `test_social_menu`: el rayo (20 m desde el jugador y no desde la cámara, PNJ, enemigos, muertos y
-falsos ignorados, el más cercano gana, un muro tapa), las opciones, el menú con un aliado, con un enemigo y con un
-falso, y la tecla del HUD con el mismo aviso para un enemigo a la vista, un enemigo o un aliado tras un muro, un
-falso y nadie.
+**Tests.** `test_social_menu`: the ray (20 m from the player and not from the camera, NPCs, enemies, dead and
+fake ones ignored, the closest wins, a wall covers), the options, the menu with an ally, with an enemy and with a
+fake, and the HUD key with the same notice for a visible enemy, an enemy or an ally behind a wall, a
+fake and nobody.
 
-### 12.7 Decisiones y pendiente de la fase 4
+### 12.7 Phase 4 decisions and pending items
 
-**Decisiones tomadas al implementar** (todas provisionales, revisables con las pruebas reales):
+**Decisions made while implementing** (all provisional, revisable with real tests):
 
-- **Protocolo.** `PROTOCOL_VERSION` sube a 5 con una sola línea de historia («chat y grupos»). Si al fusionar otra
-  rama también la sube, la renumera quien fusiona; las pruebas solo exigen `>= 4` y `>= 5` en los sitios que
-  dependen de estos mensajes.
-- **Los mensajes nuevos se reciben en todos los clientes.** `NetClient` decodifica CHAT_MESSAGE y los PARTY_*
-  (S→C) y emite señales; los bots ligeros de `--bots` (`SwarmBot`), a los que el servidor trata como a jugadores
-  (les llega la «zona» y el «decir» de su reino, se les puede susurrar y se les puede invitar), los decodifican y
-  los descartan: no contestan, y una invitación caduca sola. Los cuentan en `chat_messages_seen` y
-  `party_messages_seen` del informe del enjambre, y solo los que no se decodifican suman `malformed_packets`, la
-  cifra que las pruebas de carga exigen a 0. Pruebas: `test_bot_swarm`
-  (`test_chat_and_party_messages_reach_a_bot_without_counting_as_malformed`, con ENet: un cliente del mismo
-  reino habla por la zona, le susurra al bot y lo invita; y
-  `test_party_roster_and_status_are_discarded_and_broken_ones_count_as_malformed`, sin red).
-- **Un servicio social, no un cambio en cada pieza.** `SocialService` es lo único que ve `ZoneServer` (tipos
-  `0x40`–`0x4F`, un paso por tick y la baja de cada jugador); el estado de ritmos de cada peer cuelga de
-  `ServerPeer.chat`. En el orden del tick (cabecera de `ZoneServer`, que es la normativa) la baja
-  (`on_peer_left`: sale de su grupo y se cancelan sus invitaciones) va en el paso de bajas, y el paso social
-  (`SocialService.step`: caducan las invitaciones y sale el PARTY_STATUS) va tras las altas y antes del
-  historial, con su propia sección `social` en las métricas. Los mensajes que llegan se atienden en el poll y
-  cuentan en la sección `net`.
-- **`/r` lo resuelve el cliente** y el servidor no guarda «el último interlocutor» (12.2).
-- **Mismo texto para el enemigo y para nadie.** Susurrar o invitar a alguien de otro reino responde «no está
-  conectado» con lo que escribió el jugador, no gasta del cubo de destinatarios nuevos y no manda nada al otro
-  lado.
-- **Cualquier miembro puede invitar; solo el líder expulsa y cede el mando.** El tope de 5 pendientes es por
-  quien invita, y al aceptar se cancelan las demás del aceptante y, si el grupo es nuevo, las de quien invitó.
-- **El ritmo va antes que el trabajo.** Cada CHAT_SEND gasta su ficha antes de sanearlo o contestar; los diez
-  primeros descartes de cada 10 s son gratis y los siguientes suman un aviso cada uno (chat e invitaciones).
-- **Estado de grupo fuera del interés.** Un mensaje propio a 2 Hz a cada miembro con vida, resistencia, estado y
-  posición; no pasa por los snapshots. El marco se atenúa a más de 100 m.
-- **Intro cierra la línea al enviar**, con canal activo para seguir hablando por un canal. Un clic fuera de la caja
-  también la cierra, sin enviar y sin atacar (12.3).
-- **El menú social solo ve aliados a la vista** y da un único aviso cuando no hay a quién ofrecérselo, apunte a un
-  enemigo, a una pared o al vacío; los jugadores falsos se reconocen por su nombre, que no cumple `NameRules` (12.6).
-- **Y y N esperan a que se cierre cualquier otra ventana**, salvo la pantalla de muerte, desde la que se puede
-  responder a una invitación (12.5).
-- **Un grupo no sobrevive a una desconexión** (SOC-22 lo cambiará con los 5 min de gracia).
+- **Protocol.** `PROTOCOL_VERSION` goes up to 5 with a single history line ("chat y grupos", chat and parties). If merging another
+  branch also bumps it, whoever merges renumbers it; the tests only require `>= 4` and `>= 5` in the places
+  that depend on these messages.
+- **The new messages are received by all clients.** `NetClient` decodes CHAT_MESSAGE and the PARTY_*
+  (S→C) and emits signals; the lightweight `--bots` bots (`SwarmBot`), which the server treats as players
+  (they get their realm's "zone" and "say", can be whispered and can be invited), decode them and
+  discard them: they do not answer, and an invitation expires on its own. They count them in `chat_messages_seen` and
+  `party_messages_seen` of the swarm report, and only those that fail to decode add to `malformed_packets`, the
+  figure the load tests require to be 0. Tests: `test_bot_swarm`
+  (`test_chat_and_party_messages_reach_a_bot_without_counting_as_malformed`, with ENet: a client of the same
+  realm talks on the zone, whispers the bot and invites it; and
+  `test_party_roster_and_status_are_discarded_and_broken_ones_count_as_malformed`, no network).
+- **One social service, not a change in every piece.** `SocialService` is the only thing `ZoneServer` sees (types
+  `0x40`-`0x4F`, one step per tick and the removal of each player); each peer's rate state hangs off
+  `ServerPeer.chat`. In the tick order (`ZoneServer` header, which is the authority) the removal
+  (`on_peer_left`: leaves its party and its invitations are cancelled) goes in the removals step, and the social step
+  (`SocialService.step`: invitations expire and PARTY_STATUS goes out) goes after the additions and before the
+  history, with its own `social` section in the metrics. Incoming messages are handled in the poll and
+  count in the `net` section.
+- **`/r` is resolved by the client** and the server does not store "the last interlocutor" (12.2).
+- **Same text for the enemy and for nobody.** Whispering or inviting someone from another realm answers
+  "no está conectado" with what the player typed, does not spend from the new-recipients bucket and sends nothing to the other
+  side.
+- **Any member can invite; only the leader kicks and hands over command.** The cap of 5 pending is per
+  inviter, and on accepting the accepter's others are cancelled and, if the party is new, the inviter's.
+- **Rate goes before work.** Each CHAT_SEND spends its token before sanitizing or answering; the first ten
+  drops of every 10 s are free and the following ones add one warning each (chat and invitations).
+- **Party state outside interest.** A dedicated 2 Hz message to each member with health, stamina, status and
+  position; it does not go through the snapshots. The frame dims beyond 100 m.
+- **Enter closes the line on sending**, with an active channel for continuing to talk on a channel. A click outside the box
+  also closes it, without sending and without attacking (12.3).
+- **The social menu only sees visible allies** and gives a single notice when there is nobody to offer it to, whether aimed at an
+  enemy, a wall or the void; fake players are recognized by their name, which does not satisfy `NameRules` (12.6).
+- **Y and N wait for any other window to close**, except the death screen, from which an invitation
+  can be answered (12.5).
+- **A party does not survive a disconnection** (SOC-22 will change that with the 5 min of grace).
 
-**Limitaciones conocidas de la fase 4** (se aceptan hasta la fase 5; documentadas también en
-[red.md](red.md), sección 12):
+**Known limitations of phase 4** (accepted until phase 5; also documented in
+[networking.md](networking.md), section 12):
 
-- **Los ritmos son por conexión.** `ChatPeerState` nace lleno con cada `ServerPeer`: quien sale y vuelve a entrar
-  recupera las ráfagas, los 5 destinatarios nuevos de susurro y la ventana de descartes, igual que los cubos del
-  transporte y los avisos (hallazgo S6 de red.md). Guardar el estado por nombre no lo arreglaría, porque en la
-  fase 4 el cliente elige su nombre en cada conexión (`DevAuthProvider`). Desde la fase 5 se guardará por
-  personaje o cuenta (la del billete) durante los 5 min de `KNOWN_RECIPIENT_TICKS` tras la baja, y se
-  reenganchará al volver a entrar.
-- **El HELLO dice si un nombre está conectado.** `ServerAuth` rechaza con `REJECT NAME` un nombre que ya lleva
-  alguien en la zona, de cualquier reino (para que los susurros no sean ambiguos); como el cliente elige el
-  nombre del HELLO, abrir otra conexión con el de un jugador dice si está en la zona y, si además el susurro
-  contesta «no está conectado», que es del otro reino. Se acepta por ahora porque no añade nada a un agujero
-  mayor de la misma fase: el cliente también elige su reino, así que puede entrar en el del enemigo y
-  susurrarle o leer su zona directamente. Comprobar la unicidad solo dentro del reino no lo taparía (la sonda
-  declararía el reino del enemigo) y rompería la regla de nombres únicos de la sección 1; un enfriamiento tras
-  varios `REJECT NAME` solo lo frenaría, y castigaría a quien reconecta mientras su sesión anterior o su cuerpo
-  (GUE-41) aún retienen el nombre. Se cierra en la fase 5 (SOC-13, TEC-24): el nombre y el reino salen del
-  personaje del billete, el campo del HELLO se ignora y la unicidad la garantiza la base de datos al crear el
-  personaje; contra los conectados solo queda la sesión duplicada del mismo personaje, cuya respuesta solo ve
-  su dueño. Prueba prevista entonces: `test_hello_cannot_probe_an_enemy_name` (con ENet, un HELLO con billete de
-  otro personaje y el nombre de un enemigo conectado no recibe `NAME`). **Cerrada en la fase 5** (plataforma.md P4, su §19.8): con
-  `--platform`, `ServerAuth` no mira el nombre ni el reino del HELLO y la prueba está en
-  `tests/test_zone_server_platform.gd` (sin plataforma, en desarrollo, el `REJECT NAME` sigue como en la fase 4).
+- **Rates are per connection.** `ChatPeerState` is born full with each `ServerPeer`: whoever leaves and re-enters
+  recovers the bursts, the 5 new whisper recipients and the drop window, just like the transport buckets and
+  warnings (finding S6 of networking.md). Storing the state by name would not fix it, because in
+  phase 4 the client chooses its name on every connection (`DevAuthProvider`). From phase 5 it will be stored per
+  character or account (the ticket's) during the 5 min of `KNOWN_RECIPIENT_TICKS` after the removal, and
+  re-attached on re-entering.
+- **The HELLO tells whether a name is online.** `ServerAuth` rejects with `REJECT NAME` a name that someone in the zone
+  already carries, from any realm (so that whispers are not ambiguous); since the client chooses the
+  name in the HELLO, opening another connection with a player's name tells whether they are in the zone and, if the whisper
+  also answers "no está conectado", that they are from the other realm. It is accepted for now because it adds nothing to a
+  larger hole in the same phase: the client also chooses its realm, so it can enter the enemy's and
+  whisper them or read their zone directly. Checking uniqueness only within the realm would not plug it (the probe
+  would declare the enemy's realm) and would break the unique-names rule of section 1; a cooldown after
+  several `REJECT NAME` would only slow it, and would punish whoever reconnects while their previous session or their body
+  (GUE-41) still holds the name. It is closed in phase 5 (SOC-13, TEC-24): the name and realm come from the
+  ticket's character, the HELLO field is ignored and uniqueness is guaranteed by the database when creating the
+  character; against those connected only the duplicate session of the same character remains, whose answer only its
+  owner sees. Test planned then: `test_hello_cannot_probe_an_enemy_name` (with ENet, a HELLO with another
+  character's ticket and the name of a connected enemy receives no `NAME`). **Closed in phase 5** (platform.md P4, its §19.8): with
+  `--platform`, `ServerAuth` does not look at the HELLO's name or realm and the test is in
+  `tests/test_zone_server_platform.gd` (without platform, in development, `REJECT NAME` remains as in phase 4).
 
-**Pendiente del usuario** (provisional, a la espera de ART-12 y de probarlo jugando): los colores de cada canal,
-las medidas y el desvanecimiento de la caja de chat, el aspecto y la posición de los marcos y del aviso de
-invitación, los textos de los avisos y las teclas nuevas (Intro y `/` para el chat, Y y N para responder a una
-invitación, G para el menú de jugador). Además, si la caja de chat debe atenuarse con la pantalla de muerte (hoy
-no).
+**Pending for the user** (provisional, awaiting ART-12 and playtesting): the colors of each channel,
+the dimensions and fade of the chat box, the look and position of the frames and of the invitation
+notice, the text of the notices and the new keys (Enter and `/` for chat, Y and N to answer an
+invitation, G for the player menu). Also, whether the chat box should dim with the death screen (it does not
+today).
 
-**Pendiente de implementar:**
+**Pending to implement:**
 
-- SOC-07: el menú desde un nombre pulsado en el chat con el cursor libre y las acciones de fases posteriores
-  (inspeccionar, amigo, ignorar, reportar).
-- SOC-09 y SOC-10: los miembros del grupo en la brújula, el minimapa y el mapa (ya reciben sus posiciones a 2 Hz en
-  `PartyState`) y los pings y marcas tácticas.
-- SOC-15, SOC-16, SOC-17 y SOC-27: registro persistente, ignorados, reportes y filtro de lenguaje.
-- SOC-21 y SOC-22: más canales (reino, comercio, novatos) y grupos entre zonas y con reconexión.
-- UI-47: las ventanas de la interfaz tampoco suspenden el movimiento (hallazgo de SOC-05).
+- SOC-07: the menu from a name clicked in chat with the free cursor and the actions of later phases
+  (inspect, friend, ignore, report).
+- SOC-09 and SOC-10: party members on the compass, minimap and map (they already receive their positions at 2 Hz in
+  `PartyState`) and tactical pings and markers.
+- SOC-15, SOC-16, SOC-17 and SOC-27: persistent log, ignored players, reports and language filter.
+- SOC-21 and SOC-22: more channels (realm, trade, newcomers) and cross-zone parties with reconnection.
+- UI-47: the UI windows do not suspend movement either (finding from SOC-05).

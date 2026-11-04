@@ -1,6 +1,6 @@
 class_name HfsmBrain
 extends BotBrain
-## Brain of a combat NPC: a hierarchical state machine (docs/fuerte.md, section 4.2; MUN-07 and MUN-08).
+## Brain of a combat NPC: a hierarchical state machine (docs/fortress.md, section 4.2; MUN-07 and MUN-08).
 ## [br][br]
 ## [b]States[/b] ([enum State]): [code]REPOSO[/code] (standing still at its post) → [code]PATRULLA[/code] (walks the
 ## markers of its route, pausing at each one) → [code]ALERTA[/code] (has noticed an enemy: looks at it and reacts for
@@ -8,7 +8,7 @@ extends BotBrain
 ## lost it or strayed beyond its leash: returns to its post, [b]regenerated and immune[/b]).
 ## [br][br]
 ## [b]Thinks every [constant THINK_INTERVAL_TICKS] ticks[/b] (staggered by its net_id) using the state of the bodies
-## after the previous tick (step 0 of the tick order, docs/fuerte.md 1.7), and in between it repeats its plan: movement,
+## after the previous tick (step 0 of the tick order, docs/fortress.md 1.7), and in between it repeats its plan: movement,
 ## heading and buttons. It produces one [PlayerInput] per tick that enters its [InputQueue] like a fake player's, so
 ## its body is a [PlayerCharacter] simulated with the same rules as players. Its only source of randomness is its
 ## seeded [RandomNumberGenerator]: with the same seeds and the same players it always does the same thing
@@ -23,7 +23,7 @@ extends BotBrain
 ## a boss ([member NpcDefinition.shouts]) shouts and, when its health drops, calls reinforcements once per life
 ## (returning to its post regenerated does not re-arm the call; only [method rearm_reinforcements] does).
 ## [br][br]
-## [b]Knocked down[/b] (docs/habilidades.md, section 4.5; H3c): NPCs are never knocked down, but they finish off
+## [b]Knocked down[/b] (docs/abilities.md, section 4.5; H3c): NPCs are never knocked down, but they finish off
 ## others. A hostile knocked-down player within [constant DOWNED_PRIORITY_RADIUS] m is the preferred target (ahead of
 ## the nearest standing one, also when noticed while resting or patrolling) and is attacked with the light attack
 ## (PRIMARY), without raising the shield or charging; it requests its [AttackTokens] token like any other target.
@@ -79,7 +79,7 @@ const CIRCLE_OUTER_MARGIN: float = 0.5
 const STRAFE_FLIP_TICKS: Vector2i = Vector2i(120, 300)
 ## Radius (m) of the alert of a boss that shouts.
 const SHOUT_RADIUS: float = 60.0
-## Distance (m, horizontal) at which a hostile knocked-down player is the preferred target (docs/habilidades.md,
+## Distance (m, horizontal) at which a hostile knocked-down player is the preferred target (docs/abilities.md,
 ## section 4.5).
 const DOWNED_PRIORITY_RADIUS: float = 6.0
 ## Minimum transitions kept by [method get_state_log]: on reaching double, it keeps the last
@@ -307,7 +307,7 @@ func has_called_reinforcements() -> bool:
 	return _reinforced
 
 
-## Gives back the reinforcement call: the full respawn of the Hollow (docs/fuerte.md 4.3), which leaves the neutral
+## Gives back the reinforcement call: the full respawn of the Hollow (docs/fortress.md 4.3), which leaves the neutral
 ## fort as freshly created, re-arms it for the Ford Captain that is still alive.
 func rearm_reinforcements() -> void:
 	_reinforced = false

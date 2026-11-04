@@ -1,5 +1,5 @@
 extends TestCase
-## Movement effects (docs/habilidades.md, sections 3.3, 3.4, 3.5 and 7.3): the two [CombatState]
+## Movement effects (docs/abilities.md, sections 3.3, 3.4, 3.5 and 7.3): the two [CombatState]
 ## slots imposed by the server, their expiry at the exact tick, the third that replaces the one
 ## ending sooner, ROOT that prevents dodging and advancing, and [member ActionMachine.Output.speed_factor]
 ## in movement. With physics ([PredictionPair]): the slow gives the same speed on client

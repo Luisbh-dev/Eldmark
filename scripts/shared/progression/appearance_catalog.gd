@@ -1,6 +1,6 @@
 class_name AppearanceCatalog
 extends Resource
-## Appearance catalog (docs/progresion.md §7.2, ART-19), in
+## Appearance catalog (docs/progression.md §7.2, ART-19), in
 ## [code]data/characters/appearance_catalog.tres[/code]: the peoples ([RaceDefinition]), parts
 ## ([AppearancePart]) and colors ([AppearanceColor]) that index the 8 B of [CharacterAppearance].
 ## [br][br]

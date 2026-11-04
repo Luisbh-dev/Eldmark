@@ -527,7 +527,7 @@ func test_killing_the_lingering_body_credits_the_killer_like_any_other_death() -
 	await _run_frames(3)
 	ana.send_raw(NetProtocol.CH_RELIABLE, NetMessages.ClientLeave.new().encode())
 	await _run_until(func() -> bool: return _server.is_lingering(net_id))
-	# An enemy hits the body: a light attack of 90 knocks it down (docs/habilidades.md, section 4.5: it is a player from
+	# An enemy hits the body: a light attack of 90 knocks it down (docs/abilities.md, section 4.5: it is a player from
 	# another realm) and finishes it off by holding E.
 	var killer: int = _server.add_fake_player(_brain(), SOLMARCH)
 	_server.teleport(killer, Vector3(-20.0, 0.05, 6.5))
@@ -772,7 +772,7 @@ func test_the_fortress_debug_commands_are_refused_without_debug_commands() -> vo
 	assert_eq(peer.strikes_total, 2, "each attempt is a notice")
 
 
-# --- Periodic reset to neutral (docs/fuerte.md, 1.5) -----------------------------------------------
+# --- Periodic reset to neutral (docs/fortress.md, 1.5) -----------------------------------------------
 
 func test_the_periodic_reset_reaches_every_client_and_closes_the_gate_for_everybody() -> void:
 	await _start_server(FortressFixture.make_definition(2.0, 2.0, 4.0))

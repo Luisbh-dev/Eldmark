@@ -83,7 +83,7 @@ func TestParseRejectsBrokenFiles(t *testing.T) {
 			t.Errorf("%s: se esperaba un error", name)
 		}
 	}
-	// Other sections (those of progresion.md) do not interfere.
+	// Other sections (those of progression.md) do not interfere.
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(good, &top); err != nil {
 		t.Fatal(err)

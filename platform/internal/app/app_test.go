@@ -124,7 +124,7 @@ func waitReady(t *testing.T, addr string) {
 }
 
 // With the database stopped, /health stays at 200 and /ready gives 503 with the reason
-// (plataforma.md §15 P0).
+// (platform.md §15 P0).
 func TestReadyWithTheDatabaseDown(t *testing.T) {
 	pool, err := db.Open(context.Background(), "host="+filepath.Join(t.TempDir(), "parada")+" user=eldmark dbname=eldmark")
 	if err != nil {
@@ -190,7 +190,7 @@ func TestServeWaitsForTheMigrations(t *testing.T) {
 }
 
 // A database with a migration later than the binary's is fine: serve starts (expand and contract,
-// plataforma.md §2.4).
+// platform.md §2.4).
 func TestServeStartsWithALaterMigration(t *testing.T) {
 	pool := testdb.New(t)
 	newer := fstest.MapFS{}

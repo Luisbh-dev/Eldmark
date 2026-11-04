@@ -1,6 +1,6 @@
 class_name NetTransport
 extends Node
-## Thin layer over [ENetMultiplayerPeer] and [SceneMultiplayer] (see docs/red.md, sections 2, 3
+## Thin layer over [ENetMultiplayerPeer] and [SceneMultiplayer] (see docs/networking.md, sections 2, 3
 ## and 13).
 ##
 ## It does only three things: connect, authenticate ([method send_auth], [method complete_auth] and
@@ -29,7 +29,7 @@ extends Node
 ## unreliable) both outgoing and incoming traffic. Authentication only gets added delay.
 ## [br]- After [signal connection_failed] or loss of the server, the client can call
 ## [method connect_to] again (or [method close]).
-## [br]- With DTLS ([method host] and [method connect_to] with [TLSOptions], docs/plataforma.md
+## [br]- With DTLS ([method host] and [method connect_to] with [TLSOptions], docs/platform.md
 ## §10.2) the disconnect is always started by the server: see [method disconnect_after_flush].
 ## [br][br]
 ## Shared: it does not read the clock. Time is the tick passed to [method poll].
@@ -55,7 +55,7 @@ signal packet_received(peer_id: int, bytes: PackedByteArray)
 signal connection_failed()
 
 ## Maximum [SceneMultiplayer] authentication time (seconds), on both sides and counted from the
-## connection, not from the HELLO. 10 s since protocol 7 (docs/plataforma.md §5.2): it leaves room
+## connection, not from the HELLO. 10 s since protocol 7 (docs/platform.md §5.2): it leaves room
 ## for the ticket claim, which the zone cuts off at 7 s with a REJECT that always arrives in time.
 const AUTH_TIMEOUT_SECONDS: float = 10.0
 ## Ticks given to [method disconnect_after_flush] before forcing the disconnect.
@@ -183,7 +183,7 @@ func set_net_sim_spec(spec: String) -> void:
 ## Opens an ENet server on [param port] for [param max_peers] peers. The transport must be in the
 ## tree. If the port is busy it returns an error (and the engine logs it).
 ## [br][br]With [param dtls] ([method TLSOptions.server] with the zone's key and certificate) all
-## traffic goes over DTLS (docs/plataforma.md §10.2): [method ENetConnection.dtls_server_setup] is
+## traffic goes over DTLS (docs/platform.md §10.2): [method ENetConnection.dtls_server_setup] is
 ## called right after [method ENetMultiplayerPeer.create_server] and before wrapping it in
 ## [GuardedEnetPeer], which filters the already decrypted traffic the same way. Without it,
 ## plaintext, as always.
@@ -213,7 +213,7 @@ func host(port: int, max_peers: int, dtls: TLSOptions = null) -> Error:
 ## must be in the tree.
 ## [br][br]With [param dtls] (the zone's certificate pinned with [method TLSOptions.client]) the
 ## connection goes over DTLS and [param dtls_name] is the name (CN) expected from the certificate
-## (docs/plataforma.md §10.2). Without it, as always. The DTLS handshake delays the connection
+## (docs/platform.md §10.2). Without it, as always. The DTLS handshake delays the connection
 ## (about 0.6 s instead of 0.2–0.3): ENet sends the CONNECT once DTLS is ready, on its first
 ## retransmission.
 func connect_to(address: String, port: int, connect_timeout_ms: int = 3000, dtls_name: String = "",
@@ -324,7 +324,7 @@ func complete_auth(peer_id: int) -> Error:
 ## that moment on [method send] and [method send_auth] return [constant ERR_UNAVAILABLE] for that
 ## peer.
 ## [br][br]
-## [b]With DTLS, the client does not start the disconnect[/b] (docs/plataforma.md §19.18, P9c): it
+## [b]With DTLS, the client does not start the disconnect[/b] (docs/platform.md §19.18, P9c): it
 ## flushes its own data and waits for the server to cut it, which is how the server answers the
 ## CLIENT_LEAVE. Godot's DTLS server forgets a peer's session as soon as ENet considers it
 ## disconnected; if the client starts the disconnect, its DTLS close notice arrives one round trip

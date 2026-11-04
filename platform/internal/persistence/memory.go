@@ -13,9 +13,9 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// MemoryProgressStore is the fake of [ProgressStore] (plataforma.md §7.5): it keeps the progression
+// MemoryProgressStore is the fake of [ProgressStore] (platform.md §7.5): it keeps the progression
 // in memory, without tables. Only the platform's tests use it (platformtest); serve and the admin
-// command use the real store of progresion.md P7 (internal/progress).
+// command use the real store of progression.md P7 (internal/progress).
 //
 // It does not see transactions: if the caller's is rolled back, what was written here stays. When
 // creating a character it does not matter (a retried creation gets another character_id); tests that
@@ -140,7 +140,7 @@ func (m *MemoryProgressStore) get(characterID int64) (*memoryCharacter, error) {
 	return c, nil
 }
 
-// record builds the claim's ProgressRecord (progresion.md §3.4): a new character's or the last one
+// record builds the claim's ProgressRecord (progression.md §3.4): a new character's or the last one
 // applied, with the read-only fields.
 func (c *memoryCharacter) record() map[string]any {
 	rec := map[string]any{"progress_format": 1, "starter_granted": false, "level": 1, "xp_total": 0,
@@ -291,7 +291,7 @@ func (m *MemoryProgressStore) Purge(_ context.Context, _ pgx.Tx, characterID int
 }
 
 // PurgeRetention implements [ProgressStore]: the fake has no ledger, so it deletes nothing nor
-// gives empty tombstones (the real retention deletes them, progresion.md P7).
+// gives empty tombstones (the real retention deletes them, progression.md P7).
 func (m *MemoryProgressStore) PurgeRetention(context.Context, pgx.Tx) (int64, []int64, error) {
 	return 0, nil, nil
 }

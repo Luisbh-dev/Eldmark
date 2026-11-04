@@ -118,7 +118,7 @@ func (e *UnpurgedError) Error() string {
 }
 
 // ErrNoCharacterPurger is reapply-purges without anything to purge characters.
-var ErrNoCharacterPurger = errors.New("no hay quien purgue personajes (el almacén del progreso, docs/progresion.md P7)")
+var ErrNoCharacterPurger = errors.New("no hay quien purgue personajes (el almacén del progreso, docs/progression.md P7)")
 
 // ReapplyPurges applies the purges.txt purges again after restoring a backup (§11.2), with the zones
 // stopped and before starting serve: in one transaction it deletes all the backup's

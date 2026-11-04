@@ -3,9 +3,9 @@ extends RefCounted
 ## A zone's combat on the server (docs/combate.md, sections 4.2 and 5): it keeps one
 ## [Combatant] per entity with a body and, once per tick, freezes, resolves, applies and publishes.
 ## [br][br]
-## [method process_tick] is the tick's "combat" step (red.md 8.1, after simulating all
+## [method process_tick] is the tick's "combat" step (networking.md 8.1, after simulating all
 ## entities and before additions, history and snapshots), with steps 2 to 9 of the order in
-## docs/habilidades.md, section 4.1 (which completes docs/fuerte.md, 1.7):
+## docs/abilities.md, section 4.1 (which completes docs/fortress.md, 1.7):
 ## [codeblock]
 ## 2 freeze      the current tick's sample of each entity (Combatant.freeze): position, turn, defense,
 ##               action, active hit (attack or ability), commitment and wall box
@@ -29,13 +29,13 @@ extends RefCounted
 ## 9 publish     protection, regeneration and what the snapshots see (health, state, action)
 ## [/codeblock]
 ## A lethal hit from a player of another realm in an RvR zone does not kill a player: it leaves them knocked down
-## ([DownedSystem], docs/habilidades.md, section 4.5). A downed or dead entity in step 5 receives no further
+## ([DownedSystem], docs/abilities.md, section 4.5). A downed or dead entity in step 5 receives no further
 ## hits that tick.
 ## [br][br]
-## [b]Templates[/b] (docs/habilidades.md, section 4.6): [method equip_template] on spawn,
+## [b]Templates[/b] (docs/abilities.md, section 4.6): [method equip_template] on spawn,
 ## [method _respawn] with the peer's pending one on each respawn, the camp refill and the commands
 ## 5 [code]set_weapon[/code] and 16 [code]refill[/code]; each change sends LOADOUT ([method announce_loadout]).
-## Whoever has an inventory (docs/progresion.md §4.1, §4.4 and §8, progresion.md P5b) appears with their gear
+## Whoever has an inventory (docs/progression.md §4.1, §4.4 and §8, progression.md P5b) appears with their gear
 ## ([method equip_inventory]), respawns with it ([member loadout_source]) and replenishes their bag at the camp
 ## ([member camp_step]): their current template is 0.
 ## Any combat state the server imposes goes through
@@ -47,7 +47,7 @@ extends RefCounted
 
 ## A combat event (HIT, DEATH, KILL, RESPAWN, STATUS, HEAL, LOADOUT, DOWNED or INTERACT) and the net_ids of
 ## the entities involved (victim, attacker, killer and assistants): their owners and anyone who has them as
-## relevant receive it. LOADOUT goes out twice when weapons change (docs/habilidades.md, section 5.4):
+## relevant receive it. LOADOUT goes out twice when weapons change (docs/abilities.md, section 5.4):
 ## with [param involved] = [code][jugador][/code] it is the owner's (with the charges) and with [param involved]
 ## empty, the public one (charges 0) for whoever has it as relevant.
 signal event_emitted(event: NetMessages.EntityEvent, involved: PackedInt32Array)
@@ -68,12 +68,12 @@ enum RespawnRequestResult {
 ## Below this height the character dies (falls out of the world).
 const VOID_LIMIT_Y: float = -100.0
 ## How many ticks between consumable refills for whoever is at their realm's camp
-## (docs/habilidades.md, section 4.6).
+## (docs/abilities.md, section 4.6).
 const RECHARGE_INTERVAL_TICKS: int = 60
 ## [ServerMetrics] section for hit resolution (shape, line of sight and rewind).
 const SECTION_RESOLVE: StringName = &"combat_resolve"
 ## [ServerMetrics] section for projectiles: shots (step 3) and flight (step 4); the budget is 1 ms
-## with 64 players (docs/habilidades.md, section 8).
+## with 64 players (docs/abilities.md, section 8).
 const SECTION_PROJECTILES: StringName = &"combat_projectiles"
 ## Bits of [member NetMessages.EntityEvent.hit_flags] that the director sets.
 const _HIT_CRITICAL: int = NetMessages.EntityEvent.HIT_FLAG_CRITICAL
@@ -87,14 +87,14 @@ const _HIT_DOWNED: int = NetMessages.EntityEvent.HIT_FLAG_DOWNED
 ## Time limits in ticks (tests shorten them).
 var timing: CombatTiming = CombatTiming.from_rules(CombatCatalog.rules())
 var resolver: CombatResolver
-## The zone's status effects (docs/habilidades.md, section 4.3): their events go out through
+## The zone's status effects (docs/abilities.md, section 4.3): their events go out through
 ## [signal event_emitted] and the director applies their damage pulses.
 var status: StatusSystem = StatusSystem.new()
-## The zone's projectiles (docs/habilidades.md, section 4.4): their spawns and despawns go out through their signals
+## The zone's projectiles (docs/abilities.md, section 4.4): their spawns and despawns go out through their signals
 ## [signal ProjectileSystem.spawned] and [signal ProjectileSystem.despawned]; the director
 ## applies their hits.
 var projectiles: ProjectileSystem
-## Knocked down, lifting and finishing off (docs/habilidades.md, section 4.5): their events go out through
+## Knocked down, lifting and finishing off (docs/abilities.md, section 4.5): their events go out through
 ## [signal event_emitted] and the director applies their deaths.
 var downed: DownedSystem = DownedSystem.new()
 ## Combat log file ([code]--combat-log[/code]); null = none.
@@ -115,7 +115,7 @@ var stats: Dictionary[StringName, int] = {
 ## [code]() -> Dictionary[/code]: the live [FortressState]s by fortress id, to decide which respawn points
 ## are valid ([method RespawnRules.points_for]). Without this there are no fortresses.
 var fortress_states: Callable = Callable()
-## Inventory (docs/progresion.md §4.1, §4.4 and §8; set by the [ZoneServer] with its [ProgressService]):
+## Inventory (docs/progression.md §4.1, §4.4 and §8; set by the [ZoneServer] with its [ProgressService]):
 ## [code](net_id: int) -> ProgressService.Loadout[/code], the gear that whoever has an inventory respawns with (null
 ## without one: the template, as always). With it, respawn looks at neither the template nor the peer's pending one.
 var loadout_source: Callable = Callable()
@@ -184,7 +184,7 @@ func add(entity: NetEntity, queue: InputQueue, peer: ServerPeer) -> Combatant:
 
 ## Removes [param net_id] at tick [param tick] and erases its trace from the others' damage logs (its id
 ## may be reused). Its arrows in the air go out with DESPAWN 5 and the effects it put on others are
-## removed with STATUS 2, on that tick (docs/habilidades.md, section 4.1).
+## removed with STATUS 2, on that tick (docs/abilities.md, section 4.1).
 func remove(net_id: int, tick: int) -> void:
 	var leaving: Combatant = _combatants.get(net_id)
 	if leaving == null:
@@ -235,7 +235,7 @@ func size() -> int:
 
 # --- The tick ----------------------------------------------------------------------------------
 
-## The combat step of tick [param s] (steps 2 to 9 of docs/habilidades.md, section 4.1): freezes,
+## The combat step of tick [param s] (steps 2 to 9 of docs/abilities.md, section 4.1): freezes,
 ## own commitment effects, resolves, applies, status effects, environment, respawns and
 ## publishing. [param space] is the world's physics space (line of sight).
 func process_tick(s: int, space: PhysicsDirectSpaceState3D) -> void:
@@ -345,7 +345,7 @@ func apply_status(combatant: Combatant, status_id: int, tick: int, duration_tick
 
 
 ## Sets the catalog weapon [param weapon_id] in slot 1 of [param combatant] (command 5
-## [code]set_weapon[/code], docs/habilidades.md, section 3.5): [method ActionMachine.set_loadout] with the one in
+## [code]set_weapon[/code], docs/abilities.md, section 3.5): [method ActionMachine.set_loadout] with the one in
 ## slot 2 it had (none if it is the same) and its charges; on a living one, NONE first. With
 ## [param tick] ≥ 0 it sends LOADOUT to the owner and to whoever has it as relevant (a freshly created NPC does not
 ## need it: its SPAWN already carries the weapon). Returns false if the weapon does not exist or it is knocked down.
@@ -370,7 +370,7 @@ static func weapons_in_slot_order(combat: CombatState) -> PackedInt32Array:
 	return PackedInt32Array([combat.weapon_id, combat.alt_weapon_id])
 
 
-## The template that applies for [param requested] (docs/habilidades.md, section 4.6): itself if it exists; the
+## The template that applies for [param requested] (docs/abilities.md, section 4.6): itself if it exists; the
 ## default ([member CombatRules.default_template]) with 0 or one that does not exist. 0 if there is none.
 static func resolve_template(requested: int) -> int:
 	if requested > 0 and CombatCatalog.template(requested) != null:
@@ -399,7 +399,7 @@ func equip_template(combatant: Combatant, template_id: int, tick: int = -1) -> i
 	return resolved
 
 
-## Equips [param combatant] with the gear from its inventory (docs/progresion.md §8) on first appearing:
+## Equips [param combatant] with the gear from its inventory (docs/progression.md §8) on first appearing:
 ## [method ActionMachine.set_loadout] with [param weapon_1] and [param weapon_2] (the gear's slots 0 and 1; 0 =
 ## empty) and [param charges] and, with [param second_active], [method ActionMachine.set_weapons] with slot 1 active
 ## (no cooldowns). The current template becomes 0 ("the inventory's gear" in LOADOUT). With [param tick] ≥ 0
@@ -416,7 +416,7 @@ func equip_inventory(combatant: Combatant, weapon_1: int, weapon_2: int, second_
 		announce_loadout(combatant, tick, true)
 
 
-## LOADOUT of [param combatant] at [param tick] (docs/habilidades.md, section 5.4): its template, its weapons
+## LOADOUT of [param combatant] at [param tick] (docs/abilities.md, section 5.4): its template, its weapons
 ## in slot order and its charges to the owner; with [param public], also the same without charges to whoever has it
 ## as relevant (when weapons change).
 func announce_loadout(combatant: Combatant, tick: int, public: bool) -> void:
@@ -445,7 +445,7 @@ func refill(combatant: Combatant, tick: int) -> bool:
 
 
 ## Knocks down [param combatant] at [param tick] as if an enemy had knocked it down, with no author (command 15
-## [code]down[/code], docs/habilidades.md, section 4.5): on bleeding out, DEATH without KILL. Returns false outside
+## [code]down[/code], docs/abilities.md, section 4.5): on bleeding out, DEATH without KILL. Returns false outside
 ## RvR zones, in its realm's safe zone, if it is not a living player or if it is a dummy.
 func down(combatant: Combatant, tick: int) -> bool:
 	if not downed.is_enabled() or not combatant.is_alive() or combatant.immortal \
@@ -460,7 +460,7 @@ func down(combatant: Combatant, tick: int) -> bool:
 
 
 ## Kills at [param tick] a knocked-down player who leaves the zone (exit, disconnection, [code]--fake-churn[/code],
-## end of the body from GUE-41; docs/habilidades.md, section 4.5): DEATH and KILL with the killer from
+## end of the body from GUE-41; docs/abilities.md, section 4.5): DEATH and KILL with the killer from
 ## [method DownedSystem.killer_of] and the source "bleeding out". It does nothing if not knocked down.
 func kill_downed(combatant: Combatant, tick: int) -> void:
 	if combatant == null or not combatant.is_downed():
@@ -534,7 +534,7 @@ func _apply_hit(hit: CombatResolver.Hit, s: int) -> void:
 		return
 	if victim.is_dead() or victim.downed_tick == s:
 		# Died or was knocked down earlier in this same tick (another simultaneous hit): all were resolved
-		# against the same state and its turn has passed (docs/habilidades.md, section 4.1).
+		# against the same state and its turn has passed (docs/abilities.md, section 4.1).
 		return
 	_note_landed(hit)
 	attacker.mark_combat(s)
@@ -548,7 +548,7 @@ func _apply_hit(hit: CombatResolver.Hit, s: int) -> void:
 	_apply_impact(hit, s)
 
 
-# Hit on a fort's gate (docs/fuerte.md, 3.3): formula damage (no critical or defense) times the
+# Hit on a fort's gate (docs/fortress.md, 3.3): formula damage (no critical or defense) times the
 # structure multiplier of its damage type, minimum 1 if anything is left, not exceeding the health it has
 # left. HIT with the fortress's net_id for the attacker (and whoever has it as relevant); the attacker
 # becomes "in combat".
@@ -597,8 +597,8 @@ func _apply_parry(hit: CombatResolver.Hit, s: int) -> void:
 
 
 # Impact, with or without block. An ability's hit ([member AbilityTicks.hit]) follows the same
-# path as an attack (docs/habilidades.md, section 4.2): its id is the ability's source. A
-# projectile's (docs/habilidades.md, section 4.4) too, with the charge and the extra damage it copied on launch; the
+# path as an attack (docs/abilities.md, section 4.2): its id is the ability's source. A
+# projectile's (docs/abilities.md, section 4.4) too, with the charge and the extra damage it copied on launch; the
 # shield wall's box blocks it on behalf of whoever holds it without damage (mitigation 1) and with the wall's cost.
 func _apply_impact(hit: CombatResolver.Hit, s: int) -> void:
 	var attacker: Combatant = hit.attacker
@@ -647,7 +647,7 @@ func _apply_impact(hit: CombatResolver.Hit, s: int) -> void:
 	stats[&"hits"] += 1
 	stats[&"damage"] += applied
 	var lethal: bool = victim.is_dead()
-	# A lethal hit from a player of another realm in an RvR zone knocks down (docs/habilidades.md, section 4.5): the
+	# A lethal hit from a player of another realm in an RvR zone knocks down (docs/abilities.md, section 4.5): the
 	# arrow carries the author's copy (their realm and whether they are a player), even if the shooter is no longer standing.
 	var downs: bool = lethal and downed.should_down(victim, _author_realm(hit), _author_is_player(hit))
 	if downs:
@@ -656,7 +656,7 @@ func _apply_impact(hit: CombatResolver.Hit, s: int) -> void:
 		flags |= _HIT_LETHAL
 	# An immortal dummy announces the full damage (the DPS meter counts it in full).
 	var amount: int = result.damage if victim.immortal else applied
-	# Interruption (docs/habilidades.md, section 4.2): an impact with damage from a hostile cuts drinking, a marked
+	# Interruption (docs/abilities.md, section 4.2): an impact with damage from a hostile cuts drinking, a marked
 	# cast, lifting or finishing off, if the hit has not already imposed a control.
 	if not lethal and not changed and hit.outcome == CombatResolver.Outcome.IMPACT and amount > 0 \
 			and _interrupt(victim_character.combat, s):
@@ -679,7 +679,7 @@ func _apply_impact(hit: CombatResolver.Hit, s: int) -> void:
 		status.apply(victim, attack.on_hit_status_id, attacker.get_id(), s)
 
 
-# Hit on a knocked-down player (docs/habilidades.md, section 4.5): the formula damage (with the charge and the extra damage,
+# Hit on a knocked-down player (docs/abilities.md, section 4.5): the formula damage (with the charge and the extra damage,
 # no block possible) takes away its downed health; no controls, effects or interruptions. At 0, it dies: the
 # killer is whoever finished it off with damage.
 func _apply_downed_impact(hit: CombatResolver.Hit, s: int) -> void:
@@ -763,7 +763,7 @@ func _interrupt(combat: CombatState, s: int) -> bool:
 
 
 ## true if an impact with damage from a hostile would cut what [param combat] is doing at [param tick]
-## (docs/habilidades.md, section 4.2): the cast of a consumable or of an ability with
+## (docs/abilities.md, section 4.2): the cast of a consumable or of an ability with
 ## [member AbilityTicks.interrupt_on_damage], lifting or finishing off.
 static func is_interruptible(combat: CombatState, tick: int) -> bool:
 	match combat.action:
@@ -779,7 +779,7 @@ static func is_interruptible(combat: CombatState, tick: int) -> bool:
 # --- Status effects ----------------------------------------------------------------------------
 
 # Step 3, on whoever is in their commitment ([param list], by net_id): an attack or an ability with a
-# projectile fires (docs/habilidades.md, section 4.4: [method ProjectileSystem.fire] against [param space]),
+# projectile fires (docs/abilities.md, section 4.4: [method ProjectileSystem.fire] against [param space]),
 # and an ability's (the first active tick) puts on its own effect
 # ([member AbilityTicks.self_status_id], the potion's healing) and heals [member AbilityTicks.self_heal].
 # Once: the commitment falls in a single tick.
@@ -923,7 +923,7 @@ func _process_environment(s: int, list: Array[Combatant]) -> void:
 		if combatant.is_dead() or combatant.immortal:
 			continue
 		var character: PlayerCharacter = combatant.get_character()
-		# An invisible GM takes no damage (docs/plataforma.md §9.1): neither lethal volumes nor falls; the void does apply, which
+		# An invisible GM takes no damage (docs/platform.md §9.1): neither lethal volumes nor falls; the void does apply, which
 		# only returns the body to the world.
 		var invisible: bool = combatant.is_gm_invisible()
 		if not invisible and _in_lethal_volume(character, volumes):
@@ -1031,7 +1031,7 @@ func _respawn(combatant: Combatant, point_index: int, s: int) -> void:
 	var character: PlayerCharacter = combatant.get_character()
 	var combat: CombatState = character.combat
 	var before: PackedInt32Array = weapons_in_slot_order(combat)
-	# Whoever has an inventory (docs/progresion.md §8) respawns with their gear's weapons and their bag's charges,
+	# Whoever has an inventory (docs/progression.md §8) respawns with their gear's weapons and their bag's charges,
 	# without looking at templates: WEAPON_1 active or, if empty, 2 (set_weapons right after, without cooldowns).
 	var loadout: ProgressService.Loadout = loadout_source.call(combatant.get_id()) \
 			if loadout_source.is_valid() else null
@@ -1043,7 +1043,7 @@ func _respawn(combatant: Combatant, point_index: int, s: int) -> void:
 			ActionMachine.set_weapons(combat, loadout.weapon_1, loadout.weapon_2, true, PackedInt64Array(),
 					PackedInt64Array())
 	else:
-		# The template (docs/habilidades.md, section 4.6): the peer's pending one, if it chose another, becomes the
+		# The template (docs/abilities.md, section 4.6): the peer's pending one, if it chose another, becomes the
 		# current one; it respawns with its weapons (slot 1 active) and its charges. Without a template (NPCs and
 		# fighters assembled by hand) it respawns with the weapons and charges it had.
 		if combatant.peer != null and combatant.peer.pending_template_id >= 0:
@@ -1068,11 +1068,11 @@ func _respawn(combatant: Combatant, point_index: int, s: int) -> void:
 		announce_loadout(combatant, s, before != weapons_in_slot_order(character.combat))
 
 
-# Consumable refill (docs/habilidades.md, section 4.6), every RECHARGE_INTERVAL_TICKS: whoever is alive,
+# Consumable refill (docs/abilities.md, section 4.6), every RECHARGE_INTERVAL_TICKS: whoever is alive,
 # out of combat, in their realm's safe zone and with fewer charges than their template recovers them all
 # ([method ActionMachine.set_charges]: weapon, cooldowns, slots and action in progress do not change) and their
 # owner receives LOADOUT. For whoever has an inventory, with the same conditions and the same cadence, their bag's
-# CAMP_REFILL ([member camp_step], docs/progresion.md §4.4) instead of the template.
+# CAMP_REFILL ([member camp_step], docs/progression.md §4.4) instead of the template.
 func _process_recharge(s: int, list: Array[Combatant]) -> void:
 	if s % RECHARGE_INTERVAL_TICKS != 0:
 		return
@@ -1152,7 +1152,7 @@ static func _charge_of(hit: CombatResolver.Hit) -> int:
 	return hit.projectile.charge_ticks if hit.projectile != null else hit.attacker.frozen.charge_ticks
 
 
-# Combat log result of an impact or a block: those of projectiles (docs/habilidades.md,
+# Combat log result of an impact or a block: those of projectiles (docs/abilities.md,
 # section 4.7) are arrow_hit, arrow_blocked and wall_blocked; melee ones, hit, blocked and
 # guard_break. It counts the projectile ones.
 func _impact_result(hit: CombatResolver.Hit, blocked: bool, flags: int) -> String:
@@ -1171,7 +1171,7 @@ func _impact_result(hit: CombatResolver.Hit, blocked: bool, flags: int) -> Strin
 
 
 # What removes respawn protection: an attack (or its charge) and an ability that is not a
-# consumable (docs/habilidades.md, section 4.2). Drinking, SWAP and REVIVE do not remove it; EXECUTE has it removed by
+# consumable (docs/abilities.md, section 4.2). Drinking, SWAP and REVIVE do not remove it; EXECUTE has it removed by
 # DownedSystem on the tick it starts (H5 review).
 func _started_attack(combatant: Combatant) -> bool:
 	var frame: Combatant.Frozen = combatant.frozen

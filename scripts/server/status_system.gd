@@ -1,6 +1,6 @@
 class_name StatusSystem
 extends RefCounted
-## Server status effects (docs/habilidades.md, section 4.3; CMB-20): bleed, heal over time, slow, root, bonus damage and
+## Server status effects (docs/abilities.md, section 4.3; CMB-20): bleed, heal over time, slow, root, bonus damage and
 ## reduced mitigation.
 ## [br][br]
 ## Each [Combatant] carries up to [constant MAX_EFFECTS] [StatusSystem.ActiveEffect] in [member Combatant.effects],
@@ -99,7 +99,7 @@ class _Pulse:
 
 ## Applies the catalog effect [param status_id] to [param target] at tick [param s], set by [param source_id] (0 = no
 ## author), for [param duration_ticks] ticks (0 = those of the data). Does nothing on a dead target, a knocked down one
-## (docs/habilidades.md, section 4.3) or with an effect that does not exist. Returns whether it was applied.
+## (docs/abilities.md, section 4.3) or with an effect that does not exist. Returns whether it was applied.
 func apply(target: Combatant, status_id: int, source_id: int, s: int, duration_ticks: int = 0) -> bool:
 	var status: StatusTicks = CombatCatalog.status(status_id)
 	if status == null or target == null or not target.is_alive():
@@ -147,7 +147,7 @@ func apply(target: Combatant, status_id: int, source_id: int, s: int, duration_t
 	return true
 
 
-## Step 6 of tick [param s] (docs/habilidades.md, section 4.1) over [param list] (by net_id): pulses and expiries.
+## Step 6 of tick [param s] (docs/abilities.md, section 4.1) over [param list] (by net_id): pulses and expiries.
 func step(s: int, list: Array[Combatant]) -> void:
 	if s < _next_due:
 		return

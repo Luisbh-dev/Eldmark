@@ -1,11 +1,11 @@
 extends TestCase
 ## Templates, weapon swapping and status effects end to end with real ENet over 127.0.0.1 (H5;
-## docs/habilidades.md, sections 4.6, 6.4 and 7.3): a [ZoneServer] and two Vardheim bots ([NetClient]), each
+## docs/abilities.md, sections 4.6, 6.4 and 7.3): a [ZoneServer] and two Vardheim bots ([NetClient]), each
 ## in its own [SubViewport] with its own physics world. What PRG-07, PRG-04/CMB-24 and UI-45 require:
 ## [br]- [b]PRG-07[/b]: before CLIENT_READY, Ana chooses a template other than the default (the marksman, with
 ## [code]--loadout[/code]: LOADOUT_SELECT as soon as the WELCOME arrives) and appears already with it, with the bow in her
 ## prediction and in what Bruno sees (H5 review: before, she chose the squire, which is the default, and the test
-## passed even if the server ignored the choice). Since progresion.md P5b the chosen template is the starter kit
+## passed even if the server ignored the choice). Since progression.md P5b the chosen template is the starter kit
 ## of the ephemeral character and its inventory equips it: in the world LOADOUT_SELECT no longer changes anything, and Bruno puts on the
 ## bow from his bag into WEAPON_2 with an INVENTORY_REQUEST. Each sees the other's weapons (the SPAWN's or
 ## LOADOUT's pair and the active slot from bit 3 of the record).
@@ -100,7 +100,7 @@ func _server_weapon(net_id: int) -> int:
 	return _server.get_registry().get_entity(net_id).get_character().combat.weapon_id
 
 
-## The definition of the object of [param net_id] in that slot (progresion.md P5b), or empty.
+## The definition of the object of [param net_id] in that slot (progression.md P5b), or empty.
 func _slot_def(net_id: int, container: int, slot: int) -> StringName:
 	var item: ItemInstance = _server.get_progress().get_player(net_id).record.inventory.get_item(container, slot)
 	return item.def_id if item != null else &""
@@ -144,7 +144,7 @@ func test_templates_weapon_swaps_and_a_bleed_over_the_network() -> void:
 		_set_script(client, _idle)
 
 	# --- PRG-07: Ana chose before CLIENT_READY (not the default) and appears with it. ---------------
-	# Without a platform both are ephemeral characters with an inventory (progresion.md §9.4, P5b): the chosen template is
+	# Without a platform both are ephemeral characters with an inventory (progression.md §9.4, P5b): the chosen template is
 	# their starter kit and their inventory equips them (current template 0, "the inventory's equipment").
 	assert_true(marksman != CombatCatalog.default_template_id(), "the marksman is not the default template")
 	assert_eq(ana.get_stats()["loadout_selects"], 1, "Ana sent her LOADOUT_SELECT before CLIENT_READY")

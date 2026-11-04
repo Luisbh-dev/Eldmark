@@ -25,7 +25,7 @@ const LOD1_DISTANCE: float = 50.0
 const LOD2_DISTANCE: float = 250.0
 const LOD_FADE_MARGIN: float = 10.0
 
-## Faction color and emblem (atlas index) of each owner, from docs/mundo.md ("Colores de bando").
+## Faction color and emblem (atlas index) of each owner, from docs/world.md ("Colores de bando").
 const FACTIONS: Dictionary = {
 	&"vardheim": [Color("#7ec8e8"), 0.0],
 	&"solmarch": [Color("#e9c341"), 1.0],

@@ -1,4 +1,4 @@
-// Package names is NameRules in Go (plataforma.md §4.4, SOC-13): the character name rules of
+// Package names is NameRules in Go (platform.md §4.4, SOC-13): the character name rules of
 // scripts/shared/name_rules.gd, read from the names section of progression_rules.json
 // (internal/gamedata). The platform applies them when creating and renaming characters, in
 // name-check and when confirming a deletion.

@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests for the rules exported for the platform ([ProgressionRulesExport];
-## docs/progresion.md §13.4, docs/plataforma.md §4.4): [method ProgressionRulesExport.build] is
+## docs/progression.md §13.4, docs/platform.md §4.4): [method ProgressionRulesExport.build] is
 ## deterministic and the repository file, the one the Go platform embeds, matches it.
 ## It is the file's only test: each document adds the checks for its sections here.
 
@@ -28,7 +28,7 @@ func test_file_is_valid_json_with_sorted_keys() -> void:
 	var sorted: Array = keys.duplicate()
 	sorted.sort()
 	assert_eq(keys, sorted, "sorted keys")
-	assert_true(data.has("protocol_version") and data.has("names"), "sections of plataforma.md")
+	assert_true(data.has("protocol_version") and data.has("names"), "sections of platform.md")
 
 
 func test_protocol_version_section() -> void:
@@ -41,7 +41,7 @@ func test_names_section() -> void:
 	var expected_keys: Array = ["folded", "lower_letters", "max_length", "min_length", "reserved", "upper_letters"]
 	var keys: Array = names.keys()
 	keys.sort()
-	assert_eq(keys, expected_keys, "the keys of the names section (plataforma.md §4.4)")
+	assert_eq(keys, expected_keys, "the keys of the names section (platform.md §4.4)")
 	assert_eq(names["min_length"], NameRules.MIN_LENGTH, "min_length")
 	assert_eq(names["max_length"], NameRules.MAX_LENGTH, "max_length")
 	assert_eq(names["upper_letters"], NameRules.UPPER_LETTERS, "upper_letters")
@@ -52,14 +52,14 @@ func test_names_section() -> void:
 	assert_eq(Array(names["reserved"]), Array(NameRules.RESERVED), "reserved, as written")
 
 
-# --- Sections of progresion.md (P3) ---------------------------------------------------------------
+# --- Sections of progression.md (P3) ---------------------------------------------------------------
 
-## The sections of progresion.md §13.4, all since P1 ([code]items[/code] and [code]starter_templates[/code]).
+## The sections of progression.md §13.4, all since P1 ([code]items[/code] and [code]starter_templates[/code]).
 func test_progression_sections_present() -> void:
 	var data: Dictionary = ProgressionRulesExport.build()
 	for section: String in ["races", "appearance", "level_curve", "currencies", "reasons", "containers", "combat",
 			"items", "starter_templates"]:
-		assert_true(data.has(section), "section %s (progresion.md §13.4)" % section)
+		assert_true(data.has(section), "section %s (progression.md §13.4)" % section)
 	var keys: Array = data.keys()
 	keys.sort()
 	assert_eq(keys, ["appearance", "combat", "containers", "currencies", "items", "level_curve", "names",
@@ -138,7 +138,7 @@ func test_currencies_reasons_containers_combat() -> void:
 	assert_eq(data["combat"], {"health_max": CombatCatalog.rules().health_max}, "CombatRules' maximum health")
 
 
-# --- Sections of progresion.md (P1) ---------------------------------------------------------------
+# --- Sections of progression.md (P1) ---------------------------------------------------------------
 
 ## One entry per ItemDatabase definition, in net id order, with what S5 looks at.
 func test_items_section() -> void:

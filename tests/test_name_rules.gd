@@ -2,7 +2,7 @@ extends TestCase
 ## Tests for the character name rules ([NameRules], SOC-01): valid and
 ## invalid names with their reason, texts, reserved names, comparison key (collisions by accents and
 ## capitals) and default name. The cases in [code]tests/fixtures/names/[/code] are also read by
-## the Go platform ([code]internal/names[/code], docs/plataforma.md §4.4): the two implementations
+## the Go platform ([code]internal/names[/code], docs/platform.md §4.4): the two implementations
 ## must give the same result.
 
 const OK: int = NameRules.Reason.OK

@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of protocol 3 (docs/fuerte.md, sections 2, 5, 6 and 7; package F2): OBJECT_STATE, the
+## Tests of protocol 3 (docs/fortress.md, sections 2, 5, 6 and 7; package F2): OBJECT_STATE, the
 ## ENTITY_SPAWN of structures and NPCs, the WAR and TELEGRAPH ENTITY_EVENTs, UNSTUCK_REQUEST,
 ## SCOREBOARD, the IMBALANCE REJECT, the per-realm count of the WELCOME and debug commands 7 to
 ## 12 ([NetMessages], [NetProtocol]).

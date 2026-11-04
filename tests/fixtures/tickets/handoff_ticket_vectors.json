@@ -1,5 +1,5 @@
 {
-	"comment": "Billete de 52 B de docs/plataforma.md §5.1. Generado por platform/internal/tickets (go test ./internal/tickets -run TestSharedVectors -update); lo leen las pruebas de Go y de HandoffTicket.",
+	"comment": "Billete de 52 B de docs/platform.md §5.1. Generado por platform/internal/tickets (go test ./internal/tickets -run TestSharedVectors -update); lo leen las pruebas de Go y de HandoffTicket.",
 	"keys": [
 		{
 			"key_id": 1,
@@ -34,7 +34,7 @@
 	],
 	"valid": [
 		{
-			"name": "vector de plataforma.md §5.1",
+			"name": "vector de platform.md §5.1",
 			"key_id": 1,
 			"world_id": 1,
 			"ticket_id": "72623859790382856",

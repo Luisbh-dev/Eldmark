@@ -1,6 +1,6 @@
 class_name BotCheater
 extends RefCounted
-## Cheating bot (docs/red.md, sections 12 and 16; TEC-46): the behavior of [code]--bot-cheat[/code].
+## Cheating bot (docs/networking.md, sections 12 and 16; TEC-46): the behavior of [code]--bot-cheat[/code].
 ## [br][br]
 ## [NetClient] queries it in two places: when building the HELLO ([method tamper_hello]) and, once
 ## per physics tick, after sending its honest batch of inputs ([method extra_packets]). The bot
@@ -30,7 +30,7 @@ extends RefCounted
 ## interact mashes INTERACT away from everyone          -> it revives and finishes nobody
 ## [/codeblock]
 ## The combat modes ([constant COMBAT_MODES]: rewind, reach, rate and those from phase 4, reuse,
-## potion and interact; docs/habilidades.md, section 4.7) send no extra traffic: the bot plays by
+## potion and interact; docs/abilities.md, section 4.7) send no extra traffic: the bot plays by
 ## the game's rules ([method make_brain]), with no possible suspicion, and the server must leave it
 ## without an advantage. The seeds come from the configuration ([member ClientConfig.bot_seed]), so
 ## what it sends is reproducible. This is client-only: the server does not know who is cheating, it only validates.

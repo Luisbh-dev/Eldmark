@@ -1,6 +1,6 @@
 class_name RemoteInterpolator
 extends RefCounted
-## Interpolation of a remote player (docs/red.md, section 7).
+## Interpolation of a remote player (docs/networking.md, section 7).
 ##
 ## Keeps the last [constant BUFFER_SIZE] samples [code](tick, EntityRecord)[/code] ordered by tick,
 ## without duplicates or samples older than the window, and [method sample] returns the record to draw

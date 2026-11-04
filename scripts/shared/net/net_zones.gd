@@ -1,6 +1,6 @@
 class_name NetZones
 extends RefCounted
-## The network's only contact with [Zones] (docs/red.md, section 1.5): default zone, scene path of
+## The network's only contact with [Zones] (docs/networking.md, section 1.5): default zone, scene path of
 ## each zone, admitted realms, and reading of [code]--zone=[/code] and [code]--realm=[/code].
 ## [br][br]
 ## On the network the realm travels as an [enum NetProtocol.Realm] code and the zone as its text id
@@ -26,7 +26,7 @@ static func scene_path(zone_id: String) -> String:
 
 ## true if [param zone_id] is an RvR zone (realm versus realm, [method Zones.get_pvp_mode]): where
 ## enemy realms damage each other and a player knocked down by another stays knocked down
-## (docs/habilidades.md, section 4.5).
+## (docs/abilities.md, section 4.5).
 static func is_rvr(zone_id: String) -> bool:
 	return Zones.get_pvp_mode(StringName(zone_id)) == Zones.PvpMode.RVR
 
@@ -65,7 +65,7 @@ static func parse_realm_arg(args: PackedStringArray) -> int:
 	return NetProtocol.Realm.NONE
 
 
-## Path of the baked navigation mesh of zone [param zone_id] (docs/fuerte.md, section 4.1): the
+## Path of the baked navigation mesh of zone [param zone_id] (docs/fortress.md, section 4.1): the
 ## [code]<scene>_navmesh.tres[/code] file next to the zone scene, or an empty string if the zone
 ## does not exist or has no mesh (in which case NPCs do not use navigation).
 static func navmesh_path(zone_id: String) -> String:
@@ -143,7 +143,7 @@ static func get_respawn_points(zone: Node, realm: int) -> Array[Node3D]:
 
 ## All respawn points of zone [param zone] (which must be in the tree), of all realms and of the
 ## forts, in scene order: the [b]static[/b] list that the RESPAWN_REQUEST and RESPAWN index
-## refers to (docs/fuerte.md, section 5). Which points are valid for a player is decided by
+## refers to (docs/fortress.md, section 5). Which points are valid for a player is decided by
 ## [method RespawnRules.points_for]. A zone with no node in the group
 ## [constant RESPAWN_GROUP] uses its spawn points.
 static func get_all_respawn_points(zone: Node) -> Array[Node3D]:

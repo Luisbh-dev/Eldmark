@@ -33,7 +33,7 @@ extends RefCounted
 ## [constant ChatPeerState.FLOOD_FREE_DISCARDS] discards in each 10 s add nothing and, from there, each one adds a
 ## strike to the peer (50 in 600 ticks kick): pressing Enter too many times kicks nobody, sustained flooding does.
 ## [br][br]
-## [b]Moderation[/b] (docs/plataforma.md §9.2 to §9.5, P7b). Since protocol 7 the GM channel carries the commands the
+## [b]Moderation[/b] (docs/platform.md §9.2 to §9.5, P7b). Since protocol 7 the GM channel carries the commands the
 ## server handles ([code]/gm …[/code], [code]/ignorar[/code], [code]/designorar[/code], [code]/reportar[/code]): with
 ## [member command_sink] set, the sanitized text goes there (after spending its token and without the repetition check).
 ## Whoever is muted ([member ChatPeerState.muted_until_unix]) does not talk on any channel and receives "Estás
@@ -104,7 +104,7 @@ var party_members: Callable = Callable()
 var command_sink: Callable = Callable()
 ## With a platform: receives the chat batch entry of each delivered message from a character,
 ## [code](entry: Dictionary) -> void[/code] with [code]{channel, sender_character_id, target_character_id, text,
-## sent_at_unix}[/code] (docs/plataforma.md §9.2; the [code]key[/code] is set by [ZonePlatform]).
+## sent_at_unix}[/code] (docs/platform.md §9.2; the [code]key[/code] is set by [ZonePlatform]).
 var log_sink: Callable = Callable()
 ## Unix time, [code]() -> int[/code] (with a platform, [method ZonePlatform.now_unix]).
 var clock_unix: Callable = Callable()
@@ -151,7 +151,7 @@ func route(peer: ServerPeer, message: NetMessages.ChatSend, now_tick: int) -> in
 		_note_discard(peer, now_tick, TEXT_TOO_FAST)
 		return _count(Result.RATE_LIMITED)
 	if message.channel == ChatChannel.Id.GM and command_sink.is_valid():
-		# A command for the server (docs/plataforma.md §9): neither repetition nor mute, since it is not chat.
+		# A command for the server (docs/platform.md §9): neither repetition nor mute, since it is not chat.
 		var line: String = ChatText.sanitize(message.text)
 		if line.is_empty():
 			state.discarded_empty += 1
@@ -164,7 +164,7 @@ func route(peer: ServerPeer, message: NetMessages.ChatSend, now_tick: int) -> in
 				else TEXT_UNAVAILABLE
 		send_system(peer, text, now_tick)
 		return _count(Result.UNAVAILABLE)
-	# Muted (docs/plataforma.md §9.5): it does not talk on any channel.
+	# Muted (docs/platform.md §9.5): it does not talk on any channel.
 	var now_unix: int = _now_unix()
 	if state.mute_remaining_s(now_unix) > 0:
 		state.discarded_muted += 1

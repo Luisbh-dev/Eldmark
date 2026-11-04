@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [RealmSelect] (docs/red.md, 1.2 and 17.5; TEC-45), with the scene instantiated without a screen:
+## Tests for [RealmSelect] (docs/networking.md, 1.2 and 17.5; TEC-45), with the scene instantiated without a screen:
 ## [br]- The buttons of the realms the zone does not admit come out disabled.
 ## [br]- "Entrar" (Enter) is only enabled with a valid realm, name and address, and emits [signal
 ## RealmSelect.realm_chosen] with the values.

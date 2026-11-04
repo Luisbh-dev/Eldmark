@@ -13,7 +13,7 @@ extends RefCounted
 ## [br]1. [b]Rewind.[/b] [method InputQueue.get_rewind_params] gives [code]view_offset_q[/code] and
 ## the lead of the hit's input, [b]once per hit[/b] (on its first active tick: the
 ## rewind is fixed on the [Combatant] and the other active ticks reuse it, with
-## [code]view_tick[/code] advancing with the tick). The cap [method allowed_rewind] comes from red.md,
+## [code]view_tick[/code] advancing with the tick). The cap [method allowed_rewind] comes from networking.md,
 ## section 10, with the larger of [member ServerPeer.rtt_ticks] and [member ServerPeer.rtt_peak_ticks] (with
 ## jitter the minimum falls short for an honest player) and a lead bounded by the client's usual
 ## one plus its spread and by a maximum (each input's is chosen by the client). With more than
@@ -31,7 +31,7 @@ extends RefCounted
 ## [code]view_tick[/code], without respawn protection and with no safe zone in between (the victim
 ## in their realm's, or the attacker in theirs), at [code]s[/code]. A target already hit
 ## by this attack is not tested again. An invisible GM ([method Combatant.is_gm_invisible]) neither attacks nor is a
-## candidate (docs/plataforma.md §9.1).
+## candidate (docs/platform.md §9.1).
 ## [br]4. [b]Shape and line of sight.[/b] [method HitShapes.sector_hits_capsule] with the victim's
 ## sample and a ray against the current world.
 ## [br]5. [b]Defense[/b], in this order: invulnerable on some tick of
@@ -40,7 +40,7 @@ extends RefCounted
 ## imposed by the minimum for defense. Parry and block are checked on the sample of that instant and on
 ## the one at [code]s[/code], with the attacker within the defender's frontal cone; the old one does not count if
 ## the defender's frozen action is not BLOCK and started after that instant, whether it is NONE or not
-## (docs/habilidades.md, section 4.2): whoever drops the shield to attack, drink or lift, or has it
+## (docs/abilities.md, section 4.2): whoever drops the shield to attack, drink or lift, or has it
 ## taken away by a control, stops being protected; whoever simply lowers it (NONE keeps the block's
 ## [code]action_tick[/code]) does not. The shield wall ([constant ActionMachine.DEFENSE_WIDE_BLOCK])
 ## blocks with the cone of [member CombatRules.ability_block_angle_deg] (and the director charges
@@ -50,7 +50,7 @@ extends RefCounted
 ## follow the same path as attacks, also against the gates.
 ## An impact, a block or a parry consumes the hit for that target (once per action).
 ## [br][br]
-## Projectiles ([ProjectileSystem], docs/habilidades.md, section 4.4) use the resolver's same
+## Projectiles ([ProjectileSystem], docs/abilities.md, section 4.4) use the resolver's same
 ## rewind ([method compute_rewind], which they fix per shot in whole ticks), hostility
 ## ([method is_hostile]), invulnerability ([method was_invulnerable]), per-sample blocking
 ## ([method blocks_sample] and [method dropped_guard_after]) and the gates ([member structure_targets]); their
@@ -98,7 +98,7 @@ const _LEAD_SPREAD: int = 3
 ## arrow and added suspicion). The [code]rewind[/code] cheater (40 ticks) is still above 24 + 8.
 const REWIND_REJECT_SLACK_TICKS: int = 8
 
-## Static targets of the zone (the forts' gates, docs/fuerte.md 3.3): they are tested for each
+## Static targets of the zone (the forts' gates, docs/fortress.md 3.3): they are tested for each
 ## active attack after the players, without rewind (they do not move).
 var structure_targets: Array[StructureTarget] = []
 ## Hits rejected for excessive rewind since the resolver came into existence.
@@ -132,7 +132,7 @@ class Hit:
 	## BLOCKED by a wide block (the shield wall, [constant ActionMachine.DEFENSE_WIDE_BLOCK]):
 	## spends [member CombatRules.ability_block_stamina_per_damage] instead of the weapon's cost.
 	var wide_block: bool = false
-	## Hit by a projectile ([ProjectileSystem], docs/habilidades.md, section 4.4): its network id (0 = a
+	## Hit by a projectile ([ProjectileSystem], docs/abilities.md, section 4.4): its network id (0 = a
 	## melee hit) and the author's copy it stored on launch (charge, extra damage, realm...): the
 	## director does not look at the shooter's state again for damage.
 	var projectile_id: int = 0
@@ -153,7 +153,7 @@ func _init(history: StateHistory, zone_id: StringName, safe_areas: SafeAreas = n
 	_safe_areas = safe_areas if safe_areas != null else SafeAreas.new()
 
 
-## Rewind cap in ticks (red.md, section 10): [code]min(24, rtt + lead + clamp(ceil(interp / 8),
+## Rewind cap in ticks (networking.md, section 10): [code]min(24, rtt + lead + clamp(ceil(interp / 8),
 ## 4, 12) + 2)[/code], with the interpolation delay [param interp_delay_q] in eighths of a tick (rounded
 ## up: truncating lost up to 7/8 of a tick of an honest player's view; phase 4 review).
 @warning_ignore("integer_division")
@@ -173,7 +173,7 @@ func resolve(s: int, combatants: Array[Combatant],
 	var rules: CombatRules = CombatCatalog.rules()
 	for attacker: Combatant in combatants:
 		var attacker_frame: Combatant.Frozen = attacker.frozen
-		# An invisible GM harms no one, not even the gates (docs/plataforma.md §9.1).
+		# An invisible GM harms no one, not even the gates (docs/platform.md §9.1).
 		if not attacker_frame.attack_active or attacker.is_dead() or attacker.is_gm_invisible():
 			continue
 		# The frozen active hit: an attack or an ability's synthesized hit. Without a shape (a
@@ -452,7 +452,7 @@ func _defends(victim_frame: Combatant.Frozen, sample: StateHistory.Sample, old_c
 			sample.yaw, attacker_position, cone)
 
 
-## true if the view_tick sample no longer counts (docs/habilidades.md, section 4.2): the defender's frozen
+## true if the view_tick sample no longer counts (docs/abilities.md, section 4.2): the defender's frozen
 ## action is not BLOCK and started after view_tick, whether it is NONE or not. An attack, a charge, a dodge,
 ## an ability, drinking, lifting or a control (stagger, stun, death) lower the shield; and
 ## so does returning to NONE from them, because NONE keeps the action_tick of what ends (_to_none,

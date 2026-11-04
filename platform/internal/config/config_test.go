@@ -294,7 +294,7 @@ func TestMalformedValues(t *testing.T) {
 
 // The leases' TTL has to cover how long an instance without a heartbeat takes to be considered lost
 // (3 x HEARTBEAT_S) plus one round of the job (min(5 s, HEARTBEAT_S)): otherwise, a lease expires
-// with the instance still alive and a late heartbeat would renew it (plataforma.md §2.3, §5.3).
+// with the instance still alive and a late heartbeat would renew it (platform.md §2.3, §5.3).
 func TestLeaseTTLCoversLostInstances(t *testing.T) {
 	for _, c := range []struct {
 		heartbeat, ttl string

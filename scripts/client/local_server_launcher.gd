@@ -1,6 +1,6 @@
 class_name LocalServerLauncher
 extends RefCounted
-## Launches (or reuses) the local server of [code]--local[/code] (docs/red.md, section 1.4).
+## Launches (or reuses) the local server of [code]--local[/code] (docs/networking.md, section 1.4).
 ## [br][br]
 ## The server is another process of this same executable, started with [code]--dev-lock[/code]: on
 ## opening its port it writes [constant LOCK_PATH] ([code]{pid, port}[/code]) and deletes it on closing.

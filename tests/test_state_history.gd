@@ -1,7 +1,7 @@
 extends TestCase
-## Tests for the position history used for lag compensation ([StateHistory], docs/red.md
+## Tests for the position history used for lag compensation ([StateHistory], docs/networking.md
 ## section 10): exact and fractional samples, overwriting of the 64-tick ring,
-## teleport and [method StateHistory.forget]; and, for projectiles (docs/habilidades.md, section 4.4),
+## teleport and [method StateHistory.forget]; and, for projectiles (docs/abilities.md, section 4.4),
 ## [method StateHistory.position_at] and the swept boxes by blocks.
 
 const GROUNDED: int = EntityRecord.FLAG_GROUNDED

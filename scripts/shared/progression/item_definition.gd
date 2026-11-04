@@ -1,6 +1,6 @@
 class_name ItemDefinition
 extends Resource
-## What an item is (docs/progresion.md §2.1, PRG-02): design data in
+## What an item is (docs/progression.md §2.1, PRG-02): design data in
 ## [code]data/items/<category>/<id>.tres[/code], with a stable [member id] that the database
 ## stores. What someone owns is an [ItemInstance]; [ItemDatabase] indexes them and checks their
 ## consistency.
@@ -44,7 +44,7 @@ const MAX_STACK: int = 999
 @export var destroyable: bool = true
 ## The instance carries durability (per thousand, 0–1000).
 @export var has_durability: bool = false
-## Starter item (docs/progresion.md §2.5).
+## Starter item (docs/progression.md §2.5).
 @export var starter: bool = false
 ## Total to which the camp replenishes this definition (§4.4); 0 = not replenished. Fits in one
 ## stack.

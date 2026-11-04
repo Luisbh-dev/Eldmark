@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of [PlatformApi], [ApiResult], [AccountSession] and [PlatformErrors] (docs/plataforma.md §4.1, §4.2, §14.4 and
+## Tests of [PlatformApi], [ApiResult], [AccountSession] and [PlatformErrors] (docs/platform.md §4.1, §4.2, §14.4 and
 ## §15 P8): the refresh on a 401 with the call repeated, [b]a single refresh[/b] for two calls that expire at
 ## the same time (before going out or with the 401 on both), the lost session, the error map, odd responses without
 ## engine errors and, with [FakeHttpServer], the §4.1 headers and the bodies over real HTTP.

@@ -1,4 +1,4 @@
-// Package passwords computes and checks the accounts' password hashes (plataforma.md §0 and §4.2):
+// Package passwords computes and checks the accounts' password hashes (platform.md §0 and §4.2):
 // argon2id in a PHC string
 //
 //	$argon2id$v=19$m=19456,t=2,p=1$<salt in unpadded base64>$<hash in unpadded base64>

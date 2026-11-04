@@ -6,7 +6,7 @@ extends RefCounted
 ## [br][br]
 ## The server report gives the percentage for the [b]whole session[/b], with the startup included: while
 ## [TickSync] finds its lead each bot loses a few dozen inputs (more with 100 ms of RTT),
-## and in 30 s that fixed cost weighs more than 1 %. The phase 2 criterion (docs/red.md, 16) is measured
+## and in 30 s that fixed cost weighs more than 1 %. The phase 2 criterion (docs/networking.md, 16) is measured
 ## in steady state, so what had accumulated when the window started is subtracted. The server only writes the report when
 ## it closes, but every 600 ticks it writes to its log a line
 ## "Métricas (tick N): … entradas sustituidas X %" (metrics, substituted inputs) with the accumulated percentage; since the inputs
@@ -261,7 +261,7 @@ static func fort_arrivals(swarms: Array, first_tick: int) -> Dictionary:
 	return {"bots": bots, "arrived": arrived, "before_window": before_window, "last_tick": last_tick}
 
 
-## Phase 4 figures of a brawl (H5; docs/habilidades.md, sections 7.3 and 8), from the
+## Phase 4 figures of a brawl (H5; docs/abilities.md, sections 7.3 and 8), from the
 ## [code]combat[/code] block of the server report ([method ZoneServer.write_report]): arrows (shots, who they hit,
 ## peak of live ones against the zone cap, those evicted by the cap, rewinds rejected, cost per busy tick and
 ## messages) and the rest of the kit (effects, heals, interrupts and knockdowns). [param seconds]: how long the

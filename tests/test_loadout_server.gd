@@ -1,8 +1,8 @@
 extends TestCase
-## Tests for the loadout templates on the server (PRG-07, PRG-04; docs/habilidades.md, sections 3.5, 4.6 and
+## Tests for the loadout templates on the server (PRG-07, PRG-04; docs/abilities.md, sections 3.5, 4.6 and
 ## 5.1; package H3c): the player appears with the default template or with the one given
 ## ([code]--fake-loadout[/code]) and announces it with LOADOUT (the owner's with charges and the public one without them);
-## LOADOUT_SELECT before CLIENT_READY decides the template at spawn (since progresion.md P5b, the starter kit of the
+## LOADOUT_SELECT before CLIENT_READY decides the template at spawn (since progression.md P5b, the starter kit of the
 ## ephemeral character, which goes with the equipment of its inventory and no longer changes in the world), and an id that does not exist or
 ## cannot be chosen counts a warning; command 5 puts the weapon in slot 1 and keeps slot 2, with its LOADOUT, and is not valid
 ## for a knocked-down player.
@@ -168,7 +168,7 @@ func test_loadout_select_before_client_ready_decides_the_template_of_the_arrival
 	_server()._on_packet_received(PEER_ID, PackedByteArray([NetProtocol.MSG_LOADOUT_SELECT]))
 	assert_eq(peer.strikes_total, strikes + 3, "malformed, another")
 	# CLIENT_READY: it appears at the end of the next tick with the bow. Without a platform it is an ephemeral character with an
-	# inventory (progresion.md §9.4, P5b): the requested template is its starter kit and its inventory equips it
+	# inventory (progression.md §9.4, P5b): the requested template is its starter kit and its inventory equips it
 	# (current template 0 in LOADOUT, "the inventory's equipment"), with the charges of the potions in its bag.
 	_server()._pending_ready.append(PEER_ID)
 	await _rig.advance(1)
@@ -183,7 +183,7 @@ func test_loadout_select_before_client_ready_decides_the_template_of_the_arrival
 			[_weapon(&"bow"), _weapon(&"sword_shield")])
 	_assert_pair(_loadouts(net_id), net_id, 0, [_weapon(&"bow"), _weapon(&"sword_shield")],
 			CombatState.pack_charges(3, 2))
-	# With an inventory, LOADOUT_SELECT no longer changes anything after spawning (progresion.md §2.5), nor the next
+	# With an inventory, LOADOUT_SELECT no longer changes anything after spawning (progression.md §2.5), nor the next
 	# spawn; an id that does not exist still adds its warning.
 	_select(0)
 	assert_eq(peer.pending_template_id, -1, "nothing is left pending")

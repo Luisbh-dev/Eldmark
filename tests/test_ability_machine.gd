@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests of abilities in the action machine ([ActionMachine] and [AbilityRules];
-## docs/habilidades.md, sections 3.3 to 3.6) without physics, with [MachineDriver]: the edge, the
+## docs/abilities.md, sections 3.3 to 3.6) without physics, with [MachineDriver]: the edge, the
 ## commit and the reuse, the channelings (release, moving, the cap and the examples in
 ## section 3.3), the priorities, the buffer, replaced inputs, queries and what the
 ## server imposes (knocked down, getting up, finishing off, interruption).
@@ -231,7 +231,7 @@ func test_releasing_moving_and_the_cap_end_the_channel() -> void:
 
 
 func test_release_and_press_primary_in_the_same_tick() -> void:
-	# docs/habilidades.md, section 3.3: releasing 3 and pressing PRIMARY on the same tick ends the wall in 4a
+	# docs/abilities.md, section 3.3: releasing 3 and pressing PRIMARY on the same tick ends the wall in 4a
 	# and the light attack comes out in 4c, on that tick.
 	var d := _sword_driver()
 	d.step(ABILITY_3)

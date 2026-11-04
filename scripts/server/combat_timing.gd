@@ -29,7 +29,7 @@ var respawn: int = 600
 var auto_respawn: int = 1800
 ## Ticks of protection after respawning.
 var protection: int = 180
-## Respawn waves (docs/fuerte.md, section 5; GUE-14): if greater than 1, nobody respawns outside
+## Respawn waves (docs/fortress.md, section 5; GUE-14): if greater than 1, nobody respawns outside
 ## a multiple of this number of ticks (the first one that falls [member respawn] ticks or more after
 ## death if they request it, and the first one [member auto_respawn] ticks or more after if they do not). 0 = no waves,
 ## respawn at [member respawn] ticks. The server sets it to [constant WAVE_TICKS] in zones with a

@@ -1,4 +1,4 @@
-// Package ratelimit provides the platform's in-memory rate limits (plataforma.md §4.2): a token
+// Package ratelimit provides the platform's in-memory rate limits (platform.md §4.2): a token
 // bucket per key and an LRU that bounds how many keys are remembered. In phase 5 there is only
 // one platform instance, so memory is enough; restarting the platform resets the counters (§16).
 package ratelimit
@@ -64,7 +64,7 @@ func (l *LRU[K, V]) Delete(key K) {
 // Len returns how many keys it remembers.
 func (l *LRU[K, V]) Len() int { return l.order.Len() }
 
-// DefaultCapacity is how many keys each limit remembers (plataforma.md §4.2: LRU of 100 000).
+// DefaultCapacity is how many keys each limit remembers (platform.md §4.2: LRU of 100 000).
 const DefaultCapacity = 100_000
 
 // Limiter is a token bucket per key: each key has up to Burst tokens, which refill at a rate of

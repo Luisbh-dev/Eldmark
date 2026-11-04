@@ -1,4 +1,4 @@
-# Orden congelado de data/characters/appearance_catalog.tres (docs/progresion.md §7.2): «categoría índice id».
+# Orden congelado de data/characters/appearance_catalog.tres (docs/progression.md §7.2): «categoría índice id».
 # Solo crece: los 8 B guardados de cada personaje son índices en estas listas. Nada se reordena ni se borra;
 # una pieza se retira quitándola de las razas. test_character_appearance exige que el catálogo empiece así.
 races 0 race_vardheim

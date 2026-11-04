@@ -266,7 +266,7 @@ func test_unknown_commands_and_help() -> void:
 	assert_eq(_chat.get_log().get_lines().back().text, "Comando desconocido. Escribe /ayuda.", "unknown")
 	assert_eq(_chat.get_log().get_lines().back().channel, ChatChannel.Id.SYSTEM, "in the system channel")
 	assert_true(_client.sent.is_empty(), "none of that goes over the network")
-	# /gm, /ignorar, /designorar and /reportar are handled by the server (docs/plataforma.md §9): they go through the GM channel and the
+	# /gm, /ignorar, /designorar and /reportar are handled by the server (docs/platform.md §9): they go through the GM channel and the
 	# response arrives through the system one (for someone without the role, "Comando desconocido" (unknown command) all the same).
 	_chat.submit("/GM hola")
 	_chat.submit("/ignorar Bruno")

@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for the fort view on the client (docs/fuerte.md, sections 2 and 3.2; package F5):
+## Tests for the fort view on the client (docs/fortress.md, sections 2 and 3.2; package F5):
 ## [FortressTimeline] (change history, validity tick, progress formula) and [FortressView]
 ## (interface and banners at the draw tick, gate layers per simulated tick). The messages
 ## are synthetic: the client does not need a server for this.

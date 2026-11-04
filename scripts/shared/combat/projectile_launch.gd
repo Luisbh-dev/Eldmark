@@ -1,6 +1,6 @@
 class_name ProjectileLaunch
 extends RefCounted
-## The shot of an attack or an ability with a projectile at its commit (docs/habilidades.md, section
+## The shot of an attack or an ability with a projectile at its commit (docs/abilities.md, section
 ## 4.4, steps 2 and 3), shared by the server ([code]ProjectileSystem[/code]) and the client's predicted
 ## arrow ([code]ProjectileWorld[/code], section 6.2): so that the two arrows are the same, both
 ## sides compute here what comes out, with what source and speed, in what direction and quantized how.

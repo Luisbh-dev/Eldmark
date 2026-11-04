@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Point-in-time recovery test (docs/plataforma.md §12, TEC-28), all in ephemeral PostgreSQL
+# Point-in-time recovery test (docs/platform.md §12, TEC-28), all in ephemeral PostgreSQL
 # clusters: a primary with archive_command copies its WAL to a folder; pg_basebackup takes the base
 # backup; more rows are written, the time is noted and almost all of them are deleted; then the base
 # backup is restored with restore_command, recovery_target_time and recovery.signal, and the

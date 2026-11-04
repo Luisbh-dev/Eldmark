@@ -1,6 +1,6 @@
 class_name AppearancePart
 extends Resource
-## A part of the appearance (docs/progresion.md §7.2, ART-19): a body, a head, a hairstyle, a
+## A part of the appearance (docs/progression.md §7.2, ART-19): a body, a head, a hairstyle, a
 ## beard or marks from [AppearanceCatalog]. It lives inside the catalog; its position in the list
 ## is the index stored in the 8 B of [CharacterAppearance], so lists only grow.
 ## [br][br]

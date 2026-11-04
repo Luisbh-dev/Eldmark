@@ -1,6 +1,6 @@
 class_name RealmCatalog
 extends RefCounted
-## Shared catalog of realms and sides (docs/mundo.md, "Side colors").
+## Shared catalog of realms and sides (docs/world.md, "Side colors").
 ## [br][br]
 ## Single source for the three playable realms and the neutral side of the Hollow. For each one:
 ## id ([StringName]), network code, name in Spanish, side color and emblem path. It also stores
@@ -21,7 +21,7 @@ const ASKARRA: StringName = &"askarra"
 ## Neutral side: the Hollow, undead soldiers of Eld's old garrison.
 const HUECOS: StringName = &"huecos"
 
-## Side colors (mundo.md): ice blue, gold, crimson and bone gray.
+## Side colors (world.md): ice blue, gold, crimson and bone gray.
 const VARDHEIM_COLOR: Color = Color("#7EC8E8")
 const SOLMARCH_COLOR: Color = Color("#E9C341")
 const ASKARRA_COLOR: Color = Color("#C3242F")
@@ -47,7 +47,7 @@ const _FACTIONS: Dictionary = {
 }
 
 ## Zone -> admitted realms (ids). A zone not listed here has no registered restriction.
-## Vado Gris is the border between Vardheim and Solmarch (mundo.md): Askarra does not enter.
+## Vado Gris is the border between Vardheim and Solmarch (world.md): Askarra does not enter.
 const _ZONE_REALMS: Dictionary = {
 	&"vado_gris": [VARDHEIM, SOLMARCH],
 	&"test_world": [VARDHEIM, SOLMARCH, ASKARRA],

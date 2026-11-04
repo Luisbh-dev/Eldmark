@@ -1,4 +1,4 @@
-// Package app mounts the serve process (plataforma.md §2.5): the two HTTP APIs (public on
+// Package app mounts the serve process (platform.md §2.5): the two HTTP APIs (public on
 // ELDMARK_PUBLIC_ADDR and internal on ELDMARK_INTERNAL_ADDR), /health and /ready on both, and the
 // startup.
 //

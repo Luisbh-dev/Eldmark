@@ -1,6 +1,6 @@
 class_name NetProtocol
 extends RefCounted
-## Constants and utilities of the phase 2 network protocol (see docs/red.md).
+## Constants and utilities of the phase 2 network protocol (see docs/networking.md).
 ##
 ## Shared: loaded by the server and the client. Everything in integer ticks at 60 Hz; nothing here reads
 ## the clock or depends on [code]scripts/client/[/code].
@@ -9,17 +9,17 @@ extends RefCounted
 ## [br]- 2: phase 3 combat (docs/combate.md).
 ## [br]- 3: phase 3 review (the action machine and air movement change the predicted
 ## simulation: bit 6 of [code]combat_flags[/code], charge canceled after silence, combo reset).
-## [br]- 4: phase 4 fortress (docs/fuerte.md, section 2): OBJECT_STATE, ENTITY_SPAWN of
+## [br]- 4: phase 4 fortress (docs/fortress.md, section 2): OBJECT_STATE, ENTITY_SPAWN of
 ## structures and of NPCs with a definition, ENTITY_EVENT WAR and TELEGRAPH, UNSTUCK_REQUEST, SCOREBOARD, the
 ## REJECT IMBALANCE, the per-realm count in the WELCOME and debug commands 7 to 12.
 ## [br]- 5: chat and parties (SOC-03, SOC-06): CHAT_SEND and CHAT_MESSAGE (0x40 and 0x41) and the PARTY_* (0x48
 ## onward), all over the reliable channel (docs/social.md, section 12).
-## [br]- 6: abilities, effects, weapon swap, projectiles, knocked down and templates (docs/habilidades.md,
+## [br]- 6: abilities, effects, weapon swap, projectiles, knocked down and templates (docs/abilities.md,
 ## section 5): 111 B [PlayerState], buttons 9 to 12 in [constant VALID_BUTTONS], LOADOUT_SELECT (0x07),
 ## debug commands 13 to 16, the ENTITY_SPAWN and the ENTITY_DESPAWN reasons for projectiles,
 ## ENTITY_EVENT 7 to 11, bits 5 and 6 of a HIT, bit 3 of the record flags (slot 2 active)
 ## and bit 3 of [code]status[/code] (knocked down).
-## [br]- 7: phase 5 (docs/plataforma.md and docs/progresion.md): REJECT 10–12, 52 B ticket, [code]auth_timeout[/code]
+## [br]- 7: phase 5 (docs/platform.md and docs/progression.md): REJECT 10–12, 52 B ticket, [code]auth_timeout[/code]
 ## of 10 s, bit 3 of the [code]flags[/code] of the ENTITY_SPAWN header (game staff), +9 B in the PLAYER
 ## SPAWN (level and appearance), messages 0x50–0x55, ENTITY_EVENT 16 LEVEL_UP, DEBUG_COMMAND 40–43 and
 ## [code]ItemDatabase[/code] in the [code]sim_hash[/code].
@@ -27,7 +27,7 @@ const PROTOCOL_VERSION: int = 7
 ## First 4 bytes of authentication messages (the bytes "ELDM").
 const MAGIC: int = 0x4D444C45
 const DEFAULT_PORT: int = 24600
-## Own transfer channels (see docs/red.md, section 2). Tied to
+## Own transfer channels (see docs/networking.md, section 2). Tied to
 ## [constant PROTOCOL_VERSION].
 const CUSTOM_CHANNELS: int = 3
 ## Channel for client inputs (unreliable, unsequenced).
@@ -77,7 +77,7 @@ const MSG_DEBUG_COMMAND: int = 0x04
 const MSG_RESPAWN_REQUEST: int = 0x05
 ## /atascado request (C→S, phase 4).
 const MSG_UNSTUCK_REQUEST: int = 0x06
-## Equipment template chosen for the next spawn (C→S, protocol 6; docs/habilidades.md, section
+## Equipment template chosen for the next spawn (C→S, protocol 6; docs/abilities.md, section
 ## 5.1). Valid from the WELCOME, also before CLIENT_READY.
 const MSG_LOADOUT_SELECT: int = 0x07
 const MSG_SNAPSHOT: int = 0x10
@@ -109,7 +109,7 @@ const MSG_PARTY_STATUS: int = 0x4F
 ## Maximum members of a party (docs/social.md, section 3). The party belongs to the same realm and the member
 ## list and compact state always fit in one packet.
 const PARTY_MAX_SIZE: int = 5
-## Inventory and progress (protocol 7, docs/progresion.md §4.6 and §12; formats in [ProgressMessages]), all over
+## Inventory and progress (protocol 7, docs/progression.md §4.6 and §12; formats in [ProgressMessages]), all over
 ## the reliable channel. C→S: an inventory request (move, split or destroy) and the sync request. S→C,
 ## only to the owner: the slot delta, the whole inventory in pages, a balance and the level with its XP. 0x56
 ## through 0x5F are reserved (bank, trade and mail from phase 6).
@@ -134,7 +134,7 @@ const DEBUG_STAMINA_INF: int = 4
 const DEBUG_SET_WEAPON: int = 5
 ## Create a training dummy.
 const DEBUG_SPAWN_DUMMY: int = 6
-## /atascado (phase 4, docs/fuerte.md section 5). The player command goes through its own message
+## /atascado (phase 4, docs/fortress.md section 5). The player command goes through its own message
 ## ([constant MSG_UNSTUCK_REQUEST]); the id remains reserved. No data.
 const DEBUG_UNSTUCK: int = 7
 ## Return the fortress to neutral. No data.
@@ -157,7 +157,7 @@ const DEBUG_APPLY_STATUS: int = 14
 const DEBUG_DOWN: int = 15
 ## Refill the template's consumable charges (protocol 6). No data.
 const DEBUG_REFILL: int = 16
-## Progression GM commands via DEBUG_COMMAND (protocol 7, docs/progresion.md §10), always on the
+## Progression GM commands via DEBUG_COMMAND (protocol 7, docs/progression.md §10), always on the
 ## player themselves. Give oneself an object (4 B: [code]u16[/code] net id from [ItemDatabase], from 1 onward, and
 ## [code]u16[/code] quantity, from 1 to 999).
 const DEBUG_ITEM_GIVE: int = 40
@@ -197,7 +197,7 @@ const DEBUG_COMMAND_IDS: Dictionary[StringName, int] = {
 enum Realm { NONE = 0, VARDHEIM = 1, SOLMARCH = 2, ASKARRA = 3 }
 enum EntityKind { NONE = 0, PLAYER = 1, NPC = 2, PROJECTILE = 3, STRUCTURE = 4 }
 ## Authentication result: 0 is WELCOME and the rest are REJECT reasons.
-## Since protocol 7 (docs/plataforma.md §5.4): BUSY, the character is still in the world (in another zone or leaving
+## Since protocol 7 (docs/platform.md §5.4): BUSY, the character is still in the world (in another zone or leaving
 ## in combat); UNAVAILABLE, the platform does not respond, the zone is fenced off or the character could not be loaded; and
 ## BANNED, the account is suspended, banned or has deletion requested (the text is composed by the platform).
 enum Result { OK = 0, VERSION = 1, SIM_HASH = 2, REALM = 3, FULL = 4, TICKET = 5, MALFORMED = 6,
@@ -254,7 +254,7 @@ static func is_unreliable_channel(channel: int) -> bool:
 ## name, the [code]floor_*[/code] values that its [code]_ready()[/code] sets and the radius, height and position
 ## of the capsule of the [code]Collision[/code] node, plus the fingerprint of the predicted part of the combat catalog
 ## ([method CombatCatalog.prediction_hash]) and, since protocol 7, that of the item database
-## ([method ItemDatabase.wire_hash]: object net ids travel to the owner; docs/progresion.md §2.2 and §12). The
+## ([method ItemDatabase.wire_hash]: object net ids travel to the owner; docs/progression.md §2.2 and §12). The
 ## appearance is not included: an unknown index already falls back to the default one. The first 4 bytes are taken as a u32.
 ## [br][br]
 ## The instance must be in the tree (or at least have gone through [code]_ready()[/code]).
@@ -322,7 +322,7 @@ static func result_text(result: int) -> String:
 		Result.VERSION:
 			return "Versión del juego incompatible: actualiza el cliente"
 		Result.SIM_HASH:
-			# Since protocol 7 the fingerprint also covers the catalogs whose ids travel (docs/progresion.md §12).
+			# Since protocol 7 the fingerprint also covers the catalogs whose ids travel (docs/progression.md §12).
 			return "Los datos del juego no coinciden con los del servidor: actualiza el cliente"
 		Result.REALM:
 			return "Reino no válido o no admitido en esta zona"

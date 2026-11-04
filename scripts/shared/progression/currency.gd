@@ -1,6 +1,6 @@
 class_name Currency
 extends RefCounted
-## The currencies (docs/progresion.md §5.1, PRG-12): [code]int64[/code] balances per character,
+## The currencies (docs/progression.md §5.1, PRG-12): [code]int64[/code] balances per character,
 ## never negative nor above [constant CAP]. The balance rules are in [CurrencyRules]; the
 ## [code]currencies[/code] section of the exported rules ([ProgressionRulesExport]) comes from
 ## here.

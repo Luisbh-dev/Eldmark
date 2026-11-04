@@ -1,6 +1,6 @@
 class_name UnstuckTracker
 extends RefCounted
-## The /atascado (/stuck) command (docs/fuerte.md, section 5; MUN-41): what the server remembers of each player to decide
+## The /atascado (/stuck) command (docs/fortress.md, section 5; MUN-41): what the server remembers of each player to decide
 ## whether they can use it. A channel of [constant CHANNEL_TICKS] (10 s) that is interrupted if the player enters combat
 ## (damage interrupts it) or dies, can only be started out of combat, and after completing it there is a
 ## [constant COOLDOWN_TICKS] (5 min) cooldown. An interrupted channel does not spend the cooldown.
@@ -33,7 +33,7 @@ var interrupted_count: int = 0
 
 
 ## [param player] (their name key, so that re-entering does not skip the cooldown; with the platform,
-## [code]"character:<id>"[/code], docs/progresion.md §8) requests /atascado at tick [param tick], while [param alive] and
+## [code]"character:<id>"[/code], docs/progression.md §8) requests /atascado at tick [param tick], while [param alive] and
 ## [param in_combat]. If it applies, the channel starts ([constant RequestResult.STARTED]).
 func request(player: String, tick: int, alive: bool, in_combat: bool) -> int:
 	if not alive:
@@ -96,13 +96,13 @@ func cancel(player: String) -> void:
 
 
 ## First tick at which [param player] can use it again (0 if they never used it or it already expired and was
-## forgotten). With the platform, progress stores it as the [code]unstuck[/code] timer (docs/progresion.md §8).
+## forgotten). With the platform, progress stores it as the [code]unstuck[/code] timer (docs/progression.md §8).
 func get_ready_at(player: String) -> int:
 	return _ready_at.get(player, 0)
 
 
 ## Sets the cooldown of [param player] until tick [param tick] (restored by registration from the saved timer,
-## docs/progresion.md §8); with 0 or less, removes it.
+## docs/progression.md §8); with 0 or less, removes it.
 func set_ready_at(player: String, tick: int) -> void:
 	if tick <= 0:
 		_ready_at.erase(player)

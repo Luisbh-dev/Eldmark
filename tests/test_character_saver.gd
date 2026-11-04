@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests of [CharacterSaver] with [FakeZonePlatform] (the JSON round trip of [PlatformClient], without network) and a
-## [FakeSaveSection] (docs/plataforma.md §7.2, §7.3 and §15 P5): the checkpoint in its phase and only with something
+## [FakeSaveSection] (docs/platform.md §7.2, §7.3 and §15 P5): the checkpoint in its phase and only with something
 ## dirty, the critical one instantly (also right after track), a write in flight, the final one waiting behind
 ## the one in flight, the whole envelope, duplicate as applied, a section that cannot be built, no sections, the
 ## definitive responses before and after finish, a definitive 403 and 413, the instance_* 409s, a reused net_id
@@ -281,7 +281,7 @@ func test_a_final_that_cannot_be_built_releases_without_saving() -> void:
 	assert_eq(_saver.entry_count(), 0, "the entry is closed")
 
 
-## With no sections registered (until progresion.md P5a) there is nothing to save: neither the checkpoint nor the critical one
+## With no sections registered (until progression.md P5a) there is nothing to save: neither the checkpoint nor the critical one
 ## sends anything, and finish releases.
 func test_without_sections_nothing_is_saved_and_finish_releases() -> void:
 	if not await _start(120, false):

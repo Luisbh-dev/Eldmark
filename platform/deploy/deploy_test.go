@@ -215,7 +215,7 @@ func TestScriptsPassShellcheck(t *testing.T) {
 // restored with the most recent purges.txt, ends up purged and passes the checks; the most recent
 // one (--dir) has nothing left to purge again; a copy whose audit stores the email of an account
 // purged afterwards does not pass; and the rotation keeps the daily copies that apply without losing
-// the most recent purges.txt. The platform uses the real progression store (progresion.md P7, like
+// the most recent purges.txt. The platform uses the real progression store (progression.md P7, like
 // serve and the admin command): the copy carries the characters' progress and reapply-purges deletes
 // it again.
 func TestBackupAndRestoreCheck(t *testing.T) {

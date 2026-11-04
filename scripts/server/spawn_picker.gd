@@ -1,6 +1,6 @@
 class_name SpawnPicker
 extends RefCounted
-## Chooses where each player entering the zone appears (docs/red.md, section 1.5).
+## Chooses where each player entering the zone appears (docs/networking.md, section 1.5).
 ## [br][br]
 ## The points are the nodes of the [method NetZones.spawn_group] group in the zone scene; those with the realm metadata
 ## belong to that realm ([method NetZones.get_spawn_points]: [NetZones] is the network's only contact with [Zones]).

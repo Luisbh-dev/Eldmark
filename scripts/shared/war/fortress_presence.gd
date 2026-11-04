@@ -1,6 +1,6 @@
 class_name FortressPresence
 extends RefCounted
-## Who is inside a fort's capture circle (docs/fuerte.md, section 1.2): a pure function that
+## Who is inside a fort's capture circle (docs/fortress.md, section 1.2): a pure function that
 ## receives the candidates and returns the count per realm, so that the server only calls it every
 ## 6 ticks with what it knows about its players.
 ## [br][br]

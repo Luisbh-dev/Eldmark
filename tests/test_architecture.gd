@@ -9,7 +9,7 @@ extends TestCase
 ## server's own scene is also walked: they cannot pull in client scripts, animations or character visuals.
 ## [br][br]
 ## In addition, [code]scripts/server/[/code] and [code]scripts/client/[/code] do not depend on each other
-## (docs/red.md, section 16), and [code]scripts/shared/[/code] does not depend on the server either: neither
+## (docs/networking.md, section 16), and [code]scripts/shared/[/code] does not depend on the server either: neither
 ## paths nor classes ([code]class_name[/code]) from the other side.
 ## [br][br]
 ## The text of the scripts is analyzed without the comments (the documentation may mention
@@ -88,7 +88,7 @@ const FORBIDDEN_RANDOMNESS: Array[Array] = [
 	[".shuffle()", "\\.shuffle\\s*\\("],
 ]
 
-## NetZones is the network's only contact with zones.gd (docs/red.md, 1.5 and 17.3): in these folders
+## NetZones is the network's only contact with zones.gd (docs/networking.md, 1.5 and 17.3): in these folders
 ## no other script names [Zones]. Exceptions: [code]server_main.gd[/code] (the zone list of the
 ## unknown-zone notice and the realms with a camp for the fake players, section 19) and
 ## [code]client_main.gd[/code], the networkless sandbox of phase 1, which predates the network.
@@ -103,7 +103,7 @@ const ZONES_PATTERN: Array[Array] = [["Zones.", "\\bZones\\."]]
 
 const CLASS_NAME_PATTERN: String = "(?m)^\\s*(?:@\\w+\\s+)*class_name\\s+([A-Za-z_]\\w*)"
 
-## Progression (docs/progresion.md §14.2): shared code does not see the time, the system or the input, and the
+## Progression (docs/progression.md §14.2): shared code does not see the time, the system or the input, and the
 ## progress server does not read the time (UTC is [code]ZonePlatform.now_unix()[/code]).
 const PROGRESSION_SHARED_DIR: String = "res://scripts/shared/progression"
 const PROGRESSION_SERVER_DIR: String = "res://scripts/server/progress"
@@ -112,7 +112,7 @@ const PROGRESSION_SHARED_FORBIDDEN: Array[Array] = [
 ]
 const PROGRESSION_SERVER_FORBIDDEN: Array[Array] = [["Time", "\\bTime\\."]]
 ## Data that the server loads and that cannot carry textures, scenes or meshes (the server preset
-## trims assets/): the paths of the pieces go as text (progresion.md §2.1 and §14.2).
+## trims assets/): the paths of the pieces go as text (progression.md §2.1 and §14.2).
 const ASSET_FREE_DATA_DIRS: Array[String] = ["res://data/characters", "res://data/items", "res://data/progression"]
 const ASSET_CLASSES: Array[String] = ["Texture2D", "Texture", "PackedScene", "Mesh", "ArrayMesh",
 		"CompressedTexture2D", "ImageTexture"]
@@ -438,7 +438,7 @@ func test_only_net_zones_talks_to_zones_in_the_network_code() -> void:
 
 
 ## Shared progression names no Time, OS or Input (nor scripts/client or scripts/server, which the
-## scripts/shared tests already check), and the server's does not read the time (progresion.md §14.2).
+## scripts/shared tests already check), and the server's does not read the time (progression.md §14.2).
 func test_progression_does_not_read_clock_os_or_input() -> void:
 	var shared_scripts: PackedStringArray = _list_scripts(PROGRESSION_SHARED_DIR)
 	assert_true(shared_scripts.has(PROGRESSION_SHARED_DIR.path_join("character_appearance.gd")),
@@ -456,7 +456,7 @@ func test_progression_does_not_read_clock_os_or_input() -> void:
 
 
 ## No resource in data/characters/ or data/items/ (nor the curve) has texture, scene or
-## mesh properties, neither declared nor with a value, also in their subresources (progresion.md §2.1 and §14.2).
+## mesh properties, neither declared nor with a value, also in their subresources (progression.md §2.1 and §14.2).
 func test_progression_data_holds_no_assets() -> void:
 	var checked: int = 0
 	for dir: String in ASSET_FREE_DATA_DIRS:
@@ -476,7 +476,7 @@ func test_progression_data_holds_no_assets() -> void:
 
 
 ## No class_name is repeated in scripts/, tests/, tools/ or addons/: Godot registers only one of the two
-## without warning (progresion.md §14.2).
+## without warning (progression.md §14.2).
 func test_class_names_are_unique() -> void:
 	var owners: Dictionary[String, String] = {}
 	for dir: String in CLASS_NAME_DIRS:

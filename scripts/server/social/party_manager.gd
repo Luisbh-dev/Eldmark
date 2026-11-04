@@ -7,7 +7,7 @@ extends RefCounted
 ## inviting a player of another realm, or someone who does not exist, answers the same as a whisper ("no está
 ## conectado" (not connected)), does not warn the invitee nor reveal that they exist. The first is the leader and can
 ## kick and hand over leadership; any member can invite. If the leader leaves, the next oldest inherits leadership; a
-## party of one disbands. An invitation to someone who ignores the inviter's account (docs/plataforma.md §9.3) is
+## party of one disbands. An invitation to someone who ignores the inviter's account (docs/platform.md §9.3) is
 ## silently discarded: the inviter sees the usual and it expires, and nothing reaches the invitee nor can they accept it.
 ## An invitation expires after [constant PartyRules.INVITE_TTL_TICKS] ticks (60 s), each player can have at most
 ## [constant PartyRules.MAX_PENDING_PER_INVITER] sent and, when the party forms or grows, the other invitations held by

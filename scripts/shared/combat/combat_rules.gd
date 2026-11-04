@@ -26,7 +26,7 @@ extends Resource
 @export var parry_window_ticks: int = 6
 ## Ticks until another parry window can be opened.
 @export var parry_cooldown_ticks: int = 30
-## Duration (s) of the weapon swap (docs/habilidades.md, section 3).
+## Duration (s) of the weapon swap (docs/abilities.md, section 3).
 @export var swap_s: float = 0.4
 ## Fraction of the run speed allowed during the weapon swap.
 @export var swap_move_scale: float = 0.8
@@ -43,7 +43,7 @@ extends Resource
 @export var consumables: Array[AbilityDefinition] = []
 ## Shared cooldown (s) of the consumables.
 @export var consumable_cooldown_s: float = 20.0
-## Canonical aiming (docs/habilidades.md, section 4.4): height of the camera pivot above the
+## Canonical aiming (docs/abilities.md, section 4.4): height of the camera pivot above the
 ## feet, lateral shoulder offset and vertical camera offset (the [code]h_offset[/code] and
 ## [code]v_offset[/code] of [code]camera_rig.tscn[/code]).
 @export var aim_pivot_height: float = 1.6
@@ -85,13 +85,13 @@ extends Resource
 @export var backstab_angle_deg: float = 120.0
 ## Damage multiplier for hits from behind.
 @export var crit_multiplier: float = 1.5
-## Damage multipliers against structures (a fort's gate, docs/fuerte.md, section 3.3),
+## Damage multipliers against structures (a fort's gate, docs/fortress.md, section 3.3),
 ## by damage type: slashing, piercing, blunt and elemental. Used only by the server.
 @export var structure_slash_multiplier: float = 0.35
 @export var structure_pierce_multiplier: float = 0.2
 @export var structure_blunt_multiplier: float = 1.0
 @export var structure_elemental_multiplier: float = 0.6
-## Downed health (docs/habilidades.md, section 4.5).
+## Downed health (docs/abilities.md, section 4.5).
 @export var downed_health: int = 400
 ## Seconds a knocked down character takes to bleed out.
 @export var downed_s: float = 20.0

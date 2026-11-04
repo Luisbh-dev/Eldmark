@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests for [SpawnPicker]: spawn points per realm, round-robin, the point's yaw and the
-## fallbacks (any point in the zone and, with no points, the origin). docs/red.md, section 1.5.
+## fallbacks (any point in the zone and, with no points, the origin). docs/networking.md, section 1.5.
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH

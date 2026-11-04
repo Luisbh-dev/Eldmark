@@ -1,6 +1,6 @@
 class_name ProjectileWorld
 extends Node3D
-## The client's arrows (docs/habilidades.md, section 6.2; CMB-22): the local player's own, predicted and
+## The client's arrows (docs/abilities.md, section 6.2; CMB-22): the local player's own, predicted and
 ## replaced by the server's, and everyone else's, which arrive with their ballistics in an ENTITY_SPAWN
 ## of kind 3 and which the client flies on its own with [method Ballistics.position] (the snapshot does
 ## not carry them, section 5.3).

@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for the inventory in the zone (docs/progresion.md §4, §8 and §9; §15, P5b): the join with the
+## Tests for the inventory in the zone (docs/progression.md §4, §8 and §9; §15, P5b): the join with the
 ## inventory's [ProgressService.Loadout] and the active slot; equipping and unequipping without resetting reuse timers;
 ## CONSUME on commit and not on interrupt; CAMP_REFILL by total and at the refill cadence, and the full-bag warning
 ## once per join; charges [code]min(15, bag)[/code]; requests before the world, malformed ones,
@@ -11,7 +11,7 @@ extends TestCase
 ## A network-less [ZoneServer] on the flat zone of [ZoneFixture], advanced quickly with [FortressFixture.Stepper], with
 ## peers set up by hand (like a real join: LOADING, CLIENT_READY and, with a platform, the claim and
 ## [method ProgressService.prepare]), their inputs in their [InputQueue] and a transport that records what is sent to them.
-## Those that save use [FakeZonePlatform] (plataforma.md §14.3).
+## Those that save use [FakeZonePlatform] (platform.md §14.3).
 
 const VARDHEIM: int = NetProtocol.Realm.VARDHEIM
 const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
@@ -656,7 +656,7 @@ func test_the_camp_refills_the_total_with_the_recharge_cadence() -> void:
 	var net_id: int = ana.entity.net_id
 	var safe: SafeAreas = _server.get_safe_areas()
 	assert_true(safe.contains_own(VARDHEIM, ana.entity.get_position()), "spawns at the camp")
-	# A fake player with a template at the same camp keeps the refill from habilidades.md.
+	# A fake player with a template at the same camp keeps the refill from abilities.md.
 	var fake: int = _server.add_fake_player(CombatFixture.ScriptBrain.new(1), VARDHEIM)
 	_server.teleport(fake, CAMP + Vector3(1.0, 0.05, 0.0))
 	ActionMachine.set_charges(_combat(fake), 0)

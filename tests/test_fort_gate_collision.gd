@@ -1,5 +1,5 @@
 extends TestCase
-## The fort gate with real physics (docs/fuerte.md, section 3.1): the closed gate stops
+## The fort gate with real physics (docs/fortress.md, section 3.1): the closed gate stops
 ## the characters of the realms that are not its owner and not those of its own, broken it stops nobody, and the
 ## camera and the line of sight of hits do not go through it in any case while it is intact.
 ## It uses a flat floor and the standalone gate scene (the plane x = 0, the 4 m doorway in z).

@@ -1,12 +1,12 @@
 class_name ProgressRecord
 extends RefCounted
-## A character's progress record (docs/progresion.md §3.4, PRG-10): the [code]progress[/code] section of the claim
-## (plataforma.md §6) and, without the read-only fields and with the journal, that of each save (§9.3). A single owner
+## A character's progress record (docs/progression.md §3.4, PRG-10): the [code]progress[/code] section of the claim
+## (platform.md §6) and, without the read-only fields and with the journal, that of each save (§9.3). A single owner
 ## per field (§3.1): race and appearance, position, health, played time, level, inventory, currencies and CMB-30
 ## timers belong here.
 ## [br][br]
 ## [b]JSON[/b] ([code]progress_format[/code] 1): every id ([code]uid[/code], [code]seed[/code]) is a decimal string
-## (plataforma.md §4.1) and the remaining integers are exact numbers ([ProgressJson]). [method to_claim_dictionary]
+## (platform.md §4.1) and the remaining integers are exact numbers ([ProgressJson]). [method to_claim_dictionary]
 ## gives the claim's shape, with the read-only fields ([code]race_id[/code], [code]appearance[/code],
 ## [code]starter_template_id[/code] and [code]location.saved_at_unix[/code]); [method to_dictionary], the save's,
 ## without them (S1 rejects them). [method from_dictionary] reads the claim's, strictly: on a missing or unknown key,

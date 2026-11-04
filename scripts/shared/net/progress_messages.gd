@@ -1,6 +1,6 @@
 class_name ProgressMessages
 extends RefCounted
-## Inventory and progress messages (protocol 7; docs/progresion.md §4.6 and §12), separate from
+## Inventory and progress messages (protocol 7; docs/progression.md §4.6 and §12), separate from
 ## [NetMessages] to avoid clashing with other lanes. All go over reliable channel 3; the S→C ones
 ## only to the owner.
 ## [br][br]
@@ -20,7 +20,7 @@ extends RefCounted
 ## carry objects use the net id of an [ItemDatabase] (null = [method ItemDatabase.shared]). Little
 ## endian, like the rest of the protocol. Shared: no clock, no randomness.
 
-## Maximum level the protocol allows (the cap of [LevelCurve], docs/progresion.md §6.1; checked by
+## Maximum level the protocol allows (the cap of [LevelCurve], docs/progression.md §6.1; checked by
 ## the test).
 const MAX_LEVEL: int = 40
 ## Maximum entries in an INVENTORY_DELTA or in one page of INVENTORY_FULL.
@@ -168,7 +168,7 @@ class InventoryRequest:
 ## real content of the slots the request touched and the revision does not increase) or gives a
 ## change decided by the server ([member request_id] 0, [member result] OK and [member reason] the
 ## [EconomyReason] motive). The revision increases by 1 with each applied change
-## (docs/progresion.md §4.6).
+## (docs/progression.md §4.6).
 class InventoryDelta:
 	const HEADER_SIZE: int = 10
 	## 10 + 30 × (3 + 34).
@@ -521,7 +521,7 @@ class WalletUpdate:
 ## since the start of the level and [member xp_to_next] the XP the next one requires (0 at the cap,
 ## where [member xp_in_level] is also 0); [member gained], what was gained since the previous one
 ## with source [member source] ([enum XpSource]). At most one every 10 ticks per player, with the
-## sum of what was gained (docs/progresion.md §6.3).
+## sum of what was gained (docs/progression.md §6.3).
 class ProgressUpdate:
 	const SIZE: int = 25
 

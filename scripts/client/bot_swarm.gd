@@ -1,6 +1,6 @@
 class_name BotSwarm
 extends Node
-## Swarm of lightweight clients for load tests (docs/red.md, sections 14, 15 and 17.5; TEC-11):
+## Swarm of lightweight clients for load tests (docs/networking.md, sections 14, 15 and 17.5; TEC-11):
 ## the root of the [code]--bots=N[/code] mode.
 ## [br][br]
 ## [ClientLauncher] (which [code]boot.gd[/code] mounts) fills in [member config] with
@@ -13,7 +13,7 @@ extends Node
 ## Options ([ClientConfig]): [code]--bots=N --connect=<host>[:<puerto>] [--realm=<reino>]
 ## [--bot-seed=N] [--bot-brain=combat] [--net-sim=…] [--quit-after-ticks=N] [--quit-at-server-tick=N]
 ## [--dtls-cert=<pem> --dtls-name=<cn>] [--report=<ruta.json>][/code]. With [code]--platform[/code]
-## it does not start: it exits with code 1 and a clear error (docs/plataforma.md §5.5). With
+## it does not start: it exits with code 1 and a clear error (docs/platform.md §5.5). With
 ## [code]--dtls-cert[/code] (a zone with [code]--dtls-cert --dtls-key[/code], §10.2) each
 ## [SwarmBot] connects over DTLS with that pinned certificate and that name; without
 ## [code]--dtls-name[/code] or with a certificate that cannot be read it exits with code 1 (never in
@@ -84,12 +84,12 @@ func start(p_config: ClientConfig) -> void:
 		_quit(1)
 		return
 	if not _config.platform_url.is_empty():
-		# The swarm's bots have no account: only against zones without a platform (docs/plataforma.md §5.5).
+		# The swarm's bots have no account: only against zones without a platform (docs/platform.md §5.5).
 		printerr("[Eldmark] %s" % TEXT_NO_PLATFORM)
 		_quit(1)
 		return
 	if _config.has_dtls():
-		# A single pinned certificate for all the bots; without it, it does not connect in cleartext (docs/plataforma.md §10.2).
+		# A single pinned certificate for all the bots; without it, it does not connect in cleartext (docs/platform.md §10.2).
 		_dtls = NetClient.dtls_options(_config) if not _config.dtls_name.is_empty() else null
 		if _dtls == null:
 			printerr("[Eldmark] %s" % TEXT_BAD_DTLS)

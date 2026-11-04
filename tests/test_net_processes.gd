@@ -1,5 +1,5 @@
 extends TestCase
-## Real multi-process tests (docs/red.md, section 16, "Multiple processes"; TEC-10 and TEC-46): a
+## Real multi-process tests (docs/networking.md, section 16, "Multiple processes"; TEC-10 and TEC-46): a
 ## headless server and two bots, each in its own Godot process, with real ENet over 127.0.0.1,
 ## launched with [method NetHarness.launch_process] and waited on for at most 25 s.
 ## [br][br]

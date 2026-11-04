@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generates the fort keep's own textures (ART-57) with numpy and PIL: a painted look.
 
-No AI and no photos. The target style is that of the Quaternius family (docs/arte.md): almost
+No AI and no photos. The target style is that of the Quaternius family (docs/art.md): almost
 smooth surfaces with soft color washes, brush marks, fine cracks with a light lip, few
 pores and no high-frequency noise. The value and tone of each ashlar, the joint occlusion and the dirt at the
 foot come from the mesh's vertex color (build_fort_keep.py), not from

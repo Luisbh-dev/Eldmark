@@ -1,6 +1,6 @@
 extends SceneTree
 ## Cross-checks the server's state log against a bot's and summarizes the matches, the
-## explained differences (the server substituted an input) and the unexplained ones (docs/red.md, section 13).
+## explained differences (the server substituted an input) and the unexplained ones (docs/networking.md, section 13).
 ## [br][br]
 ## Usage, from the project root (the console [code]godot[/code]):
 ## [codeblock]

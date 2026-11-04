@@ -1,6 +1,6 @@
 class_name ApproachRoutes
 extends Resource
-## Approach routes to a fort (docs/fuerte.md, section 7), as shared data: the waypoints (x, z) of
+## Approach routes to a fort (docs/fortress.md, section 7), as shared data: the waypoints (x, z) of
 ## each route and each realm, from its spawn point to the esplanade in front of the gate. They are
 ## followed by the siege bots ([code]BotBrain[/code], the siege pattern) and checked by
 ## [code]tools/terrain/verify_vado_gris_routes.gd[/code], which walks each one with the real

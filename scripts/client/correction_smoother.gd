@@ -1,6 +1,6 @@
 class_name CorrectionSmoother
 extends RefCounted
-## Smooths reconciliation corrections (docs/red.md, section 6.6).
+## Smooths reconciliation corrections (docs/networking.md, section 6.6).
 ##
 ## The character's body is corrected at once, because the server's collision rules. What the player
 ## sees is not: the error (old position minus new position, in world coordinates) is

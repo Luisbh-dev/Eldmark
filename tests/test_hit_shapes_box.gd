@@ -1,5 +1,5 @@
 extends TestCase
-## The fort's gate as a target for hits (docs/fuerte.md, section 3.3): the annular sector of an
+## The fort's gate as a target for hits (docs/fortress.md, section 3.3): the annular sector of an
 ## attack against an oriented box ([method HitShapes.sector_hits_box]) and the overlap of a capsule with
 ## the box ([method HitShapes.capsule_overlaps_box]), which decides whether the gate's doorway is occupied.
 ## The test box is the real gate's: 0.5 m thick in X, 4.3 m high and 4 m wide in Z,

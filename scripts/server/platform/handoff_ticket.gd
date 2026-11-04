@@ -1,6 +1,6 @@
 class_name HandoffTicket
 extends RefCounted
-## The 52 B entry ticket (docs/plataforma.md §5.1): identity only, signed by the platform with
+## The 52 B entry ticket (docs/platform.md §5.1): identity only, signed by the platform with
 ## HMAC-SHA256 truncated to 16 B and a key with an identifier. It goes in the HELLO's [code]ticket[/code] field.
 ## [br][br]
 ## [codeblock]
@@ -48,7 +48,7 @@ var expires_at: int = 0
 
 ## The u32 fingerprint of [param zone_id]: the first 4 bytes, as a little-endian u32, of the SHA-256 of the ASCII id.
 ## It is the ticket's [code]zone_key[/code] and the [code]ref_id[/code] of NPCs and fortresses in the ledger
-## (docs/progresion.md §5.2). [code]vado_gris[/code] gives 0x19efc013.
+## (docs/progression.md §5.2). [code]vado_gris[/code] gives 0x19efc013.
 static func zone_key_of(zone_id: String) -> int:
 	# String.sha256_buffer() hashes the text's UTF-8, which for an ASCII id is the same bytes.
 	return zone_id.sha256_buffer().decode_u32(0)

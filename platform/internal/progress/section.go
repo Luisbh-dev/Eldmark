@@ -13,7 +13,7 @@ import (
 	"eldmark/platform/internal/zones"
 )
 
-// The progress section of a save (progresion.md §9.3): the ProgressRecord from §3.4 without the
+// The progress section of a save (progression.md §9.3): the ProgressRecord from §3.4 without the
 // read-only fields and with the journal (ops). parseSection reads it with the rules of S1; the
 // other checks look at these already parsed types.
 
@@ -37,7 +37,7 @@ var (
 	opKeys    = []string{"actor_account_id", "detail", "items", "kind", "ledger", "note", "op_id", "ref_op_id"}
 	entryKeys = []string{"balance_after", "currency", "delta", "reason", "ref_id", "ref_kind"}
 	eventKeys = []string{"count_delta", "def_id", "reason", "uid"}
-	// Only in the claim (progresion.md §3.4): in a save they are an S1 error.
+	// Only in the claim (progression.md §3.4): in a save they are an S1 error.
 	readOnlyKeys         = map[string]bool{"race_id": true, "appearance": true, "starter_template_id": true}
 	readOnlyLocationKeys = map[string]bool{"saved_at_unix": true}
 )
@@ -229,7 +229,7 @@ func (o object) list(key string) ([]json.RawMessage, error) {
 	return v, nil
 }
 
-// parseSection is S1 (progresion.md §13.3): progress_format 1, known keys and none read-only, ids
+// parseSection is S1 (progression.md §13.3): progress_format 1, known keys and none read-only, ids
 // as strings from 1 to 2^53 − 1 (seed and ref_id from 0), all other integers exact and
 // location.zone_id equal to zoneID (that of the instance that claimed). The ranges of each field
 // are checked by S2–S7; here only what has no other check (the channel and the coordinates, which

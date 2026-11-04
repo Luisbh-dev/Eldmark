@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for the baked navigation mesh of Vado Gris (MUN-06, docs/fuerte.md section 4.1,
+## Tests for the baked navigation mesh of Vado Gris (MUN-06, docs/fortress.md section 4.1,
 ## [code]tools/bake_navmesh.gd[/code]): loading the saved mesh, valid paths from each
 ## GuardSpawn in the fort to the walkway, the ford and the two bridges, and that with the gate closed
 ## (without the link the server creates) there is no way out of the fort. If the zone's geometry changes
@@ -13,7 +13,7 @@ extends TestCase
 
 const ZONE_SCENE_PATH: String = "res://scenes/world/zones/vado_gris/vado_gris.tscn"
 const NAVMESH_PATH: String = "res://scenes/world/zones/vado_gris/vado_gris_navmesh.tres"
-## The mesh file cannot exceed this (docs/fuerte.md, 4.1).
+## The mesh file cannot exceed this (docs/fortress.md, 4.1).
 const MAX_FILE_BYTES: int = 20 * 1024 * 1024
 ## A path arrives if it ends less than this (m) from the destination horizontally and vertically.
 const REACH_XZ: float = 1.0

@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [CombatCatalog] (docs/combate.md section 2; docs/habilidades.md section 2.2): loading
+## Tests for [CombatCatalog] (docs/combate.md section 2; docs/abilities.md section 2.2): loading
 ## data/combat/, IDs of each space requested by name, repeated ids, validation of ranges and of the
 ## rules of section 2.2, conversion to ticks, baked curves (dodge and advances), synthesized hit
 ## of the abilities, footprint of the predicted part and the fast path of simulate().
@@ -464,7 +464,7 @@ func test_sim_hash_includes_the_combat_hash() -> void:
 	assert_true(changed != with_data, "another catalog footprint, another sim_hash")
 
 
-# --- Phase 4: abilities, effects, projectiles and templates (docs/habilidades.md, section 2) ---
+# --- Phase 4: abilities, effects, projectiles and templates (docs/abilities.md, section 2) ---
 
 func test_every_id_space_is_alphabetical_and_asked_by_name() -> void:
 	var tables: CombatTables = CombatCatalog.build_from_directory(DATA_DIR)
@@ -521,7 +521,7 @@ func test_sword_and_shield_abilities_in_ticks() -> void:
 	assert_eq(weapon.ability_id(1), rush_id, "ability_id(1)")
 	assert_eq(weapon.ability_id(3), 0, "out of range, 0")
 	assert_true(weapon.can_block, "sword and shield blocks")
-	# [cast, active, recovery, cooldown, slot] (docs/habilidades.md, 2.3).
+	# [cast, active, recovery, cooldown, slot] (docs/abilities.md, 2.3).
 	var expected: Dictionary[StringName, Array] = {
 		&"shield_bash": [18, 6, 24, 720, 0],
 		&"shield_rush": [9, 24, 21, 960, 1],

@@ -1,5 +1,5 @@
 extends TestCase
-## Network integration in a single process, with real ENet over 127.0.0.1 (docs/red.md, section 16,
+## Network integration in a single process, with real ENet over 127.0.0.1 (docs/networking.md, section 16,
 ## "Integration in one process"; milestones M2 and M3).
 ## [br][br]
 ## A [ZoneServer] and several bot [NetClient]s, each in its own [SubViewport] with its own physics

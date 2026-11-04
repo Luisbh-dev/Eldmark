@@ -1,7 +1,7 @@
 class_name AuthOutcome
 extends RefCounted
 ## The outcome of an authentication that was left pending ([constant AuthProvider.PENDING]): returned by
-## [method AuthProvider.take_completed] in the tick's "poll" step (docs/plataforma.md §5.2 and §14.3).
+## [method AuthProvider.take_completed] in the tick's "poll" step (docs/platform.md §5.2 and §14.3).
 
 var peer_id: int = 0
 ## [constant NetProtocol.Result.OK] or the REJECT reason.

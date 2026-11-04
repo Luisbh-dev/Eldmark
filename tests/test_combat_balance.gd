@@ -8,7 +8,7 @@ extends TestCase
 ## [b]Process[/b]: a minimal pass (one duel, 2 s of DPS, 2 fights of each size, without the duels with the
 ## shooter) as a separate process that ends with code 0, no errors in its log and with the figures that are
 ## checked here against the catalog: the DPS measured against the dummy is the one that comes out of the [code].tres[/code], and
-## blocking delays death. [b]Phase 4 kits[/b] (H5; docs/habilidades.md, sections 2.4 and 7.3): the
+## blocking delays death. [b]Phase 4 kits[/b] (H5; docs/abilities.md, sections 2.4 and 7.3): the
 ## bow's DPS is the calculated one (fast, minimum and maximum draw), the dummy at 10, 30 and 50 m receives all the arrows with
 ## the flight that ballistics dictates, one attacker does not break the shield wall in its 6 s and two do, close to
 ## the calculated time, and the 2 versus 2 with both templates has casualties.
@@ -111,7 +111,7 @@ func test_a_minimal_balance_run_matches_the_catalog_and_ends_without_errors() ->
 	_check_phase_4_kits(result)
 
 
-# The phase 4 kits: bow against the dummy, ranges and shield wall (docs/habilidades.md, section 2.4).
+# The phase 4 kits: bow against the dummy, ranges and shield wall (docs/abilities.md, section 2.4).
 func _check_phase_4_kits(result: Dictionary) -> void:
 	var bow: Dictionary = result.get("bow", {})
 	for key: String in ["quick", "drawn_min", "drawn_max"]:

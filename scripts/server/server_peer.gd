@@ -1,13 +1,13 @@
 class_name ServerPeer
 extends RefCounted
-## State the server keeps for each connection (docs/red.md, sections 3, 8, 11 and 12).
+## State the server keeps for each connection (docs/networking.md, sections 3, 8, 11 and 12).
 ## [br][br]
 ## It does not touch the network: [code]ZoneServer[/code] fills and queries it. Here live the rate limiters, the strike
 ## counter (with a kick at 50 in 600 ticks), the peer's set of relevant entities and the [SnapshotBuilder]'s priority
 ## accumulator.
 
 ## Session phase: authenticating (until the HELLO), verifying the ticket (waiting for the platform's claim,
-## docs/plataforma.md §5.2), loading the zone (until CLIENT_READY), inside the world or leaving.
+## docs/platform.md §5.2), loading the zone (until CLIENT_READY), inside the world or leaving.
 enum State { AUTHENTICATING, VERIFYING, LOADING, IN_WORLD, LEAVING }
 
 ## Unreliable messages per tick that the limiter admits (120 per second) and maximum burst.
@@ -45,7 +45,7 @@ var interp_delay_q: int = 0
 ## Minimum of (s - ack_snapshot_tick) over the last 120 ticks.
 var rtt_ticks: int = 0
 ## Maximum of (s - ack_snapshot_tick) over the same 120 ticks, bounded just like [member rtt_ticks] by sources the client
-## does not control. With jitter the minimum stays below the round trip of any given tick, and the rewind cap (docs/red.md,
+## does not control. With jitter the minimum stays below the round trip of any given tick, and the rewind cap (docs/networking.md,
 ## section 10) must also cover the bad trips of an honest player: the [CombatResolver] uses the greater of the two.
 var rtt_peak_ticks: int = 0
 ## Lower bound of the RTT in ticks that comes from sources the client does not control (ENet's RTT): an honest client
@@ -54,16 +54,16 @@ var rtt_floor_ticks: int = 0
 ## Tick at which it connected and began authenticating (for the HELLO deadline).
 var connected_tick: int = 0
 ## Instant (ms of [code]Time.get_ticks_msec()[/code]) at which it connected: the 7 s deadline of VERIFYING runs in real
-## time, because one in ticks went out of sync when the server lagged (docs/plataforma.md §5.2).
+## time, because one in ticks went out of sync when the server lagged (docs/platform.md §5.2).
 var connected_at_msec: int = 0
 ## The [code]character_id[/code] of the HELLO (0 without a ticket).
 var character_id: int = 0
 ## With the platform, what the claim brought (from the WELCOME; null without a platform or before).
 var claimed: ClaimedCharacter = null
-## Leaves without the combat exit (GUE-41): the departure without a save of docs/plataforma.md §7.2 (a rejected save or a
+## Leaves without the combat exit (GUE-41): the departure without a save of docs/platform.md §7.2 (a rejected save or a
 ## [code]revoked[/code] [code]lease_lost[/code]) removes the body at once.
 var drop_body_at_once: bool = false
-## Kicked by the zone: its final save carries reason 5 (docs/plataforma.md §7.3) instead of 3.
+## Kicked by the zone: its final save carries reason 5 (docs/platform.md §7.3) instead of 3.
 var kicked: bool = false
 ## Tick at which the zone load began (for the CLIENT_READY limit).
 var loading_since_tick: int = 0
@@ -83,7 +83,7 @@ var rewind_rejects: int = 0
 ## Attacks it has launched and how many of them have hit (an anomalous hit ratio is one of the future suspicion signals).
 var swings: int = 0
 var swings_landed: int = 0
-## Pending equipment template (docs/habilidades.md, section 4.6): the one requested with LOADOUT_SELECT for its next
+## Pending equipment template (docs/abilities.md, section 4.6): the one requested with LOADOUT_SELECT for its next
 ## spawn (0 = the default; -1 = no request). Valid in LOADING and IN_WORLD; the server copies it to the [Combatant] when
 ## registering it and at each respawn, and sets it back to -1.
 var pending_template_id: int = -1

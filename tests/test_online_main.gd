@@ -1,11 +1,11 @@
 extends TestCase
-## Tests of [OnlineMain] (docs/red.md, 1.2 and 17.5) against a real [ZoneServer] in the same process:
+## Tests of [OnlineMain] (docs/networking.md, 1.2 and 17.5) against a real [ZoneServer] in the same process:
 ## the whole scene, with the zone loaded in a thread, and the shutdown via [code]--quit-after-ticks[/code]
 ## (which here does not close the process: [member OnlineMain.quit_hook] collects the exit code).
 ## [br]- Normal client: camera, HUD and animated humanoid on spawn, and the loading screen gone.
 ## [br]- Bot: no camera or HUD, report when finished, standing still at the end and exit code 0.
 ## [br]- Rejection, server shutdown and unknown zone: exit code 1 and a report.
-## [br]- The [code]progress[/code] scenario ([BotProgressScenario], progresion.md §15 P8): equips the bow,
+## [br]- The [code]progress[/code] scenario ([BotProgressScenario], progression.md §15 P8): equips the bow,
 ## gives gold and a potion, rewrites the report at each step and exits with 0 and its progress in the
 ## report; if a step is not fulfilled, code 1 and the reason in the report.
 

@@ -1,6 +1,6 @@
 class_name BossInfo
 extends RefCounted
-## Which NPCs are bosses, for the boss bar (UI-18, docs/fuerte.md sections 2 and 4.2).
+## Which NPCs are bosses, for the boss bar (UI-18, docs/fortress.md sections 2 and 4.2).
 ## [br][br]
 ## An NPC's ENTITY_SPAWN carries its [code]npc_def_id[/code]: the index (1..n, in alphabetical order of the
 ## id) of its [code]NpcDefinition[/code] in [code]data/npcs/*.tres[/code] (the catalog that arrives with the

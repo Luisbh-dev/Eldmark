@@ -1,7 +1,7 @@
 extends TestCase
 ## Tests for [CombatState] (docs/combate.md section 3.1) and its place inside [PlayerState]:
 ## offsets, round trip, copy and comparison of the phase 3 fields (bytes 35-68). The
-## version 5 fields (76 B inside a 111 B PlayerState, docs/habilidades.md section 3.1)
+## version 5 fields (76 B inside a 111 B PlayerState, docs/abilities.md section 3.1)
 ## are tested in test_combat_state_v5.gd.
 
 const COMBAT_SIZE: int = 76

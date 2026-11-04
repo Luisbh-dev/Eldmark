@@ -7,7 +7,7 @@ extends Control
 ## but ignores the mouse so as not to block clicks. The HUD hides it while the
 ## cursor is free.
 ## [br][br]
-## [b]Bow[/b] (docs/habilidades.md, section 6.5): while drawing, the ring closes with the charge
+## [b]Bow[/b] (docs/abilities.md, section 6.5): while drawing, the ring closes with the charge
 ## ([method set_tension], from 0 to 1) down to [member tense_ring_scale] of its radius.
 
 const _RING_SEGMENTS: int = 48

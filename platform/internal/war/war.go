@@ -1,4 +1,4 @@
-// Package war is the part of the internal API for the persistent war (plataforma.md §6 and §8,
+// Package war is the part of the internal API for the persistent war (platform.md §6 and §8,
 // GUE-19): the fort records, which only the zone they belong to can read and write, versioned so
 // they do not overwrite each other, and the batch of war events (fortress_events).
 package war

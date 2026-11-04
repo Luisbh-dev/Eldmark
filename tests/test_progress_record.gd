@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of [ProgressRecord] (docs/progresion.md §3.4 and §15 P5a): the format is the one the zone declares when
+## Tests of [ProgressRecord] (docs/progression.md §3.4 and §15 P5a): the format is the one the zone declares when
 ## registering, the round trip through [method ProgressRecord.to_claim_dictionary], [method JSON.stringify],
 ## [method JSON.parse_string] and [method ProgressRecord.from_dictionary] field by field (with position and without), the
 ## ids as strings (an id as a number is not valid), integers rewritten as [code]820.0[/code], null for every key

@@ -12,7 +12,7 @@ import (
 )
 
 // Good password, bad password and nonexistent email: the two failures give the same code and the
-// same body (plataforma.md §15 P1).
+// same body (platform.md §15 P1).
 func TestLoginDoesNotRevealAccounts(t *testing.T) {
 	h := newHarness(t)
 	h.register("aneira@example.org")

@@ -1,4 +1,4 @@
-// Package logx sets up the platform's log (plataforma.md §2.3): log/slog with a JSONHandler to
+// Package logx sets up the platform's log (platform.md §2.3): log/slog with a JSONHandler to
 // standard output, with the fields time, level, msg, req, route, status, ms and, when known,
 // account and character.
 //

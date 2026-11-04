@@ -1,6 +1,6 @@
 class_name NetMessages
 extends RefCounted
-## Phase 2 network protocol messages and their serialization (docs/red.md, section 5).
+## Phase 2 network protocol messages and their serialization (docs/networking.md, section 5).
 ## [br][br]
 ## Each inner class has [code]encode() -> PackedByteArray[/code] and
 ## [code]static decode(bytes) -> <Class>[/code], which returns null if the message is malformed:
@@ -38,7 +38,7 @@ const MAX_OBJECT_FIELDS: int = 32
 const OBJECT_STATE_HEADER_SIZE: int = 8
 ## Bytes that its [code]u16 npc_def_id[/code] adds to an NPC's ENTITY_SPAWN.
 const NPC_SPAWN_TAIL_SIZE: int = 2
-## Bytes added to a player's ENTITY_SPAWN after the name (protocol 7, docs/progresion.md §7.3): the
+## Bytes added to a player's ENTITY_SPAWN after the name (protocol 7, docs/progression.md §7.3): the
 ## [code]u8 level[/code] and the 8 B of [CharacterAppearance].
 const PLAYER_SPAWN_TAIL_SIZE: int = 1 + CharacterAppearance.ENCODED_SIZE
 ## Bytes of the per-realm count at the end of the WELCOME ([code]u8 × 3[/code]).
@@ -49,7 +49,7 @@ const WELCOME_REALM_COUNTS_SIZE: int = 3
 const STATUS_IN_COMBAT: int = 1 << 0
 const STATUS_PROTECTED: int = 1 << 1
 const STATUS_DEAD: int = 1 << 2
-## Knocked down (protocol 6; docs/habilidades.md, section 5.2). Never together with [constant STATUS_DEAD]: a
+## Knocked down (protocol 6; docs/abilities.md, section 5.2). Never together with [constant STATUS_DEAD]: a
 ## knocked down character is not dead. With it, the extra block's health is the downed health and the maximum, the
 ## rules' downed maximum.
 const STATUS_DOWNED: int = 1 << 3
@@ -67,9 +67,9 @@ const INPUT_BATCH_HEADER_SIZE: int = 11
 const INPUT_RECORD_SIZE: int = 10
 ## Header of an ENTITY_SPAWN, before the entity's data.
 const SPAWN_HEADER_SIZE: int = 10
-## Bit 3 of the [code]flags[/code] of an ENTITY_SPAWN header (protocol 7, docs/plataforma.md §5.4): the
+## Bit 3 of the [code]flags[/code] of an ENTITY_SPAWN header (protocol 7, docs/platform.md §5.4): the
 ## character belongs to the game staff (moderator or higher), for the tag (SOC-14). It is not bit 3 of the
-## snapshot record's [code]flags[/code] (slot 2 active, from docs/habilidades.md).
+## snapshot record's [code]flags[/code] (slot 2 active, from docs/abilities.md).
 const SPAWN_FLAG_STAFF: int = 1 << 3
 ## Maximum of [code]view_offset_q[/code] (u16).
 const MAX_VIEW_OFFSET_Q: int = 0xFFFF
@@ -230,7 +230,7 @@ static func read_fields(bytes: PackedByteArray, offset: int, count: int,
 
 
 ## A field of an OBJECT_STATE or of a structure's ENTITY_SPAWN: [code]u8 field_id, u8
-## value_type[/code] and the value (docs/fuerte.md, section 2). Field ids are defined by whoever
+## value_type[/code] and the value (docs/fortress.md, section 2). Field ids are defined by whoever
 ## replicates the object ([FortressFields] for fortresses); here they only travel.
 class ObjectField:
 	## Type of the value in the message.
@@ -394,7 +394,7 @@ class Hello:
 ## WELCOME (S→C, authentication): 18 B + zone id + 3 B with the per-realm count.
 ## [br][br]
 ## After the zone id come three [code]u8[/code] with the players of Vardheim, Solmarch and Askarra in
-## the zone ([member realm_counts]), so that realm selection offers the emptiest one (docs/fuerte.md,
+## the zone ([member realm_counts]), so that realm selection offers the emptiest one (docs/fortress.md,
 ## section 7).
 class Welcome:
 	## Bytes without the zone id: the 18 B header and the per-realm count.
@@ -641,10 +641,10 @@ class ClientLeave:
 ## [method decode] validates the data of fixed-format commands: 1 [code]teleport[/code] requires
 ## 12 B; 7 [code]unstuck[/code], 8 [code]fort_reset[/code] and 10 [code]fort_kill_captain[/code], 0 B;
 ## 9 [code]fort_owner[/code], 1 B with the realm (0 to 3); 11 [code]fort_capture_speed[/code], 1 B with the
-## factor (1 to 255); 12 [code]npc_debug[/code], 1 B (0 or 1). Since protocol 6 (docs/habilidades.md,
+## factor (1 to 255); 12 [code]npc_debug[/code], 1 B (0 or 1). Since protocol 6 (docs/abilities.md,
 ## section 5.1): 13 [code]cooldowns_off[/code], 1 B (0 or 1); 14 [code]apply_status[/code], 3 B
 ## ([code]u8 status_id[/code] from 1 to 255 and [code]u16[/code] ticks, 0 = those from the data); 15 [code]down[/code]
-## and 16 [code]refill[/code], 0 B. Since protocol 7 (docs/progresion.md §10), the progression GM ones:
+## and 16 [code]refill[/code], 0 B. Since protocol 7 (docs/progression.md §10), the progression GM ones:
 ## 40 [code]item_give[/code], 4 B ([code]u16[/code] object net id from 1 and [code]u16[/code] quantity from 1 to
 ## 999); 41 [code]currency_add[/code], 5 B ([code]u8[/code] currency, 1 or 2, and [code]s32[/code] nonzero
 ## amount); 42 [code]level_set[/code], 1 B (from 1 to [constant ProgressMessages.MAX_LEVEL]); and 43 [code]xp_add[/code], 4
@@ -659,7 +659,7 @@ class DebugCommand:
 	const CURRENCY_ADD_PAYLOAD_SIZE: int = 5
 	## Bytes of data of [constant NetProtocol.DEBUG_XP_ADD]: [code]u32 amount[/code].
 	const XP_ADD_PAYLOAD_SIZE: int = 4
-	## Maximum quantity of [constant NetProtocol.DEBUG_ITEM_GIVE] (the largest stack, docs/progresion.md §2.1).
+	## Maximum quantity of [constant NetProtocol.DEBUG_ITEM_GIVE] (the largest stack, docs/progression.md §2.1).
 	const MAX_ITEM_GIVE_COUNT: int = 999
 	## Maximum XP of [constant NetProtocol.DEBUG_XP_ADD].
 	const MAX_XP_ADD: int = 10_000_000
@@ -1078,7 +1078,7 @@ class Snapshot:
 ## ENTITY_SPAWN (S→C, channel 3): 10 B + data depending on the entity type ([member kind]):
 ## [br]- [code]PLAYER[/code]: its [PlayerState] ([constant PlayerState.ENCODED_SIZE] B, the state after
 ## [member spawn_tick]), a `u8` with the name length, the name (up to 48 B) and, since protocol 7
-## (docs/progresion.md §7.3), [constant NetMessages.PLAYER_SPAWN_TAIL_SIZE] B: the [code]u8 level[/code]
+## (docs/progression.md §7.3), [constant NetMessages.PLAYER_SPAWN_TAIL_SIZE] B: the [code]u8 level[/code]
 ## ([member level]: 0 if the receiver is not of its realm) and the 8 B of [CharacterAppearance]
 ## ([member appearance]). [method decode] only checks its size and that the level does not exceed the cap; the validity of the
 ## appearance is checked by whoever draws it (an invalid one is replaced by the race's default).
@@ -1087,7 +1087,7 @@ class Snapshot:
 ## [br]- [code]STRUCTURE[/code]: [code]u8 def_len[/code], the definition id in ASCII
 ## ([member definition_id]), [code]u8 field_count[/code] and the complete fields ([member fields]); it
 ## carries no player state or name. Without repeating type, net_id or tick: they are those of the header.
-## [br]- [code]PROJECTILE[/code] (protocol 6; docs/habilidades.md, section 5.3): 22 B after the header,
+## [br]- [code]PROJECTILE[/code] (protocol 6; docs/abilities.md, section 5.3): 22 B after the header,
 ## [constant PROJECTILE_SIZE] in total: [code]u16 owner, u16 projectile_def_id, u16 source, u8
 ## volley_index, u8 proj_flags, u64 position, s16 × 3 velocity[/code]. [member net_id] is the
 ## projectile's, [member realm] the shooter's and [member spawn_tick] the tick of the shot. The header
@@ -1906,7 +1906,7 @@ class PartyRoster:
 
 ## PARTY_STATUS (S→C, channel 3, protocol 5): 2 B + 17 B per member (≤ 87 B). The compact state of the
 ## party members, which the server sends at 2 Hz to all members even if they are outside the others' radius of
-## interest (docs/social.md, section 12.4; docs/red.md, section 9).
+## interest (docs/social.md, section 12.4; docs/networking.md, section 9).
 ## [br][br]
 ## [code]u8 type, u8 count[/code] and, per member, [code]u16 net_id, u8 health_q, u8 stamina_q, u8 status, f32 x,
 ## f32 y, f32 z[/code]. [member MemberStatus.health_q] is the quantized health of the snapshot record
@@ -1995,7 +1995,7 @@ class PartyStatus:
 		return status
 
 
-## OBJECT_STATE (S→C, channel 3): 8 B + fields (docs/fuerte.md, section 2). The replicated state of an
+## OBJECT_STATE (S→C, channel 3): 8 B + fields (docs/fortress.md, section 2). The replicated state of an
 ## object that is not a player or an NPC, today that of a fortress.
 ## [br][br]
 ## [code]u8 type, u16 net_id, u32 tick, u8 field_count[/code] (from 1 to 32) and, per field, [code]u8
@@ -2139,7 +2139,7 @@ class ObjectState:
 ## [br]- [code]KILL[/code] (14 + 2n B): [code]u16 killer, u16 attack_id, u8 n[/code] and
 ## [code]n × u16[/code] assistants.
 ## [br]- [code]RESPAWN[/code] (10 B): [code]u8 point[/code].
-## [br]- [code]WAR[/code] (11 B, docs/fuerte.md section 5): [code]u8 war_event, u8 realm[/code].
+## [br]- [code]WAR[/code] (11 B, docs/fortress.md section 5): [code]u8 war_event, u8 realm[/code].
 ## [member net_id] is the fortress; [member war_event] is an id from [WarEvents] and [member war_realm]
 ## the realm that accompanies it ([method FortressState.event_realm]). It goes to the whole zone and is applied on the
 ## draw tick.
@@ -2149,7 +2149,7 @@ class ObjectState:
 ## record) and [member impact_in_ticks] the ticks remaining until the hit. It is a warning: it is applied on
 ## arrival.
 ## [br][br]
-## Since protocol 6 (docs/habilidades.md, section 5.4) the [code]attack_id[/code] of HIT, DEATH, KILL and
+## Since protocol 6 (docs/abilities.md, section 5.4) the [code]attack_id[/code] of HIT, DEATH, KILL and
 ## TELEGRAPH is a [b]source[/b] ([CombatSource]: kind in bits 14-15, id in 0-13; phase 3
 ## attacks keep their number), and there are five more events:
 ## [br]- [code]STATUS[/code] (18 B): [code]u16 source_entity, u8 op, u8 status_id, u8 stacks, u32
@@ -2166,7 +2166,7 @@ class ObjectState:
 ## knocked down one, [member actor] whoever revives or executes them, [member op] one of [enum InteractOp] and
 ## [member end_tick] the tick at which it would end.
 ## [br][br]
-## Since protocol 7 (docs/progresion.md §6.3): [code]LEVEL_UP[/code] (16; 10 B), [code]u8 level[/code] from 1
+## Since protocol 7 (docs/progression.md §6.3): [code]LEVEL_UP[/code] (16; 10 B), [code]u8 level[/code] from 1
 ## to [constant ProgressMessages.MAX_LEVEL]. [member net_id] is whoever levels up; it goes to the owner and to those of their realm who
 ## find it relevant, for the visual effect (it does not reach the enemy). 16 leaves a gap for the phase 4 events.
 ## [br][br]
@@ -2691,7 +2691,7 @@ class RespawnRequest:
 		return request
 
 
-## UNSTUCK_REQUEST (C→S, channel 3): 1 B. The player requests /atascado (docs/fuerte.md, section 5): it is its own
+## UNSTUCK_REQUEST (C→S, channel 3): 1 B. The player requests /atascado (docs/fortress.md, section 5): it is its own
 ## message and is valid without [code]--debug-commands[/code]. The server decides whether it proceeds (out of
 ## combat, 5 min cooldown...).
 class UnstuckRequest:
@@ -2709,7 +2709,7 @@ class UnstuckRequest:
 
 
 ## LOADOUT_SELECT (C→S, channel 3, protocol 6): 2 B, [code]u8 type, u8 template_id[/code]. The equipment
-## template the player wants for their next spawn (docs/habilidades.md, sections 4.6 and 5.1). Valid
+## template the player wants for their next spawn (docs/abilities.md, sections 4.6 and 5.1). Valid
 ## from the WELCOME, also before CLIENT_READY. [member template_id] is a combat catalog id
 ## ([method CombatCatalog.template_id]) or 0, the default one; the server counts a warning if it does not exist or
 ## cannot be chosen. [method decode] only checks the size and the type.
@@ -2735,7 +2735,7 @@ class LoadoutSelect:
 		return LoadoutSelect.make(bytes[1])
 
 
-## A scoreboard row: what counts for a player (docs/fuerte.md, section 6), 18 B.
+## A scoreboard row: what counts for a player (docs/fortress.md, section 6), 18 B.
 ## [code]u16 net_id, u16 kills, u16 deaths, u16 assists, u32 gate_damage, u16 circle_seconds, u32
 ## merits[/code]. Counters saturate at their maximum when encoding.
 class ScoreRow:
@@ -2791,7 +2791,7 @@ class ScoreRow:
 		return row
 
 
-## SCOREBOARD (S→C, channel 3): 4 B + 18 B per row (docs/fuerte.md, section 6). The zone's scoreboard,
+## SCOREBOARD (S→C, channel 3): 4 B + 18 B per row (docs/fortress.md, section 6). The zone's scoreboard,
 ## every 2 s to all players.
 ## [br][br]
 ## [code]u8 type, u8 page_index, u8 page_count, u8 row_count[/code] and [code]row_count[/code] rows

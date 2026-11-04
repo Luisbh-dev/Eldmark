@@ -1,5 +1,5 @@
 extends TestCase
-## The siege with the real NPCs (F6b; GUE-15, MUN-10, MUN-11; docs/fuerte.md, sections 7 and 8.3): fake players with
+## The siege with the real NPCs (F6b; GUE-15, MUN-10, MUN-11; docs/fortress.md, sections 7 and 8.3): fake players with
 ## the siege brain ([constant BotBrain.Pattern.SIEGE]) break the neutral fort's door in Vado Gris, kill
 ## the Hollow and the Ford Captain all by themselves (without [code]fort_kill_captain[/code]) and capture it, leaving the zone
 ## of the Captain's unblockable strike when it warns of it (TELEGRAPH). It is the short version of

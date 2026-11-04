@@ -6,7 +6,7 @@
 script = ExtResource("1_item")
 id = &"test_iron_helm"
 display_name = "Yelmo de prueba"
-description = "Objeto de prueba (tests/fixtures/items): la regla de ARMOR de docs/progresion.md §2.1."
+description = "Objeto de prueba (tests/fixtures/items): la regla de ARMOR de docs/progression.md §2.1."
 category = 2
 equip_slot = 2
 ref_id = &""

@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [FortressFields] (docs/fuerte.md, section 2): the OBJECT_STATE field ids, their
+## Tests for [FortressFields] (docs/fortress.md, section 2): the OBJECT_STATE field ids, their
 ## value type and their reading and writing on a [FortressState].
 
 const DEFINITION_PATH: String = "res://data/fortresses/vado_gris.tres"

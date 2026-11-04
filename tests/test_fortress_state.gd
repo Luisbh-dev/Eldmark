@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [FortressState] (docs/fuerte.md, sections 1.3 to 1.5): every row of the decision table,
+## Tests for [FortressState] (docs/fortress.md, sections 1.3 to 1.5): every row of the decision table,
 ## the progress formula versus simulating tick by tick, the decays, the contest, the reset, the
 ## respawn of the captain and the guards, the gate and the fields that change.
 ## Everything is pure (no nodes), so thousands of ticks run instantly.

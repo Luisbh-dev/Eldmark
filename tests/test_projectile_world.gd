@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [ProjectileWorld] (docs/habilidades.md, sections 6.2 and 7.3, H4) without a server: the arrows' SPAWN and
+## Tests for [ProjectileWorld] (docs/abilities.md, sections 6.2 and 7.3, H4) without a server: the arrows' SPAWN and
 ## DESPAWN are synthetic messages, as in test_net_client.gd.
 ## [br]- The predicted arrow is replaced by the server's (same source and index, tick within the buffer)
 ## without jumps: the visual offset decays over 6 ticks.

@@ -1,6 +1,6 @@
 class_name ZoneDtls
 extends RefCounted
-## Zone DTLS certificate and key (docs/plataforma.md §10.2, P9c; TEC-27).
+## Zone DTLS certificate and key (docs/platform.md §10.2, P9c; TEC-27).
 ## [br][br]
 ## [code]ServerMain[/code] loads it with [method load_files] from [code]--dtls-cert=<pem>[/code] and
 ## [code]--dtls-key=<pem>[/code] (paths: in staging and production, Docker secrets mounted at

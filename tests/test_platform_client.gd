@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests of [PlatformClient] and [ZonePlatform] with a real [HTTPRequest] against [FakeHttpServer] (a
-## [TCPServer] in the same process, docs/plataforma.md §6 and §15 P4): timeout and retry with the same bytes,
+## [TCPServer] in the same process, docs/platform.md §6 and §15 P4): timeout and retry with the same bytes,
 ## the claim that is not retried, the heartbeat and the claim that do not wait behind four slow saves,
 ## the order by priority, empty and broken bodies without engine errors, [code]zone_instance_id[/code] and the
 ## [code]key[/code] of the batches, the heartbeat set, a single [code]instance_closed[/code], the release with
@@ -476,7 +476,7 @@ func test_the_zone_process_registers_goes_live_and_deregisters() -> void:
 
 
 ## With a production env and --debug-commands, the real zone server exits with code 1 after deregistering
-## (docs/plataforma.md §5.5).
+## (docs/platform.md §5.5).
 func test_the_zone_process_exits_with_dev_options_in_production() -> void:
 	_start_http()
 	_register_env = "production"

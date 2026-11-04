@@ -1,5 +1,5 @@
 extends TestCase
-## Currencies and reasons (docs/progresion.md §5, PRG-12): [Currency], [CurrencyRules] and [EconomyReason]. Caps,
+## Currencies and reasons (docs/progression.md §5, PRG-12): [Currency], [CurrencyRules] and [EconomyReason]. Caps,
 ## negatives (also with deltas near 2^63, without wrapping around), two operations on the same tick on a
 ## balance (the second does not fit and is not applied, as in the DB of §5.4), rebuilding the balance from the
 ## entries and the ranges and signs of the reasons.

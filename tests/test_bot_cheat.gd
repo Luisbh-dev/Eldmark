@@ -1,5 +1,5 @@
 extends TestCase
-## The cheating bot ([BotCheater], [code]--bot-cheat[/code]; docs/red.md, sections 12 and 16; TEC-46)
+## The cheating bot ([BotCheater], [code]--bot-cheat[/code]; docs/networking.md, sections 12 and 16; TEC-46)
 ## against a real [ZoneServer] in the same process, with ENet over 127.0.0.1: an honest bot and a
 ## cheater, each in its own [SubViewport] with its own physics world. One method per mode:
 ## [br]- [code]version[/code]: REJECT VERSION and the cheater never gets in;
@@ -11,7 +11,7 @@ extends TestCase
 ## a dummy with the game's rules, but with the view falsified to 40 ticks, from 5 m or mashing
 ## PRIMARY. None does extra damage: the excessive rewind is not tested and adds suspicion; from 5 m there is
 ## no hit; and mashing the button does not hit faster than the data's combo.
-## [br]- [code]reuse[/code], [code]potion[/code] and [code]interact[/code] (phase 4; docs/habilidades.md, section 4.7):
+## [br]- [code]reuse[/code], [code]potion[/code] and [code]interact[/code] (phase 4; docs/abilities.md, section 4.7):
 ## mashing an ability on cooldown gives one hit per cooldown; mashing the potions, one sip per
 ## shared cooldown and with charges; mashing INTERACT far from everyone neither revives nor finishes off anyone. No
 ## extra effect or suspicion.
@@ -393,7 +393,7 @@ func _assert_client_untouched(client: NetClient) -> void:
 	assert_eq(client.get_state(), NetClient.State.IN_WORLD)
 
 
-# --- Phase 4 modes: reuse, potion and interact (docs/habilidades.md, section 4.7) -------------
+# --- Phase 4 modes: reuse, potion and interact (docs/abilities.md, section 4.7) -------------
 
 ## Ticks the reuse cheater fights: more than one shield bash cooldown (738 = 720 + 18).
 const REUSE_FIGHT_TICKS: int = 900
@@ -464,7 +464,7 @@ func test_potion_cheater_drinks_only_with_charges_and_off_the_shared_cooldown() 
 		combatant.take_damage(600, _server.get_tick())
 		if joined.size() == 2:
 			# The second: 1 health and 0 stamina, with its LOADOUT (the client explains it, like command 16). Without a
-			# platform it is an ephemeral character with an inventory (progresion.md §9.4, P5b) and its charges are the potions in
+			# platform it is an ephemeral character with an inventory (progression.md §9.4, P5b) and its charges are the potions in
 			# its bag: the surplus ones are removed first.
 			var progress: PlayerProgress = _server.get_progress().get_player(net_id)
 			progress.lose_items(&"potion_health", progress.record.inventory.count_of(&"potion_health") - 1,

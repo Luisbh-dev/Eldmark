@@ -1,8 +1,8 @@
 class_name IdAllocator
 extends RefCounted
-## The zone's ids (docs/progresion.md §4.5): the object [code]uid[/code]s and the [code]op_id[/code]s of
+## The zone's ids (docs/progression.md §4.5): the object [code]uid[/code]s and the [code]op_id[/code]s of
 ## operations come from the same generator. With a platform, from the blocks of 1024 that
-## [code]POST /internal/v1/id-blocks[/code] gives ([method ZonePlatform.request_id_block], plataforma.md §6), unique across
+## [code]POST /internal/v1/id-blocks[/code] gives ([method ZonePlatform.request_id_block], platform.md §6), unique across
 ## all worlds; without a platform, [method local] counts from 1 in memory (nothing is saved).
 ## [br][br]
 ## [b]Three bands[/b], from the bottom up in what remains:

@@ -12,12 +12,12 @@ extends RefCounted
 ## [member frozen] is the "current-tick sample" (docs/combate.md, 4.2): the entity's position, turn,
 ## defensive flags and action right after simulating the tick, which the
 ## [CombatResolver] uses so that all the hits of a tick are simultaneous. Since phase 4
-## (docs/habilidades.md, section 4.1, step 2) it also freezes the active hit (an attack or an ability's
+## (docs/abilities.md, section 4.1, step 2) it also freezes the active hit (an attack or an ability's
 ## synthesized hit), if it is the commitment tick, and the shield wall's box.
 ## [br][br]
 ## [member effects] are its active status effects (carried by the [StatusSystem]).
 ## [br][br]
-## [b]Knocked down[/b] (docs/habilidades.md, section 4.5; carried by the [DownedSystem]): with health at 0 after a lethal
+## [b]Knocked down[/b] (docs/abilities.md, section 4.5; carried by the [DownedSystem]): with health at 0 after a lethal
 ## hit from a hostile player in an RvR zone, the player is knocked down ([method is_downed]) with
 ## [member downed_health] of downed health. A downed player is neither alive nor dead: [method is_alive] is
 ## [code]health > 0[/code] (unchanged) and [method is_dead] is [code]health == 0[/code] and not downed. Whoever
@@ -187,13 +187,13 @@ func is_alive() -> bool:
 	return health > 0
 
 
-## true if dead: no health and not downed (docs/habilidades.md, section 4.5). A downed player is neither
+## true if dead: no health and not downed (docs/abilities.md, section 4.5). A downed player is neither
 ## alive nor dead.
 func is_dead() -> bool:
 	return health <= 0 and downed_tick < 0
 
 
-## true while downed (docs/habilidades.md, section 4.5).
+## true while downed (docs/abilities.md, section 4.5).
 func is_downed() -> bool:
 	return downed_tick >= 0
 
@@ -213,7 +213,7 @@ func is_protected(tick: int) -> bool:
 	return tick < protected_until
 
 
-## true if it is an invisible GM ([member NetEntity.gm_invisible], docs/plataforma.md §9.1): it neither deals nor takes damage,
+## true if it is an invisible GM ([member NetEntity.gm_invisible], docs/platform.md §9.1): it neither deals nor takes damage,
 ## is nobody's target and does not interact with downed players.
 func is_gm_invisible() -> bool:
 	return entity != null and entity.gm_invisible
@@ -475,7 +475,7 @@ func mark_hit(victim_id: int) -> void:
 
 ## Updates what the snapshots see: health, state, respawn tick and the entity's action byte
 ## ([method NetEntity.set_health_view]). When downed, health is the downed health over
-## [member CombatRules.downed_health] (docs/habilidades.md, section 5.2): its quantized health is never 0.
+## [member CombatRules.downed_health] (docs/abilities.md, section 5.2): its quantized health is never 0.
 func publish(tick: int) -> void:
 	if is_downed():
 		entity.set_health_view(downed_health, CombatCatalog.rules().downed_health, status_bits(tick), 0)

@@ -1,6 +1,6 @@
 extends SceneTree
 ## Writes [code]platform/internal/gamedata/progression_rules.json[/code] with
-## [method ProgressionRulesExport.build] (docs/progresion.md §13.4, docs/plataforma.md §4.4). It is the
+## [method ProgressionRulesExport.build] (docs/progression.md §13.4, docs/platform.md §4.4). It is the
 ## only way to change that file: [code]tests/test_progression_rules_export.gd[/code] fails if it
 ## does not match the rules in the code.
 ## [br][br]

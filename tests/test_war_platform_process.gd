@@ -1,5 +1,5 @@
 extends TestCase
-## Persistent war with the real zone server (docs/plataforma.md §8 and §15 P6, GUE-19): the Vado Gris
+## Persistent war with the real zone server (docs/platform.md §8 and §15 P6, GUE-19): the Vado Gris
 ## in another process with [code]--platform[/code] against [FakeHttpServer], which stores the fortress
 ## records like the platform does (with [code]expected_version[/code]). A first process changes the
 ## owner and kills the captain with [code]--run-at[/code]; a second one starts with the platform not

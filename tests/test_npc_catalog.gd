@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of [NpcCatalog] and of the NPC data (MUN-07, MUN-08; docs/fuerte.md 4.2): the ids 1..n in
+## Tests of [NpcCatalog] and of the NPC data (MUN-07, MUN-08; docs/fortress.md 4.2): the ids 1..n in
 ## alphabetical order that the client uses, the definitions in [code]data/npcs/[/code], and that the NPC
 ## weapons in [code]data/combat/npc_*.tres[/code] have a readable anticipation (≥ 0.45 s for light ones,
 ## ≥ 0.70 s for heavy ones) and only the Captain's heavy blow is unblockable.

@@ -1417,7 +1417,7 @@ func test_stop_notifies_the_clients_and_closes_the_transport() -> void:
 	assert_eq(_server.get_player_count(), 0)
 
 
-# --- Security (docs/red.md, section 12): the limiters, the per-IP cap and the warnings -----------
+# --- Security (docs/networking.md, section 12): the limiters, the per-IP cap and the warnings -----------
 
 ## Report warnings by reason: {reason: times}.
 func _strike_reasons() -> Dictionary:

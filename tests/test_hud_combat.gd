@@ -6,7 +6,7 @@ extends TestCase
 ## leftovers) and the list of respawn points ([RespawnPointList]). The last part mounts the entire
 ## [HUD] with a fake network client that provides health and state at will.
 ## [br][br]
-## Phase 4 (H4, docs/habilidades.md, section 6.5): the knocked-down alerts (countdown, get up, finish off and
+## Phase 4 (H4, docs/abilities.md, section 6.5): the knocked-down alerts (countdown, get up, finish off and
 ## the invitation to help an ally up), the template selector on the death screen and the bow
 ## aiming (camera zoom and reticle).
 

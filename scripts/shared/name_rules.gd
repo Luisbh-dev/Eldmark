@@ -6,7 +6,7 @@ extends RefCounted
 ## A valid name has [constant MIN_LENGTH] to [constant MAX_LENGTH] Latin letters
 ## (a-z, with the accents áéíóú, ü and ñ), with no spaces, digits or symbols, starts with an
 ## uppercase letter and is not one of the [constant RESERVED] (game titles, realms, places and NPCs from
-## docs/mundo.md). The rest of the letters are accepted as they come, uppercase or lowercase.
+## docs/world.md). The rest of the letters are accepted as they come, uppercase or lowercase.
 ## [br][br]
 ## To compare names ([method normalize_key]) they are lowercased and the accents, the
 ## diaeresis and the eñe are removed, so that "Álvaro", "alvaro" and "ALVARO" are the same name, and also
@@ -48,7 +48,7 @@ const DEFAULT_SUFFIX_LETTERS: int = 4
 
 ## Reserved names (compared with [method normalize_key], so it does not matter how they are
 ## written here): game titles and notices, the realms and factions, and the main places and NPCs
-## from docs/mundo.md. It does not include first names that only appear in a place name ("Atalaya de
+## from docs/world.md. It does not include first names that only appear in a place name ("Atalaya de
 ## Brenn", "Cantera de Odd"...).
 const RESERVED: Array[String] = [
 	# System titles and voices.
@@ -72,7 +72,7 @@ const FOLDED: Dictionary = {
 }
 
 ## Code of each reason in the platform API (the [code]reason[/code] of the 422
-## [code]name_invalid[/code] and of [code]name-check[/code], docs/plataforma.md §4.1 and §4.4), by
+## [code]name_invalid[/code] and of [code]name-check[/code], docs/platform.md §4.1 and §4.4), by
 ## value of [enum Reason]. The cases shared with Go ([code]tests/fixtures/names/[/code]) use them.
 const REASON_CODES: Dictionary = {
 	Reason.OK: "ok",

@@ -1,6 +1,6 @@
 class_name InventoryOps
 extends RefCounted
-## The inventory operations (docs/progresion.md §4.2–§4.4, PRG-11), pure and shared: the server
+## The inventory operations (docs/progression.md §4.2–§4.4, PRG-11), pure and shared: the server
 ## uses them to decide and the client for its optimistic intent (§11.3), so both validate the same
 ## way.
 ## [br][br]
@@ -369,7 +369,7 @@ static func add_items(state: InventoryState, def_id: StringName, count: int, rea
 ## one): first from instance [param prefer_uid] if it is of that definition, then from the bag in
 ## slot order (CONSUME: the stack with the lowest slot) and finally from equipment. A stack that
 ## drops to 0 disappears and its [code]uid[/code] dies. The slots in [param protected] are not
-## touched (the reversal in progresion.md §10 does not remove from the active equipment slot).
+## touched (the reversal in progression.md §10 does not remove from the active equipment slot).
 ## All or nothing: INVALID with [param count] < 1, STALE if there are not that many outside the
 ## protected ones. It does not look at the active slot (I10): removing an equipped weapon is up to
 ## the caller ([member Outcome.weapons_changed]).
@@ -423,7 +423,7 @@ static func count_outside(state: InventoryState, def_id: StringName, protected: 
 ## Creates [param count] units of [param def_id] in new stacks (up to
 ## [member ItemDefinition.max_stack] each) in the first free bag slots, with ids from
 ## [member Context.new_uid] and reason [param reason]: without merging with existing ones (the GM
-## [code]item_give[/code] and the reversal in progresion.md §10, which create "with other uids").
+## [code]item_give[/code] and the reversal in progression.md §10, which create "with other uids").
 ## With [param template], each stack copies its durability, rarity, binding, seed and affixes (the
 ## retired row of what is being reverted); without it, like [method ItemInstance.create]. All or
 ## nothing: INVALID with a definition that does not exist, [param count] < 1 or a template from

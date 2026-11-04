@@ -1,6 +1,6 @@
 class_name SiegeRunner
 extends Node
-## A siege with fake players on the real zone (GUE-15, GUE-17; docs/fuerte.md, section 7), in a
+## A siege with fake players on the real zone (GUE-15, GUE-17; docs/fortress.md, section 7), in a
 ## single process and with no network: loads Vado Gris with its Terrain3D, starts a [ZoneServer] and advances it "by hand",
 ## many ticks per physics frame ([member ticks_per_frame]), so that a battle of minutes of game time
 ## lasts seconds. It is used by [code]tools/war/siege_battle.gd[/code] (the command-line tool, which

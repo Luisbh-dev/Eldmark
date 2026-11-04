@@ -27,9 +27,9 @@ const PLAYER_BLOCKER_LAYER: int = 1 << 2
 ## Layer of structures (layer 4): the visible body of the fort gate. It is part of the line of
 ## sight of hits ([constant HitShapes.LINE_OF_SIGHT_MASK]), of the camera arm's mask and of the
 ## navigation bake, but not of the character's mask: stopping movement is the job of the realm
-## layers (docs/fuerte.md, section 3.1).
+## layers (docs/fortress.md, section 3.1).
 const STRUCTURE_LAYER: int = 1 << 3
-## Bit position of the first realm's layer (docs/fuerte.md, section 3.1): layer 5 is Vardheim's
+## Bit position of the first realm's layer (docs/fortress.md, section 3.1): layer 5 is Vardheim's
 ## (realm code 1), 6 is Solmarch's and 7 is Askarra's.
 ## See [method realm_layer].
 const REALM_LAYER_BASE: int = 4
@@ -214,7 +214,7 @@ func simulate(input: PlayerInput, delta: float) -> void:
 			if absf(input.move.x) > absf(input.move.y):
 				speed *= strafe_multiplier
 			target_velocity = wish * speed
-		# Movement effects (slow, root; docs/habilidades.md, section 3.4): scale the target speed, also
+		# Movement effects (slow, root; docs/abilities.md, section 3.4): scale the target speed, also
 		# the attacks' advance and the sprint. The dodge, an ability's advance and the push (imposed
 		# speed) do not.
 		target_velocity *= action.speed_factor

@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests for [FrontMain] with the real scene and the fake platform ([FakePublicPlatform] as
-## [member PlatformApi.request_hook]; docs/plataforma.md §13 and §15 P8): title → selection (and "Recordar correo"
+## [member PlatformApi.request_hook]; docs/platform.md §13 and §15 P8): title → selection (and "Recordar correo"
 ## (remember email) without the password), the sanctioned account (export and delete), the new texts, entering with a ticket towards
 ## [OnlineMain] ([member ClientConfig.from_front]), the forced rename, waiting on [code]character_busy[/code],
 ## create, delete and restore, log out, the lost session, registration (it only logs in against a local

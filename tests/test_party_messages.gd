@@ -298,7 +298,7 @@ func test_status_malformed_is_null() -> void:
 	var bad_status: PackedByteArray = valid.duplicate()
 	bad_status[6] = 0b10000
 	assert_null(NetMessages.PartyStatus.decode(bad_status), "an unknown status bit")
-	# Bit 3 (knocked down) exists since protocol 6 (docs/habilidades.md, section 5.2).
+	# Bit 3 (knocked down) exists since protocol 6 (docs/abilities.md, section 5.2).
 	var downed: PackedByteArray = valid.duplicate()
 	downed[6] = NetMessages.STATUS_DOWNED
 	var downed_back: NetMessages.PartyStatus = NetMessages.PartyStatus.decode(downed)

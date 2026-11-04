@@ -1,119 +1,119 @@
-# Eldmark: visión del juego
+# Eldmark: game vision
 
-## Concepto
+## Concept
 
-MMORPG 3D de fantasía medieval centrado en la guerra entre tres reinos. Cada
-jugador pertenece a un reino. Dentro de su reino progresa con contenido PvE; en
-la zona de guerra central lucha contra los otros dos reinos por el control de
-fuertes y castillos.
+A 3D medieval fantasy MMORPG centered on the war between three realms. Each
+player belongs to a realm. Within their own realm they progress through PvE
+content; in the central war zone they fight the other two realms for control
+of forts and castles.
 
-## Los tres reinos
+## The three realms
 
-Mundo elegido: **La Corona Rota**. Los tres pueblos fueron un solo reino, Eld,
-gobernado desde la ciudadela de Aldcor, donde ardía la Llama de Eld. Al morir el
-último rey sin heredero, los tres linajes se disputaron el trono; la Llama
-estalló y la tierra se agrietó (la Quiebra). Las Brasas de Eld, esquirlas de la
-Llama, siguen ardiendo en las ruinas y dan poder a quien las controla.
+Chosen setting: **The Broken Crown**. The three peoples were once a single
+kingdom, Eld, ruled from the citadel of Aldcor, where the Flame of Eld burned.
+When the last king died without an heir, the three bloodlines fought over the
+throne; the Flame exploded and the land cracked open (the Rift). The Embers of
+Eld, shards of the Flame, still burn in the ruins and grant power to whoever
+controls them.
 
-| Reino | Inspiración y paisaje | Arquitectura | Colores y emblema | Capital |
+| Realm | Inspiration and landscape | Architecture | Colors and emblem | Capital |
 |---|---|---|---|---|
-| **Vardheim** (norte) | Clanes nórdicos y anglosajones; fiordos, pinares, tundra y glaciares | Casas largas de madera oscura, empalizadas, torres de piedra tosca | Gris acero y azul hielo; lobo blanco | Isenholm |
-| **Solmarch** (suroeste) | Teocracia gótica; valles fértiles, viñedos, ríos lentos | Caliza clara, catedrales, torres cónicas de pizarra azul | Blanco y oro; sol radiante partido | Valcorin |
-| **Askarra** (sureste) | Señores forjadores y mercaderes; cañones rojos, mesetas y campos volcánicos | Arenisca roja y terracota, cúpulas bajas, ciudades talladas en la roca | Carmesí y bronce; yunque sobre una grieta en llamas | Kassar |
+| **Vardheim** (north) | Norse and Anglo-Saxon clans; fjords, pine forests, tundra and glaciers | Longhouses of dark wood, palisades, rough stone towers | Steel gray and ice blue; white wolf | Isenholm |
+| **Solmarch** (southwest) | Gothic theocracy; fertile valleys, vineyards, slow rivers | Pale limestone, cathedrals, conical towers of blue slate | White and gold; split radiant sun | Valcorin |
+| **Askarra** (southeast) | Forge lords and merchants; red canyons, mesas and volcanic fields | Red sandstone and terracotta, low domes, cities carved into the rock | Crimson and bronze; anvil over a burning crack | Kassar |
 
-La zona de guerra es **Eldrun**: el cadáver del antiguo reino, con la ciudadela
-en ruinas de Aldcor en el centro. Los detalles de zonas, fortalezas y la primera
-zona de frontera están en [mundo.md](mundo.md).
+The war zone is **Eldrun**: the corpse of the old kingdom, with the ruined
+citadel of Aldcor at its center. The details of the zones, fortresses and the
+first border zone are in [world.md](world.md).
 
-Cada reino tiene:
+Each realm has:
 
-- Una ciudad capital, más ciudades y aldeas
-- Varias zonas PvE con niveles progresivos
-- Una muralla que rodea todo el reino, con puertas que dan a la zona de guerra
+- A capital city, plus further towns and villages
+- Several PvE zones with progressive levels
+- A wall surrounding the whole realm, with gates that open onto the war zone
 
-## Zona de guerra central
+## Central war zone
 
-Mapa compartido por los tres reinos, en el centro del mundo. Cada reino se
-conecta con ella a través de las puertas de su muralla.
+A map shared by the three realms, at the center of the world. Each realm
+connects to it through the gates of its wall.
 
-- **Fuertes**: objetivos pequeños y rápidos de capturar.
-- **Castillos**: objetivos grandes, con murallas, puertas y varias líneas de defensa.
-- Puertas y muros destructibles, y armas de asedio.
-- Defensores PNJ (guardias y un señor de la fortaleza) a los que hay que derrotar para capturarla.
-- El reino que captura una fortaleza la conserva hasta que otro se la quite.
-- Controlar fortalezas da recompensas a todo el reino (por definir).
+- **Forts**: small objectives that are quick to capture.
+- **Castles**: large objectives, with walls, gates and several lines of defense.
+- Destructible gates and walls, and siege weapons.
+- NPC defenders (guards and a fortress lord) who must be defeated to capture the fortress.
+- The realm that captures a fortress keeps it until another realm takes it away.
+- Controlling fortresses grants rewards to the whole realm (to be defined).
 
-## Decisiones técnicas que salen de esta visión
+## Technical decisions that follow from this vision
 
-- **Mundo por zonas, no continuo.** Cada zona es un mapa independiente con su
-  propio proceso de servidor. Pasar de una a otra (por ejemplo, cruzar la puerta
-  de la muralla) implica una carga breve. Es más simple, escala mejor y evita
-  los problemas de precisión numérica de los mapas gigantes.
-- **Servidor autoritativo** para todo lo que importa en PvP: movimiento, daño y
-  estado de las fortalezas. El cliente nunca decide resultados.
-- **La zona de guerra es el mapa más exigente**, con muchos jugadores a la vez.
-  Cada cliente recibe solo lo que tiene cerca, y el rendimiento se mide desde
-  el principio.
-- **Combate de acción** (ver sección siguiente): exige predicción en el cliente
-  y compensación de latencia en el servidor desde el primer día.
+- **Zone-based world, not continuous.** Each zone is an independent map with its
+  own server process. Moving from one to another (for example, crossing the gate
+  in the wall) involves a short load. It is simpler, scales better and avoids
+  the numerical precision problems of giant maps.
+- **Authoritative server** for everything that matters in PvP: movement, damage and
+  fortress state. The client never decides outcomes.
+- **The war zone is the most demanding map**, with many players at once.
+  Each client receives only what is near it, and performance is measured from
+  the very beginning.
+- **Action combat** (see next section): requires client-side prediction
+  and server-side lag compensation from day one.
 
-## Combate
+## Combat
 
-Combate de acción en tercera persona, estilo New World:
+Third-person action combat, New World style:
 
-- Cámara por encima del hombro con punto de mira. El ratón mueve la cámara
-  siempre; una tecla libera el cursor para usar la interfaz.
-- Golpes ligeros y fuertes, bloqueo y esquiva, gestionados con resistencia (stamina).
-- Sin selección de objetivo: los ataques aciertan si el arco del arma o el
-  proyectil toca al enemigo.
-- Habilidades con tiempo de reutilización, ligadas al arma equipada.
+- Over-the-shoulder camera with a crosshair. The mouse always moves the camera;
+  a key frees the cursor to use the interface.
+- Light and heavy attacks, block and dodge, managed with stamina.
+- No target selection: attacks hit if the weapon's arc or the projectile
+  touches the enemy.
+- Abilities with cooldowns, tied to the equipped weapon.
 
-Cómo se hace en red sin que el servidor deje de mandar:
+How it works over the network without the server losing authority:
 
-- **Predicción en el cliente**: tu personaje se mueve y ataca al instante en
-  tu pantalla; el servidor confirma y corrige si hace falta.
-- **Interpolación**: los demás jugadores se muestran ligeramente en el pasado
-  para que se muevan suaves.
-- **Compensación de latencia**: el servidor guarda un historial corto de dónde
-  estaba cada jugador y comprueba los golpes "rebobinando" al momento en que
-  el atacante los vio.
-- **Validación en el servidor**: resistencia, tiempos de reutilización,
-  alcance y línea de visión. El cliente solo envía intenciones.
-- **Límite de jugadores por batalla**: el combate de acción es más caro de
-  calcular. Hay que medir pronto cuántos jugadores aguanta la zona de guerra
-  y diseñar los asedios en función de eso.
+- **Client-side prediction**: your character moves and attacks instantly on
+  your screen; the server confirms and corrects if needed.
+- **Interpolation**: other players are displayed slightly in the past
+  so that they move smoothly.
+- **Lag compensation**: the server keeps a short history of where each player
+  was and checks hits by "rewinding" to the moment the attacker saw them.
+- **Server-side validation**: stamina, cooldowns, range
+  and line of sight. The client only sends intents.
+- **Player cap per battle**: action combat is more expensive to
+  compute. We need to measure early how many players the war zone can handle
+  and design the sieges accordingly.
 
-## Comunidad y comunicación
+## Community and communication
 
-Los reinos están en guerra, así que no hay diplomacia: del enemigo se ve el cuerpo, el bando y, al
-apuntarle, el nombre, pero nunca llega su voz. Chat, susurros, grupos y gremios son solo del mismo
-reino y el servidor filtra por reino antes de enviar; entre reinos cruzan las animaciones (también las
-burlas) y nada más. Dentro del reino hay canales por alcance (decir, zona, grupo, banda, gremio,
-reino), grupos de 5, bandas para las batallas grandes, pings y marcas tácticas en lugar de chat de voz,
-y una escala de sanciones. Todo el diseño, con cifras provisionales, está en [social.md](social.md).
+The realms are at war, so there is no diplomacy: of an enemy you see the body, the side and, when
+you aim at them, the name, but their voice never reaches you. Chat, whispers, parties and guilds are only for the same
+realm and the server filters by realm before sending; between realms only animations cross (including
+taunts) and nothing else. Within a realm there are range-based channels (say, zone, party, raid, guild,
+realm), parties of 5, raids for the big battles, pings and tactical markers instead of voice chat,
+and a ladder of sanctions. The whole design, with provisional numbers, is in [social.md](social.md).
 
-## Primer objetivo jugable
+## First playable goal
 
-Antes de construir los reinos completos: un mapa de frontera pequeño con un
-fuerte capturable y dos reinos enfrentándose. Es el corazón del juego; si eso
-es divertido, el resto se construye alrededor.
+Before building the full realms: a small border map with one capturable
+fort and two realms facing each other. It is the heart of the game; if that
+is fun, the rest is built around it.
 
-## Hoja de ruta
+## Roadmap
 
-El desglose en tareas, con dependencias y decisiones pendientes, está en [backlog.md](backlog.md).
+The breakdown into tasks, with dependencies and pending decisions, is in [backlog.md](backlog.md).
 
-1. Personaje y cámara: movimiento con WASD y cámara de acción por encima del hombro
-2. Red: servidor dedicado, varios jugadores, predicción e interpolación, elección de reino ([diseño](red.md))
-3. Combate de acción: ataques, bloqueo, esquiva, resistencia, compensación de latencia, muerte y reaparición
-4. Primer fuerte capturable en un mapa de frontera pequeño
-5. Cuentas, personajes y guardado en base de datos
-6. Primer reino: ciudad capital, una zona PvE, muralla y puerta
-7. Zona de guerra completa: varios fuertes y castillos, armas de asedio y recompensas
-8. Los tres reinos completos y escalado a varios servidores
+1. Character and camera: WASD movement and an over-the-shoulder action camera
+2. Networking: dedicated server, multiple players, prediction and interpolation, realm selection ([design](networking.md))
+3. Action combat: attacks, block, dodge, stamina, lag compensation, death and respawn
+4. First capturable fort on a small border map
+5. Accounts, characters and database persistence
+6. First realm: capital city, one PvE zone, wall and gate
+7. Full war zone: several forts and castles, siege weapons and rewards
+8. The three full realms and scaling to multiple servers
 
-## Por definir
+## To be defined
 
-- Razas jugables de cada reino
-- Clases
-- Tamaño de los mapas
-- Recompensas por dominar la zona de guerra
+- Playable races of each realm
+- Classes
+- Map sizes
+- Rewards for dominating the war zone

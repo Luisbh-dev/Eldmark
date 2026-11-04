@@ -1,7 +1,7 @@
 extends SceneTree
 ## Reduces textures to the maximum resolution allowed in the repo before copying them.
 ##
-## Rules from docs/arte.md and CLAUDE.md: no texture over 2048 px enters the repo (1024
+## Rules from docs/art.md and CLAUDE.md: no texture over 2048 px enters the repo (1024
 ## for small props). It halves with a box filter ([method Image.shrink_x2]) until
 ## the longer side does not exceed [code]--max[/code]; on normal maps, it also
 ## renormalizes each vector after averaging.

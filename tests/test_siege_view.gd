@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [SiegeView] (docs/fuerte.md, section 7): what the siege bots see of a fort,
+## Tests for [SiegeView] (docs/fortress.md, section 7): what the siege bots see of a fort,
 ## filled from a [FortressState] (server) or from the OBJECT_STATE fields (clients).
 
 const DEFINITION_PATH: String = "res://data/fortresses/vado_gris.tres"

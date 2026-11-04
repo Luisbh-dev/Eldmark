@@ -1,5 +1,5 @@
 extends SceneTree
-## Phase 2 load test (docs/red.md, sections 14 and 16, "Load"; TEC-11). Outside the test runner:
+## Phase 2 load test (docs/networking.md, sections 14 and 16, "Load"; TEC-11). Outside the test runner:
 ## it launches a server and the clients as Godot processes, waits for them and summarises what the
 ## server (and the bot swarm) measures in one report per scenario.
 ## [br][br]
@@ -18,7 +18,7 @@ extends SceneTree
 ##
 ## # The phase 3 battery (see BRAWL_MATRIX): clustered brawls of 32, 40, 64 and 128 combatants with the
 ## # combat brain (server-side fakes and real bots that fight); 60 s of measurement each. Since H5 (phase 4,
-## # docs/habilidades.md, section 7.3) the fakes fight with the kit and half of them use the marksman
+## # docs/abilities.md, section 7.3) the fakes fight with the kit and half of them use the marksman
 ## # loadout (--fake-loadout=marksman:50), pure archers of which half fire at the sky (--fake-archers=50: their
 ## # arrows live 2 s): arrows, abilities, potions and knockdowns, with the fort NPCs in the zone
 ## godot --headless --path . -s res://tools/load_test.gd -- --brawl
@@ -33,7 +33,7 @@ extends SceneTree
 ## # The same with the real NPCs and the fort without help (F6b): 32 vs 32, 120 s of measurement
 ## godot --headless --path . -s res://tools/load_test.gd -- --scenario=siege --fakes=54 --bots=10 --seconds=120 --npcs
 ##
-## # TEC-27 (docs/plataforma.md §10.2): 64 clustered real bots without DTLS and with DTLS against the same zone, alternating
+## # TEC-27 (docs/platform.md §10.2): 64 clustered real bots without DTLS and with DTLS against the same zone, alternating
 ## # (without, with, without, with), 60 s of measurement per pass, and the comparison with the criterion (the tick p99
 ## # does not rise by more than 10 %)
 ## godot --headless --path . -s res://tools/load_test.gd -- --dtls-compare
@@ -71,7 +71,7 @@ extends SceneTree
 ## [br]- [code]--swarms=K[/code] swarm processes among which the bots are split (default 1; one process
 ## handles a few dozen).
 ## [br]- [code]--seconds=S[/code] seconds of measurement with everyone in (default 30; 120 with
-## [code]--matrix[/code], as docs/red.md, 16 requires).
+## [code]--matrix[/code], as docs/networking.md, 16 requires).
 ## [br]- [code]--net-sim=rtt=100,jitter=10,loss=1[/code] network simulator for the bots. With [code]--matrix[/code]
 ## each [constant MATRIX] scenario sets it (the 100 ms RTT one); the option only applies to those that
 ## do not carry one.
@@ -122,11 +122,11 @@ extends SceneTree
 ## 600 ticks, so the window runs from the first one after the bots join to the last one before they
 ## leave). The criterion uses the window's.
 ## [br][br]
-## [b]Phase 4 criterion[/b] (docs/habilidades.md, sections 7.3 and 8): in the 64 brawl with half
+## [b]Phase 4 criterion[/b] (docs/abilities.md, sections 7.3 and 8): in the 64 brawl with half
 ## marksmen, tick p99 below 16.7 ms and the [code]combat_projectiles[/code] section below
 ## 1 ms (p99); it is shown with the peak of live arrows against the zone cap and those the cap evicted.
 ## [br][br]
-## [b]Phase 2 criterion[/b] (docs/red.md, 14 and 16), with 64 clustered players and 100 ms of RTT on the
+## [b]Phase 2 criterion[/b] (docs/networking.md, 14 and 16), with 64 clustered players and 100 ms of RTT on the
 ## bots: tick p99 below 8 ms, at most 37 KB/s download per client and less than 1 % of
 ## substituted inputs. With other sizes or scenarios it is shown for reference.
 ## [br][br]
@@ -166,12 +166,12 @@ const SECTIONS: Array[String] = ["tick", "net", "npc_brains", "sim", "combat", "
 ## percentage fires at the sky ([code]--fake-archers[/code]).
 const BRAWL_LOADOUT: String = "marksman:50"
 const BRAWL_SKY_ARCHERS_PERCENT: int = 50
-## Phase 4 criterion (docs/habilidades.md, sections 7.3 and 8): p99 of the tick and of the projectiles section.
+## Phase 4 criterion (docs/abilities.md, sections 7.3 and 8): p99 of the tick and of the projectiles section.
 const MAX_P99_TICK_US_PHASE_4: int = 16700
 const MAX_P99_PROJECTILES_US: int = 1000
 ## Battery for [code]--matrix[/code]: [scenario, fake players, bots, bots' network simulator].
 ## The first three are the usual ones (no delay); the fourth is the phase 2 criterion measured as
-## docs/red.md, 16 requires (64 clustered and 100 ms of RTT); then spread, joins and leaves, and the sizes
+## docs/networking.md, 16 requires (64 clustered and 100 ms of RTT); then spread, joins and leaves, and the sizes
 ## of 128 and 256 fake players.
 const MATRIX: Array[Array] = [
 	["cluster", 64, 2, ""],
@@ -184,11 +184,11 @@ const MATRIX: Array[Array] = [
 	["cluster", 256, 10, ""],
 	["spread", 256, 10, ""],
 ]
-## Seconds of measurement for each [constant MATRIX] scenario (docs/red.md, 16: 120 s each).
+## Seconds of measurement for each [constant MATRIX] scenario (docs/networking.md, 16: 120 s each).
 const MATRIX_SECONDS: int = 120
 ## Battery for [code]--brawl[/code] (TEC-15): [scenario, fake players, real bots, bots' network
 ## simulator]. The combatants are the fakes plus the ten real bots: 32, 40, 64 and 128 in total. The 40 one is the
-## per-battle player limit with the phase 4 kit (docs/red.md, section 14) and the Vado Gris capacity.
+## per-battle player limit with the phase 4 kit (docs/networking.md, section 14) and the Vado Gris capacity.
 const BRAWL_MATRIX: Array[Array] = [
 	["brawl", 22, 10, ""],
 	["brawl", 30, 10, ""],
@@ -211,7 +211,7 @@ const SIEGE_MATRIX: Array[Array] = [
 	["siege", 54, 10, ""],
 	["siege", 118, 10, ""],
 ]
-## Seconds of measurement for each [constant SIEGE_MATRIX] siege (docs/fuerte.md, section 7: 120 s).
+## Seconds of measurement for each [constant SIEGE_MATRIX] siege (docs/fortress.md, section 7: 120 s).
 const SIEGE_SECONDS: int = 120
 ## Extra seconds left, in a siege, before the measurement window: the bots leave their camps
 ## and take 25 to 45 s to reach the gate (the bridge, direct; the ford, longer).
@@ -219,11 +219,11 @@ const SIEGE_EXTRA_SETTLE_SECONDS: float = 50.0
 ## Seconds of measurement for a single scenario.
 const DEFAULT_SECONDS: int = 30
 ## Certificate, key and DTLS name of [code]--dtls[/code] if no others are given: the test ones
-## (docs/plataforma.md §10.2).
+## (docs/platform.md §10.2).
 const DTLS_TEST_CERT: String = "res://tests/fixtures/dtls/zone_cert.pem"
 const DTLS_TEST_KEY: String = "res://tests/fixtures/dtls/zone_key.pem"
 const DTLS_TEST_NAME: String = "zona-pruebas.eldmark.test"
-## Campaign of [code]--dtls-compare[/code] (TEC-27, docs/plataforma.md §10.2): by default, 64 real bots with no fakes
+## Campaign of [code]--dtls-compare[/code] (TEC-27, docs/platform.md §10.2): by default, 64 real bots with no fakes
 ## in two swarms, clustered ([code]cluster[/code]: every snapshot goes full), 60 s of measurement, and two passes of each
 ## (without, with, without, with).
 const DTLS_COMPARE_FAKES: int = 0
@@ -392,7 +392,7 @@ func _run_scenario(run: Dictionary) -> Dictionary:
 			server_args.append("--fake-loadout=%s" % run["loadout"])
 		if scenario == "brawl" and not str(run["loadout"]).is_empty():
 			# The marksmen are pure archers and a share of them fire at the sky: arrows that live their 2 s, to get close to the
-			# zone cap (docs/habilidades.md, sections 7.3 and 8).
+			# zone cap (docs/abilities.md, sections 7.3 and 8).
 			server_args.append("--fake-archers=%d" % int(run["sky_archers"]))
 	if scenario == "siege":
 		server_args.append_array(siege_server_args(bool(run.get("npcs", false)), battle_log, settle_ticks))
@@ -815,7 +815,7 @@ func _combat_lines(figures: Dictionary) -> PackedStringArray:
 
 ## The capacity the server of a scenario with [param fakes] fakes and [param bots] real bots is launched with: all of them plus a
 ## margin of 8, always with an explicit [code]--max-players[/code]. Without it, Vado Gris would have its own capacity (40, the
-## per-battle limit measured with the phase 4 kit: [method NetZones.max_players], docs/red.md, section 14) and the
+## per-battle limit measured with the phase 4 kit: [method NetZones.max_players], docs/networking.md, section 14) and the
 ## 32 vs 32 and 64 vs 64 sieges of [constant SIEGE_MATRIX], or the 64 and 128 brawls, would not fit.
 static func server_max_players(fakes: int, bots: int) -> int:
 	return fakes + bots + 8
@@ -927,7 +927,7 @@ func _dtls_comparison_lines(comparison: Dictionary) -> PackedStringArray:
 	return lines
 
 
-# true if the scenario is the one the phase 2 criterion is defined for (docs/red.md, 16): 64
+# true if the scenario is the one the phase 2 criterion is defined for (docs/networking.md, 16): 64
 # clustered fake players, with bots and 100 ms of RTT.
 func _is_reference_run(run: Dictionary) -> bool:
 	return run["scenario"] == "cluster" and int(run["fakes"]) == 64 and int(run["bots"]) > 0 \

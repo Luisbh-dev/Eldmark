@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [RemoteInterpolator] (docs/red.md, sections 7 and 16): ordered ring without duplicates,
+## Tests for [RemoteInterpolator] (docs/networking.md, sections 7 and 16): ordered ring without duplicates,
 ## linear interpolation of position and velocity, [code]lerp_angle[/code] of the yaw when crossing ±PI,
 ## grounded from the nearest sample, 6-tick extrapolation and stopping, and the
 ## teleport counter.

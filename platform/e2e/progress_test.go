@@ -16,7 +16,7 @@ import (
 	"eldmark/platform/internal/progress"
 )
 
-// The end-to-end progression tests (progresion.md §15 P8): the bot with --bot-scenario=progress
+// The end-to-end progression tests (progression.md §15 P8): the bot with --bot-scenario=progress
 // (equips the bow from its bag, gives itself 50 gold and a health potion through DEBUG_COMMAND 41
 // and 40) against a test_world zone with --platform --debug-commands, and what the bot saw (the
 // progress key of its report) against what the real store's Load returns, field by field.
@@ -30,7 +30,7 @@ const (
 	currencyGold = 1
 )
 
-// savedItem is an entry of the record's items (progresion.md §3.4): Load's and the bot report's
+// savedItem is an entry of the record's items (progression.md §3.4): Load's and the bot report's
 // (ItemInstance.to_dictionary).
 type savedItem struct {
 	UID        string  `json:"uid"`
@@ -109,7 +109,7 @@ func readProgressReport(path string) (*progressReport, error) {
 }
 
 // makeAdmin gives the admin role to the account (DEBUG_COMMANDs 40 and 41 require it with the
-// platform, progresion.md §10). Without a set-role row in audit_log, S2 takes the role from accounts
+// platform, progression.md §10). Without a set-role row in audit_log, S2 takes the role from accounts
 // (sanctions.RoleAt).
 func makeAdmin(h *Harness, acc *Account) {
 	h.T.Helper()
@@ -226,7 +226,7 @@ func characterOf(t *testing.T, report *BotReport) int64 {
 	return id
 }
 
-// TestProgressEndToEnd (progresion.md §15 P8): the real platform, a test_world zone with
+// TestProgressEndToEnd (progression.md §15 P8): the real platform, a test_world zone with
 // --debug-commands and a bot of an admin account with the progress scenario, which creates its
 // character with the squire template (the bow in the bag), equips it, gives itself 50 gold and a
 // potion and leaves. What the bot saw is, field by field, what Load returns after its final save;
@@ -335,7 +335,7 @@ func TestProgressEndToEnd(t *testing.T) {
 	h.Logf("TestProgressEndToEnd: %.1f s", h.Elapsed().Seconds())
 }
 
-// TestProgressCrash (progresion.md §15 P8; TEC-25): the same with kill -9 on the zone as soon as
+// TestProgressCrash (progression.md §15 P8; TEC-25): the same with kill -9 on the zone as soon as
 // the bot has seen the gold arrive (its partial report says gold), before the potion. What is saved
 // adds up by SQL (by definition, sum of count_delta = sum of count of the live objects; per
 // currency, sum of delta = balance; a single kit) and a second bot of the same account joins

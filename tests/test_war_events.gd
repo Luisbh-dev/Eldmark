@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [WarEvents] (docs/fuerte.md, section 5): the war alert ids and their Spanish texts.
+## Tests for [WarEvents] (docs/fortress.md, section 5): the war alert ids and their Spanish texts.
 
 const FORT_NAME: String = "Fuerte del Vado Gris"
 

@@ -1,6 +1,6 @@
 class_name EconomyReason
 extends RefCounted
-## Reasons for ledger entries and item events (docs/progresion.md §5.3, PRG-12): a fixed u8 that is
+## Reasons for ledger entries and item events (docs/progression.md §5.3, PRG-12): a fixed u8 that is
 ## never reused. From 1 to 63, [b]sources[/b] ([code]delta > 0[/code]); from 64 to 127,
 ## [b]sinks[/b] ([code]delta < 0[/code]); from 128 to 191, [b]internal[/b] (any sign). Those of
 ## later phases already have their number. The [code]reasons[/code] section of the exported rules

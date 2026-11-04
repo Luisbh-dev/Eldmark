@@ -1,6 +1,6 @@
 class_name RealmBalance
 extends RefCounted
-## Realm balance of a zone (GUE-42; docs/fuerte.md, section 7): pure rules over per-realm counts, with no nodes or
+## Realm balance of a zone (GUE-42; docs/fortress.md, section 7): pure rules over per-realm counts, with no nodes or
 ## network. Used by [ServerAuth] (the REJECT 9 IMBALANCE), [ZoneServer] (the WELCOME's count) and [ServerMain] (the
 ## filler fake players).
 ## [br][br]

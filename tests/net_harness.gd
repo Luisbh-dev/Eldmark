@@ -1,6 +1,6 @@
 class_name NetHarness
 extends RefCounted
-## Helpers for the network integration tests (docs/red.md, sections 16 and 17.8).
+## Helpers for the network integration tests (docs/networking.md, sections 16 and 17.8).
 ## [br][br]
 ## A server ([ZoneServer]) and several clients ([NetClient]) fit in a single process if each one
 ## lives in its own [SubViewport] with [code]own_world_3d = true[/code] (separate physics spaces)

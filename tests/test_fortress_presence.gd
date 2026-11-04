@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [FortressPresence] (docs/fuerte.md, section 1.2): who counts inside the cylinder of the
+## Tests for [FortressPresence] (docs/fortress.md, section 1.2): who counts inside the cylinder of the
 ## capture circle.
 
 const DEFINITION_PATH: String = "res://data/fortresses/vado_gris.tres"

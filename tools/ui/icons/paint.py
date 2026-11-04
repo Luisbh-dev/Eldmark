@@ -1,7 +1,7 @@
 """Icon painting pass (ART-12): from flat layers to a drawing with material.
 
 The vector only gives shapes and gradients. This is what separates a flat icon from the "stylised with
-textures" look of docs/arte.md. It is done in Python (numpy and PIL) over the layers the engine rasterises:
+textures" look of docs/art.md. It is done in Python (numpy and PIL) over the layers the engine rasterises:
 
   - Each piece is painted from the bottom up. Before pasting it, it casts a soft occlusion onto what is already
     underneath (bottom right, like the single light): where two pieces overlap it is clear which goes

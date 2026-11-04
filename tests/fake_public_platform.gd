@@ -1,6 +1,6 @@
 class_name FakePublicPlatform
 extends RefCounted
-## The fake platform public API for client tests (docs/plataforma.md §4 and §15 P8): the
+## The fake platform public API for client tests (docs/platform.md §4 and §15 P8): the
 ## [member PlatformApi.request_hook] from [method hook] answers §4.2 to §4.5 with in-memory state
 ## (one account, its characters, entering the world) and records each call ([member calls]).
 ## Responses can be scripted per path with [method script_next] and delayed with

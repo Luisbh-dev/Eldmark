@@ -1,6 +1,6 @@
 class_name ItemEvent
 extends RefCounted
-## An item event (docs/progresion.md §3.3, §5.2 and §9.3, I4): the only thing that changes the
+## An item event (docs/progression.md §3.3, §5.2 and §9.3, I4): the only thing that changes the
 ## total quantity of a definition. It is given by sources, sinks, reversal and migration (§5.3);
 ## moving, splitting, merging, swapping and equipping give none. It belongs to an operation
 ## ([code]EconomyOp[/code], server-side), which carries it in its [code]items[/code].

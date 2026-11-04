@@ -1,6 +1,6 @@
 class_name PlatformClient
 extends Node
-## The zone's HTTP client against the platform's internal API (docs/plataforma.md §6), inside
+## The zone's HTTP client against the platform's internal API (docs/platform.md §6), inside
 ## [ZonePlatform]: threadless [HTTPRequest], a [member timeout_s] deadline per attempt, priority queues and the
 ## retries for each class of request. It never waits synchronously: it advances with the main loop.
 ## [br][br]

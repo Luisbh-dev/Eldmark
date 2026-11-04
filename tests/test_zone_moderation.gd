@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for moderation in the zone (docs/plataforma.md §9 and §15, P7b): with no role, "Comando
+## Tests for moderation in the zone (docs/platform.md §9 and §15, P7b): with no role, "Comando
 ## desconocido" (unknown command); a DEBUG_COMMAND with no role, a warning and nothing else;
 ## [code]/gm silenciar[/code] on a player and on a moderator; the mute with its remaining time, from the
 ## sanction and from the heartbeat; the audit entry with the GM's account and [code]source[/code]
@@ -356,7 +356,7 @@ func test_a_debug_command_without_its_role_warns_and_does_nothing() -> void:
 	assert_true(ana.entity.get_position().distance_to(start) < 0.5, "and it does not move")
 	assert_false(ana.entity.gm_forced)
 	assert_eq(_entries_of("teleport"), [] as Array[Dictionary], "without permission it is not audited on the platform")
-	# The gm one does, and it gets flagged (it earns nothing until respawn, progresion.md §6.2).
+	# The gm one does, and it gets flagged (it earns nothing until respawn, progression.md §6.2).
 	_receive(gema, NetMessages.DebugCommand.teleport(Vector3(5.0, 0.0, 5.0)).encode())
 	await _advance(2)
 	assert_true(gema.entity.get_position().distance_to(Vector3(5.0, 0.0, 5.0)) < 0.5, "it moves")

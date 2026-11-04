@@ -5,7 +5,7 @@ extends TestCase
 ## immunity), death (a single DEATH and KILL with assisters), the environment (fall, lethal volume,
 ## below y = -100), requested and automatic respawn with protection and the immortal dummy.
 ## [br][br]
-## Since H3c (docs/habilidades.md, section 4.5) the killing blow of a player from another realm in an RVR zone
+## Since H3c (docs/abilities.md, section 4.5) the killing blow of a player from another realm in an RVR zone
 ## knocks down instead of killing (test_downed): the death tests use an NPC attacker ([method _npc_duel]),
 ## against which one dies directly.
 ## [br][br]
@@ -92,7 +92,7 @@ func _duel() -> Array[Combatant]:
 
 
 ## Like [method _duel], but the attacker is an NPC (from Vardheim): its killing blow kills without knocking down
-## (docs/habilidades.md, section 4.5). With [param both_npcs] the victim is one too.
+## (docs/abilities.md, section 4.5). With [param both_npcs] the victim is one too.
 func _npc_duel(both_npcs: bool = false) -> Array[Combatant]:
 	var duel: Array[Combatant] = _duel()
 	duel[0].entity.kind = NetProtocol.EntityKind.NPC

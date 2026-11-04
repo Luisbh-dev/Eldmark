@@ -1,5 +1,5 @@
 extends TestCase
-## DTLS end to end in one process (docs/plataforma.md §10.2 and §15, P9c; TEC-27): server and client with real ENet
+## DTLS end to end in one process (docs/platform.md §10.2 and §15, P9c; TEC-27): server and client with real ENet
 ## over 127.0.0.1, the server behind [GuardedEnetPeer], and a clean shutdown with no engine errors (the
 ## runner fails on any).
 ## [br][br]

@@ -204,7 +204,7 @@ func TestServeMountsTheAccounts(t *testing.T) {
 	}
 }
 
-// serve wires up the characters (P2) with the real progression store (progresion.md P7: validation
+// serve wires up the characters (P2) with the real progression store (progression.md P7: validation
 // of the exported rules and the tables of 0010_progress) and the minimum protocol from
 // progression_rules.json.
 func TestServeMountsTheCharacters(t *testing.T) {
@@ -259,7 +259,7 @@ func TestServeMountsTheCharacters(t *testing.T) {
 }
 
 // In staging and production, serve wires up the same thing: the progression store is no longer the
-// fake in-memory one (until progresion.md P7, it did not start).
+// fake in-memory one (until progression.md P7, it did not start).
 func TestServeMountsTheStoreWhenDeployed(t *testing.T) {
 	pool := testdb.New(t)
 	env := serveEnv(pool)

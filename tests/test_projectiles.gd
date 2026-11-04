@@ -1,5 +1,5 @@
 extends TestCase
-## The server's projectiles (docs/habilidades.md, section 4.4; package H3b, CMB-22): no arrow
+## The server's projectiles (docs/abilities.md, section 4.4; package H3b, CMB-22): no arrow
 ## goes through a wall (40 shots at different angles at a target behind it), a shot hugging a
 ## corner hits the corner even if the camera sees the target, from the closed door's doorway the arrow
 ## sticks at the origin, a frontal shield blocks it (never parries it), a dodge lets it pass, the shield-wall

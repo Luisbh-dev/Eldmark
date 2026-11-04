@@ -1,6 +1,6 @@
 class_name AccountSession
 extends RefCounted
-## The account session on the client (docs/plataforma.md §4.2 and §14.4): the two tokens, when the access one
+## The account session on the client (docs/platform.md §4.2 and §14.4): the two tokens, when the access one
 ## expires, the scope ([code]game[/code] or [code]privacy[/code]), the restriction of a sanctioned account and the account
 ## from the last response. It lives only in memory: none of this is written to disk (§0). It is kept by [FrontMain] between
 ## scenes and used by [PlatformApi] on every call with a session.

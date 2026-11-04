@@ -1,6 +1,6 @@
 class_name FortressFields
 extends RefCounted
-## Ids of a fort's fields in OBJECT_STATE (docs/fuerte.md, section 2) and how each one travels: its
+## Ids of a fort's fields in OBJECT_STATE (docs/fortress.md, section 2) and how each one travels: its
 ## value type in the message and its read and write on a [FortressState].
 ## [br][br]
 ## OBJECT_STATE carries, per field, [code]u8 field_id[/code], [code]u8 value_type[/code] and the

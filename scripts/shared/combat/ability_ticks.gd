@@ -1,6 +1,6 @@
 class_name AbilityTicks
 extends RefCounted
-## An [AbilityDefinition] already converted to ticks by [CombatCatalog] (docs/habilidades.md, section
+## An [AbilityDefinition] already converted to ticks by [CombatCatalog] (docs/abilities.md, section
 ## 2.2).
 ## [br][br]
 ## The windows are [code][from, to)[/code] intervals of ticks counted from the action's
@@ -15,7 +15,7 @@ extends RefCounted
 ## ([method CombatSource.make] with [constant CombatSource.Kind.ABILITY]) and is not in the attack
 ## table.
 
-## Ticks in NONE, at minimum, between two uses that the action byte cannot tell apart (docs/habilidades.md, section
+## Ticks in NONE, at minimum, between two uses that the action byte cannot tell apart (docs/abilities.md, section
 ## 5.5): two of the same slot, or two consumables, come out with the same byte (ABILITY, phase 0 and the same slot),
 ## and a remote sees the record every [constant NetProtocol.SNAPSHOT_INTERVAL_TICKS] ticks (or less often, with
 ## the snapshot's priority-based distribution). Three intervals: the [CombatCatalog] validation requires it of

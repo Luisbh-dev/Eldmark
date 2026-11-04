@@ -58,7 +58,7 @@ type router struct{ *http.ServeMux }
 
 func (r router) HandlePublic(pattern string, h http.Handler) { r.Handle(pattern, h) }
 
-// The ticket key from the plataforma.md §5.1 vector (only valid in test).
+// The ticket key from the platform.md §5.1 vector (only valid in test).
 var ticketKey = func() []byte {
 	k := make([]byte, 32)
 	for i := range k {

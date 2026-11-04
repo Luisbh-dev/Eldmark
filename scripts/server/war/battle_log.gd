@@ -1,6 +1,6 @@
 class_name BattleLog
 extends RefCounted
-## Battle telemetry (GUE-17; docs/fuerte.md, section 7): war events and deaths in a JSON Lines file
+## Battle telemetry (GUE-17; docs/fortress.md, section 7): war events and deaths in a JSON Lines file
 ## ([code]--battle-log=<path>[/code]), one line per event, summarized by [code]tools/war/summarize_battle.gd[/code]
 ## ([BattleSummary]).
 ## [br][br]

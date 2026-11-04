@@ -1,5 +1,5 @@
 // Package social is the part of the internal API for social features and moderation
-// (plataforma.md §6, §9, SOC-14 to SOC-18): the zone's chat and audit batches (with per-entry
+// (platform.md §6, §9, SOC-14 to SOC-18): the zone's chat and audit batches (with per-entry
 // rejection and validated against the instance that sends them), ignores, reports and the
 // sanctions that a GM requests from the zone, which the platform authorizes.
 //

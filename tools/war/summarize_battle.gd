@@ -1,5 +1,5 @@
 extends SceneTree
-## Summary of a battle log (GUE-17; docs/fuerte.md, section 7): reads the JSON Lines that the
+## Summary of a battle log (GUE-17; docs/fortress.md, section 7): reads the JSON Lines that the
 ## server writes with [code]--battle-log=<path>[/code] and extracts the time to capture, the deaths per route
 ## (bridge, ford, walkway) and the time to break the gate, to tune
 ## [code]data/fortresses/vado_gris.tres[/code] without touching code. The logic is in [BattleSummary].

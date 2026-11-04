@@ -1,6 +1,6 @@
 class_name NetClient
 extends Node
-## Network client (docs/red.md, sections 3, 6, 7 and 9.4): connects to the zone, predicts the local
+## Network client (docs/networking.md, sections 3, 6, 7 and 9.4): connects to the zone, predicts the local
 ## player, reconciles with the server and draws the others.
 ## [br][br]
 ## [b]Connection[/b] (section 3), from the client side:
@@ -42,7 +42,7 @@ extends Node
 ## visual reaction of a remote entity (flash, animation) matches what is seen. [method
 ## send_respawn_request] asks for respawn after dying.
 ## [br][br]
-## [b]Fort[/b] (docs/fuerte.md, sections 2, 3.2, 5 and 6; protocol 4): the ENTITY_SPAWN of a structure
+## [b]Fort[/b] (docs/fortress.md, sections 2, 3.2, 5 and 6; protocol 4): the ENTITY_SPAWN of a structure
 ## and the OBJECT_STATEs are stored by [FortressView] (change history), which applies the UI and the
 ## banners when the render tick reaches that of the message and gives the gate layer of each tick
 ## simulated through the [member ClientPrediction.before_simulate] hook, also in replays (the
@@ -52,13 +52,13 @@ extends Node
 ## [ScoreboardState] ([signal scoreboard_updated]) and [PlayerDirectory] remembers the name and realm of each
 ## entity seen, because the scoreboard and the zone-wide KILLs only carry ids.
 ## [br][br]
-## [b]Projectiles[/b] (docs/habilidades.md, section 5.3; protocol 6): the ENTITY_SPAWN is dispatched by
+## [b]Projectiles[/b] (docs/abilities.md, section 5.3; protocol 6): the ENTITY_SPAWN is dispatched by
 ## [code]kind[/code] before looking at [code]is_yours[/code] (which for a projectile is always 0: the own arrow
 ## is the one whose [code]owner_id[/code] equals the local [code]net_id[/code]). Those of kind 3 are not
 ## characters: they go to the [ProjectileWorld] (which draws the predicted arrow and others', section 6.2) and
 ## are emitted through [signal projectile_spawned] and their ENTITY_DESPAWN through [signal projectile_despawned].
 ## [br][br]
-## [b]Abilities[/b] (docs/habilidades.md, sections 4.6, 5.4 and 6): the STATUSes of each entity are stored,
+## [b]Abilities[/b] (docs/abilities.md, sections 4.6, 5.4 and 6): the STATUSes of each entity are stored,
 ## already timed, in a [StatusTracker] per entity ([method get_status_tracker]; they are removed by DEATH, DOWNED,
 ## RESPAWN and ENTITY_DESPAWN; a remote's tracker receives them all at its render tick, including own ones);
 ## a remote's LOADOUT gives its weapon pair to its view. The chosen
@@ -67,7 +67,7 @@ extends Node
 ## also by a movement STATUS on oneself, a DOWNED or INTERACT where one is the knocked-down player or the
 ## actor, and by the own LOADOUT ([method _note_imposed_state]).
 ## [br][br]
-## [b]Inventory and progress[/b] (docs/progresion.md §4.6 and §12; protocol 7): INVENTORY_DELTA, INVENTORY_FULL,
+## [b]Inventory and progress[/b] (docs/progression.md §4.6 and §12; protocol 7): INVENTORY_DELTA, INVENTORY_FULL,
 ## WALLET_UPDATE and PROGRESS_UPDATE are decoded ([ProgressMessages]) and emitted on arrival through
 ## [signal inventory_delta_received], [signal inventory_full_received], [signal wallet_updated] and
 ## [signal progress_updated]; a malformed one counts in [code]malformed_packets[/code]. LEVEL_UP is just another
@@ -75,7 +75,7 @@ extends Node
 ## [method send_inventory_request] and [method send_inventory_sync_request] send the requests (only in the
 ## world). Each player's level and appearance come in their ENTITY_SPAWN.
 ## [br][br]
-## [b]Player inventory[/b] (docs/progresion.md §11.3, P6): a [ClientInventory] ([method get_inventory]) receives
+## [b]Player inventory[/b] (docs/progression.md §11.3, P6): a [ClientInventory] ([method get_inventory]) receives
 ## the INVENTORY_DELTAs and the INVENTORY_FULL pages before their signal, sends its requests through here and takes the
 ## context of each one ([method inventory_context]: level, active slot, "can touch equipment" and "drinking")
 ## from the local character's predicted state and the extra block; its 5 s timeout runs on every tick. A
@@ -105,7 +105,7 @@ signal notice_received(code: int, text: String)
 ## victim, killer or assistant) and it is delivered on arrival; if not, when the render tick reaches
 ## [code]event.tick[/code].
 signal combat_event(event: NetMessages.EntityEvent, is_own: bool)
-## A war notice (WAR) from a fortress, already at its render tick (docs/fuerte.md, section 5). The
+## A war notice (WAR) from a fortress, already at its render tick (docs/fortress.md, section 5). The
 ## text comes from [method WarEvents.text] with [member NetMessages.EntityEvent.war_event] and
 ## [member NetMessages.EntityEvent.war_realm].
 signal war_event(event: NetMessages.EntityEvent)
@@ -202,7 +202,7 @@ var hello_hook: Callable = Callable()
 ## the [code]rewind[/code] mode of the cheating bot ([BotCheater]) does, but tailored to a test.
 var batch_hook: Callable = Callable()
 ## Extra fields for the report ([method write_report]): [OnlineMain] puts here the account data of a bot with
-## [code]--platform[/code] (docs/plataforma.md §13.3).
+## [code]--platform[/code] (docs/platform.md §13.3).
 var report_extra: Dictionary = {}
 ## ENet timeout when connecting (ms). [constant CONNECT_TIMEOUT_MS] unless whoever calls
 ## [method start] sets another before it (the [code]--local[/code] mode uses a short one to retry).
@@ -346,7 +346,7 @@ func _init() -> void:
 	_remote_world.setup(_interp_clock)
 	_fortress_view.setup(_interp_clock)
 	_projectile_world.setup(_interp_clock, _remote_world)
-	# The fort gate that each simulated tick had, also in replays (fuerte.md, 3.2).
+	# The fort gate that each simulated tick had, also in replays (fortress.md, 3.2).
 	_prediction.before_simulate = _fortress_view.before_simulate
 	# The inventory sends through here and takes the context of each request from the predicted state.
 	_inventory.send_request = send_inventory_request
@@ -417,7 +417,7 @@ func start(config: ClientConfig, transport: NetTransport,
 
 ## The pinned DTLS certificate of the zone ([method TLSOptions.client]) that [param config] says: the PEM from
 ## [code]enter[/code] ([member ClientConfig.dtls_cert_pem]) or, without a platform, the file from [code]--dtls-cert[/code].
-## Null without DTLS or if the certificate cannot be read (docs/plataforma.md §10.2).
+## Null without DTLS or if the certificate cannot be read (docs/platform.md §10.2).
 static func dtls_options(config: ClientConfig) -> TLSOptions:
 	if config == null or not config.has_dtls():
 		return null
@@ -526,7 +526,7 @@ func send_chat(channel: int, recipient: String, text: String) -> bool:
 
 
 ## Asks for equipment template [param template_id] ([method CombatCatalog.template_id]; 0 = the default
-## one) for the next spawn: LOADOUT_SELECT (docs/habilidades.md, sections 4.6 and 5.1). Valid from
+## one) for the next spawn: LOADOUT_SELECT (docs/abilities.md, sections 4.6 and 5.1). Valid from
 ## the WELCOME, also before CLIENT_READY; the server does not answer: the template arrives with the respawn
 ## (LOADOUT event). It records it in [member ClientConfig.loadout] for later connections. Returns false,
 ## without sending anything, if there is no authenticated session or the id is not a selectable template.
@@ -587,7 +587,7 @@ func send_party_leave() -> bool:
 	return true
 
 
-## Sends an inventory request (INVENTORY_REQUEST, protocol 7; docs/progresion.md §4.6). Whoever sends it
+## Sends an inventory request (INVENTORY_REQUEST, protocol 7; docs/progression.md §4.6). Whoever sends it
 ## carries its [code]request_id[/code] and its optimistic state (§11.3). Returns false, without sending anything, if there is no
 ## session in the world (before, it would be a server warning) or the message cannot be encoded.
 func send_inventory_request(message: ProgressMessages.InventoryRequest) -> bool:
@@ -612,7 +612,7 @@ func send_inventory_sync_request() -> bool:
 	return true
 
 
-## The local player's inventory (docs/progresion.md §11.3): empty until the first INVENTORY_FULL.
+## The local player's inventory (docs/progression.md §11.3): empty until the first INVENTORY_FULL.
 func get_inventory() -> ClientInventory:
 	return _inventory
 
@@ -627,7 +627,7 @@ func get_own_appearance() -> PackedByteArray:
 	return _own_appearance
 
 
-## The context of an inventory request now (docs/progresion.md §4.1 and §11.3): the level from
+## The context of an inventory request now (docs/progression.md §4.1 and §11.3): the level from
 ## [method get_progress]; the active weapon slot, bit0 of [code]combat_flags2[/code] of the predicted state; and "can
 ## touch equipment" only when alive, not knocked down, out of combat (extra block) and with no predicted action. "Drinking", with
 ## a consumable ABILITY in progress.
@@ -713,7 +713,7 @@ func get_combat_queue() -> CombatEventQueue:
 
 ## true if the local player is involved in [param event]: attacker or victim of a HIT, victim or
 ## killer of a DEATH, victim, killer or assistant of a KILL, or whoever respawns in a RESPAWN; and since
-## protocol 6 (docs/habilidades.md, section 5.4), the affected party or the author of a STATUS, the healed or the
+## protocol 6 (docs/abilities.md, section 5.4), the affected party or the author of a STATUS, the healed or the
 ## healer in a HEAL, the owner of a LOADOUT, the knocked-down or the one knocking down in a DOWNED, and the knocked-down or
 ## the one who lifts or executes them in an INTERACT; and since protocol 7, whoever levels up in a LEVEL_UP. False
 ## while there is no local character.
@@ -978,7 +978,7 @@ func get_stats() -> Dictionary:
 	}
 
 
-## What the client knows about its progress, in the form of the record in docs/progresion.md §3.4 to compare it with
+## What the client knows about its progress, in the form of the record in docs/progression.md §3.4 to compare it with
 ## what is stored (§15 P8): [code]items[/code] (the inventory's confirmed state by container and slot, each with
 ## [method ItemInstance.to_dictionary]), [code]wallets[/code] ([code]{currency, balance}[/code] of each currency, from
 ## WALLET_UPDATE), [code]level[/code], [code]xp_in_level[/code], [code]realm_points[/code],
@@ -1285,7 +1285,7 @@ func _is_imposed_at(server_tick: int) -> bool:
 # Records the own events with which the server imposes state on the local player, even if the client does not
 # predict it: a hit received (stagger, stun, knockback, stamina spent when blocking, health; and
 # since protocol 6 the interruption of drinking or lifting, bit 5, which is also a hit received),
-# their own blocked hit (the attacker is left staggering), their death and their respawn; and (docs/habilidades.md,
+# their own blocked hit (the attacker is left staggering), their death and their respawn; and (docs/abilities.md,
 # section 5.4) a movement effect on themselves (slow or root STATUS: the server writes
 # its slot), their knockdown (DOWNED), lifting or executing where they are the knocked-down or the actor (INTERACT: the
 # server starts and cuts those actions) and their own LOADOUT (weapons and charges on spawning or at camp).
@@ -1411,7 +1411,7 @@ func _on_peer_authenticating(peer_id: int) -> void:
 	if _config.mode == ClientConfig.Mode.BOT:
 		hello.flags |= NetMessages.Hello.FLAG_BOT
 	hello.display_name = _config.display_name
-	# With a ticket (docs/plataforma.md §5.4): the character and the 52 B from enter; the realm and name are those of the
+	# With a ticket (docs/platform.md §5.4): the character and the 52 B from enter; the realm and name are those of the
 	# character, which the zone ignores (those of the claim take precedence).
 	if _config.has_ticket():
 		hello.character_id = _config.character_id
@@ -1467,7 +1467,7 @@ func _on_peer_connected(peer_id: int) -> void:
 		return
 	_state = State.WELCOMED
 	# The template chosen before connecting (realm choice or --loadout) already applies to the first
-	# spawn: LOADOUT_SELECT is accepted from the WELCOME (docs/habilidades.md, section 5.1).
+	# spawn: LOADOUT_SELECT is accepted from the WELCOME (docs/abilities.md, section 5.1).
 	if _config != null and _config.get_loadout_template_id() != 0:
 		send_loadout_select(_config.get_loadout_template_id())
 	welcomed.emit(_welcome)
@@ -1589,7 +1589,7 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 			_malformed_packets += 1
 
 
-# Inventory and progress (protocol 7, docs/progresion.md §4.6 and §12): they are decoded and emitted through their signal on
+# Inventory and progress (protocol 7, docs/progression.md §4.6 and §12): they are decoded and emitted through their signal on
 # arrival; malformed ones are counted.
 func _on_progress_message(bytes: PackedByteArray) -> void:
 	match NetMessages.peek_type(bytes):
@@ -1647,7 +1647,7 @@ func _on_snapshot(bytes: PackedByteArray) -> void:
 
 
 # OBJECT_STATE: FortressView stores the change with its tick and applies it when the render tick
-# reaches it (docs/fuerte.md, section 2).
+# reaches it (docs/fortress.md, section 2).
 func _on_object_state(bytes: PackedByteArray) -> void:
 	var object_state: NetMessages.ObjectState = NetMessages.ObjectState.decode(bytes)
 	if object_state == null:
@@ -1700,7 +1700,7 @@ func _on_spawn(bytes: PackedByteArray) -> void:
 	if spawn == null:
 		_malformed_packets += 1
 		return
-	# The kind before is_yours: a projectile is never the own character (docs/habilidades.md, 5.3).
+	# The kind before is_yours: a projectile is never the own character (docs/abilities.md, 5.3).
 	if spawn.kind == NetProtocol.EntityKind.PROJECTILE:
 		_projectile_spawns_received += 1
 		_projectile_ids[spawn.net_id] = true

@@ -14,7 +14,7 @@ import (
 )
 
 // Each case in save_cases.json, on a fresh database, yields at each step what its expect says: the
-// same cases the zone generates with PlayerProgress (progresion.md §13.3), so the two
+// same cases the zone generates with PlayerProgress (progression.md §13.3), so the two
 // implementations do not diverge.
 func TestApplyFixtures(t *testing.T) {
 	c := loadCases(t)
@@ -309,7 +309,7 @@ func waitForLock(t testing.TB, pool *pgxpool.Pool) {
 	t.Fatal("ninguna transacción espera un bloqueo")
 }
 
-// Two simultaneous transactions spend 60 from a balance of 100 (progresion.md §5.4): with the
+// Two simultaneous transactions spend 60 from a balance of 100 (progression.md §5.4): with the
 // UPDATE guard, the second touches no row; with Apply, the second waits on the locked progress
 // and fails S3. The balance ends at 40 and is the sum of the ledger.
 func TestWalletConcurrency(t *testing.T) {

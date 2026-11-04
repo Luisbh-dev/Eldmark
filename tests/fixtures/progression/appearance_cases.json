@@ -1,7 +1,7 @@
 [
 	{"case": "vardheim por defecto", "realm": 1, "race_id": "race_vardheim", "appearance": "AQAAAQEAAgE=", "valid": true},
 	{"case": "vardheim con los últimos colores", "realm": 1, "race_id": "race_vardheim", "appearance": "AQAAAQEHCQY=", "valid": true},
-	{"case": "el ejemplo de progresion.md §3.4", "realm": 1, "race_id": "race_vardheim", "appearance": "AQAAAQEDAgE=", "valid": true},
+	{"case": "el ejemplo de progression.md §3.4", "realm": 1, "race_id": "race_vardheim", "appearance": "AQAAAQEDAgE=", "valid": true},
 	{"case": "solmarch sin pelo ni barba", "realm": 2, "race_id": "race_solmarch", "appearance": "AgAAAAAHAAA=", "valid": true},
 	{"case": "solmarch con pelo y barba", "realm": 2, "race_id": "race_solmarch", "appearance": "AgAAAQEDCQQ=", "valid": true},
 	{"case": "solmarch con pelo y sin barba", "realm": 2, "race_id": "race_solmarch", "appearance": "AgAAAQAABgI=", "valid": true},

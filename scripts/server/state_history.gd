@@ -1,6 +1,6 @@
 class_name StateHistory
 extends RefCounted
-## Position history for lag compensation (docs/red.md, section 10).
+## Position history for lag compensation (docs/networking.md, section 10).
 ## [br][br]
 ## It stores, per entity, a track of [constant LENGTH_TICKS] ticks (~1 s) in packed arrays: position, yaw, flags and the
 ## tick label of each slot, indexed by [code]tick % LENGTH_TICKS[/code]. The track is created when the entity is
@@ -14,10 +14,10 @@ extends RefCounted
 ## [constant EntityRecord.HISTORY_FLAGS_MASK]) plus the defensive flags of [method ActionMachine.defense_flags] (bit 3
 ## blocking, bit 4 parry window, bit 5 invulnerable, bit 6 dead, bit 7 shield wall's wide block), used by the
 ## [CombatResolver] to decide whether a rewound hit is blocked, parried or dodged. Bit 3 of the network record (weapon
-## slot 2, docs/habilidades.md, section 5.2) [b]never[/b] goes in: here bit 3 is [constant ActionMachine.DEFENSE_BLOCKING];
+## slot 2, docs/abilities.md, section 5.2) [b]never[/b] goes in: here bit 3 is [constant ActionMachine.DEFENSE_BLOCKING];
 ## whoever records masks the record's flags.
 ## [br][br]
-## [b]Projectiles[/b] (docs/habilidades.md, section 4.4): [method position_at] reads the position of an exact tick
+## [b]Projectiles[/b] (docs/abilities.md, section 4.4): [method position_at] reads the position of an exact tick
 ## without creating objects (projectile rewind is in whole ticks) and each track maintains, when recording,
 ## [constant SWEPT_BLOCKS] boxes of [constant SWEPT_BLOCK_TICKS] ticks with the feet positions: [method swept_box] is
 ## their union, the cheap screening of an arrow's candidates.
@@ -147,7 +147,7 @@ func get_flags(net_id: int, tick: int) -> int:
 
 
 ## Position (the feet) of [param net_id] at the exact tick [param tick], or [constant Vector3.INF] if that tick is not
-## recorded. It creates no object: it is the projectiles' read, which rewind whole ticks (docs/habilidades.md, section
+## recorded. It creates no object: it is the projectiles' read, which rewind whole ticks (docs/abilities.md, section
 ## 4.4).
 func position_at(net_id: int, tick: int) -> Vector3:
 	var track: Track = _tracks.get(net_id)

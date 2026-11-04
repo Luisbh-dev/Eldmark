@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests of the approach routes to the fort (ApproachRoutes, data/routes/vado_gris.tres,
-## docs/fuerte.md section 7): the shared resource with the bridge and ford waypoints of each
+## docs/fortress.md section 7): the shared resource with the bridge and ford waypoints of each
 ## realm. Actually walking them with the character and measuring their fairness is done by
 ## tools/terrain/verify_vado_gris_routes.gd (it takes minutes; this test only checks the data).
 

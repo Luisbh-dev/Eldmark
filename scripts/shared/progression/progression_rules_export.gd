@@ -1,10 +1,10 @@
 class_name ProgressionRulesExport
 extends RefCounted
 ## The game rules the Go platform needs, in a single file:
-## [code]platform/internal/gamedata/progression_rules.json[/code] (docs/progresion.md §13.4,
-## docs/plataforma.md §4.4). The platform embeds it with [code]//go:embed[/code] and uses it to
+## [code]platform/internal/gamedata/progression_rules.json[/code] (docs/progression.md §13.4,
+## docs/platform.md §4.4). The platform embeds it with [code]//go:embed[/code] and uses it to
 ## validate the same things as the simulation: character names (with [NameRules]) and, with
-## progresion.md, races, appearance, starter templates, items, level curve, currencies, reasons and
+## progression.md, races, appearance, starter templates, items, level curve, currencies, reasons and
 ## containers.
 ## [br][br]
 ## [method build] is the only generator; [code]tools/progression/export_rules.gd[/code] writes the
@@ -12,9 +12,9 @@ extends RefCounted
 ## repository matches [method build]. If a rule changes, it is re-exported and the new file is
 ## committed with the change.
 ## [br][br]
-## Sections from docs/plataforma.md: [code]protocol_version[/code] (the default
+## Sections from docs/platform.md: [code]protocol_version[/code] (the default
 ## [code]ELDMARK_MIN_PROTOCOL[/code] in dev and test) and [code]names[/code]. From
-## docs/progresion.md: [code]races[/code] and [code]appearance[/code] ([AppearanceCatalog]),
+## docs/progression.md: [code]races[/code] and [code]appearance[/code] ([AppearanceCatalog]),
 ## [code]level_curve[/code] ([LevelCurve]), [code]currencies[/code] ([Currency]),
 ## [code]reasons[/code] ([EconomyReason] and [constant OP_KINDS]), [code]containers[/code]
 ## ([InventoryState]) and [code]combat[/code] ([CombatRules]), from P3 (P2 made them read from
@@ -26,7 +26,7 @@ extends RefCounted
 const OUTPUT_PATH: String = "res://platform/internal/gamedata/progression_rules.json"
 
 ## Operation kinds ([code]economy_ops.kind[/code], server-side [code]EconomyOp.Kind[/code], §5.3);
-## 9 to 15, reserved. [code]EconomyOp[/code] (progresion.md P5a) must give the same numbers.
+## 9 to 15, reserved. [code]EconomyOp[/code] (progression.md P5a) must give the same numbers.
 const OP_KINDS: Dictionary = {
 	"player": 1, "gameplay": 2, "starter_kit": 3, "gm": 4, "reversal": 5, "migration": 6, "trade": 7,
 	"mail": 8,

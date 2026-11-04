@@ -1,7 +1,7 @@
 extends TestCase
 ## Tests for HELLO validation ([ServerAuth]): each REJECT reason, the order of the
 ## checks, the per-IP connection cap with the loopback exception and the
-## [AuthProvider] (docs/red.md, sections 3 and 12).
+## [AuthProvider] (docs/networking.md, sections 3 and 12).
 
 const SIM_HASH: int = 0xA1B2C3D4
 const REMOTE_ADDRESS: String = "203.0.113.7"
@@ -425,7 +425,7 @@ func test_imbalance_comes_after_the_other_checks_and_the_provider() -> void:
 			"and a full server, also first")
 
 
-## With tickets (docs/plataforma.md §5.4) the HELLO's realm and name are not checked: neither REALM, nor NAME (even if
+## With tickets (docs/platform.md §5.4) the HELLO's realm and name are not checked: neither REALM, nor NAME (even if
 ## the name is that of someone connected), nor IMBALANCE; the provider receives the peer and may leave it pending.
 func test_with_tickets_the_realm_and_name_of_the_hello_are_ignored() -> void:
 	var provider := CountingProvider.new()

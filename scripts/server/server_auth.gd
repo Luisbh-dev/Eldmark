@@ -1,6 +1,6 @@
 class_name ServerAuth
 extends RefCounted
-## Validation of a client's HELLO (docs/red.md, section 3).
+## Validation of a client's HELLO (docs/networking.md, section 3).
 ## [br][br]
 ## Decides whether a WELCOME or a REJECT is sent. The magic and the format are already checked by
 ## [method NetMessages.Hello.decode] (a malformed HELLO never gets here). The checks, in this order, returning the
@@ -16,7 +16,7 @@ extends RefCounted
 ## the chosen realm             -> IMBALANCE (only with --max-realm-diff, after the provider: it can decide the
 ##                                 realm; see RealmBalance)
 ## [/codeblock]
-## With a ticket provider ([method AuthProvider.uses_tickets], docs/plataforma.md §5.4) the HELLO's realm and name are
+## With a ticket provider ([method AuthProvider.uses_tickets], docs/platform.md §5.4) the HELLO's realm and name are
 ## not looked at: those of the claim rule, which the zone applies on arrival (REALM) and which the platform makes unique
 ## when creating the character. So there is no REJECT NAME and the HELLO stops revealing whether a name is in the zone
 ## (docs/social.md, 12.7). There is no IMBALANCE either: the realm is no longer chosen when connecting.

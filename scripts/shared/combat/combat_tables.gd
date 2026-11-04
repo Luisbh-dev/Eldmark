@@ -8,7 +8,7 @@ extends RefCounted
 var rules: CombatRules = null
 ## Ticks of delay of stamina regeneration after spending (from the rules).
 var regen_delay_ticks: int = 0
-## Durations from the rules in ticks (docs/habilidades.md, section 2.1).
+## Durations from the rules in ticks (docs/abilities.md, section 2.1).
 var swap_ticks: int = 0
 var revive_ticks: int = 0
 var execute_ticks: int = 0

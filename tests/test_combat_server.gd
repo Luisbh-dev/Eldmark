@@ -646,9 +646,9 @@ func test_console_commands() -> void:
 	var ana: int = _server.add_fake_player(_brain(), VARDHEIM)
 	var commands: CommandRegistry = _server.get_commands()
 	# Ids 7 to 12 (protocol 4) are fixed and all already have their handler: /stuck and the four fort
-	# commands were registered by F3 and npc_debug by F4. Of those of protocol 6 (13 to 16, docs/habilidades.md §5.1),
+	# commands were registered by F3 and npc_debug by F4. Of those of protocol 6 (13 to 16, docs/abilities.md §5.1),
 	# cooldowns_off and apply_status arrived with H3a and down and refill with H3c. The four progression
-	# ones of protocol 7 (40 to 43, docs/progresion.md §10), with progresion.md P5d.
+	# ones of protocol 7 (40 to 43, docs/progression.md §10), with progression.md P5d.
 	assert_eq(commands.missing_network_commands(), PackedStringArray(),
 			"all network commands have a handler")
 	assert_true(_server.console_command("help").contains("teleport"))
@@ -700,7 +700,7 @@ func test_console_commands() -> void:
 	assert_true(commands.audit[commands.audit.size() - 1].begins_with("[auditoría] consola: shutdown cancel"))
 
 
-## H3a (docs/habilidades.md, 5.1): commands 13 cooldowns_off (bit 7 of combat_flags2) and 14 apply_status
+## H3a (docs/abilities.md, 5.1): commands 13 cooldowns_off (bit 7 of combat_flags2) and 14 apply_status
 ## (an effect with no author, with its duration or the data's), over the network and through the console.
 func test_cooldowns_off_and_apply_status_commands() -> void:
 	await _start_server()

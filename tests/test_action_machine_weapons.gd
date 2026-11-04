@@ -1,5 +1,5 @@
 extends TestCase
-## [method ActionMachine.set_weapons] (docs/progresion.md §4.1 and §8): sets the weapons of the two equipment
+## [method ActionMachine.set_weapons] (docs/progression.md §4.1 and §8): sets the weapons of the two equipment
 ## slots without resetting anything else. It keeps charges, [member CombatState.consumable_ready_tick], movement
 ## slots and buttons; distributes [member CombatState.ability_ready] per weapon (the active one's three first);
 ## with an action in progress it does nothing. With the real machine: unequipping and re-equipping a weapon with

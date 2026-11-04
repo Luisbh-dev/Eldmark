@@ -1,6 +1,6 @@
 class_name TermsPanel
 extends FrontScreen
-## Accept new texts (docs/plataforma.md §4.2 and §13.2): when [code]GET /v1/account[/code] says
+## Accept new texts (docs/platform.md §4.2 and §13.2): when [code]GET /v1/account[/code] says
 ## [code]pending.terms_required[/code] (or [code]enter[/code] responds [code]terms_required[/code]), which
 ## texts have changed ([code]documents[/code]), each with its button to read it in the scrolling panel,
 ## and "Aceptar" (Accept) or "Cerrar sesión" (Log out). Until they are accepted, entering the world is not

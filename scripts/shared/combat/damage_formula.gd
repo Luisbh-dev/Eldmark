@@ -10,7 +10,7 @@ extends RefCounted
 ## final   = roundi((raw − mitig.) × 1000 / (1000 + armor)), minimum 1 if anything is left
 ## [/codeblock]
 ## [code]damage_scale[/code] and [code]mitigation_penalty[/code] are the modifiers from status
-## effects (docs/habilidades.md, section 4.3): [code]1 + Σ DAMAGE_UP[/code] of the attacker and
+## effects (docs/abilities.md, section 4.3): [code]1 + Σ DAMAGE_UP[/code] of the attacker and
 ## [code]Σ MITIGATION_DOWN[/code] of the victim; with no effects they are 1 and 0 and the result is the usual
 ## one.
 ## Block: the defender spends [code]roundi(mitig. × block_stamina_per_damage)[/code] of

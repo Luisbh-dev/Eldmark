@@ -1,7 +1,7 @@
 class_name CombatState
 extends RefCounted
 ## A character's combat state (docs/combate.md, section 3.1, extended to version 5 in
-## docs/habilidades.md, section 3.1). It lives inside [PlayerState] and goes into
+## docs/abilities.md, section 3.1). It lives inside [PlayerState] and goes into
 ## [method PlayerState.encode], so reconciliation also compares the current action, the
 ## stamina, the controls imposed by the server, the cooldowns, the consumable charges
 ## and the movement effects.
@@ -40,7 +40,7 @@ extends RefCounted
 ## Actions. [constant NONE] is doing nothing; [constant STAGGER], [constant STUN], [constant DEAD],
 ## [constant DOWNED], [constant REVIVE] and [constant EXECUTE] are imposed by the server.
 ## [constant ABILITY] is an ability or a consumable ([member action_id] is the ability) and
-## [constant SWAP], the weapon swap (docs/habilidades.md, section 3). 14 and 15 are left free (the
+## [constant SWAP], the weapon swap (docs/abilities.md, section 3). 14 and 15 are left free (the
 ## action takes 4 bits in the record's action byte).
 enum Action {
 	NONE, LIGHT, HEAVY, CHARGE, BLOCK, DODGE, STAGGER, STUN, DEAD,
@@ -224,7 +224,7 @@ func encode_into(bytes: PackedByteArray, offset: int) -> void:
 	bytes.encode_s16(offset + 26, _knockback_q(knockback.y))
 	bytes.encode_u32(offset + 28, parry_ready_tick & 0xFFFFFFFF)
 	bytes.encode_u16(offset + 32, weapon_id & 0xFFFF)
-	# Version 5 (docs/habilidades.md, section 3.1).
+	# Version 5 (docs/abilities.md, section 3.1).
 	bytes.encode_u16(offset + 34, alt_weapon_id & 0xFFFF)
 	bytes.encode_u8(offset + 36, combat_flags2 & 0xFF)
 	for i: int in ABILITY_SLOTS * 2:

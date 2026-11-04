@@ -1,13 +1,13 @@
 class_name PlatformEvent
 extends RefCounted
-## The result of a zone request to the platform's internal API (docs/plataforma.md §14.3), with the
+## The result of a zone request to the platform's internal API (docs/platform.md §14.3), with the
 ## body already read. [ZonePlatform] stores them on arrival and delivers them in the tick's "poll" step with
 ## [method ZonePlatform.take_events]; each [member kind] has a single consumer:
 ## [codeblock]
-## claim                                    auth_provider (plataforma.md P4)
+## claim                                    auth_provider (platform.md P4)
 ## save                                     CharacterSaver (P5)
 ## heartbeat                                ZoneServer: revoked, mutes and maintenance
-## id_block, progress_op, progress_ledger   ProgressService (progresion.md P5a and P5d)
+## id_block, progress_op, progress_ledger   ProgressService (progression.md P5a and P5d)
 ## fortress                                 FortressPersistence (P6)
 ## ignore, report, sanction                 ChatRouter and moderation (P7b)
 ## instance_closed                          ServerMain: the shutdown of §6.1 (once)

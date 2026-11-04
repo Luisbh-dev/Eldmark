@@ -382,7 +382,7 @@ func TestRetentionsDeleteWhatExpiredAndNothingElse(t *testing.T) {
 	}
 }
 
-// The ledger retention (§11.1, progresion.md §3.5): a year after its purge, a character's ledger
+// The ledger retention (§11.1, progression.md §3.5): a year after its purge, a character's ledger
 // is deleted in several transactions (more than one batch of 10 000 entries) and then its
 // tombstone; the operation it shares with a live character stays for that character. A tombstone
 // without a ledger is also deleted after a year; one purged two days later, and the live one,

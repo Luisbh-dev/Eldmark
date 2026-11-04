@@ -1,6 +1,6 @@
 class_name InventoryState
 extends RefCounted
-## A character's containers (docs/progresion.md §4.1, PRG-11): the bag ([code]BAG[/code],
+## A character's containers (docs/progression.md §4.1, PRG-11): the bag ([code]BAG[/code],
 ## [member bag_slots] slots, 30 by default and 120 at most) and equipment ([code]EQUIPMENT[/code],
 ## 7 slots: the two weapons and five armor slots reserved in phase 5). The worn equipment [b]is[/b]
 ## the EQUIPMENT container. The bank (PRG-25) and container 3 do not exist yet: their slots do not

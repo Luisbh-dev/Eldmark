@@ -1,5 +1,5 @@
 extends TestCase
-## Inventory and progress end to end, without a platform (docs/progresion.md §15 P8): a [ZoneServer] and three
+## Inventory and progress end to end, without a platform (docs/progression.md §15 P8): a [ZoneServer] and three
 ## real clients ([NetClient] with ENet over 127.0.0.1, each in its own [SubViewport] with its own physics
 ## world, like [NetHarness]): Ana and Bruno from Vardheim and Carla from Solmarch, all ephemeral characters with
 ## inventory (§9.4). What §15 asks for:

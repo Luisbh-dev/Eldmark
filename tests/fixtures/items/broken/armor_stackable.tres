@@ -6,7 +6,7 @@
 script = ExtResource("1_item")
 id = &"test_armor_stackable"
 display_name = "Armadura apilable"
-description = "Objeto de prueba (tests/fixtures/items): la regla de ARMOR de docs/progresion.md §2.1."
+description = "Objeto de prueba (tests/fixtures/items): la regla de ARMOR de docs/progression.md §2.1."
 category = 2
 equip_slot = 4
 ref_id = &""

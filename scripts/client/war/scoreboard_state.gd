@@ -1,6 +1,6 @@
 class_name ScoreboardState
 extends RefCounted
-## Zone scoreboard as the client sees it (docs/fuerte.md, section 6; UI-41). Pure, no nodes.
+## Zone scoreboard as the client sees it (docs/fortress.md, section 6; UI-41). Pure, no nodes.
 ## [br][br]
 ## The server sends the scoreboard every 2 s to the whole zone and, with more than
 ## [constant NetMessages.Scoreboard.MAX_ROWS] players, splits it into several pages

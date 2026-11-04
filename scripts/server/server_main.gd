@@ -1,6 +1,6 @@
 class_name ServerMain
 extends Node
-## Root of a zone's dedicated server (docs/red.md, sections 1.2 to 1.4).
+## Root of a zone's dedicated server (docs/networking.md, sections 1.2 to 1.4).
 ## [br][br]
 ## [code]boot.gd[/code] fills [member config] with [method ServerConfig.from_args] when started with [code]--server[/code]
 ## and switches to [code]scenes/server/server_main.tscn[/code]. Here:
@@ -43,7 +43,7 @@ extends Node
 ## [code]--stop-file[/code] exists and, with [code]--report[/code], the report is rewritten every
 ## [constant ZoneServer.METRICS_LOG_TICKS] ticks (10 s): if the server is killed, the last mark's report remains (with
 ## [code]"closed": false[/code]).
-## [br]- [b]With [code]--platform=<internal url>[/code][/b] (docs/plataforma.md §5.5 and §8): reads the zone's secrets
+## [br]- [b]With [code]--platform=<internal url>[/code][/b] (docs/platform.md §5.5 and §8): reads the zone's secrets
 ## ([method ZonePlatform.read_secrets]), starts the [ZonePlatform] (registration, [code]env[/code], fortresses and first
 ## block of ids) and waits for [signal ZonePlatform.startup_finished] before opening the port; clients enter with
 ## [TicketAuthProvider] and, once the port is open, [method ZonePlatform.go_live]. With a staging or production
@@ -51,11 +51,11 @@ extends Node
 ## apply (the realm comes from the character). Every orderly shutdown (the five triggers: [code]--stop-file[/code],
 ## [code]--quit-after-ticks[/code], [code]--idle-quit[/code], the console's [code]shutdown[/code] and the maintenance
 ## announced by the heartbeat) goes through [method _shutdown] → [method ZoneServer.stop], which sends each character's
-## final save and waits for the platform to answer it (docs/plataforma.md §7.2); then pending items go out and the
+## final save and waits for the platform to answer it (docs/platform.md §7.2); then pending items go out and the
 ## instance deregisters. If the platform closes the instance ([signal ZoneServer.instance_closed]), the §6.1 shutdown
 ## ([method ZoneServer.close_instance]: the finals before kicking anyone) and the process exits with code 3 so that the
 ## orchestrator starts another.
-## [br]- [b]With [code]--dtls-cert=<pem> --dtls-key=<pem>[/code][/b] (docs/plataforma.md §10.2, with or without a
+## [br]- [b]With [code]--dtls-cert=<pem> --dtls-key=<pem>[/code][/b] (docs/platform.md §10.2, with or without a
 ## platform): loads the certificate and key ([ZoneDtls], in [member ServerConfig.dtls]) before loading the zone, opens
 ## the port over DTLS and, with the platform, sends the certificate and its CN in the registration. If one of the two is
 ## missing, they cannot be read, the certificate has no CN or the key is not its own, it exits with code 1.
@@ -74,7 +74,7 @@ const WARMUP_PHYSICS_FRAMES: int = 3
 ## [constant ZoneServer.SAVE_DRAIN_TICKS] and the peers' wait), and afterwards, each time, for pending items and the
 ## deregistration to go out.
 const SHUTDOWN_MAX_FRAMES: int = 720
-## Exit code when the platform closes the instance (docs/plataforma.md §6.1).
+## Exit code when the platform closes the instance (docs/platform.md §6.1).
 const EXIT_INSTANCE_CLOSED: int = 3
 ## Seed of the first fake player; each one adds its index.
 const FAKE_SEED_BASE: int = 7000
@@ -239,7 +239,7 @@ func _notification(what: int) -> void:
 		_remove_lock()
 
 
-# --- DTLS (docs/plataforma.md §10.2) ------------------------------------------------------------
+# --- DTLS (docs/platform.md §10.2) ------------------------------------------------------------
 
 # With --dtls-cert or --dtls-key, loads both into config.dtls (ZoneDtls). Returns false if the zone cannot start: one is
 # missing, they cannot be read, the certificate has no CN or the key is not its own (the reason, in the log).
@@ -255,7 +255,7 @@ func _load_dtls() -> bool:
 	return true
 
 
-# --- Platform (docs/plataforma.md §8) ---------------------------------------------------------
+# --- Platform (docs/platform.md §8) ---------------------------------------------------------
 
 # Reads the secrets and starts the platform: registration, env, fortresses and first block. Returns the ticket keys, or
 # null if the zone cannot start (the reason is already in the log).
@@ -426,7 +426,7 @@ func _add_fake_player(forced_realm: int = 0) -> int:
 		# ZoneServer.add_fake_player gives it the fort, the routes and the enemy finder.
 		pattern = BotBrain.Pattern.SIEGE
 	var brain := BotBrain.new(FAKE_SEED_BASE + index, pattern, home, FAKE_RADIUS)
-	# --fake-loadout: the equipment template (docs/habilidades.md, section 4.6).
+	# --fake-loadout: the equipment template (docs/abilities.md, section 4.6).
 	var template_id: int = config.fake_template_for(index)
 	# --fake-archers (load tests, H5): those who carry the bow in hand are pure archers and some fire at the sky.
 	var weapons: PackedInt32Array = CombatCatalog.template_weapons(template_id) if template_id > 0 \

@@ -1,6 +1,6 @@
 class_name OnlineMain
 extends Node
-## Root of the networked client (docs/red.md, sections 1.2, 3 and 17.5). The offline sandbox is still
+## Root of the networked client (docs/networking.md, sections 1.2, 3 and 17.5). The offline sandbox is still
 ## [ClientMain]; this scene is the one for [code]--connect[/code] and [code]--bot[/code].
 ## [br][br]
 ## [ClientLauncher] (which [code]boot.gd[/code] mounts) fills in [member config] with
@@ -31,7 +31,7 @@ extends Node
 ## first point of the list) as soon as the server allows it, like someone pressing the death screen's button or a
 ## [code]SwarmBot[/code]: that way it respawns in the wave it is due for and not at the 30 s of the automatic one.
 ## [br][br]
-## [b]Scenario[/b] ([code]--bot-scenario=progress[/code], [BotProgressScenario], docs/progresion.md §15 P8): on
+## [b]Scenario[/b] ([code]--bot-scenario=progress[/code], [BotProgressScenario], docs/progression.md §15 P8): on
 ## spawning, the bot stands still and runs the scenario; after each step it rewrites the report (with the key
 ## [code]scenario[/code], for whoever watches from outside while it plays). On finishing it exits with code 0 if there is no
 ## [code]--quit-after-ticks[/code] (with it, it continues until those ticks); if it fails, report and code 1.
@@ -43,7 +43,7 @@ extends Node
 ## client without a screen (headless) has nobody to ask: it enters as Vardheim with a notice, and on
 ## a failure writes the report and exits with code 1.
 ## [br][br]
-## [b]With an account[/b] (docs/plataforma.md §5.5 and §13). With a ticket ([method ClientConfig.has_ticket]) the realm and
+## [b]With an account[/b] (docs/platform.md §5.5 and §13). With a ticket ([method ClientConfig.has_ticket]) the realm and
 ## name are the character's and there is no realm choice. If the session comes from [FrontMain]
 ## ([member ClientConfig.from_front]), a rejection or a disconnection returns to character selection with the reason
 ## (the account session continues). A bot with [code]--platform[/code] first goes through the account path with
@@ -319,7 +319,7 @@ func _uses_account() -> bool:
 	return _is_bot() and not config.platform_url.is_empty() and not config.has_ticket()
 
 
-# --- Bot with an account (docs/plataforma.md §5.5 and §13.3) --------------------------------------
+# --- Bot with an account (docs/platform.md §5.5 and §13.3) --------------------------------------
 
 # Logs in, ensures the character, asks for enter and connects with the ticket. Any failure closes with code 1.
 func _enter_with_account() -> void:
@@ -354,7 +354,7 @@ func _enter_with_account() -> void:
 		character_name = NameRules.bot_name(config.bot_seed)
 	var realm_id: StringName = RealmCatalog.id_of_code(config.realm) \
 			if RealmCatalog.is_realm_code(config.realm) else &""
-	# --loadout is the character's starting template if it has to be created (docs/progresion.md §2.5).
+	# --loadout is the character's starting template if it has to be created (docs/progression.md §2.5).
 	var ensured: ApiResult = await flow.ensure_character(config.world_id, character_name, realm_id,
 			StringName(config.loadout))
 	if _quitting:
@@ -566,7 +566,7 @@ func _enter_zone(path: String) -> void:
 	_client.notify_zone_ready(_entities)
 
 
-# Terrain3D with full collision, the same one the server fixes (docs/red.md, 1.3 and 19): the
+# Terrain3D with full collision, the same one the server fixes (docs/networking.md, 1.3 and 19): the
 # dynamic mode depends on the camera and could change the last bit of Jolt's queries. It is
 # accessed by name so as not to depend on the extension when loading the script.
 func _force_full_terrain_collision(root: Node) -> void:
@@ -637,7 +637,7 @@ func _on_local_spawned(character: PlayerCharacter) -> void:
 		return
 
 	# Visual look: the animated humanoid replaces the provisional capsule, with the appearance from the own SPAWN (that
-	# of its people by default if invalid or the zone has no progress; docs/progresion.md §7.3).
+	# of its people by default if invalid or the zone has no progress; docs/progression.md §7.3).
 	var visual: HumanoidVisual = HumanoidVisual.install_replacing_placeholder(character)
 	if visual == null:
 		push_warning("[Eldmark] Sin visual del humanoide: se usa la cápsula provisional")

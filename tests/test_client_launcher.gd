@@ -42,7 +42,7 @@ func test_the_sandbox_starts_through_the_launcher_and_reports_unknown_options() 
 	assert_false(text.contains("SCRIPT ERROR"), "without script errors: %s" % text)
 
 
-## The title screen with an account (docs/plataforma.md §5.5), started like the project with [code]--title --platform[/code] towards
+## The title screen with an account (docs/platform.md §5.5), started like the project with [code]--title --platform[/code] towards
 ## a port where nobody is listening: it mounts FrontMain without errors and says there is no connection to the server.
 ## [br]On Linux the rejection of the closed port is noticed instantly; on Windows, Godot does not detect it
 ## (the [StreamPeerTCP] stays in \"connecting\") and the call only fails when its deadline runs out

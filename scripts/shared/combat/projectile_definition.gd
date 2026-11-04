@@ -1,6 +1,6 @@
 class_name ProjectileDefinition
 extends Resource
-## The ballistics of a projectile (docs/habilidades.md, section 2.1). It goes in full into the
+## The ballistics of a projectile (docs/abilities.md, section 2.1). It goes in full into the
 ## prediction fingerprint: the client draws its predicted arrow and other players' arrows with the same
 ## [method Ballistics.position] that the server flies. The launch speed is set by whoever fires
 ## (the attack or the ability).

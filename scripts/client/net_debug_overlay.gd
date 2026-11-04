@@ -1,6 +1,6 @@
 class_name NetDebugOverlay
 extends CanvasLayer
-## Client network debugging (docs/red.md, section 13; TEC-10).
+## Client network debugging (docs/networking.md, section 13; TEC-10).
 ## [br][br]
 ## [b]F3[/b] ([code]toggle_debug[/code]) shows or hides the text panel (top right):
 ## [codeblock]

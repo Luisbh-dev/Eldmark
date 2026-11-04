@@ -1,6 +1,6 @@
 class_name CharacterSelect
 extends FrontScreen
-## Character selection (UI-23, docs/plataforma.md §4.4 and §13.2): the list on the left (name in its
+## Character selection (UI-23, docs/platform.md §4.4 and §13.2): the list on the left (name in its
 ## realm's color, level and last zone; deleted ones in gray with their deadline to restore them), the 3D
 ## figure of the selected one ([CharacterFigure] with its appearance and its realm's colors) and the free
 ## slots ("Los borrados que aún puedes restaurar ocupan hueco" (Deleted characters you can still restore

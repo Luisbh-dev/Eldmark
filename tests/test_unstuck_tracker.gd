@@ -1,5 +1,5 @@
 extends TestCase
-## Checks for the /atascado command ([UnstuckTracker], docs/fuerte.md section 5; MUN-41): 10 s
+## Checks for the /atascado command ([UnstuckTracker], docs/fortress.md section 5; MUN-41): 10 s
 ## channeling, rejection while in combat or dead, interruption, 5 min cooldown, and that re-entering
 ## does not skip it (the key is the name).
 

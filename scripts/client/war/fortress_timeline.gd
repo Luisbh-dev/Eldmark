@@ -1,6 +1,6 @@
 class_name FortressTimeline
 extends RefCounted
-## History of changes of a fortress as the client knows it (docs/fuerte.md, sections 2 and 3.2). Pure, no
+## History of changes of a fortress as the client knows it (docs/fortress.md, sections 2 and 3.2). Pure, no
 ## nodes: [FortressView] keeps one per fortress.
 ## [br][br]
 ## Each OBJECT_STATE (and the structure's ENTITY_SPAWN, which carries all the fields) is recorded with its

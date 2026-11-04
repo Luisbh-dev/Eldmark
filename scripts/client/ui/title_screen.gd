@@ -1,6 +1,6 @@
 class_name TitleScreen
 extends FrontScreen
-## Title screen (UI-22, docs/plataforma.md §13.2): "Eldmark", the service status and the news from
+## Title screen (UI-22, docs/platform.md §13.2): "Eldmark", the service status and the news from
 ## [code]GET /v1/status[/code], and login: email, password, "Recordar correo" (Remember email) (only the
 ## email, in [code]user://settings.cfg[/code]; never the password), Enter, Create account, Forgot your
 ## password?, Settings and Quit. The password recovery panel asks for the email and always responds with

@@ -186,7 +186,7 @@ func TestSetRole(t *testing.T) {
 	}
 }
 
-// S2 (progresion.md §13.3) only reads the CLI's set-role rows: a zone audit batch with an entry
+// S2 (progression.md §13.3) only reads the CLI's set-role rows: a zone audit batch with an entry
 // source = 'cli' or command = 'set-role' rejects it, and a set-role row with another source
 // (written by hand) does not change RoleAt. With several changes, RoleAt gives the role of each
 // stretch.

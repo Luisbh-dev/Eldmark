@@ -1,6 +1,6 @@
 class_name NpcNavigation
 extends RefCounted
-## NPC navigation on the server (docs/fuerte.md, section 4.1; MUN-06).
+## NPC navigation on the server (docs/fortress.md, section 4.1; MUN-06).
 ## [br][br]
 ## Creates its own [NavigationServer3D] map (with synchronous iterations: nothing from the scene's map, which
 ## the server does not have), gives it the region of the baked mesh ([code]tools/bake_navmesh.gd[/code], with the

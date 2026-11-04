@@ -136,7 +136,7 @@ jobs:
 
   # Windows is the development platform and there OS.is_process_running only knows about its own child
   # processes: this job runs the LocalServerLauncher tests (with their helper processes), not the
-  # full suite, which is run by hand on Windows (docs/informe_noche.md).
+  # full suite, which is run by hand on Windows (docs/history/2026-10-night-report.md).
   tests-windows:
     name: Windows (LocalServerLauncher)
     runs-on: windows-latest
@@ -228,7 +228,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  # Go platform service (docs/plataforma.md §2.6 and §10.3), independent of the Godot jobs: secrets
+  # Go platform service (docs/platform.md §2.6 and §10.3), independent of the Godot jobs: secrets
   # check of the index, gofmt, go vet and go test with an ephemeral PostgreSQL (initdb from the
   # ubuntu-latest PostgreSQL; ELDMARK_REQUIRE_PG=1 makes the tests fail if it is missing, instead of
   # skipping). The platform/deploy tests (P9b) also run the backup and restore scripts, shellcheck and
@@ -295,9 +295,9 @@ jobs:
         timeout-minutes: 10
         run: go test -p 2 ./...
 
-  # End to end (docs/plataforma.md P10, §15): the real Go platform in the test process, with an
+  # End to end (docs/platform.md P10, §15): the real Go platform in the test process, with an
   # ephemeral PostgreSQL, against test_world zones with --platform and bots with a real Godot account
-  # (platform/e2e, e2e tag: TestEnterAndSave and TestZoneCrash, and those of progresion.md P8 when
+  # (platform/e2e, e2e tag: TestEnterAndSave and TestZoneCrash, and those of progression.md P8 when
   # they arrive). It reuses the LFS and Godot caches of the Godot jobs (same keys) and exports
   # ELDMARK_GODOT; TestMain imports the project. If it fails, it uploads the platform, zone and bot
   # logs. For it to block the merge, "Plataforma e2e" must be marked as a required check in the branch

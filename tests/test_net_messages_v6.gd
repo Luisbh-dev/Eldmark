@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of protocol 6 (docs/habilidades.md, section 5; package H2): the new buttons of
+## Tests of protocol 6 (docs/abilities.md, section 5; package H2): the new buttons of
 ## [constant NetProtocol.VALID_BUTTONS], LOADOUT_SELECT, debug commands 13 to 16, the projectile
 ## ENTITY_SPAWN (32 B, without [code]is_yours[/code]) and the ENTITY_DESPAWN reasons 4 and 5,
 ## ENTITY_EVENTs 7 to 11 (STATUS, HEAL, LOADOUT, DOWNED, INTERACT), bits 5 and 6 of a HIT, the sources

@@ -1,6 +1,6 @@
 class_name FortressPersistence
 extends RefCounted
-## Persistent war in the zone (docs/plataforma.md §8, GUE-19): the record of each fortress on the
+## Persistent war in the zone (docs/platform.md §8, GUE-19): the record of each fortress on the
 ## platform ([code]fortresses.record[/code], schema 1) and the history of its events. It only exists
 ## with [code]--platform[/code]; it lives in [code]scripts/server/war/[/code] because it reads the
 ## platform clock ([method ZonePlatform.now_unix]), and [code]scripts/shared[/code] does not read it.
@@ -23,7 +23,7 @@ extends RefCounted
 ## no warning, and it is written as soon as the instance is live; with another [code]schema[/code]
 ## or one that is invalid, the initial state with a warning. CONSOLIDATING keeps owner and deadline;
 ## VULNERABLE, the captain's deadline; CAPTURING comes back with its capturer and progress, the
-## circle empty and decaying (the machine of docs/fuerte.md §1.5 only has progress in CAPTURING: if
+## circle empty and decaying (the machine of docs/fortress.md §1.5 only has progress in CAPTURING: if
 ## nobody comes back, at 0 it goes to VULNERABLE). Guards are not saved: the spawner replaces them.
 ## A damaged gate is repaired 5 min after startup.
 ## [br][br]
@@ -202,7 +202,7 @@ static func from_record(record: Variant, def: FortressDefinition, tick: int, now
 			state.captain_respawn_tick = tick_until(int(back), tick, now_unix) if back != null \
 					else tick + def.captain_respawn_ticks()
 		FortressState.Phase.CAPTURING:
-			# With its capturer and progress; the circle is empty, so it decays (docs/fuerte.md §1.5).
+			# With its capturer and progress; the circle is empty, so it decays (docs/fortress.md §1.5).
 			state.phase = FortressState.Phase.CAPTURING
 			state.captain_alive = false
 			state.capture_realm = capture_realm
@@ -318,7 +318,7 @@ func flush(s: int) -> void:
 			_put(fortress_id, s)
 
 
-## The platform has closed the instance (docs/plataforma.md §6.1): it no longer writes records or
+## The platform has closed the instance (docs/platform.md §6.1): it no longer writes records or
 ## events (the one in charge now is another).
 func close() -> void:
 	_closed = true
@@ -357,7 +357,7 @@ func _minor(fortress_id: StringName, state: FortressState, s: int) -> Array:
 
 # --- Responses and events -----------------------------------------------------------------------
 
-## The response to a fortress PUT ([code]fortress[/code] event, docs/plataforma.md §14.3). The version
+## The response to a fortress PUT ([code]fortress[/code] event, docs/platform.md §14.3). The version
 ## and the resend after [code]version_conflict[/code] are handled by [ZonePlatform]; here they are
 ## counted and what is invalid is logged (a 403 is a fortress of another zone). Returns true if it
 ## was its own.

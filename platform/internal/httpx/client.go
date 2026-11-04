@@ -14,7 +14,7 @@ import (
 	"eldmark/platform/internal/logx"
 )
 
-// ClientIP returns the client's IP (plataforma.md §4.2): the one from X-Real-IP only if the
+// ClientIP returns the client's IP (platform.md §4.2): the one from X-Real-IP only if the
 // connection comes from a trusted proxy (ELDMARK_TRUSTED_PROXIES, the Caddy container) and,
 // otherwise, the connection's. Never X-Forwarded-For. IPv4 addresses inside IPv6 come out as IPv4.
 func ClientIP(r *http.Request, trusted []netip.Prefix) netip.Addr {

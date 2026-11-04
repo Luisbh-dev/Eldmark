@@ -1,6 +1,6 @@
 class_name ZonePlatform
 extends Node
-## The zone facing the platform (docs/plataforma.md §5.3, §6, §8 and §14.3): registration and startup, heartbeat with its
+## The zone facing the platform (docs/platform.md §5.3, §6, §8 and §14.3): registration and startup, heartbeat with its
 ## set of leases, fencing, clock, claims, releases, saves, id blocks,
 ## fortresses, batches and one-off requests. Everything goes through its [PlatformClient] (priority queues and retries).
 ## [br][br]
@@ -30,7 +30,7 @@ signal startup_finished(ok: bool, error: String)
 signal fatal_error(error: String)
 
 ## [code]record_format[/code] of the record (§7.1): [code]ProgressRecord.FORMAT[/code] has the same value
-## (progresion.md §3.4, checked by its P5a).
+## (progression.md §3.4, checked by its P5a).
 const RECORD_FORMAT: int = 1
 ## Platform environments.
 const ENV_DEV: StringName = &"dev"
@@ -60,7 +60,7 @@ const KIND_LIVE: StringName = &"live"
 const KIND_FORTRESSES: StringName = &"fortresses"
 const KIND_RELEASE: StringName = &"release"
 const KIND_STOP: StringName = &"stop"
-## The key of the plataforma.md §5.1 vector (00 01 … 1f): only valid in [code]test[/code].
+## The key of the platform.md §5.1 vector (00 01 … 1f): only valid in [code]test[/code].
 const TEST_TICKET_KEY_HEX: String = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
 ## Minimum size of a ticket key.
 const MIN_TICKET_KEY_BYTES: int = 32
@@ -238,7 +238,7 @@ static func registration_body(config: ServerConfig) -> Dictionary:
 		"public_host": config.public_host(), "public_port": config.public_port(), "realms": realms,
 		"build_id": build_id(), "protocol_version": NetProtocol.PROTOCOL_VERSION,
 		"record_format": RECORD_FORMAT, "max_players": config.max_players,
-		# The zone's DTLS certificate and its CN (plataforma.md §10.2, P9c), which the platform gives to the client in enter;
+		# The zone's DTLS certificate and its CN (platform.md §10.2, P9c), which the platform gives to the client in enter;
 		# without DTLS, null (in staging and production the platform does not register a zone without a certificate).
 		"dtls_cert_pem": config.dtls.certificate_pem if config.dtls != null else null,
 		"dtls_name": config.dtls.common_name if config.dtls != null else null,
@@ -650,7 +650,7 @@ func _send_heartbeat(now: int) -> void:
 				"lease_id": _heartbeat_set[character_id]})
 	var players: int = int(player_count_source.call()) if player_count_source.is_valid() else 0
 	# The context says for whom and when the heartbeat was sent: the response's mutes only apply to those characters and
-	# do not undo a later sanction by the zone (plataforma.md §9.5, P7b).
+	# do not undo a later sanction by the zone (platform.md §9.5, P7b).
 	var context: Dictionary = {"characters": _heartbeat_set.duplicate(), "sent_msec": now}
 	_client.submit(_request(HTTPClient.METHOD_POST, "/internal/v1/zone-instances/%s/heartbeat" % _instance_id,
 			{"players": players, "characters": characters}, PlatformClient.PRIORITY_CONTROL,

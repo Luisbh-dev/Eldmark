@@ -13,8 +13,8 @@ import (
 	"eldmark/platform/internal/persistence"
 )
 
-// What leaves the store outside the save path: the data export (GDPR, progresion.md §3.5) and the
-// bodies of the operation and ledger routes (progresion.md §13.2), with ids as strings.
+// What leaves the store outside the save path: the data export (GDPR, progression.md §3.5) and the
+// bodies of the operation and ledger routes (progression.md §13.2), with ids as strings.
 
 // exportOp is an operation in the export: without actor_account_id, note or detail (staff data on
 // GM and REVERSAL operations; empty on the others).
@@ -47,7 +47,7 @@ type exportEvent struct {
 	Reason     int16     `json:"reason"`
 }
 
-// Export implements persistence.ProgressStore (progresion.md §3.5): {"record": …, "ops": […]},
+// Export implements persistence.ProgressStore (progression.md §3.5): {"record": …, "ops": […]},
 // with the claim record (null for a tombstone, which no longer has state) and, in order, the
 // operations the character takes part in with its own entries and events (those of other
 // participants are not included). None of them includes actor_account_id, note or detail.
@@ -139,7 +139,7 @@ func idPtr(v *int64) *jsonx.ID {
 	return &id
 }
 
-// opView is the body of GET /internal/v1/ops/{op_id} (progresion.md §13.2).
+// opView is the body of GET /internal/v1/ops/{op_id} (progression.md §13.2).
 type opView struct {
 	OpID           jsonx.ID         `json:"op_id"`
 	Kind           int16            `json:"kind"`
@@ -189,7 +189,7 @@ type opInstanceView struct {
 
 // Op implements persistence.ProgressStore: {"op": …} with the operation, its participants, who
 // reverted it, all its entries and events, and the item_instances rows of the uids in its events
-// (retired ones too: the reversal of a DESTROY copies their fields, progresion.md §10).
+// (retired ones too: the reversal of a DESTROY copies their fields, progression.md §10).
 // persistence.ErrNotFound if it does not exist or if no participant has its lease in instance (in
 // the same query: the platform does not read op_participants).
 func (s *Store) Op(ctx context.Context, q persistence.Querier, opID int64, instance [16]byte) (json.RawMessage, error) {
@@ -280,7 +280,7 @@ func (s *Store) Op(ctx context.Context, q persistence.Querier, opID int64, insta
 	return json.Marshal(map[string]opView{"op": v})
 }
 
-// ledgerView is an entry of GET /internal/v1/characters/{id}/ledger (progresion.md §13.2).
+// ledgerView is an entry of GET /internal/v1/characters/{id}/ledger (progression.md §13.2).
 type ledgerView struct {
 	EntryID       jsonx.ID `json:"entry_id"`
 	OpID          jsonx.ID `json:"op_id"`

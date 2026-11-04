@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [HfsmBrain] and for step 0 of the tick (MUN-07, MUN-08; docs/fuerte.md 4.2): REST → ALERT → COMBAT,
+## Tests for [HfsmBrain] and for step 0 of the tick (MUN-07, MUN-08; docs/fortress.md 4.2): REST → ALERT → COMBAT,
 ## perception by radius, cone and line of sight, the same state sequence with the same seed, attack
 ## tokens, flankers, the leash with regenerated and immune return, the group alert and the shout, the
 ## Captain's reinforcements, the TELEGRAPH alert and the unblockable hit, and the debug log. Almost all on the flat
@@ -659,7 +659,7 @@ func test_npc_debug_writes_state_target_and_path_every_second() -> void:
 			CommandRegistry.Result.OK, "turning on over the network")
 	assert_true(_rig.npcs().is_debug_enabled())
 	assert_true(hollow > 0)
-	# Those of protocol 6: 13 and 14 arrived with H3a; 15 and 16, with H3c (docs/habilidades.md §7.1). The four for
-	# progression in protocol 7 (40 to 43), with progresion.md P5d.
+	# Those of protocol 6: 13 and 14 arrived with H3a; 15 and 16, with H3c (docs/abilities.md §7.1). The four for
+	# progression in protocol 7 (40 to 43), with progression.md P5d.
 	assert_eq(_rig.server.get_commands().missing_network_commands(), PackedStringArray(),
 			"with npc_debug all the network commands are there")

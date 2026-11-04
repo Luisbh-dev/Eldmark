@@ -14,7 +14,7 @@ import (
 )
 
 // ProgressExporter is what the export uses from the progression store: ProgressStore.Export
-// (progresion.md §3.5), {"record": ..., "ops": [...]} with record null in a tombstone and without
+// (progression.md §3.5), {"record": ..., "ops": [...]} with record null in a tombstone and without
 // staff data.
 type ProgressExporter interface {
 	Export(ctx context.Context, q persistence.Querier, characterID int64) (json.RawMessage, error)

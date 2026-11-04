@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test restore of a backup (docs/plataforma.md §11.2 and §12, TEC-28): it restores it into an
+# Test restore of a backup (docs/platform.md §11.2 and §12, TEC-28): it restores it into an
 # ephemeral PostgreSQL cluster, applies any missing migrations, reapplies the purges with the most
 # recent purges.txt (eldmark-platform admin reapply-purges) and runs the integrity queries. It does
 # not touch the real database or leave anything behind: the cluster is deleted on exit.
@@ -188,7 +188,7 @@ with purged_accounts as (
 	union select l.character_id from character_leases l join purged_characters p on p.id = l.character_id
 	union select t.character_id from enter_tickets t join purged_characters p on p.id = t.character_id
 	union select n.character_id from character_names n join purged_characters p on p.id = n.character_id
-	-- El estado del progreso (progresion.md §3.5): lo borra ProgressStore.Purge; el libro se queda.
+	-- El estado del progreso (progression.md §3.5): lo borra ProgressStore.Purge; el libro se queda.
 	union select g.character_id from character_progress g join purged_characters p on p.id = g.character_id
 	union select w.character_id from character_wallets w join purged_characters p on p.id = w.character_id
 	union select i.character_id from item_instances i join purged_characters p on p.id = i.character_id

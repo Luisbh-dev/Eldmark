@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for the item definitions ([ItemDefinition], [ItemDatabase]; docs/progresion.md §2.1, §2.2 and
+## Tests for the item definitions ([ItemDefinition], [ItemDatabase]; docs/progression.md §2.1, §2.2 and
 ## §2.4, PRG-02): unique, well-formed ids, resources in text, the §2.1 consistency (the ARMOR one with
 ## [code]tests/fixtures/items/[/code], because [code]data/items/[/code] has no armours in phase 5),
 ## [code]ref_id[/code]s that exist, one object per weapon and consumable of the templates, alphabetical net ids and

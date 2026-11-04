@@ -18,7 +18,7 @@ import (
 	"eldmark/platform/internal/zones"
 )
 
-// The save checks S2–S7 (progresion.md §13.3) over the already parsed section (S1, section.go) and
+// The save checks S2–S7 (progression.md §13.3) over the already parsed section (S1, section.go) and
 // the character's state in the database, locked. They run in order and the first that fails gives
 // the check of the *persistence.InvalidSaveError; S8 (write.go) writes.
 
@@ -50,7 +50,7 @@ var (
 	// commandPattern is the command of a zone operation: the one from its audit batch
 	// (social.commandPattern), so S8 never writes one from the CLI ("set-role") or from the platform.
 	commandPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,47}$`)
-	// detailKeys are the detail keys of a GM or a REVERSAL (progresion.md §10); the level and XP ones
+	// detailKeys are the detail keys of a GM or a REVERSAL (progression.md §10); the level and XP ones
 	// only when the command touches them.
 	detailKeys = map[string]bool{"command": true, "args": true, "source": true, "actor_character_id": true,
 		"at_unix": true, "level_before": true, "level_after": true, "xp_before": true, "xp_after": true, "xp_delta": true}
@@ -58,7 +58,7 @@ var (
 	detailColumns = map[string]bool{"command": true, "source": true, "actor_character_id": true, "at_unix": true}
 )
 
-// Sources of detail.source (progresion.md §10) and their source in audit_log (plataforma.md §9.1).
+// Sources of detail.source (progression.md §10) and their source in audit_log (platform.md §9.1).
 const (
 	sourceGM      = "gm"
 	sourceConsole = "console"
@@ -132,7 +132,7 @@ type apply struct {
 // Apply implements persistence.ProgressStore: S1 (the section), S2–S7 (against the database, with
 // the character's state locked) and S8 (the write). A failure of S1–S7 is a
 // *persistence.InvalidSaveError and writes nothing; a database error in S8 is classified by the
-// caller (plataforma.md §7.3). It returns the new save_version.
+// caller (platform.md §7.3). It returns the new save_version.
 func (s *Store) Apply(ctx context.Context, tx pgx.Tx, key persistence.SaveKey, progress json.RawMessage) (int64, error) {
 	sec, err := parseSection(progress, key.ZoneID)
 	if err != nil {
@@ -392,7 +392,7 @@ func (a *apply) checkActor(ctx context.Context, tx pgx.Tx, o op) error {
 	return nil
 }
 
-// parseDetail parses the detail of a GM or a REVERSAL (progresion.md §10): command, args
+// parseDetail parses the detail of a GM or a REVERSAL (progression.md §10): command, args
 // (strings), source (gm, console or debug), at_unix and, if present, actor_character_id; the
 // level and XP ones, integers.
 func parseDetail(o op) (*gmDetail, error) {

@@ -1,6 +1,6 @@
 class_name BotTarget
 extends RefCounted
-## Someone a bot attends to ([BotBrain]; docs/habilidades.md, section 7.1, H5): where their feet are, how
+## Someone a bot attends to ([BotBrain]; docs/abilities.md, section 7.1, H5): where their feet are, how
 ## fast they move and whether they are knocked down.
 ## [br][br]
 ## A bot's enemy finder ([method BotBrain.set_enemy_finder]) may return one of these instead of
@@ -12,7 +12,7 @@ extends RefCounted
 var position: Vector3 = Vector3.ZERO
 ## Velocity (m/s).
 var velocity: Vector3 = Vector3.ZERO
-## true if knocked down (docs/habilidades.md, section 4.5): does not fight; is finished off or revived.
+## true if knocked down (docs/abilities.md, section 4.5): does not fight; is finished off or revived.
 var downed: bool = false
 ## net_id (0 if unknown).
 var net_id: int = 0

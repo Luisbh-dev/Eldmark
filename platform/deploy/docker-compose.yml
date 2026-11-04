@@ -1,4 +1,4 @@
-# Deployment of one environment (staging or production) on a VPS: docs/plataforma.md §10 and §12.
+# Deployment of one environment (staging or production) on a VPS: docs/platform.md §10 and §12.
 #
 #   cp staging.env.example staging.env        (and fill it in; staging.env does not go into git)
 #   docker compose --env-file staging.env up -d                       database, platform and Caddy
@@ -21,7 +21,7 @@
 #   vado_gris_dtls_cert, vado_gris_dtls_key   PEM of that zone's DTLS (P9c): self-signed, with a CN
 #                       (the name the client checks) and a passwordless key; the zone does not
 #                       start if the key is not the certificate's. For example (EC P-256, the
-#                       cheapest handshake; docs/plataforma.md §19.18):
+#                       cheapest handshake; docs/platform.md §19.18):
 #     openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 825 \
 #       -keyout vado_gris_dtls_key -out vado_gris_dtls_cert \
 #       -subj "/CN=vado-gris.<domain>" -addext "subjectAltName=DNS:vado-gris.<domain>"
@@ -131,7 +131,7 @@ services:
     logging: *logging
 
   # The zones (TEC-20 builds the image: the exported server as ENTRYPOINT, with "--headless --").
-  # The options --platform, --world, --channel and --public-address are from plataforma.md P4, and
+  # The options --platform, --world, --channel and --public-address are from platform.md P4, and
   # --dtls-* from P9c. One entry per zone deployment, each with its token.
   zone-vado-gris:
     image: ${ELDMARK_ZONE_IMAGE:-eldmark-zone:local}

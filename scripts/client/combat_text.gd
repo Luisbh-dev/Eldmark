@@ -9,7 +9,7 @@ extends RefCounted
 ## keep their number (their source is their id), so [method attack_label] still works for them.
 ## [br][br]
 ## The tables go by the resource [b]name[/b] (the [code]id[/code] of its [code].tres[/code]): the
-## catalog's numeric ids are not fixed (docs/habilidades.md, section 2.2).
+## catalog's numeric ids are not fixed (docs/abilities.md, section 2.2).
 
 ## Name of each catalog attack ([member AttackDefinition.id]) as read after "con" (with).
 const ATTACK_LABELS: Dictionary[StringName, String] = {
@@ -97,7 +97,7 @@ const TEXT_BLEED_OUT: String = "el desangrado"
 const TEXT_EXECUTED_BY: String = "Te ha rematado %s."
 const TEXT_BLED_OUT: String = "Te has desangrado."
 const TEXT_BLED_OUT_BY: String = "Te has desangrado: te derribó %s."
-## Knockdown notices (docs/habilidades.md, section 6.5).
+## Knockdown notices (docs/abilities.md, section 6.5).
 const TEXT_DOWNED: String = "Derribado"
 const TEXT_DOWNED_COUNTDOWN: String = "Te desangras en %d s"
 const TEXT_BEING_REVIVED: String = "Te están levantando"

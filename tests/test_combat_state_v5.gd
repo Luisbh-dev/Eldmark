@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for version 5 of [CombatState] (docs/habilidades.md, section 3.1): 76 B inside a 111 B
+## Tests for version 5 of [CombatState] (docs/abilities.md, section 3.1): 76 B inside a 111 B
 ## [PlayerState], each new field at its offset, round trip, the new format of
 ## [member CombatState.buffered] (bits 0-3 type, 4-7 ticks), the charges, the active slot, the array
 ## copy and that the reconciliation comparison notices each new field.
@@ -51,7 +51,7 @@ func test_new_actions_keep_the_old_numbers() -> void:
 
 
 func test_every_new_field_is_at_its_offset() -> void:
-	# Offsets inside PlayerState (the table in docs/habilidades.md, section 3.1).
+	# Offsets inside PlayerState (the table in docs/abilities.md, section 3.1).
 	var state := PlayerState.new()
 	state.combat = _full_state()
 	var bytes: PackedByteArray = state.encode()

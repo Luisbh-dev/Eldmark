@@ -1,6 +1,6 @@
 class_name RenameDialog
 extends Control
-## Forced rename (docs/plataforma.md §4.4, §9.5 and §13.2): when [code]enter[/code] responds
+## Forced rename (docs/platform.md §4.4, §9.5 and §13.2): when [code]enter[/code] responds
 ## [code]rename_required[/code] (a moderation sanction), a modal dialog asks for the new name, validated
 ## with [NameRules] as it is typed. "Cambiar" (Change) emits [signal rename_requested]; the platform
 ## responds and [FrontMain] closes the dialog or shows the reason ([method set_error]). The old name stays

@@ -1,5 +1,5 @@
 extends TestCase
-## The fort's gate as a target for hits (docs/fuerte.md, section 3.3; GUE-10): the
+## The fort's gate as a target for hits (docs/fortress.md, section 3.3; GUE-10): the
 ## [CombatResolver] tests it as a box with no rewind or defence, the [CombatDirector] applies the damage
 ## with the multiplier of its type and emits a HIT with the fortress's net_id, and the [FortressController]
 ## removes its health and raises the alert. Fighters assembled by hand, with no server or network.

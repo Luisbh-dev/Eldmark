@@ -1,5 +1,5 @@
 extends TestCase
-## Abilities on the server (docs/habilidades.md, sections 3.6, 4.1 and 4.2; package H3a): the shield
+## Abilities on the server (docs/abilities.md, sections 3.6, 4.1 and 4.2; package H3a): the shield
 ## bash stuns from the front, goes through a raised shield and does not hit from behind; the charge covers 6 m in its
 ## active phase and pushes; the shield wall blocks at 85° from the front and not at 95°; the server rejects an
 ## ability on cooldown (a bot that presses it one tick out of every two commits exactly every

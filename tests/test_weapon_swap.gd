@@ -1,5 +1,5 @@
 extends TestCase
-## Weapon swap (docs/habilidades.md, sections 3.3 to 3.5 and 7.3): swapping the weapons and the two
+## Weapon swap (docs/abilities.md, sections 3.3 to 3.5 and 7.3): swapping the weapons and the two
 ## halves of the cooldowns, never in the middle of a strike (it goes to the buffer, and expires if the
 ## window does not arrive), with no weapon in the other slot it does nothing,
 ## [method ActionMachine.set_charges] touches nothing else and [method ActionMachine.set_loadout]

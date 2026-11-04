@@ -1,11 +1,11 @@
 extends TestCase
 ## Server combat over the network, with clients that speak the protocol by hand over ENet on
-## 127.0.0.1 (docs/combate.md, sections 5 and 6; docs/red.md, 5.5 and 5.6): who each
+## 127.0.0.1 (docs/combate.md, sections 5 and 6; docs/networking.md, 5.5 and 5.6): who each
 ## ENTITY_EVENT is sent to (HIT, DOWNED, DEATH, KILL and RESPAWN), the extra snapshot block with health, the NPC in
 ## the snapshots, RESPAWN_REQUEST (on time, past the deadline and with an index that is no longer valid) and the
 ## debug commands (with and without [code]--debug-commands[/code]).
 ## [br][br]
-## Since phase 4 (docs/habilidades.md, sections 4.5 and 4.6) each player receives their LOADOUT on entering (and
+## Since phase 4 (docs/abilities.md, sections 4.5 and 4.6) each player receives their LOADOUT on entering (and
 ## the public one of those who enter later and are relevant to them), so the tests wait for events by
 ## their class; and in an RVR zone (\"test_world\") the killing blow from another realm knocks down: the DEATH and the KILL
 ## arrive with the finishing blow.

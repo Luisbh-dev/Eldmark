@@ -1,6 +1,6 @@
 class_name ClientInventory
 extends RefCounted
-## The local player's inventory on the client (docs/progresion.md §11.3, UI-26): optimistic intent and its
+## The local player's inventory on the client (docs/progression.md §11.3, UI-26): optimistic intent and its
 ## rollback. It keeps the [b]confirmed state[/b] (the latest the server said), the list of [b]pending
 ## requests[/b] (those sent without a response, at most [constant MAX_PENDING]) and a [b]view[/b], which is the
 ## confirmed state with the pending ones applied by [method InventoryOps.apply], the same function the server uses
@@ -47,7 +47,7 @@ signal request_rejected(result: int, text: String)
 const MAX_PENDING: int = 8
 ## Timeout for a response (ms). On a reliable channel it should never expire.
 const RESPONSE_TIMEOUT_MSEC: int = 5000
-## Minimum time (ms) between two INVENTORY_SYNC_REQUESTs (docs/progresion.md §4.6).
+## Minimum time (ms) between two INVENTORY_SYNC_REQUESTs (docs/progression.md §4.6).
 const SYNC_INTERVAL_MSEC: int = 5000
 ## Highest [code]request_id[/code] (u16); after that it wraps back to 1 (0 means "server change").
 const MAX_REQUEST_ID: int = 0xFFFF

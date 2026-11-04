@@ -1,6 +1,6 @@
 class_name StatusTracker
 extends RefCounted
-## Active status effects of an entity as the server counts them (UI-45, docs/habilidades.md, section
+## Active status effects of an entity as the server counts them (UI-45, docs/abilities.md, section
 ## 6.4): one per entity, fed by [NetClient] with the already-timed ENTITY_EVENTs (the local player
 ## entity's on arrival; a remote's at its draw tick, also the player's own, so they arrive in the
 ## server's tick order: this tracker applies them in the order they reach it).

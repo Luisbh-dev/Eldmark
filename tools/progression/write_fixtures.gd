@@ -1,6 +1,6 @@
 extends SceneTree
 ## Writes [code]tests/fixtures/progression/save_cases.json[/code] with [method SaveFixtures.to_json]: the cases for the
-## save checks (docs/progresion.md §13.3) shared by the zone and the Go store (progresion.md P7).
+## save checks (docs/progression.md §13.3) shared by the zone and the Go store (progression.md P7).
 ## It is the only way to change that file: [code]tests/test_progression_fixtures.gd[/code] fails if it does not match
 ## what [PlayerProgress] generates.
 ## [br][br]

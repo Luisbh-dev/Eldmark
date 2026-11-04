@@ -6,7 +6,7 @@
 // - Foam where it meets the bank, stones and piers, broken up with noise.
 // - Two noise layers that scroll along the river (UV.x = meters along the channel) give the
 //   reflection ripples; flow_speed controls the current.
-// - TIME returns to zero every so often (docs/mundo.md, numerical precision): the scrolling uses
+// - TIME returns to zero every so often (docs/world.md, numerical precision): the scrolling uses
 //   fract() so the jump goes unnoticed.
 shader_type spatial;
 render_mode blend_mix, cull_back, depth_draw_opaque, diffuse_burley, specular_schlick_ggx;

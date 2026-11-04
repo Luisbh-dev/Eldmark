@@ -1,5 +1,5 @@
 extends TestCase
-## The battle scoreboard ([ScoreKeeper], docs/fuerte.md section 6; UI-41): per-player counters,
+## The battle scoreboard ([ScoreKeeper], docs/fortress.md section 6; UI-41): per-player counters,
 ## provisional merits (kills x 10 + assists x 5 + seconds in the circle) and the SCOREBOARD
 ## rows.
 

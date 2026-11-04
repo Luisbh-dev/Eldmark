@@ -1,6 +1,6 @@
 class_name PlatformApi
 extends Node
-## Client of the platform's public API (docs/plataforma.md §4 and §14.4): HTTPS and JSON with the headers from
+## Client of the platform's public API (docs/platform.md §4 and §14.4): HTTPS and JSON with the headers from
 ## §4.1 ([code]Authorization[/code], [code]X-Eldmark-Protocol[/code] and [code]X-Eldmark-Build[/code]).
 ## [br][br]
 ## [method call_api] is a coroutine that returns an [ApiResult]:

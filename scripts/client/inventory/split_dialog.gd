@@ -1,6 +1,6 @@
 class_name SplitDialog
 extends Control
-## Quantity dialog for splitting a stack (docs/progresion.md §11.2, UI-26): Shift + drag opens this
+## Quantity dialog for splitting a stack (docs/progression.md §11.2, UI-26): Shift + drag opens this
 ## dialog with a selector from 1 to the stack − 1 (half by default) and two buttons. It emits
 ## [signal confirmed] with the chosen quantity or [signal canceled], and closes before emitting. It is modal, like
 ## [UIConfirmDialog]: a veil dims and blocks the rest of the screen, Esc cancels and Enter in the selector

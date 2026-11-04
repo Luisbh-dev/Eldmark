@@ -45,7 +45,7 @@ const (
 	artifactsVar    = "ELDMARK_E2E_ARTIFACTS" // folder where the logs of each test are kept (optional)
 )
 
-// The tests' platform (plataforma.md §15, P10): a single zone deployment, test_world in world 1 and
+// The tests' platform (platform.md §15, P10): a single zone deployment, test_world in world 1 and
 // channel 0, which is the entry zone of both realms; 1 s heartbeat and 6 s leases.
 const (
 	ZoneID     = "test_world"
@@ -432,7 +432,7 @@ func (h *Harness) WaitFor(timeout time.Duration, what string, cond func() bool) 
 }
 
 // CheckBooks checks by SQL that the character's saved data adds up, with nothing duplicated or
-// half-done (TEC-25; the sums of progresion.md §15 P8): by definition, the sum of count_delta in
+// half-done (TEC-25; the sums of progression.md §15 P8): by definition, the sum of count_delta in
 // item_events is the sum of count of its live objects; per currency, the sum of delta in
 // ledger_entries is the balance; the kit (STARTER_KIT operation) was given only once, and has some
 // live object (otherwise, the rest would say nothing).
@@ -716,7 +716,7 @@ func freeUDPPort(t *testing.T) int {
 
 // --- Bots --------------------------------------------------------------------------------------------------
 
-// Bot is a --bot client with an account (plataforma.md §19.16): it logs in, ensures the character,
+// Bot is a --bot client with an account (platform.md §19.16): it logs in, ensures the character,
 // requests enter and joins with the ticket in the zone the platform gives.
 type Bot struct {
 	*Process

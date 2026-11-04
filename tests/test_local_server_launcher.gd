@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [LocalServerLauncher] and for the [code]--local[/code] mode (docs/red.md, 1.4 and 17.5).
+## Tests for [LocalServerLauncher] and for the [code]--local[/code] mode (docs/networking.md, 1.4 and 17.5).
 ## [br]- Arguments the server is launched with, inside and outside an export.
 ## [br]- Lock file: a fake lock counts as a live server if its pid is that of a process
 ## with the command line of a local server ([code]--server --dev-lock[/code]: a helper

@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [ItemInstance] (docs/progresion.md §2.1, §2.3 and §3.4, PRG-02): round trip of 1000 seeded random
+## Tests for [ItemInstance] (docs/progression.md §2.1, §2.3 and §3.4, PRG-02): round trip of 1000 seeded random
 ## instances, in binary and in dictionary form (going through the JSON text, like the platform's
 ## record), and null in each §2.3 case with no engine errors (the runner fails the test if any
 ## is logged).

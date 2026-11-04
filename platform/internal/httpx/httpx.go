@@ -1,4 +1,4 @@
-// Package httpx gathers what the two HTTP APIs have in common (plataforma.md §4.1 and §6): the error
+// Package httpx gathers what the two HTTP APIs have in common (platform.md §4.1 and §6): the error
 // body, the logging of each request with its id, the body limits, /health and /ready.
 package httpx
 

@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for the reading of the server's arguments ([ServerConfig.from_args], docs/red.md
+## Tests for the reading of the server's arguments ([ServerConfig.from_args], docs/networking.md
 ## section 1.2).
 
 
@@ -81,7 +81,7 @@ func test_out_of_range_numbers_keep_the_default() -> void:
 
 
 ## H5 review: the default capacity is the zone's. Vado Gris (the war zone) stays at the per-battle player
-## limit measured with the phase 4 kit (docs/red.md, section 14); a zone without its own capacity,
+## limit measured with the phase 4 kit (docs/networking.md, section 14); a zone without its own capacity,
 ## at 64; and --max-players always wins.
 func test_the_zone_sets_the_default_capacity() -> void:
 	assert_eq(NetZones.max_players("vado_gris"), 40, "Vado Gris has its own capacity")
@@ -248,7 +248,7 @@ func test_fake_archers_option_for_load_tests() -> void:
 		assert_eq(ServerConfig.from_args(PackedStringArray([bad])).fake_archers_sky_percent, -1, "%s is not valid" % bad)
 
 
-## The platform options (docs/plataforma.md §14.3): --platform, --world, --channel, --public-address,
+## The platform options (docs/platform.md §14.3): --platform, --world, --channel, --public-address,
 ## --save-interval, --replace, --dtls-cert and --dtls-key, and the development ones that, together with it, are only valid in dev and test.
 func test_platform_options() -> void:
 	var plain: ServerConfig = ServerConfig.from_args(PackedStringArray(["--server", "--port=24610"]))

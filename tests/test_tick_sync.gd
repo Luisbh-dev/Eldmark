@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [TickSync] (docs/red.md, sections 4.2 and 16): target margin according to jitter,
+## Tests for [TickSync] (docs/networking.md, sections 4.2 and 16): target margin according to jitter,
 ## margin sequences and the steps to take, proportional debt, waiting for the ack
 ## after the adjustment, delay with null steps, hard forward resync and that it never
 ## jumps backward.

@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for the account screens with fake data (docs/plataforma.md §13.2 and §15 P8): the title (Enter ("Entrar") only
+## Tests for the account screens with fake data (docs/platform.md §13.2 and §15 P8): the title (Enter ("Entrar") only
 ## with email and password, the service status, the recover panel), create account (the password, the age and
 ## the three texts), the new texts, the sanctioned account, the selection (names, slots, Enter disabled without a
 ## character, delete by typing the name, restore, keyboard), creation (fixed realm, appearance, template and

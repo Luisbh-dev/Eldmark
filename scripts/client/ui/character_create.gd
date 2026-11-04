@@ -1,6 +1,6 @@
 class_name CharacterCreate
 extends FrontScreen
-## Character creation (UI-24, docs/plataforma.md §4.4 and §13.2), in four steps with the 3D figure on the
+## Character creation (UI-24, docs/platform.md §4.4 and §13.2), in four steps with the 3D figure on the
 ## right ([CharacterFigure], orbital camera with the mouse):
 ## [br]1. [b]Realm[/b]: cards with its capital, its people and the faction color; fixed to the account's
 ## if it already has one ([method setup]); Askarra appears as "Próximamente" (Coming soon) (§0).
@@ -10,7 +10,7 @@ extends FrontScreen
 ## hairstyle and one beard; ART-20 will bring more): whatever has no options appears without arrows.
 ## [br]3. [b]Starter template[/b]: the templates that can be chosen (PRG-07, the
 ## [code]starter_templates[/code] section), with their weapons and potions; it is the kit for the first
-## entry (progresion.md §2.5).
+## entry (progression.md §2.5).
 ## [br]4. [b]Name[/b]: validated with [NameRules] while typing and with [code]name-check[/code] after
 ## [constant NAME_CHECK_DELAY_S] s without typing ([signal name_check_requested] and
 ## [method set_name_check]).

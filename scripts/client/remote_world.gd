@@ -1,6 +1,6 @@
 class_name RemoteWorld
 extends Node3D
-## World of the remote players (docs/red.md, section 7): creates one [RemotePlayerView] per remote
+## World of the remote players (docs/networking.md, section 7): creates one [RemotePlayerView] per remote
 ## entity and keeps it up to date with the server's messages.
 ## [br][br]
 ## [NetClient] passes it other entities' ENTITY_SPAWN ([method on_spawn]), the ENTITY_DESPAWN
@@ -103,7 +103,7 @@ func on_despawn(msg: NetMessages.EntityDespawn) -> void:
 	_despawn_count += 1
 
 
-## LOADOUT of a remote (already at its draw tick): its new pair of weapons (docs/habilidades.md, section
+## LOADOUT of a remote (already at its draw tick): its new pair of weapons (docs/abilities.md, section
 ## 5.4). Ignores unknown ids.
 func on_loadout(event: NetMessages.EntityEvent) -> void:
 	if event == null or event.event != NetMessages.EntityEvent.Kind.LOADOUT:

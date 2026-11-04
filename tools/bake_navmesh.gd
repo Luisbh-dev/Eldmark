@@ -1,5 +1,5 @@
 extends SceneTree
-## Bakes the NPC navigation mesh of the Vado Gris (docs/fuerte.md, section 4.1, MUN-06) and
+## Bakes the NPC navigation mesh of the Vado Gris (docs/fortress.md, section 4.1, MUN-06) and
 ## saves it as text in [code]scenes/world/zones/vado_gris/vado_gris_navmesh.tres[/code].
 ##
 ## Usage (from the project root, no window; a few seconds):
@@ -104,7 +104,7 @@ func _run() -> void:
 	var size: int = FileAccess.get_file_as_bytes(OUTPUT_PATH).size()
 	print("%s (%.1f MB) en %.1f s" % [OUTPUT_PATH, size / 1048576.0, (Time.get_ticks_msec() - started) / 1000.0])
 	if size > MAX_FILE_BYTES:
-		printerr("El archivo pasa de 20 MB: repite con --cell=0.3 (y anótalo en docs/fuerte.md)")
+		printerr("El archivo pasa de 20 MB: repite con --cell=0.3 (y anótalo en docs/fortress.md)")
 		quit(1)
 		return
 	quit(0)

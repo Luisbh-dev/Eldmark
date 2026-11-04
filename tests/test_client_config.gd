@@ -1,7 +1,7 @@
 extends TestCase
-## Tests for [ClientConfig]: the user arguments of the networked client (docs/red.md, 1.2), and how
+## Tests for [ClientConfig]: the user arguments of the networked client (docs/networking.md, 1.2), and how
 ## [code]boot.gd[/code] lets them through without \"unknown argument\" warnings. Since phase 5, also the
-## account modes and their priority, the TITLE mode and [code]--dtls-*[/code] (docs/plataforma.md §5.5, §13.3 and §15 P8).
+## account modes and their priority, the TITLE mode and [code]--dtls-*[/code] (docs/platform.md §5.5, §13.3 and §15 P8).
 
 const BootScript = preload("res://scripts/boot.gd")
 
@@ -228,7 +228,7 @@ func test_loadout_option_takes_a_selectable_template_by_name() -> void:
 	assert_false(ClientConfig.is_selectable_template(""))
 
 
-# --- Phase 5: account and platform (docs/plataforma.md §13.3) ---------------------------------
+# --- Phase 5: account and platform (docs/platform.md §13.3) ---------------------------------
 
 func test_account_defaults_without_arguments() -> void:
 	var config: ClientConfig = _parse([])

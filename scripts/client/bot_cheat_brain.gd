@@ -11,7 +11,7 @@ extends BotBrain
 ## [br]- [constant Style.RATE]: it sticks to the enemy and mashes PRIMARY, pressed one tick out of
 ## two (one edge every two ticks, the most that can be pressed). The server must let it hit only at
 ## the combo rate in the data.
-## [br]- [constant Style.REUSE] (CMB-19; docs/habilidades.md, section 4.7): it sticks to the enemy
+## [br]- [constant Style.REUSE] (CMB-19; docs/abilities.md, section 4.7): it sticks to the enemy
 ## and mashes ability 1 (the shield strike) one tick out of two, also while it is on cooldown. The
 ## server must let it use it only when it becomes valid again: one hit every [code]cooldown +
 ## cast[/code] ticks.

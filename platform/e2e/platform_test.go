@@ -16,7 +16,7 @@ const (
 	zoneStop    = 30 * time.Second // a zone's orderly shutdown
 )
 
-// TestEnterAndSave (plataforma.md §15, P10): a test_world zone with --platform and a bot with an
+// TestEnterAndSave (platform.md §15, P10): a test_world zone with --platform and a bot with an
 // account that creates its character, joins with the ticket, plays and leaves. Its save reaches the
 // database (save_version > 0 and character_progress.saved_at set) and the lease is freed; the zone
 // shuts down in order and deregisters.
@@ -78,7 +78,7 @@ func TestEnterAndSave(t *testing.T) {
 	h.Logf("TestEnterAndSave: %.1f s", h.Elapsed().Seconds())
 }
 
-// TestZoneCrash (plataforma.md §15, P10; TEC-25): with --save-interval=5, a bot plays in the zone;
+// TestZoneCrash (platform.md §15, P10; TEC-25): with --save-interval=5, a bot plays in the zone;
 // after its first save, we wait more than an interval and kill the zone with kill -9. What is lost
 // is bounded by the checkpoint: the last saved_at ends up less than 5 s + 1 s of margin from the
 // kill (and is later than the first one, so it came from a checkpoint and not from the arrival

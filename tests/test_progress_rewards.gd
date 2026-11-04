@@ -1,10 +1,10 @@
 extends TestCase
-## Tests for rewards (docs/progresion.md §6.2 and §6.3; §15, P5c): merits for a persistent victim of another
+## Tests for rewards (docs/progression.md §6.2 and §6.3; §15, P5c): merits for a persistent victim of another
 ## realm with its ledger entry and its XP; killing a fake player or an NPC grants no merits; an NPC with two contributors pays
 ## both; two captures within 30 min pay one (also after leaving and coming back); objective merits are the seconds
 ## in the active circle; a character flagged by a GM command ([member NetEntity.gm_forced], what
-## [code]/gm teleport[/code] and [code]/gm visible[/code] do, plataforma.md P7b) gets no capture, merits or NPC pay until
-## it respawns, and afterwards it does; an invisible GM in the circle gets no capture pay (plataforma.md P7b); what a fort command causes ([code]fort_capture_speed[/code],
+## [code]/gm teleport[/code] and [code]/gm visible[/code] do, platform.md P7b) gets no capture, merits or NPC pay until
+## it respawns, and afterwards it does; an invisible GM in the circle gets no capture pay (platform.md P7b); what a fort command causes ([code]fort_capture_speed[/code],
 ## [code]fort_owner[/code] and [code]fort_kill_captain[/code]) pays nobody; with [code]--fake-players[/code] and
 ## a platform, nothing; and a level-up sends LEVEL_UP only to the owner and their realm, sets the level on the entity and is
 ## critical. Without a platform, ephemeral players are paid for NPCs in memory and PvP between ephemeral players gives nothing.
@@ -23,7 +23,7 @@ const NOW: int = 1_800_000_000
 const KEY_HEX: String = "02b7825be38fdd5396a4a058286884eaf93a9df85b874f78b4010a76103fb858"
 const GOLD: int = Currency.Code.GOLD
 const MERITS: int = Currency.Code.MERITS
-## The fingerprint of [code]hollow[/code] (progresion.md §5.2).
+## The fingerprint of [code]hollow[/code] (progression.md §5.2).
 const HOLLOW_REF: int = 3021413298
 
 
@@ -513,7 +513,7 @@ func test_a_gm_forced_character_collects_nothing_until_it_respawns() -> void:
 		return
 	var ana_id: int = ana.entity.net_id
 	var cai_id: int = cai.entity.net_id
-	# What /gm teleport and /gm visible will do (plataforma.md P7b): move it to the circle and flag it.
+	# What /gm teleport and /gm visible will do (platform.md P7b): move it to the circle and flag it.
 	_server.teleport(ana_id, circle)
 	ana.entity.gm_forced = true
 	_server.teleport(cai_id, circle + Vector3(1.0, 0.0, 0.0))
@@ -546,7 +546,7 @@ func test_a_gm_forced_character_collects_nothing_until_it_respawns() -> void:
 
 
 func test_an_invisible_gm_in_the_circle_collects_no_capture() -> void:
-	# plataforma.md §9.1 (P7b): an invisible GM does not count in the circle and gets no pay (§6.2).
+	# platform.md §9.1 (P7b): an invisible GM does not count in the circle and gets no pay (§6.2).
 	if not await _start(true):
 		return
 	var circle: Vector3 = FortressFixture.circle_center()

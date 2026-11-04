@@ -1,5 +1,5 @@
 // Package sanctions gathers the rules for sanctions and roles shared by the public API, the
-// internal one and the admin CLI (plataforma.md §6.1, §9.1 and §9.5): an account's active
+// internal one and the admin CLI (platform.md §6.1, §9.1 and §9.5): an account's active
 // restriction (suspension or ban), mutes, pending warnings, the player-facing texts that the
 // platform composes, the role ranking, which role can create each sanction, creating a sanction
 // with its authorization ([Create], the same for the zone and for the CLI) and the role an

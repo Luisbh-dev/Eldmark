@@ -1,13 +1,13 @@
-// The eldmark-platform command: the Eldmark platform service (docs/plataforma.md).
+// The eldmark-platform command: the Eldmark platform service (docs/platform.md).
 //
 //	eldmark-platform serve                 starts the public and internal APIs (does not migrate)
 //	eldmark-platform migrate up            applies the pending migrations
 //	eldmark-platform migrate down N        reverts the N most recent applied ones (dev and test only)
 //	eldmark-platform migrate status        status of each migration
 //	eldmark-platform admin --actor <email> <command>
-//	                                       moderation and accounts, with identity (plataforma.md §9.1)
+//	                                       moderation and accounts, with identity (platform.md §9.1)
 //
-// Configuration goes in environment variables (plataforma.md §2.3); admin uses the same as serve.
+// Configuration goes in environment variables (platform.md §2.3); admin uses the same as serve.
 package main
 
 import (
@@ -48,7 +48,7 @@ const usage = `Uso: eldmark-platform <orden>
                      Moderación y cuentas: set-role, reports, audit, chat, sanction,
                      names, purge-now, create-account… («admin help» las lista).
 
-La configuración va en variables de entorno ELDMARK_* (docs/plataforma.md §2.3).
+La configuración va en variables de entorno ELDMARK_* (docs/platform.md §2.3).
 `
 
 func main() {
@@ -143,7 +143,7 @@ func migrateCmd(ctx context.Context, args []string, lookup config.Lookup, stdout
 	}
 	if args[0] == "down" && cfg.Env.Deployed() {
 		fmt.Fprintf(stderr, "migrate down solo se usa en desarrollo y CI. En %s se vuelve atrás restaurando la copia previa "+
-			"o arreglando hacia delante (docs/plataforma.md §12).\n", cfg.Env)
+			"o arreglando hacia delante (docs/platform.md §12).\n", cfg.Env)
 		return exitError
 	}
 	pool, err := db.Open(ctx, cfg.DatabaseURL)

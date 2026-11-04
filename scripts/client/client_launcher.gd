@@ -1,6 +1,6 @@
 class_name ClientLauncher
 extends Node
-## Chooses the client start-up mode (docs/red.md, section 1.2) and switches to its scene.
+## Chooses the client start-up mode (docs/networking.md, section 1.2) and switches to its scene.
 ## [br][br]
 ## It is the half of the start-up that [code]boot.gd[/code] cannot have: the main scene is also run by
 ## the dedicated server, and each class reference it contains drags in that class's script (and, in
@@ -12,7 +12,7 @@ extends Node
 ## Mode priority: [code]--bots=N[/code] (swarm, [BotSwarm]) >
 ## [code]--connect[/code] / [code]--bot[/code] / [code]--local[/code] (networked client, [OnlineMain];
 ## [code]--local[/code] first launches a local server if there is none, see [LocalServerLauncher]) >
-## [code]--title[/code] / [code]--platform[/code] (title screen with an account, [FrontMain]; docs/plataforma.md §5.5) >
+## [code]--title[/code] / [code]--platform[/code] (title screen with an account, [FrontMain]; docs/platform.md §5.5) >
 ## no arguments: the title screen in an export and, from the editor, the offline
 ## sandbox ([ClientMain], with [code]--zone[/code], [code]--realm[/code], [code]--demo[/code],
 ## [code]--shots[/code] and [code]--quit-after-demo[/code]). The sandbox arguments are interpreted by the
@@ -33,7 +33,7 @@ const FRONT_MAIN_SCENE: String = "res://scenes/client/front_main.tscn"
 
 func _ready() -> void:
 	var args: PackedStringArray = OS.get_cmdline_user_args()
-	# Priority from section 1.2 and docs/plataforma.md §13.3: --bots > --bot > --connect/--local >
+	# Priority from section 1.2 and docs/platform.md §13.3: --bots > --bot > --connect/--local >
 	# --title/--platform > sandbox (in the editor) or title screen (in an export).
 	var config: ClientConfig = ClientConfig.from_args(args, not OS.has_feature("editor"))
 	match config.mode:
@@ -42,7 +42,7 @@ func _ready() -> void:
 			_change_scene(SWARM_SCENE)
 		ClientConfig.Mode.ONLINE, ClientConfig.Mode.BOT, ClientConfig.Mode.LOCAL:
 			# --local: OnlineMain first reuses or launches the local server (LocalServerLauncher,
-			# docs/red.md 1.4) and points the client at its port.
+			# docs/networking.md 1.4) and points the client at its port.
 			OnlineMain.config = config
 			_change_scene(ONLINE_MAIN_SCENE)
 		ClientConfig.Mode.TITLE:

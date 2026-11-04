@@ -1,6 +1,6 @@
 class_name PlatformErrors
 extends RefCounted
-## The texts for the player for platform errors (docs/plataforma.md §4.1, UI-04): the client translates
+## The texts for the player for platform errors (docs/platform.md §4.1, UI-04): the client translates
 ## by [code]code[/code] and, if it does not know it, shows the server's [code]message[/code]. With no response or with a TLS
 ## failure: "No se puede conectar con el servidor de cuentas" (Cannot connect to the accounts server) (§13.2).
 ## [br][br]

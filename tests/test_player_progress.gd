@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of [PlayerProgress] and of what it uses (docs/progresion.md §4.5, §5.2, §8, §9.2 and §15 P5a): the
+## Tests of [PlayerProgress] and of what it uses (docs/progression.md §4.5, §5.2, §8, §9.2 and §15 P5a): the
 ## starter kit (by template and by default); aggregation (one entry per currency, reason and reference, and a
 ## uid-less event per definition and reason); closing what has been aggregated before a standalone operation (S3
 ## adds up); the section and its acknowledgment, also with a body in flight; the three id ranges of [IdAllocator];

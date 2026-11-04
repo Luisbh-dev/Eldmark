@@ -1,6 +1,6 @@
 class_name StarterKit
 extends RefCounted
-## The starter kit (docs/progresion.md §2.5, PRG-07): what a character receives on first entering
+## The starter kit (docs/progression.md §2.5, PRG-07): what a character receives on first entering
 ## the world, according to its template ([EquipmentTemplate] with [code]selectable = true[/code]):
 ## [br]1. each weapon of the template → its item ([method ItemDatabase.for_ref]), in equipment slots
 ## 0 and 1 in the template's order;

@@ -1,6 +1,6 @@
 class_name CurrencyRules
 extends RefCounted
-## The balance rules (docs/progresion.md §5.4, I5): [code]0 ≤ balance ≤ Currency.CAP[/code] and
+## The balance rules (docs/progression.md §5.4, I5): [code]0 ≤ balance ≤ Currency.CAP[/code] and
 ## [code]balance = Σ delta[/code] of its entries. An operation that would leave a negative balance
 ## or one above the cap is not applied at all ([method can_apply]); an in-game gain that exceeds
 ## the cap is clamped ([method clamp_gain]). The same as the CHECK on [code]character_wallets[/code]

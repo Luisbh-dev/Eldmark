@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for the fort gate (scripts/world/fort_gate.gd, docs/fuerte.md section 3.1): the
+## Tests for the fort gate (scripts/world/fort_gate.gd, docs/fortress.md section 3.1): the
 ## layers of its two bodies according to the owner and the breakage, and the pose of the leaves. It uses the
 ## standalone gate scene (without Vado Gris, which takes seconds to load); the physical behavior
 ## with real characters is in test_fort_gate_collision.gd.

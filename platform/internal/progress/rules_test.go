@@ -12,7 +12,7 @@ import (
 	"eldmark/platform/internal/progress"
 )
 
-// The cases it shares with test_character_appearance.gd (progresion.md §7.2). Go tests run in the
+// The cases it shares with test_character_appearance.gd (progression.md §7.2). Go tests run in the
 // package directory.
 const sharedAppearanceCases = "../../../tests/fixtures/progression/appearance_cases.json"
 
@@ -176,7 +176,7 @@ func TestEmbeddedRules(t *testing.T) {
 	}
 }
 
-// The objects from progresion.md §2.4 and the selectable templates from habilidades.md, as Godot exports them.
+// The objects from progression.md §2.4 and the selectable templates from abilities.md, as Godot exports them.
 func TestEmbeddedItemsAndTemplates(t *testing.T) {
 	r := embedded(t)
 	want := []progress.Item{
@@ -350,7 +350,7 @@ func TestLoadRulesRejectsBrokenFiles(t *testing.T) {
 		}
 		t.Logf("%s: %v", name, strings.ReplaceAll(err.Error(), "\n", " | "))
 	}
-	// Sections that this package does not read (those from plataforma.md, those of later phases) do not interfere.
+	// Sections that this package does not read (those from platform.md, those of later phases) do not interfere.
 	if _, err := progress.LoadRules(mutate(func(m map[string]any) { m["vendors"] = []any{map[string]any{"id": "x"}} })); err != nil {
 		t.Errorf("una sección más no debería romper nada: %v", err)
 	}

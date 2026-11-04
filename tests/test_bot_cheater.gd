@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of [BotCheater] (docs/red.md, sections 12 and 16; TEC-46) without network: which extra packets
+## Tests of [BotCheater] (docs/networking.md, sections 12 and 16; TEC-46) without network: which extra packets
 ## each [code]--bot-cheat[/code] mode generates and that they are reproducible with the seed. What the
 ## server does with them is tested by [code]test_bot_cheat[/code] (in one process) and
 ## [code]test_net_processes[/code] (with real processes).
@@ -187,7 +187,7 @@ func test_combat_modes_make_a_brain_and_the_traffic_modes_do_not() -> void:
 	assert_true(reach is BotCheatBrain and (reach as BotCheatBrain).get_style() == BotCheatBrain.Style.REACH)
 	var rate: BotBrain = BotCheater.new("rate", 1).make_brain(finder, Vector3.ZERO, 10.0)
 	assert_true(rate is BotCheatBrain and (rate as BotCheatBrain).get_style() == BotCheatBrain.Style.RATE)
-	# The phase 4 ones (docs/habilidades.md, section 4.7).
+	# The phase 4 ones (docs/abilities.md, section 4.7).
 	var styles: Dictionary[String, BotCheatBrain.Style] = {"reuse": BotCheatBrain.Style.REUSE,
 			"potion": BotCheatBrain.Style.POTION, "interact": BotCheatBrain.Style.INTERACT}
 	for mode: String in styles:

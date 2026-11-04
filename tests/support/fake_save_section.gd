@@ -1,6 +1,6 @@
 class_name FakeSaveSection
 extends RefCounted
-## A test save section for [CharacterSaver] (docs/plataforma.md §15 P5: "tested with a fake
+## A test save section for [CharacterSaver] (docs/platform.md §15 P5: "tested with a fake
 ## section"). It builds the six [code]pvp[/code] totals of each body, so [FakeZonePlatform] returns it on
 ## the next claim as the last thing applied. It is dirty from when it changes until the
 ## [code]seq[/code] that carried the change is confirmed; it records every [CharacterSaver] call (with the tick of

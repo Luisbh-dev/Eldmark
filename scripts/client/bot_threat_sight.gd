@@ -2,7 +2,7 @@ class_name BotThreatSight
 extends RefCounted
 ## The telegraphed attacks that a client bot knows about (the [code]threat_finder[/code] of
 ## [constant BotBrain.Pattern.SIEGE], F6b): it stores each TELEGRAPH that reaches it (ENTITY_EVENT
-## 6, docs/fuerte.md section 5) as a [BotBrain.Threat] and treats it as active until its impact
+## 6, docs/fortress.md section 5) as a [BotBrain.Threat] and treats it as active until its impact
 ## and the attack's active window have passed. It is used by [SwarmBot] ([code]--bots[/code]) and
 ## [ClientBotBrains] ([code]--bot[/code]).
 ## [br][br]

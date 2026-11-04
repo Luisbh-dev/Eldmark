@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for the knocked-down state (CMB-28; docs/habilidades.md, section 4.5; package H3c) inside the [ZoneServer]: the
+## Tests for the knocked-down state (CMB-28; docs/abilities.md, section 4.5; package H3c) inside the [ZoneServer]: the
 ## killing blow between players of two realms knocks down, the three outcomes (revived in 180 ticks with 300
 ## health, finished off in 60 with the finishing blow source and KILL, bled out in 1200 with the killer who knocked down), revive
 ## cut off by damage to the reviver and to the knocked-down player, no finishing through the closed gate (and broken, yes), the

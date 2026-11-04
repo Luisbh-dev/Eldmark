@@ -1,6 +1,6 @@
 class_name ServerMetrics
 extends RefCounted
-## Server measurements (docs/red.md, sections 8.1, 13 and 14): duration of the tick and of each of its sections
+## Server measurements (docs/networking.md, sections 8.1, 13 and 14): duration of the tick and of each of its sections
 ## (network, simulation, history, snapshots...), counters and a summary for the [code]--report[/code] report and for the
 ## editor's remote debugging monitors.
 ## [br][br]

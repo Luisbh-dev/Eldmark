@@ -1,6 +1,6 @@
 class_name RaceDefinition
 extends Resource
-## A playable people (docs/progresion.md §7.1, PRG-14), in
+## A playable people (docs/progression.md §7.1, PRG-14), in
 ## [code]data/characters/races/<id>.tres[/code]: one per realm and cosmetic only. It says which
 ## parts and colors of [AppearanceCatalog] one of its members can wear; the whole rule is in
 ## [method CharacterAppearance.validate].

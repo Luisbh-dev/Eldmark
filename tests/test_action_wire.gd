@@ -3,7 +3,7 @@ extends TestCase
 ## [method ActionMachine.action_byte] except for the dodge, stagger, stun and weapon
 ## swap, which carry a rearm counter in bits 6-7 so a remote can tell two identical consecutive
 ## actions apart. An ability carries its slot there (3 = a consumable) and its phase in bits 4-5
-## (docs/habilidades.md, section 5.5): two uses with the same byte always leave
+## (docs/abilities.md, section 5.5): two uses with the same byte always leave
 ## [constant AbilityTicks.REARM_TICKS] ticks of NONE in between, also after an interruption or after a
 ## wall released before the commit.
 

@@ -1,6 +1,6 @@
 class_name ZoneServer
 extends Node
-## Authoritative server of a zone (docs/red.md, sections 3, 8, 9, 10, 11, 12 and 13).
+## Authoritative server of a zone (docs/networking.md, sections 3, 8, 9, 10, 11, 12 and 13).
 ## [br][br]
 ## It joins the pure server pieces ([NetEntityRegistry], [InputQueue], [SnapshotBuilder],
 ## [StateHistory], [ServerAuth], [InterestPolicy], [ServerMetrics]...) with the transport
@@ -12,8 +12,8 @@ extends Node
 ## poll             receive: authentication, READY, LEAVE, INPUT_BATCH -> InputQueue.push(),
 ##                  RESPAWN_REQUEST, DEBUG_COMMAND, LOADOUT_SELECT (the pending template), chat and
 ##                  parties (SocialService), INVENTORY_REQUEST and INVENTORY_SYNC_REQUEST (RATE and into
-##                  the progress queue, progresion.md §4.2); and the console lines. With the platform
-##                  (docs/plataforma.md §14.3), afterwards: ZonePlatform.take_events() dispatched by kind in
+##                  the progress queue, progression.md §4.2); and the console lines. With the platform
+##                  (docs/platform.md §14.3), afterwards: ZonePlatform.take_events() dispatched by kind in
 ##                  arrival order (claim to the AuthProvider, heartbeat to the zone and its mutes to
 ##                  moderation, fortress to FortressPersistence, ignore, report and sanction to
 ##                  ModerationService; instance_closed last), AuthProvider.take_completed() (each 200: realm,
@@ -31,8 +31,8 @@ extends Node
 ##                  pushes its input for s; the siege views, their targets and, for the siege bots
 ##                  (F6b), the telegraphed strikes in progress and the allies are gathered once per tick.
 ##                  Then, CONSUME: what each inventory-backed player drank is removed from their bag
-##                  (progresion.md §4.4)
-## combat           CombatDirector.process_tick(), steps 2 to 9 of docs/habilidades.md, section 4.1:
+##                  (progression.md §4.4)
+## combat           CombatDirector.process_tick(), steps 2 to 9 of docs/abilities.md, section 4.1:
 ##                  freeze (active hit, commitment and wall of each), shots and own effects
 ##                  of whoever commits an attack or an ability, resolve the hits of attacks and
 ##                  abilities (also against the fort gates) and the flight of
@@ -43,24 +43,24 @@ extends Node
 ##                  (with inventory, CAMP_REFILL of the bag) and publish health; the
 ##                  ENTITY_EVENT and the ENTITY_SPAWN and ENTITY_DESPAWN of projectiles go out here, and
 ##                  at the end, the TELEGRAPH notices of the NPC heavy attacks starting at s; with each
-##                  death, the rewards (progresion.md §6.2): the NPC's to its contributors and the
+##                  death, the rewards (progression.md §6.2): the NPC's to its contributors and the
 ##                  PvP merits of the KILL (and the LEVEL_UP of whoever levels up)
 ## forts            FortressController.step() (step 4b): presence in the circle, state advance of
 ##                  each fortress, gate layers (they apply from s + 1), WAR notices and OBJECT_STATE,
 ##                  captures and defending time on the scoreboard, and the capture reward and objective merits
-##                  (progresion.md §6.2); with the platform, FortressPersistence.step:
-##                  the record of the one that changed (docs/plataforma.md §8); /atascado (unstuck); bodies that
+##                  (progression.md §6.2); with the platform, FortressPersistence.step:
+##                  the record of the one that changed (docs/platform.md §8); /atascado (unstuck); bodies that
 ##                  remain after a removal in combat
 ## NPCs             NpcSpawnerSystem.step(): NPC spawns and withdrawals according to the spawners and
 ##                  fortresses, corpses
 ## spawns           the pending READYs: the player appears with the state "after s" and the equipment from their
-##                  inventory (progresion.md §8; without it, that of their template: the pending one or the
+##                  inventory (progression.md §8; without it, that of their template: the pending one or the
 ##                  default), SPAWN, LOADOUT, INVENTORY_FULL, WALLET_UPDATE and PROGRESS_UPDATE; with the
 ##                  platform, CharacterSaver.track as soon as the entity exists
 ## inventory        ProgressService.apply_pending: the requests of the tick in arrival order, with their
 ##                  INVENTORY_DELTA and the imposed weapons and charges; flush: WALLET_UPDATE and PROGRESS_UPDATE
 ## saves            with the platform, CharacterSaver.step(s): the marked criticals and the checkpoints
-##                  that are due (docs/plataforma.md §7.2); the snapshot is taken here, after the spawns
+##                  that are due (docs/platform.md §7.2); the snapshot is taken here, after the spawns
 ## social          SocialService.step(): party invitations expire (expired PARTY_INVITATION and a
 ##                  notice to whoever invited) and each party sends its PARTY_STATUS (2 Hz, staggered by the
 ##                  party id) with the state already after the spawns
@@ -80,17 +80,17 @@ extends Node
 ## disconnect. Nothing is sent through [code]send[/code] until [signal NetTransport.peer_connected]
 ## arrives. The player appears at the end of the tick in which CLIENT_READY arrives.
 ## [br][br]
-## [b]With the platform[/b] (docs/plataforma.md §5.2, [TicketAuthProvider] and [ZonePlatform]): a HELLO
+## [b]With the platform[/b] (docs/platform.md §5.2, [TicketAuthProvider] and [ZonePlatform]): a HELLO
 ## with a valid ticket leaves the peer in [constant ServerPeer.State.VERIFYING] (it counts toward capacity)
 ## while the platform claims it; on the 200, the zone checks that it admits its realm (REALM) and that
 ## there is room (FULL) and sends it the WELCOME with the realm and the character name, never those from
 ## the HELLO. A removal in VERIFYING cancels the wait (if the claim arrives later, it is released); one in
 ## LOADING releases the lease without saving.
 ## [br][br]
-## [b]Saves[/b] (docs/plataforma.md §7.2, [CharacterSaver], [method get_saver]): each body with a lease
+## [b]Saves[/b] (docs/platform.md §7.2, [CharacterSaver], [method get_saver]): each body with a lease
 ## is saved at its checkpoint and on critical events; when the body leaves (CLIENT_LEAVE, disconnect or end
 ## of the in-combat exit) its final save goes out with [code]release_lease[/code], in the order
-## [code]finish[/code] → [code]ScoreKeeper.forget[/code] → (progresion.md) [code]on_departure[/code]. A
+## [code]finish[/code] → [code]ScoreKeeper.forget[/code] → (progression.md) [code]on_departure[/code]. A
 ## save that is definitively rejected or a [code]revoked[/code] [code]lease_lost[/code] is a removal
 ## without saving: [code]drop[/code], a kick with the body removed immediately (no in-combat exit) and
 ## the rest of the exit. The other [code]revoked[/code] responses of the heartbeat kick with their text and a
@@ -99,7 +99,7 @@ extends Node
 ## of the five triggers) and [method close_instance] (the one from §6.1) send everyone's final saves and
 ## wait for the platform to answer them before finishing.
 ## [br][br]
-## [b]Progress[/b] (docs/progresion.md §4, §8 and §9, [ProgressService], [method get_progress]): with the
+## [b]Progress[/b] (docs/progression.md §4, §8 and §9, [ProgressService], [method get_progress]): with the
 ## platform, the claim record is prepared before the WELCOME (if it cannot be read, REJECT UNAVAILABLE and
 ## release), a removal in LOADING discards it and the spawn binds it to the body; without it, each player
 ## with a peer is an ephemeral character (§9.4). The spawn applies the return-to-world rule, gives the
@@ -115,7 +115,7 @@ extends Node
 ## DEBUG_COMMAND 40–43) change the character in a single GM or REVERSAL operation with its trail, critical
 ## save and audit; with the platform, 16 too.
 ## [br][br]
-## [b]Moderation[/b] (docs/plataforma.md §9, [ModerationService], [method get_moderation]): the chat GM
+## [b]Moderation[/b] (docs/platform.md §9, [ModerationService], [method get_moderation]): the chat GM
 ## channel carries [code]/gm[/code] (through the [CommandRegistry], with the claim's role),
 ## [code]/ignorar[/code] (ignore), [code]/designorar[/code] (unignore) and [code]/reportar[/code]
 ## (report); with the platform, DEBUG_COMMAND additionally requires the minimum role of each command. An
@@ -135,9 +135,9 @@ extends Node
 ## [FillerKeeper] ([method set_filler_keeper], [code]--max-realm-diff[/code]) the filler bots follow the
 ## joins and leaves of people and do not take their slots: a HELLO that arrives with the server full only
 ## because of them gets in, one displaces one of theirs and it leaves when that person enters the world
-## (GUE-43; docs/fuerte.md, section 7). Combat and siege bots see their enemies (and the siege ones, the
+## (GUE-43; docs/fortress.md, section 7). Combat and siege bots see their enemies (and the siege ones, the
 ## NPCs defending the fort) with their velocity and knockdown ([BotTarget]) and, since H5, fight with the
-## phase 4 kit (docs/habilidades.md, section 7.1): they read their combat state and health from the
+## phase 4 kit (docs/abilities.md, section 7.1): they read their combat state and health from the
 ## server and the combat ones revive knocked-down allies (the siege ones follow their plan). The siege
 ## ones also avoid the telegraphed strikes of NPCs and count their own in the rally (F6b).
 ## [br][br]
@@ -149,9 +149,9 @@ extends Node
 ## Captain, the owner's garrison and the Gate Guardians) with the [HfsmBrain] brain; [code]--no-npcs[/code]
 ## turns it off.
 ## [br][br]
-## [b]Fortresses[/b] (docs/fuerte.md): a [FortressController] carries the state of each fortress of the
+## [b]Fortresses[/b] (docs/fortress.md): a [FortressController] carries the state of each fortress of the
 ## zone, its gate (target of hits), the war notices and the OBJECT_STATE; [method get_fortresses] exposes
-## it to the NPCs. With the platform (docs/plataforma.md §8, GUE-19), [FortressPersistence] applies in
+## it to the NPCs. With the platform (docs/platform.md §8, GUE-19), [FortressPersistence] applies in
 ## [method start], before opening the port, the records that [ZonePlatform] loaded, writes them on change
 ## and sends the capture and reset events to the history; the [ScoreKeeper] registers the [code]pvp[/code]
 ## section of the saves (behind [code]progress[/code]) with the claim totals plus those of the session.
@@ -171,7 +171,7 @@ signal player_left(peer_id: int, net_id: int)
 ## whoever runs the process ([ServerMain]) must shut the server down.
 signal shutdown_requested(reason: String)
 ## The platform has closed this instance ([code]instance_lost[/code], [code]instance_replaced[/code] or
-## [code]instance_stopped[/code], docs/plataforma.md §6.1): [ServerMain] handles it.
+## [code]instance_stopped[/code], docs/platform.md §6.1): [ServerMain] handles it.
 signal instance_closed(code: String)
 
 ## Character scene. On the server its [code]Visual[/code] node is freed.
@@ -207,21 +207,21 @@ const HELLO_TIMEOUT_REASON: String = "sin HELLO a tiempo"
 const HELLO_CHECK_TICKS: int = 10
 ## Deadline of a peer in VERIFYING since it connected (ms, real time): once past, REJECT UNAVAILABLE.
 ## Less than the 10 s [constant NetTransport.AUTH_TIMEOUT_SECONDS], so the REJECT always arrives
-## (docs/plataforma.md §5.2).
+## (docs/platform.md §5.2).
 const VERIFY_TIMEOUT_MS: int = 7000
 ## Reason with which the expired VERIFYING deadline is logged.
 const VERIFY_TIMEOUT_REASON: String = "la plataforma no ha contestado a tiempo"
 ## Ticks to wait, after [method stop], for the peers to leave before closing the transport.
 const STOP_DRAIN_TICKS: int = 30
 ## Ticks to wait at most, after [method stop] or [method close_instance], for the platform to answer
-## the final saves and for nothing to remain queued or in flight (10 s, docs/plataforma.md §7.2 and §6.1).
+## the final saves and for nothing to remain queued or in flight (10 s, docs/platform.md §7.2 and §6.1).
 const SAVE_DRAIN_TICKS: int = 600
 ## Kick NOTICE of the §6.1 shutdown, after the final saves.
 const INSTANCE_CLOSED_TEXT: String = "El servidor de la zona se ha reiniciado: vuelve a entrar"
 ## NOTICE of the removal without saving (§7.3): a rejected save and a lease_lost.
 const SAVE_REJECTED_TEXT: String = "No se ha podido guardar tu personaje; vuelve a entrar"
 const LEASE_LOST_TEXT: String = "Tu personaje ha entrado en otro servidor"
-## Seconds before the platform maintenance at which a warning is given (docs/plataforma.md §7.2 and §12).
+## Seconds before the platform maintenance at which a warning is given (docs/platform.md §7.2 and §12).
 const MAINTENANCE_NOTICE_SECONDS: Array[int] = [600, 300, 60, 30, 10]
 ## Tick sections that appear in the metrics line (the same ones the loop measures).
 const LOGGED_SECTIONS: Array[StringName] = [&"net", &"platform", &"npc_brains", &"sim", &"combat", &"combat_resolve",
@@ -229,7 +229,7 @@ const LOGGED_SECTIONS: Array[StringName] = [&"net", &"platform", &"npc_brains", 
 ## [ServerMetrics] sections for NPCs: the brains (step 0) and the spawner system.
 const SECTION_NPC_BRAINS: StringName = &"npc_brains"
 ## Metrics section with the dispatch of platform events and the finals of the claims (inside
-## "net"; docs/plataforma.md §16).
+## "net"; docs/platform.md §16).
 const SECTION_PLATFORM: StringName = &"platform"
 const SECTION_NPC: StringName = &"npc"
 ## [ServerMetrics] section for the fortress step (4b of the tick).
@@ -321,11 +321,11 @@ var _world: Node3D
 var _transport: NetTransport
 var _auth: ServerAuth
 var _auth_provider: AuthProvider = null
-## The platform (null without [code]--platform[/code]: ephemeral characters, docs/progresion.md §9.4).
+## The platform (null without [code]--platform[/code]: ephemeral characters, docs/progression.md §9.4).
 var _platform: ZonePlatform = null
 ## The saves of the bodies with a lease (only with the platform).
 var _saver: CharacterSaver = null
-## Character progress (docs/progresion.md §9); its section is the first one of [member _saver].
+## Character progress (docs/progression.md §9); its section is the first one of [member _saver].
 var _progress: ProgressService = null
 var _sim_hash: int = 0
 var _tick: int = 0
@@ -365,13 +365,13 @@ var _combat: CombatDirector
 var _fortresses: FortressController = null
 var _npc_system: NpcSpawnerSystem = null
 var _scores: ScoreKeeper = ScoreKeeper.new()
-# The fortress records and their history on the platform (docs/plataforma.md §8); null without it.
+# The fortress records and their history on the platform (docs/platform.md §8); null without it.
 var _fortress_persistence: FortressPersistence = null
 var _battle_log: BattleLog = null
 var _unstuck: UnstuckTracker = UnstuckTracker.new()
 # Chat and parties (SOC-04, SOC-06); created in start().
 var _social: SocialService = null
-## Moderation (docs/plataforma.md §9, P7b): /gm, ignored players, reports, mutes, audit and chat batch.
+## Moderation (docs/platform.md §9, P7b): /gm, ignored players, reports, mutes, audit and chat batch.
 var _moderation: ModerationService = null
 var _unstuck_log: Array[Dictionary] = []
 var _unstuck_uses: int = 0
@@ -392,7 +392,7 @@ var _shutdown_tick: int = -1
 var _shutdown_announced: Dictionary[int, bool] = {}
 var _events_sent: int = 0
 var _event_bytes_sent: int = 0
-# Projectiles (docs/habilidades.md, section 4.4): the peers that received the ENTITY_SPAWN of each one
+# Projectiles (docs/abilities.md, section 4.4): the peers that received the ENTITY_SPAWN of each one
 # (the same ones receive its ENTITY_DESPAWN) and what was sent.
 var _projectile_viewers: Dictionary[int, PackedInt32Array] = {}
 var _projectile_messages_sent: int = 0
@@ -630,7 +630,7 @@ func _exit_tree() -> void:
 ## [br]- If [param transport] is not listening yet, applies [member ServerConfig.net_sim_spec] and opens
 ## [member ServerConfig.port] with room for [member ServerConfig.max_players] plus 4 connections (the
 ## extra 4 allow answering "server full" with a REJECT), over DTLS if there is a [member ServerConfig.dtls]
-## (docs/plataforma.md §10.2). If it is already listening, it uses it as is.
+## (docs/platform.md §10.2). If it is already listening, it uses it as is.
 ## [br]- [param transport] may be null: the server runs without a network, with fake players only
 ## ([method add_fake_player]), which is what tests use.
 ## [br]- [param auth_provider] decides the identity of the clients ([DevAuthProvider] without the platform,
@@ -638,7 +638,7 @@ func _exit_tree() -> void:
 ## [br]- [param platform] is the already started platform ([signal ZonePlatform.startup_finished]); null
 ## without [code]--platform[/code]. Its events are dispatched in the "poll" step of each tick, and the
 ## fortresses it loaded ([method ZonePlatform.fortress_records]) are applied here before opening the port
-## (docs/plataforma.md §8).
+## (docs/platform.md §8).
 ## Returns the error of [method NetTransport.host] if the port cannot be opened.
 func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 		auth_provider: AuthProvider, platform: ZonePlatform = null) -> Error:
@@ -656,7 +656,7 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 		_saver = CharacterSaver.new(_platform, maxi(config.save_interval_s, 1) * Engine.physics_ticks_per_second)
 		_saver.log_sink = Callable(self, "_log")
 		_saver.save_rejected.connect(_on_save_rejected)
-	# The progress section is registered first (progresion.md §9.2): before any other.
+	# The progress section is registered first (progression.md §9.2): before any other.
 	_progress = ProgressService.new()
 	_progress.log_sink = Callable(self, "_log")
 	_progress.send_sink = Callable(self, "_progress_send")
@@ -664,7 +664,7 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_progress.notice_sink = Callable(self, "_send_notice")
 	_progress.level_up_sink = Callable(self, "_announce_level_up")
 	_progress.setup(self, _platform, _saver, _commands)
-	# The pvp section, behind progress (docs/plataforma.md §7.1 and §8).
+	# The pvp section, behind progress (docs/platform.md §7.1 and §8).
 	if _saver != null:
 		_scores.attach(_saver)
 	_players_root = Node3D.new()
@@ -681,7 +681,7 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 			Callable(self, "_place"), Callable(self, "_pick_spawn_point"))
 	_combat.event_emitted.connect(_on_combat_event)
 	_combat.metrics = _metrics
-	# Whoever has an inventory respawns with their equipment and refills their bag at the camp (progresion.md §4.4 and §8).
+	# Whoever has an inventory respawns with their equipment and refills their bag at the camp (progression.md §4.4 and §8).
 	_combat.loadout_source = _progress.loadout_for
 	_combat.camp_step = _progress.camp_step
 	# Projectiles take their id from the entity id space (with its quarantine).
@@ -702,20 +702,20 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	_register_commands()
 	_social = SocialService.new(Callable(self, "_social_peers"), Callable(self, "_social_send"),
 			Callable(self, "_add_strike"))
-	# Moderation (docs/plataforma.md §9): its /gm commands, the GM chat channel and, with the platform, the audit
+	# Moderation (docs/platform.md §9): its /gm commands, the GM chat channel and, with the platform, the audit
 	# and chat batches.
 	_moderation = ModerationService.new()
 	_moderation.log_sink = Callable(self, "_log")
 	_moderation.setup(self, _platform, _commands, _social)
 	# The progression GM commands answer through chat and, without the platform, date their operations with the
-	# system time (progresion.md P5d).
+	# system time (progression.md P5d).
 	_progress.reply_sink = Callable(self, "_progress_reply")
 	_progress.clock_unix = _moderation.now_unix
 	if _transport != null:
 		_connect_transport()
 		if not _transport.is_server():
 			_transport.set_net_sim_spec(config.net_sim_spec)
-			# With the zone certificate, over DTLS (docs/plataforma.md §10.2, P9c).
+			# With the zone certificate, over DTLS (docs/platform.md §10.2, P9c).
 			var error: Error = _transport.host(config.port, config.max_players + 4,
 					config.dtls.server_options if config.dtls != null else null)
 			if error != OK:
@@ -737,7 +737,7 @@ func start(config: ServerConfig, world: Node3D, transport: NetTransport,
 	return OK
 
 
-## Shuts the server down (the orderly shutdown of docs/plataforma.md §7.2, that of the five triggers): warns
+## Shuts the server down (the orderly shutdown of docs/platform.md §7.2, that of the five triggers): warns
 ## all clients with a shutdown NOTICE (code [constant NetProtocol.NoticeCode.SHUTDOWN]) with
 ## [param notice_text] (by default, a standard text), releases the peers in LOADING and cancels those in
 ## VERIFYING, requests the orderly disconnect of each peer, sends the final save of each body with a lease
@@ -771,7 +771,7 @@ func stop(notice_text: String = "") -> void:
 	_begin_drain(false)
 
 
-## The shutdown of docs/plataforma.md §6.1, when the platform deems the instance lost, replaced or stopped
+## The shutdown of docs/platform.md §6.1, when the platform deems the instance lost, replaced or stopped
 ## ([param code]; [ServerMain] calls it with [signal instance_closed]): first the final save of everyone and the
 ## release of those in LOADING, without kicking anyone (the zone stops reading their inputs and giving rewards);
 ## those in VERIFYING receive REJECT UNAVAILABLE. Once the platform has answered the finals and nothing is
@@ -807,12 +807,12 @@ func is_stopped() -> bool:
 
 
 ## The zone saves (null without the platform): [code]ProgressService[/code] registers its section here and marks
-## the criticals (docs/progresion.md §9.2).
+## the criticals (docs/progression.md §9.2).
 func get_saver() -> CharacterSaver:
 	return _saver
 
 
-## Character progress (docs/progresion.md §9); null before [method start].
+## Character progress (docs/progression.md §9); null before [method start].
 func get_progress() -> ProgressService:
 	return _progress
 
@@ -844,7 +844,7 @@ func get_peer_ids() -> PackedInt32Array:
 	return ids
 
 
-## Players that count toward capacity: the peers verifying their ticket with the platform (docs/plataforma.md
+## Players that count toward capacity: the peers verifying their ticket with the platform (docs/platform.md
 ## §5.2: several simultaneous entries do not exceed max_players), the accepted ones (loading the zone or already
 ## inside) and the fake players. Those that have not yet sent the HELLO or are leaving (also fakes with a
 ## requested removal, which disappear at the start of the next tick) do not count. Filler fakes do count here, but
@@ -969,7 +969,7 @@ func get_scores() -> ScoreKeeper:
 	return _scores
 
 
-## The fortress records on the platform (docs/plataforma.md §8); null without the platform.
+## The fortress records on the platform (docs/platform.md §8); null without the platform.
 func get_fortress_persistence() -> FortressPersistence:
 	return _fortress_persistence
 
@@ -979,7 +979,7 @@ func get_social() -> SocialService:
 	return _social
 
 
-## Moderation (docs/plataforma.md §9, P7b); null before [method start].
+## Moderation (docs/platform.md §9, P7b); null before [method start].
 func get_moderation() -> ModerationService:
 	return _moderation
 
@@ -1004,7 +1004,7 @@ func kick_peer(peer: ServerPeer, reason: String, notice_text: String) -> void:
 	_kick(peer, reason, true, notice_text)
 
 
-## Makes [param entity] invisible (or visible) (docs/plataforma.md §9.1, [code]/gm invisible[/code]): it stops
+## Makes [param entity] invisible (or visible) (docs/platform.md §9.1, [code]/gm invisible[/code]): it stops
 ## entering other players' interest, and each peer immediately receives its ENTITY_DESPAWN (or its ENTITY_SPAWN
 ## on return). It neither deals nor receives damage, does not count in the circle or on the scoreboard and
 ## does not earn rewards ([member NetEntity.gm_invisible]).
@@ -1038,7 +1038,7 @@ func get_unstuck() -> UnstuckTracker:
 
 
 ## The key of [param entity] in the [UnstuckTracker]: with the platform, [code]"character:<id>"[/code] (that of
-## the saved [code]unstuck[/code] timer, docs/progresion.md §8); without it, that of its name (rejoining with the
+## the saved [code]unstuck[/code] timer, docs/progression.md §8); without it, that of its name (rejoining with the
 ## same name does not skip the reuse cooldown).
 func unstuck_key_of(entity: NetEntity) -> String:
 	var character_id: int = _progress.character_id_of(entity.net_id) if _progress != null else 0
@@ -1048,7 +1048,7 @@ func unstuck_key_of(entity: NetEntity) -> String:
 
 
 ## Places [param entity] at [param position] facing [param yaw] (the return-to-world rule of the SAFE zones,
-## docs/progresion.md §8) if the spot is valid: finite, within the zone limits and with ground. true if it places it.
+## docs/progression.md §8) if the spot is valid: finite, within the zone limits and with ground. true if it places it.
 func place_returning(entity: NetEntity, position: Vector3, yaw: float) -> bool:
 	if entity == null or entity.get_character() == null or not _is_valid_teleport_target(position) \
 			or not is_finite(yaw) or not _probe_grounded(position):
@@ -1414,7 +1414,7 @@ func _physics_process(delta: float) -> void:
 	_refresh_siege_views()
 	_progress.before_simulate(s)
 	_simulate_players(s, delta)
-	# CONSUME (progresion.md §4.4): what each player drank is removed from their bag, after step 1.
+	# CONSUME (progression.md §4.4): what each player drank is removed from their bag, after step 1.
 	_progress.after_simulate(s)
 	_metrics.end_section(&"sim")
 
@@ -1423,7 +1423,7 @@ func _physics_process(delta: float) -> void:
 	_emit_npc_telegraphs(s)
 	_metrics.end_section(&"combat")
 
-	# Step 4b (docs/fuerte.md, 1.7): the fortresses, with what combat left behind.
+	# Step 4b (docs/fortress.md, 1.7): the fortresses, with what combat left behind.
 	_metrics.begin_section(SECTION_WAR)
 	_fortresses.step(s)
 	if _fortress_persistence != null:
@@ -1441,7 +1441,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_process_arrivals(s)
-	# The inventory requests of the tick, after the spawns and before the saves snapshot (progresion.md §4.2),
+	# The inventory requests of the tick, after the spawns and before the saves snapshot (progression.md §4.2),
 	# and the grouped WALLET_UPDATE and PROGRESS_UPDATE.
 	_progress.apply_pending(s)
 	_progress.flush(s)
@@ -1489,7 +1489,7 @@ func _grant_stall_credit() -> void:
 		peer.grant_stall_credit(_tick, missed_ticks)
 
 
-# Step 0 of the tick (docs/fuerte.md, 1.7): the NPC brains think with the state of the bodies after s - 1
+# Step 0 of the tick (docs/fortress.md, 1.7): the NPC brains think with the state of the bodies after s - 1
 # (before simulating anyone) and push their input for s into their queue, by ascending net_id. Between thinks
 # they repeat their plan.
 func _run_npc_brains(s: int) -> void:
@@ -1512,7 +1512,7 @@ func _run_npc_brains(s: int) -> void:
 		queue.push(generated.quantized(), 0, s)
 
 
-# TELEGRAPH notice (docs/fuerte.md, section 5) of each heavy attack an NPC launches at tick [param s]: the danger
+# TELEGRAPH notice (docs/fortress.md, section 5) of each heavy attack an NPC launches at tick [param s]: the danger
 # zone (a sector in front of it, with the reach of the hit) and the ticks remaining until impact, so the
 # client draws and fills it. Light attacks are not telegraphed: their windup is already visible in the movement.
 func _emit_npc_telegraphs(s: int) -> void:
@@ -1646,13 +1646,13 @@ func _process_arrivals(s: int) -> void:
 			continue
 		if peer.claimed != null:
 			# From here the lease belongs to the body: it is saved (track before ProgressService.on_arrival, which
-			# may mark it critical) and its final save goes out when it leaves (docs/plataforma.md §7.2).
+			# may mark it critical) and its final save goes out when it leaves (docs/platform.md §7.2).
 			entity.is_staff = peer.claimed.is_staff()
-			# The pvp totals from the claim: the base of its section (docs/plataforma.md §8).
+			# The pvp totals from the claim: the base of its section (docs/platform.md §8).
 			_scores.load_totals(entity.net_id, peer.claimed.pvp)
 			if _saver != null:
 				_saver.track(entity.net_id, peer.claimed.character_id, peer.claimed.lease_id, s)
-		# Progress (progresion.md §9.1 step 4): the prepared one or, without the platform, an ephemeral one is bound to
+		# Progress (progression.md §9.1 step 4): the prepared one or, without the platform, an ephemeral one is bound to
 		# the body; the return-to-world rule, the first-entry kit (critical in this tick's step), level and appearance
 		# for the SPAWN, and the equipment from its inventory instead of the template.
 		var loadout: ProgressService.Loadout = _progress.on_arrival(entity, peer, s) if _progress != null else null
@@ -1663,7 +1663,7 @@ func _process_arrivals(s: int) -> void:
 		record.peer = peer
 		_world_peers.append(peer)
 		# With the platform, chat is per character: it recovers the state if it left recently, and takes from the claim
-		# its account, the players it ignores and its mute (docs/plataforma.md §9.2).
+		# its account, the players it ignores and its mute (docs/platform.md §9.2).
 		_social.on_peer_joined(peer, s)
 		# With an inventory, its equipment; otherwise, the pending template (LOADOUT_SELECT, also before CLIENT_READY) or
 		# the default one: the SPAWN already goes out with its weapons and charges, and the LOADOUT after it.
@@ -1677,10 +1677,10 @@ func _process_arrivals(s: int) -> void:
 		_announce_arrival(entity, peer, s)
 		if combatant.template_id > 0 or loadout != null:
 			_combat.announce_loadout(combatant, s, true)
-		# INVENTORY_FULL, WALLET_UPDATE and PROGRESS_UPDATE after the own SPAWN (progresion.md §9.1 step 5).
+		# INVENTORY_FULL, WALLET_UPDATE and PROGRESS_UPDATE after the own SPAWN (progression.md §9.1 step 5).
 		if _progress != null:
 			_progress.after_spawn(entity, peer, s)
-		# The moderation notices the account has not seen (docs/plataforma.md §9.5).
+		# The moderation notices the account has not seen (docs/platform.md §9.5).
 		_moderation.on_arrival(peer)
 		player_joined.emit(peer_id, entity.net_id)
 		if _filler_keeper != null:
@@ -1778,7 +1778,7 @@ func _trim_player_log() -> void:
 
 # Messages of a spawn (section 3): the own SPAWN, those of everything relevant to the newcomer and theirs
 # for whoever considers them relevant. [param peer] is null for a fake player.
-# A player's SPAWN carries their level only toward their realm (protocol 7, docs/progresion.md §7.3): the
+# A player's SPAWN carries their level only toward their realm (protocol 7, docs/progression.md §7.3): the
 # newcomer's is encoded once per receiving realm (three variants at most) and those of the others toward them,
 # with their realm.
 func _announce_arrival(entity: NetEntity, peer: ServerPeer, s: int) -> void:
@@ -1867,8 +1867,8 @@ func _process_fake_departures(s: int) -> void:
 # Removes the player from the world: DESPAWN to whoever saw them, id into quarantine and character released.
 # The removal of a knocked-down player (exit, disconnect, --fake-churn, end of the GUE-41 body) is preceded by a
 # death on that tick: DEATH and KILL with whoever did them the last damage or knocked them down, and the
-# "bled out" source (docs/habilidades.md, 4.5). Without [param bleed] (the filler fake yielding its slot to a
-# person, retire_filler), it does not: only the DESPAWN. With the platform, the "Exit" of docs/plataforma.md
+# "bled out" source (docs/abilities.md, 4.5). Without [param bleed] (the filler fake yielding its slot to a
+# person, retire_filler), it does not: only the DESPAWN. With the platform, the "Exit" of docs/platform.md
 # §7.2: the final save ([param save_reason]) before ScoreKeeper.forget; after a removal without saving (drop)
 # that finish does nothing.
 func _remove_player(entity: NetEntity, s: int, reason: int, bleed: bool = true,
@@ -1997,7 +1997,7 @@ func _record_history(s: int) -> void:
 				flags |= EntityRecord.FLAG_GROUNDED
 			# Defensive flags (block, parry, invulnerable, dead, wide block) for the rewind, over bits 0-2 of the record:
 			# bit 3 of the record (slot 2, which is not written here) never gets in, because in the history it is
-			# DEFENSE_BLOCKING (docs/habilidades.md, 3.6).
+			# DEFENSE_BLOCKING (docs/abilities.md, 3.6).
 			flags = (flags & EntityRecord.HISTORY_FLAGS_MASK) \
 					| ActionMachine.defense_flags(character.combat, s)
 		else:
@@ -2071,7 +2071,7 @@ func _refresh_interest(peer: ServerPeer, entities: Array[NetEntity], s: int) -> 
 
 
 # Entities with ALWAYS_RELEVANT do not go through the policy. An invisible GM does not enter anyone else's
-# interest (docs/plataforma.md §9.1), whatever the policy.
+# interest (docs/platform.md §9.1), whatever the policy.
 func _is_relevant(observer: NetEntity, entity: NetEntity, was_relevant: bool) -> bool:
 	if entity.gm_invisible and entity != observer:
 		return false
@@ -2096,12 +2096,12 @@ func _social_send(peer_id: int, bytes: PackedByteArray) -> void:
 
 
 # What progress sends (INVENTORY_DELTA, INVENTORY_FULL, WALLET_UPDATE and PROGRESS_UPDATE): over the reliable
-# channel and only to the owner (progresion.md §4.6).
+# channel and only to the owner (progression.md §4.6).
 func _progress_send(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	_send(peer, NetProtocol.CH_RELIABLE, bytes)
 
 
-# A reply line from a progression GM command over the chat system channel (progresion.md P5d).
+# A reply line from a progression GM command over the chat system channel (progression.md P5d).
 func _progress_reply(peer: ServerPeer, text: String) -> void:
 	if _social != null and peer != null and peer.state == ServerPeer.State.IN_WORLD:
 		_social.get_chat().send_system(peer, text, _tick)
@@ -2111,8 +2111,8 @@ func _progress_reply(peer: ServerPeer, text: String) -> void:
 
 # A combat event: ENTITY_EVENT (reliable channel) to the owners of the entities involved
 # (victim, attacker, killer and assistants) and to whoever has any of them as relevant. KILL and
-# DOWNED go to the whole zone (everyone sees the kill feed, docs/fuerte.md section 6, and
-# docs/habilidades.md, section 5.4). STATUS, HEAL and INTERACT go to the owners of those involved and to whoever
+# DOWNED go to the whole zone (everyone sees the kill feed, docs/fortress.md section 6, and
+# docs/abilities.md, section 5.4). STATUS, HEAL and INTERACT go to the owners of those involved and to whoever
 # has the affected one as relevant (not the author). LOADOUT ([signal CombatDirector.event_emitted]): the owner's
 # ([param involved] with the player) only to them; the public one ([param involved] empty, charges 0) to whoever has
 # the player as relevant, without the owner. Before sending it, it is recorded on the scoreboard and in the battle log.
@@ -2149,7 +2149,7 @@ func _on_combat_event(event: NetMessages.EntityEvent, involved: PackedInt32Array
 	_metrics.end_section(SECTION_COMBAT_EVENTS)
 
 
-# Spawn of a projectile (docs/habilidades.md, section 4.4): ENTITY_SPAWN of kind 3 (reliable channel) to the
+# Spawn of a projectile (docs/abilities.md, section 4.4): ENTITY_SPAWN of kind 3 (reliable channel) to the
 # shooter's owner and to whoever has them as relevant, at that moment. It records who received it to send them the removal.
 func _on_projectile_spawned(spawn: NetMessages.EntitySpawn, involved: PackedInt32Array) -> void:
 	if _transport == null or _world_peers.is_empty():
@@ -2198,7 +2198,7 @@ func _on_projectile_despawned(projectile_id: int, tick: int, reason: int,
 
 # Scoreboard and battle log: a death adds a death to the victim (if a player) and goes into the
 # log; a KILL adds a kill to the killer and an assist to each assistant (if players). Respawning
-# clears the GM command flag (gm_forced, docs/progresion.md §6.2). Rewards (progresion.md §6.2): an NPC's
+# clears the GM command flag (gm_forced, docs/progression.md §6.2). Rewards (progression.md §6.2): an NPC's
 # death pays its contributors and a player's KILL, the PvP merits.
 func _track_battle(event: NetMessages.EntityEvent) -> void:
 	match event.event:
@@ -2227,7 +2227,7 @@ func _track_battle(event: NetMessages.EntityEvent) -> void:
 			_reward_kill(event)
 
 
-# The PvP merits of a KILL (progresion.md §6.2; the scoreboard's provisional ones until PRG-09): those of the kill
+# The PvP merits of a KILL (progression.md §6.2; the scoreboard's provisional ones until PRG-09): those of the kill
 # to the killer and those of the assist to each assistant. ProgressService only pays them with a persistent victim of
 # another realm.
 func _reward_kill(event: NetMessages.EntityEvent) -> void:
@@ -2239,7 +2239,7 @@ func _reward_kill(event: NetMessages.EntityEvent) -> void:
 				event.tick)
 
 
-# The reward of an NPC that dies at tick [param s] (progresion.md §6.2) to those who did at least 10 % of the
+# The reward of an NPC that dies at tick [param s] (progression.md §6.2) to those who did at least 10 % of the
 # damage in the window. It is checked on its DEATH, which arrives here before FortressController: the defender is
 # still registered and the forced-change flag is that of its death (fort_kill_captain sets it before killing). A
 # defender of a fortress in a forced cycle pays nothing.
@@ -2266,7 +2266,7 @@ func _npc_definition_of(entity: NetEntity) -> NpcDefinition:
 	return definition
 
 
-# ENTITY_EVENT LEVEL_UP of [param net_id], who goes up to [param level] at tick [param s] (progresion.md §6.3): to the
+# ENTITY_EVENT LEVEL_UP of [param net_id], who goes up to [param level] at tick [param s] (progression.md §6.3): to the
 # owner and to those of their realm who have them as relevant, for the effect; it does not reach the enemy.
 func _announce_level_up(net_id: int, level: int, s: int) -> void:
 	var entity: NetEntity = _registry.get_entity(net_id)
@@ -2537,10 +2537,10 @@ func _close_combat_log() -> void:
 
 # Registers the administration commands: the six network ones (fixed NetProtocol ids) with their console
 # version, and those that are console-only.
-# Each command with its minimum role for /gm and, with the platform, for DEBUG_COMMAND (docs/plataforma.md §9.1): gm by
+# Each command with its minimum role for /gm and, with the platform, for DEBUG_COMMAND (docs/platform.md §9.1): gm by
 # default (the network ones: teleport, health, fort); kick, announce and shutdown, and their /gm names anuncio and apagar,
 # admin (the kick from the zone by moderators is /gm expulsar, from ModerationService). Those that create or keep
-# value of a persistent character or skip their equipment require admin (progresion.md §10, P5d): 5 set_weapon and
+# value of a persistent character or skip their equipment require admin (progression.md §10, P5d): 5 set_weapon and
 # 13 cooldowns_off, also through /gm; 16 refill, through DEBUG_COMMAND (through /gm it is a GM operation like item_give, with
 # gm). Those of §10 (40–43 and the console ones) are registered by ProgressService.setup.
 func _register_commands() -> void:
@@ -2620,7 +2620,7 @@ func _combatant_of_peer(ctx: CommandRegistry.Context) -> Combatant:
 
 
 # With the platform, a GM command that moves, heals or shows a character flags it until it respawns
-# (progresion.md §6.2; docs/plataforma.md §9.1): it does not enter the capture list nor earn merits or NPC rewards.
+# (progression.md §6.2; docs/platform.md §9.1): it does not enter the capture list nor earn merits or NPC rewards.
 func _mark_gm_forced(entity: NetEntity) -> void:
 	if _platform != null and entity != null and entity.kind == NetProtocol.EntityKind.PLAYER:
 		entity.gm_forced = true
@@ -2696,13 +2696,13 @@ func _net_set_weapon(ctx: CommandRegistry.Context) -> int:
 	if CombatCatalog.weapon(weapon_id) == null:
 		ctx.note = "arma %d inexistente" % weapon_id
 		return CommandRegistry.Result.BAD_ARGUMENTS
-	# 5 is set_loadout with the weapon in slot 1 (docs/habilidades.md, section 3.5), with its LOADOUT.
+	# 5 is set_loadout with the weapon in slot 1 (docs/abilities.md, section 3.5), with its LOADOUT.
 	if not _combat.set_weapon(combatant, weapon_id, _tick + 1):
 		return CommandRegistry.Result.REFUSED
 	return CommandRegistry.Result.OK
 
 
-# 13 cooldowns_off (docs/habilidades.md, section 5.1): u8 0 or 1, bit 7 of combat_flags2.
+# 13 cooldowns_off (docs/abilities.md, section 5.1): u8 0 or 1, bit 7 of combat_flags2.
 func _net_cooldowns_off(ctx: CommandRegistry.Context) -> int:
 	var combatant: Combatant = _combatant_of_peer(ctx)
 	if combatant == null:
@@ -2734,7 +2734,7 @@ func _net_apply_status(ctx: CommandRegistry.Context) -> int:
 	return CommandRegistry.Result.OK
 
 
-# 15 down (docs/habilidades.md, section 4.5): knocks itself down with no author (on bleeding out, DEATH without KILL),
+# 15 down (docs/abilities.md, section 4.5): knocks itself down with no author (on bleeding out, DEATH without KILL),
 # on the tick the server is about to simulate. Rejected outside RvR zones, in one's own safe zone or when not alive.
 func _net_down(ctx: CommandRegistry.Context) -> int:
 	if not ctx.payload.is_empty():
@@ -2746,8 +2746,8 @@ func _net_down(ctx: CommandRegistry.Context) -> int:
 
 
 # 16 refill: restores the charges of the consumables of its template (set_charges, with LOADOUT to the owner). With an
-# inventory, without the platform, a forced CAMP_REFILL of its bag (progresion.md §4.4); with the platform, a GM
-# operation with a GM_GRANT for what is missing and the note "debug" (progresion.md §4.4 and §10, P5d; requires admin).
+# inventory, without the platform, a forced CAMP_REFILL of its bag (progression.md §4.4); with the platform, a GM
+# operation with a GM_GRANT for what is missing and the note "debug" (progression.md §4.4 and §10, P5d; requires admin).
 func _net_refill(ctx: CommandRegistry.Context) -> int:
 	if not ctx.payload.is_empty():
 		return CommandRegistry.Result.BAD_ARGUMENTS
@@ -2811,7 +2811,7 @@ func _console_unstuck(ctx: CommandRegistry.Context) -> String:
 
 
 # teleport <player> <x> <y> <z>, or teleport <player> <other> (next to the other). With the platform it flags the one
-# who moves (gm_forced, progresion.md §6.2).
+# who moves (gm_forced, progression.md §6.2).
 func _console_teleport(ctx: CommandRegistry.Context) -> String:
 	var usage: String = "Uso: teleport <jugador> <x> <y> <z> | teleport <jugador> <otro jugador>"
 	if ctx.args.size() != 4 and ctx.args.size() != 2:
@@ -2958,7 +2958,7 @@ func _console_down(ctx: CommandRegistry.Context) -> String:
 
 
 # refill <player>: without the platform, like 16; with it, for whoever has an inventory, the GM operation of 16 with the
-# written reason (refill <player> <reason…>; progresion.md P5d).
+# written reason (refill <player> <reason…>; progression.md P5d).
 func _console_refill(ctx: CommandRegistry.Context) -> String:
 	if ctx.args.is_empty() or (ctx.args.size() != 1 and _platform == null):
 		return "Uso: refill <jugador>" + (" <motivo…>" if _platform != null else "")
@@ -3091,7 +3091,7 @@ func _check_shutdown_countdown(s: int) -> void:
 		_broadcast_notice("El servidor se cerrará en %d s" % seconds_left)
 
 
-# The maintenance brought by the heartbeat (docs/plataforma.md §6 and §12): {at_unix, message} or null (none, or
+# The maintenance brought by the heartbeat (docs/platform.md §6 and §12): {at_unix, message} or null (none, or
 # cancelled). A new at_unix restarts the warnings.
 func _set_maintenance(value: Variant) -> void:
 	var maintenance: Dictionary = value if value is Dictionary else {}
@@ -3166,7 +3166,7 @@ func _setup_fortresses(world: Node3D) -> void:
 	_fortresses.gate_damage_started.connect(_on_gate_damage_started)
 	_combat.event_emitted.connect(_fortresses.on_combat_event)
 	_combat.structure_hit.connect(_fortresses.on_structure_hit)
-	# Rewards (progresion.md §6.2): the capture reward and objective merits.
+	# Rewards (progression.md §6.2): the capture reward and objective merits.
 	if _progress != null:
 		_fortresses.fortress_captured.connect(_progress.on_capture)
 		_fortresses.objective_time.connect(_progress.on_objective_ticks)
@@ -3197,7 +3197,7 @@ func _next_tick() -> int:
 func _presence_candidates(_tick_now: int) -> Array:
 	var candidates: Array = []
 	for entity: NetEntity in _registry.get_sorted():
-		# An invisible GM does not count in the circle (docs/plataforma.md §9.1).
+		# An invisible GM does not count in the circle (docs/platform.md §9.1).
 		if entity.kind != NetProtocol.EntityKind.PLAYER or entity.gm_invisible:
 			continue
 		var combatant: Combatant = _combat.get_combatant(entity.net_id)
@@ -3215,7 +3215,7 @@ func _presence_candidates(_tick_now: int) -> Array:
 
 
 # The feet of living or knocked-down characters (players and NPCs): those that prevent closing the gate if they overlap
-# the doorway (docs/habilidades.md, section 4.5: the gate is not repaired with a knocked-down player in the doorway).
+# the doorway (docs/abilities.md, section 4.5: the gate is not repaired with a knocked-down player in the doorway).
 func _gate_blockers() -> PackedVector3Array:
 	var positions := PackedVector3Array()
 	for entity: NetEntity in _registry.get_sorted():
@@ -3277,7 +3277,7 @@ func _send_scoreboard() -> void:
 		return
 	var ids: Array[int] = []
 	for entity: NetEntity in _registry.get_sorted():
-		# An invisible GM does not appear on the scoreboard (docs/plataforma.md §9.1).
+		# An invisible GM does not appear on the scoreboard (docs/platform.md §9.1).
 		if entity.kind == NetProtocol.EntityKind.PLAYER and not entity.gm_invisible:
 			ids.append(entity.net_id)
 	var rows: Array[NetMessages.ScoreRow] = _scores.build_rows(ids)
@@ -3328,7 +3328,7 @@ func _process_lingering(s: int) -> void:
 		var combatant: Combatant = _combat.get_combatant(net_id)
 		if s >= _lingering[net_id] or combatant == null or combatant.is_dead():
 			_log("Se retira el cuerpo de %s (net_id %d)" % [entity.display_name, net_id])
-			# Now its final save goes out (docs/plataforma.md §7.2: "when the body leaves").
+			# Now its final save goes out (docs/platform.md §7.2: "when the body leaves").
 			_remove_player(entity, s, NetProtocol.DespawnReason.DISCONNECTED, true,
 					_lingering_save_reasons.get(net_id, CharacterSaver.Reason.LOGOUT))
 
@@ -3382,7 +3382,7 @@ func _process_unstuck(s: int) -> void:
 				_send_notice(peer, "/atascado: interrumpido")
 		else:
 			_teleport_unstuck(entity, s)
-			# With the platform, the reuse cooldown is saved as the unstuck timer (progresion.md §8).
+			# With the platform, the reuse cooldown is saved as the unstuck timer (progression.md §8).
 			_progress.set_timer(entity.net_id, ProgressService.TIMER_UNSTUCK, _unstuck.get_ready_at(key), s)
 			if peer != null:
 				_send_notice(peer, "/atascado: ya estás en un punto seguro de tu reino")
@@ -3566,7 +3566,7 @@ func _welcome(peer: ServerPeer, realm: int, display_name: String) -> void:
 		_mark_leaving(peer)
 
 
-# --- Platform (docs/plataforma.md §5.2 and §14.3) ------------------------------------------------
+# --- Platform (docs/platform.md §5.2 and §14.3) ------------------------------------------------
 
 # "poll" step with the platform: the events, by kind and in arrival order (instance_closed last), the finals of the
 # AuthProvider and the expired VERIFYING peers. While shutting down (STOPPING) only the responses to saves and claims
@@ -3609,7 +3609,7 @@ func _poll_platform() -> void:
 
 
 # The outcome of a claim (table of §5.2). With OK, in order: (1) the zone admits the character's realm
-# (REALM); (2) there is room (FULL); (3) ProgressService.prepare (progresion.md §9.1: if the record cannot be read,
+# (REALM); (2) there is room (FULL); (3) ProgressService.prepare (progression.md §9.1: if the record cannot be read,
 # UNAVAILABLE with "No se ha podido cargar el personaje" (the character could not be loaded) and an alert); (4) WELCOME
 # with the realm and the character name. If any fails, REJECT and the lease is released.
 func _apply_auth_outcome(outcome: AuthOutcome) -> void:
@@ -3707,7 +3707,7 @@ func _revoke(character_id: int, lease_id: String, reason: String, text: String) 
 			_lingering[net_id] = 0
 
 
-# A save definitively rejected before its final (CharacterSaver.save_rejected, docs/plataforma.md
+# A save definitively rejected before its final (CharacterSaver.save_rejected, docs/platform.md
 # §7.2 and §7.3): the removal without saving. (1) drop, which releases except with lease_lost; (2) NOTICE and kick with
 # the body removed immediately, no in-combat exit (the one that remained after an in-combat exit is withdrawn now); (3)
 # ScoreKeeper.forget and ProgressService.on_departure, on the body's removal, whose finish no longer does anything.
@@ -3734,7 +3734,7 @@ func _on_save_rejected(net_id: int, character_id: int, code: String) -> void:
 
 # A peer that leaves VERIFYING or LOADING without reaching the world (§5.2): in VERIFYING the wait for its
 # claim is cancelled; in LOADING its lease is released without saving and its prepared progress is discarded
-# (ProgressService.cancel_prepared, progresion.md §9.1 step 3).
+# (ProgressService.cancel_prepared, progression.md §9.1 step 3).
 func _leave_auth_states(peer: ServerPeer) -> void:
 	match peer.state:
 		ServerPeer.State.VERIFYING:
@@ -3813,7 +3813,7 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 		NetProtocol.MSG_LOADOUT_SELECT:
 			_handle_loadout_select(peer, bytes)
 		NetProtocol.MSG_INVENTORY_REQUEST, NetProtocol.MSG_INVENTORY_SYNC_REQUEST:
-			# The inventory (progresion.md §4.2 and §4.6): RATE on arrival and the ProgressService.apply_pending queue.
+			# The inventory (progression.md §4.2 and §4.6): RATE on arrival and the ProgressService.apply_pending queue.
 			_progress.handle_packet(peer, bytes)
 		_:
 			# Chat and parties (0x40 to 0x4F) are handled by the social service.
@@ -3898,7 +3898,7 @@ func _handle_debug_command(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	if command == null:
 		_add_strike(peer, "comando de depuración mal formado")
 		return
-	# With the platform, in addition to --debug-commands, the command's minimum role (docs/plataforma.md §9.1) with that of the
+	# With the platform, in addition to --debug-commands, the command's minimum role (docs/platform.md §9.1) with that of the
 	# claim; without it, a warning and nothing is executed.
 	var role: StringName = &""
 	if _platform != null:
@@ -3934,7 +3934,7 @@ func _handle_respawn_request(peer: ServerPeer, bytes: PackedByteArray) -> void:
 		_add_strike(peer, "petición de reaparición fuera de plazo")
 
 
-# UNSTUCK_REQUEST (/atascado, docs/fuerte.md section 5): no need for --debug-commands. A 10 s channeling
+# UNSTUCK_REQUEST (/atascado, docs/fortress.md section 5): no need for --debug-commands. A 10 s channeling
 # out of combat, interrupted by combat, with a 5 min reuse cooldown; see _request_unstuck.
 func _handle_unstuck_request(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	if peer.state != ServerPeer.State.IN_WORLD:
@@ -3946,7 +3946,7 @@ func _handle_unstuck_request(peer: ServerPeer, bytes: PackedByteArray) -> void:
 	_request_unstuck(peer)
 
 
-# LOADOUT_SELECT (docs/habilidades.md, sections 4.6 and 5.1): the template for the next spawn. Valid in
+# LOADOUT_SELECT (docs/abilities.md, sections 4.6 and 5.1): the template for the next spawn. Valid in
 # LOADING (from the WELCOME, before CLIENT_READY) and IN_WORLD; it has already gone through the reliable limiter. 0 = the
 # default one, with no warning; an id that does not exist or cannot be chosen counts a warning and changes nothing.
 func _handle_loadout_select(peer: ServerPeer, bytes: PackedByteArray) -> void:
@@ -3962,7 +3962,7 @@ func _handle_loadout_select(peer: ServerPeer, bytes: PackedByteArray) -> void:
 		if template == null or not template.selectable:
 			_add_strike(peer, "plantilla de equipo no válida (%d)" % select.template_id)
 			return
-	# Whoever has an inventory already has their equipment: after the spawn nothing changes (progresion.md §2.5).
+	# Whoever has an inventory already has their equipment: after the spawn nothing changes (progression.md §2.5).
 	if peer.entity != null and _progress.has_inventory(peer.entity.net_id):
 		return
 	peer.pending_template_id = select.template_id
@@ -4008,7 +4008,7 @@ func _kick(peer: ServerPeer, reason: String, cooldown: bool = true, notice_text:
 
 # Records the cooldown of a kicked peer and purges the expired ones. By IP (IPv6, by /64) except
 # from loopback, where there is no per-IP cap and the normalized name is used, if it had already been given (with a ticket, the
-# character: character:<id>, docs/plataforma.md §5.4).
+# character: character:<id>, docs/platform.md §5.4).
 func _start_cooldown(peer: ServerPeer) -> void:
 	var key: String = _cooldown_key_for_address(peer.remote_address)
 	if key.is_empty():
@@ -4355,7 +4355,7 @@ func _build_report() -> Dictionary:
 		"ticks": _tick,
 		"tick_rate": Engine.physics_ticks_per_second,
 		"sim_hash": _sim_hash,
-		# Whether the port was opened over DTLS (docs/plataforma.md §10.2; the transport is already closed in the final report).
+		# Whether the port was opened over DTLS (docs/platform.md §10.2; the transport is already closed in the final report).
 		"dtls": _config != null and _config.dtls != null and _transport != null,
 		"closed": _run_state == _RunState.STOPPING or _run_state == _RunState.STOPPED,
 		"players": {
@@ -4427,14 +4427,14 @@ func _combat_report() -> Dictionary:
 	if _combat != null:
 		for stat: StringName in _combat.stats:
 			report[String(stat)] = _combat.stats[stat]
-		# Status effects (docs/habilidades.md, 4.3): applied, removed, pulses and health healed.
+		# Status effects (docs/abilities.md, 4.3): applied, removed, pulses and health healed.
 		for stat: StringName in _combat.status.stats:
 			report[String(stat)] = _combat.status.stats[stat]
-		# Projectiles (docs/habilidades.md, 4.4): shots, impacts, kills, culling and peak of living ones.
+		# Projectiles (docs/abilities.md, 4.4): shots, impacts, kills, culling and peak of living ones.
 		for stat: StringName in _combat.projectiles.stats:
 			report[String(stat)] = _combat.projectiles.stats[stat]
 		report["projectiles_live"] = _combat.projectiles.live_count()
-		# The knocked-down state (docs/habilidades.md, 4.5): knockdowns, revives, finishers, bleed-outs and interactions.
+		# The knocked-down state (docs/abilities.md, 4.5): knockdowns, revives, finishers, bleed-outs and interactions.
 		for stat: StringName in _combat.downed.stats:
 			report[String(stat)] = _combat.downed.stats[stat]
 		report["downed_now"] = _combat.downed.downed_count()

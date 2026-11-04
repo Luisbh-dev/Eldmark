@@ -37,7 +37,7 @@ func TestHashAndVerify(t *testing.T) {
 	}
 }
 
-// needsRehash: the string's parameters are not the current ones (plataforma.md §4.2).
+// needsRehash: the string's parameters are not the current ones (platform.md §4.2).
 func TestNeedsRehash(t *testing.T) {
 	phc, _ := Hash("otra contraseña", fast)
 	current := Params{MemoryKiB: 16, Time: 1, Threads: 1}
@@ -103,7 +103,7 @@ func TestContextCancelsTheWait(t *testing.T) {
 	}
 }
 
-// It measures the cost of the production parameters (plataforma.md §0: 59 ms on the probe machine).
+// It measures the cost of the production parameters (platform.md §0: 59 ms on the probe machine).
 // It only reports.
 func TestProductionCost(t *testing.T) {
 	if testing.Short() {

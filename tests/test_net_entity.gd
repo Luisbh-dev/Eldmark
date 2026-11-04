@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests for [NetEntity]: the snapshot record and the ENTITY_SPAWN message of a network
-## entity (docs/red.md, section 9.1).
+## entity (docs/networking.md, section 9.1).
 
 const PLAYER: int = NetProtocol.EntityKind.PLAYER
 
@@ -256,7 +256,7 @@ func test_encode_spawn_of_another_player_hides_the_private_combat_state() -> voi
 	assert_eq(combat.stamina, 137, "the sent copy does not alter the character")
 
 
-## H3a (docs/habilidades.md, 5.2): the foreign SPAWN also shows the other weapon and the active slot (weapons
+## H3a (docs/abilities.md, 5.2): the foreign SPAWN also shows the other weapon and the active slot (weapons
 ## are visible), but not the reuse timers, charges, the consumable, the movement slots or the held
 ## buttons or the "no reuse" bit of combat_flags2.
 func test_encode_spawn_of_another_player_shows_both_weapons_and_hides_the_ability_state() -> void:

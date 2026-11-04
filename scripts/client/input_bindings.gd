@@ -37,7 +37,7 @@ static func ensure_defaults() -> void:
 	_ensure_key(&"ability_2", KEY_2)
 	_ensure_key(&"ability_3", KEY_3)
 	_ensure_key(&"interact", KEY_E)
-	# Phase 4 (docs/habilidades.md, section 0, "Teclas nuevas", new keys): swap weapon and the two potions.
+	# Phase 4 (docs/abilities.md, section 0, "Teclas nuevas", new keys): swap weapon and the two potions.
 	_ensure_key(&"swap_weapon", KEY_Q)
 	_ensure_key(&"consumable_1", KEY_R)
 	_ensure_key(&"consumable_2", KEY_T)
@@ -65,9 +65,9 @@ static func ensure_defaults() -> void:
 	_ensure_key(&"party_accept", KEY_Y)
 	_ensure_key(&"party_decline", KEY_N)
 	# Player menu (SOC-07). It used to be T, provisional: T is the stamina potion since phase 4
-	# (docs/habilidades.md, section 0, and section 11.7).
+	# (docs/abilities.md, section 0, and section 11.7).
 	_ensure_key(&"social_menu", KEY_G)
-	# Inventory and character window (docs/progresion.md §11.1, UI-26).
+	# Inventory and character window (docs/progression.md §11.1, UI-26).
 	_ensure_key(&"open_inventory", KEY_I)
 	_ensure_key(&"open_character", KEY_C)
 	# Space is jump: it does not press the button that has focus.

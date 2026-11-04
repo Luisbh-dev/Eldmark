@@ -1,5 +1,5 @@
 extends TestCase
-## Appearance on the animated humanoid (docs/progresion.md §7.4 and §15, P6; ART-19): [AppearanceApplier] and
+## Appearance on the animated humanoid (docs/progression.md §7.4 and §15, P6; ART-19): [AppearanceApplier] and
 ## [method HumanoidVisual.set_part]. All the combinations of pieces in the catalog (body, head, hair
 ## and beard, with and without) with a random color each, and 100 random appearances, applied without engine errors;
 ## changing one piece does not recreate the node; tints reach pieces mounted afterward; another

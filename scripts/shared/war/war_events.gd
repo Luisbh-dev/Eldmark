@@ -1,6 +1,6 @@
 class_name WarEvents
 extends RefCounted
-## War notices of a fort (docs/fuerte.md, section 5): the ids that travel in the ENTITY_EVENT
+## War notices of a fort (docs/fortress.md, section 5): the ids that travel in the ENTITY_EVENT
 ## [code]WAR[/code] (data [code]u8 war_event, u8 realm[/code]) and their texts in Spanish.
 ## [br][br]
 ## [FortressState] returns these ids when advancing; the server sends them to the whole zone with

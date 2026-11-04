@@ -100,7 +100,7 @@ func TestEmbeddedMigrations(t *testing.T) {
 			t.Errorf("%s no es irreversible", id)
 		}
 	}
-	// Numbers 0007-0009 are left unused (plataforma.md §2.4).
+	// Numbers 0007-0009 are left unused (platform.md §2.4).
 	for _, m := range ms {
 		if m.Version >= 7 && m.Version <= 9 {
 			t.Errorf("%s usa un número reservado", m.ID())
@@ -108,7 +108,7 @@ func TestEmbeddedMigrations(t *testing.T) {
 	}
 }
 
-// up -> down to the last irreversible (or 0) -> up, with the same pg_dump -s (plataforma.md §2.4).
+// up -> down to the last irreversible (or 0) -> up, with the same pg_dump -s (platform.md §2.4).
 func TestUpDownUpKeepsTheSchema(t *testing.T) {
 	pool := testdb.NewEmpty(t)
 	ctx := context.Background()
@@ -169,7 +169,7 @@ func TestUpDownUpKeepsTheSchema(t *testing.T) {
 }
 
 // With a row in each table (the testdata/seed_NNNN.sql seeds, each from its version's schema),
-// applying the next migration does not change any count(*) (plataforma.md §2.4).
+// applying the next migration does not change any count(*) (platform.md §2.4).
 func TestMigrationsKeepTheRows(t *testing.T) {
 	pool := testdb.NewEmpty(t)
 	ctx := context.Background()

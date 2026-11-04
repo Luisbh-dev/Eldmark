@@ -1,9 +1,9 @@
 class_name AbilityRules
 extends RefCounted
-## Second half of the action machine (docs/habilidades.md, sections 3.3 to 3.6): abilities,
+## Second half of the action machine (docs/abilities.md, sections 3.3 to 3.6): abilities,
 ## consumables, channels, weapon swap, revive and execute, knocked down and movement effects.
 ## [br][br]
-## The machine is split into two files so it does not grow without bound (docs/habilidades.md, section 8),
+## The machine is split into two files so it does not grow without bound (docs/abilities.md, section 8),
 ## but the entry point is still [method ActionMachine.step]: it is the only one that calls these functions,
 ## in its fixed order, and these use its internal helpers ([code]_to_none[/code],
 ## [code]_clear_link[/code], [code]_store_buffer[/code]...). Deterministic like the rest of the machine:
@@ -335,7 +335,7 @@ static func _try_start(c: CombatState, input: PlayerInput, data: CombatTables, w
 	if ability.dash_distance_m > 0.0 and is_rooted(c, data):
 		return DROPPED
 	if ability.blocks and ActionMachine._is_blocked_by_exhaustion(c):
-		# Exhaustion prevents the wall, like BLOCK (docs/habilidades.md, section 2.4).
+		# Exhaustion prevents the wall, like BLOCK (docs/abilities.md, section 2.4).
 		c.combat_flags |= CombatState.FLAG_NO_STAMINA
 		return DROPPED
 	if from_buffer and ability.channel and ability.channel_hold \
@@ -403,7 +403,7 @@ static func commit(c: CombatState, data: CombatTables, t: int) -> void:
 
 # --- Step 6: movement -------------------------------------------------------------------------
 
-## Rule 6 (docs/habilidades.md, section 3.4) for ABILITY, SWAP, DOWNED, REVIVE and EXECUTE.
+## Rule 6 (docs/abilities.md, section 3.4) for ABILITY, SWAP, DOWNED, REVIVE and EXECUTE.
 static func fill_output(c: CombatState, out: ActionMachine.Output, data: CombatTables,
 		t: int) -> void:
 	match c.action:

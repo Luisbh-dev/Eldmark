@@ -1,6 +1,6 @@
 class_name ClientProgress
 extends RefCounted
-## Coins, level and XP of the local player on the client (docs/progresion.md §5, §6 and §12): the latest that
+## Coins, level and XP of the local player on the client (docs/progression.md §5, §6 and §12): the latest that
 ## WALLET_UPDATE and PROGRESS_UPDATE said, for the inventory window (gold and merits) and the character window (level,
 ## XP bar, realm and attribute points). It predicts nothing: it only stores what the server sends.
 ## [br][br]

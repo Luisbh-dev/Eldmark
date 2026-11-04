@@ -1,10 +1,10 @@
-// Package tickets is the zone entry ticket (plataforma.md §5.1, TEC-24): 52 B in little-endian
+// Package tickets is the zone entry ticket (platform.md §5.1, TEC-24): 52 B in little-endian
 // with only the character's identity and its destination, signed with HMAC-SHA256 truncated to
 // 16 B. The platform issues it in enter (§4.5); the zone checks it without a network (HandoffTicket
 // and TicketAuthProvider, §5.2) and the claim (§5.3) guarantees single use.
 //
 // The vectors in tests/fixtures/tickets/handoff_ticket_vectors.json are checked by this
-// package's tests and, with the same file, by those of HandoffTicket in GDScript (plataforma.md P4).
+// package's tests and, with the same file, by those of HandoffTicket in GDScript (platform.md P4).
 package tickets
 
 import (

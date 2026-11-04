@@ -1,7 +1,7 @@
-// Package privacy implements the retention rules of plataforma.md §11.1 (TEC-43): the hourly
+// Package privacy implements the retention rules of platform.md §11.1 (TEC-43): the hourly
 // privacy_retention job, which deletes from each table whatever has passed its deadline and
 // empties the ledger of characters purged more than a year ago (ProgressStore.PurgeRetention,
-// progresion.md §3.5), along with deleting the tombstones that end up empty.
+// progression.md §3.5), along with deleting the tombstones that end up empty.
 //
 // The rest of §11 lives in other packages: chat retention (social.ChatRetentionJob, P7a),
 // export (accounts.Service.Export, with ProgressStore.Export), account purging (accounts, P1)
@@ -26,7 +26,7 @@ import (
 
 const day = 24 * time.Hour
 
-// Deadlines from the table in plataforma.md §11.1. The sanctions of a live account and the
+// Deadlines from the table in platform.md §11.1. The sanctions of a live account and the
 // ledger of a live character do not expire; the ledger of a purged one lasts progress.Retention
 // (one year) from its purge.
 const (
@@ -263,7 +263,7 @@ func (s *Service) deleteBatched(ctx context.Context, sql string, args ...any) (i
 	}
 }
 
-// PurgeLedger is the ledger retention (§11.1, progresion.md §3.5): it calls
+// PurgeLedger is the ledger retention (§11.1, progression.md §3.5): it calls
 // ProgressStore.PurgeRetention in a transaction as long as it deletes anything and, in that same
 // transaction, deletes the characters rows it returns as emptied (tombstones purged more than a
 // year ago with no ledger), without looking at progress tables. It returns the ledger rows deleted

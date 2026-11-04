@@ -86,7 +86,7 @@ func get_assistants(killer_id: int, tick: int) -> PackedInt32Array:
 	return result
 
 
-## Contributors to the death at [param tick] (docs/progresion.md §0 and §6.2): those who did at least
+## Contributors to the death at [param tick] (docs/progression.md §0 and §6.2): those who did at least
 ## [constant ASSIST_PERCENT] % of the window's total damage, the killing blow's author included if they qualify, by ascending
 ## id. They are the ones who collect an NPC's reward (each one, in full). With a 10 % minimum there are never more than 10.
 func contributors(tick: int) -> PackedInt32Array:

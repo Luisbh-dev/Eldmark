@@ -1,5 +1,5 @@
 extends TestCase
-## Inventory properties (docs/progresion.md §3.2 and §4, PRG-11): 20 seeds × 1000 random operations,
+## Inventory properties (docs/progression.md §3.2 and §4, PRG-11): 20 seeds × 1000 random operations,
 ## valid and invalid (client requests, SWAP of the active slot, CAMP_REFILL, CONSUME and the GM
 ## changes), on an inventory that starts with the starter kit. No sequence creates or loses objects or
 ## repeats a uid.

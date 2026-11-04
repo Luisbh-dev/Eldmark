@@ -1,6 +1,6 @@
 extends SceneTree
 ## A siege battle with fake players on Vado Gris, in a single process and with no network (GUE-15, GUE-17;
-## docs/fuerte.md, section 7). It is the long test that does not fit in the suite (the short version is
+## docs/fortress.md, section 7). It is the long test that does not fit in the suite (the short version is
 ## [code]tests/test_siege_zone.gd[/code]): [SiegeRunner] advances the server quickly and this tool counts
 ## what happens and summarises it in Spanish.
 ## [br][br]

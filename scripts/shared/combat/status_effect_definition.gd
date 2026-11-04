@@ -1,6 +1,6 @@
 class_name StatusEffectDefinition
 extends Resource
-## A status effect with a duration (docs/habilidades.md, section 2.1): damage or healing over time,
+## A status effect with a duration (docs/abilities.md, section 2.1): damage or healing over time,
 ## slow, root, more damage or less mitigation. Times in seconds; the catalog converts them
 ## to ticks.
 ## [br][br]

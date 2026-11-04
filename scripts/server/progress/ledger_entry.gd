@@ -1,6 +1,6 @@
 class_name LedgerEntry
 extends RefCounted
-## A ledger entry (docs/progresion.md §5.2, PRG-12): a balance change of one currency within an
+## A ledger entry (docs/progression.md §5.2, PRG-12): a balance change of one currency within an
 ## operation ([EconomyOp]). The [code]seq[/code] of each balance is set by the platform on saving (§5.2): the zone does not
 ## send it. Immutable once in the journal (I6).
 ## [br][br]

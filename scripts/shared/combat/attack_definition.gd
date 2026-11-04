@@ -1,6 +1,6 @@
 class_name AttackDefinition
 extends Resource
-## A melee attack or a shot (docs/combate.md, section 2; docs/habilidades.md, section
+## A melee attack or a shot (docs/combate.md, section 2; docs/abilities.md, section
 ## 2.1). All times are in seconds and
 ## [CombatCatalog] converts them to ticks with [code]roundi(s * 60)[/code] on load.
 ## [br][br]
@@ -57,7 +57,7 @@ extends Resource
 @export var charge_move_scale: float = 0.4
 ## Heavy attacks only: turn toward the camera (rad/s) while charging.
 @export var charge_turn_rate: float = 4.0
-## Projectile released on the first active tick (null = none; docs/habilidades.md, section 4.4).
+## Projectile released on the first active tick (null = none; docs/abilities.md, section 4.4).
 @export var projectile: ProjectileDefinition
 ## Projectile launch speed (m/s); for the heavy attack, at minimum charge.
 @export var projectile_speed_mps: float = 45.0

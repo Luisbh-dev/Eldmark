@@ -1,6 +1,6 @@
 extends TestCase
-## The persistent character end to end with the fake platform (docs/progresion.md §15 P8): a [ZoneServer] with
-## [FakeZonePlatform] (plataforma.md §14.3) and [TicketAuthProvider], and real clients ([NetClient] over ENet on
+## The persistent character end to end with the fake platform (docs/progression.md §15 P8): a [ZoneServer] with
+## [FakeZonePlatform] (platform.md §14.3) and [TicketAuthProvider], and real clients ([NetClient] over ENet on
 ## 127.0.0.1, each in its own [SubViewport]) that get in with test tickets signed with the zone's key. The
 ## flat zone carries the Vardheim camp (the safe zone around its two spawn points). What §15 asks for:
 ## [br]- A character created with [code]marksman[/code] ([method FakeZonePlatform.claim_progress]) receives that kit on

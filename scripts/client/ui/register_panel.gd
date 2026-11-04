@@ -1,6 +1,6 @@
 class_name RegisterPanel
 extends FrontScreen
-## Create account (docs/plataforma.md §4.2, §11.4 and §13.2): email, the password twice (10 characters
+## Create account (docs/platform.md §4.2, §11.4 and §13.2): email, the password twice (10 characters
 ## minimum), "Tengo 16 años o más" (I am 16 or older), a checkbox for each legal text (terms, privacy and
 ## rules) with its link, which opens the text in a scrolling panel, and the two optional consents,
 ## unchecked (crash reports and analytics). "Crear cuenta" (Create account) is only enabled with all that

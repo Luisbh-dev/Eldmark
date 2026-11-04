@@ -8,7 +8,7 @@ extends RefCounted
 ## orientation follows the convention of [member PlayerCharacter.yaw]: yaw 0 looks toward -Z.
 ## [br][br]
 ## Shared: used by the server (lag compensation), aiming and projectiles
-## (docs/habilidades.md, section 4.4: [method segment_capsule_fraction] and
+## (docs/abilities.md, section 4.4: [method segment_capsule_fraction] and
 ## [method segment_box_fraction]) and the tests; it depends on nothing from the client.
 
 ## Radius of a character's capsule (m), equal to the [code]Collision[/code] node.
@@ -87,7 +87,7 @@ static func segment_hits_capsule(a: Vector3, b: Vector3, capsule_feet: Vector3, 
 ## Fraction (0 to 1) of the segment from [param a] to [param b] at which it first enters the
 ## vertical capsule of [param radius] and [param height] resting at [param capsule_feet] (the same
 ## volume as [method segment_hits_capsule]), or -1 if it does not touch it. If [param a] is already inside,
-## 0 (docs/habilidades.md, section 4.4: a projectile that starts its tick inside a capsule).
+## 0 (docs/abilities.md, section 4.4: a projectile that starts its tick inside a capsule).
 ## The capsule is the union of a cylinder and two spheres: the entry is the first of the three.
 static func segment_capsule_fraction(a: Vector3, b: Vector3, capsule_feet: Vector3, radius: float,
 		height: float) -> float:
@@ -125,7 +125,7 @@ static func segment_capsule_fraction(a: Vector3, b: Vector3, capsule_feet: Vecto
 ## (transform of its center; it can rotate on any axis) of half dimensions
 ## [param half_extents], or -1 if it does not touch it; 0 if [param a] is already inside or on the edge (slab
 ## method in the box's space). Used for the shield wall against projectiles
-## (docs/habilidades.md, section 4.4).
+## (docs/abilities.md, section 4.4).
 static func segment_box_fraction(a: Vector3, b: Vector3, box: Transform3D,
 		half_extents: Vector3) -> float:
 	var inverse: Transform3D = box.affine_inverse()
@@ -157,7 +157,7 @@ static func segment_box_fraction(a: Vector3, b: Vector3, box: Transform3D,
 
 ## true if the annular sector with height of [param shape], with its origin at [param origin] (the attacker's
 ## feet) and oriented according to [param yaw], touches the box [param box] of half dimensions
-## [param half_extents] (docs/fuerte.md, section 3.3: the fort gate as a target).
+## [param half_extents] (docs/fortress.md, section 3.3: the fort gate as a target).
 ## [br][br]
 ## [param box] is the transform of the box's [b]center[/b]; only a rotation about the Y axis is allowed
 ## (or none): the height is taken from [code]box.origin.y ± half_extents.y[/code]. Edges count
@@ -210,7 +210,7 @@ static func sector_hits_box(origin: Vector3, yaw: float, shape: HitShape, box: T
 ## true if the vertical capsule of [param radius] and [param height] resting at [param capsule_feet]
 ## overlaps the box [param box] (transform of its center, rotated only about Y) of half
 ## dimensions [param half_extents]. Used to know whether a character occupies the fort's gate
-## opening (docs/fuerte.md, section 3.3: the gate is not repaired while someone overlaps it).
+## opening (docs/fortress.md, section 3.3: the gate is not repaired while someone overlaps it).
 static func capsule_overlaps_box(capsule_feet: Vector3, radius: float, height: float,
 		box: Transform3D, half_extents: Vector3) -> bool:
 	var local: Vector3 = box.affine_inverse() * capsule_feet
@@ -241,7 +241,7 @@ static func has_line_of_sight(space: PhysicsDirectSpaceState3D, attacker_feet: V
 ## ([constant LINE_OF_SIGHT_MASK]). Basis of [method has_line_of_sight] with the points already
 ## computed.
 ## [br][br]
-## With [code]hit_from_inside[/code] (F6b and docs/habilidades.md, section 4.4): a ray that [b]starts
+## With [code]hit_from_inside[/code] (F6b and docs/abilities.md, section 4.4): a ray that [b]starts
 ## inside[/b] a convex shape hits at its origin. Without that, the owner of a fort with their feet in the opening
 ## of its closed gate (the chest ends up inside the 0.5 m sight box) would hit from inside whoever
 ## is outside without those outside seeing them, because a ray that starts inside a box ignores it;

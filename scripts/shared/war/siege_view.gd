@@ -1,6 +1,6 @@
 class_name SiegeView
 extends RefCounted
-## What a bot needs to know about a fort in order to besiege it (docs/fuerte.md, section 7):
+## What a bot needs to know about a fort in order to besiege it (docs/fortress.md, section 7):
 ## owner, phase, capturer, gate health and where the gate and the circle are. Pure and without
 ## nodes, so all bots share it:
 ## [br]- the server fills it with the fort's [FortressState] for the fake players

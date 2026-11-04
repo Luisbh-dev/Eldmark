@@ -2,7 +2,7 @@ class_name NetSim
 extends RefCounted
 ## Network simulator for debugging: delay, jitter, loss and duplicates, all measured in ticks.
 ##
-## [NetTransport] applies it on output and input (see docs/red.md, section 13), so
+## [NetTransport] applies it on output and input (see docs/networking.md, section 13), so
 ## setting it on one side simulates the full RTT; on both sides, it doubles it.
 ## [br][br]
 ## Rules:

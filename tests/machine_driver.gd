@@ -1,6 +1,6 @@
 class_name MachineDriver
 extends RefCounted
-## The action machine without physics (for the tests of docs/habilidades.md, section 7.3): a
+## The action machine without physics (for the tests of docs/abilities.md, section 7.3): a
 ## [CombatState], a clock and each tick's input, to script buttons tick by tick like the
 ## [code]Driver[/code] of test_action_machine.gd, but with whatever loadout is wanted (two weapons
 ## and charges).

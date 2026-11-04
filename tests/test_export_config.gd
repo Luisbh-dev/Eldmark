@@ -178,7 +178,7 @@ func test_exports_are_not_tracked() -> void:
 
 
 func test_godot_does_not_scan_the_platform_service() -> void:
-	# platform/ is the Go service (docs/plataforma.md §2.1): Godot neither imports nor exports it.
+	# platform/ is the Go service (docs/platform.md §2.1): Godot neither imports nor exports it.
 	assert_true(FileAccess.file_exists("res://platform/.gdignore"), "platform/ carries .gdignore")
 	assert_true(FileAccess.file_exists("res://platform/go.mod"), "and is the Go module")
 

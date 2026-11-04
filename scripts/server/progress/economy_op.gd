@@ -1,6 +1,6 @@
 class_name EconomyOp
 extends RefCounted
-## An economic operation (docs/progresion.md §3.3, §5.2 and §9.3, PRG-12): what is applied at once (I7) with
+## An economic operation (docs/progression.md §3.3, §5.2 and §9.3, PRG-12): what is applied at once (I7) with
 ## its ledger entries ([LedgerEntry]) and its item events ([ItemEvent]). The zone keeps in the
 ## [PlayerProgress] journal those that a save has not yet confirmed; each body carries those not yet in any
 ## ([member save_seq] 0) and gives them their [code]seq[/code] (§9.2).

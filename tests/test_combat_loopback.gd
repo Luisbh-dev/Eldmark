@@ -12,7 +12,7 @@ extends TestCase
 ## packets of each one.
 ## [br][br]
 ## [b]Rewind with a bad network[/b] (CMB-09, TEC-14; docs/combate.md, sections 4.3 and 4.5): the server
-## carries a [NetSim] of 150 ms RTT and 30 ms jitter (the client's does not count towards the cap: red.md,
+## carries a [NetSim] of 150 ms RTT and 30 ms jitter (the client's does not count towards the cap: networking.md,
 ## section 10) and two attackers hit a target running sideways. [SwingRecorder] stores, in each
 ## input the attacker generates, where it draws the target (its [code]render_tick[/code]) and, with its predicted
 ## state, computes which hits it [i]saw[/i] inside the arc; the server must confirm at least 95 %.
@@ -25,7 +25,7 @@ const ZONE_ID: String = "test_world"
 const WAIT_FRAMES: int = 600
 ## Server network simulator in the rewind tests: 150 ms RTT and 30 ms jitter per direction
 ## (the TEC-14 criterion), delay in both directions. With 200 ms 95 % is no longer reached: the cap of
-## 24 ticks does not cover the margin of [TickSync] and interpolation (docs/red.md, section 10).
+## 24 ticks does not cover the margin of [TickSync] and interpolation (docs/networking.md, section 10).
 const REWIND_NET_SIM: String = "rtt=150,jitter=30,seed=5"
 ## Distance (m) at which each attacker's target is and half-width (m) of its sideways run.
 const REWIND_DISTANCE: float = 2.7

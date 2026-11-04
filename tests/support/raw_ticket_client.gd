@@ -1,7 +1,7 @@
 class_name RawTicketClient
 extends RefCounted
 ## A test client that speaks the protocol by hand over a [NetTransport] (like the one in
-## [code]test_zone_server_net.gd[/code]) to enter a platform-backed zone with a ticket (docs/plataforma.md
+## [code]test_zone_server_net.gd[/code]) to enter a platform-backed zone with a ticket (docs/platform.md
 ## §5.2): it sends the HELLO it is given (delayable), completes authentication with the WELCOME, sends CLIENT_READY if
 ## [member auto_ready] is set and records the SPAWNs, the NOTICEs (with their time) and the REJECT. It is used by
 ## [code]test_zone_server_platform.gd[/code], [code]test_zone_server_saves.gd[/code] and

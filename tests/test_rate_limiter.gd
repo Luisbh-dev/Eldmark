@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests for the rate limiter ([RateLimiter], a token bucket measured in ticks) and for [ServerPeer]'s
-## warnings (50 warnings within 600 ticks kick), docs/red.md section 12.
+## warnings (50 warnings within 600 ticks kick), docs/networking.md section 12.
 
 
 func test_burst_then_empty() -> void:

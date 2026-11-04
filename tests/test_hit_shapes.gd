@@ -307,7 +307,7 @@ func test_line_of_sight_only_looks_at_world_layer() -> void:
 			Vector3(20.0, 0.0, -6.0)), "the world-layer wall does block")
 
 
-## H3a (docs/habilidades.md, 4.4): is_ray_clear uses hit_from_inside: a ray that starts inside a body
+## H3a (docs/abilities.md, 4.4): is_ray_clear uses hit_from_inside: a ray that starts inside a body
 ## hits at its origin (without that, Godot ignores it and a fort's owner would strike from its gate's doorway).
 func test_a_ray_that_starts_inside_a_body_is_not_clear() -> void:
 	await _build_world([_wall(Vector3(0.0, 2.0, -3.0), Vector3(4.0, 4.0, 0.6))])

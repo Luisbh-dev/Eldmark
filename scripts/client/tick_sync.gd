@@ -1,6 +1,6 @@
 class_name TickSync
 extends RefCounted
-## Client lead over the server (docs/red.md, section 4.2).
+## Client lead over the server (docs/networking.md, section 4.2).
 ##
 ## On every physics tick the client asks [method next_steps] how many prediction steps
 ## ([method ClientPrediction.step]) it must take:

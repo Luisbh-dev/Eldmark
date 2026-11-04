@@ -10,7 +10,7 @@ import (
 	"eldmark/platform/internal/names"
 )
 
-// The cases it shares with test_name_rules.gd (plataforma.md §4.4). The Go tests run in the
+// The cases it shares with test_name_rules.gd (platform.md §4.4). The Go tests run in the
 // package's directory.
 const sharedCases = "../../../tests/fixtures/names/name_rules_cases.json"
 

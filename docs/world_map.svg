@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1000 1000" width="1000" height="1000" font-family="Georgia, 'Palatino Linotype', 'Book Antiqua', serif" role="img" aria-labelledby="titulo desc">
-<title id="titulo">Eldmark: mapa esquemático del mundo (La Corona Rota)</title>
-<desc id="desc">Mapa esquemático sin escala. Vardheim al norte, Solmarch al suroeste y Askarra al sureste, cada uno con su muralla, sus dos puertas de frente, su capital y sus zonas por niveles. En el centro, la zona de guerra Eldrun con la ciudadela de Aldcor, los castillos Velmont, Grauholt y Sarnath, seis fuertes y las calzadas (Líneas de Brasa) que los unen.</desc>
+<title id="titulo">Eldmark: schematic world map (The Broken Crown)</title>
+<desc id="desc">Schematic map, not to scale. Vardheim in the north, Solmarch in the southwest and Askarra in the southeast, each with its wall, its two front gates, its capital and its zones by level. In the center, the Eldrun war zone with the citadel of Aldcor, the castles Velmont, Grauholt and Sarnath, six forts and the roads (Ember Lines) that link them.</desc>
 <defs>
 <radialGradient id="parchment" cx="50%" cy="50%" r="72%">
 <stop offset="0%" stop-color="#efe4c6"/><stop offset="75%" stop-color="#e3d3ab"/><stop offset="100%" stop-color="#cdb989"/>
@@ -347,7 +347,7 @@
 <text x="708.2" y="220.9" font-size="12.5" text-anchor="middle" fill="#3b3127" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">Hondal</text>
 <text x="708.2" y="234.4" font-size="11" text-anchor="middle" font-style="italic" fill="#5b4c3a" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">1–10</text>
 <text x="500" y="74" font-size="23" text-anchor="middle" font-weight="bold" letter-spacing="3" fill="#3e4c59" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">VARDHEIM</text>
-<text x="500" y="93" font-size="12" text-anchor="middle" font-style="italic" fill="#5b4c3a" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">los clanes del norte</text>
+<text x="500" y="93" font-size="12" text-anchor="middle" font-style="italic" fill="#5b4c3a" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">the clans of the north</text>
 <text font-size="11" font-style="italic" letter-spacing="0.6" fill="#7a1820" stroke="#f3ead2" stroke-width="3" stroke-linejoin="round" paint-order="stroke"><textPath href="#tp4" xlink:href="#tp4" startOffset="50%" text-anchor="middle">Cinturón de Bronce</textPath></text>
 <text font-size="12.5" fill="#3b3127" stroke="#f3ead2" stroke-width="3" stroke-linejoin="round" paint-order="stroke"><textPath href="#tp5" xlink:href="#tp5" startOffset="50%" text-anchor="middle">Forjas de Ossar · 30–40</textPath></text>
 <text font-size="12.5" fill="#3b3127" stroke="#f3ead2" stroke-width="3" stroke-linejoin="round" paint-order="stroke"><textPath href="#tp6" xlink:href="#tp6" startOffset="50%" text-anchor="middle">Yermo de Ceniza · 20–30</textPath></text>
@@ -360,7 +360,7 @@
 <text x="635.2" y="822.5" font-size="12.5" text-anchor="middle" fill="#3b3127" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">de Thal</text>
 <text x="635.2" y="836" font-size="11" text-anchor="middle" font-style="italic" fill="#5b4c3a" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">1–10</text>
 <text x="893" y="742" font-size="23" text-anchor="middle" font-weight="bold" letter-spacing="3" fill="#7a1820" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">ASKARRA</text>
-<text x="893" y="761" font-size="12" text-anchor="middle" font-style="italic" fill="#5b4c3a" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">las forjas de ceniza</text>
+<text x="893" y="761" font-size="12" text-anchor="middle" font-style="italic" fill="#5b4c3a" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">the ash forges</text>
 <text font-size="11" font-style="italic" letter-spacing="0.6" fill="#7d6210" stroke="#f3ead2" stroke-width="3" stroke-linejoin="round" paint-order="stroke"><textPath href="#tp7" xlink:href="#tp7" startOffset="50%" text-anchor="middle">Muralla del Alba</textPath></text>
 <text font-size="12.5" fill="#3b3127" stroke="#f3ead2" stroke-width="3" stroke-linejoin="round" paint-order="stroke"><textPath href="#tp8" xlink:href="#tp8" startOffset="50%" text-anchor="middle">Llanos del Penitente · 30–40</textPath></text>
 <text font-size="12.5" fill="#3b3127" stroke="#f3ead2" stroke-width="3" stroke-linejoin="round" paint-order="stroke"><textPath href="#tp9" xlink:href="#tp9" startOffset="50%" text-anchor="middle">Ciénaga de Morvel · 20–30</textPath></text>
@@ -373,7 +373,7 @@
 <text x="156.6" y="461.8" font-size="12.5" text-anchor="middle" fill="#3b3127" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">de Ambre</text>
 <text x="156.6" y="475.3" font-size="11" text-anchor="middle" font-style="italic" fill="#5b4c3a" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">1–10</text>
 <text x="107" y="742" font-size="23" text-anchor="middle" font-weight="bold" letter-spacing="3" fill="#7d6210" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">SOLMARCH</text>
-<text x="107" y="761" font-size="12" text-anchor="middle" font-style="italic" fill="#5b4c3a" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">el reino del Alba</text>
+<text x="107" y="761" font-size="12" text-anchor="middle" font-style="italic" fill="#5b4c3a" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">the realm of the Dawn</text>
 <text x="500" y="182" font-size="15" text-anchor="middle" font-weight="bold" fill="#3b3127" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">Isenholm</text>
 <text x="201" y="701" font-size="15" text-anchor="middle" font-weight="bold" fill="#3b3127" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">Valcorin</text>
 <text x="799" y="701" font-size="15" text-anchor="middle" font-weight="bold" fill="#3b3127" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">Kassar</text>
@@ -384,7 +384,7 @@
 <text font-size="11" font-weight="bold" fill="#7d6210" stroke="#f3ead2" stroke-width="3" stroke-linejoin="round" paint-order="stroke"><textPath href="#tp14" xlink:href="#tp14" startOffset="50%" text-anchor="middle">Puerta de los Penitentes</textPath></text>
 <text font-size="11" font-weight="bold" fill="#7d6210" stroke="#f3ead2" stroke-width="3" stroke-linejoin="round" paint-order="stroke"><textPath href="#tp15" xlink:href="#tp15" startOffset="50%" text-anchor="middle">Puerta Áurea</textPath></text>
 <text x="500" y="352" font-size="19" text-anchor="middle" font-weight="bold" letter-spacing="5" fill="#3f3830" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">ELDRUN</text>
-<text x="500" y="368" font-size="11.5" text-anchor="middle" font-style="italic" fill="#4e463c" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">zona de guerra</text>
+<text x="500" y="368" font-size="11.5" text-anchor="middle" font-style="italic" fill="#4e463c" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">war zone</text>
 <text x="425.4" y="438" font-size="13.5" text-anchor="start" font-weight="bold" fill="#3b3127" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">Velmont</text>
 <text x="574.6" y="438" font-size="13.5" text-anchor="end" font-weight="bold" fill="#3b3127" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">Grauholt</text>
 <text x="515" y="604" font-size="13.5" text-anchor="start" font-weight="bold" fill="#3b3127" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">Sarnath</text>
@@ -399,10 +399,10 @@
 <text x="449.7" y="642" font-size="11.5" text-anchor="end" fill="#3b3127" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">Santuario</text>
 <text x="449.7" y="654.5" font-size="11.5" text-anchor="end" fill="#3b3127" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">de Ilse</text>
 <text x="489" y="541" font-size="15" text-anchor="end" font-weight="bold" fill="#3b3127" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">Aldcor</text>
-<text x="489" y="555" font-size="11" text-anchor="end" font-style="italic" fill="#4e463c" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">el Trono Roto</text>
+<text x="489" y="555" font-size="11" text-anchor="end" font-style="italic" fill="#4e463c" stroke="#f3ead2" stroke-width="3.2" stroke-linejoin="round" paint-order="stroke">the Broken Throne</text>
 <text x="28" y="50" font-size="32" text-anchor="start" font-weight="bold" letter-spacing="4" fill="#3b3127">ELDMARK</text>
-<text x="30" y="72" font-size="13" text-anchor="start" font-style="italic" fill="#5b4c3a">La Corona Rota · mapa esquemático del mundo</text>
-<text x="30" y="89" font-size="11" text-anchor="start" fill="#6b5b47">Sin escala. Detalle en docs/mundo.md</text>
+<text x="30" y="72" font-size="13" text-anchor="start" font-style="italic" fill="#5b4c3a">The Broken Crown · schematic world map</text>
+<text x="30" y="89" font-size="11" text-anchor="start" fill="#6b5b47">Not to scale. Details in docs/world.md</text>
 <circle cx="922" cy="92" r="30" fill="none" stroke="#7d6c52" stroke-width="1"/>
 <circle cx="922" cy="92" r="24" fill="none" stroke="#7d6c52" stroke-width="0.6"/>
 <path d="M922,54 L916,92 L922,92 Z" fill="#3b3127"/>
@@ -424,75 +424,75 @@
 <text x="922" y="48" font-size="15" text-anchor="middle" font-weight="bold" fill="#3b3127">N</text>
 <text x="922" y="148" font-size="11" text-anchor="middle" fill="#3b3127">S</text>
 <text x="972" y="96" font-size="11" text-anchor="middle" fill="#3b3127">E</text>
-<text x="872" y="96" font-size="11" text-anchor="middle" fill="#3b3127">O</text>
+<text x="872" y="96" font-size="11" text-anchor="middle" fill="#3b3127">W</text>
 <rect x="12" y="98" width="172" height="213" rx="4" fill="#f3ead2" stroke="#7d6c52" stroke-width="1.2" opacity="0.96"/>
-<text x="22" y="117" font-size="13.5" text-anchor="start" font-weight="bold" fill="#3b3127">Leyenda</text>
+<text x="22" y="117" font-size="13.5" text-anchor="start" font-weight="bold" fill="#3b3127">Legend</text>
 <path d="M21,134 l22,0" stroke="#3b3127" stroke-width="6.5" stroke-linecap="round"/>
 <path d="M21,134 l22,0" stroke="#8a8170" stroke-width="4" stroke-linecap="round"/>
-<text x="50" y="138" font-size="11" text-anchor="start" fill="#3b3127">Muralla de frente</text>
+<text x="50" y="138" font-size="11" text-anchor="start" fill="#3b3127">Front wall</text>
 <path d="M21,148.2 l22,0" stroke="#6f665a" stroke-width="2.2" stroke-dasharray="7 4"/>
-<text x="50" y="152.2" font-size="11" text-anchor="start" fill="#3b3127">Muralla exterior</text>
+<text x="50" y="152.2" font-size="11" text-anchor="start" fill="#3b3127">Outer wall</text>
 <rect x="25" y="155.9" width="14" height="13" rx="1.5" fill="#8a8170" stroke="#3b3127" stroke-width="1.4"/>
 <path d="M29,168.9 L29,162.4 A3,3 0 0 1 35,162.4 L35,168.9 Z" fill="#3b3127"/>
-<text x="50" y="166.4" font-size="11" text-anchor="start" fill="#3b3127">Puerta</text>
+<text x="50" y="166.4" font-size="11" text-anchor="start" fill="#3b3127">Gate</text>
 <circle cx="32" cy="176.6" r="6" fill="#e7dbbd" stroke="#3b3127" stroke-width="1.4"/>
 <circle cx="32" cy="176.6" r="3.2" fill="#8a8170" stroke="#3b3127" stroke-width="0.8"/>
 <text x="50" y="180.6" font-size="11" text-anchor="start" fill="#3b3127">Capital</text>
 <path d="M23.5,200.8 L23.5,185.8 L25.9,185.8 L25.9,189.8 L28.4,189.8 L28.4,185.8 L30.8,185.8 L30.8,181.8 L33.2,181.8 L33.2,185.8 L35.6,185.8 L35.6,189.8 L38.1,189.8 L38.1,185.8 L40.5,185.8 L40.5,200.8 Z" fill="#d9cfb7" stroke="#3b3127" stroke-width="1.6" stroke-linejoin="round"/>
 <path d="M29,200.8 L29,194.8 A3,3 0 0 1 35,194.8 L35,200.8 Z" fill="#3b3127"/>
-<text x="50" y="197.3" font-size="11" text-anchor="start" fill="#3b3127">Castillo</text>
+<text x="50" y="197.3" font-size="11" text-anchor="start" fill="#3b3127">Castle</text>
 <rect x="26.5" y="204" width="11" height="11" fill="#e4dac2" stroke="#3b3127" stroke-width="1.4"/>
 <rect x="29.8" y="207.3" width="4.4" height="4.4" fill="#3b3127"/>
-<text x="50" y="213.5" font-size="11" text-anchor="start" fill="#3b3127">Fuerte</text>
+<text x="50" y="213.5" font-size="11" text-anchor="start" fill="#3b3127">Fort</text>
 <circle cx="32" cy="223.7" r="6.5" fill="#4a3f36" stroke="#3b3127" stroke-width="1"/>
 <path d="M28,226.2 l0,-4.5 l2,2 l1.5,-3 l0.8,3 M32.8,226.2 l0.8,-5 l1.4,2.5 l1.6,-2 l0,4.5" fill="#e0a43a" stroke="#e0a43a" stroke-width="0.8"/>
-<text x="50" y="227.7" font-size="11" text-anchor="start" fill="#3b3127">Aldcor, el Trono Roto</text>
+<text x="50" y="227.7" font-size="11" text-anchor="start" fill="#3b3127">Aldcor, the Broken Throne</text>
 <path d="M21,237.9 l22,0" stroke="#5a3a22" stroke-width="3.6" stroke-linecap="round"/>
 <path d="M21,237.9 l22,0" stroke="#f08a2c" stroke-width="1.6" stroke-dasharray="3 5" stroke-linecap="round"/>
-<text x="50" y="241.9" font-size="11" text-anchor="start" fill="#3b3127">Calzada (Línea de Brasa)</text>
+<text x="50" y="241.9" font-size="11" text-anchor="start" fill="#3b3127">Road (Ember Line)</text>
 <path d="M21,252.1 l11,0" stroke="#5f86a0" stroke-width="3" stroke-linecap="round"/>
 <path d="M34,252.1 l9,0" stroke="#7d8f99" stroke-width="2" stroke-dasharray="3 3"/>
-<text x="50" y="256.1" font-size="11" text-anchor="start" fill="#3b3127">Río y cauce seco</text>
+<text x="50" y="256.1" font-size="11" text-anchor="start" fill="#3b3127">River and dry riverbed</text>
 <path d="M21,268.3 l5,-4 l5,4 l5,-4 l6,4" fill="none" stroke="#ff9a3c" stroke-width="5" opacity="0.35"/>
 <path d="M21,268.3 l5,-4 l5,4 l5,-4 l6,4" fill="none" stroke="#d2541b" stroke-width="1.8"/>
-<text x="50" y="270.3" font-size="11" text-anchor="start" fill="#3b3127">Grieta de brasas</text>
+<text x="50" y="270.3" font-size="11" text-anchor="start" fill="#3b3127">Ember rift</text>
 <path d="M21.5,284.5 L27,276.8 L32.5,284.5 Z" fill="#d8c9a6" stroke="#6b5a43" stroke-width="0.9" stroke-linejoin="round"/>
 <path d="M27,276.8 L32.5,284.5 L27.8,284.5 Z" fill="#a8946f"/>
 <path d="M31.5,284.5 L37,276.8 L42.5,284.5 Z" fill="#d8c9a6" stroke="#6b5a43" stroke-width="0.9" stroke-linejoin="round"/>
 <path d="M37,276.8 L42.5,284.5 L37.8,284.5 Z" fill="#a8946f"/>
-<text x="50" y="284.5" font-size="11" text-anchor="start" fill="#3b3127">Cordillera</text>
+<text x="50" y="284.5" font-size="11" text-anchor="start" fill="#3b3127">Mountain range</text>
 <path d="M21,294.7 l22,0" stroke="#8a7a62" stroke-width="1" stroke-dasharray="4 3"/>
-<text x="50" y="298.7" font-size="11" text-anchor="start" fill="#3b3127">Límite de zona</text>
+<text x="50" y="298.7" font-size="11" text-anchor="start" fill="#3b3127">Zone border</text>
 <rect x="776" y="838" width="212" height="150" rx="4" fill="#f3ead2" stroke="#7d6c52" stroke-width="1.2" opacity="0.96"/>
-<text x="786" y="857" font-size="13.5" text-anchor="start" font-weight="bold" fill="#3b3127">Reinos y colores</text>
+<text x="786" y="857" font-size="13.5" text-anchor="start" font-weight="bold" fill="#3b3127">Realms and colors</text>
 <rect x="787" y="868" width="10" height="20" fill="#6f7f8e" stroke="#3b3127" stroke-width="1"/>
 <rect x="797" y="868" width="10" height="20" fill="#9fd0ea" stroke="#3b3127" stroke-width="1"/>
-<text x="816" y="877" font-size="12" text-anchor="start" font-weight="bold" fill="#3b3127">Vardheim (norte)</text>
-<text x="816" y="890" font-size="11" text-anchor="start" font-style="italic" fill="#5b4c3a">gris acero y azul hielo</text>
+<text x="816" y="877" font-size="12" text-anchor="start" font-weight="bold" fill="#3b3127">Vardheim (north)</text>
+<text x="816" y="890" font-size="11" text-anchor="start" font-style="italic" fill="#5b4c3a">steel gray and ice blue</text>
 <rect x="787" y="897" width="10" height="20" fill="#f7f3e8" stroke="#3b3127" stroke-width="1"/>
 <rect x="797" y="897" width="10" height="20" fill="#c9a227" stroke="#3b3127" stroke-width="1"/>
-<text x="816" y="906" font-size="12" text-anchor="start" font-weight="bold" fill="#3b3127">Solmarch (suroeste)</text>
-<text x="816" y="919" font-size="11" text-anchor="start" font-style="italic" fill="#5b4c3a">blanco y oro</text>
+<text x="816" y="906" font-size="12" text-anchor="start" font-weight="bold" fill="#3b3127">Solmarch (southwest)</text>
+<text x="816" y="919" font-size="11" text-anchor="start" font-style="italic" fill="#5b4c3a">white and gold</text>
 <rect x="787" y="926" width="10" height="20" fill="#8e1b26" stroke="#3b3127" stroke-width="1"/>
 <rect x="797" y="926" width="10" height="20" fill="#b07a3a" stroke="#3b3127" stroke-width="1"/>
-<text x="816" y="935" font-size="12" text-anchor="start" font-weight="bold" fill="#3b3127">Askarra (sureste)</text>
-<text x="816" y="948" font-size="11" text-anchor="start" font-style="italic" fill="#5b4c3a">carmesí y bronce</text>
+<text x="816" y="935" font-size="12" text-anchor="start" font-weight="bold" fill="#3b3127">Askarra (southeast)</text>
+<text x="816" y="948" font-size="11" text-anchor="start" font-style="italic" fill="#5b4c3a">crimson and bronze</text>
 <rect x="787" y="955" width="10" height="20" fill="#b8ae9c" stroke="#3b3127" stroke-width="1"/>
 <rect x="797" y="955" width="10" height="20" fill="#d2541b" stroke="#3b3127" stroke-width="1"/>
-<text x="816" y="964" font-size="12" text-anchor="start" font-weight="bold" fill="#3b3127">Eldrun (centro)</text>
-<text x="816" y="977" font-size="11" text-anchor="start" font-style="italic" fill="#5b4c3a">zona de guerra, tierra rota</text>
+<text x="816" y="964" font-size="12" text-anchor="start" font-weight="bold" fill="#3b3127">Eldrun (center)</text>
+<text x="816" y="977" font-size="11" text-anchor="start" font-style="italic" fill="#5b4c3a">war zone, broken land</text>
 <rect x="12" y="838" width="212" height="150" rx="4" fill="#f3ead2" stroke="#7d6c52" stroke-width="1.2" opacity="0.96"/>
-<text x="22" y="857" font-size="13.5" text-anchor="start" font-weight="bold" fill="#3b3127">Tamaños orientativos</text>
+<text x="22" y="857" font-size="13.5" text-anchor="start" font-weight="bold" fill="#3b3127">Approximate sizes</text>
 <text x="24" y="876" font-size="11.5" text-anchor="start" fill="#3b3127">Eldrun</text>
 <text x="124" y="876" font-size="11.5" text-anchor="start" fill="#5b4c3a">4 × 4 km</text>
 <text x="24" y="891" font-size="11.5" text-anchor="start" fill="#3b3127">Capital</text>
 <text x="124" y="891" font-size="11.5" text-anchor="start" fill="#5b4c3a">1 × 1 km</text>
-<text x="24" y="906" font-size="11.5" text-anchor="start" fill="#3b3127">Zona PvE</text>
-<text x="124" y="906" font-size="11.5" text-anchor="start" fill="#5b4c3a">1,5 × 1,5 km</text>
-<text x="24" y="921" font-size="11.5" text-anchor="start" fill="#3b3127">Frontera</text>
-<text x="124" y="921" font-size="11.5" text-anchor="start" fill="#5b4c3a">2,5 × 1,2 km</text>
-<text x="24" y="936" font-size="11.5" text-anchor="start" fill="#3b3127">Mazmorra</text>
+<text x="24" y="906" font-size="11.5" text-anchor="start" fill="#3b3127">PvE zone</text>
+<text x="124" y="906" font-size="11.5" text-anchor="start" fill="#5b4c3a">1.5 × 1.5 km</text>
+<text x="24" y="921" font-size="11.5" text-anchor="start" fill="#3b3127">Border</text>
+<text x="124" y="921" font-size="11.5" text-anchor="start" fill="#5b4c3a">2.5 × 1.2 km</text>
+<text x="24" y="936" font-size="11.5" text-anchor="start" fill="#3b3127">Dungeon</text>
 <text x="124" y="936" font-size="11.5" text-anchor="start" fill="#5b4c3a">150–400 m</text>
-<text x="24" y="963" font-size="10.5" text-anchor="start" font-style="italic" fill="#5b4c3a">Niveles: 1–10 junto a la capital,</text>
-<text x="24" y="977" font-size="10.5" text-anchor="start" font-style="italic" fill="#5b4c3a">30–40 junto a la muralla.</text>
+<text x="24" y="963" font-size="10.5" text-anchor="start" font-style="italic" fill="#5b4c3a">Levels: 1–10 next to the capital,</text>
+<text x="24" y="977" font-size="10.5" text-anchor="start" font-style="italic" fill="#5b4c3a">30–40 next to the wall./text>
 </svg>

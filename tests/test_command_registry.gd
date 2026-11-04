@@ -95,12 +95,12 @@ func test_ids_of_the_network_commands_are_fixed() -> void:
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"fort_kill_captain"], 10)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"fort_capture_speed"], 11)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"npc_debug"], 12)
-	# Protocol 6 (docs/habilidades.md, section 5.1).
+	# Protocol 6 (docs/abilities.md, section 5.1).
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"cooldowns_off"], 13)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"apply_status"], 14)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"down"], 15)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"refill"], 16)
-	# Protocol 7 (docs/progresion.md §10): the progression GM ones.
+	# Protocol 7 (docs/progression.md §10): the progression GM ones.
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"item_give"], 40)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"currency_add"], 41)
 	assert_eq(NetProtocol.DEBUG_COMMAND_IDS[&"level_set"], 42)
@@ -186,7 +186,7 @@ func test_audit_keeps_only_the_latest_entries() -> void:
 			"jugador%d" % (CommandRegistry.MAX_AUDIT_ENTRIES + 24)))
 
 
-# --- Roles (docs/plataforma.md §9.1, P7b) ----------------------------------------------------------
+# --- Roles (docs/platform.md §9.1, P7b) ----------------------------------------------------------
 
 func test_roles_are_ordered_and_a_command_declares_its_minimum() -> void:
 	assert_eq(CommandRegistry.ROLES, ClaimedCharacter.ROLES, "the same roles as the claim")
@@ -229,7 +229,7 @@ func test_a_network_command_with_a_role_needs_its_minimum() -> void:
 			[CommandRegistry.Origin.NETWORK, &"", &"heal", "ok"]], "only what was executed goes to the platform audit")
 
 
-## progresion.md P5d: a command can require a different role over the network than through /gm (40–43 and 16: admin and gm).
+## progression.md P5d: a command can require a different role over the network than through /gm (40–43 and 16: admin and gm).
 func test_a_network_command_can_need_another_role_than_by_chat() -> void:
 	var registry: CommandRegistry = _registry()
 	assert_true(registry.register(&"item_give", "x", _console_ok, _net_ok, &"gm", &"admin"))

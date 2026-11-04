@@ -1,4 +1,4 @@
-// Package clock provides the platform's injectable clock (plataforma.md §15: "Go's clock is
+// Package clock provides the platform's injectable clock (platform.md §15: "Go's clock is
 // injectable"). The platform code asks a [Clock] for the time and passes it to statements as a
 // parameter instead of using PostgreSQL's now() where a deadline matters (links, sessions, purges):
 // that way the tests move the clock forward without waiting.

@@ -1,6 +1,6 @@
 class_name InterpolationClock
 extends RefCounted
-## Clock with which the client draws remote players (docs/red.md, section 4.3).
+## Clock with which the client draws remote players (docs/networking.md, section 4.3).
 ##
 ## It is independent of [TickSync]: one fixes when to simulate and the other which instant to draw, so
 ## they do not fight. Everything is measured in whole physics ticks.
@@ -26,7 +26,7 @@ extends RefCounted
 ## tick ahead of the target: the effective delay was the delay minus 1 tick, and with the minimum
 ## of 4 ticks it extrapolated more often. Here it first advances 1 tick and corrects afterwards, so
 ## the render tick converges exactly to the target (a decision made overnight, see
-## docs/informe_noche.md).
+## docs/history/2026-10-night-report.md).
 ## [br][br]
 ## Remotes are drawn in [code]_process[/code] at the instant
 ## [code]render_tick + Engine.get_physics_interpolation_fraction()[/code].

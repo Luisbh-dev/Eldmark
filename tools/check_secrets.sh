@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CI secrets check (docs/plataforma.md §10.3). Fails if the git index contains any *.env, anything under a
+# CI secrets check (docs/platform.md §10.3). Fails if the git index contains any *.env, anything under a
 # secrets/ directory or a *.pem or *.key outside tests/, or if a platform/deploy/*.example has the value of a
 # secret (ELDMARK_TICKET_KEYS=…, ELDMARK_ZONE_TOKENS=…, ELDMARK_ZONE_TOKEN=…, ELDMARK_SMTP_URL=…,
 # ELDMARK_DATABASE_URL=… or ELDMARK_EMAIL_HMAC_KEY=…; the *_FILE variables holding the path to the secret are fine).
@@ -15,7 +15,7 @@ status=0
 tracked="$(git ls-files)"
 offenders="$(printf '%s\n' "$tracked" | grep -E '(^|/)[^/]*\.env$|(^|/)secrets/|\.(pem|key)$' | grep -vE '^tests/.*\.(pem|key)$' || true)"
 if [ -n "$offenders" ]; then
-	echo "El índice de git lleva archivos que pueden ser secretos (ver docs/plataforma.md §10.3):"
+	echo "El índice de git lleva archivos que pueden ser secretos (ver docs/platform.md §10.3):"
 	printf '%s\n' "$offenders" | sed 's/^/  /'
 	status=1
 fi

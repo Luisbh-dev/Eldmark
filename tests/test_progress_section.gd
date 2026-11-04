@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests for the [code]progress[/code] section of [CharacterSaver] in [ZoneServer] with [FakeZonePlatform] and real clients
-## over ENet on 127.0.0.1 (docs/progresion.md §9 and §15 P5a): the section is registered first; the kit of
+## over ENet on 127.0.0.1 (docs/progression.md §9 and §15 P5a): the section is registered first; the kit of
 ## the first join as critical; the retry with the same body; [code]duplicate[/code] confirms;
 ## [code]lease_lost[/code] discards the state; a 400 [code]invalid_save[/code] kicks and releases, and afterwards no
 ## [ProgressService] hook fails with that [code]net_id[/code]; [method PlayerProgress.is_dirty] with only movement
@@ -225,7 +225,7 @@ func test_the_section_is_registered_first_and_the_kit_is_critical() -> void:
 	if not await _start(func(platform: FakeZonePlatform) -> void:
 			platform.add_character(2042, 7, &"player", VARDHEIM, {})):
 		return
-	# Since plataforma.md P6, start also registers the real pvp one (ScoreKeeper), after progress.
+	# Since platform.md P6, start also registers the real pvp one (ScoreKeeper), after progress.
 	assert_eq(_server.get_saver().section_names(), [ProgressService.SECTION, ScoreKeeper.SECTION] as Array[StringName],
 			"progress, registered first in start")
 	var other := FakeSaveSection.new()

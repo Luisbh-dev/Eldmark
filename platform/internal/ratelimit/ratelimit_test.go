@@ -27,7 +27,7 @@ func TestLRUForgetsTheOldest(t *testing.T) {
 	}
 }
 
-// 10 per minute with burst 10 (login by IP, plataforma.md §4.2): the 11th waits.
+// 10 per minute with burst 10 (login by IP, platform.md §4.2): the 11th waits.
 func TestBucket(t *testing.T) {
 	l := New(10, time.Minute, 10, 100)
 	for i := 0; i < 10; i++ {

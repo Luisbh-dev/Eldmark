@@ -1,5 +1,5 @@
 extends TestCase
-## Arrows end to end with real ENet over 127.0.0.1 and a bad network (H5; docs/habilidades.md, sections 4.4 and
+## Arrows end to end with real ENet over 127.0.0.1 and a bad network (H5; docs/abilities.md, sections 4.4 and
 ## 7.3; CMB-22): a [ZoneServer] with a [NetSim] of 150 ms RTT and 30 ms jitter, an archer (a bot with the
 ## marksman template, chosen with [code]--loadout[/code] before CLIENT_READY) and a target that runs
 ## sideways at 30 m, each in its own [SubViewport] with its own physics world.
@@ -207,7 +207,7 @@ func test_twenty_drawn_shots_at_30_m_on_a_running_target_with_150_ms_of_rtt() ->
 	var runner: NetClient = _clients[1]
 	_archer_id = archer.get_net_id()
 	_target_id = runner.get_net_id()
-	# Without a platform, an ephemeral character with an inventory (progresion.md §9.4, P5b): the template chosen before
+	# Without a platform, an ephemeral character with an inventory (progression.md §9.4, P5b): the template chosen before
 	# CLIENT_READY is its starter kit, with the bow in slot 1, and its inventory equips it (current template 0).
 	var archer_combatant: Combatant = _server.get_combat().get_combatant(_archer_id)
 	assert_eq(archer_combatant.template_id, 0, "its inventory's equipment")

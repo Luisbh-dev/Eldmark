@@ -1,5 +1,5 @@
 extends TestCase
-## The client inventory (docs/progresion.md §11.3 and §15, P6; UI-26): [ClientInventory] with a fake
+## The client inventory (docs/progression.md §11.3 and §15, P6; UI-26): [ClientInventory] with a fake
 ## server that applies requests with the same [method InventoryOps.apply] and answers with real messages
 ## (encoded and decoded). The optimistic update, the confirmation, the rejection that returns the item to its slot, server
 ## changes interleaved with in-flight requests, the provisional stack of a SPLIT, the 5 s deadline, revision

@@ -1,6 +1,6 @@
 class_name HintCatalog
 extends RefCounted
-## The game's hints (UI-42, docs/fuerte.md section 6): short tips, in Spanish, that [HintToasts] shows
+## The game's hints (UI-42, docs/fortress.md section 6): short tips, in Spanish, that [HintToasts] shows
 ## only once per player when what motivates them happens. Each has a stable identifier (what [HintLog]
 ## stores) and its text. The texts are provisional (the final wording is up to the user).
 ## [br][br]

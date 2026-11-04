@@ -17,7 +17,7 @@ import (
 	"eldmark/platform/internal/persistence"
 )
 
-// Purger purges characters (plataforma.md §11.2): it leaves the tombstone (the characters row
+// Purger purges characters (platform.md §11.2): it leaves the tombstone (the characters row
 // without a name, with purged_at) and the append-only parts of the progression, which the retention
 // deletes after a year. It implements accounts.CharacterPurger.
 type Purger struct {

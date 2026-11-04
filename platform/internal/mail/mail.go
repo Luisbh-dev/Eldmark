@@ -1,4 +1,4 @@
-// Package mail composes and sends the platform's emails (plataforma.md §4.2 and §4.3).
+// Package mail composes and sends the platform's emails (platform.md §4.2 and §4.3).
 //
 // With ELDMARK_MAIL=log ([LogSender]) the email is stored in the outbound_mail table and goes to
 // the log with the whole link, so tests and development get the token without a mail server; in

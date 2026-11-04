@@ -97,7 +97,7 @@ func test_the_same_seed_gives_the_same_inputs() -> void:
 		assert_eq(a.buttons, b.buttons)
 
 
-# --- Phase 4 modes: reuse, potion and interact (docs/habilidades.md, section 4.7) ----------------
+# --- Phase 4 modes: reuse, potion and interact (docs/abilities.md, section 4.7) ----------------
 
 func _count_button(inputs: Array[PlayerInput], button: int) -> int:
 	var count: int = 0

@@ -33,10 +33,10 @@ extends SceneTree
 ## standing (or 60 s pass, with 10 s respawns in between): time to the first casualty and to
 ## the end, and casualties per side.
 ## [br][br]
-## Between players of enemy realms the killing blow knocks down (docs/habilidades.md, section 4.5): the "death" of
+## Between players of enemy realms the killing blow knocks down (docs/abilities.md, section 4.5): the "death" of
 ## these measurements is the fall, DOWNED or DEATH (whichever comes first), which is when the fallen stops fighting.
 ## [br][br]
-## [b]Phase 4 kits[/b] (H5; docs/habilidades.md, section 2.4, and combate.md, section 12.8):
+## [b]Phase 4 kits[/b] (H5; docs/abilities.md, section 2.4, and combate.md, section 12.8):
 ## [br]- [b]Bow against the dummy[/b] at 10 m: repeated quick shot and drawn shot with minimum and maximum charge,
 ## aimed like a bot ([method BotBrain.lead_look]); the measured DPS against the one calculated from the data.
 ## [br]- [b]Ranges[/b]: the quick shot and the maximum drawn shot against the dummy at 10, 30 and 50 m: hits, flight time
@@ -331,7 +331,7 @@ func _dps_of(entry: Dictionary) -> Dictionary:
 	}
 
 
-# --- Phase 4 kits: what the data says (docs/habilidades.md, section 2.4) ---------------
+# --- Phase 4 kits: what the data says (docs/abilities.md, section 2.4) ---------------
 
 # The bow, abilities and potions according to the catalog, with the DPS calculated from the §2.4 sheet.
 func _kit_data_table() -> Dictionary:
@@ -344,7 +344,7 @@ func _kit_data_table() -> Dictionary:
 	table["quick"] = _cycle_row(quick.total_ticks, quick.base_damage)
 	table["drawn_min"] = _cycle_row(drawn.charge_min_ticks + drawn.total_ticks, drawn.base_damage)
 	table["drawn_max"] = _cycle_row(drawn.charge_max_ticks + drawn.total_ticks, drawn_max_damage)
-	print("\nKits de la fase 4 (data/combat/; docs/habilidades.md, sección 2.4):")
+	print("\nKits de la fase 4 (data/combat/; docs/abilities.md, sección 2.4):")
 	print("  arco: rápido %d ticks y %d de daño -> %.1f DPS; tensado mínimo %d ticks y %d -> %.1f; máximo %d ticks y %d -> %.1f" % [
 		table["quick"]["ticks"], quick.base_damage, table["quick"]["dps"], table["drawn_min"]["ticks"],
 		drawn.base_damage, table["drawn_min"]["dps"], table["drawn_max"]["ticks"], drawn_max_damage,
@@ -1034,7 +1034,7 @@ func _team_fight(size: int, seed_first: int, mixed: bool = false) -> Dictionary:
 	return result
 
 
-# true if [param event] is a fall: a knockdown or a death (docs/habilidades.md, section 4.5).
+# true if [param event] is a fall: a knockdown or a death (docs/abilities.md, section 4.5).
 static func _is_fall(event: NetMessages.EntityEvent) -> bool:
 	return event.event == NetMessages.EntityEvent.Kind.DEATH or event.event == NetMessages.EntityEvent.Kind.DOWNED
 

@@ -1,6 +1,6 @@
 class_name RealmSelect
 extends Control
-## Realm selection screen (docs/red.md, sections 1.2 and 17.5; TEC-45).
+## Realm selection screen (docs/networking.md, sections 1.2 and 17.5; TEC-45).
 ## [br][br]
 ## Three buttons (Vardheim, Solmarch, Askarra), the server address and character name fields, a notice
 ## and the "Entrar" (Enter) button. [OnlineMain] shows it when a networked mode starts without
@@ -16,7 +16,7 @@ extends Control
 ## In [code]--local[/code] mode the address is always this machine's: [method set_address_editable]
 ## disables that field.
 ## [br][br]
-## [b]Per-realm count (GUE-42, docs/fuerte.md section 7).[/b] [method set_realm_counts] shows under each
+## [b]Per-realm count (GUE-42, docs/fortress.md section 7).[/b] [method set_realm_counts] shows under each
 ## button how many players its realm has in the zone (the count the server sends in the WELCOME) and marks
 ## the realm with the fewest players as recommended ([method get_recommended_realm]) to spread out the
 ## battle. The WELCOME only arrives on connecting, so the count is that of the last connection (and there
@@ -24,7 +24,7 @@ extends Control
 ## NetProtocol.Result.IMBALANCE]), [method set_rejected_realm] removes it from the choice and
 ## leaves it marked.
 ## [br][br]
-## [b]Loadout template[/b] (PRG-07, docs/habilidades.md, section 6.5): under the name, the
+## [b]Loadout template[/b] (PRG-07, docs/abilities.md, section 6.5): under the name, the
 ## [TemplateSelector]. The chosen one ([method get_selected_template]) is stored by [OnlineMain] in
 ## [member ClientConfig.loadout] and [NetClient] sends it in a LOADOUT_SELECT as soon as the WELCOME
 ## arrives, so it is already valid for the first spawn.

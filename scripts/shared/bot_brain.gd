@@ -17,7 +17,7 @@ extends RefCounted
 ## attacks (light attacks in a combo and, sometimes, a charged heavy one), and now and then blocks or dodges.
 ## With no enemy in sight it strolls like [constant WANDER] (without jumping). Everything comes from its seeded
 ## generator, so with the same seed and the same positions it always does the same.
-## [br]- [constant SIEGE] (GUE-15, docs/fuerte.md section 7): besieges or defends a fort. It needs a
+## [br]- [constant SIEGE] (GUE-15, docs/fortress.md section 7): besieges or defends a fort. It needs a
 ## [SiegeView] and some [ApproachRoutes] ([method set_siege]). See below.
 ## [br][br]
 ## If the bot strays from [code]home[/code] further than the radius, it heads back until it is within
@@ -76,7 +76,7 @@ extends RefCounted
 ## strike to avoid, so on the walkway it fights whoever climbs up, without leaving the axis at the corners and without
 ## dodging sideways (with the kit's bow it does shoot at another level, if there is a shot: see below).
 ## [br][br]
-## [b]Phase 4 kit (H5; docs/habilidades.md, section 7.1).[/b] If whoever runs the bot gives it its combat
+## [b]Phase 4 kit (H5; docs/abilities.md, section 7.1).[/b] If whoever runs the bot gives it its combat
 ## state ([method set_combat_source]: the predicted one on a client, the server's on a fake player), the
 ## [constant COMBAT] and [constant SIEGE] patterns fight with the whole kit: the abilities of the active weapon
 ## according to what they are for by their data ([enum KitRole]: short strike, charge to close in, wall
@@ -256,7 +256,7 @@ const SLOT_STEP_RADIUS: float = 0.5698402909980532
 ## [constant SIEGE], walkway (GUE-45): what share of the bots has the walkway role ([method is_walkway_seed]):
 ## the owner's that guard it and, of them, those that walk it when attacking. With the same share for attackers
 ## (about five out of twenty that leave the courtyard fight and climb one at a time against the owner's five or so) the recapture
-## of siege_battle.gd went from a median of 2.6 to 5.3 min; with half, 2.7 (docs/fuerte.md 8.3, F6b, package D).
+## of siege_battle.gd went from a median of 2.6 to 5.3 min; with half, 2.7 (docs/fortress.md 8.3, F6b, package D).
 const SIEGE_WALKWAY_SHARE: float = 0.25
 const SIEGE_WALKWAY_SWEEP_SHARE: float = 0.125
 ## Step of the Weyl sequence with which the role is distributed by seeds (the inverse of the golden ratio): any
@@ -343,7 +343,7 @@ enum _Engage { SKIP, CLOSE, SHOOT }
 const _MAX_AIM_PITCH: float = 1.4
 
 
-## A telegraphed strike (TELEGRAPH, docs/fuerte.md section 5) that a [constant SIEGE] bot avoids: a sector of
+## A telegraphed strike (TELEGRAPH, docs/fortress.md section 5) that a [constant SIEGE] bot avoids: a sector of
 ## reach [member radius] with its vertex at [member origin] (the feet of the striker) and oriented according to
 ## [member yaw] (the [PlayerInput] convention: yaw 0 faces -Z). The notice does not say the angle of the sector, so
 ## the half-plane in front is taken: it amply covers the 120° of the Captain's strike.
@@ -461,7 +461,7 @@ var use_kit: bool = true
 ## (keeps its distance and shoots), and with the sword it goes back to the bow as soon as it can.
 var kit_ranged_only: bool = false
 ## Kit, for load tests: radians by which the bow aim is raised above the right shot. With a high
-## value, arrows go to the sky and live their 2 s (they fill the zone cap; docs/habilidades.md, section 4.4).
+## value, arrows go to the sky and live their 2 s (they fill the zone cap; docs/abilities.md, section 4.4).
 var kit_aim_raise: float = 0.0
 # Kit: where it gets its combat state, its health and the knocked-down allies from.
 var _combat_source: Callable = Callable()
@@ -866,7 +866,7 @@ func has_line_of_sight() -> bool:
 	return _line_of_sight.is_valid()
 
 
-## The line of fire of [method set_line_of_sight] in [param space], that of a server shot (docs/habilidades.md,
+## The line of fire of [method set_line_of_sight] in [param space], that of a server shot (docs/abilities.md,
 ## section 4.4) at a still target: the ray from the [param left_shoulder] camera that passes through the center
 ## ([constant AimRay.TARGET_CENTER_HEIGHT]) of the target with feet at [param to_feet] ([method AimRay.look_for]), which is
 ## the one that chooses the aimed point (if it hits a jamb first, the arrow goes to the jamb), and the muzzle line
@@ -927,7 +927,7 @@ static func is_ranged_weapon(weapon_id: int) -> bool:
 
 ## [code](yaw, pitch)[/code] view of a shooter with feet at [param feet] and shoulder
 ## [param left_shoulder] so that an arrow of [param speed] m/s and [param gravity] m/s² hits the center of a
-## target with feet at [param target_feet] moving at [param target_velocity] m/s (docs/habilidades.md, section
+## target with feet at [param target_feet] moving at [param target_velocity] m/s (docs/abilities.md, section
 ## 4.4): the direction of [method Ballistics.solve_lead] from the muzzle [code]O[/code], the point
 ## [code]O + dir · |target − O|[/code] and the canonical ray that passes through it ([method AimRay.look_for]). The yaw is left
 ## in [0, TAU).

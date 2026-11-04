@@ -1,6 +1,6 @@
 class_name ScoreKeeper
 extends RefCounted
-## Battle scoreboard (docs/fuerte.md, section 6; UI-41): per player, kills, deaths, assists, damage
+## Battle scoreboard (docs/fortress.md, section 6; UI-41): per player, kills, deaths, assists, damage
 ## to the gate, time in the circle, captures, defending time and merits. It is fed by the
 ## [ZoneServer] with the combat KILL and DEATH events and by the [FortressController] with the
 ## circle, the gate and the captures, and [method build_rows] gives the SCOREBOARD rows that are sent
@@ -11,7 +11,7 @@ extends RefCounted
 ## ([constant MERITS_PER_KILL], [constant MERITS_PER_ASSIST]). Against the same opponent they always
 ## yield the same: there is no anti-farming here.
 ## [br][br]
-## [b]Persistence[/b] (docs/plataforma.md §7.1 and §8, GUE-19): with the platform, [method attach]
+## [b]Persistence[/b] (docs/platform.md §7.1 and §8, GUE-19): with the platform, [method attach]
 ## registers the [code]pvp[/code] section of [CharacterSaver] (behind [code]progress[/code]). Each
 ## body carries the totals loaded in the claim ([method load_totals], from
 ## [member ClaimedCharacter.pvp]) plus those of the session:
@@ -43,7 +43,7 @@ class Entry:
 	var gate_damage: int = 0
 	## Ticks spent inside an active capture circle.
 	var circle_ticks: int = 0
-	## Captures in which it was on the [FortressController] list (docs/plataforma.md §8).
+	## Captures in which it was on the [FortressController] list (docs/platform.md §8).
 	var captures: int = 0
 	## Ticks in the active circle of a fortress of its realm (the owner), for [code]defend_s[/code].
 	var defend_ticks: int = 0
@@ -103,7 +103,7 @@ func add_circle_ticks(net_id: int, ticks: int) -> void:
 		_entry(net_id).circle_ticks += ticks
 
 
-## A capture by [param net_id] (it was on the capture list, docs/plataforma.md §8).
+## A capture by [param net_id] (it was on the capture list, docs/platform.md §8).
 func add_capture(net_id: int) -> void:
 	_entry(net_id).captures += 1
 
@@ -155,7 +155,7 @@ func build_rows(net_ids: Array[int]) -> Array[NetMessages.ScoreRow]:
 	return rows
 
 
-# --- pvp section of CharacterSaver (docs/plataforma.md §7.1 and §8) ------------------------------
+# --- pvp section of CharacterSaver (docs/platform.md §7.1 and §8) ------------------------------
 
 ## Registers the [constant SECTION] section in [param saver] (with the platform, behind the
 ## [code]progress[/code] one). A section registered later with the same name replaces it.

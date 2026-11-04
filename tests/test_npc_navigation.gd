@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of [NpcNavigation] (MUN-06, docs/fuerte.md section 4.1) on the baked mesh of Vado Gris: the
+## Tests of [NpcNavigation] (MUN-06, docs/fortress.md section 4.1) on the baked mesh of Vado Gris: the
 ## own map waits before giving real routes, the gate link is on the owning realm's layer and each
 ## query filters with the layer of the agent's realm (with the fort neutral only the Hollow cross;
 ## with an owner, only the owner; with the gate broken, everyone), in both directions.

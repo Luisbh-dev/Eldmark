@@ -399,7 +399,7 @@ func (s *Service) MarkLost(ctx context.Context) error {
 	return nil
 }
 
-// IDBlock gives the instance a block of 1024 ids (§6, progresion.md §4.5): nextval of
+// IDBlock gives the instance a block of 1024 ids (§6, progression.md §4.5): nextval of
 // uid_block_seq and a row in id_blocks. It returns the first one.
 func (s *Service) IDBlock(ctx context.Context, inst *Instance) (int64, error) {
 	var first int64

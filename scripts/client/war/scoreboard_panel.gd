@@ -1,6 +1,6 @@
 class_name ScoreboardPanel
 extends Control
-## Zone scoreboard (UI-41, docs/fuerte.md section 6): while Tab ([code]scoreboard[/code]) is held, a table
+## Zone scoreboard (UI-41, docs/fortress.md section 6): while Tab ([code]scoreboard[/code]) is held, a table
 ## is shown with one row per player (kills, deaths, assists, gate damage, time in the circle and merits),
 ## sorted by kills, and a summary per realm. The data is that of the last complete SCOREBOARD
 ## ([ScoreboardState], which the server sends every 2 s to the whole zone and which the client assembles

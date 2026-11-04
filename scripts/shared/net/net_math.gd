@@ -1,6 +1,6 @@
 class_name NetMath
 extends RefCounted
-## Quantization of the values that travel in entity records (docs/red.md, section 5.5).
+## Quantization of the values that travel in entity records (docs/networking.md, section 5.5).
 ## [br][br]
 ## The position takes 60 bits: 20 per axis with [code]q = round(v * 100) + 2^19[/code], saturated to
 ## [code][0, 2^20 - 1][/code] (1 cm resolution, ±5.24 km). x goes in bits 0-19, y in

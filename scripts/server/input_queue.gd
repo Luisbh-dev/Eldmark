@@ -1,6 +1,6 @@
 class_name InputQueue
 extends RefCounted
-## A player's input queue (docs/red.md, sections 4.1, 8.2 and 12).
+## A player's input queue (docs/networking.md, sections 4.1, 8.2 and 12).
 ## [br][br]
 ## A ring of [constant CAPACITY] slots indexed by tick, with the tick as label. The server
 ## calls [method push] with each input that arrives and [method take] once per tick: the input
@@ -169,7 +169,7 @@ func take(tick: int) -> PlayerInput:
 ## The input that was applied on tick [param tick] with [method take]: the real or the substituted one (with
 ## [constant PlayerInput.SUBSTITUTED]; if the real one arrived later, late, it is still the substitute, which is
 ## the one that was simulated). null if that tick has not been consumed yet or is no longer in the ring
-## ([constant CAPACITY] ticks). Used by projectile aiming (docs/habilidades.md, section
+## ([constant CAPACITY] ticks). Used by projectile aiming (docs/abilities.md, section
 ## 4.4: yaw, pitch and [constant PlayerInput.AIM_LEFT] of the shot) and by the downed system (H3b, H3c). It must not be
 ## modified: it is the same one that was simulated.
 func get_applied(tick: int) -> PlayerInput:

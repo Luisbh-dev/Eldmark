@@ -1,6 +1,6 @@
 class_name CombatCatalog
 extends RefCounted
-## Combat catalog (docs/combate.md, section 2; docs/habilidades.md, section 2.2): reads the
+## Combat catalog (docs/combate.md, section 2; docs/abilities.md, section 2.2): reads the
 ## resources in [code]data/combat/[/code] only once (lazy loading), assigns stable IDs,
 ## converts durations to ticks and bakes the dodge and advance curves.
 ## [br][br]
@@ -23,7 +23,7 @@ extends RefCounted
 ## ([member AbilityTicks.hit]).
 ## [br][br]
 ## [b]Fingerprint.[/b] [method prediction_hash] summarizes everything that changes what client and
-## server simulate: every field marked as predicted in docs/habilidades.md, section 2.1 (phases, movement,
+## server simulate: every field marked as predicted in docs/abilities.md, section 2.1 (phases, movement,
 ## costs, baked curves, cancels, block, abilities, the id, the type and the speed scale of
 ## effects, projectiles and the predicted fields of [CombatRules]); it goes into
 ## [method NetProtocol.compute_sim_hash]. Damage, mitigation, crits, controls, shapes, pulses, health,
@@ -397,7 +397,7 @@ static func _validate_rules(rules_value: CombatRules, errors: PackedStringArray)
 			or rules_value.structure_blunt_multiplier < 0.0 \
 			or rules_value.structure_elemental_multiplier < 0.0:
 		errors.append("los multiplicadores contra estructuras no pueden ser negativos")
-	# Phase 4 (docs/habilidades.md, section 2.1).
+	# Phase 4 (docs/abilities.md, section 2.1).
 	if seconds_to_ticks(rules_value.swap_s) < 1:
 		errors.append("swap_s debe durar al menos un tick")
 	if seconds_to_ticks(rules_value.revive_s) < 1 or seconds_to_ticks(rules_value.execute_s) < 1:
@@ -796,7 +796,7 @@ static func _convert_ability(definition: AbilityDefinition, id: int, owner: Vect
 	hit.on_hit_status_id = _id_of(status_by_def, definition.target_status)
 	ticks.hit = hit
 
-	# Validation (docs/habilidades.md, section 2.2).
+	# Validation (docs/abilities.md, section 2.2).
 	if definition.cast_s < 0.0 or definition.active_s < 0.0 or definition.recovery_s < 0.0 \
 			or definition.cooldown_s < 0.0:
 		errors.append("%s: las duraciones no pueden ser negativas" % label)

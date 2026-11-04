@@ -1,6 +1,6 @@
 class_name FakeZonePlatform
 extends ZonePlatform
-## The fake platform for the zone tests (docs/plataforma.md §14.3): the whole [ZonePlatform]
+## The fake platform for the zone tests (docs/platform.md §14.3): the whole [ZonePlatform]
 ## (queues, retries, heartbeat set, [code]instance_closed[/code]…) with a [PlatformClient] that
 ## answers without a network. Each request makes the round trip through JSON as with
 ## [PlatformClient] (the body is read as the platform would read it and the response is written
@@ -12,11 +12,11 @@ extends ZonePlatform
 ## rises by 1024); claim → 200 with what [method add_character] set (a new [code]lease_id[/code] on
 ## each one) and, if there were saves, the last applied of each section: [code]pvp[/code] as is and
 ## [code]progress[/code] without [code]ops[/code], with the read-only fields of the previous claim
-## and [code]location.saved_at_unix[/code] set (progresion.md P5a); without [method add_character],
+## and [code]location.saved_at_unix[/code] set (progression.md P5a); without [method add_character],
 ## 409 [code]ticket_invalid[/code]. save → 200 applied with a rising [code]save_version[/code];
 ## release → 204; heartbeat → 200 without [code]revoked[/code] and with [member fake_maintenance];
 ## progress_op and progress_ledger → 404; batches → 204; live and the deregistration → 204; fort
-## PUT → 200 with the next version. Moderation (plataforma.md P7b) resolves [code]target_name[/code]
+## PUT → 200 with the next version. Moderation (platform.md P7b) resolves [code]target_name[/code]
 ## among the characters of [method add_character]: ignore → 200
 ## [code]{ignored_account_id, name}[/code] (DELETE → 204), report → 200 [code]{report_id}[/code]
 ## and sanction → 200 [code]{sanction_id, ends_at_unix}[/code]; a name that is not there, 404
@@ -45,7 +45,7 @@ var fake_now_unix: int = 0
 ## Scale of the fake client's retry waits (1 s in the table is 50 ms).
 var fake_retry_scale: float = 0.05
 ## The [code]maintenance[/code] of each default heartbeat ([code]{at_unix, message}[/code] or null;
-## plataforma.md P5).
+## platform.md P5).
 var fake_maintenance: Variant = null
 
 var _characters: Dictionary[int, Dictionary] = {}
@@ -115,7 +115,7 @@ func add_character(character_id: int, account_id: int, role: StringName, realm: 
 
 
 ## What the claim of [param character_id] brings in [code]account[/code] besides the role
-## (plataforma.md P7b): [code]muted_until_unix[/code] (0 no mute), the accounts it ignores and the
+## (platform.md P7b): [code]muted_until_unix[/code] (0 no mute), the accounts it ignores and the
 ## unseen notices ([code]{sanction_id, text, at_unix}[/code]). It applies to subsequent claims.
 func set_account_state(character_id: int, muted_until_unix: int, ignored_account_ids: Array = [],
 		warnings: Array = []) -> void:
@@ -140,7 +140,7 @@ func queued(kind: StringName) -> Array[Dictionary]:
 	return entries
 
 
-## The [code]progress[/code] section of the claim of a newly created character (progresion.md §3.4
+## The [code]progress[/code] section of the claim of a newly created character (progression.md §3.4
 ## and §14.3): [method ProgressRecord.new_character] with [param race_id], the 8 B of
 ## [param appearance] and [param starter_template_id], in the form of
 ## [method ProgressRecord.to_claim_dictionary] (without position).
@@ -335,8 +335,8 @@ func _claim_answer(body: Dictionary) -> Array:
 	}]
 
 
-# Stores the last applied of each section for the next claim (plataforma.md §14.1): pvp as is and
-# progress as Load would give it (progresion.md §3.4): without ops, with the read-only fields of
+# Stores the last applied of each section for the next claim (platform.md §14.1): pvp as is and
+# progress as Load would give it (progression.md §3.4): without ops, with the read-only fields of
 # the previous claim and location.saved_at_unix with the save time.
 func _remember_save(body: Dictionary) -> void:
 	var character_id: int = PlatformJson.id_of(body.get("character_id"))

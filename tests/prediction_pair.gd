@@ -4,7 +4,7 @@ extends RefCounted
 ## two separate physics worlds ([SubViewport] with [code]own_world_3d[/code]), each with a
 ## [PlayerCharacter] on flat ground. The client predicts with the real [ClientPrediction] (inputs
 ## from a scripted brain, via [LocalPlayerController]); the server applies the substitution rule of
-## docs/red.md, section 8.2 (it repeats the last applied input with all its buttons and the
+## docs/networking.md, section 8.2 (it repeats the last applied input with all its buttons and the
 ## [constant PlayerInput.SUBSTITUTED] marker) and, after simulating each tick, calls
 ## [member server_hook] for whatever the server imposes. Its states reach the client every 2 ticks
 ## with 6 delay.

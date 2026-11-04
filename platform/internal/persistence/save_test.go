@@ -302,7 +302,7 @@ func TestInvalidSaveFromTheStore(t *testing.T) {
 	}
 }
 
-// A 23505 on COMMIT (a deferred constraint, like the slots one of progresion.md) is 400
+// A 23505 on COMMIT (a deferred constraint, like the slots one of progression.md) is 400
 // invalid_save with check S8 and the SQLSTATE and the constraint in detail; nothing is written.
 func TestDeferredConstraintAtCommit(t *testing.T) {
 	w := newInWorld(t)

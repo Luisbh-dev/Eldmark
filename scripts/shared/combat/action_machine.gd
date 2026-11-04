@@ -1,6 +1,6 @@
 class_name ActionMachine
 extends RefCounted
-## Combat action machine (docs/combate.md, section 3, and docs/habilidades.md, section 3):
+## Combat action machine (docs/combate.md, section 3, and docs/abilities.md, section 3):
 ## chained light attacks, charged heavy attack, block with parry, dodge, stamina,
 ## abilities, consumables, weapon swap, movement effects and what the server imposes
 ## (controls, death, knocked down, revive and execute). It is a deterministic function of
@@ -12,7 +12,7 @@ extends RefCounted
 ## The remaining static functions are queries (used by the server, the animator and the action
 ## bar) and the orders imposed by the server ([method impose_stagger]...).
 ## [br][br]
-## [b]Order of each tick[/b] (with [code]t = input.tick[/code]; docs/habilidades.md, section 3.3): 0)
+## [b]Order of each tick[/b] (with [code]t = input.tick[/code]; docs/abilities.md, section 3.3): 0)
 ## fast path; 1) actions that end; 2) movement effects that expire; 3) stamina
 ## regeneration; 4) inputs: 4a ends by input (channel, revive and execute), 4b the buffer and 4c
 ## the new edges with priority DODGE > ABILITY_1 > ABILITY_2 > ABILITY_3 > CONSUMABLE_1 >
@@ -41,7 +41,7 @@ extends RefCounted
 ## [b]History.[/b] [method defense_flags] gives bits 3-7 of [StateHistory]; the byte the
 ## server records is [code](record flags & 0b111) | defense_flags[/code]
 ## ([constant EntityRecord.HISTORY_FLAGS_MASK]; masked by [code]ZoneServer._record_history[/code] and
-## [method Combatant.freeze]): bit 3 of the network record (slot 2 active, docs/habilidades.md,
+## [method Combatant.freeze]): bit 3 of the network record (slot 2 active, docs/abilities.md,
 ## section 5.2) never gets in, because in the history bit 3 is [constant DEFENSE_BLOCKING].
 
 ## How the character must move this tick (applied by [method PlayerCharacter.simulate]).
@@ -64,7 +64,7 @@ class Output:
 	## [code]wish * run_speed * move_scale[/code], without the multipliers for moving backward or
 	## sideways nor sprint.
 	var scaled_movement: bool = false
-	## Movement effects (docs/habilidades.md, section 3.4): multiplies the non-forced target speed
+	## Movement effects (docs/abilities.md, section 3.4): multiplies the non-forced target speed
 	## in all actions (NONE and sprint included); the dodge, an ability's advance and the
 	## knockback are not affected.
 	var speed_factor: float = 1.0
@@ -334,7 +334,7 @@ static func defense_flags(c: CombatState, tick: int) -> int:
 	return flags
 
 
-## Action byte of the network record (docs/habilidades.md, section 5.5): bits 0-3 the action, 4-5
+## Action byte of the network record (docs/abilities.md, section 5.5): bits 0-3 the action, 4-5
 ## the phase ([method phase]) and 6-7 the step of the light combo in progress or, in an ABILITY, its slot
 ## (0-2; 3 = a consumable). In the other actions, 0 ([ActionWire] puts the restart counter there
 ## for those that carry one).
@@ -393,7 +393,7 @@ static func impose_death(c: CombatState, tick: int) -> void:
 	c.knockback = Vector2.ZERO
 
 
-## Knocked down (docs/habilidades.md, section 4.5): DOWNED with [code]action_tick = tick[/code]; clears the
+## Knocked down (docs/abilities.md, section 4.5): DOWNED with [code]action_tick = tick[/code]; clears the
 ## buffer, the press, the combo and the movement slots. It crawls at
 ## [member CombatRules.downed_move_scale] and does not end on its own.
 static func impose_downed(c: CombatState, tick: int) -> void:
@@ -430,7 +430,7 @@ static func impose_interact(c: CombatState, tick: int, action: int) -> void:
 	c.knockback = Vector2.ZERO
 
 
-## Interruption (docs/habilidades.md, section 4.2): NONE, cutting drinking, a marked cast,
+## Interruption (docs/abilities.md, section 4.2): NONE, cutting drinking, a marked cast,
 ## revive or execute, and keeping the [member CombatState.action_tick] of what it cuts (as when
 ## ending normally). Before the commit there is no cooldown or spending: only a margin of
 ## [constant AbilityTicks.REARM_TICKS] ticks before another consumable (or the same slot), so that a
@@ -513,7 +513,7 @@ static func set_loadout(c: CombatState, weapon_1: int, weapon_2: int, charges: i
 	clear_move_effects(c)
 
 
-## Sets the weapons of the two loadout slots (docs/progresion.md §4.1) [b]without resetting anything else[/b]:
+## Sets the weapons of the two loadout slots (docs/progression.md §4.1) [b]without resetting anything else[/b]:
 ## [param weapon_1] and [param weapon_2] are those of slots 1 and 2 (0 = empty) and [param second_active] the
 ## active slot (bit0 of [member CombatState.combat_flags2]). [member CombatState.weapon_id] and
 ## [member CombatState.alt_weapon_id] follow the active one, [code]ability_ready[0..2][/code] gets the
@@ -704,7 +704,7 @@ static func _run_inputs(c: CombatState, out: Output, input: PlayerInput,
 
 
 # Executes whatever was in the buffer on the first tick on which it can be; otherwise, subtracts a tick from it. The
-# dispatch is by type (docs/habilidades.md, section 3.1).
+# dispatch is by type (docs/abilities.md, section 3.1).
 static func _run_buffer(c: CombatState, input: PlayerInput, data: CombatTables,
 		weapon: WeaponTicks, rules: CombatRules, grounded: bool, down: int) -> void:
 	var kind: int = c.buffered_type()
@@ -742,7 +742,7 @@ static func _run_buffer(c: CombatState, input: PlayerInput, data: CombatTables,
 		# A press that expires without having started anything, with the previous light attack already finished (the
 		# link could not be executed, e.g. in the air), does not leave the combo half-done: the next
 		# light attack is the first one again. With a light attack in progress, its own end decides. Applies to
-		# any type (docs/habilidades.md, section 3.1): also a dodge or an ability that
+		# any type (docs/abilities.md, section 3.1): also a dodge or an ability that
 		# replaced in the buffer the press that was linking.
 		if c.action != _LIGHT:
 			c.combo_step = 0
@@ -979,7 +979,7 @@ static func _run_block(c: CombatState, t: int, rules: CombatRules, weapon: Weapo
 
 # --- Allowed movement -------------------------------------------------------------------------
 
-# Step 6: the movement table from docs/combate.md, section 3.3, extended in docs/habilidades.md,
+# Step 6: the movement table from docs/combate.md, section 3.3, extended in docs/abilities.md,
 # section 3.4, for the current action.
 static func _fill_output(c: CombatState, out: Output, data: CombatTables,
 		weapon: WeaponTicks, t: int) -> void:
@@ -1062,7 +1062,7 @@ static func _edge(held: int, previous: int, flag: int, button: int) -> int:
 
 
 # Goes back to NONE keeping the action_tick of what ends (the old block sample uses it:
-# docs/habilidades.md, section 4.2).
+# docs/abilities.md, section 4.2).
 static func _to_none(c: CombatState) -> void:
 	c.action = _NONE
 	c.action_id = 0

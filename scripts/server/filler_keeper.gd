@@ -1,6 +1,6 @@
 class_name FillerKeeper
 extends RefCounted
-## The filler fake players of a zone with [code]--max-realm-diff[/code] (GUE-42; docs/fuerte.md,
+## The filler fake players of a zone with [code]--max-realm-diff[/code] (GUE-42; docs/fortress.md,
 ## section 7): the automatic-realm fakes that fill in the short side and withdraw when
 ## real people join. It keeps track of which ones they are and applies the [RealmBalance] rules; it does not know how to create or remove
 ## players, that is done by [member creator] and [member remover] ([ServerMain] wires them to [ZoneServer]).

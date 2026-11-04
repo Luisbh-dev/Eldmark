@@ -1,6 +1,6 @@
 class_name TemplateSelector
 extends VBoxContainer
-## Loadout template selector (PRG-07, docs/habilidades.md, section 6.5): one button for each
+## Loadout template selector (PRG-07, docs/abilities.md, section 6.5): one button for each
 ## [EquipmentTemplate] the player can choose ([member EquipmentTemplate.selectable]) with its name, its
 ## weapons and its potion charges. It is on the death screen and the realm selection; pressing one emits
 ## [signal template_chosen] and whoever holds it sends the LOADOUT_SELECT

@@ -1,6 +1,6 @@
 class_name FortressController
 extends RefCounted
-## The fortresses of a zone on the server (docs/fuerte.md, sections 1.6, 1.7, 2 and 3; GUE-08,
+## The fortresses of a zone on the server (docs/fortress.md, sections 1.6, 1.7, 2 and 3; GUE-08,
 ## GUE-10, GUE-12 and GUE-13). For each node of the [code]fortresses[/code] group with the
 ## [code]definition[/code] metadata it creates a [NetEntity] [code]STRUCTURE[/code] with
 ## [constant NetEntity.FLAG_ALWAYS_RELEVANT] and carries its [FortressState].
@@ -23,10 +23,10 @@ extends RefCounted
 ## the last one; [code]under_attack_until_tick[/code] only if it advances at least 60 ticks. If what
 ## changes is the gate collision (owner or broken state) it goes out [b]on that same tick[/b],
 ## without waiting for the interval: the client sets the gate layer according to the tick of each
-## change, and delaying it would desync the prediction (docs/fuerte.md, section 3.2). The spawn
+## change, and delaying it would desync the prediction (docs/fortress.md, section 3.2). The spawn
 ## ([method NetEntity.encode_spawn]) carries the full state.
 ## [br][br]
-## [b]The gate as a target[/b] ([StructureTarget], docs/fuerte.md 3.3): hits are resolved by the
+## [b]The gate as a target[/b] ([StructureTarget], docs/fortress.md 3.3): hits are resolved by the
 ## [CombatResolver] and applied by the [CombatDirector], which notifies [method on_structure_hit]
 ## through [signal CombatDirector.structure_hit]; here the health is subtracted, a notice is sent
 ## and the damage is recorded for the scoreboard.
@@ -43,17 +43,17 @@ extends RefCounted
 ## to replace the missing guards). On startup, the fort is neutral and guarded by the Hollow and
 ## its Captain: there is no signal, the NPC spawner reads it from [method get_fortress_state].
 ## [br][br]
-## [b]Persistent war[/b] (docs/plataforma.md §8, GUE-19): [method restore_state] sets the state
+## [b]Persistent war[/b] (docs/platform.md §8, GUE-19): [method restore_state] sets the state
 ## loaded from the platform on startup ([FortressPersistence]); on every real capture, the list of
 ## those who were in the circle (of the capturing realm, present, alive and connected, without
 ## characters flagged with [member NetEntity.gm_forced]) adds [code]captures[/code] in the
 ## [ScoreKeeper] and goes out through [signal fortress_captured]; and those of the owning realm
 ## present while the circle is active add [code]defend_ticks[/code]. [b]Forced change[/b]
-## (docs/progresion.md §6.2): whatever a fort command causes ([code]fort_owner[/code],
+## (docs/progression.md §6.2): whatever a fort command causes ([code]fort_owner[/code],
 ## [code]fort_reset[/code], [code]fort_kill_captain[/code], a capture with
 ## [member FortressState.capture_rate_multiplier] other than 1) adds no captures or defending time,
-## and [method is_forced] tells whoever pays out rewards (progresion.md P5c). The rewards
-## (progresion.md §6.2) come from [signal fortress_captured] (the capture), [signal objective_time]
+## and [method is_forced] tells whoever pays out rewards (progression.md P5c). The rewards
+## (progression.md §6.2) come from [signal fortress_captured] (the capture), [signal objective_time]
 ## (the time in the active circle of a real cycle: objective merits) and [method fortress_of_defender]
 ## (which fortress the dying NPC belonged to).
 ## [br][br]
@@ -77,15 +77,15 @@ signal guards_respawn_due(fortress_id: StringName, tick: int)
 ## Someone hits the intact gate of the fortress for the first time (for telemetry).
 signal gate_damage_started(fortress_id: StringName, tick: int)
 ## [param fortress_id] has passed to [param owner_realm] through a real (non-forced) capture at
-## tick [param tick]: [param in_circle] is the list from docs/plataforma.md §8 (the net_ids of the
+## tick [param tick]: [param in_circle] is the list from docs/platform.md §8 (the net_ids of the
 ## capturing realm present, alive and connected in the circle at that tick, without
 ## [member NetEntity.gm_forced]), the same one that has already added [code]captures[/code] in the
-## [ScoreKeeper]. A forced capture is not emitted (progresion.md §6.2): this is where
-## [code]ProgressService.on_capture[/code] connects (progresion.md P5c).
+## [ScoreKeeper]. A forced capture is not emitted (progression.md §6.2): this is where
+## [code]ProgressService.on_capture[/code] connects (progression.md P5c).
 signal fortress_captured(fortress_id: StringName, owner_realm: int, in_circle: PackedInt32Array, tick: int)
 ## [param ticks] more for [param net_id] in the active circle of [param fortress_id] (each recount,
 ## at tick [param tick]), in a real cycle and without [member NetEntity.gm_forced]: the time that
-## gives objective merits (docs/progresion.md §6.2; [code]ProgressService.on_objective_ticks[/code]
+## gives objective merits (docs/progression.md §6.2; [code]ProgressService.on_objective_ticks[/code]
 ## connects here, P5c). It counts all the realms present, like [code]circle_ticks[/code] of the
 ## scoreboard, but not in a forced cycle.
 signal objective_time(fortress_id: StringName, net_id: int, ticks: int, tick: int)
@@ -178,7 +178,7 @@ class Site:
 	var guards_due_notified: bool = false
 	# The first hit on the gate since its last repair has already been announced.
 	var gate_damage_announced: bool = false
-	# The current cycle comes from a fort command (progresion.md §6.2): fort_owner, fort_reset,
+	# The current cycle comes from a fort command (progression.md §6.2): fort_owner, fort_reset,
 	# fort_kill_captain or fort_capture_speed other than 1. The next real change clears it: the
 	# captain's death in combat, returning to GARRISONED on its own or the periodic reset.
 	var forced: bool = false
@@ -255,7 +255,7 @@ func add_fortress(node: Node3D, definition: FortressDefinition, tick: int) -> in
 
 
 ## Sets [param loaded] as the state of [param fortress_id] (the one loaded from the platform on
-## startup, docs/plataforma.md §8; [FortressPersistence]) at tick [param tick], before anyone sees
+## startup, docs/platform.md §8; [FortressPersistence]) at tick [param tick], before anyone sees
 ## it: it is copied into the live state (the entity and the gate follow it), what was sent is taken
 ## as known (the spawn carries the whole state) and the gate layers go to its owner and broken
 ## state. [param consolidation_ends_tick] is the end of a loaded consolidation
@@ -387,7 +387,7 @@ func is_repair_pending(fortress_id: StringName) -> bool:
 	return site != null and site.repair_pending
 
 
-## true if the current cycle of [param fortress_id] was caused by a fort command (progresion.md
+## true if the current cycle of [param fortress_id] was caused by a fort command (progression.md
 ## §6.2): an owner change or a reset by command, the captain killed with
 ## [code]fort_kill_captain[/code] (and the capture that follows it) or a capture speed other than 1.
 ## What happens in it adds no captures or defending time and pays no persistent rewards.
@@ -410,7 +410,7 @@ func get_consolidation_end_tick(fortress_id: StringName) -> int:
 
 ## The fortress defended by NPC [param net_id] (registered with [method register_captain] or
 ## [method register_defender]); empty if it defends none. Whoever pays out its death reads it here
-## (progresion.md P5c) before the controller forgets it: the DEATH reaches the zone before
+## (progression.md P5c) before the controller forgets it: the DEATH reaches the zone before
 ## [method on_combat_event].
 func fortress_of_defender(net_id: int) -> StringName:
 	for site: Site in _sites:
@@ -575,7 +575,7 @@ func kill_captain(fortress_id: StringName, tick: int, killer_realm: int) -> bool
 	var state: FortressState = site.state
 	if state.phase != FortressState.Phase.GARRISONED or not state.captain_alive:
 		return false
-	# Forced before killing: the death goes out in this very call and whoever pays it out (progresion.md
+	# Forced before killing: the death goes out in this very call and whoever pays it out (progression.md
 	# P5c) already sees it that way.
 	var was_forced: bool = site.forced
 	site.forced = true
@@ -664,10 +664,10 @@ func _recount(site: Site, candidates: Array, s: int) -> void:
 			continue
 		if score_keeper != null:
 			score_keeper.add_circle_ticks(player.net_id, FortressState.PRESENCE_RECOUNT_TICKS)
-			# Defending time (docs/plataforma.md §8): only the owning realm, and not in a forced cycle.
+			# Defending time (docs/platform.md §8): only the owning realm, and not in a forced cycle.
 			if defending and candidate.realm == owner and not player.gm_forced:
 				score_keeper.add_defend_ticks(player.net_id, FortressState.PRESENCE_RECOUNT_TICKS)
-		# Objective merits (progresion.md §6.2): not in a forced cycle nor for someone flagged by a GM command.
+		# Objective merits (progression.md §6.2): not in a forced cycle nor for someone flagged by a GM command.
 		if not forced and not player.gm_forced:
 			objective_time.emit(site.id, player.net_id, FortressState.PRESENCE_RECOUNT_TICKS, s)
 	site.presence = counts
@@ -675,7 +675,7 @@ func _recount(site: Site, candidates: Array, s: int) -> void:
 
 # Real capture at tick [param s] (advance gave FORT_CAPTURED): if it is not forced, the list of those
 # who were in the circle adds a capture to each one and goes out through fortress_captured
-# (docs/plataforma.md §8). The list is computed once, with the candidates of this tick.
+# (docs/platform.md §8). The list is computed once, with the candidates of this tick.
 func _on_captured(site: Site, s: int) -> void:
 	if is_forced(site.id):
 		# The new owner comes from a forced change: the cycle remains so until its garrison arrives.

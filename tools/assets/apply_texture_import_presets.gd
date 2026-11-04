@@ -1,6 +1,6 @@
 extends SceneTree
 ## Sets the import settings of model textures (everything under
-## [code]res://assets/models[/code]): VRAM compression (BPTC/S3TC) with mipmaps, as docs/arte.md (4.2)
+## [code]res://assets/models[/code]): VRAM compression (BPTC/S3TC) with mipmaps, as docs/art.md (4.2)
 ## requires, and normal-map compression on the [code]*_normal.png[/code] files.
 ##
 ## It is needed because Godot's 3D detection ([code]detect_3d[/code]) only acts inside the

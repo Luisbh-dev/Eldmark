@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for the server's input queue ([InputQueue], docs/red.md sections 4.1, 8.2 and
+## Tests for the server's input queue ([InputQueue], docs/networking.md sections 4.1, 8.2 and
 ## 12): acceptance window, first copy, late ones, ack, lead time, substitution and, above all,
 ## that the substitute does not invent edges (with a real [PlayerCharacter]).
 ## [br][br]
@@ -484,7 +484,7 @@ func test_typical_lead_is_the_median_of_the_recent_real_inputs() -> void:
 	assert_eq(window.get_typical_lead(99), 5, "the lead time 0 of the first ticks falls outside")
 
 
-## H3a (docs/habilidades.md, 7.2): get_applied(tick) gives the input that was simulated at that tick, real or
+## H3a (docs/abilities.md, 7.2): get_applied(tick) gives the input that was simulated at that tick, real or
 ## substitute (also if the real one arrived afterwards, late), and null if it has not been consumed yet or has left the ring.
 func test_get_applied_returns_the_input_that_was_simulated() -> void:
 	var queue: InputQueue = _make_queue(10)

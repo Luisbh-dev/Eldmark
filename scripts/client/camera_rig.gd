@@ -46,7 +46,7 @@ const SHAKE_FREQUENCY_Y: float = 47.0
 ## Maximum amplitude (m) of a shake, however strong the hit.
 const MAX_SHAKE_AMPLITUDE: float = 0.25
 ## Fraction of the configured field of view at full bow aim ([method set_aim_zoom] at 1;
-## docs/habilidades.md, section 6.5).
+## docs/abilities.md, section 6.5).
 const AIM_ZOOM_FOV_SCALE: float = 0.75
 
 ## Radians of rotation per pixel of mouse movement.
@@ -303,7 +303,7 @@ func set_fov(degrees: float) -> void:
 	_apply_fov()
 
 
-## Bow aim (docs/habilidades.md, section 6.5): with [param amount] from 0 (none) to 1 (fully
+## Bow aim (docs/abilities.md, section 6.5): with [param amount] from 0 (none) to 1 (fully
 ## drawn), the camera's field of view narrows down to [constant AIM_ZOOM_FOV_SCALE] of the
 ## configured one, smoothly ([member aim_zoom_sharpness]). It does not touch the arm or the
 ## shoulder: the canonical aim ray does not change.
@@ -328,7 +328,7 @@ func get_chosen_shoulder() -> int:
 
 ## Shoulder currently looked over: 1 right, -1 left, counting the temporary switch because of a
 ## wall. It is the one that sets the [constant PlayerInput.AIM_LEFT] bit of the inputs
-## (docs/habilidades.md, section 6.5).
+## (docs/abilities.md, section 6.5).
 func get_effective_shoulder() -> int:
 	return -1 if _get_shoulder_side() < 0.0 else 1
 

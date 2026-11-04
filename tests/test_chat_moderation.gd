@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for chat moderation without a network (docs/plataforma.md §9.2 to §9.5, P7b): [SocialService]
+## Tests for chat moderation without a network (docs/platform.md §9.2 to §9.5, P7b): [SocialService]
 ## with fake peers that carry their claim. An ignored player reaches nobody who ignores them on any
 ## channel (and in a whisper the sender does not notice), their party invitation is silently discarded;
 ## a muted player cannot talk and knows how much time is left; the GM channel goes to

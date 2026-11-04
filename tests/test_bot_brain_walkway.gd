@@ -1,5 +1,5 @@
 extends TestCase
-## The walkway of [BotBrain]'s siege pattern (GUE-45; docs/fuerte.md, sections 7 and 8.3) without physics: a point that
+## The walkway of [BotBrain]'s siege pattern (GUE-45; docs/fortress.md, sections 7 and 8.3) without physics: a point that
 ## moves where the inputs say ([HeightWalker]) in a fort with simple heights (the flat courtyard at 10.2 m, the two
 ## ramps from [code]data/routes/vado_gris.tres[/code] and the walkway at 13.55 m, with no inner railing: whoever strays from
 ## its axis by more than 1 m falls into the courtyard). A share of the bots, by their seed, has the walkway role: the owner climbs

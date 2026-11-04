@@ -1,11 +1,11 @@
 class_name ClaimedCharacter
 extends RefCounted
-## What the 200 of the ticket claim brings (docs/plataforma.md §5.3 and §6): the account, the character, the
+## What the 200 of the ticket claim brings (docs/platform.md §5.3 and §6): the account, the character, the
 ## lease and its saved sections. The zone uses the realm and name from here, never those of the HELLO.
 ## [br][br]
 ## [method from_claim] reads the body strictly, like Go: string ids ([method String.to_int], up to 2^63 − 1) and
 ## integers with [code]int()[/code] (accepts [code]4.0[/code]). The [code]progress[/code] section arrives as-is at
-## [code]ProgressRecord.from_dictionary[/code] (docs/progresion.md §3.4), which does the same with its own.
+## [code]ProgressRecord.from_dictionary[/code] (docs/progression.md §3.4), which does the same with its own.
 
 ## Account roles, lowest to highest (§9.1).
 const ROLES: Array[StringName] = [&"player", &"moderator", &"gm", &"admin"]
@@ -26,13 +26,13 @@ var lease_id: String = ""
 ## End of the account's mute (0 without a mute; 253402300799 for an open-ended one).
 var muted_until_unix: int = 0
 var ignored_accounts: PackedInt64Array = PackedInt64Array()
-## The progress section as it arrives; read by [code]ProgressRecord.from_dictionary[/code] (progresion.md §14.2).
+## The progress section as it arrives; read by [code]ProgressRecord.from_dictionary[/code] (progression.md §14.2).
 var progress: Dictionary = {}
 ## [code]{kills, deaths, assists, captures, gate_damage, defend_s}[/code], already with [code]int()[/code].
 var pvp: Dictionary = {}
 ## The response's [code]instance_status[/code].
 var instance_status: String = ""
-## Moderation warnings the account has not seen ([code]account.warnings[/code], plataforma.md §19.5):
+## Moderation warnings the account has not seen ([code]account.warnings[/code], platform.md §19.5):
 ## [code]{sanction_id: int, text: String, at_unix: int}[/code]. The zone sends them in a NOTICE on entry (P7b).
 var warnings: Array[Dictionary] = []
 

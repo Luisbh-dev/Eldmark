@@ -1,10 +1,10 @@
-// Realm surface (docs/arte.md, 4.4): recolors a kit's texture for each realm without touching the
+// Realm surface (docs/art.md, 4.4): recolors a kit's texture for each realm without touching the
 // mesh.
 //
 // - Color adjustment: hue shift, saturation, brightness and contrast over the texture.
 // - "Colorize": pushes the texture toward a target color while keeping its luminance detail.
 //   Multiplying only darkens; this makes it possible to go from a gray brick to cream limestone or
-//   from terracotta tiles to blue slate (palette in docs/mundo.md, "Paleta por material").
+//   from terracotta tiles to blue slate (palette in docs/world.md, "Paleta por material").
 // - Extra layer on upward-facing faces (snow in Vardheim, moss in Solmarch, ash in Eldrun), with an
 //   edge broken up by the texture itself.
 // - Per-instance faction color (instance uniform faction_color): banners and cloths take the

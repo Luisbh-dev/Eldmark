@@ -1,5 +1,5 @@
 // Package db opens the platform's database and classifies its errors with the rule of
-// plataforma.md §7.3: an integrity error (class 23 SQLSTATE, or P0001 from the append-only
+// platform.md §7.3: an integrity error (class 23 SQLSTATE, or P0001 from the append-only
 // trigger) or a data error (class 22: a NUL in jsonb, a date or a number out of range) is
 // deterministic and is not retried; 40001 and 40P01 are retried with the whole transaction; with
 // no connection or with the deadline expired, the database is unavailable (503).
@@ -56,7 +56,7 @@ func Ping(ctx context.Context, pool *pgxpool.Pool, timeout time.Duration) error 
 	return pool.QueryRow(ctx, "select 1").Scan(&one)
 }
 
-// Kind is the class of a database error according to plataforma.md §7.3.
+// Kind is the class of a database error according to platform.md §7.3.
 type Kind int
 
 // Error classes.

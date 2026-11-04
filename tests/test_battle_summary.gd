@@ -1,5 +1,5 @@
 extends TestCase
-## Battle telemetry (GUE-17; docs/fuerte.md, section 7): the JSON Lines log ([BattleLog]) and
+## Battle telemetry (GUE-17; docs/fortress.md, section 7): the JSON Lines log ([BattleLog]) and
 ## its summary ([BattleSummary] and [code]tools/war/summarize_battle.gd[/code]): time to capture,
 ## deaths by route (bridge, ford, walkway) and time to break the gate.
 

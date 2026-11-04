@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests for the level curve ([LevelCurve], [code]data/progression/level_curve.tres[/code]) and for
-## levelling up ([ProgressionRules]; docs/progresion.md §6, PRG-13): 39 increasing values, the §6.1 table,
+## levelling up ([ProgressionRules]; docs/progression.md §6, PRG-13): 39 increasing values, the §6.1 table,
 ## [code]level_for(total_to(n)) = n[/code], several level-ups from a single contribution and the cap.
 
 

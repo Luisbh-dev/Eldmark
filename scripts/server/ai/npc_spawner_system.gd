@@ -1,6 +1,6 @@
 class_name NpcSpawnerSystem
 extends RefCounted
-## Creates and removes the NPCs of the zone's spawners ([NpcSpawner]) (docs/fuerte.md, section 4.3; MUN-09 to
+## Creates and removes the NPCs of the zone's spawners ([NpcSpawner]) (docs/fortress.md, section 4.3; MUN-09 to
 ## MUN-12 and GUE-11) and runs the navigation, the brains' world and the tokens.
 ## [br][br]
 ## [b]Spawners.[/b] Each [NpcSpawner] is a post with a condition: always ([constant NpcSpawner.Condition.ALWAYS],
@@ -424,7 +424,7 @@ func _step_slot(slot: Slot, tick: int) -> void:
 # Creates the NPCs that are missing up to the post's maximum.
 func _fill_slot(slot: Slot, tick: int) -> void:
 	var spawner: NpcSpawner = slot.marker as NpcSpawner
-	# With the captain fallen (a platform-loaded fort in VULNERABLE or CAPTURING, docs/plataforma.md §8) its
+	# With the captain fallen (a platform-loaded fort in VULNERABLE or CAPTURING, docs/platform.md §8) its
 	# post stays empty: it returns with the garrison (garrison_due) or with the full respawn of the Hollow.
 	if slot.state != null and not slot.state.captain_alive and _is_captain_slot(slot):
 		slot.due.clear()

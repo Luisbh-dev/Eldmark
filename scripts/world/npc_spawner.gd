@@ -1,6 +1,6 @@
 class_name NpcSpawner
 extends Marker3D
-## NPC spawner of a zone (docs/fuerte.md, section 4.3): a scene marker with the data the server
+## NPC spawner of a zone (docs/fortress.md, section 4.3): a scene marker with the data the server
 ## needs to place and replenish a type of NPC. Data only: whoever creates and removes the entities
 ## is the server's spawner system ([code]NpcSpawnerSystem[/code]), which looks for the nodes of the
 ## [constant GROUP] group. The zone scene (client and server) carries these nodes, but the client
@@ -33,7 +33,7 @@ const GROUP: StringName = Zones.NPC_SPAWNER_GROUP
 ## How many NPCs from this spawner can be alive at once.
 @export_range(1, 16) var max_alive: int = 1
 ## Seconds until a dead NPC respawns. 0 = no respawn of its own: whoever controls the spawner
-## replenishes it (the Hollow and the Captain respawn with the fort, docs/fuerte.md 1.5).
+## replenishes it (the Hollow and the Captain respawn with the fort, docs/fortress.md 1.5).
 @export_range(0.0, 3600.0, 0.5, "suffix:s") var respawn_s: float = 0.0
 ## Alert group: NPCs with the same group warn each other when entering combat.
 @export var alert_group: StringName = &""

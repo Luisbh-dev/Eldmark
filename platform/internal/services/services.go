@@ -1,6 +1,6 @@
-// Package services mounts the packages' services in the serve process (plataforma.md §14.1):
+// Package services mounts the packages' services in the serve process (platform.md §14.1):
 // accounts and sessions (P1), characters (P2), the internal API (P3, with war and the social part
-// from P7a) and the retention jobs (P9a), with the progress store from progresion.md P7. It is
+// from P7a) and the retention jobs (P9a), with the progress store from progression.md P7. It is
 // used by the serve command and the end-to-end tests (platform/e2e, P10), which start the real
 // platform inside the test's process.
 package services
@@ -35,8 +35,8 @@ import (
 // purges, every hour).
 const purgeEvery = time.Hour
 
-// ProgressStore provides the progress store and the creation validation (plataforma.md §7.5):
-// those of progresion.md P7 (internal/progress, over 0010_progress) with the rules exported from
+// ProgressStore provides the progress store and the creation validation (platform.md §7.5):
+// those of progression.md P7 (internal/progress, over 0010_progress) with the rules exported from
 // progression_rules.json, in all environments. The in-memory fake and the provisional validation
 // remain for the tests.
 func ProgressStore() (*progress.Store, *progress.Rules, error) {

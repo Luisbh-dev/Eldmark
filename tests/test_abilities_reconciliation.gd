@@ -1,5 +1,5 @@
 extends TestCase
-## Reconciliation with the whole phase-4 kit and a bad network (H5; docs/habilidades.md, sections 6.1 and 7.3; the
+## Reconciliation with the whole phase-4 kit and a bad network (H5; docs/abilities.md, sections 6.1 and 7.3; the
 ## acceptance of phase 2): three combat bots ([code]--bot-brain=combat[/code], with the [BotBrain] kit) with
 ## both templates, real ENet over 127.0.0.1 and a [NetSim] of 120 ms RTT, 20 ms jitter and 5 % loss
 ## on the server (in both directions): a wounded archer and a Vardheim shield-bearer against a Solmarch
@@ -25,7 +25,7 @@ const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
 const ZONE_ID: String = "test_world"
 const WAIT_FRAMES: int = 900
 ## Network simulator, on the server (in both directions and for all three bots): the rewind cap counts the
-## delay added by the server's simulator and not that of a client (docs/red.md, section 10), so with the
+## delay added by the server's simulator and not that of a client (docs/networking.md, section 10), so with the
 ## simulator on each bot the server rejected their rewinds and their arrows came out harmless.
 const NET_SIM: String = "rtt=120,jitter=20,loss=5,seed=7"
 const FIGHT_TICKS: int = 900

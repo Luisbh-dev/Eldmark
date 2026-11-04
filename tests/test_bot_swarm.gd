@@ -1,5 +1,5 @@
 extends TestCase
-## [BotSwarm] and [SwarmBot] (docs/red.md, sections 15 and 17.5; TEC-11) against a real [ZoneServer] in the
+## [BotSwarm] and [SwarmBot] (docs/networking.md, sections 15 and 17.5; TEC-11) against a real [ZoneServer] in the
 ## same process, with ENet over 127.0.0.1: the real scene ([code]scenes/client/bot_swarm.tscn[/code])
 ## with [code]--bots=8[/code]. It checks that all of them get in (one every 5 ticks), that they receive snapshots,
 ## that their inputs arrive on time, that the report carries the bytes per client and that closing via

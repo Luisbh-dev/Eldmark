@@ -1,6 +1,6 @@
 class_name NetEntityRegistry
 extends RefCounted
-## Registry of the zone's network entities (docs/red.md, section 9.1).
+## Registry of the zone's network entities (docs/networking.md, section 9.1).
 ## [br][br]
 ## It assigns ids from 1 to 65535 (0 means "none") walking the range in a circle, so an
 ## id takes a while to come out again even without quarantine. A released id also stays in
@@ -11,7 +11,7 @@ extends RefCounted
 ## [method get_sorted] gives the entities by ascending [code]net_id[/code]: that is the server's fixed
 ## simulation order.
 ## [br][br]
-## [b]Transient ids[/b] (docs/habilidades.md, section 4.4): projectiles take their id from the same space
+## [b]Transient ids[/b] (docs/abilities.md, section 4.4): projectiles take their id from the same space
 ## with [method allocate_transient_id], without entering the entity list (they have no [NetEntity] and are not in
 ## the snapshot), and return it with [method release_transient_id] to the same quarantine: a straggling
 ## DESPAWN of an arrow is never attributed to the entity that later receives its id, nor the other way around.

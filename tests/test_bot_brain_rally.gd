@@ -1,5 +1,5 @@
 extends TestCase
-## The rally and formation of [BotBrain]'s siege pattern (GUE-44; docs/fuerte.md, sections 7 and 8.3) without physics:
+## The rally and formation of [BotBrain]'s siege pattern (GUE-44; docs/fortress.md, sections 7 and 8.3) without physics:
 ## points that move where the inputs say ([Walker]), the Vado Gris fort ([SiegeView] with the gate and the
 ## circle) and its routes. An attacker that starts or respawns at its camp waits for its side at the rally point and
 ## leaves with them when there are enough, when its side is already fighting in the fort or on the next tick of the shared clock,
@@ -395,7 +395,7 @@ func test_slots_of_consecutive_seeds_are_spread_over_the_unit_disk() -> void:
 	for slot: Vector2 in slots:
 		left += 1 if slot.x < 0.0 else 0
 	assert_true(left >= 6 and left <= 14, "spread to both sides (%d of 20 on the left)" % left)
-	# What slot_for_seed and docs/fuerte.md say (F6b review): with any base from 0 to 6000, the closest pair of
+	# What slot_for_seed and docs/fortress.md say (F6b review): with any base from 0 to 6000, the closest pair of
 	# twenty consecutive seeds is 0.1 or more apart (under 0.18 in one of every ten bases).
 	var worst: float = INF
 	var below: int = 0

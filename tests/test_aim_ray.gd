@@ -1,5 +1,5 @@
 extends TestCase
-## Canonical aim ([AimRay], docs/habilidades.md, section 4.4): the canonical ray matches
+## Canonical aim ([AimRay], docs/abilities.md, section 4.4): the canonical ray matches
 ## [method CameraRig.get_aim_ray] (without collision, any zoom and field of view, both shoulders) to
 ## within 1 mm; the aiming rules are those of the scenes; a lead shot with the background at
 ## 150 m converges to the target's depth; [method AimRay.look_for] passes within 1 mm of the

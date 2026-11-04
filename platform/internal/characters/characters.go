@@ -1,4 +1,4 @@
-// Package characters is the platform's characters API (plataforma.md §4.4 and §4.5, TEC-24, SOC-13,
+// Package characters is the platform's characters API (platform.md §4.4 and §4.5, TEC-24, SOC-13,
 // PRG-41): an account's list in a world, the name check, create (the account's realm, slots with
 // entitlements, unique name and validation of race, appearance and template), delete with a
 // restore window and the reserved name, restore, the forced rename and entering the world, which
@@ -34,7 +34,7 @@ import (
 	"eldmark/platform/internal/ratelimit"
 )
 
-// Deadlines and caps from plataforma.md §0, §4.2 and §4.4.
+// Deadlines and caps from platform.md §0, §4.2 and §4.4.
 const (
 	RestoreWindow      = 7 * 24 * time.Hour  // a deleted character can be restored for 7 days
 	NameReservation    = 30 * 24 * time.Hour // its name stays reserved restore_until + 30 days
@@ -56,7 +56,7 @@ type Options struct {
 	Accounts *accounts.Service
 	Progress persistence.ProgressStore
 	// Validator validates race, appearance and template on creation (serve: *progress.Rules, from
-	// progresion.md P7); nil: persistence.ProvisionalValidator, the tests' one.
+	// progression.md P7); nil: persistence.ProvisionalValidator, the tests' one.
 	Validator persistence.CreateValidator
 	// Names are the name rules; nil: those from progression_rules.json.
 	Names *names.Rules

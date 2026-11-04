@@ -15,7 +15,7 @@ extends RefCounted
 ## the console, with the player as the first argument. [code]announce[/code], [code]kick[/code] and
 ## [code]shutdown <s>[/code] are console commands and, with the platform, [code]/gm[/code] commands with their role.
 ## [br][br]
-## [b]Chat commands[/b] ([code]/gm …[/code], docs/plataforma.md §9.1, P7b). With the platform, a player with a
+## [b]Chat commands[/b] ([code]/gm …[/code], docs/platform.md §9.1, P7b). With the platform, a player with a
 ## role types [code]/gm command arguments[/code] and it arrives here via [method execute_chat] with the role of their
 ## claim: the console handler runs, with the sending peer in the [Context]. Without permission, or a
 ## command that does not exist, it answers [constant TEXT_UNKNOWN], the same as to someone with no role: it does not reveal what
@@ -29,7 +29,7 @@ extends RefCounted
 ## [b]Audit.[/b] Every use, accepted or not, is kept in [member audit] and sent to
 ## [member audit_sink] (the server's log): origin, command, arguments and result. With the platform,
 ## each use that actually gets executed (not unknown ones or those without permission) also goes out through
-## [member audit_entry_sink], which builds the audit batch entry (docs/plataforma.md §9.1).
+## [member audit_entry_sink], which builds the audit batch entry (docs/platform.md §9.1).
 
 ## Result of a network command.
 enum Result {
@@ -55,7 +55,7 @@ enum Origin {
 	NETWORK,
 }
 
-## Account roles (docs/plataforma.md §9.1), lowest to highest; the same as
+## Account roles (docs/platform.md §9.1), lowest to highest; the same as
 ## [constant ClaimedCharacter.ROLES].
 const ROLE_PLAYER: StringName = &"player"
 const ROLE_MODERATOR: StringName = &"moderator"
@@ -98,7 +98,7 @@ class Command:
 	var min_role: StringName = DEFAULT_MIN_ROLE
 	## Minimum role through DEBUG_COMMAND with the platform if different (empty: [member min_role]). Those that create or keep
 	## value of the character itself ask for [code]admin[/code] over the network even though through [code]/gm[/code]
-	## [code]gm[/code] is enough (progresion.md §10).
+	## [code]gm[/code] is enough (progression.md §10).
 	var network_min_role: StringName = &""
 
 
@@ -122,23 +122,23 @@ class Context:
 	## The character it acts on, if the handler has resolved it (for the audit: the target goes by id,
 	## never by name).
 	var target: NetEntity = null
-	## Arguments for the audit batch entry, without names or emails (docs/plataforma.md §9.1).
+	## Arguments for the audit batch entry, without names or emails (docs/platform.md §9.1).
 	var audit_args: Dictionary = {}
 	## The [code]key[/code] of that entry if the command sets it: [code]op:<op_id>[/code] on one that creates an operation
-	## (§9.1, "Two paths, one row"; progresion.md P5d). Empty: [ZonePlatform] sets it.
+	## (§9.1, "Two paths, one row"; progression.md P5d). Empty: [ZonePlatform] sets it.
 	var audit_key: String = ""
 	## The Unix time of that entry if the command sets it: the [code]detail.at_unix[/code] of the operation it creates, so
-	## that the entry and the save row (S8) carry the same one (progresion.md P5d). 0: the current one.
+	## that the entry and the save row (S8) carry the same one (progression.md P5d). 0: the current one.
 	var audit_at_unix: int = 0
 	## true if the batch entry is built by the command later (the [code]op_revert[/code] with the platform: its
-	## REVERSAL, with its [code]op:<op_id>[/code], is created when the platform's reply arrives; progresion.md P5d).
+	## REVERSAL, with its [code]op:<op_id>[/code], is created when the platform's reply arrives; progression.md P5d).
 	var audit_deferred: bool = false
 
 
 ## Registers the command [param command_name]. [param console_handler] serves the console (and [code]/gm[/code]) and
 ## [param network_handler] (optional) the network; the latter requires the name to have its fixed id in
 ## [constant NetProtocol.DEBUG_COMMAND_IDS]. [param min_role] is the minimum role for chat and, with the platform,
-## for the network; [param network_min_role], if not empty, the network's (progresion.md P5d: 40–43 and 16 require
+## for the network; [param network_min_role], if not empty, the network's (progression.md P5d: 40–43 and 16 require
 ## [code]admin[/code] through DEBUG_COMMAND and [code]gm[/code] through [code]/gm[/code]). Returns false (and logs an
 ## error) if the name already exists, it has no handler, it is a network command without a fixed id or the role does not exist.
 func register(command_name: StringName, usage: String, console_handler: Callable,

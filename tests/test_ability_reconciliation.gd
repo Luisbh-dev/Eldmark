@@ -1,5 +1,5 @@
 extends TestCase
-## The cooldown of an ability survives reconciliation (docs/habilidades.md, section 7.3):
+## The cooldown of an ability survives reconciliation (docs/abilities.md, section 7.3):
 ## client and server with the same inputs, a position difference imposed by the server
 ## after the commit and, after replaying, the same [member CombatState.ability_ready] and the same
 ## state byte for byte. And a rejection (the server never got to start the ability) restores it to its

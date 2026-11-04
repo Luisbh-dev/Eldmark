@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// write is S8 (progresion.md §13.3): it writes the already checked save in the caller's
+// write is S8 (progression.md §13.3): it writes the already checked save in the caller's
 // transaction. character_progress whole with saved_at and save_version + 1 (which it returns);
 // balances with their last_seq; objects (it inserts new ones without on conflict, so a uid that
 // already exists, from another character or retired, is a 23505 on the primary key; it updates
@@ -72,7 +72,7 @@ func (a *apply) write(ctx context.Context, tx pgx.Tx) (int64, error) {
 }
 
 // writeWallets changes each balance that has entries by the sum of its deltas, with the guard
-// from progresion.md §5.4 (update … set balance = balance + delta where … and balance + delta
+// from progression.md §5.4 (update … set balance = balance + delta where … and balance + delta
 // between 0 and the cap): a transaction that did not see the right balance touches no row and the
 // save is rolled back. It returns, per currency, the seq of the first entry in the body (last_seq + 1).
 func (a *apply) writeWallets(ctx context.Context, tx pgx.Tx) (map[int64]int64, error) {

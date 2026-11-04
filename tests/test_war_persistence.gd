@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for persistent war in the zone (docs/plataforma.md §8 and §15 P6, GUE-19): the round trip of
+## Tests for persistent war in the zone (docs/platform.md §8 and §15 P6, GUE-19): the round trip of
 ## [FortressPersistence] (ticks and Unix time with the clock fixed), starting up with CONSOLIDATING
 ## half done (owner and deadline), CAPTURING that comes back with its progress (and, with nobody there,
 ## back to VULNERABLE), the platform being silent at startup, the empty list (initial state with no
@@ -624,7 +624,7 @@ func test_the_captain_killed_by_a_command_is_already_forced_when_its_death_goes_
 	assert_false(_server.get_fortresses().is_forced(FORTRESS))
 	assert_eq(_server.console_command("fort_kill_captain"), "El capitán de %s ha muerto" % FORTRESS)
 	await _advance(2)
-	assert_eq(seen, [true] as Array[bool], "its death is now reported as forced (on_npc_killed does not pay for it, progresion.md P5c)")
+	assert_eq(seen, [true] as Array[bool], "its death is now reported as forced (on_npc_killed does not pay for it, progression.md P5c)")
 	assert_eq(_state().phase, FortressState.Phase.VULNERABLE)
 
 

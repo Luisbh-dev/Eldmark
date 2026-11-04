@@ -46,7 +46,7 @@ static func find_any_by_name(peers: Array[ServerPeer], name: String) -> ServerPe
 	return null
 
 
-## true if [param receiver] ignores the account of [param sender] (docs/plataforma.md §9.3): what [param sender] writes,
+## true if [param receiver] ignores the account of [param sender] (docs/platform.md §9.3): what [param sender] writes,
 ## whispers or invites them to does not reach them. Without a platform nobody has an account and nobody ignores anyone.
 static func ignores(receiver: ServerPeer, sender: ServerPeer) -> bool:
 	return receiver != sender and receiver.chat.ignores_account(sender.chat.account_id)

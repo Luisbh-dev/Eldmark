@@ -8,7 +8,7 @@ extends StaticBody3D
 ## (health 0) opens it: then the leaves hang outward, toward the esplanade, so as not to collide
 ## with the walkway that passes over the opening on the inside.
 ## [br][br]
-## [b]Two bodies[/b] (docs/fuerte.md, section 3.1). Taking the gate off the world layer would break
+## [b]Two bodies[/b] (docs/fortress.md, section 3.1). Taking the gate off the world layer would break
 ## the line of sight of hits, the camera and the navigation bake, so:
 ## [br]- the node itself is the [b]movement[/b] body: its layer is realm layers 5 to 7 of the
 ## realms that are [b]not[/b] the owner ([method layers_for]). Each character adds its realm's

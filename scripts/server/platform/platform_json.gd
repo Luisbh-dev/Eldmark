@@ -1,6 +1,6 @@
 class_name PlatformJson
 extends RefCounted
-## Strict reading of the platform's internal API bodies in the zone (docs/plataforma.md §4.1 and §6),
+## Strict reading of the platform's internal API bodies in the zone (docs/platform.md §4.1 and §6),
 ## the same as Go does with [code]jsonx.ID[/code] and [code]jsonx.Int[/code].
 ## [br][br]
 ## [b]Ids[/b] ([code]character_id[/code], [code]account_id[/code], [code]ticket_id[/code], [code]first[/code] of

@@ -1,5 +1,5 @@
 extends TestCase
-## Package F3 inside the [ZoneServer] (docs/fuerte.md, sections 1 to 5), without networking: the test
+## Package F3 inside the [ZoneServer] (docs/fortress.md, sections 1 to 5), without networking: the test
 ## fortress from [FortressFixture] (circle, captain, real gate and respawn points) with fake players.
 ## It checks the full neutral -> Vardheim -> Solmarch capture with the captain double and the debug
 ## commands, real hits on the gate (damage, enemies only, a broken gate lets people through), the

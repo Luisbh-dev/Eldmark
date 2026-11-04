@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Backup of the platform database (docs/plataforma.md §11.2 and §12, TEC-28): pg_dump -Fc with 7
+# Backup of the platform database (docs/platform.md §11.2 and §12, TEC-28): pg_dump -Fc with 7
 # daily and 4 weekly copies in a folder, and purges.txt (purge_log with its purged_at) next to each
 # copy. The most recent purges.txt is also kept in <folder>/purges.txt, which is never rotated:
 # restoring is always pg_restore and then "eldmark-platform admin --actor <email> reapply-purges

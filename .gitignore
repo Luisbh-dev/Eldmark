@@ -33,7 +33,7 @@ addons/*/bin/~*
 # Local Claude Code settings (permissions of this machine)
 .claude/settings.local.json
 
-# Secrets (plataforma.md §10.3): they never go into git; the examples and the test PEMs do
+# Secrets (platform.md §10.3): they never go into git; the examples and the test PEMs do
 *.env
 !*.env.example
 platform/deploy/secrets/

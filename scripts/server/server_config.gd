@@ -1,6 +1,6 @@
 class_name ServerConfig
 extends RefCounted
-## Configuration of a zone's dedicated server (docs/red.md, sections 1.2 and 17.4).
+## Configuration of a zone's dedicated server (docs/networking.md, sections 1.2 and 17.4).
 ## [br][br]
 ## It is filled by [method from_args] from the user arguments (those after [code]--[/code]):
 ## [codeblock]
@@ -14,7 +14,7 @@ extends RefCounted
 ## --platform=<internal url> --world=<id> --channel=<n> --public-address=<host>[:<port>] --save-interval=<s>
 ## --replace --dtls-cert=<pem> --dtls-key=<pem>
 ## [/codeblock]
-## [b]With the platform[/b] (docs/plataforma.md §5.5 and §14.3): [code]--platform=<url>[/code] is the internal API
+## [b]With the platform[/b] (docs/platform.md §5.5 and §14.3): [code]--platform=<url>[/code] is the internal API
 ## (without it, [DevAuthProvider] and ephemeral characters); [code]--world[/code] (1) and [code]--channel[/code] (0) are
 ## the scope of the zone's token; [code]--public-address[/code] is the host (and port) clients connect to (127.0.0.1 and
 ## [member port] by default); [code]--save-interval[/code] the [code]CharacterSaver[/code] checkpoint (60 s, P5);
@@ -30,7 +30,7 @@ extends RefCounted
 ## Captain, the garrison and the Guardians; [NpcSpawnerSystem]).
 ## [code]--battle-log=<path>[/code] writes war events and deaths in JSON Lines ([BattleLog]; summarized by
 ## [code]tools/war/summarize_battle.gd[/code], GUE-17).
-## [code]--fake-loadout=<template>[:<percentage>][/code] (docs/habilidades.md, section 4.6) gives the fake players the
+## [code]--fake-loadout=<template>[:<percentage>][/code] (docs/abilities.md, section 4.6) gives the fake players the
 ## equipment template of that name ([code]marksman[/code], [code]squire[/code]…): to all of them or, with a percentage,
 ## to that share distributed in creation order (with 50, every other one); the rest get the default.
 ## [code]--fake-archers=<percentage>[/code] (load tests, H5) makes pure archers of the fakes that carry the bow in hand:
@@ -50,7 +50,7 @@ extends RefCounted
 ## the [code]--dev-lock[/code] lock there is [code]--stop-file=<path>[/code]: the server checks every second whether
 ## the file exists (for example, an [code]ExecStop[/code] that creates it with [code]touch[/code]).
 ## Without [code]--max-players[/code], the capacity is the zone's ([method NetZones.max_players]: 40 in Vado Gris, the
-## per-battle player limit measured with the phase 4 kit, docs/red.md, section 14) or, if the zone has none of its own,
+## per-battle player limit measured with the phase 4 kit, docs/networking.md, section 14) or, if the zone has none of its own,
 ## [constant DEFAULT_MAX_PLAYERS].
 ## A value that is not a valid number or is out of range is ignored and the default value stays: the server never starts
 ## with an absurd configuration because of a typo.
@@ -136,7 +136,7 @@ var save_interval_s: int = 60
 ## Replaces the live instance of the same zone and channel on registering ([code]--replace[/code]).
 var replace: bool = false
 ## Paths of the DTLS certificate and key in PEM ([code]--dtls-cert[/code], [code]--dtls-key[/code];
-## docs/plataforma.md §10.2). Read by [code]ServerMain[/code] with [method ZoneDtls.load_files].
+## docs/platform.md §10.2). Read by [code]ServerMain[/code] with [method ZoneDtls.load_files].
 var dtls_cert_path: String = ""
 var dtls_key_path: String = ""
 ## The certificate and key already loaded: it does not come from the arguments, it is set by [code]ServerMain[/code] (or
@@ -266,7 +266,7 @@ func public_port() -> int:
 
 
 ## Development options given that with the platform are only valid in [code]dev[/code] and [code]test[/code]
-## (docs/plataforma.md §5.5): [code]--debug-commands[/code], [code]--fake-players[/code], [code]--fake-churn[/code],
+## (docs/platform.md §5.5): [code]--debug-commands[/code], [code]--fake-players[/code], [code]--fake-churn[/code],
 ## [code]--battle-log[/code], [code]--combat-log[/code] and [code]--state-log[/code].
 func platform_dev_options() -> PackedStringArray:
 	var options := PackedStringArray()

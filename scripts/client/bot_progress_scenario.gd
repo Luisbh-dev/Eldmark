@@ -1,7 +1,7 @@
 class_name BotProgressScenario
 extends RefCounted
 ## The bot's [code]progress[/code] scenario ([code]--bot-scenario=progress[/code],
-## docs/progresion.md §15 P8): what a player does with their inventory and wallet, through the same
+## docs/progression.md §15 P8): what a player does with their inventory and wallet, through the same
 ## paths as the windowed client, so that end-to-end tests afterwards compare what the bot saw with
 ## what the platform saved ([code]platform/e2e/progress_test.go[/code]). In order:
 ## [br]1. [b]equip[/b]: the kit's bow ([code]bow_vado[/code]) is equipped from the bag, with the
@@ -10,7 +10,7 @@ extends RefCounted
 ## [br]2. [b]gold[/b]: [constant GOLD_AMOUNT] gold is given with DEBUG_COMMAND 41 and it waits for its WALLET_UPDATE.
 ## [br]3. [b]potion[/b]: a health potion is given with DEBUG_COMMAND 40 and it waits for its INVENTORY_DELTA.
 ## [br]With the platform, the two commands require [code]--debug-commands[/code] on the zone and an
-## [code]admin[/code] account (docs/progresion.md §10). Each step starts [constant PAUSE_TICKS]
+## [code]admin[/code] account (docs/progression.md §10). Each step starts [constant PAUSE_TICKS]
 ## ticks after the previous one ends (so a test can act between two steps: the crash test kills
 ## the zone after the gold and before the potion) and fails if it is not completed within
 ## [member step_timeout_ticks]. A rejected equip (in combat, with an action) is retried every

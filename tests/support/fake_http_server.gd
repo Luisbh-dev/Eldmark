@@ -2,7 +2,7 @@ class_name FakeHttpServer
 extends Node
 ## A minimal HTTP/1.1 server inside the test process ([TCPServer] on 127.0.0.1), with scripted responses and
 ## delays: this way [PlatformClient] and [ZonePlatform] are tested with a real [HTTPRequest]
-## (docs/plataforma.md §15 P4, [code]test_platform_client.gd[/code]).
+## (docs/platform.md §15 P4, [code]test_platform_client.gd[/code]).
 ## [br][br]
 ## Each request is stored ([member received]) and answered with the first matching scripted response
 ## ([method script]: method and path prefix, once or [code]times[/code] times) or, if none matches, with

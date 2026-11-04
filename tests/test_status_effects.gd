@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for the [StatusSystem] inside the [CombatDirector] (docs/habilidades.md, sections 4.1 and 4.3; CMB-20,
+## Tests for the [StatusSystem] inside the [CombatDirector] (docs/abilities.md, sections 4.1 and 4.3; CMB-20,
 ## package H3a): a bleed does exactly N pulses at [code]anchor + 60k[/code], stacking, refreshing and
 ## the strongest, healing over time, a pulse does not interrupt, a pulse that knocks down (or kills, if the
 ## author is not a player of another realm) in the middle of the list does not change what is iterated, cleanup on death, on
@@ -261,7 +261,7 @@ func test_a_pulse_does_not_interrupt_drinking() -> void:
 	assert_eq(_director.stats[&"interrupts"], 0)
 
 
-## H3c (docs/habilidades.md, section 4.5): the lethal pulse of a player of another realm knocks down; effects are
+## H3c (docs/abilities.md, section 4.5): the lethal pulse of a player of another realm knocks down; effects are
 ## removed on being knocked down (DOWNED clears them on the client) and that tick's healing is no longer applied.
 func test_a_pulse_that_downs_in_the_middle_of_the_list_does_not_change_what_is_walked() -> void:
 	var author: Combatant = _body(1, VARDHEIM, Vector3.ZERO)
@@ -302,7 +302,7 @@ func test_a_pulse_that_downs_in_the_middle_of_the_list_does_not_change_what_is_w
 
 
 func test_a_lethal_pulse_in_the_middle_of_the_list_does_not_change_what_is_walked() -> void:
-	# The author is an NPC: its lethal pulse kills without knocking down (docs/habilidades.md, section 4.5).
+	# The author is an NPC: its lethal pulse kills without knocking down (docs/abilities.md, section 4.5).
 	var author: Combatant = _body(1, VARDHEIM, Vector3.ZERO)
 	author.entity.kind = NetProtocol.EntityKind.NPC
 	var first: Combatant = _body(2, SOLMARCH, Vector3(0.0, 0.0, -1.5), PI)

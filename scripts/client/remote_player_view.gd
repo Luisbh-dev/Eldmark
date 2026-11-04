@@ -1,6 +1,6 @@
 class_name RemotePlayerView
 extends Node
-## View of a remote player (docs/red.md, section 7): drives an instance of
+## View of a remote player (docs/networking.md, section 7): drives an instance of
 ## [code]player_character.tscn[/code] that never calls [method PlayerCharacter.simulate].
 ## [br][br]
 ## The body does not collide ([code]collision_layer = 0[/code], [code]collision_mask = 0[/code]), has no
@@ -23,7 +23,7 @@ extends Node
 ## [constant MIN_BLEND_DISTANCE] and [constant MAX_BLEND_DISTANCE] meters; beyond that, or on a
 ## teleport, it snaps directly.
 ## [br][br]
-## [b]Weapons[/b] (docs/habilidades.md, section 5.2; PRG-07): the pair of weapons in slot order comes from
+## [b]Weapons[/b] (docs/abilities.md, section 5.2; PRG-07): the pair of weapons in slot order comes from
 ## the SPAWN (and a LOADOUT changes it, [method set_weapons]) and the active slot from bit 3 of
 ## [code]flags[/code] of the drawn record: [method get_active_weapon_id] is the weapon seen in their hands
 ## and used for animation.
@@ -258,7 +258,7 @@ func get_drawn_health_q() -> int:
 	return _drawn_health_q
 
 
-## Level of the remote (docs/progresion.md §7.3): that of its SPAWN or its last LEVEL_UP; 0 if it belongs
+## Level of the remote (docs/progression.md §7.3): that of its SPAWN or its last LEVEL_UP; 0 if it belongs
 ## to another realm (the enemy's level does not cross over) or the zone has no progression.
 func get_level() -> int:
 	return _level

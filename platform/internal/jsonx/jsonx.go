@@ -1,4 +1,4 @@
-// Package jsonx reads and writes the integers and ids of the two APIs' JSON (plataforma.md §4.1).
+// Package jsonx reads and writes the integers and ids of the two APIs' JSON (platform.md §4.1).
 //
 // Godot reads every JSON number as a float and, when re-serializing what it read, writes 820.0:
 // that is why an integer field uses [Int], which accepts 4 and 4.0 and rejects 4.5 and anything that

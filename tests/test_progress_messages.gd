@@ -1,5 +1,5 @@
 extends TestCase
-## What docs/progresion.md specifies for protocol 7 (§4.6, §7.3, §10 and §12; package P4): [ProgressMessages] (0x50 to
+## What docs/progression.md specifies for protocol 7 (§4.6, §7.3, §10 and §12; package P4): [ProgressMessages] (0x50 to
 ## 0x55) round trip, byte by byte and with each malformation; the PLAYER SPAWN with level and appearance; the
 ## ENTITY_EVENT 16 LEVEL_UP; DEBUG_COMMANDs 40 to 43; that none exceeds 1200 B; that
 ## [method NetEntity.encode_spawn] only gives the real level to the owner and their realm and that [ZoneServer] sends each
@@ -14,7 +14,7 @@ const SOLMARCH: int = NetProtocol.Realm.SOLMARCH
 const ASKARRA: int = NetProtocol.Realm.ASKARRA
 const FUZZ_SEED: int = 20261030
 const FUZZ_BUFFERS: int = 6000
-## The appearance from the example in docs/progresion.md §3.4 ("AQAAAQEDAgE=").
+## The appearance from the example in docs/progression.md §3.4 ("AQAAAQEDAgE=").
 const APPEARANCE: PackedByteArray = [1, 0, 0, 1, 1, 3, 2, 1]
 
 ## The four objects of data/items and the test armors (with durability), like test_item_instance.
@@ -94,7 +94,7 @@ func test_protocol_constants() -> void:
 	assert_eq(ProgressMessages.InventoryFull.MAX_SIZE, 1089, "INVENTORY_FULL ≤ 1089 B")
 	assert_eq(ProgressMessages.NO_SLOT, 0xFF, "destination of DESTROY")
 	assert_eq(NetMessages.PLAYER_SPAWN_TAIL_SIZE, 9, "+9 B of the PLAYER SPAWN")
-	assert_eq(NetProtocol.PROTOCOL_VERSION, 7, "without raising the version: it is that of plataforma.md P4")
+	assert_eq(NetProtocol.PROTOCOL_VERSION, 7, "without raising the version: it is that of platform.md P4")
 
 
 # --- INVENTORY_REQUEST ------------------------------------------------------------------------

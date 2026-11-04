@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests for saves in [ZoneServer] with [FakeZonePlatform], a [FakeSaveSection] and real clients over
-## ENet on 127.0.0.1 (docs/plataforma.md §7.2, §6.1 and §15 P5): the critical save right after track and the
+## ENet on 127.0.0.1 (docs/platform.md §7.2, §6.1 and §15 P5): the critical save right after track and the
 ## checkpoint in its phase, the combat exit that saves when the body leaves, removal without a save (an
 ## invalid_save in combat and a revoked lease_lost in combat), a revoked that kicks with a final save, the
 ## §6.1 shutdown (instance_lost in the heartbeat, instance_replaced in a save) with the final saves before the
@@ -305,7 +305,7 @@ func test_a_rejected_save_and_a_lease_lost_drop_the_body_at_once() -> void:
 		return
 	var net_42: int = first.own_spawn.net_id
 	var net_43: int = second.own_spawn.net_id
-	# The kit from each one's first entry has already gone out as a critical (progresion.md P5a): counting starts from here.
+	# The kit from each one's first entry has already gone out as a critical (progression.md P5a): counting starts from here.
 	await _run_until(func() -> bool: return _server.get_saver().pending_count() == 0)
 	var saves_before: int = _saves().size()
 	_put_in_combat(net_42)

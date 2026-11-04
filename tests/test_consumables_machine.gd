@@ -1,5 +1,5 @@
 extends TestCase
-## Consumables in the action machine (docs/habilidades.md, sections 2.3, 3.3 and 7.3): charges,
+## Consumables in the action machine (docs/abilities.md, sections 2.3, 3.3 and 7.3): charges,
 ## shared cooldown, commit when finishing the drink, exactly +400 from the stamina potion,
 ## it does not start without charges, interruption before the commit spends nothing and command 13.
 ## [br][br]

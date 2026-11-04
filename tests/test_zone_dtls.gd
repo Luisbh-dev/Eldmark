@@ -1,5 +1,5 @@
 extends TestCase
-## [ZoneDtls] (docs/plataforma.md §10.2, P9c): the zone's DTLS certificate and key. It reads the CN from
+## [ZoneDtls] (docs/platform.md §10.2, P9c): the zone's DTLS certificate and key. It reads the CN from
 ## the DER (Godot's [X509Certificate] does not expose it), checks that the key is the certificate's and
 ## does not let a broken PEM through without a clear reason (nor with engine errors). Also covered: the
 ## registration with the certificate and its name, the exit with code 1 of a server with a certificate

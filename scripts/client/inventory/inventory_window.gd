@@ -1,6 +1,6 @@
 class_name InventoryWindow
 extends UIWindow
-## Inventory window (key I; docs/progresion.md §11, UI-26): the bag in a grid of
+## Inventory window (key I; docs/progression.md §11, UI-26): the bag in a grid of
 ## [constant COLUMNS] columns with [member InventoryState.bag_slots] slots ([InventorySlotView]) and, at the bottom,
 ## gold and merits. It shows the [b]view[/b] of [ClientInventory] (what is confirmed plus the requests in flight)
 ## and is rebuilt on every change.

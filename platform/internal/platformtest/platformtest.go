@@ -1,6 +1,6 @@
 // Package platformtest assembles the entire platform inside a test's process (for tests only):
 // the ephemeral testdb database, the fake clock, in-memory progress
-// (persistence.MemoryProgressStore; with [NewWithProgress], the real store from progresion.md P7),
+// (persistence.MemoryProgressStore; with [NewWithProgress], the real store from progression.md P7),
 // the public API (accounts and characters), the internal one (zones, claim and save, war and
 // social), the admin command and the retention jobs, with helpers to act as client and as zone.
 //
@@ -68,7 +68,7 @@ func (b *SyncBuffer) String() string {
 	return b.buf.String()
 }
 
-// TicketKey is the ticket key from the platform vector in plataforma.md §5.1 (only valid in
+// TicketKey is the ticket key from the platform vector in platform.md §5.1 (only valid in
 // tests).
 var TicketKey = func() []byte {
 	k := make([]byte, 32)

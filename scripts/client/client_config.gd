@@ -1,6 +1,6 @@
 class_name ClientConfig
 extends RefCounted
-## Networked client configuration (docs/red.md, sections 1.2 and 17.5).
+## Networked client configuration (docs/networking.md, sections 1.2 and 17.5).
 ## [br][br]
 ## It is filled in by [method from_args] from the user arguments (those after
 ## [code]--[/code]):
@@ -12,7 +12,7 @@ extends RefCounted
 ## --title  --platform=<url>  --login=<email>  --password-file=<path>  --character=<name>  --world=N
 ## --dtls-cert=<pem>  --dtls-name=<cn>  --bot-scenario=<scenario>
 ## [/codeblock]
-## [br]The mode ([enum Mode]) comes from them with this priority (docs/plataforma.md §13.3):
+## [br]The mode ([enum Mode]) comes from them with this priority (docs/platform.md §13.3):
 ## [code]--bots[/code] ([constant SWARM]) > [code]--bot[/code] ([constant BOT]) > [code]--local[/code]
 ## ([constant LOCAL]) > [code]--connect[/code] ([constant ONLINE]) > [code]--title[/code] or
 ## [code]--platform[/code] ([constant TITLE], the title screen with an account) > nothing: the phase 1
@@ -20,7 +20,7 @@ extends RefCounted
 ## [method from_args]). [code]--server[/code] is resolved earlier by [code]boot.gd[/code] and is not a
 ## client mode.
 ## [br][br]
-## [b]With an account[/b] (docs/plataforma.md §5.5 and §13.3): [code]--platform=<url>[/code] is the
+## [b]With an account[/b] (docs/platform.md §5.5 and §13.3): [code]--platform=<url>[/code] is the
 ## platform's public API (without it, the title screen uses the project setting
 ## [constant PLATFORM_URL_SETTING]); [code]--bot --platform[/code] logs in with [code]--login[/code]
 ## and the password from [code]--password-file[/code], creates the character [code]--character[/code]
@@ -45,7 +45,7 @@ enum Mode {
 	BOT,
 	## Swarm of [member bot_count] lightweight clients that do not simulate.
 	SWARM,
-	## Title screen with an account ([FrontMain], docs/plataforma.md §13): login, characters and entering
+	## Title screen with an account ([FrontMain], docs/platform.md §13): login, characters and entering
 	## with a ticket.
 	TITLE,
 }
@@ -58,7 +58,7 @@ const BOT_BRAIN_SIEGE: String = "siege"
 const BOT_BRAINS: Array[String] = [BOT_BRAIN_WANDER, BOT_BRAIN_COMBAT, BOT_BRAIN_SIEGE]
 ## Bot scenarios ([member bot_scenario], [code]--bot-scenario[/code]): [code]progress[/code] equips the
 ## bow, gives itself 50 gold and a potion through DEBUG_COMMAND and exits ([BotProgressScenario],
-## docs/progresion.md §15 P8).
+## docs/progression.md §15 P8).
 const BOT_SCENARIO_PROGRESS: String = "progress"
 const BOT_SCENARIOS: Array[String] = [BOT_SCENARIO_PROGRESS]
 ## Prefix of the default names: "Jugadorabcd" (see [method NameRules.default_name]).
@@ -73,7 +73,7 @@ const _MAX_WORLD: int = 65535
 const PLATFORM_URL_SETTING: String = "eldmark/platform/url"
 ## Default URL if the setting does not exist: the development platform on this machine.
 const DEFAULT_PLATFORM_URL: String = "http://127.0.0.1:24680"
-## Default world (the only one at launch, docs/plataforma.md §0).
+## Default world (the only one at launch, docs/platform.md §0).
 const DEFAULT_WORLD_ID: int = 1
 
 var mode: Mode = Mode.OFFLINE
@@ -114,16 +114,16 @@ var state_log_path: String = ""
 ## the server that gets launched. Empty = the usual one. Used by the process tests.
 var dev_lock_path: String = ""
 ## Equipment template for the next spawn ([code]--loadout=<template>[/code], the
-## [member EquipmentTemplate.id] of a selectable one, such as [code]marksman[/code]; docs/habilidades.md,
+## [member EquipmentTemplate.id] of a selectable one, such as [code]marksman[/code]; docs/abilities.md,
 ## section 4.6): [NetClient] sends it in a LOADOUT_SELECT as soon as the WELCOME arrives. Empty = the
 ## default one (nothing is sent). It is also changed by the realm choice and the death screen. A bot with
 ## [code]--platform[/code] does not send it: it is the starting template of the character it creates if
-## it does not exist yet ([method AccountFlow.ensure_character], docs/progresion.md §2.5).
+## it does not exist yet ([method AccountFlow.ensure_character], docs/progression.md §2.5).
 var loadout: String = ""
 ## Warnings for the user about network arguments that could not be interpreted.
 var warnings: PackedStringArray = PackedStringArray()
 
-# --- Account and platform (docs/plataforma.md §13.3) ---
+# --- Account and platform (docs/platform.md §13.3) ---
 ## URL of the platform's public API ([code]--platform=<url>[/code]). Empty = no platform (the usual
 ## modes); in [constant Mode.TITLE] it is never empty (without the option, the
 ## [constant PLATFORM_URL_SETTING] setting).
@@ -156,7 +156,7 @@ var from_front: bool = false
 ## Reads [param args] (the user arguments) and returns the configuration. Arguments that are not
 ## network ones ([code]--zone[/code], [code]--demo[/code]...) are ignored without warning.
 ## [param exported]: the client is an export (not the editor); with no mode at all, an export opens the
-## title screen and the editor the sandbox (docs/plataforma.md §5.5).
+## title screen and the editor the sandbox (docs/platform.md §5.5).
 static func from_args(args: PackedStringArray, exported: bool = false) -> ClientConfig:
 	var config := ClientConfig.new()
 	var connect_text: String = _string_option(args, "--connect=")
@@ -235,7 +235,7 @@ static func default_platform_url() -> String:
 
 ## Reason, in Spanish, why [param url] is not valid as a platform URL (empty if it is valid): it must
 ## start with [code]https://[/code] or, only towards this machine (loopback), with [code]http://[/code]
-## (docs/plataforma.md §10.1), and include a host.
+## (docs/platform.md §10.1), and include a host.
 static func platform_url_error(url: String) -> String:
 	var clean: String = url.strip_edges()
 	if clean.is_empty():
@@ -373,7 +373,7 @@ static func parse_address(text: String) -> Dictionary:
 	return result
 
 
-# Account and DTLS options (docs/plataforma.md §13.3). A platform URL that is not valid is kept (whoever
+# Account and DTLS options (docs/platform.md §13.3). A platform URL that is not valid is kept (whoever
 # uses it fails with its reason, instead of entering without a platform) and a warning is issued.
 func _parse_account_options(args: PackedStringArray) -> void:
 	platform_url = _string_option(args, "--platform=")

@@ -1,6 +1,6 @@
 class_name LevelCurve
 extends Resource
-## Experience curve (docs/progresion.md §6.1, PRG-13), in
+## Experience curve (docs/progression.md §6.1, PRG-13), in
 ## [code]data/progression/level_curve.tres[/code]: the XP needed to go from each level to the
 ## next, up to the cap.
 ## [br][br]

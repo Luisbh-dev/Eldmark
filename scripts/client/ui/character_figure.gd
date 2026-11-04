@@ -1,6 +1,6 @@
 class_name CharacterFigure
 extends SubViewportContainer
-## The 3D figure for character selection and creation (docs/plataforma.md §13.2, UI-23 and UI-24): a
+## The 3D figure for character selection and creation (docs/platform.md §13.2, UI-23 and UI-24): a
 ## [SubViewport] with its own world, a still [PlayerCharacter] with [HumanoidVisual] and the appearance
 ## it is given ([method show_appearance], with [method AppearanceApplier.apply]) and an orbital camera:
 ## dragging with the mouse rotates it around the figure and the wheel zooms in or out. Without an
@@ -115,7 +115,7 @@ func _build() -> void:
 	environment.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.environment.ambient_light_color = AMBIENT_COLOR
 	_viewport.add_child(environment)
-	# TODO(arte): placeholder framing, lighting and background until UI-23 and UI-24 get sign-off (docs/plataforma.md §15).
+	# TODO(arte): placeholder framing, lighting and background until UI-23 and UI-24 get sign-off (docs/platform.md §15).
 	var light := DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-35.0, 160.0, 0.0)
 	_viewport.add_child(light)

@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [InterpolationClock] (docs/red.md, sections 4.3 and 16): it converges to the delay with a synthetic
+## Tests for [InterpolationClock] (docs/networking.md, sections 4.3 and 16): it converges to the delay with a synthetic
 ## jitter, the delay is bounded to [4, 12] ticks, the correction is gradual and it jumps on
 ## errors of more than 10 ticks.
 ## [br][br]
@@ -233,7 +233,7 @@ func test_offsets_that_go_up_are_adopted_immediately() -> void:
 			"jumps to the new measurement in the same snapshot")
 
 
-## With server ticks above 2^31 (the u32 of red.md 4.1 reaches 828 days) the clock keeps working
+## With server ticks above 2^31 (the u32 of networking.md 4.1 reaches 828 days) the clock keeps working
 ## fine: samples cannot be held in 32-bit integers (finding N5).
 func test_server_ticks_beyond_two_to_the_thirty_one_do_not_overflow() -> void:
 	var clock := InterpolationClock.new()

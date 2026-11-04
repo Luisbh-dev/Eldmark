@@ -1,12 +1,12 @@
 class_name NpcWorld
 extends RefCounted
-## What an NPC's brain sees and can do on the server (docs/fuerte.md, section 4.2): who is a possible
+## What an NPC's brain sees and can do on the server (docs/fortress.md, section 4.2): who is a possible
 ## target, whether there is line of sight, navigation routes, attack tokens, alert groups and
 ## warnings to the spawner system. It is assembled by the [NpcSpawnerSystem] from the [ZoneServer]'s pieces and handed
 ## to each [HfsmBrain].
 ## [br][br]
 ## Everything is computed with the state "after s − 1" because the brains think in step 0 of the tick
-## (docs/fuerte.md, section 1.7), before anyone is simulated. The list of possible targets is built once per tick
+## (docs/fortress.md, section 1.7), before anyone is simulated. The list of possible targets is built once per tick
 ## and reused.
 
 ## Zone (for the hostility rules).
@@ -188,7 +188,7 @@ func _rebuild_candidates() -> void:
 	_candidates_tick = tick
 	_candidates.clear()
 	for candidate: Combatant in combat.get_sorted():
-		# An invisible GM is not a target for NPCs (docs/plataforma.md §9.1).
+		# An invisible GM is not a target for NPCs (docs/platform.md §9.1).
 		if candidate.is_dead() or candidate.immortal or candidate.is_protected(tick) or candidate.is_gm_invisible():
 			continue
 		_candidates.append(candidate)

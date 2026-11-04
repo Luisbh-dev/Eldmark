@@ -1,4 +1,4 @@
-// Package testdb gives tests a real, ephemeral PostgreSQL database (plataforma.md §2.6), without
+// Package testdb gives tests a real, ephemeral PostgreSQL database (platform.md §2.6), without
 // Docker.
 //
 // Usage:

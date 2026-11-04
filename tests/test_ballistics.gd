@@ -1,5 +1,5 @@
 extends TestCase
-## Tests of [Ballistics] (docs/habilidades.md, section 4.4): the position of a projectile after n
+## Tests of [Ballistics] (docs/abilities.md, section 4.4): the position of a projectile after n
 ## ticks (integer or fractional) and the quantization with which it travels in the ENTITY_SPAWN.
 
 const GRAVITY: float = 6.0
@@ -38,7 +38,7 @@ func test_apex_and_symmetry() -> void:
 
 
 func test_flight_numbers_of_the_design() -> void:
-	# docs/habilidades.md, section 2.4: the maximum draw (70 m/s) takes 0.71 s over 50 m and drops 1.5 m;
+	# docs/abilities.md, section 2.4: the maximum draw (70 m/s) takes 0.71 s over 50 m and drops 1.5 m;
 	# the quick one (45 m/s), 1.11 s and 3.7 m.
 	var drawn_ticks: float = 50.0 / 70.0 * 60.0
 	var drawn: Vector3 = Ballistics.position(Vector3.ZERO, Vector3(0.0, 0.0, -70.0), GRAVITY, drawn_ticks)

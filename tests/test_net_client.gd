@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [NetClient] against a fake server that speaks the protocol by hand (docs/red.md,
+## Tests for [NetClient] against a fake server that speaks the protocol by hand (docs/networking.md,
 ## sections 3, 5.4, 6.2 and 9.4): the contents of the HELLO, that no input is sent before its own
 ## SPAWN, the redundancy and the trimming by the INPUT_BATCH ack, the batch header, that
 ## out-of-order snapshots do not reconcile, how the prediction differences are classified
@@ -248,7 +248,7 @@ func test_hello_carries_the_clients_identity() -> void:
 	probe.free()
 
 
-## With a ticket (docs/plataforma.md §5.4 and §15 P8): the HELLO carries the character and the 52 B of enter, with the realm and the
+## With a ticket (docs/platform.md §5.4 and §15 P8): the HELLO carries the character and the 52 B of enter, with the realm and the
 ## character's name.
 func test_hello_carries_the_ticket_and_the_character_of_enter() -> void:
 	_port = NetHarness.free_udp_port()

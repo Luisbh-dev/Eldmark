@@ -1,5 +1,5 @@
 extends TestCase
-## The bow in the action machine (docs/habilidades.md, sections 0, 2.3 and 7.3): a tap is the
+## The bow in the action machine (docs/abilities.md, sections 0, 2.3 and 7.3): a tap is the
 ## quick shot (the light attack, a combo of 1), holding 8 ticks is the draw (the heavy attack's charge), the
 ## minimum and maximum charges come out on their ticks, BLOCK does nothing and when exhausted it cannot be drawn.
 ## [br][br]

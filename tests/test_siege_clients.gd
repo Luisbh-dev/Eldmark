@@ -1,5 +1,5 @@
 extends TestCase
-## The clients that besiege (GUE-15; docs/fuerte.md, section 7) against a real server over ENet on
+## The clients that besiege (GUE-15; docs/fortress.md, section 7) against a real server over ENet on
 ## 127.0.0.1:
 ## [br]- the [SwarmBot]s of [code]--bots=N --bot-brain=siege[/code], which neither load the zone nor simulate: they fill their
 ## [SiegeView] by hand-decoding the fortress registration and each OBJECT_STATE, reach the door (the server

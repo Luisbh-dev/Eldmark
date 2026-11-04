@@ -14,7 +14,7 @@ extends RefCounted
 ## 28      u8       flags: bit 0 = grounded, bits 1-3 = coyote_ticks, bits 4-7 = jump_buffer_ticks
 ## 29      u16      prev_buttons
 ## 31      u32      last_input_tick
-## 35      76 B     combat (CombatState v5, see docs/combate.md section 3.1 and docs/habilidades.md
+## 35      76 B     combat (CombatState v5, see docs/combate.md section 3.1 and docs/abilities.md
 ##                  section 3.1)
 ## [/codeblock]
 

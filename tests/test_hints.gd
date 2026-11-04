@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for the game hints (UI-42, docs/fuerte.md section 6): the catalogue ([HintCatalog]), the
+## Tests for the game hints (UI-42, docs/fortress.md section 6): the catalogue ([HintCatalog]), the
 ## log of the ones the player has already seen in user:// ([HintLog]) and their appearance ([HintToasts]: only once
 ## per player, queue, timings, a setting to turn them off and what triggers them). No server: a fake client
 ## provides the character and the alerts are synthetic.

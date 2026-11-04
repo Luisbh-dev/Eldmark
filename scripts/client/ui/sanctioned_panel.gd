@@ -1,6 +1,6 @@
 class_name SanctionedPanel
 extends FrontScreen
-## Sanctioned account (docs/plataforma.md §4.2 and §13.2): with the privacy session of a suspended or
+## Sanctioned account (docs/platform.md §4.2 and §13.2): with the privacy session of a suspended or
 ## banned account, the reason and the end date, and only "Descargar mis datos" (Download my data)
 ## ([code]POST /v1/account/export[/code]), "Borrar la cuenta" (Delete the account)
 ## ([code]POST /v1/account/deletion[/code], with confirmation) and "Cerrar sesión" (Log out). The first

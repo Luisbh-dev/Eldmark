@@ -1,8 +1,8 @@
-// Package progress is the Go side of character progress (progresion.md §13.2): the rules
-// exported by Godot and the store that implements persistence.ProgressStore (progresion.md P7).
+// Package progress is the Go side of character progress (progression.md §13.2): the rules
+// exported by Godot and the store that implements persistence.ProgressStore (progression.md P7).
 //
-// From progresion.md P3 comes [LoadRules]: it reads from progression_rules.json
-// (internal/gamedata) the sections of progresion.md §13.4 (races, appearance, level_curve,
+// From progression.md P3 comes [LoadRules]: it reads from progression_rules.json
+// (internal/gamedata) the sections of progression.md §13.4 (races, appearance, level_curve,
 // currencies, reasons, containers and combat; items and starter_templates since P1) and applies
 // with them the appearance rule of CharacterAppearance.validate ([Rules.ValidAppearance]), the
 // level curve ([Rules.LevelFor], [Rules.TotalTo]) and the object and template lookups
@@ -10,7 +10,7 @@
 // the same data: the cases in tests/fixtures/progression/appearance_cases.json are read by
 // test_character_appearance.gd and by this package's tests.
 //
-// From progresion.md P7 come [Rules.ValidateCreate] (persistence.CreateValidator) and [Store]
+// From progression.md P7 come [Rules.ValidateCreate] (persistence.CreateValidator) and [Store]
 // (persistence.ProgressStore): the 0010_progress tables, the save with S1–S8 (checks.go and
 // write.go, with the cases from tests/fixtures/progression/save_cases.json that the zone
 // generates), the summaries, the purge and the retention, the export and the operation and
@@ -68,14 +68,14 @@ type Appearance struct {
 	EyeColorCount  int    `json:"eye_color_count"`
 }
 
-// LevelCurve is the level_curve section: the XP from each level to the next (progresion.md §6.1).
+// LevelCurve is the level_curve section: the XP from each level to the next (progression.md §6.1).
 type LevelCurve struct {
 	LevelCap                int     `json:"level_cap"`
 	XPToNext                []int64 `json:"xp_to_next"`
 	AttributePointsPerLevel int     `json:"attribute_points_per_level"`
 }
 
-// Currency is a currency in the currencies section (progresion.md §5.1).
+// Currency is a currency in the currencies section (progression.md §5.1).
 type Currency struct {
 	Code int    `json:"code"`
 	ID   string `json:"id"`
@@ -88,7 +88,7 @@ type Range struct {
 	Max int `json:"max"`
 }
 
-// Reasons is the reasons section (progresion.md §5.3): ranges of sources, sinks and internal
+// Reasons is the reasons section (progression.md §5.3): ranges of sources, sinks and internal
 // ones, the reasons by name and the operation types by name.
 type Reasons struct {
 	Ranges struct {
@@ -100,7 +100,7 @@ type Reasons struct {
 	OpKinds map[string]int `json:"op_kinds"`
 }
 
-// Containers is the containers section (progresion.md §4.1).
+// Containers is the containers section (progression.md §4.1).
 type Containers struct {
 	Bag struct {
 		Code         int `json:"code"`
@@ -120,7 +120,7 @@ type Combat struct {
 	HealthMax int `json:"health_max"`
 }
 
-// Item categories (ItemDefinition.Category, progresion.md §2.1).
+// Item categories (ItemDefinition.Category, progression.md §2.1).
 const (
 	CategoryWeapon     = 1
 	CategoryArmor      = 2
@@ -142,7 +142,7 @@ const (
 // MaxStack is the cap of a stack (ItemDefinition.MAX_STACK).
 const MaxStack = 999
 
-// Item is a definition in the items section (progresion.md §2.1): what S5 looks at for each object.
+// Item is a definition in the items section (progression.md §2.1): what S5 looks at for each object.
 type Item struct {
 	ID            string `json:"id"`
 	Category      int    `json:"category"`
@@ -152,14 +152,14 @@ type Item struct {
 	RequiredLevel int    `json:"required_level"`
 }
 
-// StarterTemplate is a selectable template in the starter_templates section (progresion.md
+// StarterTemplate is a selectable template in the starter_templates section (progression.md
 // §2.5): its id and the objects of its weapons in slot order.
 type StarterTemplate struct {
 	ID      string   `json:"id"`
 	Weapons []string `json:"weapons"`
 }
 
-// Rules are the progresion.md rules read from progression_rules.json. They are read-only: they
+// Rules are the progression.md rules read from progression_rules.json. They are read-only: they
 // are safe to share between goroutines.
 type Rules struct {
 	Races      []Race // in catalog order: byte 0 of the appearance is the position + 1
@@ -185,10 +185,10 @@ type Rules struct {
 	currencyCaps map[int]int64        // code → cap
 }
 
-// opKinds are the operation types (EconomyOp.Kind, progresion.md §5.3) by their name in reasons.op_kinds.
+// opKinds are the operation types (EconomyOp.Kind, progression.md §5.3) by their name in reasons.op_kinds.
 type opKinds struct{ player, gameplay, starterKit, gm, reversal, migration int }
 
-// kindReasonNames are the reasons of each operation type that S2 admits (progresion.md §13.3,
+// kindReasonNames are the reasons of each operation type that S2 admits (progression.md §13.3,
 // the zone's EconomyOp.KIND_REASONS): PLAYER 64; GAMEPLAY 2–6 and 65; STARTER_KIT 1; GM 7 and 66; REVERSAL 128.
 var kindReasonNames = map[string][]string{
 	"player":      {"player_destroy"},
@@ -220,7 +220,7 @@ var (
 	itemIDPattern = regexp.MustCompile(`^[a-z0-9_]{3,32}$`) // ItemDefinition.ID_PATTERN
 )
 
-// LoadRules reads the progresion.md sections of a progression_rules.json (gamedata.Raw()) and
+// LoadRules reads the progression.md sections of a progression_rules.json (gamedata.Raw()) and
 // checks that they make sense. Each section is read strictly (unknown fields and mismatched types
 // are errors); sections belonging to others (names, protocol_version) and those this package does
 // not read yet do not count.
@@ -437,7 +437,7 @@ func (r *Rules) resolveEconomy(fail func(format string, args ...any)) {
 	}
 }
 
-// signMatches says whether the sign of delta fits the range of reason (progresion.md §5.2):
+// signMatches says whether the sign of delta fits the range of reason (progression.md §5.2):
 // sources > 0, sinks < 0 and internal ones, anything other than 0. A reason outside the ranges
 // never fits.
 func (r *Rules) signMatches(reason int, delta int64) bool {
@@ -455,7 +455,7 @@ func (r *Rules) signMatches(reason int, delta int64) bool {
 	return false
 }
 
-// ValidateCreate implements persistence.CreateValidator (plataforma.md §4.4 step 5, progresion.md
+// ValidateCreate implements persistence.CreateValidator (platform.md §4.4 step 5, progression.md
 // §13.2): the race exists and belongs to realm realm (NetProtocol.Realm code), the 8 B are valid
 // for it ([Rules.ValidAppearance]) and the template is selectable ([Rules.SelectableTemplate]). It
 // returns nil or a *persistence.ValidationError with one field per failure: race_id "unknown"
@@ -482,7 +482,7 @@ func (r *Rules) ValidateCreate(realm int16, raceID string, appearance [8]byte, t
 
 var _ persistence.CreateValidator = (*Rules)(nil)
 
-// checkItems checks items and starter_templates with the ItemDatabase rules (progresion.md §2.1)
+// checkItems checks items and starter_templates with the ItemDatabase rules (progression.md §2.1)
 // and fills in the indices for Item and SelectableTemplate.
 func (r *Rules) checkItems(fail func(format string, args ...any)) {
 	if len(r.Items) == 0 {
@@ -563,13 +563,13 @@ func (r *Rules) Item(id string) (Item, bool) {
 }
 
 // SelectableTemplate says whether id is a selectable starter template (starter_templates), the
-// rule for starter_template_id when creating the character (plataforma.md §4.4 step 5).
+// rule for starter_template_id when creating the character (platform.md §4.4 step 5).
 func (r *Rules) SelectableTemplate(id string) bool {
 	_, ok := r.templates[id]
 	return ok
 }
 
-// ValidAppearance is CharacterAppearance.validate (progresion.md §7.2): true if the 8 B are valid
+// ValidAppearance is CharacterAppearance.validate (progression.md §7.2): true if the 8 B are valid
 // for a character of realm realm (NetProtocol.Realm code) and of people raceID. raceID exists,
 // belongs to that realm and byte 0 is its position + 1; each index is in the people's lists and
 // exists; head, hair, beard and marks fit the body; a 0 for hair or beard only if the people

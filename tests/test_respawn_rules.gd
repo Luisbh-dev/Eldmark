@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [RespawnRules] (docs/fuerte.md, section 5): which respawn points are valid for a
+## Tests for [RespawnRules] (docs/fortress.md, section 5): which respawn points are valid for a
 ## player depending on their realm, the forts and the tick. Also with the real Vado Gris markers,
 ## in scene order.
 

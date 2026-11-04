@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # Common functions of the deployment scripts that bring up an ephemeral PostgreSQL (dev.sh,
-# restore_check.sh and pitr_check.sh; docs/plataforma.md §2.6 and §12). It is loaded with ".": it is
+# restore_check.sh and pitr_check.sh; docs/platform.md §2.6 and §12). It is loaded with ".": it is
 # not executed.
 #
 # Variables (the same as internal/testdb):

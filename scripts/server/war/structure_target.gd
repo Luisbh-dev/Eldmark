@@ -1,6 +1,6 @@
 class_name StructureTarget
 extends RefCounted
-## Static target of hits: the gate of a fortress (docs/fuerte.md, section 3.3). It is created by the
+## Static target of hits: the gate of a fortress (docs/fortress.md, section 3.3). It is created by the
 ## [FortressController] and traversed by the [CombatResolver] after the players and NPCs of each
 ## active attack: no rewind (gates do not move), no crits and no defense. The shape is an oriented
 ## box ([method HitShapes.sector_hits_box]).

@@ -1,7 +1,7 @@
 class_name WeaponDefinition
 extends Resource
 ## An equippable weapon (docs/combate.md, section 2): its attacks, block, dodge and
-## abilities (docs/habilidades.md, section 2.1).
+## abilities (docs/abilities.md, section 2.1).
 
 ## Unique weapon identifier (the catalog assigns it a u16 ID in alphabetical order).
 @export var id: StringName

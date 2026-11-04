@@ -1,6 +1,6 @@
 class_name Ballistics
 extends RefCounted
-## Projectile ballistics (docs/habilidades.md, section 4.4). Server and client call the
+## Projectile ballistics (docs/abilities.md, section 4.4). Server and client call the
 ## same [method position], with [code]n[/code] integer (the server, on each tick) or fractional (the
 ## drawing), from the origin and velocity exactly as they travel in the ENTITY_SPAWN
 ## ([method quantize]): so both trajectories are the same. [method solve_lead] gives the

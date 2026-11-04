@@ -1,5 +1,5 @@
 extends TestCase
-## The phase-4 kit in [BotBrain] (H5; docs/habilidades.md, section 7.1), without network or physics: the bot's
+## The phase-4 kit in [BotBrain] (H5; docs/abilities.md, section 7.1), without network or physics: the bot's
 ## combat state is that of an action machine that advances with its own inputs ([ActionMachine]), and the
 ## enemies and allies are given by hand-written finders. It checks that the bot uses abilities only when they are valid and holds
 ## the wall button, that it drinks and swaps weapons when due, that the bow aims with the lead shot (the

@@ -7,7 +7,7 @@ extends TestCase
 ## [br][br]
 ## [b]Measurement window[/b]: the percentage of substituted inputs in the server's report is for the whole
 ## session, startup included (each bot loses a few dozen inputs while [TickSync]
-## finds its lead time, more with 100 ms of RTT). The phase 2 criterion (red.md, 16) is measured in
+## finds its lead time, more with 100 ms of RTT). The phase 2 criterion (networking.md, 16) is measured in
 ## steady state: [method LoadTestSummary.window_substituted] subtracts what had accumulated when the window began, from
 ## the "Métricas (tick N)" lines (metrics) that the server writes every 600 ticks.
 
@@ -208,7 +208,7 @@ func test_siege_matrix_has_sieges_of_32_and_64_a_side() -> void:
 
 
 # Integration of the abilities on F6b: Vado Gris has its own capacity (40, the per-battle limit with the kit;
-# docs/red.md 14 and docs/fuerte.md 8.3), so every scenario with more players has to request its own with --max-players.
+# docs/networking.md 14 and docs/fortress.md 8.3), so every scenario with more players has to request its own with --max-players.
 func test_every_battery_scenario_fits_in_the_server_it_launches() -> void:
 	var script: GDScript = load(LOAD_TEST_PATH) as GDScript
 	if not assert_not_null(script):

@@ -1,6 +1,6 @@
 class_name ProgressJson
 extends RefCounted
-## Strict reading of the values in the progress JSON (docs/progresion.md §3.4; plataforma.md §4.1),
+## Strict reading of the values in the progress JSON (docs/progression.md §3.4; platform.md §4.1),
 ## the same as the Go platform does with [code]jsonx.ID[/code] and [code]jsonx.Int[/code].
 ## [br][br]
 ## [b]Ids[/b] ([code]uid[/code], [code]op_id[/code], [code]seed[/code]…): a decimal string, digits

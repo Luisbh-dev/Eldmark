@@ -1,6 +1,6 @@
 class_name ProgressService
 extends RefCounted
-## Character progress in the zone (docs/progresion.md §4, §8 and §9): loading before the WELCOME
+## Character progress in the zone (docs/progression.md §4, §8 and §9): loading before the WELCOME
 ## ([method prepare]), registration ([method on_arrival] and [method after_spawn]), the inventory over the network
 ## ([method handle_packet] and [method apply_pending]), what the server changes on its own (CONSUME in
 ## [method after_simulate], CAMP_REFILL in [method camp_step]), the [code]progress[/code] section of
@@ -38,9 +38,9 @@ extends RefCounted
 ## [member NetEntity.level], sends the LEVEL_UP ([member level_up_sink]) and marks the save as critical, as does
 ## collecting a capture reward.
 
-## The section's key in the save body (plataforma.md §7.1).
+## The section's key in the save body (platform.md §7.1).
 const SECTION: StringName = &"progress"
-## Text of the REJECT UNAVAILABLE if the record cannot be read (plataforma.md §5.2).
+## Text of the REJECT UNAVAILABLE if the record cannot be read (platform.md §5.2).
 const PREPARE_FAILED_TEXT: String = "No se ha podido cargar el personaje"
 ## Criticality of the starter kit (§9.2).
 const CRITICAL_STARTER_KIT: StringName = &"starter_kit"
@@ -69,13 +69,13 @@ const CAPTURE_XP: int = 300
 const CAPTURE_GOLD: int = 20
 const CAPTURE_COOLDOWN_S: int = 1800
 ## Ticks in the active circle that give one objective merit: one per second, the scoreboard's provisional values
-## ([ScoreKeeper], fuerte.md) until PRG-09 changes them.
+## ([ScoreKeeper], fortress.md) until PRG-09 changes them.
 const OBJECTIVE_TICKS_PER_MERIT: int = 60
 ## Log line when starting with a platform and [code]--fake-players[/code] (§6.2).
 const FAKE_PLAYERS_TEXT: String = "Progreso: con --fake-players y la plataforma, la zona no da recompensas persistentes"
 ## SAFE zones (§8): the character returns to the saved spot if it was saved less than this long ago (s).
 const RETURN_WINDOW_S: int = 900
-## Reasons for the strikes (red.md §12).
+## Reasons for the strikes (networking.md §12).
 const STRIKE_NOT_IN_WORLD: String = "petición de inventario antes de entrar en el mundo"
 const STRIKE_MALFORMED: String = "petición de inventario mal formada"
 const STRIKE_INVALID: String = "petición de inventario no válida"
@@ -136,7 +136,7 @@ class _Pending:
 var log_sink: Callable = Callable()
 ## [code](peer: ServerPeer, bytes: PackedByteArray) -> void[/code]: sends over the reliable channel (set by the zone).
 var send_sink: Callable = Callable()
-## [code](peer: ServerPeer, reason: String) -> void[/code]: adds a strike to the peer (red.md §12).
+## [code](peer: ServerPeer, reason: String) -> void[/code]: adds a strike to the peer (networking.md §12).
 var strike_sink: Callable = Callable()
 ## [code](peer: ServerPeer, text: String) -> void[/code]: an informational NOTICE.
 var notice_sink: Callable = Callable()
@@ -220,7 +220,7 @@ func start(_s: int) -> void:
 	_block_pending = _platform != null
 
 
-## Step (3) of plataforma.md §5.2, before the WELCOME (§9.1 step 2): reads the record from the claim
+## Step (3) of platform.md §5.2, before the WELCOME (§9.1 step 2): reads the record from the claim
 ## ([method ProgressRecord.from_dictionary]), validates the appearance against the character's race and realm (an
 ## invalid one is replaced by its race's default, with a warning, without kicking the player) and prepares its
 ## [PlayerProgress] for registration. false if the record cannot be read: the zone answers REJECT UNAVAILABLE
@@ -422,7 +422,7 @@ func before_simulate(_s: int) -> void:
 
 
 ## After step 1 of tick [param s] (§4.4): CONSUME. If a consumable's charge dropped (the commitment to drink,
-## habilidades.md §3.3 rule 5), that amount is removed from the stack of its definition with the lowest bag slot
+## abilities.md §3.3 rule 5), that amount is removed from the stack of its definition with the lowest bag slot
 ## (aggregate), its INVENTORY_DELTA goes out and the charges are imposed ([code]min(15, bag)[/code]: with more than 15,
 ## the charge goes back to 15 with a LOADOUT). An interrupted drink does not lower the charge and spends nothing.
 func after_simulate(s: int) -> void:
@@ -599,7 +599,7 @@ func on_npc_killed(npc: NpcDefinition, contributors: PackedInt32Array, s: int) -
 
 
 ## Real capture of [param fortress_id] by [param owner_realm] at tick [param s]
-## ([signal FortressController.fortress_captured]): each one in [param in_circle] (the list from plataforma.md §8, the
+## ([signal FortressController.fortress_captured]): each one in [param in_circle] (the list from platform.md §8, the
 ## same one that [code]ScoreKeeper.captures[/code] adds up) of that realm receives [constant CAPTURE_XP] of XP and
 ## [constant CAPTURE_GOLD] of gold (OBJECTIVE, with the fortress as reference), once every
 ## [constant CAPTURE_COOLDOWN_S] s per fortress: with a platform, the [code]capture:<fortress_id>[/code] timer is saved
@@ -1122,7 +1122,7 @@ func _restore_timers(entity: NetEntity, player: PlayerProgress, s: int) -> void:
 # --- Rewards (§6.2) --------------------------------------------------------------------------
 
 # The session of whoever can collect a reward: with a [PlayerProgress] (a player with a peer, also the body that stays
-# after a combat exit), without the mark of a GM command and not an invisible GM (plataforma.md P7b: it also does no
+# after a combat exit), without the mark of a GM command and not an invisible GM (platform.md P7b: it also does no
 # damage and does not count in the circle); null with a platform and --fake-players.
 func _collector(net_id: int) -> _Session:
 	if _rewards_blocked:
@@ -1132,7 +1132,7 @@ func _collector(net_id: int) -> _Session:
 	if session == null:
 		return null
 	var entity: NetEntity = _entity(net_id)
-	# Neither one marked by a GM command nor an invisible GM collects (§6.2; plataforma.md §9.1).
+	# Neither one marked by a GM command nor an invisible GM collects (§6.2; platform.md §9.1).
 	if entity == null or entity.gm_forced or entity.gm_invisible:
 		return null
 	return session

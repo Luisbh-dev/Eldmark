@@ -10,7 +10,7 @@ extends SceneTree
 ## [/codeblock]
 ## By default the packs folder is [code]../Eldmark-raw[/code] (next to the repo). Only the glTF files
 ## (never FBX/OBJ) and the images they reference are copied. Size rules (see
-## docs/arte.md): model textures at 1024 px at most; terrain at 1024 px with the height in
+## docs/art.md): model textures at 1024 px at most; terrain at 1024 px with the height in
 ## the alpha. The script is deterministic: it can be repeated and leaves the same files.
 ## [br][br]
 ## When it finishes it sets the .import of all model textures (VRAM compressed with mipmaps,
@@ -72,7 +72,7 @@ const CASTLE_WALL_TEXTURES: Array[Array] = [
 ## does not matter here; the Terrain3D identifiers are set in the Vado Gris generator.
 ## Correction: hue shift (degrees), saturation factor and value factor (HSV), per pixel.
 ## The watercolor soil is a very saturated reddish brown (mean #4D3024) that looks almost
-## black in the game; it is shifted toward Eldrun's "scorched earth" (#5A4A3E) from the palette in mundo.md.
+## black in the game; it is shifted toward Eldrun's "scorched earth" (#5A4A3E) from the palette in world.md.
 const TERRAIN_TEXTURES: Array[Array] = [
 	["Grass_02", "grass_02", {}], ["Grass_03", "grass_03", {}], ["Grass_04", "grass_04", {}],
 	["Dirt_03", "dirt_03", {"hue": 9.0, "sat": 0.6, "val": 1.35}], ["Stone_01", "stone_01", {}],

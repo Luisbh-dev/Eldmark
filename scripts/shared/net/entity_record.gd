@@ -1,7 +1,7 @@
 class_name EntityRecord
 extends RefCounted
 ## Record of an entity in a SNAPSHOT: fixed size of [constant SIZE] bytes
-## (docs/red.md, section 5.5 and docs/combate.md, section 6). Used for players and NPCs.
+## (docs/networking.md, section 5.5 and docs/combate.md, section 6). Used for players and NPCs.
 ## [br][br]
 ## Format (little-endian):
 ## [codeblock]
@@ -17,7 +17,7 @@ extends RefCounted
 ## [/codeblock]
 ## The [member kind] does not travel in the record: it is given by the snapshot section.
 ## [br][br]
-## Bit 3 of [member flags] ([constant FLAG_SECOND_SLOT], docs/habilidades.md, section 5.2) says which weapon
+## Bit 3 of [member flags] ([constant FLAG_SECOND_SLOT], docs/abilities.md, section 5.2) says which weapon
 ## a remote carries: with the weapon pair from its SPAWN or its LOADOUT, the one in slot 2 if it is set.
 ## It does not enter the server history ([StateHistory]), where bit 3 is the block bit: the history
 ## takes [code]flags & 0b111[/code] and adds its defensive flags.

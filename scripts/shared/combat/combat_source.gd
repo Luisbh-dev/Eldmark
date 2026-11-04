@@ -1,6 +1,6 @@
 class_name CombatSource
 extends RefCounted
-## Source of a hit, a death or an effect (docs/habilidades.md, section 5.4): a u16 with the kind
+## Source of a hit, a death or an effect (docs/abilities.md, section 5.4): a u16 with the kind
 ## in bits 14-15 and the id in bits 0-13. It is what travels in the [code]attack_id[/code] field of
 ## HIT, DEATH, KILL and TELEGRAPH.
 ## [codeblock]

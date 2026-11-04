@@ -1,6 +1,6 @@
 class_name ApiResult
 extends RefCounted
-## The response of a call to the platform's public API (docs/plataforma.md §4.1 and §14.4), the one returned by
+## The response of a call to the platform's public API (docs/platform.md §4.1 and §14.4), the one returned by
 ## [method PlatformApi.call_api].
 ## [br][br]
 ## [member ok] is true on a 2xx. On an error, [member data] is the [code]error[/code] object of the whole body

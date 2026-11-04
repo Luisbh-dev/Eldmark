@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for consumables on the server (PRG-08; docs/habilidades.md, sections 2.3, 4.2 and 4.6; package H3c):
+## Tests for consumables on the server (PRG-08; docs/abilities.md, sections 2.3, 4.2 and 4.6; package H3c):
 ## the health potion heals in 6 pulses of 50 on finishing the drink, an interrupting hit spends neither the charge nor the
 ## shared cooldown, the camp refill restores the charges without touching the weapon (with slot 2
 ## active), the cooldowns or the channeling in progress (and not outside the camp or in combat), command
@@ -321,7 +321,7 @@ func test_the_loadout_of_another_player_goes_out_with_zero_charges() -> void:
 	assert_eq(seen_by_observer[0].charges, 0, "the other one, with 0")
 	for event: NetMessages.EntityEvent in [seen_by_owner[0], seen_by_observer[0]]:
 		assert_eq(event.weapon_1, CombatCatalog.weapon_id(&"bow"), "the weapons, the same")
-		# Without a platform, a bot is an ephemeral character with an inventory (progresion.md §9.4): template 0.
+		# Without a platform, a bot is an ephemeral character with an inventory (progression.md §9.4): template 0.
 		assert_eq(event.template_id, 0, "the inventory equipment")
 	# A refill (command 16; with an inventory, a forced CAMP_REFILL) does not change the weapons: only the owner.
 	server.console_command("refill %s" % owner_name)

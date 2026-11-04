@@ -113,7 +113,7 @@ func test_combat_fakes_fight_in_a_server_process_and_leave_their_combat_log() ->
 		results[columns[6]] = true
 		assert_true(columns[0].to_int() >= previous_tick, "the ticks do not go backwards")
 		previous_tick = columns[0].to_int()
-		# The outcomes of a downed player (docs/habilidades.md, 4.5 and 4.7) carry the name of their source: finishing blow or
+		# The outcomes of a downed player (docs/abilities.md, 4.5 and 4.7) carry the name of their source: finishing blow or
 		# bleeding out (the combat fakes finish with damage, but a downed player can bleed out first). Since H5 the
 		# fakes fight with the kit: an ability hit carries the ability's name (shield bash, charge).
 		var outcome: bool = columns[6] == "bled_out" or columns[6] == "executed"

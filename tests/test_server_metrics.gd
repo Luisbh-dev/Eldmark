@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [ServerMetrics] (docs/red.md, sections 8.1 and 13): per-section percentiles with a
+## Tests for [ServerMetrics] (docs/networking.md, sections 8.1 and 13): per-section percentiles with a
 ## fake clock, counters, summary and custom editor monitors.
 
 const TICK: StringName = ServerMetrics.SECTION_TICK

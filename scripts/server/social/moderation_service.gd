@@ -1,6 +1,6 @@
 class_name ModerationService
 extends RefCounted
-## Moderation on the zone server (docs/plataforma.md §9, P7b; SOC-14 to SOC-18).
+## Moderation on the zone server (docs/platform.md §9, P7b; SOC-14 to SOC-18).
 ## [br][br]
 ## [b]Chat commands.[/b] The CHAT_SEND GM channel carries the commands the server handles (what follows the slash,
 ## already sanitized): [code]gm …[/code], [code]ignorar[/code], [code]designorar[/code] and [code]reportar[/code]
@@ -349,7 +349,7 @@ func _cmd_visible(ctx: CommandRegistry.Context) -> String:
 
 
 # /gm invisible and /gm visible act on whoever types them; from the console, on the named player. Becoming visible
-# marks the character (gm_forced) with a platform: it does not collect until respawn (progresion.md §6.2).
+# marks the character (gm_forced) with a platform: it does not collect until respawn (progression.md §6.2).
 func _set_invisible(ctx: CommandRegistry.Context, invisible: bool) -> String:
 	var target: ServerPeer = null
 	if ctx.origin == CommandRegistry.Origin.CHAT:

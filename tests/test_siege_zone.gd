@@ -1,5 +1,5 @@
 extends TestCase
-## A real siege on Vado Gris (GUE-15; docs/fuerte.md, section 7): fake players with the siege
+## A real siege on Vado Gris (GUE-15; docs/fortress.md, section 7): fake players with the siege
 ## brain ([constant BotBrain.Pattern.SIEGE]) leave their camp, reach the door by both routes,
 ## break it, kill the captain (the test double from [method ZoneServer.spawn_captain_double] or the
 ## [code]fort_kill_captain[/code] command), capture the neutral fort and then those of another realm recapture it. It is the

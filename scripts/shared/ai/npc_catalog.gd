@@ -1,6 +1,6 @@
 class_name NpcCatalog
 extends RefCounted
-## NPC catalog (docs/fuerte.md, section 4.2): reads the [NpcDefinition] files from [code]data/npcs/[/code] only once
+## NPC catalog (docs/fortress.md, section 4.2): reads the [NpcDefinition] files from [code]data/npcs/[/code] only once
 ## (lazy loading) and gives them a number from 1 to n in alphabetical order of the file name (the id): the
 ## [code]npc_def_id[/code] that travels in the ENTITY_SPAWN of an NPC. The client resolves it with the same order
 ## ([code]BossInfo[/code] sorts the folder's names), so adding a new file changes the

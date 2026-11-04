@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for [CombatSource] (docs/habilidades.md, section 5.4): the u16 source of a hit, a death
+## Tests for [CombatSource] (docs/abilities.md, section 5.4): the u16 source of a hit, a death
 ## or an effect, with the class in bits 14-15 and the id in bits 0-13.
 
 const Kind = CombatSource.Kind

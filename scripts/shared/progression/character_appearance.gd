@@ -1,6 +1,6 @@
 class_name CharacterAppearance
 extends RefCounted
-## A character's appearance in 8 B (docs/progresion.md §7.2, ART-19): indices over
+## A character's appearance in 8 B (docs/progression.md §7.2, ART-19): indices over
 ## [AppearanceCatalog]. It travels in the PLAYER SPAWN, is stored in
 ## [code]character_progress.appearance[/code] and goes as base64 through the API.
 ## [br][br]

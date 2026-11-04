@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for package A of phase 2 (docs/red.md, sections 5, 6.1 and 16): network message formats
+## Tests for package A of phase 2 (docs/networking.md, sections 5, 6.1 and 16): network message formats
 ## ([NetMessages]), quantization ([NetMath], [EntityRecord]), constants and utilities
 ## ([NetProtocol], [NetZones]), the bot brain ([BotBrain]) and the changes to [PlayerState] and
 ## [PlayerCharacter] (rounding the yaw to f32, [code]equals_exact[/code] and
@@ -920,7 +920,7 @@ func test_reject_roundtrip_and_layout() -> void:
 	assert_eq(NetMessages.Reject.decode(empty.encode()).text, "", "empty text")
 
 
-## The protocol 7 REJECTs (docs/plataforma.md §5.4): BUSY 10, UNAVAILABLE 11 and BANNED 12, with their texts and,
+## The protocol 7 REJECTs (docs/platform.md §5.4): BUSY 10, UNAVAILABLE 11 and BANNED 12, with their texts and,
 ## for BANNED, the one composed by the platform (cut at a whole character to 255 B).
 func test_reject_10_to_12_of_protocol_7() -> void:
 	assert_eq([NetProtocol.Result.BUSY, NetProtocol.Result.UNAVAILABLE, NetProtocol.Result.BANNED], [10, 11, 12],
@@ -1361,7 +1361,7 @@ func test_snapshot_capacity_fits_in_one_packet() -> void:
 	# Capacity with own state, extra block and one section: floor((1200 - header - 2) / 21).
 	var capacity: int = floori((NetProtocol.MAX_PACKET_BYTES - HEADER_WITH_STATE - 2)
 			/ float(EntityRecord.SIZE))
-	# With the 111 B PlayerState of phase 4 (habilidades.md, 3.1): 13 + 111 + 9 + 1 = 134 B of
+	# With the 111 B PlayerState of phase 4 (abilities.md, 3.1): 13 + 111 + 9 + 1 = 134 B of
 	# header and floor((1200 - 136) / 21) = 50 records (52 with the 69 B of phase 3).
 	if PlayerState.ENCODED_SIZE == 111:
 		assert_eq(HEADER_WITH_STATE, 134, "134 B header")
@@ -1520,7 +1520,7 @@ func test_entity_spawn_roundtrip_and_layout() -> void:
 	assert_true(spawn.encode().is_empty(), "a type without a format is not encoded")
 
 
-## Bit 3 of the flags in the ENTITY_SPAWN header (protocol 7, docs/plataforma.md §5.4): game staff.
+## Bit 3 of the flags in the ENTITY_SPAWN header (protocol 7, docs/platform.md §5.4): game staff.
 ## It does not touch the "yours" bit or the teleport counter.
 func test_entity_spawn_staff_bit() -> void:
 	var spawn: NetMessages.EntitySpawn = _sample_spawn()

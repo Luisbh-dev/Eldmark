@@ -828,7 +828,7 @@ func test_dead_and_protected_targets_are_not_candidates() -> void:
 
 
 func test_an_invisible_gm_neither_hits_nor_is_hit() -> void:
-	# docs/plataforma.md §9.1 (P7b): the Combatant of an invisible GM neither deals nor takes damage.
+	# docs/platform.md §9.1 (P7b): the Combatant of an invisible GM neither deals nor takes damage.
 	var duel: Array[Combatant] = _duel(1.5)
 	CombatFixture.start_light_active(duel[0], S)
 	duel[1].entity.gm_invisible = true

@@ -105,7 +105,7 @@ func test_unknown_commands() -> void:
 
 
 func test_server_commands_go_as_typed_and_gm_is_not_listed() -> void:
-	# docs/plataforma.md §9 (P7b): the server handles them; /gm without the role answers "Comando desconocido" (unknown command) from there.
+	# docs/platform.md §9 (P7b): the server handles them; /gm without the role answers "Comando desconocido" (unknown command) from there.
 	var gm: ChatCommandParser.Command = ChatCommandParser.parse("/GM silenciar Ana 30 insultos")
 	assert_eq(gm.kind, Kind.SERVER, "/gm goes to the server")
 	assert_eq(gm.text, "gm silenciar Ana 30 insultos", "the line without the slash, with the name in lowercase")

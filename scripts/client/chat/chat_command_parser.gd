@@ -20,7 +20,7 @@ extends RefCounted
 ## [br]- [code]/ayuda [comando][/code]: the list of commands or the detail of one ([constant Kind.HELP]).
 ## [br]- [code]/invitar nombre[/code], [code]/salir[/code], [code]/expulsar nombre[/code],
 ## [code]/lider nombre[/code]: parties (SOC-06 and SOC-08).
-## [br]- Since phase 5 (docs/plataforma.md §9, P7b), those handled by the server ([constant Kind.SERVER]): [code]/ignorar nombre[/code], [code]/designorar nombre[/code] and [code]/reportar
+## [br]- Since phase 5 (docs/platform.md §9, P7b), those handled by the server ([constant Kind.SERVER]): [code]/ignorar nombre[/code], [code]/designorar nombre[/code] and [code]/reportar
 ## nombre categoría [comentario][/code], and [code]/gm …[/code], which does not appear in the help
 ## (only used by those with a role; to everyone else the server answers "Comando desconocido"
 ## (unknown command), without revealing that it exists). They are sent as is through the GM channel.

@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for the progression GM commands (docs/progresion.md §10 and §15, P5d; PRG-16): giving an item,
+## Tests for the progression GM commands (docs/progression.md §10 and §15, P5d; PRG-16): giving an item,
 ## splitting it, merging it and reverting it (the total drops by what was given and the GM_GRANT, the REVERSAL and their ledger entries are there); the
 ## second reversal, also the one that arrives before the first is saved; DEBUG_COMMAND with platform and its role (41 from a
 ## [code]player[/code], 40 and 16 from a [code]gm[/code]: warning and nothing; the 16 from an [code]admin[/code], a GM that the
@@ -22,7 +22,7 @@ const EQUIPMENT: int = InventoryState.ContainerId.EQUIPMENT
 const POTION: StringName = &"potion_health"
 const STAMINA: StringName = &"potion_stamina"
 const GOLD: int = Currency.Code.GOLD
-## The detail keys that S2 accepts (progresion.md §10; checks.go of P7).
+## The detail keys that S2 accepts (progression.md §10; checks.go of P7).
 const DETAIL_KEYS: Array[String] = ["command", "args", "source", "actor_character_id", "at_unix", "level_before",
 		"level_after", "xp_before", "xp_after", "xp_delta"]
 const PLATFORM_DOWN: String = "El servicio de cuentas no responde; inténtalo más tarde."
@@ -341,7 +341,7 @@ func _instance_row(character_id: int, uid: String) -> Dictionary:
 	return {}
 
 
-## The S2, S4 and S5 shape checks that can be done without a database (progresion.md §13.3) on each saved body
+## The S2, S4 and S5 shape checks that can be done without a database (progression.md §13.3) on each saved body
 ## of [param character_id], in order: each operation with the reasons for its type and, GM and REVERSAL, with
 ## [code]note[/code] and a [code]detail[/code] that S2 reads (its keys, [code]source[/code], [code]args[/code] as
 ## strings and [code]at_unix[/code]); by definition, what was saved plus the events is the snapshot; an event with a uid that adds

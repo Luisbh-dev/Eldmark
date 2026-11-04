@@ -265,7 +265,7 @@ func (r CreateRequest) parse() (name string, realm config.Realm, raceID string, 
 // account's creations (and deletions) run in series: realm, slots and daily limit do not cross, and
 // the name is decided by character_names' primary key. It is not serializable, as §4.4 said: with
 // SSI, different accounts creating at the same time clashed for no reason (predicate locks on small
-// tables) and exhausted the retries (plataforma.md §19.3). Steps:
+// tables) and exhausted the retries (platform.md §19.3). Steps:
 //  1. active account with no pending deletion (403 account_pending_deletion), open realm (409
 //     realm_closed) and fewer than 5 creations in 24 h (429);
 //  2. the account's realm in the world: it is set if it has none, or if its own was freed and it has

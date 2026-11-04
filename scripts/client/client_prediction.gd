@@ -1,6 +1,6 @@
 class_name ClientPrediction
 extends RefCounted
-## Local player prediction and reconciliation with the server (docs/red.md, section 6).
+## Local player prediction and reconciliation with the server (docs/networking.md, section 6).
 ##
 ## The client simulates its own character ahead of the server with the same quantized inputs
 ## that travel over the network; for each tick it stores the input and the resulting state in two
@@ -16,13 +16,13 @@ extends RefCounted
 ## [b]Hook before simulating.[/b] [member before_simulate] is called with the tick about to be simulated
 ## right before each [method PlayerCharacter.simulate]: on spawn, on every step, and also on
 ## every tick of the replays. It is where [FortressView] puts the fort gate's layer that it had at
-## that tick (docs/fuerte.md, section 3.2), so that client and server simulate each tick with the same
+## that tick (docs/fortress.md, section 3.2), so that client and server simulate each tick with the same
 ## world even if reconciliation replays past ticks.
 ## [br][br]
 ## [b]Steps taken.[/b] [signal stepped] fires after [b]each[/b] [method step] (a physics tick can take 0,
 ## 1, 2 or more steps), never during reconciliation replays or the neutral advance of
 ## [method start]. It is where [ProjectileWorld] checks the commitment of a shot and creates the predicted
-## arrow (docs/habilidades.md, section 6.2): checking once per physics tick would miss the steps in between.
+## arrow (docs/abilities.md, section 6.2): checking once per physics tick would miss the steps in between.
 ## [br][br]
 ## Everything that simulates must be called inside the physics tick and with
 ## [code]delta = 1 / Engine.physics_ticks_per_second[/code] ([method PlayerCharacter.simulate]).
@@ -298,7 +298,7 @@ func _begin_substitution(from_tick: int) -> void:
 
 
 # The input stored for the tick if its label matches and, if not, the substitute the server would
-# apply (docs/red.md, 8.2): it repeats the last applied one with all its buttons and the
+# apply (docs/networking.md, 8.2): it repeats the last applied one with all its buttons and the
 # PlayerInput.SUBSTITUTED mark, and sets movement to 0 if more than REPEAT_MOVE_TICKS ticks have
 # passed since the last real one. Only needed after a hard_reset (gaps in the ring); in a normal
 # reconciliation they are all there.

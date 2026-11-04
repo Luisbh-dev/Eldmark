@@ -1,12 +1,12 @@
 extends TestCase
-## The phase-4 kit (H5; docs/habilidades.md, section 7.1) in F6b's siege pattern ([constant
-## BotBrain.Pattern.SIEGE]; docs/fuerte.md, sections 7 and 8.3), without network or physics: a point that moves where
+## The phase-4 kit (H5; docs/abilities.md, section 7.1) in F6b's siege pattern ([constant
+## BotBrain.Pattern.SIEGE]; docs/fortress.md, sections 7 and 8.3), without network or physics: a point that moves where
 ## the inputs say, with an action machine that advances with them ([KitWalker]), the real Vado Gris fort and its
 ## routes. It checks what the integration of the two branches demands: the siege bot fights with the kit in step 1 of
 ## its plan, also against the defending NPC (who is still targeted before a closer player, and whom the bow aims at with its
 ## velocity); with the bow in hand it does not stop firing because of the chase rule (the sword does follow it); on
 ## the walkway the archer takes no steps sideways; it does not revive anyone (it follows its plan), and it is deterministic.
-## [br]And what the integration review adds (docs/fuerte.md 8.3): on the walkway it faces the enemy (the sword
+## [br]And what the integration review adds (docs/fortress.md 8.3): on the walkway it faces the enemy (the sword
 ## reaches it even if it is sideways) and moves along the axis; the bow only fires within range (not through a closed gate, nor its
 ## own, nor through the palisade; with the gate broken, through the doorway; and whatever the line of fire says), up to
 ## [constant BotBrain.SIEGE_BOW_FIGHT_RANGE], it draws the bow when holding the sword, it fires at another level (the level
@@ -254,7 +254,7 @@ func test_an_archer_on_the_walkway_never_steps_sideways() -> void:
 func test_fighting_on_the_walkway_it_faces_the_foe_moves_along_the_axis_and_never_dashes() -> void:
 	# With the enemy almost alongside (0.37 m toward the courtyard and 0.1 along), a "backward" dodge away from it threw it off
 	# the walkway. The integration made it look along the axis, and then the one alongside was untouchable for it (integration
-	# review, docs/fuerte.md 8.3): it faces the enemy, but what it moves (approaching, the dodge) goes along the axis, and it does not use
+	# review, docs/fortress.md 8.3): it faces the enemy, but what it moves (approaching, the dodge) goes along the axis, and it does not use
 	# the charge (advances 6 m and pushes), with the kit and without it.
 	_view.owner = V
 	_view.gate_health = 9000
@@ -382,7 +382,7 @@ func test_on_the_walkway_its_sword_reaches_a_foe_right_beside_it() -> void:
 
 
 func test_the_archer_never_shoots_through_a_closed_gate_not_even_its_own() -> void:
-	# Integration review (docs/fuerte.md 8.3): the owner saw those outside as "reachable" (its gate does not block
+	# Integration review (docs/fortress.md 8.3): the owner saw those outside as "reachable" (its gate does not block
 	# its way), but its body blocked the view for arrows in both directions: 70 of 70 arrows into its own gate. With the
 	# gate intact nobody shoots from inside out or from outside in; broken, only through the doorway.
 	_view.owner = V

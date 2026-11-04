@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests of appearance ([CharacterAppearance], [AppearanceCatalog], [RaceDefinition];
-## docs/progresion.md §7, ART-19, PRG-14): round trip of the 8 B, the cases shared with Go
+## docs/progression.md §7, ART-19, PRG-14): round trip of the 8 B, the cases shared with Go
 ## ([code]tests/fixtures/progression/appearance_cases.json[/code], which [code]platform/internal/progress[/code]
 ## also reads), each rule of [method CharacterAppearance.validate], 100
 ## random valid appearances per race, the frozen order of [code]appearance_ids.txt[/code], the

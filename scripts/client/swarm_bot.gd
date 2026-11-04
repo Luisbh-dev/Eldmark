@@ -1,6 +1,6 @@
 class_name SwarmBot
 extends Node
-## Lightweight bot of the load swarm (docs/red.md, sections 14, 15 and 17.5; TEC-11).
+## Lightweight bot of the load swarm (docs/networking.md, sections 14, 15 and 17.5; TEC-11).
 ## [br][br]
 ## It neither simulates nor loads the zone: it has no [PlayerCharacter] of its own, nor
 ## [ClientPrediction], nor [RemoteWorld]. It is the bare minimum for the server to treat it like a real
@@ -84,7 +84,7 @@ const RESPAWN_RETRY_TICKS: int = 30
 ## ordered relative to each other: if the confirmation is lost (with 64 bots on one machine, the server's
 ## UDP buffer fills up during its 70 ms stalls) and CLIENT_READY arrives first, the server drops it as a
 ## "paquete ajeno al protocolo" (packet foreign to the protocol) and the bot stays stuck loading until it
-## is kicked out (2 of every 3 runs of 64 bots, docs/plataforma.md §19.18). After 1 s, ENet has already
+## is kicked out (2 of every 3 runs of 64 bots, docs/platform.md §19.18). After 1 s, ENet has already
 ## resent the confirmation.
 const READY_DELAY_TICKS: int = 60
 const TEXT_CONNECT_FAILED: String = "No se pudo conectar con el servidor %s:%d"
@@ -198,7 +198,7 @@ func _init() -> void:
 ## already be in the tree. Name: [code]NameRules.bot_name(bot_seed + index)[/code]; realm: the
 ## configuration's or one of [constant DEFAULT_REALMS] according to the index; brain: [BotBrain] with the
 ## seed [code]bot_seed + index[/code]. With [param dtls] (the pinned zone certificate, the same for the
-## whole swarm) it connects over DTLS with the name [member ClientConfig.dtls_name] (docs/plataforma.md
+## whole swarm) it connects over DTLS with the name [member ClientConfig.dtls_name] (docs/platform.md
 ## §10.2).
 func setup(index: int, config: ClientConfig, dtls: TLSOptions = null) -> void:
 	if _state != State.IDLE:
@@ -326,7 +326,7 @@ func get_last_notice_text() -> String:
 ## [code]despawns_seen[/code]), [code]delay_ticks[/code], [code]jitter_ticks[/code], [code]malformed_packets[/code].
 ## [br]- From chat and parties (protocol 5), which the bot decodes and discards: [code]chat_messages_seen[/code]
 ## (CHAT_MESSAGE) and [code]party_messages_seen[/code] (PARTY_INVITATION, PARTY_ROSTER and PARTY_STATUS).
-## [br]- From inventory and progression (protocol 7, docs/progresion.md §4.6), which it also decodes and discards:
+## [br]- From inventory and progression (protocol 7, docs/progression.md §4.6), which it also decodes and discards:
 ## [code]progress_messages_seen[/code] (INVENTORY_DELTA, INVENTORY_FULL, WALLET_UPDATE and PROGRESS_UPDATE).
 ## [br]- From combat: [code]combat[/code] (whether it fights), [code]events_seen[/code] and [code]event_bytes[/code]
 ## (ENTITY_EVENT messages received and their size), [code]hit_events_seen[/code], [code]enemies_known[/code] (and its maximum, [code]enemies_known_max[/code]),
@@ -653,7 +653,7 @@ func _on_packet_received(peer_id: int, bytes: PackedByteArray) -> void:
 				_malformed_packets += 1
 			else:
 				_party_messages_seen += 1
-		# Inventory and progression (protocol 7, docs/progresion.md §4.6): owner only. The bot has no inventory
+		# Inventory and progression (protocol 7, docs/progression.md §4.6): owner only. The bot has no inventory
 		# window: it decodes and discards them, and only what fails to decode counts as malformed.
 		NetProtocol.MSG_INVENTORY_DELTA, NetProtocol.MSG_INVENTORY_FULL, NetProtocol.MSG_WALLET_UPDATE, \
 				NetProtocol.MSG_PROGRESS_UPDATE:

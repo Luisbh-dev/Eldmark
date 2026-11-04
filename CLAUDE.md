@@ -1,40 +1,42 @@
 # Eldmark
 
-MMORPG 3D de fantasía medieval en Godot 4.7 (GDScript). Combate de acción en tercera persona estilo New World: cámara por encima del hombro, punto de mira, bloqueo y esquiva.
+A 3D medieval fantasy MMORPG in Godot 4.7 (GDScript). Third-person action combat in the style of New World: over-the-shoulder camera, crosshair, block and dodge.
 
-Tres reinos, cada uno con sus zonas, ciudades y una muralla que lo rodea, más una zona de guerra central con fuertes y castillos capturables. Diseño y hoja de ruta en `docs/vision.md`: léelo antes de tomar decisiones de diseño.
+Three realms, each with its own zones, cities and a wall surrounding it, plus a central war zone with capturable forts and castles. Design and roadmap in `docs/vision.md`: read it before making design decisions.
 
-## Arquitectura
+Eldmark is an open source project: the code is MIT-licensed, the assets made by the project are CC BY 4.0, and third-party assets keep their own license as recorded in `assets/LICENSES.md`.
 
-- Un solo proyecto de Godot para cliente y servidor. El servidor dedicado corre en modo headless.
-- Mundo dividido en zonas independientes (cada zona, su mapa y su proceso de servidor), no un mundo continuo.
-- Servidor autoritativo: el cliente envía intenciones (input, habilidades) y el servidor decide el resultado.
-- Combate de acción en red: predicción en el cliente para el jugador local, interpolación para los demás y compensación de latencia (rebobinado de hitboxes) en el servidor para comprobar golpes.
-- `scripts/shared/` no puede depender de nada de `scripts/client/` (cámara, UI, input) para que el servidor lo cargue sin problemas.
-- `scripts/shared/` tampoco depende de `scripts/server/`, y `scripts/server/` y `scripts/client/` no dependen el uno del otro (lo comprueba `tests/test_architecture.gd`).
+## Architecture
 
-## Convenciones
+- A single Godot project for client and server. The dedicated server runs in headless mode.
+- World split into independent zones (each zone has its own map and server process), not a continuous world.
+- Authoritative server: the client sends intents (input, abilities) and the server decides the outcome.
+- Networked action combat: client-side prediction for the local player, interpolation for everyone else and lag compensation (hitbox rewind) on the server to validate hits.
+- `scripts/shared/` must not depend on anything in `scripts/client/` (camera, UI, input) so that the server can load it without problems.
+- `scripts/shared/` also does not depend on `scripts/server/`, and `scripts/server/` and `scripts/client/` do not depend on each other (checked by `tests/test_architecture.gd`).
 
-- Sigue la guía de estilo oficial de GDScript: archivos y variables en `snake_case`, `class_name` en `PascalCase`, tabs.
-- Tipado estático siempre (`var speed: float = 5.0`, `func move(dir: Vector3) -> void`).
-- Identificadores en inglés; comentarios, documentación y textos de la interfaz en español.
-- Escenas y recursos en formato texto (`.tscn`, `.tres`). Nada de `.scn`/`.res` binarios. Única excepción: los `.res` de regiones de Terrain3D, que van por Git LFS.
-- Los binarios grandes (modelos, texturas, audio, DLL de GDExtension) van por Git LFS; ver `.gitattributes`.
+## Conventions
+
+- Follow the official GDScript style guide: files and variables in `snake_case`, `class_name` in `PascalCase`, tabs.
+- Always use static typing (`var speed: float = 5.0`, `func move(dir: Vector3) -> void`).
+- Identifiers, comments, doc comments and documentation in English. UI text and runtime log messages stay in Spanish until localization lands (see the backlog). Files changed by the pending quality-waves branch (wip/o2-integracion) still have Spanish comments and docs; translate them with tools/i18n after merging.
+- Scenes and resources in text format (`.tscn`, `.tres`). No binary `.scn`/`.res`. The only exception: the Terrain3D region `.res` files, which go through Git LFS.
+- Large binaries (models, textures, audio, GDExtension DLLs) go through Git LFS; see `.gitattributes`.
 
 ## Assets
 
-- Dirección artística: familia Quaternius "Universal + MegaKit" (estilizado con texturas, proporciones heroicas), un único kit recoloreado por reino. Detalle en `docs/arte.md`.
-- Los zips originales se guardan fuera del repo, en `../Eldmark-raw/<pack>/`. Al repo solo pasan los glTF y texturas que se usan.
-- Cada pack que entra en el repo se anota en `assets/LICENCIAS.md` (autor, versión, fecha, URL, licencia).
-- Animaciones: variantes sin root motion. El movimiento lo decide la simulación compartida, no la animación. El servidor no reproduce animaciones.
+- Art direction: the Quaternius "Universal + MegaKit" family (stylized with textures, heroic proportions), a single kit recolored per realm. Details in `docs/art.md`.
+- The original zips are kept outside the repo, in `../Eldmark-raw/<pack>/`. Only the glTF files and textures that are used go into the repo.
+- Every pack that enters the repo is recorded in `assets/LICENSES.md` (author, version, date, URL, license).
+- Animations: variants without root motion. Movement is decided by the shared simulation, not by the animation. The server does not play animations.
 
-## Ejecutar Godot desde la terminal
+## Running Godot from the terminal
 
-El alias `godot` de winget puede no estar en el PATH. El ejecutable de consola está en:
+The winget `godot` alias may not be on the PATH. The console executable is at:
 
 ```
 %LOCALAPPDATA%\Microsoft\WinGet\Packages\GodotEngine.GodotEngine_Microsoft.Winget.Source_8wekyb3d8bbwe\Godot_v4.7.2-stable_win64_console.exe
 ```
 
-- Importar recursos y validar el proyecto: `godot --headless --path . --import`
-- Ejecutar la escena principal sin ventana: `godot --headless --path . --quit-after 120`
+- Import resources and validate the project: `godot --headless --path . --import`
+- Run the main scene without a window: `godot --headless --path . --quit-after 120`

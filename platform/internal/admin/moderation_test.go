@@ -313,7 +313,7 @@ func TestCreateAccountAndBootstrap(t *testing.T) {
 	if acc.Body["email_verified"] != true || acc.Body["role"] != "gm" || pending["terms_required"] != false {
 		t.Fatalf("cuenta creada: %s", acc.Raw)
 	}
-	// An email reserved by another account's live revert_email (plataforma.md §4.3) is not valid
+	// An email reserved by another account's live revert_email (platform.md §4.3) is not valid
 	// either.
 	p.Exec(`insert into account_tokens (token_hash, account_id, purpose, email, expires_at, created_at)
 		values ('\x01', $1, 'revert_email', 'reservado@example.org', $2, $3)`, gmID, p.Clock.Now().Add(time.Hour), p.Clock.Now())

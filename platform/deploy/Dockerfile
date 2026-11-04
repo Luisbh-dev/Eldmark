@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Platform images (docs/plataforma.md §12). The context is platform/:
+# Platform images (docs/platform.md §12). The context is platform/:
 #   docker build -f deploy/Dockerfile --target platform -t eldmark-platform platform
 #   docker build -f deploy/Dockerfile --target ops -t eldmark-ops platform
 # docker-compose.yml builds them the same way. The legal texts go inside the binary (embed).

@@ -14,7 +14,7 @@ extends RefCounted
 ## always [constant AbilityTicks.REARM_TICKS] ticks of NONE, more than the snapshot interval: the
 ## catalog validation requires it of cooldowns, and an interruption before the commit or a
 ## channel that ends without committing (released at the end of its cast) leave that margin
-## (docs/habilidades.md, section 5.5; with a single tick, a remote that did not sample it kept following the clip
+## (docs/abilities.md, section 5.5; with a single tick, a remote that did not sample it kept following the clip
 ## of the first). DOWNED, REVIVE and EXECUTE carry 0.
 ## [br][br]
 ## The counter belongs to whoever publishes ([ActionWire] is one instance per entity): it goes up by 1 (modulo 4)

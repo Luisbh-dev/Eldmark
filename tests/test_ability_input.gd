@@ -1,5 +1,5 @@
 extends TestCase
-## The new phase-4 keys (docs/habilidades.md, sections 0 and 3.2, H4): Q swaps weapon, R and T
+## The new phase-4 keys (docs/abilities.md, sections 0 and 3.2, H4): Q swaps weapon, R and T
 ## drink the potions (the player menu moves from T to G) and the [constant PlayerInput.AIM_LEFT] bit comes from the
 ## camera's effective shoulder (also after the automatic switch because of a wall), as a level.
 

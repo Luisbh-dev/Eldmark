@@ -67,7 +67,7 @@ Moderación:
 
 Un personaje se nombra por su nombre en el mundo (--world, 1 por defecto) o por «#<id>».
 Las fechas, en UTC: 2026-11-01, 2026-11-01T18:00 o RFC 3339. Las duraciones: 30m, 24h, 7d.
-La configuración es la de serve (variables ELDMARK_*, docs/plataforma.md §2.3).
+La configuración es la de serve (variables ELDMARK_*, docs/platform.md §2.3).
 `
 
 // errAdminUsage is a usage error of the admin command (code 2).
@@ -115,7 +115,7 @@ func adminCmd(ctx context.Context, args []string, lookup config.Lookup, stdout, 
 		return exitUsage
 	}
 	if order.need != "" && strings.TrimSpace(*actorEmail) == "" {
-		fmt.Fprintf(stderr, "No se ejecuta: «%s» necesita --actor <correo> de una cuenta %s (docs/plataforma.md §9.1)\n",
+		fmt.Fprintf(stderr, "No se ejecuta: «%s» necesita --actor <correo> de una cuenta %s (docs/platform.md §9.1)\n",
 			order.name, order.need)
 		return exitUsage
 	}
@@ -161,7 +161,7 @@ func adminFail(stderr io.Writer, name string, err error) int {
 }
 
 // adminServices wires up what the admin commands use, from the serve configuration: accounts (with
-// the character purge over the progression store of progresion.md P7) and the admin service.
+// the character purge over the progression store of progression.md P7) and the admin service.
 func adminServices(ctx context.Context, cfg *config.Config, pool *pgxpool.Pool, log *slog.Logger,
 	lookup config.Lookup) (*adminEnv, error) {
 	runner, err := migrate.New(pool, migrate.FS())

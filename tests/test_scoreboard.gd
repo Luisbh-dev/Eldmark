@@ -1,5 +1,5 @@
 extends TestCase
-## Tests for the scoreboard (Tab) and the kill feed (UI-41, docs/fuerte.md section 6): the table
+## Tests for the scoreboard (Tab) and the kill feed (UI-41, docs/fortress.md section 6): the table
 ## ([ScoreboardPanel]: order, names and realms from the directory, totals per realm, formats, pages, opening and
 ## closing with the key) and the feed lines ([KillFeed]: text, colors, local player's role,
 ## NPC, environment, fade and cap). Without a server: a fake client emits the events and the scoreboard pages

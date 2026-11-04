@@ -1,6 +1,6 @@
 class_name AppearanceColor
 extends Resource
-## A color of the appearance (docs/progresion.md §7.2, ART-19): a skin tone, a hair color (hair,
+## A color of the appearance (docs/progression.md §7.2, ART-19): a skin tone, a hair color (hair,
 ## beard and eyebrows) or an eye color from [AppearanceCatalog]. Like parts, its position in the
 ## list is the index that gets stored, so lists only grow.
 

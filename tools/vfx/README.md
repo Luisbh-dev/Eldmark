@@ -1,13 +1,13 @@
-# Efectos de golpe (ART-09): cómo se hacen y cómo se comprueban
+# Hit effects (ART-09): how they are made and how they are checked
 
-Todo es contenido propio, generado con código y versionado: texturas con numpy y PIL
-(`make_vfx_textures.py`, semillas fijas), escenas y materiales con Godot (`build_vfx_scenes.gd`) y
-sombreadores escritos a mano (`scenes/vfx/shaders/`). Lo único que se sube a Git son los resultados de
-texto y los PNG (por LFS); lo demás se regenera.
+Everything is original content, generated with code and versioned: textures with numpy and PIL
+(`make_vfx_textures.py`, fixed seeds), scenes and materials with Godot (`build_vfx_scenes.gd`) and
+hand-written shaders (`scenes/vfx/shaders/`). Only the text results and the PNGs (through LFS) are committed to Git;
+everything else is regenerated.
 
-## Regenerar
+## Regenerating
 
-Desde la raíz del proyecto, con el editor cerrado:
+From the project root, with the editor closed:
 
 ```
 python tools/vfx/make_vfx_textures.py
@@ -17,30 +17,30 @@ godot --headless --path . --import
 godot --headless --path . -s res://tests/run_tests.gd -- --filter=test_vfx
 ```
 
-Los números de cada efecto (tamaños, tiempos, velocidades, colores) están en `build_vfx_scenes.gd`; no se
-retoca nada a mano en los `.tscn`. El script de texturas no reescribe los `.import` que ya existen (Godot les
-pone un uid propio y se lo cambiaría a todo lo que los referencia).
+The numbers of each effect (sizes, times, speeds, colors) are in `build_vfx_scenes.gd`; nothing is
+tweaked by hand in the `.tscn` files. The texture script does not rewrite the `.import` files that already exist (Godot
+gives them their own uid and changing it would break everything that references them).
 
-## Qué es cada cosa
+## What each thing is
 
-| Efecto | Escena | Qué lo distingue |
+| Effect | Scene | What sets it apart |
 |---|---|---|
-| Chispa de metal | `hit_metal_spark` | Punto incandescente de 0,06 s, destello, chispas con cola en un cono que se inclina con el tajo (`direction_bias`) y frenan en 1,5 m, esquirlas que nacen al rojo. |
-| Carne | `hit_flesh` | Dos chorros de una secuencia de cinco fotogramas (4 variantes por 2 reflejos), de 0,4 m y 0,2 s, orientados con la dirección del golpe; rojo oscuro con brillo. |
-| Tela | `hit_cloth` | Bocanada clara con luz e hilachas que caen. |
-| Bloqueo | `hit_block_wood` | Golpe sordo: destello apagado adelantado hacia la cámara, medio anillo aplanado sobre la cara del escudo, tablillas planas de dos tonos (máx. 1,5 m) y polvo pardo. |
-| Parada | `parry_flash` | Estrella con rayos, destello de lente horizontal y una onda de choque fina sobre el plano del impacto. 0,25 s en total; no cubre la cara del rival. |
-| Polvo | `dust_kick` | Aterrizaje: bocanadas bajas en anillo (y un anillo de 1,2 m solo en caídas fuertes). Esquiva: media luna pegada al suelo y rociada hacia atrás. Con luz y sombra; color del suelo (`VfxGround`), no del reino. |
-| Estela | `weapon_trail` | Cinta que sigue el arco de la hoja alrededor de la mano, con tres muestras como mínimo, cola que se estrecha y se apaga, tomada al actualizarse el esqueleto. Colores por reino. |
-| Aura de carga | `charge_aura` | En el arma, no en el cuerpo: brillo a lo largo de la hoja que crece con la carga, motas y brasas absorbidas, calor y la runa del suelo; destello y onda plana al llegar al máximo y al soltar. |
+| Metal spark | `hit_metal_spark` | Incandescent point of 0.06 s, flash, tailed sparks in a cone that tilts with the slash (`direction_bias`) and slow down within 1.5 m, splinters that are born red-hot. |
+| Flesh | `hit_flesh` | Two spurts from a five-frame sequence (4 variants by 2 reflections), 0.4 m and 0.2 s, oriented along the hit direction; dark red with a sheen. |
+| Cloth | `hit_cloth` | Pale puff with light and falling threads. |
+| Block | `hit_block_wood` | Dull thud: a muted flash pushed toward the camera, a flattened half ring on the shield face, flat two-tone splinters (max. 1.5 m) and brown dust. |
+| Parry | `parry_flash` | Star with rays, horizontal lens flare and a thin shockwave on the plane of impact. 0.25 s in total; it does not cover the opponent's face. |
+| Dust | `dust_kick` | Landing: low puffs in a ring (and a 1.2 m ring only on hard falls). Dodge: a crescent hugging the ground and sprayed backward. With light and shadow; ground color (`VfxGround`), not realm color. |
+| Trail | `weapon_trail` | Ribbon that follows the blade's arc around the hand, with at least three samples, a tail that narrows and fades, taken when the skeleton updates. Colors per realm. |
+| Charge aura | `charge_aura` | On the weapon, not the body: glow along the blade that grows with the charge, motes and absorbed embers, heat and the ground rune; flash and flat wave on reaching the maximum and on release. |
 
-La arquitectura de reutilización (`VfxEffect`, `VfxPool`, metadatos `vfx_time`, `vfx_cue`, `vfx_tint`,
-`vfx_variants`) está explicada en la cabecera de `scripts/client/vfx/vfx_effect.gd`. Nada de esto está
-conectado al combate todavía.
+The reuse architecture (`VfxEffect`, `VfxPool`, the metadata `vfx_time`, `vfx_cue`, `vfx_tint`,
+`vfx_variants`) is explained in the header of `scripts/client/vfx/vfx_effect.gd`. None of this is
+hooked into combat yet.
 
-## Comprobar (el listón de `docs/calidad.md`)
+## Checking (the bar from `docs/calidad.md`)
 
-`render_strips.ps1` abre `scenes/tests/vfx_preview.tscn` en ventana, de forma determinista (`--fixed-fps 60`):
+`render_strips.ps1` opens `scenes/tests/vfx_preview.tscn` in a window, deterministically (`--fixed-fps 60`):
 
 ```
 powershell -File tools/vfx/render_strips.ps1 -Out build/vfx/strips -Realms -Shade -Bench
@@ -48,15 +48,15 @@ powershell -File tools/vfx/render_strips.ps1 -Out build/vfx/strips_cerca -Camera
 powershell -File tools/vfx/render_strips.ps1 -Out build/vfx/strips -Strips flesh -Reel 60
 ```
 
-- **Cámara del juego** (por defecto): la `CameraRig` real (campo de visión de 72 grados, por encima del hombro),
-  sobre el campamento de Vardheim del Vado Gris con su sol, sombras y niebla. Es lo que ve el jugador.
-- **Primeros planos** (`-Camera demo`): campo de visión de 40 grados sobre un suelo liso, para revisar el detalle.
-- **Sombra** (`-Shade`): el mismo polvo bajo un techo que solo proyecta sombra; `sombra_vs_sol.png` los compara.
-- **Refriega** (`-Bench`): diez efectos a la vez más la estela y el aura, frente a la misma escena sin efectos;
-  escribe `bench.json` con llamadas de dibujo, objetos, primitivas y tiempos de GPU y CPU.
-- **Vídeo** (`-Reel 60`): un minuto con `--write-movie`, con los cuatro reinos, un tramo a la sombra y una refriega.
-  Sin sonido (el juego aún no tiene audio).
+- **Game camera** (default): the real `CameraRig` (72-degree field of view, over the shoulder),
+  over the Vardheim camp at Vado Gris with its sun, shadows and fog. It is what the player sees.
+- **Close-ups** (`-Camera demo`): 40-degree field of view over a flat ground, to check the detail.
+- **Shade** (`-Shade`): the same dust under a roof that only casts a shadow; `sombra_vs_sol.png` compares them.
+- **Melee** (`-Bench`): ten effects at once plus the trail and the aura, against the same scene without effects;
+  it writes `bench.json` with draw calls, objects, primitives and GPU and CPU times.
+- **Video** (`-Reel 60`): one minute with `--write-movie`, with the four realms, a stretch in shade and a melee.
+  Without sound (the game has no audio yet).
 
-Las pruebas (`tests/test_vfx.gd`) fijan los números de diseño: sin anillos de cara a la cámara ni relleno, tiempos
-y tamaños de la parada y el bloqueo, alcance máximo de chispas, astillas y gotas, mínimo de tres muestras de la
-estela, polvo del suelo y no del reino.
+The tests (`tests/test_vfx.gd`) pin the design numbers: no camera-facing rings or filler, times
+and sizes of the parry and the block, maximum reach of sparks, splinters and drops, a minimum of three trail
+samples, ground dust and not realm dust.

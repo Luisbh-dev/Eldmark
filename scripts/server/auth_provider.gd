@@ -1,6 +1,6 @@
 class_name AuthProvider
 extends RefCounted
-## Identity and realm of a connecting client (docs/red.md, sections 3 and 12; docs/plataforma.md §5.2 and §14.3).
+## Identity and realm of a connecting client (docs/networking.md, sections 3 and 12; docs/platform.md §5.2 and §14.3).
 ## [br][br]
 ## [ServerAuth] has already checked the version, the simulation fingerprint, the capacity and the per-IP cap (and, without
 ## tickets, the realm and the name); the provider decides whether to accept the identity the HELLO declares. This class is
@@ -39,6 +39,6 @@ func cancel(_peer_id: int) -> void:
 
 
 ## true if the identity comes from the ticket: [ServerAuth] does not look at the HELLO's realm or name (the claim's
-## take precedence) and there is no REJECT NAME (docs/plataforma.md §5.4).
+## take precedence) and there is no REJECT NAME (docs/platform.md §5.4).
 func uses_tickets() -> bool:
 	return false

@@ -1,7 +1,7 @@
 extends TestCase
 ## Tests for the network entity registry ([NetEntityRegistry]): ids from 1 to 65535, 600-tick
-## quarantine and ordering by net_id (docs/red.md, section 9.1); and the transient ids of projectiles
-## (docs/habilidades.md, section 4.4), from the same space and with the same quarantine.
+## quarantine and ordering by net_id (docs/networking.md, section 9.1); and the transient ids of projectiles
+## (docs/abilities.md, section 4.4), from the same space and with the same quarantine.
 
 const PLAYER: int = NetProtocol.EntityKind.PLAYER
 

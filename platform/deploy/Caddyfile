@@ -1,4 +1,4 @@
-# HTTPS for the platform's public API (docs/plataforma.md §10.1): Caddy with Let's Encrypt, from 80
+# HTTPS for the platform's public API (docs/platform.md §10.1): Caddy with Let's Encrypt, from 80
 # to 443, in front of platform:24680 (the internal API, :24681, does not go through here). The
 # variables come from the compose file (staging.env / production.env).
 #

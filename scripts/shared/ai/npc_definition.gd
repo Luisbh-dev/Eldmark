@@ -1,6 +1,6 @@
 class_name NpcDefinition
 extends Resource
-## Definition of an NPC type (docs/fuerte.md, section 4.2; MUN-07): the data the server needs to
+## Definition of an NPC type (docs/fortress.md, section 4.2; MUN-07): the data the server needs to
 ## create it and for its brain ([code]HfsmBrain[/code]) to know how to behave. It lives in
 ## [code]data/npcs/<id>.tres[/code] (the [member id] is the file name without extension) and is listed by the
 ## [NpcCatalog], which gives each one a number 1..n in alphabetical order: it is the [code]npc_def_id[/code] of the
@@ -83,7 +83,7 @@ extends Resource
 
 @export_group("Recompensas")
 ## XP each contributor receives when it dies: whoever did at least 10 % of the damage of the last 900 ticks
-## (docs/progresion.md §6.2, PRG-13). 0 = none. It is paid by the server ([code]ProgressService.on_npc_killed[/code]).
+## (docs/progression.md §6.2, PRG-13). 0 = none. It is paid by the server ([code]ProgressService.on_npc_killed[/code]).
 @export_range(0, 100000) var xp_reward: int = 0
-## Gold each contributor receives when it dies (reason NPC_KILL, docs/progresion.md §5.3). 0 = none.
+## Gold each contributor receives when it dies (reason NPC_KILL, docs/progression.md §5.3). 0 = none.
 @export_range(0, 100000) var gold_reward: int = 0

@@ -1,6 +1,6 @@
 extends TestCase
 ## Tests of [AccountFlow] with [member PlatformApi.request_hook] ([FakePublicPlatform]) and of the bot with an account
-## (docs/plataforma.md §5.5, §13.3 and §15 P8): logging in, creating the character if missing (and finding it by the key
+## (docs/platform.md §5.5, §13.3 and §15 P8): logging in, creating the character if missing (and finding it by the key
 ## of its name), [code]enter[/code] → [ClientConfig] with a ticket, the retries of [code]character_busy[/code], and
 ## [OnlineMain] in BOT mode with [code]--platform[/code]: without [code]--login[/code] or with bad credentials it exits with
 ## code 1 and the [code]code[/code] in the report; with everything right it enters a real zone ([ZoneServer] with
@@ -142,7 +142,7 @@ func test_ensure_character_creates_the_missing_one_with_the_defaults() -> void:
 
 
 func test_ensure_character_creates_it_with_the_asked_starter_template() -> void:
-	# progresion.md P8: the account bot's --loadout is the starting template of the character it creates.
+	# progression.md P8: the account bot's --loadout is the starting template of the character it creates.
 	await _flow.login(_platform.email, _platform.password)
 	await _flow.ensure_character(1, "Aneira", &"", &"squire")
 	await _flow.ensure_character(1, "Bruno", &"", &"volar")

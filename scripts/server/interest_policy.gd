@@ -1,6 +1,6 @@
 class_name InterestPolicy
 extends RefCounted
-## Interest management hook (docs/red.md, section 11): which entities each player sees and
+## Interest management hook (docs/networking.md, section 11): which entities each player sees and
 ## how urgently they need to be sent.
 ## [br][br]
 ## The base considers everything relevant with weight 1: in phase 2 the 1200 B budget and the

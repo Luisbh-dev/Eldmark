@@ -1,5 +1,5 @@
 extends TestCase
-## The fort server on the real zone, Vado Gris (docs/fuerte.md, sections 1 to 5): the fortress from the
+## The fort server on the real zone, Vado Gris (docs/fortress.md, sections 1 to 5): the fortress from the
 ## [code]fortresses[/code] group with its definition, circle and gate; the 12 respawn points (camps
 ## first, then the inside of the fort) and which ones are valid depending on the owner; a real hit on the
 ## gate, which no collider of the zone stops; and a capture with fake players on the real terrain. It

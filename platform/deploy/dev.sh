@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The platform locally for development (docs/plataforma.md §12): its own PostgreSQL in
+# The platform locally for development (docs/platform.md §12): its own PostgreSQL in
 # build/dev_pg (initdb, like internal/testdb, but kept between runs), the migrations, ticket keys
 # and a token per development zone (1:vado_gris:0 and 1:test_world:0) in build/dev_secrets, the
 # environment in build/dev_platform.env, an admin account (admin@eldmark.test, for --actor) and a
