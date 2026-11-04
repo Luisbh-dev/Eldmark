@@ -53,7 +53,9 @@ PALETTES = {
 	},
 	"askarra": {
 		"leather": (0.52, 0.07, 0.09), "thread": (0.84, 0.54, 0.26),
-		"metal": (0.76, 0.46, 0.17), "metal_rough": 0.30, "metal_metallic": 0.95,
+		# Bronce de verdad, no madera: más claro y amarillo, con menos metálico (un metal oscuro y muy reflectante se lee
+		# como un marrón mate en la mano) y brillo en el canto.
+		"metal": (0.90, 0.64, 0.27), "metal_rough": 0.27, "metal_metallic": 0.62,
 		"accent": (0.24, 0.22, 0.22), "accent_metal": 0.90, "accent_rough": 0.40,
 	},
 }
@@ -78,8 +80,12 @@ ATLAS_BANDS = 3
 # Qué lleva cada hoja. "tint" multiplica el gris acero de las caras, "edge" el del filo, y "dark"
 # escala el tono de las caras (Askarra es acero ennegrecido).
 BLADE_STYLES = {
-	"base": {"tint": (0.92, 0.96, 1.00), "edge": (0.97, 0.99, 1.00), "dark": 1.00, "metal": 0.88},
-	"vardheim": {"tint": (0.86, 0.94, 1.00), "edge": (0.92, 0.98, 1.00), "dark": 1.00, "metal": 0.88},
+	# Base: acero claro con poco metálico. Con 0,88 la hoja reflejaba el cielo cubierto y la sombra del valle y salía
+	# casi negra en la mano; con 0,45 conserva el albedo de acero medio y el filo sigue brillando.
+	"base": {"tint": (0.94, 0.97, 1.00), "edge": (0.98, 0.99, 1.00), "dark": 1.00, "metal": 0.45,
+			"face": 0.74, "bevel": 0.76},
+	"vardheim": {"tint": (0.86, 0.94, 1.00), "edge": (0.92, 0.98, 1.00), "dark": 1.00, "metal": 0.62,
+			"face": 0.72, "bevel": 0.74},
 	# Solmarch: blanco perla cálido en las caras (el oro va en la acanaladura), con menos metálico para que
 	# no refleje el cielo gris y se apague.
 	"solmarch": {"tint": (1.00, 0.97, 0.89), "edge": (1.00, 0.98, 0.90), "dark": 1.00, "metal": 0.80,

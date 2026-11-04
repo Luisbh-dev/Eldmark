@@ -30,7 +30,7 @@ tomadas de noche; están en «Decisiones tomadas» del backlog):
 | Estado defensivo con rebobinado | Protege si el defensor se defendía en el tick rebobinado o en el actual, con las precisiones de §4.3. |
 | Parada | Ventana de 6 ticks (100 ms) al pulsar bloquear, solo contra cuerpo a cuerpo y con enfriamiento. |
 | Esprint y resistencia | El esprint no gasta resistencia. |
-| Impacto propio | Mixto: barrido, estela y sonido del arma al predecir; marcador, chispas y número al confirmar (ENTITY_EVENT). Los números nunca se predicen. |
+| Impacto propio | Mixto: barrido, estela y sonido del arma al predecir; marcador y número al confirmar (ENTITY_EVENT). Los números nunca se predicen. Desde la oleada 4 de calidad (decisión 6, provisional) se predicen además, solo como cosmético, la chispa, el sonido de impacto y la parada de golpe de la animación (50 ms ligero, 80 ms fuerte), con una comprobación local del sector del golpe contra las posiciones dibujadas (`CombatFeedback._try_predict`); si el servidor lo confirma como golpe normal no se repiten. |
 | Vida del enemigo | En su placa al apuntarle o tras dañarlo en los últimos 5 s; barra de jefe para capitanes (fase 4). |
 | PNJ humanoides | `PlayerCharacter` con entrada sintética (como `BotBrain`). |
 | Colisión entre personajes | Ninguna, como en la fase 2. |

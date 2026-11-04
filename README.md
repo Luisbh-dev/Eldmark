@@ -79,7 +79,11 @@ no sea válido se ignora y queda el valor por defecto. Está implementado en `Cl
   `InputMap`, así que reflejan cualquier tecla reasignada.
 - El audio es solo del cliente: `default_bus_layout.tres` define los buses (General con limitador,
   Música, Efectos, Ambiente, Interfaz y Voces) y `AudioDirector` reparte los sonidos en pools con un
-  límite de voces por categoría. Todavía no hay sonidos reales en `assets/audio/`.
+  límite de voces por categoría. `CombatAudio` conecta el combate y los pasos con los bancos de `assets/audio/sfx/`
+  (`CombatSoundBank`): impactos por material, barridos, esquivas y pasos por superficie, también los de los demás
+  jugadores. `python tools/audio/listening_sheet.py` genera en `build/o4_hoja_escucha/` una hoja de escucha (un OGG
+  por categoría con las opciones A y B seguidas) para elegir de oído entre lo sintetizado en casa y los packs CC0
+  descargados.
 
 ## Zonas
 
@@ -172,6 +176,11 @@ python tools/quality/run.py todo --port 24721                # las seis áreas s
 python tools/quality/run.py indice --out build/calidad       # solo regenera el índice
 python tools/quality/run.py listar                           # áreas y pasos
 ```
+
+Para comparar dos pasadas con los mismos encuadres (antes y después de un cambio), `python tools/quality/compare_before_after.py
+<carpeta_antes> <carpeta_después> --out <carpeta> --pattern "pelea_*.png"` deja cada pareja lado a lado con su rótulo.
+El vídeo de `video` lleva el sonido del bus maestro (`--mp4` lo pasa a MP4 con ffmpeg); con `ELDMARK_FEEL_LOG=1` el cliente
+imprime al cerrar cuántos golpes predijo en local y cuántos sonidos pidió de cada grupo.
 
 Cada orden arranca lo que necesita (el sandbox, o un servidor del Vado Gris en `--port`, 24711 por defecto, con sus bots y el
 cliente conducido por `online_driver.gd`), recoge las capturas en `<out>/<área>/`, une las tiras en rejillas, escribe

@@ -175,6 +175,8 @@ El orden pone primero lo que permite demostrar la mejora, después lo barato y l
 
 **Capturas que lo demuestran.** El vídeo con sonido de TEC-50 contra los criterios 1 a 3 y 7 de sensación de combate; `combate/pelea_b_*` y `combate/bloqueo_recibiendo_*` con chispas y estela; `camara_juego/com_habilidad_3_shield_wall.png` con su efecto.
 
+**Estado.** Hecho (4 de noviembre de 2026): ART-11 (`CombatAudio` con bancos por material y variaciones, pasos por superficie desde los pies, barridos sincronizados y también los de los remotos), ART-09 (impacto en el punto de contacto de todo golpe, bloqueo y parada distintos, estela del fuerte rehecha, parada de golpe de 50/80 ms solo en la animación y predicha en local, aura de carga, efectos de las tres habilidades de espada y escudo, polvo de muerte) y UI-12 (números y marcador legibles). La decisión 6 se aplicó como cosmético provisional (el número, el marcador y el DPS siguen esperando al servidor). También las correcciones de la espada propia (hoja base, pomo de lobo, guarda de Askarra). Queda por elegir de oído entre las alternativas de la hoja de escucha (`build/o4_hoja_escucha/`) y juzgar jugando las cifras de la parada de golpe. Las pruebas están en `tests/test_combat_sound_bank.gd` y `tests/test_combat_feel.gd`; el vídeo con sonido sale de `python tools/quality/run.py video --mp4`.
+
 **Depende del usuario.** Aprobar las descargas de Kenney RPG Audio, Impact Sounds y Particle Pack, Still North, 80 CC0 RPG SFX y Binbun Hit FX y Battle FX Free (todo gratis). Decidir si la parada de golpe y el sonido de impacto se predicen en local (decisión 6).
 
 ### Oleada 5: el escenario del Vado Gris (12 a 15 sesiones)

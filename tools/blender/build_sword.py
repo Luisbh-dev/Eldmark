@@ -610,20 +610,20 @@ def pommel_outline(points, scale=1.0):
 	return [(x * 0.01 * scale, POMMEL_Z - d * 0.01 * scale) for x, d in points]
 
 
-# Cabeza de lobo de frente (cm; x a lo ancho, z hacia arriba, centrada en el eje del pomo): orejas tiesas,
-# frente, mejillas con pelo y hocico. Es el relieve de las dos caras de la rueda, mitad derecha de abajo a
-# arriba (la otra se espeja).
-WOLF_FACE_HALF = [(0.0, -1.95), (0.40, -1.95), (0.65, -1.70), (1.30, -1.10), (1.95, -0.45), (1.55, 0.25),
-		(1.60, 1.00), (1.05, 2.00), (0.55, 1.80), (0.50, 1.20), (0.0, 1.15)]
-WOLF_EYE_CM = (0.68, 0.35)
-# La rueda del pomo: centro, mitad del grosor y perfil (radio, posición axial) en metros.
-WOLF_WHEEL_CENTER_D = 0.040
-WOLF_WHEEL_PROFILE = [(0.0, -0.0150), (0.0240, -0.0150), (0.0262, -0.0178), (0.0294, -0.0178),
-		(0.0318, -0.0120), (0.0318, 0.0120), (0.0294, 0.0178), (0.0262, 0.0178), (0.0240, 0.0150),
-		(0.0, 0.0150)]
-# Ampliación de la cabeza de lobo sobre las medidas de WOLF_FACE_HALF (cabe en el hueco de la rueda; las
-# puntas de las orejas se montan sobre el aro).
-WOLF_HEAD_SCALE = 1.22
+# Cabeza de lobo de frente, con el hocico hacia fuera de la espada (cm; x a lo ancho, z hacia arriba, centrada en
+# el eje del pomo; mitad derecha de abajo a arriba, la otra se espeja). Lo que la hace lobo y no gato ni búho es la
+# SILUETA: hocico largo y estrecho que acaba en nariz, carrillos con pelo en puntas y dos orejas altas y separadas.
+# Ya no hay disco detrás (un círculo con dos ojos es una lechuza): la propia cabeza es la pieza.
+WOLF_SILHOUETTE_HALF = [(0.0, -3.10), (0.50, -3.05), (0.68, -2.55), (0.78, -1.75), (1.20, -1.00), (2.05, -0.80),
+		(1.70, -0.15), (2.30, 0.55), (1.80, 1.15), (2.55, 3.30), (1.10, 2.05), (0.0, 1.55)]
+# Ojo rasgado (triángulo estrecho, inclinado hacia fuera y arriba), nariz y cejas, en el mismo sistema.
+WOLF_EYE_CM = [(0.28, 0.30), (1.15, 0.92), (1.00, 0.34)]
+WOLF_NOSE_CM = [(-0.30, -2.55), (0.30, -2.55), (0.18, -3.00), (-0.18, -3.00)]
+WOLF_BROW_CM = [(0.20, 0.98), (1.30, 1.38), (1.30, 1.18), (0.20, 0.78)]
+# Mitad del grosor de la cabeza (m) y escala sobre las medidas de arriba.
+WOLF_HALF_THICKNESS = 0.0150
+WOLF_HEAD_SCALE = 1.0
+WOLF_CENTER_D = 0.050
 
 
 def wheel(cz, profile, segments):
@@ -640,27 +640,32 @@ def wheel(cz, profile, segments):
 
 
 def pommel_vardheim(detail):
-	"""Pomo de lobo en volumen: una rueda gruesa (6 cm de diámetro, 3,5 de canto) centrada en el eje con la
-	cabeza de lobo en relieve en las dos caras (de frente se lee como cabeza, de perfil como un disco) y una
-	gema de hielo por ojo. Nada de planchas de perfil ni piedras en la espalda."""
-	center = POMMEL_Z - WOLF_WHEEL_CENTER_D
-	segments = 18 if detail == 0 else 8
-	stem = lathe([(0.0165, POMMEL_Z + 0.003), (0.0165, center + 0.0200)], 12 if detail == 0 else 8, scale_y=0.86)
+	"""Pomo de cabeza de lobo en volumen: la silueta de la cabeza (hocico largo, carrillos en puntas, orejas altas)
+	extruida a 3 cm de canto con el borde pulido, ojos rasgados y cejas en el metal de acento (hielo) y la nariz en
+	acento. De frente se lee lobo; de perfil, una cuña. Sin disco detrás."""
+	center = POMMEL_Z - WOLF_CENTER_D
+	k = 0.01 * WOLF_HEAD_SCALE
+	head = mirrored([(x * k, center + z * k) for x, z in WOLF_SILHOUETTE_HALF])
+	stem = lathe([(0.0165, POMMEL_Z + 0.003), (0.0165, center + 0.0050)], 12 if detail == 0 else 8, scale_y=0.86)
 	parts = [finish(stem, M_METAL, smooth=False, region=REGION_METAL)]
-	parts.append(wheel(center, WOLF_WHEEL_PROFILE, segments))
+	parts.append(finish(slab(head, -WOLF_HALF_THICKNESS, WOLF_HALF_THICKNESS,
+			bevel=0.0035 if detail == 0 else 0.0), M_METAL, smooth=False, region=REGION_METAL,
+			edge_region=REGION_EDGE))
 	if detail == 1:
 		return parts
-	k = 0.01 * WOLF_HEAD_SCALE
-	half = [(x * k, center + z * k) for x, z in WOLF_FACE_HALF]
-	head = mirrored(half)
 	for sign in (1.0, -1.0):
-		y0, y1 = (0.0150, 0.0215) if sign > 0 else (-0.0215, -0.0150)
-		# La cabeza en el metal pulido (más claro que el fondo de la rueda): se lee a distancia.
-		parts.append(finish(slab(head, y0, y1, bevel=0.0030), M_METAL, smooth=False,
-				region=REGION_EDGE, edge_region=REGION_EDGE))
+		y0, y1 = (WOLF_HALF_THICKNESS, WOLF_HALF_THICKNESS + 0.0045) if sign > 0 				else (-WOLF_HALF_THICKNESS - 0.0045, -WOLF_HALF_THICKNESS)
 		for eye_side in (-1.0, 1.0):
-			parts.append(facet_gem(eye_side * WOLF_EYE_CM[0] * k, center + WOLF_EYE_CM[1] * k,
-					0.0066, 0.0045, 6, 0.0215, sign))
+			eye = [(eye_side * x * k, center + z * k) for x, z in WOLF_EYE_CM]
+			if eye_side < 0:
+				eye = list(reversed(eye))
+			parts.append(finish(slab(eye, y0, y1), M_METAL, smooth=False, region=REGION_ACCENT))
+			brow = [(eye_side * x * k, center + z * k) for x, z in WOLF_BROW_CM]
+			if eye_side < 0:
+				brow = list(reversed(brow))
+			parts.append(finish(slab(brow, y0, y1 - 0.0010), M_METAL, smooth=False, region=REGION_EDGE))
+		nose = [(x * k, center + z * k) for x, z in WOLF_NOSE_CM]
+		parts.append(finish(slab(nose, y0, y1), M_METAL, smooth=False, region=REGION_ACCENT))
 	return parts
 
 

@@ -21,6 +21,11 @@ extends RefCounted
 ## Sin acción, el clip actual se desvanece ([member CombatActionAnim.blend_out_s]) y la capa queda
 ## inactiva.
 ## [br][br]
+## [b]Parada de golpe[/b] (ART-09, solo la animación): [method start_hitstop] congela el clip actual unos 50 a 80 ms
+## cuando un golpe conecta. No se toca el tiempo de la simulación ni el plan: se acumula un desfase ([member
+## _lag_s], segundos de clip) que se resta al instante del clip mientras dura la parada y se recupera después
+## acelerando el clip (a 1,5x) durante la recuperación, así la acción acaba a su hora. Cambiar de clip lo anula.
+## [br][br]
 ## [b]Fase 4[/b] (docs/habilidades.md, sección 6.6, provisional): cada arma anima con su juego de clips
 ## ([method clips_for]: [code]data/animation/<arma>_clips.tres[/code], o el de por defecto si no tiene);
 ## el remoto da su arma activa (pareja de armas y bit de ranura de su registro). Una ABILITY sale con la
@@ -74,6 +79,11 @@ static var _weapon_clips: Dictionary[StringName, CombatClipSet] = {}
 var _current: Slot = null
 var _previous: Slot = null
 var _plan: CombatClipPlanner.Plan = null
+# Parada de golpe: segundos de parada que quedan y desfase acumulado del clip actual (segundos de clip).
+var _hitstop_left: float = 0.0
+var _lag_s: float = 0.0
+## Velocidad extra (fracción de la normal) con la que el clip recupera el desfase de la parada de golpe.
+const HITSTOP_CATCHUP: float = 0.5
 # Seguimiento del byte action de un remoto.
 var _remote_action: int = -1
 var _remote_step: int = -1
@@ -196,7 +206,7 @@ func apply_plan(plan: CombatClipPlanner.Plan, delta: float) -> void:
 			_current.animation_name = plan.animation
 			_current.animation = _animation_of(plan.animation)
 			_current.length_s = _current.animation.length if _current.animation != null else 0.0
-		_current.time_s = plan.time_s
+		_current.time_s = _hitstop_time(plan, delta)
 		_current.speed = plan.speed
 		_current.hold = plan.hold
 		_current.lower_weight = plan.lower_weight
@@ -211,6 +221,39 @@ func apply_plan(plan: CombatClipPlanner.Plan, delta: float) -> void:
 		# Sigue avanzando mientras se desvanece, sin pasarse del final del clip.
 		_current.time_s = minf(_current.time_s + _current.speed * delta, _current.length_s)
 	_advance_weights(delta)
+
+
+# --- Parada de golpe ---------------------------------------------------------------------------
+
+## Congela [param seconds] el clip actual (solo la animación). Si ya hay una parada en curso, se queda con la más larga.
+## No hace nada sin clip de combate en marcha (no hay nada que congelar).
+func start_hitstop(seconds: float) -> void:
+	if _current == null or seconds <= 0.0:
+		return
+	_hitstop_left = maxf(_hitstop_left, seconds)
+
+
+## true mientras el clip está congelado por la parada de golpe.
+func is_in_hitstop() -> bool:
+	return _hitstop_left > 0.0
+
+
+## Desfase (s de clip) que lleva el clip actual por la parada de golpe y aún no ha recuperado.
+func get_hitstop_lag() -> float:
+	return _lag_s
+
+
+# Instante del clip con la parada de golpe aplicada: congelado mientras dura, y recuperando el desfase después.
+func _hitstop_time(plan: CombatClipPlanner.Plan, delta: float) -> float:
+	if _hitstop_left > 0.0:
+		var frozen: float = minf(delta, _hitstop_left)
+		_hitstop_left -= frozen
+		_lag_s += plan.speed * frozen
+		if plan.hold:
+			_lag_s = 0.0
+	elif _lag_s > 0.0:
+		_lag_s = maxf(_lag_s - plan.speed * delta * HITSTOP_CATCHUP, 0.0)
+	return maxf(plan.time_s - _lag_s, 0.0)
 
 
 # --- Salida -----------------------------------------------------------------------------------
@@ -286,6 +329,8 @@ func reset() -> void:
 	_remote_restart_counter = 0
 	_swing_active = false
 	_crawl_cycles = 0.0
+	_hitstop_left = 0.0
+	_lag_s = 0.0
 
 
 # --- Interno ----------------------------------------------------------------------------------
@@ -323,6 +368,8 @@ func _with_get_up(plan: CombatClipPlanner.Plan, action: int, set_for_weapon: Com
 
 # Empieza un clip nuevo: el actual pasa a ser el saliente (si se veía) y el nuevo entra desde 0.
 func _start_slot(plan: CombatClipPlanner.Plan) -> void:
+	_hitstop_left = 0.0
+	_lag_s = 0.0
 	if _current != null and _current.weight > 0.01:
 		_previous = _current
 		_previous.target = 0.0

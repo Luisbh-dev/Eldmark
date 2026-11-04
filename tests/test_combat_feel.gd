@@ -1,0 +1,297 @@
+extends TestCase
+## Pruebas de la sensación de golpe (oleada 4 de calidad: ART-09, ART-11, UI-12): el impacto de todo golpe confirmado,
+## el golpe predicho en local, la parada de golpe (solo la animación), la estela del fuerte, los efectos
+## ([CombatVfx]) y la legibilidad de los números y el marcador.
+
+const OWN_ID: int = 5
+const OTHER_ID: int = 21
+const THIRD_ID: int = 22
+const CHARACTER_SCENE_PATH: String = "res://scenes/characters/player_character.tscn"
+
+var _root: Node3D
+var _feedback: CombatFeedback
+var _character: PlayerCharacter
+var _impacts: Array = []
+
+
+func before_each() -> void:
+	_impacts.clear()
+	_root = Node3D.new()
+	tree.root.add_child(_root)
+
+
+func after_each() -> void:
+	if is_instance_valid(_root):
+		tree.root.remove_child(_root)
+		_root.free()
+	_root = null
+	_feedback = null
+	_character = null
+	await wait_process_frames()
+
+
+func _make_feedback() -> void:
+	_character = (load(CHARACTER_SCENE_PATH) as PackedScene).instantiate() as PlayerCharacter
+	_root.add_child(_character)
+	_feedback = CombatFeedback.new()
+	_root.add_child(_feedback)
+	_feedback.setup(null, null, _character, null, null)
+	_feedback.set_own_net_id(OWN_ID)
+	_feedback.position_resolver = func(net_id: int) -> Vector3:
+		return Vector3(0.0, 0.0, -3.0) if net_id == OTHER_ID else Vector3(4.0, 0.0, -3.0)
+	_feedback.hit_impact.connect(func(event: NetMessages.EntityEvent, position: Vector3, involves_me: bool,
+			already: bool) -> void:
+		_impacts.append({"event": event, "position": position, "mine": involves_me, "already": already}))
+
+
+func _hit(victim: int, attacker: int, amount: int = 90, flags: int = 0, attack_id: int = 0,
+		tick: int = 100) -> NetMessages.EntityEvent:
+	return NetMessages.EntityEvent.hit(victim, tick, attacker, amount, 0, flags, attack_id)
+
+
+# --- Impacto de todo golpe confirmado --------------------------------------------------------
+
+func test_every_confirmed_hit_emits_an_impact_even_between_third_parties() -> void:
+	_make_feedback()
+	_feedback.handle_event(_hit(OTHER_ID, THIRD_ID, 90), false)
+	assert_eq(_impacts.size(), 1, "un golpe ajeno también produce impacto (sonido y chispa)")
+	assert_false(_impacts[0]["mine"], "no interviene el jugador local")
+	_feedback.handle_event(_hit(THIRD_ID, OWN_ID, 90), true)
+	assert_true(_impacts[1]["mine"], "uno propio sí")
+	assert_vec_near(_impacts[0]["position"], Vector3(0.0, 0.0, -3.0), 0.001, "en los pies de la víctima")
+
+
+func test_blocked_and_parried_hits_without_damage_still_emit_an_impact() -> void:
+	_make_feedback()
+	_feedback.handle_event(_hit(OTHER_ID, OWN_ID, 0, NetMessages.EntityEvent.HIT_FLAG_BLOCKED), true)
+	_feedback.handle_event(_hit(OTHER_ID, OWN_ID, 0, NetMessages.EntityEvent.HIT_FLAG_PARRIED), true)
+	assert_eq(_impacts.size(), 2, "el bloqueo y la parada suenan y echan chispas aunque no quiten vida")
+
+
+func test_a_confirmed_hit_after_the_local_prediction_does_not_repeat_the_effects() -> void:
+	_make_feedback()
+	var light: int = CombatCatalog.attack_id(&"sword_light_1")
+	_feedback._predicted_attack = light
+	_feedback._predicted_msec = Time.get_ticks_msec()
+	_feedback.handle_event(_hit(OTHER_ID, OWN_ID, 90, 0, light), true)
+	assert_true(_impacts[0]["already"], "el golpe normal ya se enseñó al predecirlo")
+	_feedback._predicted_attack = light
+	_feedback._predicted_msec = Time.get_ticks_msec()
+	_feedback.handle_event(_hit(OTHER_ID, OWN_ID, 0, NetMessages.EntityEvent.HIT_FLAG_BLOCKED, light), true)
+	assert_false(_impacts[1]["already"], "si resulta bloqueado, la chispa de bloqueo sí sale")
+	_feedback._predicted_attack = light
+	_feedback._predicted_msec = Time.get_ticks_msec() - 5000
+	_feedback.handle_event(_hit(OTHER_ID, OWN_ID, 90, 0, light), true)
+	assert_false(_impacts[2]["already"], "una predicción vieja no vale")
+
+
+func test_parry_has_its_own_marker_kind() -> void:
+	_make_feedback()
+	var parry: NetMessages.EntityEvent = _hit(OTHER_ID, OWN_ID, 0, NetMessages.EntityEvent.HIT_FLAG_PARRIED)
+	assert_eq(_feedback.kind_of(parry), HitMarker.Kind.PARRY)
+	assert_ne_kind(HitMarker.Kind.PARRY, HitMarker.Kind.BLOCKED)
+
+
+func assert_ne_kind(a: int, b: int) -> void:
+	assert_true(a != b, "las variantes %d y %d son distintas" % [a, b])
+
+
+# --- Parada de golpe (solo la animación) ------------------------------------------------------
+
+func _plan(time_s: float) -> CombatClipPlanner.Plan:
+	var plan := CombatClipPlanner.Plan.new()
+	plan.key = &"sword_light_1"
+	plan.animation = &"x/y"
+	plan.time_s = time_s
+	plan.speed = 1.0
+	return plan
+
+
+func test_hitstop_freezes_the_clip_and_recovers_by_the_end_of_the_recovery() -> void:
+	var layer := CombatAnimationLayer.new()
+	var delta: float = 1.0 / 60.0
+	var elapsed: float = 0.0
+	layer.apply_plan(_plan(elapsed), delta)
+	layer.start_hitstop(0.05)
+	assert_true(layer.is_in_hitstop())
+	var frozen_time: float = layer.get_current().time_s
+	for frame: int in 3:
+		elapsed += delta
+		layer.apply_plan(_plan(elapsed), delta)
+	assert_near(layer.get_current().time_s, frozen_time, 0.001, "durante la parada el clip no avanza")
+	for frame: int in 6:
+		elapsed += delta
+		layer.apply_plan(_plan(elapsed), delta)
+	assert_false(layer.is_in_hitstop(), "50 ms después la parada ha acabado")
+	assert_true(layer.get_hitstop_lag() > 0.0, "queda desfase por recuperar")
+	assert_true(layer.get_current().time_s < elapsed, "el clip va por detrás de la simulación")
+	for frame: int in 40:
+		elapsed += delta
+		layer.apply_plan(_plan(elapsed), delta)
+	assert_near(layer.get_hitstop_lag(), 0.0, 0.0001, "el desfase se recupera acelerando el clip")
+	assert_near(layer.get_current().time_s, elapsed, 0.0001, "y vuelve al instante de la simulación")
+
+
+func test_hitstop_needs_a_clip_and_a_new_clip_cancels_it() -> void:
+	var layer := CombatAnimationLayer.new()
+	layer.start_hitstop(0.08)
+	assert_false(layer.is_in_hitstop(), "sin clip no hay nada que congelar")
+	layer.apply_plan(_plan(0.0), 1.0 / 60.0)
+	layer.start_hitstop(0.08)
+	var other := _plan(0.0)
+	other.key = &"sword_heavy"
+	layer.apply_plan(other, 1.0 / 60.0)
+	assert_false(layer.is_in_hitstop(), "cambiar de clip anula la parada")
+	assert_eq(layer.get_hitstop_lag(), 0.0)
+
+
+func test_hitstop_durations_are_between_50_and_80_ms_for_blows() -> void:
+	assert_near(CombatFeedback.HITSTOP_LIGHT, 0.05, 0.0001)
+	assert_near(CombatFeedback.HITSTOP_HEAVY, 0.08, 0.0001)
+	assert_true(CombatFeedback.HITSTOP_PARRY >= 0.08 and CombatFeedback.HITSTOP_PARRY <= 0.12, "la parada, ~100 ms")
+
+
+# --- Estela del golpe fuerte -------------------------------------------------------------------
+
+func test_heavy_trail_is_more_opaque_wider_and_more_saturated_than_the_light_one() -> void:
+	var light := SwordTrail.new()
+	light.set_tint(SwordTrail.color_for(&"askarra"))
+	light.set_active(true, false)
+	var heavy := SwordTrail.new()
+	heavy.set_tint(SwordTrail.color_for(&"askarra"))
+	heavy.set_active(true, true)
+	assert_true(heavy.get_peak_alpha() > light.get_peak_alpha() * 1.5, "más opaca")
+	assert_true(heavy.is_heavy() and not light.is_heavy())
+	var base := SwordTrail.new()
+	base.set_tint(SwordTrail.color_for(&"base"))
+	base.set_active(true, true)
+	assert_true(base.get_body_color().s > SwordTrail.color_for(&"base").s, "el fuerte de la base no sale pálido")
+	light.free()
+	heavy.free()
+	base.free()
+
+
+func test_base_trail_is_not_the_blue_of_vardheim() -> void:
+	var base: Color = SwordTrail.color_for(&"base")
+	var vardheim: Color = SwordTrail.color_for(&"vardheim")
+	assert_true(base.b <= base.r + 0.05, "la estela de la espada base no es azul")
+	assert_true(absf(base.h - vardheim.h) > 0.15 or base.s < 0.35, "ni se parece al azul hielo de Vardheim")
+
+
+# --- Efectos -------------------------------------------------------------------------------------
+
+func test_vfx_picks_the_effect_by_what_was_hit() -> void:
+	var vfx := CombatVfx.new()
+	_root.add_child(vfx)
+	var victim: Vector3 = Vector3(0.0, 0.0, -3.0)
+	var attacker: Vector3 = Vector3.ZERO
+	vfx.spawn_impact(victim, attacker, CombatSoundBank.Armor.FLESH, false, false, false)
+	assert_eq(vfx.get_spawn_count(&"flesh"), 1, "la carne echa sangre")
+	vfx.spawn_impact(victim, attacker, CombatSoundBank.Armor.MAIL, false, false, false)
+	assert_eq(vfx.get_spawn_count(&"metal"), 1, "la malla echa chispas")
+	vfx.spawn_impact(victim, attacker, CombatSoundBank.Armor.GAMBESON, false, false, false)
+	assert_eq(vfx.get_spawn_count(&"cloth"), 1, "el gambesón suelta tela")
+	vfx.spawn_impact(victim, attacker, CombatSoundBank.Armor.FLESH, true, false, false)
+	assert_eq(vfx.get_spawn_count(&"block"), 1, "el bloqueo es astillas en el escudo")
+	assert_eq(vfx.get_spawn_count(&"flesh"), 1, "y no hay sangre")
+	vfx.spawn_impact(victim, attacker, CombatSoundBank.Armor.FLESH, false, true, false)
+	assert_eq(vfx.get_spawn_count(&"parry"), 1, "la parada es el destello")
+	assert_eq(vfx.get_spawn_count(&"metal"), 2, "con chispas de acero")
+	vfx.free()
+
+
+func test_contact_point_is_the_chest_pulled_toward_the_attacker() -> void:
+	var point: Vector3 = CombatVfx.contact_point(Vector3(0.0, 0.0, -3.0), Vector3.ZERO)
+	assert_near(point.y, CombatVfx.CHEST_HEIGHT, 0.001, "a la altura del pecho")
+	assert_near(point.z, -3.0 + CombatVfx.CHEST_FORWARD, 0.001, "adelantado hacia quien golpea")
+
+
+func test_vfx_abilities_each_have_an_effect() -> void:
+	var vfx := CombatVfx.new()
+	_root.add_child(vfx)
+	vfx.play_ability(&"shield_bash", Vector3.ZERO, Vector3.FORWARD, 1)
+	assert_eq(vfx.get_spawn_count(&"block"), 1, "el golpe de escudo")
+	assert_true(vfx.get_spawn_count(&"dust") >= 1, "y levanta polvo")
+	vfx.play_ability(&"shield_rush", Vector3.ZERO, Vector3.FORWARD, 1)
+	assert_true(vfx.get_spawn_count(&"dust") >= 2, "la carga deja polvo")
+	vfx.play_ability(&"shield_wall", Vector3.ZERO, Vector3.FORWARD, 3)
+	assert_eq(vfx.get_spawn_count(&"wall"), 1, "el muro tiene su arco")
+	vfx.free()
+
+
+func test_shield_wall_scene_is_a_vfx_effect_with_a_tintable_arc() -> void:
+	var scene: PackedScene = load("res://scenes/vfx/shield_wall.tscn") as PackedScene
+	assert_not_null(scene)
+	var effect: VfxEffect = scene.instantiate() as VfxEffect
+	assert_not_null(effect)
+	assert_not_null(effect.get_node_or_null(^"Arch"), "tiene el arco")
+	effect.free()
+
+
+func test_death_dust_waits_for_the_body_to_reach_the_floor() -> void:
+	var vfx := CombatVfx.new()
+	_root.add_child(vfx)
+	vfx.play_death_dust(Vector3.ZERO)
+	assert_eq(vfx.get_spawn_count(&"dust"), 0, "no sale en el instante del golpe")
+	await tree.create_timer(CombatVfx.DEATH_DUST_DELAY + 0.1).timeout
+	assert_eq(vfx.get_spawn_count(&"dust"), 1, "sale al caer el cuerpo")
+	vfx.free()
+
+
+# --- Números y marcador legibles (UI-12) ----------------------------------------------------------
+
+func test_numbers_of_the_same_target_do_not_overlap_when_they_are_born() -> void:
+	var numbers := DamageNumbers.new()
+	_root.add_child(numbers)
+	numbers.add_number(OTHER_ID, Vector3.ZERO, 225)
+	numbers.advance(DamageNumbers.GROUP_WINDOW_SECONDS + 0.05)
+	numbers.add_number(OTHER_ID, Vector3.ZERO, 250)
+	assert_eq(numbers.get_active_count(), 2, "fuera de la ventana de agrupación son dos números")
+	var first: Vector2 = numbers.get_number_offset(0)
+	var second: Vector2 = numbers.get_number_offset(1)
+	assert_true(signf(first.x) != signf(second.x), "nacen a lados distintos")
+	assert_true(second.y < first.y, "y el segundo un escalón más arriba")
+	numbers.free()
+
+
+func test_critical_has_its_own_color_and_size_and_kill_and_taken_are_not_confused() -> void:
+	var numbers := DamageNumbers.new()
+	_root.add_child(numbers)
+	var normal: Label = numbers.add_number(1, Vector3.ZERO, 100, DamageNumbers.Kind.HIT, false, false)
+	var crit: Label = numbers.add_number(2, Vector3.ZERO, 100, DamageNumbers.Kind.HIT, false, true)
+	var normal_size: int = normal.get_theme_font_size(&"font_size")
+	assert_true(crit.get_theme_font_size(&"font_size") >= normal_size + 4, "el crítico es más grande")
+	assert_eq(crit.get_theme_color(&"font_color"), DamageNumbers.CRITICAL_COLOR, "y de otro color")
+	assert_true(crit.text.ends_with("!"))
+	var kill: Label = numbers.add_number(3, Vector3.ZERO, 100, DamageNumbers.Kind.KILL)
+	var taken: Label = numbers.add_number(4, Vector3.ZERO, 100, DamageNumbers.Kind.HIT, true)
+	assert_true(kill.get_theme_color(&"font_color") != taken.get_theme_color(&"font_color"),
+			"la muerte y el daño recibido no se confunden")
+	assert_true(DamageNumbers.TAKEN_COLOR.r > 0.8 and DamageNumbers.TAKEN_COLOR.g < 0.4, "el recibido es rojo")
+	assert_true(DamageNumbers.COLORS[DamageNumbers.Kind.KILL].g > 0.8, "la muerte no es roja")
+	numbers.free()
+
+
+func test_number_pops_from_1_4_to_1_in_80_ms() -> void:
+	var numbers := DamageNumbers.new()
+	_root.add_child(numbers)
+	var label: Label = numbers.add_number(1, Vector3.ZERO, 100)
+	assert_near(label.scale.x, DamageNumbers.POP_SCALE, 0.01, "nace un 40 % más grande")
+	numbers.advance(DamageNumbers.POP_SECONDS)
+	assert_near(label.scale.x, 1.0, 0.01, "y a los 80 ms está a su tamaño")
+	numbers.free()
+
+
+func test_marker_is_thick_and_every_variant_draws() -> void:
+	assert_true(HitMarker.LINE_WIDTH >= 4.0, "marcas más gruesas")
+	var marker := HitMarker.new()
+	marker.size = Vector2(200.0, 200.0)
+	_root.add_child(marker)
+	for kind: int in [HitMarker.Kind.HIT, HitMarker.Kind.HEAVY, HitMarker.Kind.BLOCKED, HitMarker.Kind.KILL,
+			HitMarker.Kind.PARRY]:
+		marker.show_marker(kind)
+		assert_true(marker.is_active(), "variante %d" % kind)
+		assert_eq(marker.get_variant(), kind)
+	assert_true(HitMarker.COLORS[HitMarker.Kind.PARRY] != HitMarker.COLORS[HitMarker.Kind.BLOCKED],
+			"parada y bloqueo se distinguen por color")
+	marker.free()

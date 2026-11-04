@@ -88,6 +88,18 @@ signal weapon_shown(weapon_id: int)
 ## ([method CombatAnimationLayer.is_swing_active]): de aquí cuelga la estela de la espada.
 signal swing_active_changed(active: bool)
 
+## El personaje despega del suelo con un salto (para el sonido y el polvo; no sale al caer por un borde).
+signal jumped_visual
+## El personaje toca el suelo tras estar en el aire, con [param strength] de 0 a 1 según la velocidad del impacto.
+signal touched_down(strength: float)
+## Un remoto empieza una acción de combate ([param action] es un [enum CombatState.Action]; [param step] el paso del
+## combo, la ranura de la habilidad o el contador de reinicio del byte de acción). Solo de los remotos: lo propio lo
+## reparte [CombatFeedback].
+signal remote_action_started(action: int, step: int)
+## La carga del golpe fuerte está en curso ([param active]) con [param fraction] de 0 a 1, o ha terminado. Se emite
+## cada fotograma mientras dura. De aquí cuelga el aura de la espada ([ChargeAura]).
+signal charge_changed(active: bool, fraction: float)
+
 ## Fases del aire.
 enum AirState { GROUNDED, JUMPING, FALLING }
 ## Velocidad horizontal (m/s) por encima de la cual un derribado se arrastra.
@@ -259,6 +271,12 @@ var _remote_weapon_source: Callable = Callable()
 var _shown_weapon: int = -1
 # Último valor avisado por [signal swing_active_changed].
 var _swing_shown: bool = false
+# Última acción de un remoto avisada por [signal remote_action_started] y su paso (-1 = ninguna).
+var _remote_action_seen: int = -1
+var _remote_step_seen: int = -1
+# Carga del fuerte: si se está avisando y los segundos que lleva un remoto cargando.
+var _charging: bool = false
+var _remote_charge_s: float = 0.0
 
 
 func _ready() -> void:
@@ -480,6 +498,54 @@ func _update_combat(delta: float) -> void:
 		_combat_layer.update_local(_character.combat, _character.last_input_tick,
 				Engine.get_physics_interpolation_fraction(), delta, moving)
 	_set_swing_shown(_combat_layer.is_swing_active())
+	_update_charge(delta, weapon_id)
+	_observe_remote_action()
+
+
+# Avisa de la carga del fuerte ([signal charge_changed]): la fracción sale del estado en el jugador local y del
+# tiempo que se ve cargar a un remoto.
+func _update_charge(delta: float, weapon_id: int) -> void:
+	var charging: bool = _current_action() == CombatState.Action.CHARGE
+	if not charging:
+		_remote_charge_s = 0.0
+		if _charging:
+			_charging = false
+			charge_changed.emit(false, 0.0)
+		return
+	var weapon: WeaponTicks = CombatCatalog.weapon(weapon_id)
+	var heavy: AttackTicks = CombatCatalog.attack(weapon.heavy_id) if weapon != null else null
+	var full_ticks: float = float(maxi(heavy.charge_max_ticks, 1)) if heavy != null else 72.0
+	var elapsed_ticks: float = 0.0
+	if _remote_source.is_valid():
+		_remote_charge_s += delta
+		elapsed_ticks = _remote_charge_s * float(Engine.physics_ticks_per_second)
+	else:
+		elapsed_ticks = float(_character.last_input_tick - _character.combat.action_tick) \
+				+ Engine.get_physics_interpolation_fraction()
+	_charging = true
+	charge_changed.emit(true, clampf(elapsed_ticks / full_ticks, 0.0, 1.0))
+
+
+# Avisa de las acciones nuevas de un remoto ([signal remote_action_started]).
+func _observe_remote_action() -> void:
+	if not _remote_source.is_valid():
+		return
+	var byte: int = int(_remote_source.call())
+	var action: int = byte & 15
+	var step: int = ActionWire.step_of(byte)
+	if action == CombatState.Action.NONE or action > CombatState.Action.EXECUTE:
+		_remote_action_seen = -1
+		_remote_step_seen = -1
+		return
+	if action != _remote_action_seen or step != _remote_step_seen:
+		_remote_action_seen = action
+		_remote_step_seen = step
+		remote_action_started.emit(action, step)
+
+
+## true si este animador lo conduce un remoto (la acción sale del byte de su registro).
+func is_remote() -> bool:
+	return _remote_source.is_valid()
 
 
 # Cuánto movimiento pide la entrada (0 a 1) para las piernas de un ataque: la velocidad horizontal sin lo que avanza
@@ -512,6 +578,12 @@ func _set_swing_shown(swinging: bool) -> void:
 	if swinging != _swing_shown:
 		_swing_shown = swinging
 		swing_active_changed.emit(swinging)
+
+
+## Acción de combate de este fotograma (un [enum CombatState.Action]): la del byte del registro dibujado de un remoto
+## o la del estado del personaje.
+func get_current_action() -> int:
+	return _current_action()
 
 
 # Acción de combate de este fotograma: la del byte del registro dibujado de un remoto o la del estado del
@@ -853,6 +925,7 @@ func _update_air(delta: float, vertical_velocity: float) -> void:
 
 
 func _start_jump() -> void:
+	jumped_visual.emit()
 	_air_state = AirState.JUMPING
 	_air_time = 0.0
 	_min_vertical_velocity = 0.0
@@ -874,6 +947,8 @@ func _land() -> void:
 	var impact_factor: float = clampf(inverse_lerp(land_min_impact, land_full_impact, impact), 0.0, 1.0)
 	var run_factor: float = clampf(_speed / maxf(_character.run_speed, 0.001), 0.0, 1.0)
 	_land_strength = lerpf(land_strength_idle, land_strength_moving, run_factor) * impact_factor
+	if impact > 0.5:
+		touched_down.emit(clampf(maxf(impact_factor, 0.15), 0.0, 1.0))
 	if _land_strength > 0.01:
 		_land_time = 0.0
 		animation_tree.set(PARAM_LAND_SEEK, 0.0)

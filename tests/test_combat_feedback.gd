@@ -251,7 +251,7 @@ func test_hit_variants_follow_the_flags_and_the_attack() -> void:
 	assert_eq(_feedback.kind_of(_hit(OTHER_ID, OWN_ID, 0, NetMessages.EntityEvent.HIT_FLAG_BLOCKED,
 			heavy)), HitMarker.Kind.BLOCKED, "bloqueado pesa más que fuerte")
 	assert_eq(_feedback.kind_of(_hit(OTHER_ID, OWN_ID, 0, NetMessages.EntityEvent.HIT_FLAG_PARRIED,
-			light)), HitMarker.Kind.BLOCKED)
+			light)), HitMarker.Kind.PARRY, "la parada tiene su propia variante, distinta del bloqueo")
 	assert_eq(_feedback.kind_of(_hit(OTHER_ID, OWN_ID, 90, NetMessages.EntityEvent.HIT_FLAG_LETHAL
 			| NetMessages.EntityEvent.HIT_FLAG_BLOCKED, light)), HitMarker.Kind.KILL,
 			"y matar pesa más que todo")
